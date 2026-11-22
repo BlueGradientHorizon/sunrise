@@ -10,11 +10,7 @@
 //! describe.
 use super::{ArgType, Dispatcher, Node, NodeKind, RegistryId, Suggests};
 use std::collections::{HashSet, VecDeque};
-use sunrise_core::identifier::Identifier;
-use sunrise_protocol::{
-    Error, Result,
-    packets::play::{ARGUMENT_TYPES, ArgumentProperties, Commands},
-};
+use sunrise_protocol::packets::play::{ARGUMENT_TYPES, ArgumentProperties, Commands};
 
 /// The command id of every executable node of a server's tree: the chat
 /// sends the command, the server runs it.
@@ -22,11 +18,8 @@ pub const SERVER_COMMAND: &str = "server";
 
 /// The dispatcher for a server's tree. `local` is the client's own tree
 /// (vanilla's), whose matching nodes lend their types and providers, not executor bindings.
-pub fn from_packet(packet: &Commands, local: &Dispatcher) -> Result<Dispatcher> {
+pub fn from_packet(packet: &Commands, local: &Dispatcher) -> Dispatcher {
     let count = packet.nodes.len();
-    if count == 0 {
-        return Err(Error::new("command tree is missing its root"));
-    }
     let root = usize::try_from(packet.root)
         .ok()
         .filter(|&r| r < count)
@@ -45,9 +38,15 @@ pub fn from_packet(packet: &Commands, local: &Dispatcher) -> Result<Dispatcher> 
     // The local node at the same path, found breadth first from the roots
     // along children (redirects are not paths of their own).
     let mut matched: Vec<Option<usize>> = vec![None; count];
-    matched[root] = Some(0);
-    let mut queue = VecDeque::from([root]);
-    let mut seen = HashSet::from([root]);
+    if count > 0 {
+        matched[root] = Some(0);
+    }
+    let mut queue = VecDeque::new();
+    let mut seen = HashSet::new();
+    if count > 0 {
+        queue.push_back(root);
+        seen.insert(root);
+    }
     while let Some(n) = queue.pop_front() {
         for c in packet.nodes[n].children.iter().filter_map(valid) {
             if !seen.insert(c) {
@@ -73,15 +72,12 @@ pub fn from_packet(packet: &Commands, local: &Dispatcher) -> Result<Dispatcher> 
         let kind = match node.kind {
             1 => NodeKind::Literal(node.name.clone()),
             2 => {
-                let wire = node
-                    .parser
-                    .as_ref()
-                    .map(|(id, props)| argument_type(*id, props))
-                    .transpose()?
-                    .unwrap_or(ArgType::Word);
                 let ty = match local_node.map(|l| &l.kind) {
                     Some(NodeKind::Argument { ty, .. }) => ty.clone(),
-                    _ => wire,
+                    _ => node
+                        .parser
+                        .as_ref()
+                        .map_or(ArgType::Word, |(id, props)| argument_type(*id, props)),
                 };
                 NodeKind::Argument {
                     name: node.name.clone(),
@@ -106,8 +102,10 @@ pub fn from_packet(packet: &Commands, local: &Dispatcher) -> Result<Dispatcher> 
         });
     }
     let mut d = Dispatcher::new();
-    d.nodes = nodes.into_iter().flatten().collect();
-    Ok(d)
+    if count > 0 {
+        d.nodes = nodes.into_iter().flatten().collect();
+    }
+    d
 }
 
 /// SuggestionProviders by id (`SuggestionProviders.getProvider`).
@@ -119,27 +117,19 @@ fn provider(id: &str) -> Option<Suggests> {
     }
 }
 
-/// The argument type a parser and its properties describe
+/// The argument type a parser and its decoded properties describe
 /// (ArgumentTypeInfo.Template.instantiate).
-pub fn argument_type(id: i32, props: &[u8]) -> Result<ArgType> {
-    let p = ArgumentProperties::decode(id, props)?;
-    let name = ARGUMENT_TYPES[id as usize]; // decode validates the parser id
-    if let ArgumentProperties::Registry(name_on_wire) = p {
-        let identifier = Identifier::parse(&name_on_wire).map_err(|err| {
-            Error::new(format!("command argument registry `{name_on_wire}`: {err}"))
-        })?;
-        let registry = RegistryId::from_identifier(identifier);
-        return Ok(match name {
-            "minecraft:resource_or_tag" => ArgType::ResOrTag(registry),
-            "minecraft:resource_or_tag_key" => ArgType::ResOrTagKey(registry),
-            "minecraft:resource_key" => ArgType::ResKey(registry),
-            "minecraft:resource_selector" => ArgType::ResourceSelector(registry),
-            _ => ArgType::Res(registry), // minecraft:resource
-        });
-    }
-    Ok(match name {
+pub fn argument_type(id: i32, properties: &ArgumentProperties) -> ArgType {
+    let Some(name) = usize::try_from(id).ok().and_then(|i| ARGUMENT_TYPES.get(i)) else {
+        return ArgType::Word;
+    };
+    let registry = || match properties {
+        ArgumentProperties::Registry(id) => RegistryId::from_identifier(id.clone()),
+        _ => RegistryId::from_static(""),
+    };
+    match *name {
         "brigadier:bool" => ArgType::Bool,
-        "brigadier:integer" => match p {
+        "brigadier:integer" => match properties {
             ArgumentProperties::Integer { min, max } => ArgType::Integer {
                 min: min.unwrap_or(i32::MIN),
                 max: max.unwrap_or(i32::MAX),
@@ -151,7 +141,7 @@ pub fn argument_type(id: i32, props: &[u8]) -> Result<ArgType> {
         },
         // No long type of its own: a double over the same bounds reads
         // the same digits.
-        "brigadier:long" => match p {
+        "brigadier:long" => match properties {
             ArgumentProperties::Long { min, max } => ArgType::Double {
                 min: min.map_or(f64::MIN, |v| v as f64),
                 max: max.map_or(f64::MAX, |v| v as f64),
@@ -161,7 +151,7 @@ pub fn argument_type(id: i32, props: &[u8]) -> Result<ArgType> {
                 max: f64::MAX,
             },
         },
-        "brigadier:float" => match p {
+        "brigadier:float" => match properties {
             ArgumentProperties::Float { min, max } => ArgType::Float {
                 min: min.unwrap_or(f32::MIN),
                 max: max.unwrap_or(f32::MAX),
@@ -171,7 +161,7 @@ pub fn argument_type(id: i32, props: &[u8]) -> Result<ArgType> {
                 max: f32::MAX,
             },
         },
-        "brigadier:double" => match p {
+        "brigadier:double" => match properties {
             ArgumentProperties::Double { min, max } => ArgType::Double {
                 min: min.unwrap_or(f64::MIN),
                 max: max.unwrap_or(f64::MAX),
@@ -181,18 +171,18 @@ pub fn argument_type(id: i32, props: &[u8]) -> Result<ArgType> {
                 max: f64::MAX,
             },
         },
-        "brigadier:string" => match p {
+        "brigadier:string" => match properties {
             ArgumentProperties::String(1) => ArgType::Str,
             ArgumentProperties::String(2) => ArgType::Greedy,
             _ => ArgType::Word,
         },
-        "minecraft:entity" => match p {
+        "minecraft:entity" => match properties {
             ArgumentProperties::Entity {
                 single,
                 players_only,
             } => ArgType::Entity {
-                single,
-                players: players_only,
+                single: *single,
+                players: *players_only,
             },
             _ => ArgType::Entity {
                 single: false,
@@ -224,7 +214,10 @@ pub fn argument_type(id: i32, props: &[u8]) -> Result<ArgType> {
         "minecraft:rotation" => ArgType::Rotation,
         "minecraft:scoreboard_slot" => ArgType::ScoreboardSlot,
         "minecraft:score_holder" => ArgType::ScoreHolder {
-            multiple: matches!(p, ArgumentProperties::ScoreHolder { multiple: true }),
+            multiple: matches!(
+                properties,
+                ArgumentProperties::ScoreHolder { multiple: true }
+            ),
         },
         "minecraft:swizzle" => ArgType::Swizzle,
         "minecraft:team" => ArgType::Team,
@@ -238,11 +231,16 @@ pub fn argument_type(id: i32, props: &[u8]) -> Result<ArgType> {
         "minecraft:dimension" => ArgType::Dimension,
         "minecraft:gamemode" => ArgType::GameMode,
         "minecraft:time" => ArgType::Time {
-            min: match p {
-                ArgumentProperties::Time { min } => min,
+            min: match properties {
+                ArgumentProperties::Time { min } => *min,
                 _ => 0,
             },
         },
+        "minecraft:resource_or_tag" => ArgType::ResOrTag(registry()),
+        "minecraft:resource_or_tag_key" => ArgType::ResOrTagKey(registry()),
+        "minecraft:resource" => ArgType::Res(registry()),
+        "minecraft:resource_key" => ArgType::ResKey(registry()),
+        "minecraft:resource_selector" => ArgType::ResourceSelector(registry()),
         "minecraft:template_mirror" => ArgType::Enum(&["none", "front_back", "left_right"]),
         "minecraft:template_rotation" => {
             ArgType::Enum(&["none", "clockwise_90", "180", "counterclockwise_90"])
@@ -276,7 +274,7 @@ pub fn argument_type(id: i32, props: &[u8]) -> Result<ArgType> {
         }
         "minecraft:uuid" => ArgType::Uuid,
         _ => ArgType::Word,
-    })
+    }
 }
 
 #[cfg(test)]
@@ -289,6 +287,29 @@ mod tests {
         packets::play::CommandNode,
     };
 
+    fn encode_registry_commands(parser_id: i32, raw_registry: &str) -> Vec<u8> {
+        let mut wire = Writer::new();
+        wire.varint(3);
+        // Node 0: root -> [1]
+        wire.u8(0);
+        wire.varint(1);
+        wire.varint(1);
+        // Node 1: literal "use_registry" -> [2]
+        wire.u8(1);
+        wire.varint(1);
+        wire.varint(2);
+        wire.string("use_registry");
+        // Node 2: argument "value", executable, parser with raw wire registry string
+        wire.u8(2 | 4);
+        wire.varint(0);
+        wire.string("value");
+        wire.varint(parser_id);
+        wire.string(raw_registry);
+        // Root index
+        wire.varint(0);
+        wire.data
+    }
+
     #[test]
     fn registry_properties_are_owned_and_use_the_vanilla_string_frame() {
         let id = ARGUMENT_TYPES
@@ -296,14 +317,19 @@ mod tests {
             .position(|&name| name == "minecraft:resource")
             .unwrap() as i32;
         let decode = |name: &str| {
-            let mut props = Writer::new();
-            props.string(name);
-            argument_type(id, &props.data).map(|arg| {
-                let ArgType::Res(registry) = arg else {
-                    panic!("expected a resource argument");
-                };
-                registry
-            })
+            let wire = encode_registry_commands(id, name);
+            let packet = Commands::read(&mut Reader::new(&wire))?;
+            let dispatcher = from_packet(&packet, &Dispatcher::new());
+            let root = dispatcher.find("use_registry").unwrap();
+            let arg_node = dispatcher.nodes[root].children[0];
+            let NodeKind::Argument {
+                ty: ArgType::Res(registry),
+                ..
+            } = &dispatcher.nodes[arg_node].kind
+            else {
+                panic!("expected a resource argument");
+            };
+            Ok::<_, sunrise_protocol::Error>(registry.clone())
         };
         for i in 0..1025 {
             let name = format!("test:registry_{i}");
@@ -329,35 +355,26 @@ mod tests {
         ] {
             assert_eq!(decode(input).unwrap().as_str(), expected);
         }
-        for invalid in ["test:a:b", "te/st:item", "Test:item", "..:item", "test:é"] {
+        for invalid in [
+            "INVALID:registry",
+            "test:a:b",
+            "te/st:item",
+            "Test:item",
+            "..:item",
+            "test:é",
+        ] {
             assert!(decode(invalid).is_err(), "{invalid:?}");
         }
     }
 
     #[test]
-    fn an_invalid_registry_property_refuses_the_tree_even_on_a_known_path() {
-        let mut properties = Writer::new();
-        properties.string("INVALID:registry");
-        let packet = Commands {
-            nodes: vec![
-                CommandNode {
-                    kind: 0,
-                    children: vec![1],
-                    ..literal("", Vec::new(), false)
-                },
-                literal("use_registry", vec![2], false),
-                argument("value", "minecraft:resource_key", properties.data, true),
-            ],
-            root: 0,
-        };
-        let mut local = Dispatcher::new();
-        let root = local.literal(0, "use_registry");
-        local.argument(
-            root,
-            "value",
-            ArgType::ResKey(RegistryId::from_static("minecraft:item")),
-        );
-        assert!(from_packet(&packet, &local).is_err());
+    fn an_invalid_registry_property_refuses_the_packet_at_decode_time() {
+        let id = ARGUMENT_TYPES
+            .iter()
+            .position(|&name| name == "minecraft:resource_key")
+            .unwrap() as i32;
+        let wire = encode_registry_commands(id, "INVALID:registry");
+        assert!(Commands::read(&mut Reader::new(&wire)).is_err());
     }
 
     fn literal(name: &str, children: Vec<i32>, executable: bool) -> CommandNode {
@@ -373,7 +390,12 @@ mod tests {
         }
     }
 
-    fn argument(name: &str, parser: &str, props: Vec<u8>, executable: bool) -> CommandNode {
+    fn argument(
+        name: &str,
+        parser: &str,
+        props: ArgumentProperties,
+        executable: bool,
+    ) -> CommandNode {
         let id = ARGUMENT_TYPES.iter().position(|p| *p == parser).unwrap() as i32;
         CommandNode {
             kind: 2,
@@ -390,16 +412,28 @@ mod tests {
     /// A tree with the root last (as vanilla's numbering need not put it
     /// first), a vanilla command and one the client does not know.
     fn packet() -> Commands {
-        let mut range = Writer::new();
-        range.u8(3);
-        range.i32(1);
-        range.i32(64);
         Commands {
             nodes: vec![
                 literal("give", vec![2], false),
                 literal("warp", vec![3], false),
-                argument("targets", "minecraft:entity", vec![2], false),
-                argument("count", "brigadier:integer", range.data, true),
+                argument(
+                    "targets",
+                    "minecraft:entity",
+                    ArgumentProperties::Entity {
+                        single: false,
+                        players_only: true,
+                    },
+                    false,
+                ),
+                argument(
+                    "count",
+                    "brigadier:integer",
+                    ArgumentProperties::Integer {
+                        min: Some(1),
+                        max: Some(64),
+                    },
+                    true,
+                ),
                 CommandNode {
                     kind: 0,
                     executable: false,
@@ -423,7 +457,12 @@ mod tests {
             nodes: vec![
                 stop,
                 literal("say", vec![2], false),
-                argument("message", "minecraft:message", Vec::new(), true),
+                argument(
+                    "message",
+                    "minecraft:message",
+                    ArgumentProperties::None,
+                    true,
+                ),
                 literal("list", Vec::new(), true),
                 CommandNode {
                     kind: 0,
@@ -438,7 +477,7 @@ mod tests {
             ],
             root: 4,
         };
-        from_packet(&tree, &Dispatcher::new()).unwrap()
+        from_packet(&tree, &Dispatcher::new())
     }
 
     #[test]
@@ -490,7 +529,7 @@ mod tests {
 
         let mut display = packet();
         display.nodes[1].executable = true; // The authorized display of the optional prefix.
-        let client = from_packet(&display, &server).unwrap();
+        let client = from_packet(&display, &server);
         for input in ["warp", "warp 7"] {
             let parsed = client.parse(input, &Registries::default());
             let (context, command) = parsed.executable().unwrap();
@@ -533,15 +572,28 @@ mod tests {
     /// not know, and nothing for a command without one.
     #[test]
     fn signable_arguments_of_a_server_tree() {
-        let mut shout = argument("text", "minecraft:message", vec![], true);
+        let mut shout = argument("text", "minecraft:message", ArgumentProperties::None, true);
         shout.suggestions = None;
-        let mut targets = argument("targets", "minecraft:entity", vec![0], false);
+        let mut targets = argument(
+            "targets",
+            "minecraft:entity",
+            ArgumentProperties::Entity {
+                single: false,
+                players_only: false,
+            },
+            false,
+        );
         targets.children = vec![2];
         let packet = Commands {
             nodes: vec![
                 literal("msg", vec![1], false),
                 targets,
-                argument("message", "minecraft:message", vec![], true),
+                argument(
+                    "message",
+                    "minecraft:message",
+                    ArgumentProperties::None,
+                    true,
+                ),
                 literal("shout", vec![4], false),
                 shout,
                 literal("spawn", vec![], true),
@@ -558,7 +610,7 @@ mod tests {
             ],
             root: 6,
         };
-        let d = from_packet(&packet, super::super::vanilla::dispatcher()).unwrap();
+        let d = from_packet(&packet, super::super::vanilla::dispatcher());
         let reg = crate::Registries::default();
         let signable = |command: &str| d.parse(command, &reg).signable_arguments(&d);
         assert_eq!(
@@ -576,7 +628,7 @@ mod tests {
     #[test]
     fn server_tree_becomes_a_dispatcher() {
         let local = super::super::vanilla::dispatcher();
-        let d = from_packet(&packet(), local).unwrap();
+        let d = from_packet(&packet(), local);
         assert!(matches!(d.nodes[0].kind, NodeKind::Root));
         let warp = d.find("warp").expect("warp");
         let count = d.nodes[warp].children[0];
@@ -620,9 +672,12 @@ mod tests {
                 _ => {}
             }
             let mut r = Reader::new(&w.data);
-            ArgumentProperties::read(&mut r, id as i32).unwrap();
+            let props = ArgumentProperties::read(&mut r, id as i32).unwrap();
             assert_eq!(r.remaining(), 0, "{name}");
-            argument_type(id as i32, &w.data).unwrap();
+            let mut roundtrip = Writer::new();
+            props.write(&mut roundtrip);
+            assert_eq!(roundtrip.data, w.data, "{name}");
+            let _ = argument_type(id as i32, &props);
         }
     }
 }

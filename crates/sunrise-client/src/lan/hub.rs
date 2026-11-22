@@ -5626,8 +5626,7 @@ mod tests {
             panic!("commands")
         };
         let client =
-            crate::command::network::from_packet(&packet, &crate::command::Dispatcher::new())
-                .unwrap();
+            crate::command::network::from_packet(&packet, &crate::command::Dispatcher::new());
         let regs = crate::command::Registries {
             permission: 2,
             ..Default::default()
@@ -5699,8 +5698,7 @@ mod tests {
         expected.sort();
         assert_eq!(names, expected);
         let client =
-            crate::command::network::from_packet(&packet, &crate::command::Dispatcher::new())
-                .unwrap();
+            crate::command::network::from_packet(&packet, &crate::command::Dispatcher::new());
         let regs = crate::command::Registries {
             permission: 2,
             ..Default::default()
@@ -5725,8 +5723,14 @@ mod tests {
             assert_eq!(
                 value.parser.as_ref().unwrap().1,
                 match report_bounds.get("max") {
-                    None => vec![1, 0, 0, 0, 0],
-                    Some(_) => vec![3, 0, 0, 0, 0, 0, 0, 0, 8],
+                    None => play::ArgumentProperties::Integer {
+                        min: Some(0),
+                        max: None,
+                    },
+                    Some(_) => play::ArgumentProperties::Integer {
+                        min: Some(0),
+                        max: Some(8),
+                    },
                 }
             );
         }

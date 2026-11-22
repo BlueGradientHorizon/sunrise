@@ -1192,7 +1192,7 @@ impl Game<'_> {
                 }
             }
             C::UpdateTags(p) => self.remote_update_tags(&p),
-            C::Commands(p) => self.apply_commands_packet(p)?,
+            C::Commands(p) => self.apply_commands_packet(p),
             C::Cooldown(p) => {
                 // ClientPacketListener.handleItemCooldown: the server starts
                 // (or confirms) a group's cooldown; 0 ends it.

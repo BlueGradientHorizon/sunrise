@@ -211,7 +211,7 @@ impl Game<'_> {
         }
         self.native_client_commands
             .install(client_dispatcher, usages, executors);
-        let mut tree_with_mods = base.clone();
+        let mut tree_with_mods = base.clone_with_unmerged_redirects();
         super::native_server::register_dispatcher(
             &mut tree_with_mods,
             &tree,
@@ -2688,7 +2688,7 @@ mod tests {
         );
         assert!(!rebuilt.owns_executor(key));
 
-        let mut chat = vanilla.clone();
+        let mut chat = vanilla.clone_with_unmerged_redirects();
         super::super::native_server::register_dispatcher(&mut chat, &tree, MOD_COMMAND, &arguments);
         let parse = chat.parse("xmode fast", &reg);
         assert_eq!(parse.executable().unwrap().1, MOD_COMMAND);
@@ -2702,8 +2702,8 @@ mod tests {
         );
         // Server redirects and permissions in `base` remain intact after merging client commands.
         let tp = chat.find("tp").expect("tp alias remains");
-        let teleport = chat.find("teleport").expect("teleport root remains");
-        assert_eq!(chat.nodes[tp].redirect, Some(teleport));
+        let tp_target = chat.nodes[tp].redirect.expect("tp redirect remains");
+        assert_eq!(chat.nodes[tp_target].name(), "teleport");
         assert_eq!(chat.nodes[tp].permission, 2);
         let op_reg = Registries {
             permission: 2,
@@ -2714,6 +2714,98 @@ mod tests {
             chat.parse("tp 0 64 0", &op_reg).executable().unwrap().1,
             "teleport.location"
         );
+    }
+
+    #[test]
+    fn display_merge_keeps_server_redirects_on_unmerged_server_targets() {
+        let mut server = Dispatcher::new();
+        let shared = server.literal(0, "shared");
+        let remote = server.literal(shared, "server");
+        server.executes(remote, "remote");
+        let alias = server.literal(0, "alias");
+        server.redirect(alias, shared);
+        let run = server.literal(0, "run");
+        server.redirect(run, 0);
+
+        let arguments = super::super::native_server::command_arguments();
+        let client_cmds = [
+            mod_api::Command::new("shared local <value:integer>"),
+            mod_api::Command::new("clientonly"),
+        ];
+        let (tree, _, problems) =
+            super::super::native_server::client_command_tree(&client_cmds, &arguments, None);
+        assert!(problems.is_empty(), "{problems:?}");
+
+        let mut display = server.clone_with_unmerged_redirects();
+        super::super::native_server::register_dispatcher(
+            &mut display,
+            &tree,
+            MOD_COMMAND,
+            &arguments,
+        );
+        let reg = Registries::default();
+
+        // Direct path displays both server and client branches.
+        assert_eq!(
+            display.parse("shared server", &reg).executable().unwrap().1,
+            "remote"
+        );
+        assert_eq!(
+            display
+                .parse("shared local 7", &reg)
+                .executable()
+                .unwrap()
+                .1,
+            MOD_COMMAND
+        );
+        let direct_suggestions: Vec<String> = display
+            .client_suggestions(&display.parse("shared ", &reg), 7, &reg)
+            .1
+            .into_iter()
+            .map(|s| s.text)
+            .collect();
+        assert_eq!(direct_suggestions, ["local", "server"]);
+
+        // Server alias to the shared root keeps the server branch and never exposes the client branch.
+        assert_eq!(
+            display.parse("alias server", &reg).executable().unwrap().1,
+            "remote"
+        );
+        assert!(display.parse("alias local 7", &reg).executable().is_err());
+        let alias_suggestions: Vec<String> = display
+            .client_suggestions(&display.parse("alias ", &reg), 6, &reg)
+            .1
+            .into_iter()
+            .map(|s| s.text)
+            .collect();
+        assert_eq!(alias_suggestions, ["server"]);
+
+        // A server redirect to the dispatcher root traverses only the unmerged server tree
+        // and preserves Brigadier's `...` smart-usage marker.
+        assert_eq!(
+            display
+                .parse("run shared server", &reg)
+                .executable()
+                .unwrap()
+                .1,
+            "remote"
+        );
+        assert!(
+            display
+                .parse("run shared local 7", &reg)
+                .executable()
+                .is_err()
+        );
+        assert!(display.parse("run clientonly", &reg).executable().is_err());
+        let run_suggestions: Vec<String> = display
+            .client_suggestions(&display.parse("run ", &reg), 4, &reg)
+            .1
+            .into_iter()
+            .map(|s| s.text)
+            .collect();
+        assert!(!run_suggestions.iter().any(|s| s == "clientonly"));
+        let usage = display.smart_usage(0, 0);
+        assert!(usage.iter().any(|(_, line)| line == "run ..."), "{usage:?}");
     }
 
     #[test]

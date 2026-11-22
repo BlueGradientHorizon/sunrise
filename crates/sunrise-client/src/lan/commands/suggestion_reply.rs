@@ -40,8 +40,9 @@ impl Guest {
     }
 }
 
-/// Project the final Brigadier suggestions onto this connection's wire packet. Start with
-/// valid byte ranges, then expand, deduplicate and sort exactly as for local suggestions.
+/// Project the final Brigadier suggestions onto this connection's wire packet. Exclude
+/// individually unencodable entries before deriving the common range, then expand,
+/// deduplicate and sort only the entries that survive wire projection.
 fn frame_command_suggestions(
     command: &str,
     id: i32,
@@ -50,16 +51,41 @@ fn frame_command_suggestions(
     framing: Framing,
 ) -> sunrise_protocol::Result<Vec<u8>> {
     suggestions.retain(|s| {
-        if command.get(s.range.0..s.range.1).is_some() {
-            true
-        } else {
+        if command.get(s.range.0..s.range.1).is_none() {
             log::warn!(
                 "command suggestion discarded: invalid byte range {:?}",
                 s.range
             );
-            false
+            return false;
         }
+        if s.text.len() > MAX_STRING_UTF16.saturating_mul(3)
+            || s.text.encode_utf16().count() > MAX_STRING_UTF16
+        {
+            log::warn!("command suggestion text discarded: exceeds wire string limit");
+            return false;
+        }
+        if let Some(tip) = s.tooltip.as_deref()
+            && let Err(error) = nbt::write_network(&literal(tip), nbt::Limits::network())
+        {
+            log::warn!("command suggestion tooltip discarded: {error}");
+            return false;
+        }
+        true
     });
+    if !suggestions.is_empty() {
+        let start = suggestions.iter().map(|s| s.range.0).min().unwrap_or(0);
+        let end = suggestions.iter().map(|s| s.range.1).max().unwrap_or(0);
+        suggestions.retain(|s| {
+            let expanded_utf16 = command[start..s.range.0].encode_utf16().count()
+                + s.text.encode_utf16().count()
+                + command[s.range.1..end].encode_utf16().count();
+            if expanded_utf16 > MAX_STRING_UTF16 {
+                log::warn!("command suggestion expanded text discarded: exceeds wire string limit");
+                return false;
+            }
+            true
+        });
+    }
     let ((start, end), suggestions) = merge_suggestions(command, suggestions);
     let mut header = Writer::new();
     header.varint(sunrise_protocol::ids::play::clientbound::COMMAND_SUGGESTIONS);
@@ -174,6 +200,35 @@ mod tests {
             assert!(r.bool().unwrap());
             assert_eq!(r.nbt().unwrap(), super::literal(tip));
         }
+        assert_eq!(r.remaining(), 0);
+    }
+
+    #[test]
+    fn unencodable_wide_range_entries_do_not_widen_a_valid_narrower_sibling() {
+        let max_text = "a".repeat(MAX_STRING_UTF16);
+        let bad_tooltip = "t".repeat(usize::from(u16::MAX) + 1);
+        let overlong_text = "x".repeat(MAX_STRING_UTF16 + 1);
+        let reply = frame_command_suggestions(
+            "go abc",
+            23,
+            true,
+            vec![
+                Suggestion::new((0, 6), "wide_bad_tip").with_tooltip(bad_tooltip),
+                Suggestion::new((0, 6), overlong_text),
+                Suggestion::new((3, 6), max_text.clone()).with_tooltip("kept"),
+            ],
+            Framing::Network(None),
+        )
+        .unwrap();
+        let mut r = Reader::new(&reply);
+        assert_eq!(r.varint().unwrap(), COMMAND_SUGGESTIONS);
+        assert_eq!(r.varint().unwrap(), 23);
+        assert_eq!(r.varint().unwrap(), 4); // slash + `go `
+        assert_eq!(r.varint().unwrap(), 3); // `abc`
+        assert_eq!(r.varint().unwrap(), 1);
+        assert_eq!(r.string(MAX_STRING_UTF16).unwrap(), max_text);
+        assert!(r.bool().unwrap());
+        assert_eq!(r.nbt().unwrap(), super::literal("kept"));
         assert_eq!(r.remaining(), 0);
     }
 

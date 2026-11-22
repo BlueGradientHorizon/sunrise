@@ -6,7 +6,10 @@
 //! account, or on a server that plays the account under another profile
 //! (offline mode), there is no session and everything goes unsigned.
 use super::{
-    Game, Screen, books::BookScreen, dialogs::ClosedDialog, native_server::ClientCommandOutcome,
+    Game, Screen,
+    books::BookScreen,
+    dialogs::ClosedDialog,
+    native_server::{ClientCommandOutcome, PendingClientCommand, PendingClientCommandKind},
 };
 use std::sync::Arc;
 use sunrise_client::{
@@ -285,6 +288,15 @@ impl Game<'_> {
     /// unsigned packet.
     pub(super) fn send_command(&mut self, command: &str) -> Option<ClientCommandOutcome> {
         self.remote.as_ref()?;
+        if self.native_client_commands.executing {
+            self.native_client_commands
+                .pending_commands
+                .push(PendingClientCommand {
+                    command: command.to_owned(),
+                    kind: PendingClientCommandKind::Signed,
+                });
+            return None;
+        }
         if let Some(outcome) = self.run_client_native_command(command) {
             return Some(outcome);
         }
@@ -348,7 +360,19 @@ impl Game<'_> {
         if command.is_empty() || !self.chat_abilities().allows(&format!("/{command}")) {
             return;
         }
-        if self.remote.is_none() || self.run_client_native_command(command).is_some() {
+        if self.remote.is_none() {
+            return;
+        }
+        if self.native_client_commands.executing {
+            self.native_client_commands
+                .pending_commands
+                .push(PendingClientCommand {
+                    command: format!("/{command}"),
+                    kind: PendingClientCommandKind::Unattended,
+                });
+            return;
+        }
+        if self.run_client_native_command(command).is_some() {
             return;
         }
         // Vanilla's dispatcher is empty until the server sends its tree.

@@ -45,6 +45,17 @@ impl Drop for RegisteredClientExecutor {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::game) enum PendingClientCommandKind {
+    Signed,
+    Unattended,
+}
+
+pub(in crate::game) struct PendingClientCommand {
+    pub(in crate::game) command: String,
+    pub(in crate::game) kind: PendingClientCommandKind,
+}
+
 /// The client's own native mod commands, bound to the current client dispatcher generation.
 pub(in crate::game) struct NativeClientCommandState {
     pub(in crate::game) dispatcher: sunrise_client::command::Dispatcher,
@@ -52,6 +63,10 @@ pub(in crate::game) struct NativeClientCommandState {
     // Keep the panic state of a registration across server-tree refreshes. Retired,
     // healthy registrations need not survive a generation.
     owners: HashMap<(&'static str, String), CallbackOwner>,
+    /// True while a client command executor is on the call stack. Slash submissions made
+    /// inside an executor wait for the client event loop instead of re-entering synchronously.
+    pub(in crate::game) executing: bool,
+    pub(in crate::game) pending_commands: Vec<PendingClientCommand>,
 }
 
 impl Default for NativeClientCommandState {
@@ -60,6 +75,8 @@ impl Default for NativeClientCommandState {
             dispatcher: sunrise_client::command::Dispatcher::new(),
             executors: Vec::new(),
             owners: HashMap::new(),
+            executing: false,
+            pending_commands: Vec::new(),
         }
     }
 }

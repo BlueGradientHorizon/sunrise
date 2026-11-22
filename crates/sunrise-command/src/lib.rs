@@ -911,6 +911,38 @@ impl Dispatcher {
         }
         tree
     }
+    /// Clone this tree for a display merge (`ClientCommandHandler.copy`): direct paths start
+    /// at root `0` and may gain client-only children, while every server redirect targets an
+    /// unmerged copy of the original tree so aliases and root redirects never expose
+    /// client-only branches.
+    pub fn clone_with_unmerged_redirects(&self) -> Self {
+        let mut copy = self.clone();
+        if !copy.nodes.iter().any(|node| node.redirect.is_some()) {
+            return copy;
+        }
+        let offset = copy.nodes.len();
+        let unmerged: Vec<Node> = self
+            .nodes
+            .iter()
+            .map(|node| {
+                let mut node = node.clone();
+                for child in &mut node.children {
+                    *child += offset;
+                }
+                if let Some(target) = &mut node.redirect {
+                    *target += offset;
+                }
+                node
+            })
+            .collect();
+        for node in &mut copy.nodes {
+            if let Some(target) = &mut node.redirect {
+                *target += offset;
+            }
+        }
+        copy.nodes.extend(unmerged);
+        copy
+    }
     fn add(&mut self, parent: usize, kind: NodeKind) -> usize {
         let name = match &kind {
             NodeKind::Literal(l) => l.clone(),
@@ -1330,7 +1362,7 @@ impl Dispatcher {
         };
         if !deep {
             if let Some(r) = n.redirect {
-                let target = if r == 0 {
+                let target = if matches!(self.nodes[r].kind, NodeKind::Root) {
                     "...".to_owned()
                 } else {
                     format!("-> {}", self.nodes[r].usage_text())
