@@ -97,12 +97,12 @@ impl Game<'_> {
     /// The box of the dragon part or end crystal guests know as entity `id`
     /// (`EnderDragonPart`s follow the dragon's id).
     pub(in crate::game) fn tracked_special_box(&self, id: i32) -> Option<Aabb> {
-        let id = u32::try_from(id).ok().filter(|&id| id != 0)?;
         if let Some(d) = self.dragon.as_ref().filter(|d| d.alive() && d.id != 0)
-            && (d.id + 1..=d.id + 8).contains(&id)
+            && let Some(part) = super::dragon_part_index(d.id, id)
         {
-            return Some(d.part_box((id - d.id - 1) as usize));
+            return Some(d.part_box(part));
         }
+        let id = u32::try_from(id).ok().filter(|&id| id != 0)?;
         let i = self.crystals.iter().position(|c| c.id == id)?;
         self.special_targets()
             .into_iter()

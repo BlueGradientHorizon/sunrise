@@ -94,7 +94,9 @@ pub(super) fn motion_blocking_height(
 /// that is above the world's bottom and within 10 blocks of the camera.
 fn splash_height(world: &World, properties: &Properties, x: i32, y: i32, z: i32) -> Option<i32> {
     let top = motion_blocking_height(world, properties, x, z);
-    (top > world.bottom_y() && (y - 10..=y + 10).contains(&top)).then_some(top)
+    let hi = y.wrapping_add(10);
+    let lo = y.wrapping_sub(10);
+    (top > world.bottom_y() && top <= hi && top >= lo).then_some(top)
 }
 /// The first block at or below `from` that blocks motion (leaves only when
 /// `leaves`, as MOTION_BLOCKING_NO_LEAVES skips them) or holds a fluid, plus one.
@@ -863,10 +865,12 @@ impl Game<'_> {
                         / if self.settings.particles == 1 { 2 } else { 1 };
                     let mut rain_position = None;
                     for _ in 0..count {
-                        let x = weather_block[0] + random.next_int_bound(diameter).unwrap_or(0)
-                            - radius;
-                        let z = weather_block[2] + random.next_int_bound(diameter).unwrap_or(0)
-                            - radius;
+                        let x = weather_block[0]
+                            .wrapping_add(random.next_int_bound(diameter).unwrap_or(0))
+                            .wrapping_sub(radius);
+                        let z = weather_block[2]
+                            .wrapping_add(random.next_int_bound(diameter).unwrap_or(0))
+                            .wrapping_sub(radius);
                         let Some(top) = splash_height(world, properties, x, weather_block[1], z)
                         else {
                             continue;
@@ -874,7 +878,7 @@ impl Game<'_> {
                         if !rains_at(world, biomes, x, top, z) {
                             continue;
                         }
-                        let below = top - 1;
+                        let below = top.wrapping_sub(1);
                         rain_position = Some([x, below, z]);
                         // The Minimal option stops at the first spot that rains (the
                         // rain sound still plays there).
@@ -926,12 +930,13 @@ impl Game<'_> {
                                 weather_block[0],
                                 weather_block[2],
                             );
-                            let (name, volume, pitch) =
-                                if at[1] > weather_block[1] + 1 && roof > weather_block[1] {
-                                    ("minecraft:weather.rain.above", 0.1, 0.5)
-                                } else {
-                                    ("minecraft:weather.rain", 0.2, 1.0)
-                                };
+                            let (name, volume, pitch) = if at[1] > weather_block[1].wrapping_add(1)
+                                && roof > weather_block[1]
+                            {
+                                ("minecraft:weather.rain.above", 0.1, 0.5)
+                            } else {
+                                ("minecraft:weather.rain", 0.2, 1.0)
+                            };
                             let p = at.map(|c| f64::from(c) + 0.5);
                             // playLocalSound: guests make their own rain, so a host
                             // must not capture it for them.

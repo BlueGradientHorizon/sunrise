@@ -377,8 +377,10 @@ impl Game<'_> {
         if let Some(target) = self.native_entity_read_target(entity) {
             return Some(self.target_eye_height(target));
         }
+        let (remote, id) = self.native_client_entity_context(entity)?;
+        remote.tracked(id)?;
         self.interactions
-            .get(&(entity.id() as i32))
+            .get(&id)
             .map(|i| f64::from(i.eye_height()))
     }
     /// Where the entity's eyes are (`Entity.getEyePosition`). API

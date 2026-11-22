@@ -136,7 +136,7 @@ impl Game<'_> {
         }
         self.observe_light_edits();
         self.ask_edited_light_emission();
-        let camera_pos = self.camera_entity_position();
+        let camera_pos = self.visual_camera_position();
         if let (Some(map), Some(pos), Some(lod)) = (&self.lod_blue_map, camera_pos, &mut self.lod) {
             map.set_center(pos[0].floor() as i32, pos[2].floor() as i32);
             for change in map.take_changed() {
@@ -339,9 +339,7 @@ impl Game<'_> {
                 // Section keys count from the world's bottom (`origin`'s min_y + y * 16).
                 let bottom = f64::from(self.world.bottom_y());
                 let cam_y = camera_pos.map_or(4, |pos| ((pos[1] - bottom) / 16.0).floor() as i32);
-                let far = |k: &(i32, i32, i32)| {
-                    (k.0 - centre.0).pow(2) + (k.1 - cam_y).pow(2) + (k.2 - centre.1).pow(2)
-                };
+                let far = |k: &(i32, i32, i32)| section_distance_sq(*k, centre, cam_y);
                 let order = Some((centre, cam_y));
                 let priority = |upload: &sunrise_client::streaming::MeshUpload| {
                     std::cmp::Reverse(far(&upload.key))
@@ -499,10 +497,34 @@ fn order_uploads<T, K: Ord>(
     [sorted, merged]
 }
 
+/// Squared section-grid distance in `i128` so extreme camera coordinates cannot overflow.
+fn section_distance_sq(key: (i32, i32, i32), centre: (i32, i32), cam_y: i32) -> i128 {
+    let dx = i128::from(key.0) - i128::from(centre.0);
+    let dy = i128::from(key.1) - i128::from(cam_y);
+    let dz = i128::from(key.2) - i128::from(centre.1);
+    dx * dx + dy * dy + dz * dz
+}
+
 #[cfg(test)]
 mod tests {
-    use super::order_uploads;
+    use super::{order_uploads, section_distance_sq};
     use std::cmp::Reverse;
+
+    #[test]
+    fn section_distance_sq_handles_extreme_coordinates_without_overflow() {
+        let far = section_distance_sq(
+            (i32::MAX, i32::MAX, i32::MAX),
+            (i32::MIN, i32::MIN),
+            i32::MIN,
+        );
+        let near = section_distance_sq(
+            (i32::MIN, i32::MIN, i32::MIN),
+            (i32::MIN, i32::MIN),
+            i32::MIN,
+        );
+        assert_eq!(near, 0);
+        assert!(far > near);
+    }
 
     #[test]
     fn stationary_upload_budget_gives_fresh_meshes_priority_on_ties() {

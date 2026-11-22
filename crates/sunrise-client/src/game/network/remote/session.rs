@@ -738,6 +738,7 @@ impl Game<'_> {
         self.native_net.holds.borrow_mut().clear();
         if let Some(mut r) = self.remote.take() {
             r.session.disconnect();
+            self.spectated_post_effect = None;
             self.reset_creative_contents();
             self.refresh_creative_search_tags();
         }

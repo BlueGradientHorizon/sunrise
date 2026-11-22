@@ -1268,17 +1268,13 @@ impl Game<'_> {
         {
             return;
         }
-        let cam_eye = self.camera_eye_position().unwrap_or([
+        let cam_pos = self.visual_camera_position().unwrap_or([
             player.position.x,
             player.position.y + f64::from(self.eye),
             player.position.z,
         ]);
-        let camera_y = cam_eye[1].floor() as i32;
-        let camera = [
-            cam_eye[0].floor() as i32,
-            camera_y,
-            cam_eye[2].floor() as i32,
-        ];
+        let camera = cam_pos.map(|v| v.floor() as i32);
+        let camera_y = camera[1];
         // `Util.toMillis(chunkSectionFadeInTime)`.
         let fade_ms = sunrise_client::gfx::fade_millis(self.settings.chunk_fade as f32);
         // `LevelRenderer`'s playerCompiledSectionCallback, run once
@@ -1293,7 +1289,12 @@ impl Game<'_> {
             .map(|renderer| renderer.section_compiled_and_visible(camera, fade_ms));
         let (cx, cz) = (camera[0] >> 4, camera[2] >> 4);
         let neighbours_lit = shown.is_none()
-            && (-1..=1).all(|dx| (-1..=1).all(|dz| self.streaming.is_lit(cx + dx, cz + dz)));
+            && (-1..=1).all(|dx| {
+                (-1..=1).all(|dz| {
+                    self.streaming
+                        .is_lit(cx.wrapping_add(dx), cz.wrapping_add(dz))
+                })
+            });
         let shape = self.world.shape;
         let check = sunrise_client::level_loading::PlayerCheck {
             outside_build_height: camera_y < shape.min_y || camera_y >= shape.min_y + shape.height,

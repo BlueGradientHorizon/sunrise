@@ -48,6 +48,7 @@ pub(in crate::game) struct ResolvedCameraEntity {
     pub camera: CameraEntity,
     pub is_local_player: bool,
     pub is_player: bool,
+    pub may_build: bool,
     pub is_spectator: bool,
     pub is_sleeping: bool,
     pub blocks_sky: bool,
@@ -338,9 +339,9 @@ impl Game<'_> {
                 r.detached_camera = None;
             }
         }
-        // Minecraft.setCameraEntity, for an entity the level holds.
+        // Minecraft.setCameraEntity applies the camera entity's post effect regardless of view.
         if in_level || player {
-            self.check_entity_post_effect(self.camera_type.is_first_person());
+            self.check_entity_post_effect(true);
         }
     }
     /// `GameRenderer.checkEntityPostEffect` for the camera entity, or for none
@@ -383,17 +384,67 @@ impl Game<'_> {
                 .is_some_and(|c| !c.is_player && !c.has_player_passenger);
         self.clock.camera_fraction_for(entity_frozen)
     }
-    /// `GameRenderer.shouldRenderBlockOutline`: requires a player camera entity plus HUD/mode gates.
+    /// `GameRenderer.shouldRenderBlockOutline`: player camera entity, HUD shown, and build or target gate.
     pub(in crate::game) fn should_render_block_outline(&self) -> bool {
-        let adventure = self.mode == sunrise_client::command::args::GameMode::Adventure;
-        let can_build = self.may_build() || adventure;
-        self.camera_subject().is_some_and(|c| c.is_player)
-            && super::hud_render::block_outline_drawn(
-                self.ui.hide_gui,
-                self.entity_targeted(),
-                can_build,
-                self.shows_panorama(),
-            )
+        let hit = (!self.entity_targeted()).then(|| self.pick()).flatten();
+        self.should_render_block_outline_for_hit(hit.as_ref())
+    }
+    /// Block hit eligible for outline rendering before mod highlight cancellation.
+    pub(in crate::game) fn block_outline_hit(&self) -> Option<super::Hit> {
+        let hit = (!self.entity_targeted()).then(|| self.pick()).flatten()?;
+        self.should_render_block_outline_for_hit(Some(&hit))
+            .then_some(hit)
+    }
+    /// `GameRenderer.shouldRenderBlockOutline` evaluated against an optional targeted block hit.
+    pub(in crate::game) fn should_render_block_outline_for_hit(
+        &self,
+        hit: Option<&super::Hit>,
+    ) -> bool {
+        let Some(cam) = self.camera_subject().filter(|c| c.is_player) else {
+            return false;
+        };
+        if !super::hud_render::block_outline_drawn(
+            self.ui.hide_gui,
+            false,
+            true,
+            self.shows_panorama(),
+        ) {
+            return false;
+        }
+        if cam.may_build {
+            return true;
+        }
+        let Some(hit) = hit else {
+            return true;
+        };
+        if self.spectator() {
+            return self.block_interactable_for_spectator(hit);
+        }
+        let main_hand = if cam.is_local_player {
+            self.held()
+        } else {
+            self.mob_index
+                .find(&self.mobs, cam.entity_id)
+                .and_then(|i| {
+                    self.mobs[i]
+                        .extra
+                        .slot_stack(sunrise_items::equipment::MAINHAND)
+                })
+        };
+        main_hand.is_some_and(|stack| {
+            self.stack_adventure_predicate(stack, "minecraft:can_break", hit.pos)
+                || self.stack_adventure_predicate(stack, "minecraft:can_place_on", hit.pos)
+        })
+    }
+    /// `mainCamera().position()` once aligned, or the camera entity's position before first align.
+    pub(in crate::game) fn visual_camera_position(&self) -> Option<[f64; 3]> {
+        if self.view.initialized {
+            Some(self.view.position)
+        } else if self.remote.is_some() {
+            self.camera_eye_position()
+        } else {
+            self.camera_entity_position()
+        }
     }
     /// Camera entity feet position (`cameraEntity.position()`).
     pub(in crate::game) fn camera_entity_position(&self) -> Option<[f64; 3]> {
@@ -512,6 +563,7 @@ impl Game<'_> {
             camera,
             is_local_player: true,
             is_player: true,
+            may_build: self.may_build(),
             is_spectator: self.own_player_is_spectator(),
             is_sleeping: self.sleeping.is_some(),
             blocks_sky: self.potions.effects.get("blindness").is_some()
@@ -575,6 +627,7 @@ impl Game<'_> {
                 camera,
                 is_local_player: false,
                 is_player,
+                may_build: is_player,
                 is_spectator: is_player && m.extra.spectator,
                 is_sleeping,
                 blocks_sky: false,
@@ -603,6 +656,7 @@ impl Game<'_> {
                 camera,
                 is_local_player: false,
                 is_player: false,
+                may_build: false,
                 is_spectator: false,
                 is_sleeping: false,
                 blocks_sky: false,
@@ -631,6 +685,7 @@ impl Game<'_> {
                 camera,
                 is_local_player: false,
                 is_player: false,
+                may_build: false,
                 is_spectator: false,
                 is_sleeping: false,
                 blocks_sky: false,
@@ -655,6 +710,7 @@ impl Game<'_> {
                 camera,
                 is_local_player: false,
                 is_player: false,
+                may_build: false,
                 is_spectator: false,
                 is_sleeping: false,
                 blocks_sky: false,
@@ -688,6 +744,7 @@ impl Game<'_> {
                 camera,
                 is_local_player: false,
                 is_player: false,
+                may_build: false,
                 is_spectator: false,
                 is_sleeping: false,
                 blocks_sky: false,
@@ -712,6 +769,7 @@ impl Game<'_> {
                 camera,
                 is_local_player: false,
                 is_player: false,
+                may_build: false,
                 is_spectator: false,
                 is_sleeping: false,
                 blocks_sky: false,
@@ -731,6 +789,7 @@ impl Game<'_> {
                 camera,
                 is_local_player: false,
                 is_player: false,
+                may_build: false,
                 is_spectator: false,
                 is_sleeping: false,
                 blocks_sky: false,
@@ -750,6 +809,7 @@ impl Game<'_> {
                 camera,
                 is_local_player: false,
                 is_player: false,
+                may_build: false,
                 is_spectator: false,
                 is_sleeping: false,
                 blocks_sky: false,
@@ -784,6 +844,7 @@ impl Game<'_> {
             camera,
             is_local_player: false,
             is_player: false,
+            may_build: false,
             is_spectator: false,
             is_sleeping: false,
             blocks_sky: false,

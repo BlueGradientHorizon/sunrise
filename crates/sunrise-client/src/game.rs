@@ -11136,37 +11136,29 @@ impl Game<'_> {
         // CAN_PLACE_ON item matching the block, and spectators with a menu block; Sunrise
         // does not open menus for spectators, so those never show it. An open
         // screen does not hide it: vanilla checks the HUD and the game mode, not the screen.
-        let outline = if self.should_render_block_outline() {
-            self.pick()
-                .filter(|h| {
-                    self.may_build()
-                        || !self.block_action_restricted(h.pos)
-                        || self.can_place_on_in_adventure(h.pos)
-                })
-                .filter(|h| {
-                    let state = self.world.block(h.pos[0], h.pos[1], h.pos[2]);
-                    let mut canceled = false;
-                    self.native_block_highlight(h.pos, state, alpha as f32, &mut canceled);
-                    !canceled
-                })
-                .map(|h| {
-                    let state = self.world.block(h.pos[0], h.pos[1], h.pos[2]);
-                    outline_after_terrain = self
-                        .pack
-                        .render
-                        .model_catalog
-                        .collect(state, BlockPos::new(h.pos[0], h.pos[1], h.pos[2]))
-                        .is_ok_and(|models| {
-                            models
-                                .iter()
-                                .any(|(_, model)| model.faces.iter().any(|f| f.translucent))
-                        });
-                    self.outline_edges_iter(state, h.pos).collect()
-                })
-                .unwrap_or_default()
-        } else {
-            Vec::new()
-        };
+        let outline = self
+            .block_outline_hit()
+            .filter(|h| {
+                let state = self.world.block(h.pos[0], h.pos[1], h.pos[2]);
+                let mut canceled = false;
+                self.native_block_highlight(h.pos, state, alpha as f32, &mut canceled);
+                !canceled
+            })
+            .map(|h| {
+                let state = self.world.block(h.pos[0], h.pos[1], h.pos[2]);
+                outline_after_terrain = self
+                    .pack
+                    .render
+                    .model_catalog
+                    .collect(state, BlockPos::new(h.pos[0], h.pos[1], h.pos[2]))
+                    .is_ok_and(|models| {
+                        models
+                            .iter()
+                            .any(|(_, model)| model.faces.iter().any(|f| f.translucent))
+                    });
+                self.outline_edges_iter(state, h.pos).collect()
+            })
+            .unwrap_or_default();
         pr.lap("pr_outline");
         let title = self.shows_panorama();
         let (yaw, pitch) = if title {
@@ -11200,7 +11192,7 @@ impl Game<'_> {
         let spin = if !camera_effects {
             glam::Mat4::IDENTITY
         } else {
-            self.spinning_matrix(camera_alpha as f32)
+            self.spinning_matrix(alpha as f32)
         };
         let terrain_distance = self.terrain_distance();
         let distance = (terrain_distance * 16) as f32;

@@ -59,11 +59,27 @@ impl Game<'_> {
             self.redirectable_hit().map(|(index, distance)| {
                 hit(self.creatures.projectiles[index].id, distance, false)
             }),
-            self.dragon_hit().map(|(id, distance)| CrosshairEntityHit {
-                id: id as i32,
-                distance,
-                pickable: false,
-                suggest_uuid: false,
+            self.dragon_hit().map(|(id, distance)| {
+                let wire_id = if (super::dragon::SPECIAL..super::dragon::SPECIAL + 8).contains(&id)
+                    && let Some(d) = self.dragon.as_ref().filter(|d| d.id != 0)
+                {
+                    super::dragon::dragon_part_wire_id(d.id, (id - super::dragon::SPECIAL) as usize)
+                } else if id >= super::dragon::CRYSTAL_IDS
+                    && let Some(c) = self
+                        .crystals
+                        .get((id - super::dragon::CRYSTAL_IDS) as usize)
+                        .filter(|c| c.id != 0)
+                {
+                    c.id as i32
+                } else {
+                    id as i32
+                };
+                CrosshairEntityHit {
+                    id: wire_id,
+                    distance,
+                    pickable: false,
+                    suggest_uuid: false,
+                }
             }),
         ];
         if hits.iter().all(Option::is_none) {
@@ -130,7 +146,7 @@ impl Game<'_> {
         let hit = pick.hovered?;
         let (eye, direction) = self.aim()?;
         Some(CrosshairTarget::Entity {
-            entity: EntityRef::new(self.native_lifecycle.epoch()?, hit.id),
+            entity: EntityRef::new(self.native_lifecycle.epoch()?, hit.entity_id(self)),
             point: std::array::from_fn(|i| eye[i] + direction[i] * hit.distance),
         })
     }
