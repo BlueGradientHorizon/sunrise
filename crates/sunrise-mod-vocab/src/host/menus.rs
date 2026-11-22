@@ -41,10 +41,38 @@ pub trait MenusBackend {
     /// Side: server.
     /// The storage menu slot `slot` shows (`Slot.container` and `getContainerSlot`): the
     /// player's inventory by `ENTITY_ITEMS` index (`InventoryMenu`'s armour slots 5..9 go head
-    /// to feet), a block entity's or an entity's slot, the ender chest's, the crafting grid's
-    /// or a mod's chest or transient container slot.
+    /// to feet), a block entity's or an entity's slot (following a mod menu's linked storage),
+    /// the ender chest's, the crafting grid's or a mod's chest or transient container slot.
+    /// Returns `None` for an unavailable menu, an out-of-range index, an unbound linked slot,
+    /// or a hidden non-backed slot.
     #[access(WorldOnly)]
     fn menu_slot_backing(&self, menu: MenuRef, slot: usize) -> Option<MenuSlotBacking>;
+    /// Side: server.
+    /// How many of `stack` the live menu slot holds (`Slot.mayPlace`, then `Slot.getMaxStackSize`):
+    /// a furnace's fuel slot one bucket, an armour slot one piece that fits it (asking the item's
+    /// `can_equip` part for this menu's player), a crafting result none. An owned transient slot
+    /// uses its declared limit or the item's own limit, whichever is lower. Excluded targets
+    /// (such as a backpack's locked hotbar slot) and unbound linked slots hold nothing (`Some(0)`).
+    ///
+    /// Returns `None` for an enabled handler-backed slot ([`MenuSlotBacking::Place`]), because
+    /// querying a [`ResourceHandler`] requires server-action authority. Read-only callers can
+    /// distinguish that case from a stale menu or out-of-range index with
+    /// [`MenuRef::slot_backing`]: `Some(MenuSlotBacking::Place(_))` names a handler-backed slot,
+    /// which can be queried from a `&mut dyn ServerHost` through [`MenuRef::probe_slot_holds`].
+    #[access(WorldOnly)]
+    fn menu_slot_holds(&self, menu: MenuRef, slot: usize, stack: &ItemStack) -> Option<u32>;
+    /// Side: server.
+    /// Whether the live menu slot gives up what it holds (`Slot.mayPickup`): bound armour stays
+    /// on outside creative, and excluded targets or unbound linked slots refuse pickup
+    /// (`Some(false)`).
+    ///
+    /// Returns `None` for an enabled handler-backed slot ([`MenuSlotBacking::Place`]), because
+    /// simulating a pickup against a [`ResourceHandler`] requires server-action authority.
+    /// Read-only callers can distinguish that case from a stale menu or out-of-range index with
+    /// [`MenuRef::slot_backing`]: `Some(MenuSlotBacking::Place(_))` names a handler-backed slot,
+    /// which can be probed from a `&mut dyn ServerHost` through [`MenuRef::probe_slot_gives`].
+    #[access(WorldOnly)]
+    fn menu_slot_gives(&self, menu: MenuRef, slot: usize) -> Option<bool>;
 }
 /// The handles' client reads of the `menus` area, implemented by the game and reached through [`ClientBackend`].
 // hidden: a handle's backend, reached through `ClientBackend`; mods call the handle, never this trait
@@ -129,20 +157,38 @@ pub trait MenusClientBackendMut {
 #[sunrise_mod_api_macros::host_area]
 pub trait MenusBackendMut {
     /// Side: server.
-    /// How many of `stack` the live menu slot holds (`Slot.mayPlace`, then `Slot.getMaxStackSize`).
-    /// An armour slot asks the item's `can_equip` part for this menu's player; a crafting result
-    /// takes nothing. A handler-backed slot uses the live handler's validity and capacity, not its
-    /// display mirror. An owned transient slot uses its declared limit or the item's own limit,
-    /// whichever is lower. Excluded targets (such as a backpack's locked hotbar slot) take nothing.
+    /// How many of `stack` the live menu slot holds (`Slot.mayPlace`, then `Slot.getMaxStackSize`),
+    /// probing the live [`ResourceHandler`] (`is_valid`, then `capacity_int` as in NeoForge's
+    /// `ResourceHandlerSlot.getMaxStackSize`) when the slot is backed by
+    /// [`MenuSlotBacking::Place`], and delegating to the same live slot evaluator as
+    /// [`MenuRef::slot_holds`] for every other slot.
+    ///
+    /// Returns `Ok(None)` when the menu is unavailable, the slot is out of range, or a bound held
+    /// container no longer resolves. Returns `Err(LevelReadError::Unavailable)` when called outside
+    /// a live world phase or without a server backend.
     #[access(WorldOnly)]
     #[forward_api_inputs]
-    fn menu_slot_holds(&mut self, menu: MenuRef, slot: usize, stack: &ItemStack) -> Option<u32>;
+    fn menu_probe_slot_holds(
+        &mut self,
+        menu: MenuRef,
+        slot: usize,
+        stack: &ItemStack,
+    ) -> Result<Option<u32>, LevelReadError>;
     /// Side: server.
-    /// Whether the live menu slot gives up what it holds (`Slot.mayPickup`). Bound armour stays
-    /// on outside creative. A handler-backed slot simulates one extraction in a rolled-back
-    /// transaction, as NeoForge's `ResourceHandlerSlot.mayPickup` does.
+    /// Whether the live menu slot gives up what it holds (`Slot.mayPickup`), simulating one
+    /// extraction in a rolled-back transaction against the live [`ResourceHandler`] (NeoForge's
+    /// `ResourceHandlerSlot.mayPickup`) when the slot is backed by [`MenuSlotBacking::Place`], and
+    /// delegating to the same live slot evaluator as [`MenuRef::slot_gives`] for every other slot.
+    ///
+    /// Returns `Ok(None)` when the menu is unavailable, the slot is out of range, or a bound held
+    /// container no longer resolves. Returns `Err(LevelReadError::Unavailable)` when called outside
+    /// a live world phase or without a server backend.
     #[access(WorldOnly)]
-    fn menu_slot_gives(&mut self, menu: MenuRef, slot: usize) -> Option<bool>;
+    fn menu_probe_slot_gives(
+        &mut self,
+        menu: MenuRef,
+        slot: usize,
+    ) -> Result<Option<bool>, LevelReadError>;
     /// Side: server.
     /// Close a player's open menu as `ServerPlayer.closeContainer` does. The server queues
     /// `ContainerClose`, then removes the menu, returns the carried stack to the inventory,

@@ -32,6 +32,16 @@ impl Menu {
         )
     }
 
+    /// Consume one craft from a mod menu's loaded crafting grid (`ResultSlot.onTake`),
+    /// applying crafting remainders and recomputing the next result.
+    pub fn take_mod_craft_result(&mut self, env: &Env, taken: &mut ItemStack) {
+        if let Kind::Mod(layout) = self.state.kind
+            && let Some(crafting) = layout.crafting
+        {
+            self.on_take(env, crafting.result, taken);
+        }
+    }
+
     /// `ResultSlot.onTake` and the other `Slot.onTake` overrides.
     pub(super) fn on_take(&mut self, env: &Env, s: usize, taken: &mut ItemStack) {
         self.touch();

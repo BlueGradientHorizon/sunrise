@@ -374,6 +374,25 @@ impl Game<'_> {
                 _ => None,
             };
         }
+        if let Some(linked) = open
+            .linked_slots(world)
+            .and_then(|links| links.backing(slot))
+        {
+            return linked.map(|(pos, n)| {
+                if pos.1 == VEHICLE_KEY_Y {
+                    MenuSlotBacking::Entity {
+                        entity: EntityRef::new(level.epoch(), pos.2 as u32),
+                        slot: n,
+                    }
+                } else {
+                    MenuSlotBacking::BlockEntity {
+                        level,
+                        pos: [pos.0, pos.1, pos.2],
+                        slot: n,
+                    }
+                }
+            });
+        }
         Some(match open.slots.backing(world, slot)? {
             SlotBacking::Block(pos, n) if pos.1 == VEHICLE_KEY_Y => MenuSlotBacking::Entity {
                 entity: EntityRef::new(level.epoch(), pos.2 as u32),
@@ -449,64 +468,156 @@ impl Game<'_> {
         })
     }
 
+    fn is_unbound_linked_slot(&self, guest: &Guest, slot: usize) -> bool {
+        let Some(open) = &guest.menu else {
+            return false;
+        };
+        if slot >= open.slot_count() || open.hidden.contains(&slot) {
+            return false;
+        }
+        let Some(world) = self
+            .level(&guest.dimension)
+            .and_then(|level| self.native_level_world(level))
+        else {
+            return false;
+        };
+        open.slots.block_slots(world).is_none_or(|n| n == open.size)
+            && matches!(
+                open.linked_slots(world)
+                    .and_then(|links| links.backing(slot)),
+                Some(None)
+            )
+    }
+
     /// How many of `stack` menu slot `slot` holds (`Slot.mayPlace`, then `Slot.getMaxStackSize`):
     /// a furnace's fuel slot one bucket, an armour slot one piece that fits it, a crafting result
-    /// none.
+    /// none. Returns `None` for enabled handler-backed slots (`MenuSlotBacking::Place`), which
+    /// need [`Self::menu_probe_slot_holds`].
     pub(super) fn menu_slot_holds(
-        &mut self,
+        &self,
         menu: MenuRef,
         slot: usize,
-        stack: &mod_api::ItemStack,
+        stack: &ItemStack,
     ) -> Option<u32> {
         let guest = self.native_menu_guest(menu)?;
+        if self.is_unbound_linked_slot(guest, slot) {
+            return Some(0);
+        }
         let backing = self.menu_slot_backing_for(guest, slot)?;
+        if matches!(backing, MenuSlotBacking::Place(_))
+            && !self.held_places_bound(guest.conn, menu.fields().player)
+        {
+            return None;
+        }
         if !self.backed_menu_slot_enabled(guest, slot) {
             return Some(0);
         }
-        if let MenuSlotBacking::Place(place) = backing {
-            if !self.held_places_bound(guest.conn, menu.fields().player) {
-                return None;
-            }
-            let (handler, index) = menu_slot_place_handler(place, self, menu.fields().player)?;
-            let resource = ItemResource::of(stack);
-            return Some(if handler.is_valid(self, index, &resource) {
-                handler.capacity(self, index, Some(&resource))
-            } else {
-                0
-            });
+        if matches!(backing, MenuSlotBacking::Place(_)) {
+            return None;
         }
-        let stack = stack_value(stack).ok()?;
         self.with_live_slot_rules(guest, backing, slot, |rules, env, _| {
-            rules.slot_holds(env, slot, &stack)
+            rules.slot_holds(env, slot, stack)
         })?
     }
 
     /// Whether menu slot `slot` gives up what it holds (`Slot.mayPickup`): bound armour stays
-    /// on outside creative, and handler-backed slots simulate taking one item.
-    pub(super) fn menu_slot_gives(&mut self, menu: MenuRef, slot: usize) -> Option<bool> {
+    /// on outside creative. Returns `None` for enabled handler-backed slots
+    /// (`MenuSlotBacking::Place`), which need [`Self::menu_probe_slot_gives`].
+    pub(super) fn menu_slot_gives(&self, menu: MenuRef, slot: usize) -> Option<bool> {
         let guest = self.native_menu_guest(menu)?;
+        if self.is_unbound_linked_slot(guest, slot) {
+            return Some(false);
+        }
         let backing = self.menu_slot_backing_for(guest, slot)?;
+        if matches!(backing, MenuSlotBacking::Place(_))
+            && !self.held_places_bound(guest.conn, menu.fields().player)
+        {
+            return None;
+        }
         if !self.backed_menu_slot_enabled(guest, slot) {
             return Some(false);
         }
-        if let MenuSlotBacking::Place(place) = backing {
-            if !self.held_places_bound(guest.conn, menu.fields().player) {
-                return None;
+        if matches!(backing, MenuSlotBacking::Place(_)) {
+            return None;
+        }
+        self.with_live_slot_rules(guest, backing, slot, |rules, env, held| {
+            rules.slot_gives(env, slot, held)
+        })?
+    }
+
+    /// Server-action probe for [`Self::menu_slot_holds`]: asks a handler-backed slot's live
+    /// [`ResourceHandler`] (`is_valid`, then `capacity_int` as in NeoForge's
+    /// `ResourceHandlerSlot.getMaxStackSize`) and delegates every other slot to the shared
+    /// read-only evaluator.
+    pub(super) fn menu_probe_slot_holds(
+        &mut self,
+        menu: MenuRef,
+        slot: usize,
+        stack: &mod_api::ItemStack,
+    ) -> Result<Option<u32>, LevelReadError> {
+        let Some(guest) = self.native_menu_guest(menu) else {
+            return Ok(None);
+        };
+        let conn = guest.conn;
+        if let Some(MenuSlotBacking::Place(place)) = self.menu_slot_backing_for(guest, slot) {
+            if !self.held_places_bound(conn, menu.fields().player) {
+                return Ok(None);
             }
-            let (handler, index) = menu_slot_place_handler(place, self, menu.fields().player)?;
+            if !self.backed_menu_slot_enabled(guest, slot) {
+                return Ok(Some(0));
+            }
+            let Some((handler, index)) = menu_slot_place_handler(place, self, menu.fields().player)
+            else {
+                return Ok(None);
+            };
+            let resource = ItemResource::of(stack);
+            return Ok(Some(if handler.is_valid(self, index, &resource) {
+                u32::try_from(handler.capacity_int(self, index, Some(&resource))).unwrap_or(0)
+            } else {
+                0
+            }));
+        }
+        let Ok(stack) = stack_value(stack) else {
+            return Ok(None);
+        };
+        Ok(self.menu_slot_holds(menu, slot, &stack))
+    }
+
+    /// Server-action probe for [`Self::menu_slot_gives`]: simulates taking one item from a
+    /// handler-backed slot's live [`ResourceHandler`] (NeoForge's
+    /// `ResourceHandlerSlot.mayPickup`) and delegates every other slot to the shared read-only
+    /// evaluator.
+    pub(super) fn menu_probe_slot_gives(
+        &mut self,
+        menu: MenuRef,
+        slot: usize,
+    ) -> Result<Option<bool>, LevelReadError> {
+        let Some(guest) = self.native_menu_guest(menu) else {
+            return Ok(None);
+        };
+        let conn = guest.conn;
+        if let Some(MenuSlotBacking::Place(place)) = self.menu_slot_backing_for(guest, slot) {
+            if !self.held_places_bound(conn, menu.fields().player) {
+                return Ok(None);
+            }
+            if !self.backed_menu_slot_enabled(guest, slot) {
+                return Ok(Some(false));
+            }
+            let Some((handler, index)) = menu_slot_place_handler(place, self, menu.fields().player)
+            else {
+                return Ok(None);
+            };
             let Some(resource) = handler.resource(self, index) else {
-                return Some(false);
+                return Ok(Some(false));
             };
             // NeoForge ResourceHandlerSlot.mayPickup: simulate extracting one, without
             // publishing any writes or change notices from the handler.
             let result: Result<(), bool> = self.transaction(|game, tx| {
                 Err(handler.extract_at(game, tx, index, &resource, 1) == 1)
             });
-            return result.err();
+            return Ok(result.err());
         }
-        self.with_live_slot_rules(guest, backing, slot, |rules, env, held| {
-            rules.slot_gives(env, slot, held)
-        })?
+        Ok(self.menu_slot_gives(menu, slot))
     }
 
     pub(super) fn menu_owned_slot_limit(&self, menu: MenuRef, slot: usize) -> Option<u32> {

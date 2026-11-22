@@ -168,7 +168,7 @@ impl GuestMenuEffects {
         }
     }
 
-    fn take(menu: &mut Menu) -> Self {
+    pub(in crate::game) fn take(menu: &mut Menu) -> Self {
         // An anvil result waits for AnvilCraftEvent.Pre; lan_station_op throws or refuses its drops.
         let dropped = if menu.anvil_craft.is_some() {
             Vec::new()
@@ -555,9 +555,7 @@ impl Game<'_> {
             .take()
             .filter(|(g, _)| *g == generation)
             .map_or_else(|| Box::new(Menu::new(Kind::Mod(layout))), |(_, menu)| menu);
-        for &slot in &open.hidden {
-            menu.hide_slot(slot);
-        }
+        menu.reset_mod_visibility(&open.hidden);
         let live = |g: &Guest| {
             g.menu_generation == generation
                 && g.menu.as_ref().is_some_and(|m| m.window == p.container)
@@ -678,9 +676,7 @@ impl Game<'_> {
             .filter(|(window, m)| *window == p.container && m.kind() == kind)
             .map_or_else(|| Box::new(Menu::new(kind)), |(_, m)| m);
         menu.set_registry_id(Some(&menu_id));
-        for &slot in &hidden {
-            menu.hide_slot(slot);
-        }
+        menu.reset_mod_visibility(&hidden);
         // A crafting grid's result is what the guest was shown, the mods' say
         // included, while the grid is as it was then.
         let shown = Self::lan_mod_craft_shown(self.lan.as_ref().unwrap(), gi, &items);
@@ -1748,7 +1744,7 @@ impl Game<'_> {
 
     /// The result guest `gi`'s mod crafting menu shows, with its slot, while
     /// the block entity's grid (`items`) is the one it was made from.
-    fn lan_mod_craft_shown(
+    pub(in crate::game) fn lan_mod_craft_shown(
         host: &super::lan::LanHost,
         gi: usize,
         items: &[Option<ItemStack>],
@@ -1763,7 +1759,7 @@ impl Game<'_> {
     /// the mods have their say on the result (`native_prepare_item_craft`,
     /// as on a crafting table's), which goes into `menu` and is what the guest
     /// is shown from now on. The result's slot when the mods changed it.
-    fn lan_mod_craft_settle(
+    pub(in crate::game) fn lan_mod_craft_settle(
         &mut self,
         gi: usize,
         pos: (i32, i32, i32),

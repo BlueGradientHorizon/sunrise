@@ -625,6 +625,23 @@ impl<'a> LinkedSlots<'a> {
     }
 
     /// Outer None means outside the linked range; Some(None) means there is no backing.
+    pub fn backing(self, slot: usize) -> Option<Option<((i32, i32, i32), usize)>> {
+        let range = self.layout.slots();
+        if !range.contains(&slot) {
+            return None;
+        }
+        let mut offset = slot - range.start;
+        for &pos in self.links {
+            let len = shown(self.world, pos).map_or(0, <[_]>::len);
+            if offset < len {
+                return Some(Some((pos, offset)));
+            }
+            offset -= len;
+        }
+        Some(None)
+    }
+
+    /// Outer None means outside the linked range; Some(None) means there is no backing.
     pub(crate) fn get(self, slot: usize) -> Option<Option<&'a Option<ItemStack>>> {
         let range = self.layout.slots();
         range

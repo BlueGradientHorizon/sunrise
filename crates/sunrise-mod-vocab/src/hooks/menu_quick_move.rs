@@ -6,17 +6,22 @@ pub trait Hooks {
     /// entity at `pos` (`AbstractContainerMenu.quickMoveStack`, the method a
     /// Java menu overrides), on the server, before the game's own routing:
     /// move the stack where your block wants it. `slot` is the menu's index:
-    /// below `container_slots` it is the block's own slot (`entity.items`),
-    /// from there on the player's inventory (27 main slots, then the hotbar).
-    /// Linked storage and a crafting result are not slots of `entity.items`; their
-    /// quick moves go through the menu's normal routing.
-    /// `stack` is a copy of what the slot holds; take what you move out of
-    /// it (put it in `entity.items`, or in another block through its
-    /// `ITEMS` capability) and set `handled`: the slot then holds what is
-    /// left of `stack` (`None` empties it, overriding that slot of `entity.items`),
-    /// the game's routing is skipped, and the player's client gets the menu
-    /// again. Left unhandled, `entity.items` goes back to what it held and
-    /// the game moves the stack as for any container; a later mod sees what
+    /// below `container_slots` it is the block's own slot (`entity.items`), a
+    /// bound linked container slot, or a mod crafting result slot; from there on
+    /// it is the player's inventory (27 main slots, then the hotbar). Unbound
+    /// linked slots are hidden and do not fire this hook.
+    /// `stack` is a copy of what the resolved source slot holds; take what you
+    /// move out of it (put it in `entity.items`, or in another block through its
+    /// `ITEMS` capability) and set `handled`: for an owned or inventory slot the
+    /// slot then holds what is left of `stack` (`None` empties it, overriding
+    /// that slot of `entity.items`); for a bound linked slot the remainder is
+    /// written back to that linked container rather than `entity.items`; for a
+    /// crafting result slot taking items consumes one craft from the grid
+    /// (`ResultSlot.onTake`) and drops any leftover remainder
+    /// (`CraftingMenu.quickMoveStack`) without writing into `entity.items`.
+    /// When handled, the game's routing is skipped, and the player's client gets
+    /// the menu again. Left unhandled, `entity.items` goes back to what it held
+    /// and the game moves the stack as for any container; a later mod sees what
     /// an earlier one did to `stack`.
     ///
     /// The move is one action: the answer is validated once and applied once,
@@ -47,7 +52,7 @@ pub trait Hooks {
         key = "entity",
         neoforge = "none (a Java menu overrides AbstractContainerMenu.quickMoveStack; no event)",
         cancellable = true,
-        version = 3
+        version = 4
     )]
     fn menu_quick_move(
         pos: [i32; 3],

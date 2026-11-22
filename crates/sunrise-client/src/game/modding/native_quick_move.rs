@@ -1,7 +1,7 @@
 //! A shift-click in a mod container's menu, routed by the mods
 //! (`native_menu_quick_move`, `AbstractContainerMenu.quickMoveStack`) before
 //! the game's own routing.
-use super::{Game, decided_action::Epoch};
+use super::{Game, decided_action::Epoch, lan_crafting::GuestMenuEffects, transactions::After};
 use crate::game::transactions::decision::{InvalidReason, Reply};
 use std::{
     cell::{Cell, RefCell},
@@ -12,7 +12,7 @@ use sunrise_client::{
     containers::{BlockEntity, ModBlockEntity, ModMenuType},
     items::ItemStack,
     lan::menu::Slots,
-    menu::Asked,
+    menu::{Asked, Kind, Menu},
 };
 use sunrise_protocol::packets::play;
 
@@ -25,6 +25,22 @@ const QUICK_MOVE: i32 = 1;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum MenuSlot {
     Container(usize),
+    Inventory(usize),
+}
+
+/// The live storage behind the clicked quick-move slot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum QuickMoveSource {
+    /// The opener block entity's own slot (`entity.items[slot]`).
+    Container(usize),
+    /// A bound linked container slot (`world.block_entities[pos].slots()[slot]`).
+    Linked { pos: Pos, slot: usize },
+    /// A mod menu type's crafting result slot (`layout.crafting.result`).
+    CraftResult {
+        layout: &'static ModMenuType,
+        result: usize,
+    },
+    /// The clicking player's inventory slot (0..9 hotbar, 9..36 main).
     Inventory(usize),
 }
 
@@ -125,13 +141,32 @@ impl Game<'_> {
             return None;
         }
         let (size, window, menu_type) = (menu.size, menu.window, menu.mod_type);
-        // Linked storage and craft results are not slots of `entity.items`, which is what
-        // MenuQuickMove can edit. The machine route handles those slots directly.
-        if let (Some(layout), MenuSlot::Container(slot)) = (menu_type, at)
-            && (!layout.owns_slot(slot) || layout.crafting.is_some_and(|c| c.result == slot))
-        {
-            return None;
-        }
+        let source = match (menu_type, at) {
+            (_, MenuSlot::Inventory(i)) => QuickMoveSource::Inventory(i),
+            (Some(layout), MenuSlot::Container(slot))
+                if layout.crafting.is_some_and(|c| c.result == slot) =>
+            {
+                QuickMoveSource::CraftResult {
+                    layout,
+                    result: slot,
+                }
+            }
+            (Some(layout), MenuSlot::Container(slot)) if !layout.owns_slot(slot) => {
+                let Some((link_pos, link_slot)) = menu
+                    .linked_slots(&self.world)
+                    .and_then(|links| links.backing(slot))
+                    .flatten()
+                else {
+                    // Unbound linked slots have no backing storage and are hidden.
+                    return None;
+                };
+                QuickMoveSource::Linked {
+                    pos: link_pos,
+                    slot: link_slot,
+                }
+            }
+            (_, MenuSlot::Container(slot)) => QuickMoveSource::Container(slot),
+        };
         // A mod menu type keeps its drag in the connection's machine menu
         // (`lan_machine_click`), not in `menu.drag`: a shift-click during it
         // goes there too, to only end the drag.
@@ -153,7 +188,7 @@ impl Game<'_> {
         // The game's own routing reuses the pickup rule's answer asked before the hook, so the
         // click asks it once, as the client's prediction does.
         let Some((handled, asked)) =
-            self.decided_mod_quick_move(conn, pos, size, menu_type, slot, at, window)
+            self.decided_mod_quick_move(conn, pos, size, menu_type, slot, source, window)
         else {
             // The client predicted the game's routing: it gets the menu as it is.
             self.reply_menu_click(conn, ClickReply::Resend(window));
@@ -177,6 +212,29 @@ impl Game<'_> {
         {
             *play.crafting.machine = None;
         }
+        if let Some(layout) = menu_type
+            && let Some(c) = layout.crafting
+            && let Some(gi) = self.guest_index(conn)
+            && let Some(BlockEntity::Mod(entity)) = self.world.block_entities.get(&pos)
+        {
+            let grid_matches = self
+                .lan
+                .as_ref()
+                .and_then(|host| host.hub.guests[gi].menu.as_ref())
+                .is_some_and(|open| {
+                    entity
+                        .items
+                        .get(c.grid_slots())
+                        .and_then(|grid| open.shown_craft_result(grid))
+                        .is_some()
+                });
+            if !grid_matches {
+                let items = entity.items.clone();
+                let mut craft_menu = Menu::new(Kind::Mod(layout));
+                craft_menu.load_container(&self.menu_env(), &items);
+                self.lan_mod_craft_settle(gi, pos, &mut craft_menu);
+            }
+        }
         // sendAllDataToRemote: the client predicted the game's routing. A mod
         // that removed its own block leaves no menu to send: it closes, and
         // the inventory goes out on its own.
@@ -196,26 +254,52 @@ impl Game<'_> {
     /// first, so a refused move puts it back) and the mods answer on a copy of the slot's stack.
     fn mod_menu_quick_move_fire(
         &mut self,
+        conn: u32,
         pos: Pos,
         size: usize,
         slot: usize,
-        at: MenuSlot,
+        source: QuickMoveSource,
     ) -> Fire {
         let Some(BlockEntity::Mod(m)) = self.world.block_entities.get(&pos) else {
             return Fire::Nothing;
         };
-        let held = match at {
-            MenuSlot::Container(k) => m.items.get(k).cloned().flatten(),
-            MenuSlot::Inventory(i) => self.inventory.get(i).cloned().flatten(),
+        let held = match source {
+            QuickMoveSource::Container(k) => m.items.get(k).cloned().flatten(),
+            QuickMoveSource::Inventory(i) => self.inventory.get(i).cloned().flatten(),
+            QuickMoveSource::Linked {
+                pos: link_pos,
+                slot: link_slot,
+            } => self
+                .world
+                .block_entities
+                .get(&link_pos)
+                .and_then(|e| e.slots().get(link_slot).cloned().flatten()),
+            QuickMoveSource::CraftResult { layout, .. } => {
+                let Some(crafting) = layout.crafting else {
+                    return Fire::Nothing;
+                };
+                let grid = m.items.get(crafting.grid_slots()).unwrap_or_default();
+                if let Some(shown) = self
+                    .lan
+                    .as_ref()
+                    .and_then(|host| host.hub.guest(conn))
+                    .and_then(|guest| guest.menu.as_ref())
+                    .and_then(|open| open.shown_craft_result(grid))
+                {
+                    shown.clone()
+                } else {
+                    self.menu_env().crafting_result(grid, crafting.size)
+                }
+            }
         };
-        let Some(stack) = held.filter(|s| s.count > 0) else {
+        let Some(original) = held.filter(|s| s.count > 0) else {
             return Fire::Nothing;
         };
         self.journal_block_entity(pos);
         let Some(BlockEntity::Mod(m)) = self.world.block_entities.get_mut(&pos) else {
             return Fire::Nothing;
         };
-        let mut stack = Some(stack);
+        let mut stack = Some(original.clone());
         let mut taken = std::mem::take(&mut **m);
         let items = taken.items.clone();
         let mut handled = false;
@@ -239,7 +323,8 @@ impl Game<'_> {
             return Fire::Untaken;
         }
         Fire::Done(Fired {
-            at,
+            source,
+            original,
             taken,
             items,
             stack,
@@ -302,49 +387,127 @@ impl Game<'_> {
 
     /// What `mod_menu_quick_move_fire` kept, applied: the slot, the block's items and the block
     /// entity back in the world. True when a mod took the click. A move from a mod menu type's
-    /// own slot is then heard as a take (`menu_slot_take`) with the amount it moved; a failed
-    /// listener undoes the move.
+    /// own slot or crafting result is then heard as a take (`menu_slot_take`) with the amount it
+    /// moved; a failed listener undoes the move.
     fn mod_menu_quick_move_apply(
         &mut self,
+        conn: u32,
         pos: Pos,
         take_menu: Option<&'static ModMenuType>,
         fired: Fired,
     ) -> bool {
         let Fired {
-            at,
+            source,
+            original,
             mut taken,
             items,
             stack,
         } = fired;
         let player = self.native_acting_id();
-        if matches!(at, MenuSlot::Inventory(_)) {
-            self.journal_player(player);
-        }
-        settle(
-            at,
-            true,
-            stack,
-            &items,
-            &mut taken.items,
-            &mut self.inventory,
-        );
-        if let (Some(menu), MenuSlot::Container(slot)) = (take_menu, at)
-            && let Some(held) = items.get(slot).and_then(Option::as_ref)
-        {
-            let left = taken.items.get(slot).and_then(Option::as_ref);
-            let count = held.count.saturating_sub(left.map_or(0, |l| l.count));
-            if count > 0 {
-                let mut moved = held.clone();
-                moved.count = count;
-                let take = (slot, moved, left.cloned());
-                if !self.api_menu_slot_take(&mut taken, player, menu.id, &take) {
-                    // The click's savepoint still owns both inventories, including everything
-                    // the quick-move listener wrote before the notice failed.
-                    return false;
+        match source {
+            QuickMoveSource::Container(slot) => {
+                settle(
+                    MenuSlot::Container(slot),
+                    true,
+                    stack,
+                    &items,
+                    &mut taken.items,
+                    &mut self.inventory,
+                );
+                if let Some(menu) = take_menu
+                    && let Some(held) = items.get(slot).and_then(Option::as_ref)
+                {
+                    let left = taken.items.get(slot).and_then(Option::as_ref);
+                    let count = held.count.saturating_sub(left.map_or(0, |l| l.count));
+                    if count > 0 {
+                        let mut moved = held.clone();
+                        moved.count = count;
+                        let take = (slot, moved, left.cloned());
+                        if !self.api_menu_slot_take(&mut taken, player, menu.id, &take) {
+                            // The click's savepoint still owns both inventories, including
+                            // everything the quick-move listener wrote before the notice failed.
+                            return false;
+                        }
+                    }
+                }
+                self.put_back_menu_entity(pos, taken, &items);
+            }
+            QuickMoveSource::Inventory(i) => {
+                self.journal_player(player);
+                settle(
+                    MenuSlot::Inventory(i),
+                    true,
+                    stack,
+                    &items,
+                    &mut taken.items,
+                    &mut self.inventory,
+                );
+                self.put_back_menu_entity(pos, taken, &items);
+            }
+            QuickMoveSource::Linked {
+                pos: link_pos,
+                slot: link_slot,
+            } => {
+                self.put_back_menu_entity(pos, taken, &items);
+                self.journal_block_entity(link_pos);
+                if let Some(entity) = self.world.block_entities.get_mut(&link_pos)
+                    && let Some(cell) = entity.slot_mut(link_slot)
+                    && *cell != stack
+                {
+                    *cell = stack;
+                    self.after_commit(After::Changed(link_pos));
                 }
             }
+            QuickMoveSource::CraftResult { layout, result } => {
+                let taken_count = match &stack {
+                    None => original.count,
+                    Some(rem) if rem.same_item_same_components(&original) => {
+                        original.count.saturating_sub(rem.count)
+                    }
+                    Some(_) => 0,
+                };
+                if taken_count > 0 {
+                    self.journal_player(player);
+                    let mut menu = Menu::new(Kind::Mod(layout));
+                    for (i, item) in self.inventory.iter().enumerate() {
+                        menu.set_player_item(i, item.clone());
+                    }
+                    let mut moved = original.clone();
+                    moved.count = taken_count;
+                    {
+                        let env = self.menu_env();
+                        menu.load_container(&env, &taken.items);
+                        menu.set_slot(&env, result, Some(original));
+                        menu.take_mod_craft_result(&env, &mut moved);
+                    }
+                    if let Some(remainder) = stack.clone().filter(|s| s.count > 0) {
+                        menu.dropped.push(remainder);
+                    }
+                    for i in 0..self.inventory.len() {
+                        self.inventory[i] = menu.player_item(i).cloned();
+                    }
+                    if let Some(c) = layout.crafting {
+                        if taken.items.len() < c.grid_slots().end {
+                            taken.items.resize(c.grid_slots().end, None);
+                        }
+                        for k in c.grid_slots() {
+                            taken.items[k] = menu.slot(k).cloned();
+                        }
+                    }
+                    self.after_commit(After::GuestMenu(
+                        conn,
+                        Box::new(GuestMenuEffects::take(&mut menu)),
+                    ));
+                    if let Some(menu_def) = take_menu {
+                        let take = (result, moved, stack);
+                        if !self.api_menu_slot_take(&mut taken, player, menu_def.id, &take) {
+                            return false;
+                        }
+                    }
+                }
+                self.put_back_menu_entity(pos, taken, &items);
+            }
         }
-        self.put_back_menu_entity(pos, taken, &items);
         true
     }
 
@@ -362,7 +525,7 @@ impl Game<'_> {
         size: usize,
         menu_type: Option<&'static ModMenuType>,
         slot: usize,
-        at: MenuSlot,
+        source: QuickMoveSource,
         window: i32,
     ) -> Option<(bool, Asked)> {
         let (actor, route) = (self.guest_actor(conn)?, self.guest_route(conn)?);
@@ -380,7 +543,7 @@ impl Game<'_> {
         if !gives {
             return Some((false, asked));
         }
-        let admitted = Admitted::of(self, conn, pos, size, window)?;
+        let admitted = Admitted::of(self, conn, pos, size, window, source)?;
         let fired = Rc::new(RefCell::new(None));
         let handled = Rc::new(Cell::new(None));
         let untaken = Rc::new(Cell::new(false));
@@ -391,7 +554,8 @@ impl Game<'_> {
             untaken.clone(),
         );
         let take_menu = menu_type.filter(|menu| {
-            matches!(at, MenuSlot::Container(slot) if menu.owns_slot(slot))
+            (matches!(source, QuickMoveSource::Container(slot) if menu.owns_slot(slot))
+                || matches!(source, QuickMoveSource::CraftResult { .. }))
                 && matches!(self.world.block_entities.get(&pos), Some(BlockEntity::Mod(entity))
                     if mod_api::__private::block_entity_type_listens(mod_api::HookId::MenuSlotTake, entity.id()))
         });
@@ -403,9 +567,9 @@ impl Game<'_> {
                 Epoch::Player,
                 // Everything the click was admitted on is still so.
                 move |game| admitted.holds(game),
-                move |game| match game
-                    .as_guest(conn, |g| g.mod_menu_quick_move_fire(pos, size, slot, at))
-                {
+                move |game| match game.as_guest(conn, |g| {
+                    g.mod_menu_quick_move_fire(conn, pos, size, slot, source)
+                }) {
                     Some(Fire::Done(fired)) => {
                         *kept.borrow_mut() = Some(fired);
                         Reply::Allow
@@ -422,7 +586,7 @@ impl Game<'_> {
                     if let Some(fired) = taken.take() {
                         result.set(Some(
                             game.as_guest(conn, |g| {
-                                g.mod_menu_quick_move_apply(pos, take_menu, fired)
+                                g.mod_menu_quick_move_apply(conn, pos, take_menu, fired)
                             })
                             .unwrap_or(false),
                         ));
@@ -464,15 +628,17 @@ pub(super) struct Admitted {
     size: usize,
     hidden: Vec<usize>,
     generation: Option<u64>,
+    linked_generation: Option<(Pos, Option<u64>)>,
 }
 
 impl Admitted {
-    pub(super) fn of(
+    fn of(
         game: &Game<'_>,
         conn: u32,
         pos: Pos,
         size: usize,
         window: i32,
+        source: QuickMoveSource,
     ) -> Option<Self> {
         let menu = game.lan.as_ref()?.hub.guest(conn)?.menu.as_ref()?;
         Some(Self {
@@ -482,6 +648,12 @@ impl Admitted {
             size,
             hidden: menu.hidden.clone(),
             generation: game.world.block_entities.generation(&pos),
+            linked_generation: match source {
+                QuickMoveSource::Linked { pos: link_pos, .. } => {
+                    Some((link_pos, game.world.block_entities.generation(&link_pos)))
+                }
+                _ => None,
+            },
         })
     }
 
@@ -504,12 +676,19 @@ impl Admitted {
                 .block_entities
                 .generation(&self.pos)
                 .is_none_or(|now| Some(now) == self.generation)
+            && self.linked_generation.is_none_or(|(link_pos, generation)| {
+                game.world
+                    .block_entities
+                    .generation(&link_pos)
+                    .is_none_or(|now| Some(now) == generation)
+            })
     }
 }
 
 /// What the mods' call left, before it is applied.
 struct Fired {
-    at: MenuSlot,
+    source: QuickMoveSource,
+    original: ItemStack,
     taken: ModBlockEntity,
     items: Vec<Option<ItemStack>>,
     stack: Option<ItemStack>,

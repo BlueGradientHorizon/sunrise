@@ -292,11 +292,15 @@ menu (`PlayerRef::open_chest_menu`, reached through its returned `MenuRef` or `p
 `menu.slot_holds(host, slot, &stack)` is how many of a stack it holds (`Slot.mayPlace`, then `Slot.getMaxStackSize`: a
 furnace's fuel slot one bucket, an armour slot one piece that fits it, a shulker box's slot no shulker box, a result
 slot none), and `menu.slot_gives(host, slot)` whether it gives up what it holds (`Slot.mayPickup`: bound armour stays
-on outside creative). Both queries take a mutable `ServerHost`, because checking a handler-backed slot can run a
-simulated extraction that is rolled back. They use the live handler, not the display copy. A hidden handler slot or
-the locked backpack hotbar slot takes no click, but an explicit transfer through a hidden slot's `ItemPlace` still
-reaches its handler. Slot rules see live linked storage and only see a prepared result while its crafting grid still
-matches. An insert fills the named slot alone, and what doesn't fit stays out. A crafting grid a transaction
+on outside creative). Both stay read-only on `&dyn Host` and return `None` for enabled handler-backed slots
+(`MenuSlotBacking::Place`, distinguishable via `menu.slot_backing(host, slot)`). From `&mut dyn ServerHost`,
+`menu.probe_slot_holds(host, slot, &stack)` and `menu.probe_slot_gives(host, slot)` probe the live handler
+(`capacity_int` capped at `i32::MAX`, and a simulated 1-item extraction rolled back in a transaction) and delegate
+every other slot to the same live evaluator. A hidden handler slot or the locked backpack hotbar slot takes no click
+(and backed pickup and quick-move clicks enforce `probe_slot_gives`), while an explicit transfer through a hidden
+slot's `ItemPlace` still reaches its handler. `menu.slot_backing` and `ItemPlace::MenuSlot` follow bound linked
+storage rather than the opener's shadow slots and return `None` for unbound linked indices. Slot rules see live linked
+storage and only see a prepared result while its crafting grid still matches. An insert fills the named slot alone, and what doesn't fit stays out. A crafting grid a transaction
 changed has its result made again at the outermost commit, once for each player however many writes it took
 (`InventoryMenu.slotsChanged`, with `prepare_item_craft`); the result slot takes nothing and gives nothing,
 since taking it is a craft. A menu closed, replaced or reopened since the `MenuRef` was made, or one whose player left,
@@ -327,9 +331,11 @@ menu could not be closed (for example, it was replaced). An aborted click leaves
 place and sends no close packet. `MenuRef::set_items` sends the live owner's inventory and cursor on success;
 its changes also roll back without sending a packet if the action aborts.
 
-`menu_quick_move` v3 runs as one action too. An invalid answer, or a Host write to a player's inventory, cursor or
+`menu_quick_move` v4 runs as one action too. An invalid answer, or a Host write to a player's inventory, cursor or
 menu storage, refuses that move instead of falling back to the game's routing. An answer's optional remainder
-holds what is left in the clicked slot (`None` empties it).
+holds what is left in the clicked slot (`None` empties it): for a bound linked slot it settles to that linked
+container rather than `entity.items`, and for a crafting result slot taking items consumes one craft from the grid
+and drops any leftover remainder without writing into `entity.items`.
 
 Inside `menu_clicked`, `ItemPlace::MenuSlot` can take from and give to the clicking
 player's inventory and hotbar slots as well as the menu's own storage. Inserts fill

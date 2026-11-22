@@ -19,10 +19,13 @@ impl Menu {
     /// machine may have hidden slots left over from an earlier linked view.
     pub fn reset_mod_visibility(&mut self, hidden: &[usize]) {
         self.touch();
-        if matches!(self.state.kind, Kind::Mod(_)) {
-            self.state.slots = Menu::new(self.state.kind).state.slots;
-            for &slot in hidden {
-                self.hide_slot(slot);
+        if let Kind::Mod(kind) = self.state.kind {
+            for (slot, entry) in self.state.slots.iter_mut().take(kind.slots).enumerate() {
+                entry.role = if hidden.contains(&slot) {
+                    super::super::Role::Hidden
+                } else {
+                    self.state.kind.slot(slot).unwrap().role
+                };
             }
         }
     }
