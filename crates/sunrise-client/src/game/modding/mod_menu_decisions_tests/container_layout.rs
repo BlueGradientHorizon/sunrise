@@ -48,6 +48,8 @@ impl Hooks for LayoutMod {
 
 struct StoreShiftClick;
 #[mod_api::sunrise_part]
+impl mod_api::BlockPart for StoreShiftClick {}
+#[mod_api::sunrise_part]
 impl BlockEntityPart for StoreShiftClick {
     fn menu_quick_move(&self, event: &mut MenuQuickMoveEvent<'_>) -> Flow {
         CLICK.set(Some((event.container_slots, event.slot)));
