@@ -5,29 +5,13 @@ use sunrise_client::command::Registries;
 use sunrise_client::text::Text;
 use sunrise_client::text_grammar::build;
 use sunrise_core::json_nbt::{JsonNbtError, tag_to_json};
-use sunrise_core::nbt::{self, Limits, Tag};
+use sunrise_core::nbt::{self, Tag};
 
 impl Game<'_> {
     /// A component read as `/tellraw` takes it; None when it isn't one (an object with no
     /// content key, an empty list, a content key of the wrong kind).
     pub(super) fn text_from_json(&self, json: &str) -> Read {
         Read(component_from_json(json, &self.ui.registries))
-    }
-
-    pub(super) fn text_from_nbt(&self, tag: &Tag) -> Read {
-        Read(component_from_nbt(tag, &self.ui.registries))
-    }
-
-    pub(super) fn text_to_nbt(&self, text: &Text) -> Result<Tag, TextFormError> {
-        let component = text.component();
-        let tag = sunrise_client::scoreboard::component_tag(&component);
-        sunrise_client::component::discard_component(component);
-        // A path in the codec can include containers not in the Text tree (e.g. `extra`).
-        if !nbt::within_depth(&tag, Limits::default().max_depth) {
-            nbt::discard_tag(tag);
-            return Err(TextFormError::TooDeep);
-        }
-        Ok(tag)
     }
 }
 
@@ -59,7 +43,7 @@ fn component_from_json(json: &str, registries: &Registries) -> Result<Option<Tex
         Err(_) => return Ok(None),
     };
     let read = if json.as_bytes()[used..].iter().all(u8::is_ascii_whitespace) {
-        component_from_nbt(&tag, registries)
+        component_from_snbt(&tag, registries)
     } else {
         Ok(None)
     };
@@ -67,7 +51,7 @@ fn component_from_json(json: &str, registries: &Registries) -> Result<Option<Tex
     read
 }
 
-fn component_from_nbt(tag: &Tag, registries: &Registries) -> Result<Option<Text>, TextFormError> {
+fn component_from_snbt(tag: &Tag, registries: &Registries) -> Result<Option<Text>, TextFormError> {
     let value = match tag_to_json(tag) {
         Ok(value) => value,
         Err(JsonNbtError::TooDeep) => return Err(TextFormError::TooDeep),
@@ -416,9 +400,12 @@ mod tests {
             prototypes.insert(
                 "minecraft:stone".into(),
                 [
-                    ("minecraft:custom_name".into(), json!("Default custom")),
+                    (
+                        "minecraft:custom_name".into(),
+                        json!({"text": "Default custom"}),
+                    ),
                     ("minecraft:item_name".into(), json!("Default item")),
-                    ("minecraft:lore".into(), json!(["Default lore"])),
+                    ("minecraft:lore".into(), json!([["Default lore"]])),
                 ]
                 .into(),
             );
@@ -449,6 +436,33 @@ mod tests {
             assert_eq!(host.text_from_nbt(&Tag::Int(4)), Ok(None));
             let deep_tag = (0..513).fold(Tag::String("leaf".into()), |tag, _| Tag::List(vec![tag]));
             assert_eq!(host.text_from_nbt(&deep_tag), Err(TextFormError::TooDeep));
+            sunrise_core::nbt::discard_tag(deep_tag);
+
+            // Vanilla counts compounds, not Text nodes: 512 selectors and a string leaf.
+            let (valid_deep, expected_deep) = (0..512).fold(
+                (Text::literal("leaf"), Tag::String("leaf".into())),
+                |(child, tag), _| {
+                    (
+                        Text::new(TextContent::Selector {
+                            pattern: "@s".into(),
+                            separator: Some(Box::new(child)),
+                        }),
+                        Tag::compound([("selector", Tag::String("@s".into())), ("separator", tag)]),
+                    )
+                },
+            );
+            let encoded_deep = host.text_to_nbt(&valid_deep).unwrap();
+            let mut expected = &expected_deep;
+            let mut actual = &encoded_deep;
+            for _ in 0..512 {
+                assert_eq!(actual.get("selector"), expected.get("selector"));
+                expected = expected.get("separator").unwrap();
+                actual = actual.get("separator").unwrap();
+            }
+            assert_eq!(actual, expected);
+            assert!(host.text_from_nbt(&encoded_deep).unwrap().is_some());
+            sunrise_core::nbt::discard_tag(encoded_deep);
+            sunrise_core::nbt::discard_tag(expected_deep);
 
             let too_deep = (0..512).fold(Text::literal("leaf"), |child, _| {
                 Text::literal("parent").append(child)
@@ -483,7 +497,42 @@ mod tests {
                 assert_eq!(stack.item_name(host), Ok(Some(literal.clone())));
                 assert_eq!(stack.lore(host), Ok(lore));
 
+                let mut opaque = Text::literal("With a payload");
+                let payload = Tag::ByteArray(vec![1, 2]);
+                opaque.style.click = Some(TextClick::Custom {
+                    id: "fixture:event".into(),
+                    payload: Some(payload.clone()),
+                });
+                stack.set_lore(host, &[opaque]).unwrap();
+                let mut lines = stack.lore(host).unwrap();
+                lines.push(literal.clone());
+                stack.set_lore(host, &lines).unwrap();
+                let patch = stack.components().unwrap().as_nbt();
+                let Some(Tag::List(lines)) = patch.get(&"minecraft:lore".into()) else {
+                    panic!("lore list missing");
+                };
+                assert_eq!(
+                    lines[0]
+                        .get("click_event")
+                        .and_then(|event| event.get("payload")),
+                    Some(&payload)
+                );
+
                 let before = stack.clone();
+                let mut malformed = Text::literal("Malformed");
+                malformed.style.color = Some("not_a_color".into());
+                assert_eq!(
+                    stack.set_custom_name(host, Some(&malformed)),
+                    Err(TextFormError::Malformed)
+                );
+                assert_eq!(
+                    stack.set_item_name(host, Some(&malformed)),
+                    Err(TextFormError::Malformed)
+                );
+                assert_eq!(
+                    stack.set_lore(host, &[literal.clone(), malformed]),
+                    Err(TextFormError::Malformed)
+                );
                 let invalid = [label.clone(), too_deep.clone()];
                 assert_eq!(stack.set_lore(host, &invalid), Err(TextFormError::TooDeep));
                 assert_eq!(
@@ -503,6 +552,21 @@ mod tests {
                 stack.set_lore(host, &full).unwrap();
                 assert_eq!(stack.lore(host), Ok(full));
 
+                let restore_defaults = |stack: &mut ItemStack| {
+                    stack
+                        .set_custom_name(host, Some(&Text::literal("Default custom")))
+                        .unwrap();
+                    stack
+                        .set_item_name(host, Some(&Text::literal("Default item")))
+                        .unwrap();
+                    stack
+                        .set_lore(host, &[Text::literal("Default lore")])
+                        .unwrap();
+                    assert!(stack.components().is_none());
+                };
+                if defaults {
+                    restore_defaults(&mut stack);
+                }
                 stack.set_custom_name(host, None).unwrap();
                 stack.set_item_name(host, None).unwrap();
                 stack.set_lore(host, &[]).unwrap();
@@ -522,6 +586,7 @@ mod tests {
                             Some(&Tag::Compound(Default::default()))
                         );
                     }
+                    restore_defaults(&mut stack);
                 } else {
                     assert!(stack.components().is_none());
                 }

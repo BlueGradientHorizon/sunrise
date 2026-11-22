@@ -199,9 +199,10 @@ escapes such as `\u0041` are decoded.
 
 `host.text_to_nbt(&text)` encodes the component as vanilla's `ComponentSerialization.CODEC`
 with `NbtOps`, without resolving translations or adding styles. It returns `Result<Tag, TextFormError>`.
-`host.text_from_nbt(&tag)` reads that form with the same grammar and bounds as the SNBT input
-above, returning `Result<Option<Text>, TextFormError>`. An unstyled literal without siblings
-encodes as an NBT string. An NBT string is read literally, including `§` codes.
+`host.text_from_nbt(&tag)` reads that form, returning `Result<Option<Text>, TextFormError>`.
+An unstyled literal without siblings encodes as an NBT string, and strings are read literally,
+including `§` codes. NBT flags are true for nonzero numeric tags, and custom click payloads
+keep their tag types. Both methods enforce vanilla's 512-container NBT depth limit.
 
 `host.text_from_legacy("§cRed")` instead reads `§` formatting codes as
 the font draws them; `&` codes are not read, so replace `&` with `§` first.

@@ -1702,6 +1702,8 @@ mod native_terrain_model;
 mod native_text_json;
 #[path = "game/modding/native_text_legacy.rs"]
 mod native_text_legacy;
+#[path = "game/modding/native_text_nbt.rs"]
+mod native_text_nbt;
 #[path = "game/modding/native_tick_time.rs"]
 mod native_tick_time;
 #[path = "game/modding/native_ticks.rs"]

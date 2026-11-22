@@ -1,0 +1,140 @@
+use super::*;
+use mod_api::text::{TextClick, TextHover, TextProfile};
+
+fn codec(registries: &Registries) -> Codec<'_> {
+    Codec {
+        registries,
+        defer_dialogs: false,
+    }
+}
+
+fn snbt(input: &str) -> Tag {
+    let (tag, used) = nbt::parse_snbt(input).unwrap();
+    assert_eq!(used, input.len());
+    tag
+}
+
+#[test]
+fn custom_click_retains_typed_nbt_even_when_unrelated_fields_are_non_finite() {
+    let reg = Registries::default();
+    let codec = codec(&reg);
+    // Build the non-finite tag directly: it is an NBT value, not JSON or SNBT syntax.
+    let payload = Tag::compound([
+        ("bytes", Tag::ByteArray(vec![1, 2])),
+        ("ints", Tag::IntArray(vec![3, 4])),
+        ("float", Tag::Float(f32::INFINITY.to_bits())),
+    ]);
+    let click = Tag::compound([
+        ("action", s("custom")),
+        ("id", s("test:event")),
+        ("payload", nbt::clone_tag(&payload)),
+    ]);
+    let supplied = Tag::compound([
+        ("text", s("Example")),
+        ("click_event", nbt::clone_tag(&click)),
+        ("unknown", Tag::Double(f64::NAN.to_bits())),
+    ]);
+    let mut written = Text::literal("Example");
+    written.style.click = Some(TextClick::Custom {
+        id: "test:event".into(),
+        payload: Some(payload),
+    });
+    assert_eq!(codec.read(&supplied), Ok(Some(written.clone())));
+    let expected = Tag::compound([("text", s("Example")), ("click_event", click)]);
+    assert_eq!(codec.write(&written), Ok(expected));
+}
+
+#[test]
+fn nbt_flags_use_numbers_without_changing_json_booleans() {
+    let reg = Registries::default();
+    let codec = codec(&reg);
+    let input = snbt("{text:'flag',bold:0.5f,italic:-0.0d}");
+    let text = codec.read(&input).unwrap().unwrap();
+    assert_eq!(
+        (text.style.bold, text.style.italic),
+        (Some(true), Some(false))
+    );
+    assert_eq!(
+        codec.write(&text),
+        Ok(snbt("{text:'flag',bold:1b,italic:0b}"))
+    );
+    assert_eq!(codec.read(&snbt("{text:'flag',bold:'true'}")), Ok(None));
+    assert!(
+        sunrise_client::text_grammar::build(
+            &serde_json::json!({"text":"flag","bold":0.5}),
+            &reg,
+            false
+        )
+        .is_none()
+    );
+
+    let input = snbt("{nbt:'value',storage:'test:data',interpret:0.0f,plain:0.5f}");
+    let text = codec.read(&input).unwrap().unwrap();
+    assert_eq!(
+        codec.write(&text),
+        Ok(snbt("{nbt:'value',storage:'test:data',plain:1b}"))
+    );
+    assert_eq!(
+        codec.read(&snbt(
+            "{nbt:'value',storage:'test:data',interpret:0.5f,plain:0.25d}"
+        )),
+        Ok(None)
+    );
+    let player = codec
+        .read(&snbt("{player:'Alex',hat:0.5f}"))
+        .unwrap()
+        .unwrap();
+    assert_eq!(codec.write(&player), Ok(snbt("{player:{name:'Alex'}}")));
+}
+
+#[test]
+fn compact_output_uses_the_persistent_field_defaults() {
+    let reg = Registries::default();
+    let codec = codec(&reg);
+    // Synthetic outputs checked using 26.3 ComponentSerialization.CODEC and NbtOps.
+    let atlas = Text::new(TextContent::Object(TextObject::Atlas {
+        atlas: "minecraft:blocks".into(),
+        sprite: "test:icon".into(),
+        fallback: None,
+    }));
+    let mut player_profile = TextProfile::default();
+    player_profile.name = Some("Alex".into());
+    let player = Text::new(TextContent::Object(TextObject::Player {
+        profile: player_profile,
+        hat: true,
+        fallback: None,
+    }));
+    let mut item = Text::literal("item");
+    item.style.hover = Some(TextHover::Item {
+        id: "stone".into(),
+        count: 1,
+        components: Some(Tag::Compound(Compound::new())),
+    });
+    let nbt = Text::new(TextContent::Nbt {
+        path: "value".into(),
+        interpret: false,
+        source: TextNbtSource::Storage("test:data".into()),
+        separator: None,
+    });
+    let translatable = Text::translate("fixture", vec![Text::literal("42")]);
+    for (text, expected) in [
+        (atlas, "{sprite:'test:icon'}"),
+        (player, "{player:{name:'Alex'}}"),
+        (
+            item,
+            "{text:'item',hover_event:{action:show_item,id:'minecraft:stone'}}",
+        ),
+        (nbt, "{nbt:'value',storage:'test:data'}"),
+        (translatable, "{translate:'fixture',with:['42']}"),
+    ] {
+        assert_eq!(codec.write(&text), Ok(snbt(expected)));
+    }
+    let input = snbt("{translate:'fixture',with:[42s,42,42L,0.5f,1.25d,'42',{text:'42'}]}");
+    let decoded = codec.read(&input).unwrap().unwrap();
+    assert_eq!(
+        codec.write(&decoded),
+        Ok(snbt(
+            "{translate:'fixture',with:[42s,42,42L,0.5f,1.25d,'42','42']}"
+        ))
+    );
+}

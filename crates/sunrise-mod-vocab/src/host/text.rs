@@ -40,16 +40,18 @@ pub trait TextHost {
     /// Side: both.
     /// Encode one component with `ComponentSerialization.CODEC` and `NbtOps`.
     /// An unstyled literal with no siblings encodes as a string. Translations and
-    /// styles are stored, not resolved. Refuses text outside the serialization
-    /// boundary's depth or profile/property bounds.
-    #[serialize_text]
+    /// styles are stored, not resolved. Refuses malformed fields and nesting
+    /// beyond vanilla NBT's 512 containers.
+    #[forward_api_inputs]
     fn text_to_nbt(&self, text: &Text) -> Result<Tag, TextFormError>;
     /// Side: both.
-    /// Read a component from NBT using the same component grammar and bounds as
-    /// [`Self::text_from_json`]'s SNBT form. A string is literal, including `§` codes.
+    /// Read a component with `ComponentSerialization.CODEC` and `NbtOps`.
+    /// A string is literal, including `§` codes. Numeric style flags are true when
+    /// nonzero, and a custom click payload keeps its original NBT tag types.
     /// `Ok(None)` means the tag does not decode as a component; nesting beyond the
     /// 512 containers allowed by vanilla NBT returns [`TextFormError::TooDeep`].
     #[forward_api_inputs]
+    #[forward_api_output]
     fn text_from_nbt(&self, tag: &Tag) -> Result<Option<Text>, TextFormError>;
     /// Side: both.
     /// Reads legacy formatting codes (`§a`, `§l`, `§r`...) as the font draws them
