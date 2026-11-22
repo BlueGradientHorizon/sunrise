@@ -348,7 +348,7 @@ fn a_mod_tint_source_is_asked_before_the_mesh_not_by_the_worker() {
         return;
     }
     let home = tempfile::tempdir().unwrap();
-    crate::crash::install(home.path().to_path_buf(), "client");
+    crate::crash::install(home.path().to_path_buf(), "client", || None);
     // Exercise the fatal-client branch of the production panic hook if containment is missing.
     std::thread::Builder::new()
         .name("main".into())
@@ -361,8 +361,13 @@ fn a_mod_tint_source_is_asked_before_the_mesh_not_by_the_worker() {
         "a recoverable tint panic wrote a fatal report"
     );
     assert!(
-        crate::crash::report_error(home.path(), "client", &crate::crash::DebugCrash::new())
-            .is_some(),
+        crate::crash::report_error(
+            home.path(),
+            "client",
+            &crate::crash::DebugCrash::new(),
+            || None
+        )
+        .is_some(),
         "a recoverable tint panic consumed the fatal report slot"
     );
 }
@@ -592,7 +597,7 @@ fn an_attachment_overlay_panic_does_not_call_a_different_source_on_the_worker() 
         return;
     }
     let home = tempfile::tempdir().unwrap();
-    crate::crash::install(home.path().to_path_buf(), "client");
+    crate::crash::install(home.path().to_path_buf(), "client", || None);
     std::thread::Builder::new()
         .name("main".into())
         .spawn(run_overlay_panic_case)
