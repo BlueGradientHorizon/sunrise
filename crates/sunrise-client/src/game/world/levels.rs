@@ -1483,7 +1483,7 @@ impl Game<'_> {
             sunrise_client::spans::time("dedicated_streaming", || {
                 self.update_dedicated_streaming();
             });
-            self.tick_spawn_tickets(running == Some(true));
+            self.tick_spawn_tickets(running == Some(true), true);
             sunrise_client::spans::time("update_world", || self.update_world());
             let tick_span = sunrise_client::spans::guard("level_tick");
             // This level's moving colliders, solid to its movers for this tick only.
@@ -1733,6 +1733,16 @@ impl Game<'_> {
 
     /// A loading-only ticket needs chunk work, not an active simulation.
     pub(super) fn has_spawn_tickets(&self, dim: Dim) -> bool {
+        if self.lan.as_ref().is_some_and(|host| {
+            host.hub
+                .lan
+                .configuration_tasks
+                .loading_spawns(dim.id())
+                .next()
+                .is_some()
+        }) {
+            return true;
+        }
         if dim == self.dim {
             self.tickets.spawn_areas().next().is_some()
         } else {

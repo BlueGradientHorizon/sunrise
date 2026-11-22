@@ -1,5 +1,5 @@
 //! Dispatch each configuring connection on the server's ordinary tick.
-use super::{Dim, Game, lan::LanHost};
+use super::{Dim, Game};
 use mod_api::{
     __private::{
         ConfigurationTaskOutcome, ConfigurationTaskRegistration, configuration_task_context,
@@ -10,7 +10,9 @@ use std::{io, sync::Arc};
 use sunrise_client::{
     lan::{
         Lan, NetConfig,
-        configuration_tasks::{PreparedSpawn, Session, SpawnTask},
+        configuration_tasks::{
+            ConfigurationRequest, Configured, PreparedSpawn, Session, SpawnLevel, SpawnTask,
+        },
         data::SyncData,
         playerdata,
     },
@@ -44,141 +46,174 @@ impl Game<'_> {
         }
         commit
     }
-    pub(super) fn take_lan_for_packet_tick(&mut self) -> Option<LanHost> {
-        if self.level_pass.first {
-            let requests: Vec<_> = self
-                .lan
-                .as_ref()?
+    pub(super) fn tick_lan_configuration_tasks(
+        &mut self,
+        requests: Vec<ConfigurationRequest>,
+    ) -> Option<()> {
+        for request in requests {
+            if request.session.closed() {
+                continue;
+            }
+            self.lan
+                .as_mut()?
                 .hub
                 .lan
-                .configuration_requests()
-                .collect();
-            for request in requests {
-                if request.session.closed() {
-                    continue;
-                }
+                .configuration_tasks
+                .insert(&request);
+            let mut registration = ConfigurationTaskRegistration::default();
+            if !mod_api::__private::listened(mod_api::HookId::RegisterConfigurationTasks)
+                || self.configuration_callback(&request.session, |game| {
+                    game.native_register_configuration_tasks(
+                        request.connection,
+                        request.player,
+                        &request.name,
+                        &mut registration,
+                    );
+                    registration
+                        .failure()
+                        .map_or(Ok(None), |error| Err(error.to_owned()))
+                })
+            {
                 self.lan
                     .as_mut()?
                     .hub
                     .lan
                     .configuration_tasks
-                    .insert(&request);
-                let mut registration = ConfigurationTaskRegistration::default();
-                if !mod_api::__private::listened(mod_api::HookId::RegisterConfigurationTasks)
-                    || self.configuration_callback(&request.session, |game| {
-                        game.native_register_configuration_tasks(
-                            request.connection,
-                            request.player,
-                            &request.name,
-                            &mut registration,
-                        );
-                        registration
-                            .failure()
-                            .map_or(Ok(None), |error| Err(error.to_owned()))
-                    })
-                {
-                    self.lan
-                        .as_mut()?
-                        .hub
-                        .lan
-                        .configuration_tasks
-                        .register(request.connection, registration.into_tasks());
-                }
+                    .register(request.connection, registration.into_tasks());
             }
-            let mut after = None;
-            while let Some((connection, session)) = self
-                .lan
-                .as_ref()?
-                .hub
-                .lan
-                .configuration_tasks
-                .next_session(after)
-            {
-                after = Some(connection);
-                if session.closed() {
+        }
+        let mut after = None;
+        while let Some((connection, session)) = self
+            .lan
+            .as_ref()?
+            .hub
+            .lan
+            .configuration_tasks
+            .next_session(after)
+        {
+            after = Some(connection);
+            if session.closed() {
+                let retired = self
+                    .lan
+                    .as_mut()?
+                    .hub
+                    .lan
+                    .configuration_tasks
+                    .remove(connection);
+                drop(retired);
+                continue;
+            }
+            loop {
+                let (completed, turn) = session.turn();
+                if let Some(ordinal) = completed {
                     let retired = self
                         .lan
                         .as_mut()?
                         .hub
                         .lan
                         .configuration_tasks
-                        .remove(connection);
+                        .take_task(connection, ordinal);
                     drop(retired);
-                    continue;
                 }
-                loop {
-                    let (completed, turn) = session.turn();
-                    if let Some(ordinal) = completed {
-                        let retired = self
-                            .lan
-                            .as_mut()?
-                            .hub
-                            .lan
-                            .configuration_tasks
-                            .take_task(connection, ordinal);
-                        drop(retired);
-                    }
-                    let Some(turn) = turn else { break };
-                    let Some(mut task) = self
-                        .lan
-                        .as_mut()?
-                        .hub
-                        .lan
-                        .configuration_tasks
-                        .take_task(connection, turn.ordinal)
-                    else {
-                        break;
+                let Some(turn) = turn else { break };
+                let Some(mut task) = self
+                    .lan
+                    .as_mut()?
+                    .hub
+                    .lan
+                    .configuration_tasks
+                    .take_task(connection, turn.ordinal)
+                else {
+                    break;
+                };
+                // No map borrow or session lock survives extraction. The callback
+                // can use the Host (including this session) and its transaction.
+                let commit = self.configuration_callback(&session, |game| {
+                    let call = if turn.start {
+                        "ConfigurationTask::start"
+                    } else {
+                        "ConfigurationTask::tick"
                     };
-                    // No map borrow or session lock survives extraction. The callback
-                    // can use the Host (including this session) and its transaction.
-                    let commit = self.configuration_callback(&session, |game| {
-                        let call = if turn.start {
-                            "ConfigurationTask::start"
+                    if !task.owner.is_enabled() {
+                        return Ok(Some(turn.ordinal));
+                    }
+                    let mut outcome = ConfigurationTaskOutcome::Pending;
+                    let mut context = configuration_task_context(connection, &mut outcome);
+                    task.call(call, |task| {
+                        if turn.start {
+                            task.start(game, &mut context);
                         } else {
-                            "ConfigurationTask::tick"
-                        };
-                        if !task.owner.is_enabled() {
-                            return Ok(Some(turn.ordinal));
+                            task.tick(game, &mut context);
                         }
-                        let mut outcome = ConfigurationTaskOutcome::Pending;
-                        let mut context = configuration_task_context(connection, &mut outcome);
-                        task.call(call, |task| {
-                            if turn.start {
-                                task.start(game, &mut context);
-                            } else {
-                                task.tick(game, &mut context);
-                            }
-                        })?;
-                        match outcome {
-                            ConfigurationTaskOutcome::Pending => Ok(None),
-                            ConfigurationTaskOutcome::Finish => Ok(Some(turn.ordinal)),
-                            ConfigurationTaskOutcome::Fail(reason) => Err(reason),
-                        }
-                    });
-                    let mut task = Some(task);
-                    if commit {
-                        self.lan.as_mut()?.hub.lan.configuration_tasks.restore_task(
-                            connection,
-                            &session,
-                            turn.ordinal,
-                            &mut task,
-                        );
+                    })?;
+                    match outcome {
+                        ConfigurationTaskOutcome::Pending => Ok(None),
+                        ConfigurationTaskOutcome::Finish => Ok(Some(turn.ordinal)),
+                        ConfigurationTaskOutcome::Fail(reason) => Err(reason),
                     }
-                    drop(task);
-                    // Only a committed start can immediately open the next turn.
-                    if !turn.start || !commit || !session.finished() {
-                        break;
-                    }
+                });
+                let mut task = Some(task);
+                if commit {
+                    self.lan.as_mut()?.hub.lan.configuration_tasks.restore_task(
+                        connection,
+                        &session,
+                        turn.ordinal,
+                        &mut task,
+                    );
                 }
-                if let Some(task) = session.take_spawn() {
-                    match self.tick_prepare_spawn(task) {
-                        Ok(task) => session.advance_spawn(task),
-                        Err(error) => session.fail(error),
-                    }
+                drop(task);
+                // Only a committed start can immediately open the next turn.
+                if !turn.start || !commit || !session.finished() {
+                    break;
+                }
+            }
+            if let Some(task) = session.take_spawn() {
+                match self.tick_prepare_spawn(task) {
+                    Ok(task) => session.advance_spawn(task),
+                    Err(error) => session.fail(error),
                 }
             }
         }
-        self.lan.take()
+        Some(())
+    }
+
+    fn spawn_level_current(&self, level: SpawnLevel) -> bool {
+        Dim::exists(level.id) && self.levels.runtime.generation_of(level.id) == level.generation
+    }
+
+    /// PlayerList's unknown-dimension path uses the Overworld. A runtime level's
+    /// ticket disappeared with that open, so prepare a fresh Overworld spawn.
+    fn prepare_overworld_spawn(&self, lost: SpawnLevel, rotation: [f32; 2]) -> SpawnTask {
+        log::warn!(
+            "Unknown respawn dimension {}, preparing spawn in the Overworld",
+            lost.id
+        );
+        SpawnTask::Find {
+            level: SpawnLevel {
+                id: Dim::Overworld.id(),
+                generation: 0,
+            },
+            suggestion: self.world_spawn_position().map(|v| v.floor() as i32),
+            rotation,
+            finder: None,
+        }
+    }
+
+    /// Revalidate on the game thread, even when the level was lost between
+    /// sending FinishConfiguration and seeing its acknowledgement.
+    pub(super) fn acknowledged_spawn(
+        &self,
+        configured: &Configured,
+    ) -> Option<Result<Option<PreparedSpawn>, String>> {
+        let session = configured.session();
+        if let Some(spawn) = session.prepared_spawn()
+            && !self.spawn_level_current(spawn.level)
+        {
+            session.advance_spawn(self.prepare_overworld_spawn(spawn.level, spawn.rotation));
+        }
+        session
+            .result()
+            .map(|r| r.map(|()| session.prepared_spawn()))
     }
 
     /// `PrepareSpawnTask`: resolve the place before play, load its FULL square,
@@ -202,10 +237,14 @@ impl Game<'_> {
                     .find(|id| shapes.has(id))
                     .map_or(Dim::Overworld, Dim::from_id)
                     .id();
+                let level = SpawnLevel {
+                    id: dimension,
+                    generation: self.levels.runtime.generation_of(dimension),
+                };
                 let rotation = saved.rotation.unwrap_or(self.level.world_spawn_angle);
                 if let Some(position) = saved.position {
                     let prepared = PreparedSpawn {
-                        dimension,
+                        level,
                         position,
                         rotation,
                     };
@@ -218,7 +257,7 @@ impl Game<'_> {
                     return Ok(SpawnTask::Load(prepared));
                 }
                 SpawnTask::Find {
-                    dimension,
+                    level,
                     suggestion: self.world_spawn_position().map(|v| v.floor() as i32),
                     rotation,
                     finder: None,
@@ -226,24 +265,29 @@ impl Game<'_> {
             }
             task => task,
         };
-        let dimension = match &task {
-            SpawnTask::Find { dimension, .. } => dimension,
-            SpawnTask::Load(p) | SpawnTask::Ready(p) => &p.dimension,
+        let (level, rotation) = match &task {
+            SpawnTask::Find {
+                level, rotation, ..
+            } => (*level, *rotation),
+            SpawnTask::Load(p) | SpawnTask::Ready(p) => (p.level, p.rotation),
             SpawnTask::Start(_) => unreachable!(),
         };
+        if !self.spawn_level_current(level) {
+            return Ok(self.prepare_overworld_spawn(level, rotation));
+        }
         let back = self.dim;
-        self.enter_level(Dim::from_id(dimension))
+        self.enter_level(Dim::from_id(level.id))
             .map_err(|e| e.to_string())?;
         let task = match task {
             SpawnTask::Find {
-                dimension,
+                level,
                 suggestion,
                 rotation,
                 mut finder,
             } => match self.search_spawn(suggestion, &mut finder) {
                 Ok(feet) => {
                     let prepared = PreparedSpawn {
-                        dimension,
+                        level,
                         position: [feet.x, feet.y, feet.z],
                         rotation,
                     };
@@ -254,7 +298,7 @@ impl Game<'_> {
                 Err(chunk) => {
                     self.tickets.add_spawn(chunk, SpawnTicketKind::Search);
                     SpawnTask::Find {
-                        dimension,
+                        level,
                         suggestion,
                         rotation,
                         finder,
@@ -279,16 +323,16 @@ impl Game<'_> {
         Ok(task)
     }
 
-    pub(super) fn tick_spawn_tickets(&mut self, running: bool) {
+    pub(super) fn tick_spawn_tickets(&mut self, running: bool, notify: bool) {
         if self.tickets.spawn_areas().next().is_some() {
             // ServerChunkCache.tick doesn't purge in a frozen level, nor
             // does pause-when-empty tick the cache (it only polls chunk work).
             if running {
-                let world = &self.world;
+                let streaming = &self.streaming;
                 self.tickets
-                    .tick_spawn(|center, radius| spawn_area_full(world, center, radius));
+                    .tick_spawn(|center| streaming.chunk_ready_for_saving(center));
             }
-            self.update_chunk_tickets();
+            self.rebuild_chunk_tickets(notify);
         }
     }
 

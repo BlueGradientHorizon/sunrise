@@ -1,19 +1,6 @@
 //! Read configuration while the server thread advances the task queue.
-use super::super::configuration_tasks::{ConfigurationRequest, PreparedSpawn, Session};
+use super::super::configuration_tasks::{ConfigurationRequest, Configured, Session};
 use super::*;
-
-/// Hold the ready ticket through `FinishConfiguration` acknowledgement, even on error.
-pub(super) struct Configured(Arc<Session>);
-impl Configured {
-    pub(super) fn spawn(&self) -> Option<PreparedSpawn> {
-        self.0.prepared_spawn()
-    }
-}
-impl Drop for Configured {
-    fn drop(&mut self) {
-        self.0.close();
-    }
-}
 
 pub(super) fn configure(
     c: &mut ConfigIo<'_>,

@@ -156,6 +156,17 @@ impl Game<'_> {
         pressed: bool,
         repeat: bool,
     ) -> Result<()> {
+        self.mapped_key_event_from(key, pressed, repeat, Source::Keyboard)
+    }
+    /// Apply a physical key edge from `source` to every mapping bound to it, once per binding
+    /// (`KeyboardHandler.keyPress` -> `KeyMapping.set` / `KeyMapping.click`).
+    pub(super) fn mapped_key_event_from(
+        &mut self,
+        key: KeyCode,
+        pressed: bool,
+        repeat: bool,
+        source: Source,
+    ) -> Result<()> {
         let action = match (pressed, repeat) {
             (false, _) => KeyAction::Release,
             (_, false) => KeyAction::Press,
@@ -169,7 +180,7 @@ impl Game<'_> {
         for mapped in self.settings.keys.translate_all(key) {
             match mapped {
                 Ok(k) => {
-                    self.mapped_key(k, pressed, repeat, key, Source::Keyboard)?;
+                    self.mapped_key_dispatch(k, pressed, repeat, key, source, true)?;
                 }
                 Err(button) => {
                     if let Some(pressed) = keyboard_button(
@@ -181,7 +192,7 @@ impl Game<'_> {
                         action,
                     ) {
                         if button != MouseButton::Middle {
-                            self.mouse_mapping(button, pressed, Source::Keyboard)?;
+                            self.mouse_mapping(button, pressed, source)?;
                         }
                     } else if container_key_clones(button, action) {
                         self.inventory_pick_key();
@@ -198,14 +209,25 @@ impl Game<'_> {
         input: &str,
         pressed: bool,
     ) -> Result<()> {
+        self.mapped_mouse_event_from(button, input, pressed, Source::Keyboard)
+    }
+    /// Apply a physical mouse button edge from `source` to every mapping bound to `input`,
+    /// once per binding (`MouseHandler.onButton` -> `KeyMapping.set` / `KeyMapping.click`).
+    pub(super) fn mapped_mouse_event_from(
+        &mut self,
+        button: MouseButton,
+        input: &str,
+        pressed: bool,
+        source: Source,
+    ) -> Result<()> {
         let screen_open = self.mod_mappings_screen_open();
         self.vanilla_mappings
             .mouse_event(&self.settings.keys, input, pressed, screen_open);
         for mapped in self.settings.keys.translate_mouse_all(button) {
             match mapped {
                 Err(MouseButton::Middle) => {}
-                Err(b) => self.mouse_mapping(b, pressed, Source::Keyboard)?,
-                Ok(k) => self.mapped_key(k, pressed, false, k, Source::Keyboard)?,
+                Err(b) => self.mouse_mapping(b, pressed, source)?,
+                Ok(k) => self.mapped_key_dispatch(k, pressed, false, k, source, true)?,
             }
         }
         Ok(())
@@ -224,6 +246,24 @@ impl Game<'_> {
         repeat: bool,
         raw: KeyCode,
         source: Source,
+    ) -> Result<()> {
+        self.mapped_key_dispatch(
+            key,
+            pressed,
+            repeat,
+            raw,
+            source,
+            source == Source::Keyboard,
+        )
+    }
+    fn mapped_key_dispatch(
+        &mut self,
+        key: KeyCode,
+        pressed: bool,
+        repeat: bool,
+        raw: KeyCode,
+        source: Source,
+        vanilla_queued: bool,
     ) -> Result<()> {
         if self.screen == Screen::Playing && self.replay.playing() {
             if !pressed {
@@ -281,9 +321,9 @@ impl Game<'_> {
                 self.vanilla_mappings.click(slot);
             }
         }
-        // The window events already queued their mapping clicks by resolved slot. Screen
-        // keys still see the immediately delivered input; controller/socket edges queue here.
-        if source == Source::Keyboard {
+        // The window and mapped-input paths already queued their mapping clicks by resolved slot.
+        // Screen keys still see the immediately delivered input; direct controller edges queue here.
+        if vanilla_queued {
             self.immediate_key_pressed(key, raw)
         } else if !repeat || key == KeyCode::KeyQ {
             self.key_pressed(key, raw)
@@ -343,14 +383,18 @@ impl Game<'_> {
     /// What one whole wheel step does in play (`MouseHandler.onScroll`): a spectator's menu or
     /// flying speed, else the selected hotbar slot.
     pub(super) fn hotbar_wheel_step(&mut self, wheel: i32, vertical_steps: i32) {
-        if self.spectator() && self.spectator_gui.is_menu_active() {
+        if self.own_player_is_spectator() && self.spectator_gui.is_menu_active() {
             self.spectator_scroll(-wheel);
-        } else if self.spectator() {
-            if let Some(player) = &mut self.player {
+        } else if self.own_player_is_spectator() {
+            let speed = self.player.as_mut().map(|player| {
                 player.flying_speed = sunrise_client::mouse::spectator_flying_speed(
                     player.flying_speed,
                     vertical_steps,
                 );
+                player.flying_speed
+            });
+            if let Some(speed) = speed {
+                self.set_remote_flying_speed(speed);
             }
         } else {
             self.selected = sunrise_client::mouse::ScrollWheelHandler::next_selection(
@@ -428,14 +472,7 @@ impl Game<'_> {
             }
         }
     }
-    /// Two mappings with one default button are separate mappings all the same
-    /// (`Minecraft.handleKeybinds`): whether the middle-button action a physical `input` translated
-    /// to is one of those it is bound to, for this player now.
-    pub(super) fn shared_default_acts(&self, button: MouseButton, input: Option<&str>) -> bool {
-        button != MouseButton::Middle
-            || input.is_none_or(|input| self.settings.keys.middle_acts(input, self.spectator()))
-    }
-    /// A mouse button while playing (window or control socket).
+    /// A translated mouse mapping (`Left` = attack, `Right` = use, `Middle` = middle pair) while playing.
     pub(super) fn play_mouse(&mut self, button: MouseButton, pressed: bool) -> Result<()> {
         if pressed {
             self.pvp_click(button);
@@ -443,20 +480,21 @@ impl Game<'_> {
         if self.sleeping.is_some() {
             return Ok(());
         }
-        let name = match button {
-            MouseButton::Left => "key.attack",
-            MouseButton::Right => "key.use",
-            MouseButton::Middle if self.spectator() => "key.spectatorHotbar",
-            MouseButton::Middle => "key.pickItem",
+        let names: &[&str] = match button {
+            MouseButton::Left => &["key.attack"],
+            MouseButton::Right => &["key.use"],
+            MouseButton::Middle => &["key.pickItem", "key.spectatorHotbar"],
             _ => return Ok(()),
         };
-        let slot =
-            sunrise_client::keybinds::VanillaMappingSlot::by_name(name).expect("known mapping");
-        let enabled = sunrise_client::keymapping::toggle_index(slot)
-            .is_some_and(|i| self.toggle_options()[i]);
-        self.vanilla_mappings
-            .state_mut(slot)
-            .button(pressed, false, enabled);
+        for name in names {
+            let slot =
+                sunrise_client::keybinds::VanillaMappingSlot::by_name(name).expect("known mapping");
+            let enabled = sunrise_client::keymapping::toggle_index(slot)
+                .is_some_and(|i| self.toggle_options()[i]);
+            self.vanilla_mappings
+                .state_mut(slot)
+                .button(pressed, false, enabled);
+        }
         Ok(())
     }
 }

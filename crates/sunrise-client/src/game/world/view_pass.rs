@@ -45,7 +45,8 @@ impl Game<'_> {
             self.enter_level(dim)?;
             self.update_dedicated_streaming();
             self.lan_update_streaming();
-            self.tick_spawn_tickets(running);
+            // This is not a level tick: rebuilding its loading levels tells no listeners.
+            self.tick_spawn_tickets(running, false);
             self.update_world();
             // `LevelChunk.postProcessGeneration` comes before a chunk is sent
             // (`ChunkMap.prepareTickingChunk`, then `onChunkReadyToSend`), ticked or not.

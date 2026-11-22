@@ -167,6 +167,21 @@ impl Game<'_> {
                 .map(|(center, radius)| (center, radius - 1)),
         );
         let dim = self.dim;
+        if let Some(host) = &self.lan {
+            self.streaming.extra.extend(
+                host.hub
+                    .lan
+                    .configuration_tasks
+                    .loading_spawns(dim.id())
+                    .filter(|&center| !self.tickets.holds_player_spawn(center))
+                    .map(|center| {
+                        (
+                            center,
+                            sunrise_client::ticket_levels::PLAYER_SPAWN_RADIUS - 1,
+                        )
+                    }),
+            );
+        }
         self.streaming.extra.extend(
             self.server_trips
                 .iter()

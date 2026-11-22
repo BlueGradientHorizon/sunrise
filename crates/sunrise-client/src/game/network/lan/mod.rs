@@ -29,7 +29,7 @@ use sunrise_client::{
     lan::{
         self, NetConfig,
         chunks::ChunkEncoder,
-        configuration_tasks::PreparedSpawn,
+        configuration_tasks::{Configured, PreparedSpawn},
         data::{BIOME_REGISTRY, SyncData},
         entity::{EntityState, States},
         hub::{HostEvent, Hub, HubConfig, TickCtx, stuck_meta},
@@ -40,7 +40,7 @@ use sunrise_client::{
     world::World,
 };
 use sunrise_protocol::{
-    entity_data::{Value, serializer},
+    entity_data::{Particles, Value, serializer},
     packets::play::{self, Clientbound as C},
 };
 use sunrise_world::block_collision::BlockCollisionRegistry;
@@ -55,6 +55,8 @@ pub struct LanSettings {
 
 pub(super) struct LanHost {
     pub hub: Hub,
+    /// Acknowledged joins whose runtime destination closed before placement.
+    spawn_joins: Vec<(u32, Configured)>,
     /// The mods heard that everyone still here leaves with the server.
     pub players_told_left: bool,
     pub settings: LanSettings,
@@ -388,7 +390,11 @@ pub(super) fn mob_meta(
         Some(modified) => meta.extend_from_slice(&modified.meta),
         None => meta.extend(hub.effect_meta(mob_effects(m))),
     }
-    defaults.push((10, serializer::PARTICLES, Value::Particles(Vec::new())));
+    defaults.push((
+        10,
+        serializer::PARTICLES,
+        Value::Particles(Particles::new()),
+    ));
     defaults.push((11, serializer::BOOLEAN, Value::Bool(false)));
     // LivingEntity.DATA_ARROW_COUNT_ID and DATA_STINGER_COUNT_ID.
     stuck_meta(
@@ -1293,6 +1299,7 @@ impl Game<'_> {
         self.lan = Some(LanHost {
             players_told_left: false,
             hub,
+            spawn_joins: Vec::new(),
             settings: LanSettings { port, ..settings },
             play: HashMap::new(),
             menus: HashMap::new(),
@@ -2181,7 +2188,45 @@ impl Game<'_> {
                     let host = self.lan.as_mut()?;
                     host.hub.broadcast(&C::PlayerInfoUpdate(*update));
                 }
-                HostEvent::Joined(conn, prepared) => {
+                HostEvent::Joined(conn, configured) => {
+                    let host = self.lan.as_ref()?;
+                    if host
+                        .hub
+                        .guest(conn)
+                        .is_none_or(|g| !g.left_reason.is_empty())
+                    {
+                        continue;
+                    }
+                    let prepared = if let Some(ref lease) = configured {
+                        if lease.session().closed() {
+                            continue;
+                        }
+                        match self.acknowledged_spawn(lease) {
+                            Some(Ok(spawn)) => spawn,
+                            Some(Err(error)) => {
+                                log::warn!(
+                                    "Could not prepare spawn after acknowledgement: {error}"
+                                );
+                                self.lan.as_mut()?.hub.kick(
+                                    conn,
+                                    sunrise_protocol::text::translatable(
+                                        "multiplayer.disconnect.invalid_player_data",
+                                        &[],
+                                    ),
+                                );
+                                continue;
+                            }
+                            None => {
+                                self.lan
+                                    .as_mut()?
+                                    .spawn_joins
+                                    .push((conn, configured.unwrap()));
+                                continue;
+                            }
+                        }
+                    } else {
+                        None
+                    };
                     // The mods may refuse the login before the player is placed.
                     if let Some((uuid, name)) = self
                         .lan
@@ -2451,9 +2496,16 @@ impl Game<'_> {
         if self.level_pass.packets_drained {
             return;
         }
-        let Some(mut host) = self.take_lan_for_packet_tick() else {
+        let Some(mut host) = self.lan.take() else {
             return;
         };
+        // ServerLoginPacketListenerImpl waits for PlayerList.remove, which saves the old
+        // guest. Snapshot the new requests before polling play events: the old connection
+        // publishes Left before releasing the reservation that admitted its replacement.
+        let configuration_requests = self
+            .level_pass
+            .first
+            .then(|| host.hub.lan.configuration_requests().collect::<Vec<_>>());
         let holding = lan::Holding::start();
         // Last tick's tracked entities: enough for place collision and joins
         // before this tick moves anyone.
@@ -2497,6 +2549,13 @@ impl Game<'_> {
             } else {
                 Vec::new()
             };
+            if pass.first {
+                events.extend(
+                    host.spawn_joins
+                        .drain(..)
+                        .map(|(conn, lease)| HostEvent::Joined(conn, Some(lease))),
+                );
+            }
             events.extend(sunrise_client::spans::time("lan_drain", || {
                 host.hub.drain_packets(&mut ctx)
             }));
@@ -2536,6 +2595,11 @@ impl Game<'_> {
         self.level_pass.packets_drained = true;
         drop(holding);
         self.lan = Some(host);
+        if let Some(requests) = configuration_requests {
+            sunrise_client::spans::time("lan_configuration_tasks", || {
+                self.tick_lan_configuration_tasks(requests)
+            });
+        }
     }
 
     /// The entity id counter, once the entities Sunrise keeps without one
@@ -2989,11 +3053,15 @@ impl Game<'_> {
         // `PrepareSpawnTask.Ready.spawn` waits for saved entities before the player loads.
         // Streaming commits terrain and the corresponding entity records together.
         if let Some(prepared) = prepared {
-            let level = super::Dim::from_id(prepared.dimension);
+            let level = super::Dim::from_id(prepared.level.id);
             if let Err(e) = self.enter_level(level) {
                 log::error!("could not open {}: {e}", level.id());
                 return;
             }
+            self.tickets.add_spawn(
+                prepared.chunk(),
+                sunrise_client::ticket_levels::SpawnTicketKind::Player,
+            );
             self.spawn_loaded_entities();
             self.world.entities_pending.clear();
             if let Err(e) = self.enter_level(back) {
@@ -3039,7 +3107,7 @@ impl Game<'_> {
             .update_guest(conn, |g| {
                 // Ready.spawn loads the player data again, but snaps to the prepared place.
                 if let Some(prepared) = prepared {
-                    g.dimension = prepared.dimension.to_owned();
+                    g.dimension = prepared.level.id.to_owned();
                     g.place(prepared.position);
                     [g.yaw, g.pitch] = prepared.rotation;
                     g.head_yaw = g.yaw;
@@ -3671,6 +3739,7 @@ mod tests {
                 },
                 hub,
                 players_told_left: false,
+                spawn_joins: Vec::new(),
                 play: Default::default(),
                 menus: Default::default(),
                 broken: Default::default(),
@@ -4976,7 +5045,7 @@ mod tests {
                 (meta.iter())
                     .filter_map(|(index, _, value)| match value {
                         Value::Particles(list) if *index == 10 => {
-                            Some((10, list.iter().map(named).collect::<Vec<_>>()))
+                            Some((10, list.iter().map(|p| named(&p)).collect::<Vec<_>>()))
                         }
                         Value::Bool(ambient) if *index == 11 => {
                             assert!(*ambient);
@@ -5873,6 +5942,7 @@ mod merchant_packet_tests {
             hub.guests.push(guest);
             game.lan = Some(super::LanHost {
                 hub,
+                spawn_joins: Vec::new(),
                 players_told_left: false,
                 settings: super::LanSettings {
                     port: 0,

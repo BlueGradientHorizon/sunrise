@@ -122,6 +122,27 @@ impl Tasks {
             .remove(&id)
             .map_or_else(Vec::new, |entry| entry.queue)
     }
+    /// `getChunkRangeFuture` keeps the requested generation work alive apart from the ticket's age.
+    pub fn loading_spawns(&self, dimension: &'static str) -> impl Iterator<Item = (i32, i32)> + '_ {
+        self.sessions.values().filter_map(move |entry| {
+            let state = entry
+                .session
+                .state
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            match state.spawn.as_ref() {
+                Some(SpawnTask::Load(spawn))
+                    if spawn.level.id == dimension
+                        && !state.closed
+                        && !entry.session.transport().closed() =>
+                {
+                    Some(spawn.chunk())
+                }
+                _ => None,
+            }
+        })
+    }
+
     /// Visit the next session without retaining a borrow across a task callback.
     pub fn next_session(
         &self,
@@ -143,10 +164,17 @@ impl Tasks {
             })
     }
 }
+/// The particular open of the destination level, not just its dimension name.
+#[derive(Clone, Copy, Debug)]
+pub struct SpawnLevel {
+    pub id: &'static str,
+    pub generation: u32,
+}
+
 /// The prepared place and angle survive the configuration acknowledgement.
 #[derive(Clone, Copy, Debug)]
 pub struct PreparedSpawn {
-    pub dimension: &'static str,
+    pub level: SpawnLevel,
     pub position: [f64; 3],
     pub rotation: [f32; 2],
 }
@@ -159,10 +187,24 @@ impl PreparedSpawn {
     }
 }
 
+/// Keeps PrepareSpawnTask.Ready alive until game-thread placement, or until
+/// the connection or join is dropped.
+pub struct Configured(pub(crate) Arc<Session>);
+impl Configured {
+    pub fn session(&self) -> &Session {
+        &self.0
+    }
+}
+impl Drop for Configured {
+    fn drop(&mut self) {
+        self.0.close();
+    }
+}
+
 pub enum SpawnTask {
     Start(u128),
     Find {
-        dimension: &'static str,
+        level: SpawnLevel,
         suggestion: [i32; 3],
         rotation: [f32; 2],
         finder: Option<PlayerSpawnFinder>,
@@ -237,9 +279,10 @@ impl Session {
 
     pub fn advance_spawn(&self, task: SpawnTask) {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        if let SpawnTask::Ready(spawn) = &task {
-            state.prepared_spawn = Some(*spawn);
-        }
+        state.prepared_spawn = match &task {
+            SpawnTask::Ready(spawn) => Some(*spawn),
+            _ => None,
+        };
         state.spawn = Some(task);
     }
 
@@ -607,7 +650,10 @@ mod tests {
         assert!(matches!(session.take_spawn(), Some(SpawnTask::Start(123))));
         assert!(session.result().is_none());
         let prepared = PreparedSpawn {
-            dimension: "minecraft:the_nether",
+            level: SpawnLevel {
+                id: "minecraft:the_nether",
+                generation: 0,
+            },
             position: [-0.5, 67.0, 48.5],
             rotation: [135.0, -20.0],
         };

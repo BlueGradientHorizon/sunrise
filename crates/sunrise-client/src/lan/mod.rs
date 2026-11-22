@@ -77,7 +77,7 @@ pub enum NetEvent {
     /// Frozen receiver identity and credit, retained through its main root transaction.
     RawPayload(Box<crate::raw_payloads::Delivery>),
     /// A client finished configuration and enters the play state.
-    Joined(Box<Joined>, Option<configuration_tasks::PreparedSpawn>),
+    Joined(Box<Joined>, Option<configuration_tasks::Configured>),
     /// A packet and the bytes of its body on the wire.
     Packet(u32, Box<play::Serverbound>, usize),
     /// The connection ended (reason for the log).

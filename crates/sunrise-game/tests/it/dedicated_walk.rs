@@ -42,6 +42,13 @@ pub(crate) fn resources() -> Option<PathBuf> {
 
 /// Log in offline and finish configuration as a vanilla client that knows the core pack.
 pub(crate) fn join(port: u16, name: &str) -> sunrise_protocol::Result<Connection> {
+    let mut c = configure(port, name)?;
+    c.send(&cfg::Serverbound::FinishConfiguration(Empty).encode())?;
+    Ok(c)
+}
+
+/// Stop at the server's FinishConfiguration, before acknowledging it.
+pub(crate) fn configure(port: u16, name: &str) -> sunrise_protocol::Result<Connection> {
     let mut c = Connection::connect("127.0.0.1", port, Duration::from_secs(5))?;
     c.reader.set_read_timeout(Some(Duration::from_secs(60)))?;
     c.send(
@@ -77,10 +84,8 @@ pub(crate) fn join(port: u16, name: &str) -> sunrise_protocol::Result<Connection
                 &cfg::Serverbound::SelectKnownPacks(cfg::SelectKnownPacks { packs: p.packs })
                     .encode(),
             )?,
-            cfg::Clientbound::FinishConfiguration(_) => {
-                c.send(&cfg::Serverbound::FinishConfiguration(Empty).encode())?;
-                return Ok(c);
-            }
+            cfg::Clientbound::KeepAlive(p) => c.send(&cfg::Serverbound::KeepAlive(p).encode())?,
+            cfg::Clientbound::FinishConfiguration(_) => return Ok(c),
             _ => {}
         }
     }
