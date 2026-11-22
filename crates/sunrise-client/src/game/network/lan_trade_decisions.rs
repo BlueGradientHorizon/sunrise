@@ -128,7 +128,8 @@ impl Game<'_> {
         }
         let Some(mob) = self.lan.as_ref().and_then(|host| {
             let gm = host.menus.get(&conn)?.merchant.as_ref()?;
-            (gm.window == p.container)
+            // A non-quick-craft click while a drag is active only resets the drag (`doClick`).
+            (gm.window == p.container && !gm.drag.active())
                 .then_some(gm.merchant.mob)
                 .flatten()
         }) else {
@@ -217,12 +218,12 @@ impl Game<'_> {
                     seen = menu.stacked_click(env, 2, button, input);
                 },
             );
-            if let Some(frozen) = seen {
+            if let Some(frozen) = seen.filter(Self::stacked_listens_for) {
                 let host = self.lan.as_ref().unwrap();
                 let stamp = host.menus[&conn].merchant.stamp();
                 let hub_generation = host.hub.guest(conn).expect("planned guest").menu_generation;
                 // The shared pickup decision checks its journal epoch as well as these stacks.
-                let same = frozen.clone();
+                let (same, resolved_slot, primary) = (frozen.clone(), frozen.slot, frozen.primary);
                 if self.stacked_pickup(
                     route,
                     frozen,
@@ -238,6 +239,25 @@ impl Game<'_> {
                             && gm.slots[2] == same.clicked
                             && guest.carried == same.carried)
                             .then(|| same.clone())
+                    },
+                    |game, carried, clicked| {
+                        let mut took = false;
+                        let _ = game.lan_merchant_op_with(
+                            conn,
+                            Some(p.container),
+                            false,
+                            MerchantRun::Probe,
+                            |menu, env| {
+                                took = menu.probe_carried_vanilla_override(
+                                    env,
+                                    resolved_slot,
+                                    primary,
+                                    carried,
+                                    clicked,
+                                );
+                            },
+                        );
+                        took
                     },
                     |_, answer| stacked = answer.cloned(),
                 ) == Pickup::Refused
@@ -440,6 +460,7 @@ impl Game<'_> {
             .and_then(|p| p.merchant.as_mut())
             .expect("validated merchant window");
         gm.slots = std::array::from_fn(|slot| plan.menu.slot(slot).cloned());
+        gm.drag = plan.menu.quick_craft_state();
         gm.merchant.session = session;
         self.merchant_drops(conn, std::mem::take(&mut plan.menu.dropped));
     }

@@ -128,6 +128,10 @@ impl Game<'_> {
             self.crafter_slot_clicked(*slot, *button, *input);
         }
         if let Some(done) = self.stacked_menu_ops(ops) {
+            // CreativeModeInventoryScreen.slotClicked: the changed slots go out with the click.
+            if done && self.remote.is_some() && self.screen == Screen::Creative {
+                self.send_creative_slots();
+            }
             return done;
         }
         let ops = ops.to_vec();
@@ -611,12 +615,6 @@ impl Game<'_> {
             // Attached after the slots were set: setting them is not a click.
             menu.merchant = session.map(|(s, _)| s);
         }
-        // `FurnaceResultSlot.checkTakeAchievements` pays out on what left the output slot.
-        let furnace_before = if matches!(kind, Kind::Furnace(_)) {
-            menu.slot(2).cloned().map_or(0, |s| s.count)
-        } else {
-            0
-        };
         if anvil_open && self.remote.is_some() {
             // The AnvilScreen listens while the click is predicted (its slotChanged).
             menu.anvil.seen_input = before[0].clone();
@@ -645,11 +643,12 @@ impl Game<'_> {
             self.merchant_sync_out(s);
         }
         let after: Vec<Option<ItemStack>> = (0..total).map(|i| menu.slot(i).cloned()).collect();
-        // Only a furnace has a result slot to compare: an enchanting table has two slots.
-        let furnace_after = if matches!(kind, Kind::Furnace(_)) {
-            after[2].as_ref().map_or(0, |s| s.count)
+        // `FurnaceResultSlot.checkTakeAchievements` pays out only on actual takes (`onTake` /
+        // `onQuickCraft`), never on direct `Slot.set` edits.
+        let furnace_extracted = if matches!(kind, Kind::Furnace(_)) {
+            std::mem::take(&mut menu.furnace_extracted)
         } else {
-            0
+            Vec::new()
         };
         let carried = menu.carried.take();
         let dropped = std::mem::take(&mut menu.dropped);
@@ -698,7 +697,7 @@ impl Game<'_> {
             for stack in &brewed {
                 self.trigger_brewed_potion(stack);
             }
-            if furnace_before > furnace_after
+            if !furnace_extracted.is_empty()
                 && self.remote.is_none()
                 && let (Some(pos), Some(p)) = (self.container, self.player.as_ref())
             {
