@@ -664,12 +664,15 @@ impl Game<'_> {
         host.hub.guests.update(gi, |guest| state.swap(guest));
         let play = host.play.insert(conn, Default::default());
         let menus = host.menus.insert(conn, Default::default());
-        // In a turn, so the setup's stack in hand gives the attack speed the charge is for.
-        let charged = !full_attack_charge
-            || self
-                .as_guest_at(gi, conn, Game::charge_attack_fully)
-                .is_ok();
-        let outcome = if charged {
+        // This body is created with the setup's equipment and never reaches a body tick.
+        // Install its modifiers before the first action or calculation of attack charge.
+        let initialized = self.as_guest_at(gi, conn, |game| {
+            game.put_equipment_modifiers();
+            if full_attack_charge {
+                game.charge_attack_fully();
+            }
+        });
+        let outcome = if initialized.is_ok() {
             self.perform_fake_action(gi, conn, action)
         } else {
             Err(ActionRefused::Busy)
@@ -5388,14 +5391,21 @@ pub(super) mod fake_action_tests {
     #[test]
     #[ignore = "daily"]
     fn scoped_fake_attack_with_full_charge_deals_the_weapons_full_damage() {
+        use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
         use mod_api::PlayerActionSetup;
-        super::super::native_entity_refs::tests::with_game(|game| {
+        if run_fresh_cases(
+            "game::native_server::fake_action_tests::scoped_fake_attack_with_full_charge_deals_the_weapons_full_damage",
+            "SUNRISE_SCOPED_ATTACK_CASE",
+            &["attack"],
+        ) {
+            return;
+        }
+        with_game(|game| {
             let (player, conn, _) = fake(game, None, 0);
             game.as_guest(conn, |g| g.attack_ticks = 3).unwrap();
             let charged = zombie(game, 5000, [2.0, 64.0, 0.5]);
             // Out of a sweep's reach of the first.
             let uncharged = zombie(game, 5001, [-1.5, 64.0, 0.5]);
-            let full = health(game, 5000);
             let mut attack = |target, full_attack_charge| {
                 let mut setup = PlayerActionSetup::new(
                     Some(crate::game::api_values::test_snapshot(&ItemStack::new(
@@ -5420,11 +5430,19 @@ pub(super) mod fake_action_tests {
             };
             attack(charged, true);
             attack(uncharged, false);
-            // A diamond sword's 7, after a zombie's 2 armour (`getDamageAfterAbsorb`: the armour
-            // left is at least a fifth of it, 0.4).
-            let dealt = 7.0f32 * (1.0 - 0.4 / 25.0);
-            assert!((full - health(game, 5000) - dealt).abs() < 1e-4);
-            assert!(full - health(game, 5001) < dealt / 2.0);
+            // Diamond sword: 7 damage and 4 + (-2.4f32) attack speed. Player.attack samples
+            // the empty ticker at 0.5, then CombatRules applies the zombie's 2 armour.
+            let delay = (1.0 / (4.0 + f64::from(-2.4f32)) * 20.0) as f32;
+            let charge = 0.5f32 / delay;
+            let after_hit = |damage: f32| {
+                let armor = (2.0 - damage / 2.0).max(2.0 * 0.2);
+                20.0 - damage * (1.0 - armor / 25.0)
+            };
+            assert_eq!(health(game, 5000), after_hit(7.0));
+            assert_eq!(
+                health(game, 5001),
+                after_hit(7.0 * (0.2 + charge * charge * 0.8))
+            );
         });
     }
 

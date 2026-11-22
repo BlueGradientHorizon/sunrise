@@ -96,6 +96,7 @@ pub(super) struct BorrowedMobTick<'a> {
     pub(super) uuid: Option<[i32; 4]>,
     pub(super) level_id: &'static str,
     pub(super) round: &'a mut super::super::native_ticks::TickRound,
+    pub(super) stand_result: &'a mut Result<()>,
 }
 impl Game<'_> {
     pub(super) fn tick_borrowed_creatures(
@@ -153,6 +154,15 @@ impl Game<'_> {
         let mut dispatch_panic = None;
         let mut pushes = std::mem::take(state.pushes);
         let original_len = snapshot.len();
+        // A restored list can put new joins first. Keep its storage and view
+        // slots intact, but walk its turns in join order when interleaving stands.
+        let turn_order = (!self.ordered.armor_stands.is_empty()
+            && !mobs.is_sorted_by_key(|mob| mob.join))
+        .then(|| {
+            let mut order: Vec<_> = (0..original_len).collect();
+            order.sort_unstable_by_key(|&slot| mobs[slot].join);
+            order
+        });
         let mut keep = vec![true; original_len];
         let mut grid =
             sunrise_client::mobs::seen_grid::SeenGrid::new(snapshot.iter().map(|s| s.bounds));
@@ -191,8 +201,8 @@ impl Game<'_> {
         let mut resume_from = 0;
         let mut resume_sampled = None;
         let mut resume_guest = None;
-        // The slot of the mob whose own Pre was just told (a type a mod named): it resumes there
-        // with its checks done.
+        // The turn of the mob whose own Pre was just told (a type a mod named): it resumes
+        // there with its checks done.
         let mut told_at: Option<usize> = None;
         // Whether a mob still in the lifted list has left the pass (`keep` false) since the list
         // was last given back: a told-alone yield then takes it out before the call.
@@ -211,6 +221,8 @@ impl Game<'_> {
             let mut retry_rider = None;
             let mut removing_vehicle = None;
             let mut removal = None;
+            let mut stand_cut = None;
+            let mut lid_push = None;
             // A mob told alone hears its Pre right before its tick and its Post right after:
             // stop there, restore the list, tell it while the live rows are readable, and resume.
             let mut tell_pre: Option<(u32, std::sync::Arc<sunrise_client::mobs::MobType>, usize)> =
@@ -273,7 +285,7 @@ impl Game<'_> {
                     && tell_post.is_none()
                     && cursor < original_len
                 {
-                    let slot = cursor;
+                    let slot = turn_order.as_ref().map_or(cursor, |order| order[cursor]);
                     let i = match &positions {
                         None => slot,
                         Some(positions) => {
@@ -294,10 +306,19 @@ impl Game<'_> {
                         }
                     };
                     let m = &mut mobs[i];
+                    if self
+                        .ordered
+                        .armor_stands
+                        .front()
+                        .is_some_and(|&join| join < m.join)
+                    {
+                        stand_cut = Some(m.join);
+                        break;
+                    }
                     let retried = retried_rider.take() == Some(m.id);
                     // Its checks ran before its Pre was told: they don't run again.
                     let resuming = resume.is_some();
-                    let checked = resuming || told_at == Some(slot);
+                    let checked = resuming || told_at == Some(cursor);
                     if blocked.contains(&m.id) || resuming && resume_entity != Some((m.id, m.join))
                     {
                         cursor += 1;
@@ -767,6 +788,20 @@ impl Game<'_> {
                             break;
                         }
                     };
+                    // Shulker.onPeekAmountChange shoves with the shulker's new
+                    // bounds, before the next stand or mob starts its own tick.
+                    if mobs[i].species() == Species::Shulker
+                        && let Some(offset) = events[from..]
+                            .iter()
+                            .position(|event| matches!(event, MobEvent::LidPush { .. }))
+                        && let MobEvent::LidPush {
+                            shulker,
+                            area,
+                            delta,
+                        } = events.remove(from + offset)
+                    {
+                        lid_push = Some((shulker, area, delta));
+                    }
                     super::super::tick_profile::end_mob(level_id, sampled);
                     let m = &mut mobs[i];
                     // Its `xo` (`previous`) is where its tick began, unless a teleport in the
@@ -893,7 +928,11 @@ impl Game<'_> {
                         removing_vehicle = Some(id);
                         break;
                     }
-                    if sting.is_some() || section_yield || tell_post.is_some() || removal.is_some()
+                    if sting.is_some()
+                        || section_yield
+                        || tell_post.is_some()
+                        || removal.is_some()
+                        || lid_push.is_some()
                     {
                         break;
                     }
@@ -909,6 +948,8 @@ impl Game<'_> {
                 && !stinging
                 && retry_rider.is_none()
                 && removing_vehicle.is_none()
+                && stand_cut.is_none()
+                && lid_push.is_none()
                 && !section_yield
                 && tell_pre.is_none()
                 && tell_post.is_none()
@@ -924,12 +965,15 @@ impl Game<'_> {
             // can read or replace another actor's velocity. A section-only
             // or a told-alone yield must not change the normal end-of-pass
             // push ordering.
-            if pause.is_some()
-                || stinging
-                || retry_rider.is_some()
-                || removing_vehicle.is_some()
-                || removal.is_some()
-            {
+            let applied_pushes = !pushes.is_empty()
+                && (pause.is_some()
+                    || stinging
+                    || retry_rider.is_some()
+                    || removing_vehicle.is_some()
+                    || removal.is_some()
+                    || stand_cut.is_some()
+                    || lid_push.is_some());
+            if applied_pushes {
                 for m in &mut mobs {
                     sunrise_client::mobs::apply_mob_pushes(m, &mut pushes);
                 }
@@ -976,11 +1020,13 @@ impl Game<'_> {
             // table and take it back even on unwind.
             let trampling = matches!(pause, Some(Pause::Trample(_)));
             let breeding = matches!(pause, Some(Pause::Breeding { .. }));
-            let sections_in_game = section_table.as_ref().filter(|_| {
+            let live_sections = section_table.as_ref().filter(|_| {
                 trampling
                     || stinging
                     || breeding
                     || removal.is_some()
+                    || stand_cut.is_some()
+                    || lid_push.is_some()
                     || matches!(
                         pause,
                         Some(
@@ -990,12 +1036,7 @@ impl Game<'_> {
                         )
                     )
             });
-            if let Some(sections) = sections_in_game {
-                std::mem::swap(
-                    &mut self.native_lifecycle.entity_sections,
-                    &mut sections.borrow_mut(),
-                );
-            }
+            let mut swapped_sections = None;
             // A work step's restock reaches the screen before any callback can edit it.
             let callback_panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 for restock in state.restocks.drain(..) {
@@ -1006,6 +1047,16 @@ impl Game<'_> {
                         &mut sections.borrow_mut(),
                         &mut section_moves,
                     );
+                }
+                if let Some(sections) = live_sections {
+                    // The just-finished mob wrote through the lifted table. Stand turns,
+                    // removals, births and forced moves that follow write through the owning
+                    // game instead.
+                    std::mem::swap(
+                        &mut self.native_lifecycle.entity_sections,
+                        &mut sections.borrow_mut(),
+                    );
+                    swapped_sections = Some(sections);
                 }
                 if removal.is_some() || breeding {
                     // Consume completed removals before calling a listener which can unwind.
@@ -1121,6 +1172,12 @@ impl Game<'_> {
                         self.mobs.remove(index);
                     }
                 }
+                if let Some((shulker, area, delta)) = lid_push {
+                    self.apply_shulker_lid_push(shulker, area, delta);
+                }
+                if let Some(cut) = stand_cut {
+                    *state.stand_result = self.tick_armor_stands_before(cut);
+                }
                 if !stinging && let Some((id, kind)) = &tell_post {
                     self.native_tick_post_one(round, *id, &kind.id);
                 }
@@ -1135,7 +1192,7 @@ impl Game<'_> {
                 }
             }))
             .err();
-            if let Some(sections) = sections_in_game {
+            if let Some(sections) = swapped_sections {
                 std::mem::swap(
                     &mut self.native_lifecycle.entity_sections,
                     &mut sections.borrow_mut(),
@@ -1157,7 +1214,7 @@ impl Game<'_> {
             if let Some(host) = self.lan.as_mut() {
                 std::mem::swap(&mut host.mob_players, &mut bindings);
             }
-            if callback_panic.is_some() {
+            if callback_panic.is_some() || state.stand_result.is_err() {
                 lent = sunrise_client::health::LentLevel::take(&mut self.world);
                 dispatch_panic = callback_panic;
                 break;
@@ -1175,9 +1232,9 @@ impl Game<'_> {
                 })
                 .unwrap_or_default();
             spare = guests.first().map(|g| g.1.clone());
-            // A trample can lift other mobs without changing their slots. Rebuild
-            // their views before the rest of this pass can read their old bounds.
-            if !unchanged || trampling || pause.is_some() || stinging {
+            // A trample or a flushed push can change other mobs without moving
+            // their slots. Rebuild the views before later turns read old state.
+            if !unchanged || applied_pushes || trampling || pause.is_some() || stinging {
                 let current: sunrise_client::fast_hash::FxHashMap<u32, usize> =
                     mobs.iter().enumerate().map(|(i, m)| (m.id, i)).collect();
                 for (slot, s) in snapshot.iter_mut().enumerate() {
@@ -1221,7 +1278,7 @@ impl Game<'_> {
             retried_rider = retry_rider;
         }
         laps.lap("creature_loop");
-        if dispatch_panic.is_none() {
+        if dispatch_panic.is_none() && state.stand_result.is_ok() {
             if positions.is_none() {
                 let mut flags = keep.into_iter();
                 retain_mob_rows(&mut mobs, &mut player_credit, |_| {
