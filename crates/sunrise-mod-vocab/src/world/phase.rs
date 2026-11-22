@@ -525,6 +525,11 @@ impl RegistrationData {
     pub(crate) fn package_source(&self, mod_id: &str) -> Option<Arc<dyn crate::PackageFileSource>> {
         self.package_files.get(mod_id).cloned()
     }
+    /// The startup-enabled snapshot shared by the mod-facing phase contexts.
+    #[doc(hidden)]
+    pub fn visible_mods(&self) -> Option<&LoadedMods> {
+        self.visible_mods.as_ref()
+    }
     /// Bind the game's pure type-coverage projection. It reads no world or runtime position.
     pub fn with_capability_coverage(
         mut self,
@@ -600,6 +605,12 @@ impl LoadedMods {
             |backend| ((backend.packages)(), (backend.namespace_authority)()),
         );
         Self { entries, authority }
+    }
+
+    fn enabled_at_startup() -> Self {
+        crate::dispatch_scope::backend()
+            .and_then(|backend| (backend.visible_packages)())
+            .unwrap_or_else(Self::new)
     }
 
     /// Package IDs in dispatch order.
@@ -818,7 +829,7 @@ pub trait DataLoadContext {
     /// A loaded mod's setting captured at the owning load boundary, without file I/O.
     fn setting(&self, mod_id: &str, key: &str) -> Option<String>;
 
-    /// The installed package snapshot, including native code switched off at startup.
+    /// The same loaded-mod view available during registration.
     fn mods(&self) -> LoadedMods;
 }
 
@@ -849,7 +860,7 @@ impl<'a> OwningLoad<'a> {
         Self {
             source,
             origin,
-            mods: LoadedMods::new(),
+            mods: LoadedMods::enabled_at_startup(),
         }
     }
 }
@@ -924,7 +935,7 @@ pub trait LoopContext {
     /// A loaded mod's setting captured when this context was built, without file I/O.
     fn setting(&self, mod_id: &str, key: &str) -> Option<String>;
 
-    /// The installed package snapshot, including native code switched off at startup.
+    /// The same loaded-mod view available during registration.
     fn mods(&self) -> LoadedMods;
 }
 
@@ -973,7 +984,7 @@ impl<'a> OwningLoop<'a> {
         Self {
             source,
             side,
-            mods: LoadedMods::new(),
+            mods: LoadedMods::enabled_at_startup(),
         }
     }
 }
@@ -1032,7 +1043,7 @@ pub trait WorldgenHost {
     /// A loaded mod's setting captured when the server built this view, without file I/O.
     fn setting(&self, mod_id: &str, key: &str) -> Option<String>;
 
-    /// The installed package snapshot, including native code switched off at startup.
+    /// The same loaded-mod view available during registration.
     fn mods(&self) -> LoadedMods;
 
     /// `BlockState.setValue`: `state` with its property `key` set to `value`; `state` itself
@@ -1073,7 +1084,7 @@ impl<'a> OwningWorldgen<'a> {
             registry,
             setting,
             state_with_property,
-            mods: LoadedMods::new(),
+            mods: LoadedMods::enabled_at_startup(),
         }
     }
 }
