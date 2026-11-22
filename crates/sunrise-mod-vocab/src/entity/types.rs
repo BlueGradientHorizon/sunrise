@@ -1460,7 +1460,9 @@ pub enum MenuItemsRefusal {
     Client,
     /// The menu's player is not online and placed.
     NoPlayer,
-    /// The handle is stale or not an open native menu (`open_chest_menu` or `open_mod_menu`).
+    /// The handle does not name the player's open [`PlayerRef::open_chest_menu`] or
+    /// [`PlayerRef::open_mod_menu`] window: a stale handle, a menu the game opened (a chest, a
+    /// trade), or the inventory menu.
     NotOpen,
     /// One of the stacks was refused at the game's item conversion boundary: an item the world
     /// lacks, a count or damage the item does not allow.

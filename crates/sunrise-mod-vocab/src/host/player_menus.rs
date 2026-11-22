@@ -16,19 +16,6 @@ pub trait PlayerMenusBackend {
     /// Reads for the acting player use their current inventory, equipment, cursor and ender
     /// contents. On a client, refuses stale players and unsupported menu layouts.
     fn player_container_menu(&self, player: PlayerRef) -> Option<MenuRef>;
-    /// Side: server.
-    /// The native menu `player` has open as window `window` (the window id
-    /// [`PlayerRef::open_chest_menu`], [`PlayerRef::open_mod_menu`], `menu_clicked` and
-    /// `menu_closed` give). Its slots are written as `ItemPlace::MenuSlot` in a transaction,
-    /// and the client is sent each changed slot with the next tick's container sync
-    /// (`AbstractContainerMenu.broadcastChanges`), as for any open menu. `Ok(None)` for
-    /// another window, a menu the game opened, or a stale/unplaced player.
-    /// `Err(LevelReadError::Unavailable)` on a client or outside the world phase.
-    fn player_menu(
-        &self,
-        player: PlayerRef,
-        window: i32,
-    ) -> Result<Option<MenuRef>, LevelReadError>;
 }
 /// The handles' writes of the `player_menus` area, implemented by the game and reached through [`BackendMut`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait
@@ -47,6 +34,30 @@ pub trait PlayerMenusBackendMut {
         entity: BlockEntityRef,
     ) -> Result<bool, BlockEntityError>;
     /// Side: server.
+    /// Opens a chest menu of `rows` rows (1 to 6) titled `title` for a connected player, showing
+    /// `items` (by slot, padded with empty ones), in place of the menu they had open
+    /// (`ServerPlayer.openMenu`): returns the opened [`MenuRef`]. The old menu closes as a close
+    /// does, its cursor stack going back to the player's inventory; `replace` says whether the
+    /// client is first sent a close for it
+    /// (`MenuProvider.shouldTriggerClientSideContainerClosingOnOpen`). `MenuReplace::InPlace`
+    /// changes the title and rows without the client centring the mouse again. Packets for the
+    /// old window are ignored. Update an open menu's contents through its slots or
+    /// [`MenuRef::set_items`], not by opening it again. In a transaction the returned handle
+    /// names only the staged open and cannot read or change any live menu. The live window id
+    /// is allocated at outermost commit; get the live handle with `PlayerRef::container_menu`.
+    /// An abort keeps the current menu without advancing the window counter. Errors:
+    /// `ClickInProgress` (an active speculative quick move or trade refuses the open),
+    /// `PlayerUnavailable`, `Title`, `TitleNotEncodable`, or `Stack`.
+    #[serialize_text]
+    fn player_open_chest_menu(
+        &mut self,
+        player: PlayerRef,
+        rows: u8,
+        title: Text,
+        items: Vec<Option<ItemStack>>,
+        replace: MenuReplace,
+    ) -> Result<MenuRef, OpenMenuError>;
+    /// Side: server.
     /// Opens content mod menu type `menu` for a connected player from anywhere, with no
     /// block (`ServerPlayer.openMenu(provider, extraDataWriter)`): an item's use, an entity,
     /// a command. The menu replaces the one they had open. Its container slots show empty
@@ -63,53 +74,25 @@ pub trait PlayerMenusBackendMut {
     /// not declare results or crafting. The old menu closes on the server as a close does (its
     /// `removed`, `player_container_close`, the cursor stack and crafting grids back to the
     /// inventory) before the new one is built; `replace` says whether the client is first sent
-    /// a close for it, as for [`PlayerRef::open_chest_menu`]. `MenuReplace::InPlace` sends none: the client keeps
-    /// its screen and mouse until the new screen replaces it. The window id, or Ok(None) when
-    /// a mod cancelled the open. Errors: `NotModMenu`, `OwnedSlotsWithResults`,
+    /// a close for it, as for [`PlayerRef::open_chest_menu`]. `MenuReplace::InPlace` sends none:
+    /// the client keeps its screen and mouse until the new screen replaces it. Returns
+    /// `Ok(Some(MenuRef))` for the opened menu, or `Ok(None)` when a mod cancelled the open.
+    /// Errors: `NotModMenu`, `OwnedSlotsWithResults`,
     /// `ClickInProgress` (an active speculative quick move or trade action cannot open a new screen),
     /// `PlayerUnavailable` (including a client that does not support the blockless layout, a
     /// disconnect in progress or a turn unavailable for the veto), `TooLarge`,
     /// `DataCountMismatch`, `Title` or `TitleNotEncodable`. A cancelled or refused open
-    /// does not close the old menu. In a transaction, `Ok(Some(staged))` returns a negative
-    /// staged-open identity (`< 0`), separate from live protocol window ids (`0..=100`),
-    /// without switching levels, running `container_opened`, or advancing the window counter.
-    /// At outermost commit, after the transaction's block changes have replayed, the veto
-    /// runs in the player's level outside the transaction. The next vanilla window id
-    /// (`1..=100`) is allocated when the open installs and exposed in `player_container_open`
-    /// and `PlayerRef::container_menu`. An abort drops the request and keeps the old menu.
+    /// does not close the old menu. In a transaction, the returned handle names only the staged
+    /// open and cannot read or change any live menu. At outermost commit, after the transaction's
+    /// block changes have replayed, the veto runs in the player's level outside the transaction.
+    /// The next vanilla window id (`1..=100`) is allocated when the open installs. Get the live
+    /// handle with `PlayerRef::container_menu`; an abort keeps the old menu.
     #[serialize_text]
     fn player_open_mod_menu(
         &mut self,
         player: PlayerRef,
         request: ModMenuOpen,
-    ) -> Result<Option<i32>, OpenMenuError>;
-    /// Side: server.
-    /// Backs the container slots of the mod menu `window` that `player_open_mod_menu` opened
-    /// for the player with storage that is not a block entity (#3385; NeoForge's
-    /// `StackCopySlot` and `ResourceHandlerSlot`): `places[n]` is what slot `n` shows. From then
-    /// on a click or shift-click on those slots, and an `ItemPlace::MenuSlot` write, go through
-    /// that storage's own handler, journalled; the client sees ordinary synced slots, mirrored
-    /// after each click and each write through an `ItemPlace` of that storage, never each tick.
-    /// Call it with the live window after the open installs, not with a staged-open identity.
-    /// If backed inside a hook of the player's own action, the slots are mirrored once that
-    /// action is over.
-    /// A slot past `places` stays the mods' own (`menu_clicked`). The menu closes once a
-    /// place stops resolving (the backpack left the hand, the entity is gone) or a held stack is
-    /// no longer the one bound when the slots were backed, checked before each click and at
-    /// each change notice. A `MenuSlotPlace::HeldItem` locks the inventory slot holding that
-    /// stack while the menu is open, so it can't go into itself. Backing again replaces the
-    /// places; a slot no longer backed (an empty list, a shorter one) is emptied, never left
-    /// holding the copy it showed. A [`MenuSlotBackRefusal`], and nothing changes, for a player
-    /// not online or a window that is not their open menu, a menu that is not a blockless mod
-    /// menu, a menu that declares `owned_slots`, more places than its container slots, or a
-    /// place that doesn't resolve now.
-
-    fn player_back_mod_menu_slots(
-        &mut self,
-        player: PlayerRef,
-        window: i32,
-        places: Vec<MenuSlotPlace>,
-    ) -> Result<(), MenuSlotBackRefusal>;
+    ) -> Result<Option<MenuRef>, OpenMenuError>;
     /// Side: server.
     /// Opens the player's own ender chest for them with no block, titled `title`: a three-row
     /// `ChestMenu` over their `PlayerEnderChestContainer`, as `EnderChestBlock.useWithoutItem`
@@ -134,31 +117,4 @@ pub trait PlayerMenusBackendMut {
         player: PlayerRef,
         title: Text,
     ) -> Result<bool, OpenMenuError>;
-    /// Side: server.
-    /// Opens a chest menu of `rows` rows (1 to 6) titled `title` for the connected player,
-    /// showing `items` (by slot, padded with empty ones), in place of the menu they had open:
-    /// its window id, a new one each time (`ServerPlayer.openMenu`). The old menu closes as a
-    /// close does, its cursor stack going back to the player's inventory; `replace` says
-    /// whether the client is first sent a close for it
-    /// (`MenuProvider.shouldTriggerClientSideContainerClosingOnOpen`). `MenuReplace::InPlace`
-    /// changes the title and rows without the client centring the mouse again. Packets for the
-    /// old window are ignored. The items of an open menu change through its slots
-    /// ([`PlayerRef::menu`], [`MenuRef::set_items`]), not by opening it again.
-    /// Returns `Ok(None)` if `rows` is outside `1..=6`. Returns
-    /// `Err(OpenMenuError::PlayerUnavailable)` for a stale, client, or unconnected player,
-    /// `Err(OpenMenuError::ClickInProgress)` during an active speculative menu click,
-    /// `Err(OpenMenuError::Title(_))` or `Err(OpenMenuError::TitleNotEncodable)` for an invalid
-    /// title, or `Err(OpenMenuError::Stack(_))` for an invalid stack.
-    /// In a transaction, the result is a negative staged-open ID, not a live window. The
-    /// open runs at outermost commit and yields a live ID to `player_container_open` and
-    /// `PlayerRef::container_menu`; abort keeps the current menu and its counter unchanged.
-    #[serialize_text]
-    fn player_open_chest_menu(
-        &mut self,
-        player: PlayerRef,
-        rows: u8,
-        title: Text,
-        items: Vec<Option<ItemStack>>,
-        replace: MenuReplace,
-    ) -> Result<Option<i32>, OpenMenuError>;
 }
