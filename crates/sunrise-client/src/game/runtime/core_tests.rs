@@ -32,7 +32,7 @@ fn reload_resolves_parts_against_reloaded_tags() {
     mod_platform::__private::install(mods);
     super::native_entity_refs::tests::with_game(|game| {
         let stone_key = mod_platform::__private::part_tests::block_key("stone");
-        let name = stone_key.id(game);
+        let name = stone_key.id(game).expect("stone is registered").to_owned();
         let dir = std::env::temp_dir().join(format!("sunrise-key-tags-{}", std::process::id()));
         game.session_lock = Some(sunrise_client::save::SessionLock::acquire(&dir).unwrap());
         assert_eq!(game.block_in_tag(stone_key, "test:reload"), Some(false));
@@ -51,9 +51,8 @@ fn reload_resolves_parts_against_reloaded_tags() {
             &game.pack.additional_data,
         );
         let root = game.options.resources.clone();
-        let previous = std::sync::Arc::new(mod_api::DatapackRegistrySet::first(
+        let previous = std::sync::Arc::new(mod_api::DatapackRegistrySet::from_candidate(
             mod_api::DatapackCandidate::build(&[], &[]).unwrap(),
-            sunrise_client::datapack_net::next_session(),
         ));
         sunrise_client::datapack_net::serve(Some(previous.clone()));
         let prepared = game.prepare_world_reload(&stack, &root).unwrap();
@@ -66,7 +65,7 @@ fn reload_resolves_parts_against_reloaded_tags() {
         // A successful empty publication clears the previous world's served registries too.
         assert!(sunrise_client::datapack_net::served().is_none());
         game.run_native_advancement_grants();
-        assert_eq!(stone_key.id(game), name);
+        assert_eq!(stone_key.id(game), Some(name.as_str()));
         assert_eq!(
             stone_key,
             mod_platform::__private::part_tests::block_key("minecraft:stone")
@@ -289,10 +288,10 @@ fn right_click_block_controls_cauldron_use() {
             Ok(true)
         );
         game.inventory[game.selected] = Some(ItemStack::new("minecraft:water_bucket", 1));
-        game.keys.insert(KeyCode::ShiftLeft);
+        game.insert_device_key(KeyCode::ShiftLeft);
         game.use_hand(Some(&hit)).unwrap();
         assert_ne!(game.world.block(0, 64, 0), empty);
-        game.keys.remove(&KeyCode::ShiftLeft);
+        game.remove_device_key(&KeyCode::ShiftLeft);
 
         let campfire = game
             .pack
@@ -694,7 +693,7 @@ fn a_mod_screen_on_a_machine_menu_takes_the_stock_layout_out() {
 fn a_falling_block_keeps_its_model_offset() {
     let at = Vec3::new(3.5, 70.25, -1.5);
     let falling = FallingBlock {
-        on_ground: false,
+        ground: Default::default(),
         fire_ticks: 0,
         sync_velocity: false,
         attachment_lifetime: Default::default(),
@@ -1180,8 +1179,8 @@ fn eager_saves_keep_dirty_order_cooldowns_and_writer_budget() {
     dirty.save_eagerly(
         now,
         || writes.get() < 128,
-        |k| k != (3, 0),
-        |k| {
+        |k| (k != (3, 0)).then_some(true),
+        |k, _| {
             chosen.push(k);
             writes.set(writes.get() + 1);
             true
@@ -1192,8 +1191,8 @@ fn eager_saves_keep_dirty_order_cooldowns_and_writer_budget() {
     dirty.save_eagerly(
         now,
         || true,
-        |_| true,
-        |k| {
+        |_| Some(true),
+        |k, _| {
             chosen.push(k);
             true
         },
@@ -1204,8 +1203,8 @@ fn eager_saves_keep_dirty_order_cooldowns_and_writer_budget() {
     dirty.save_eagerly(
         now + Duration::from_secs(10),
         || true,
-        |_| true,
-        |k| {
+        |_| Some(true),
+        |k, _| {
             chosen.push(k);
             true
         },
@@ -1215,8 +1214,8 @@ fn eager_saves_keep_dirty_order_cooldowns_and_writer_budget() {
     dirty.save_eagerly(
         now + Duration::from_secs(11),
         || false,
-        |_| true,
-        |_| panic!("no time"),
+        |_| Some(true),
+        |_, _| panic!("no time"),
     );
     assert!(dirty.contains(&(4, 0)));
     dirty.unloaded(&(4, 0)); // unloading removes the cooldown even if reloaded immediately
@@ -1224,8 +1223,8 @@ fn eager_saves_keep_dirty_order_cooldowns_and_writer_budget() {
     dirty.save_eagerly(
         now + Duration::from_secs(11),
         || true,
-        |_| true,
-        |k| {
+        |_| Some(true),
+        |k, _| {
             chosen.push(k);
             true
         },

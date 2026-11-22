@@ -2,9 +2,9 @@
 //! called inside the pick.
 use super::*;
 use crate::game::api_values::block_state::block_listens;
-use crate::game::api_values::{random_to_api, random_to_engine};
 use std::cell::RefCell;
 use std::rc::Rc;
+use sunrise_core::random::LegacyRandom;
 
 /// The level's random (`ClientLevel.random`) while a client Part holds it as
 /// `event.random`: one stream for the part's draws and the game's own draws during the call
@@ -77,11 +77,17 @@ impl Game<'_> {
         if let Some(lent) = self.lent_level_random.clone() {
             return f(self, &mut LevelRandom(lent));
         }
-        let lent: LentRandom = Rc::new(RefCell::new(random_to_api(self.particles.level_random())));
+        let lent: LentRandom = Rc::new(RefCell::new(mod_api::LegacyRandomSource::from(<(
+            u64,
+            Option<f64>,
+        )>::from(
+            &*self.particles.level_random(),
+        ))));
         self.lent_level_random = Some(lent.clone());
         let out = f(self, &mut LevelRandom(lent.clone()));
         self.lent_level_random = None;
-        *self.particles.level_random() = random_to_engine(&lent.borrow());
+        *self.particles.level_random() =
+            LegacyRandom::from(<(u64, Option<f64>)>::from(&*lent.borrow()));
         out
     }
 
@@ -96,9 +102,12 @@ impl Game<'_> {
         let Some(lent) = self.lent_level_random.clone() else {
             return f(self);
         };
-        *self.particles.level_random() = random_to_engine(&lent.borrow());
+        *self.particles.level_random() =
+            LegacyRandom::from(<(u64, Option<f64>)>::from(&*lent.borrow()));
         let out = f(self);
-        *lent.borrow_mut() = random_to_api(self.particles.level_random());
+        *lent.borrow_mut() = mod_api::LegacyRandomSource::from(<(u64, Option<f64>)>::from(
+            &*self.particles.level_random(),
+        ));
         out
     }
 

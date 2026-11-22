@@ -1,5 +1,6 @@
 //! Immutable component codec values shared by item templates and protocol codecs.
 use sunrise_core::nbt::{Compound, JavaString, Tag, discard_tag, with_tree_stack};
+pub mod consume_effects;
 pub mod source;
 pub mod types;
 pub use source::from_component_tag;
@@ -85,6 +86,8 @@ pub enum Value {
     Set(Vec<Value>),
     Template(Box<Template>),
     Container(Vec<Option<Template>>),
+    /// A custom consume effect whose persistent map has already been admitted.
+    RegisteredConsumeEffect(consume_effects::Admitted),
     /// A real stream value for which the persistent codec refuses encoding.
     StreamOnly(Box<Value>),
 }
@@ -141,6 +144,7 @@ impl PartialEq for Value {
             (Set(a), Set(b)) => a.iter().all(|v| b.contains(v)) && b.iter().all(|v| a.contains(v)),
             (Template(a), Template(b)) => a == b,
             (Container(a), Container(b)) => a == b,
+            (RegisteredConsumeEffect(a), RegisteredConsumeEffect(b)) => a == b,
             (StreamOnly(a), StreamOnly(b)) => a == b,
             _ => false,
         }
@@ -353,6 +357,7 @@ impl Value {
                     Tag::Compound,
                 )?)
             }
+            Self::RegisteredConsumeEffect(v) => (*v.saved).clone(),
             Self::Template(v) => v.tag(projection)?,
             Self::Container(slots) => Tag::List(collect_projected(
                 slots.iter().enumerate().filter_map(|(slot, item)| {

@@ -1,7 +1,7 @@
 //! Resolve the mob's travel branch and fire `living_travel` at its entry.
 //! The same route names the mode and runs travel, including species overrides.
 use super::super::{Species, allay, aquatic, frog, guardian, nautilus, turtle, undead, vex};
-use super::{DamageLevel, Fluid, Mob, MobEvent, MobWorld, TravelTrample, Vec3};
+use super::{DamageLevel, Fluid, Mob, MobEvent, MobWorld, TravelPause, Vec3};
 use sunrise_world::travel::TravelMode;
 
 enum TravelRoute {
@@ -41,14 +41,14 @@ impl TravelRoute {
 }
 
 impl Mob {
-    pub(in crate::mobs) fn travel_until_trample(
+    pub(in crate::mobs) fn travel_until_pause(
         &mut self,
         w: &MobWorld,
         level: &mut DamageLevel<'_>,
         mut input: Vec3,
         events: &mut Vec<MobEvent>,
         pause: bool,
-    ) -> Result<(), TravelTrample> {
+    ) -> Result<(), TravelPause> {
         let Some(route) = self.travel_route(w) else {
             return Ok(());
         };

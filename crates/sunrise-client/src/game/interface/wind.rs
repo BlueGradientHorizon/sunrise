@@ -430,11 +430,10 @@ impl Game<'_> {
                 if p.owner == Some(Who::Player) {
                     self.remember_mob_player_credit(id);
                 }
+                self.settle_mob_hurt(id);
                 if hurt {
                     self.shot_post_attack(p, who, p.kind.id(), "minecraft:wind_charge");
                 }
-                // Warden.hurtServer: anger and target at hurt time, refused hit or not.
-                self.settle_warden_hurt(id);
             }
         }
     }
@@ -1004,7 +1003,7 @@ mod tests {
             velocity: Vec3::ZERO,
             fuse: 80,
             ticks: 0,
-            on_ground: false,
+            ground: Default::default(),
             fall_distance: 0.0,
             stuck: Vec3::ZERO,
             in_water: false,

@@ -149,7 +149,7 @@ impl Game<'_> {
     pub(super) fn open_options_at(&mut self, from_title: bool, page: Page) {
         // Gameplay keys must not stay held behind the options screen, where
         // bindings can also change before the physical key is released.
-        self.keys.clear();
+        self.clear_device_keys();
         self.set_screen(Screen::Options);
         self.options_from_title = from_title;
         let minecart_improvements = self.minecart_improvements();
