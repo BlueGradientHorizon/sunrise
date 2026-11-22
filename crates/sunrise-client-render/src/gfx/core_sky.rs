@@ -323,15 +323,12 @@ mod tests {
     /// colour) where the disc is: looking at the horizon, the top half of the target is the
     /// disc, the bottom half stays clear.
     #[test]
+    #[ignore = "daily"]
     fn a_pack_sky_shader_paints_the_disc_above_the_sunrise() {
         let _gpu = crate::gfx::test_gpu::lock();
         let root = resources();
-        let Ok(vertex) =
-            std::fs::read_to_string(root.join("assets/minecraft/shaders/core/sky.vsh"))
-        else {
-            eprintln!("skipping: no prepared resources at {}", root.display());
-            return;
-        };
+        let vertex = std::fs::read_to_string(root.join("assets/minecraft/shaders/core/sky.vsh"))
+            .expect("prepared vanilla sky.vsh");
         let include = |id: &str| {
             let (namespace, path) = id.split_once(':')?;
             std::fs::read_to_string(root.join(format!("assets/{namespace}/{path}"))).ok()

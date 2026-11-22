@@ -1,5 +1,6 @@
 # PACKAGE	TARGET	TEST	SOURCE	REASON
 # Plain tests that failed with "no GPU adapter" with Vulkan hidden and SUNRISE_GPU_TESTS_REQUIRE_ADAPTER=1.
+# The core_lines and core_sky tests that load Mojang shaders also need SUNRISE_RESOURCES during discovery.
 # Apply with: python3 tools/ci/move_to_daily.py apply tools/ci/move-to-daily-gpu.tsv
 sunrise-client-render	lib	gfx::animate::tests::copied_layers_match_the_cpu_chains_every_tick	crates/sunrise-client-render/src/gfx/animate.rs:916	gpu
 sunrise-client-render	lib	gfx::animate::tests::gpu_layers_match_the_cpu_chains_every_tick	crates/sunrise-client-render/src/gfx/animate.rs:909	gpu
@@ -27,6 +28,8 @@ sunrise-client-render	lib	gfx::celestial::tests::the_suns_disc_shows_vanillas_co
 sunrise-client-render	lib	gfx::core_clouds::tests::linear_light_links_the_required_programs_before_suppressing_the_draw	crates/sunrise-client-render/src/gfx/core_clouds_tests.rs:1036	gpu
 sunrise-client-render	lib	gfx::core_lines::tests::a_pack_block_bigger_than_vanillas_falls_back	crates/sunrise-client-render/src/gfx/core_lines.rs:571	gpu
 sunrise-client-render	lib	gfx::core_lines::tests::a_pack_fragment_shader_colours_the_outline	crates/sunrise-client-render/src/gfx/core_lines.rs:557	gpu
+sunrise-client-render	lib	gfx::core_lines::tests::vanillas_lines_vertex_shader_takes_a_packs_fragment_shader	crates/sunrise-client-render/src/gfx/core_lines.rs:588	gpu
+sunrise-client-render	lib	gfx::core_sky::tests::a_pack_sky_shader_paints_the_disc_above_the_sunrise	crates/sunrise-client-render/src/gfx/core_sky.rs:326	gpu
 sunrise-client-render	lib	gfx::core_text::tests::a_pack_text_shader_reads_the_light_as_vanilla_does	crates/sunrise-client-render/src/gfx/core_text/tests/mod.rs:164	gpu
 sunrise-client-render	lib	gfx::custom_sky::tests::written_custom_sky_modes_keep_their_factors_and_light	crates/sunrise-client-render/src/gfx/custom_sky.rs:574	gpu
 sunrise-client-render	lib	gfx::displace::tests::compact_sections_give_the_grid_the_words_of_their_vertices_on_every_backend	crates/sunrise-client-render/src/gfx/displace.rs:817	gpu

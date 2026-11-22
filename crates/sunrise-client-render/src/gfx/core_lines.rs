@@ -587,6 +587,7 @@ mod tests {
     /// Vanilla's own `rendertype_lines.vsh` (from the prepared resources) under a pack's
     /// fragment shader.
     #[test]
+    #[ignore = "daily"]
     fn vanillas_lines_vertex_shader_takes_a_packs_fragment_shader() {
         let _gpu = crate::gfx::test_gpu::lock();
         let root = std::env::var_os("SUNRISE_RESOURCES")
@@ -596,15 +597,10 @@ mod tests {
                     .join("../../.local/sunrise-client")
                     .join(sunrise_core::VANILLA_VERSION)
             });
-        let Ok(vertex) = std::fs::read_to_string(
+        let vertex = std::fs::read_to_string(
             root.join("assets/minecraft/shaders/core/rendertype_lines.vsh"),
-        ) else {
-            eprintln!(
-                "skipping resource-backed lines shader check: {}",
-                root.display()
-            );
-            return;
-        };
+        )
+        .expect("prepared vanilla rendertype_lines.vsh");
         let include = |id: &str| {
             let (namespace, path) = id.split_once(':')?;
             std::fs::read_to_string(root.join(format!("assets/{namespace}/{path}"))).ok()
