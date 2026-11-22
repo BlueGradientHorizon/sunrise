@@ -340,6 +340,13 @@ fn ensure_resources_with(
         }
         server.unwrap_or(managed)
     };
+    // Missing metadata allows a fresh preparation. Damaged metadata cannot establish which
+    // profile owns an existing folder, so leave it alone and report where to prepare instead.
+    if !std::fs::symlink_metadata(output.join(MANIFEST))
+        .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+    {
+        engine::read_prepared_manifest(&output)?;
+    }
     prepare(&output, jar)?;
     engine::check_prepared(&output)?;
     Ok(output)
@@ -554,6 +561,25 @@ mod tests {
         })
         .unwrap_err();
         assert!(error.contains(&Profile::Full.repair(&stale)), "{error}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_damaged_managed_manifest_is_left_alone() {
+        let dir = std::env::temp_dir().join(format!("sunrise-init-damaged-{}", std::process::id()));
+        let managed = dir
+            .join("game-files/sunrise-client")
+            .join(format!("{}-server", launch::GAME_VERSION));
+        std::fs::create_dir_all(&managed).unwrap();
+        let manifest = managed.join(MANIFEST);
+        std::fs::write(&manifest, "{").unwrap();
+        let error = ensure_resources_with(&Config::default(), &dir, None, None, None, |_, _| {
+            panic!("a damaged profile must not be prepared in place")
+        })
+        .unwrap_err();
+        assert!(error.contains("--output NEW_FOLDER"), "{error}");
+        assert!(error.contains("engine.resources"), "{error}");
+        assert_eq!(std::fs::read_to_string(&manifest).unwrap(), "{");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

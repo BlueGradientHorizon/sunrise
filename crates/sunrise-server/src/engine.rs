@@ -74,13 +74,20 @@ const PREPARED_FILES: [&str; 4] = [
 /// Folders of the client's own assets the engine loads fonts and textures from at start.
 const PREPARED_DIRS: [&str; 2] = ["assets/minecraft/font", "assets/minecraft/textures"];
 
+pub(crate) fn read_prepared_manifest(resources: &Path) -> Result<Manifest, String> {
+    Manifest::read(resources).map_err(|problem| {
+        format!(
+            "the prepared game files in {} are incomplete or damaged:\n  {problem}\n\
+             Prepare a separate folder with `sunrise-prepare --server --output NEW_FOLDER` \
+             and select it with `engine.resources` in server.toml.",
+            resources.display(),
+        )
+    })
+}
+
 /// Check the same profile/version contract as `sunrise-prepare --check` before launch or import.
 pub fn check_prepared(resources: &Path) -> Result<Profile, String> {
-    let manifest = Manifest::read(resources).map_err(|problem| format!(
-        "the prepared game files in {} are incomplete or damaged:\n  {problem}\nPrepare a server profile with `{}`.",
-        resources.display(), Profile::Server.repair(resources),
-    ))?;
-    check_prepared_manifest(resources, &manifest)
+    check_prepared_manifest(resources, &read_prepared_manifest(resources)?)
 }
 
 pub fn check_prepared_manifest(resources: &Path, manifest: &Manifest) -> Result<Profile, String> {
