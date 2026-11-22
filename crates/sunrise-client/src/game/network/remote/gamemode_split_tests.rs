@@ -1060,7 +1060,8 @@ fn split_mode_hud_rendering_reach_miss_inventory_and_input_rules() {
                 game.remote.as_mut().unwrap().camera = None;
 
                 // #10: underwater vision decides underwater from the local body's sampled eye fluid
-                // (`LocalPlayer.aiStep`), not camera fog (`camera_fog_type`).
+                // (`Entity.baseTick` -> `EntityFluidInteraction.update` -> `LocalPlayer.aiStep`),
+                // not camera fog (`camera_fog_type`).
                 let water = game
                     .pack
                     .assets
@@ -1084,61 +1085,66 @@ fn split_mode_hud_rendering_reach_miss_inventory_and_input_rules() {
                     FogType::Water
                 );
                 assert!(!game.player.as_ref().unwrap().is_eye_in_fluid(WATER));
-                game.tick_particles();
+                // Before the 1-block neighbor chunks around `(0.5, 64.0, 0.5)` are loaded,
+                // `EntityFluidInteraction.hasFluidAndLoaded` skips sampling so `isEyeInFluid`
+                // stays false even while `camera_fog_type` is Water.
+                game.tick_remote_level().unwrap();
+                assert!(!game.player.as_ref().unwrap().is_eye_in_fluid(WATER));
                 assert_eq!(game.fog.water_vision_time, 0);
 
-                // Sample eye in water, then replace with air so camera fog is Atmospheric while
-                // the local body's sampled eye fluid is still water.
-                run_local_tick(game);
-                assert!(game.player.as_ref().unwrap().is_eye_in_fluid(WATER));
-                for y in 64..=66 {
-                    game.world.set(0, y, 0, air).unwrap();
+                // Load the neighbor chunks required by `EntityFluidInteraction.hasFluidAndLoaded`
+                // (`x0 - 1 ..= x1 + 1`, `z0 - 1 ..= z1 + 1`), then attach the camera to entity 99
+                // in air while the local body is in water.
+                for (cx, cz) in [(-1, -1), (-1, 0), (0, -1)] {
+                    game.streaming
+                        .insert_remote(&mut game.world, Chunk::empty(cx, cz));
                 }
+                game.remote.as_mut().unwrap().camera = Some(99);
                 assert_eq!(
-                    game.camera_fog_type(game.eye_position().unwrap()),
+                    game.camera_fog_type(game.aim().unwrap().0),
                     FogType::Atmospheric
                 );
                 game.handle_packet(change_mode_packet(3.0)).unwrap();
                 game.handle_packet(player_info_mode(SELF_UUID, 2)).unwrap();
-                game.tick_particles();
+                game.tick_remote_level().unwrap();
+                assert!(game.player.as_ref().unwrap().is_eye_in_fluid(WATER));
                 assert_eq!(
                     game.fog.water_vision_time,
                     water_rows[0]["water_vision_time"].as_i64().unwrap() as i32
                 );
                 game.handle_packet(change_mode_packet(2.0)).unwrap();
                 game.handle_packet(player_info_mode(SELF_UUID, 3)).unwrap();
-                game.tick_particles();
+                game.tick_remote_level().unwrap();
+                assert!(game.player.as_ref().unwrap().is_eye_in_fluid(WATER));
                 assert_eq!(
                     game.fog.water_vision_time,
                     water_rows[1]["water_vision_time"].as_i64().unwrap() as i32
                 );
 
-                // Sample eye in air, then restore water so camera fog is Water while the local
-                // body's sampled eye fluid is dry.
-                game.handle_packet(abilities_packet(0x06, 0.05, 0.10))
-                    .unwrap();
-                run_local_tick(game);
-                assert!(!game.player.as_ref().unwrap().is_eye_in_fluid(WATER));
+                // Clear water at the local body while placing water at camera entity 99 so camera
+                // fog is Water while the local body's sampled eye fluid is dry.
                 for y in 64..=66 {
-                    game.world.set(0, y, 0, water).unwrap();
+                    game.world.set(0, y, 0, air).unwrap();
+                    game.world.set(2, y, 2, water).unwrap();
                 }
-                assert_eq!(
-                    game.camera_fog_type(game.eye_position().unwrap()),
-                    FogType::Water
-                );
-                game.tick_particles();
+                assert_eq!(game.camera_fog_type(game.aim().unwrap().0), FogType::Water);
+                game.tick_remote_level().unwrap();
+                assert!(!game.player.as_ref().unwrap().is_eye_in_fluid(WATER));
                 assert_eq!(
                     game.fog.water_vision_time,
                     water_rows[2]["water_vision_time"].as_i64().unwrap() as i32
                 );
                 game.handle_packet(change_mode_packet(3.0)).unwrap();
-                game.tick_particles();
+                game.tick_remote_level().unwrap();
+                assert!(!game.player.as_ref().unwrap().is_eye_in_fluid(WATER));
                 assert_eq!(
                     game.fog.water_vision_time,
                     water_rows[3]["water_vision_time"].as_i64().unwrap() as i32
                 );
+                game.remote.as_mut().unwrap().camera = None;
                 for y in 64..=66 {
                     game.world.set(0, y, 0, air).unwrap();
+                    game.world.set(2, y, 2, air).unwrap();
                 }
                 if let Some(player) = game.player.as_mut() {
                     player.position = Vec3::new(0.5, 64.0, 0.5);
