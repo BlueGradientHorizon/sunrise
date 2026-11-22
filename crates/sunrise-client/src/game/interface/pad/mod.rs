@@ -21,7 +21,6 @@ use sunrise_client::{
     pad_glyph::{Glyph, Glyphs},
 };
 use sunrise_client_input::radial;
-use winit::event::MouseButton;
 use winit::keyboard::KeyCode;
 
 pub(super) const HELP: &[&str] = &[

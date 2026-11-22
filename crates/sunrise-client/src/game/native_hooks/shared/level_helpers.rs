@@ -1,4 +1,5 @@
 use super::*;
+use sunrise_client::containers::ModBlockEntity;
 
 /// Server-level helpers for native mods.
 impl GameLevel<'_> {
@@ -241,7 +242,7 @@ pub(super) fn block_entity_for_block(
     initial: Compound,
 ) -> Option<BlockEntity> {
     if let Some(kind) = sunrise_client::block_entity_types::type_for(name) {
-        return Some(BlockEntity::Mod(Box::new(EngineBlockEntity::new(
+        return Some(BlockEntity::Mod(Box::new(ModBlockEntity::new(
             kind.to_owned(),
             ModBlockEntityFields {
                 nbt: initial,

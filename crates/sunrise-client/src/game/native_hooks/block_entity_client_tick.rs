@@ -6,12 +6,15 @@ use mod_api::{
     BlockEntityClientAccess, BlockEntityClientScope, BlockEntityReadView, BlockEntityRef,
     ClientHost, ResidentBlockEntityReadOnly,
 };
-use sunrise_client::{block_entities::Ticking, containers::BlockEntity};
+use sunrise_client::{
+    block_entities::Ticking,
+    containers::{BlockEntity, ModBlockEntity},
+};
 use sunrise_core::nbt::Compound;
 
 /// Shared read-only resident view backing for client and level-load block-entity scopes.
 pub(super) struct ResidentReadBlockEntity<'a> {
-    pub entity: &'a EngineBlockEntity,
+    pub entity: &'a ModBlockEntity,
     pub slot_count: usize,
 }
 

@@ -31,7 +31,7 @@ const CONTAINER_MACHINE: &str = "view_tick:container_machine";
 const UNSUBSCRIBED_MACHINE: &str = "view_tick:unsubscribed_machine";
 
 fn row(kind: &str, value: i32) -> BlockEntity {
-    BlockEntity::Mod(Box::new(EngineBlockEntity::new(
+    BlockEntity::Mod(Box::new(ModBlockEntity::new(
         kind.into(),
         ModBlockEntityFields {
             data: vec![value],

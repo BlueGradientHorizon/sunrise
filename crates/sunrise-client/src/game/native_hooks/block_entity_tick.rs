@@ -10,8 +10,8 @@ use mod_api::{
 };
 use std::collections::HashMap;
 use sunrise_client::{
-    block_entities::BlockEntityLoan, chunk_map::ChunkMap, fast_hash::FxHashMap,
-    world::ModifiedChunks,
+    block_entities::BlockEntityLoan, chunk_map::ChunkMap, containers::ModBlockEntity,
+    fast_hash::FxHashMap, world::ModifiedChunks,
 };
 use sunrise_core::nbt::{Compound, JavaString, Tag};
 use sunrise_items::items::Items;
@@ -68,7 +68,7 @@ impl Game<'_> {
     }
 }
 
-fn valid_tick_subject(block: &str, entity: &EngineBlockEntity) -> bool {
+fn valid_tick_subject(block: &str, entity: &ModBlockEntity) -> bool {
     sunrise_client::block_entity_types::valid(block, entity.id()) == Some(true)
 }
 
@@ -228,11 +228,11 @@ struct ServerBlockEntityData<'a> {
 }
 
 impl ServerBlockEntityData<'_> {
-    fn entity(&self) -> &EngineBlockEntity {
+    fn entity(&self) -> &ModBlockEntity {
         self.loan.entity
     }
 
-    fn edit(&mut self, saved: bool) -> &mut EngineBlockEntity {
+    fn edit(&mut self, saved: bool) -> &mut ModBlockEntity {
         self.dirty |= saved;
         self.journal.journal_block_entity_loan(
             self.dim,
