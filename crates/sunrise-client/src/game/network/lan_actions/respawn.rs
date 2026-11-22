@@ -768,26 +768,13 @@ impl Game<'_> {
         id: u32,
         trigger: &str,
     ) -> Option<sunrise_client::advancements::EntityView> {
-        use sunrise_client::{advancements::EntityView, pose::Pose};
+        use sunrise_client::advancements::EntityView;
         match self.combat_player(id) {
             // `player_entity_for` takes `&mut self` (the compound for `nbt`);
             // this view of the killer has the player's records without it.
             Some(CombatPlayer::InPlace) => Some(self.player_entity_for_any(&[trigger])),
             Some(CombatPlayer::Displaced(depth, body)) => {
-                let frame = &self.lan_displaced_players[depth];
-                Some(EntityView {
-                    kind: "minecraft:player".into(),
-                    position: [body.position.x, body.position.y, body.position.z],
-                    on_fire: body.is_on_fire(),
-                    sneaking: body.pose == Pose::Crouching,
-                    input_sneak: frame.input_sneak,
-                    sprinting: body.sprinting,
-                    swimming: body.pose == Pose::Swimming,
-                    flying: body.flying,
-                    on_ground: body.ground.on_ground,
-                    gamemode: Some(frame.mode.name().to_owned()),
-                    ..Default::default()
-                })
+                self.displaced_player_entity_for(&self.lan_displaced_players[depth], body, trigger)
             }
             Some(CombatPlayer::Parked(g)) => Some(EntityView {
                 kind: "minecraft:player".into(),

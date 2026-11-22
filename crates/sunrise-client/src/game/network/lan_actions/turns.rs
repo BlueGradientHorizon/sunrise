@@ -11,6 +11,16 @@ pub(in crate::game) struct DisplacedPlayer {
     pub(in crate::game) fake: bool,
     pub(in crate::game) mode: GameMode,
     pub(in crate::game) input_sneak: bool,
+    /// The borrower temporarily holds the outer player's equipment, effects,
+    /// advancement progress and recipe book in its hub row.
+    pub(in crate::game) record_conn: u32,
+    pub(in crate::game) dimension: Dim,
+    pub(in crate::game) selected: usize,
+    pub(in crate::game) experience: Experience,
+    pub(in crate::game) adv_loaded: bool,
+    pub(in crate::game) riding: Option<u32>,
+    pub(in crate::game) yaw: f32,
+    pub(in crate::game) pitch: f32,
     pub(in crate::game) stats: Stats,
 }
 
@@ -513,6 +523,14 @@ impl Game<'_> {
             fake: std::mem::replace(&mut self.lan_acting_fake, !g.participates_online()),
             mode,
             input_sneak,
+            record_conn: conn,
+            dimension: outer_dimension,
+            selected,
+            experience: xp,
+            adv_loaded,
+            riding,
+            yaw,
+            pitch,
             stats: std::mem::replace(&mut self.stats, std::mem::take(&mut play.stats)),
         });
         g.residency.put_back();
@@ -737,7 +755,7 @@ impl Game<'_> {
         self.level.spawn = respawn.1;
         // ServerPlayer.displayClientMessage(_, true): the guest's action bar.
         let guest_message = std::mem::replace(&mut self.message, message);
-        let guest_vehicle = std::mem::replace(&mut self.riding, riding);
+        let guest_vehicle = std::mem::replace(&mut self.riding, outer_player.riding);
         play.mining = std::mem::replace(&mut self.mining, mining);
         play.destroy_delay = std::mem::replace(&mut self.destroy_delay, destroy_delay);
         play.using = std::mem::replace(&mut self.using, using);
@@ -817,7 +835,7 @@ impl Game<'_> {
             self.level.player_fall_particles = player_save_projection.1;
             play.stats = std::mem::replace(&mut self.stats, outer_player.stats);
             std::mem::swap(&mut self.hook, &mut play.hook);
-            self.adv.loaded = adv_loaded;
+            self.adv.loaded = outer_player.adv_loaded;
             play.last_inventory = std::mem::replace(&mut self.adv.last_inventory, last_inventory);
             play.levitation = std::mem::replace(&mut self.adv.levitation, levitation);
             play.marks = std::mem::replace(&mut self.adv.marks, marks);
@@ -831,7 +849,7 @@ impl Game<'_> {
                 self.ender_open = Some(key);
             }
             play.level_up_sound = std::mem::replace(&mut self.level_up_sound, level_up_sound);
-            let new_xp = std::mem::replace(&mut self.experience, xp);
+            let new_xp = std::mem::replace(&mut self.experience, outer_player.experience);
             g.xp_level = new_xp.level;
             g.xp_progress = new_xp.progress;
             g.xp_total = new_xp.total;
@@ -839,7 +857,7 @@ impl Game<'_> {
             self.creative = creative;
             self.entity_reach = entity_reach;
             self.block_reach = block_reach;
-            g.selected = std::mem::replace(&mut self.selected, selected);
+            g.selected = std::mem::replace(&mut self.selected, outer_player.selected);
             std::mem::swap(&mut self.inventory, &mut g.inventory);
             std::mem::swap(&mut self.armor, &mut g.armor);
             std::mem::swap(&mut self.location_armor, &mut g.location_armor);
@@ -859,8 +877,8 @@ impl Game<'_> {
                     relative_pitch: false,
                 }));
             }
-            self.yaw = yaw;
-            self.pitch = pitch;
+            self.yaw = outer_player.yaw;
+            self.pitch = outer_player.pitch;
             self.eye = eye.1;
             if let Some(mut m) = std::mem::replace(&mut self.player, outer_player.body) {
                 // Travel can end a glide on a climbable before the next action.

@@ -437,6 +437,83 @@ fn a_stat_award_listener_reads_the_killers_pre_award_count() {
     });
 }
 
+/// The victim's `KilledTrigger` evaluates the actual killer's predicate data.
+#[test]
+#[ignore = "daily"]
+fn a_victim_advancement_matches_the_displaced_killers_facts() {
+    use sunrise_client::advancements::{Advancement, Criterion, Rewards, Tree};
+    use sunrise_client::items::ItemStack;
+
+    if fresh(
+        "a_victim_advancement_matches_the_displaced_killers_facts",
+        &["local", "nested"],
+    ) {
+        return;
+    }
+    const ADVANCEMENT: &str = "test:know_the_killer";
+    const TRIGGER: &str = "minecraft:entity_killed_player";
+    let mut resources = None;
+    let mut game = game(&mut resources);
+    add_guest_killer(&mut game);
+    game.score.board.add_team("killers");
+    assert!(game.score.board.add_to_team(PLAYER_NAME, "killers"));
+    assert!(game.score.board.add_to_team(KILLER, "killers"));
+    let mut tree = Tree::default();
+    tree.list.push(Advancement {
+        id: ADVANCEMENT.into(),
+        parent: None,
+        display: None,
+        criteria: vec![Criterion {
+            name: "killed".into(),
+            trigger: TRIGGER.into(),
+            conditions: serde_json::json!({ "entity": [{
+                "condition": "minecraft:entity_properties",
+                "entity": "this",
+                "predicate": {
+                    "minecraft:team": "killers",
+                    "minecraft:equipment": {
+                        "mainhand": { "items": "minecraft:iron_sword" },
+                        "offhand": { "items": "minecraft:shield" },
+                        "head": { "items": "minecraft:iron_helmet" }
+                    },
+                    "minecraft:type_specific/player": {
+                        "level": 13,
+                        "stats": [{"type": "minecraft:custom", "stat": "minecraft:jump", "value": 37}],
+                        "recipes": {"minecraft:bread": true}
+                    }
+                }
+            }] }).into(),
+        }],
+        requirements: vec![vec!["killed".into()]],
+        rewards: Rewards::default(),
+    });
+    tree.by_id.insert(ADVANCEMENT.into(), 0);
+    tree.by_trigger.insert(TRIGGER.into(), vec![(0, 0)]);
+    tree.index_player_facts();
+    game.adv.tree = Arc::new(tree);
+
+    let hit = |g: &mut Game<'_>, id, name| {
+        g.selected = 4;
+        g.inventory[4] = Some(ItemStack::new("minecraft:iron_sword", 1));
+        g.offhand = Some(ItemStack::new("minecraft:shield", 1));
+        g.armor[0] = Some(ItemStack::new("minecraft:iron_helmet", 1));
+        g.experience.level = 13;
+        g.stats.loaded = true;
+        g.stats.custom("jump", 37);
+        g.level.recipe_book.recipes.insert("minecraft:bread".into());
+        kill(g, Attacker::Player(id, name), "minecraft:player_attack");
+    };
+    match std::env::var(FRESH).unwrap().as_str() {
+        "local" => hit(&mut game, HOST, PLAYER_NAME),
+        "nested" => game
+            .as_guest(KILLER_CONN, |g| hit(g, KILLER_ID, KILLER))
+            .unwrap(),
+        case => panic!("unexpected fresh case {case}"),
+    }
+    let victim = game.lan.as_ref().unwrap().hub.guest(CONN).unwrap();
+    assert!(victim.advancements.has(ADVANCEMENT, "killed"));
+}
+
 /// No kill score for the victim's own hit, or for damage with no killer.
 #[test]
 #[ignore = "daily"]
