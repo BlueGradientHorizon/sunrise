@@ -10,8 +10,11 @@ impl Game<'_> {
             ids.extend(self.dragon.parts_table().iter().filter(|&id| {
                 bounds.intersects(dragon.part_geometry((id - dragon.id - 1) as usize).1)
             }));
-        } else if bounds.intersects(dragon.body_bounds()) {
-            ids.push(dragon.id);
+        } else {
+            let body = dragon.body_bounds();
+            if bounds.intersects(body) {
+                ids.push(dragon.id);
+            }
         }
     }
 }
