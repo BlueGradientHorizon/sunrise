@@ -1157,8 +1157,8 @@ impl Game<'_> {
             return false;
         }
         if let Some(open) = self.dialogs.open.as_mut() {
-            if let Some(Some(field)) = open.selecting.take().and_then(|i| open.fields.get_mut(i)) {
-                if let Field::Multi(edit) = field {
+            if let Some(selecting) = open.selecting.take() {
+                if let Some(Some(Field::Multi(edit))) = open.fields.get_mut(selecting) {
                     edit.release();
                 }
                 return true;
@@ -1167,7 +1167,6 @@ impl Game<'_> {
                 self.audio.play_button_click();
                 return true;
             }
-            return selecting.is_some();
         }
         false
     }

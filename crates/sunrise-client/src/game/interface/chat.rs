@@ -1556,7 +1556,6 @@ impl Game<'_> {
             // Screen.defaultHandleClickEvent: a page link means nothing in chat.
             Some(ClickEvent::ChangePage(_)) | None => false,
         }
-        true
     }
     /// `Screen.clickUrlAction`: nothing with Web Links off, else the link
     /// opens, after the confirmation unless Prompt on Links is off.

@@ -4326,10 +4326,10 @@ mod tests {
                     title: None,
                     rect: [0.0; 4],
                     screen_size: [0.0; 2],
-                    instance: 0,
                     slots: 0,
                     mouse: [0.0; 2],
                     partial_tick: 0.0,
+                    regions: Vec::new(),
                 };
                 let mut areas = Vec::new();
                 if fire {

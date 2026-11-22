@@ -173,7 +173,7 @@ pub(super) struct MenuCursor {
     pub(super) slider_hold: Option<(u64, Rect)>,
     /// What the last click landed on: vanilla focuses it, so the next Tab
     /// or arrow goes on from there (`ContainerEventHandler.mouseClicked`).
-    origin: Option<Rect>,
+    pub(super) origin: Option<Rect>,
     /// A shortcut put the focus here: not where the screen reopens.
     shortcut_focus: Option<Rect>,
     /// A pointer event the pad or the keyboard sends is being handled.

@@ -2108,7 +2108,8 @@ fn item_tooltip_font_wraps_in_gather_pre_replaces_without_rewrap_and_anchor_quan
             ]),
         );
         game.gui.atlas.font = sunrise_client::font::Font::metrics(&source);
-        game.resolve_client_item_extensions().unwrap();
+        game.armor_stand_assets.extensions =
+            Game::prepare_client_item_extensions(&game.gui).unwrap();
 
         let stick = ItemStack::new("minecraft:stick", 1);
         let text = sunrise_client::text::Text::literal("aa aa");
@@ -2191,7 +2192,7 @@ fn gather_wraps_logical_arabic_advances_but_measures_visual_lines() {
                 text_lines(&components),
                 ["\u{644}\u{627}", "\u{644}\u{627}"]
             );
-            let mut batch = HudBatch::scratch([width, 240.0]);
+            let mut batch = HudBatch::scratch([width as u32, 240]);
             let rect = game.draw_prepared_tooltip(
                 &mut batch,
                 Some(&stack),
@@ -2294,7 +2295,7 @@ fn only_hovered_slots_check_show_tooltip_with_item_in_hand() {
             .find(|&i| {
                 game.slot_view(i)
                     .as_ref()
-                    .is_some_and(|s| s.item == "minecraft:stick")
+                    .is_some_and(|s| s.item.as_ref() == "minecraft:stick")
             })
             .expect("stick should be visible in station player inventory");
         let (sx, sy) = game.slot_position_any(slot).unwrap();

@@ -233,11 +233,10 @@ mod tests {
             &self,
             _: &dyn mod_api::ClientHost,
             event: &mut ScreenCharTypedPostEvent<'_>,
-        ) -> mod_api::Flow {
+        ) {
             if event.screen.id == "world_preset_editor" {
                 self.char_post.lock().unwrap().push(event.c);
             }
-            mod_api::Flow::Continue
         }
         fn screen_key_pressed_post(
             &self,
@@ -647,7 +646,7 @@ mod tests {
                         true,
                         false,
                         None,
-                        Source::Keyboard,
+                        sunrise_client::held::Source::Keyboard,
                     )
                     .unwrap();
                     game.screen_chars_typed(Some("z"));

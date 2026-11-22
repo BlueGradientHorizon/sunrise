@@ -805,7 +805,11 @@ mod tests {
         }
 
         struct QuietMod;
-        impl crate::Hooks for QuietMod {}
+        impl crate::Hooks for QuietMod {
+            fn subscribed(&self) -> &'static [Option<crate::HookId>] {
+                &[]
+            }
+        }
 
         let drops = Arc::new(AtomicUsize::new(0));
         crate::testing::with_dispatch(

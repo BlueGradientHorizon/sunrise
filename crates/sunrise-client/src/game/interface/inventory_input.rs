@@ -568,14 +568,10 @@ impl Game<'_> {
             false,
         );
         match (release, Target::of(slot, outside)) {
-            (Release::QuickCraft, _) => {
-                self.inventory_release();
-                true
-            }
+            (Release::QuickCraft, _) => self.inventory_release(),
             (Release::Click(input), Target::Outside) => {
                 self.inv_drag = None;
                 self.throw_click(right, input);
-                true
             }
             (Release::Click(input), Target::Slot(slot)) if had_drag => {
                 // The drag never reached a slot: a plain click where it ends.
@@ -586,11 +582,6 @@ impl Game<'_> {
                 if let Some(key) = self.container {
                     self.container_changed(key);
                 }
-                true
-            }
-            _ => {
-                self.inv_drag = None;
-                !matches!(release, Release::Nothing)
             }
             (Release::Swallowed, _) => self.inv_drag = None,
             _ => return self.inv_drag.take().is_some() || tweaked,

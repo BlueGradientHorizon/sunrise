@@ -348,7 +348,8 @@ impl Game<'_> {
             }
             return Err("the title screen has no focused editor".into());
         }
-        match self.screen {
+        let screen = self.screen;
+        match screen {
             Screen::Chat => self.chat_type(text),
             Screen::CommandBlock => self.command_block_type(text),
             Screen::Social => self.social_type(text),

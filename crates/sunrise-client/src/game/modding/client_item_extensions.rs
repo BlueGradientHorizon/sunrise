@@ -354,6 +354,7 @@ impl Game<'_> {
             .call("client_item_extensions", "tooltip_font", || {
                 provider.tooltip_font(self, &api_stack)
             })
+            .ok()
             .flatten()
             .unwrap_or_else(default)
     }

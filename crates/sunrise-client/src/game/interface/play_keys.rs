@@ -187,7 +187,9 @@ impl Game<'_> {
             _ if self.screen == Screen::Creative
                 && self.creative_screen.tab().search
                 && self.search_tab_hotbar_key(key) => {}
-            KeyCode::KeyT if self.screen == Screen::Inventory => self.recipe_focus_search(),
+            KeyCode::KeyT if self.screen == Screen::Inventory => {
+                let _ = self.recipe_focus_search();
+            }
             // CreativeModeInventoryScreen.keyPressed: the chat key opens the
             // search tab from another tab, and `ignoreTextInput` drops the
             // letter it would have typed.

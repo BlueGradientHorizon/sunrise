@@ -353,10 +353,10 @@ fn observed(id: &'static str, overlay: bool) -> Option<ObservedScreen> {
         title: None,
         rect: [0.0; 4],
         screen_size: [0.0; 2],
-        instance: 0,
         slots: 0,
         mouse: [0.0; 2],
         partial_tick: 0.0,
+        regions: Vec::new(),
     })
 }
 
@@ -775,7 +775,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
                 .lock()
                 .unwrap()
                 .push(format!("opening {}->{}", event.current.id, event.new.id));
-            *self.answer.lock().unwrap()
+            self.answer.lock().unwrap().clone()
         }
         fn screen_closing(&self, _host: &dyn ClientHost, event: &mut ScreenClosingEvent<'_>) {
             self.log
@@ -964,7 +964,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
             assert!(game.mod_screen_open("mod_a"));
             assert_eq!(game.screen, Screen::Mod);
             assert_eq!(game.mod_screen(), Some("mod_a"));
-            assert!(game.remote.as_ref().unwrap().menu.is_none());
+            assert!(game.remote.as_ref().unwrap().menu.as_ref().is_none());
             let mut closed_container = None;
             while let Ok((id, body)) = reader.recv() {
                 if let Ok(S::ContainerClose(close)) = S::decode(id, &body) {

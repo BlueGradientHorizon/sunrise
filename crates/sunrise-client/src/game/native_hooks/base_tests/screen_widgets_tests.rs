@@ -180,7 +180,7 @@ fn observed_screen_view_carries_mod_screen_owner() {
         slots: 0,
         mouse: [10.0, 20.0],
         partial_tick: 0.5,
-        instance: 7,
+        regions: Vec::new(),
     };
     let view = observed.view();
     assert_eq!(view.id, "mod");
@@ -1914,7 +1914,10 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             send_mouse_button(game, win_id, MouseButton::Left, true);
             assert!(game.server_packs.prompt.is_none());
             assert!(game.captured);
-            assert!(!game.left, "the prompt's press must not reach the world");
+            assert!(
+                !game.mapped_key_down("key.attack"),
+                "the prompt's press must not reach the world"
+            );
             assert_eq!(
                 take_log(&log),
                 [
