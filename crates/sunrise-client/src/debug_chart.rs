@@ -4,6 +4,7 @@
 //! (`LocalSampleLogger`) and draws one bar per sample over a 60 pixel high
 //! box (`AbstractDebugChart`).
 use crate::{
+    clock::FixedStep,
     font::Font,
     hud_layout::{GuiDraw, argb, fill},
     text::Text,
@@ -196,15 +197,15 @@ impl DebugCharts {
     }
     /// The charts along the bottom of the screen (`extractRenderState`):
     /// frame times left and tick times right, or bandwidth left (remote
-    /// servers only) and ping right. `mspt` is the level's milliseconds
-    /// per tick.
+    /// servers only) and ping right. The TPS chart uses the level clock's
+    /// effective milliseconds per tick.
     pub fn draw(
         &self,
         font: &Font,
         width: i32,
         height: i32,
         framerate_limit: u32,
-        mspt: f32,
+        clock: &FixedStep,
         remote: bool,
     ) -> Vec<GuiDraw> {
         let mut out = Vec::new();
@@ -214,7 +215,9 @@ impl DebugCharts {
             let fps = Chart::Fps { framerate_limit };
             out.extend(fps.draw(font, &self.frame_times, 0, chart_width, height));
             if !self.tick_times.is_empty() {
-                let tps = Chart::Tps { mspt };
+                let tps = Chart::Tps {
+                    mspt: clock.millis_per_tick(),
+                };
                 out.extend(tps.draw(
                     font,
                     &self.tick_times,
@@ -680,8 +683,7 @@ mod tests {
         assert_eq!(c.tick_times.samples[1], [1, 2, 3, 4]);
     }
 
-    #[test]
-    fn a_tick_chart_of_extreme_network_samples_wraps_like_java() {
+    fn chart_test_font() -> Font {
         use crate::hud::Rect;
         let rect = Rect {
             u0: 0.0,
@@ -692,17 +694,37 @@ mod tests {
             h: 1,
         };
         // The missing-glyph metrics let this run without game assets.
-        let font = Font::load(
+        Font::load(
             &sunrise_assets::resource_source::ResourceSource::default(),
             &std::collections::HashMap::new(),
             &[],
             (1, 1),
             (0, 0),
             rect,
-        );
+        )
+    }
+
+    #[test]
+    fn a_nan_tick_rate_draws_infinite_tps() {
+        let mut clock = FixedStep::default();
+        clock.set_rate(f32::NAN);
+        let mut charts = DebugCharts {
+            fps: true,
+            ..Default::default()
+        };
+        charts.log_remote_sample(&[25_000_000]).unwrap();
+        let draws = charts.draw(&chart_test_font(), 484, 100, 0, &clock, true);
+        assert!(draws.iter().any(
+            |draw| matches!(draw, GuiDraw::Text { text, .. } if text.plain() == "Infinity tps")
+        ));
+    }
+
+    #[test]
+    fn a_tick_chart_of_extreme_network_samples_wraps_like_java() {
+        let font = chart_test_font();
         let mut c = DebugCharts::default();
-        // Overflowing sums, differences and heights, in every dimension, for a full chart.
-        // A tick time whose bar height is `i32::MIN + 100`: `bottom - height` wraps, so the bar's
+        // A full chart with overflowing differences and heights in every dimension.
+        // A tick time whose bar height is `i32::MIN + 48`: `bottom - height` wraps, so the bar's
         // span overflows an `int` where the painter subtracts its corners.
         let tall = -1_789_569_666_666_667;
         assert_eq!(
@@ -722,22 +744,27 @@ mod tests {
                 "/nonexistent/sunrise-test-assets".into(),
             ))
             .unwrap();
-        // A NaN tick rate makes the clock's milliseconds per tick 0 (`millisecondsPerTick`).
-        let mut manager = crate::clock::TickRateManager::default();
-        manager.set_tick_rate(f32::NAN);
-        for mspt in [50.0, manager.milliseconds_per_tick()] {
-            let draws = Chart::Tps { mspt }.draw(&font, &c.tick_times, 0, width, 100);
-            assert!(!draws.is_empty());
-            // The painter takes the wrapped bar ends (`bottom - height` overflows an `int`).
-            let mut batch = crate::hud::HudBatch::scratch([854, 480]);
-            crate::hud_layout::paint(&mut batch, &atlas, &draws);
-        }
         let tps = Chart::Tps { mspt: 50.0 };
-        // `sum` of 240 `Long.MIN_VALUE - Long.MAX_VALUE` wraps: 240 * 1 mod 2^64.
-        let index = CAPACITY - 1;
-        assert_eq!(
-            tps.aggregated(&c.tick_times, index),
-            i64::MIN.wrapping_sub(i64::MAX)
+        let draws = tps.draw(&font, &c.tick_times, 0, width, 100);
+        // The painter takes the wrapped bar ends (`bottom - height` overflows an `int`).
+        let mut batch = crate::hud::HudBatch::scratch([854, 480]);
+        crate::hud_layout::paint(&mut batch, &atlas, &draws);
+        // The last sample's total time minus its idle time wraps to 1.
+        assert_eq!(tps.aggregated(&c.tick_times, CAPACITY - 1), 1);
+    }
+
+    #[test]
+    fn a_tick_chart_average_uses_the_wrapped_sum() {
+        let mut samples = SampleLogger::default();
+        for value in [i64::MAX - 1, i64::MAX - 1, 6_000_004] {
+            samples.log(value);
+        }
+        // Java long addition leaves a sum of 6,000,000 ns and an average of 2 ms.
+        let draws = Chart::Tps { mspt: 50.0 }.draw(&chart_test_font(), &samples, 0, 242, 100);
+        assert!(
+            draws.iter().any(
+                |draw| matches!(draw, GuiDraw::Text { text, .. } if text.plain() == "2 ms avg")
+            )
         );
     }
 

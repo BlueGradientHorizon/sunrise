@@ -1,6 +1,7 @@
 use std::{error::Error, io::Write};
+use sunrise_core::vanilla_bytes::Writer;
 use sunrise_protocol::{
-    buf::{Codec, Reader, Writer},
+    buf::{Codec, Reader},
     packets::play::{DEBUG_SUBSCRIPTION_COUNT, DebugSample, DebugSubscriptionRequest},
 };
 fn main() -> Result<(), Box<dyn Error>> {
@@ -10,7 +11,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let input: serde_json::Value = serde_json::from_str(line)?;
         let result = match input["packet"].as_str().unwrap() {
             "registry" => serde_json::json!({"count": DEBUG_SUBSCRIPTION_COUNT}),
-            // Sunrise decodes what vanilla's codec (and, for a sample, the logger) took or refused.
+            // Compare the stream decoders independently of client handler validation.
             "decode_request" => {
                 let body = unhex(input["body"].as_str().unwrap());
                 let result = match DebugSubscriptionRequest::read(&mut Reader::new(&body)) {

@@ -1513,7 +1513,7 @@ fn debug_subscription_request_is_a_registry_id_set() {
 }
 
 #[test]
-fn debug_sample_refuses_another_kind_and_more_than_four_values() {
+fn debug_sample_decodes_the_full_array_but_refuses_another_kind() {
     use crate::ids::play::clientbound::DEBUG_SAMPLE;
     let body = |count: u8, kind: u8| {
         let mut b = vec![count];
@@ -1523,7 +1523,13 @@ fn debug_sample_refuses_another_kind_and_more_than_four_values() {
     };
     assert!(Clientbound::decode(DEBUG_SAMPLE, &body(4, 0)).is_ok());
     assert!(Clientbound::decode(DEBUG_SAMPLE, &body(0, 0)).is_ok());
-    assert!(Clientbound::decode(DEBUG_SAMPLE, &body(5, 0)).is_err());
+    assert_eq!(
+        Clientbound::decode(DEBUG_SAMPLE, &body(5, 0)).unwrap(),
+        Clientbound::DebugSample(DebugSample {
+            sample: vec![7; 5],
+            kind: 0
+        })
+    );
     assert!(Clientbound::decode(DEBUG_SAMPLE, &body(1, 1)).is_err());
     // A VarInt -1 is no ordinal either.
     let mut negative = body(1, 0);
