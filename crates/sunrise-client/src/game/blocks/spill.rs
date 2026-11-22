@@ -442,20 +442,40 @@ pub(super) fn put_saved_entity(
     pos: [i32; 3],
     tag: sunrise_core::nbt::Tag,
 ) {
+    set_saved_entity(world, pos, Some(tag));
+}
+
+/// Restore a saved-only block entity, or remove the tag created by a tentative write.
+pub(super) fn set_saved_entity(
+    world: &mut sunrise_client::world::World,
+    pos: [i32; 3],
+    tag: Option<sunrise_core::nbt::Tag>,
+) {
     use sunrise_core::nbt::Tag;
     let Some(chunk) = world.chunks.get_mut(&(pos[0] >> 4, pos[2] >> 4)) else {
         return;
     };
     let chunk = std::sync::Arc::make_mut(chunk);
-    let saved = std::sync::Arc::make_mut(chunk.saved.get_or_insert_default());
-    let at = |t: &Tag| {
+    let saved = match tag {
+        Some(_) => chunk.saved.get_or_insert_default(),
+        None => match &mut chunk.saved {
+            Some(saved) => saved,
+            None => return,
+        },
+    };
+    let rows = &mut std::sync::Arc::make_mut(saved).block_entities;
+    let at = rows.iter().position(|t| {
         t.get("x") == Some(&Tag::Int(pos[0]))
             && t.get("y") == Some(&Tag::Int(pos[1]))
             && t.get("z") == Some(&Tag::Int(pos[2]))
-    };
-    match saved.block_entities.iter_mut().find(|t| at(t)) {
-        Some(old) => *old = tag,
-        None => saved.block_entities.push(tag),
+    });
+    match (at, tag) {
+        (Some(index), Some(tag)) => rows[index] = tag,
+        (Some(index), None) => {
+            rows.remove(index);
+        }
+        (None, Some(tag)) => rows.push(tag),
+        (None, None) => {}
     }
 }
 

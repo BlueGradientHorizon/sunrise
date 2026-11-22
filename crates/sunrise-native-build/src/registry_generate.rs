@@ -237,8 +237,15 @@ mod tests {
         let output = tempfile::tempdir().unwrap();
         let bundle = fixture(input.path());
         fs::write(input.path().join("build.rs"), "panic!(\"do not run\");").unwrap();
+        fs::create_dir_all(input.path().join(".cargo")).unwrap();
+        fs::write(
+            input.path().join(".cargo/config.toml"),
+            "[source.crates-io]\nreplace-with='local'\n",
+        )
+        .unwrap();
         let before = fs::read(input.path().join("Cargo.toml")).unwrap();
         stage(&bundle, output.path()).unwrap();
+        assert!(!output.path().join(".cargo").exists());
         let generated = fs::read_to_string(output.path().join("Cargo.toml")).unwrap();
         assert!(!generated.contains("sunrise-mod-api"));
         assert!(generated.contains("itoa"));
