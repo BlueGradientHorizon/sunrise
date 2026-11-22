@@ -140,11 +140,12 @@ fn up(value: Probe, context: &mut dyn IPayloadContext) -> Result<(), String> {
             let witness = WITNESS.lock().unwrap().expect("a witness sent 7 first");
             let host = context.server_host().map_err(|e| format!("{e:?}"))?;
             let living = host.living(witness.entity()).ok_or("no witness")?;
-            assert!(living.set_health(host, STAGED));
-            assert_eq!(
-                down().reply(context, &probe(14)),
-                Ok(PayloadAccepted::Queued)
-            );
+            if !living.set_health(host, STAGED) || living.health(host) != Some(STAGED) {
+                return Err("could not stage witness health".into());
+            }
+            if down().reply(context, &probe(14)) != Ok(PayloadAccepted::Queued) {
+                return Err("could not stage panic reply".into());
+            }
             panic!("typed handler panics after a staged write and a staged reply");
         }
         _ => Ok(()),
