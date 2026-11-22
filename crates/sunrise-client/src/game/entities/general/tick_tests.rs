@@ -681,8 +681,6 @@ fn a_panicking_row_rolls_back_and_the_next_tick_proceeds() {
         "game::general::tick_tests::a_panicking_row_rolls_back_and_the_next_tick_proceeds",
         || {
             with_counter(|game, l| {
-                let _world =
-                    mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
                 let first = seeded_row(game, [1, 2, 3, 4], 41);
                 let second = seeded_row(game, [5, 6, 7, 8], 7);
                 l.panic_on

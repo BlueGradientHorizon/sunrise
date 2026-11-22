@@ -8,8 +8,8 @@ use super::{
 use mod_api::{
     ClientHost, Flow, GuiLayerPlacement, GuiLayerPostEvent, GuiLayerPreEvent, Hooks, ModEntry,
     PlayerHeartTypeEvent, RegisterGuiLayersEvent, RegistrationContext, RenderGuiPostEvent,
-    RenderGuiPreEvent, ScreenRenderPostEvent, ScreenRenderPreEvent, client::hud_layout::GuiDraw,
-    content::crash::current_native_mod,
+    RenderGuiPreEvent, ScreenRenderBackgroundEvent, ScreenRenderPostEvent, ScreenRenderPreEvent,
+    client::hud_layout::GuiDraw, content::crash::current_native_mod,
 };
 use std::sync::{Arc, Mutex};
 use sunrise_client::{
