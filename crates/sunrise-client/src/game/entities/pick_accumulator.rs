@@ -1,53 +1,69 @@
 //! The running state of `ProjectileUtil.getEntityHitResult`.
 use super::Game;
+use sunrise_core::geometry::{Aabb, Vec3};
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct PickCandidate {
     pub id: u32,
-    pub distance: f64,
+    pub point: [f64; 3],
+    pub distance_sq: f64,
+    pub inside: bool,
+}
+
+/// Ray segment `(from, to)` matching `LocalPlayer.pick`.
+pub(super) fn pick_ray_segment(eye: [f64; 3], dir: [f64; 3], reach: f64) -> (Vec3, Vec3) {
+    let from = Vec3::new(eye[0], eye[1], eye[2]);
+    let to = Vec3::new(
+        from.x + dir[0] * reach,
+        from.y + dir[1] * reach,
+        from.z + dir[2] * reach,
+    );
+    (from, to)
 }
 
 pub(super) struct PickAccumulator {
     pub hovered: Option<PickCandidate>,
-    nearest: f64,
+    nearest_sq: f64,
     candidates: Option<Vec<PickCandidate>>,
 }
 
 impl PickAccumulator {
-    pub(super) fn new(reach: f64) -> Self {
+    pub(super) fn new(max_distance_sq: f64) -> Self {
         Self {
             hovered: None,
-            nearest: reach,
+            nearest_sq: max_distance_sq,
             candidates: None,
         }
     }
 
-    pub(super) fn consider(&mut self, game: &Game<'_>, id: u32, distance: f64) -> bool {
-        if game.is_pick_camera(id) {
-            return false;
-        }
-        // A ray that starts inside the box picks it only when `canBePickedFromInside`.
-        if distance == 0.0 && !game.pickable_from_inside(id) {
-            return false;
-        }
+    pub(super) fn consider_candidate(&mut self, game: &Game<'_>, candidate: PickCandidate) -> bool {
         if let Some(candidates) = &mut self.candidates {
-            candidates.push(PickCandidate { id, distance });
+            candidates.push(candidate);
             return false;
         }
-        self.accept(
-            PickCandidate { id, distance },
-            game.pick_shares_vehicle(id),
-            false,
-        )
+        self.accept(candidate, game.pick_shares_vehicle(candidate.id), false)
     }
 
-    /// Candidate geometry is copied while the family lists are borrowed; only a
-    /// subscribed hook needs this reusable buffer so its Host can borrow Game.
-    pub(super) fn recording(reach: f64, mut candidates: Vec<PickCandidate>) -> Self {
+    pub(super) fn consider_box(
+        &mut self,
+        game: &Game<'_>,
+        id: u32,
+        from: Vec3,
+        to: Vec3,
+        bb: Aabb,
+    ) -> bool {
+        let Some(candidate) = game.test_pick_box(id, from, to, bb) else {
+            return false;
+        };
+        self.consider_candidate(game, candidate)
+    }
+
+    /// Reuses the caller's candidate buffer when `CanRiderInteract` is subscribed.
+    pub(super) fn recording(max_distance_sq: f64, mut candidates: Vec<PickCandidate>) -> Self {
         candidates.clear();
         Self {
             candidates: Some(candidates),
-            ..Self::new(reach)
+            ..Self::new(max_distance_sq)
         }
     }
 
@@ -60,8 +76,8 @@ impl PickAccumulator {
             }
             let same_vehicle = game.pick_shares_vehicle(candidate.id);
             let mut allowed = false;
-            if candidate.distance != 0.0
-                && (candidate.distance < self.nearest || self.nearest == 0.0)
+            if !candidate.inside
+                && (candidate.distance_sq < self.nearest_sq || self.nearest_sq == 0.0)
                 && same_vehicle
                 && let Some(epoch) = game.native_lifecycle.epoch()
             {
@@ -71,8 +87,7 @@ impl PickAccumulator {
                     allowed: &mut allowed,
                 });
                 if game.pick_camera_id() != camera {
-                    // The captured ray and vehicle decision no longer belong
-                    // to this camera. Refuse the pick, never recast it.
+                    // Camera changed during hook; refuse the pick rather than recasting it.
                     self.hovered = None;
                     break;
                 }
@@ -83,19 +98,18 @@ impl PickAccumulator {
     }
 
     fn accept(&mut self, candidate: PickCandidate, same_vehicle: bool, allowed: bool) -> bool {
-        let distance = candidate.distance;
-        if distance == 0.0 {
-            if self.nearest < 0.0 {
+        if candidate.inside {
+            if self.nearest_sq < 0.0 {
                 return false;
             }
-            self.nearest = 0.0;
-        } else if distance < self.nearest || self.nearest == 0.0 {
+            self.nearest_sq = 0.0;
+        } else if candidate.distance_sq < self.nearest_sq || self.nearest_sq == 0.0 {
             if same_vehicle && !allowed {
-                if self.nearest != 0.0 {
+                if self.nearest_sq != 0.0 {
                     return false;
                 }
             } else {
-                self.nearest = distance;
+                self.nearest_sq = candidate.distance_sq;
             }
         } else {
             return false;
@@ -106,8 +120,41 @@ impl PickAccumulator {
 }
 
 impl Game<'_> {
-    /// `Entity.canBePickedFromInside`, false only for a sulfur cube holding a body item
-    /// (`SulfurCube.canBePickedFromInside`: `!hasBodyItem()`).
+    /// Vanilla `ProjectileUtil.getEntityHitResult` per-box test (`AABB.contains` and `AABB.clip`).
+    pub(super) fn test_pick_box(
+        &self,
+        id: u32,
+        from: Vec3,
+        to: Vec3,
+        bb: Aabb,
+    ) -> Option<PickCandidate> {
+        if self.is_pick_camera(id) {
+            return None;
+        }
+        let clip_point = bb.clip(from, to);
+        if bb.contains(from) {
+            if !self.pickable_from_inside(id) {
+                return None;
+            }
+            let at = clip_point.unwrap_or(from);
+            Some(PickCandidate {
+                id,
+                point: [at.x, at.y, at.z],
+                distance_sq: 0.0,
+                inside: true,
+            })
+        } else {
+            let at = clip_point?;
+            Some(PickCandidate {
+                id,
+                point: [at.x, at.y, at.z],
+                distance_sq: from.distance_squared(at),
+                inside: false,
+            })
+        }
+    }
+
+    /// `Entity.canBePickedFromInside`, false only for a sulfur cube holding a body item.
     pub(super) fn pickable_from_inside(&self, id: u32) -> bool {
         !self.mobs.iter().any(|m| {
             m.id == id
@@ -119,6 +166,12 @@ impl Game<'_> {
     pub(super) fn pick_camera_id(&self) -> Option<u32> {
         self.remote_camera_id()
             .or_else(|| self.remote.as_ref().map(|r| r.entity_id as u32))
+            .or_else(|| {
+                self.player
+                    .as_ref()
+                    .map(|_| self.own_entity_id() as u32)
+                    .filter(|&id| id != 0)
+            })
     }
 
     /// True if `id` (or the wire entity behind a synthetic special-target id) is the camera entity.
@@ -130,19 +183,43 @@ impl Game<'_> {
     }
 
     fn pick_vehicle_root(&self, id: u32) -> Option<u32> {
-        let mut root = id;
-        let limit = self
-            .remote
-            .as_ref()
-            .map_or(self.mobs.len(), |r| r.passenger_vehicles.len());
+        let mut root = self.wire_entity_id(id).map_or(id, |wire| wire as u32);
+        let limit = self.remote.as_ref().map_or_else(
+            || {
+                self.mobs.len()
+                    + self.armor_stands.len()
+                    + self.interactions.len()
+                    + self.text_displays.len()
+                    + self.resident_entities.general.rows.len()
+                    + 1
+            },
+            |r| r.passenger_vehicles.len(),
+        );
         for _ in 0..=limit + 1 {
             let vehicle =
                 if self.pick_camera_id() == Some(root) && self.remote_camera_id().is_none() {
                     self.riding
+                        .or_else(|| self.remote.as_ref().and_then(|r| r.passenger_vehicle(root)))
                 } else if let Some(remote) = &self.remote {
                     remote.passenger_vehicle(root)
                 } else {
                     self.vehicle_of_any(root)
+                        .or_else(|| {
+                            self.armor_stands
+                                .iter()
+                                .find(|a| a.id == root)
+                                .and_then(|a| a.vehicle)
+                        })
+                        .or_else(|| {
+                            i32::try_from(root)
+                                .ok()
+                                .and_then(|k| self.interactions.get(&k).and_then(|i| i.vehicle))
+                        })
+                        .or_else(|| {
+                            i32::try_from(root)
+                                .ok()
+                                .and_then(|k| self.text_displays.get(&k).and_then(|d| d.vehicle))
+                        })
                 };
             let Some(vehicle) = vehicle else {
                 return Some(root);
@@ -227,11 +304,13 @@ mod tests {
 
     #[test]
     fn same_vehicle_uses_the_running_nearest_not_the_candidates_distance() {
-        let mut pick = PickAccumulator::new(5.0);
+        let mut pick = PickAccumulator::new(25.0);
         assert!(!pick.accept(
             PickCandidate {
                 id: 2,
-                distance: 1.0
+                point: [0.0; 3],
+                distance_sq: 1.0,
+                inside: false,
             },
             true,
             false
@@ -239,7 +318,9 @@ mod tests {
         assert!(pick.accept(
             PickCandidate {
                 id: 1,
-                distance: 0.0
+                point: [0.0; 3],
+                distance_sq: 0.0,
+                inside: true,
             },
             true,
             false
@@ -247,26 +328,32 @@ mod tests {
         assert!(pick.accept(
             PickCandidate {
                 id: 2,
-                distance: 3.0
+                point: [0.0; 3],
+                distance_sq: 9.0,
+                inside: false,
             },
             true,
             false
         ));
         assert_eq!(pick.hovered.unwrap().id, 2);
-        assert_eq!(pick.nearest, 0.0);
+        assert_eq!(pick.nearest_sq, 0.0);
         assert!(pick.accept(
             PickCandidate {
                 id: 3,
-                distance: 4.0
+                point: [0.0; 3],
+                distance_sq: 16.0,
+                inside: false,
             },
             false,
             false
         ));
-        assert_eq!(pick.nearest, 4.0);
+        assert_eq!(pick.nearest_sq, 16.0);
         assert!(!pick.accept(
             PickCandidate {
                 id: 4,
-                distance: 4.5
+                point: [0.0; 3],
+                distance_sq: 20.25,
+                inside: false,
             },
             false,
             false

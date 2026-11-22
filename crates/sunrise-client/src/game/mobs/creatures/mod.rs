@@ -6778,6 +6778,8 @@ impl Game<'_> {
                 .filter(|&i| {
                     let m = &self.mobs[i];
                     named_mob_pickable(m.alive(), m.id, self.riding, self.remote_camera_id())
+                        && !self.is_pick_camera(m.id)
+                        && !self.pick_shares_vehicle(m.id)
                 })
                 .map(|i| (i, 0.0, [0.0; 3])),
             None => self.mob_hit(),

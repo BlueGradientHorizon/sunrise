@@ -3,13 +3,13 @@
 //! nothing, and an interact ends at them: `SUCCESS` when they respond (the arm
 //! swings), `CONSUME` otherwise (the click still goes to the server, nothing
 //! behind them is used).
-use super::{Game, ray_box};
+use super::Game;
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_protocol::entity_data::Value;
 
-/// `Interaction`'s synced data and box: `DATA_WIDTH` (8), `DATA_HEIGHT` (9)
-/// and `DATA_RESPONSE` (10), from its `defineSynchedData`.
+/// `Interaction`'s synced data and box (`DATA_WIDTH`, `DATA_HEIGHT`, `DATA_RESPONSE`).
 pub(super) struct RemoteInteraction {
+    pub join: sunrise_client::join_seq::JoinSeq,
     pub position: Vec3,
     pub previous: Vec3,
     pub yaw: f32,
@@ -38,6 +38,7 @@ impl RemoteInteraction {
             0.0
         };
         Self {
+            join: sunrise_client::join_seq::JoinSeq::next(),
             position: pos,
             previous: pos,
             yaw,
@@ -127,8 +128,7 @@ impl RemoteInteraction {
 }
 
 impl Game<'_> {
-    /// `Interaction` under the crosshair within the entity reach, as its id
-    /// and the hit distance along the view.
+    /// `Interaction` under the crosshair within entity reach, excluding camera and shared root vehicle.
     pub(super) fn interaction_hit(&self) -> Option<(i32, f64)> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, _) = hit?;
@@ -139,12 +139,14 @@ impl Game<'_> {
         }
         let (eye, dir) = self.aim()?;
         let reach = self.entity_reach;
-        let camera = self.pick_camera_id();
-        self.interactions
-            .iter()
-            .filter(|&(&id, _)| camera != Some(id as u32))
-            .filter_map(|(&id, i)| ray_box(eye, dir, reach, i.bounds()).map(|d| (id, d)))
-            .min_by(|a, b| a.1.total_cmp(&b.1))
+        let (from, to) = super::pick_accumulator::pick_ray_segment(eye, dir, reach);
+        let mut pick = super::pick_accumulator::PickAccumulator::new(reach * reach);
+        for (&id, i) in &self.interactions {
+            if let Ok(uid) = u32::try_from(id) {
+                pick.consider_box(self, uid, from, to, i.bounds());
+            }
+        }
+        pick.hovered.map(|h| (h.id as i32, h.distance_sq.sqrt()))
     }
     /// An `Interaction` keeps `Entity`'s no-op interpolation handler: the
     /// server's position replaces its own at once.

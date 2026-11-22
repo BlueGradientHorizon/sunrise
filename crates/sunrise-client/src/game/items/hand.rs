@@ -680,8 +680,7 @@ impl Game<'_> {
         self.native_should_cause_block_break_reset(began, held, &mut reset);
         !reset
     }
-    /// Whether an attack would hit an entity rather than the block behind
-    /// it: the crosshair's `EntityHitResult`.
+    /// Whether an attack would hit an entity rather than the block behind it.
     pub(super) fn entity_targeted(&self) -> bool {
         if self.uses_stored_pick() {
             return matches!(
@@ -689,18 +688,7 @@ impl Game<'_> {
                 Some(mod_api::CrosshairTarget::Entity { .. })
             );
         }
-        let before = |d: Option<f64>| d.is_some_and(|d| self.before_block(d));
-        before(self.painting_hit().map(|h| h.1))
-            || before(self.frame_hit().map(|h| h.1))
-            || before(self.armor_stand_hit().map(|h| h.1))
-            || before(self.cushion_hit().map(|h| h.1))
-            || before(self.boat_hit().map(|h| h.1))
-            || before(self.cart_hit().map(|h| h.1))
-            || before(self.interaction_hit().map(|h| h.1))
-            || before(self.dragon_hit().map(|h| h.1))
-            || before(self.crystal_hit().map(|h| h.1))
-            || before(self.mob_hit().map(|h| h.1))
-            || before(self.redirectable_hit().map(|h| h.1))
+        self.crosshair_entity_hit().is_some()
     }
     /// `LocalPlayer.isHandsBusy`: paddling a boat this player controls
     /// (`getControlledVehicle`: its first passenger, on a server's client).
@@ -867,14 +855,6 @@ impl Game<'_> {
             }
             return Some(true);
         }
-        let nearest = |hits: &[Option<f64>]| hits.iter().flatten().copied().reduce(f64::min);
-        let other = nearest(&[
-            self.painting_hit().map(|h| h.1),
-            self.frame_hit().map(|h| h.1),
-            self.boat_hit().map(|h| h.1),
-            self.cart_hit().map(|h| h.1),
-            self.dragon_hit().map(|h| h.1),
-        ]);
         let active = self
             .using
             .and_then(|(slot, _)| self.inventory.get(slot).and_then(Option::as_ref))
@@ -898,14 +878,17 @@ impl Game<'_> {
         });
         let living = match spear {
             Some(distance) => distance,
-            None => nearest(&[
-                self.mob_hit().map(|h| h.1),
-                self.armor_stand_hit().map(|h| h.1),
-            ])?,
+            None => {
+                let hit = self.crosshair_entity_hit()?;
+                let uid = u32::try_from(hit.id).ok()?;
+                if !self.mobs.iter().any(|m| m.id == uid)
+                    && !self.armor_stands.iter().any(|a| a.id == uid)
+                {
+                    return None;
+                }
+                hit.distance
+            }
         };
-        if (spear.is_none() && !self.before_block(living)) || other.is_some_and(|o| o <= living) {
-            return None;
-        }
         // Hud.extractCrosshair: with an attack range, the hit must be in it.
         if let Some(range) = &range
             && !attack_range_contains(range, living, self.creative)
@@ -915,33 +898,12 @@ impl Game<'_> {
         // Only alive mobs are hit, so a picked living entity is alive.
         Some(true)
     }
-    /// `Hud.canRenderCrosshairForSpectator` for the nearest hit in reach: an
-    /// entity that is a `MenuProvider` (a chest or hopper minecart, a chest
-    /// boat), or a block whose `showAsInteractableInSpectatorMode` holds.
+    /// `Hud.canRenderCrosshairForSpectator`: MenuProvider entity or spectator-interactable block.
     pub(super) fn spectator_crosshair(&self) -> bool {
-        let cart = self.cart_hit().map(|(i, d)| {
-            let kind = &self.carts[i].kind;
-            (d, matches!(kind, CartKind::Chest | CartKind::Hopper))
-        });
-        let boat = self.boat_hit().map(|(i, d)| (d, self.boats[i].chest));
-        let others = [
-            self.mob_hit().map(|h| h.1),
-            self.armor_stand_hit().map(|h| h.1),
-            self.cushion_hit().map(|h| h.1),
-            self.painting_hit().map(|h| h.1),
-            self.frame_hit().map(|h| h.1),
-            self.dragon_hit().map(|h| h.1),
-            self.interaction_hit().map(|h| h.1),
-        ];
-        let nearest = cart
-            .into_iter()
-            .chain(boat)
-            .chain(others.into_iter().flatten().map(|d| (d, false)))
-            .min_by(|a, b| a.0.total_cmp(&b.0));
-        if let Some((distance, menu)) = nearest
-            && self.before_block(distance)
-        {
-            return menu;
+        if let Some(hit) = self.crosshair_entity_hit() {
+            return self.carts.iter().any(|c| {
+                c.id as i32 == hit.id && matches!(c.kind, CartKind::Chest | CartKind::Hopper)
+            }) || self.boats.iter().any(|b| b.id as i32 == hit.id && b.chest);
         }
         self.pick()
             .is_some_and(|hit| self.block_interactable_for_spectator(&hit))

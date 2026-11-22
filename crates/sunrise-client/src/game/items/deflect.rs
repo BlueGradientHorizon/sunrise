@@ -3,7 +3,7 @@
 //! `ProjectileDeflection.AIM_DEFLECT` instead of hurting anything. It flies on
 //! along the player's view and is the player's now (`Projectile.deflect`
 //! sets the owner), so a ghast it meets dies of it (`Ghast.isReflectedFireball`).
-use super::{Game, ray_box};
+use super::Game;
 use sunrise_client::{
     mobs::Who,
     projectiles::{Projectile, ProjectileKind, Turn},
@@ -47,9 +47,8 @@ pub(super) fn aim_deflect(
     )
 }
 
-/// `Entity.getPickRadius`: only `AbstractHurtingProjectile` has one (1); a shulker
-/// bullet's is 0.
-fn pick_radius(p: &Projectile) -> f64 {
+/// `Entity.getPickRadius`: 1 for hurting projectiles, 0 for shulker bullets.
+pub(super) fn pick_radius(p: &Projectile) -> f64 {
     if matches!(p.kind, ProjectileKind::ShulkerBullet { .. }) {
         0.0
     } else {
@@ -73,16 +72,8 @@ fn pick_box(p: &Projectile) -> Aabb {
 }
 
 impl Game<'_> {
-    /// The redirectable projectile under the crosshair within the attack
-    /// reach, and how far along the view it is.
+    /// The redirectable projectile under the crosshair within entity reach.
     pub(super) fn redirectable_hit(&self) -> Option<(usize, f64)> {
-        let mut pick = crate::game::pick_accumulator::PickAccumulator::new(self.entity_reach);
-        self.redirectable_hit_with_pick(&mut pick)
-    }
-    pub(super) fn redirectable_hit_with_pick(
-        &self,
-        pick: &mut crate::game::pick_accumulator::PickAccumulator,
-    ) -> Option<(usize, f64)> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, _) = hit?;
             let index = self
@@ -94,17 +85,21 @@ impl Game<'_> {
         }
         let (eye, dir) = self.aim()?;
         let reach: f64 = self.entity_reach;
-        self.creatures
+        let (from, to) = super::pick_accumulator::pick_ray_segment(eye, dir, reach);
+        let mut pick = super::pick_accumulator::PickAccumulator::new(reach * reach);
+        let mut best = None;
+        for (i, p) in self
+            .creatures
             .projectiles
             .iter()
             .enumerate()
             .filter(|(_, p)| attackable(p))
-            .filter_map(|(i, p)| {
-                ray_box(eye, dir, reach, pick_box(p))
-                    .filter(|&t| pick.consider(self, p.id, t))
-                    .map(|t| (i, t))
-            })
-            .last()
+        {
+            if pick.consider_box(self, p.id, from, to, pick_box(p)) {
+                best = Some((i, pick.hovered.unwrap().distance_sq.sqrt()));
+            }
+        }
+        best
     }
 
     /// `Player.attack` on a redirectable projectile nearer than any mob or

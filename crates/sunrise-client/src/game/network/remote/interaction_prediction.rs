@@ -89,9 +89,11 @@ impl Game<'_> {
                         .remote
                         .as_ref()
                         .is_some_and(|r| r.has_passengers(hit.id as u32)));
-            // EndCrystal and EnderDragonPart keep Entity.interact's PASS.
+            // EndCrystal, EnderDragonPart, PrimedTnt, and FallingBlock keep Entity.interact's PASS.
             let crystal_passes = self.crystals.iter().any(|c| c.id as i32 == hit.id)
                 || self.level_dragon_part(hit.id as u32).is_some();
+            let tnt_or_falling_passes = self.tnts.iter().any(|t| t.id as i32 == hit.id)
+                || self.falling.iter().any(|f| f.id as i32 == hit.id);
             let passes = self
                 .remote
                 .as_ref()
@@ -101,7 +103,8 @@ impl Game<'_> {
                 || boat_passes
                 || cart_passes
                 || cushion_passes
-                || crystal_passes;
+                || crystal_passes
+                || tnt_or_falling_passes;
             // Otherwise the main hand's turn takes it; there is no off hand turn.
             if response.is_none() && hand == Hand::Off && !passes {
                 return false;

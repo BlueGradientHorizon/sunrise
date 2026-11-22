@@ -4,19 +4,15 @@ use crate::game::{
     interactions::RemoteInteraction,
     native_entity_refs::tests::{with_client_game, with_game},
     native_lifecycle::NativeLifecycle,
+    remote::RemoteDimensionEntry,
     tnt::PrimedTnt,
 };
 use mod_api::CrosshairTarget;
 use serde_json::Value;
 use std::sync::Arc;
 use sunrise_client::{
-    camera::CameraType,
-    chunk::Chunk,
-    entities::ArmorStand,
-    first_person::Hand,
-    level_loading::Reason,
-    mobs::Mob,
-    motion::PlayerMotion,
+    camera::CameraType, chunk::Chunk, entities::ArmorStand, first_person::Hand,
+    level_loading::Reason, mobs::Mob, motion::PlayerMotion,
 };
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 use sunrise_protocol::{
@@ -97,7 +93,7 @@ fn setup_remote_overworld(game: &mut Game<'_>, player_id: i32, player_pos: [f64;
         portal_cooldown: 0,
         sea_level: 63,
     };
-    game.enter_remote_dimension(&spawn, false, Reason::Other);
+    game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
     let remote = game.remote.as_mut().unwrap();
     remote.logged_in = true;
     remote.entity_id = player_id;
@@ -176,11 +172,7 @@ fn pin_entity_pose(
         return;
     }
     let uid = id as u32;
-    if let Some(t) = game
-        .remote
-        .as_mut()
-        .and_then(|r| r.entities.get_mut(&id))
-    {
+    if let Some(t) = game.remote.as_mut().and_then(|r| r.entities.get_mut(&id)) {
         (t.position, t.previous) = (pos_arr, pos_arr);
         (t.yaw, t.previous_yaw, t.pitch, t.previous_pitch) = (yaw, yaw, pitch, pitch);
     }
@@ -210,8 +202,12 @@ fn pin_entity_pose(
     });
     if let Some(inter) = game.interactions.get_mut(&id) {
         (inter.position, inter.previous) = (pos, pos);
-        (inter.yaw, inter.previous_yaw, inter.pitch, inter.previous_pitch) =
-            (yaw, yaw, pitch, pitch);
+        (
+            inter.yaw,
+            inter.previous_yaw,
+            inter.pitch,
+            inter.previous_pitch,
+        ) = (yaw, yaw, pitch, pitch);
     }
     game.tnts.for_each_mut(|t| {
         if t.id == uid {
@@ -368,7 +364,9 @@ fn check_case_hit(game: &Game<'_>, tc: &Value, failures: &mut Vec<String>) {
                 ));
             }
             if !game.entity_targeted() {
-                failures.push(format!("{name}: entity_targeted() was false for ENTITY {want_id}"));
+                failures.push(format!(
+                    "{name}: entity_targeted() was false for ENTITY {want_id}"
+                ));
             }
             if game.spectator_click_target() != Some(want_id) {
                 failures.push(format!(
@@ -428,7 +426,9 @@ fn check_case_hit(game: &Game<'_>, tc: &Value, failures: &mut Vec<String>) {
         }
         "MISS" => {
             if target.is_some() {
-                failures.push(format!("{name}: crosshair_target {target:?} != vanilla MISS"));
+                failures.push(format!(
+                    "{name}: crosshair_target {target:?} != vanilla MISS"
+                ));
             }
             if game.crosshair_entity_id().is_some() {
                 failures.push(format!(
@@ -557,14 +557,20 @@ fn nested_ride_root_vehicle_exclusion_matches_26_3_witness() {
 #[ignore = "run by tools/test_crosshair_pick_parity.py"]
 fn singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3() {
     let witness = crosshair_witness();
-    assert_eq!(witness["entity_traits"]["tnt"]["is_pickable"].as_bool(), Some(true));
+    assert_eq!(
+        witness["entity_traits"]["tnt"]["is_pickable"].as_bool(),
+        Some(true)
+    );
     assert_eq!(
         witness["entity_traits"]["falling_block"]["is_pickable"].as_bool(),
         Some(true)
     );
 
     with_game(|game| {
-        assert!(!game.uses_stored_pick(), "with_game exercises the unstored pick path");
+        assert!(
+            !game.uses_stored_pick(),
+            "with_game exercises the unstored pick path"
+        );
         ensure_chunk(game, 0, 0);
         game.title = None;
         game.block_reach = 4.5;
@@ -609,11 +615,26 @@ fn singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3() 
             used_portal: false,
             block_state: None,
         });
-        assert_eq!(game.crosshair_entity_id(), Some(10), "singleplayer TNT crosshair_entity_id");
+        assert_eq!(
+            game.crosshair_entity_id(),
+            Some(10),
+            "singleplayer TNT crosshair_entity_id"
+        );
         assert!(game.entity_targeted(), "singleplayer TNT entity_targeted");
-        assert_eq!(game.spectator_click_target(), Some(10), "singleplayer TNT spectator_click_target");
-        assert_eq!(game.pick_entity_hit(), Some(None), "singleplayer TNT has no pick result");
-        assert!(game.within_entity_range(10), "singleplayer TNT within_entity_range");
+        assert_eq!(
+            game.spectator_click_target(),
+            Some(10),
+            "singleplayer TNT spectator_click_target"
+        );
+        assert_eq!(
+            game.pick_entity_hit(),
+            Some(None),
+            "singleplayer TNT has no pick result"
+        );
+        assert!(
+            game.within_entity_range(10),
+            "singleplayer TNT within_entity_range"
+        );
 
         // B: singleplayer falling sand occludes stone behind it and reports no getPickResult.
         game.tnts.clear();
@@ -640,11 +661,29 @@ fn singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3() 
             damage: Default::default(),
             saved: None,
         });
-        assert_eq!(game.crosshair_entity_id(), Some(20), "singleplayer falling block crosshair_entity_id");
-        assert!(game.entity_targeted(), "singleplayer falling block entity_targeted");
-        assert_eq!(game.spectator_click_target(), Some(20), "singleplayer falling block spectator_click_target");
-        assert_eq!(game.pick_entity_hit(), Some(None), "singleplayer falling block has no pick result");
-        assert!(game.within_entity_range(20), "singleplayer falling block within_entity_range");
+        assert_eq!(
+            game.crosshair_entity_id(),
+            Some(20),
+            "singleplayer falling block crosshair_entity_id"
+        );
+        assert!(
+            game.entity_targeted(),
+            "singleplayer falling block entity_targeted"
+        );
+        assert_eq!(
+            game.spectator_click_target(),
+            Some(20),
+            "singleplayer falling block spectator_click_target"
+        );
+        assert_eq!(
+            game.pick_entity_hit(),
+            Some(None),
+            "singleplayer falling block has no pick result"
+        );
+        assert!(
+            game.within_entity_range(20),
+            "singleplayer falling block within_entity_range"
+        );
 
         // C: unmounted singleplayer player carrying a pig excludes the pig and hits ceiling stone.
         game.falling.clear();
@@ -657,9 +696,20 @@ fn singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3() 
         pig.extra.mount = Some(1);
         pig.extra.passenger = true;
         game.mobs.push(pig);
-        assert_eq!(game.crosshair_entity_id(), None, "pig riding unmounted player must be excluded");
-        assert!(!game.entity_targeted(), "pig riding unmounted player must not be targeted");
-        assert_eq!(game.spectator_click_target(), None, "pig riding unmounted player must not be spectator target");
+        assert_eq!(
+            game.crosshair_entity_id(),
+            None,
+            "pig riding unmounted player must be excluded"
+        );
+        assert!(
+            !game.entity_targeted(),
+            "pig riding unmounted player must not be targeted"
+        );
+        assert_eq!(
+            game.spectator_click_target(),
+            None,
+            "pig riding unmounted player must not be spectator target"
+        );
         assert_eq!(game.pick().map(|h| h.pos), Some([0, 68, 0]));
 
         // D: singleplayer camel rider with eye inside camel box looks through co-passenger husk to external TNT.
@@ -667,7 +717,8 @@ fn singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3() 
         game.world.set(0, 68, 0, air).unwrap();
         let camel_type = game.res.mob_types().get("minecraft:camel").unwrap().clone();
         let husk_type = game.res.mob_types().get("minecraft:husk").unwrap().clone();
-        game.mobs.push(Mob::new(130, camel_type, Vec3::new(0.5, 64.0, 0.5), 0.0));
+        game.mobs
+            .push(Mob::new(130, camel_type, Vec3::new(0.5, 64.0, 0.5), 0.0));
         let mut husk = Mob::new(131, husk_type, Vec3::new(0.5, 64.17, 1.0), 0.0);
         husk.extra.mount = Some(130);
         husk.extra.passenger = true;
@@ -696,15 +747,24 @@ fn singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3() 
         });
         game.riding = Some(130);
         place_player(game, [0.5, 64.17, 0.0], 0.0, 0.0);
-        assert_eq!(game.crosshair_entity_id(), Some(201), "unified unstored pick must pick TNT past camel co-passenger");
-        assert_eq!(game.spectator_click_target(), Some(201), "spectator_click_target must pick TNT past camel co-passenger");
+        assert_eq!(
+            game.crosshair_entity_id(),
+            Some(201),
+            "unified unstored pick must pick TNT past camel co-passenger"
+        );
+        assert_eq!(
+            game.spectator_click_target(),
+            Some(201),
+            "spectator_click_target must pick TNT past camel co-passenger"
+        );
         assert!(game.entity_targeted());
 
         // E: singleplayer horse excludes ArmorStand and RemoteInteraction co-passengers and picks external falling block.
         game.mobs.clear();
         game.tnts.clear();
         let horse_type = game.res.mob_types().get("minecraft:horse").unwrap().clone();
-        game.mobs.push(Mob::new(110, horse_type, Vec3::new(0.5, 64.0, 0.5), 0.0));
+        game.mobs
+            .push(Mob::new(110, horse_type, Vec3::new(0.5, 64.0, 0.5), 0.0));
         let mut stand = ArmorStand::new(112, Vec3::new(0.5, 65.6, 1.4), 0.0);
         stand.vehicle = Some(110);
         game.armor_stands.push(stand);
@@ -737,8 +797,20 @@ fn singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3() 
         });
         game.riding = Some(110);
         place_player(game, [0.5, 65.0, 0.5], 0.0, 0.0);
-        assert_eq!(game.interaction_hit(), None, "interaction_hit must exclude same-root-vehicle interaction");
-        assert_eq!(game.crosshair_entity_id(), Some(202), "horse co-passenger stand and interaction must be excluded");
-        assert_eq!(game.spectator_click_target(), Some(202), "spectator_click_target must skip co-passenger stand and interaction");
+        assert_eq!(
+            game.interaction_hit(),
+            None,
+            "interaction_hit must exclude same-root-vehicle interaction"
+        );
+        assert_eq!(
+            game.crosshair_entity_id(),
+            Some(202),
+            "horse co-passenger stand and interaction must be excluded"
+        );
+        assert_eq!(
+            game.spectator_click_target(),
+            Some(202),
+            "spectator_click_target must skip co-passenger stand and interaction"
+        );
     });
 }

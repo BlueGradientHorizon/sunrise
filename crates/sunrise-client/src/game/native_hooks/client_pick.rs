@@ -128,14 +128,35 @@ impl Game<'_> {
         self.client_pick.origin = origin;
         self.client_pick.epoch = self.native_lifecycle.epoch();
         self.client_pick.dimension = Some(self.dim);
+        let from = sunrise_core::geometry::Vec3::new(origin[0], origin[1], origin[2]);
+        let max_distance = self.block_reach.max(self.entity_reach);
         let block_hit = self.pick_unfiltered();
-        let occluder = block_hit.map(|hit| self.pick_distance(hit.point));
+        // LocalPlayer.pick: blockDistanceSq shortens the entity ray, and MISS uses maxDistance.
+        let (entity_max_distance, block_distance_sq) = match block_hit {
+            Some(hit) => {
+                let d2 = from.distance_squared(sunrise_core::geometry::Vec3::new(
+                    hit.point[0],
+                    hit.point[1],
+                    hit.point[2],
+                ));
+                (d2.sqrt(), d2)
+            }
+            None => {
+                let to = sunrise_core::geometry::Vec3::new(
+                    from.x + direction[0] * max_distance,
+                    from.y + direction[1] * max_distance,
+                    from.z + direction[2] * max_distance,
+                );
+                (max_distance, to.distance_squared(from))
+            }
+        };
         let block_candidate = block_hit
             .filter(|hit| {
-                (0..3)
-                    .map(|i| (hit.point[i] - origin[i]).powi(2))
-                    .sum::<f64>()
-                    <= self.block_reach.powi(2)
+                from.distance_squared(sunrise_core::geometry::Vec3::new(
+                    hit.point[0],
+                    hit.point[1],
+                    hit.point[2],
+                )) < self.block_reach * self.block_reach
             })
             .and_then(|hit| {
                 use crate::game::api_values::TryIntoApi;
@@ -151,9 +172,12 @@ impl Game<'_> {
             });
         let camera_id = self.pick_camera_id();
         let attack_candidate = self.attack_range_pick_entity();
-        let entity_candidate = attack_candidate.or_else(|| self.pick_entity_candidate());
-        // A rider listener may change the camera. Neither the entity nor
-        // the block traced from the old camera belongs to the new pick.
+        let raw_entity_hit = if attack_candidate.is_some() {
+            None
+        } else {
+            self.pick_entity_candidate_within(entity_max_distance, block_distance_sq)
+        };
+        // Refuse the pick if a rider listener changed camera, epoch, or dimension.
         if camera_id != self.pick_camera_id()
             || self.client_pick.epoch != self.native_lifecycle.epoch()
             || self.client_pick.dimension != Some(self.dim)
@@ -162,11 +186,22 @@ impl Game<'_> {
             self.publish_client_pick(None);
             return;
         }
-        let original = attack_candidate.or_else(|| match entity_candidate {
+        let entity_in_range = raw_entity_hit.filter(|target| match target {
+            CrosshairTarget::Entity { point, .. } => {
+                from.distance_squared(sunrise_core::geometry::Vec3::new(
+                    point[0], point[1], point[2],
+                )) < self.entity_reach * self.entity_reach
+            }
+            _ => false,
+        });
+        let entity_candidate = attack_candidate.or(entity_in_range);
+        let original = attack_candidate.or_else(|| match raw_entity_hit {
             Some(CrosshairTarget::Entity { point, .. })
-                if occluder.is_none_or(|distance| self.pick_distance(point) < distance) =>
+                if from.distance_squared(sunrise_core::geometry::Vec3::new(
+                    point[0], point[1], point[2],
+                )) < block_distance_sq =>
             {
-                entity_candidate
+                entity_in_range
             }
             _ => block_candidate,
         });
@@ -200,9 +235,7 @@ impl Game<'_> {
         self.transaction_close(&seal, true);
     }
 
-    /// Whether Pick Block (middle click) can name an item for the entity: a projectile, a dragon
-    /// part, an unmodeled entity or a general row has no `Entity.getPickResult`. This is not
-    /// whether the crosshair can target it, which a general type's `pickable` decides.
+    /// Whether Pick Block can name an item for the entity (`Entity.getPickResult`).
     pub(in crate::game) fn has_pick_result(target: Option<crate::game::commands::Target>) -> bool {
         use crate::game::commands::Target;
         !matches!(
@@ -212,6 +245,8 @@ impl Game<'_> {
                     | Target::DragonPart(_)
                     | Target::Other(_)
                     | Target::General(_)
+                    | Target::Tnt(_)
+                    | Target::Falling(_)
             )
         )
     }
@@ -220,7 +255,8 @@ impl Game<'_> {
         self.client_pick.result = result;
         self.client_pick.entity_metadata = match result {
             Some(CrosshairTarget::Entity { entity, .. }) => (
-                Self::has_pick_result(self.native_client_entity_target(entity)),
+                !self.interactions.contains_key(&(entity.id() as i32))
+                    && Self::has_pick_result(self.native_client_entity_target(entity)),
                 self.level_dragon_part(entity.id()).is_none(),
             ),
             _ => (false, false),

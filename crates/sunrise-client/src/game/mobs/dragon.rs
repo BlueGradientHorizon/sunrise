@@ -2075,16 +2075,8 @@ impl Game<'_> {
         });
         self.trigger_killed(view, blow.as_ref());
     }
-    /// Player melee on the dragon's parts or a crystal under the crosshair.
-    /// The dragon part under the crosshair within reach: its id and distance.
+    /// The dragon part or crystal under the crosshair within reach.
     pub(super) fn dragon_hit(&self) -> Option<(u32, f64)> {
-        let mut pick = crate::game::pick_accumulator::PickAccumulator::new(self.entity_reach);
-        self.dragon_hit_with_pick(&mut pick)
-    }
-    pub(super) fn dragon_hit_with_pick(
-        &self,
-        pick: &mut crate::game::pick_accumulator::PickAccumulator,
-    ) -> Option<(u32, f64)> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, _) = hit?;
             return self
@@ -2095,26 +2087,12 @@ impl Game<'_> {
         }
         let (eye, dir) = self.aim()?;
         let reach: f64 = self.entity_reach;
+        let (from, to) = super::pick_accumulator::pick_ray_segment(eye, dir, reach);
+        let mut pick = super::pick_accumulator::PickAccumulator::new(reach * reach);
         let mut best: Option<(u32, f64)> = None;
         for (id, b) in self.special_targets() {
-            let (lo, hi) = (b.min_position(), b.max_position());
-            let (lo, hi) = ([lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]);
-            let (mut t0, mut t1) = (0.0f64, reach);
-            let mut hit = true;
-            for a in 0..3 {
-                if dir[a].abs() < 1e-9 {
-                    hit &= eye[a] >= lo[a] && eye[a] <= hi[a];
-                    continue;
-                }
-                let (mut ta, mut tb) = ((lo[a] - eye[a]) / dir[a], (hi[a] - eye[a]) / dir[a]);
-                if ta > tb {
-                    std::mem::swap(&mut ta, &mut tb);
-                }
-                t0 = t0.max(ta);
-                t1 = t1.min(tb);
-            }
-            if hit && t0 <= t1 && pick.consider(self, id, t0) {
-                best = Some((id, t0));
+            if pick.consider_box(self, id, from, to, b) {
+                best = Some((id, pick.hovered.unwrap().distance_sq.sqrt()));
             }
         }
         best
@@ -5116,26 +5094,6 @@ impl Game<'_> {
             self.audio
                 .play("minecraft:entity.ender_dragon.growl", Some(at), 2.5, pitch);
         }
-    }
-    /// The dragon's parts as a server's client attacks them: the server's
-    /// ids for `EnderDragonPart`s follow the dragon's.
-    pub(super) fn remote_dragon_part_hit_with_pick(
-        &self,
-        eye: [f64; 3],
-        dir: [f64; 3],
-        reach: f64,
-        pick: &mut crate::game::pick_accumulator::PickAccumulator,
-    ) -> Option<(i32, f64, [f64; 3])> {
-        let d = self.dragon.as_ref().filter(|d| d.alive() && d.id != 0)?;
-        (0..8)
-            .filter_map(|i| {
-                let b = d.part_box(i);
-                let p = d.parts[i].0;
-                super::ray_box(eye, dir, reach, b)
-                    .filter(|&t| pick.consider(self, d.id + 1 + i as u32, t))
-                    .map(|t| ((d.id + 1 + i as u32) as i32, t, [p.x, p.y, p.z]))
-            })
-            .last()
     }
 }
 
