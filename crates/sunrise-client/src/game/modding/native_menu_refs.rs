@@ -886,17 +886,20 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn number_key_swaps_predict_with_the_undisplayed_hotbar() {
+        use crate::game::inventory_slots::MOD_MENU_SLOT_BASE;
+
         with_panel(1, |game, _| {
             open_panel(game);
-            assert_eq!(game.slots(), [300]);
+            let slot = MOD_MENU_SLOT_BASE;
+            assert_eq!(game.slots(), [slot]);
             let held = ItemStack::new("minecraft:stone", 5);
             let stored = ItemStack::new("minecraft:dirt", 2);
             game.inventory[2] = Some(held.clone());
-            *game.slot_mut(300) = Some(stored.clone());
-            assert!(game.menu_ops(&[(Some(300), 2, Input::Swap)]));
+            *game.slot_mut(slot) = Some(stored.clone());
+            assert!(game.menu_ops(&[(Some(slot), 2, Input::Swap)]));
             assert_eq!(game.inventory[2], Some(stored));
-            assert_eq!(*game.slot_mut(300), Some(held));
-            assert_eq!(game.slots(), [300]);
+            assert_eq!(*game.slot_mut(slot), Some(held));
+            assert_eq!(game.slots(), [slot]);
         });
     }
 
