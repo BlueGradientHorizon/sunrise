@@ -388,6 +388,9 @@ pub(in crate::game) mod tests {
         let (mut game, rx, mut all) = stream_the_nether(&mut resources, "view-pass");
         assert!(all.opened, "the Nether was opened on the client");
         assert_eq!(all.chunks, square(), "the area's chunks, wrapped");
+        // The synchronous load_world fixture skips the server startup that opens the handle epoch.
+        game.native_lifecycle
+            .begin_open(Some(mod_api::Authority::IntegratedServer));
         let nether = game.level(Dim::Nether.id()).unwrap();
         let chunk = game.chunk(nether, [40, 40]).unwrap();
         assert_eq!(chunk.resend(&mut game), Ok(()));
