@@ -10,34 +10,54 @@ pub(super) use sunrise_gameplay::game_modes::{
 
 /// `InventoryScreen.containerTick` / `CreativeModeInventoryScreen.containerTick`:
 /// reconcile an open player inventory with `Player.hasInfiniteMaterials`.
-fn inventory_after_infinite_materials(screen: Screen, infinite_materials: bool) -> Screen {
-    match (screen, infinite_materials) {
-        (Screen::Inventory, true) => Screen::Creative,
-        (Screen::Creative, false) => Screen::Inventory,
+fn inventory_after_infinite_materials(
+    screen: Screen,
+    player_inventory: bool,
+    infinite_materials: bool,
+) -> Screen {
+    match (screen, player_inventory, infinite_materials) {
+        (Screen::Inventory, true, true) => Screen::Creative,
+        (Screen::Creative, _, false) => Screen::Inventory,
         _ => screen,
     }
 }
 
 impl Game<'_> {
+    /// Whether `Screen::Inventory` currently shows the player's own `InventoryScreen`
+    /// rather than a container, crafting table, workstation, mount, or server/mod menu.
+    pub(in crate::game) fn is_player_inventory_screen(&self) -> bool {
+        self.screen == Screen::Inventory
+            && self.container.is_none()
+            && self.station.is_none()
+            && self.craft_size == 2
+            && !self.mount_active()
+            && self.mod_screen.is_none()
+            && self.remote_menu_type().is_none()
+    }
+
     /// Reconcile an open player inventory on its screen tick (`InventoryScreen.containerTick`
-    /// and `CreativeModeInventoryScreen.containerTick`) against live `instabuild`.
+    /// and `CreativeModeInventoryScreen.containerTick`) against live `instabuild`, keeping
+    /// the shared cursor (`carried`) stack across the switch.
     pub(in crate::game) fn tick_inventory_screen(&mut self) {
         if self.player.is_none() {
             return;
         }
-        let next = inventory_after_infinite_materials(self.screen, self.instabuild());
+        let next = inventory_after_infinite_materials(
+            self.screen,
+            self.is_player_inventory_screen(),
+            self.instabuild(),
+        );
         if next == self.screen {
             return;
         }
         match next {
             Screen::Creative => {
-                if let Some(c) = self.carried.take() {
-                    let _ = self.add_stack_to_inventory(c);
-                }
                 self.set_screen(Screen::Creative);
-                self.refresh_creative_tabs();
-                self.creative_screen.reopen();
-                self.refresh_saved_hotbars();
+                if self.screen == Screen::Creative {
+                    self.refresh_creative_tabs();
+                    self.creative_screen.reopen();
+                    self.refresh_saved_hotbars();
+                }
             }
             Screen::Inventory => {
                 self.set_screen(Screen::Inventory);
@@ -126,7 +146,10 @@ impl Game<'_> {
             .expect("set_local_mode requires a remote client");
         self.creative = r.update_local_mode_abilities(mode.id());
         self.apply_remote_abilities();
-        self.sync_remote_player_game_mode();
+        let local_spectator = self.spectator();
+        if let Some(player) = self.player.as_mut() {
+            player.local_spectator = local_spectator;
+        }
     }
     /// `ServerPlayer.setGameMode` on a local/server world.
     pub(super) fn set_mode(&mut self, mode: GameMode) {
@@ -445,23 +468,32 @@ mod tests {
     }
 
     /// `InventoryScreen.containerTick` / `CreativeModeInventoryScreen.containerTick`:
-    /// both directions follow `hasInfiniteMaterials` and leave other screens alone.
+    /// both directions follow `hasInfiniteMaterials` only for player-inventory screens,
+    /// leaving container menus and other screens alone.
     #[test]
     fn open_inventory_reconciles_both_directions_with_infinite_materials() {
         assert_eq!(
-            inventory_after_infinite_materials(Screen::Inventory, true),
+            inventory_after_infinite_materials(Screen::Inventory, true, true),
             Screen::Creative
         );
         assert_eq!(
-            inventory_after_infinite_materials(Screen::Inventory, false),
+            inventory_after_infinite_materials(Screen::Inventory, true, false),
             Screen::Inventory
         );
         assert_eq!(
-            inventory_after_infinite_materials(Screen::Creative, false),
+            inventory_after_infinite_materials(Screen::Inventory, false, true),
             Screen::Inventory
         );
         assert_eq!(
-            inventory_after_infinite_materials(Screen::Creative, true),
+            inventory_after_infinite_materials(Screen::Inventory, false, false),
+            Screen::Inventory
+        );
+        assert_eq!(
+            inventory_after_infinite_materials(Screen::Creative, false, false),
+            Screen::Inventory
+        );
+        assert_eq!(
+            inventory_after_infinite_materials(Screen::Creative, false, true),
             Screen::Creative
         );
         for screen in [
@@ -470,8 +502,14 @@ mod tests {
             Screen::Stats,
             Screen::Advancements,
         ] {
-            assert_eq!(inventory_after_infinite_materials(screen, true), screen);
-            assert_eq!(inventory_after_infinite_materials(screen, false), screen);
+            assert_eq!(
+                inventory_after_infinite_materials(screen, false, true),
+                screen
+            );
+            assert_eq!(
+                inventory_after_infinite_materials(screen, false, false),
+                screen
+            );
         }
     }
 
