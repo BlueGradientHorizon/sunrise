@@ -11,6 +11,7 @@ pub const SORT_KEY: &str = "sunrise.sort";
 /// The name the options screen uses while the shader pack key waits for a key.
 pub const SHADER_PACK_KEY: &str = "sunrise.shader_pack_key";
 
+// no wire: this is private to the built-in HUD layout.
 /// A screen corner for Sunrise's internal extras and PvP HUD boxes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Corner {
@@ -26,7 +27,7 @@ impl Corner {
         Corner::BottomLeft,
         Corner::BottomRight,
     ];
-    pub fn key(self) -> &'static str {
+    pub fn name(self) -> &'static str {
         match self {
             Corner::TopLeft => "top_left",
             Corner::TopRight => "top_right",
@@ -45,13 +46,13 @@ impl Corner {
     pub fn parse(s: &str, default: Corner) -> Corner {
         Self::ALL
             .into_iter()
-            .find(|c| c.key() == s)
+            .find(|c| c.name() == s)
             .unwrap_or(default)
     }
-    pub fn is_top(self) -> bool {
+    pub fn top(self) -> bool {
         matches!(self, Corner::TopLeft | Corner::TopRight)
     }
-    pub fn is_left(self) -> bool {
+    pub fn left(self) -> bool {
         matches!(self, Corner::TopLeft | Corner::BottomLeft)
     }
 }

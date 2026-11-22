@@ -6,10 +6,12 @@ takes a buffer of `GuiDraw` ops for the same calls, with `Push` / `Pop` for the 
 
 `ClientHost::debug_overlay_visible()` reports whether the client draws its debug overlay this frame. In
 `render_gui_post`, use it to leave space for the overlay, and use `ClientHost::hud_layer_bounds(layer)`
-to read the drawn `[x, y, width, height]` rectangle in GUI pixels of any HUD layer that drew earlier in
-this HUD pass (for example `"minecraft:effects"`, `"minecraft:boss_overlay"`, `"minecraft:scoreboard_sidebar"`,
-or a mod layer id). Always-on debug entries can make the debug overlay visible with F3 off. F1 hides the
-overlay unless a screen is open. Both reads are available only on the client host.
+to read the `[x, y, width, height]` rectangle in GUI pixels of a layer drawn earlier in the current
+HUD pass, clipped to the viewport and its scissors. For example, use `"minecraft:effects"` to place
+an overlay below the visible effect icons, with each overlay's offset managed by the mod itself.
+`Ok(None)` means the layer did not paint visible geometry or the HUD pass is not running; screen hooks
+never see the earlier HUD's bounds. Always-on debug entries can make the debug overlay visible with
+F3 off. F1 hides the debug overlay unless a screen is open.
 
 ## Registering a HUD layer
 
@@ -21,8 +23,9 @@ invalid IDs, duplicate IDs and unknown anchors; `register` returns whether it in
 
 The client keeps the callback for the session and calls it as the mod that installed it. Capture
 any state the layer needs in the closure, and use the current `ClientHost` and `DrawContext`
-passed on each draw. The callback runs only for its own layer, and not when the HUD is hidden
-or `gui_layer_pre` cancels the layer.
+passed on each draw. Inserted layers still run under F1, so use `host.hud_mode()` to skip your own
+paint when the effective mode is not `HudMode::AllVisible`. If `render_gui_pre` cancels the whole
+HUD sequence or `gui_layer_pre` cancels this layer, its painter does not run.
 A vanilla anchor that doesn't draw that frame still determines the layer's position. The vehicle
 health, player health and contextual bar anchors follow that paint order.
 
@@ -58,9 +61,9 @@ paint is discarded. A wrapper's completed `draw_previous()` calls keep their pai
 without being called again. A panic disables just the offending callback for this session; a
 disabled wrapper leaves the previous body to draw directly. If Pre cancels the slot, neither the
 installed body nor Post runs. For a single post-HUD pass after all visible HUD layers finish and before
-screens, toasts, debug overlays and IME draw, use `Hooks::render_gui_post` (suppressed when the HUD is
-hidden by F1 or replay, or when `render_gui_pre` cancels). To draw above an open screen, use
-`Hooks::screen_render_post`.
+screens, toasts, debug overlays and IME draw, use `Hooks::render_gui_post`. It runs under F1 and before
+Options opened over a world, but not on the title or when `render_gui_pre` cancels. Use
+`host.window_focused()` to check focus. To draw above an open screen, use `Hooks::screen_render_post`.
 
 ## Status rows and fixed text positions
 

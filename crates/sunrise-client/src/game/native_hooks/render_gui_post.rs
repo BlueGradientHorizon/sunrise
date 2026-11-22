@@ -23,25 +23,4 @@ impl Game<'_> {
             .rev()
             .find_map(|&(id, rect)| (id == layer).then_some(rect)))
     }
-
-    pub(in crate::game) fn record_hud_layer_bounds(
-        &mut self,
-        id: &'static str,
-        rect: Option<[f32; 4]>,
-    ) {
-        if let Some(existing) = self
-            .hud_layer_bounds
-            .iter_mut()
-            .find(|(existing_id, _)| *existing_id == id)
-        {
-            if let Some(rect) = rect {
-                existing.1 = rect;
-            } else {
-                self.hud_layer_bounds
-                    .retain(|(existing_id, _)| *existing_id != id);
-            }
-        } else if let Some(rect) = rect {
-            self.hud_layer_bounds.push((id, rect));
-        }
-    }
 }

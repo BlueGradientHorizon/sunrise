@@ -6,13 +6,16 @@ use crate::{
 };
 use sunrise_hooks::hud;
 
+/// The gap between an overlay and the screen edge or the next overlay.
+const MARGIN: f32 = 2.0;
+
+// no wire: the stacking cursor is local to a render pass.
 /// Corner-stacking cursor for Sunrise's internal extras and PvP HUD boxes.
-#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Corners {
-    pub width: f32,
-    pub height: f32,
+    width: f32,
+    height: f32,
     /// Distance from the corner's top or bottom edge, per `Corner::ALL`.
-    pub used: [f32; 4],
+    used: [f32; 4],
 }
 impl Corners {
     /// `top_right` clears the vanilla active status effect icons.
@@ -20,24 +23,25 @@ impl Corners {
         Self {
             width,
             height,
-            used: [4.0, 4.0 + top_right, 4.0, 4.0],
+            used: [0.0, top_right, 0.0, 0.0],
         }
     }
 
     /// Top-left position of a `w` x `h` box in `corner`, advancing that corner's stack.
     pub fn place(&mut self, corner: Corner, w: f32, h: f32) -> (f32, f32) {
-        let i = Corner::ALL.iter().position(|c| *c == corner).unwrap_or(0);
-        let x = if corner.is_left() {
-            4.0
+        let i = corner as usize;
+        let edge = self.used[i] + MARGIN;
+        self.used[i] = edge + h;
+        let x = if corner.left() {
+            MARGIN
         } else {
-            (self.width - w - 4.0).max(4.0)
+            self.width - MARGIN - w
         };
-        let y = if corner.is_top() {
-            self.used[i]
+        let y = if corner.top() {
+            edge
         } else {
-            (self.height - self.used[i] - h).max(4.0)
+            self.height - edge - h
         };
-        self.used[i] += h + 3.0;
         (x, y)
     }
 }

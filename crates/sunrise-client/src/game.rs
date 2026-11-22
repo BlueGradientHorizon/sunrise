@@ -3459,10 +3459,10 @@ struct Game<'a> {
     debug_renderers: Vec<sunrise_client::debug_entries::ActiveDebugRenderer>,
     /// `DebugRenderer.lastDebugEntriesVersion`: none before the first view of a world.
     debug_renderers_version: Option<u64>,
-    /// Next undrawn mod layer in HUD `gui_layers::order`; `None` while hidden or outside its pass.
+    /// Next undrawn mod layer in HUD `gui_layers::order`; `None` outside their pass.
     hud_layer_next: Option<usize>,
     /// Drawn bounding rectangles `[x, y, width, height]` in GUI pixels for HUD layers drawn so far
-    /// in the current HUD pass (`ScreensClientHost::hud_layer_bounds`). Cleared on each HUD pass.
+    /// in the current HUD pass (`ScreensClientHost::hud_layer_bounds`). Cleared before screens draw.
     hud_layer_bounds: Vec<(&'static str, [f32; 4])>,
     /// The mod block entities' view distances, asked of the parts once (`native_block_entity_draw`).
     mod_view_distances: std::cell::OnceCell<native_block_entity_draw::ViewDistances>,
@@ -7086,7 +7086,6 @@ impl Game<'_> {
         // keep clear of; `hud_layers` fills it in once the world's HUD draws.
         let gui = HudBatch::new(size, self.settings.gui_scale_inputs());
         self.ui.room = sunrise_client::hud_kit::room::Room::new(gui.width, gui.height);
-        self.hud_layer_bounds.clear();
         // The pack prompt replaces the connecting screen (setScreen), but
         // in game it opens over the world.
         let mut batch = if (self.server_packs.prompt.is_some()
@@ -7128,14 +7127,10 @@ impl Game<'_> {
             );
             self.cursor = pointer.subpixel();
         }
-        self.hud_layer_bounds.clear();
         batch
     }
     fn hud_layers(&mut self, size: [u32; 2]) -> HudBatch {
-        use sunrise_client::gui_layers::VanillaGuiLayer;
-
         self.input_hud_begin();
-        self.hud_layer_bounds.clear();
         let mut batch = HudBatch::new(size, self.settings.gui_scale_inputs());
         batch.glint_colour = self.pvp_glint_texel();
         // GlobalSettingsUniform's GameTime, for a resource pack's text shader.
@@ -7158,39 +7153,27 @@ impl Game<'_> {
             self.draw_screen_with_post_hook(&mut batch);
             return batch;
         }
-        if self.screen == Screen::Options {
-            if self.title.is_none() {
-                self.flush_skin_slots();
-                self.update_remote_skins();
+        if self.screen != Screen::Options {
+            self.settle_title_toasts();
+            if let Some(title) = &mut self.title {
+                if std::mem::take(&mut title.onboarding_finished) {
+                    // Options.onboardingAccessibilityFinished.
+                    self.settings.file.set(
+                        "onboardAccessibility",
+                        sunrise_client::options_file::V::Bool(false),
+                    );
+                    self.settings.save(&Self::options_path());
+                }
+                if let Some(sound) =
+                    title.update_toast(self.settings.notification_display_time as f32)
+                {
+                    self.audio.play(sound, None, 1.0, 1.0);
+                }
             }
-            let drawn = self.draw_screen_with_pre_hook(&mut batch);
-            if drawn {
-                self.draw_options(&mut batch);
-            } else {
-                self.ui.options.discard_draw();
-            }
-            self.draw_screen_with_post_hook(&mut batch);
-            self.draw_controller_notice(&mut batch);
-            return batch;
-        }
-        self.settle_title_toasts();
-        if let Some(title) = &mut self.title {
-            if std::mem::take(&mut title.onboarding_finished) {
-                // Options.onboardingAccessibilityFinished.
-                self.settings.file.set(
-                    "onboardAccessibility",
-                    sunrise_client::options_file::V::Bool(false),
-                );
-                self.settings.save(&Self::options_path());
-            }
-            if let Some(sound) = title.update_toast(self.settings.notification_display_time as f32)
-            {
-                self.audio.play(sound, None, 1.0, 1.0);
-            }
-        }
-        if let Some(title) = &self.title {
-            for found in title.lan_found_narrations((w, h)) {
-                self.say_system_queued(&found);
+            if let Some(title) = &self.title {
+                for found in title.lan_found_narrations((w, h)) {
+                    self.say_system_queued(&found);
+                }
             }
         }
         if matches!(self.screen, Screen::DebugOptions | Screen::Mod) && self.title.is_some() {
@@ -7209,7 +7192,7 @@ impl Game<'_> {
             self.draw_music_toast(&mut batch, false);
             return batch;
         }
-        if self.title.is_some() {
+        if self.title.is_some() && self.screen != Screen::Options {
             // TitleScreen.extractRenderState, then ToastManager over it: vanilla
             // draws the toast manager on every screen, so a pack download or a
             // resource-reload failure still shows on the title (#4428).
@@ -7242,325 +7225,35 @@ impl Game<'_> {
             self.draw_music_toast(&mut batch, false);
             return batch;
         }
-        let atlas_ptr: *const HudAtlas = &self.gui.atlas;
-        let _ = atlas_ptr;
         // The ToastManager draws over every screen: a server's packs
         // download while the connection screen shows.
-        if self.remote_overlay(&mut batch) {
+        if self.title.is_none() && self.remote_overlay(&mut batch) {
             self.draw_pack_toasts(&mut batch, false, false);
             self.draw_music_toast(&mut batch, false);
             return batch;
         }
-        // Hud.extractRenderState: F1 (keyToggleGui) hides camera overlays, the
-        // crosshair, hotbar, effects, bars, sidebar, action bar, titles and chat;
-        // the sleep overlay, debug screen and open screens still draw.
-        let spectator = self.spectator();
-        let (wi, hi) = (w as i32, h as i32);
-        // RenderGuiEvent.Pre can hide the HUD without changing the player's hide-GUI setting.
-        let hide_hud = self.ui.hide_gui || self.replay.playing();
+        let in_world = !self.shows_panorama();
+        if in_world && self.screen == Screen::Options {
+            self.flush_skin_slots();
+            self.update_remote_skins();
+        }
+        let replaying = self.replay.playing();
+        let hide_hud = self.ui.hide_gui || replaying;
         let mut gui_canceled = false;
-        if !hide_hud {
+        let mut guide_from = None;
+        if in_world {
+            // NeoForge's GuiLayerManager.render enters the pass even under F1. Only
+            // individual vanilla layers use the visibility setting, not the pass itself.
             self.native_render_gui_pre(&mut gui_canceled);
-        }
-        let show_hud = !hide_hud && !gui_canceled;
-        // Hud.extractRenderState asks `Screen.isInGameUi` twice: such a screen
-        // defers the subtitles over itself, and keeps them while F1 hides the
-        // rest of the HUD.
-        let subtitles = subtitles(
-            show_hud,
-            in_game_ui(self.screen, self.book.is_some() || self.sign_edit.is_some()),
-        );
-        // The mods' layers (`register_gui_layers`) draw among vanilla's while the HUD shows.
-        self.hud_layer_next = show_hud.then_some(0);
-        self.ui.room = self.hud_room(w, h, show_hud);
-        let mut guide_from = 0;
-        if show_hud {
-            self.draw_spyglass(&mut batch);
-            guide_from = batch.vertices.len();
-            // Hud.extractCrosshair / extractItemHotbar / extractPlayerHealth /
-            // extractVehicleHealth and the experience bar, laid out by hud_layout.
-            // Combat feel Legacy hides the attack indicator unless the player keeps it.
-            let indicator = if self.pvp_hides_attack_indicator() {
-                0
-            } else {
-                self.settings.attack_indicator
-            };
-            let delay = sunrise_client::attack_strength::delay(self.main_hand_attack_speed());
-            let strength = self.hand_strength.scale(0.0, self.main_hand_attack_speed());
-            // The 3D crosshair (F3) takes the 2D one's place.
-            // Hud.extractCrosshair: a spectator only sees it over something to open.
-            if self.camera_type.is_first_person()
-                && (!spectator || self.spectator_crosshair())
-                && !self.debug_crosshair()
-                && !self.overlay_holds_view()
-            {
-                let attack = (indicator == 1).then_some(strength);
-                let full = attack.is_some_and(|a| {
-                    hud_layout::full_attack_indicator(a, delay, self.crosshair_living())
-                });
-                let draws = hud_layout::crosshair(wi, hi, attack, full);
-                self.gui_layer(VanillaGuiLayer::Crosshair, &mut batch, &mut |g, batch| {
-                    // The custom crosshair takes the sprite's place (the first draw); the
-                    // attack indicator stays.
-                    if g.custom_crosshair() {
-                        g.draw_custom_crosshair(batch, wi, hi);
-                        hud_layout::paint(batch, &g.gui.atlas, &draws[1..]);
-                    } else {
-                        hud_layout::paint(batch, &g.gui.atlas, &draws);
-                    }
-                });
+            if !gui_canceled {
+                let show_hud = !hide_hud;
+                self.hud_layer_next = (!replaying).then_some(0);
+                self.ui.room = self.hud_room(w, h, show_hud);
+                guide_from = self.draw_hud_layer_sequence(&mut batch, show_hud);
+                self.hud_layer_next = None;
+                self.native_render_gui_post(&mut batch);
+                self.hud_layer_bounds.clear();
             }
-            self.gui_layer(VanillaGuiLayer::Hotbar, &mut batch, &mut |g, batch| {
-                if spectator {
-                    g.draw_spectator_hotbar(batch);
-                } else {
-                    let partial = g.clock.fraction() as f32;
-                    let inputs = hud_layout::HotbarInputs {
-                        selected: g.selected as i32,
-                        right_handed: !g.settings.main_hand_left,
-                        offhand: g.offhand.is_some(),
-                        slots: std::array::from_fn(|i| {
-                            g.inventory[i]
-                                .as_ref()
-                                .map(|_| (f32::from(g.hotbar_pop[i]) - partial).max(0.0))
-                        }),
-                        offhand_pop: (f32::from(g.hotbar_pop[9]) - partial).max(0.0),
-                        attack: (indicator == 2).then_some(strength),
-                    };
-                    let draws = hud_layout::hotbar(wi, hi, &inputs);
-                    // `extractSlot` for each item, in order, on the path `gui_paint` takes.
-                    let mut items = crate::game::gui_paint_items::HotbarItems { game: g };
-                    hud_layout::paint_items(batch, &g.gui.atlas, &draws, &mut items);
-                }
-            });
-            self.gui_layer(VanillaGuiLayer::Effects, &mut batch, &mut |g, batch| {
-                // The PvP & HUD effects widget takes the icons' place.
-                if !g.pvp_effects_shown() {
-                    g.draw_effect_icons(batch);
-                }
-            });
-            // Hud: the action bar and titles draw over the hotbar (nextStratum).
-            self.gui_layer(VanillaGuiLayer::BossOverlay, &mut batch, &mut |g, batch| {
-                g.draw_boss_bars(batch);
-            });
-            self.draw_extras(&mut batch);
-        }
-        if show_hud {
-            // Hud.nextContextualInfoState: the jump bar, the experience bar or
-            // the locator bar above the hotbar.
-            let has_experience = !self.creative && !spectator;
-            let contextual = sunrise_client::locator_bar::ContextualBar::next(
-                self.waypoints.has_waypoints(),
-                !spectator && self.jumpable_mount(),
-                self.mount_jumping(),
-                has_experience,
-                self.experience_recent(),
-            );
-            use sunrise_client::locator_bar::ContextualBar;
-            // The mount's hearts reserve right-column space before air is laid out.
-            let mut status_heights = hud_layout::StatusBarHeights::default();
-            let vehicle_hearts = if spectator {
-                0
-            } else {
-                self.draw_mount_hud(&mut batch, wi, hi, &mut status_heights)
-            };
-            let (visual_ticks, visual_millis) = (self.visual_ticks(), self.visual_millis());
-            let kind = (!self.creative && !spectator)
-                .then(|| self.player_heart_kind())
-                .flatten();
-            if let Some(kind) = kind
-                && let Some(p) = &mut self.player
-            {
-                let effects = &self.potions.effects;
-                // Hud.extractAirBubbles: `isEyeInFluidMatching`, so the eyes are below
-                // the surface, not merely in the water block.
-                let under_water = p.is_eye_in_fluid(sunrise_client::motion::WATER);
-                let inputs = hud_layout::HealthInputs {
-                    tick: visual_ticks as i32,
-                    millis: visual_millis,
-                    health: p.health.health(),
-                    max_health: p.attribute("minecraft:max_health").unwrap_or(20.0) as f32,
-                    absorption: p.health.absorption(),
-                    armor: p
-                        .attribute("minecraft:armor")
-                        .or_else(|_| p.attribute("armor"))
-                        .unwrap_or(0.0) as i32,
-                    food: p.health.food.food,
-                    saturation: p.health.food.saturation,
-                    kind,
-                    regeneration: effects.get("regeneration").is_some(),
-                    hunger: effects.get("hunger").is_some(),
-                    hardcore: self.level.hardcore,
-                    damage_cooldown: p.health.hurt.cooldown > 0,
-                    air: p.air,
-                    max_air: 300,
-                    under_water,
-                    vehicle_hearts,
-                };
-                let at = [p.position.x, p.position.y, p.position.z];
-                // The native mods' health HUD (`native_health_hud`): a mod
-                // that answers draws every row instead.
-                let mut native_health_hud = None;
-                self.native_health_hud(&inputs, wi, hi, &mut native_health_hud);
-                let replacement = native_health_hud.as_deref();
-                let vanilla;
-                let layers;
-                let (draws, paint_steps) = if let Some(draws) = &replacement {
-                    (*draws, std::slice::from_ref(draws))
-                } else {
-                    vanilla = self.health_hud.layout(&inputs, wi, hi, &mut status_heights);
-                    layers = vanilla.layers();
-                    (vanilla.draws(), layers.as_slice())
-                };
-                self.keep_status_rows(draws, wi, hi);
-                // Keep the four paint steps under the same public layer for now.
-                self.gui_layer(
-                    VanillaGuiLayer::PlayerHealth,
-                    &mut batch,
-                    &mut |g, batch| {
-                        hud_layout::paint_layers(batch, &g.gui.atlas, paint_steps);
-                    },
-                );
-                // Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard
-                // by this client only.
-                if let Some((volume, pitch)) = self.health_hud.bubble_pop_sound.take() {
-                    let players = sunrise_client::settings::SOUND_SOURCES
-                        .iter()
-                        .position(|s| *s == "player")
-                        .unwrap_or(0);
-                    let capture = self.audio.capture.take();
-                    self.audio
-                        .play_on(players, "ui.hud.bubble_pop", Some(at), volume, pitch);
-                    self.audio.capture = capture;
-                }
-            }
-            // After the health rows (Hud.extractHotbarAndDecorations): jump, locator or XP bar.
-            self.gui_layer(
-                VanillaGuiLayer::ContextualInfoBar,
-                &mut batch,
-                &mut |g, batch| {
-                    if contextual == ContextualBar::JumpableVehicle {
-                        g.draw_jump_bar(batch, wi, hi);
-                    }
-                    if contextual == ContextualBar::Locator {
-                        let (sprite, [x, y, w, h]) =
-                            sunrise_client::locator_bar::background(wi, hi);
-                        sunrise_client::ui::nine_slice(
-                            batch,
-                            &g.gui.atlas,
-                            sprite,
-                            x as f32,
-                            y as f32,
-                            w as f32,
-                            h as f32,
-                            u32::MAX,
-                        );
-                    }
-                    if has_experience && g.player.is_some() {
-                        let atlas = &g.gui.atlas;
-                        let width = |s: &str| HudBatch::text_width(atlas, s) as i32;
-                        let draws = hud_layout::experience_colored(
-                            g.pack.polytone_colors.xp_bar,
-                            wi,
-                            hi,
-                            g.experience.progress,
-                            g.experience.level,
-                            contextual == ContextualBar::Experience,
-                            &width,
-                        );
-                        hud_layout::paint(batch, atlas, &draws);
-                    }
-                    if contextual == ContextualBar::Locator {
-                        let draws = g.locator_bar_draws(wi, hi);
-                        hud_layout::paint(batch, &g.gui.atlas, &draws);
-                    }
-                },
-            );
-            if !spectator {
-                self.gui_layer(
-                    VanillaGuiLayer::SelectedItemName,
-                    &mut batch,
-                    &mut |g, batch| {
-                        g.draw_selected_name(batch, !g.creative);
-                    },
-                );
-            }
-        }
-        // Hud.extractSleepOverlay: over all health/food bars, under titles and chat.
-        let draws = hud_overlays::sleep_overlay(wi, hi, self.sleep_timer as i32);
-        self.gui_layer(
-            VanillaGuiLayer::SleepOverlay,
-            &mut batch,
-            &mut |g, batch| {
-                hud_layout::paint(batch, &g.gui.atlas, &draws);
-            },
-        );
-        if show_hud {
-            self.gui_layer(
-                VanillaGuiLayer::OverlayMessage,
-                &mut batch,
-                &mut |g, batch| {
-                    g.draw_overlay_message(batch);
-                },
-            );
-            self.gui_layer(VanillaGuiLayer::Title, &mut batch, &mut |g, batch| {
-                g.draw_title(batch);
-            });
-            self.gui_layer(
-                VanillaGuiLayer::ScoreboardSidebar,
-                &mut batch,
-                &mut |g, batch| {
-                    g.draw_scoreboard(batch);
-                },
-            );
-            if subtitles != Subtitles::Hidden {
-                self.gui_layer(
-                    VanillaGuiLayer::SubtitleOverlay,
-                    &mut batch,
-                    &mut |g, batch| {
-                        g.draw_subtitles(batch);
-                    },
-                );
-            }
-        } else if subtitles == Subtitles::Deferred {
-            // F1 hid the HUD, but an in-game screen still shows the subtitles.
-            self.gui_layer(
-                VanillaGuiLayer::SubtitleOverlay,
-                &mut batch,
-                &mut |g, batch| {
-                    g.draw_subtitles(batch);
-                },
-            );
-        }
-        let atlas = &self.gui.atlas;
-        if show_hud
-            && let Some((text, at)) = &self.message
-            && at.elapsed() < Duration::from_secs(3)
-        {
-            let tw = HudBatch::text_width(atlas, text);
-            batch.text(atlas, text, (w - tw) / 2.0, h - 59.0, u32::MAX, true);
-        }
-        // The chat screen draws the focused chat itself; F1 hides the rest.
-        if self.screen == Screen::Chat {
-            // The mod layers under the chat stay under the focused chat.
-            self.draw_mod_gui_layers(Some(VanillaGuiLayer::Chat), &mut batch);
-        } else if show_hud {
-            if !self.overlay_holds_view() {
-                self.gui_layer(VanillaGuiLayer::Chat, &mut batch, &mut |g, batch| {
-                    g.draw_chat(batch)
-                });
-            }
-            self.gui_layer(VanillaGuiLayer::TabList, &mut batch, &mut |g, batch| {
-                g.draw_tab_list(batch);
-            });
-        }
-        // The mod layers above the last vanilla layer drawn.
-        self.draw_mod_gui_layers(None, &mut batch);
-        self.hud_layer_next = None;
-        // NeoForge `GuiLayerManager.render`: fire `RenderGuiEvent.Post` once immediately
-        // after the visible HUD layer sequence, before screens, toasts, debug overlays and IME.
-        if show_hud {
-            self.native_render_gui_post(&mut batch);
         }
         // Screen.extractBlurredBackground blurs the world and HUD, while the
         // screen's background, widgets, toasts and debug overlay stay sharp.
@@ -7574,6 +7267,13 @@ impl Game<'_> {
         };
         let drawn = self.draw_screen_with_pre_hook(&mut batch);
         match screen {
+            Screen::Options => {
+                if drawn {
+                    self.draw_options(&mut batch);
+                } else {
+                    self.ui.options.discard_draw();
+                }
+            }
             _ if !drawn => {}
             Screen::Paused if self.pause_menu => self.draw_pause_menu(&mut batch),
             // PauseScreen(false): only its title, at the top.
@@ -7626,13 +7326,19 @@ impl Game<'_> {
                 self.draw_pad_menu_guide(&mut batch, from);
             }
             Screen::Chat => self.draw_chat_screen(&mut batch),
-            Screen::Playing | Screen::Options | Screen::Win => {}
+            Screen::Playing | Screen::Win => {}
         }
         // ScreenEvent.Render.Post: the open screen has drawn itself and its
         // tooltips, so a native mod draws over it here. Never `Playing`: the
         // prompts, books and sign editors drawn over gameplay keep it, draw
         // after this point and so over what a mod drew.
         self.draw_screen_with_post_hook(&mut batch);
+        if screen == Screen::Options {
+            self.draw_controller_notice(&mut batch);
+        }
+        if !in_world {
+            return batch;
+        }
         self.draw_saving_indicator(&mut batch);
         self.draw_every_toast(&mut batch, hide_hud, gui_canceled);
         if self.server_packs.prompt.is_none() {
@@ -7641,10 +7347,286 @@ impl Game<'_> {
             self.draw_book(&mut batch);
         }
         self.draw_studio_bars(&mut batch);
-        if show_hud {
+        if let Some(guide_from) = guide_from {
             self.draw_pad_guide(&mut batch, guide_from);
         }
         batch
+    }
+
+    /// The in-world HUD extraction between RenderGuiEvent.Pre and Post, excluding the screen.
+    /// Returns where the HUD's controller guide starts, when it is shown.
+    fn draw_hud_layer_sequence(&mut self, batch: &mut HudBatch, show_hud: bool) -> Option<usize> {
+        use sunrise_client::gui_layers::VanillaGuiLayer;
+
+        let (w, h) = (batch.width, batch.height);
+        let (wi, hi) = (w as i32, h as i32);
+        let spectator = self.spectator();
+        // Hud.extractRenderState asks Screen.isInGameUi to keep subtitles on such screens
+        // even when F1 hides the rest of the HUD.
+        let subtitles = subtitles(
+            show_hud,
+            in_game_ui(self.screen, self.book.is_some() || self.sign_edit.is_some()),
+        );
+        let mut guide_from = 0;
+        if show_hud {
+            self.draw_spyglass(batch);
+            guide_from = batch.vertices.len();
+            // Hud.extractCrosshair / extractItemHotbar / extractPlayerHealth /
+            // extractVehicleHealth and the experience bar, laid out by hud_layout.
+            // Combat feel Legacy hides the attack indicator unless the player keeps it.
+            let indicator = if self.pvp_hides_attack_indicator() {
+                0
+            } else {
+                self.settings.attack_indicator
+            };
+            let delay = sunrise_client::attack_strength::delay(self.main_hand_attack_speed());
+            let strength = self.hand_strength.scale(0.0, self.main_hand_attack_speed());
+            // The 3D crosshair (F3) takes the 2D one's place.
+            // Hud.extractCrosshair: a spectator only sees it over something to open.
+            if self.camera_type.is_first_person()
+                && (!spectator || self.spectator_crosshair())
+                && !self.debug_crosshair()
+                && !self.overlay_holds_view()
+            {
+                let attack = (indicator == 1).then_some(strength);
+                let full = attack.is_some_and(|a| {
+                    hud_layout::full_attack_indicator(a, delay, self.crosshair_living())
+                });
+                let draws = hud_layout::crosshair(wi, hi, attack, full);
+                self.gui_layer(VanillaGuiLayer::Crosshair, batch, &mut |g, batch| {
+                    // The custom crosshair takes the sprite's place (the first draw); the
+                    // attack indicator stays.
+                    if g.custom_crosshair() {
+                        g.draw_custom_crosshair(batch, wi, hi);
+                        hud_layout::paint(batch, &g.gui.atlas, &draws[1..]);
+                    } else {
+                        hud_layout::paint(batch, &g.gui.atlas, &draws);
+                    }
+                });
+            }
+            self.gui_layer(VanillaGuiLayer::Hotbar, batch, &mut |g, batch| {
+                if spectator {
+                    g.draw_spectator_hotbar(batch);
+                } else {
+                    let partial = g.clock.fraction() as f32;
+                    let inputs = hud_layout::HotbarInputs {
+                        selected: g.selected as i32,
+                        right_handed: !g.settings.main_hand_left,
+                        offhand: g.offhand.is_some(),
+                        slots: std::array::from_fn(|i| {
+                            g.inventory[i]
+                                .as_ref()
+                                .map(|_| (f32::from(g.hotbar_pop[i]) - partial).max(0.0))
+                        }),
+                        offhand_pop: (f32::from(g.hotbar_pop[9]) - partial).max(0.0),
+                        attack: (indicator == 2).then_some(strength),
+                    };
+                    let draws = hud_layout::hotbar(wi, hi, &inputs);
+                    // `extractSlot` for each item, in order, on the path `gui_paint` takes.
+                    let mut items = crate::game::gui_paint_items::HotbarItems { game: g };
+                    hud_layout::paint_items(batch, &g.gui.atlas, &draws, &mut items);
+                }
+            });
+            self.gui_layer(VanillaGuiLayer::Effects, batch, &mut |g, batch| {
+                // The PvP & HUD effects widget takes the icons' place.
+                if !g.pvp_effects_shown() {
+                    g.draw_effect_icons(batch);
+                }
+            });
+            // Hud: the action bar and titles draw over the hotbar (nextStratum).
+            self.gui_layer(VanillaGuiLayer::BossOverlay, batch, &mut |g, batch| {
+                g.draw_boss_bars(batch);
+            });
+            self.draw_extras(batch);
+        }
+        if show_hud {
+            // Hud.nextContextualInfoState: the jump bar, the experience bar or
+            // the locator bar above the hotbar.
+            let has_experience = !self.creative && !spectator;
+            let contextual = sunrise_client::locator_bar::ContextualBar::next(
+                self.waypoints.has_waypoints(),
+                !spectator && self.jumpable_mount(),
+                self.mount_jumping(),
+                has_experience,
+                self.experience_recent(),
+            );
+            use sunrise_client::locator_bar::ContextualBar;
+            // The mount's hearts reserve right-column space before air is laid out.
+            let mut status_heights = hud_layout::StatusBarHeights::default();
+            let vehicle_hearts = if spectator {
+                0
+            } else {
+                self.draw_mount_hud(batch, wi, hi, &mut status_heights)
+            };
+            let (visual_ticks, visual_millis) = (self.visual_ticks(), self.visual_millis());
+            let kind = (!self.creative && !spectator)
+                .then(|| self.player_heart_kind())
+                .flatten();
+            if let Some(kind) = kind
+                && let Some(p) = &mut self.player
+            {
+                let effects = &self.potions.effects;
+                // Hud.extractAirBubbles: `isEyeInFluidMatching`, so the eyes are below
+                // the surface, not merely in the water block.
+                let under_water = p.is_eye_in_fluid(sunrise_client::motion::WATER);
+                let inputs = hud_layout::HealthInputs {
+                    tick: visual_ticks as i32,
+                    millis: visual_millis,
+                    health: p.health.health(),
+                    max_health: p.attribute("minecraft:max_health").unwrap_or(20.0) as f32,
+                    absorption: p.health.absorption(),
+                    armor: p
+                        .attribute("minecraft:armor")
+                        .or_else(|_| p.attribute("armor"))
+                        .unwrap_or(0.0) as i32,
+                    food: p.health.food.food,
+                    saturation: p.health.food.saturation,
+                    kind,
+                    regeneration: effects.get("regeneration").is_some(),
+                    hunger: effects.get("hunger").is_some(),
+                    hardcore: self.level.hardcore,
+                    damage_cooldown: p.health.hurt.cooldown > 0,
+                    air: p.air,
+                    max_air: 300,
+                    under_water,
+                    vehicle_hearts,
+                };
+                let at = [p.position.x, p.position.y, p.position.z];
+                // The native mods' health HUD (`native_health_hud`): a mod
+                // that answers draws every row instead.
+                let mut native_health_hud = None;
+                self.native_health_hud(&inputs, wi, hi, &mut native_health_hud);
+                let replacement = native_health_hud.as_deref();
+                let vanilla;
+                let layers;
+                let (draws, paint_steps) = if let Some(draws) = &replacement {
+                    (*draws, std::slice::from_ref(draws))
+                } else {
+                    vanilla = self.health_hud.layout(&inputs, wi, hi, &mut status_heights);
+                    layers = vanilla.layers();
+                    (vanilla.draws(), layers.as_slice())
+                };
+                self.keep_status_rows(draws, wi, hi);
+                // Keep the four paint steps under the same public layer for now.
+                self.gui_layer(VanillaGuiLayer::PlayerHealth, batch, &mut |g, batch| {
+                    hud_layout::paint_layers(batch, &g.gui.atlas, paint_steps);
+                });
+                // Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard
+                // by this client only.
+                if let Some((volume, pitch)) = self.health_hud.bubble_pop_sound.take() {
+                    let players = sunrise_client::settings::SOUND_SOURCES
+                        .iter()
+                        .position(|s| *s == "player")
+                        .unwrap_or(0);
+                    let capture = self.audio.capture.take();
+                    self.audio
+                        .play_on(players, "ui.hud.bubble_pop", Some(at), volume, pitch);
+                    self.audio.capture = capture;
+                }
+            }
+            // After the health rows (Hud.extractHotbarAndDecorations): jump, locator or XP bar.
+            self.gui_layer(
+                VanillaGuiLayer::ContextualInfoBar,
+                batch,
+                &mut |g, batch| {
+                    if contextual == ContextualBar::JumpableVehicle {
+                        g.draw_jump_bar(batch, wi, hi);
+                    }
+                    if contextual == ContextualBar::Locator {
+                        let (sprite, [x, y, w, h]) =
+                            sunrise_client::locator_bar::background(wi, hi);
+                        sunrise_client::ui::nine_slice(
+                            batch,
+                            &g.gui.atlas,
+                            sprite,
+                            x as f32,
+                            y as f32,
+                            w as f32,
+                            h as f32,
+                            u32::MAX,
+                        );
+                    }
+                    if has_experience && g.player.is_some() {
+                        let atlas = &g.gui.atlas;
+                        let width = |s: &str| HudBatch::text_width(atlas, s) as i32;
+                        let draws = hud_layout::experience_colored(
+                            g.pack.polytone_colors.xp_bar,
+                            wi,
+                            hi,
+                            g.experience.progress,
+                            g.experience.level,
+                            contextual == ContextualBar::Experience,
+                            &width,
+                        );
+                        hud_layout::paint(batch, atlas, &draws);
+                    }
+                    if contextual == ContextualBar::Locator {
+                        let draws = g.locator_bar_draws(wi, hi);
+                        hud_layout::paint(batch, &g.gui.atlas, &draws);
+                    }
+                },
+            );
+            if !spectator {
+                self.gui_layer(VanillaGuiLayer::SelectedItemName, batch, &mut |g, batch| {
+                    g.draw_selected_name(batch, !g.creative);
+                });
+            }
+        }
+        // Hud.extractSleepOverlay: over all health/food bars, under titles and chat.
+        let draws = hud_overlays::sleep_overlay(wi, hi, self.sleep_timer as i32);
+        self.gui_layer(VanillaGuiLayer::SleepOverlay, batch, &mut |g, batch| {
+            hud_layout::paint(batch, &g.gui.atlas, &draws);
+        });
+        if show_hud {
+            self.gui_layer(VanillaGuiLayer::OverlayMessage, batch, &mut |g, batch| {
+                g.draw_overlay_message(batch);
+            });
+            self.gui_layer(VanillaGuiLayer::Title, batch, &mut |g, batch| {
+                g.draw_title(batch);
+            });
+            self.gui_layer(
+                VanillaGuiLayer::ScoreboardSidebar,
+                batch,
+                &mut |g, batch| {
+                    g.draw_scoreboard(batch);
+                },
+            );
+            if subtitles != Subtitles::Hidden {
+                self.gui_layer(VanillaGuiLayer::SubtitleOverlay, batch, &mut |g, batch| {
+                    g.draw_subtitles(batch);
+                });
+            }
+        } else if subtitles == Subtitles::Deferred {
+            // F1 hid the HUD, but an in-game screen still shows the subtitles.
+            self.gui_layer(VanillaGuiLayer::SubtitleOverlay, batch, &mut |g, batch| {
+                g.draw_subtitles(batch);
+            });
+        }
+        let atlas = &self.gui.atlas;
+        if show_hud
+            && let Some((text, at)) = &self.message
+            && at.elapsed() < Duration::from_secs(3)
+        {
+            let tw = HudBatch::text_width(atlas, text);
+            batch.text(atlas, text, (w - tw) / 2.0, h - 59.0, u32::MAX, true);
+        }
+        // The chat screen draws the focused chat itself; F1 hides the rest.
+        if self.screen == Screen::Chat {
+            // The mod layers under the chat stay under the focused chat.
+            self.draw_mod_gui_layers(Some(VanillaGuiLayer::Chat), batch);
+        } else if show_hud {
+            if !self.overlay_holds_view() {
+                self.gui_layer(VanillaGuiLayer::Chat, batch, &mut |g, batch| {
+                    g.draw_chat(batch)
+                });
+            }
+            self.gui_layer(VanillaGuiLayer::TabList, batch, &mut |g, batch| {
+                g.draw_tab_list(batch);
+            });
+        }
+        // The mod layers above the last vanilla layer drawn.
+        self.draw_mod_gui_layers(None, batch);
+        show_hud.then_some(guide_from)
     }
 
     pub(super) fn close_container(&mut self) {
@@ -13230,6 +13212,14 @@ impl<'a> Game<'a> {
             settings.file.int("tutorialStep"),
         ));
         let creative = options.creative;
+        let hud_layer_bounds = if options.execution_role.is_client() {
+            use sunrise_client::gui_layers::{VanillaGuiLayer, order};
+            Vec::with_capacity(
+                order().map_or(VanillaGuiLayer::ALL.len(), |order| order.slots().len()),
+            )
+        } else {
+            Vec::new()
+        };
         let inventory = vec![None; 36];
         let now = Instant::now();
         let look = options.look;
@@ -13409,7 +13399,7 @@ impl<'a> Game<'a> {
             debug_renderers: Vec::new(),
             debug_renderers_version: None,
             hud_layer_next: None,
-            hud_layer_bounds: Vec::new(),
+            hud_layer_bounds,
             mod_view_distances: Default::default(),
             item_level_cache: Default::default(),
             world_frames: 0,
