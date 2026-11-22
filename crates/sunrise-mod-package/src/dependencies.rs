@@ -916,34 +916,53 @@ mod tests {
             };
             let url_error =
                 manifest("target={version='^1',url='http://example.test'}").unwrap_err();
-            assert_eq!(url_error, "sunrise-mod.toml: url is not https:// (line 5)");
+            assert_eq!(
+                url_error,
+                "sunrise-mod.toml: url is not https:// (line 5, column 26)"
+            );
             let multiline_url_error = crate::Manifest::parse(&format!(
                 "id='owner'\nname='Owner'\nversion='1'\n[{table}.target]\nversion='^1'\nreason='Why'\nurl='http://example.test'\n"
             ))
             .unwrap_err();
             assert_eq!(
                 multiline_url_error,
-                "sunrise-mod.toml: url is not https:// (line 7)"
+                "sunrise-mod.toml: url is not https:// (line 7, column 5)"
             );
             let reason_error = manifest("target={version='^1',reason=42}").unwrap_err();
             assert!(
-                reason_error.contains("expected a string (line 5)"),
+                reason_error.contains("expected a string (line 5, column 29)"),
                 "{reason_error}"
             );
-            assert!(
-                manifest("'bad id'='^1'")
-                    .unwrap_err()
-                    .contains("invalid dependency id")
+            assert_eq!(
+                manifest("'bad id'='^1'").unwrap_err(),
+                "sunrise-mod.toml: invalid dependency id \"bad id\" (line 5, column 1)"
             );
             assert!(manifest("target='not a semver requirement'").is_err());
         }
+        let bad_load_before = crate::Manifest::parse(
+            "id='owner'\nname='Owner'\nversion='1'\nload_before = ['first', 'bad id']\n",
+        )
+        .unwrap_err();
+        assert_eq!(
+            bad_load_before,
+            "sunrise-mod.toml: invalid dependency id \"bad id\" (line 4, column 25)"
+        );
+        let same_line_url = crate::Manifest::parse(
+            "id='owner'\nname='Owner'\nversion='1'\n\
+             dependencies = { first = { version = '*', url = 'https://a.test' }, second = { version = '*', url = 'http://b.test' } }\n",
+        )
+        .unwrap_err();
+        assert_eq!(
+            same_line_url,
+            "sunrise-mod.toml: url is not https:// (line 4, column 101)"
+        );
         let missing_inline = crate::Manifest::parse(
             "id='owner'\nname='Owner'\nversion='1'\n[dependencies]\ntarget={optional=true}\n",
         )
         .unwrap_err();
         assert_eq!(
             missing_inline,
-            "sunrise-mod.toml: the field version is missing (line 5); add version = …"
+            "sunrise-mod.toml: the field version is missing (line 5, column 8); add version = …"
         );
         let missing_multiline = crate::Manifest::parse(
             "id='owner'\nname='Owner'\nversion='1'\n[dependencies.target]\noptional=true\n",
@@ -951,7 +970,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(
             missing_multiline,
-            "sunrise-mod.toml: the field version is missing (line 4); add version = …"
+            "sunrise-mod.toml: the field version is missing (line 4, column 1); add version = …"
         );
     }
 
@@ -991,7 +1010,10 @@ mod tests {
             "id='owner'\nname='Owner'\nversion='1'\n[dependencies]\ntarget = [\n  \"^1\",\n  false,\n  \"both\",\n  \"Context\",\n  \"http://example.test\",\n  \"after\",\n]\n",
         )
         .unwrap_err();
-        assert_eq!(bad_url, "sunrise-mod.toml: url is not https:// (line 10)");
+        assert_eq!(
+            bad_url,
+            "sunrise-mod.toml: url is not https:// (line 10, column 3)"
+        );
         for (table, fields) in [
             (
                 "dependencies",
@@ -1007,7 +1029,9 @@ mod tests {
             ))
             .unwrap_err();
             assert!(
-                trailing.ends_with("expected the end of the dependency policy array (line 7)"),
+                trailing.ends_with(
+                    "expected the end of the dependency policy array (line 7, column 1)"
+                ),
                 "{trailing}"
             );
         }

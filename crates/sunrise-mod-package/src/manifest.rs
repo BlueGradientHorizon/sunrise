@@ -23,8 +23,10 @@ use serde::{
     },
 };
 use std::{
+    collections::BTreeMap,
     fmt,
     io::Read,
+    marker::PhantomData,
     path::{Path, PathBuf},
 };
 
@@ -154,18 +156,18 @@ pub struct Manifest {
     #[serde(default)]
     pub served_by: Option<String>,
     /// Other native mods whose hooks must be available before this one.
-    #[serde(default)]
-    pub dependencies: std::collections::BTreeMap<String, Dependency>,
+    #[serde(default, deserialize_with = "policy_map")]
+    pub dependencies: BTreeMap<String, Dependency>,
     /// Mods this one breaks with: the game refuses to start while one of them is loaded at a
     /// version the rule matches (NeoForge's `DependencyType.INCOMPATIBLE`).
-    #[serde(default)]
-    pub incompatible: std::collections::BTreeMap<String, Rule>,
+    #[serde(default, deserialize_with = "policy_map")]
+    pub incompatible: BTreeMap<String, Rule>,
     /// Mods this one works badly with: they load, with a warning (`DependencyType.DISCOURAGED`).
-    #[serde(default)]
-    pub discouraged: std::collections::BTreeMap<String, Rule>,
+    #[serde(default, deserialize_with = "policy_map")]
+    pub discouraged: BTreeMap<String, Rule>,
     /// Mods whose hooks run after this one's when they are loaded, without depending on them
     /// (`Ordering.BEFORE`).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "load_before_ids")]
     pub load_before: Vec<String>,
     /// Original Java jars, layered in list order below this mod's own files.
     #[serde(default)]
@@ -388,6 +390,80 @@ where
     deserializer.deserialize_any(VersionOrDetails { version, details })
 }
 
+/// Validate an ID while Serde still has the key or array item's span.
+struct DependencyId;
+
+impl<'de> de::DeserializeSeed<'de> for DependencyId {
+    type Value = String;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<String, D::Error> {
+        deserializer.deserialize_str(self)
+    }
+}
+
+impl Visitor<'_> for DependencyId {
+    type Value = String;
+
+    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("a dependency mod ID")
+    }
+
+    fn visit_str<E: de::Error>(self, id: &str) -> Result<String, E> {
+        if !valid_mod_id(id) {
+            return Err(E::custom(format!("invalid dependency id {id:?}")));
+        }
+        Ok(id.to_owned())
+    }
+}
+
+fn policy_map<'de, D, T>(deserializer: D) -> Result<BTreeMap<String, T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    struct PolicyMap<T>(PhantomData<T>);
+
+    impl<'de, T: Deserialize<'de>> Visitor<'de> for PolicyMap<T> {
+        type Value = BTreeMap<String, T>;
+
+        fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str("a table keyed by dependency mod IDs")
+        }
+
+        fn visit_map<M: de::MapAccess<'de>>(self, mut map: M) -> Result<Self::Value, M::Error> {
+            let mut entries = BTreeMap::new();
+            while let Some(id) = map.next_key_seed(DependencyId)? {
+                entries.insert(id, map.next_value()?);
+            }
+            Ok(entries)
+        }
+    }
+
+    deserializer.deserialize_map(PolicyMap(PhantomData))
+}
+
+fn load_before_ids<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
+    struct LoadBeforeIds;
+
+    impl<'de> Visitor<'de> for LoadBeforeIds {
+        type Value = Vec<String>;
+
+        fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str("a list of dependency mod IDs")
+        }
+
+        fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+            let mut ids = Vec::new();
+            while let Some(id) = seq.next_element_seed(DependencyId)? {
+                ids.push(id);
+            }
+            Ok(ids)
+        }
+    }
+
+    deserializer.deserialize_seq(LoadBeforeIds)
+}
+
 fn both_sides() -> Side {
     Side::Both
 }
@@ -562,14 +638,18 @@ impl Internal {
 /// an unknown field with the nearest valid key when one is a few edits away.
 fn toml_error(text: &str, e: &toml::de::Error) -> String {
     let message = e.message();
-    let line = e.span().map(|span| {
-        text.as_bytes()[..span.start.min(text.len())]
-            .iter()
-            .filter(|&&byte| byte == b'\n')
+    let at = e.span().map_or_else(String::new, |span| {
+        let before = &text[..text.floor_char_boundary(span.start.min(text.len()))];
+        let line = before.bytes().filter(|&byte| byte == b'\n').count() + 1;
+        let column = before
+            .rsplit('\n')
+            .next()
+            .unwrap_or_default()
+            .chars()
             .count()
-            + 1
+            + 1;
+        format!(" (line {line}, column {column})")
     });
-    let at = line.map_or(String::new(), |line| format!(" (line {line})"));
     let quoted = |after: &str| -> Option<String> {
         let rest = message.strip_prefix(after)?;
         Some(rest.split('`').next()?.to_owned())
@@ -635,19 +715,30 @@ impl From<&Manifest> for ManifestFacts {
 impl Manifest {
     /// Read a manifest from an opened file or package entry, under the published byte limit.
     pub fn read(reader: impl Read) -> Result<Self, String> {
-        let mut text = String::new();
+        let mut bytes = Vec::new();
         reader
             .take(MAX_MANIFEST + 1)
-            .read_to_string(&mut text)
+            .read_to_end(&mut bytes)
             .map_err(|e| format!("{MANIFEST}: {e}"))?;
-        Self::parse(&text)
+        Self::check_size(bytes.len())?;
+        let text = std::str::from_utf8(&bytes).map_err(|e| format!("{MANIFEST}: {e}"))?;
+        Self::parse_toml(text)
     }
 
     /// Parse and validate a complete `sunrise-mod.toml`, under [`MAX_MANIFEST`].
     pub fn parse(text: &str) -> Result<Self, String> {
-        if text.len() as u64 > MAX_MANIFEST {
+        Self::check_size(text.len())?;
+        Self::parse_toml(text)
+    }
+
+    fn check_size(bytes: usize) -> Result<(), String> {
+        if bytes as u64 > MAX_MANIFEST {
             return Err(format!("{MANIFEST}: over {} MiB", MAX_MANIFEST >> 20));
         }
+        Ok(())
+    }
+
+    fn parse_toml(text: &str) -> Result<Self, String> {
         let m: Manifest = toml::from_str(text).map_err(|e| toml_error(text, &e))?;
         Internal::check_all(&m.internals)?;
         if !m.internals.is_empty() && m.native.is_none() {
@@ -712,17 +803,6 @@ impl Manifest {
                 return Err(format!(
                     "{MANIFEST}: served_by cannot name this package's own id {host:?}"
                 ));
-            }
-        }
-        for id in m
-            .dependencies
-            .keys()
-            .chain(m.incompatible.keys())
-            .chain(m.discouraged.keys())
-            .chain(&m.load_before)
-        {
-            if !valid_mod_id(id) {
-                return Err(format!("{MANIFEST}: invalid dependency id {id:?}"));
             }
         }
         mixin::Mixin::check_all(
@@ -1943,6 +2023,18 @@ capabilities = ["registries"]
         let text = " ".repeat(32 * 1024 * 1024 + 1);
         assert_eq!(
             Manifest::parse(&text).unwrap_err(),
+            "sunrise-mod.toml: over 32 MiB"
+        );
+    }
+
+    #[test]
+    fn manifest_read_refuses_oversized_input_before_decoding_utf8() {
+        let start = format!("{EXAMPLE}#");
+        let whitespace = std::io::repeat(b' ').take((32 << 20) - start.len() as u64);
+        // The bounded reader sees only the first byte of this character beyond the limit.
+        let reader = start.as_bytes().chain(whitespace).chain("é\n".as_bytes());
+        assert_eq!(
+            Manifest::read(reader).unwrap_err(),
             "sunrise-mod.toml: over 32 MiB"
         );
     }
