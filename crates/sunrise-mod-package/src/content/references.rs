@@ -117,7 +117,7 @@ pub fn check_references(content: &Content, manifest: &Manifest) -> Result<Findin
         models: BTreeMap::new(),
         findings: Findings::default(),
     };
-    for name in &content.files {
+    for name in content.files.iter() {
         let mut parts = name.splitn(3, '/');
         let (top, namespace, rest) = (parts.next(), parts.next(), parts.next());
         let (Some(top), Some(namespace), Some(rest)) = (top, namespace, rest) else {

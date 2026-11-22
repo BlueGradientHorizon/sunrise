@@ -1105,7 +1105,7 @@ enum Source {
 pub struct Content {
     source: Source,
     /// Every content file (`assets/...`, `data/...`), sorted.
-    pub files: Vec<String>,
+    pub files: Arc<[String]>,
     pub blocks: Vec<Block>,
     pub items: Vec<Item>,
     pub effects: Vec<MobEffect>,
@@ -1167,14 +1167,17 @@ declaration_kinds! {
 
 /// Where a package's content files are read from: its folder or its `.smod`.
 #[derive(Debug, Clone)]
-pub struct ContentSource(Source);
+pub struct ContentSource {
+    source: Source,
+    files: Arc<[String]>,
+}
 
 impl ContentSource {
     /// The package at `path` (a `.smod` or a mod folder), and every content file it holds
     /// (`assets/...`, `data/...`), sorted: content loading's own walk and checks, each path
     /// [`check_path`], at most [`MAX_FILE`] bytes per file, [`MAX_FILES`] files and [`MAX_TOTAL`]
     /// bytes in all.
-    pub fn open(path: &Path) -> Result<(ContentSource, Vec<String>), String> {
+    pub fn open(path: &Path) -> Result<Self, String> {
         let (source, sized) = if path.is_dir() {
             (Source::Dir(path.to_owned()), folder_files(path)?)
         } else {
@@ -1213,12 +1216,20 @@ impl ContentSource {
         }
         files.sort();
         files.dedup();
-        Ok((ContentSource(source), files))
+        Ok(Self {
+            source,
+            files: files.into(),
+        })
+    }
+
+    /// The sorted content names captured when this source opened.
+    pub fn names(&self) -> Arc<[String]> {
+        self.files.clone()
     }
 
     /// A reader of its files, which checks each path and size again as it reads.
     pub fn reader(&self) -> FileReader<'_> {
-        self.0.reader()
+        self.source.reader()
     }
 }
 
@@ -1336,7 +1347,7 @@ impl Content {
     /// `crafting_remainder` in one of its own namespaces; engine loading calls
     /// [`Content::read_declaring`] with the actual code-declared items.
     pub fn read(path: &Path, manifest: &Manifest) -> Result<Content, String> {
-        Self::read_inner(path, manifest, None)
+        Self::read_inner(&ContentSource::open(path)?, manifest, None)
     }
     /// [`Content::read`] for a mod whose native code (or serving host) also declares items
     /// (`native_items` / `blocks`): a file's `crafting_remainder` may name one of those `declared`
@@ -1346,17 +1357,26 @@ impl Content {
         manifest: &Manifest,
         declared: &[String],
     ) -> Result<Content, String> {
-        Self::read_inner(path, manifest, Some(declared))
+        Self::read_opened(&ContentSource::open(path)?, manifest, declared)
     }
+
+    /// Read the declarations using the file list and source already opened at package admission.
+    pub fn read_opened(
+        source: &ContentSource,
+        manifest: &Manifest,
+        declared: &[String],
+    ) -> Result<Content, String> {
+        Self::read_inner(source, manifest, Some(declared))
+    }
+
     fn read_inner(
-        path: &Path,
+        source: &ContentSource,
         manifest: &Manifest,
         declared: Option<&[String]>,
     ) -> Result<Content, String> {
-        let (ContentSource(source), files) = ContentSource::open(path)?;
         let mut content = Content {
-            source,
-            files,
+            source: source.source.clone(),
+            files: source.names(),
             blocks: Vec::new(),
             items: Vec::new(),
             effects: Vec::new(),
@@ -1377,7 +1397,7 @@ impl Content {
     pub fn declared(namespace: &str) -> Content {
         Content {
             source: Source::Code,
-            files: Vec::new(),
+            files: Arc::default(),
             blocks: Vec::new(),
             items: Vec::new(),
             effects: Vec::new(),
@@ -1593,7 +1613,7 @@ impl Content {
         let mut interactions = Vec::new();
         let mut types = Vec::new();
         let mut menus = Vec::new();
-        for name in &self.files {
+        for name in self.files.iter() {
             let mut parts = name.splitn(3, '/');
             let (top, namespace, rest) = (
                 parts.next().unwrap_or(""),
@@ -2555,9 +2575,9 @@ capabilities = ["registries"]
         )
         .unwrap();
         for path in [&folder, &archive] {
-            let (source, names) = ContentSource::open(path).unwrap();
+            let source = ContentSource::open(path).unwrap();
             assert_eq!(
-                names,
+                source.names().as_ref(),
                 [
                     "assets/ruby/lang/en_us.json",
                     "data/ruby/lumen/a.luau",
@@ -2588,8 +2608,8 @@ capabilities = ["registries"]
             Package::write_files(MANIFEST_TEXT, &[(name, b"old")]).unwrap(),
         )
         .unwrap();
-        let (source, names) = ContentSource::open(&path).unwrap();
-        assert_eq!(names, [name]);
+        let source = ContentSource::open(&path).unwrap();
+        assert_eq!(source.names().as_ref(), [name]);
         std::fs::write(
             &replacement,
             Package::write_files(MANIFEST_TEXT, &[(name, b"new")]).unwrap(),
@@ -2597,7 +2617,7 @@ capabilities = ["registries"]
         .unwrap();
         std::fs::rename(replacement, &path).unwrap();
         assert_eq!(source.reader().read(name).unwrap(), b"old");
-        let (current, _) = ContentSource::open(&path).unwrap();
+        let current = ContentSource::open(&path).unwrap();
         assert_eq!(current.reader().read(name).unwrap(), b"new");
         std::fs::remove_dir_all(dir).unwrap();
     }
@@ -3736,7 +3756,7 @@ capabilities = ["registries"]
         .unwrap();
         assert_eq!(content.server_only_refusal(&manifest), None);
         assert_eq!(
-            content.files,
+            content.files.as_ref(),
             ["assets/ruby/lang/en_us.json", "data/ruby/recipe/gem.json"]
         );
     }
@@ -3750,7 +3770,10 @@ capabilities = ["registries"]
         std::fs::write(block.join("ruby_block.json"), BLOCK).unwrap();
         let package = Package::read(&dir).unwrap();
         let content = Content::read(&dir, &package.manifest).unwrap();
-        assert_eq!(content.files, ["data/ruby/sunrise/block/ruby_block.json"]);
+        assert_eq!(
+            content.files.as_ref(),
+            ["data/ruby/sunrise/block/ruby_block.json"]
+        );
         assert_eq!(content.file(&content.files[0]).unwrap(), BLOCK);
         std::fs::remove_dir_all(&dir).unwrap();
     }

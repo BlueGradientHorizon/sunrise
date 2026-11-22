@@ -91,7 +91,7 @@ fn content_keys() {
         let content = Content::read(path, &package.manifest).unwrap();
         assert_eq!(content.server_only_refusal(&package.manifest), None);
         let reader = content.reader();
-        for file in &content.files {
+        for file in content.files.iter() {
             let mut parts = file.splitn(5, '/');
             if parts.next() != Some("data") {
                 continue;

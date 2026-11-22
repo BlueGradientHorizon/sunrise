@@ -29,10 +29,17 @@ use sunrise_world::{
     native_load_context::{LoadContext, LoadInputs},
 };
 
+struct ContentRequest<'a> {
+    path: &'a Path,
+    manifest: &'a sunrise_mod_package::Manifest,
+    declared: Vec<String>,
+    admitted: Option<&'a package_files::PackageContent>,
+}
+
 /// Read filesystem-bound package declarations concurrently, retaining dependency order and
 /// keeping an individual package's refusal attached to that package.
 fn read_contents(
-    requests: &[(&Path, &sunrise_mod_package::Manifest, Vec<String>)],
+    requests: &[ContentRequest<'_>],
 ) -> Vec<Result<sunrise_mod_package::Content, String>> {
     use std::sync::atomic::{AtomicUsize, Ordering};
     let next = AtomicUsize::new(0);
@@ -44,11 +51,21 @@ fn read_contents(
                     let mut done = Vec::new();
                     loop {
                         let index = next.fetch_add(1, Ordering::Relaxed);
-                        let Some((path, manifest, declared)) = requests.get(index) else {
+                        let Some(ContentRequest {
+                            path,
+                            manifest,
+                            declared,
+                            admitted,
+                        }) = requests.get(index)
+                        else {
                             return done;
                         };
-                        let content =
-                            sunrise_mod_package::Content::read_declaring(path, manifest, declared);
+                        let content = match admitted {
+                            Some(source) => source.read_declaring(manifest, declared),
+                            None => sunrise_mod_package::Content::read_declaring(
+                                path, manifest, declared,
+                            ),
+                        };
                         if declared.is_empty()
                             && let Ok(content) = &content
                         {
@@ -102,6 +119,8 @@ pub(super) struct ModsState {
     pub(super) overrides_dir: PathBuf,
     pub(super) load_notices: Arc<Mutex<Vec<sunrise_mod_package::dependencies::Notice>>>,
     pub(super) selected: std::sync::Arc<[sunrise_mod_package::selection::SelectedPackage]>,
+    /// The registration inventory and the file indexes it shares with startup content loading.
+    pub(super) startup_admission: Option<Arc<package_files::StartupAdmission>>,
     /// The content mods the loaded resources were built with: a switch the
     /// game can apply live moves it to the player's choice (`switch_mods`).
     pub(super) applied: Option<std::collections::BTreeSet<String>>,
@@ -267,6 +286,48 @@ impl ModsState {
             .chain(self.disabled_served.iter().map(|(_, host)| host.clone()))
             .collect();
         self.refused = Default::default();
+    }
+
+    pub(super) fn admit_startup_packages(
+        &mut self,
+        jar_store: &Path,
+    ) -> sunrise_client::Result<Arc<package_files::StartupAdmission>> {
+        let refused = self.missing_jar_refusals(jar_store)?;
+        if let Some(missing) = self.fatal_missing_jar(&refused) {
+            return Err(missing.clone().into());
+        }
+        let admission = Arc::new(package_files::StartupAdmission::open(self, refused));
+        self.startup_admission = Some(admission.clone());
+        Ok(admission)
+    }
+
+    fn missing_jar_refusals(&self, jar_store: &Path) -> sunrise_client::Result<Vec<MissingJar>> {
+        let requirements = collect_jar_requirements(
+            self.native
+                .packages()
+                .iter()
+                .map(|p| &p.manifest)
+                .chain(self.selected.iter().map(|p| &p.package.manifest))
+                .map(|m| (m.id.as_str(), m.jar.as_slice())),
+        )?;
+        Ok(missing_jars(jar_store, &requirements)?)
+    }
+
+    fn fatal_missing_jar<'a>(&self, refused: &'a [MissingJar]) -> Option<&'a MissingJar> {
+        refused.iter().find(|missing| {
+            missing.owners.iter().any(|id| {
+                self.native.built().iter().any(|built| built.id == id)
+                    || self.selected.iter().any(|p| {
+                        p.package.manifest.id == *id && p.package.manifest.served_by.is_some()
+                    })
+            })
+        })
+    }
+
+    fn startup_admission(&self) -> Option<&package_files::StartupAdmission> {
+        self.startup_admission
+            .as_deref()
+            .filter(|admission| admission.matches_selection(&self.selected))
     }
 
     fn report_refusals(&self, rows: &mut [Installed]) {
@@ -974,31 +1035,26 @@ pub(super) fn content_overlay(
     sources: &ModsState,
     jar_store: &std::path::Path,
 ) -> sunrise_client::Result<ContentOverlay> {
+    let admission = sources.startup_admission();
+    let refused = match admission {
+        Some(admission) => admission.refused.clone(),
+        None => sources.missing_jar_refusals(jar_store)?,
+    };
+    content_overlay_with_refusals(root, sources, jar_store, admission, &refused)
+}
+
+fn content_overlay_with_refusals(
+    root: &Path,
+    sources: &ModsState,
+    jar_store: &Path,
+    admission: Option<&package_files::StartupAdmission>,
+    refused: &[MissingJar],
+) -> sunrise_client::Result<ContentOverlay> {
     use sunrise_client::mod_content::{self, ContentMod};
     let original_base = root.to_owned();
 
-    let requirements = collect_jar_requirements(
-        sources
-            .native
-            .packages()
-            .iter()
-            .map(|p| &p.manifest)
-            .chain(sources.selected.iter().map(|p| &p.package.manifest))
-            .map(|m| (m.id.as_str(), m.jar.as_slice())),
-    )?;
-    let refused = missing_jars(jar_store, &requirements)?;
-    *sources.refused.lock().unwrap() = refused.clone();
-    let is_fatal_owner = |id: &str| {
-        sources.native.built().iter().any(|built| built.id == id)
-            || sources
-                .selected
-                .iter()
-                .any(|p| p.package.manifest.id == id && p.package.manifest.served_by.is_some())
-    };
-    if let Some(missing) = refused
-        .iter()
-        .find(|missing| missing.owners.iter().any(|id| is_fatal_owner(id)))
-    {
+    *sources.refused.lock().unwrap() = refused.to_vec();
+    if let Some(missing) = sources.fatal_missing_jar(refused) {
         return Err(missing.clone().into());
     }
 
@@ -1064,9 +1120,15 @@ pub(super) fn content_overlay(
         .iter()
         .map(|&index| {
             let source = &packages[index];
-            let item_ids =
-                super::native_content_items::owned_item_ids(source.manifest, &declared.batches);
-            (source.path, source.manifest, item_ids)
+            ContentRequest {
+                path: source.path,
+                manifest: source.manifest,
+                declared: super::native_content_items::owned_item_ids(
+                    source.manifest,
+                    &declared.batches,
+                ),
+                admitted: admission.and_then(|a| a.package(&source.manifest.id, source.path)),
+            }
         })
         .collect();
     let read = read_contents(&requests);
@@ -1965,7 +2027,15 @@ impl Game<'_> {
             .cloned()
             .unwrap_or_else(|| self.vanilla_root());
         let jars = sunrise_client::logging::game_home().join("jars");
-        Ok(Some(content_overlay(&base, &self.mods, &jars)?.root))
+        let refused = self.mods.missing_jar_refusals(&jars)?;
+        let overlay = content_overlay_with_refusals(
+            &base,
+            &self.mods,
+            &jars,
+            self.mods.startup_admission(),
+            &refused,
+        )?;
+        Ok(Some(overlay.root))
     }
 
     /// Lists the installed mods on the Mods page. Content mods load with the resources
@@ -5312,7 +5382,12 @@ mod concurrent_content_tests {
             .collect();
         let requests: Vec<_> = packages
             .iter()
-            .map(|(path, package)| (path.as_path(), &package.manifest, Vec::new()))
+            .map(|(path, package)| ContentRequest {
+                path,
+                manifest: &package.manifest,
+                declared: Vec::new(),
+                admitted: None,
+            })
             .collect();
         let read = read_contents(&requests);
         assert_eq!(read.len(), 12);

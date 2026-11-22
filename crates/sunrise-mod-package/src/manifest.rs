@@ -1159,7 +1159,7 @@ impl Package {
         let content = crate::Content::read(root, &self.manifest)?;
         let mut files = std::collections::BTreeMap::new();
         let reader = content.reader();
-        for name in &content.files {
+        for name in content.files.iter() {
             files.insert(name.clone(), reader.read(name)?);
         }
         if let Some(icon) = &self.icon {

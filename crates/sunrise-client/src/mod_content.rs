@@ -4113,7 +4113,7 @@ fn stamp(
         if m.content.files.is_empty() {
             // Declared in code only: nothing to read.
         } else if source.is_dir() {
-            for file in &m.content.files {
+            for file in m.content.files.iter() {
                 parts.push(format!("{file} {}", hash(&source.join(file))?));
             }
         } else {
