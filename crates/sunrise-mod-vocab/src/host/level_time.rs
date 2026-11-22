@@ -9,21 +9,18 @@ pub trait LevelTimeBackend {
     /// Side: both.
     /// The level's game time (`Level.getGameTime`). On clients this is the
     /// synchronized time advanced by the local level tick. API 381.
-    #[access(WorldOnly)]
     fn level_game_time(&self, level: LevelRef) -> Option<i64>;
     /// Side: both.
     /// The time of day in ticks (`Level.getOverworldClockTime`), shared by
     /// every level; it keeps counting past 24000. On a client, the synchronized
     /// Overworld clock, advanced at its server-supplied rate, even when the
     /// displayed dimension has a different default clock. API 381.
-    #[access(WorldOnly)]
     fn level_day_time(&self, level: LevelRef) -> Option<i64>;
     /// Side: server.
     /// The time of the level's own clock in ticks: the clock its dimension type names as
     /// `default_clock`, which its sky, spawning and beds go by and `/time` sets there. A mod's
     /// level with a `day_cycle` clock of its own counts it apart from the Overworld's; a level
     /// without a default clock, like the Nether, is None, as is a stale handle and a client.
-    #[access(WorldOnly)]
     fn level_clock_time(&self, level: LevelRef) -> Option<i64>;
     /// Side: server.
     /// The next clock time after [`level_clock_time`](Self::level_clock_time) at which the
@@ -32,7 +29,6 @@ pub trait LevelTimeBackend {
     /// other clock (a mod dimension's own) answers None for every marker. None too for a marker
     /// the clock does not define, a time past `i64::MAX`, a level without a default clock, a stale
     /// handle and a client.
-    #[access(WorldOnly)]
     fn level_clock_marker_time(&self, level: LevelRef, marker: &Identifier) -> Option<i64>;
 }
 /// The handles' writes of the `level_time` area, implemented by the game and reached through [`BackendMut`].
@@ -47,6 +43,5 @@ pub trait LevelTimeBackendMut {
     /// fraction of a tick restarts. Players see the new time with the next time sync. A time
     /// the clock already shows is true and changes nothing. False for a negative time, a level
     /// without a default clock, a stale handle, a client, and when a mod kept the old time.
-    #[access(WorldOnly)]
     fn level_set_clock_time(&mut self, level: LevelRef, time: i64) -> bool;
 }

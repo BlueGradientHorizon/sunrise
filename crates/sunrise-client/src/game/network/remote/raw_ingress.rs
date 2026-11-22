@@ -18,7 +18,8 @@ struct ListenerTurn {
 impl Remote {
     pub(super) fn receive_credited_backlog(&mut self, events: &mut VecDeque<Received>) {
         // Chunk packets start decoding now; the frame that reaches one in
-        // order inserts its column.
+        // order inserts its column. Packets inside a delimited bundle stay
+        // inline so the entire bundle dispatches atomically in one turn.
         for receipt in self.session.poll() {
             let (event, credit) = receipt.into_parts();
             events.push_back(match event {
@@ -63,21 +64,57 @@ impl Game<'_> {
         self.poll_remote_events(true).unwrap();
     }
 
-    /// Handle what the server sent, in order. `before_tick`: a tick is about to
-    /// run, so what an earlier poll left for later is taken whole (no frame
-    /// budget, each column waited for) and nothing newer is received.
+    /// `Minecraft.runTick`: exhaust the packet phase before starting client tasks. A
+    /// worker-decoded column defers its position, every later packet and the task phase.
     pub(super) fn poll_remote_events(&mut self, before_tick: bool) -> Result<()> {
-        let Some(r) = self.remote.as_mut() else {
-            return Ok(());
-        };
-        let mut events = std::mem::take(&mut r.backlog);
-        if !before_tick {
-            r.receive_credited_backlog(&mut events);
-        }
-        let overdue = r
-            .backlog_since
-            .is_some_and(|since| since.elapsed() >= BACKLOG_LIMIT);
+        let mut receive = !before_tick;
         let mut chunks = Duration::ZERO;
+        loop {
+            // Capture tasks before checking the packet queue, so a task published after the
+            // empty packet boundary cannot overtake a packet that arrived before that task.
+            self.pending_client_tasks
+                .append(&mut self.client_tasks.take_turn());
+            let Some(remote) = self.remote.as_mut() else {
+                break;
+            };
+            let mut events = std::mem::take(&mut remote.backlog);
+            if receive {
+                remote.receive_credited_backlog(&mut events);
+            }
+            if events.is_empty() {
+                remote.backlog_since = None;
+                break;
+            }
+            let overdue = remote
+                .backlog_since
+                .is_some_and(|since| since.elapsed() >= BACKLOG_LIMIT);
+            self.dispatch_packet_turn(events, overdue, before_tick, &mut chunks)?;
+            if self
+                .remote
+                .as_ref()
+                .is_some_and(|remote| !remote.backlog.is_empty())
+            {
+                return Ok(());
+            }
+            // A handler may have published more packets or installed another listener.
+            receive = true;
+        }
+        self.send_suggestion_request();
+        while self.client_tasks.is_open()
+            && let Some(task) = self.pending_client_tasks.pop_front()
+        {
+            task.run(self);
+        }
+        Ok(())
+    }
+
+    fn dispatch_packet_turn(
+        &mut self,
+        mut events: VecDeque<Received>,
+        overdue: bool,
+        before_tick: bool,
+        chunks: &mut Duration,
+    ) -> Result<()> {
         // A run of ForgetLevelChunk (thousands when the server's view moves far: a
         // teleport at 32 chunks) is forgotten at once, before whatever follows it.
         let mut forgotten = sunrise_client::fast_hash::FxHashSet::default();
@@ -111,7 +148,7 @@ impl Game<'_> {
             });
             forgotten_credits.clear();
             let chunk = matches!(item, Received::Chunk(_, _));
-            if chunk && !overdue && !before_tick && chunks >= CHUNK_PACKETS_PER_FRAME {
+            if chunk && !overdue && !before_tick && *chunks >= CHUNK_PACKETS_PER_FRAME {
                 events.push_front(item);
                 break;
             }
@@ -154,7 +191,7 @@ impl Game<'_> {
                             self.remote_chunk(&p, Some((&format, column)))
                         });
                     }
-                    chunks += started.map_or(Duration::ZERO, |t| t.elapsed());
+                    *chunks += started.map_or(Duration::ZERO, |t| t.elapsed());
                     continue;
                 }
             };
@@ -185,7 +222,7 @@ impl Game<'_> {
                 )?;
                 return Ok(());
             }
-            chunks += started.map_or(Duration::ZERO, |t| t.elapsed());
+            *chunks += started.map_or(Duration::ZERO, |t| t.elapsed());
             if self.remote.is_none() {
                 break;
             }
@@ -207,7 +244,6 @@ impl Game<'_> {
             };
             r.backlog = events;
         }
-        self.send_suggestion_request();
         Ok(())
     }
 
@@ -218,9 +254,9 @@ impl Game<'_> {
         bundle: sunrise_client::net::CompletedBundle,
         turn: &mut ListenerTurn,
     ) -> Result<()> {
-        use sunrise_client::net::BundleStep;
+        use sunrise_client::net::{BundleMember, BundleStep};
         use sunrise_client::raw_payloads::{Classified, Incoming, dispatch_bundle};
-        use sunrise_protocol::payload_negotiation::Phase;
+        use sunrise_protocol::{connection_groups, payload_negotiation::Phase};
         let sunrise_client::net::CompletedBundle { packets, io } = bundle;
         let Some(remote) = self.remote.as_ref() else {
             return Ok(());
@@ -229,6 +265,33 @@ impl Game<'_> {
             return Ok(());
         }
         let endpoint = remote.session.payload_endpoint();
+        let negotiated = endpoint.transport().epoch().is_some_and(|epoch| {
+            epoch.phase == Phase::Play
+                && epoch
+                    .peer
+                    .engine_receives(Phase::Play, connection_groups::CHANNEL)
+        });
+        let channel = |member: &BundleMember, channel: &str| matches!(member, BundleMember::Packet(C::CustomPayload(p)) if p.channel == channel);
+        if packets
+            .iter()
+            .any(|member| channel(member, connection_groups::CHANNEL))
+            || (packets.len() > 1
+                && packets
+                    .iter()
+                    .all(|member| channel(member, sunrise_protocol::viewed_levels::CHANNEL)))
+        {
+            let group_packets: Vec<C> = packets
+                .into_iter()
+                .map(|member| match member {
+                    BundleMember::Packet(packet) => packet,
+                    BundleMember::AttachmentSync(staged) => {
+                        C::CustomPayload(staged.into_message().1)
+                    }
+                })
+                .collect();
+            self.route_connection_group_bundle(&group_packets, negotiated)?;
+            return Ok(());
+        }
         for packet in packets {
             match io.bundle_member(packet) {
                 BundleStep::Event(event) => {
@@ -247,7 +310,7 @@ impl Game<'_> {
                                 turn,
                             )?;
                         }
-                        Ok(Classified::Raw(_)) => {}
+                        Ok(Classified::Skipped | Classified::Raw(_)) => {}
                         Err(error) => {
                             log::warn!("Sunrise: bundle payload refused: {error}");
                             if let Some(remote) = &self.remote {
@@ -361,6 +424,8 @@ impl Game<'_> {
                     remote.far_terrain = None;
                     remote.quiet_commands = false;
                     remote.custom_books = false;
+                    remote.cauldron_entries = None;
+                    remote.pending_cauldrons.get_mut().clear();
                 }
                 self.clear_lod();
                 if let Some(remote) = &self.remote {
@@ -376,6 +441,9 @@ impl Game<'_> {
                 if let Some(old) = self.remote.as_mut().and_then(|r| r.heard_level.take()) {
                     self.native_client_level_unload(&old);
                 }
+                // Minecraft.clearClientLevel -> updateLevelInEngines(null) stops
+                // sound immediately after the level-unload event fires.
+                self.stop_sounds_for_new_level();
                 self.native_lifecycle.begin_close();
                 self.native_lifecycle_world_closed();
                 let ticks = self.ticks;
@@ -398,7 +466,7 @@ impl Game<'_> {
                 self.score.board = Default::default();
                 self.clear_waypoints();
                 if let Some(r) = self.remote.as_mut() {
-                    r.attachments.clear();
+                    r.clear_attachments();
                     r.players.clear();
                     r.tab_players.clear();
                     r.listed.clear();
@@ -443,6 +511,7 @@ impl Game<'_> {
                 }
             }
             Event::ObservePacket(packet) => self.observe_client_packet(&packet),
+            Event::AttachmentSync(staged) => self.apply_staged_attachment_sync(*staged),
             Event::Packet(packet) => match *packet {
                 C::CustomPayload(p) if p.channel == sunrise_client::perf_net::CHANNEL => {
                     self.remote_perf_reply(&p.data)
@@ -451,6 +520,15 @@ impl Game<'_> {
             },
         }
         Ok(())
+    }
+
+    pub(in crate::game) fn apply_staged_attachment_sync(
+        &mut self,
+        staged: sunrise_protocol::attachment_sync::StagedMessage,
+    ) {
+        let (message, payload) = staged.into_message();
+        self.observe_client_packet(&C::CustomPayload(payload));
+        self.remote_attachment_sync(message);
     }
 
     fn finish_remote_disconnect(&mut self, event: Event) -> Result<()> {
@@ -471,5 +549,120 @@ impl Game<'_> {
         };
         self.connection_ended(&reason, key.as_deref(), by);
         self.leave_server(Some(Text::literal(reason)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::tests::{connect_play_test, spawn_menu_test};
+    use super::*;
+    use crate::game::native_entity_refs::tests::with_client_game;
+    use mod_api::{ClientHost, ClientPacketEvent, EntityRef, Hooks, ModEntry};
+    use std::sync::mpsc;
+
+    #[test]
+    #[ignore = "daily"]
+    fn executor_sees_entity_removal_published_during_packet_dispatch() {
+        struct Listener {
+            publish: Box<dyn Fn(C) + Send + Sync>,
+            entity: EntityRef,
+            record: mpsc::Sender<Option<[f64; 3]>>,
+        }
+
+        #[mod_api::__subscriptions]
+        impl Hooks for Listener {
+            fn client_packet(&self, host: &mut dyn ClientHost, event: &mut ClientPacketEvent<'_>) {
+                if event.packet.id.path() != "ping" {
+                    return;
+                }
+                let entity = self.entity;
+                let record = self.record.clone();
+                host.client_executor()
+                    .unwrap()
+                    .execute(Box::new(move |host| {
+                        record.send(entity.position(host)).unwrap()
+                    }));
+                // Publish behind the callback while the first packet is still being handled.
+                (self.publish)(C::RemoveEntities(play::RemoveEntities {
+                    ids: vec![entity.id() as i32],
+                }));
+            }
+        }
+
+        with_client_game(|game| {
+            let (_reader, _writer) = connect_play_test(game, |_, _| {});
+            spawn_menu_test(game);
+            let publisher = game.remote.as_ref().unwrap().session.received_event_probe();
+            let publish = move |packet| publisher(Event::Packet(Box::new(packet)));
+            game.spawn_entity(20, "minecraft:pig", [2.0, 64.0, 0.0], [0.0; 3]);
+            let entity = game.entity(20).unwrap();
+            assert_eq!(entity.position(game), Some([2.0, 64.0, 0.0]));
+
+            let (record, calls) = mpsc::channel();
+            publish(C::Ping(sunrise_protocol::packets::configuration::Ping {
+                id: 1,
+            }));
+            let mods = vec![ModEntry::new(
+                "during_packet",
+                Box::new(Listener {
+                    publish: Box::new(publish),
+                    entity,
+                    record,
+                }),
+            )]
+            .into();
+            mod_platform::testing::with_mods(mods, || game.poll_remote().unwrap());
+            assert_eq!(calls.try_recv(), Ok(None));
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn executor_waits_for_entity_removal_behind_a_decoding_chunk() {
+        with_client_game(|game| {
+            let (_reader, _writer) = connect_play_test(game, |_, _| {});
+            spawn_menu_test(game);
+            let remote = game.remote.as_mut().unwrap();
+            let format = remote.chunk_format.clone();
+            let publish = remote.session.received_event_probe();
+            publish(Event::Status(String::new()));
+            let (_, credit) = remote
+                .session
+                .poll()
+                .into_iter()
+                .next()
+                .unwrap()
+                .into_parts();
+            // Insert the leased decoder slot without supplying its result yet.
+            assert!(matches!(remote.decoder.next(), Next::Decoding));
+            remote.backlog.push_back(Received::Chunk(format, credit));
+            publish(Event::Packet(Box::new(C::RemoveEntities(
+                play::RemoveEntities { ids: vec![20] },
+            ))));
+            game.spawn_entity(20, "minecraft:pig", [2.0, 64.0, 0.0], [0.0; 3]);
+            let entity = game.entity(20).unwrap();
+            assert_eq!(entity.position(game), Some([2.0, 64.0, 0.0]));
+
+            let (record, calls) = std::sync::mpsc::channel();
+            let executor = game.client_tasks.executor("producer").unwrap();
+            executor.execute(Box::new(move |host| {
+                record.send(entity.position(host)).unwrap()
+            }));
+
+            game.poll_remote().unwrap();
+            assert!(matches!(
+                calls.try_recv(),
+                Err(std::sync::mpsc::TryRecvError::Empty)
+            ));
+            assert_eq!(entity.position(game), Some([2.0, 64.0, 0.0]));
+
+            // Retire the synthetic chunk slot without relying on worker timing.
+            assert!(matches!(
+                game.remote.as_mut().unwrap().backlog.pop_front(),
+                Some(Received::Chunk(..))
+            ));
+            game.poll_remote_before_tick().unwrap();
+            assert_eq!(calls.try_recv(), Ok(None));
+        });
     }
 }

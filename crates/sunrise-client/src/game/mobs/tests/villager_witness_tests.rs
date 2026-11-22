@@ -198,7 +198,10 @@ fn hurt_gossip_belongs_to_the_hits_own_player() {
         let plan = game.prepare_knockback_credit(91, Some(Who::Player), &attack);
         let credit = plan.lend(&mut game.last_hurt_by_player);
         assert_eq!(
-            sunrise_client::health::KnockbackCredit::hurt_by_uuid(&credit, &Damage::player([1.0; 3])),
+            sunrise_client::health::KnockbackCredit::hurt_by_uuid(
+                &credit,
+                &Damage::player([1.0; 3])
+            ),
             Some((guest, false))
         );
     });

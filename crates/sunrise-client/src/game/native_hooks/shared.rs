@@ -24,6 +24,9 @@ mod item_fallthrough;
 #[cfg(test)]
 #[path = "shared/label_tests.rs"]
 mod label_tests;
+#[cfg(test)]
+#[path = "shared/live_damage_tests.rs"]
+mod live_damage_tests;
 #[path = "shared/loot.rs"]
 mod loot;
 #[cfg(test)]
@@ -58,6 +61,24 @@ struct ContentsChangedGuard<'a, 'game> {
 impl Drop for ContentsChangedGuard<'_, '_> {
     fn drop(&mut self) {
         self.game.contents_changing.pop();
+    }
+}
+
+/// Write back a `menu_button` cursor edit without revalidating an untouched stack.
+fn apply_menu_button_cursor(
+    items: &sunrise_client::items::Items,
+    original: &Option<mod_api::ItemStack>,
+    cursor: &Option<mod_api::ItemStack>,
+    carried: &mut Option<ItemStack>,
+) {
+    if cursor == original {
+        return;
+    }
+    match cursor.try_into_engine(items) {
+        Ok(updated) => *carried = updated,
+        Err(error) => {
+            log::warn!("mod menu_button write refused: {error:?}");
+        }
     }
 }
 
@@ -123,6 +144,7 @@ impl Game<'_> {
             slots: 0,
             mouse: self.cursor(),
             partial_tick: self.clock.fraction() as f32,
+            regions: &[],
         }))
     }
 
@@ -130,9 +152,9 @@ impl Game<'_> {
     /// the one place the game's screen changes. A different screen runs
     /// `screen_opening` first (`ScreenEvent.Opening`: a mod may keep the
     /// current screen or open its own), then `screen_closing` for the screen
-    /// it replaces. The same screen
-    /// again, a game with no mod listening to either, and a server's or a guest's `Game`
-    /// are a plain assignment.
+    /// it replaces. A game with no mod listening to either, and a server's
+    /// or a guest's `Game`, assign the screen directly. A new native menu
+    /// can take over the already shown `Inventory` screen in place.
     pub(super) fn set_screen(&mut self, screen: Screen) {
         self.set_screen_with(screen, |_| {});
     }
@@ -140,7 +162,12 @@ impl Game<'_> {
     /// before it applies: what a screen's own `onClose` does only when it really
     /// closes (a container screen's close packet).
     pub(super) fn set_screen_with(&mut self, screen: Screen, before: impl FnOnce(&mut Self)) {
+        let opening_native =
+            screen == Screen::Inventory && self.active_native_screen().is_some_and(|s| !s.shown);
         if self.screen == screen {
+            if opening_native {
+                self.apply_screen_with_mod_book(screen, None);
+            }
             return;
         }
         let mut screen = screen;
@@ -152,13 +179,23 @@ impl Game<'_> {
                 self.decide_screen(&current, &new, self.screen != Screen::Playing)
             };
             match decision {
-                ScreenDecision::Keep => return,
+                ScreenDecision::Keep => {
+                    // Reject only the opening just staged, never the menu
+                    // that an unrelated veto is keeping on screen.
+                    if opening_native {
+                        self.remote_close_container();
+                    }
+                    return;
+                }
                 ScreenDecision::ModScreen(mod_id) => {
                     screen = Screen::Mod;
                     owner = Some(mod_id);
                 }
                 ScreenDecision::Vanilla(target) => {
                     before(self);
+                    if opening_native && self.active_native_screen().is_some() {
+                        self.remote_close_container();
+                    }
                     self.open_screen_target(target);
                     if self.title.is_some() {
                         // A title screen: told here, so the frame's observer
@@ -275,6 +312,7 @@ impl Game<'_> {
                 if let (Some(title), Some(id)) = (self.title.as_mut(), title_target_id(target)) {
                     title.open_by_id(id);
                 }
+                self.release_mappings_on_screen_open();
                 self.build_screen();
             }
         }
@@ -283,17 +321,31 @@ impl Game<'_> {
         self.capture(false);
         self.screen_state.replacing = false;
     }
+    /// Install a screen instance without firing hooks or rebuilding its layout.
+    pub(super) fn activate_screen(&mut self, screen: Screen) {
+        self.screen = screen;
+        self.screen_activation = self.screen_activation.wrapping_add(1);
+    }
+
     /// What `set_screen` does once the hooks have answered: `screen` opens,
     /// and the mod `owner`'s own screen when one answered `ModScreen`.
     fn apply_screen(&mut self, screen: Screen, owner: Option<&str>) {
-        self.screen = screen;
+        // `before` may already have closed it. Overlays that keep Inventory
+        // underneath don't pass through this replacement path.
+        if screen != Screen::Inventory && self.active_native_screen().is_some() {
+            self.remote_close_container();
+        }
+        self.activate_screen(screen);
         if let Some(owner) = owner {
             self.native_mod_screen = Some(owner.to_owned());
         }
+        if screen != Screen::Playing {
+            self.release_mappings_on_screen_open();
+        }
         if screen == Screen::Mod {
-            self.keys.clear();
-            self.left = false;
-            self.right = false;
+            self.clear_device_keys();
+            self.set_mapping_held("key.attack", false);
+            self.set_mapping_held("key.use", false);
             self.mining = None;
             self.capture(false);
         }
@@ -312,6 +364,9 @@ impl Game<'_> {
         opens: bool,
         closes: bool,
     ) -> Option<Answered<ScreenOpening>> {
+        // Asked before either screen draws: nothing beside it yet.
+        let current = &crate::game::screen_backgrounds::without_regions(current);
+        let new = &crate::game::screen_backgrounds::without_regions(new);
         let mut outcome = None;
         if opens {
             self.native_screen_opening(current, new, &mut outcome);
@@ -377,6 +432,7 @@ impl Game<'_> {
     ) -> bool {
         if !self.screen_hooks_heard() {
             open(self);
+            self.release_mappings_on_screen_open();
             self.screen_state.build.reopened();
             self.build_screen();
             return true;
@@ -411,6 +467,7 @@ impl Game<'_> {
             ScreenDecision::Open => {}
         }
         open(self);
+        self.release_mappings_on_screen_open();
         self.screen_state.build.reopened();
         self.build_screen();
         // Told here, so the frame's `observe_screen` sees no change to announce.
@@ -427,7 +484,7 @@ impl Game<'_> {
             .map(|view| self.observe_view(view))
     }
 
-    fn observe_view(&self, view: ScreenView<'_>) -> ObservedScreen {
+    pub(super) fn observe_view(&self, view: ScreenView<'_>) -> ObservedScreen {
         ObservedScreen {
             id: view.id,
             overlay: self.screen == Screen::Playing,
@@ -477,8 +534,9 @@ impl Game<'_> {
             ScreenDecision::Vanilla(target) => self.open_screen_target(target),
             ScreenDecision::Open => {
                 if let Some(title) = self.title.as_mut() {
-                    title.mode = mode;
+                    title.activate_mode(mode);
                 }
+                self.release_mappings_on_screen_open();
                 self.build_screen();
             }
         }
@@ -520,6 +578,7 @@ impl Game<'_> {
             self.title_change(None);
         }
         self.title = None;
+        self.screen_activation = self.screen_activation.wrapping_add(1);
         self.build_screen();
         self.screen_state.observed = self.observed_now();
     }
@@ -651,27 +710,48 @@ fn shake_pose(shake: Shake) -> glam::Mat4 {
         * glam::Mat4::from_rotation_y(shake.yaw.to_radians())
 }
 
-/// The mod screen open on this client: its menu type and block, the key its
-/// slots are under, the window id of its menu, the menu's data slots as
-/// the server sent them, and what the server sent before the menu opened
-/// (`sunrise:menu_extra`), when it did.
+/// This client's window-owned mod screen and its local slot state.
 pub(super) struct OpenNativeScreen {
+    /// Fixed for the opening; slot moves have their own revision.
     pub(super) layout_revision: u64,
     slot_moves: SlotMoves,
+    screen: mod_api::__private::OwnedMenuScreen,
+    menu: OpenNativeMenu,
+    /// Installed as the window's screen, not merely staged for ScreenOpening.
+    shown: bool,
+}
+
+/// The menu the screen presents: where its slots are stored, the opener,
+/// and the window's live data.
+struct OpenNativeMenu {
     key: Pos,
     window: i32,
-    /// The menu's type, which its screen hooks are keyed by.
-    menu: String,
-    /// The mod block whose menu it is; none for a menu opened without one.
+    generation: u64,
+    /// The menu's type, which its screen factory is keyed by.
+    name: String,
+    /// The mod block whose matching container opened the menu, if any.
     block: Option<String>,
-    screen: mod_api::Screen,
+    pos: Option<[i32; 3]>,
     mod_type: Option<&'static sunrise_client::containers::ModMenuType>,
     data: Vec<i32>,
-    extra: Option<sunrise_protocol::menu_extra::Message>,
+}
+
+#[cfg(test)]
+fn seed_native_menu(game: &mut Game<'_>, window: i32, name: &str) -> u64 {
+    if game.remote.is_none() {
+        let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
+        game.connect_local(pipe, "Native screen fixture").unwrap();
+    }
+    if game.remote.as_ref().unwrap().menu.as_ref().is_some() {
+        game.remote_close_local();
+    }
+    let menu = &mut game.remote.as_mut().unwrap().menu;
+    menu.set(Some((window, name.to_owned())));
+    menu.generation
 }
 
 /// Where a mod moved the open screen's slots after it opened, over the
-/// positions its `Screen` declared. Interior state, as the screen hooks that
+/// positions its `MenuScreenLayout` declared. Interior state, as the screen callbacks that
 /// move slots hold `&self`. A move is pending until the layout build commits
 /// it, so drawing and hit-testing read one position within a frame and both
 /// take a move together from the next.
@@ -687,28 +767,26 @@ pub(super) struct SlotMoves {
 impl SlotMoves {
     /// Slot `slot`'s position this frame: where the last build committed it
     /// (None once hidden), else `declared`.
-    fn position(&self, slot: usize, declared: [f32; 2]) -> Option<[f32; 2]> {
+    fn position(&self, slot: usize, declared: Option<[f32; 2]>) -> Option<[f32; 2]> {
         self.committed
             .borrow()
             .get(&slot)
             .copied()
-            .unwrap_or(Some(declared))
+            .unwrap_or(declared)
     }
     /// Where slot `slot` of a screen that declared `slots` will be from the
     /// next build: the last move, pending or committed, else its declaration.
     fn latest(&self, slots: &[Option<mod_api::ScreenSlot>], slot: usize) -> Option<[f32; 2]> {
-        let declared = slots.get(slot)?.as_ref()?.position;
+        let declared = slots.get(slot)?.as_ref().map(|slot| slot.position);
         let pending = self.pending.borrow().get(&slot).copied();
         match pending {
             Some(pending) => pending,
             None => self.position(slot, declared),
         }
     }
-    /// Moves slot `slot` of a screen that declared `slots` to `pos`, or hides
-    /// it with None, from the next build. A slot the screen hid when it opened
-    /// (the server's menu has no such slot) is never shown. Each refusal
-    /// changes nothing; repeating the slot's current place changes nothing
-    /// either, not even the move count.
+    /// Moves or activates slot `slot` of a screen that declared `slots` to `pos`,
+    /// or hides it with None, from the next build (`Slot.isActive()`). A refusal
+    /// or a repeat changes nothing, not even the move count.
     fn set(
         &self,
         slots: &[Option<mod_api::ScreenSlot>],
@@ -716,11 +794,8 @@ impl SlotMoves {
         pos: Option<[f32; 2]>,
     ) -> Result<(), mod_api::ScreenSlotRefusal> {
         use mod_api::ScreenSlotRefusal;
-        match slots.get(slot) {
-            None => return Err(ScreenSlotRefusal::NoSuchSlot),
-            Some(None) if pos.is_some() => return Err(ScreenSlotRefusal::HiddenAtOpen),
-            Some(None) => return Ok(()),
-            Some(Some(_)) => {}
+        if slot >= slots.len() {
+            return Err(ScreenSlotRefusal::NoSuchSlot);
         }
         if pos.is_some_and(|[x, y]| !x.is_finite() || !y.is_finite()) {
             return Err(ScreenSlotRefusal::BadPosition);
@@ -741,20 +816,51 @@ impl SlotMoves {
 }
 
 impl Game<'_> {
-    /// The registered layout resolved for this client's window, including while it opens.
+    /// The staged or shown native screen belonging to this opening, not a
+    /// prior opening of the same numeric window id.
+    fn active_native_screen(&self) -> Option<&OpenNativeScreen> {
+        let screen = self.mod_screen.as_ref()?;
+        let remote = &self.remote.as_ref()?.menu;
+        (remote.generation == screen.menu.generation && remote.as_ref()?.0 == screen.menu.window)
+            .then_some(screen)
+    }
+
+    /// The menu type resolved for this client's opening, including in ScreenOpening.
     pub(in crate::game) fn native_screen_menu_type(
         &self,
         window: i32,
         name: &str,
     ) -> Option<&'static sunrise_client::containers::ModMenuType> {
-        self.mod_screen
-            .as_ref()
-            .filter(|screen| screen.window == window && screen.menu == name)?
-            .mod_type
+        let menu = &self.active_native_screen()?.menu;
+        (menu.window == window && menu.name == name).then_some(menu.mod_type)?
     }
 }
 
 impl OpenNativeScreen {
+    fn layout(&self) -> &mod_api::MenuScreenLayout {
+        self.screen.layout()
+    }
+
+    #[cfg(test)]
+    fn layout_mut(&mut self) -> &mut mod_api::MenuScreenLayout {
+        self.screen.layout_mut()
+    }
+
+    fn frame(
+        &self,
+        batch: &HudBatch,
+        (ox, oy): (f32, f32),
+        (x, y): (f32, f32),
+    ) -> mod_api::MenuScreenFrame<'_> {
+        mod_api::MenuScreenFrame {
+            origin: [ox, oy],
+            pointer: [x as i32, y as i32],
+            gui_size: [batch.width as i32, batch.height as i32],
+            at: [x - ox, y - oy],
+            data: &self.menu.data,
+        }
+    }
+
     /// How many slot moves changed a position, so a layout built before the
     /// last one is rebuilt.
     pub(in crate::game) fn slot_move_count(&self) -> u32 {
@@ -765,44 +871,48 @@ impl OpenNativeScreen {
     pub(in crate::game) fn commit_slot_moves(&self) {
         self.slot_moves.commit();
     }
-    /// The block the menu is of: where the server said, else the clicked
-    /// block its slots are under (a server without `sunrise:menu_extra`).
-    fn pos(&self) -> Option<[i32; 3]> {
-        match &self.extra {
-            Some(extra) => extra.pos,
-            None if self.key.0 != i32::MIN => Some([self.key.0, self.key.1, self.key.2]),
-            None => None,
-        }
-    }
-    /// Data slot `id` of window `window`'s menu: false for another window's
-    /// (an old or replaced one), which this screen leaves alone.
+    /// Data slot `index` of window `window`'s menu: false for another window.
+    /// The caller resolves the shown opening before passing it a packet.
     fn set_data(&mut self, window: i32, index: usize, value: i32) -> bool {
-        if window != self.window {
+        if window != self.menu.window {
             return false;
         }
-        let count = self.mod_type.map_or(256, |kind| kind.data_slots);
-        if index < count {
-            if self.data.len() <= index {
-                self.data.resize(index + 1, 0);
+        if self.menu.mod_type.map_or(
+            index < usize::from(sunrise_mod_package::content::MAX_SIGNED_DATA_SLOTS),
+            |kind| index < kind.data_slots,
+        ) {
+            if self.menu.data.len() <= index {
+                self.menu.data.resize(index + 1, 0);
             }
-            self.data[index] = value;
+            self.menu.data[index] = value;
         }
         true
     }
 
+    pub(super) fn container_slot_base(&self) -> usize {
+        if self.menu.mod_type.is_some() {
+            super::inventory_slots::MOD_MENU_SLOT_BASE
+        } else {
+            300
+        }
+    }
+
     fn player_slots(&self) -> usize {
-        self.mod_type
+        self.menu
+            .mod_type
             .map_or(36, sunrise_client::containers::ModMenuType::player_slots)
     }
 
     fn visible_container_slots(&self) -> impl Iterator<Item = usize> + '_ {
-        self.screen
+        let base = self.container_slot_base();
+        self.layout()
             .slots
             .iter()
             .enumerate()
-            .filter_map(|(i, slot)| {
-                self.slot_moves.position(i, slot.as_ref()?.position)?;
-                Some(300 + i)
+            .filter_map(move |(i, slot)| {
+                self.slot_moves
+                    .position(i, slot.as_ref().map(|slot| slot.position))?;
+                Some(base + i)
             })
     }
 
@@ -958,24 +1068,40 @@ pub(crate) struct NativeRecipes {
     pub(crate) recipes: Vec<NativeRecipe>,
 }
 
-/// The mappings `mapping` answers for, with the key their default
-/// binding is (none: a mouse button, attack or use).
-const MAPPINGS: [(&str, Option<KeyCode>); 9] = [
-    ("key.forward", Some(KeyCode::KeyW)),
-    ("key.left", Some(KeyCode::KeyA)),
-    ("key.back", Some(KeyCode::KeyS)),
-    ("key.right", Some(KeyCode::KeyD)),
-    ("key.jump", Some(KeyCode::Space)),
-    ("key.sneak", Some(KeyCode::ShiftLeft)),
-    ("key.sprint", Some(KeyCode::ControlLeft)),
-    ("key.attack", None),
-    ("key.use", None),
-];
+/// A physical press and its original receiver. Activation counters, unlike screen IDs or
+/// layout revisions, distinguish same-kind replacements but do not change on resize.
+#[derive(Clone, Copy)]
+pub(super) struct ScreenPress {
+    pub(super) activation: u64,
+    pub(super) screen: Screen,
+    pub(super) title_mode: Option<u64>,
+    pub(super) button: i32,
+    pub(super) millis: u64,
+}
 
-/// The Post a mouse input owes once the screen has handled it, built when
-/// its Pre let the input through (`Game::screen_mouse_post`).
+impl ScreenPress {
+    pub(super) fn is_double_click(self, last: Option<Self>) -> bool {
+        last.is_some_and(|last| {
+            self.activation == last.activation
+                && self.screen == last.screen
+                && self.title_mode == last.title_mode
+                && self.button == last.button
+                && self.millis - last.millis < 250 // MouseHandler.DOUBLE_CLICK_THRESHOLD_MS
+        })
+    }
+}
+
+/// The button event and its original receiver, retained across a handler that may replace it.
+pub(super) struct ScreenButtonPost {
+    pub(super) screen: ObservedScreen,
+    pub(super) button: i32,
+    pub(super) pressed: bool,
+    pub(super) modifiers: u32,
+    pub(super) double_click: bool,
+}
+
+/// A scroll/drag notice owed after its Pre let the input through.
 pub(super) enum ScreenMousePost {
-    Button { button: i32, pressed: bool },
     Scroll([f64; 2]),
     Drag { button: i32, delta: [f32; 2] },
 }
@@ -1010,8 +1136,8 @@ fn screen_text_hooked(text: &str, mut canceled: impl FnMut(char) -> bool) -> Opt
 
 /// The hook points. Each does nothing in Sunrise.
 impl Game<'_> {
-    /// The single admission point for all toast families. Producers decide the
-    /// candidate first; only an accepted candidate is applied to its queue.
+    /// Admission for ordinary toasts. Only an accepted candidate enters its
+    /// queue; mandatory callback-panic diagnostics bypass mod admission.
     pub(super) fn add_toast(
         &self,
         kind: mod_api::ToastKind,
@@ -1082,14 +1208,7 @@ impl Game<'_> {
             vanilla
         }
     }
-    /// The player-health HUD rows, once a frame the HUD draws them
-    /// (`HealthHud::layout`, not under F1): `inputs` carries the health,
-    /// food, air and vehicle state the layout reads, `wi`/`hi` the screen's
-    /// GUI size. A mod that sets `draws` replaces every row — armour,
-    /// hearts, food and air are the answer's to give; `bubble_pop_sound`
-    /// too.
-    /// Nothing set draws Sunrise's own.
-    /// The hearts the local player's health bar draws (`Gui.HeartType.forPlayer`, then
+    /// The hearts the local player's health bar draws (`Hud.HeartType.forPlayer`, then
     /// NeoForge's `PlayerHeartTypeEvent`): poisoned, else withered, else frozen when fully
     /// frozen, else normal, as a mod's `player_heart_type` leaves it. None without a player.
     pub(super) fn player_heart_kind(&mut self) -> Option<mod_api::client::hud_layout::HeartKind> {
@@ -1116,6 +1235,39 @@ impl Game<'_> {
         {
             self.native_panel_key(name);
         }
+    }
+    /// Whether any mod listens to a hook given the open screen's
+    /// `ScreenView` (render, input, open and close, room, exclusion): only
+    /// then are its regions collected.
+    pub(super) fn screen_view_listened(&self) -> bool {
+        use mod_api::HookId;
+        [
+            HookId::ScreenRenderPre,
+            HookId::ScreenRenderBackground,
+            HookId::ScreenRenderForeground,
+            HookId::ScreenRenderPost,
+            HookId::ScreenMouseButtonPressedPre,
+            HookId::ScreenMouseButtonPressedPost,
+            HookId::ScreenMouseButtonReleasedPre,
+            HookId::ScreenMouseButtonReleasedPost,
+            HookId::ScreenMouseDraggedPre,
+            HookId::ScreenMouseDraggedPost,
+            HookId::ScreenMouseScrolledPre,
+            HookId::ScreenMouseScrolledPost,
+            HookId::ScreenKeyPressedPre,
+            HookId::ScreenKeyPressedPost,
+            HookId::ScreenKeyReleasedPre,
+            HookId::ScreenKeyReleasedPost,
+            HookId::ScreenCharTypedPre,
+            HookId::ScreenCharTypedPost,
+            HookId::ScreenOpening,
+            HookId::ScreenClosing,
+            HookId::ScreenInitPost,
+            HookId::ScreenRoom,
+            HookId::ScreenExclusionAreas,
+        ]
+        .into_iter()
+        .any(mod_api::__private::listened)
     }
     /// Whether a mod listens to one of the four screen render hooks; nothing
     /// is built to fire them otherwise.
@@ -1169,6 +1321,7 @@ impl Game<'_> {
             slots: self.slot_count(),
             mouse: self.cursor(),
             partial_tick: self.clock.fraction() as f32,
+            regions: self.screen_regions(screen),
         })
     }
     /// The title's own screen as a native mod sees it (`ScreenView`):
@@ -1186,6 +1339,7 @@ impl Game<'_> {
             slots: 0,
             mouse: self.cursor(),
             partial_tick: self.clock.fraction() as f32,
+            regions: &[],
         }))
     }
     /// The open screen's container panel in GUI pixels (`screen`'s, the one
@@ -1238,14 +1392,35 @@ impl Game<'_> {
             ScreenMousePre::Passed(ScreenMousePost::Drag { button, delta })
         }
     }
-    /// The Post of a mouse input whose Pre let it through, once the screen's
-    /// own handling has run. The screen is the one open then (none, and no
-    /// Post, when the input closed it). Nothing is built with no subscriber.
+    /// Button Post sees the original receiver and its answer; return the final handled bit.
+    pub(super) fn screen_button_post(&self, post: &ScreenButtonPost, handled: bool) -> bool {
+        let screen = post.screen.view();
+        let mut result = TriState::Default;
+        if post.pressed {
+            self.native_screen_mouse_button_pressed_post(
+                &screen,
+                post.button,
+                post.modifiers,
+                post.double_click,
+                handled,
+                &mut result,
+            );
+        } else {
+            self.native_screen_mouse_button_released_post(
+                &screen,
+                post.button,
+                post.modifiers,
+                handled,
+                &mut result,
+            );
+        }
+        result.or(handled)
+    }
+
+    /// Scroll/drag Post is a notice to the screen still open after the input.
     pub(super) fn screen_mouse_post(&self, post: ScreenMousePost) {
         use mod_api::HookId;
         let hook = match post {
-            ScreenMousePost::Button { pressed: true, .. } => HookId::ScreenMouseButtonPressedPost,
-            ScreenMousePost::Button { pressed: false, .. } => HookId::ScreenMouseButtonReleasedPost,
             ScreenMousePost::Scroll(_) => HookId::ScreenMouseScrolledPost,
             ScreenMousePost::Drag { .. } => HookId::ScreenMouseDraggedPost,
         };
@@ -1257,14 +1432,6 @@ impl Game<'_> {
         };
         let modifiers = super::glfw_modifiers(self.modifiers);
         match post {
-            ScreenMousePost::Button {
-                button,
-                pressed: true,
-            } => self.native_screen_mouse_button_pressed_post(&screen, button, modifiers),
-            ScreenMousePost::Button {
-                button,
-                pressed: false,
-            } => self.native_screen_mouse_button_released_post(&screen, button, modifiers),
             ScreenMousePost::Scroll(scroll) => {
                 self.native_screen_mouse_scrolled_post(&screen, scroll, modifiers)
             }
@@ -1435,14 +1602,18 @@ impl Game<'_> {
         let Some(text) = text else {
             return;
         };
+        // A held edit modifier makes a shortcut of the key, not text.
+        let text = chars_to_type(text, self.types_text());
+        self.screen_committed_chars(&text);
+    }
+
+    /// Characters already committed by the input method or the control socket are not shortcuts.
+    pub(in crate::game) fn screen_committed_chars(&mut self, text: &str) {
         if !self.screen_hooks_open() {
             return;
         }
-        // A held edit modifier makes a shortcut of the key, not text.
-        let text = chars_to_type(text, self.types_text());
-        self.screen_text_each(&text, |game, c| {
-            // `Err` only says no text box of the screen takes the character.
-            if game.type_chars_into_screen(c).is_err() {
+        self.screen_text_each(text, |game, c| {
+            if !c.starts_with(char::is_control) && game.type_chars_into_screen(c).is_err() {
                 game.screen_chars_post(c);
             }
         });
@@ -1482,7 +1653,7 @@ impl Game<'_> {
         Some(LivingRef::new(EntityRef::new(epoch, id)))
     }
     /// Deliver what the batch just ticked recorded, in order: `minecart_pass`
-    /// to the parts, and the writes a landing or a mid-walk `entity_inside`
+    /// to the parts, and the writes a landing, step, or mid-walk `entity_inside`
     /// contact asked for to the level. A write is skipped when the block at
     /// its position is no longer the state it touched, as vanilla never sees
     /// a stale one. The parts' own `entity_inside` contacts fire mid-walk now,
@@ -1617,6 +1788,112 @@ pub(super) fn invulnerability_check(
     invulnerable
 }
 
+fn engine_reduction(reduction: mod_api::Reduction) -> sunrise_world::living_damage::Reduction {
+    match reduction {
+        mod_api::Reduction::Invulnerability => {
+            sunrise_world::living_damage::Reduction::Invulnerability
+        }
+        mod_api::Reduction::Armor => sunrise_world::living_damage::Reduction::Armor,
+        mod_api::Reduction::Enchantments => sunrise_world::living_damage::Reduction::Enchantments,
+        mod_api::Reduction::MobEffects => sunrise_world::living_damage::Reduction::MobEffects,
+        mod_api::Reduction::Absorption => sunrise_world::living_damage::Reduction::Absorption,
+        mod_api::Reduction::InnateResistance => {
+            sunrise_world::living_damage::Reduction::InnateResistance
+        }
+        _ => unreachable!("unknown API reduction"),
+    }
+}
+
+struct LiveDamageRead<'a>(&'a sunrise_world::living_damage::DamageState);
+
+impl mod_api::__private::DamageContainerRead for LiveDamageRead<'_> {
+    fn original(&self) -> f32 {
+        self.0.original()
+    }
+    fn new_damage(&self) -> f32 {
+        self.0.new_damage()
+    }
+    fn blocked(&self) -> f32 {
+        self.0.blocked()
+    }
+    fn shield_damage(&self) -> f32 {
+        self.0.shield_damage()
+    }
+    fn post_attack_invulnerability_ticks(&self) -> i32 {
+        self.0.post_attack_invulnerability_ticks()
+    }
+    fn should_cause_side_effects(&self) -> bool {
+        self.0.should_cause_side_effects()
+    }
+    fn inflicted(&self) -> f32 {
+        self.0.inflicted()
+    }
+    fn health_damage(&self) -> f32 {
+        self.0.health_damage()
+    }
+    fn reduction(&self, reduction: mod_api::Reduction) -> f32 {
+        self.0.reduction(engine_reduction(reduction))
+    }
+}
+
+struct LiveDamageContainer<'a>(&'a mut DamageContainer);
+
+impl mod_api::__private::DamageContainerRead for LiveDamageContainer<'_> {
+    fn original(&self) -> f32 {
+        self.0.original()
+    }
+    fn new_damage(&self) -> f32 {
+        self.0.new_damage()
+    }
+    fn blocked(&self) -> f32 {
+        self.0.blocked()
+    }
+    fn shield_damage(&self) -> f32 {
+        self.0.shield_damage()
+    }
+    fn post_attack_invulnerability_ticks(&self) -> i32 {
+        self.0.post_attack_invulnerability_ticks()
+    }
+    fn should_cause_side_effects(&self) -> bool {
+        self.0.should_cause_side_effects()
+    }
+    fn inflicted(&self) -> f32 {
+        self.0.inflicted()
+    }
+    fn health_damage(&self) -> f32 {
+        self.0.health_damage()
+    }
+    fn reduction(&self, reduction: mod_api::Reduction) -> f32 {
+        self.0.reduction(engine_reduction(reduction))
+    }
+}
+
+impl mod_api::__private::DamageContainerBackend for LiveDamageContainer<'_> {
+    fn set_new_damage(&mut self, value: f32) {
+        self.0.record_new_damage(value);
+    }
+    fn set_post_attack_invulnerability_ticks(&mut self, value: i32) {
+        self.0.record_post_attack_invulnerability_ticks(value);
+    }
+    fn add_reduction_modifier(
+        &mut self,
+        reduction: mod_api::Reduction,
+        owner: Option<&'static str>,
+        modifier: Box<dyn FnMut(mod_api::DamageContainerView<'_>, f32) -> f32>,
+    ) {
+        let mut wrapped = mod_api::__private::wrap_reduction_modifier(owner, modifier);
+        self.0.add_reduction_modifier(
+            engine_reduction(reduction),
+            Box::new(move |engine_container: &DamageContainer, amount: f32| {
+                wrapped(
+                    mod_api::DamageContainerView::new(&LiveDamageRead(engine_container)),
+                    amount,
+                )
+            }),
+        );
+    }
+}
+
 /// `native_living_incoming_damage` for the damage code: whether it
 /// canceled the hit.
 pub(super) fn incoming_damage(
@@ -1625,7 +1902,14 @@ pub(super) fn incoming_damage(
     victim: Victim,
     container: &mut DamageContainer,
 ) -> bool {
-    if !mod_api::__private::listened(mod_api::HookId::LivingIncomingDamage) {
+    let listens_incoming = mod_api::__private::listened(mod_api::HookId::LivingIncomingDamage);
+    if listens_incoming
+        || mod_api::__private::listened(mod_api::HookId::LivingDamagePre)
+        || mod_api::__private::listened(mod_api::HookId::LivingDamagePost)
+    {
+        container.enable_live_reductions();
+    }
+    if !listens_incoming {
         return false;
     }
     let (entity, kind, source) = hurt_server_args(hurting, level.attack());
@@ -1640,7 +1924,7 @@ pub(super) fn incoming_damage(
     let Ok(causing_weapon) = causing_weapon.try_into_api() else {
         return false;
     };
-    let mut snapshot = (*container).try_into_api().expect("scalar damage snapshot");
+    let mut live = LiveDamageContainer(container);
     HitLevel(level).native_living_incoming_damage(mod_api::__private::LivingIncomingDamageCall {
         entity,
         kind,
@@ -1648,12 +1932,9 @@ pub(super) fn incoming_damage(
         victim: &victim,
         weapon: weapon.as_ref(),
         causing_weapon: causing_weapon.as_ref(),
-        container: &mut snapshot,
+        container: mod_api::DamageContainer::new(&mut live),
         canceled: &mut canceled,
     });
-    *container = snapshot
-        .try_into_engine(&())
-        .expect("scalar damage snapshot");
     canceled
 }
 
@@ -1666,12 +1947,15 @@ pub(super) fn damage_pre(
     if !mod_api::__private::listened(mod_api::HookId::LivingDamagePre) {
         return;
     }
+    container.enable_live_reductions();
     let (entity, kind, source) = hurt_server_args(hurting, level.attack());
-    let mut snapshot = (*container).try_into_api().expect("scalar damage snapshot");
-    HitLevel(level).native_living_damage_pre(entity, kind, &source, &mut snapshot);
-    *container = snapshot
-        .try_into_engine(&())
-        .expect("scalar damage snapshot");
+    let mut live = LiveDamageContainer(container);
+    HitLevel(level).native_living_damage_pre(mod_api::__private::LivingDamagePreCall {
+        entity,
+        kind,
+        source: &source,
+        container: mod_api::DamageContainer::new(&mut live),
+    });
 }
 
 /// `native_living_damage_post` for the damage code.
@@ -1684,8 +1968,13 @@ pub(super) fn damage_post(
         return;
     }
     let (entity, kind, source) = hurt_server_args(hurting, level.attack());
-    let snapshot = (*container).try_into_api().expect("scalar damage snapshot");
-    HitLevel(level).native_living_damage_post(entity, kind, &source, &snapshot);
+    let live = LiveDamageRead(container);
+    HitLevel(level).native_living_damage_post(
+        entity,
+        kind,
+        &source,
+        mod_api::DamageContainerView::new(&live),
+    );
 }
 
 /// `native_living_shield_block` for the damage code. Its one
@@ -1709,6 +1998,34 @@ pub(super) fn shield_block(
 }
 
 impl Game<'_> {
+    /// Finish a lethal or totem-protected hit only once the owning level has settled it.
+    pub(in crate::game) fn finish_damage_post(
+        &mut self,
+        entity: i32,
+        kind: &str,
+        post: std::sync::Arc<sunrise_client::health::DamagePost>,
+    ) {
+        let (source, state, original_lend) = post.view();
+        let (player, mobs) = (&mut self.player, &mut self.mobs);
+        let lend = original_lend.and_then(|id| {
+            sunrise_client::health::HitLend::attacking_player(player.as_mut(), id)
+                .or_else(|| sunrise_client::health::HitLend::attacking_mob(mobs.iter_mut(), id))
+        });
+        let level = crate::game::entity::damage_level_of!(
+            self,
+            &sunrise_client::health::NO_ATTACK,
+            no_push,
+            lend
+        );
+        let live = LiveDamageRead(state);
+        HitLevel(level.reborrow()).native_living_damage_post(
+            entity,
+            kind,
+            &source,
+            mod_api::DamageContainerView::new(&live),
+        );
+    }
+
     /// The [`Attack`] of `attacker` (an entity id, 0 for none) for the level a hit lands in
     /// ([`DamageLevel::attacked_by`]). While a native mod listens it also records what the
     /// attacker holds (the player's selected and off-hand stacks, a mob's main hand) for
@@ -1833,6 +2150,7 @@ pub(super) const DAMAGE_HOOKS: DamageHooks = DamageHooks {
     incoming: Some(incoming_damage),
     pre: Some(damage_pre),
     post: Some(damage_post),
+    owner_post_listened: Some(|| mod_api::__private::listened(mod_api::HookId::LivingDamagePost)),
     knockback: Some(knockback),
     totem: Some(use_totem),
     shield: Some(shield_block),
@@ -1842,14 +2160,22 @@ pub(super) const DAMAGE_HOOKS: DamageHooks = DamageHooks {
 /// reports them.
 pub(super) const BLOCK_CONTACT_HOOKS: sunrise_client::block_contact::Hooks =
     sunrise_client::block_contact::Hooks {
-        step_on: |dimension, c| {
-            Game::native_block_step_on(
-                dimension,
-                c.entity,
-                c.kind,
-                c.state,
-                [c.position.x, c.position.y, c.position.z],
-            );
+        step_listens: |state| {
+            crate::game::api_values::block_state::block_listens(mod_api::HookId::StepOn, state)
+        },
+        step_on: |level, step, movement| {
+            use self::bounce_restitution::StepOnView;
+            use sunrise_client::block_contact::StepLevel;
+            match level {
+                StepLevel::Server(level) => StepOnView(mod_api::LevelRandomSide::Server(
+                    &mut HitLevel(level.reborrow()),
+                ))
+                .native_step_on(step, movement),
+                StepLevel::Client(level) => StepOnView(mod_api::LevelRandomSide::Client(
+                    &crate::game::native_surface::FrictionView(level),
+                ))
+                .native_step_on(step, movement),
+            }
         },
         any_inside: || mod_api::__private::has_scoped_hook(mod_api::HookId::EntityInside),
         inside_listens: |state| {
@@ -2550,7 +2876,9 @@ impl Game<'_> {
                 let mut container = None;
                 self.native_block_entity_container(&state.name, &mut container);
                 container.map(|mut c| {
-                    c.slots = c.slots.min(256);
+                    c.slots = c
+                        .slots
+                        .min(usize::from(sunrise_mod_package::content::MAX_MENU_SLOTS));
                     let n = c.slots;
                     for list in c.faces.iter_mut().chain([&mut c.inputs, &mut c.outputs]) {
                         list.retain(|&s| s < n);
@@ -2674,17 +3002,22 @@ impl Game<'_> {
             .is_some_and(|s| s.set_data(window, index, value))
     }
     /// Where the open mod screen puts container slot `slot` this frame: where
-    /// a mod last moved it, else where the screen declared it; None once a mod
-    /// hid it.
+    /// a mod last moved it, else where the screen declared it; None when
+    /// inactive/hidden.
     pub(super) fn native_screen_slot(&self, slot: usize) -> Option<(f32, f32)> {
         let s = self.shown_native_screen()?;
-        let declared = s.screen.slots.get(slot)?.as_ref()?.position;
+        let declared = s
+            .layout()
+            .slots
+            .get(slot)?
+            .as_ref()
+            .map(|slot| slot.position);
         let [x, y] = s.slot_moves.position(slot, declared)?;
         Some((x, y))
     }
     pub(in crate::game) fn native_screen_slot_icon(&self, slot: usize) -> Option<&str> {
         self.shown_native_screen()?
-            .screen
+            .layout()
             .slots
             .get(slot)?
             .as_ref()?
@@ -2693,23 +3026,14 @@ impl Game<'_> {
     }
     /// Where the open screen of mod menu type `menu` puts container slot
     /// `slot` from the next frame: the mod's last move, else the screen's
-    /// declaration; None for a hidden slot, another menu type's screen or none.
+    /// declaration; None for an inactive/hidden slot, another menu type's screen or none.
     pub(in crate::game) fn screen_slot(&self, menu: &str, slot: usize) -> Option<[f32; 2]> {
-        let s = self.owned_native_screen(menu)?;
-        s.slot_moves.latest(&s.screen.slots, slot)
+        let s = self.shown_native_screen().filter(|s| s.menu.name == menu)?;
+        s.slot_moves.latest(&s.layout().slots, slot)
     }
-    /// The open screen of menu type `menu`, when the mod calling (if one is)
-    /// owns it: another mod's part on a shared vanilla type moves no slot of it.
-    fn owned_native_screen(&self, menu: &str) -> Option<&OpenNativeScreen> {
-        let s = self.shown_native_screen().filter(|s| s.menu == menu)?;
-        let owner = || mod_api::__private::menu_screen_owner(&s.menu, s.block.as_deref());
-        mod_api::content::crash::current_native_mod()
-            .is_none_or(|calling| owner() == Some(calling))
-            .then_some(s)
-    }
-    /// Moves container slot `slot` of the open screen of menu type `menu` to `pos`
-    /// (relative to the screen's origin), or hides it with None, from the
-    /// next frame (`SlotMoves::set`).
+    /// Moves or activates container slot `slot` of the open screen of menu type
+    /// `menu` to `pos` (relative to the screen's origin), or hides it with None,
+    /// from the next frame (`SlotMoves::set`).
     pub(in crate::game) fn set_screen_slot(
         &self,
         menu: &str,
@@ -2717,11 +3041,18 @@ impl Game<'_> {
         pos: Option<[f32; 2]>,
     ) -> Result<(), mod_api::ScreenSlotRefusal> {
         let s = self
-            .owned_native_screen(menu)
+            .shown_native_screen()
+            .filter(|s| s.menu.name == menu)
             .ok_or(mod_api::ScreenSlotRefusal::NoScreen)?;
-        s.slot_moves.set(&s.screen.slots, slot, pos)
+        s.slot_moves.set(&s.layout().slots, slot, pos)
     }
-    /// The container slots the open mod screen shows this frame (300.. ids).
+    /// The internal container slot base of the open mod screen (`MOD_MENU_SLOT_BASE`
+    /// for a `ModMenuType`, `300` for a stock menu).
+    pub(in crate::game) fn native_screen_container_slot_base(&self) -> usize {
+        self.shown_native_screen()
+            .map_or(300, OpenNativeScreen::container_slot_base)
+    }
+    /// The container slots the open mod screen shows this frame.
     pub(super) fn native_screen_slots(&self) -> Option<Vec<usize>> {
         Some(
             self.shown_native_screen()?
@@ -2731,15 +3062,15 @@ impl Game<'_> {
     }
     /// The first row of the player's inventory on the open mod screen.
     pub(super) fn native_screen_inventory_y(&self) -> Option<f32> {
-        self.shown_native_screen().map(|s| s.screen.inventory_y)
+        self.shown_native_screen().map(|s| s.layout().inventory_y)
     }
     /// The open mod screen's inventory's left column.
     pub(super) fn native_screen_inventory_x(&self) -> Option<f32> {
-        self.shown_native_screen().map(|s| s.screen.inventory_x)
+        self.shown_native_screen().map(|s| s.layout().inventory_x)
     }
     /// The open mod screen's width.
     pub(super) fn native_screen_width(&self) -> Option<f32> {
-        self.shown_native_screen().map(|s| s.screen.width)
+        self.shown_native_screen().map(|s| s.layout().width)
     }
     /// The open mod screen: a plain panel with its slots' frames, the mod's
     /// drawing over it, then the title and the inventory's label. False when
@@ -2749,8 +3080,8 @@ impl Game<'_> {
             return false;
         };
         let atlas = &self.gui.atlas;
-        if !s.screen.own_background {
-            let (w, h) = (s.screen.width, s.screen.height);
+        if !s.layout().own_background {
+            let (w, h) = (s.layout().width, s.layout().height);
             batch.fill(atlas, ox, oy, w, h, rgba(0, 0, 0, 255));
             batch.fill(
                 atlas,
@@ -2782,65 +3113,35 @@ impl Game<'_> {
                 );
             }
         }
-        if mod_api::__private::has_scoped_hook(mod_api::HookId::ScreenDraw) {
-            let gui_size = [batch.width as i32, batch.height as i32];
+        if s.screen.has_draw() {
+            let frame = s.frame(batch, (ox, oy), self.cursor);
             let mut draw = crate::game::host::draw::GameDrawContext::new(self, batch);
-            self.native_screen_draw(mod_api::__private::ScreenDrawCall {
-                menu: &s.menu,
-                block: s.block.as_deref(),
-                pos: s.pos(),
-                data: &s.data,
-                origin: [ox, oy],
-                pointer: [self.cursor.0 as i32, self.cursor.1 as i32],
-                gui_size,
-                draw: &mut draw,
-            });
+            s.screen.draw(self, frame, &mut draw);
         }
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
-        if s.screen.own_labels {
+        if s.layout().own_labels {
             return true;
         }
         let grey = rgba(64, 64, 64, 255);
         if let Some(title) = self.remote_menu_title() {
-            let [x, y] = s.screen.title_label.unwrap_or([8.0, 6.0]);
+            let [x, y] = s.layout().title_label.unwrap_or([8.0, 6.0]);
             batch.text_styled(atlas, &title, ox + x, oy + y, grey, false);
         }
         if s.player_slots() != 0 {
             let inventory = self.translate_with_fallback("container.inventory", "Inventory");
             let [x, y] = s
-                .screen
+                .layout()
                 .inventory_label
-                .unwrap_or([8.0, s.screen.height - 94.0]);
+                .unwrap_or([8.0, s.layout().height - 94.0]);
             batch.text(atlas, &inventory, ox + x, oy + y, grey, false);
         }
         true
     }
-    /// Puts back a mod block entity taken out for a call, unless the call
-    /// removed or replaced it, with what its `setChanged` does.
-    pub(super) fn put_back_mod_block_entity(
-        &mut self,
-        pos: Pos,
-        taken: EngineBlockEntity,
-        items: &[Option<ItemStack>],
-    ) {
-        if let Some(BlockEntity::Mod(m)) = self.world.block_entities.get_mut(&pos)
-            && m.id().is_empty()
-        {
-            let moved = taken.items != items;
-            **m = taken;
-            // BlockEntity.setChanged: the next save writes its chunk, and
-            // comparators read a container whose items changed.
-            self.world.modified.insert((pos.0 >> 4, pos.2 >> 4));
-            if moved {
-                self.container_changed(pos);
-            }
-        } else {
-            self.drop_unreturned_mod_contents(pos, taken);
-        }
-    }
     /// Menu button `id` on a mod menu (`clickMenuButton`), with the acting
     /// player's cursor stack (`carried`, read and written). A block-backed
-    /// menu lends its block entity; a blockless menu lends none.
+    /// menu lends its live resident block entity through `BlockEntityScope`;
+    /// a blockless menu lends no view while keeping `host()` and
+    /// `transaction(...)` usable.
     pub(super) fn mod_menu_button(
         &mut self,
         menu: &str,
@@ -2849,56 +3150,73 @@ impl Game<'_> {
         backing: Option<(i32, i32, i32)>,
         carried: &mut Option<ItemStack>,
     ) {
-        let Some(pos) = backing.filter(|&pos| self.mod_menu_at(pos) == Some(menu)) else {
-            self.api_menu_button(menu, block, &context, None, carried);
-            return;
-        };
-        let Some(BlockEntity::Mod(m)) = self.world.block_entities.get_mut(&pos) else {
-            self.api_menu_button(menu, block, &context, None, carried);
-            return;
-        };
-        if m.id().is_empty() {
-            self.api_menu_button(menu, block, &context, None, carried);
+        if !mod_api::__private::has_part_hook(mod_api::HookId::MenuButton) {
             return;
         }
-        let mut taken = std::mem::take(&mut **m);
-        let items = taken.items.clone();
-        self.api_menu_button(menu, block, &context, Some(&mut taken), carried);
-        self.put_back_mod_block_entity(pos, taken, &items);
+        let Ok(mut api_cursor) = carried.try_into_api() else {
+            return;
+        };
+        let original_api = api_cursor.clone();
+        let target_pos = backing.filter(|&pos| self.mod_menu_at(pos) == Some(menu));
+        let target = target_pos.and_then(|pos| self.resident_block_entity_target(pos));
+        let items_changed = {
+            let mut access = match target {
+                Some((handle, state)) => ResidentBlockEntityAccess::for_handle(self, handle, state),
+                None => ResidentBlockEntityAccess::blockless(self),
+            };
+            Game::native_menu_button(
+                menu,
+                block,
+                &context,
+                mod_api::BlockEntityScope::new(&mut access),
+                &mut api_cursor,
+            );
+            access.items_changed()
+        };
+        if items_changed
+            && let Some((handle, _)) = target
+            && let Some(pos) = self.native_block_entity_write_key(handle)
+        {
+            self.after_commit(crate::game::transactions::After::Changed(pos));
+        }
+        apply_menu_button_cursor(self.items(), &original_api, &api_cursor, carried);
     }
-    /// A press on the open mod screen's own button (`native_screen_click`)
-    /// goes to the server as a menu button click (true).
+    /// A press consumed by the shown screen goes to the server as a menu button click.
     pub(super) fn native_screen_press(&mut self, right: bool) -> bool {
-        if self.inventory_target().0.is_some() {
-            return false;
-        }
-        let (Some(screen), Some(r)) = (self.shown_native_screen(), self.renderer.as_ref()) else {
+        let Some(r) = self.renderer.as_ref() else {
             return false;
         };
         let batch = HudBatch::new(
             [r.config.width, r.config.height],
             self.settings.gui_scale_inputs(),
         );
-        let (ox, oy) = self.inventory_origin(&batch);
-        let at = [self.cursor.0 - ox, self.cursor.1 - oy];
-        let mut button = None;
-        self.native_screen_click(
-            &screen.menu,
-            screen.block.as_deref(),
-            &screen.data,
-            at,
-            right,
-            &mut button,
-        );
-        let Some(button) = button else {
+        self.native_screen_press_at(&batch, right)
+    }
+    /// Dispatch a press in the given GUI viewport, with inventory slots taking priority.
+    fn native_screen_press_at(&mut self, batch: &HudBatch, right: bool) -> bool {
+        let Some(screen) = self.shown_native_screen() else {
             return false;
         };
-        // No menu open: the click still sounds.
-        let _ = self.remote_button_click(button);
+        if self.slot_at(batch, self.cursor.0, self.cursor.1).is_some() {
+            return false;
+        }
+        let opening = (screen.menu.window, screen.menu.generation);
+        let frame = screen.frame(batch, self.inventory_origin(batch), self.cursor);
+        let Some(button) = screen.screen.click(self, frame, right) else {
+            return false;
+        };
+        // Numeric container IDs can be reused. Send only for the opening that heard the press.
+        if !self
+            .shown_native_screen()
+            .is_some_and(|screen| (screen.menu.window, screen.menu.generation) == opening)
+            || !self.remote_button_click(button)
+        {
+            return false;
+        }
         self.audio.play_button_click();
         true
     }
-    /// The open mod screen's tooltip under the cursor (`native_screen_tooltip`).
+    /// The open mod screen's tooltip under the cursor.
     pub(super) fn draw_native_screen_tooltip(&mut self, batch: &mut HudBatch) {
         // Over no item: an empty slot still gets the mod's hint (which fuel it takes).
         // A carried stack hides only slot tooltips, as AbstractContainerScreen's;
@@ -2919,36 +3237,25 @@ impl Game<'_> {
         slot: Option<usize>,
         lines: &mut Vec<(sunrise_client::text::Text, u32)>,
     ) {
-        // Scoped hooks subscribe through Parts, not the global Hooks subscriber table.
-        if !mod_api::__private::has_scoped_hook(mod_api::HookId::ScreenTooltip) {
-            return;
-        }
-        let Some(screen) = self.shown_native_screen() else {
+        let Some(screen) = self
+            .shown_native_screen()
+            .filter(|s| s.screen.has_tooltip())
+        else {
             return;
         };
-        let menu_slot = slot.and_then(|slot| {
-            Self::menu_slot_index(self.native_screen_menu()?, slot).map(|slot| slot as u32)
-        });
-        let (ox, oy) = self.inventory_origin(batch);
-        let at = [self.cursor.0 - ox, self.cursor.1 - oy];
         use crate::game::api_values::{TryIntoApi, TryIntoEngine};
-        // Keep the original tooltip if either conversion fails. A hovered
-        // item's text can fail on every frame, so do not log the refusal here.
+        // Keep the original tooltip if the callback or either conversion fails.
+        // An item's text can fail on every frame, so do not log conversion refusals here.
         let Ok(mut snapshot) = lines.try_into_api() else {
             return;
         };
-        self.native_screen_tooltip(mod_api::__private::ScreenTooltipCall {
-            menu: &screen.menu,
-            block: screen.block.as_deref(),
-            data: &screen.data,
-            at,
-            slot: menu_slot,
-            origin: [ox, oy],
-            pointer: [self.cursor.0 as i32, self.cursor.1 as i32],
-            gui_size: [batch.width as i32, batch.height as i32],
-            lines: &mut snapshot,
+        let menu_slot = slot.and_then(|slot| {
+            Self::menu_slot_index(&screen.menu.name, slot).map(|slot| slot as u32)
         });
-        if let Ok(replacement) = snapshot.try_into_engine(&()) {
+        let frame = screen.frame(batch, self.inventory_origin(batch), self.cursor);
+        if screen.screen.tooltip(self, frame, menu_slot, &mut snapshot)
+            && let Ok(replacement) = snapshot.try_into_engine(&())
+        {
             *lines = replacement;
         }
     }
@@ -3384,15 +3691,14 @@ mod tests {
             ) -> Option<Compound> {
                 Some(Compound::from([("energy".into(), Tag::Long(6300))]))
             }
-            fn block_entity_tick(
-                &self,
-                _: &mut dyn ServerHost,
-                event: &mut BlockEntityTickEvent<'_>,
-            ) {
-                let Some(Tag::Long(energy)) = event.entity.nbt.get_mut(&"energy".into()) else {
-                    panic!("factory payload missing");
-                };
-                *energy += 1;
+            fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>) {
+                event.subject.with_view(|mut entity| {
+                    let key = "energy".into();
+                    let Some(Tag::Long(energy)) = entity.nbt().get(&key) else {
+                        panic!("factory payload missing");
+                    };
+                    assert!(entity.set_nbt(key, Some(Tag::Long(energy + 1))));
+                });
             }
         }
         struct User {
@@ -3406,12 +3712,14 @@ mod tests {
                 registrar
                     .block_entity_part(&kind, Press)
                     .expect("native type");
-                registrar
-                    .block_entity_capability(&PROBE, &kind, |_, _| Some(Box::new(Marker(6300))));
+                registrar.block_entity_capability(&PROBE, &kind, |_, _, _, _, offer| {
+                    offer.offer(|| Box::new(Marker(6300)))
+                });
                 record_key(&self.keys.shared, kind);
                 let vanilla = registrar.block_entity_type_key("minecraft:chest");
-                registrar
-                    .block_entity_capability(&PROBE, &vanilla, |_, _| Some(Box::new(Marker(26))));
+                registrar.block_entity_capability(&PROBE, &vanilla, |_, _, _, _, offer| {
+                    offer.offer(|| Box::new(Marker(26)))
+                });
                 record_key(&self.keys.vanilla, vanilla);
                 if let Some(id) = self.unknown {
                     registrar.block_entity_type_key(id);
@@ -3811,9 +4119,13 @@ mod tests {
                 self.1.lock().unwrap().push(self.0);
                 event.areas.push([self.0 as f32, 0.0, 0.0, 0.0]);
             }
-            fn movement_input(&self, _: &dyn ClientHost, event: &mut mod_api::MovementInputEvent) {
+            fn movement_input_update(
+                &self,
+                _: &dyn ClientHost,
+                event: &mut mod_api::MovementInputUpdateEvent<'_>,
+            ) {
                 self.1.lock().unwrap().push(self.0);
-                event.forward += self.0 as f32;
+                event.input.move_vector[1] += self.0 as f32;
             }
         }
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());

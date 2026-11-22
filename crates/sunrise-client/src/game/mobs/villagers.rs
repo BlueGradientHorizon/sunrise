@@ -567,10 +567,10 @@ impl Game<'_> {
     fn villager_prices_changed(&mut self, id: u32, only: Option<[i32; 4]>) {
         if only.is_none_or(|uuid| self.level.player_uuid == Some(uuid))
             && self
-            .station
-            .as_ref()
-            .and_then(|s| s.merchant.as_ref())
-            .is_some_and(|m| m.mob == Some(id))
+                .station
+                .as_ref()
+                .and_then(|s| s.merchant.as_ref())
+                .is_some_and(|m| m.mob == Some(id))
         {
             let reputation = self.villager_reputation(id);
             self.menu_session(|menu, env, _| {

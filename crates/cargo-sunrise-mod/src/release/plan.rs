@@ -343,7 +343,7 @@ fn rebuild<'a>(
                 .iter()
                 .any(|build| build.build == target.commit)
             || listed.verdicts.iter().any(|(tag, verdict)| {
-                matches!(verdict.fit, index::FitVerdict::Breaks { .. })
+                matches!(verdict.fit, index::FitVerdict::Breaks { .. } | index::FitVerdict::Rebuild { .. })
                     && published_commits.get(tag.as_str()).copied() == Some(target.commit.as_str())
             })
         {

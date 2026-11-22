@@ -1,5 +1,6 @@
 use super::movement::stepped_move;
 use super::*;
+use crate::game::entity::Entity;
 
 impl Game<'_> {
     /// A move packet for entity `id`: to the end of `path` (None: a
@@ -69,7 +70,7 @@ impl Game<'_> {
                         m.yaw += wrap_degrees(yaw - m.yaw);
                         m.head_pitch = (pitch % 360.0).clamp(-90.0, 90.0);
                     }
-                    m.on_ground = on_ground;
+                    let _ = m.update_retained_ground(&self.world, self.collision, on_ground, None);
                     return;
                 }
                 // A living entity: LivingEntity.createInterpolationHandler's
@@ -90,7 +91,9 @@ impl Game<'_> {
                     m.previous_yaw = m.yaw;
                     m.previous_head_pitch = m.head_pitch;
                 }
-                m.on_ground = on_ground;
+                // ClientPacketListener sets onGround after moving or queuing the
+                // interpolation; the support probe uses the current bounds.
+                let _ = m.update_retained_ground(&self.world, self.collision, on_ground, None);
                 return;
             }
             // An armor stand is a living entity too: the same handler, over
@@ -112,7 +115,7 @@ impl Game<'_> {
                         at.yaw,
                     );
                 }
-                a.on_ground = on_ground;
+                let _ = a.update_retained_ground(&self.world, self.collision, on_ground, None);
                 return;
             }
             // Interaction extends Entity and keeps its NO_OP interpolation
@@ -193,7 +196,7 @@ impl Game<'_> {
             let at = Vec3::new(position[0], position[1], position[2]);
             if let Some(d) = self.dropped.iter_mut().find(|d| d.id == id as u32) {
                 d.position = at;
-                d.on_ground = on_ground;
+                d.ground.on_ground = on_ground;
                 return;
             }
             if let Some(i) = self.falling.iter().rposition(|f| f.id == id as u32) {
@@ -202,7 +205,7 @@ impl Game<'_> {
             }
             if let Some(t) = self.tnts.iter_mut().rev().find(|t| t.id == id as u32) {
                 t.position = at;
-                t.on_ground = on_ground;
+                t.ground.on_ground = on_ground;
                 return;
             }
             // ExperienceOrb.createInterpolationHandler is a
@@ -210,7 +213,7 @@ impl Game<'_> {
             // ticks (`tick_remote_entities`), while `ExperienceOrb.tick` keeps
             // moving it.
             if let Some(o) = self.orbs.iter_mut().find(|o| o.id == id as u32) {
-                o.on_ground = on_ground;
+                o.ground.on_ground = on_ground;
                 r.lerps.insert(
                     id,
                     Lerp {

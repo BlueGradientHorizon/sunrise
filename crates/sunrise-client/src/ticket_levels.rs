@@ -366,6 +366,7 @@ impl Levels {
     }
     /// `ChunkHolder.getFullStatus` is block ticking or more: the chunk's
     /// ticking future can complete (its saved ticks unpack then).
+    #[inline]
     pub fn loaded_ticking(&self, x: i32, z: i32) -> bool {
         self.get(x, z).is_none_or(|(l, _)| l <= BLOCK_TICKING)
     }

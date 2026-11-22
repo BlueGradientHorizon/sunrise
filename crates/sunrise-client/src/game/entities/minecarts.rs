@@ -130,13 +130,10 @@ pub(super) struct Minecart {
     pub flipped: bool,
     /// `AbstractMinecart.onRails`: transitions into rails need a position snap.
     pub(super) on_rails: bool,
-    pub(super) on_ground: bool,
-    pub(super) horizontal_collision: bool,
+    pub(super) ground: sunrise_world::ground_support::GroundState,
     pub(super) fall_distance: f64,
     /// The squared speed `MinecartTNT.causeFallDamage` blows up with, set by
     /// a landing of three blocks or more and taken by the cart's next tick
-    /// step (vanilla explodes inside the move itself).
-    pub(super) fall_blast: Option<f64>,
     /// `Entity.stuckSpeedMultiplier`: set by a cobweb the cart's box is in,
     /// scaled into its next move.
     pub(super) stuck: Vec3,
@@ -494,7 +491,7 @@ impl Minecart {
     }
     /// `Entity.onGround`.
     pub(super) fn on_ground(&self) -> bool {
-        self.on_ground
+        self.ground.on_ground
     }
     pub fn new(id: u32, kind: CartKind, position: Vec3) -> Self {
         Self {
@@ -515,10 +512,8 @@ impl Minecart {
             lerp_steps: Vec::new(),
             flipped: false,
             on_rails: false,
-            on_ground: false,
-            horizontal_collision: false,
+            ground: Default::default(),
             fall_distance: 0.0,
-            fall_blast: None,
             stuck: Vec3::ZERO,
             hurt_time: 0,
             hurt_dir: 1,
@@ -737,7 +732,7 @@ impl Game<'_> {
         rail: &Rail,
         intent: [f64; 2],
         slot: usize,
-    ) {
+    ) -> bool {
         c.fall_distance = 0.0;
         let ridden = self.has_seated_passengers(c.id);
         let (x, z) = (c.position.x, c.position.z);
@@ -808,7 +803,9 @@ impl Game<'_> {
             0.0,
             (scale * c.velocity.z).clamp(-max, max),
         );
-        self.move_cart(c, delta);
+        if !self.move_cart(c, delta) {
+            return false;
+        }
         // 🤖 Agent: `AbstractMinecart.move` runs applyEffectsFromBlocks at
         // once, the cart still at the rail's top height (below it is lowered).
         let here = c.position;
@@ -863,6 +860,7 @@ impl Game<'_> {
                 }
             }
         }
+        true
     }
     /// `Entity.checkInsideBlocks` for a recorded move of the cart from `from`
     /// to `to`: the entity-sensing blocks (plates, buttons, tripwires, detector
@@ -985,7 +983,7 @@ impl Game<'_> {
             if delta.horizontal_distance_squared() > f64::from(1.0e-5_f32) {
                 let yaw = 180.0 - java_degrees(delta.z, delta.x) as f32
                     + if c.flipped { 180.0 } else { 0.0 };
-                let pitch = if c.on_ground && !c.on_rails {
+                let pitch = if c.ground.on_ground && !c.on_rails {
                     0.0
                 } else {
                     (90.0 - java_degrees(delta.horizontal_distance(), delta.y) as f32)
@@ -993,7 +991,7 @@ impl Game<'_> {
                 };
                 Self::set_cart_rotation(c, yaw, pitch);
             } else if !c.on_rails {
-                c.pitch = if c.on_ground {
+                c.pitch = if c.ground.on_ground {
                     0.0
                 } else {
                     c.pitch + 0.2 * ((-c.pitch + 180.0).rem_euclid(360.0) - 180.0)
@@ -1056,7 +1054,7 @@ impl Game<'_> {
     /// `NewMinecartBehavior.moveAlongTrack`: the iteration keeps moving
     /// while distance is left, over as many rails as it takes, the speed
     /// recomputed per rail (slope, halt, boost).
-    fn move_along_track_new(&mut self, c: &mut Minecart, intent: [f64; 2]) {
+    fn move_along_track_new(&mut self, c: &mut Minecart, intent: [f64; 2]) -> bool {
         // `TrackIteration`: the slope, halt and boost speeds each apply once
         // per tick, and the iteration keeps moving while distance is left.
         let mut first = true;
@@ -1070,13 +1068,15 @@ impl Game<'_> {
             let pos = self.rail_block(c.position);
             let Some(rail) = self.rail(Some(c.id), pos[0], pos[1], pos[2]) else {
                 c.on_rails = false;
-                self.come_off_track(c);
+                if !self.come_off_track(c) {
+                    return false;
+                }
                 self.finish_cart_step(c, step_start, initial);
                 if first || c.position.distance(step_start) > f64::from(1.0e-5_f32) {
                     self.cart_block_effects(c);
                     self.cart_block_effects(c);
                 }
-                return;
+                return true;
             };
             if !c.on_rails {
                 c.on_rails = true;
@@ -1167,7 +1167,10 @@ impl Game<'_> {
             } else {
                 movement_left + (new_h - initial_h)
             };
-            movement_left = self.new_step_along_track(c, pos, &rail, movement_left);
+            let Some(left) = self.new_step_along_track(c, pos, &rail, movement_left) else {
+                return false;
+            };
+            movement_left = left;
             self.finish_cart_step(c, step_start, initial);
             // NewMinecartBehavior.moveAlongTrack applies block effects twice,
             // after recording the step, including a stationary first step.
@@ -1177,6 +1180,7 @@ impl Game<'_> {
             }
             first = false;
         }
+        true
     }
     /// `NewMinecartBehavior.stepAlongTrack`: toward the rail's exit, the
     /// hill's Y projected, a V of opposing slopes resting a slow cart.
@@ -1186,16 +1190,16 @@ impl Game<'_> {
         pos: [i32; 3],
         rail: &Rail,
         mut movement_left: f64,
-    ) -> f64 {
+    ) -> Option<f64> {
         if movement_left < f64::from(1.0e-5_f32) {
-            return 0.0;
+            return Some(0.0);
         }
         let old = c.position;
         let (e0, e1) = rail.shape.exits();
         let movement = Vec3::new(c.velocity.x, 0.0, c.velocity.z);
         if movement.length() < f64::from(1.0e-5_f32) {
             c.velocity = Vec3::ZERO;
-            return 0.0;
+            return Some(0.0);
         }
         let in_hill = e0[1] != e1[1];
         let mut out_dir = Vec3::new(f64::from(e0[0]) * 0.5, 0.0, f64::from(e0[2]) * 0.5);
@@ -1233,7 +1237,9 @@ impl Game<'_> {
         } else {
             movement_left = 0.0;
         }
-        self.move_cart(c, old.vector_to(new_pos));
+        if !self.move_cart(c, old.vector_to(new_pos)) {
+            return None;
+        }
         if in_hill {
             let new_block = [
                 new_pos.x.floor() as i32,
@@ -1249,7 +1255,7 @@ impl Game<'_> {
                     && !Self::is_descending(c.velocity, new_rail.shape)
                 {
                     c.velocity = Vec3::ZERO;
-                    return 0.0;
+                    return Some(0.0);
                 }
             }
             let h_dist =
@@ -1269,33 +1275,24 @@ impl Game<'_> {
             && new_pos.distance(old) > f64::from(1.0e-5_f32)
         {
             c.velocity = Vec3::ZERO;
-            return 0.0;
+            return Some(0.0);
         }
         c.velocity = movement;
-        movement_left
+        Some(movement_left)
     }
     /// `comeOffTrack`.
-    fn come_off_track(&self, c: &mut Minecart) {
+    fn come_off_track(&mut self, c: &mut Minecart) -> bool {
         let max = self.cart_max_speed(c);
         c.velocity.x = c.velocity.x.clamp(-max, max);
         c.velocity.z = c.velocity.z.clamp(-max, max);
-        if c.on_ground {
+        if c.ground.on_ground {
             c.velocity = Vec3::new(c.velocity.x * 0.5, c.velocity.y * 0.5, c.velocity.z * 0.5);
         }
         let v = c.velocity;
-        self.move_cart(c, v);
-        // Entity.move's last step: soul sand and honey slow a derailed cart.
-        // The rail paths set the track's velocity again after their move, so
-        // the factor changes nothing there (measured on a rail over soul sand).
-        let factor = crate::motion::block_speed_factor_at(
-            &self.world,
-            &self.motion.blocks,
-            &self.loop_context,
-            c.position,
-            None,
-        );
-        c.velocity = sunrise_world::entity_move::scale_by_block_speed(c.velocity, factor);
-        if !c.on_ground {
+        if !self.move_cart(c, v) {
+            return false;
+        }
+        if !c.ground.on_ground {
             // scale(getAirDrag()): 0.95F, widened.
             let drag = f64::from(0.95_f32);
             c.velocity = Vec3::new(
@@ -1304,10 +1301,24 @@ impl Game<'_> {
                 c.velocity.z * drag,
             );
         }
+        true
     }
     /// `applyEffectsFromBlocks` for a cart: a bubble column lifts or drags it
     /// and resets the fall distance.
-    pub(super) fn cart_block_effects(&self, c: &mut Minecart) {
+    pub(super) fn cart_block_effects(&mut self, c: &mut Minecart) {
+        let writes = self.body_step_on(
+            (c.id, c.kind.id()),
+            (c.position, c.bounds()),
+            &c.ground,
+            &mut c.velocity,
+        );
+        super::entity::apply_contact_writes(
+            writes,
+            &mut c.velocity,
+            Some(&mut c.fall_distance),
+            Some(&mut c.stuck),
+            None,
+        );
         if c.push_by_bubble_column(
             &self.world,
             self.pack.assets.registry,
@@ -1397,19 +1408,23 @@ impl Game<'_> {
         c.velocity.y -= c.get_gravity();
         let pos = self.rail_block(c.position);
         if self.minecart_improvements() {
-            self.move_along_track_new(c, intent);
+            if !self.move_along_track_new(c, intent) {
+                return false;
+            }
         } else {
             // OldMinecartBehavior.tick writes `onRails` every tick, before the move.
             let rail = self.rail(Some(c.id), pos[0], pos[1], pos[2]);
             c.on_rails = rail.is_some();
             if let Some(rail) = rail {
-                self.move_along_track(c, pos, &rail, intent, slot);
+                if !self.move_along_track(c, pos, &rail, intent, slot) {
+                    return false;
+                }
                 self.note_cart_pass(c, pos);
                 if &*rail.name == "minecraft:activator_rail" {
                     self.activate_cart(c, rail.powered);
                 }
-            } else {
-                self.come_off_track(c);
+            } else if !self.come_off_track(c) {
+                return false;
             }
         }
         c.first_tick = false;
@@ -1475,12 +1490,6 @@ impl Game<'_> {
                 }
             }
             CartKind::Tnt => {
-                // MinecartTNT.causeFallDamage ran inside the move.
-                if let Some(speed_sqr) = c.fall_blast.take()
-                    && self.explode_cart(c, speed_sqr)
-                {
-                    return false;
-                }
                 // MinecartTNT.tick: the fuse and the collision check are separate.
                 if c.fuse > 0 {
                     c.fuse -= 1;
@@ -1501,7 +1510,7 @@ impl Game<'_> {
                 // them back: a head-on stop leaves nothing, a diagonal one keeps
                 // the free axis (#11380).
                 let speed = c.velocity.horizontal_distance_squared();
-                if tnt_ignites_by_collision(c.horizontal_collision, speed)
+                if tnt_ignites_by_collision(c.ground.horizontal_collision, speed)
                     && self.explode_cart(c, speed)
                 {
                     return false;
@@ -1898,7 +1907,7 @@ impl Game<'_> {
                 m.previous = cart_seat(prev, offset);
                 m.velocity = Vec3::ZERO;
                 m.fall_distance = 0.0;
-                m.on_ground = false;
+                m.ground.on_ground = false;
                 m.extra.passenger = true;
                 m.ai.nav.stop();
             }
@@ -2260,7 +2269,7 @@ impl Game<'_> {
         if target.is_none() && !self.before_block(d) {
             return false;
         }
-        let sneaking = self.keys.held(Action::Sneak);
+        let sneaking = self.held_mapping(Action::Sneak);
         let held = self.held().cloned();
         match self.carts[i].kind {
             CartKind::Rideable => {
@@ -2328,7 +2337,7 @@ impl Game<'_> {
         self.container = Some(key);
         self.set_screen(super::Screen::Inventory);
         self.capture(false);
-        self.right = false;
+        self.set_mapping_held("key.use", false);
         if c.kind == CartKind::Chest {
             // `MinecartChest.interact` (which overrides
             // `AbstractMinecartContainer.interact`): a successful open fires
@@ -2797,11 +2806,15 @@ impl Minecart {
             self.position,
             self.velocity,
             [self.yaw, self.pitch],
-            (self.on_ground, self.fall_distance),
+            (self.ground.on_ground, self.fall_distance),
             uuid,
             raw,
         );
-        sunrise_client::entity_nbt::write_saved_flags(&mut tag, self.on_ground, self.no_gravity);
+        sunrise_client::entity_nbt::write_saved_flags(
+            &mut tag,
+            self.ground.on_ground,
+            self.no_gravity,
+        );
         if let Tag::Compound(map) = &mut tag {
             // ContainerEntity.addChestVehicleSaveData belongs only to the
             // container subclasses, never to a plain or specialized cart.
@@ -2922,7 +2935,7 @@ impl Minecart {
         c.yaw = yaw;
         c.previous_yaw = yaw;
         c.no_gravity = sunrise_client::entity_nbt::flag(tag, "NoGravity");
-        c.on_ground = sunrise_client::entity_nbt::flag(tag, "OnGround");
+        c.ground.on_ground = sunrise_client::entity_nbt::flag(tag, "OnGround");
         c.pitch = sunrise_client::entity_nbt::rotation(tag)[1];
         c.previous_pitch = c.pitch;
         // ValueInput's numeric getters take any NumericTag: getIntOr is its
@@ -2943,7 +2956,7 @@ impl Minecart {
             _ => 0.0,
         };
         // Entity.load: OnGround and fall_distance, as saved.
-        (c.on_ground, c.fall_distance) = sunrise_client::entity_nbt::ground_from_nbt(tag);
+        (c.ground.on_ground, c.fall_distance) = sunrise_client::entity_nbt::ground_from_nbt(tag);
         c.ticks_frozen = super::boats::saved_ticks_frozen(tag);
         c.flipped = flag("FlippedRotation", false);
         c.first_tick = flag("HasTicked", false);
