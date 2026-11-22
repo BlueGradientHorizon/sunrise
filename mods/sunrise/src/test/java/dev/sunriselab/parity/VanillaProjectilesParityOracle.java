@@ -323,7 +323,9 @@ public final class VanillaProjectilesParityOracle {
             cmd("gamerule advance_time false");
             cmd("gamerule advance_weather false");
             cmd("gamerule mob_griefing true");
+            cmd("gamerule mob_drops false");
             cmd("gamerule entity_drops true");
+            cmd("gamerule random_tick_speed 0");
 
             GameEventListener listener = new GameEventListener() {
                 final PositionSource source = new BlockPositionSource(new BlockPos(5, 64, 4));
@@ -774,11 +776,12 @@ public final class VanillaProjectilesParityOracle {
             return out;
         }
 
-        Entity summon(ServerLevel level, String command) {
+        Entity summon(ServerLevel level, String command) throws Exception {
             Set<Integer> before = entityIds(level);
             cmd(command);
             Entity e = findNew(level, before, Entity.class);
             if (e == null) throw new IllegalStateException("summon failed: " + command);
+            seedProj(e);
             return e;
         }
 

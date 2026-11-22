@@ -6161,10 +6161,11 @@ impl Game<'_> {
                                 let hurt =
                                     self.damage_projectile_with_weapon(p, id, amount, source, aim);
                                 dodged = !hurt
-                                    && self.mobs.iter().find(|m| m.id == id).is_some_and(|m| {
-                                        m.species() == Species::Enderman
-                                            && sunrise_client::mobs::enderman::dodges(m, &source)
-                                    });
+                                    && self
+                                        .mobs
+                                        .iter()
+                                        .find(|m| m.id == id)
+                                        .is_some_and(|m| m.species() == Species::Enderman);
                                 hurt
                             }
                         }

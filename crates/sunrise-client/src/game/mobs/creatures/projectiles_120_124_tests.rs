@@ -203,7 +203,9 @@ fn setup_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resource
         "gamerule advance_time false",
         "gamerule advance_weather false",
         "gamerule mob_griefing true",
+        "gamerule mob_drops false",
         "gamerule entity_drops true",
+        "gamerule random_tick_speed 0",
     ] {
         let _ = game.run_command(command);
     }

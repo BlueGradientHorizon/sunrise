@@ -876,9 +876,8 @@ impl Game<'_> {
                                     );
                                     if hurt {
                                         hurt_at = Some([m.position.x, m.position.y, m.position.z]);
-                                    } else if m.species() == Species::Enderman
-                                        && sunrise_client::mobs::enderman::dodges(m, &dmg)
-                                    {
+                                    } else if m.species() == Species::Enderman {
+                                        // Enderman.projectileReceivesSideEffectsOnHit(wasHurt) == wasHurt.
                                         dodged = true;
                                     }
                                 }

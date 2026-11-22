@@ -101,6 +101,7 @@ fn setup_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resource
         "gamerule advance_weather false",
         "gamerule mob_griefing true",
         "gamerule entity_drops true",
+        "gamerule random_tick_speed 0",
     ] {
         let _ = game.run_command(command);
     }
@@ -412,6 +413,7 @@ fn check_case(game: &mut Game<'_>, case: &Case, proj_seed: i64, level_seed: i64)
     }
 
     let tracked_proj = summon_projectile(game, &case.projectile, case.spawn_y, proj_seed);
+    game.world.random.set_seed(level_seed);
     let mut seen_drops: std::collections::HashSet<u32> =
         game.dropped.iter().map(|d| d.id).collect();
     let mut expected_drops: BTreeMap<String, u32> = BTreeMap::new();

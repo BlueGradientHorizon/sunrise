@@ -315,6 +315,7 @@ public final class VanillaProjectileTargetsOracle {
             cmd("gamerule advance_weather false");
             cmd("gamerule mob_griefing true");
             cmd("gamerule entity_drops true");
+            cmd("gamerule random_tick_speed 0");
 
             // Register one GameEventListener on section (0, 4, 0) covering the arena.
             GameEventListener listener = new GameEventListener() {
@@ -482,6 +483,7 @@ public final class VanillaProjectileTargetsOracle {
             }
             if (target == null) throw new IllegalStateException("target failed to spawn: " + targetKind);
             activeTargetId = target.getId();
+            fEntityRandom.set(target, RandomSource.create(PROJECTILE_SEED));
 
             // Configure owner gamemode if this is an owned projectile case.
             boolean owned = projKind.endsWith("_owned") || projKind.endsWith("_creative");
@@ -512,6 +514,7 @@ public final class VanillaProjectileTargetsOracle {
             activeProjId = proj.getId();
             if (owned) proj.setOwner(player);
             fEntityRandom.set(proj, RandomSource.create(PROJECTILE_SEED));
+            level.getRandom().setSeed(LEVEL_SEED);
 
             // Flush spawn tracking packets before tick 1.
             channel.runPendingTasks();
@@ -561,6 +564,8 @@ public final class VanillaProjectileTargetsOracle {
                             d.addProperty("item", BuiltInRegistries.ITEM.getKey(item.getItem().getItem()).toString());
                             d.addProperty("count", item.getItem().getCount());
                             newDrops.add(d);
+                            // Discard recorded drops so unseeded item scatter never drifts into fire later.
+                            item.discard();
                         } else {
                             newSpawned.add(BuiltInRegistries.ENTITY_TYPE.getKey(e.getType()).toString());
                         }

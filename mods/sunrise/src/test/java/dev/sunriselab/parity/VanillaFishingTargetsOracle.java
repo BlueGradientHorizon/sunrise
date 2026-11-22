@@ -227,6 +227,7 @@ public final class VanillaFishingTargetsOracle {
             cmd("gamerule advance_weather false");
             cmd("gamerule mob_griefing true");
             cmd("gamerule entity_drops true");
+            cmd("gamerule random_tick_speed 0");
 
             GameEventListener listener = new GameEventListener() {
                 final PositionSource source = new BlockPositionSource(new BlockPos(3, 64, 4));
@@ -376,6 +377,7 @@ public final class VanillaFishingTargetsOracle {
             hook.setDeltaMovement(new Vec3(1.0, 0.0, 0.0));
             fEntityRandom.set(hook, RandomSource.create(HOOK_SEED));
             level.addFreshEntity(hook);
+            level.getRandom().setSeed(LEVEL_SEED);
             tickGameEvents.clear();
 
             JsonObject rec = new JsonObject();

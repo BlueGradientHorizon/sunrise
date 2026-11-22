@@ -49,7 +49,7 @@ def ops():
     for name, z, _ in FRAMES:
         run(f'/execute if entity @e[type=minecraft:item_frame,tag=f_{name}]')
         run(f'/data get entity @e[tag=f_{name},limit=1] Item.id')
-        near = f'x=5,y=209,z={z},dx=4,dy=4,dz=1'
+        near = f'x=5,y=209,z={z - 1},dx=4,dy=4,dz=2'
         run(f'/execute if entity @e[type=minecraft:item,{near},nbt={{Item:{{id:"minecraft:diamond"}}}}]')
         run(f'/execute if entity @e[type=minecraft:item,{near},nbt={{Item:{{id:"minecraft:item_frame"}}}}]')
         # Stuck in the wall behind the frame (the frame is 7.9375 to 8): the frame let it through.
@@ -137,10 +137,6 @@ def projectiles_121_124_ops():
     run('/summon minecraft:end_crystal 7.25 210.0 2.5 {Tags:["c121"]}', 1)
     run('/summon minecraft:pig 10.5 210.0 2.5 {NoAI:1b,Silent:1b,Tags:["p121"]}', 1)
     run('/summon minecraft:wind_charge 4.5 211.0 2.5 {acceleration_power:0.0d,Motion:[1.0d,0.0d,0.0d],Tags:["w121"]}', 1)
-    # #122: trident dodged by Enderman (z=5) continues east past x=8 with dealtDamage=true (behind pig unharmed).
-    run('/summon minecraft:enderman 6.5 210.0 5.5 {NoAI:1b,Silent:1b,Tags:["e122"]}', 1)
-    run('/summon minecraft:pig 9.5 210.0 5.5 {NoAI:1b,Silent:1b,Tags:["p122"]}', 1)
-    run('/summon minecraft:trident 4.5 211.0 5.5 {Motion:[1.0d,0.0d,0.0d],Tags:["t122"]}', 1)
     # #123: piercing arrow kills two mobs in the very first tick (z=8).
     run('/summon minecraft:chicken 5.5 210.0 8.5 {NoAI:1b,Silent:1b,Health:1.0f,Tags:["m123a"]}', 1)
     run('/summon minecraft:pig 6.8 210.0 8.5 {NoAI:1b,Silent:1b,Health:1.0f,Tags:["m123b"]}', 1)
@@ -156,19 +152,25 @@ def projectiles_121_124_ops():
     out.append({'op': 'tick', 'n': 1})
     run('/data get entity @e[tag=m123a,limit=1] Health')
     run('/data get entity @e[tag=m123b,limit=1] Health')
-    # Advance 9 more ticks to settle #121, #122, #124.
+    # Advance 9 more ticks to settle #121 and #124.
     out.append({'op': 'tick', 'n': 9})
     run('/execute if entity @e[tag=c121]')
     run('/execute if entity @e[tag=w121]')
     run('/data get entity @e[tag=p121,limit=1] Health')
-    run('/data get entity @e[tag=e122,limit=1] Health')
-    run('/data get entity @e[tag=p122,limit=1] Health')
-    run('/execute if entity @e[tag=t122,x=8,y=209,z=5,dx=5,dy=4,dz=1]')
     run('/execute if entity @e[tag=r124b]')
     run('/execute if entity @e[tag=b124]')
     run('/execute if entity @e[tag=s124_norm]')
     run('/execute if entity @e[tag=s124_inv]')
     run('/execute if entity @e[tag=s124_mark]')
+    # #122 runs alone so the enderman's random dodge teleport cannot land inside #124's firework blasts.
+    run('/kill @e[type=!minecraft:player]', record=False)
+    run('/summon minecraft:enderman 6.5 210.0 5.5 {NoAI:1b,Silent:1b,Tags:["e122"]}', 1)
+    run('/summon minecraft:pig 9.5 210.0 5.5 {NoAI:1b,Silent:1b,Tags:["p122"]}', 1)
+    run('/summon minecraft:trident 4.5 211.0 5.5 {Motion:[1.0d,0.0d,0.0d],Tags:["t122"]}', 1)
+    out.append({'op': 'tick', 'n': 10})
+    run('/data get entity @e[tag=e122,limit=1] Health')
+    run('/data get entity @e[tag=p122,limit=1] Health')
+    run('/execute if entity @e[tag=t122,x=8,y=209,z=5,dx=5,dy=4,dz=1]')
     return out
 
 

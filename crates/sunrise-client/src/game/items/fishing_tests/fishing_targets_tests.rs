@@ -78,6 +78,7 @@ fn setup_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resource
         "gamerule advance_weather false",
         "gamerule mob_griefing true",
         "gamerule entity_drops true",
+        "gamerule random_tick_speed 0",
     ] {
         let _ = game.run_command(command);
     }
@@ -305,6 +306,7 @@ fn run_case(
     hook.velocity = Vec3::new(1.0, 0.0, 0.0);
     hook.random = LegacyRandom::new(hook_seed);
     game.install_fishing_hook(hook);
+    game.world.random.set_seed(level_seed);
 
     for expected in &case.ticks {
         crate::game::sculk::TEST_POSTED_EVENTS.with(|e| {
