@@ -17,13 +17,12 @@ pub trait LevelEffectsBackendMut {
     /// and is heard where its resources define it. True means queued, not
     /// heard.
     /// Inside an open transaction, `play_level_sound_at_position` runs synchronously at the call
-    /// (so listeners can edit or cancel the sound and journal writes in the same transaction),
-    /// while packet delivery waits for the outermost commit in this level, in journal order across
+    /// (so listeners can edit or cancel the sound and journal writes in their level's open
+    /// transaction), while packet delivery waits for the outermost commit, in journal order across
     /// deferred effects, and is discarded on rollback or an aborted nested transaction. The server
     /// sound-seed stream advances at the call outside a transaction, at the outermost commit when
     /// a resolved sound publishes inside one, and stays untouched on rollback, nested abort, or
     /// listener cancellation.
-    #[access(WorldOnly)]
     fn level_play_sound(
         &mut self,
         level: LevelRef,
@@ -45,7 +44,6 @@ pub trait LevelEffectsBackendMut {
     /// Inside an open transaction, delivery waits for the outermost commit in this level, in call
     /// order across deferred effects, and is discarded on rollback or an aborted nested
     /// transaction.
-    #[access(WorldOnly)]
     fn level_send_particles(
         &mut self,
         level: LevelRef,
@@ -66,7 +64,6 @@ pub trait LevelEffectsBackendMut {
     /// Inside an open transaction, delivery waits for the outermost commit in this level, in call
     /// order across deferred effects, and is discarded on rollback or an aborted nested
     /// transaction.
-    #[access(WorldOnly)]
     fn level_level_event(&mut self, level: LevelRef, id: i32, pos: [i32; 3], data: i32) -> bool;
     /// Side: server.
     /// Plays the break effect of `state` at `pos`: the particles and the sound of a block of
@@ -75,7 +72,6 @@ pub trait LevelEffectsBackendMut {
     /// in place, for a stale handle and on a client.
     /// Inside an open transaction, follows the same commit/rollback deferral as
     /// [`level_level_event`](Self::level_level_event).
-    #[access(WorldOnly)]
     fn level_block_break_effect(
         &mut self,
         level: LevelRef,
@@ -100,7 +96,6 @@ pub trait LevelEffectsBackendMut {
     /// Inside an open transaction, delivery waits for the outermost commit in this level, in call
     /// order across deferred effects (checking `global_sound_events` at commit), and is discarded
     /// on rollback or an aborted nested transaction.
-    #[access(WorldOnly)]
     fn level_global_level_event(
         &mut self,
         level: LevelRef,
@@ -114,7 +109,6 @@ pub trait LevelEffectsBackendMut {
     /// wardens and allays receive the optional source and affected state.
     /// Returns false without emitting for an unknown event, invalid position,
     /// stale or foreign source, unregistered state, client or inactive level.
-    #[access(WorldOnly)]
     fn level_game_event(
         &mut self,
         level: LevelRef,
@@ -140,7 +134,6 @@ pub trait LevelEffectsBackendMut {
     /// vanilla: a big blast costs the blocks its rays find, and one of 0 or
     /// below finds none. Refused, with nothing exploded and no hook told, as
     /// [`ExplodeError`] says.
-    #[access(WorldOnly)]
     fn level_explode(
         &mut self,
         level: LevelRef,
@@ -167,7 +160,6 @@ pub trait LevelEffectsBackendMut {
     /// asked with that `ExplosionStart`. `Unavailable` for a stale level or `source`, a chunk
     /// that isn't loaded (it is never loaded) or a state the game doesn't know; None only from a
     /// host without a game. The level does not change.
-    #[access(WorldOnly)]
     fn level_explosion_resistance(
         &mut self,
         level: LevelRef,
@@ -186,7 +178,6 @@ pub trait LevelEffectsBackendMut {
     /// Refused, with nothing read, for an inverted area or more than
     /// `ResistanceCells::MAX` (262,144) cells: it runs on the server tick, so read big areas in
     /// pieces.
-    #[access(WorldOnly)]
     fn level_explosion_resistances(
         &mut self,
         level: LevelRef,
@@ -218,7 +209,6 @@ pub trait LevelEffectsBackendMut {
     /// when their turn came. `Err`, with nothing changed, for more than 65,536 positions
     /// (`ExplosionDestroyError::MAX_POSITIONS`), a stale level or `source`, or a centre or
     /// radius that isn't finite or a negative radius.
-    #[access(WorldOnly)]
     fn level_explosion_destroy_blocks(
         &mut self,
         level: LevelRef,

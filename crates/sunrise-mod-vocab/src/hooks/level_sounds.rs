@@ -21,6 +21,7 @@ pub trait Hooks {
     /// are not re-dispatched to level-sound listeners; they are validated and
     /// delivered or journaled normally in call order. Both sides.
     #[hook(
+        dispatch = "api_carrier",
         side = "both",
         version = 2,
         contract = "cancel",
@@ -56,6 +57,7 @@ pub trait Hooks {
     /// including steps, falls, hurt, bundle clicks and consumption; these remain
     /// positional sounds, not following sounds. Both sides, distinguished by `HostSide`.
     #[hook(
+        dispatch = "api_carrier",
         side = "both",
         version = 2,
         contract = "cancel",

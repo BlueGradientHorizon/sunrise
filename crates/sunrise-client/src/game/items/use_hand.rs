@@ -25,7 +25,7 @@ impl Game<'_> {
         self.use_failed = false;
         // isSecondaryUseActive with something in either hand keeps blocks
         // from reacting.
-        let sneaking = self.keys.held(Mapping::Sneak);
+        let sneaking = self.held_mapping(Mapping::Sneak);
         let hands_full = self.stack_in(self.selected).is_some() || self.offhand.is_some();
         let mut anchor_passed = false;
         // Native mods, where ServerPlayerGameMode.useItemOn starts
@@ -622,7 +622,7 @@ impl Game<'_> {
             inside: hit.inside,
             yaw: self.yaw,
             pitch: self.pitch,
-            sneaking: self.keys.held(Mapping::Sneak),
+            sneaking: self.held_mapping(Mapping::Sneak),
             item: stack.item.to_string(),
             can_use_game_master_blocks: self.can_use_game_master_blocks(),
         };
@@ -781,9 +781,11 @@ impl Game<'_> {
                 }
                 true
             }
-            ConsumeEffect::Native { kind, data } => consume_effect_dispatch::dispatch(kind, || {
-                self.native_consume_effect(kind, data, consumed, user)
-            }),
+            ConsumeEffect::Native { kind, data, .. } => {
+                consume_effect_dispatch::dispatch(kind, || {
+                    self.native_consume_effect(kind, data, consumed, user)
+                })
+            }
         })
     }
     /// BowItem.releaseUsing: power from charge time, arrows at power * 3, as

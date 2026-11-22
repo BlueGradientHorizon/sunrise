@@ -28,7 +28,6 @@ pub trait EntityActionsBackendMut {
     /// During a guest's turn, live players (the acting one included) can run it
     /// and are reachable; displaced outer players are neither, as on
     /// `Commands::run_command`.
-    #[access(WorldOnly)]
     fn entity_run_command(&mut self, entity: EntityRef, line: &str, level: PermissionLevel)
     -> bool;
     /// Side: server.
@@ -40,7 +39,6 @@ pub trait EntityActionsBackendMut {
     /// entity returns unsuccessful with no lines. Cross-level teleports retain
     /// the same next-tick handling. Pass the player's permission level to run
     /// with their own authority; the supplied level is not capped to it.
-    #[access(WorldOnly)]
     fn entity_run_command_with_output(
         &mut self,
         entity: EntityRef,
@@ -56,7 +54,6 @@ pub trait EntityActionsBackendMut {
     /// mod kept out.
     /// Inside a transaction its join waits for the root commit, so a mod keeping the item out is not
     /// known at the call: the handle is returned and reads stale from the commit on.
-    #[access(WorldOnly)]
     fn entity_spawn_at_location(
         &mut self,
         entity: EntityRef,
@@ -77,7 +74,6 @@ pub trait EntityActionsBackendMut {
     /// transaction. The server sound-seed stream advances at the call outside a transaction, at
     /// the outermost commit when a resolved sound publishes inside one, and stays untouched on
     /// rollback, nested abort, or listener cancellation.
-    #[access(WorldOnly)]
     fn entity_play_sound(
         &mut self,
         entity: EntityRef,
@@ -92,7 +88,6 @@ pub trait EntityActionsBackendMut {
     /// is the event's source entity; other entities retain their own id.
     /// False for an event vanilla doesn't have, a dead guest and a guest while
     /// another one acts.
-    #[access(WorldOnly)]
     fn entity_game_event(&mut self, entity: EntityRef, event: &str) -> bool;
     /// Side: server.
     /// `Level.broadcastEntityEvent(entity, id)`: sends entity event `id` (the
@@ -103,7 +98,6 @@ pub trait EntityActionsBackendMut {
     /// Inside an open transaction, delivery waits for the outermost commit in the entity's level,
     /// in call order across deferred effects, and is discarded on rollback or an aborted nested
     /// transaction.
-    #[access(WorldOnly)]
     fn entity_broadcast_event(&mut self, entity: EntityRef, id: u8) -> bool;
     /// Side: server.
     /// `Level.playSound(null, entity, sound, source, volume, pitch)`: plays
@@ -118,7 +112,6 @@ pub trait EntityActionsBackendMut {
     /// transaction. The server sound-seed stream advances at the call outside a transaction, at
     /// the outermost commit when a resolved sound publishes inside one, and stays untouched on
     /// rollback, nested abort, or listener cancellation.
-    #[access(WorldOnly)]
     fn entity_play_bound_sound(
         &mut self,
         entity: EntityRef,

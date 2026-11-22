@@ -9,21 +9,21 @@ pub trait PlayerMessagesBackendMut {
     /// Side: server.
     /// A system line in that player's chat, also inside a player's hook for
     /// the acting player; false when they aren't on.
-    #[access(WorldOnly)]
     /// Refuses text deeper than 512 component nodes before applying any changes.
+    #[serialize_text]
     fn player_tell(&mut self, player: PlayerRef, line: Text) -> Result<bool, TextFormError>;
     /// Side: server.
     /// A line over that player's hotbar (the action bar), also inside a
     /// player's hook for the acting player; false when they aren't on.
-    #[access(WorldOnly)]
     /// Refuses text deeper than 512 component nodes before applying any changes.
+    #[serialize_text]
     fn player_action_bar(&mut self, player: PlayerRef, line: Text) -> Result<bool, TextFormError>;
     /// Side: server.
     /// The lines over and under that player's list of players (Tab):
     /// `ClientboundTabListPacket`, an empty text for none. False when they
     /// aren't on.
-    #[access(WorldOnly)]
     /// Refuses text deeper than 512 component nodes before applying any changes.
+    #[serialize_text]
     fn player_tab_list(
         &mut self,
         player: PlayerRef,
@@ -39,7 +39,6 @@ pub trait PlayerMessagesBackendMut {
     /// map is never sent again by the game), so send it again after the
     /// player joins. Use ids far from the world's own (they count up from 0).
     /// False for a player not here, or `colors` not 16384 long.
-    #[access(WorldOnly)]
     fn player_send_map(&mut self, player: PlayerRef, map_id: i32, colors: &[u8]) -> bool;
     /// Side: server.
     /// `StopSoundCommand` for one player: their client stops the playing
@@ -47,7 +46,6 @@ pub trait PlayerMessagesBackendMut {
     /// any. True means sent (or queued for commit inside an open transaction).
     /// Inside an open transaction, delivery waits for the outermost commit in call order across
     /// deferred effects and is discarded on rollback or an aborted nested transaction.
-    #[access(WorldOnly)]
     fn player_stop_sound(
         &mut self,
         player: PlayerRef,
@@ -63,7 +61,6 @@ pub trait PlayerMessagesBackendMut {
     /// transactions discard the sound without advancing the level's random.
     /// True means sent (or queued for commit inside an open transaction), not
     /// heard.
-    #[access(WorldOnly)]
     fn player_play_sound(
         &mut self,
         player: PlayerRef,

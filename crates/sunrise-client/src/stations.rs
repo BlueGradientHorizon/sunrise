@@ -39,7 +39,8 @@ impl StationData {
         defaults: &sunrise_world::item_defaults::ItemDefaults,
         context: &sunrise_world::native_load_context::LoadContext,
     ) -> crate::Result<Self> {
-        let sources = crate::crafting::ResolvedSources::load_collecting(root, overlay, context)?;
+        let sources =
+            crate::crafting::ResolvedSources::load_collecting(root, items, overlay, context)?;
         let recipes = crate::crafting::Recipes::from_resolved(root, items, overlay, &sources)?;
         Ok(Self::from_sources(
             root,
@@ -61,7 +62,9 @@ impl StationData {
             enchantments: std::sync::Arc::clone(&items.enchantments),
             recipes: StationRecipes::from_sources(root, items, sources),
             brewing: {
-                let mut brewing = crate::brewing::Brewing::load(root, items, overlay);
+                let mut brewing = crate::brewing::Brewing::from_recipes(
+                    sources.brewing_recipes().cloned().collect(),
+                );
                 let added = |key| sources.property_additions.get(key).into_iter().flatten();
                 brewing.reagents.extend(added("brewing_reagent").cloned());
                 brewing.inputs.extend(added("brewing_input").cloned());
@@ -721,28 +724,32 @@ pub(crate) enum ParsedStationRecipe {
     Stonecutting(Stonecutting),
 }
 impl ParsedStationRecipe {
-    pub(crate) fn parse(id: String, v: &Value, items: &Items) -> Option<Self> {
+    pub(crate) fn parse(
+        id: String,
+        v: &Value,
+        ingredient: impl Fn(&Value) -> Option<Ingredient>,
+    ) -> Option<Self> {
         match v["type"].as_str().unwrap_or("") {
             "minecraft:smithing_transform" => {
                 // Only omitted ingredients mean empty slots; malformed present
                 // ingredients invalidate the recipe rather than becoming optional.
                 let parse_optional = |key: &str| match v.get(key) {
                     None => Some(None),
-                    Some(value) => Ingredient::parse(value, items).map(Some),
+                    Some(value) => ingredient(value).map(Some),
                 };
                 Some(Self::Smithing(Smithing::Transform {
                     id,
                     template: parse_optional("template")?,
-                    base: Ingredient::parse(&v["base"], items)?,
+                    base: ingredient(&v["base"])?,
                     addition: parse_optional("addition")?,
                     result: crate::crafting::Template::parse(&v["result"])?,
                 }))
             }
             "minecraft:smithing_trim" => Some(Self::Smithing(Smithing::Trim {
                 id,
-                template: Ingredient::parse(&v["template"], items)?,
-                base: Ingredient::parse(&v["base"], items)?,
-                addition: Ingredient::parse(&v["addition"], items)?,
+                template: ingredient(&v["template"])?,
+                base: ingredient(&v["base"])?,
+                addition: ingredient(&v["addition"])?,
                 // Use the same holder codec as item components, collapsing
                 // unstyled literal text once at the recipe boundary before
                 // publishing the typed snapshot.
@@ -763,7 +770,7 @@ impl ParsedStationRecipe {
             })),
             "minecraft:stonecutting" => Some(Self::Stonecutting(Stonecutting {
                 id,
-                input: Ingredient::parse(&v["ingredient"], items)?,
+                input: ingredient(&v["ingredient"])?,
                 result: crate::crafting::Template::parse(&v["result"])
                     .filter(|template| template.item.is_some())?
                     .create(),
@@ -832,7 +839,8 @@ impl StationRecipes {
         overlay: &PackOverlay,
         context: &sunrise_world::native_load_context::LoadContext,
     ) -> crate::Result<Self> {
-        let sources = crate::crafting::ResolvedSources::load_collecting(root, overlay, context)?;
+        let sources =
+            crate::crafting::ResolvedSources::load_collecting(root, items, overlay, context)?;
         crate::crafting::Recipes::from_resolved(root, items, overlay, &sources)?;
         Ok(Self::from_sources(root, items, &sources))
     }
@@ -844,7 +852,7 @@ impl StationRecipes {
     ) -> Self {
         let mut smithing = Vec::new();
         let mut stonecutting = Vec::new();
-        for recipe in sources.station_recipes(items).iter().flatten() {
+        for recipe in sources.station_recipes() {
             match recipe {
                 ParsedStationRecipe::Smithing(recipe) => smithing.push(recipe.clone()),
                 ParsedStationRecipe::Stonecutting(recipe) if !recipe.input.items.is_empty() => {
@@ -2312,9 +2320,10 @@ mod tests {
     fn stonecutting_component_result_is_retained() {
         let items = Items::for_tests(Default::default());
         let json = serde_json::json!({"type":"minecraft:stonecutting","ingredient":"minecraft:stone","result":{"id":"minecraft:diamond","count":2,"components":{"minecraft:damage":7}}});
-        let rule = ParsedStationRecipe::parse("test:cut".into(), &json, &items)
-            .unwrap()
-            .rule();
+        let rule =
+            ParsedStationRecipe::parse("test:cut".into(), &json, |v| Ingredient::parse(v, &items))
+                .unwrap()
+                .rule();
         let crate::crafting::RecipeRule::Stonecutting { result, .. } = rule else {
             panic!("wrong rule")
         };
@@ -2327,7 +2336,10 @@ mod tests {
     fn smithing_transform_omitted_slots_match_empty() {
         let items = Items::for_tests(Default::default());
         let json = serde_json::json!({"type":"minecraft:smithing_transform","base":"minecraft:stone","result":"minecraft:diamond"});
-        let parsed = ParsedStationRecipe::parse("test:smith".into(), &json, &items).unwrap();
+        let parsed = ParsedStationRecipe::parse("test:smith".into(), &json, |v| {
+            Ingredient::parse(v, &items)
+        })
+        .unwrap();
         assert!(matches!(
             parsed.rule(),
             crate::crafting::RecipeRule::SmithingTransform {
@@ -2363,7 +2375,10 @@ mod tests {
         let items = Items::for_tests(Default::default());
         let json = serde_json::json!({"type":"minecraft:smithing_transform","base":"minecraft:diamond_sword","result":{"id":"minecraft:netherite_sword","count":2}});
         let ParsedStationRecipe::Smithing(recipe) =
-            ParsedStationRecipe::parse("test:smith".into(), &json, &items).unwrap()
+            ParsedStationRecipe::parse("test:smith".into(), &json, |v| {
+                Ingredient::parse(v, &items)
+            })
+            .unwrap()
         else {
             panic!("wrong rule")
         };
@@ -2392,9 +2407,10 @@ mod tests {
     fn smithing_inline_trim_pattern_is_retained() {
         let items = Items::for_tests(Default::default());
         let json = serde_json::json!({"type":"minecraft:smithing_trim","template":"minecraft:stick","base":"minecraft:stone","addition":"minecraft:iron_ingot","pattern":{"asset_id":"example:wave","description":{"translate":"trim.example.wave"},"decal":true}});
-        let rule = ParsedStationRecipe::parse("test:trim".into(), &json, &items)
-            .unwrap()
-            .rule();
+        let rule =
+            ParsedStationRecipe::parse("test:trim".into(), &json, |v| Ingredient::parse(v, &items))
+                .unwrap()
+                .rule();
         let crate::crafting::RecipeRule::SmithingTrim {
             pattern:
                 crate::crafting::RecipeTrimPattern::Inline {
@@ -2571,10 +2587,7 @@ mod tests {
                 .unwrap()
                 .to_string();
             assert!(error.contains("data/test/recipe/invalid.json"), "{error}");
-            assert!(
-                error.contains("invalid ingredients or required fields"),
-                "{error}"
-            );
+            assert!(error.contains("invalid ingredient: null"), "{error}");
         }
         fs::remove_dir_all(root).unwrap();
     }

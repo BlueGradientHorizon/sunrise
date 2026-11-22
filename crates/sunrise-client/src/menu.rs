@@ -22,11 +22,11 @@ use sunrise_world::native_load_context::{DataLoadOrigin, LoadContext, LoadInputs
 use sunrise_world::native_load_context::{LoopContext, LoopSide};
 mod models;
 pub use models::{
-    AnvilCraft, AnvilUpdate, AnvilVanilla, GrindstonePlace, GrindstoneTake, PlanningRules,
-    RuleAnswers, SlotContext, SlotRules, SlotView, StackedClick, StackedOutcome, StoredRules,
+    AnvilCraftSnapshot, AnvilUpdateInputs, GrindstonePlaceEdits, GrindstoneTakeEdits,
+    PendingGrindstoneTake, SlotContext, SlotRules, SlotView, StackedClick, StackedOutcome,
 };
 mod slot_context;
-pub use slot_context::{SlotSnapshot, apply_menu_slot_rules, lan_container};
+pub use slot_context::{apply_menu_slot_rules, lan_container};
 use std::sync::Arc;
 
 mod bundle;
@@ -36,12 +36,10 @@ mod click;
 pub use click::{ClickContinuation, SlotTake};
 mod storage;
 pub use storage::{MutationStamp, Snapshot};
-mod asked;
 mod equip_movement;
 mod equippable;
 pub mod place;
 mod remainder;
-pub use asked::Asked;
 
 /// `ServerPlayer.getRecipeBook`: whether the player knows a recipe.
 pub trait KnownRecipes {
@@ -335,6 +333,32 @@ struct Slot {
     role: Role,
 }
 
+impl Slot {
+    fn mod_menu(kind: &crate::containers::ModMenuType, index: usize) -> Self {
+        match kind.crafting {
+            Some(c) if c.grid_slots().contains(&index) => Self {
+                container: GRID,
+                index: index - c.grid,
+                role: Role::Mod,
+            },
+            Some(c) if c.result == index => Self {
+                container: RESULT,
+                index: 0,
+                role: Role::CraftResult,
+            },
+            _ => Self {
+                container: MAIN,
+                index,
+                role: if kind.results.contains(&index) {
+                    Role::ModResult
+                } else {
+                    Role::Mod
+                },
+            },
+        }
+    }
+}
+
 /// `BeaconBlockEntity.BEACON_EFFECTS`: the powers of each pyramid level.
 pub const BEACON_EFFECTS: [&[&str]; 4] = [
     &["minecraft:speed", "minecraft:haste"],
@@ -367,7 +391,6 @@ const OFFHAND: usize = 40;
 pub struct Menu {
     state: storage::State,
     stamp: storage::MutationStamp,
-    planning: asked::Planning,
 }
 
 /// `AnvilMenu`'s state besides its slots and `cost`.
@@ -387,17 +410,6 @@ pub struct Anvil {
     /// The names the screen's `onNameChanged` sent while the click ran
     /// (`ServerboundRenameItemPacket`), in order; they go out before the click.
     pub renamed: Vec<String>,
-}
-
-/// An anvil menu before a click, for `Menu::anvil_cancel`: the anvil's three
-/// slots and cost, the player's slots and the cursor.
-#[derive(Clone, Debug, PartialEq)]
-pub struct AnvilUndo {
-    inputs: Vec<Option<ItemStack>>,
-    result: Option<ItemStack>,
-    cost: i32,
-    player: Vec<Option<ItemStack>>,
-    carried: Option<ItemStack>,
 }
 
 /// `StonecutterMenu`'s state besides its slots and `selectedRecipeIndex`.
@@ -551,26 +563,7 @@ impl Menu {
                 // grid container, its result over the result container.
                 let crafting = t.crafting;
                 grid_size = crafting.map_or(0, |c| c.size);
-                slots.extend((0..t.slots).map(|index| match crafting {
-                    Some(c) if c.grid_slots().contains(&index) => Slot {
-                        container: GRID,
-                        index: index - c.grid,
-                        role: Role::Mod,
-                    },
-                    Some(c) if c.result == index => Slot {
-                        container: RESULT,
-                        index: 0,
-                        role: Role::CraftResult,
-                    },
-                    _ => Slot {
-                        container: MAIN,
-                        index,
-                        role: match t.results.contains(&index) {
-                            true => Role::ModResult,
-                            false => Role::Mod,
-                        },
-                    },
-                }));
+                slots.extend((0..t.slots).map(|index| Slot::mod_menu(t, index)));
                 if t.player_inventory {
                     player(&mut slots);
                 }
@@ -785,7 +778,6 @@ impl Menu {
         containers[RESULT] = vec![None; 1];
         Self {
             stamp: storage::MutationStamp::fresh(),
-            planning: Default::default(),
             state: storage::State {
                 kind,
                 registry_id: match kind {
@@ -793,7 +785,6 @@ impl Menu {
                     _ => None,
                 },
                 block_pos: None,
-                slot_snapshot: SlotSnapshot::default(),
                 slots,
                 containers,
                 grid_size,
@@ -838,6 +829,9 @@ impl Menu {
                 grind_take: None,
                 grind_xp: -1,
                 anvil_made: false,
+                grind_made: false,
+                track_results: false,
+                more_results: 0,
                 enchant_changed: false,
                 enchant_button: None,
                 may_build: true,
@@ -1157,16 +1151,7 @@ impl Menu {
         match self.state.kind {
             Kind::Loom => self.loom_changed(env),
             Kind::Stonecutter => self.stone_changed(env),
-            // GrindstoneMenu.createResult.
-            Kind::Grindstone => {
-                self.state.containers[RESULT][0] = crate::stations::grindstone_result(
-                    env.loop_context,
-                    env.enchantments,
-                    env.items,
-                    self.state.containers[MAIN][0].as_ref(),
-                    self.state.containers[MAIN][1].as_ref(),
-                );
-            }
+            Kind::Grindstone => self.grindstone_inputs_changed(env),
             Kind::CrafterBlock => self.crafter_result(env),
             Kind::Anvil => {
                 self.anvil_screen_heard(env);
@@ -1240,9 +1225,30 @@ impl Menu {
         }
     }
 
+    /// Notify the grindstone's repair input container (`SimpleContainer.setChanged`).
+    pub fn grindstone_inputs_changed(&mut self, env: &Env) {
+        self.touch();
+        if self.result_pending() {
+            self.state.more_results += 1;
+            return;
+        }
+        self.state.containers[RESULT][0] = crate::stations::grindstone_result(
+            env.loop_context,
+            env.enchantments,
+            env.items,
+            self.state.containers[MAIN][0].as_ref(),
+            self.state.containers[MAIN][1].as_ref(),
+        );
+        self.state.grind_made = true;
+    }
+
     /// `AnvilMenu.createResult`.
     fn anvil_result(&mut self, env: &Env) {
         self.touch();
+        if self.result_pending() {
+            self.state.more_results += 1;
+            return;
+        }
         // createResult compares the name with the input's getHoverName().getString(), which
         // neither side's game resolves with a key only Sunrise gives.
         let hover = self.state.containers[MAIN][0]
@@ -1285,83 +1291,78 @@ impl Menu {
         std::mem::take(&mut self.state.anvil_made)
     }
 
-    /// `AnvilUpdateEvent`'s question about the result `createResult` made,
-    /// or `None` with no left input, where vanilla has no result.
-    pub fn anvil_update(&self) -> Option<AnvilUpdate> {
-        let left = self.state.containers[MAIN][0].clone()?;
-        let right = self.state.containers[MAIN][1].clone();
-        Some(AnvilUpdate::new(
-            left,
-            right,
-            self.state.anvil.name.clone(),
-            &self.anvil_state(),
-        ))
+    /// Whether `GrindstoneMenu.createResult` ran since the last call.
+    pub fn grindstone_created(&mut self) -> bool {
+        self.touch();
+        std::mem::take(&mut self.state.grind_made)
     }
 
-    /// The mods' answer to [`Self::anvil_update`] (see [`AnvilUpdate::answer`]).
-    pub fn anvil_updated(&mut self, update: AnvilUpdate, cancel: bool) {
+    /// `AnvilUpdateEvent`'s question about the result `createResult` made,
+    /// or `None` with no left input, where vanilla has no result.
+    pub fn anvil_update(&self) -> Option<(AnvilUpdateInputs<'_>, crate::stations::AnvilResult)> {
+        let inputs = AnvilUpdateInputs {
+            left: self.state.containers[MAIN][0].as_ref()?,
+            right: self.state.containers[MAIN][1].as_ref(),
+            name: self.state.anvil.name.as_deref(),
+        };
+        Some((inputs, self.anvil_state()))
+    }
+
+    /// Apply the final result of [`Self::anvil_update`] after mod edits.
+    pub fn anvil_updated(&mut self, state: crate::stations::AnvilResult) {
         self.touch();
-        let mut state = self.anvil_state();
-        update.answer(cancel, &mut state);
         self.state.anvil.only_renaming = state.only_renaming;
         self.state.anvil.repair_count = state.repair_item_count_cost;
         self.state.data[0] = state.cost;
         self.state.containers[RESULT][0] = state.result;
     }
 
-    /// `GrindstoneEvent.OnPlaceItem`'s question about the result
-    /// `createResult` just made.
-    pub fn grindstone_place(&self) -> GrindstonePlace {
-        GrindstonePlace {
-            top: self.state.containers[MAIN][0].clone(),
-            bottom: self.state.containers[MAIN][1].clone(),
-            vanilla_output: self.state.containers[RESULT][0].clone(),
-            output: None,
-            xp: -1,
-        }
+    /// Lend the top, bottom and vanilla result slots that `GrindstoneEvent.OnPlaceItem` reads.
+    pub fn grindstone_place(&self) -> [Option<&ItemStack>; 3] {
+        [
+            self.state.containers[MAIN][0].as_ref(),
+            self.state.containers[MAIN][1].as_ref(),
+            self.state.containers[RESULT][0].as_ref(),
+        ]
     }
 
-    /// The mods' answer to [`Self::grindstone_place`]: a cancel leaves no
-    /// result; an output replaces vanilla's, and its `xp` (when 0 or more)
-    /// is what taking it gives; otherwise vanilla's result and experience stay.
-    pub fn grindstone_placed(&mut self, place: GrindstonePlace, cancel: bool) {
+    /// Apply the admitted output and experience edits. With no override, keep
+    /// the vanilla result and use vanilla experience. Cancellation clears the
+    /// result and resets experience regardless of the edits.
+    pub fn grindstone_placed(&mut self, edits: GrindstonePlaceEdits, cancel: bool) {
         self.touch();
         self.state.grind_xp = -1;
         if cancel {
             self.state.containers[RESULT][0] = None;
-        } else if let Some(output) = place.output {
-            self.state.grind_xp = place.xp.max(-1);
+        } else if let Some(output) = edits.output {
+            self.state.grind_xp = edits.xp;
             self.state.containers[RESULT][0] = Some(output);
         }
     }
 
-    /// The rest of a taken grindstone result's `onTake` once the mods
-    /// answered `grind_take`: cancelled, the inputs stay and nothing is
-    /// given. Otherwise the inputs become `new_top` and `new_bottom`, and
-    /// the experience is the mods' `xp` when 0 or more (returned, given as
-    /// is) or vanilla's (`ground`, rolled by the caller).
+    /// Finish a deferred `onTake` outside the take listener's decided action.
+    /// Stage the experience for the caller: an exact award is returned as-is,
+    /// or `ground` holds the vanilla amount from before the inputs were replaced.
     pub fn grindstone_taken(
         &mut self,
         env: &Env,
-        take: GrindstoneTake,
-        cancel: bool,
+        take: &PendingGrindstoneTake,
+        edits: GrindstoneTakeEdits,
     ) -> Option<i32> {
         self.touch();
-        if cancel {
-            return None;
-        }
-        if take.xp < 0 {
+        if edits.xp < 0 {
             self.state.ground = Some(take.vanilla_amount(env));
         }
-        let xp = (take.xp >= 0).then_some(take.xp);
-        self.grindstone_take_inputs(env, take);
+        let xp = (edits.xp >= 0).then_some(edits.xp);
+        self.grindstone_take_inputs(env, edits);
         xp
     }
 
-    /// Replace the inputs and run `slotsChanged`, after the server has awarded experience.
-    pub fn grindstone_take_inputs(&mut self, env: &Env, take: GrindstoneTake) {
-        self.put(env, 0, take.new_top);
-        self.put(env, 1, take.new_bottom);
+    /// Replace the inputs and run `slotsChanged` using the admitted remainders.
+    pub fn grindstone_take_inputs(&mut self, env: &Env, edits: GrindstoneTakeEdits) {
+        self.put(env, 0, edits.new_top);
+        self.put(env, 1, edits.new_bottom);
+        self.grindstone_inputs_changed(env);
     }
 
     /// `AnvilMenu.setItemName` (`ServerboundRenameItemPacket`): false when
@@ -1575,19 +1576,35 @@ impl Menu {
         }
     }
 
-    /// A mod menu's container slots from its block entity, in slot order. A
-    /// crafting grid's result is the menu's (`ResultContainer`), never the
-    /// block entity's: its slot there is passed by and the result follows the
-    /// grid.
-    pub fn load_container(&mut self, env: &Env, items: &[Option<ItemStack>]) {
+    /// A mod menu's container slots from its block entity, in slot order.
+    /// `shown` is the menu's authoritative result for this grid (`Some(None)`
+    /// for an empty result). With no current result, prepare from the whole
+    /// grid once; loading each cell is not itself a change to the grid.
+    pub fn load_container(
+        &mut self,
+        env: &Env,
+        items: &[Option<ItemStack>],
+        shown: Option<Option<ItemStack>>,
+    ) {
         self.touch();
         let result = self.mod_crafting().map(|c| c.result);
         for (k, stack) in items.iter().enumerate().take(self.container_slot_count()) {
-            if Some(k) != result {
+            if Some(k) == result {
+                continue;
+            }
+            if self.state.slots[k].container == GRID {
+                let mut stack = stack.clone();
+                tidy(&mut stack);
+                self.load_slot(k, stack);
+            } else {
                 self.put(env, k, stack.clone());
             }
         }
-        self.recompute(env);
+        if let Some((slot, stack)) = result.zip(shown) {
+            self.load_slot(slot, stack);
+        } else {
+            self.recompute(env);
+        }
     }
 
     /// `load_container` back: the container slots the block entity keeps, a
@@ -1661,16 +1678,30 @@ impl Menu {
     // ---- Slot ----
 
     fn may_place(&self, env: &Env, s: usize, stack: &ItemStack) -> bool {
-        if self.state.slots[s].role == Role::Hidden {
-            return false;
-        }
-        self.slot_rules(env, s, stack).0
+        self.may_place_with(env, env.can_equip, s, stack)
     }
 
-    fn vanilla_may_place(&self, env: &Env, s: usize, stack: &ItemStack) -> bool {
+    /// Placement with the equipment scope lent to a scan of unchanged-stack candidates.
+    fn may_place_with(
+        &self,
+        env: &Env,
+        can_equip: Option<&dyn crate::mobs::equip::CanEquip>,
+        s: usize,
+        stack: &ItemStack,
+    ) -> bool {
+        self.state.slots[s].role != Role::Hidden && self.slot_rules_with(env, can_equip, s, stack).0
+    }
+
+    fn vanilla_may_place_with(
+        &self,
+        env: &Env,
+        can_equip: Option<&dyn crate::mobs::equip::CanEquip>,
+        s: usize,
+        stack: &ItemStack,
+    ) -> bool {
         match self.state.slots[s].role {
             Role::Plain | Role::CreativeDisplay => true,
-            Role::Armor(eq) => Self::armor_may_place(env, eq, stack),
+            Role::Armor(eq) => Self::armor_may_place_with(env, can_equip, eq, stack),
             Role::MountEquip(slot) => self.mount_may_place(env, slot, stack),
             Role::Shulker => fits_inside_container_items(env.loop_context, stack),
             Role::Mod | Role::ModResult => self.state.slots[s].role == Role::Mod,
@@ -1730,7 +1761,7 @@ impl Menu {
 
     /// `Slot.mayPickup`: the slot's own answer, then, on a mod menu type and only for a stack
     /// the slot holds, the parts' (`menu_slot_rules`).
-    fn may_pickup(&self, env: &Env, s: usize) -> bool {
+    pub fn may_pickup(&self, env: &Env, s: usize) -> bool {
         self.vanilla_may_pickup(env, s)
             && match self.slot(s) {
                 Some(held) if self.asks_pickup(s) => self.slot_rules(env, s, held).1,
@@ -1744,9 +1775,10 @@ impl Menu {
     }
 
     fn vanilla_may_pickup(&self, env: &Env, s: usize) -> bool {
+        // ResultSlot inherits Slot.mayPickup: the displayed stack is the result,
+        // even when it differs from what a fresh recipe assembly would make.
         match self.state.slots[s].role {
             Role::Inert | Role::Hidden => false,
-            Role::CraftResult => self.crafting_result_is_current(env, s),
             // AnvilMenu.mayPickup: the levels to pay, and a price.
             Role::CombineResult if self.state.kind == Kind::Anvil => {
                 (self.state.creative || self.state.levels >= self.state.data[0])
@@ -1847,12 +1879,30 @@ impl Menu {
     /// `getMaxStackSize` for `stack`: its own answers, then the parts' on a registered menu
     /// type, all from one ask.
     fn slot_rules(&self, env: &Env, s: usize, stack: &ItemStack) -> (bool, bool, u32) {
-        let place = self.vanilla_may_place(env, s, stack);
+        self.slot_rules_with(env, env.can_equip, s, stack)
+    }
+
+    fn slot_rules_with(
+        &self,
+        env: &Env,
+        can_equip: Option<&dyn crate::mobs::equip::CanEquip>,
+        s: usize,
+        stack: &ItemStack,
+    ) -> (bool, bool, u32) {
+        let place = self.vanilla_may_place_with(env, can_equip, s, stack);
         let (max, item_max) = (self.vanilla_slot_max(s, stack), Self::max_stack(env, stack));
         let Some(id) = self.registry_id() else {
             return (place, true, max.min(item_max));
         };
-        self.ask_slot_rules(env, id, s, stack, (place, true, max), item_max)
+        slot_context::apply_menu_slot_rules(
+            env.slot_rules,
+            id,
+            self.state.slots[s].index,
+            stack,
+            self.slot_context(env, s),
+            (place, true, max),
+            item_max,
+        )
     }
 
     /// Capacity overrides for the backing container slots, refreshed before each server edit.
@@ -1863,7 +1913,8 @@ impl Menu {
 
     /// `Slot.getMaxStackSize(stack)`.
     fn slot_max(&self, env: &Env, s: usize, stack: &ItemStack) -> u32 {
-        let max = self.slot_rules(env, s, stack).2;
+        // Capacity does not invoke the separate IItemExtension.canEquip predicate.
+        let max = self.slot_rules_with(env, None, s, stack).2;
         self.limit_slot_max(s, max)
     }
 
@@ -1953,6 +2004,10 @@ impl Menu {
             }
         }
         self.put(env, s, stack);
+        if matches!(self.kind, Kind::Anvil | Kind::Grindstone) {
+            // Slot.set calls setChanged after the repair container's setItem.
+            self.slot_changed(env, s);
+        }
     }
 
     /// The `EquipmentSlot` of an `ArmorSlot` or of `InventoryMenu`'s off-hand
@@ -2017,34 +2072,15 @@ impl Menu {
         out
     }
 
-    /// The anvil menu as it is before a click that may take its result.
-    pub fn anvil_undo(&self) -> AnvilUndo {
-        AnvilUndo {
-            inputs: self.state.containers[MAIN].clone(),
-            result: self.state.containers[RESULT][0].clone(),
-            cost: self.state.data[0],
-            player: self.state.containers[PLAYER].clone(),
-            carried: self.state.carried.clone(),
-        }
-    }
-
-    /// Refuses a take that `anvil_hook` deferred (a cancelled
-    /// `AnvilCraftEvent.Pre`): the result goes back in its slot and the
-    /// inputs, cost, inventory and cursor are as `undo` held them, so nothing
-    /// the click did (cursor, shift-click, swap, drop) is left.
-    pub fn anvil_cancel(&mut self, undo: AnvilUndo) {
-        self.touch();
-        self.state.containers[MAIN] = undo.inputs;
-        self.state.containers[RESULT][0] = undo.result;
-        self.state.data[0] = undo.cost;
-        self.state.containers[PLAYER] = undo.player;
-        self.state.carried = undo.carried;
-        self.state.anvil_craft = None;
-        self.state.dropped.clear();
-    }
-
     /// `AnvilMenu.onTake`: the levels, the material used up, then the input.
     pub fn anvil_take(&mut self, env: &Env) {
+        self.record_anvil_charge();
+        self.anvil_take_material(env);
+        self.anvil_take_input(env);
+    }
+
+    /// Record AnvilMenu.onTake's level cost, before writing either input.
+    pub fn record_anvil_charge(&mut self) {
         self.touch();
         let cost = self.state.data[0];
         if !self.state.creative {
@@ -2056,6 +2092,10 @@ impl Menu {
                 -cost
             ));
         }
+    }
+
+    /// Consume or clear the material, while the left input is still present.
+    pub fn anvil_take_material(&mut self, env: &Env) {
         let repair = self.state.anvil.repair_count;
         if repair > 0 {
             let addition = self.state.containers[MAIN][1]
@@ -2069,6 +2109,10 @@ impl Menu {
         } else if !self.state.anvil.only_renaming {
             self.put(env, 1, None);
         }
+    }
+
+    /// Second half of `AnvilMenu.onTake`: zero `cost`, clear slot 0, and mark the craft combined.
+    pub fn anvil_take_input(&mut self, env: &Env) {
         self.state.data[0] = 0;
         self.put(env, 0, None);
         self.state.combined = true;
@@ -2160,8 +2204,7 @@ impl Menu {
         Some(result)
     }
 
-    /// `Slot.allowModification`: `mayPickup` and `mayPlace` of what the slot holds, the click's
-    /// one ask for that stack.
+    /// `Slot.allowModification`: `mayPickup` and `mayPlace` of what the slot holds.
     fn allow_modification(&self, env: &Env, s: usize) -> bool {
         self.may_pickup(env, s) && self.slot(s).is_none_or(|held| self.may_place(env, s, held))
     }
@@ -2184,7 +2227,30 @@ impl Menu {
 
     /// `Slot.safeInsert`: puts up to `amount` of `input` into the slot.
     fn safe_insert(&mut self, env: &Env, s: usize, input: &mut Option<ItemStack>, amount: u32) {
-        self.insert_equip_source(env, s, input, amount);
+        self.touch();
+        let Some(stack) = input.as_mut() else { return };
+        if !self.may_place(env, s, stack) {
+            return;
+        }
+        let max = self.slot_max(env, s, stack);
+        let have = self.slot(s).map_or(0, |c| c.count);
+        let transferable = amount.min(stack.count).min(max.saturating_sub(have));
+        if transferable == 0 {
+            return;
+        }
+        match self.slot(s).cloned() {
+            None => {
+                let part = split(stack, transferable);
+                self.set_by_player(env, s, Some(part));
+            }
+            Some(mut current) if current.same_item_same_components(stack) => {
+                stack.count -= transferable;
+                current.count += transferable;
+                self.set_by_player(env, s, Some(current));
+            }
+            Some(_) => {}
+        }
+        tidy(input);
     }
 
     // ---- Inventory ----
@@ -2314,17 +2380,18 @@ impl Menu {
         self.slot(s).is_some()
     }
 
-    /// `AbstractContainerMenu.moveItemStackTo`, with an owned equip source when subscribed.
+    /// `AbstractContainerMenu.moveItemStackTo`.
     fn move_to(
         &mut self,
         env: &Env,
+        origin: Option<usize>,
         stack: &mut ItemStack,
         start: usize,
         end: usize,
         backwards: bool,
     ) -> bool {
         self.touch();
-        self.move_to_equip_source(env, stack, start, end, backwards)
+        self.move_item_stack_to(env, origin, stack, start, end, backwards)
     }
 
     /// `quickMoveStack` of the menu's kind; the moved stack's original copy
@@ -2332,7 +2399,7 @@ impl Menu {
     fn quick_move(&mut self, env: &Env, index: usize) -> Option<ItemStack> {
         self.touch();
         let mut stack = self.slot(index)?.clone();
-        let mut clicked = stack.clone();
+        let clicked = stack.clone();
         let total = self.state.slots.len();
         let mut check_count = true;
         let mut after_take = false;
@@ -2348,20 +2415,20 @@ impl Menu {
                 check_count = false;
                 let n = rows * 9;
                 if index < n {
-                    if !self.move_to(env, &mut stack, n, total, true) {
+                    if !self.move_to(env, Some(index), &mut stack, n, total, true) {
                         return None;
                     }
-                } else if !self.move_to(env, &mut stack, 0, n, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 0, n, false) {
                     return None;
                 }
             }
             Kind::Hopper => {
                 check_count = false;
                 if index < 5 {
-                    if !self.move_to(env, &mut stack, 5, 41, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 5, 41, true) {
                         return None;
                     }
-                } else if !self.move_to(env, &mut stack, 0, 5, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 0, 5, false) {
                     return None;
                 }
             }
@@ -2370,7 +2437,7 @@ impl Menu {
                 after_take = true;
                 Self::map_crafted(env.maps, &mut stack);
                 self.state.containers[RESULT][0] = Some(stack.clone());
-                if !self.move_to(env, &mut stack, t.slots, total, true) {
+                if !self.move_to(env, Some(index), &mut stack, t.slots, total, true) {
                     return None;
                 }
             }
@@ -2379,30 +2446,30 @@ impl Menu {
                 check_count = false;
                 let n = t.slots;
                 if index < n {
-                    if !self.move_to(env, &mut stack, n, total, true) {
+                    if !self.move_to(env, Some(index), &mut stack, n, total, true) {
                         return None;
                     }
-                } else if !self.move_to(env, &mut stack, 0, n, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 0, n, false) {
                     return None;
                 }
             }
             Kind::Shulker => {
                 check_count = false;
                 if index < 27 {
-                    if !self.move_to(env, &mut stack, 27, total, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 27, total, true) {
                         return None;
                     }
-                } else if !self.move_to(env, &mut stack, 0, 27, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 0, 27, false) {
                     return None;
                 }
             }
             Kind::Dispenser => {
                 after_take = true;
                 if index < 9 {
-                    if !self.move_to(env, &mut stack, 9, 45, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 9, 45, true) {
                         return None;
                     }
-                } else if !self.move_to(env, &mut stack, 0, 9, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 0, 9, false) {
                     return None;
                 }
             }
@@ -2414,20 +2481,20 @@ impl Menu {
                         (stack.count > 0).then(|| stack.clone());
                 };
                 if index <= 4 {
-                    if !self.move_to(env, &mut stack, 5, 41, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 5, 41, true) {
                         return None;
                     }
                 } else if crate::brewing::brewing_fuel(env.items, &clicked).is_some() {
-                    let moved = self.move_to(env, &mut stack, 4, 5, false);
+                    let moved = self.move_to(env, Some(index), &mut stack, 4, 5, false);
                     if moved
                         || (env.brewing.is_reagent(&stack)
-                            && !self.move_to(env, &mut stack, 3, 4, false))
+                            && !self.move_to(env, Some(index), &mut stack, 3, 4, false))
                     {
                         commit(self, &stack);
                         return None;
                     }
                 } else if env.brewing.is_reagent(&stack) {
-                    if !self.move_to(env, &mut stack, 3, 4, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 3, 4, false) {
                         return None;
                     }
                 } else if env.brewing.is_bottle(&stack)
@@ -2437,25 +2504,25 @@ impl Menu {
                         .get("minecraft:brewing_potion_inputs")
                         .is_some_and(|m| m.contains(&*stack.item))
                 {
-                    if !self.move_to(env, &mut stack, 0, 3, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 0, 3, false) {
                         return None;
                     }
                 } else if (5..32).contains(&index) {
-                    if !self.move_to(env, &mut stack, 32, 41, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 32, 41, false) {
                         return None;
                     }
                 } else if (32..41).contains(&index) {
-                    if !self.move_to(env, &mut stack, 5, 32, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 5, 32, false) {
                         return None;
                     }
-                } else if !self.move_to(env, &mut stack, 5, 41, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 5, 41, false) {
                     return None;
                 }
             }
             Kind::Loom => {
                 after_take = true;
                 if index == 3 {
-                    if !self.move_to(env, &mut stack, 4, 40, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 4, 40, true) {
                         return None;
                     }
                 } else if index > 3 {
@@ -2470,33 +2537,35 @@ impl Menu {
                     };
                     match target {
                         Some(t) => {
-                            if !self.move_to(env, &mut stack, t, t + 1, false) {
+                            if !self.move_to(env, Some(index), &mut stack, t, t + 1, false) {
                                 return None;
                             }
                         }
                         None if index < 31 => {
-                            if !self.move_to(env, &mut stack, 31, 40, false) {
+                            if !self.move_to(env, Some(index), &mut stack, 31, 40, false) {
                                 return None;
                             }
                         }
                         None => {
-                            if index < 40 && !self.move_to(env, &mut stack, 4, 31, false) {
+                            if index < 40
+                                && !self.move_to(env, Some(index), &mut stack, 4, 31, false)
+                            {
                                 return None;
                             }
                         }
                     }
-                } else if !self.move_to(env, &mut stack, 4, 40, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 4, 40, false) {
                     return None;
                 }
             }
             Kind::Stonecutter => {
                 after_take = true;
                 if index == 1 {
-                    if !self.move_to(env, &mut stack, 2, 38, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 2, 38, true) {
                         return None;
                     }
                 } else if index == 0 {
-                    if !self.move_to(env, &mut stack, 2, 38, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 2, 38, false) {
                         return None;
                     }
                 } else if env
@@ -2505,14 +2574,15 @@ impl Menu {
                     .iter()
                     .any(|r| r.input.test_in(env.loop_context, &stack))
                 {
-                    if !self.move_to(env, &mut stack, 0, 1, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 0, 1, false) {
                         return None;
                     }
                 } else if (2..29).contains(&index) {
-                    if !self.move_to(env, &mut stack, 29, 38, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 29, 38, false) {
                         return None;
                     }
-                } else if (29..38).contains(&index) && !self.move_to(env, &mut stack, 2, 29, false)
+                } else if (29..38).contains(&index)
+                    && !self.move_to(env, Some(index), &mut stack, 2, 29, false)
                 {
                     return None;
                 }
@@ -2521,24 +2591,24 @@ impl Menu {
                 after_take = true;
                 let full = self.state.containers[MAIN].iter().all(Option::is_some);
                 if index == 2 {
-                    if !self.move_to(env, &mut stack, 3, 39, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 3, 39, true) {
                         return None;
                     }
                 } else if index == 0 || index == 1 {
-                    if !self.move_to(env, &mut stack, 3, 39, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 3, 39, false) {
                         return None;
                     }
                 } else if full {
                     if (3..30).contains(&index) {
-                        if !self.move_to(env, &mut stack, 30, 39, false) {
+                        if !self.move_to(env, Some(index), &mut stack, 30, 39, false) {
                             return None;
                         }
                     } else if (30..39).contains(&index)
-                        && !self.move_to(env, &mut stack, 3, 30, false)
+                        && !self.move_to(env, Some(index), &mut stack, 3, 30, false)
                     {
                         return None;
                     }
-                } else if !self.move_to(env, &mut stack, 0, 2, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 0, 2, false) {
                     return None;
                 }
             }
@@ -2548,26 +2618,27 @@ impl Menu {
                     // onCraftedBy edits the result in its slot first.
                     Self::map_crafted(env.maps, &mut stack);
                     self.state.containers[RESULT][0] = Some(stack.clone());
-                    if !self.move_to(env, &mut stack, 3, 39, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 3, 39, true) {
                         return None;
                     }
                 } else if index == 0 || index == 1 {
-                    if !self.move_to(env, &mut stack, 3, 39, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 3, 39, false) {
                         return None;
                     }
                 } else if stack.data().is_some_and(|d| d.map_id.is_some()) {
-                    if !self.move_to(env, &mut stack, 0, 1, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 0, 1, false) {
                         return None;
                     }
                 } else if Self::is_carto_extra(&stack) {
-                    if !self.move_to(env, &mut stack, 1, 2, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 1, 2, false) {
                         return None;
                     }
                 } else if (3..30).contains(&index) {
-                    if !self.move_to(env, &mut stack, 30, 39, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 30, 39, false) {
                         return None;
                     }
-                } else if (30..39).contains(&index) && !self.move_to(env, &mut stack, 3, 30, false)
+                } else if (30..39).contains(&index)
+                    && !self.move_to(env, Some(index), &mut stack, 3, 30, false)
                 {
                     return None;
                 }
@@ -2580,27 +2651,29 @@ impl Menu {
                 check_count = false;
                 let start = 2 + columns * 3;
                 if index < start {
-                    if !self.move_to(env, &mut stack, start, total, true) {
+                    if !self.move_to(env, Some(index), &mut stack, start, total, true) {
                         return None;
                     }
                 } else if self.may_place(env, 1, &stack) && self.state.containers[MAIN][1].is_none()
                 {
-                    if !self.move_to(env, &mut stack, 1, 2, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 1, 2, false) {
                         return None;
                     }
                 } else if self.may_place(env, 0, &stack) && self.state.containers[MAIN][0].is_none()
                 {
-                    if !self.move_to(env, &mut stack, 0, 1, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 0, 1, false) {
                         return None;
                     }
-                } else if columns == 0 || !self.move_to(env, &mut stack, 2, start, false) {
+                } else if columns == 0
+                    || !self.move_to(env, Some(index), &mut stack, 2, start, false)
+                {
                     // Between the inventory and the hotbar: the stack shrinks
                     // in its slot and EMPTY is returned either way.
                     let (main_end, hotbar_end) = (start + 27, start + 36);
                     if (main_end..hotbar_end).contains(&index) {
-                        self.move_to(env, &mut stack, start, main_end, false);
+                        self.move_to(env, Some(index), &mut stack, start, main_end, false);
                     } else if (start..main_end).contains(&index) {
-                        self.move_to(env, &mut stack, main_end, hotbar_end, false);
+                        self.move_to(env, Some(index), &mut stack, main_end, hotbar_end, false);
                     }
                     let slot = self.state.slots[index];
                     self.state.containers[slot.container][slot.index] =
@@ -2612,36 +2685,36 @@ impl Menu {
                 // BeaconMenu.quickMoveStack.
                 after_take = true;
                 if index == 0 {
-                    if !self.move_to(env, &mut stack, 1, 37, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 1, 37, true) {
                         return None;
                     }
                 } else if self.state.containers[MAIN][0].is_none()
                     && self.may_place(env, 0, &stack)
                     && stack.count == 1
                 {
-                    if !self.move_to(env, &mut stack, 0, 1, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 0, 1, false) {
                         return None;
                     }
                 } else if (1..28).contains(&index) {
-                    if !self.move_to(env, &mut stack, 28, 37, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 28, 37, false) {
                         return None;
                     }
                 } else if (28..37).contains(&index) {
-                    if !self.move_to(env, &mut stack, 1, 28, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 1, 28, false) {
                         return None;
                     }
-                } else if !self.move_to(env, &mut stack, 1, 37, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 1, 37, false) {
                     return None;
                 }
             }
             Kind::Enchanting => {
                 after_take = true;
                 if index < 2 {
-                    if !self.move_to(env, &mut stack, 2, 38, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 2, 38, true) {
                         return None;
                     }
                 } else if &*stack.item == "minecraft:lapis_lazuli" {
-                    if !self.move_to(env, &mut stack, 1, 2, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 1, 2, true) {
                         return None;
                     }
                 } else {
@@ -2675,23 +2748,23 @@ impl Menu {
                                 .smithing_accepts(env.loop_context, i, &stack)
                     });
                 if index == result {
-                    if !self.move_to(env, &mut stack, start, end, true) {
+                    if !self.move_to(env, Some(index), &mut stack, start, end, true) {
                         return None;
                     }
                 } else if index < result {
-                    if !self.move_to(env, &mut stack, start, end, false) {
+                    if !self.move_to(env, Some(index), &mut stack, start, end, false) {
                         return None;
                     }
                 } else if into_inputs && (start..end).contains(&index) {
-                    if !self.move_to(env, &mut stack, 0, result, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 0, result, false) {
                         return None;
                     }
                 } else if (start..use_row).contains(&index) {
-                    if !self.move_to(env, &mut stack, use_row, end, false) {
+                    if !self.move_to(env, Some(index), &mut stack, use_row, end, false) {
                         return None;
                     }
                 } else if (use_row..end).contains(&index)
-                    && !self.move_to(env, &mut stack, start, use_row, false)
+                    && !self.move_to(env, Some(index), &mut stack, start, use_row, false)
                 {
                     return None;
                 }
@@ -2699,7 +2772,7 @@ impl Menu {
             Kind::Merchant => {
                 after_take = true;
                 if index == 2 {
-                    if !self.move_to(env, &mut stack, 3, 39, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 3, 39, true) {
                         return None;
                     }
                     // Slot.onQuickCraft uses the original copy and the moved count.
@@ -2715,32 +2788,32 @@ impl Menu {
                     }
                 } else if index != 0 && index != 1 {
                     if (3..30).contains(&index) {
-                        if !self.move_to(env, &mut stack, 30, 39, false) {
+                        if !self.move_to(env, Some(index), &mut stack, 30, 39, false) {
                             return None;
                         }
                     } else if (30..39).contains(&index)
-                        && !self.move_to(env, &mut stack, 3, 30, false)
+                        && !self.move_to(env, Some(index), &mut stack, 3, 30, false)
                     {
                         return None;
                     }
-                } else if !self.move_to(env, &mut stack, 3, 39, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 3, 39, false) {
                     return None;
                 }
             }
             Kind::Crafter | Kind::CrafterBlock => {
                 after_take = true;
                 if index < 9 {
-                    if !self.move_to(env, &mut stack, 9, 45, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 9, 45, true) {
                         return None;
                     }
-                } else if !self.move_to(env, &mut stack, 0, 9, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 0, 9, false) {
                     return None;
                 }
             }
             Kind::Furnace(recipe) => {
                 after_take = true;
                 if index == 2 {
-                    if !self.move_to(env, &mut stack, 3, 39, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 3, 39, true) {
                         return None;
                     }
                     // Slot.onQuickCraft -> FurnaceResultSlot.onQuickCraft:
@@ -2757,23 +2830,23 @@ impl Menu {
                         &stack,
                     );
                     if smelts {
-                        if !self.move_to(env, &mut stack, 0, 1, false) {
+                        if !self.move_to(env, Some(index), &mut stack, 0, 1, false) {
                             return None;
                         }
                     } else if Self::is_fuel(env, &stack) {
-                        if !self.move_to(env, &mut stack, 1, 2, false) {
+                        if !self.move_to(env, Some(index), &mut stack, 1, 2, false) {
                             return None;
                         }
                     } else if (3..30).contains(&index) {
-                        if !self.move_to(env, &mut stack, 30, 39, false) {
+                        if !self.move_to(env, Some(index), &mut stack, 30, 39, false) {
                             return None;
                         }
                     } else if (30..39).contains(&index)
-                        && !self.move_to(env, &mut stack, 3, 30, false)
+                        && !self.move_to(env, Some(index), &mut stack, 3, 30, false)
                     {
                         return None;
                     }
-                } else if !self.move_to(env, &mut stack, 3, 39, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 3, 39, false) {
                     return None;
                 }
             }
@@ -2784,20 +2857,20 @@ impl Menu {
                     // before transfer; ResultSlot then processes its original copy.
                     Self::map_crafted(env.maps, &mut stack);
                     self.state.containers[RESULT][0] = Some(stack.clone());
-                    if !self.move_to(env, &mut stack, 10, 46, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 10, 46, true) {
                         return None;
                     }
                 } else if (10..46).contains(&index) {
-                    if !self.move_to(env, &mut stack, 1, 10, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 1, 10, false) {
                         if index < 37 {
-                            if !self.move_to(env, &mut stack, 37, 46, false) {
+                            if !self.move_to(env, Some(index), &mut stack, 37, 46, false) {
                                 return None;
                             }
-                        } else if !self.move_to(env, &mut stack, 10, 37, false) {
+                        } else if !self.move_to(env, Some(index), &mut stack, 10, 37, false) {
                             return None;
                         }
                     }
-                } else if !self.move_to(env, &mut stack, 10, 46, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 10, 46, false) {
                     return None;
                 }
             }
@@ -2806,11 +2879,11 @@ impl Menu {
                 let equip = Self::equip(env, &clicked);
                 let armor_free = |m: &Self, eq: usize| !m.has_item(8 - eq);
                 if index == 0 {
-                    if !self.move_to(env, &mut stack, 9, 45, true) {
+                    if !self.move_to(env, Some(index), &mut stack, 9, 45, true) {
                         return None;
                     }
                 } else if (1..9).contains(&index) {
-                    if !self.move_to(env, &mut stack, 9, 45, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 9, 45, false) {
                         return None;
                     }
                 } else if matches!(equip, Equip::Armor(eq) if armor_free(self, eq)) {
@@ -2818,26 +2891,38 @@ impl Menu {
                         unreachable!()
                     };
                     let pos = 8 - eq;
-                    if !self.move_to(env, &mut stack, pos, pos + 1, false) {
+                    if !self.move_to(env, Some(index), &mut stack, pos, pos + 1, false) {
                         return None;
                     }
                 } else if matches!(equip, Equip::Offhand) && !self.has_item(45) {
-                    if !self.move_to(env, &mut stack, 45, 46, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 45, 46, false) {
                         return None;
                     }
                 } else if (9..36).contains(&index) {
-                    if !self.move_to(env, &mut stack, 36, 45, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 36, 45, false) {
                         return None;
                     }
                 } else if (36..45).contains(&index) {
-                    if !self.move_to(env, &mut stack, 9, 36, false) {
+                    if !self.move_to(env, Some(index), &mut stack, 9, 36, false) {
                         return None;
                     }
-                } else if !self.move_to(env, &mut stack, 9, 45, false) {
+                } else if !self.move_to(env, Some(index), &mut stack, 9, 45, false) {
                     return None;
                 }
             }
         }
+        self.finish_quick_move(env, index, clicked, stack, check_count, after_take)
+    }
+
+    fn finish_quick_move(
+        &mut self,
+        env: &Env,
+        index: usize,
+        mut clicked: ItemStack,
+        mut stack: ItemStack,
+        check_count: bool,
+        after_take: bool,
+    ) -> Option<ItemStack> {
         // The stack was edited in place in its slot.
         let slot = self.state.slots[index];
         if stack.count == 0 {
@@ -2958,7 +3043,7 @@ impl Menu {
         }
         for slot in [0usize, 1] {
             if let Some(mut old) = self.state.containers[MAIN][slot].clone() {
-                if !self.move_to(env, &mut old, 3, 39, true) {
+                if !self.move_to(env, None, &mut old, 3, 39, true) {
                     return;
                 }
                 self.state.containers[MAIN][slot] = (old.count > 0).then_some(old);
@@ -3539,7 +3624,7 @@ pub(crate) mod tests {
 
     /// A test `Env` with no vanilla data: the anvil's and grindstone's own
     /// results don't matter where the mods answer.
-    pub(super) fn bare_env(test: impl FnOnce(&Env)) {
+    pub(crate) fn bare_env(test: impl FnOnce(&Env)) {
         bare_env_in(&crate::test_resources::loop_context(LoopSide::Server), test)
     }
 
@@ -3605,8 +3690,7 @@ pub(crate) mod tests {
             if menu == "test:context" && slot == 1 {
                 *may_place = context.player == Some(7)
                     && context.pos == Some([4, 5, 6])
-                    && context.slots.len() == 2
-                    && context.slots[0].is_none();
+                    && context.slot(mod_api::MenuContainer::Main, 0).is_none();
             }
             if menu == "test:rules" && slot == 0 {
                 *may_place = self.0.side() == LoopSide::Server;
@@ -3618,26 +3702,26 @@ pub(crate) mod tests {
         }
     }
 
-    /// `AnvilUpdateEvent`: not asked without a left input, and once per
-    /// `createResult`; a mod's output takes its cost and uses its material
-    /// cost of the right input when taken; a cancel leaves no result at
-    /// cost 0.
+    /// `AnvilUpdateEvent` is not asked without a left input. A replacement
+    /// result uses the supplied level and material costs when taken.
     #[test]
-    fn an_anvil_update_sets_the_result_cost_and_material_or_cancels() {
+    fn an_anvil_update_sets_the_result_cost_and_material() {
         bare_env(|env| {
             let mut menu = Menu::new(Kind::Anvil);
             menu.set_slot(env, 1, stack("diamond", 5));
             assert!(menu.anvil_created());
-            assert_eq!(menu.anvil_update(), None);
+            assert!(menu.anvil_update().is_none());
             menu.set_slot(env, 0, stack("iron_sword", 1));
             assert!(menu.anvil_created());
             assert!(!menu.anvil_created());
-            let mut update = menu.anvil_update().unwrap();
-            assert_eq!((&update.vanilla.output, &update.output), (&None, &None));
-            update.output = stack("netherite_sword", 1);
-            update.xp_cost = 7;
-            update.material_cost = 2;
-            menu.anvil_updated(update.clone(), false);
+            let (inputs, mut result) = menu.anvil_update().unwrap();
+            assert_eq!(Some(inputs.left), stack("iron_sword", 1).as_ref());
+            assert_eq!(inputs.right, stack("diamond", 5).as_ref());
+            assert!(result.result.is_none());
+            result.result = stack("netherite_sword", 1);
+            result.cost = 7;
+            result.repair_item_count_cost = 2;
+            menu.anvil_updated(result);
             assert_eq!(
                 (menu.slot(2), menu.data[0]),
                 (stack("netherite_sword", 1).as_ref(), 7)
@@ -3649,12 +3733,6 @@ pub(crate) mod tests {
                 (menu.slot(0), menu.slot(1)),
                 (None, stack("diamond", 3).as_ref())
             );
-
-            let mut menu = Menu::new(Kind::Anvil);
-            menu.set_slot(env, 0, stack("iron_sword", 1));
-            menu.set_slot(env, 1, stack("diamond", 5));
-            menu.anvil_updated(update, true);
-            assert_eq!((menu.slot(2), menu.data[0]), (None, 0));
         });
     }
 
@@ -3668,11 +3746,11 @@ pub(crate) mod tests {
                     menu.levels = 30;
                     menu.set_slot(env, 0, stack("iron_sword", 1));
                     menu.set_slot(env, 1, stack("diamond", 5));
-                    let mut update = menu.anvil_update().unwrap();
-                    update.output = stack("netherite_sword", 1);
-                    update.xp_cost = cost;
-                    update.material_cost = -2;
-                    menu.anvil_updated(update.clone(), false);
+                    let (_, mut result) = menu.anvil_update().unwrap();
+                    result.result = stack("netherite_sword", 1);
+                    result.cost = cost;
+                    result.repair_item_count_cost = 0;
+                    menu.anvil_updated(result);
                     assert_eq!(menu.data[0], cost);
                     assert_eq!(menu.anvil.repair_count, 0);
                     assert_eq!(menu.slot(2), stack("netherite_sword", 1).as_ref());
@@ -3682,17 +3760,13 @@ pub(crate) mod tests {
                     assert_eq!(menu.slot(0), stack("iron_sword", 1).as_ref());
                     assert_eq!(menu.slot(1), stack("diamond", 5).as_ref());
                     assert_eq!(menu.level_change, 0);
-                    menu.anvil_updated(update, true);
-                    assert_eq!((menu.slot(2), menu.data[0]), (None, 0));
                 }
             }
         });
     }
 
-    /// `AnvilUpdateEvent` on a rename with no right input: asked with the
-    /// text and vanilla's renamed result, which the output and cost start
-    /// at; a mod that only changes the cost keeps vanilla's result, and a
-    /// cancel leaves none.
+    /// `AnvilUpdateEvent` on a rename with no right input: the question
+    /// borrows the text and carries the result that vanilla calculated.
     #[test]
     fn an_anvil_rename_alone_starts_at_vanillas_result() {
         bare_env(|env| {
@@ -3706,32 +3780,14 @@ pub(crate) mod tests {
             let mut menu = renamed();
             let vanilla = (menu.slot(2).cloned(), menu.data[0]);
             assert!(vanilla.0.is_some());
-            let mut update = menu.anvil_update().unwrap();
-            assert_eq!(
-                (update.right.as_ref(), update.name.as_deref()),
-                (None, Some("Edge"))
-            );
-            assert_eq!(
-                (&update.vanilla.output, &update.output),
-                (&vanilla.0, &vanilla.0)
-            );
-            assert_eq!(
-                (update.vanilla.xp_cost, update.xp_cost),
-                (vanilla.1, vanilla.1)
-            );
-            update.xp_cost = 5;
-            menu.anvil_updated(update.clone(), false);
+            let (inputs, mut result) = menu.anvil_update().unwrap();
+            assert_eq!((inputs.right, inputs.name), (None, Some("Edge")));
+            assert_eq!((&result.result, result.cost), (&vanilla.0, vanilla.1));
+            assert!(result.only_renaming);
+            result.cost = 5;
+            menu.anvil_updated(result);
             assert_eq!((menu.slot(2).cloned(), menu.data[0]), (vanilla.0, 5));
-
-            let mut menu = renamed();
-            let mut empty = update.clone();
-            empty.output = None;
-            menu.anvil_updated(empty, false);
-            assert_eq!((menu.slot(2), menu.data[0]), (None, 5));
-
-            let mut menu = renamed();
-            menu.anvil_updated(update, true);
-            assert_eq!((menu.slot(2), menu.data[0]), (None, 0));
+            assert!(menu.anvil.only_renaming);
         });
     }
 
@@ -3772,80 +3828,226 @@ pub(crate) mod tests {
             assert!(menu.rename(env, "Edge"));
             assert_eq!((menu.slot(2).cloned(), menu.data[0]), before);
             assert!(menu.anvil_created(), "createResult ran");
-            let mut update = menu.anvil_update().unwrap();
-            assert_eq!(update.name.as_deref(), Some("Edge"));
-            update.output = stack("golden_sword", 1);
-            menu.anvil_updated(update, false);
+            let (inputs, mut result) = menu.anvil_update().unwrap();
+            assert_eq!(inputs.name, Some("Edge"));
+            result.result = stack("golden_sword", 1);
+            menu.anvil_updated(result);
             assert_eq!(menu.slot(2), stack("golden_sword", 1).as_ref());
         });
     }
 
     /// `GrindstoneEvent`: a placed output with its experience is what the
-    /// take reports; the take's answer sets the inputs and the experience,
-    /// and a cancelled take keeps the inputs and gives nothing.
+    /// take reports; the admitted remainder edits set the inputs after the take.
     #[test]
     fn grindstone_events_set_the_result_the_inputs_and_the_experience() {
         bare_env(|env| {
-            let grindstone = || {
-                let mut menu = Menu::new(Kind::Grindstone);
-                menu.grind_hook = true;
-                menu.set_slot(env, 0, stack("iron_sword", 1));
-                menu.set_slot(env, 1, stack("iron_sword", 1));
-                let mut place = menu.grindstone_place();
-                place.output = stack("stick", 1);
-                place.xp = 5;
-                menu.grindstone_placed(place, false);
-                menu.click(env, 2, 0, Input::Pickup).unwrap();
-                menu
-            };
-            let mut menu = grindstone();
+            let mut menu = Menu::new(Kind::Grindstone);
+            menu.grind_hook = true;
+            menu.set_slot(env, 0, stack("iron_sword", 1));
+            menu.set_slot(env, 1, stack("iron_sword", 1));
+            menu.grindstone_placed(
+                GrindstonePlaceEdits {
+                    output: stack("stick", 1),
+                    xp: 5,
+                },
+                false,
+            );
+            menu.click(env, 2, 0, Input::Pickup).unwrap();
             assert_eq!(menu.carried, stack("stick", 1));
-            let mut take = menu.grind_take.take().unwrap();
+            let take = menu.grind_take.take().unwrap();
             assert_eq!(
                 (&take.top, &take.bottom, take.xp),
                 (&stack("iron_sword", 1), &stack("iron_sword", 1), 5)
             );
             // The inputs wait for the mods.
             assert_eq!(menu.slot(0), stack("iron_sword", 1).as_ref());
-            take.new_top = stack("dirt", 1);
-            assert_eq!(menu.grindstone_taken(env, take.clone(), false), Some(5));
+            let edits = GrindstoneTakeEdits {
+                new_top: stack("dirt", 1),
+                ..GrindstoneTakeEdits::initial(take.xp)
+            };
+            assert_eq!(menu.grindstone_taken(env, &take, edits), Some(5));
             assert_eq!(
                 (menu.slot(0), menu.slot(1)),
                 (stack("dirt", 1).as_ref(), None)
             );
-
-            let mut menu = grindstone();
-            let take = menu.grind_take.take().unwrap();
-            assert_eq!(menu.grindstone_taken(env, take, true), None);
-            assert_eq!(menu.slot(1), stack("iron_sword", 1).as_ref());
             assert_eq!(menu.ground, None);
 
             let mut menu = Menu::new(Kind::Grindstone);
             menu.set_slot(env, 0, stack("iron_sword", 1));
             menu.load_slot(2, stack("golden_sword", 1));
-            let mut place = menu.grindstone_place();
-            assert_eq!(place.vanilla_output, stack("golden_sword", 1));
-            assert_eq!(place.output, None);
-            place.vanilla_output = stack("dirt", 1);
-            menu.grindstone_placed(place, false);
+            assert_eq!(
+                menu.grindstone_place(),
+                [
+                    stack("iron_sword", 1).as_ref(),
+                    None,
+                    stack("golden_sword", 1).as_ref(),
+                ]
+            );
+            menu.grindstone_placed(
+                GrindstonePlaceEdits {
+                    output: None,
+                    xp: 5,
+                },
+                false,
+            );
             assert_eq!(menu.slot(2), stack("golden_sword", 1).as_ref());
+            assert_eq!(menu.state.grind_xp, -1);
 
-            let mut place = menu.grindstone_place();
-            place.vanilla_output = stack("golden_sword", 1);
-            place.output = stack("stick", 1);
-            menu.grindstone_placed(place, false);
+            menu.grindstone_placed(
+                GrindstonePlaceEdits {
+                    output: stack("stick", 1),
+                    xp: 5,
+                },
+                false,
+            );
             assert_eq!(menu.slot(2), stack("stick", 1).as_ref());
-
-            let mut place = menu.grindstone_place();
-            place.vanilla_output = None;
-            menu.grindstone_placed(place, false);
-            assert_eq!(menu.slot(2), stack("stick", 1).as_ref());
+            assert_eq!(menu.state.grind_xp, 5);
 
             // Cancellation wins even when a mod supplies an override.
-            let mut place = menu.grindstone_place();
-            place.output = stack("stick", 1);
-            menu.grindstone_placed(place, true);
+            menu.grindstone_placed(
+                GrindstonePlaceEdits {
+                    output: stack("stick", 1),
+                    xp: 5,
+                },
+                true,
+            );
             assert_eq!(menu.slot(2), None);
+            assert_eq!(menu.state.grind_xp, -1);
+        });
+    }
+
+    #[test]
+    fn anvil_and_grindstone_track_results_yields_per_slot_write() {
+        bare_env(|env| {
+            let enchanted = |count| {
+                let mut s = ItemStack::new("minecraft:stick", count);
+                s.set_crafting_enchantments(vec![("minecraft:sharpness".into(), 1)]);
+                s
+            };
+
+            // QuickCraft drag across slots 0 and 1 yields once per slot write on both menus.
+            for kind in [Kind::Anvil, Kind::Grindstone] {
+                let mut menu = Menu::new(kind);
+                menu.track_results(true);
+                menu.carried = Some(enchanted(2));
+                assert!(
+                    menu.start_click(env, -999, 0, Input::QuickCraft)
+                        .unwrap()
+                        .is_none()
+                );
+                assert!(
+                    menu.start_click(env, 0, 1, Input::QuickCraft)
+                        .unwrap()
+                        .is_none()
+                );
+                assert!(
+                    menu.start_click(env, 1, 1, Input::QuickCraft)
+                        .unwrap()
+                        .is_none()
+                );
+
+                let mut seen = Vec::new();
+                let mut rest = menu.start_click(env, -999, 2, Input::QuickCraft).unwrap();
+                loop {
+                    let made = match kind {
+                        Kind::Anvil => menu.anvil_created(),
+                        Kind::Grindstone => menu.grindstone_created(),
+                        _ => false,
+                    };
+                    if made {
+                        seen.push((menu.slot(0).map(|s| s.count), menu.slot(1).map(|s| s.count)));
+                    }
+                    let Some(step) = rest else {
+                        break;
+                    };
+                    rest = menu.resume_click(env, step);
+                }
+                assert_eq!(
+                    seen,
+                    vec![
+                        (Some(1), None),
+                        (Some(1), None),
+                        (Some(1), Some(1)),
+                        (Some(1), Some(1)),
+                    ]
+                );
+                assert_eq!(menu.carried, None);
+
+                // PickAll uses Slot.safeTake: each emptied slot notifies through
+                // removeItem, twice through setByPlayer, and again through onTake.
+                menu.carried = Some(enchanted(1));
+                let mut pick_seen = Vec::new();
+                let mut rest = menu.start_click(env, 3, 0, Input::PickupAll).unwrap();
+                loop {
+                    let made = match kind {
+                        Kind::Anvil => menu.anvil_created(),
+                        Kind::Grindstone => menu.grindstone_created(),
+                        _ => false,
+                    };
+                    if made {
+                        pick_seen
+                            .push((menu.slot(0).map(|s| s.count), menu.slot(1).map(|s| s.count)));
+                    }
+                    let Some(step) = rest else {
+                        break;
+                    };
+                    rest = menu.resume_click(env, step);
+                }
+                assert_eq!(
+                    pick_seen,
+                    vec![
+                        (None, Some(1)),
+                        (None, Some(1)),
+                        (None, Some(1)),
+                        (None, Some(1)),
+                        (None, None),
+                        (None, None),
+                        (None, None),
+                        (None, None),
+                    ]
+                );
+                assert_eq!(menu.carried.as_ref().map(|s| s.count), Some(3));
+            }
+
+            // A full matching pickup still calls Slot.setChanged even when nothing moves.
+            let mut grind = Menu::new(Kind::Grindstone);
+            grind.set_slot(env, 0, Some(enchanted(64)));
+            let _ = grind.grindstone_created();
+            grind.carried = Some(enchanted(64));
+            grind.click(env, 0, 0, Input::Pickup).unwrap();
+            assert!(grind.grindstone_created());
+            assert_eq!(grind.slot(0).map(|s| s.count), Some(64));
+
+            // QuickMove completes the original destination pass after the top-up,
+            // then delivers the three notifications for setting the empty slot.
+            let mut anvil = Menu::new(Kind::Anvil);
+            anvil.set_slot(env, 0, Some(ItemStack::new("minecraft:stick", 63)));
+            anvil.set_slot(env, 3, Some(ItemStack::new("minecraft:stick", 2)));
+            let _ = anvil.anvil_created();
+            anvil.track_results(true);
+            let mut qm_seen = Vec::new();
+            let mut rest = anvil.start_click(env, 3, 0, Input::QuickMove).unwrap();
+            loop {
+                if anvil.anvil_created() {
+                    qm_seen.push((
+                        anvil.slot(0).map(|s| s.count),
+                        anvil.slot(1).map(|s| s.count),
+                    ));
+                }
+                let Some(step) = rest else {
+                    break;
+                };
+                rest = anvil.resume_click(env, step);
+            }
+            assert_eq!(
+                qm_seen,
+                vec![
+                    (Some(64), None),
+                    (Some(64), Some(1)),
+                    (Some(64), Some(1)),
+                    (Some(64), Some(1)),
+                ]
+            );
         });
     }
 
@@ -4525,8 +4727,8 @@ pub(crate) mod tests {
                 sent: Vec::new(),
                 drag: None,
                 sent_data: Vec::new(),
+                reported_unsent_data_len: None,
                 blockless_data: Vec::new(),
-                hidden: Vec::new(),
                 mod_type,
                 registry_id: registry_id.into(),
                 craft: None,
@@ -4594,8 +4796,8 @@ pub(crate) mod tests {
                 sent: Vec::new(),
                 drag: None,
                 sent_data: Vec::new(),
+                reported_unsent_data_len: None,
                 blockless_data: Vec::new(),
-                hidden: Vec::new(),
                 mod_type: Some(mod_type),
                 registry_id: "test:rules".into(),
                 craft: None,
@@ -4615,11 +4817,14 @@ pub(crate) mod tests {
         std::fs::remove_dir_all(&settings).unwrap();
     }
 
-    /// A cancelled `AnvilCraftEvent.Pre` refuses the take: the result sits in
-    /// its slot, both inputs and the cost are as they were, and neither the
-    /// cursor nor the inventory holds the item (no dupe).
+    /// A deferred anvil take (`anvil_hook = true`): taking slot 2 captures the
+    /// pre-take snapshot in `anvil_craft` and moves the output to the cursor or
+    /// inventory without running `anvil_take`. On a cancelled
+    /// `AnvilCraftEvent.Pre`, skipping `anvil_take` leaves the output with the
+    /// player while inputs, cost and levels remain untouched (matching NeoForge
+    /// `AnvilMenu.onTake` returning early).
     #[test]
-    fn a_cancelled_anvil_craft_leaves_the_menu_as_it_was() {
+    fn a_deferred_anvil_craft_skips_on_take_without_undoing_the_move() {
         let root =
             std::env::temp_dir().join(format!("sunrise-anvil-cancel-{}", std::process::id()));
         std::fs::create_dir_all(root.join("data/minecraft/recipe")).unwrap();
@@ -4670,28 +4875,33 @@ pub(crate) mod tests {
                 menu.slot(1).cloned(),
                 menu.slot(2).cloned(),
             );
-            let undo = menu.anvil_undo();
             menu.click(env, 2, 0, input).unwrap();
             // The take waits for the mods, and the click moved the result.
             let craft = menu.anvil_craft.take().expect("the take is deferred");
+            assert_eq!(craft.left, before.0);
+            assert_eq!(craft.right, before.1);
             assert_eq!(craft.output, before.2.clone().unwrap());
             assert_eq!(menu.slot(2), None);
-            assert_eq!(menu.data[0], 3);
-            menu.anvil_craft = Some(craft);
-            menu.anvil_cancel(undo);
-            assert_eq!(
-                (
-                    menu.slot(0).cloned(),
-                    menu.slot(1).cloned(),
-                    menu.slot(2).cloned()
-                ),
-                before
-            );
+            // Skipping menu.anvil_take (cancelled AnvilCraftEvent.Pre) keeps the
+            // moved result with the player and leaves inputs, cost and levels intact.
+            assert_eq!(menu.slot(0), before.0.as_ref());
+            assert_eq!(menu.slot(1), before.1.as_ref());
             assert_eq!(menu.data[0], 3);
             assert_eq!(menu.level_change, 0);
-            assert_eq!(menu.carried, None);
-            assert!((0..36).all(|i| menu.player_item(i).is_none()));
-            assert!(menu.anvil_craft.is_none() && menu.dropped.is_empty());
+            assert!(!menu.combined);
+            if input == Input::Pickup {
+                assert_eq!(menu.carried, before.2);
+                assert!((0..36).all(|i| menu.player_item(i).is_none()));
+            } else {
+                assert_eq!(menu.carried, None);
+                assert_eq!(
+                    (0..36)
+                        .filter(|&i| menu.player_item(i) == before.2.as_ref())
+                        .count(),
+                    1
+                );
+            }
+            assert!(menu.anvil_craft.is_none());
         }
     }
 
@@ -4964,7 +5174,7 @@ pub(crate) mod tests {
             let mut items = vec![None; 10];
             items[0] = stack("diamond", 1);
             items[1] = stack("oak_log", 1);
-            menu.load_container(env, &items);
+            menu.load_container(env, &items, None);
             assert_eq!(menu.slot(0), stack("oak_planks", 4).as_ref());
             let kept = menu.container_items();
             assert_eq!(kept[0], None);

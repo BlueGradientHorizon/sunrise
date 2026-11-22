@@ -206,12 +206,11 @@ impl ActionHost for GameHost<'_, '_> {
     }
 
     fn defer(&mut self, effect: Effect) {
-        let dim = self.game.dim;
         self.game
             .transactions
             .last_mut()
             .expect("effect needs transaction")
             .after
-            .push((dim, effect));
+            .push(effect);
     }
 }

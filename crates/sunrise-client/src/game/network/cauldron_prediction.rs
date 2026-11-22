@@ -39,7 +39,7 @@ impl Game<'_> {
         let Some(held) = held else {
             return pass();
         };
-        if self.keys.held(Mapping::Sneak) {
+        if self.held_mapping(Mapping::Sneak) {
             return pass();
         }
         let Some((state, underwater)) = self.cauldron_at(pos) else {
