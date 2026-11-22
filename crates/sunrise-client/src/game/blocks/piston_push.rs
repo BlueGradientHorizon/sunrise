@@ -1643,7 +1643,7 @@ impl Game<'_> {
             stand.ground.horizontal_collision =
                 different(wanted.x, moved.x) || different(wanted.z, moved.z);
             if authoritative || wanted.y.abs() > 0.0 {
-                stand.update_retained_ground(
+                let _ = stand.update_retained_ground(
                     &self.world,
                     self.collision,
                     wanted.y < 0.0 && wanted.y != moved.y,

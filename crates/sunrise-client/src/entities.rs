@@ -489,7 +489,7 @@ impl ItemEntity {
         Some(spilled)
     }
     /// The ItemEntity snapshot used by both its move and its noCollision check.
-    fn collision_context(&self) -> sunrise_world::collision_context::CollisionContext<'static> {
+    pub fn collision_context(&self) -> sunrise_world::collision_context::CollisionContext<'static> {
         use sunrise_world::collision_context::{
             CollisionContext, CollisionEntity, EntityContextKind,
         };

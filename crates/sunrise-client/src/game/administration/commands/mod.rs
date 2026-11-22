@@ -1356,7 +1356,7 @@ impl Game<'_> {
             }
             target_entity_mut!(g, t, e => {
                 e.velocity_mut().y = 0.0;
-                if !e.update_retained_ground(&g.world, g.collision, true, None) {
+                if matches!(e.update_retained_ground(&g.world, g.collision, true, None), Ok(false)) {
                     e.set_on_ground(true);
                 }
             });

@@ -171,7 +171,7 @@ mod tests {
         let fence = registry.default_state("minecraft:oak_fence").unwrap();
         game.world.set(8, 63, 8, stone).unwrap();
         game.world.set(8, 64, 8, fence).unwrap();
-        game.mobs[0].update_retained_ground(&game.world, game.collision, true, None);
+        let _ = game.mobs[0].update_retained_ground(&game.world, game.collision, true, None);
         assert_eq!(
             game.breeze_ground(&game.mobs[0]),
             ([8, 64, 8], fence),
@@ -208,7 +208,7 @@ mod tests {
             .default_state("minecraft:stone")
             .unwrap();
         game.world.set(8, 63, 8, stone).unwrap();
-        game.mobs[0].update_retained_ground(&game.world, game.collision, true, None);
+        let _ = game.mobs[0].update_retained_ground(&game.world, game.collision, true, None);
         game.world.random = sunrise_core::random::LevelRandom::for_level(LegacyRandom::new(1234));
         let level = game.world.random.state();
 
@@ -241,7 +241,7 @@ mod tests {
         ] {
             let state = registry.default_state(name).unwrap();
             game.world.set(8, 64, 8, state).unwrap();
-            game.mobs[0].update_retained_ground(&game.world, game.collision, true, None);
+            let _ = game.mobs[0].update_retained_ground(&game.world, game.collision, true, None);
             assert_eq!(
                 game.breeze_ground(&game.mobs[0]),
                 ([8, 64, 8], state),
@@ -253,7 +253,7 @@ mod tests {
         assert_eq!(game.breeze_ground(&game.mobs[0]), ([8, 64, 8], stone));
         // The same breeze on the full block's top reads that block.
         game.mobs[0].position = Vec3::new(8.5, 65.0, 8.5);
-        game.mobs[0].update_retained_ground(&game.world, game.collision, true, None);
+        let _ = game.mobs[0].update_retained_ground(&game.world, game.collision, true, None);
         assert_eq!(game.breeze_ground(&game.mobs[0]), ([8, 64, 8], stone));
     }
 }
