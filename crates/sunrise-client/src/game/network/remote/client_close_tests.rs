@@ -117,8 +117,20 @@ fn server_close_runs_sign_and_inventory_removal_without_echo() {
         "server_close_runs_sign_and_inventory_removal_without_echo",
         || {
             with_client_game(|game| {
+                use sunrise_client::{containers::BlockEntity, signs::SignData};
+
                 let mut reader = logged_in(game);
-                game.open_sign_editor((1, 65, 2), false);
+                game.world
+                    .block_entities
+                    .insert((1, 65, 2), BlockEntity::Sign(SignData::default()));
+                deliver(
+                    game,
+                    C::OpenSignEditor(play::OpenSignEditor {
+                        pos: [1, 65, 2],
+                        front: false,
+                    }),
+                );
+                assert!(game.sign_edit.is_some());
                 game.sign_input(None, Some("unsent"));
                 game.sign_input(Some(winit::keyboard::KeyCode::Enter), None);
                 game.sign_input(None, Some("next line"));
