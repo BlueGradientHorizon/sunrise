@@ -40,7 +40,7 @@ use {
 
 /// GameEvent types (ClientboundGameEventPacket).
 pub mod advancements;
-mod block_changes;
+pub(in crate::lan) mod block_changes;
 mod carried_check;
 pub mod chat;
 mod fake_kicks;
@@ -56,7 +56,7 @@ mod spawn_info;
 mod tracking_pass;
 use advancements::AdvancementOwners;
 use chat::yellow_names;
-pub use pending_move::{Accepted, Hearing, PendingMove};
+pub use pending_move::{Accepted, CommittedMove, Hearing, PendingMove};
 use raw_inbox::{PacketDrain, yield_raw};
 pub mod game_event {
     pub const NO_RESPAWN_BLOCK_AVAILABLE: u8 = 0;
@@ -184,12 +184,8 @@ pub enum HostEvent {
     ),
     /// A changed movement report is held for the game to rule on ([`Hub::resolve_move`]).
     PlayerMove(u32),
-    /// An accepted position started a jump, before later gameplay packets.
-    Jump {
-        conn: u32,
-        from: [f64; 3],
-        yaw: f32,
-    },
+    /// An accepted report whose effects the game completes before the inbox resumes.
+    AcceptedMove(u32, CommittedMove),
     /// A guest's client finished loading the level around them.
     PlayerLoaded(u32),
     /// A guest changed recipe book settings.
@@ -345,6 +341,8 @@ pub struct Hub {
     pending_kicks: Vec<HostEvent>,
     /// A native mod listens to `player_move`: a changed report waits for the game ([`pending_move`]).
     pub moves_listened: bool,
+    /// This hub's game owns the movement effects that need an acting player and a live level.
+    pub dispatch_move_effects: bool,
     /// `[transfer]` on (a dedicated server's `--transfers`): the players a proxy
     /// said would arrive (`player-expect`). None while it is off.
     pub transfers: Option<super::arrivals::Transfers>,
@@ -819,6 +817,7 @@ impl Hub {
             packet_drain: None,
             pending_kicks: Vec::new(),
             moves_listened: false,
+            dispatch_move_effects: false,
             transfers: None,
             native_tracking: Vec::new(),
             players_after_tracking: false,
@@ -2151,6 +2150,9 @@ impl Hub {
         self.guests.update(i, |g| {
             g.teleport_tick = ticks;
             g.held_ticket_chunk = Some(g.ticket_chunk()); // teleport has no move
+            // Entity.teleportSetPosition clears movementThisTick. The body
+            // must not walk or glide along the old path after a teleport.
+            g.moves.clear();
             g.pending_move = None;
             g.on_collider = None;
             g.carry_hint = None;
@@ -2562,6 +2564,7 @@ impl Hub {
                 .any(|g| g.participates_online() && g.dimension == self.config.dimension)
             {
                 let _ = ctx.world.block_log.take();
+                ctx.world.connection_group_log = None;
                 let _ = ctx.world.light_log.take();
                 ctx.world.bulk_log.clear();
             }
@@ -2569,6 +2572,9 @@ impl Hub {
         }
         if ctx.world.block_log.is_none() {
             ctx.world.block_log = Some(Vec::new());
+        }
+        if ctx.world.connection_group_log.is_none() {
+            ctx.world.connection_group_log = Some(Default::default());
         }
         if ctx.world.light_log.is_none() {
             ctx.world.light_log = Some(Default::default());
@@ -2911,20 +2917,37 @@ impl Hub {
                 let size = batch.len();
                 // The single-player window shares the sections it is sent (handoff.rs).
                 let memory = g.address == super::conn::MEMORY_ADDRESS;
+                let sync_groups = g.negotiated_connection_groups();
                 if size > 0 {
                     g.batch_quota -= size as f32;
                     g.send(&C::ChunkBatchStart(sunrise_protocol::packets::Empty));
-                    g.sender.send_many(batch.into_iter().map(|j| {
+                    let grouped = sync_groups
+                        && batch
+                            .iter()
+                            .any(|&j| !chunks[j].connection_groups.is_empty());
+                    let bodies = batch.into_iter().flat_map(|j| {
+                        let chunk = chunks[j];
                         if memory {
-                            super::handoff::offer(chunks[j]);
+                            super::handoff::offer(chunk);
                         }
+                        let groups = if grouped && !chunk.connection_groups.is_empty() {
+                            block_changes::encode_chunk_connection_groups(chunk)
+                        } else {
+                            Vec::new()
+                        };
                         uses[j] -= 1;
-                        if uses[j] == 0 {
+                        let body = if uses[j] == 0 {
                             std::mem::take(&mut encoded[j])
                         } else {
                             encoded[j].clone()
-                        }
-                    }));
+                        };
+                        block_changes::group_bundle(body, groups)
+                    });
+                    if grouped {
+                        g.sender.send_batch(bodies);
+                    } else {
+                        g.sender.send_many(bodies);
+                    }
                     g.send(&C::ChunkBatchFinished(play::ChunkBatchFinished {
                         size: size as i32,
                     }));
@@ -2956,7 +2979,9 @@ impl Hub {
                         seen.iter().map(|&(x, z)| Holder::Chunk([x, z])),
                     );
                 }
-                g.sent_chunks.extend(seen);
+                for key in seen {
+                    g.sent_chunks.insert(key);
+                }
             });
         }
     }
@@ -4071,6 +4096,7 @@ impl Hub {
                         .update(i, |guest| guest.last_action_tick = value);
                 }
             }
+            let event_start = events.len();
             match packet {
                 // hasClientLoaded: these handlers ignore the player's actions until
                 // the client says the level around it is loaded (or 60 ticks pass),
@@ -4395,6 +4421,15 @@ impl Hub {
                 }
                 other => events.push(HostEvent::Packet(conn, Box::new(other))),
             }
+            if events[event_start..]
+                .iter()
+                .any(|event| matches!(event, HostEvent::AcceptedMove(..)))
+            {
+                // Fall and landing can write to the level or move the player again. A
+                // subsequent packet must read those writes, not just the accepted position.
+                events.push(HostEvent::InputCredits(credits));
+                return true;
+            }
         }
         events.push(HostEvent::InputCredits(credits));
         false
@@ -4685,17 +4720,11 @@ impl Hub {
             }
         }
         for pos @ [x, y, z] in positions {
-            let state = ctx.world.block(x, y, z);
-            self.send_to(
-                conn,
-                &C::BlockUpdate(play::BlockUpdate {
-                    pos,
-                    state: state.0 as i32,
-                }),
-            );
+            self.send_authoritative_block(conn, ctx.world, pos);
             let Some(entity) = ctx.world.block_entities.get(&(x, y, z)) else {
                 continue;
             };
+            let state = ctx.world.block(x, y, z);
             let Some(tag) = self.encoder.update_tag((x, y, z), state.0, entity) else {
                 continue;
             };
@@ -5248,6 +5277,7 @@ mod tests {
     mod cave_air_tests;
     mod collision_exclusion_tests;
     mod collision_part_tests;
+    mod connection_group_sync_tests;
     mod displace_tests;
     mod effect_meta_tests;
     mod entity_move_check_tests;

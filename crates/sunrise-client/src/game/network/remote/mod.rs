@@ -372,7 +372,7 @@ pub(super) struct Remote {
     pub(super) hashed_seed: i64,
     /// What chunk packets decode with (the dimension's height and sky, the
     /// biome registry); replaced whenever one of them changes.
-    pub(super) chunk_format: Arc<ChunkFormat>,
+    pub(in crate::game) chunk_format: Arc<ChunkFormat>,
     /// Decodes chunk packets as they arrive, off the frame.
     decoder: ChunkDecoder,
     /// Options.serverRenderDistance: the server's view distance from the
@@ -415,6 +415,7 @@ pub(super) struct Remote {
     /// The ClientInformation last sent (`Options.broadcastOptions` sends it
     /// again when a view distance, Chat, skin or Main Hand option changes).
     sent_info: sunrise_protocol::packets::configuration::ClientInformation,
+    pub(in crate::game) group_count: sunrise_client::chunk_map::ConnectionGroupCount,
     /// BlockStatePredictionHandler: blocks changed ahead of the server (a predicted break),
     /// with what it remembers of each of them. Until the server acknowledges the
     /// sequence its block updates only replace the remembered state; then the block
@@ -605,9 +606,6 @@ pub(super) struct Remote {
     /// the oldest of them first waited (`poll_remote`).
     backlog: VecDeque<Received>,
     backlog_since: Option<Instant>,
-    /// `ClientboundTransferPacket`'s target: when the connection ends the
-    /// game connects here, the stored cookies carried over (`TransferState`).
-    transfer: Option<String>,
     /// `ClientCommonPacketListenerImpl.serverLinks`: the links "Server
     /// Links..." in the pause menu lists (only `http`/`https` URIs kept).
     pub(super) server_links: Vec<sunrise_protocol::packets::configuration::ServerLink>,
@@ -657,6 +655,19 @@ fn number_format(f: &play::NumberFormat) -> sunrise_client::scoreboard::NumberFo
 }
 
 impl Game<'_> {
+    /// One vanilla active cache: `(2 * (max(2, client_view_distance) + 3) + 1)^2` columns
+    /// (`ClientChunkCache.calculateStorageRange`), times the active dimension's sections,
+    /// times 4,096 cells. Viewed levels share that footprint; a legitimate server need not
+    /// group more cells than one full active world.
+    /// The server's view-radius packet and per-view column caps cannot grow the ceiling.
+    pub(in crate::game) fn connection_group_limit(&self) -> usize {
+        self.remote.as_ref().map_or(0, |remote| {
+            let radius = remote.sent_info.view_distance.max(2) as usize + 3;
+            let width = 2 * radius + 1;
+            (width * width).saturating_mul(self.world.shape.section_count() * 4096)
+        })
+    }
+
     // remote_sound_name: remote/sync.rs
 
     /// The hurt sound the hurt player's own client plays from
@@ -988,6 +999,10 @@ impl Game<'_> {
             C::CustomPayload(p) if p.channel == sunrise_protocol::collider_sync::CHANNEL => {
                 self.remote_collider_sync(&p.data);
             }
+            // Per-position connected-texture groups synced for the window's chunks.
+            C::CustomPayload(p) if p.channel == sunrise_protocol::connection_groups::CHANNEL => {
+                self.refuse_play_payload("connection groups: payload outside its bundle")?;
+            }
             // Full-width data slots for the open blockless mod menu.
             C::CustomPayload(p) if p.channel == sunrise_protocol::menu_extra::DATA_CHANNEL => {
                 use sunrise_protocol::menu_extra::{DataSlot, LIVE_DATA_REVISION};
@@ -1021,7 +1036,7 @@ impl Game<'_> {
             }
             // PingDebugMonitor.onPongReceived.
             C::PongResponse(p) => {
-                let delay = self.debug_millis() - p.time;
+                let delay = sunrise_client::net::ping_millis().wrapping_sub(p.time);
                 self.debug_charts.ping.log(delay);
             }
             C::Login(p) => self.apply_login_packet(p),
@@ -1036,11 +1051,13 @@ impl Game<'_> {
             C::LightUpdate(p) => self.remote_light_update(&p),
             C::ChunksBiomes(p) => self.remote_chunks_biomes(&p),
             C::ForgetLevelChunk(p) => self.apply_forget_level_chunk_packet(p),
-            C::BlockUpdate(p) => self.server_block(p.pos, p.state),
+            C::BlockUpdate(p) => self.server_block(p.pos, p.state, None),
             C::AddTransientBlock(p) => self.add_transient_block(p.pos, p.state),
             C::BlockDestruction(p) => self.apply_block_destruction_packet(p),
-            C::SectionBlocksUpdate(p) => self.apply_section_blocks_update_packet(p),
-            C::BlockChangedAck(p) => self.end_predictions(p.sequence),
+            C::SectionBlocksUpdate(p) => {
+                self.apply_section_blocks_update_packet(&p, Default::default())
+            }
+            C::BlockChangedAck(p) => self.end_predictions(p.sequence)?,
             C::BlockEvent(p) => self.apply_block_event_packet(p)?,
             // ClientLevel.levelEvent: LevelEventHandler, as this client's own
             // level plays them (particles and sounds: a spawner's burst, bone
@@ -2217,6 +2234,9 @@ pub(crate) mod tests {
     mod chat_window_and_input_tests {
         include!("chat_window_and_input_tests.rs");
     }
+    mod play_bundle_tests {
+        include!("play_bundle_tests.rs");
+    }
     mod chunk_storage_tests {
         include!("chunk_storage_tests.rs");
     }
@@ -2422,15 +2442,39 @@ pub(crate) mod tests {
         sunrise_protocol::connection::ConnReader,
         sunrise_protocol::connection::ConnWriter,
     ) {
-        use super::super::execution_role::ExecutionRole;
-        use sunrise_protocol::{
-            connection::{Connection, Pipe},
-            packets::{Empty, configuration as cfg, login},
-        };
-        game.options.execution_role = ExecutionRole::Client;
+        connect_play_test(game, |_, _| {})
+    }
+
+    fn connect_play_test(
+        game: &mut super::Game<'_>,
+        configure: impl FnOnce(
+            &mut sunrise_protocol::connection::ConnReader,
+            &mut sunrise_protocol::connection::ConnWriter,
+        ),
+    ) -> (
+        sunrise_protocol::connection::ConnReader,
+        sunrise_protocol::connection::ConnWriter,
+    ) {
+        use sunrise_protocol::connection::{Connection, Pipe};
+        game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
         let (client, server) = Pipe::pair();
         game.connect_local(client, "MenuReadTest").unwrap();
-        let (mut reader, mut writer) = Connection::local(server).split();
+        finish_play_test(game, Connection::local(server), configure)
+    }
+
+    fn finish_play_test(
+        game: &mut super::Game<'_>,
+        server: sunrise_protocol::connection::Connection,
+        configure: impl FnOnce(
+            &mut sunrise_protocol::connection::ConnReader,
+            &mut sunrise_protocol::connection::ConnWriter,
+        ),
+    ) -> (
+        sunrise_protocol::connection::ConnReader,
+        sunrise_protocol::connection::ConnWriter,
+    ) {
+        use sunrise_protocol::packets::{Empty, configuration as cfg, login};
+        let (mut reader, mut writer) = server.split();
         reader
             .set_read_timeout(Some(std::time::Duration::from_secs(5)))
             .unwrap();
@@ -2456,9 +2500,11 @@ pub(crate) mod tests {
         ));
         reader.recv().unwrap();
         reader.recv().unwrap();
+        configure(&mut reader, &mut writer);
         writer
             .send(&cfg::Clientbound::FinishConfiguration(Empty).encode())
             .unwrap();
+        game.acknowledge_test_configuration();
         let (id, body) = reader.recv().unwrap();
         assert!(matches!(
             cfg::Serverbound::decode(id, &body).unwrap(),

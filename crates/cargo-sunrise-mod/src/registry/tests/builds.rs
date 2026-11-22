@@ -181,7 +181,7 @@ fn signed_build_appends_to_the_source_and_supplies_exact_fit_on_its_own_sdk() {
     assert!(verdict.targets.is_empty());
     release.use_descriptor("valid");
     release.check().unwrap();
-    let with = release.build();
+    let mut with = release.build();
     let version = &with.project(ID).unwrap().versions[0];
     assert_eq!(&version.file, &source.file);
     assert!(matches!(
@@ -198,6 +198,21 @@ fn signed_build_appends_to_the_source_and_supplies_exact_fit_on_its_own_sdk() {
     assert_eq!(
         version.native_binaries,
         fixture.project(ID).unwrap().versions[0].native_binaries
+    );
+
+    let version = &mut with
+        .projects
+        .iter_mut()
+        .find(|p| p.id == ID)
+        .unwrap()
+        .versions[0];
+    version.verdicts.get_mut(BUILD_TAG).unwrap().fit = FitVerdict::Rebuild {
+        review: vec!["game::tick".into()],
+    };
+    let error = super::super::fit::check_binaries(&with).unwrap_err();
+    assert!(
+        error.contains("source does not fit: function bodies changed: game::tick"),
+        "{error}"
     );
 }
 

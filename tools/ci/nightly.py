@@ -2,12 +2,12 @@
 """The Nightly, the only build Sunrise ships (.github/workflows/nightly-build.yml, docs/release-flow.md "Nightly").
 
     nightly.py pick [--force]      which commit tonight's nightly builds: GitHub outputs and nightly-notes.md
-    nightly.py pick --kind snapshot   a snapshot of NIGHTLY_BASE (default main's head), a commit of main
-                                   with the gate green: built alone, published as snapshot-<date>-<short>
+    nightly.py pick --kind dev     builds NIGHTLY_BASE (default main's head), a commit of main with the gate green,
+                                   and publishes it as dev-<date>-<short>
     nightly.py rotate              renames the current `nightly` pre-release to nightly-<its date>, frees the tag
     nightly.py prune [--days 7]    deletes the nightly-<date> pre-releases and tags older than that, nothing else
-    nightly.py prune-snapshots [--days 7]   deletes the snapshot-<date>-<short> pre-releases older than that, but
-                                   the newest; never an sdk-<sha> SDK (snapshots and nightlies reference those)
+    nightly.py prune-dev [--days 7] deletes dev-<date>-<short> pre-releases older than that, except the newest;
+                                   never an sdk-<sha> SDK (Dev builds and Nightlies reference those)
     nightly.py prune-builds [--days 7]   deletes the nightly/build-<date>-<n> branches older than that, but the
                                    newest and any a published nightly points to (Ludovic, 2026-10-27)
     nightly.py keep-source <sha> <date>  tags the nightly's commit nightly-source/<date>-<short>, for good
@@ -572,30 +572,32 @@ def pick(force: bool) -> None:
     build_set(main, prs, left_out, today, force, dry_run)
 
 
-def pick_snapshot() -> None:
-    """A snapshot (release.yml kind snapshot, docs/release-flow.md "Snapshot"): a commit of main whose gate passed
-    (checked again here, so a hand dispatch can't skip it), with its SDK published, built alone: no picked pull
-    requests, no build branch, no nightly-state record, no daily cap. Unchanged since the same day's snapshot of the
-    same commit, it is skipped (a tag is never replaced). It is published as snapshot-<date>-<short>, its own tag and version."""
-    require_ref("snapshot")
+def pick_dev() -> None:
+    """A Dev build (release.yml kind dev, docs/release-flow.md "Dev"): a commit of main that recognizes the Dev
+    version prefix, passed the gate and has a published SDK. It builds alone: no picks, build branch, nightly-state
+    record or daily cap. If dev-<date>-<short> already has a release, skip it (a tag is never replaced)."""
+    require_ref("dev")
     git("fetch", "--quiet", "origin", "+refs/heads/main:refs/remotes/origin/main")
     repo, dry_run = os.environ.get("GITHUB_REPOSITORY", ""), os.environ.get("DRY_RUN") == "true"
-    sha = train.channel_head("snapshot", os.environ.get("NIGHTLY_BASE", "").strip())
+    sha = train.channel_head("dev", os.environ.get("NIGHTLY_BASE", "").strip())
     sdk = repo != "sunrise-org/sunrise" or sdk_ready(sha)
     if not sdk:
         if not dry_run:
-            stop(repo, "", f"the snapshot stopped: {sha} has no complete published SDK (release.yml publishes it first).")
-        print(f"::warning::{sha} has no published SDK yet: a real snapshot publishes sdk-{sha} first; this dry run "
+            stop(repo, "", f"the Dev build stopped: {sha} has no complete published SDK "
+                 "(release.yml publishes it first).")
+        print(f"::warning::{sha} has no published SDK yet: a real Dev build publishes sdk-{sha} first; this dry run "
               "carries no sdk.json")
     today = dt.datetime.now(dt.timezone.utc).date().isoformat()
-    tag = train.build_tag("snapshot", today, sha)
-    # A tag is never replaced: the same day's snapshot of the same commit is that build already (a dry run builds).
+    tag = train.build_tag("dev", today, sha)
+    # A tag is never replaced: skip a published build of the same commit on the same day (a dry run still builds).
     build = dry_run or not gh("release", "view", tag, "--json", "tagName", check=False)
     with open("nightly-notes.md", "w") as f:
-        f.write(f"Snapshot {today} · {sha[:7]}: main at {sha}, built to test it after merge. Not a Nightly: no "
-                "launcher offers or updates to it; a developer installs it with "
-                f"`sunrise-launcher install {tag}`. Its SDK is the release sdk-{sha}.\n\n{MUSL_NOTE}\n\n{train.DISCLAIMER}\n")
-    output(build=str(build).lower(), sha=sha, short=sha[:7], source="main", date=today, version=f"snapshot-{today}",
+        f.write(f"Dev {today} · {sha[:7]}: main at {sha}, built to test it after merge.\n\n"
+                "Starting with Sunrise Launcher 1.1.3, install Dev builds by exact tag "
+                f"(`sunrise-launcher install {tag}`); until then, download and verify the release assets by hand. "
+                f"Run `sunrise-release-sign verify --tag {tag} --signature SHA256SUMS.v2.sig <folder>`. "
+                f"The matching SDK is `sdk-{sha}`.\n\n{MUSL_NOTE}\n\n{train.DISCLAIMER}\n")
+    output(build=str(build).lower(), sha=sha, short=sha[:7], source="main", date=today, version=f"dev-{today}",
            nightly=f"{today} {sha[:7]}", source_tag="", tag=tag, sdk=str(sdk).lower())
     print(f"{'build' if build else f'skip ({tag} is already published)'}: {tag} {sha}")
 
@@ -791,7 +793,7 @@ def break_glass_notes(notes: Path) -> None:
 
 # The build-data header shared with sunrise_mod_surface::build_data.
 BUILD_DATA_SCHEMA = 1
-MixinFingerprints = dict[str, tuple[str, str]]
+MixinFingerprints = dict[str, tuple[str, str, tuple[str, str] | None]]
 
 
 def stable_sdk_inputs(sha: str, surface: Path | None) -> tuple[str, MixinFingerprints]:
@@ -832,7 +834,13 @@ def stable_sdk_inputs(sha: str, surface: Path | None) -> tuple[str, MixinFingerp
             signature, source = record["signature_hash"], record["sha256"]
             if not isinstance(signature, str) or not isinstance(source, str):
                 raise ValueError(f"functions.json: {name} has invalid fingerprints")
-            functions[name] = signature, source
+            # Builds from before the split digests carry none.
+            digests = record.get("digests")
+            if digests is not None:
+                digests = digests["declaration"], digests["body"]
+                if not all(isinstance(digest, str) for digest in digests):
+                    raise ValueError(f"functions.json: {name} has invalid digests")
+            functions[name] = signature, source, digests
     except (KeyError, TypeError, ValueError, tarfile.TarError) as error:
         raise SystemExit(f"sdk-{sha}: cannot read stable comparison inputs: {error}")
     if surface is not None:
@@ -841,14 +849,19 @@ def stable_sdk_inputs(sha: str, surface: Path | None) -> tuple[str, MixinFingerp
 
 
 def append_mixin_notes(notes: Path, tag: str, previous: str, old: MixinFingerprints, new: MixinFingerprints) -> None:
-    """Compare the signature and source hashes the native fit reader uses, not lookup metadata."""
+    """Compare the hashes the native fit reader uses, not lookup metadata: the signature and source
+    hashes, and the declaration and body digests where both builds carry them."""
+    def changed(old: tuple, new: tuple) -> bool:
+        split = old[2] is not None and new[2] is not None and old[2] != new[2]
+        return old[:2] != new[:2] or split
+
     changes = []
     for name in sorted(old.keys() | new.keys()):
         if name not in old:
             changes.append(f"- Added: `{name}`\n")
         elif name not in new:
             changes.append(f"- Removed: `{name}`\n")
-        elif old[name] != new[name]:
+        elif changed(old[name], new[name]):
             changes.append(f"- Changed: `{name}`\n")
     intro = f"\n### Changed mixin targets\n\nCompared with `{previous}`:\n\n"
     section = "".join(changes) or "No mixin targets changed.\n"
@@ -1133,24 +1146,24 @@ def prune(days: int) -> None:
         print(f"deleted {tag}")
 
 
-SNAPSHOT = re.compile(r"^snapshot-(\d{4}-\d{2}-\d{2})-[0-9a-f]{7,40}$")
+DEV = re.compile(r"^dev-(\d{4}-\d{2}-\d{2})-[0-9a-f]{7,40}$")
 
 
-def stale_snapshots(tags: list[dict], today: dt.date, days: int) -> list[str]:
-    """The snapshot pre-releases older than `days`, never the newest one, never anything not named
-    snapshot-<date>-<short> (an sdk-<sha> SDK above all)."""
-    snapshots = [r["tagName"] for r in tags if r["isPrerelease"] and SNAPSHOT.match(r["tagName"])]
-    if not snapshots:
+def stale_dev_builds(tags: list[dict], today: dt.date, days: int) -> list[str]:
+    """The Dev pre-releases older than `days`, never the newest one, never anything not named
+    dev-<date>-<short> (an sdk-<sha> SDK above all)."""
+    dev_builds = [r["tagName"] for r in tags if r["isPrerelease"] and DEV.match(r["tagName"])]
+    if not dev_builds:
         return []
-    newest = max(snapshots, key=lambda tag: SNAPSHOT.match(tag).group(1))
+    newest = max(dev_builds, key=lambda tag: DEV.match(tag).group(1))
     cutoff = today - dt.timedelta(days=days)
-    return [tag for tag in snapshots
-            if tag != newest and dt.date.fromisoformat(SNAPSHOT.match(tag).group(1)) < cutoff]
+    return [tag for tag in dev_builds
+            if tag != newest and dt.date.fromisoformat(DEV.match(tag).group(1)) < cutoff]
 
 
-def prune_snapshots(days: int) -> None:
+def prune_dev(days: int) -> None:
     tags = json.loads(gh("release", "list", "--limit", "200", "--json", "tagName,isPrerelease"))
-    for tag in stale_snapshots(tags, dt.datetime.now(dt.timezone.utc).date(), days):
+    for tag in stale_dev_builds(tags, dt.datetime.now(dt.timezone.utc).date(), days):
         gh("release", "delete", tag, "--cleanup-tag", "--yes")
         print(f"deleted {tag}")
 
@@ -1316,7 +1329,7 @@ def main() -> None:
     sub = ap.add_subparsers(dest="cmd", required=True)
     picker = sub.add_parser("pick")
     picker.add_argument("--force", action="store_true")
-    picker.add_argument("--kind", choices=["nightly", "snapshot", "stable"], default="nightly")
+    picker.add_argument("--kind", choices=["nightly", "dev", "stable"], default="nightly")
     sub.add_parser("rotate")
     sub.add_parser("require-sdk").add_argument("sha")
     reserve = sub.add_parser("reserve-stable-tag")
@@ -1344,13 +1357,13 @@ def main() -> None:
     stable_api.add_argument("tag")
     stable_api.add_argument("notes", type=Path)
     sub.add_parser("prune").add_argument("--days", type=int, default=7)
-    sub.add_parser("prune-snapshots").add_argument("--days", type=int, default=7)
+    sub.add_parser("prune-dev").add_argument("--days", type=int, default=7)
     sub.add_parser("prune-builds").add_argument("--days", type=int, default=7)
     keep = sub.add_parser("keep-source")
     keep.add_argument("sha")
     keep.add_argument("date")
     musl = sub.add_parser("report-musl-failure")
-    musl.add_argument("kind", choices=["nightly", "snapshot", "stable"])
+    musl.add_argument("kind", choices=["nightly", "dev", "stable"])
     musl.add_argument("step", choices=["build", "sign", "verify", "attach", "sign or attach"])
     identity = sub.add_parser("release-identity")
     identity.add_argument("tag")
@@ -1363,8 +1376,8 @@ def main() -> None:
     attaching.add_argument("files", type=Path, nargs="+")
     args = ap.parse_args()
     if args.cmd == "pick":
-        if args.kind == "snapshot":
-            pick_snapshot()
+        if args.kind == "dev":
+            pick_dev()
         elif args.kind == "stable":
             pick_stable()
         else:
@@ -1397,8 +1410,8 @@ def main() -> None:
         rotate()
     elif args.cmd == "prune-builds":
         prune_builds(args.days)
-    elif args.cmd == "prune-snapshots":
-        prune_snapshots(args.days)
+    elif args.cmd == "prune-dev":
+        prune_dev(args.days)
     elif args.cmd == "keep-source":
         keep_source(args.sha, args.date)
     elif args.cmd == "report-musl-failure":

@@ -30,6 +30,36 @@ The selection affects the third-person avatar and its skin layers, first-person
 arms, and inventory and creative previews. It does not change the cape, tab
 list, or anyone else's view.
 
+To animate the avatar's arm separately from the item, use `RenderHandEvent`'s
+`HandDrawContext`. It starts in first-person view space under the hand sway,
+before the normal equip and swing transforms. `MainHand` here selects a
+physical arm; the callback's `Hand` selects a logical slot.
+
+```rust,ignore
+fn render_hand(&self, host: &dyn ClientHost, event: &mut RenderHandEvent<'_, '_>) -> Flow {
+    if event.render.hand != Hand::Main {
+        return Flow::Continue;
+    }
+    let side = if host.gui_options().main_hand_left { MainHand::Left } else { MainHand::Right };
+    let draw = &mut *event.draw;
+    draw.push();
+    draw.translate([0.3, -0.5, -0.7]);
+    draw.render_arm(side);
+    draw.pop();
+    if let Some(stack) = event.render.stack {
+        draw.push();
+        draw.translate([0.2, -0.3, -0.7]);
+        draw.item(stack, ItemDisplayContext::Fixed, None, 0);
+        draw.pop();
+    }
+    Flow::Cancel // replace this hand's default; Continue would add to it
+}
+```
+
+The arm uses the frame's selected skin and width, that side's sleeve setting,
+and the draw context's fixed light. Explicit draws do not fire `render_arm`.
+Cancelling defaults leaves these draws and the other hand intact.
+
 ## Third-person held items
 
 Attach an `ItemPart` with `Registrar::item_part` (or `item_part_tag`) to tint an
@@ -82,7 +112,8 @@ event.extensions.client_item_extensions(item, Arc::new(ChestLayers {
 
 Trees are API-owned `ModelPart` trees, built directly or baked from a
 `LayerDefinition`. Register them once per resource load, never during a frame.
-Model names belong to the registering mod's namespace. Duplicate model names,
+Model names belong to a namespace owned by the registering mod (its manifest
+namespaces or a content package it serves via `served_by`). Duplicate model names,
 non-finite geometry or poses, an unknown texture, an unknown item and two
 providers for one item refuse the resource-load registration by name. A duplicate
 item diagnostic names both providers. Disabling the owning mod stops its Part.

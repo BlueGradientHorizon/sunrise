@@ -5,7 +5,8 @@
 use super::Game;
 use sunrise_core::bounding_box::BoundingBox;
 
-pub(super) use sunrise_gameplay::test_entities::{Aabb, aabb_of, inflate, intersects, standing};
+pub(super) use sunrise_gameplay::test_entities::{Aabb, intersects, standing};
+pub use sunrise_gameplay::test_entities::{aabb_of, inflate};
 
 impl Game<'_> {
     /// `level.getEntitiesOfClass(Entity.class, bounds, mob -> !(mob instanceof
@@ -77,12 +78,5 @@ impl Game<'_> {
         let (z0, z1) = (area.min[2] >> 4, area.max[2] >> 4);
         self.streaming
             .set_forced_area((x0, z0), (x1, z1), true, |_, _, _| {});
-    }
-
-    /// `GameTestRunner`: every forced chunk of the level is released when a
-    /// batch is done or a failure halts the run.
-    pub(super) fn release_forced_chunks(&mut self) {
-        self.streaming.clear_forced();
-        self.levels.release_parked_forced_chunks();
     }
 }

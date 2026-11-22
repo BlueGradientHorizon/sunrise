@@ -1,6 +1,6 @@
 name: nightly build
-# A snapshot's run is named `snapshot build <commit>`: release_train.nightly_building tells the kinds apart by it.
-run-name: ${{ inputs.kind == 'snapshot' && format('snapshot build {0}', inputs.base) || inputs.kind == 'stable' && format('stable build {0}', inputs.base || github.ref_name) || format('nightly build{0}', inputs.request && format(' (request {0})', inputs.request) || '') }}
+# A Dev run is named `dev build <commit>`: release_train.nightly_building tells the kinds apart by it.
+run-name: ${{ inputs.kind == 'dev' && format('dev build {0}', inputs.base) || inputs.kind == 'stable' && format('stable build {0}', inputs.base || github.ref_name) || format('nightly build{0}', inputs.request && format(' (request {0})', inputs.request) || '') }}
 # The Nightly, the only build Sunrise ships since 2026-10-28 (docs/release-flow.md "Nightly"; Ludovic). When the batch
 # train decides (release.yml, with the commit as `base`; the daily run calls it when every leg is green), and when a
 # trusted reviewer asks (`/nightly 2640 2642`, nightly-command.yml), it builds main plus the pull requests the
@@ -36,11 +36,11 @@ run-name: ${{ inputs.kind == 'snapshot' && format('snapshot build {0}', inputs.b
 # Dry picks use only nightly/dry-run-<run>-<attempt>, removed by always-run cleanup; nightly-state and real build
 # numbering/quota stay untouched, including on a failed build. A hard-killed cleanup may leave only that isolated ref.
 # By dispatch only: the daily run starts it through release.yml when every leg is green (CI tiers, owner 2026-11-13).
-# kind=snapshot (release.yml kind snapshot, after it published the commit's SDK): the same build and signing for one
+# kind=dev (release.yml kind dev, after it published the commit's SDK): the same build and signing for one
 # commit of main with the gate green, alone (no picks, no build branch, no nightly-state, no daily cap, no
-# release-blocker hold), signed for the `snapshot` channel and its version, and published as the pre-release
-# snapshot-<date>-<short> ("Snapshot <date> · <short>"); never the `nightly` tag, its rotation or nightly-source tags.
-# The newest snapshot, and every snapshot of the last 7 days, stay (nightly.py prune-snapshots).
+# release-blocker hold), signed for the `dev` channel and its version, and published as the pre-release
+# dev-<date>-<short> ("Dev <date> · <short>"); never the `nightly` tag, its rotation or nightly-source tags.
+# The newest Dev build and all Dev builds from the last 7 days stay (nightly.py prune-dev).
 # kind=stable on release/26.3 publishes the full release 26.3-<semver>; only main and the two branches publish (docs/release-flow.md "Release branches").
 # With `break_glass` (why), a stable patch release ships on the daily legs its changes select instead of the full daily,
 # once the people of both break-glass environments approved; the full daily runs on it after publishing
@@ -50,10 +50,10 @@ on:
     inputs:
       kind:
         description: >-
-          nightly (the `nightly` channel), snapshot (a commit of main, its own tag; release.yml starts it) or stable
+          nightly (the `nightly` channel), dev (a commit of main, its own tag; release.yml starts it) or stable
           (release/26.3's head, published as 26.3-<semver>)
         type: choice
-        options: [nightly, snapshot, stable]
+        options: [nightly, dev, stable]
         default: nightly
       force:
         description: Build and publish even if tonight's pick is the commit already published
@@ -106,9 +106,9 @@ permissions:
 concurrency:
   # One build at a time. A newer request replaces one still waiting: it builds the set as it is by then, so no pick
   # is lost.
-  # Snapshots have groups of their own (real and dry apart), so one never replaces a waiting Nightly.
+  # Dev builds have groups of their own (real and dry apart), so one never replaces a waiting Nightly.
   # A stable release has groups of its own too.
-  group: ${{ inputs.kind == 'snapshot' && format('snapshot-build{0}', inputs.dry_run && '-dry-run' || '') || inputs.kind == 'stable' && format('stable-build{0}', inputs.dry_run && '-dry-run' || '') || 'nightly-build' }}
+  group: ${{ inputs.kind == 'dev' && format('dev-build{0}', inputs.dry_run && '-dry-run' || '') || inputs.kind == 'stable' && format('stable-build{0}', inputs.dry_run && '-dry-run' || '') || 'nightly-build' }}
   cancel-in-progress: false
 jobs:
   pick:
@@ -406,7 +406,7 @@ jobs:
           RELEASE_SIGNING_KEY: ${{ needs.pick.outputs.publish == 'true' && secrets.RELEASE_SIGNING_KEY || '' }}
           RELEASE_SIGNING_KEY_NEXT: ${{ needs.pick.outputs.publish == 'true' && secrets.RELEASE_SIGNING_KEY_NEXT || '' }}
           EPHEMERAL: ${{ needs.pick.outputs.publish != 'true' && 'yes' || '' }}
-          # The channel (nightly or snapshot) and the build's version on it: sign_release.sh refuses a mismatch.
+          # The channel (nightly or dev) and the build's version on it: sign_release.sh refuses a mismatch.
           KIND: ${{ inputs.kind }}
           # A stable release signs both files for its own tag (horizon release 26.3-0.1.0), as signed_digest checks.
           SIGN_FOR: ${{ inputs.kind == 'stable' && needs.pick.outputs.tag || inputs.kind }}
@@ -418,7 +418,7 @@ jobs:
           macos=()
           for archive in dist/sunrise-macos-arm64.zip dist/sunrise-macos-x64.zip; do
             if [[ -f "$archive" ]]; then macos+=("$archive")
-            elif [[ "$GITHUB_REPOSITORY" == sunrise-org/sunrise || ( "$KIND" == snapshot && "$archive" == dist/sunrise-macos-x64.zip ) ]]; then
+            elif [[ "$GITHUB_REPOSITORY" == sunrise-org/sunrise || ( "$KIND" == dev && "$archive" == dist/sunrise-macos-x64.zip ) ]]; then
               echo "::warning::$archive is missing: SHA256SUMS goes out without it"
             else echo "::error::Required archive $archive is missing"; exit 1; fi
           done
@@ -485,8 +485,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           DRY_RUN: ${{ needs.pick.outputs.dry_run }}
-          # A release-blocker holds the Nightly and the release players get, not a snapshot built to test main.
-          BLOCKERS: ${{ inputs.kind != 'snapshot' && 'yes' || '' }}
+          # A release-blocker holds the Nightly and the release players get, not a Dev build.
+          BLOCKERS: ${{ inputs.kind != 'dev' && 'yes' || '' }}
         run: |
           if ! python3 tools/release_train.py gate --kind game --smoke dist/smoke-test.json ${BLOCKERS:+--blockers}; then
             # The fork uses a dry run as release-readiness evidence: a missing/failed smoke
@@ -548,8 +548,8 @@ jobs:
             dist/SHA256SUMS "${signature[@]}" dist/smoke-test.json
           python3 tools/ci/nightly.py keep-source "$SHA" "$DATE"
           python3 tools/ci/nightly.py prune --days 7
-      - name: Publish as the snapshot-<date>-<short> pre-release
-        if: needs.pick.outputs.publish == 'true' && inputs.kind == 'snapshot'
+      - name: Publish as the dev-<date>-<short> pre-release
+        if: needs.pick.outputs.publish == 'true' && inputs.kind == 'dev'
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ needs.pick.outputs.sha }}
@@ -560,7 +560,7 @@ jobs:
           set -euo pipefail
           python3 tools/ci/nightly.py require-sdk "$SHA"
           # The title is what launchers parse (strictly) into the version SHA256SUMS.v2.sig is signed for: the tag.
-          [[ "${SHA:0:7}" == "$SHORT" && "$TAG" == "snapshot-$DATE-$SHORT" ]] || { echo "::error::the build's commit isn't the one signed"; exit 1; }
+          [[ "${SHA:0:7}" == "$SHORT" && "$TAG" == "dev-$DATE-$SHORT" ]] || { echo "::error::the build's commit isn't the one signed"; exit 1; }
           # Archive presence records what was actually built, not an unsupported platform promise.
           printf '\n## Platform build results\n\n' >> dist/nightly-notes.md
           for archive in sunrise-linux-x86_64.tar.gz sunrise-server-linux-x86_64.tar.gz sunrise-windows-x64.zip \
@@ -575,9 +575,9 @@ jobs:
           files=(); while read -r _ name; do files+=("dist/${name#\*}"); done < dist/SHA256SUMS
           # A pre-release, never GitHub's latest, under its own tag: no launcher lists or updates to it.
           gh release create "$TAG" --prerelease --latest=false --target "$SHA" \
-            --title "Snapshot $DATE · $SHORT" --notes-file dist/nightly-notes.md \
+            --title "Dev $DATE · $SHORT" --notes-file dist/nightly-notes.md \
             "${files[@]}" dist/SHA256SUMS dist/SHA256SUMS.sig dist/SHA256SUMS.v2.sig dist/smoke-test.json
-          python3 tools/ci/nightly.py prune-snapshots --days 7
+          python3 tools/ci/nightly.py prune-dev --days 7
       - name: Check stable mod API compatibility and list changed mixin targets
         # Run before tag reservation, including publish-only retries and dry runs.
         if: inputs.kind == 'stable' && github.repository == 'sunrise-org/sunrise'

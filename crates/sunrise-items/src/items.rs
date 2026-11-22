@@ -1045,11 +1045,13 @@ impl Items {
         let mut items = Self::catalog_items(root, overlay, defaults, |items| {
             items.load_resource_registries(root, overlay, defaults)
         })?;
+        items.load_table_loot(root, overlay, defaults)?;
         ingredient_defaults::load_component_damage_registry(root, overlay, &mut items)?;
         Ok(items)
     }
-    /// Build a standalone catalog against the owning world's already loaded
-    /// damage registry. Reloading recipes must not decode new damage definitions.
+    /// Build the item catalog for recipe sync against the world's loaded damage
+    /// registry. The world loads loot separately; loading it here would reopen
+    /// damage definitions instead of respecting the frozen registry on reload.
     pub fn catalog_with_damage_registry(
         root: &Path,
         overlay: &PackOverlay,
@@ -1058,6 +1060,7 @@ impl Items {
         load_registries: impl FnOnce(&mut Self) -> Result<()>,
     ) -> Result<Self> {
         let mut items = Self::catalog_items(root, overlay, defaults, load_registries)?;
+        items.component_defaults = ingredient_defaults::component_defaults(defaults)?;
         Arc::make_mut(&mut items.component_registry)
             .by_registry
             .insert("minecraft:damage_type".into(), damage);
@@ -1077,7 +1080,6 @@ impl Items {
             })?;
         load_registries(&mut items)?;
         items.block_items = Arc::new(block_items);
-        items.load_table_loot(root, overlay, defaults)?;
         Ok(items)
     }
 
