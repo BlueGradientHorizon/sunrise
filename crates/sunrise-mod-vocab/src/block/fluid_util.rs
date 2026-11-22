@@ -362,7 +362,7 @@ fn move_first(
                 | TransactionError::CommitRefused),
             ) => {
                 log::warn!(
-                    "Fluid transfer from {} to {}: {error}",
+                    "Fluid transfer from {} to {}: {error:?}",
                     from.owner(),
                     to.owner()
                 );

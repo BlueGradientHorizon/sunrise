@@ -292,7 +292,7 @@ impl<R> Capability<dyn ResourceHandler<R>> {
                     | TransactionError::Unavailable
                     | TransactionError::CommitRefused => {
                         let owner = self.owner.unwrap_or("the game");
-                        log::warn!("Resource handler from {owner}: {operation}: {error}");
+                        log::warn!("Resource handler from {owner}: {operation}: {error:?}");
                     }
                     TransactionError::Aborted(over) if over.owner.is_none() => {
                         crate::block::item_place::warn_broken(self.owner, &operation);
