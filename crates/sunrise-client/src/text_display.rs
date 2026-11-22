@@ -94,7 +94,10 @@ fn joml_slerp(from: [f32; 4], to: [f32; 4], alpha: f32) -> [f32; 4] {
 }
 
 /// `org.joml.Matrix4f.mulAffine(Matrix4fc, Matrix4f)` in JOML's unfused order.
-fn joml_mul_affine(a: &crate::camera::joml::Mat4, b: &crate::camera::joml::Mat4) -> glam::Mat4 {
+fn joml_mul_affine(
+    a: &crate::camera::joml::Mat4,
+    b: &crate::camera::joml::Mat4,
+) -> crate::camera::joml::Mat4 {
     let g = |m: &crate::camera::joml::Mat4, c: usize, r: usize| m.m[c * 4 + r];
     let mut out = [0.0f32; 16];
     for col in 0..3 {
@@ -108,12 +111,17 @@ fn joml_mul_affine(a: &crate::camera::joml::Mat4, b: &crate::camera::joml::Mat4)
             + (g(a, 1, row) * g(b, 3, 1) + (g(a, 2, row) * g(b, 3, 2) + g(a, 3, row)));
     }
     out[15] = 1.0;
-    glam::Mat4::from_cols_array(&out)
+    crate::camera::joml::Mat4::affine(glam::Mat4::from_cols_array(&out))
 }
 
 impl TextDisplayData {
-    /// DisplayRenderer's billboard orientation followed by Transformation's T*L*S*R.
-    pub fn matrix(&self, entity: [f32; 2], camera: [f32; 2]) -> glam::Mat4 {
+    /// DisplayRenderer's camera-relative pose: translate, billboard orientation, then T*L*S*R.
+    pub fn pose(
+        &self,
+        offset: [f32; 3],
+        entity: [f32; 2],
+        camera: [f32; 2],
+    ) -> crate::camera::joml::Mat4 {
         use crate::camera::joml::{Mat4, Quat};
         const DEG_TO_RAD: f32 = 0.017_453_292;
         let [yaw, pitch] = match self.billboard {
@@ -123,8 +131,9 @@ impl TextDisplayData {
             _ => entity,
         };
         let orientation = Quat::rotation_yxz(-DEG_TO_RAD * yaw, DEG_TO_RAD * pitch, 0.0);
-        let mut ori = Mat4::IDENTITY;
-        ori.rotation(orientation);
+        let mut pose = Mat4::IDENTITY;
+        pose.translate(offset[0], offset[1], offset[2]);
+        pose.rotate(orientation);
         let mut tx = Mat4::IDENTITY;
         tx.translation(
             self.translation[0],
@@ -140,7 +149,12 @@ impl TextDisplayData {
         tx.rotate(quat(self.left_rotation));
         tx.scale(self.scale[0], self.scale[1], self.scale[2]);
         tx.rotate(quat(self.right_rotation));
-        joml_mul_affine(&ori, &tx)
+        joml_mul_affine(&pose, &tx)
+    }
+
+    /// DisplayRenderer's billboard orientation followed by Transformation's T*L*S*R.
+    pub fn matrix(&self, entity: [f32; 2], camera: [f32; 2]) -> glam::Mat4 {
+        self.pose([0.0; 3], entity, camera).to_glam()
     }
 
     pub fn blend(&self, from: &Self, t: f32) -> Self {
@@ -458,17 +472,17 @@ impl Lines {
     pub fn height(&self) -> f32 {
         self.lines.len() as f32 * 10.0 - 1.0
     }
-    /// `submitInner`'s pose for the text, after the display's own: half a
-    /// turn about y, the mirrored 0.025 scale and `translate(1 - width / 2,
-    /// -height, 0)`.
+    /// Apply `TextDisplayRenderer.submitInner`'s pose steps in JOML order.
+    pub fn apply_pose(&self, pose: &mut crate::camera::joml::Mat4) {
+        pose.rotate_y(std::f32::consts::PI);
+        pose.scale(-0.025, -0.025, -0.025);
+        pose.translate(1.0 - self.width / 2.0, -self.height(), 0.0);
+    }
+    /// `submitInner`'s pose for the text, after the display's own.
     pub fn pose(&self) -> glam::Mat4 {
-        glam::Mat4::from_rotation_y(std::f32::consts::PI)
-            * glam::Mat4::from_scale(glam::Vec3::splat(-0.025))
-            * glam::Mat4::from_translation(glam::Vec3::new(
-                1.0 - self.width / 2.0,
-                -self.height(),
-                0.0,
-            ))
+        let mut pose = crate::camera::joml::Mat4::IDENTITY;
+        self.apply_pose(&mut pose);
+        pose.to_glam()
     }
 }
 

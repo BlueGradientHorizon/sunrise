@@ -535,8 +535,9 @@ impl Game<'_> {
                     display.old_rotation[1]
                         + (display.rotation[1] - display.old_rotation[1]) * partial_f32,
                 ];
-                let matrix = glam::Mat4::from_translation((position - camera).as_vec3())
-                    * d.matrix(rotation, angles);
+                let matrix = d
+                    .pose((position - camera).as_vec3().to_array(), rotation, angles)
+                    .to_glam();
                 if !matrix.is_finite() {
                     continue;
                 }
@@ -641,10 +642,9 @@ impl Game<'_> {
             self.map_patches.append(&mut cached.batch.patches);
             inline_profiles.append(&mut cached.batch.inline_profiles);
             let cached = display.lines.insert(cached);
-            let matrix = glam::Mat4::from_translation((position - camera).as_vec3())
-                * d.matrix(rotation, angles)
-                * cached.lines.pose();
-            if !matrix.is_finite() || cached.batch.vertices.is_empty() {
+            let mut pose = d.pose((position - camera).as_vec3().to_array(), rotation, angles);
+            cached.lines.apply_pose(&mut pose);
+            if !pose.m.into_iter().all(f32::is_finite) || cached.batch.vertices.is_empty() {
                 continue;
             }
             let batch = &cached.batch;
@@ -667,10 +667,9 @@ impl Game<'_> {
                 };
                 for i in text_display::CORNERS {
                     let v = quad[i];
-                    let point =
-                        matrix.transform_point3(glam::Vec3::new(v.pos[0], v.pos[1], v.depth));
+                    let pos = pose.transform_position([v.pos[0], v.pos[1], v.depth]);
                     out.push(Vertex {
-                        pos: point.to_array(),
+                        pos,
                         uv: v.uv,
                         color: v.color,
                         light,
@@ -682,7 +681,7 @@ impl Game<'_> {
                 }
             }
             if through {
-                let dist_sq = matrix.w_axis.truncate().length_squared();
+                let dist_sq = glam::Vec3::new(pose.m[12], pose.m[13], pose.m[14]).length_squared();
                 st_submits.push((dist_sq, order, st_start..st_verts.len()));
             }
             self.text_display_vertices += batch.vertices.len() / 6 * 4;
