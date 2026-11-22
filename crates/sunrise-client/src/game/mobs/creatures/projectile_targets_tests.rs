@@ -97,6 +97,13 @@ fn setup_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resource
     game.set_allow_commands(true);
     game.load_ticking_neighbourhood(0, 0);
     assert!(game.run_command("forceload add 0 0"));
+    assert!(game.run_command("difficulty normal"));
+    // The Java oracle has a live player as the owner of its creative arrows and fireballs.
+    let mut player =
+        sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 12.5)).unwrap();
+    player.client_loaded = true;
+    game.player = Some(player);
+    crate::game::native_entity_refs::tests::bind_local_player(&mut game, 1, 1);
     for command in [
         "gamerule spawn_mobs false",
         "gamerule advance_time false",
@@ -130,6 +137,7 @@ fn clear_entities(game: &mut Game<'_>) {
     game.broken_knots.clear();
     game.resident_entities.knots.clear();
     game.reset_entity_residency();
+    game.bind_local_player_residency();
 }
 
 fn reset_arena(game: &mut Game<'_>, target: &str) {

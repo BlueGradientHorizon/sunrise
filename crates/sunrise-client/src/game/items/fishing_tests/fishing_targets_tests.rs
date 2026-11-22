@@ -103,6 +103,7 @@ fn setup_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resource
     game.set_allow_commands(true);
     game.load_ticking_neighbourhood(0, 0);
     assert!(game.run_command("forceload add 0 0"));
+    assert!(game.run_command("difficulty normal"));
     for command in [
         "gamerule spawn_mobs false",
         "gamerule advance_time false",
