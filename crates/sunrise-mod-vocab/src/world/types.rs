@@ -1562,7 +1562,6 @@ pub trait LevelHost {
     /// Returns `None` before the registry is complete or when no classification exists for `id`.
     /// This is a load-owned registry read, not an entity lookup. It allocates nothing and gives
     /// the same answer on either side; no entity need be loaded.
-    #[sunrise_mod_api_macros::computed_in_mod]
     fn entity_type_is_living(&self, id: &str) -> Option<bool> {
         crate::content::registry_keys::resolved_entity_types()
             .get()?
