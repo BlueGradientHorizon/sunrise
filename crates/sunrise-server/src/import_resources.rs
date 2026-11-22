@@ -10,7 +10,7 @@ use std::{
     io,
     path::{Path, PathBuf},
 };
-use sunrise_core::prepared_profile::{MANIFEST, Manifest, Profile};
+use sunrise_server_launch::prepared_profile::{MANIFEST, Manifest, Profile};
 use sunrise_server_launch::{self as launch, GAME_VERSION, Install, config};
 
 /// Use the first slot for this profile without replacing the other preparation.
@@ -181,7 +181,7 @@ fn copy_tree(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sunrise_core::prepared_profile::{SCHEMA, STAMP};
+    use sunrise_server_launch::prepared_profile::{SCHEMA, STAMP};
 
     fn scratch(name: &str) -> PathBuf {
         let dir =

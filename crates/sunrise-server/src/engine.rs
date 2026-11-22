@@ -10,7 +10,7 @@ use std::{
     process::{Child, Stdio},
     time::Duration,
 };
-use sunrise_core::prepared_profile::{Manifest, Profile};
+use sunrise_server_launch::prepared_profile::{Manifest, Profile};
 
 /// Checks that the game program starts at all: `--help` loads no game files, so it fails only when the
 /// system can't load the program, as on a Linux without the ALSA and udev libraries the full game links
@@ -413,7 +413,7 @@ mod tests {
             std::fs::write(root.join(file), file).unwrap();
         }
         let manifest = serde_json::json!({
-            "schema": sunrise_core::prepared_profile::SCHEMA,
+            "schema": sunrise_server_launch::prepared_profile::SCHEMA,
             "minecraft": sunrise_server_launch::GAME_VERSION,
             "facts_sha256": sha256_file(&root.join("facts.json")).unwrap(),
             "block_tags_sha256": sha256_file(&root.join("block-tags.json")).unwrap(),
@@ -425,7 +425,7 @@ mod tests {
 
     fn stamp(root: &Path, version: u32) {
         std::fs::write(
-            root.join(sunrise_core::prepared_profile::STAMP),
+            root.join(sunrise_server_launch::prepared_profile::STAMP),
             format!("{{\"output_version\":{version}}}"),
         )
         .unwrap();

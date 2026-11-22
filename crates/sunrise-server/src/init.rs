@@ -9,12 +9,12 @@ use std::{
     process::Stdio,
     time::Instant,
 };
-use sunrise_core::prepared_profile::{MANIFEST, Manifest, Profile};
 use sunrise_platform::java_properties::now_millis;
 use sunrise_platform::server_files::{
     eula,
     user_lists::{OpEntry, OpList, WhiteEntry, WhiteList},
 };
+use sunrise_server_launch::prepared_profile::{MANIFEST, Manifest, Profile};
 use sunrise_server_launch::{
     self as launch,
     config::{self, Config},
@@ -457,7 +457,7 @@ mod tests {
     }
 
     fn fixture_resources(resources: &Path) {
-        use sunrise_core::prepared_profile::{SCHEMA, STAMP};
+        use sunrise_server_launch::prepared_profile::{SCHEMA, STAMP};
         std::fs::create_dir_all(resources).unwrap();
         std::fs::write(resources.join(MANIFEST), serde_json::json!({
             "profile":"server", "schema":SCHEMA, "minecraft":launch::GAME_VERSION,
@@ -508,7 +508,7 @@ mod tests {
 
     #[test]
     fn an_existing_install_repairs_its_managed_profile_without_rewriting_settings() {
-        use sunrise_core::prepared_profile::{SCHEMA, STAMP};
+        use sunrise_server_launch::prepared_profile::{SCHEMA, STAMP};
         let dir = std::env::temp_dir().join(format!("sunrise-init-repair-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let stale = dir.join("resources");

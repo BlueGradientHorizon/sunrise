@@ -12,6 +12,8 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
+/// Prepared-file contract for tools that launch the game.
+pub use sunrise_core::prepared_profile;
 
 /// The game's program names, most specific first: the server build (the game without sound or
 /// controllers, so it needs neither ALSA nor udev on Linux; `sunrise-server-linux-x86_64.tar.gz` holds it),
