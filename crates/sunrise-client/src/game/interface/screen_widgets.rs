@@ -165,6 +165,23 @@ impl MountedWidgetEntry {
         owner.dispose("screen widget", "screen_widget_drop", kind);
     }
 
+    fn press_button(&mut self, game: &mut Game<'_>) -> bool {
+        let MountedWidgetKind::Button { state, on_press } = &mut self.kind else {
+            return false;
+        };
+        let Some(callback) = on_press.as_mut() else {
+            return true;
+        };
+        let rect = state.rect;
+        let answer = call_owner(&self.owner, &mut self.disabled, "button_press", || {
+            callback(state, game);
+        });
+        if !valid_widget_rect(state.rect) {
+            state.rect = rect;
+        }
+        answer.is_some()
+    }
+
     fn can_focus(&mut self) -> bool {
         if self.disabled || !self.owner.is_enabled() {
             self.disabled = true;
@@ -179,7 +196,7 @@ impl MountedWidgetEntry {
                 &self.owner,
                 &mut self.disabled,
                 "screen_widget_focusable",
-                || widget.visible() && widget.active(),
+                || widget.visible() && widget.active() && valid_widget_rect(widget.bounds()),
             )
             .unwrap_or(false),
         }
@@ -239,19 +256,41 @@ impl ScreenWidgetMount {
         self.next_id = self.next_id.saturating_add(1).max(1);
         ScreenWidgetId::from_raw(raw)
     }
+
+    fn stage(&mut self, kind: MountedWidgetKind) -> ScreenWidgetId {
+        let id = self.alloc_id();
+        let mut entry = MountedWidgetEntry {
+            id,
+            owner: widget_callback_owner(),
+            disabled: false,
+            kind,
+        };
+        let valid = match &entry.kind {
+            MountedWidgetKind::Button { state, .. } => valid_widget_rect(state.rect),
+            MountedWidgetKind::TextField { edit_box, .. } => {
+                valid_widget_rect([edit_box.x, edit_box.y, edit_box.width, edit_box.height])
+            }
+            MountedWidgetKind::Custom(widget) => call_owner(
+                &entry.owner,
+                &mut entry.disabled,
+                "screen_widget_bounds",
+                || valid_widget_rect(widget.bounds()),
+            )
+            .unwrap_or(false),
+        };
+        if valid {
+            self.entries.push(entry);
+        } else {
+            entry.dispose();
+        }
+        id
+    }
 }
 
 impl ScreenWidgets for ScreenWidgetMount {
     fn add_button(&mut self, button: Button) -> ScreenWidgetId {
         let (state, on_press) = button.into_parts();
-        let id = self.alloc_id();
-        self.entries.push(MountedWidgetEntry {
-            id,
-            owner: widget_callback_owner(),
-            disabled: false,
-            kind: MountedWidgetKind::Button { state, on_press },
-        });
-        id
+        self.stage(MountedWidgetKind::Button { state, on_press })
     }
 
     fn add_text_field(&mut self, field: TextField) -> ScreenWidgetId {
@@ -273,32 +312,18 @@ impl ScreenWidgets for ScreenWidgetMount {
                 text
             })
         });
-        let id = self.alloc_id();
-        self.entries.push(MountedWidgetEntry {
-            id,
-            owner: widget_callback_owner(),
-            disabled: false,
-            kind: MountedWidgetKind::TextField {
-                edit_box,
-                hint,
-                active: parts.active,
-                visible: parts.visible,
-                on_change: parts.on_change,
-                on_submit: parts.on_submit,
-            },
-        });
-        id
+        self.stage(MountedWidgetKind::TextField {
+            edit_box,
+            hint,
+            active: parts.active,
+            visible: parts.visible,
+            on_change: parts.on_change,
+            on_submit: parts.on_submit,
+        })
     }
 
     fn add_widget(&mut self, widget: Box<dyn ScreenWidget>) -> ScreenWidgetId {
-        let id = self.alloc_id();
-        self.entries.push(MountedWidgetEntry {
-            id,
-            owner: widget_callback_owner(),
-            disabled: false,
-            kind: MountedWidgetKind::Custom(widget),
-        });
-        id
+        self.stage(MountedWidgetKind::Custom(widget))
     }
 
     fn set_initial_focus(&mut self, id: ScreenWidgetId) -> bool {
@@ -350,6 +375,10 @@ fn call_owner<R>(
     }
 }
 
+fn valid_widget_rect([x, y, w, h]: [f32; 4]) -> bool {
+    [x, y, w, h, x + w, y + h].into_iter().all(f32::is_finite)
+}
+
 fn point_in_rect(mouse: [f32; 2], rect: [f32; 4]) -> bool {
     let [mx, my] = mouse;
     let [x, y, w, h] = rect;
@@ -389,12 +418,15 @@ impl MountedWidgetEntry {
                 &mut self.disabled,
                 "screen_widget_target",
                 || {
-                    (widget.visible() && widget.active()).then(|| Target {
-                        rect: widget.bounds(),
-                        kind: Kind::Mounted {
-                            id: self.id.raw(),
-                            field: widget.captures_input(),
-                        },
+                    let rect = widget.bounds();
+                    (widget.visible() && widget.active() && valid_widget_rect(rect)).then(|| {
+                        Target {
+                            rect,
+                            kind: Kind::Mounted {
+                                id: self.id.raw(),
+                                field: widget.captures_input(),
+                            },
+                        }
                     })
                 },
             )
@@ -670,6 +702,9 @@ impl Game<'_> {
                                     return;
                                 }
                                 let bounds = widget.bounds();
+                                if !valid_widget_rect(bounds) {
+                                    return;
+                                }
                                 if widget.active() {
                                     widgets::target_as(
                                         bounds,
@@ -811,9 +846,11 @@ impl Game<'_> {
                                 &mut entry.disabled,
                                 "screen_widget_hit_test",
                                 || {
+                                    let rect = widget.bounds();
                                     widget.visible()
                                         && widget.active()
-                                        && (id.is_some() || hit_rect(widget.bounds()))
+                                        && valid_widget_rect(rect)
+                                        && hit_rect(rect)
                                 },
                             )
                             .unwrap_or(false);
@@ -833,22 +870,8 @@ impl Game<'_> {
                         return id.is_none();
                     }
                     self.audio.play_button_click();
-                    let accepted = self.with_mounted_widget(idx, |game, entry| {
-                        if let MountedWidgetKind::Button { state, on_press } = &mut entry.kind
-                            && let Some(callback) = on_press.as_mut()
-                        {
-                            return call_owner(
-                                &entry.owner,
-                                &mut entry.disabled,
-                                "button_press",
-                                || {
-                                    callback(state, game);
-                                },
-                            )
-                            .is_some();
-                        }
-                        true
-                    });
+                    let accepted =
+                        self.with_mounted_widget(idx, |game, entry| entry.press_button(game));
                     if accepted == Some(true)
                         && self.screen_state.widgets.generation() == generation
                     {
@@ -1024,9 +1047,11 @@ impl Game<'_> {
                             &mut entry.disabled,
                             "screen_widget_mouse_scrolled",
                             || {
+                                let rect = widget.bounds();
                                 if widget.visible()
                                     && widget.active()
-                                    && point_in_rect(mouse, widget.bounds())
+                                    && valid_widget_rect(rect)
+                                    && point_in_rect(mouse, rect)
                                 {
                                     widget.mouse_scrolled(game, mouse, scroll, modifiers)
                                 } else {
@@ -1067,7 +1092,7 @@ impl Game<'_> {
             return false;
         };
         self.with_mounted_widget(idx, |game, entry| match &mut entry.kind {
-            MountedWidgetKind::Button { state, on_press } => {
+            MountedWidgetKind::Button { state, .. } => {
                 if !state.visible
                     || !state.active
                     || !matches!(key, KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space)
@@ -1075,11 +1100,7 @@ impl Game<'_> {
                     return false;
                 }
                 game.audio.play_button_click();
-                if let Some(callback) = on_press.as_mut() {
-                    call_owner(&entry.owner, &mut entry.disabled, "button_press", || {
-                        callback(state, game);
-                    });
-                }
+                entry.press_button(game);
                 true
             }
             MountedWidgetKind::TextField {

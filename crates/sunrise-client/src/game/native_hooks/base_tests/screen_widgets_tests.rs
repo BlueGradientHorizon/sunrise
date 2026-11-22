@@ -473,6 +473,11 @@ fn button_on_press_state_mutation_keyboard_and_synchronous_transitions() {
                 ApiText::literal("Keyboard"),
                 move |state, _host| {
                     log_kb.lock().unwrap().push("kb_pressed".into());
+                    state.rect[2] = if state.label == ApiText::literal("Keyboard") {
+                        f32::INFINITY
+                    } else {
+                        i32::MAX as f32
+                    };
                     state.label = ApiText::literal("KB Done");
                 },
             ));
@@ -490,6 +495,12 @@ fn button_on_press_state_mutation_keyboard_and_synchronous_transitions() {
                         .push(format!("switch_to_b:{opened}:{:?}", host.mod_screen()));
                 },
             ));
+            let invalid = event.widgets.add_button(Button::new(
+                [f32::NAN, 20.0, 100.0, 20.0],
+                ApiText::literal("Not mounted"),
+                |_, _| {},
+            ));
+            assert!(!event.widgets.remove(invalid));
             let _ = toggle_id;
             assert!(event.widgets.set_initial_focus(kb_id));
         }
@@ -553,7 +564,21 @@ fn button_on_press_state_mutation_keyboard_and_synchronous_transitions() {
 
             // Enter and Space activate the initially focused button.
             assert!(game.mounted_widget_key_pressed(KeyCode::Enter, false, 0));
+            assert_eq!(
+                game.mounted_widget_targets()[1].rect,
+                [20.0, 50.0, 100.0, 20.0]
+            );
             assert!(game.mounted_widget_key_pressed(KeyCode::Space, false, 0));
+            assert_eq!(game.mounted_widget_targets()[1].rect[2], i32::MAX as f32);
+            let mut batch = HudBatch::scratch([640, 480]);
+            game.draw_mounted_screen_widgets(&mut batch);
+            assert!(!batch.vertices.is_empty());
+            assert!(
+                batch
+                    .vertices
+                    .iter()
+                    .all(|vertex| vertex.pos.into_iter().all(f32::is_finite))
+            );
             assert_eq!(take_log(&log), vec!["kb_pressed", "kb_pressed"]);
 
             // Clicking the toggle button mutates its ButtonState (label + active = false).

@@ -91,6 +91,7 @@ impl ScreenWidgetId {
 #[non_exhaustive]
 pub struct ButtonState {
     /// Where it is, `[x, y, width, height]` in GUI pixels (vanilla's are 20 high).
+    /// A press callback's non-finite rectangle is ignored, retaining the previous bounds.
     pub rect: [f32; 4],
     /// Its label, centred and scrolled when it does not fit.
     pub label: Text,
@@ -484,7 +485,8 @@ pub trait ScreenWidget: Send + 'static {
 /// Screen-scoped widget registrar passed to `Hooks::screen_init_post` (`ScreenEvent.Init.Post`).
 ///
 /// Widgets added here live as long as the current screen stays open and are cleared and rebuilt
-/// whenever the screen re-initializes (for example on resize).
+/// whenever the screen re-initializes (for example on a resize that rebuilds children).
+/// Mounting a widget with non-finite bounds returns an ID that is not present in the screen.
 // no wire: borrowed registrar scoped to a single `screen_init_post` dispatch.
 pub trait ScreenWidgets {
     /// Mount a vanilla-style push button on the screen (`Screen.addRenderableWidget`).
