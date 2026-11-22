@@ -33,11 +33,15 @@ def main():
     source = lab.ROOT / "tests/fixtures/spawn_obstruction.tsv"
     cases = [line.split() for line in source.read_text(encoding="utf-8").splitlines() if not line.startswith("#")]
     inputs = work / "inputs.txt"
-    inputs.write_text("".join(
-        f"{name} mode=obstruction installation={installation} type={kind} dx={dx} entity_data={nbt} z={8.5 + 16 * i}\n"
-        for i, (name, installation, kind, dx, nbt, _, _) in enumerate(cases)
-    ), encoding="utf-8")
-    names = [case[0] for case in cases]
+    with inputs.open("w", encoding="utf-8") as stream:
+        for i, (name, installation, kind, dx, nbt, _, _) in enumerate(cases):
+            z = 8.5 + 16 * i
+            mode = "obstruction_batch" if installation == "batch" else "obstruction"
+            player = f" p0=4.5,64,{z}" if installation == "batch" else ""
+            stream.write(f"{name} mode={mode} installation={installation} type={kind} dx={dx} "
+                         f"entity_data={nbt} z={z}{player}\n")
+    names_and_modes = [(name, "batch" if installation == "batch" else "obstruction")
+                       for name, installation, *_ in cases]
     lock, jars, libraries = base.verify_artifacts()
     sourcepath = lab.ROOT / "mods/sunrise/src/test/java"
     oracle = sourcepath / "dev/sunriselab/parity/VanillaNaturalSpawnOracle.java"
@@ -59,9 +63,9 @@ def main():
         if not file.is_file():
             raise SystemExit(f"missing recording {file.name}; see the private logs")
         rows = [line.split() for line in file.read_text(encoding="utf-8").splitlines()]
-        if [row[0] for row in rows] != names or any(
-            len(row) != 4 or row[1] != "obstruction" or any(value not in ("true", "false") for value in row[2:])
-            for row in rows
+        if [tuple(row[:2]) for row in rows] != names_and_modes or any(
+            len(row) != 4 or any(value not in (("true", "false") if row[1] == "obstruction" else ("0", "1", "2"))
+                                 for value in row[2:]) for row in rows
         ):
             raise SystemExit(f"incomplete or invalid recording {file.name}; see the private logs")
         return [row[2:] for row in rows]
@@ -69,7 +73,7 @@ def main():
     vanilla = read_recording(work / "vanilla.txt")
     expected = [case[-2:] for case in cases]
     if vanilla != expected:
-        labels = [name for name, actual, spec in zip(names, vanilla, expected) if actual != spec]
+        labels = [name for (name, _), actual, spec in zip(names_and_modes, vanilla, expected) if actual != spec]
         raise SystemExit(f"fixture assumptions disagree with the oracle: {', '.join(labels)}")
     version = lock["minecraft"]["version"]
     if args.reference_only:
@@ -83,14 +87,17 @@ def main():
                        SUNRISE_SPAWN_OBSTRUCTION_RECORDING=work / "rust.txt")
     status = run("rust", [args.test_binary.resolve(), FIXTURE, "--exact", "--ignored"], env)
     rust = read_recording(work / "rust.txt")
-    collision = [name for name, ref, got in zip(names, vanilla, rust) if ref[0] != got[0]]
-    obstruction = [name for name, ref, got in zip(names, vanilla, rust) if ref[1] != got[1]]
-    lab.write_json(work / "report.json", dict(minecraft=version, cases=len(names), collision=collision,
-                                               obstruction=obstruction, test_exit=status))
-    if collision or obstruction or status:
-        raise SystemExit(f"{version}: collision failures: {', '.join(collision) or 'none'}; "
-                         f"obstruction failures: {', '.join(obstruction) or 'none'}; test exit {status}")
-    print(f"{version}: collision and obstruction passed ({len(names)} cases)")
+    differences = {metric: [] for metric in ("collision", "obstruction", "accepted", "yaw")}
+    for (name, mode), ref, got in zip(names_and_modes, vanilla, rust):
+        metrics = ("accepted", "yaw") if mode == "batch" else ("collision", "obstruction")
+        for metric, want, actual in zip(metrics, ref, got):
+            if want != actual:
+                differences[metric].append(name)
+    lab.write_json(work / "report.json", dict(minecraft=version, cases=len(cases), **differences, test_exit=status))
+    if any(differences.values()) or status:
+        summary = "; ".join(f"{metric} failures: {', '.join(names) or 'none'}" for metric, names in differences.items())
+        raise SystemExit(f"{version}: {summary}; test exit {status}")
+    print(f"{version}: spawn obstruction passed ({len(cases)} cases)")
 
 
 if __name__ == "__main__":

@@ -20,3 +20,11 @@ crystal live minecraft:end_crystal 0 {} true false
 pending-shulker pending minecraft:shulker 0 {} false false
 pending-dying-shulker pending minecraft:shulker 0 {Health:0f,DeathTime:1s} true false
 pending-ghast pending minecraft:happy_ghast 0 {still_timeout:10} false false
+pig-edge-live live minecraft:pig 0.89999995 {} true true
+pig-edge-pending pending minecraft:pig 0.89999995 {} true true
+pending-passenger pending-riders minecraft:zombie 1 {Passengers:[{id:"minecraft:zombie",Passengers:[{id:"minecraft:shulker"}]}]} false false
+dragon-parent live minecraft:ender_dragon 0 {} true false
+dragon-part dragon-part minecraft:ender_dragon 16 {} true true
+# Spawner rows: attempt-two x offset; expected accepted roots and yaw draws.
+spawner-edge batch minecraft:pig 0.89999995 {NoAI:1b} 2 2
+spawner-passenger batch minecraft:zombie 0.75 {Passengers:[{id:"minecraft:shulker"}]} 1 1
