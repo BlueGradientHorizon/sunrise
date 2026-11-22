@@ -3,8 +3,11 @@
 //! These prepared tests also exercise menu retirement during travel.
 use super::Dim;
 use crate::game::{
-    Game, execution_role::ExecutionRole, lan::LanSettings, lan_actions::GuestCommand,
-    native_entity_refs::tests::with_game_role,
+    Game,
+    execution_role::ExecutionRole,
+    lan::LanSettings,
+    lan_actions::GuestCommand,
+    native_entity_refs::tests::{run_fresh_cases, with_game_role},
 };
 use mod_api::{
     Hooks, LevelDimension, ModEntry, PlayerChangedDimensionEvent, PlayerRespawnPositionEvent,
@@ -583,6 +586,13 @@ fn ordinary_end_exit_with_configured_respawn_keeps_player_tick_count() {
 #[test]
 #[ignore = "daily"]
 fn credits_world_spawn_fallback_resets_player_tick_count() {
+    if run_fresh_cases(
+        "game::server_travel::changed_dimension_tests::credits_world_spawn_fallback_resets_player_tick_count",
+        "SUNRISE_CREDITS_BODY_YAW_CHILD",
+        &["credits"],
+    ) {
+        return;
+    }
     with_server(ExecutionRole::DedicatedServer, |game| {
         let entity = game.entity(CONN).unwrap();
         game.as_guest(CONN, |game| {
