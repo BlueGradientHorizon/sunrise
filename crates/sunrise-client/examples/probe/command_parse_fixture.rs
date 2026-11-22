@@ -39,10 +39,10 @@ fn parser_id(ty: &ArgType) -> String {
         ArgType::Float { .. } => "brigadier:float".into(),
         ArgType::Double { .. } => "brigadier:double".into(),
         ArgType::Word | ArgType::Str | ArgType::Greedy => "brigadier:string".into(),
-        // A mod's registered type never appears in vanilla's tree; it goes over the wire as the
-        // Brigadier string it degrades to.
+        // A mod's registered type is represented by its vanilla parser on the wire.
         ArgType::Custom(custom) => match custom.kind() {
             CustomArgumentKind::Word | CustomArgumentKind::Greedy => "brigadier:string".into(),
+            CustomArgumentKind::Id => "minecraft:resource_location".into(),
         },
         ArgType::Entity { .. } => "minecraft:entity".into(),
         ArgType::BlockPos => "minecraft:block_pos".into(),
