@@ -219,7 +219,11 @@ mod tests {
             }
             let hub = &mut game.lan.as_mut().unwrap().hub;
             hub.ticks = 10;
-            hub.guests.update_all(|g| g.max_unacknowledged = 64);
+            hub.guests.update_all(|g| {
+                g.max_unacknowledged = 64;
+                // These fixtures start in play with the origin chunk already sent.
+                g.sent_chunks.insert((0, 0));
+            });
             let id = game
                 .spawn_mob(
                     "minecraft:pig",
