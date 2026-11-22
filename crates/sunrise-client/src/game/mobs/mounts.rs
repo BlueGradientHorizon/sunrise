@@ -585,7 +585,7 @@ impl Game<'_> {
         };
         // `Player.rideTick`: a sneaking rider gets off (`wantsToStopRiding`), and so does one on a
         // dead mount. `LivingEntity.baseTick`: so does a rider whose eyes are in water on a mount
-        // of the `dismounts_underwater` tag (a server's player too: `leave_guest` tells their
+        // of the `dismounts_underwater` tag (a server's player too: the put-back at the end of `guest_turn` tells their
         // client). When `entity_mount` keeps it on, the mount still reads this tick's input.
         let i = if keys.shift
             || !self.mobs[i].alive()
@@ -869,7 +869,7 @@ impl Game<'_> {
                     self.dismount_mount();
                 } else {
                     // ejectPassengers: a server's player gets off too
-                    // (leave_guest tells their client).
+                    // (the put-back at the end of `guest_turn` tells their client).
                     let rider = self.lan.as_ref().and_then(|h| {
                         h.hub
                             .guests
