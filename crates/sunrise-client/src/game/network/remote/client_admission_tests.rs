@@ -1,4 +1,7 @@
 use super::super::{C, Game, play};
+use sunrise_client::sound_engine::{SoundEntity, SoundInstance};
+use sunrise_core::random::LegacyRandom;
+
 use crate::game::{
     native_entity_refs::tests::with_client_game, native_hotbar_slot::hotbar_slot_tests::logged_in,
 };
@@ -77,7 +80,20 @@ fn add_player_requires_info_before_replacing_a_tracked_entity() {
                 .find(|cart| cart.id == id as u32)
                 .unwrap()
                 .join;
+            let sound = SoundEntity::new(id as u32, cart_at, false);
+            game.audio.engine.add(
+                SoundInstance::entity_bound(
+                    "minecraft:fixture.bound",
+                    6,
+                    1.0,
+                    1.0,
+                    LegacyRandom::new(42),
+                    sound.clone(),
+                ),
+                true,
+            );
             deliver(game, player.clone());
+            assert!(!sound.state().removed);
             assert_eq!(
                 game.remote.as_ref().unwrap().tracked(id),
                 Some(("minecraft:minecart", cart_at))
@@ -111,6 +127,7 @@ fn add_player_requires_info_before_replacing_a_tracked_entity() {
             deliver(game, player.clone());
             let remote = game.remote.as_ref().unwrap();
             assert_eq!(remote.tracked(id), Some(("minecraft:player", player_at)));
+            assert!(sound.state().removed);
             assert_eq!(remote.level_player(id), Some((uuid, Some("Unlisted"))));
             assert!(game.carts.iter().all(|cart| cart.id != id as u32));
 

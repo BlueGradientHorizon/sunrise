@@ -80,6 +80,7 @@ impl Game<'_> {
         }
         self.move_remote_text_display(p.id, p.position, Some((rotation[0], rotation[1])));
         self.move_remote_interaction(p.id, p.position);
+        self.entity_section_joined(p.id as u32, p.position);
     }
 
     /// `C::RemoveEntities`: its arms of `apply_packet`, guard and order kept.
