@@ -5,13 +5,12 @@ use crate::{
     digest,
     java::{self, Jdk},
     mkdir,
-    pyjson::{self, Value},
+    pyjson::Value,
     read_json, Log,
 };
 use std::{
     fs, io,
     path::{Path, PathBuf},
-    time::Duration,
 };
 
 const RUNTIMES: &str = "https://launchermeta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json";
@@ -34,13 +33,8 @@ fn request(url: &str) -> Result<ureq::Request, String> {
     ) {
         return Err(format!("Not a Mojang download URL: {url}"));
     }
-    let agent = sunrise_proxy::agent("sunrise-prepare", url, |builder| {
-        builder
-            .redirects(0)
-            .timeout_connect(Duration::from_secs(15))
-            .timeout_read(Duration::from_secs(30))
-    })
-    .map_err(|e| format!("{url}: {e}"))?;
+    let agent = sunrise_proxy::agent("sunrise-prepare", url, |builder| builder.redirects(0))
+        .map_err(|e| format!("{url}: {e}"))?;
     Ok(agent.get(url))
 }
 
@@ -185,10 +179,14 @@ fn install_runtime(root: &Path, lock: &Lock, log: Log) -> Result<PathBuf, String
     };
     // `java_component` is the pinned version JSON's javaVersion.component.
     let component = lock.pin("java_component")?;
-    let response = request(RUNTIMES)?
-        .call()
-        .map_err(|e| format!("Mojang's Java index: {e}"))?;
-    let index = pyjson::loads(&response.into_string().map_err(|e| e.to_string())?)?;
+    let sha1 = pin(lock.pin("java_index_sha1")?)?;
+    let index_dir = root.join(".local/server-downloads").join(sha1);
+    let index = {
+        let _lock = crate::hold_lock(&index_dir, log)?;
+        let path = index_dir.join("java-index.json");
+        download(RUNTIMES, &path, sha1).map_err(|e| format!("Mojang's Java index: {e}"))?;
+        read_json(&path)?
+    };
     let manifest = index
         .get(platform)
         .and_then(|p| p.get(component))
