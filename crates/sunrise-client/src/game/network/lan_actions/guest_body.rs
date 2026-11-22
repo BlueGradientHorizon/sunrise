@@ -1062,13 +1062,21 @@ impl Game<'_> {
         }
     }
 
-    /// `WitherRoseBlock.entityInside` queued along a server player's moves:
-    /// vanilla's Peaceful check applies only to the wither rose, not to general
-    /// `InsideEntityView::add_effect`.
+    /// `WitherRoseBlock.entityInside` and `step_on`'s `EntityWrite::AddEffect`
+    /// queued along a server player's moves: vanilla's Peaceful check applies
+    /// only to the wither rose, not to general `LivingEntity.addEffect`.
     pub(in crate::game) fn apply_player_inside_events(&mut self, events: &[MotionEvent]) {
         for event in events {
-            if matches!(event, MotionEvent::InsideWitherRose) {
-                self.wither_rose_contact();
+            match event {
+                MotionEvent::InsideWitherRose => self.wither_rose_contact(),
+                MotionEvent::InsideEffect {
+                    id,
+                    duration,
+                    amplifier,
+                } if self.remote.is_none() => {
+                    self.give_player_effect(id, *duration, i32::from(*amplifier));
+                }
+                _ => {}
             }
         }
     }

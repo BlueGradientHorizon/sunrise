@@ -335,6 +335,12 @@ pub enum MotionEvent {
     /// `WitherRoseBlock.entityInside`: the player's box swept through a
     /// wither rose; the server adds its Wither unless peaceful.
     InsideWitherRose,
+    /// A `step_on` part's `EntityWrite::AddEffect`: the server adds the effect.
+    InsideEffect {
+        id: &'static str,
+        duration: i32,
+        amplifier: u8,
+    },
     /// `ServerPlayer.checkFallDamage` after a mace smash: block particles
     /// from the landing block, more the further the fall.
     SmashLanding {
