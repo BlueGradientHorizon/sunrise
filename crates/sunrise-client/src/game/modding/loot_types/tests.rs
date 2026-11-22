@@ -137,7 +137,8 @@ fn registered_types_bind_once_and_preserve_both_evaluators_order_short_circuit_a
             mod_platform::__private::part_tests::install_parts_fixture(mod_api::__private::mods())
                 .unwrap();
             mod_api::__private::resolve_items(["minecraft:stick"]).unwrap();
-            let root = std::path::Path::new("scoped-loot-codec-overlay");
+            let directory = tempfile::tempdir().unwrap();
+            let root = directory.path();
             let enchantment = json!({
                 "supported_items": ["minecraft:stick"],
                 "weight": 1,
@@ -186,7 +187,10 @@ fn registered_types_bind_once_and_preserve_both_evaluators_order_short_circuit_a
             assert_eq!(fn_decodes.load(Ordering::Relaxed), 9);
             // 8 inline conditions in root + 1 named predicate + 1 enchantment equipment_drops requirement = 10 condition decodes.
             assert_eq!(cond_decodes.load(Ordering::Relaxed), 10);
-            let mut items = sunrise_items::items::Items::for_tests(HashMap::new());
+            // The split at the end of a roll uses the item catalog's prototype.
+            let mut items =
+                sunrise_items::items::Items::catalog(root, &loot::PackOverlay::NONE, &defaults)
+                    .unwrap();
             items.set_loot_data(&data);
             let mut expected_random = LegacyRandom::new(123);
             let labels = [
