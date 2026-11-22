@@ -452,8 +452,8 @@ impl ItemRenderState {
                 return false;
             };
             let translucent = |run: &crate::mobs::skin::ItemRun| {
-                let sprite = &baked.quads[run.quad].material.sprite;
-                renderer.sprites.translucent(sprite_name(sprite))
+                let material = &baked.quads[run.quad].material;
+                material.force_translucent || renderer.sprites.translucent(&material.sprite)
             };
             if stored.runs.iter().any(translucent) {
                 return false;
@@ -945,9 +945,7 @@ fn submit_quads(
         let translucent = match last {
             Some((sprite, translucent)) if sprite == q.material.sprite => translucent,
             _ => {
-                let translucent = renderer
-                    .sprites
-                    .translucent(sprite_name(&q.material.sprite));
+                let translucent = renderer.sprites.translucent(&q.material.sprite);
                 last = Some((&q.material.sprite, translucent));
                 translucent
             }
@@ -1015,16 +1013,25 @@ struct FileSprites {
     /// (`Transparency.hasTranslucent`), filled in as sprites load.
     translucent: Mutex<HashMap<String, bool>>,
 }
+/// `Identifier.parse` default namespace without allocating when already qualified.
+fn qualified_sprite(sprite: &str) -> std::borrow::Cow<'_, str> {
+    match sprite.split_once(':') {
+        Some(("", path)) => std::borrow::Cow::Owned(format!("minecraft:{path}")),
+        Some(_) => std::borrow::Cow::Borrowed(sprite),
+        None => std::borrow::Cow::Owned(format!("minecraft:{sprite}")),
+    }
+}
 impl SpriteLookup for FileSprites {
     fn mask(&self, sprite: &str) -> Option<SpriteMask> {
+        let id = qualified_sprite(sprite);
         if let Ok(cache) = self.cache.lock()
-            && let Some(hit) = cache.get(sprite)
+            && let Some(hit) = cache.get(id.as_ref())
         {
             return hit.clone();
         }
-        let mask = self.load(sprite);
+        let mask = self.load(&id);
         if let Ok(mut cache) = self.cache.lock() {
-            cache.insert(sprite.to_owned(), mask.clone());
+            cache.insert(id.into_owned(), mask.clone());
         }
         mask
     }
@@ -1046,9 +1053,10 @@ impl FileSprites {
         }
     }
     fn translucent(&self, sprite: &str) -> bool {
-        let known = |this: &Self| this.translucent.lock().ok()?.get(sprite).copied();
+        let id = qualified_sprite(sprite);
+        let known = |this: &Self| this.translucent.lock().ok()?.get(id.as_ref()).copied();
         known(self).unwrap_or_else(|| {
-            self.mask(sprite);
+            self.mask(&id);
             known(self).unwrap_or(false)
         })
     }
