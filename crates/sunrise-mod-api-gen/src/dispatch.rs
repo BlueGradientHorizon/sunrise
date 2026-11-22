@@ -1362,8 +1362,8 @@ pub(super) fn emit<'a>(
                             }}) {{\
                                 Ok(()) => {{}}\
                                 Err(TransactionError::Aborted(never)) => match never {{}},\
-                                Err(TransactionError::Unavailable) => {{\
-                                    log::warn!(\"mod {{}}: {name} callback refused: transaction unavailable\", {mod_id_expr});\
+                                Err(error @ (TransactionError::InvalidContext | TransactionError::Unavailable | TransactionError::CommitRefused)) => {{\
+                                    log::warn!(\"mod {{}}: {name} callback refused: {{error:?}}\", {mod_id_expr});\
                                 }}\
                             }}\
                         }}\
