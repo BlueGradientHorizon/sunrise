@@ -11717,6 +11717,17 @@ impl Game<'_> {
         if pressed && !input.repeat && !self.pad.menu.synthetic {
             self.pad_radial_cancel();
         }
+        if let PhysicalKey::Code(key) = input.physical {
+            if pressed {
+                // Only a press that finds no field focused can open one.
+                let text = input
+                    .text
+                    .filter(|_| self.preset_editor_title().is_none() && !self.text_field_focused());
+                self.held_key_text.pressed(key, text);
+            } else {
+                self.held_key_text.released(key);
+            }
+        }
         // The OS consumes composing keys before they can reach a screen or a shortcut.
         if (pressed && self.ime_suppresses_key()) || before_screen(self) {
             return true;
