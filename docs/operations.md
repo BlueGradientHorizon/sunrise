@@ -75,8 +75,8 @@ is waiting, and closes it once the runners are back.
 | `dyna-large` | Daily vanilla parity | Inspect Dyna's runner pool; no other CI workflow runs it |
 | `sunrise-nightly`, `sunrise-release` | The Nightly's and the launcher's macOS builds | Nothing can be done on GitHub. No Nightly or launcher release until the Mac is back |
 
-What keeps working without them: `verify` and merging, triage and labels (once `SELF_HOSTED_CI=off`), Kira, the
-website, the mods registry and its checks, the official server.
+What keeps working without them: `verify` and merging, claims (on GitHub's hosted runners), triage and labels (once
+`SELF_HOSTED_CI=off`), Kira, the website, the mods registry and its checks, the official server.
 
 What the council decides about it (which pull requests may still merge without the vanilla harnesses, and who could
 host a runner with their own Minecraft) is a poll, not a rule on this page.
