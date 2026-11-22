@@ -108,13 +108,14 @@ fn local_swim_eligibility_replaces_entry_and_the_shallow_sprint_query() {
                     // Seed the previous eye sample without asking the entry predicate.
                     tick(game);
                     assert!(rules.0.lock().unwrap().is_empty());
-                    game.keys.insert(KeyCode::KeyW);
+                    game.insert_device_key(KeyCode::KeyW);
                     game.armor[3] = Some(ItemStack::new("minecraft:leather_boots", 1));
                     game.player.as_mut().unwrap().set_sprinting(true).unwrap();
                     tick(game);
                     let p = game.player.as_ref().unwrap();
                     assert!(p.is_under_water());
-                    assert!(p.sprinting && !p.swimming);
+                    assert!(p.sprinting, "forward input keeps the existing sprint");
+                    assert!(!p.swimming, "the equipment rule refused swim entry");
                     assert_eq!(
                         std::mem::take(&mut *rules.0.lock().unwrap()),
                         [
@@ -156,7 +157,7 @@ fn local_swim_eligibility_replaces_entry_and_the_shallow_sprint_query() {
                     // A newly mounted sprinter is asked before the boat's sprint
                     // decision stops sprinting. An affirmative answer cannot make
                     // a passenger swim, and the next tick doesn't ask again.
-                    game.keys.clear();
+                    game.clear_device_keys();
                     let p = game.player.as_mut().unwrap();
                     p.swimming = false;
                     p.set_sprinting(true).unwrap();
