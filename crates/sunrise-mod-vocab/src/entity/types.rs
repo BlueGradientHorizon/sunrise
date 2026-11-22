@@ -645,7 +645,10 @@ impl GoalSpec {
 }
 
 /// One goal of a mob's selector, as `goals` and `target_goals` read it.
-#[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq)]
+///
+/// This is a process-local observation and does not implement `Wire`.
+// no wire: local mob goal inspection entry carrying a static goal id.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 // exhaustive: the game builds it with a literal; mods only read it
 pub struct MobGoalEntry {
     /// The goal's priority: a lower number preempts a higher one.
@@ -1242,26 +1245,6 @@ impl PlayerRef {
 impl From<PlayerRef> for EntityRef {
     fn from(player: PlayerRef) -> Self {
         player.entity
-    }
-}
-
-/// The original player lent to `player_clone`. Every read expires when the hook returns;
-/// this is deliberately not a live player or entity handle.
-// exhaustive: its field is private, so mods cannot build or destructure it
-#[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct OriginalPlayerRef {
-    pub(crate) token: u64,
-}
-
-impl OriginalPlayerRef {
-    /// Read the original's attachment, including nonpersistent and non-copy-on-death data.
-    /// A missing value answers its default without changing the replacement player.
-    pub fn attachment<T: Clone + Send + Sync + 'static>(
-        self,
-        host: &mut dyn crate::Host,
-        key: &crate::AttachmentType<T>,
-    ) -> Result<T, crate::AttachmentError> {
-        key.get(host, crate::Holder::OriginalPlayer(self.token))
     }
 }
 

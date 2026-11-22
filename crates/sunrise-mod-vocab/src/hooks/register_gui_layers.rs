@@ -54,14 +54,13 @@ use `Above("minecraft:air_level".into())` to put it above all status rows. Use
 `Above("minecraft:vehicle_health".into())` to stay above mount hearts. No single anchor
 keeps a layer both above the mount hearts and below the player rows after the reorder.
 
-A skipped vanilla slot, such as the crosshair in third person, still keeps its place: inserted
-layers around it draw in order at the next slot. F1 and a canceled `Hooks::render_gui_pre` hide
-all inserted layers. For a foreground pass regardless of F1, use `Hooks::gui_render_post`."#]
+The whole walk runs under F1: visibility checks belong to the original bodies, not to
+inserted layers, replacements or wrappers. A canceled `Hooks::render_gui_pre` skips the whole walk."#]
     #[hook(
         receiver = "associated",
         dispatch = "flat",
         side = "client",
-        version = 5,
+        version = 6,
         contract = "listen",
         staged_surface = "layers",
         context = "registration",

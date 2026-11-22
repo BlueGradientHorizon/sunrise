@@ -354,9 +354,9 @@ impl Game<'_> {
         }
     }
     /// A left click: a status button, the search box, a footer button.
-    pub(super) fn debug_options_click(&mut self) {
+    pub(super) fn debug_options_click(&mut self) -> bool {
         let Some(mut s) = self.debug_options.take() else {
-            return;
+            return false;
         };
         let (w, h) = self.gui_size();
         let (top, bottom) = (HEADER, h - FOOTER);
@@ -371,7 +371,7 @@ impl Game<'_> {
             content_height(rows.len()),
         ) {
             self.debug_options = Some(s);
-            return;
+            return true;
         }
         let shift = self.has_shift_down();
         s.search.focused = ui::hovered(
@@ -398,18 +398,19 @@ impl Game<'_> {
                 }
             }
         }
+        let search = s.search.focused;
         self.debug_options = Some(s);
         if let Some((path, status)) = clicked {
             // OptionEntry.setValue.
             self.audio.play_button_click();
             self.debug_entries.set_status(path, status);
-            return;
+            return true;
         }
         let (xs, fy) = footer(w, h);
         let Some(i) =
             (0..4).find(|&i| ui::hovered(self.cursor, xs[i], fy, FOOTER_BUTTONS[i], 20.0))
         else {
-            return;
+            return search;
         };
         match i {
             0 | 1 => {
@@ -419,7 +420,7 @@ impl Game<'_> {
                     Profile::Performance
                 };
                 if self.debug_entries.is_using_profile(profile) {
-                    return;
+                    return search;
                 }
                 self.audio.play_button_click();
                 self.debug_entries.load_profile(profile);
@@ -433,6 +434,7 @@ impl Game<'_> {
                 self.close_debug_options();
             }
         }
+        true
     }
     /// The mouse wheel over the list (`scrollRate`: half a row).
     pub(super) fn debug_options_scroll(&mut self, delta: f32) {
@@ -457,10 +459,12 @@ impl Game<'_> {
         }
     }
     /// The button came up: the scrollbar lets go.
-    pub(super) fn debug_options_release(&mut self) {
-        if let Some(s) = &mut self.debug_options {
+    pub(super) fn debug_options_release(&mut self) -> bool {
+        self.debug_options.as_mut().is_some_and(|s| {
+            let handled = s.scroll.held();
             s.scroll.release();
-        }
+            handled
+        })
     }
     /// A key the debug keys left: Escape closes, the rest edits the search.
     pub(super) fn debug_options_key(&mut self, event: &KeyEvent) {

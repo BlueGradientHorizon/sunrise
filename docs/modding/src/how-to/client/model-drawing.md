@@ -216,13 +216,12 @@ arrow on the top turns east without UV locking and retains its world orientation
 Quads are appended in call order, retaining each part's positions, materials and quad
 metadata in one model. The particle is the first available part particle, and model-level
 ambient occlusion is enabled only if every appended part enables it. Declare all the model
-files the callback may append. Dependencies, including their parents and loader references,
-load through the normal model library; they are not automatically registered as results.
-A failed `append_dependency` returns `Err` without changing the assembly; propagate it
-with `?` to discard the model, or handle it and return `Ok(())` to publish the valid
-appends. A missing dependency or `Err` return discards the model for that load and logs
-the registering mod, and the baker runs again on later resource reloads; only a panic
-disables the callback for the session (matching NeoForge `StandaloneModelLoader`).
+files the callback may append. Dependencies load through the normal model library; they are
+not automatically registered as results. As with blockstate and item models, a missing or rejected
+parent uses the missing model at that link, and the child's own geometry still wins. This also
+applies to files registered with `register_model`.
+An undeclared append, a missing or rejected declared file, a bake error or a refused callback
+discards the whole model and logs the registering mod. Ignoring an append error still discards it.
 
 Result IDs and plain file IDs require a nonempty namespace and path, which need not equal
 the registering mod's ID. A successfully baked plain file wins over any baker for that ID;
@@ -541,6 +540,7 @@ that cannot be represented by a rectangle; use another drawing route rather than
 substituting an upright texture.
 
 Multiply tinted faces by `block_tint_color(state, face.tint_index, pos)` at their world
-position. Untinted faces return `None`. Water faces use tint index 0 and the world's
-water colour, including resource-pack water colormaps; other water indices return
-`None`. This differs from `fluid_box`, whose colour comes from its fluid stack.
+position. Untinted faces return `None`. Both block and fluid faces use the mesher's current
+biome colours, including updates from `refresh_biome_colors`. Water faces use tint index 0
+and honour resource-pack water colormaps; other water indices return `None`. This differs
+from `fluid_box`, whose colour comes from its fluid stack.
