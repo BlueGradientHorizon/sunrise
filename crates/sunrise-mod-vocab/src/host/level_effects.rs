@@ -16,13 +16,12 @@ pub trait LevelEffectsBackendMut {
     /// nothing. A `minecraft:` event must be registered; a mod's goes by name
     /// and is heard where its resources define it. True means queued, not
     /// heard.
-    /// Inside an open transaction, `play_level_sound_at_position` runs synchronously at the call
-    /// (so listeners can edit or cancel the sound and journal writes in their level's open
-    /// transaction), while packet delivery waits for the outermost commit, in journal order across
-    /// deferred effects, and is discarded on rollback or an aborted nested transaction. The server
-    /// sound-seed stream advances at the call outside a transaction, at the outermost commit when
-    /// a resolved sound publishes inside one, and stays untouched on rollback, nested abort, or
-    /// listener cancellation.
+    /// The request joins the innermost open transaction in the level active at the call. The
+    /// `play_level_sound_at_position` hook runs synchronously; only the resolved sound waits for
+    /// the owning level's outermost commit, in journal order, and is discarded on abort. Delivery
+    /// uses the level named by the request, even if parked. Outside a transaction, a queued sound
+    /// draws its seed at the call even if a later hook cancels it. Inside one, it draws a seed only
+    /// when the resolved sound is published.
     fn level_play_sound(
         &mut self,
         level: LevelRef,
@@ -43,9 +42,9 @@ pub trait LevelEffectsBackendMut {
     /// A custom particle uses its registered stream codec and is sent only to Sunrise
     /// clients. The receiving factory reads the same decoded value for every spawn.
     /// True means queued, not drawn.
-    /// Inside an open transaction, delivery waits for the outermost commit in this level, in call
-    /// order across deferred effects, and is discarded on rollback or an aborted nested
-    /// transaction.
+    /// The request joins the innermost open transaction in the level active at the call, and waits
+    /// for that level's outermost commit in journal order. An abort discards it. Delivery uses the
+    /// level named by the request, even if parked.
     fn level_send_particles(
         &mut self,
         level: LevelRef,
@@ -63,9 +62,8 @@ pub trait LevelEffectsBackendMut {
     /// block with state id `data`). No player is left out, the acting one
     /// included. False for an event that carries a block state (2001, 2014,
     /// 3008) when `data` isn't one.
-    /// Inside an open transaction, delivery waits for the outermost commit in this level, in call
-    /// order across deferred effects, and is discarded on rollback or an aborted nested
-    /// transaction.
+    /// Inside an open transaction, delivery waits for the outermost commit for the owning level
+    /// (the level active at the call), in journal order, and is discarded on abort.
     fn level_level_event(&mut self, level: LevelRef, id: i32, pos: [i32; 3], data: i32) -> bool;
     /// Side: server.
     /// Plays the break effect of `state` at `pos`: the particles and the sound of a block of
@@ -95,9 +93,9 @@ pub trait LevelEffectsBackendMut {
     /// the players of this level near `pos` get it. False for the same events
     /// and data `level_event` refuses, a parked level, a stale handle or a
     /// client.
-    /// Inside an open transaction, delivery waits for the outermost commit in this level, in call
-    /// order across deferred effects (checking `global_sound_events` at commit), and is discarded
-    /// on rollback or an aborted nested transaction.
+    /// Inside an open transaction, delivery waits for the outermost commit for the owning level
+    /// (the level active at the call). It checks `global_sound_events` at commit, publishes in
+    /// journal order and is discarded on abort.
     fn level_global_level_event(
         &mut self,
         level: LevelRef,
@@ -108,7 +106,8 @@ pub trait LevelEffectsBackendMut {
     /// Side: server.
     /// Sends game event `event` (`minecraft:block_change`...) from `at`, as
     /// `Level.gameEvent(event, at, context)` does: sculk sensors, shriekers,
-    /// wardens and allays receive the optional source and affected state.
+    /// wardens and allays receive the optional source and affected state. An accepted game event
+    /// is posted at the call, even in a transaction; it is not a deferred presentation effect.
     /// Returns false without emitting for an unknown event, invalid position,
     /// stale or foreign source, unregistered state, client or inactive level.
     fn level_game_event(

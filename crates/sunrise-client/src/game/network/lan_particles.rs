@@ -707,14 +707,10 @@ impl Game<'_> {
         if self.lan.is_none() {
             return;
         }
-        // A listener can queue direct `lan_sounds` entries (e.g. via hit effects); `AskGuard`
-        // marks those `skip_hooks = true`, so a second pass flushes them in the same tick without
-        // re-dispatching level-sound hooks and terminates in at most two passes.
-        while !self.creatures.lan_sounds.is_empty() {
-            for sound in std::mem::take(&mut self.creatures.lan_sounds) {
-                if let Some(resolved) = self.resolve_native_sound(sound) {
-                    self.send_resolved_native_sound(&resolved);
-                }
+        // Leave sounds queued by callbacks for the next flush.
+        for sound in std::mem::take(&mut self.creatures.lan_sounds) {
+            if let Some(resolved) = self.resolve_native_sound(sound) {
+                self.send_resolved_native_sound(&resolved);
             }
         }
     }

@@ -16,10 +16,9 @@ pub trait Hooks {
     /// requests ask here too. Canceling a sound does not cancel its action or prediction.
     /// Server and client requests are separate:
     /// `HostSide` identifies which one is being edited. UI and sound-engine-only
-    /// playback do not ask this hook. Sounds played from inside a
-    /// `play_level_sound_at_position` or `play_level_sound_at_entity` listener
-    /// are not re-dispatched to level-sound listeners; they are validated and
-    /// delivered or journaled normally in call order. Both sides.
+    /// playback do not ask this hook. For a transactional server request, the hook runs
+    /// synchronously at the call; only the resolved effect is deferred. Sounds emitted by a
+    /// level-sound listener are not re-dispatched to level-sound listeners. Both sides.
     #[hook(
         dispatch = "api_carrier",
         side = "both",
@@ -48,10 +47,10 @@ pub trait Hooks {
     /// mooshroom, snow golem, bogged, copper golem), dye on a sheep, an axe on a
     /// copper golem, an allay's item and duplication, a ghastling hatching, a
     /// trident thrown (the trident) or riptide (the player), and a mod's sound
-    /// bound to an entity. Asked after the tick's other sounds. The fields and
-    /// their rules are `play_level_sound_at_position`'s, including the
-    /// re-entrancy guard (sounds played from inside a level-sound listener are
-    /// not re-dispatched to level-sound listeners). Client entity-sound
+    /// bound to an entity. Queued server sounds are asked as they go out. For a transactional
+    /// server request, the hook runs synchronously at the call; only the resolved effect is
+    /// deferred. Sounds emitted by a level-sound listener are not re-dispatched to level-sound
+    /// listeners. The fields and their rules are `play_level_sound_at_position`'s. Client entity-sound
     /// packets ask before playback and keep following their emitter; an absent
     /// emitter plays nothing. `LocalPlayer.playSound` also asks this hook,
     /// including steps, falls, hurt, bundle clicks and consumption; these remain

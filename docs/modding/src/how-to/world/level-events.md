@@ -21,7 +21,7 @@ Both `level_event` and `global_level_event` return `false` without playing anyth
 when `data` is not one, for a parked level, for a stale handle and on a client.
 
 Inside an open transaction, `level_event`, `block_break_effect`, and `global_level_event` defer publication until
-the outermost commit and discard on rollback or an aborted nested transaction. On commit, each event replays in the
+the outermost commit for the owning level and discard on rollback or an aborted nested transaction. Each event replays in the
 level where it was requested (checking `global_sound_events` at commit for `global_level_event`) and delivers
 packets in call order alongside deferred sounds, particles, and entity events.
 

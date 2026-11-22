@@ -510,11 +510,7 @@ impl Game<'_> {
                         return;
                     };
                     let seed = game.world.random.next_long();
-                    if deliver_now {
-                        game.deliver_player_sound(target, &sound, at, volume, pitch, source, seed);
-                    } else {
-                        game.play_sound_to(target, &sound, at, volume, pitch, source, seed);
-                    }
+                    game.deliver_player_sound(target, &sound, at, volume, pitch, source, seed);
                 });
             }
             PendingWrite::PlayerStopSound {
@@ -527,11 +523,7 @@ impl Game<'_> {
                     let Some(target) = game.native_player_sound_target(player) else {
                         return;
                     };
-                    if deliver_now {
-                        game.deliver_player_stop_sound(target, sound.as_deref(), source);
-                    } else {
-                        game.stop_sound_for(&[target], sound.as_deref(), source);
-                    }
+                    game.deliver_player_stop_sound(target, sound.as_deref(), source);
                 });
             }
         }
