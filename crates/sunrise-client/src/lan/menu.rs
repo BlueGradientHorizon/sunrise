@@ -3768,6 +3768,8 @@ pub(crate) mod tests {
                 links: Vec::new(),
                 asks_still_valid: false,
                 opening_item: None,
+                opener_block: None,
+                removed: false,
             });
             g
         };
