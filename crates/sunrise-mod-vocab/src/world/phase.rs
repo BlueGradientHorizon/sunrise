@@ -880,6 +880,7 @@ impl RegistrationData {
         self.package_files.get(mod_id).cloned()
     }
     /// The startup-enabled snapshot shared by the mod-facing phase contexts.
+    // hidden: backend access to the snapshot; mods use their context's `mods()`.
     #[doc(hidden)]
     pub fn visible_mods(&self) -> Option<&LoadedMods> {
         self.visible_mods.as_ref()

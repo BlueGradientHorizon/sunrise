@@ -328,7 +328,6 @@ mod tests {
                 cx.package_files("native_demo").err(),
                 Some(PackageFilesError::NotEnabled)
             );
-            let _native = mod_api::__private::enter("native_demo", "register");
             assert_eq!(
                 mod_api::__private::owned_declaration_id("native_demo", "native_extra:gem")
                     .unwrap(),
