@@ -292,6 +292,17 @@ struct Entry {
     /// `None` while the fetch is in flight.
     resolved: Option<Option<ResolvedProfile>>,
 }
+impl Entry {
+    fn live_at(&self, now: std::time::Instant) -> bool {
+        now - self.touched < PROFILE_TTL
+    }
+
+    fn resolution(&self) -> Resolve {
+        self.resolved
+            .clone()
+            .map_or(Resolve::Pending, Resolve::Done)
+    }
+}
 /// `ProfileResolver.Cached`'s cache bounds.
 const MAX_PROFILES: usize = 256;
 const PROFILE_TTL: std::time::Duration = std::time::Duration::from_secs(10 * 60);
@@ -356,24 +367,56 @@ impl Resolver {
             heads: HeadProfiles::default(),
         }
     }
-    /// `CacheBuilder.expireAfterAccess` with `maximumSize`.
-    fn sweep(&mut self) {
-        if self.last_sweep.elapsed() < std::time::Duration::from_secs(30) {
-            return;
+    fn sweep_time(&self) -> Option<std::time::Instant> {
+        let now = std::time::Instant::now();
+        (now - self.last_sweep >= std::time::Duration::from_secs(30)).then_some(now)
+    }
+
+    /// `CacheBuilder.expireAfterAccess` with `maximumSize`. Compute the same
+    /// removals for a prospective lookup and for a committed sweep.
+    fn over_capacity(&self, now: std::time::Instant) -> Vec<NameOrId> {
+        if self.entries.len() <= MAX_PROFILES {
+            return Vec::new();
         }
-        self.last_sweep = std::time::Instant::now();
-        self.entries
-            .retain(|_, e| e.touched.elapsed() < PROFILE_TTL);
-        while self.entries.len() > MAX_PROFILES
-            && let Some(oldest) = self
-                .entries
-                .iter()
-                .min_by_key(|(_, e)| e.touched)
-                .map(|(k, _)| k.clone())
-        {
-            self.entries.remove(&oldest);
+        let mut live = self
+            .entries
+            .iter()
+            .filter(|(_, entry)| entry.live_at(now))
+            .collect::<Vec<_>>();
+        let excess = live.len().saturating_sub(MAX_PROFILES);
+        if excess == 0 {
+            return Vec::new();
+        }
+        live.sort_by_key(|(_, entry)| entry.touched);
+        live.into_iter()
+            .take(excess)
+            .map(|(key, _)| key.clone())
+            .collect()
+    }
+
+    fn sweep(&mut self) {
+        if let Some(now) = self.sweep_time() {
+            self.last_sweep = now;
+            for key in self.over_capacity(now) {
+                self.entries.remove(&key);
+            }
+            self.entries.retain(|_, entry| entry.live_at(now));
         }
     }
+
+    fn peek(&mut self, key: &NameOrId) -> Resolve {
+        self.receive_completed();
+        let Some(entry) = self.entries.get(key) else {
+            return Resolve::Pending;
+        };
+        if let Some(now) = self.sweep_time()
+            && (!entry.live_at(now) || self.over_capacity(now).contains(key))
+        {
+            return Resolve::Pending;
+        }
+        entry.resolution()
+    }
+
     fn receive_completed(&mut self) {
         while let Ok((key, resolved)) = self.done.try_recv() {
             self.entries.insert(
@@ -385,20 +428,13 @@ impl Resolver {
             );
         }
     }
-    fn prepare_lookup(&mut self) {
-        self.receive_completed();
-        self.sweep();
-    }
-
     /// How the resolution of `key` stands, starting it the first time.
     pub fn state(&mut self, key: &NameOrId) -> Resolve {
-        self.prepare_lookup();
+        self.receive_completed();
+        self.sweep();
         if let Some(entry) = self.entries.get_mut(key) {
             entry.touched = std::time::Instant::now();
-            return entry
-                .resolved
-                .clone()
-                .map_or(Resolve::Pending, Resolve::Done);
+            return entry.resolution();
         }
         // `fetchByName` refuses an invalid name without a fetch; like every
         // other empty answer that is the cached result.
@@ -682,16 +718,11 @@ pub fn head_skin_with_journal(
             return None;
         }
         let resolution = if let Some(journal) = journal {
-            resolver.prepare_lookup();
             journal
                 .0
                 .borrow_mut()
                 .push(SkinEffect::Resolve(key.clone()));
-            resolver
-                .entries
-                .get(key)
-                .and_then(|entry| entry.resolved.clone())
-                .map_or(Resolve::Pending, Resolve::Done)
+            resolver.peek(key)
         } else {
             resolver.state(key)
         };
@@ -2058,9 +2089,14 @@ mod tests {
             fallback
         );
         assert!(
-            !resolver.entries.contains_key(&key),
-            "new lookup stays deferred"
+            resolver.entries.contains_key(&key),
+            "expiry remains deferred"
         );
+        assert!(
+            resolver.sweep_time().is_some(),
+            "preview did not reschedule the sweep"
+        );
+        drop(journal);
         assert!(downloads.take_drawn().is_empty());
         assert_eq!(
             head_skin(&profile, &mut resolver, &mut downloads, present),

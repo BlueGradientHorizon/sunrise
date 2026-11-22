@@ -665,11 +665,10 @@ mod tests {
             "/nonexistent/sunrise-test-assets".into(),
         ))
         .unwrap();
+        let mut profile = TextProfile::default();
+        profile.name = Some("CanvasHead".into());
         let mut text = Text::new(TextContent::Object(TextObject::Player {
-            profile: TextProfile {
-                name: Some("CanvasHead".into()),
-                ..TextProfile::default()
-            },
+            profile,
             hat: true,
             fallback: None,
         }));
