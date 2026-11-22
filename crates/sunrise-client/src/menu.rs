@@ -4372,6 +4372,7 @@ pub(crate) mod tests {
         // A block's sound type reads it too, with the entity and the cause it was asked for.
         let key = |name| mod_api::SoundEventKey::parse(name).unwrap();
         let stone = mod_api::BlockSoundType {
+            identity: mod_api::BlockSoundTypeIdentity::Other,
             volume: 1.0,
             pitch: 1.0,
             break_sound: key("block.stone.break"),

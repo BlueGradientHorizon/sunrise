@@ -569,6 +569,7 @@ impl BlockFacts {
                         .unwrap_or("minecraft:air"),
                 ),
                 sounds: BlockSoundType {
+                    identity: sunrise_mod_vocab::BlockSoundTypeIdentity::Other,
                     volume: sound.volume as f32,
                     pitch: sound.pitch as f32,
                     break_sound: sound_event(sound.r#break.id.as_deref())?,
@@ -711,6 +712,7 @@ mod pane_tests {
             item: text("minecraft:air"),
             pick_item: text("minecraft:air"),
             sounds: BlockSoundType {
+                identity: sunrise_mod_vocab::BlockSoundTypeIdentity::Other,
                 volume: 1.0,
                 pitch: 1.0,
                 break_sound: sound.clone(),

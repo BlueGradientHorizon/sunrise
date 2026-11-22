@@ -1308,6 +1308,27 @@ impl SoundEventKey {
     }
 }
 
+// no wire: an in-process sound-type identity; it is not a sound event on the wire.
+/// The vanilla `SoundType` identities that affect sound selection independently
+/// of their event keys (see `AbstractHorse.isWoodSoundType`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum BlockSoundTypeIdentity {
+    /// An ordinary or custom sound type without one of the identities below.
+    #[default]
+    Other,
+    /// `SoundType.WOOD`.
+    Wood,
+    /// `SoundType.NETHER_WOOD`.
+    NetherWood,
+    /// `SoundType.STEM`.
+    Stem,
+    /// `SoundType.CHERRY_WOOD`.
+    CherryWood,
+    /// `SoundType.BAMBOO_WOOD`.
+    BambooWood,
+}
+
 // no wire: native block facts and a native callback edit; playback sends the selected event only.
 /// A block state's sounds (`BlockState.getSoundType()`, vanilla's `SoundType`): the sound
 /// event keys and the base volume and pitch. Playback uses only the event requested by the
@@ -1315,6 +1336,9 @@ impl SoundEventKey {
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: the game and mods build it with a literal
 pub struct BlockSoundType {
+    /// Identity independent of event keys and levels. In-place event edits keep it;
+    /// use [`BlockSoundTypeIdentity::Other`] when constructing a custom sound type.
+    pub identity: BlockSoundTypeIdentity,
     /// `SoundType.getVolume`.
     pub volume: f32,
     /// `SoundType.getPitch`.

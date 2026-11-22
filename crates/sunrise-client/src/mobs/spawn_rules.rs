@@ -924,6 +924,7 @@ mod mod_spawn_rule_tests {
             item: Arc::from(name),
             pick_item: Arc::from(name),
             sounds: mod_api::BlockSoundType {
+                identity: mod_api::BlockSoundTypeIdentity::Other,
                 volume: 1.0,
                 pitch: 1.0,
                 break_sound: sound.clone(),

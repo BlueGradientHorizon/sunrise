@@ -31,6 +31,7 @@ pub fn sound_type_game_thread() {
         fn register(&self, r: &mut dyn Registrar, _: &crate::RegistrationContext) {
             let key = |name| SoundEventKey::parse(name).unwrap();
             let sound = BlockSoundType {
+                identity: crate::BlockSoundTypeIdentity::Other,
                 volume: 2.0,
                 pitch: 1.5,
                 break_sound: key("mymod:block.x.break"),
@@ -88,6 +89,7 @@ pub fn sound_type_game_thread() {
                 wool,
                 Answer {
                     sound: BlockSoundType {
+                        identity: crate::BlockSoundTypeIdentity::Other,
                         volume: 2.0,
                         pitch: 1.5,
                         break_sound: key.clone(),
