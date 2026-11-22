@@ -233,18 +233,23 @@ pub mod features {
             )
             .map_err(FeatureError::new)?;
             let flags = BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS;
+            let mut placed = false;
             for dy in 0..height as i32 {
                 let pos = [origin[0], origin[1] + dy, origin[2]];
-                if !context
-                    .block(pos)
-                    .is_some_and(|block| context.is_air(block))
+                if !context.ensure_can_write(pos)
+                    || !context
+                        .block(pos)
+                        .is_some_and(|block| context.is_air(block))
                 {
-                    // Blocked: what is already placed stays, as vanilla keeps it.
-                    return Ok(dy > 0);
+                    // Outside the writable region or blocked: completed writes stay.
+                    return Ok(placed);
                 }
-                context.set_block(pos, state, flags);
+                if !context.set_block(pos, state, flags) {
+                    return Ok(placed);
+                }
+                placed = true;
             }
-            Ok(true)
+            Ok(placed)
         }
     }
 

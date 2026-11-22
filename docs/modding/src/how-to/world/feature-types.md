@@ -53,18 +53,20 @@ twice is placed twice.
 - `Ok(false)` when it didn't, for example a tree with no room. Blocks written before that are
   kept, as vanilla keeps them.
 - `Err(FeatureError::new(cause))` for a failure. Pass the original error with
-  `.map_err(FeatureError::new)?`, or use `std::io::Error::other(message)` for a plain message.
-  The game logs your mod, the feature type, the origin and the cause chain each time, then
-  treats this invocation as unsuccessful. `FeatureError` is not a `Wire` value.
+  `.map_err(FeatureError::new)?` (`BlockStateError` implements `std::error::Error`), or use
+  `std::io::Error::other(message)` for a plain message. The game logs your mod, the feature type,
+  the origin and the cause chain each time, then treats this invocation as unsuccessful.
+  `FeatureError` is not a `Wire` value.
 
 Writes go straight to the world. Block, tag and height reads in this invocation see the work
-already done, as do later placements. A refused write only fails that operation; your callback
-can return `Ok(false)`, report an `Err` or continue. Neither `Err` nor a refusal disables a
-callback. No result rolls back completed writes or random draws.
+already done, as do later placements. An ordinary per-operation refusal (`false` from
+`ensure_can_write`, `set_block` or `block_entity`, or `None` from a read) only answers that call;
+your callback can return `Ok(false)`, report an `Err` or continue. Neither `Err` nor a refusal
+disables a callback, and no outcome undoes completed writes or random draws.
 
 A panic in your callback is logged and queued for an error toast naming your mod. It fails
-that invocation and disables only that registered callback for this session, not other types
-registered by your mod.
+that invocation without undoing completed writes or draws, and disables only that registered
+callback for this session, not other types registered by your mod.
 
 There is no `Host` in a feature, and a feature can't place another feature. Your code runs on the
 thread its placement does: a worldgen worker for decoration (chunks generate on several at once),

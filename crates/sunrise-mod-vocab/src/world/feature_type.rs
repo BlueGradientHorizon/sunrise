@@ -59,8 +59,15 @@ impl std::error::Error for FeatureError {
 pub trait FeatureType: Send + Sync + 'static {
     /// `Feature.place(level, generator, random, origin)`: place the feature at `origin`,
     /// answering whether it placed. Writes take effect immediately and draws are never given
-    /// back. A panic is logged and shown in an error toast, and disables this registered callback
-    /// for the session without undoing its work. The configured feature's settings are
+    /// back.
+    ///
+    /// Return `Ok(false)` when the feature simply did not place (for example, no room). Ordinary
+    /// per-operation refusals from [`FeatureContext`] return `false` or `None` without failing the
+    /// invocation or disabling the callback. Returning `Err` logs the registering mod, feature
+    /// type, origin and cause chain each time and ends only this invocation without undoing
+    /// completed writes or draws or disabling later invocations. A panic is logged and queued for
+    /// an error toast naming the mod, and disables only this registered callback for the session
+    /// without undoing its work. The configured feature's settings are
     /// [`context.config()`](FeatureContext::config).
     fn place(
         &self,
@@ -73,8 +80,8 @@ pub trait FeatureType: Send + Sync + 'static {
 /// origin (a decoration region on a worker, or the live level for growth and commands) and the
 /// caller's random. Reads see the world's current state, including completed writes from this
 /// call. A read the level can't answer is `None`. An individual refused write returns `false`
-/// without failing the invocation. These operations do not load chunks. A feature can't place
-/// another feature.
+/// without failing the invocation, undoing earlier writes or disabling the callback. These
+/// operations do not load chunks. A feature can't place another feature.
 ///
 /// Features run on a worldgen worker for decoration and on the tick thread for growth, commands
 /// and `LevelRef::place_feature`; the context holds no `Host`, so a worker never reaches mod
@@ -103,22 +110,25 @@ pub trait FeatureContext {
     /// `BlockState.is(tag)` of the block at `pos`: whether it is in block tag `tag`
     /// (`minecraft:leaves`), or `None` where the level can't be read.
     fn block_in_tag(&mut self, pos: [i32; 3], tag: &str) -> Option<bool>;
-    /// `WorldGenLevel.ensureCanWrite(pos)`. During FEATURES it allows the center chunk and its
+    /// `WorldGenLevel.ensureCanWrite(pos)`. During `FEATURES` it allows the center chunk and its
     /// eight neighbors, restricted throughout by the center's generation height if it is
     /// upgrading. This is an admission check, not a guarantee of a change: the live level
     /// allows the check and enforces its own bounds when writing, and read-only full chunks
     /// in the region can admit a write without applying it.
     fn ensure_can_write(&mut self, pos: [i32; 3]) -> bool;
     /// `LevelWriter.setBlock(pos, state, flags)` applies the write immediately and returns the
-    /// world's result. A refused write returns `false`; an unchanged state can return `true`
+    /// world's result. A refused write (including an unregistered state or unwritable position)
+    /// returns `false` without failing the invocation; an unchanged state can return `true`
     /// in a generation region and `false` on the live level. `Feature.setBlock` uses
     /// `BlockUpdateFlags::NEIGHBORS | CLIENTS`.
     fn set_block(&mut self, pos: [i32; 3], state: BlockState, flags: BlockUpdateFlags) -> bool;
-    /// `WorldGenLevel.getHeight` of the heightmap kind at (x, z), including completed writes.
+    /// `WorldGenLevel.getHeight` of the heightmap kind at `(x, z)`, including completed writes.
     fn height(&mut self, kind: HeightmapType, x: i32, z: i32) -> Option<i32>;
     /// Apply saved block-entity NBT (its `id` and fields) to the current block at `pos`, as
-    /// `BlockEntity.loadWithComponents`. Returns `false` for invalid data (including an ID
-    /// that does not fit the block), an unwritable position or a read-only full chunk.
+    /// `WorldGenRegion.getBlockEntity` and `BlockEntity.loadWithComponents` do; the block need
+    /// not have been placed by this call. Returns `false` for invalid data (including an ID
+    /// that does not fit the block), an unreadable or unwritable position, or a read-only full
+    /// chunk.
     fn block_entity(&mut self, pos: [i32; 3], nbt: Compound) -> bool;
 }
 
