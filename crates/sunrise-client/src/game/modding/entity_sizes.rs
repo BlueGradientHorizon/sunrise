@@ -201,9 +201,8 @@ impl Game<'_> {
             return;
         };
         let pose = match (index, value) {
-            (6, sunrise_protocol::entity_data::Value::Id(pose)) => {
-                Some(Pose::from_id((*pose).clamp(0, 17)))
-            }
+            // `Pose.STREAM_CODEC`: an unknown id is standing, as `from_id` reads it.
+            (6, sunrise_protocol::entity_data::Value::Id(pose)) => Some(Pose::from_id(*pose)),
             _ => None,
         };
         if self
