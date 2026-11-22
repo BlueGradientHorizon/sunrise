@@ -112,6 +112,8 @@ SCANNED = {"sunrise-client-core": ["crates"]}
 NOT_READS = {
     "sunrise-client": {"crates"}, "sunrise-client-lib": {"crates"}, "sunrise-mod-package": {"crates"},
     "sunrise-mod-vocab": {"."}, "sunrise-port-pack": {"mods"}, "sunrise-prepare": {"crates"},
+    # shader_fuzz's `..` path parts, in the packs it writes and reads, beside its own seed pack.
+    "sunrise-render-shaderpack": {"crates"},
     # Paths inside a staged game source or a test's scratch folder, never this checkout's files.
     "sunrise-native-build": {
         "Cargo.lock", "crates/sunrise-client/Cargo.toml", "crates/sunrise-client/build.rs", "crates/sunrise-client/src",
