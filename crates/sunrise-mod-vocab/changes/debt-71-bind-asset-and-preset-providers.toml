@@ -1,4 +1,6 @@
 ids = [
+    "type:HookId",
+
     # Model loaders (Step 1)
     "hook:register_model_loaders",
     "hook:register_model_loaders.loaders",
@@ -273,7 +275,7 @@ Matches NeoForge 26.3 and vanilla 26.3 registration contracts directly:
 - All bound callbacks run through `CallbackOwner` panic containment: returning `Err(reason)` logs a warning/error without disabling the callback; panicking disables that callback for the session, logs an error, and surfaces an in-game error toast naming the mod.
 - Also aligns `create_skull_models` with NeoForge `EntityRenderersEvent.CreateSkullModels` (accepting any canonical `<namespace>:<path>` outside the seven built-in vanilla skull types), uses `Tag` for tint and property configuration, and removes the dead `has_sprite_source` flag from `sunrise-assets`."""
 migrate = """
-Rebuild native mods against this SDK and migrate each registration hook from bare string pushes + second-pass hooks to bound providers:
+Rebuild native mods against this SDK and migrate each registration hook from bare string pushes + second-pass hooks to bound providers. The removed runtime hooks also remove `HookId::{BakeModelLoader, InstantiateBlockStateDefinition, SpriteSource, ItemTintSource, ItemModelUpdate, ItemModelRangeProperty, ItemModelSelectProperty}`. Remove matches or subscriptions for those variants and register the relevant provider instead:
 
 1. Model loaders (`Hooks::register_model_loaders`, version 2; `Hooks::bake_model_loader` removed):
    Replace `event.loaders.push(id)` and `Hooks::bake_model_loader` with `event.register(Identifier::parse(id).expect("valid identifier"), ModelLoaderSchema::Cuboids, |input| Ok(quads))` to preserve combined cuboid and custom quads. Use `ModelLoaderSchema::ModelProperties` to keep standard parent, texture and display properties but replace geometry (including models that use `elements` for something else). Use `ModelLoaderSchema::Custom` to own the entire schema. Read `input.model`, deserialize `input.config` as JSON (`&str`, e.g. `serde_json::from_str(input.config)`), and read `input.textures` (`&BTreeMap<String, String>`) for resolved standard slots. Replace every `ModelLoaderQuad { texture: slot, .. }` with `texture: ModelLoaderTexture::Slot(slot)` or use `ModelLoaderTexture::Sprite(sprite_id)` for a direct `Identifier`. Return `Err(reason)` to report a load error without disabling the loader. `ModelLoaderQuad` is no longer `Wire`.

@@ -3,6 +3,10 @@ ids = [
     "hook:block_entity_tick.subject",
     "type:BlockEntityTickEvent.subject",
     "type:BlockEntitySideScope.Server",
+    "type:BlockEntityTickScope",
+    "handle:BlockEntityTickScope::with_view",
+    "handle:BlockEntityTickScope::host",
+    "handle:BlockEntityTickScope::transaction",
     "type:BlockEntityScope",
     "handle:BlockEntityScope::with_view",
     "handle:BlockEntityScope::host",
@@ -40,7 +44,7 @@ ids = [
 why = "Vanilla 26.3 operates on live block entities in BlockEntityTicker.tick, BlockEntity.setChanged, AbstractContainerMenu.clickMenuButton, AbstractContainerMenu.quickMoveStack, and Slot.onTake; NeoForge's AbstractContainerMenu patch does not change the quick-move or button overrides. The three menu hooks now lend BlockEntityScope and BlockEntityView instead of detached snapshots. Accepted quick moves settle the clicked slot before implicit container notices for resident edits and committed ITEMS writes, following AbstractContainerMenu.moveItemStackTo and NeoForge's VanillaContainerWrapper.onRootCommit. Explicit set_changed calls are immediate. A callback panic discards that callback's proposal and disables it for the session; a panic contained in a nested hook does not turn an unanswered move into a refusal. When the menu button callback removes its backing block, it now runs pre_remove_side_effects like any other live removal (vanilla LevelChunk.setBlockState calls BlockEntity.preRemoveSideEffects, which NeoForge does not replace). A blockless menu or a removed or replaced block entity lends no view, but host() and transaction(...) remain usable."
 migrate = '''
 Update types and hook pins:
-- Update `block_entity_tick` pins to `hook_version = 5`. Replace `event.entity` and `event.reply` with in-place access through `event.subject: BlockEntityScope`; call `with_view`, `host()` or `transaction(...)` as needed.
+- Update `block_entity_tick` pins to `hook_version = 5`. Replace the tick-specific `BlockEntityTickScope<'_>` type with `BlockEntityScope<'_>`; use `event.subject.with_view(...)`, `host()` and `transaction(...)` as before. Mods using the old detached `event.entity` and `event.reply` fields instead edit the resident entity through `event.subject.with_view(...)`.
 - `ModBlockEntityView` -> `BlockEntityView` obtained through `event.subject.with_view(|mut entity| ...)` (`ModBlockEntityView::id` -> `BlockEntityView::id`, `ModBlockEntityView::set_client_update_fields` -> `BlockEntityView::set_client_update_fields`).
 
 Update menu hook signatures and bodies:

@@ -99,8 +99,7 @@ floors at `0.0`), and `Reduction::Absorption` receives `damage.min(hearts)`, rec
 value verbatim, sets remaining damage to `max(damage - modified, 0)`, and deducts \
 `damage.min(modified)` from absorption hearts floored at `0.0`. A panic while invoking or dropping a reduction callback \
 uses the shared hook panic boundary: it disables that mod's reduction callbacks for the session \
-and reports loudly (error log plus error toast naming the mod) while leaving the reduction unchanged; non-panic phase refusals log a \
-warning on every occurrence without latching.\
+and reports loudly (error log plus error toast naming the mod) while leaving the reduction unchanged.\
 """
 migrate = """\
 - Hook event fields: `LivingIncomingDamageEvent.container` and `LivingDamagePreEvent.container` \
