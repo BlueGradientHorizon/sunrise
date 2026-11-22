@@ -866,28 +866,28 @@ impl Level {
 
 /// RAII guard for one open transaction frame. Dropping it without `close` aborts this frame
 /// and any nested frames still open inside it.
-struct StorageScope<'a, 'g> {
-    game: &'a mut Game<'g>,
-    frame: TransactionFrame,
-    open: bool,
+pub(super) struct StorageScope<'a, 'g> {
+    pub(super) game: &'a mut Game<'g>,
+    frame: Option<TransactionFrame>,
 }
 
 impl StorageScope<'_, '_> {
-    fn close(mut self, commit: bool) -> Option<scratch::Scratch> {
-        self.open = false;
-        self.game.close_storage_frame(self.frame, commit)
+    pub(super) fn close(mut self, commit: bool) -> Option<scratch::Scratch> {
+        self.frame
+            .take()
+            .and_then(|frame| self.game.close_storage_frame(frame, commit))
     }
 }
 
 impl Drop for StorageScope<'_, '_> {
     fn drop(&mut self) {
-        if self.open {
-            let _ = self.game.close_storage_frame(self.frame, false);
+        if let Some(frame) = self.frame.take() {
+            let _ = self.game.close_storage_frame(frame, false);
         }
     }
 }
 
-impl Game<'_> {
+impl<'g> Game<'g> {
     /// Actual transaction/restore events for storage-attempt regression traces.
     #[cfg(test)]
     pub(in crate::game) fn trace_storage_attempt(&self, entry: String) {
@@ -908,7 +908,7 @@ impl Game<'_> {
     }
 
     /// Opens a transaction and gives back its frame identity.
-    fn open_storage_transaction(&mut self) -> TransactionFrame {
+    pub(super) fn open_storage_transaction(&mut self) -> TransactionFrame {
         let frame = self.transactions.next_frame();
         if !self.world.block_entities.defers_retirement() {
             self.world.block_entities.defer_retirement();
@@ -934,7 +934,7 @@ impl Game<'_> {
     }
     /// Closes `frame`, first aborting every transaction opened inside it and left open, so a
     /// scope closing its own is never stranded behind an abandoned child.
-    fn close_storage_frame(
+    pub(super) fn close_storage_frame(
         &mut self,
         frame: TransactionFrame,
         commit: bool,
@@ -951,6 +951,22 @@ impl Game<'_> {
         }
         self.close_storage_transaction(commit)
     }
+    /// An engine batch opens a frame only when it has a callback to journal.
+    pub(super) fn storage_scope_guard(&mut self, open: bool) -> StorageScope<'_, 'g> {
+        let frame = open.then(|| self.open_storage_transaction());
+        StorageScope { game: self, frame }
+    }
+
+    /// The trident tick opens a frame at contact, then closes it after applying the
+    /// decision. The same guard aborts an open frame if dispatch or apply unwinds.
+    pub(super) fn with_late_storage_scope<R>(
+        &mut self,
+        f: impl FnOnce(&mut Self, &mut Option<TransactionFrame>) -> R,
+    ) -> R {
+        let mut scope = self.storage_scope_guard(false);
+        f(&mut *scope.game, &mut scope.frame)
+    }
+
     /// Runs `f` inside a new (or nested) storage transaction, committing iff `f` returns
     /// `(out, true)` and aborting on `false` or unwind.
     pub(in crate::game) fn storage_scope<R>(
@@ -968,8 +984,7 @@ impl Game<'_> {
         let frame = self.open_storage_transaction();
         let guard = StorageScope {
             game: self,
-            frame,
-            open: true,
+            frame: Some(frame),
         };
         let (out, commit) = f(&mut *guard.game, frame);
         (out, guard.close(commit))

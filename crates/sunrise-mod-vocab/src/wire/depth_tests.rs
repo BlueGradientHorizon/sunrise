@@ -15,6 +15,74 @@ fn round<T: Wire>(value: &T, initial: u16) {
     assert!(matches!(reader.take::<T>(), Err(WireError::Depth)));
 }
 
+/// The fixed deepest value crosses the wire; one extra wrap does not encode, and the bytes
+/// of the deepest value do not decode with one more reader envelope.
+fn recursive_at_limit<T: Wire>(leaf: T, wraps: usize, reader_depth: u16, wrap: impl Fn(T) -> T) {
+    let value = (0..wraps).fold(leaf, |value, _| wrap(value));
+    round(&value, reader_depth);
+    let mut out = Writer::new();
+    out.put(&wrap(value));
+    assert_eq!(out.error(), Some(WireError::Depth));
+}
+
+/// #3945: a datapack registry's schema and values are recursive over the Wire. The generic
+/// envelope bounds them: the deepest value or schema the writer takes decodes, one level more
+/// is refused on both sides, and it fits a small stack.
+#[test]
+fn datapack_schemas_and_values_stop_at_the_generic_depth() {
+    use crate::world::datapack_registry::{DatapackField, DatapackFieldKind, DatapackValue};
+    std::thread::Builder::new()
+        .stack_size(128 * 1024)
+        .spawn(|| {
+            // Value variants each take one envelope; their Vec and tuple add none.
+            recursive_at_limit(DatapackValue::Int(1), 31, 0, |v| {
+                DatapackValue::List(vec![v])
+            });
+            recursive_at_limit(DatapackValue::Int(1), 31, 0, |v| {
+                DatapackValue::Record(vec![("a".into(), v)])
+            });
+            // A boxed list kind uses two envelopes per wrapper and one at the leaf.
+            recursive_at_limit(DatapackFieldKind::Bool, 15, 1, |of| {
+                DatapackFieldKind::List {
+                    of: Box::new(of),
+                    min_len: 0,
+                    max_len: None,
+                }
+            });
+            // A record field and its kind use two envelopes per wrapper and at the leaf.
+            recursive_at_limit(
+                DatapackField::required("a", DatapackFieldKind::Bool),
+                15,
+                0,
+                |field| {
+                    DatapackField::required(
+                        "a",
+                        DatapackFieldKind::Record {
+                            fields: vec![field],
+                        },
+                    )
+                },
+            );
+            // A shallow tree, the usual case, crosses unchanged.
+            let shallow = DatapackValue::Map(vec![(
+                "minecraft:zombie".into(),
+                DatapackValue::List(vec![DatapackValue::Record(vec![(
+                    "count".into(),
+                    DatapackValue::Int(2),
+                )])]),
+            )]);
+            let mut out = Writer::new();
+            out.put(&shallow);
+            assert_eq!(
+                Reader::decode::<DatapackValue>(out.bytes()).unwrap(),
+                shallow
+            );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
 #[test]
 fn structural_families_fit_a_small_stack() {
     // Verify that the depth limit also bounds stack use.

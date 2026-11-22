@@ -532,6 +532,22 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
             ));
                 for entry in entries {
                     let name = &entry.name;
+                    // A shared published read bypasses Game's conversions and uses the same
+                    // non-unwinding answer as the area trait default.
+                    if let Some(published) =
+                        entry.attrs.iter().find(|a| a.path().is_ident("published"))
+                    {
+                        let read = published
+                            .parse_args::<syn::Path>()
+                            .map_err(|e| format!("{name}: {e}"))?;
+                        let sig = entry.sig.to_token_stream();
+                        let args = signature_args(&entry.sig, name)?;
+                        code.push_str(&format!(
+                            "{sig} {{ mod_api::__private::{}({args}) }}\n",
+                            read.to_token_stream()
+                        ));
+                        continue;
+                    }
                     let keeps_api_inputs = entry
                         .attrs
                         .iter()
@@ -719,8 +735,8 @@ fn outer_type(ty: &Type, expected: &str) -> bool {
 
 /// The conversion code for a host method's boundary arguments, the arguments to pass on, and
 /// whether it is a checked write (`&mut self`, a `Result`, a converted value). A checked write
-/// refuses an invalid value with its error; a read converts a borrowed stack without the write
-/// limits, and any other refused value makes the method return its default.
+/// refuses an invalid value with its error; a read or comparison converts a borrowed stack
+/// without write limits, and any other refused value makes the method return its default.
 fn boundary_arguments(
     sig: &syn::Signature,
     method: &str,
@@ -775,6 +791,10 @@ fn boundary_arguments(
         } else if (!checked_write || read_stack) && is_borrowed_stack(&arg.ty) {
             // A detached stack used as input need not fit a resident slot.
             format!("crate::game::api_values::stack_value({name})")
+        } else if read_stack
+            && matches!(&*arg.ty, Type::Reference(reference) if outer_type(&reference.elem, "ItemResource"))
+        {
+            format!("crate::game::api_values::stack_value({name}.as_stack())")
         } else {
             format!("{name}.try_into_engine(self.items())")
         };
@@ -1043,17 +1063,22 @@ pub(super) fn generate(root: &Path) -> Result<String, String> {
     let imports = standard_imports(&syn::parse_file(&methods).map_err(|e| e.to_string())?);
     let side_enum = |name: &str, server: &str, client: &str| {
         format!(
-            "/// The logical side of a hook's host.\n// no wire: borrows the active host; passed as call context.\npub enum {name}<'a> {{\n/// The hook fired on the server.\nServer({server}),\n/// The hook fired on the client.\nClient({client}) }}\n"
+            "/// The logical side of a hook's host.\n// exhaustive: a logical simulation runs on exactly one of these two sides.\n// no wire: borrows the active host; passed as call context.\npub enum {name}<'a> {{\n/// The hook fired on the server.\nServer({server}),\n/// The hook fired on the client.\nClient({client}) }}\n"
         )
     };
     let sides = format!(
-        "{}{}",
+        "{}{}{}",
         side_enum(
             "HostSide",
             "&'a mut dyn ServerHost",
             "&'a mut dyn ClientHost"
         ),
-        side_enum("LevelSide", "&'a dyn LevelHost", "&'a dyn LevelHost")
+        side_enum("LevelSide", "&'a dyn LevelHost", "&'a dyn LevelHost"),
+        side_enum(
+            "LevelRandomSide",
+            "&'a mut dyn LevelRandomHost",
+            "&'a dyn LevelHost"
+        )
     );
     let (host_supers, server_supers, client_supers) = (
         supertraits("Host"),

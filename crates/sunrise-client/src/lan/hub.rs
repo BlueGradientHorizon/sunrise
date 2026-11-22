@@ -3190,11 +3190,28 @@ impl Hub {
         state: Option<sunrise_world::registry::BlockStateId>,
     ) -> Option<Particle> {
         use crate::particles::ParticleType as T;
-        // A native mod's own type: no registry id, so the sentinel and the name.
+        // Custom types use the existing Sunrise-only particle envelope.
         if let Some(name) = &options.mod_particle {
+            let bytes = if let Some((value, _)) = &options.typed_particle {
+                match mod_api::__private::encode_particle_stream(
+                    value,
+                    sunrise_protocol::frame::MAX_UNCOMPRESSED,
+                ) {
+                    Ok(bytes) => bytes,
+                    Err(error) => {
+                        log::warn!("Cannot encode particle {name}: {error}");
+                        return None;
+                    }
+                }
+            } else {
+                Vec::new()
+            };
             return Some(Particle {
                 id: sunrise_protocol::entity_data::MOD_PARTICLE_ID,
-                data: Some(ParticleData::Mod(name.to_string())),
+                data: Some(ParticleData::Mod {
+                    name: name.to_string(),
+                    options: bytes,
+                }),
             });
         }
         let name = format!("minecraft:{}", options.ty.name());
@@ -6763,10 +6780,10 @@ mod tests {
     /// the list changes, and when the entity is paired as it joins.
     #[test]
     fn a_named_effect_particle_is_sent_only_to_sunrise_clients() {
-        // id, name length, name.
-        const NAMED: [u8; 19] = [
+        // id, name length, name, empty options length.
+        const NAMED: [u8; 20] = [
             0xFF, 0xFF, 0xFF, 0xFF, 0x0F, 13, b'e', b'x', b'a', b'm', b'p', b'l', b'e', b':', b's',
-            b'w', b'i', b'r', b'l',
+            b'w', b'i', b'r', b'l', 0,
         ];
         // ClientboundSetEntityDataPacket: the packet's id, then the entity's.
         let data = |entity: u8, entries: &[&[u8]]| {

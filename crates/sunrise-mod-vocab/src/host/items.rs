@@ -55,6 +55,19 @@ pub trait ItemsHost {
     /// type tag `tag` (`minecraft:cannot_be_pushed_onto_boats`).
     fn entity_type_in_tag(&self, entity_type: &str, tag: &str) -> bool;
     /// Side: both.
+    /// An entity type's default value of an attribute, with no entity spawned
+    /// (`DefaultAttributes.getSupplier(type).getValue(attribute)`): what a new entity of
+    /// `entity_type` (`minecraft:zombie`) has for `attribute` (`minecraft:max_health`) before
+    /// any modifier, its supplier's base inside the attribute's range, for vanilla's types and
+    /// mods' (a mod type's declared row, NeoForge's `EntityAttributeCreationEvent` and
+    /// `EntityAttributeModificationEvent` included). Both names are read as `Identifier.parse`
+    /// reads them: `max_health` and `:max_health` are `minecraft:`'s. The Host and typed
+    /// reload/setup contexts share this read on both sides; it never unwinds. `None` before
+    /// publication, for an unregistered type or one with no supplier (such as `minecraft:item`),
+    /// or for a missing attribute.
+    #[published(entity_type_default_attribute)]
+    fn entity_type_default_attribute(&self, entity_type: &str, attribute: &str) -> Option<f64>;
+    /// Side: both.
     /// The stack an SNBT item compound stands for, read as `ItemStack.CODEC` reads a saved
     /// item: `{id:"minecraft:diamond_sword",count:1,components:{"minecraft:damage":5}}`
     /// (`count` 1 when missing, `stone` is `minecraft:stone`). This API refuses with None:
@@ -476,8 +489,11 @@ pub trait ItemsBackendMut {
         tx: &TransactionContext,
     ) -> Result<u32, StackWriteError>;
     /// Side: server.
-    /// `ItemAccess.extract` at those places: up to `amount` of `resource`, how many came out. An item entity emptied stays, empty, until the root commit
-    /// removes it. A creative player's hand gives without losing any (`forInfiniteMaterials`).
+    /// `ItemAccess.extract` at those places: match the item and components of `resource`,
+    /// without checking write limits, and take up to `amount`. An item entity emptied stays,
+    /// empty, until the root commit removes it. A creative player's hand gives without losing
+    /// any (`forInfiniteMaterials`).
+    #[read_stack]
     fn game_extract(
         &mut self,
         place: &ItemPlace,

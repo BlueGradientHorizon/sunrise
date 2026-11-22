@@ -4002,7 +4002,9 @@ impl Game<'_> {
     /// `[0, 1, 0]` for the top), at the point `at`. Set `canceled` and the impact
     /// does not happen: no damage, no knockback, no sound, no block reaction, the
     /// arrow does not stick, a pearl does not teleport, a potion or a fireball
-    /// does not burst. Cancellation leaves the projectile alive. A flying bobber
+    /// does not burst. Cancellation alone leaves the projectile alive. Its owner
+    /// row is live and a listener can resolve and discard it; a removal prevents
+    /// application of the hit independently of cancellation. A flying bobber
     /// skips hooking and redirection to the hit point, but its ordinary move
     /// still stops against solid blocks. Water is not an impact. Bobbers notify
     /// before vanilla's entity deflection and world-border bounce; rockets notify
@@ -4017,18 +4019,6 @@ impl Game<'_> {
         call: mod_api::__private::ProjectileImpactCall<'_>,
     ) {
         self.fire_projectile_impact(call);
-    }
-
-    /// `Block.stepOn` for a mod block, on its authoritative server level.
-    /// No self: the simulation owns the entity during this callback.
-    pub(in crate::game) fn native_block_step_on(
-        dimension: &str,
-        entity: i32,
-        kind: &str,
-        state: BlockStateId,
-        position: [i32; 3],
-    ) {
-        Self::fire_block_step_on(dimension, entity, kind, state, position);
     }
 }
 

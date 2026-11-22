@@ -238,6 +238,13 @@ impl Rocket {
                         self.fall_distance,
                     )
                     .velocity;
+                motion.apply_block_speed(self.position, &mut self.velocity);
+                motion.step_on(
+                    (self.id, "minecraft:firework_rocket"),
+                    (self.position, Self::bounds_at(self.position)),
+                    &self.ground,
+                    &mut self.velocity,
+                );
                 self.velocity = restored;
             }
         }
@@ -466,6 +473,22 @@ impl Game<'_> {
             r.fall_distance,
         );
         r.velocity = self.finish_body_restitution(entity, r.position, response);
+        let side = game_side!(self);
+        let motion = self.body_motion(&side);
+        motion.apply_block_speed(r.position, &mut r.velocity);
+        let writes = self.body_step_on(
+            entity,
+            (r.position, Rocket::bounds_at(r.position)),
+            &r.ground,
+            &mut r.velocity,
+        );
+        super::entity::apply_contact_writes(
+            writes,
+            &mut r.velocity,
+            Some(&mut r.fall_distance),
+            Some(&mut r.stuck),
+            None,
+        );
         let length = moved.length_squared();
         let recorded = length > 1.0e-7 || wanted.length_squared() - length < 1.0e-7;
         let (world, facts) = (&self.world, self.res.facts());

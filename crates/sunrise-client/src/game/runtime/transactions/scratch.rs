@@ -107,19 +107,19 @@ impl Game<'_> {
         put
     }
 
-    /// Takes up to `want.count` of `want`'s item and components out of lent scratch place `slot`.
-    /// How many came.
-    pub(in crate::game) fn scratch_extract(&mut self, slot: ScratchSlot, want: &ItemStack) -> u32 {
-        if want.count == 0 {
-            return 0;
-        }
-        let Some(held) = self
-            .scratch_held(slot)
-            .filter(|held| held.same_item_same_components(want))
-        else {
+    /// Takes up to `amount` of `resource`'s item and components out of lent scratch place `slot`.
+    pub(in crate::game) fn scratch_extract(
+        &mut self,
+        slot: ScratchSlot,
+        resource: &ItemStack,
+        amount: u32,
+    ) -> u32 {
+        let Some(held) = self.scratch_held(slot).filter(|held| {
+            held.same_item_same_components_with_prototype(resource, self.res.items())
+        }) else {
             return 0;
         };
-        let took = want.count.min(held.count);
+        let took = amount.min(held.count);
         if took == 0 {
             return 0;
         }

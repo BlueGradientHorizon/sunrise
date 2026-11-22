@@ -331,6 +331,61 @@ pub struct BlockClick<'a> {
     pub player_entity_id: i32,
 }
 
+/// The server's staged writes during a step-on Part call.
+// hidden: the generated dispatch passes this buffer from the engine, never the Part.
+#[doc(hidden)]
+// no wire: the engine owns this call-local staging buffer; Parts only borrow it.
+#[non_exhaustive]
+#[derive(Clone, Default)]
+pub struct StepOnWrites {
+    server: bool,
+    block: Vec<LandingWrite>,
+    entity: Vec<EntityWrite>,
+}
+
+impl StepOnWrites {
+    // hidden: only the engine chooses to lend server write access.
+    #[doc(hidden)]
+    pub fn server() -> Self {
+        Self {
+            server: true,
+            ..Self::default()
+        }
+    }
+}
+
+impl StepOnEvent<'_> {
+    // hidden: the game validates and drains one Part's outputs before invoking the next.
+    #[doc(hidden)]
+    pub fn __take_writes(&mut self) -> (Vec<LandingWrite>, Vec<EntityWrite>) {
+        (
+            std::mem::take(&mut self.writes.block),
+            std::mem::take(&mut self.writes.entity),
+        )
+    }
+
+    /// Queue a write to the contacted block. Returns false on the client.
+    pub fn request(&mut self, write: LandingWrite) -> bool {
+        if !self.writes.server {
+            return false;
+        }
+        self.writes.block.push(write);
+        true
+    }
+
+    /// Queue a write to the stepping entity, before inside-block effects.
+    /// Returns false on the client. As with `entity_inside`, the body applies
+    /// the writes it supports, in request order. Boats and minecarts do not
+    /// take contact Part damage yet (#4177).
+    pub fn write_entity(&mut self, write: EntityWrite) -> bool {
+        if !self.writes.server {
+            return false;
+        }
+        self.writes.entity.push(write);
+        true
+    }
+}
+
 impl FallOnEvent<'_> {
     /// Ask for a write at the block the entity landed on. It is applied once the entity's
     /// batch has ticked, in the order asked, if the block is still the state it landed on.

@@ -233,6 +233,13 @@ impl Game<'_> {
         let remote = self.remote.as_ref().filter(|r| r.has_level())?;
         Some(LevelRef::new(epoch, remote.level_key))
     }
+    /// The current world on its owning side, as a handle for a native query.
+    pub(super) fn native_current_level(&self) -> Option<LevelRef> {
+        if self.is_logical_server() {
+            return Some(self.level_ref(self.native_lifecycle.epoch()?, self.dim.key()));
+        }
+        self.native_client_level()
+    }
     /// The name of a dimension's key.
     pub(in crate::game) fn dimension_key_id(&self, key: DimensionKey) -> Option<&str> {
         mod_api::__private::dimension_id(key)
