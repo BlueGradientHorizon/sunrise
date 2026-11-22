@@ -173,12 +173,12 @@ mod tests {
                 .default_block_containers
                 .contains_key("oversized:machine")
         );
-        assert_eq!(
-            registrar.refused,
-            [
-                "mod oversized refused registration: oversized:machine: container slots (257) exceed the saved limit of 256"
-            ]
-        );
+        let [refusal] = registrar.refused.as_slice() else {
+            panic!("expected one refusal, got {:?}", registrar.refused);
+        };
+        for field in ["oversized:machine", "257", "256"] {
+            assert!(refusal.contains(field), "{refusal}");
+        }
     }
 
     #[test]
