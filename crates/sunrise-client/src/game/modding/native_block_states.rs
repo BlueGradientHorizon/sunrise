@@ -964,7 +964,7 @@ mod facts_tests {
             );
             // SoundType.STONE: its break event, at volume and pitch 1.
             let sound = facts.sound(stone).unwrap();
-            assert_eq!(&*sound.break_sound, "minecraft:block.stone.break");
+            assert_eq!(sound.break_sound.as_str(), "minecraft:block.stone.break");
             assert_eq!((sound.volume, sound.pitch), (1.0, 1.0));
             let properties = game.block_states().definition(stairs.block()).unwrap();
             let expected: [(&str, &[&str]); 4] = [

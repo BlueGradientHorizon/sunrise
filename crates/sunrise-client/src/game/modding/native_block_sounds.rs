@@ -217,9 +217,9 @@ pub(super) mod tests {
                 .get("minecraft:creeper")
                 .unwrap()
                 .clone();
-            let creeper = Mob::new(8, kind, Vec3::ZERO, 0.0);
+            let creeper_mob = Mob::new(8, kind, Vec3::ZERO, 0.0);
             let step = sunrise_client::mobs::entity_sounds::step(
-                &creeper,
+                &creeper_mob,
                 &game.mob_world_base(&[]),
                 [5, 64, 5],
                 glass,
