@@ -8010,6 +8010,37 @@ mod tests {
     }
 
     #[test]
+    fn mod_block_entity_round_trips_the_first_and_last_byte_indexed_slots() {
+        use crate::{
+            containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields},
+            items::ItemStack,
+        };
+
+        let mut items = vec![None; 256];
+        items[0] = Some(ItemStack::new("minecraft:stone", 2));
+        items[255] = Some(ItemStack::new("minecraft:dirt", 3));
+        let entity = BlockEntity::Mod(Box::new(ModBlockEntity::new(
+            "test:machine".into(),
+            ModBlockEntityFields {
+                items: items.clone(),
+                ..Default::default()
+            },
+        )));
+        let saved =
+            block_entity_encode::encode((0, 64, 0), &entity, "test:machine", &Default::default());
+        let expected_rows = sunrise_core::nbt::parse_snbt(
+            r#"[{Slot:0b,id:"minecraft:stone",count:2},{Slot:-1b,id:"minecraft:dirt",count:3}]"#,
+        )
+        .unwrap()
+        .0;
+        assert_eq!(saved.get("Items"), Some(&expected_rows));
+        let (_, BlockEntity::Mod(reloaded)) = decode_block_entity(&saved).unwrap() else {
+            panic!("expected mod block entity")
+        };
+        assert_eq!(reloaded.items, items);
+    }
+
+    #[test]
     fn mod_block_entity_round_trips() {
         let saved = sunrise_core::nbt::parse_snbt(
             r#"{id:"gtmod:macerator",x:5,y:-60,z:12,energy:1200L,progress:7,Items:[{Slot:0b,id:"minecraft:iron_ore",count:3}]}"#,

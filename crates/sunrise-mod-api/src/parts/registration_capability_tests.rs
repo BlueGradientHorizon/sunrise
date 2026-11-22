@@ -122,6 +122,66 @@ mod tests {
     }
 
     #[test]
+    fn native_block_container_refuses_slots_it_cannot_save() {
+        struct Container {
+            block: &'static str,
+            slots: usize,
+        }
+
+        #[mod_api::__subscriptions]
+        impl Hooks for Container {
+            fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+                let block = r.block_key(self.block);
+                r.block_container(
+                    &block,
+                    crate::ModContainer {
+                        slots: self.slots,
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+
+        let registrar = super::super::register_all(
+            &[
+                ModEntry::new(
+                    "fitting",
+                    Box::new(Container {
+                        block: "fitting:machine",
+                        slots: 256,
+                    }),
+                ),
+                ModEntry::new(
+                    "oversized",
+                    Box::new(Container {
+                        block: "oversized:machine",
+                        slots: 257,
+                    }),
+                ),
+            ],
+            |_| false,
+        );
+        assert_eq!(
+            registrar.parts.default_block_containers["fitting:machine"][0]
+                .1
+                .slots,
+            256
+        );
+        assert!(
+            !registrar
+                .parts
+                .default_block_containers
+                .contains_key("oversized:machine")
+        );
+        assert_eq!(
+            registrar.refused,
+            [
+                "mod oversized refused registration: oversized:machine: container slots (257) exceed the saved limit of 256"
+            ]
+        );
+    }
+
+    #[test]
     fn requested_entity_type_slots_resolve_without_renumbering_and_refuse_unknown_ids() {
         let mut registrar = super::super::PartRegistrar::new("requester");
         let registrar_api = &mut registrar as &mut dyn Registrar;
