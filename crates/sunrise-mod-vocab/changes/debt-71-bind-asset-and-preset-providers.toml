@@ -257,9 +257,6 @@ ids = [
     "handle:PresetEditorDraft::set_dimensions",
     "type:PresetEditorFactoryFn",
     "method:prelude::ScreensClientHost::preset_editor",
-
-    # Skull models (registration contract alignment)
-    "hook:create_skull_models",
 ]
 why = """Bind asset, item-model, animation, and world-preset providers directly at registration instead of registering bare identifier strings and dispatching second-pass runtime hooks across every subscribed mod.
 

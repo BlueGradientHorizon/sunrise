@@ -436,15 +436,19 @@ mod tests {
                             .any(|v| v.color == 0xFF00FF00 && v.pos == [56.0, 24.0]),
                         "Render.Post did not paint outside the failed editor's clip"
                     );
+                    // The title frame drains the report queue into the mandatory toast path.
+                    let [(Some(toast), false)] = game.server_packs.hook_panics.as_slice() else {
+                        panic!("the preset editor failure should produce one mandatory toast");
+                    };
                     assert_eq!(
-                        mod_api::__private::take_hook_panics(),
-                        [mod_api::__private::HookPanicReport {
-                            mod_id: "editor_paint_failure",
-                            hook: "render",
-                        }],
+                        toast.message.as_ref().unwrap().component(),
+                        serde_json::json!({
+                            "translate": "sunrise.mods.hook_panic.description",
+                            "with": [{"text": "editor_paint_failure"}, {"text": "render"}],
+                        })
                     );
                     assert!(sunrise_client::logging::recent_lines().iter().any(|line| {
-                        line.contains("editor_paint_failure")
+                        line.contains("mod editor_paint_failure panicked in hook render")
                             && line.contains("preset editor failed after painting")
                     }));
                 });

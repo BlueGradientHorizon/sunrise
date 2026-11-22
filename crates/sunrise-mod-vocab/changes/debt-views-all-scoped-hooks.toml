@@ -6,7 +6,6 @@ ids = [
     "hook:block_entity_client_tick.state",
     "hook:block_entity_data_received",
     "hook:block_entity_data_received.entity",
-    "hook:block_entity_load_additional",
     "hook:block_entity_load_additional.entity",
     "hook:block_entity_load_additional.level",
     "hook:block_entity_load_additional.pos",

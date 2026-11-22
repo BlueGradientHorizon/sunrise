@@ -22,7 +22,6 @@ ids = [
     "hook:entity_travel_to_dimension",
     "hook:player_changed_dimension",
     "hook:player_set_spawn",
-    "type:Holder",
     "type:OriginalPlayer",
     "handle:OriginalPlayer::uuid",
     "handle:OriginalPlayer::position",

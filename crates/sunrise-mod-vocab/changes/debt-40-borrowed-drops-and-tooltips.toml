@@ -7,7 +7,6 @@ ids = [
     "type:BlockDropsEvent.block_entity_data",
     "type:BlockDropsEvent.tool",
     "type:BlockDropsEvent.drops",
-    "hook:item_tooltip",
     "hook:item_tooltip.stack",
     "hook:item_tooltip.lines",
     "type:ItemTooltipEvent.stack",

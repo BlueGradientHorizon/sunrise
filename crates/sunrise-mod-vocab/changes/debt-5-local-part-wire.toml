@@ -6,13 +6,6 @@ ids = [
     "type:FluidIngredientError",
     "type:ItemPlace",
     "type:ItemPlaceEditError",
-    "type:PartStateError",
-    "type:PartStateRefusal",
-    "type:BlockEntityStateError",
-    "type:PartStateDeclaration",
-    "type:EntityResidency",
-    "type:EntityPartStateError",
-    "type:BlockEntityPartError",
     "type:MobEffectPartError",
 ]
 why = "These Part, capability, resource-transfer, ItemPlace, Part-state, and Part-registration values and errors had incidental Wire codecs that outlived transport. The local refusal `CraftedByError` also loses its Wire impl; `ItemPlace::on_crafted_by` still returns it. In NeoForge 26.3, capability lookup and access objects (`BlockCapability.getCapability`, `RegisterCapabilitiesEvent`, `ItemAccess`) and registration/state refusals are process-local with no wire codec; NeoForge's `ItemResource` (`transfer/item/ItemResource.java`) and `FluidResource` (`transfer/fluid/FluidResource.java`) do define `STREAM_CODEC`, whereas Sunrise intentionally removes the implicit `Wire` impls from `ItemResource` and `FluidResource` too in favor of explicit mod-owned boundary schemas. For addresses crossing a boundary, vanilla's `GlobalPos.STREAM_CODEC` uses `ResourceKey.streamCodec` to send the dimension's canonical identifier rather than a numeric slot. Handles, attachment codecs (`ITEM_STACKS`, `FLUID_STACKS`, `AttachmentForm`, `AttachmentBatch`), `ItemStack` and `FluidStack`, lifecycle, and transaction journaling remain intact."
