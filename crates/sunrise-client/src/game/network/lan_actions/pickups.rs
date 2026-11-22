@@ -167,10 +167,13 @@ impl Game<'_> {
         } else {
             None
         };
-        let delayed = play.xp_delay > 0;
         if let Some(cooldown) = cooldown {
             self.native_player_exp_cooldown_change(player, &name, cooldown);
         }
+        let delayed = self
+            .lan
+            .as_ref()
+            .is_none_or(|host| host.play.get(&conn).is_some_and(|play| play.xp_delay > 0));
         if unable || delayed {
             return;
         }
@@ -215,61 +218,64 @@ impl Game<'_> {
             .unwrap_or(0) as usize;
         // A merged orb gives its value once per count and goes at zero.
         let index = touching[pick];
-        let mut orb = self.orbs[index].clone();
-        let mut canceled = false;
+        let join = self.orbs[index].join;
+        let orb_id = self.orbs[index].id;
         // Swapping the guest in costs: only when a mod hears the pickup.
         let listened = (self.serving.is_some() || self.options.dedicated.is_some())
             && mod_api::__private::listened(mod_api::HookId::PickupXp);
-        if listened {
+        if listened && let Some(epoch) = self.native_lifecycle.epoch() {
+            let orb = mod_api::ExperienceOrbRef::new(mod_api::EntityRef::new(epoch, orb_id));
+            let mut canceled = false;
             let dimension = self.dim.id();
             let called = self.as_guest(conn, |game| {
                 let player = game.native_acting_id();
-                game.native_pickup_xp(
-                    player,
-                    dimension,
-                    orb.id,
-                    &mut orb.value,
-                    &mut orb.count,
-                    &mut canceled,
-                );
+                game.native_pickup_xp(player, dimension, orb, &mut canceled);
             });
             if called.is_none() || canceled {
                 return;
             }
-
-            orb.count = orb.count.max(1);
-            self.orbs[index].value = orb.value;
-            self.orbs[index].count = orb.count;
         }
-        if orb.count <= 1 {
-            self.remove_orb(index);
-        } else {
-            self.orbs[index].count -= 1;
-        }
+        let Some(index) = self.orbs.locate(join) else {
+            return;
+        };
+        let (orb_value, orb_pos) = {
+            let orb = &self.orbs[index];
+            (orb.value, orb.position)
+        };
+        // ExperienceOrb.playerTouch: delay, take, repair/award positive value,
+        // then decrement count and discard at zero.
         if let Some(host) = self.lan.as_mut() {
             host.play.entry(conn).or_default().xp_delay = 2;
         }
         self.native_player_exp_cooldown_change(player, &name, 2);
         if let Some(host) = self.lan.as_ref() {
-            host.hub.take_item(orb.id as i32, id, 1, at);
+            host.hub.take_item(orb_id as i32, id, 1, at);
         }
         // ClientPacketListener.handleTakeItemEntity's sound, at the orb.
         let mut random = sunrise_client::random_source::create(); // the listener's own stream
         let pitch = (random.next_float() - random.next_float()) * 0.35 + 0.9;
-        let p = orb.position;
         self.audio.play(
             "minecraft:entity.experience_orb.pickup",
-            Some([p.x, p.y, p.z]),
+            Some([orb_pos.x, orb_pos.y, orb_pos.z]),
             0.1,
             pitch,
         );
-        let value = orb.value.max(0) as u32;
-        self.as_guest(conn, |game| {
-            let rest = game.mending(value);
-            if rest > 0 {
-                game.give_experience_points(rest.min(i32::MAX as u32) as i32);
+        if orb_value > 0 {
+            let value = orb_value as u32;
+            self.as_guest(conn, |game| {
+                let rest = game.mending(value);
+                if rest > 0 {
+                    game.give_experience_points(rest.min(i32::MAX as u32) as i32);
+                }
+            });
+        }
+        if let Some(index) = self.orbs.locate(join) {
+            if self.orbs[index].count <= 1 {
+                self.remove_orb(index);
+            } else {
+                self.orbs[index].count -= 1;
             }
-        });
+        }
     }
 }
 
