@@ -725,17 +725,11 @@ mod tests {
                     let host: &dyn mod_api::Host = game;
                     let sand = host.block_state_id("minecraft:sand").unwrap();
 
+                    let mut flags = Falling::default();
+                    flags.drop_item = false;
+                    flags.hurts = true;
                     let hidden = level
-                        .spawn_falling_block(
-                            game,
-                            sand,
-                            unloaded_pos,
-                            velocity,
-                            Falling {
-                                drop_item: false,
-                                hurts: true,
-                            },
-                        )
+                        .spawn_falling_block(game, sand, unloaded_pos, velocity, flags)
                         .unwrap()
                         .unwrap();
                     assert!(!game.world.loaded(1000, 0));
@@ -1025,6 +1019,7 @@ mod tests {
             || {
                 use mod_api::{BlockUpdateFlags, EntityJoinLevelEvent, Flow, Hooks, ServerHost};
                 use sunrise_core::ticks::TickPriority;
+                use sunrise_world::level::LevelAccess;
 
                 const FIRST: BlockPos = BlockPos::new(1, 70, 1);
                 const SECOND: BlockPos = BlockPos::new(3, 70, 1);
