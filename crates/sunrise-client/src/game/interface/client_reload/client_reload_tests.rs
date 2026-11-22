@@ -375,8 +375,8 @@ fn a_converted_file_outside_the_pack_is_absent_not_empty() {
 #[ignore = "daily"]
 fn initial_load_stages_and_applies_client_reload_listeners() {
     use crate::game::{
-        Audio, Game, Options, Progress, Settings, load_resources_for_mods,
-        native_entity_refs::tests::fixture_root, start_game,
+        Audio, Game, Options, Progress, Settings, native_entity_refs::tests::fixture_root,
+        resource_load::load_resources_for_mods, start_game,
     };
     use mod_api::{
         __private::game::RegistrationContextNew, AddClientReloadListenersEvent, ClientHost,

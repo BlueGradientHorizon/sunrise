@@ -1802,7 +1802,7 @@ mod tests {
         let resources = ResourceRoot::directory(root.path().to_owned());
         let base = Arc::new(Biomes::load_for_server(&resources).unwrap());
         let blocks: &'static _ = Box::leak(Box::new(sunrise_world::registry::BlockRegistry::from_facts_json(
-            br#"{"defaults":{"minecraft:air":0,"minecraft:cave_air":1,"minecraft:void_air":2},"states":[["a",true,false,"","minecraft:air"],["c",true,false,"","minecraft:cave_air"],["v",true,false,"","minecraft:void_air"]]}"#,
+            br#"{"defaults":{"minecraft:air":0,"minecraft:cave_air":1,"minecraft:void_air":2},"states":[["a",true,false,"","minecraft:air"],["c",true,false,"","minecraft:cave_air"],["v",true,false,"","minecraft:void_air"]]}"#.as_slice(),
         ).unwrap()));
         let stack = crate::game::functions::PackStack {
             builtin: None,

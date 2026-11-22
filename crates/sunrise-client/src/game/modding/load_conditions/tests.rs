@@ -448,7 +448,7 @@ fn a_panicking_load_condition_registrar_leaves_neither_handlers_nor_errors() {
             let entries = registrar.finish().unwrap();
             assert_eq!(entries.len(), 1);
             let (owner, handler) = &entries[&Identifier::parse("a:shared").unwrap()];
-            assert_eq!(owner, "b");
+            assert_eq!(*owner, "b");
             assert_eq!(handler.test(&json!({"value": false})), Ok(false));
         },
     );
