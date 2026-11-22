@@ -4726,7 +4726,11 @@ impl Game<'_> {
         self.finish_guest_damage();
         // The attack runs `EnchantmentHelper.doPostAttackEffects` after `hurtServer` returns.
         let killed = self.player.as_ref().is_some_and(|p| {
-            super::wither::killed(true, p.health.dead_or_dying(), p.health.totem_used)
+            super::wither::killed(
+                true,
+                p.health.dead_or_dying(),
+                p.health.has_pending_protection(),
+            )
         });
         if outcome.hurt
             && let Some(a) = attacker.or(owner)

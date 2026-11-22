@@ -1691,21 +1691,18 @@ impl Game<'_> {
 
 /// `native_living_use_totem` for the damage code: whether it
 /// canceled the totem. The entity and the source are named as the damage hook names them.
-pub(super) fn use_totem(level: DamageLevel<'_>, hurting: Hurting<'_>, off_hand: bool) -> bool {
+pub(super) fn use_totem(
+    level: DamageLevel<'_>,
+    hurting: Hurting<'_>,
+    hand: Hand,
+    stack: &ItemStack,
+) -> bool {
     if !mod_api::__private::listened(mod_api::HookId::LivingUseTotem) {
         return false;
     }
     let (entity, kind, source) = hurt_server_args(hurting, level.attack());
-    let hand = if off_hand { Hand::Off } else { Hand::Main };
     let mut cancel = false;
-    HitLevel(level).native_living_use_totem(
-        entity,
-        kind,
-        &source,
-        hand,
-        "minecraft:totem_of_undying",
-        &mut cancel,
-    );
+    HitLevel(level).native_living_use_totem(entity, kind, &source, hand, stack, &mut cancel);
     cancel
 }
 

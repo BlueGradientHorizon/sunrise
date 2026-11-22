@@ -77,10 +77,8 @@ pub struct DamageHooks {
     /// (`LivingKnockBackEvent`), on the raw strength and before the knockback resistance and
     /// the motion change. It may change the [`Knock`]; true cancels it.
     pub knockback: Option<fn(DamageLevel<'_>, Hurting<'_>, &mut Knock) -> bool>,
-    /// `native_living_use_totem`: a `death_protection` item in the hand (true: the off hand)
-    /// is about to save the entity from a killing blow (`LivingUseTotemEvent`). True cancels
-    /// it: the entity dies.
-    pub totem: Option<fn(DamageLevel<'_>, Hurting<'_>, bool) -> bool>,
+    /// `LivingUseTotemEvent` for one eligible stack. True refuses this hand only.
+    pub totem: Option<fn(DamageLevel<'_>, Hurting<'_>, mod_api::Hand, &ItemStack) -> bool>,
     /// `native_living_shield_block`: `LivingEntity.applyItemBlocking` of a hit with damage,
     /// for what it hurts, the damage and whether vanilla blocks. It may change the
     /// [`ShieldBlock`].
@@ -685,7 +683,10 @@ impl<'a> DamageLevel<'a> {
                     state: container.into_state(),
                 })
             });
-            return Some(DamageCompletion { post });
+            return Some(DamageCompletion {
+                post,
+                protection: None,
+            });
         }
         self.damage_post(hurting, &container);
         None
@@ -697,7 +698,21 @@ impl<'a> DamageLevel<'a> {
 #[derive(Clone, Debug)]
 pub struct DamageCompletion {
     pub post: Option<std::sync::Arc<DamagePost>>,
+    pub protection: Option<PlayerProtection>,
 }
+
+/// The hand and original stack accepted by `checkTotemDeathProtection`.
+#[derive(Clone, Debug)]
+pub struct PlayerProtection {
+    pub hand: mod_api::Hand,
+    pub stack: ItemStack,
+}
+
+/// `InteractionHand.values()`, paired with the corresponding equipment slots.
+pub(crate) const PROTECTION_HANDS: [(mod_api::Hand, usize); 2] = [
+    (mod_api::Hand::Main, sunrise_items::equipment::MAINHAND),
+    (mod_api::Hand::Off, sunrise_items::equipment::OFFHAND),
+];
 
 /// The exact accepted hit values, only retained across the handoff for a Post listener.
 #[derive(Debug)]
@@ -864,12 +879,30 @@ impl DamageLevel<'_> {
         };
         Some(block)
     }
-    /// Whether [`DamageHooks::totem`] canceled the totem of `hurting` (never without it).
-    pub fn totem_canceled(&mut self, hurting: Hurting<'_>, off_hand: bool) -> bool {
-        let Some(hook) = self.hooks.totem else {
-            return false;
-        };
-        hook(self.reborrow(), hurting, off_hand)
+    /// The live component of an eligible hand stack, including its prototype defaults.
+    pub(crate) fn death_protection<'s>(
+        &self,
+        stack: &'s ItemStack,
+    ) -> Option<&'s [crate::items::ConsumeEffect]>
+    where
+        'a: 's,
+    {
+        if stack.count == 0 {
+            return None;
+        }
+        stack.death_protection(self.tags.and_then(|items| items.get(&stack.item)))
+    }
+
+    /// Whether [`DamageHooks::totem`] refused this particular hand stack.
+    pub(crate) fn totem_canceled(
+        &mut self,
+        hurting: Hurting<'_>,
+        hand: mod_api::Hand,
+        stack: &ItemStack,
+    ) -> bool {
+        self.hooks
+            .totem
+            .is_some_and(|hook| hook(self.reborrow(), hurting, hand, stack))
     }
     /// Whether this level belongs to a logical server `Game` whose hooks
     /// apply mob death-protection and effect additions through the owning loop.
@@ -1209,12 +1242,6 @@ pub struct PlayerHealth {
     pub sync_velocity: bool,
     pub game_time: i64,
     pub tick_count: i32,
-    /// A death-protection item (totem) is in either hand.
-    pub totem_ready: bool,
-    /// The current hit used death protection; its game continuation applies the effects.
-    pub totem_used: bool,
-    /// The totem that would save the player is in the off hand.
-    pub totem_off_hand: bool,
 }
 impl PlayerHealth {
     pub fn new(resources: &HealthResources, attributes: &mut Attributes) -> Result<Self> {
@@ -1267,9 +1294,6 @@ impl PlayerHealth {
             sync_velocity: false,
             game_time: 0,
             tick_count: 0,
-            totem_ready: false,
-            totem_used: false,
-            totem_off_hand: false,
         })
     }
     pub fn health(&self) -> f32 {
@@ -1285,6 +1309,11 @@ impl PlayerHealth {
     /// The game time the damage clock has counted.
     pub fn game_time(&self) -> i64 {
         self.game_time
+    }
+    pub fn has_pending_protection(&self) -> bool {
+        self.damage_completion
+            .as_ref()
+            .is_some_and(|hit| hit.protection.is_some())
     }
     pub fn dead_or_dying(&self) -> bool {
         self.health() <= 0.0 || self.dead
@@ -1469,7 +1498,6 @@ impl PlayerMotion {
             fully_blocked: false,
             block_sound: false,
             knocked: false,
-            totem_fired: false,
             canceled: false,
             dealt: 0.0,
         };
@@ -1556,10 +1584,6 @@ impl PlayerMotion {
             canceled: hit.canceled,
             dealt: hit.dealt,
         };
-        if hit.totem_fired {
-            h.totem_used = true;
-            h.totem_ready = false;
-        }
         if outcome.hurt {
             h.accepted_hit = if h.health() <= 0.0 {
                 let source = level.attack().player_source(&hit.source_name, hit.causing);
@@ -1663,9 +1687,7 @@ impl PlayerMotion {
             fully_blocked: hit.fully_blocked,
             block_sound: hit.block_sound,
             knocked: hit.knocked,
-            totem: h.totem_ready,
-            totem_off_hand: h.totem_off_hand,
-            totem_fired: hit.totem_fired,
+            protection: None,
             canceled: hit.canceled,
             dealt: hit.dealt,
         };
@@ -1687,7 +1709,6 @@ impl PlayerMotion {
         hit.fully_blocked = environment.fully_blocked;
         hit.block_sound = environment.block_sound;
         hit.knocked = environment.knocked;
-        hit.totem_fired = environment.totem_fired;
         hit.canceled = environment.canceled;
         hit.dealt = environment.dealt;
         Ok(result)
@@ -1766,11 +1787,7 @@ pub(crate) struct Environment<'a> {
     pub(crate) block_sound: bool,
     /// `dealDefaultKnockback` ran: a fresh hit, not fully blocked.
     pub(crate) knocked: bool,
-    /// LivingEntity.checkTotemDeathProtection: a totem is held / was used.
-    pub(crate) totem: bool,
-    /// The totem is in the off hand.
-    pub(crate) totem_off_hand: bool,
-    pub(crate) totem_fired: bool,
+    pub(crate) protection: Option<PlayerProtection>,
     /// A native mod canceled the hit (`living_incoming_damage`).
     pub(crate) canceled: bool,
     /// The damage `ENTITY_HURT_PLAYER` is told of.
@@ -1813,7 +1830,6 @@ pub struct PausedHurt {
     fully_blocked: bool,
     block_sound: bool,
     knocked: bool,
-    totem_fired: bool,
     canceled: bool,
     dealt: f32,
 }
@@ -2297,10 +2313,9 @@ impl HurtWorld for Environment<'_> {
         Ok(())
     }
     fn death_protection(&mut self, _: &mut State) -> io::Result<bool> {
-        if !self.totem
-            || self
-                .source
-                .immunity_tag(ImmunityTag::BypassesInvulnerability)
+        if self
+            .source
+            .immunity_tag(ImmunityTag::BypassesInvulnerability)
         {
             return Ok(false);
         }
@@ -2308,15 +2323,23 @@ impl HurtWorld for Environment<'_> {
             .level
             .attack()
             .player_source(&self.source.definition().name, self.causing);
-        // A native mod may cancel the totem: the player dies.
-        if self
-            .level
-            .totem_canceled(Hurting::Player(self.entity, source), self.totem_off_hand)
-        {
-            return Ok(false);
+        for (hand, slot) in PROTECTION_HANDS {
+            let Some(stack) = self.level.player_equipment[slot] else {
+                continue;
+            };
+            if self.level.death_protection(stack).is_some()
+                && !self
+                    .level
+                    .totem_canceled(Hurting::Player(self.entity, source), hand, stack)
+            {
+                self.protection = Some(PlayerProtection {
+                    hand,
+                    stack: stack.clone(),
+                });
+                return Ok(true);
+            }
         }
-        self.totem_fired = true;
-        Ok(true)
+        Ok(false)
     }
     fn death_sound(&mut self, _: &mut State) -> io::Result<()> {
         Ok(())
@@ -2384,8 +2407,11 @@ impl HurtWorld for Environment<'_> {
         *self.damage_completion = self.level.finish_damage(
             Hurting::Player(self.entity, source),
             container,
-            *self.dead || self.totem_fired,
+            *self.dead || self.protection.is_some(),
         );
+        if let Some(hit) = self.damage_completion.as_mut() {
+            hit.protection = self.protection.take();
+        }
         Ok(())
     }
 }

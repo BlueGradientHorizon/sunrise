@@ -226,9 +226,7 @@ impl FoodWorld for TickWorld<'_> {
             fully_blocked: false,
             block_sound: false,
             knocked: false,
-            totem: false,
-            totem_off_hand: false,
-            totem_fired: false,
+            protection: None,
             canceled: false,
             dealt: 0.0,
         };
