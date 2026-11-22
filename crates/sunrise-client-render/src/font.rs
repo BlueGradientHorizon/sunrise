@@ -129,6 +129,10 @@ pub struct Font {
     /// `file` may name any texture, not only one under `textures/font`.
     sheets: HashMap<String, Rect>,
     missing: Glyph,
+    /// Nudged atlas rect of the 5x8 `SpecialGlyphs.MISSING` bitmap (`sunrise/missing_glyph`),
+    /// when packed into the HUD atlas. Kept separate from `missing.rect` so callers inspecting
+    /// `glyph(c).rect.is_none()` still distinguish missing glyphs from provider glyphs.
+    missing_rect: Option<Rect>,
     white: Rect,
     source: ResourceSource,
     /// Atlas size and the reserved dynamic region (y, height).
@@ -675,6 +679,14 @@ impl Font {
         metrics_only: bool,
     ) -> Self {
         let sheets = sprites.clone();
+        let missing_rect = (!metrics_only)
+            .then(|| sprites.get("sunrise/missing_glyph"))
+            .flatten()
+            .map(|r| {
+                let x = (r.u0 * atlas.0 as f32).round() as u32;
+                let y = (r.v0 * atlas.1 as f32).round() as u32;
+                glyph_rect(x, y, r.w, r.h, atlas)
+            });
         let font = Self {
             sheets,
             missing: Glyph {
@@ -686,6 +698,7 @@ impl Font {
                 advance: 6.0,
                 offset: 1.0,
             },
+            missing_rect,
             white,
             source: source.clone(),
             atlas,
@@ -1383,6 +1396,10 @@ impl Font {
     }
     pub fn white(&self) -> Rect {
         self.white
+    }
+    /// Nudged atlas rect of the 5x8 `SpecialGlyphs.MISSING` bitmap, when available.
+    pub fn missing_rect(&self) -> Option<Rect> {
+        self.missing_rect
     }
 }
 

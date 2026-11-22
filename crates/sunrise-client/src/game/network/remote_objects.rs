@@ -73,7 +73,8 @@ impl Game<'_> {
         } {
             self.text_displays.insert(
                 id as i32,
-                super::text_displays::RemoteTextDisplay::new(shows, position, yaw),
+                super::text_displays::RemoteTextDisplay::new(shows, position, yaw)
+                    .with_pitch(pitch),
             );
         } else if kind == "minecraft:ominous_item_spawner" {
             self.add_remote_ominous_item_spawner(id, position);
@@ -568,7 +569,7 @@ impl Game<'_> {
     }
 
     pub(super) fn remove_remote_object(&mut self, id: u32) {
-        self.text_displays.remove(&(id as i32));
+        self.text_displays.shift_remove(&(id as i32));
         self.interactions.remove(&(id as i32));
         self.ominous_spawners.retain(|s| s.id != id);
         self.remote_knots.remove(&id);
