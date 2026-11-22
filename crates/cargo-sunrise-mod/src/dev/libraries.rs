@@ -152,7 +152,7 @@ impl Libraries {
 /// original pin in the source snapshot; only the SDK used for this particular build changes.
 pub(super) fn check_fit(project: &Path, sdk: &super::NativeSdk, root: &Path) -> Result<(), String> {
     use sunrise_native_build::{
-        check::{self, Verdict},
+        check::{self, Unlisted, Verdict},
         contract::CONTRACT,
     };
     let build = &sdk.index.build.commit;
@@ -172,13 +172,19 @@ pub(super) fn check_fit(project: &Path, sdk: &super::NativeSdk, root: &Path) -> 
         };
         let refused =
             |why: String| format!("library {id} pins {pin} and cannot be built for {build}: {why}");
-        let mut checked = check::check(&plan).map_err(refused)?.mods;
-        if checked[0].needs == Some("build-data") {
+        let judge = |plan: &check::Plan| {
+            check::check(plan)?
+                .mods
+                .into_iter()
+                .next()
+                .ok_or_else(|| "native-check returned no verdict for this library".to_owned())
+        };
+        let mut row = judge(&plan).map_err(refused)?;
+        if row.needs == Some("build-data") {
             build_data = Some(crate::sdk_fetch::build_data(project, build).map_err(refused)?);
             plan.build_data = build_data.clone();
-            checked = check::check(&plan).map_err(refused)?.mods;
+            row = judge(&plan).map_err(refused)?;
         }
-        let row = checked.pop().expect("checked the named library");
         match row.verdict {
             Some(verdict) if verdict.usable() => (),
             Some(Verdict::DoesNotFit { misfits, .. }) => {
@@ -190,9 +196,19 @@ pub(super) fn check_fit(project: &Path, sdk: &super::NativeSdk, root: &Path) -> 
                         .join("; "),
                 ));
             }
-            Some(Verdict::NoList { why, .. }) => {
+            Some(Verdict::NoList { why, hooks, .. }) => {
+                let detail = match why {
+                    Unlisted::Missing => "it has no uses list".into(),
+                    Unlisted::Unreadable => "its uses list is unreadable".into(),
+                    Unlisted::NewerSchema => "its uses list requires a newer tool".into(),
+                    Unlisted::OtherBuild => "its uses list is for another build".into(),
+                    Unlisted::HookVersions => {
+                        format!("its uses list omits versions for {}", hooks.join(", "))
+                    }
+                    Unlisted::GameCode => "its uses list omits declared game code".into(),
+                };
                 return Err(refused(format!(
-                    "its uses list cannot show that it fits ({why:?}); build or repin the library against this SDK"
+                    "{detail}; build or repin the library against this SDK"
                 )));
             }
             Some(Verdict::Exact { why, .. }) => {

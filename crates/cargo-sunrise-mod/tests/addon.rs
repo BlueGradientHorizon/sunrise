@@ -100,6 +100,44 @@ impl mod_api::Hooks for Addon {
     for command in ["build", "check"] {
         passed(tool(&addon, &[command, "--with", path], None));
     }
+    let source = addon.join("src/lib.rs");
+    let code = fs::read_to_string(&source).unwrap();
+    fs::write(
+        &source,
+        format!("{code}\nfn wrong() -> &'static str {{ test_library::magic() }}"),
+    )
+    .unwrap();
+    let refused = tool(&addon, &["check", "--with", path], None);
+    let error = String::from_utf8_lossy(&refused.stderr);
+    assert!(
+        !refused.status.success()
+            && error.contains("mismatched types")
+            && error.contains(&source.display().to_string()),
+        "{error}"
+    );
+    fs::write(&source, code).unwrap();
+
+    let manifest = library.join("sunrise-mod.toml");
+    let original = fs::read_to_string(&manifest).unwrap();
+    let pin = Package::read(&library)
+        .unwrap()
+        .manifest
+        .native
+        .unwrap()
+        .sunrise;
+    let other_pin = "a".repeat(40);
+    fs::write(&manifest, original.replace(&pin, &other_pin)).unwrap();
+    let refused = tool(&addon, &["check", "--with", path], None);
+    let error = String::from_utf8_lossy(&refused.stderr);
+    assert!(
+        !refused.status.success()
+            && error.contains("test_library")
+            && error.contains(&other_pin)
+            && error.contains("uses list"),
+        "{error}"
+    );
+    fs::write(&manifest, original).unwrap();
+
     let bytes = Package::pack_directory(&library).unwrap();
     let package = root.join("test_library.smod");
     fs::write(&package, &bytes).unwrap();

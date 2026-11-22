@@ -366,13 +366,14 @@ fn prepare(
         },
     )?;
     let cache = cache_dir()?;
-    let work = match target {
-        _ if release => cache
+    let work = if release {
+        cache
             .join("release-work")
             .join(&build)
             .join(&id)
-            .join(sdk::Asset::host_name(computer()?, side)),
-        _ => cache.join("work").join(&id),
+            .join(sdk::Asset::host_name(computer()?, side))
+    } else {
+        cache.join("work").join(&id)
     };
     fs::create_dir_all(&work).map_err(|e| format!("{}: {e}", work.display()))?;
     let work = dunce::canonicalize(&work).map_err(|e| format!("{}: {e}", work.display()))?;
@@ -422,7 +423,7 @@ fn prepare(
     sunrise_native_build::clear_log()?;
 
     if registry {
-        println!("Compiling the crates.io dependencies of {id}, as `cargo build` would");
+        println!("Using Cargo's crates.io dependencies for {id}");
     }
     let lock = project.join("Cargo.lock");
     if (registry || release) && (update_lock || !lock.exists()) {
