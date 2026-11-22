@@ -1389,15 +1389,8 @@ impl Game<'_> {
                 .any(|g| h.hub.here(g) && g.loaded && !g.dead && near(g.position))
         })
     }
-    /// `EnderDragonFight.tick` and the fight's entities, while the End is
-    /// ticked (in place for its player, or on a server with players in it).
+    /// `EnderDragonFight.tick`, before the level ticks its entities.
     pub(super) fn tick_fight(&mut self) {
-        // A dragon outside the End (`/summon`) has no fight: `ServerLevel.getDragonFight` is
-        // null there, but `EnderDragon.aiStep` still flies it.
-        if !self.dimension_type().has_ender_dragon_fight {
-            self.tick_dragon();
-            return;
-        }
         self.load_fight();
         // updatePlayers, every 20 ticks.
         self.fight.player_scan += 1;
@@ -1444,12 +1437,6 @@ impl Game<'_> {
             }
         }
         self.assign_dragon_and_crystal_ids();
-        // updateDragon runs when the fight dragon ticks or dies, but not with NoAI.
-        let ticks = self.dragon.as_ref().is_some_and(|d| !d.alive() || !d.no_ai);
-        if ticks && self.is_fight_dragon() {
-            self.fight.dragon_unseen = 0;
-        }
-        self.tick_dragon();
     }
 
     pub(super) fn assign_dragon_and_crystal_ids(&mut self) {
@@ -2759,8 +2746,13 @@ impl Game<'_> {
             [look[0] / norm, look[1] / norm, look[2] / norm]
         }
     }
-    /// `EnderDragon.aiStep` (and `tickDeath`) for the dragon.
-    fn tick_dragon(&mut self) {
+    /// `EnderDragon.aiStep` (and `tickDeath`) for the dragon's own entity tick.
+    pub(super) fn tick_dragon(&mut self) {
+        // updateDragon runs when the fight dragon ticks or dies, but not with NoAI.
+        let ticks = self.dragon.as_ref().is_some_and(|d| !d.alive() || !d.no_ai);
+        if ticks && self.is_fight_dragon() {
+            self.fight.dragon_unseen = 0;
+        }
         // Entity.baseTick: the saved invulnerability window counts down
         // (#916), before the dragon's own borrow of the game.
         if let Some(id) = self.dragon.as_ref().map(|d| d.id) {

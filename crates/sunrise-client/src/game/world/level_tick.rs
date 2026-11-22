@@ -38,6 +38,11 @@ impl Game<'_> {
             // What the blocks spawned (a dispensed minecart, a lit TNT, a
             // placed boat) joins before the entities tick.
             span("mods_joins_flush", || self.native_joins_flush(false, 0));
+            if self.dimension_type().has_ender_dragon_fight {
+                // ServerLevel.tick runs the fight before visiting the entity tick list.
+                span("tick_dragon_fight", || self.tick_fight());
+                span("mods_joins_flush", || self.native_joins_flush(false, 0));
+            }
             span("lan_mark_synced", || self.lan_mark_synced());
             // `EntityTickList.forEach`: what joined before the entity pass
             // (function summons, dropped or dispensed items) ticks in it;
