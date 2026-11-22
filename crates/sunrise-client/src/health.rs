@@ -849,7 +849,7 @@ impl std::fmt::Debug for ArmorWeapon {
             .finish_non_exhaustive()
     }
 }
-impl DamageLevel<'_> {
+impl<'a> DamageLevel<'a> {
     /// What `applyItemBlocking` stops of `damage` (above 0) once [`DamageHooks::shield`] had
     /// its say on `vanilla`, the block vanilla resolved: none when the hook unblocks it.
     pub fn shield_block(

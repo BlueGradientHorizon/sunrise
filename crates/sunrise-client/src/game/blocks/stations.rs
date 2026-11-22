@@ -1114,6 +1114,9 @@ impl Game<'_> {
     /// or cancel the levels, and every fifth level gained plays the level-up sound
     /// (at most every 100 ticks).
     pub(super) fn add_experience_levels(&mut self, mut levels: i32) {
+        if levels == 0 {
+            return;
+        }
         if mod_api::__private::listened(mod_api::HookId::PlayerXpLevelChange)
             && let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone())
         {

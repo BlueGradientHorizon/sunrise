@@ -810,7 +810,8 @@ impl LivingFallWorld for FallCall<'_, '_, '_, '_> {
                 self.world.tag_items,
                 self.world.block_registries,
                 self.world.damage_hooks,
-            ),
+            )
+            .with_player_equipment(self.world.side.player_equipment()),
             resources,
             rules,
             resources.landing_source(self.source),
