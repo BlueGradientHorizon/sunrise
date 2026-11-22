@@ -4,7 +4,7 @@
 //! costs one `Option` check per tick.
 mod event_timings;
 #[cfg(test)]
-mod level_event_targets;
+use sunrise_gameplay::lan::level_event_targets;
 mod mob_metadata;
 mod mob_states;
 mod raw_inbox;
@@ -1139,7 +1139,7 @@ impl Game<'_> {
     pub(super) fn lan_status(&self) -> serde_json::Value {
         use serde_json::json;
         match &self.lan {
-            Some(h) if !self.serving() || self.published_port().is_some() => json!({
+            Some(h) if self.open_to_others() => json!({
                 "open": true,
                 // The owner's profile name.
                 "host": self.options.player_name(),
@@ -1211,11 +1211,7 @@ impl Game<'_> {
             &self.res.core.item_data,
             &self.pack_files(),
         )?;
-        let features = if self.level.enabled_features.is_empty() {
-            vec!["minecraft:vanilla".to_owned()]
-        } else {
-            self.level.enabled_features.to_vec()
-        };
+        let features = self.enabled_feature_ids().to_vec();
         // A world whose packs change biomes sends its own biome registry.
         let packed = self.world_biomes.clone().filter(|b| b.has_packs());
         if packed.is_some()
@@ -1280,6 +1276,7 @@ impl Game<'_> {
             .then(|| sunrise_client::lod_net::Service::new(net.lod_distance, biome_names.clone()));
         let lan = super::lan_configuration_tasks::start(sync.clone(), net)?;
         let mut hub = Hub::new(lan, sync, encoder, config, self.loop_context.clone());
+        hub.dispatch_move_effects = true;
         self.bind_guest_residency(&mut hub);
         self.passages.record_on(&mut hub);
         hub.rule_registry = self.level.rule_registry.clone();
@@ -1288,6 +1285,7 @@ impl Game<'_> {
         hub.debug_world = self.world_debug;
         let port = hub.lan.port;
         self.world.block_log = Some(Vec::new());
+        self.world.connection_group_log = Some(Default::default());
         self.world.light_log = Some(Default::default());
         self.lan = Some(LanHost {
             players_told_left: false,
@@ -1356,6 +1354,7 @@ impl Game<'_> {
         // Give the network threads a moment to flush the disconnect packets.
         std::thread::sleep(std::time::Duration::from_millis(100));
         self.world.block_log = None;
+        self.world.connection_group_log = None;
         self.world.light_log = None;
         self.audio.capture = None;
         self.bound_sounds.clear();
@@ -1378,10 +1377,9 @@ impl Game<'_> {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
-        // Every open menu closes first, in its guest's level
-        // (`ServerPlayer.disconnect` -> `doCloseContainer`), so the cursor,
-        // the trade and the inputs are back in the file that is saved. An interrupted
-        // guest's file is not written, so its menu is left alone.
+        // Remove the open menu and window 0 in the guest's own level before
+        // saving, so held stacks and inputs return to their inventory or drop
+        // there if full. An interrupted guest's file is not written.
         let back = self.dim;
         let open: Vec<(u32, super::Dim)> = host
             .hub
@@ -1396,7 +1394,7 @@ impl Game<'_> {
             .collect();
         for (conn, dim) in open {
             if self.enter_level(dim).is_ok() {
-                self.guest_close_all(conn);
+                self.guest_close_menus_for_save(conn);
             }
         }
         if let Err(e) = self.enter_level(back) {
@@ -1481,7 +1479,7 @@ impl Game<'_> {
         others: &[u32],
         remove: bool,
     ) -> Option<(sunrise_core::nbt::Tag, [i32; 4])> {
-        vehicle?;
+        let vehicle = vehicle?;
         let back = self.dim;
         let theirs = super::Dim::from_id(dim);
         if theirs != back
@@ -1490,26 +1488,23 @@ impl Game<'_> {
             log::error!("could not open {}: {e}", theirs.id());
             return None;
         }
-        let found = if self.dim == theirs {
-            self.parent_vehicle_tag(vehicle, others)
+        let saved = if self.dim == theirs {
+            self.snapshot_parent_vehicle(vehicle, others, remove)
         } else {
             None
         };
-        if remove && let Some((_, root, _)) = &found {
-            self.remove_vehicle_tree(*root);
-        }
         if self.dim != back
             && let Err(e) = self.enter_level(back)
         {
             log::error!("could not reopen {}: {e}", back.id());
         }
-        found.map(|(tag, _, attach)| (tag, attach))
+        saved
     }
-    /// `PlayerList.remove` of a guest out of the hub: its file takes the
-    /// vehicle it alone rides (`saveParentVehicle`'s RootVehicle, kept in
-    /// `saved` as a file not yet ridden again), the vehicle tree leaves the
-    /// world, and the guest stops riding (`unRide`). A guest the crash save excludes keeps
-    /// the vehicle in the world: its file is not written, so nothing would hold it.
+    /// `PlayerList.remove` of a guest out of the hub: the vehicle it alone rides
+    /// leaves the world, and the guest stops riding (`unRide`). The file takes
+    /// a persistent tree as `RootVehicle` (`saved` holds it until the next ride).
+    /// A guest the crash save excludes keeps the vehicle in the world: its file
+    /// is not written, so nothing would hold it.
     pub(super) fn take_parent_vehicle(&mut self, guest: &mut sunrise_client::lan::guest::Guest) {
         // An interrupted player's file is not written, so the vehicle stays in the world.
         if self.crash_save.excludes(guest.conn) {
@@ -1911,7 +1906,7 @@ impl Game<'_> {
             let place = super::lan_idle::Place {
                 position: [d.position.x, d.position.y, d.position.z],
                 rotation: (0.0, 0.0, 0.0),
-                on_ground: d.on_ground,
+                on_ground: d.ground.on_ground,
                 velocity: [d.velocity.x, d.velocity.y, d.velocity.z],
             };
             let bare = idle
@@ -1936,7 +1931,7 @@ impl Game<'_> {
             e.precise = false;
             e.needs_sync = d.needs_sync;
             e.vertical_collision = d.vertical_collision;
-            e.horizontal_collision = d.horizontal_collision;
+            e.horizontal_collision = d.ground.horizontal_collision;
             // Entity.DATA_SHARED_FLAGS_ID: glowing 0x40 (the Glowing tag).
             if self.tracked_entity_glowing(d.id) {
                 e.meta.push((0, serializer::BYTE, Value::Byte(0x40)));
@@ -1947,7 +1942,7 @@ impl Game<'_> {
             let e = out.add(o.id as i32, entity_uuid(o.id), "minecraft:experience_orb");
             e.position = [o.position.x, o.position.y, o.position.z];
             e.idle = idle_at(o.position);
-            e.on_ground = o.on_ground;
+            e.on_ground = o.ground.on_ground;
             e.velocity = [o.velocity.x, o.velocity.y, o.velocity.z];
             // ExperienceOrb.DATA_VALUE.
             e.meta.push((8, serializer::INT, Value::Int(o.value)));
@@ -2082,7 +2077,9 @@ impl Game<'_> {
             }
             match event {
                 HostEvent::InputCredits(credits) => drop(credits),
-                HostEvent::RawPayload(delivery) => self.receive_raw_delivery(delivery),
+                HostEvent::RawPayload(delivery) => {
+                    self.run_payload(delivery.endpoint, delivery.incoming);
+                }
                 event @ (HostEvent::Chat { .. } | HostEvent::Warn(_) | HostEvent::Error(_)) => {
                     self.lan_log_event(event);
                 }
@@ -2421,8 +2418,8 @@ impl Game<'_> {
                         self.run_guest_commands();
                     }
                 }
-                HostEvent::Jump { conn, from, yaw } => {
-                    self.guest_jump(conn, from, yaw);
+                HostEvent::AcceptedMove(conn, movement) => {
+                    self.guest_accepted_move(conn, movement);
                 }
             }
         }
@@ -2547,8 +2544,8 @@ impl Game<'_> {
     /// first updated in this tick's pass (`Entities::synced`).
     /// `ServerChunkCache.tick`'s broadcast, where ServerLevel.tick runs it:
     /// after the scheduled and random ticks, before the block events, so the
-    /// players get the blocks as they are then. The block log's length after
-    /// it: what the tick writes from there on goes out with the next tick's.
+    /// players get the blocks as they are then. What the tick writes from
+    /// there on goes out with the next tick's.
     pub(super) fn lan_broadcast_changes(&mut self) -> Option<usize> {
         if let Some(host) = self.lan.as_mut() {
             host.hub.broadcast_changes(&mut self.world);
@@ -2685,6 +2682,11 @@ impl Game<'_> {
             };
             let ridden: Vec<u32> = host.hub.guests.iter().filter_map(|g| g.vehicle).collect();
             self.find_ridden_vehicle_portals(&ridden);
+        }
+        // LevelChunk.registerAllBlockEntitiesAfterLevelLoad publishes saved data before
+        // the first send, not on the first entity tick (which may be frozen or later).
+        if self.is_logical_server() {
+            self.fire_pending_block_entity_loads();
         }
         // A guest's mount fired its `started_riding` with that guest alone in
         // place (the hub held by its action): now every player on the vehicle
@@ -3236,12 +3238,6 @@ impl Game<'_> {
             EquipmentSlot::Body => 65,
             EquipmentSlot::Saddle => 68,
         };
-        // The mods hear a server player's break (a creative player's gear takes no wear).
-        if !self.creative
-            && let (Some(uuid), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone())
-        {
-            self.native_player_destroy_item(uuid, &name, &stack.item, equipment_slot_name(slot));
-        }
         let Some(at) = self
             .player
             .as_ref()
@@ -3585,22 +3581,6 @@ pub(super) fn living_flags(using: Option<(usize, u32)>, spinning: bool) -> i8 {
         | if spinning { 4 } else { 0 }
 }
 
-/// The name a mod hears for an equipment slot (the armor stand hook's names, plus
-/// the two slots a mount's gear uses).
-fn equipment_slot_name(slot: sunrise_core::equipment_slot::EquipmentSlot) -> &'static str {
-    use sunrise_core::equipment_slot::EquipmentSlot;
-    match slot {
-        EquipmentSlot::MainHand => "mainhand",
-        EquipmentSlot::OffHand => "offhand",
-        EquipmentSlot::Head => "head",
-        EquipmentSlot::Chest => "chest",
-        EquipmentSlot::Legs => "legs",
-        EquipmentSlot::Feet => "feet",
-        EquipmentSlot::Body => "body",
-        EquipmentSlot::Saddle => "saddle",
-    }
-}
-
 #[cfg(test)]
 use level_event_targets::level_event_except;
 
@@ -3661,13 +3641,13 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::{
-        EventTimings, Hub, LanHost, LanSettings, OFFHAND_SLOT, equipment_slot_name, living_flags,
-        mob_freeze_meta,
+        EventTimings, Hub, LanHost, LanSettings, OFFHAND_SLOT, living_flags, mob_freeze_meta,
     };
 
     impl LanHost {
         /// Install an already configured fixture hub without touching the process-wide sync cache.
-        pub(in crate::game) fn for_test(hub: Hub) -> Self {
+        pub(in crate::game) fn for_test(mut hub: Hub) -> Self {
+            hub.dispatch_move_effects = true;
             Self {
                 settings: LanSettings {
                     port: hub.lan.port,
@@ -4545,21 +4525,6 @@ mod tests {
         assert_eq!(super::level_event_except(2001, actor, true), None);
     }
 
-    /// The names a mod matches on for a broken item's slot (a contract).
-    #[test]
-    fn a_broken_items_slot_is_named_for_mods() {
-        use sunrise_core::equipment_slot::EquipmentSlot::*;
-        let named: Vec<_> = [MainHand, OffHand, Head, Chest, Legs, Feet, Body, Saddle]
-            .map(equipment_slot_name)
-            .to_vec();
-        assert_eq!(
-            named,
-            [
-                "mainhand", "offhand", "head", "chest", "legs", "feet", "body", "saddle"
-            ]
-        );
-    }
-
     /// `server_chat`'s replies reach the sender alone, as system chat, whether
     /// or not the message goes out; a canceled message reaches nobody.
     #[test]
@@ -5103,6 +5068,7 @@ mod sources_tests {
             overlay_key(&PackOverlay {
                 conditions: &sunrise_world::conditions::LoadConditions::vanilla(),
                 files,
+                ..PackOverlay::default()
             })
         };
         assert_eq!(key(&files), key(&files.clone()));

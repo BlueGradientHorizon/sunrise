@@ -187,7 +187,7 @@ impl Game<'_> {
     /// A non-mob kind's saved invulnerability (#916), the one parse of its
     /// entity data: the `Invulnerable` flag and the `invulnerable_time`
     /// window. `(false, 0)` where its data has neither.
-    fn saved_invulnerability(&self, id: u32) -> (bool, i32) {
+    pub(super) fn saved_invulnerability(&self, id: u32) -> (bool, i32) {
         use sunrise_core::nbt::Tag;
         match self.persist.raw.get(&id) {
             Some(Tag::Compound(map)) => (
@@ -282,9 +282,11 @@ impl Game<'_> {
     /// armor, the cooldown and every hurt hook kept, the damage event the
     /// hit already broadcasts — by kind: the player's and mobs' for the
     /// living, the item, dragon and crystal branches for the damageable
-    /// rest. True when the damage was taken. None for a stale handle, false
-    /// for a kind that cannot be hurt or an unregistered damage type. Stale
-    /// direct/causing handles are treated as absent sources.
+    /// rest. A return value of `true` means the hurt was accepted, not
+    /// necessarily that the entity lost health. `None` means the target handle
+    /// is stale; `false` means the hurt was refused, including for a kind that
+    /// cannot be hurt or an unregistered damage type. Stale direct/causing
+    /// handles are treated as absent sources.
     pub(super) fn entity_hurt(
         &mut self,
         entity: EntityRef,
@@ -639,8 +641,8 @@ mod tests {
         assert_eq!(*heard.lock().unwrap(), vec![(300002, 300003); 4]);
     }
 
-    /// A listening probe counting the incoming-damage hooks a hit fires.
-    struct Probe(std::sync::Arc<std::sync::Mutex<Vec<u32>>>);
+    /// Incoming-damage notifications, in order, with the id the hook heard.
+    struct Probe(std::sync::Arc<std::sync::Mutex<Vec<(u32, String)>>>);
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for Probe {
         fn living_incoming_damage(
@@ -648,9 +650,44 @@ mod tests {
             _: &mut dyn mod_api::HitHost,
             event: &mut mod_api::LivingIncomingDamageEvent<'_>,
         ) -> mod_api::Flow {
-            self.0.lock().unwrap().push(event.entity as u32);
+            self.0
+                .lock()
+                .unwrap()
+                .push((event.entity as u32, event.source.damage_type.to_owned()));
             mod_api::Flow::Continue
         }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn registered_vanilla_damage_keeps_its_hook_and_death_message() {
+        let heard = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "probe",
+            Box::new(Probe(heard.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+                game.mobs.push(Mob::new(300001, pig, Vec3::ZERO, 0.0));
+                let victim = game.entity(300001).unwrap();
+                assert_eq!(
+                    victim.hurt(game, "minecraft:dragon_breath", 10.0, None, None),
+                    Some(true)
+                );
+                let dead = game.mobs.remove(0);
+                assert_eq!(dead.health, 0.0);
+                assert_eq!(
+                    game.mob_death_message(&dead, None).component()["translate"],
+                    "death.attack.dragonBreath"
+                );
+            });
+        });
+        assert_eq!(
+            *heard.lock().unwrap(),
+            vec![(300001, "minecraft:dragon_breath".to_owned())]
+        );
     }
 
     #[test]
@@ -722,7 +759,14 @@ mod tests {
         // hook once — the accepted hit, the weaker one the cooldown window
         // refused (the window is checked inside the pipeline) and the
         // flag-bypassing kill — while the flag-refused one never entered.
-        assert_eq!(*heard.lock().unwrap(), vec![300001, 300001, 300001]);
+        assert_eq!(
+            *heard.lock().unwrap(),
+            vec![
+                (300001, "minecraft:generic".to_owned()),
+                (300001, "minecraft:generic".to_owned()),
+                (300001, "minecraft:out_of_world".to_owned()),
+            ]
+        );
     }
 
     #[test]

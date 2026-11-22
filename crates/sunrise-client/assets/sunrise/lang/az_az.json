@@ -139,7 +139,6 @@
   "How fast the right stick turns the view.": "Sağ çubuğun görünüşü nə qədər sürətli çevirdiyi.",
   "How fast the stick moves the crosshair in inventories.": "İnventarlarda çubuğun nişangahı nə qədər sürətli hərəkət etdirdiyi.",
   "How frames reach the screen while VSync is off.": "VSync söndürüldükdə çərçivələr ekrana necə çatır.",
-  "How frames reach the screen, and the performance overlay.": "Çərçivələrin ekrana necə çatması və performans örtüyü.",
   "How long a held direction takes between repeats.": "Basılı saxlanılan istiqamətin təkrarlar arasında nə qədər vaxt aldığı.",
   "How long a held direction waits before it repeats.": "Basılı saxlanılan istiqamətin təkrarlanmazdan əvvəl nə qədər gözlədiyi.",
   "How many particles effects spawn.": "Nə qədər hissəcik effektləri kürü verir.",

@@ -3,8 +3,8 @@
 A mixin changes one game function. You name the function and the place in it (its start, its return value,
 one call inside it, or its whole body), and write your code there as a small Rust function, the **helper**.
 
-Use a mixin when you need private fields, a change in the middle of a function, or a new body. To run code at
-the start or end of a function with `mod_api` values, an [`[[inject]]` listener](../injections.md) is enough.
+Use a [hook](../hooks-and-the-host.md) or [Part method](../parts.md) when it exposes what you need.
+Use a mixin when you need to patch the game function itself.
 
 ## Example
 
@@ -39,9 +39,8 @@ fn head(game: &mut Game<'_>) -> ::core::ops::ControlFlow<()> {
 called on. With `cancellable = true` the helper returns `ControlFlow<()>`: `Break(())` makes the function
 return at once, and `Continue(())` lets it run. For a function that returns `R`, the helper returns `ControlFlow<R>`, and `Break(value)` returns `value`.
 
-Run `cargo sunrise-mod build` from the mod project. Neither `internals sync` nor `inject update` is a
-step of a mixin build. The build log shows `Function replacement: … without rebuilding the game` when
-it compiles the patch.
+Run `cargo sunrise-mod build` from the mod project. The build log shows
+`Function replacement: … without rebuilding the game` when it compiles the patch.
 
 ## Writing a helper
 
@@ -172,8 +171,7 @@ replacement is given coordinates beyond the columns of the chunk or tile being g
 ## With other mods
 
 Several mods' rows on one function all apply. An `OVERWRITE` must be the only mixin on its function,
-from any mod including its own, and that includes a `HEAD` or a `WRAP_OPERATION` inside it. The tool plans every mod selected for a native build together, so a conflict between mods is found when they are built together, not when one package is checked, and not when an already built library loads. An `[[inject]]` listener may share a function with mixins: head listeners run first, then the
-mixed-in function, then return listeners.
+from any mod including its own, and that includes a `HEAD` or a `WRAP_OPERATION` inside it. The tool plans every mod selected for a native build together, so a conflict between mods is found when they are built together, not when one package is checked, and not when an already built library loads.
 
 ## Errors
 
@@ -189,6 +187,8 @@ A row the build can't apply stops the build, naming the mod, the row and the rea
 | `E_MIXIN_TARGET_AMBIGUOUS` | `<target>: several functions have this path (a cfg-gated pair, for one)` | Target another function. |
 | `E_MIXIN_NOT_REPLACEABLE` | `<target>: a function below the game crate takes a replacement only when it carries #[sunrise_mod_api_macros::replaceable]; …` | Target a game-crate function or a caller or callee carrying the marker. |
 | | `<target>: <reason>`, such as ``it is generic over types or takes `impl Trait` …`` | Target a caller or callee that can be copied. |
+| | ``<target>: it names `<path>`, which crosses a non-public `use` in `<module>` `` | The signature or body uses a re-export the prebuilt game keeps private. Target a caller or callee that can be copied. |
+| | ``<target>: it names `<path>`, which reaches the non-public crate-root function `<name>` `` | The prebuilt game keeps that function private. Target a caller or callee that can be copied. |
 | `E_MIXIN_SOURCE` | `<target>: <why>`, such as `<file> differs from this game build's functions.json` | The game's source could not be read, or is not the build's: retry the build. |
 | `E_MIXIN_INDEX` | `<path>: …: the game build's SDK has no function index …`, or `functions.json describes game build <commit>, not <commit>` | The SDK on disk is damaged or another build's: fetch the SDK again. |
 | `E_OVERWRITE_CONFLICT` | from the tool: `OVERWRITE must be exclusive on <function>; competing injections: <mod>/<row>, …`; it names every row, of any mods, on the function | For competing rows of one mod, remove one of those rows. For rows of different mods, keep only one of those mods installed. |

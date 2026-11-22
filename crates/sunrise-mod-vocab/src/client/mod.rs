@@ -29,6 +29,7 @@ pub mod fog;
 pub(crate) mod gui_clip;
 pub(crate) mod gui_entity;
 pub(crate) mod gui_layers;
+pub(crate) mod gui_model;
 pub(crate) mod gui_paint;
 // hidden: a module of game-side types; mods use their re-exports
 #[doc(hidden)]
@@ -68,6 +69,7 @@ pub(crate) mod render_pipeline;
 pub(crate) mod scene;
 pub(crate) mod screen_slot_refusal;
 pub(crate) mod screenshot;
+pub(crate) mod section_visibility;
 pub(crate) mod skull_models;
 pub(crate) mod special_model_renderers;
 pub(crate) mod terrain_draw;

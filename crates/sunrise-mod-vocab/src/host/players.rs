@@ -26,20 +26,21 @@ pub trait PlayersServerHost {
     fn fake_player(&mut self, level: LevelRef, uuid: u128, name: &str) -> Option<PlayerRef>;
     /// Side: server.
     /// The most players who may be on at once (`PlayerList.getMaxPlayers`,
-    /// `max-players`), as the server list shows it and logins are refused
-    /// beyond. None where no server is open to players (a client, or a server
-    /// nobody can join): the one reason there is none.
+    /// `max-players`), as the server list shows it. Logins at or above the limit
+    /// are refused unless they bypass it. None where no server is open to players
+    /// (a client, or a server nobody can join).
     #[access(WorldOnly)]
     fn server_max_players(&self) -> Option<u32>;
     /// Side: server.
     /// Sets the player limit from the next login and server list ping on
     /// (Paper's `Server.setMaxPlayers`); players already on stay, even when
-    /// they are more than the new limit. `server.properties` is not changed,
-    /// so a restart goes back to its `max-players`. Writes nothing and refuses
-    /// with `PlayerLimitRefusal::NotOpen` where no server is open to players,
+    /// they are more than the new limit. The existing login bypass still applies
+    /// (dedicated operators flagged `bypassesPlayerLimit`). `server.properties`
+    /// is not changed, so a restart goes back to its `max-players`.
+    /// Writes nothing and refuses with `PlayerLimitRefusal::NotOpen` where no server is open to players,
     /// and with `TooHigh { maximum }` for a limit above `i32::MAX`, as vanilla
     /// keeps the limit in an `int` (Paper's `setMaxPlayers` takes one). Zero is
-    /// taken: it lets nobody else on.
+    /// taken: it refuses all new logins that do not bypass the limit.
     #[access(WorldOnly)]
     fn server_set_max_players(&mut self, max_players: u32) -> Result<(), PlayerLimitRefusal>;
 }
@@ -98,7 +99,8 @@ pub trait PlayersClientHost {
     /// and fires no `entity_move` hook (that hook is server-only). A section change is
     /// reported through `entity_entering_section` at the position write, before the move
     /// updates collision flags, ground, fall distance and velocity.
-    /// The normal position report carries the result and the server checks it as usual.
+    /// The normal position report carries the movement and ground flag, and the server checks
+    /// the report as usual.
     /// Returns the displacement actually made, or `Ok(None)` without moving if there is no
     /// local player, the player is dead, sleeping or riding, or a component is non-finite or
     /// outside ±64 blocks. `Err(LevelWriteError::Unavailable)` means the call is outside a
@@ -156,11 +158,19 @@ pub trait PlayersClientBackend {
     #[access(WorldOnly)]
     fn player_ambient_mood(&self, player: PlayerRef) -> Option<f32>;
 }
-/// Client-only custom book intent, reached through player handles.
+/// Client-only player writes, reached through player handles.
 // hidden: mods call PlayerRef methods, never the generated backend trait
 #[doc(hidden)]
 #[sunrise_mod_api_macros::host_area]
 pub trait PlayersClientBackendMut {
+    /// Side: client.
+    /// Clears the local player's accumulated fall distance (`Entity.resetFallDistance`).
+    /// This is client prediction only and sends no packet. Returns `Ok(false)` for a
+    /// stale or non-local player or if no local player is in the world, and
+    /// `Err(LevelWriteError::Unavailable)` without writable client-world access,
+    /// such as in pack discovery or while a section crossing borrows the world.
+    #[access(WorldOnly)]
+    fn player_reset_fall_distance(&mut self, player: PlayerRef) -> Result<bool, LevelWriteError>;
     /// Side: client.
     /// Request a new pair for the local player's negotiated book. True means
     /// queued, not accepted; only an authoritative reply changes saved state.

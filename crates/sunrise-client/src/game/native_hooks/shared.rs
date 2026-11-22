@@ -665,6 +665,7 @@ pub(super) struct OpenNativeScreen {
     /// The mod block whose menu it is; none for a menu opened without one.
     block: Option<String>,
     screen: mod_api::Screen,
+    mod_type: Option<&'static sunrise_client::containers::ModMenuType>,
     data: Vec<i32>,
     extra: Option<sunrise_protocol::menu_extra::Message>,
 }
@@ -739,6 +740,20 @@ impl SlotMoves {
     }
 }
 
+impl Game<'_> {
+    /// The registered layout resolved for this client's window, including while it opens.
+    pub(in crate::game) fn native_screen_menu_type(
+        &self,
+        window: i32,
+        name: &str,
+    ) -> Option<&'static sunrise_client::containers::ModMenuType> {
+        self.mod_screen
+            .as_ref()
+            .filter(|screen| screen.window == window && screen.menu == name)?
+            .mod_type
+    }
+}
+
 impl OpenNativeScreen {
     /// How many slot moves changed a position, so a layout built before the
     /// last one is rebuilt.
@@ -761,18 +776,38 @@ impl OpenNativeScreen {
     }
     /// Data slot `id` of window `window`'s menu: false for another window's
     /// (an old or replaced one), which this screen leaves alone.
-    fn set_data(&mut self, window: i32, id: i16, value: i16) -> bool {
+    fn set_data(&mut self, window: i32, index: usize, value: i32) -> bool {
         if window != self.window {
             return false;
         }
-        // A menu's data slot ids are small; a bad one is dropped.
-        if let Ok(i @ 0..256) = usize::try_from(id) {
-            if self.data.len() <= i {
-                self.data.resize(i + 1, 0);
+        let count = self.mod_type.map_or(256, |kind| kind.data_slots);
+        if index < count {
+            if self.data.len() <= index {
+                self.data.resize(index + 1, 0);
             }
-            self.data[i] = i32::from(value);
+            self.data[index] = value;
         }
         true
+    }
+
+    fn player_slots(&self) -> usize {
+        self.mod_type
+            .map_or(36, sunrise_client::containers::ModMenuType::player_slots)
+    }
+
+    fn visible_container_slots(&self) -> impl Iterator<Item = usize> + '_ {
+        self.screen
+            .slots
+            .iter()
+            .enumerate()
+            .filter_map(|(i, slot)| {
+                self.slot_moves.position(i, slot.as_ref()?.position)?;
+                Some(300 + i)
+            })
+    }
+
+    pub(super) fn visible_slots(&self) -> impl Iterator<Item = usize> + '_ {
+        (0..self.player_slots()).chain(self.visible_container_slots())
     }
 }
 
@@ -1718,8 +1753,9 @@ impl Game<'_> {
             attacker,
             held,
             projectile: None,
-            projectile_is_arrow: false,
+            projectile_kind: sunrise_client::health::DirectEntity::Other,
             direct: None,
+            direct_kind: None,
             position: None,
             projectile_weapon: None,
             player_uuid,
@@ -2090,9 +2126,18 @@ impl Game<'_> {
         let game_master = ctx.can_use_game_master_blocks;
         let stack_state =
             |state| crate::game::block_items::item_block_state(registry, state, stack, game_master);
-        let Some((decision, preview)) =
-            self.with_level(|b, level, ticks| b.decide_placement(level, ticks, ctx, stack_state))
-        else {
+        let has_part =
+            mod_api::__private::item_listens(mod_api::HookId::PlacementContext, &stack.item);
+        let placer = (has_part && by_player)
+            .then(|| self.placement_placer())
+            .flatten();
+        let Some((decision, preview)) = self.with_level(|b, level, ticks| {
+            b.decide_placement(level, ticks, ctx, stack_state, |level, context| {
+                has_part
+                    .then(|| level.rewrite_placement_context(stack, context, placer))
+                    .flatten()
+            })
+        }) else {
             return Ok(None);
         };
         let veto = mod_api::__private::listened(mod_api::HookId::EntityPlace);
@@ -2615,13 +2660,13 @@ impl Game<'_> {
     }
     /// A data slot of window `window`'s menu (`ContainerSetData`); false
     /// when no mod screen is showing for that window.
-    pub(super) fn native_screen_data(&mut self, window: i32, id: i16, value: i16) -> bool {
+    pub(super) fn native_screen_data(&mut self, window: i32, index: usize, value: i32) -> bool {
         if self.shown_native_screen().is_none() {
             return false;
         }
         self.mod_screen
             .as_mut()
-            .is_some_and(|s| s.set_data(window, id, value))
+            .is_some_and(|s| s.set_data(window, index, value))
     }
     /// Where the open mod screen puts container slot `slot` this frame: where
     /// a mod last moved it, else where the screen declared it; None once a mod
@@ -2673,30 +2718,10 @@ impl Game<'_> {
     }
     /// The container slots the open mod screen shows this frame (300.. ids).
     pub(super) fn native_screen_slots(&self) -> Option<Vec<usize>> {
-        let s = self.shown_native_screen()?;
-        let shown = s.screen.slots.iter().enumerate();
         Some(
-            shown
-                .filter(|(i, p)| {
-                    p.as_ref()
-                        .is_some_and(|p| s.slot_moves.position(*i, p.position).is_some())
-                })
-                .map(|(i, _)| 300 + i)
+            self.shown_native_screen()?
+                .visible_container_slots()
                 .collect(),
-        )
-    }
-    /// How many of those slots `native_screen_slots` lists, without building
-    /// it (`Game::slot_count` asks every frame).
-    pub(super) fn native_screen_slot_count(&self) -> Option<usize> {
-        let s = self.shown_native_screen()?;
-        let shown = s.screen.slots.iter().enumerate();
-        Some(
-            shown
-                .filter(|(i, p)| {
-                    p.as_ref()
-                        .is_some_and(|p| s.slot_moves.position(*i, p.position).is_some())
-                })
-                .count(),
         )
     }
     /// The first row of the player's inventory on the open mod screen.
@@ -2730,8 +2755,7 @@ impl Game<'_> {
                 h - 2.0,
                 rgba(198, 198, 198, 255),
             );
-            let container = self.native_screen_slots().unwrap_or_default();
-            for i in (0..36).chain(container) {
+            for i in s.visible_slots() {
                 let (x, y) = self.slot_position(i);
                 let (x, y) = (ox + x - 1.0, oy + y - 1.0);
                 batch.fill(atlas, x, y, 18.0, 18.0, rgba(55, 55, 55, 255));
@@ -2776,12 +2800,14 @@ impl Game<'_> {
             let [x, y] = s.screen.title_label.unwrap_or([8.0, 6.0]);
             batch.text_styled(atlas, &title, ox + x, oy + y, grey, false);
         }
-        let inventory = self.translate_with_fallback("container.inventory", "Inventory");
-        let [x, y] = s
-            .screen
-            .inventory_label
-            .unwrap_or([8.0, s.screen.height - 94.0]);
-        batch.text(atlas, &inventory, ox + x, oy + y, grey, false);
+        if s.player_slots() != 0 {
+            let inventory = self.translate_with_fallback("container.inventory", "Inventory");
+            let [x, y] = s
+                .screen
+                .inventory_label
+                .unwrap_or([8.0, s.screen.height - 94.0]);
+            batch.text(atlas, &inventory, ox + x, oy + y, grey, false);
+        }
         true
     }
     /// Puts back a mod block entity taken out for a call, unless the call
@@ -2807,26 +2833,32 @@ impl Game<'_> {
             self.drop_unreturned_mod_contents(pos, taken);
         }
     }
-    /// Menu button `id` on the mod container at `pos` (`clickMenuButton`),
-    /// with the acting player's cursor stack (`carried`, read and written).
+    /// Menu button `id` on a mod menu (`clickMenuButton`), with the acting
+    /// player's cursor stack (`carried`, read and written). A block-backed
+    /// menu lends its block entity; a blockless menu lends none.
     pub(super) fn mod_menu_button(
         &mut self,
+        menu: &str,
         context: mod_api::item::menu::MenuButtonContext,
+        block: Option<&str>,
+        backing: Option<(i32, i32, i32)>,
         carried: &mut Option<ItemStack>,
     ) {
-        let pos = (context.pos[0], context.pos[1], context.pos[2]);
-        if self.mod_menu_at(pos).is_none() {
+        let Some(pos) = backing.filter(|&pos| self.mod_menu_at(pos) == Some(menu)) else {
+            self.api_menu_button(menu, block, &context, None, carried);
             return;
-        }
+        };
         let Some(BlockEntity::Mod(m)) = self.world.block_entities.get_mut(&pos) else {
+            self.api_menu_button(menu, block, &context, None, carried);
             return;
         };
         if m.id().is_empty() {
+            self.api_menu_button(menu, block, &context, None, carried);
             return;
         }
         let mut taken = std::mem::take(&mut **m);
         let items = taken.items.clone();
-        self.api_menu_button(&context, &mut taken, carried);
+        self.api_menu_button(menu, block, &context, Some(&mut taken), carried);
         self.put_back_mod_block_entity(pos, taken, &items);
     }
     /// A press on the open mod screen's own button (`native_screen_click`)
@@ -2922,8 +2954,6 @@ impl Game<'_> {
             mod_api::__private::key_mappings(),
         );
         let native = self.mods.native.clone();
-        // Wasm proxies are installed in the same dispatch table as native mods. Their rows
-        // need the same live switch and settings page, not a frozen content-only toggle.
         let mut rows: Vec<_> = self
             .settings
             .mods
@@ -3065,7 +3095,6 @@ impl Game<'_> {
         }
         let mut zoom = None;
         self.native_zoom(&mut zoom);
-        // As the WebAssembly runtime clamped a mod's zoom.
         let z = zoom?;
         let factor = finite(z.factor, 1.0, 10.0);
         (factor > 1.0).then_some(mod_api::Zoom {
@@ -3149,12 +3178,16 @@ pub(super) fn debug_takes(corner: Corner, debug: bool, charts: [bool; 2]) -> boo
         }
 }
 
-/// A menu of `MOD_MENUS` or a content mod's menu type, by its name.
+/// A supported type for a block's container menu. A transient container is never block-backed.
 pub(super) fn mod_menu(name: &str) -> Option<(&'static str, usize)> {
     MOD_MENUS
         .into_iter()
         .find(|(menu, _)| *menu == name)
-        .or_else(|| sunrise_client::containers::mod_menu_type(name).map(|m| (m.id, m.slots)))
+        .or_else(|| {
+            sunrise_client::containers::mod_menu_type(name)
+                .filter(|menu| menu.owned_slots.is_none())
+                .map(|menu| (menu.id, menu.slots))
+        })
 }
 
 /// `state` with its property `key` set to `value`; none when the block has
@@ -3402,10 +3435,11 @@ mod tests {
                     .build();
             }
             fn blocks(&self, _context: &mod_api::RegistrationContext, event: &mut BlocksEvent<'_>) {
-                event.blocks.extend(
-                    [FIRST, SECOND, EMPTY, PLAIN]
-                        .map(|id| mod_api::Block::new(id, "minecraft:white_banner")),
-                );
+                for block in [FIRST, SECOND, EMPTY, PLAIN]
+                    .map(|id| mod_api::Block::new(id, "minecraft:white_banner"))
+                {
+                    event.register(block).unwrap();
+                }
             }
         }
         let case = std::env::var(CHILD).unwrap();

@@ -1,7 +1,7 @@
 //! Non-player entities simulated on the client world. Dropped items follow
 //! `ItemEntity.tick`: gravity 0.04, 0.98F drag (block friction on the ground),
-//! a ground bounce of -0.5, slime landing restitution (0.8, including a moving
-//! piston that is carrying slime), water buoyancy, pickup delay, 6000-tick despawn,
+//! a ground bounce of -0.5, block landing restitution, piston slime launches,
+//! water buoyancy, pickup delay, 6000-tick despawn,
 //! `HoneyBlock.entityInside` when falling against a honey block's side, and
 //! `BubbleColumnBlock.entityInside` (lift / drag, including the surface jump).
 use crate::entity_rules::EntityRules;
@@ -23,33 +23,6 @@ use sunrise_world::{
     movement_properties::BoundMovementProperties,
 };
 
-/// Gravity applied each tick when the item is not in a fluid (`ItemEntity.tick`).
-const ITEM_GRAVITY: f64 = 0.04;
-/// Non-living slime `bounceRestitution` factor (`0.8f`) from
-/// `Entity.restituteMovementAfterCollisions`.
-const ITEM_SLIME_BOUNCE: f32 = 0.8;
-
-/// `Entity.restituteMovementAfterCollisions` for the vertical axis of a
-/// non-living entity: `current_y` is its velocity before the move, `moved_y`
-/// how far the move got. Landing on slime (`below`) bounces by the block's
-/// restitution `1.0f * 0.8f`, with the gravity and air drag the part of the tick
-/// after the hit would have added back; any other collision zeroes Y.
-pub fn vertical_collision_velocity(
-    current_y: f64,
-    moved_y: f64,
-    gravity: f64,
-    below: bool,
-    slime: bool,
-) -> f64 {
-    if !(below && slime && -current_y > gravity) {
-        return 0.0;
-    }
-    let restitution = f64::from(1.0_f32 * ITEM_SLIME_BOUNCE);
-    let portion = moved_y / current_y;
-    let drag = 1.0 + portion * (f64::from(0.98_f32) - 1.0);
-    (portion * gravity - current_y) * drag * restitution
-}
-
 /// `Entity.move`: the position only changes when the collided step is longer
 /// than `sqrt(1e-7)` or nothing was cut off; a tiny step against a wall or floor
 /// is dropped (its collision effects still run).
@@ -63,23 +36,6 @@ pub fn move_applies(wanted: Vec3, moved: Vec3) -> bool {
 pub fn slime_step_on_scale(velocity_y: f64) -> Option<f64> {
     let abs_delta_y = velocity_y.abs();
     (abs_delta_y < 0.1).then_some(0.4 + abs_delta_y * 0.2)
-}
-
-fn slime_support_name(block: &str, moving_moved: Option<&str>) -> bool {
-    block == "minecraft:slime_block" || moving_moved == Some("minecraft:slime_block")
-}
-
-/// A piston-moved slime is `moving_piston` with `movedState = slime`.
-fn slime_at(world: &World, facts: &BlockFacts, position: BlockPos) -> bool {
-    let block = &*facts
-        .get(world.block(position.x, position.y, position.z))
-        .name;
-    let moving_moved = world
-        .moving_pistons
-        .iter()
-        .find(|(pos, _)| *pos == [position.x, position.y, position.z])
-        .map(|(_, piston)| &*facts.get(piston.moved_state).name);
-    slime_support_name(block, moving_moved)
 }
 
 mod fluids;
@@ -237,7 +193,7 @@ pub struct ItemEntity {
     pub position: Vec3,
     pub previous: Vec3,
     pub velocity: Vec3,
-    pub on_ground: bool,
+    pub ground: sunrise_world::ground_support::GroundState,
     /// `Entity.fallDistance`: grown by each move down outside water, handed to the block's
     /// `fallOn` on landing ([`ItemStep::landed`]), then reset.
     pub fall_distance: f64,
@@ -263,8 +219,6 @@ pub struct ItemEntity {
     /// `ServerEntity.isFullPrecisionEncodingRequired` reads it for items, whose
     /// resting position is exact while a 1/4096 delta is not.
     pub vertical_collision: bool,
-    /// `Entity.horizontalCollision`: the last move was stopped on x or z.
-    pub horizontal_collision: bool,
     /// `Entity.random`, after the constructor's draws: `moveTowardsClosestSpace`
     /// takes an item's escape speed from it.
     pub random: sunrise_core::random::LegacyRandom,
@@ -414,6 +368,7 @@ pub struct ItemStep {
     landed: Option<(BlockPos, f64)>,
     movement: Option<Vec3>,
     pub vertical_contact: Option<BlockPos>,
+    restitution: Option<(Vec3, Vec3, crate::motion::BodyContact)>,
     /// `Entity.move` with physics: where it started, what it moved, and
     /// whether the move was applied. `None` while idle or without physics,
     /// where `checkFallDamage` does not run.
@@ -483,9 +438,8 @@ impl ItemEntity {
 }
 impl ItemEntity {
     pub const WIDTH: f64 = 0.25;
-    /// `EntityType.ITEM` declares `eyeHeight(0.2125)`: an item is lit from the
-    /// block its eye is in, most of a block above the one its base rests in.
-    pub const EYE_HEIGHT: f64 = 0.2125;
+    /// `EntityTypes.ITEM` declares a float eye height, widened by `Entity.getEyeY`.
+    pub const EYE_HEIGHT: f64 = 0.2125_f32 as f64;
     /// `Entity.getLightProbePosition(partialTick)` for a dropped item: the eye
     /// position (`getEyePosition`) over the position drawn this frame
     /// (`getPosition(partialTick)`), not this tick's own.
@@ -627,7 +581,7 @@ impl ItemEntity {
             // `float friction = getAirDrag()` (0.98F); on the ground, times
             // the block's friction as a float, then widened for the scale.
             let mut friction = 0.98_f32;
-            if self.on_ground {
+            if self.ground.on_ground {
                 let below =
                     BlockPos::containing(self.position.subtract(Vec3::new(0.0, 0.999_999, 0.0)));
                 friction *= block_friction(
@@ -647,7 +601,7 @@ impl ItemEntity {
                 self.velocity.y * air,
                 self.velocity.z * friction,
             );
-            if self.on_ground && self.velocity.y < 0.0 {
+            if self.ground.on_ground && self.velocity.y < 0.0 {
                 self.velocity.y *= -0.5;
             }
         }
@@ -656,7 +610,7 @@ impl ItemEntity {
             // The block sweep itself runs at the batch that ticks the item
             // (Game::sweep_item_inside), where the level host for a part's
             // contact is: the item's own tick sees the world read-only.
-            if self.on_ground {
+            if self.ground.on_ground {
                 let p = BlockPos::containing(self.position.add_vector(Vec3::new(
                     0.0,
                     -f64::from(0.2_f32),
@@ -707,7 +661,7 @@ impl ItemEntity {
     /// `SlimeBlock.stepOn` for an item on the ground: slow vertical speed
     /// drags the horizontal speed, on idle ticks too.
     fn slime_step_on(&mut self, world: &World, facts: &BlockFacts) {
-        if !self.on_ground {
+        if !self.ground.on_ground {
             return;
         }
         let p = BlockPos::containing(self.position.add_vector(Vec3::new(
@@ -730,7 +684,8 @@ impl ItemEntity {
     /// while `onGround` with no horizontal speed and gravity eats the bounce.
     pub fn piston_slime_bounce(&mut self, movement: Direction) {
         self.velocity = sunrise_world::piston_push::bounce_velocity(movement, self.velocity);
-        self.on_ground = false;
+        self.ground.on_ground = false;
+        self.ground.clear_support();
         self.needs_sync = true;
     }
     /// `HoneyBlock.entityInside` for the honey blocks this item's box is in
@@ -753,7 +708,7 @@ impl ItemEntity {
         let old_delta_y = |dy: f64| dy / f64::from(0.98_f32) + 0.08;
         let new_delta_y = |dy: f64| (dy - 0.08) * f64::from(0.98_f32);
         let [x, y, z] = pos.map(f64::from);
-        if self.on_ground
+        if self.ground.on_ground
             || self.position.y > y + 0.9375 - 1.0e-7
             || old_delta_y(self.velocity.y) >= -0.08
         {
@@ -870,7 +825,7 @@ pub struct ExperienceOrb {
     /// `ExperienceOrb.age`: ticks lived, signed (a save can start it below 0);
     /// the orb is discarded at 6000.
     pub age: i32,
-    pub on_ground: bool,
+    pub ground: sunrise_world::ground_support::GroundState,
     /// `ExperienceOrb.count`: orbs merged into this one; each pickup gives
     /// `value` once and takes one off.
     pub count: u32,
@@ -900,6 +855,21 @@ pub struct OrbMove {
     /// `Entity.isInWater` from this tick's fluid step.
     pub in_water: bool,
 }
+/// Resume an orb's tick after its authoritative landing and restitution phases.
+#[derive(Clone, Copy)]
+pub struct OrbTickMove {
+    pub step: OrbMove,
+    pub movement: crate::motion::BodyMove,
+    burnt_out: bool,
+}
+
+/// Server-side effects of an orb's contact with lava after a move.
+pub struct OrbLavaEffects<'a, W> {
+    pub next_float: &'a mut dyn FnMut() -> f32,
+    pub on_sound: &'a mut dyn FnMut([f64; 3], f32),
+    pub invulnerable: &'a mut dyn FnMut(&mut W) -> bool,
+}
+
 impl ExperienceOrb {
     /// A fresh orb (`new ExperienceOrb(level, pos, motion, value)`): full
     /// health, no age, fall or followed player, not yet ticked.
@@ -914,7 +884,7 @@ impl ExperienceOrb {
             velocity,
             value,
             age: 0,
-            on_ground: false,
+            ground: Default::default(),
             count: 1,
             ticks: 0,
             health: 5,
@@ -1047,6 +1017,7 @@ impl ExperienceOrb {
         border: Option<&BorderGeometry>,
         fluids: &crate::motion::FluidResources,
         context: &sunrise_world::native_load_context::LoopContext,
+        blocks: Option<&BoundMovementProperties>,
         side: &dyn crate::motion::SideLevel,
         on_sound: &mut dyn FnMut([f64; 3], f32),
     ) -> bool {
@@ -1060,6 +1031,7 @@ impl ExperienceOrb {
             border,
             fluids,
             context,
+            blocks,
             side,
             on_sound,
             &[],
@@ -1081,80 +1053,55 @@ impl ExperienceOrb {
         border: Option<&BorderGeometry>,
         fluids: &crate::motion::FluidResources,
         context: &sunrise_world::native_load_context::LoopContext,
+        blocks: Option<&BoundMovementProperties>,
         side: &dyn crate::motion::SideLevel,
         on_sound: &mut dyn FnMut([f64; 3], f32),
         entities: &[Aabb],
     ) -> (bool, OrbMove) {
-        let mut world = world;
-        self.tick_among_inner(
-            &mut world,
-            facts,
+        let motion = crate::motion::BodyMotion {
+            world,
             collision,
-            player,
-            server,
-            next_float,
-            border,
-            fluids,
+            facts,
+            blocks,
             context,
-            side,
-            on_sound,
-            entities,
-            &mut |_| false,
-        )
+            side: Some(side),
+        };
+        let tick =
+            self.move_before_fall(motion, player, server, next_float, border, fluids, entities);
+        self.velocity = self.move_restitution(motion, tick).velocity;
+        let stays = self.finish_tick(
+            &mut &*world,
+            (collision, facts, context, side),
+            fluids,
+            tick,
+            server,
+            OrbLavaEffects {
+                next_float,
+                on_sound,
+                invulnerable: &mut |_| false,
+            },
+        );
+        (stays, tick.step)
     }
 
-    /// As `tick_among`, consulting the hook at each actual lava hit.
-    #[allow(clippy::too_many_arguments)]
-    pub fn tick_among_with_hook(
+    /// Move and read the legacy state before the level handles the impact.
+    pub fn move_before_fall(
         &mut self,
-        mut world: &mut World,
-        facts: &BlockFacts,
-        collision: &BlockCollisionRegistry<'_>,
+        motion: crate::motion::BodyMotion<'_>,
         player: Option<[f64; 3]>,
         server: bool,
         next_float: &mut dyn FnMut() -> f32,
         border: Option<&BorderGeometry>,
         fluids: &crate::motion::FluidResources,
-        context: &sunrise_world::native_load_context::LoopContext,
-        side: &dyn crate::motion::SideLevel,
-        on_sound: &mut dyn FnMut([f64; 3], f32),
         entities: &[Aabb],
-        invulnerable: &mut dyn FnMut(&mut World) -> bool,
-    ) -> (bool, OrbMove) {
-        self.tick_among_inner(
-            &mut world,
-            facts,
+    ) -> OrbTickMove {
+        let crate::motion::BodyMotion {
+            world,
             collision,
-            player,
-            server,
-            next_float,
-            border,
-            fluids,
+            facts,
             context,
-            side,
-            on_sound,
-            entities,
-            &mut |world| invulnerable(world),
-        )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn tick_among_inner<W: std::ops::Deref<Target = World>>(
-        &mut self,
-        world: &mut W,
-        facts: &BlockFacts,
-        collision: &BlockCollisionRegistry<'_>,
-        player: Option<[f64; 3]>,
-        server: bool,
-        next_float: &mut dyn FnMut() -> f32,
-        border: Option<&BorderGeometry>,
-        fluids: &crate::motion::FluidResources,
-        context: &sunrise_world::native_load_context::LoopContext,
-        side: &dyn crate::motion::SideLevel,
-        on_sound: &mut dyn FnMut([f64; 3], f32),
-        entities: &[Aabb],
-        invulnerable: &mut dyn FnMut(&mut W) -> bool,
-    ) -> (bool, OrbMove) {
+            ..
+        } = motion;
         self.ticks += 1;
         self.previous = self.position;
         // `Entity.baseTick`'s fluid step, whose `updateFluidOnEyes` answer the
@@ -1257,7 +1204,7 @@ impl ExperienceOrb {
             bounds,
             wanted,
             0.0,
-            self.on_ground,
+            self.ground.on_ground,
             border,
             entities,
         )
@@ -1268,19 +1215,68 @@ impl ExperienceOrb {
             self.position.y + moved.y,
             self.position.z + moved.z,
         );
-        self.on_ground = wanted.y < 0.0 && moved.y != wanted.y;
-        // Entity.move's restituteMovementAfterCollisions, an orb's bounciness
-        // 0: each collided axis's velocity is zeroed — x and z by Mth.equal's
-        // 1.0E-5, y exactly.
-        if (wanted.x - moved.x).abs() >= 1.0e-5 {
-            self.velocity.x = 0.0;
+        if !gate.skipped() {
+            motion.record_move(
+                crate::motion::BodyCollision {
+                    footprint: (self.position, self.bounds()),
+                    movement: (wanted, moved),
+                    authoritative: server,
+                    context: crate::motion::BodyMotion::entity_context(self.id, self.position),
+                    subject: None,
+                },
+                &mut self.ground,
+            );
         }
-        if (wanted.z - moved.z).abs() >= 1.0e-5 {
-            self.velocity.z = 0.0;
+        let effect = motion.legacy_contact(self.position, &self.ground);
+        OrbTickMove {
+            step: OrbMove {
+                from,
+                moved,
+                in_water,
+            },
+            movement: crate::motion::BodyMove {
+                wanted,
+                moved,
+                effect,
+            },
+            burnt_out,
         }
-        if moved.y != wanted.y {
-            self.velocity.y = 0.0;
-        }
+    }
+
+    pub fn move_restitution(
+        &self,
+        motion: crate::motion::BodyMotion<'_>,
+        tick: OrbTickMove,
+    ) -> crate::motion::BodyRestitution {
+        motion.restitute(
+            (self.id, "minecraft:experience_orb"),
+            tick.movement,
+            self.get_gravity(),
+            0.98_f32,
+            self.velocity,
+            self.fall_distance,
+        )
+    }
+
+    pub fn finish_tick<W: std::ops::Deref<Target = World>>(
+        &mut self,
+        world: &mut W,
+        (collision, facts, context, side): (
+            &BlockCollisionRegistry<'_>,
+            &BlockFacts,
+            &sunrise_world::native_load_context::LoopContext,
+            &dyn crate::motion::SideLevel,
+        ),
+        fluids: &crate::motion::FluidResources,
+        tick: OrbTickMove,
+        server: bool,
+        lava: OrbLavaEffects<'_, W>,
+    ) -> bool {
+        let OrbTickMove {
+            movement: crate::motion::BodyMove { wanted, .. },
+            burnt_out,
+            ..
+        } = tick;
         // ExperienceOrb.tick applies block effects after moving, before drag.
         let discarded = server
             && !burnt_out
@@ -1288,14 +1284,14 @@ impl ExperienceOrb {
                 world,
                 fluids,
                 wanted,
-                next_float,
-                on_sound,
-                invulnerable,
+                lava.next_float,
+                lava.on_sound,
+                lava.invulnerable,
             );
         // `float friction = getAirDrag()` (0.98F), the ground's block
         // friction multiplied in as a float, widened once for the scale.
         let mut friction = 0.98_f32;
-        if self.on_ground {
+        if self.ground.on_ground {
             let below =
                 BlockPos::containing(self.position.subtract(Vec3::new(0.0, 0.999_999, 0.0)));
             let kind = "minecraft:experience_orb";
@@ -1320,17 +1316,12 @@ impl ExperienceOrb {
         // `if (verticalCollisionBelow && fallSpeed < -getGravity())`: the
         // landing bounce is 0.4 of the pre-move speed, not a fixed
         // restitution.
-        if self.on_ground && wanted.y < -0.03 {
+        if self.ground.on_ground && wanted.y < -0.03 {
             self.velocity.y = -wanted.y * 0.4;
         }
         // `++age` on a Java int.
         self.age = self.age.wrapping_add(1);
-        let step = OrbMove {
-            from,
-            moved,
-            in_water,
-        };
-        (!discarded && !burnt_out && self.age < 6000, step)
+        !discarded && !burnt_out && self.age < 6000
     }
     /// `LavaFluid.entityInside` on the server: `Entity.lavaIgnite` (300 ticks),
     /// then `Entity.lavaHurt`, four damage through the orb's existing hurt/discard
@@ -2680,9 +2671,8 @@ mod fire_environment_tests {
             position: at,
             previous: at,
             velocity: Vec3::ZERO,
-            on_ground: false,
+            ground: Default::default(),
             vertical_collision: false,
-            horizontal_collision: false,
             age: 0,
             pickup_delay: 0,
             bob_offset: 0.0,
@@ -2874,9 +2864,8 @@ mod destroyed_bundle_environment_tests {
             position: at,
             previous: at,
             velocity: Vec3::ZERO,
-            on_ground: false,
+            ground: Default::default(),
             vertical_collision: false,
-            horizontal_collision: false,
             age: 0,
             pickup_delay: 0,
             bob_offset: 0.0,
@@ -3088,9 +3077,8 @@ mod merge_tests {
             position: at,
             previous: at,
             velocity: Vec3::ZERO,
-            on_ground: true,
+            ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
             vertical_collision: false,
-            horizontal_collision: false,
             age,
             pickup_delay: 0,
             bob_offset: 0.0,
@@ -3337,7 +3325,7 @@ mod world_border_tests {
                 }
             }
             let mut item = super::honey_slide_tests::falling_item(19.5, top, 20.5, 0.2, 0.0, 0.0);
-            item.on_ground = true;
+            item.ground.on_ground = true;
             item.tick(
                 &world,
                 assets.registry,
@@ -3404,7 +3392,7 @@ mod world_border_tests {
                 velocity: Vec3::new(1.5, 0.0, 0.0),
                 value: 1,
                 age: 0,
-                on_ground: true,
+                ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
                 count: 1,
                 ticks: 0,
                 health: 5,
@@ -3422,6 +3410,7 @@ mod world_border_tests {
                 border,
                 &fluids,
                 crate::test_resources::server_loop_context(),
+                None,
                 sunrise_client::motion::dry_side(),
                 &mut |_, _| {},
             );
@@ -3466,7 +3455,7 @@ mod honey_slide_tests {
         }
         let at = Vec3::new(20.5, 4.0, 20.5);
         let mut item = falling_item(at.x, at.y, at.z, 0.0, 0.0, 0.0);
-        item.on_ground = true;
+        item.ground.on_ground = true;
         item.age = 0;
         item.ticks = 0;
         item.id = 0;
@@ -3529,7 +3518,7 @@ mod honey_slide_tests {
         }
         let at = Vec3::new(20.5, 4.0, 20.5);
         let mut item = falling_item(at.x, at.y, at.z, 0.0, 0.0, 0.0);
-        item.on_ground = true;
+        item.ground.on_ground = true;
         item.age = 0;
         item.id = 1;
         let before = item.position.y;
@@ -3620,9 +3609,8 @@ mod honey_slide_tests {
             position: at,
             previous: at,
             velocity: Vec3::new(vx, vy, vz),
-            on_ground: false,
+            ground: Default::default(),
             vertical_collision: false,
-            horizontal_collision: false,
             age: 10,
             pickup_delay: 0,
             bob_offset: 0.0,
@@ -3668,7 +3656,7 @@ mod honey_slide_tests {
     #[test]
     fn an_item_on_the_ground_or_on_top_does_not_slide() {
         let mut grounded = falling_item(-0.0625, 10.4, 0.5, 0.0, -0.20, 0.0);
-        grounded.on_ground = true;
+        grounded.ground.on_ground = true;
         grounded.honey_block_inside([0, 10, 0]);
         assert_eq!(grounded.velocity.y, -0.20);
 
@@ -3695,60 +3683,10 @@ mod slime_bounce_tests {
     use super::*;
 
     #[test]
-    fn landing_on_slime_bounces_a_dropped_item_like_vanilla() {
-        // Measured on a vanilla 26.3 server: an item falling at -0.6097 that
-        // is stopped 0.4865 down leaves with 0.4950 / 0.98 after the bounce.
-        let y = vertical_collision_velocity(-0.6097, -0.4865, ITEM_GRAVITY, true, true);
-        assert!((y - 0.4950 / 0.98).abs() < 1e-3, "{y}");
-        // A tiny landing: -0.0792 stopped after 0.06 gives 0.0862 (vanilla).
-        let y = vertical_collision_velocity(-0.0792, -0.06, ITEM_GRAVITY, true, true);
-        assert!((y - 0.0862).abs() < 1e-3, "{y}");
-        assert_eq!(
-            vertical_collision_velocity(-0.04, -0.01, ITEM_GRAVITY, true, true),
-            0.0,
-            "gravity alone is not a bounce"
-        );
-    }
-
-    #[test]
-    fn landing_on_stone_or_hitting_a_ceiling_zeros_y() {
-        assert_eq!(
-            vertical_collision_velocity(-1.0, -0.5, ITEM_GRAVITY, true, false),
-            0.0
-        );
-        assert_eq!(
-            vertical_collision_velocity(1.0, 0.5, ITEM_GRAVITY, false, true),
-            0.0
-        );
-    }
-
-    #[test]
     fn slime_step_on_drags_slow_vertical_speed_only() {
         let scale = slime_step_on_scale(0.0862).unwrap();
         assert!((scale - 0.41724).abs() < 1e-5);
         assert_eq!(slime_step_on_scale(0.1), None);
-    }
-
-    #[test]
-    fn a_moving_piston_carrying_slime_still_counts_as_slime() {
-        assert!(slime_support_name("minecraft:slime_block", None));
-        assert!(slime_support_name(
-            "minecraft:moving_piston",
-            Some("minecraft:slime_block")
-        ));
-        assert!(slime_support_name(
-            "minecraft:air",
-            Some("minecraft:slime_block")
-        ));
-        assert!(!slime_support_name(
-            "minecraft:moving_piston",
-            Some("minecraft:stone")
-        ));
-        assert!(!slime_support_name("minecraft:stone", None));
-        assert!(!slime_support_name(
-            "minecraft:honey_block",
-            Some("minecraft:honey_block")
-        ));
     }
 
     fn grounded_item() -> ItemEntity {
@@ -3774,9 +3712,8 @@ mod slime_bounce_tests {
             position: at,
             previous: at,
             velocity: Vec3::ZERO,
-            on_ground: true,
+            ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
             vertical_collision: false,
-            horizontal_collision: false,
             age: 10,
             pickup_delay: 0,
             bob_offset: 0.0,
@@ -3792,22 +3729,13 @@ mod slime_bounce_tests {
         let mut item = grounded_item();
         item.piston_slime_bounce(Direction::Up);
         assert_eq!(item.velocity, Vec3::new(0.0, 1.0, 0.0));
-        assert!(!item.on_ground);
+        assert!(!item.ground.on_ground);
         assert!(item.needs_sync);
         item.needs_sync = false;
         item.piston_slime_bounce(Direction::East);
         assert_eq!(item.velocity, Vec3::new(1.0, 1.0, 0.0));
-        assert!(!item.on_ground);
+        assert!(!item.ground.on_ground);
         assert!(item.needs_sync);
-    }
-
-    #[test]
-    fn a_slime_landing_stays_upward_after_item_friction() {
-        // ItemEntity then multiplies Y by 0.98F and applies -0.5 only if still
-        // negative on the ground. A slime bounce must remain positive.
-        let bounced =
-            vertical_collision_velocity(-1.0, -0.5, ITEM_GRAVITY, true, true) * f64::from(0.98_f32);
-        assert!(bounced > 0.0);
     }
 
     #[test]
@@ -3828,6 +3756,7 @@ mod slime_bounce_tests {
             true,
             ItemStep {
                 old_velocity: item.velocity,
+                restitution: None,
                 vertical_contact: None,
                 movement: Some(item.velocity),
                 landed: None,
@@ -3864,7 +3793,8 @@ mod slime_bounce_tests {
             return;
         };
         let (assets, render, facts) = (&v.assets, &v.render, &v.facts);
-        let fluids = crate::motion::FluidResources::new(assets, facts).unwrap();
+        let motion =
+            crate::motion::MotionResources::load_with_facts(&v.root, assets, facts).unwrap();
         let collision = &v.collision;
         let mut world = World::test_scene(assets, render, 3).unwrap();
         let slime = assets
@@ -3881,7 +3811,7 @@ mod slime_bounce_tests {
         falling.position = Vec3::new(20.5, 4.2, 20.5);
         falling.previous = falling.position;
         falling.velocity = Vec3::new(0.0, -0.5, 0.0);
-        falling.on_ground = false;
+        falling.ground.on_ground = false;
         falling.age = 0;
         falling.id = 1;
         falling.tick(
@@ -3890,14 +3820,14 @@ mod slime_bounce_tests {
             facts,
             collision,
             false,
-            &fluids,
+            &motion.fluids,
             &[],
             None,
-            None,
+            Some(&motion.blocks),
         );
         assert_eq!(falling.position.y, 4.0);
         assert!(falling.velocity.y > 0.0);
-        assert!(falling.on_ground);
+        assert!(falling.ground.on_ground);
         assert!(falling.needs_sync);
 
         // An idle tick where velocity only steps by -0.04 (0.04^2 = 0.0016 <= 0.01)
@@ -3910,10 +3840,10 @@ mod slime_bounce_tests {
             facts,
             collision,
             false,
-            &fluids,
+            &motion.fluids,
             &[],
             None,
-            None,
+            Some(&motion.blocks),
         );
         assert!(!falling.needs_sync);
     }
@@ -4652,9 +4582,8 @@ mod item_destroyed_tests {
             position: Vec3::new(8.5, 64.0, 8.5),
             previous: Vec3::new(8.5, 64.0, 8.5),
             velocity: Vec3::ZERO,
-            on_ground: false,
+            ground: Default::default(),
             vertical_collision: false,
-            horizontal_collision: false,
             age: 0,
             pickup_delay: 0,
             bob_offset: 0.0,
@@ -4800,7 +4729,7 @@ mod orb_underwater_tests {
                     velocity: Vec3::new(v[0], v[1], v[2]),
                     value: 1,
                     age: 0,
-                    on_ground: false,
+                    ground: Default::default(),
                     count: 1,
                     ticks: 0,
                     health: 5,
@@ -4838,7 +4767,7 @@ mod render_light_tests {
             velocity: Vec3::new(0.0, 0.0, 0.0),
             value: 3,
             age: 0,
-            on_ground: false,
+            ground: Default::default(),
             count: 1,
             ticks: 0,
             health: 5,
@@ -4925,9 +4854,8 @@ mod dropped_item_light_tests {
             position: Vec3::new(0.5, y, 0.5),
             previous: Vec3::new(0.5, previous_y, 0.5),
             velocity: Vec3::ZERO,
-            on_ground: false,
+            ground: Default::default(),
             vertical_collision: false,
-            horizontal_collision: false,
             age: 0,
             pickup_delay: 0,
             bob_offset: 0.0,
@@ -4938,23 +4866,19 @@ mod dropped_item_light_tests {
         }
     }
 
-    /// `Entity.getLightProbePosition` is the eye position, and `EntityType.ITEM`
-    /// declares `eyeHeight(0.2125)`. The item used to be lit from the cell of
-    /// `base + 0.1`, so a falling item at y = 64.85 read the cell at 64 (block
-    /// light of the floor) while its eye at 65.0625 is in the cell at 65.
+    /// `Entity.getLightProbePosition` reads the block at the item's eye, so
+    /// a falling item just below y = 65 reads the cell at 65, not the floor.
     #[test]
     fn a_dropped_item_is_lit_from_the_block_its_eye_is_in() {
+        let eye_height = f64::from(0.2125_f32);
         let falling = item(64.85, 64.85);
         let probe = falling.light_probe(1.0);
-        assert!((probe[1] - 65.062_5).abs() < 1e-9);
+        assert_eq!(probe[1], 64.85 + eye_height);
         assert_eq!(probe[1].floor(), 65.0);
-        // The old probe, `(y + 0.1).floor()`, and the base cell itself.
-        assert_eq!((64.85_f64 + 0.1).floor(), 64.0);
-        assert_eq!(64.85_f64.floor(), 64.0);
-        // Resting on a block top the two agree: the eye is 0.2125 up.
         let resting = item(64.0, 64.0);
-        assert_eq!(resting.light_probe(1.0)[1].floor(), 64.0);
-        assert!((resting.light_probe(1.0)[1] - 64.212_5).abs() < 1e-9);
+        let probe = resting.light_probe(1.0);
+        assert_eq!(probe[1], 64.0 + eye_height);
+        assert_eq!(probe[1].floor(), 64.0);
     }
 
     /// `Entity.getLightProbePosition(partialTick)` follows `getPosition(partialTick)`:
@@ -4965,7 +4889,7 @@ mod dropped_item_light_tests {
     fn an_item_probe_follows_the_frame() {
         let falling = item(64.0, 65.0);
         let mid = falling.light_probe(0.5);
-        assert!((mid[1] - 64.712_5).abs() < 1e-9);
+        assert_eq!(mid[1], 64.5 + f64::from(0.2125_f32));
         assert_eq!(mid[1].floor(), 64.0);
         assert_eq!(falling.light_probe(1.0)[1].floor(), 65.0);
         // Across x and z too, not just down.
@@ -4975,7 +4899,7 @@ mod dropped_item_light_tests {
             previous: Vec3::new(0.5, 64.0, 0.5),
             ..item(64.0, 64.0)
         };
-        assert!((sliding.light_probe(0.5)[0] - 1.0).abs() < 1e-9);
+        assert_eq!(sliding.light_probe(0.5)[0], 1.0);
     }
 
     /// `EntityRenderer.getBlockLightLevel` is `isOnFire() ? 15 : the level's
@@ -5059,7 +4983,7 @@ mod orb_lava_tests {
             velocity: Vec3::ZERO,
             value: 1,
             age: 0,
-            on_ground: false,
+            ground: Default::default(),
             count: 1,
             ticks: 0,
             health,
@@ -5091,6 +5015,7 @@ mod orb_lava_tests {
                     None,
                     fluids,
                     crate::test_resources::server_loop_context(),
+                    None,
                     sunrise_client::motion::dry_side(),
                     &mut |_, _| {},
                 )
@@ -5148,6 +5073,7 @@ mod orb_lava_tests {
                     None,
                     fluids,
                     crate::test_resources::server_loop_context(),
+                    None,
                     sunrise_client::motion::dry_side(),
                     &mut |_, _| {}
                 ));
@@ -5164,6 +5090,7 @@ mod orb_lava_tests {
                 None,
                 fluids,
                 crate::test_resources::server_loop_context(),
+                None,
                 sunrise_client::motion::dry_side(),
                 &mut |pos, pitch| sounds.push((pos, pitch)),
             ));
@@ -5180,6 +5107,7 @@ mod orb_lava_tests {
                 None,
                 fluids,
                 crate::test_resources::server_loop_context(),
+                None,
                 sunrise_client::motion::dry_side(),
                 &mut |pos, pitch| sounds.push((pos, pitch)),
             ));
@@ -5197,27 +5125,33 @@ mod orb_lava_tests {
             let mut orb = sample_orb(Vec3::new(20.5, 4.1, 20.5), 5);
             let mut sounds = 0;
             let mut calls = 0;
-            assert!(
-                orb.tick_among_with_hook(
-                    world,
-                    facts,
-                    collision,
-                    None,
-                    true,
-                    &mut || 0.0,
-                    None,
-                    fluids,
-                    crate::test_resources::server_loop_context(),
-                    sunrise_client::motion::dry_side(),
-                    &mut |_, _| sounds += 1,
-                    &[],
-                    &mut |_| {
+            let context = crate::test_resources::server_loop_context();
+            let side = sunrise_client::motion::dry_side();
+            let motion = crate::motion::BodyMotion {
+                world,
+                collision,
+                facts,
+                blocks: None,
+                context,
+                side: Some(side),
+            };
+            let tick = orb.move_before_fall(motion, None, true, &mut || 0.0, None, fluids, &[]);
+            orb.velocity = orb.move_restitution(motion, tick).velocity;
+            assert!(orb.finish_tick(
+                &mut &mut *world,
+                (collision, facts, context, side),
+                fluids,
+                tick,
+                true,
+                OrbLavaEffects {
+                    next_float: &mut || 0.0,
+                    on_sound: &mut |_, _| sounds += 1,
+                    invulnerable: &mut |_| {
                         calls += 1;
                         true
                     },
-                )
-                .0
-            );
+                },
+            ));
             assert_eq!(orb.health, 5);
             assert_eq!(calls, 1);
             assert_eq!(sounds, 1);
@@ -5247,6 +5181,7 @@ mod orb_lava_tests {
                     None,
                     fluids,
                     crate::test_resources::server_loop_context(),
+                    None,
                     sunrise_client::motion::dry_side(),
                     &mut |pos, pitch| sounds.push((pos, pitch)),
                 ));
@@ -5279,6 +5214,7 @@ mod orb_lava_tests {
                     None,
                     fluids,
                     crate::test_resources::server_loop_context(),
+                    None,
                     sunrise_client::motion::dry_side(),
                     &mut |pos, pitch| sounds.push((pos, pitch)),
                 ));
@@ -5317,6 +5253,7 @@ mod orb_lava_tests {
                 None,
                 fluids,
                 crate::test_resources::server_loop_context(),
+                None,
                 sunrise_client::motion::dry_side(),
                 &mut |pos, pitch| sounds.push((pos, pitch)),
             ));
@@ -5340,6 +5277,7 @@ mod orb_lava_tests {
                 None,
                 fluids,
                 crate::test_resources::server_loop_context(),
+                None,
                 sunrise_client::motion::dry_side(),
                 &mut |pos, pitch| sounds.push((pos, pitch)),
             ));
@@ -5377,6 +5315,7 @@ mod orb_lava_tests {
                                 None,
                                 fluids,
                                 crate::test_resources::server_loop_context(),
+                                None,
                                 sunrise_client::motion::dry_side(),
                                 &mut |_, _| sounds += 1,
                             ),
@@ -5413,6 +5352,7 @@ mod orb_lava_tests {
                 None,
                 fluids,
                 crate::test_resources::server_loop_context(),
+                None,
                 sunrise_client::motion::dry_side(),
                 &mut |pos, pitch| sounds.push((pos, pitch)),
             );
@@ -5452,6 +5392,7 @@ mod orb_lava_tests {
                 None,
                 fluids,
                 crate::test_resources::server_loop_context(),
+                None,
                 sunrise_client::motion::dry_side(),
                 &mut |pos, pitch| sounds.push((pos, pitch)),
             ));
@@ -5471,6 +5412,7 @@ mod orb_lava_tests {
                 None,
                 fluids,
                 crate::test_resources::server_loop_context(),
+                None,
                 sunrise_client::motion::dry_side(),
                 &mut |pos, pitch| sounds.push((pos, pitch)),
             ));

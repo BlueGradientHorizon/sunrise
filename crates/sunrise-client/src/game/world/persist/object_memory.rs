@@ -261,7 +261,9 @@ impl Game<'_> {
                 },
                 drop_item,
                 fall_distance,
-                on_ground: entity_nbt::flag(&tag, "OnGround"),
+                ground: sunrise_world::ground_support::GroundState::from_ground_flag(
+                    entity_nbt::flag(&tag, "OnGround"),
+                ),
                 fire_ticks: crate::game::boats::saved_fire(&tag),
                 sync_velocity: false,
                 stuck: Vec3::ZERO,
@@ -354,7 +356,9 @@ impl Game<'_> {
                 velocity: entity_nbt::motion(&tag),
                 fuse,
                 ticks: 0,
-                on_ground: entity_nbt::flag(&tag, "OnGround"),
+                ground: sunrise_world::ground_support::GroundState::from_ground_flag(
+                    entity_nbt::flag(&tag, "OnGround"),
+                ),
                 fall_distance: sunrise_client::save::float(tag.get("fall_distance")).unwrap_or(0.0),
                 stuck: Vec3::ZERO,
                 in_water: false,
@@ -399,12 +403,12 @@ impl Game<'_> {
             let mut b =
                 crate::game::boats::Boat::new(id, std::sync::Arc::from(wood), position, yaw);
             b.no_gravity = entity_nbt::flag(&tag, "NoGravity");
-            b.on_ground = entity_nbt::flag(&tag, "OnGround");
+            b.ground.on_ground = entity_nbt::flag(&tag, "OnGround");
             b.fire_ticks = crate::game::boats::saved_fire(&tag);
             b.ticks_frozen = crate::game::boats::saved_ticks_frozen(&tag);
             b.pitch = entity_nbt::rotation(&tag)[1];
             // Entity.load: OnGround and fall_distance, as saved.
-            (b.on_ground, b.fall_distance) = entity_nbt::ground_from_nbt(&tag);
+            (b.ground.on_ground, b.fall_distance) = entity_nbt::ground_from_nbt(&tag);
             if chest {
                 b = b.with_chest();
                 b.items = sunrise_client::save::decode_items(
@@ -838,6 +842,10 @@ impl Game<'_> {
     }
 
     pub(super) fn mob_object_nbt(&mut self, object: MobObject) -> Tag {
+        self.mob_object_tag(object, true)
+    }
+
+    pub(super) fn mob_object_tag(&mut self, object: MobObject, include_id: bool) -> Tag {
         let id = self.mob_at(object).id;
         let uuid = self.uuid_for(id);
         // A warden's anger names each suspect by UUID. A mob that has never been
@@ -906,29 +914,44 @@ impl Game<'_> {
         {
             self.uuid_for(attacker);
         }
-        let mut tag = entity_nbt::mob_to_nbt(
+        use sunrise_client::mobs::leash::Holder;
+        let mut retained = self
+            .persist
+            .raw
+            .get(&id)
+            .cloned()
+            .unwrap_or_else(|| Tag::Compound(Default::default()));
+        self.put_last_hurt_by_mob(self.mob_at(object), &mut retained);
+        // `write_leash` may assign the holder a UUID. Other references retain
+        // the lookup they had before that assignment.
+        let holder = match self.mob_at(object).extra.leash {
+            Some(Holder::Mob(id) | Holder::Boat(id)) => Some((id, self.persist.uuid_of(id))),
+            _ => None,
+        };
+        self.write_leash(&mut retained, id);
+        // Keep the mod's AI pause after attachment projection but before the
+        // final passenger list, as in the persistent mob tree.
+        let paused = self.mob_at(object).ai.ai_paused;
+        entity_nbt::write_ai_paused(paused, &mut retained);
+        write_attachments(&mut retained, id, &self.entity_attachments);
+        entity_nbt::write_ai_paused(paused, &mut retained);
+        let mut out = entity_nbt::EntityTagWriter::from_saved(retained);
+        entity_nbt::write_mob(
             self.mob_at(object),
             uuid,
-            self.persist.raw.get(&id),
+            &mut out,
             Some(self.pack.assets.registry),
-            |other| self.persist.uuid_of(other),
+            |other| match holder {
+                Some((id, uuid)) if other == id => uuid,
+                _ => self.persist.uuid_of(other),
+            },
             self.res.items(),
+            entity_nbt::MobSave {
+                include_id,
+                game_time: self.world.game_time,
+            },
         );
-        self.put_last_hurt_by_mob(self.mob_at(object), &mut tag);
-        if sunrise_client::mobs::camel::is_camel(self.mob_at(object).species())
-            && let Tag::Compound(c) = &mut tag
-        {
-            let tick = sunrise_client::mobs::camel::synced_pose_tick(
-                self.mob_at(object),
-                self.world.game_time,
-            );
-            c.insert("LastPoseTick".into(), Tag::Long(tick));
-        }
-        self.write_leash(&mut tag, id);
-        write_attachments(&mut tag, id, &self.entity_attachments);
-        // A mod's AI pause beside the mods' attachments, whose map would drop it.
-        entity_nbt::write_ai_paused(self.mob_at(object).ai.ai_paused, &mut tag);
-        tag
+        out.finish()
     }
 
     /// Trace only edges touching off-level objects. A rejected leaf is owned
@@ -957,6 +980,13 @@ impl Game<'_> {
                 retained.insert(vehicle);
             }
         }
+        retained.extend(
+            self.persist
+                .removed_vehicles
+                .keys()
+                .copied()
+                .filter(|&id| self.general_passengers(id).next().is_some()),
+        );
         let mut pending: Vec<_> = links
             .keys()
             .copied()

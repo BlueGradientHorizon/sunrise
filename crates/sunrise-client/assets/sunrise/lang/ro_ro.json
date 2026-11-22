@@ -139,7 +139,6 @@
   "How fast the right stick turns the view.": "Cât de repede rotește stick-ul dreapta vederea.",
   "How fast the stick moves the crosshair in inventories.": "Cât de repede mișcă stick-ul mira în inventare.",
   "How frames reach the screen while VSync is off.": "Cum ajung cadrele pe ecran când VSync este dezactivat.",
-  "How frames reach the screen, and the performance overlay.": "Cum ajung cadrele pe ecran și suprapunerea performanței.",
   "How long a held direction takes between repeats.": "Cât durează o direcție ținută între repetări.",
   "How long a held direction waits before it repeats.": "Cât așteaptă o direcție ținută înainte să se repete.",
   "How many particles effects spawn.": "Câte particule apar efecte.",

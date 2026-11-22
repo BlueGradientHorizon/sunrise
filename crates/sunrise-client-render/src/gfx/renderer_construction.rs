@@ -905,14 +905,10 @@ impl Renderer {
             &lightmap_sampler,
             &emission_stats.view,
         );
-        let terrain_model_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("Native cutout model (unmipped)"),
-            lod_max_clamp: 0.0,
-            ..fluid::SAMPLER
-        });
+        let terrain_model_sampler = device.create_sampler(&terrain_model::MOVING_BLOCK_SAMPLER);
         let terrain_model_group = terrain_group(
             &device,
-            "Native cutout model resources",
+            "Native model resources",
             &bindings,
             &globals,
             &sprite_views,
@@ -2373,6 +2369,7 @@ impl Renderer {
             depth,
             sections: resident::Resident::default(),
             lods: FxHashMap::default(),
+            lod_vertex_bytes: 0,
             lod_cells: lod::TileGrid::default(),
             lod_cull_free: Vec::new(),
             lod_cull_next: 0,

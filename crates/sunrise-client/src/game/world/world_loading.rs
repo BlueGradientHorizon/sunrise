@@ -319,7 +319,7 @@ impl WorldRequest {
         )?;
         drop(streaming_step);
         streaming.radius = settings.render_distance;
-        let mut world = Game::world_for_mods(res.facts().air, level.seed);
+        let mut world = Game::authoritative_world_for_mods(res, level.seed);
         world.attachments = save.load_attachments();
         world.shape = shape;
         world.fast_lava = sunrise_world::dimension_type::DimensionFacts::of_level(
@@ -1251,10 +1251,12 @@ pub(super) fn make_streaming(
             res.threads(),
         )
     };
-    streaming.load_forced(
-        save.load_forced_chunks(),
-        save.load_mod_tickets(|id| mod_api::TicketController::from_id(id).map(|c| c.slot())),
-    );
+    if options.execution_role.is_client() {
+        streaming.load_forced(
+            save.load_forced_chunks(),
+            save.load_mod_tickets(|id| mod_api::TicketController::from_id(id).map(|c| c.slot())),
+        );
+    }
     streaming.radius = settings.render_distance;
     streaming.biome_blend = settings.biome_blend;
     streaming.smooth_lighting = settings.smooth_lighting;

@@ -156,6 +156,15 @@ impl InboxItem {
     }
 }
 
+/// The body state at a single accepted move, before later input or reports.
+#[derive(Clone, Copy, Debug)]
+pub struct GuestMove {
+    pub position: [f64; 3],
+    pub delta: [f64; 3],
+    pub on_ground: bool,
+    pub sneaking: bool,
+}
+
 pub struct Guest {
     /// Identity generation and journal binding travel with the actual player record.
     pub residency: crate::join_seq::residency::member::Member,
@@ -268,6 +277,10 @@ pub struct Guest {
     /// `landing` was set by a `tp` hold waiting for chunks (`Game::hold_for_chunks`), not by a portal.
     pub tp_held: bool,
     pub teleport_counter: i32,
+    /// The last server travel veto holds new position reports from this body.
+    pub(super) travel_vetoed: bool,
+    /// The velocity in a travel correction still awaiting confirmation.
+    pub(super) pending_travel_velocity: Option<[f64; 3]>,
     /// `ServerPlayer.getCamera() != this`.
     pub watching: bool,
     /// The hub tick the pending teleport was (re)sent on (awaitingTeleportTime).
@@ -363,6 +376,9 @@ pub struct Guest {
     /// until that body exists: the scale a player has set stays through a
     /// respawn and a change of level (#3684).
     pub carried_attributes: Option<sunrise_core::nbt::Tag>,
+    /// `Entity.tickCount` carried while the same player is between bodies.
+    /// A respawn clears it; a teleport or level change restores it to the new body.
+    pub carried_tick_count: Option<i32>,
     /// The accepted hit follows the same living body through a full teleport restore.
     pub carried_hit: Option<std::sync::Arc<crate::health::AcceptedHit>>,
     /// The vehicle the player's file names (`ServerPlayer.saveParentVehicle`'s
@@ -387,7 +403,9 @@ pub struct Guest {
     /// Converted tracking stacks, invalidated when their full source stack changes.
     pub equipment_cache: super::equipment_cache::EquipmentCache,
     pub selected: usize,
+    /// The active menu's cursor. The inventory menu keeps its own while another menu is open.
     pub carried: Option<ItemStack>,
+    pub(super) inactive_inventory_carried: Option<ItemStack>,
     /// The inventory menu's crafting grid (2x2) and its result
     /// (`InventoryMenu.craftSlots`, `resultSlots`), which the game computes.
     pub craft_grid: [Option<ItemStack>; 4],
@@ -418,9 +436,15 @@ pub struct Guest {
     pub sent_effects: Vec<SentEffect>,
     /// What the client believes the inventory menu holds (for change detection).
     pub menu_sent: Vec<Option<ItemStack>>,
+    /// `AbstractContainerMenu.remoteCarried` for the always-present inventory menu.
+    pub(super) inventory_carried_sent: Option<ItemStack>,
+    /// `remoteCarried` for the open window, including menus run by Game rather than Hub.
+    pub(super) open_carried_sent: Option<(i32, Option<ItemStack>)>,
     pub menu_state: i32,
     /// `lastSentHealth`, `lastSentFood` and `lastFoodSaturationZero`.
     pub sent_health: Option<(f32, i32, bool)>,
+    /// Whether the entity tracker has sent the initial health metadata to this player.
+    pub(super) sent_health_data: bool,
     pub sent_xp: Option<(f32, i32, i32)>,
     /// The air supply and absorption the player's client was last sent
     /// (Entity.DATA_AIR_SUPPLY_ID, Player.DATA_PLAYER_ABSORPTION_ID); their
@@ -446,9 +470,8 @@ pub struct Guest {
     pub inbox: VecDeque<InboxItem>,
     pub joined_tick: u64,
     pub ticks: u64,
-    /// The moves accepted since the game last looked (movement, on ground),
-    /// for ServerPlayer.doCheckFallDamage.
-    pub moves: Vec<([f64; 3], bool)>,
+    /// The moves accepted since the game last looked, for ServerPlayer.doCheckFallDamage.
+    pub moves: Vec<GuestMove>,
     /// Whether the guest was on the ground before the first of `moves`.
     pub moves_from_ground: bool,
     /// `ServerPlayer.lastKnownClientMovement`: the last move accepted from
@@ -552,7 +575,40 @@ impl Guest {
     pub fn next_menu_window(&mut self) -> i32 {
         self.next_window = self.next_window % 100 + 1;
         self.menu_generation = menu_generation();
+        self.inactive_inventory_carried = self.carried.take();
+        self.open_carried_sent = Some((self.next_window, None));
         self.next_window
+    }
+
+    /// Retire an open menu, returning its carried stack for `AbstractContainerMenu.removed`.
+    pub fn close_menu_cursor(&mut self, window: i32) -> Option<ItemStack> {
+        self.open_carried_sent.take_if(|(id, _)| *id == window)?;
+        std::mem::replace(&mut self.carried, self.inactive_inventory_carried.take())
+    }
+
+    pub fn take_inventory_carried(&mut self) -> Option<ItemStack> {
+        if self.open_carried_sent.is_some() {
+            self.inactive_inventory_carried.take()
+        } else {
+            self.carried.take()
+        }
+    }
+
+    /// `Player.remove` removes both menus, dropping both cursors.
+    pub fn take_menu_cursors(&mut self) -> impl Iterator<Item = ItemStack> {
+        [self.inactive_inventory_carried.take(), self.carried.take()]
+            .into_iter()
+            .flatten()
+    }
+
+    pub(super) fn acknowledge_menu_cursor(&mut self, window: i32, carried: Option<ItemStack>) {
+        if window == 0 {
+            self.inventory_carried_sent = carried;
+        } else if let Some((id, sent)) = &mut self.open_carried_sent
+            && *id == window
+        {
+            *sent = carried;
+        }
     }
 
     pub fn new(j: Joined, entity_id: i32, position: [f64; 3], view_distance: i32) -> Self {
@@ -738,6 +794,8 @@ impl Guest {
             landing: false,
             tp_held: false,
             teleport_counter: 0,
+            travel_vetoed: false,
+            pending_travel_velocity: None,
             watching: false,
             teleport_tick: 0,
             first_good: position,
@@ -776,6 +834,7 @@ impl Guest {
             motion: None,
             loaded_body: None,
             carried_attributes: None,
+            carried_tick_count: None,
             carried_hit: None,
             saved_vehicle: None,
             logs_kept: None,
@@ -787,6 +846,7 @@ impl Guest {
             equipment_cache: Default::default(),
             selected: 0,
             carried: None,
+            inactive_inventory_carried: None,
             craft_grid: Default::default(),
             craft_result: None,
             ender_items: vec![None; 27],
@@ -803,8 +863,11 @@ impl Guest {
             modified_effect_particles: None,
             sent_effects: Vec::new(),
             menu_sent: vec![None; 46],
+            inventory_carried_sent: None,
+            open_carried_sent: None,
             menu_state: 0,
             sent_health: None,
+            sent_health_data: false,
             sent_xp: None,
             sent_air: (300, 0.0),
             sent_frozen: 0,
@@ -872,11 +935,50 @@ impl Guest {
             Err(error) => eprintln!("[lan] send refused: {error}"),
         }
     }
+    /// Send the complete committed data of this guest's current blockless menu.
+    pub fn send_menu_data_snapshot(&self) {
+        let Some(menu) = &self.menu else { return };
+        for (index, &value) in menu.blockless_data.iter().enumerate() {
+            self.send_menu_data(menu.window, index as u16, value);
+        }
+    }
+
+    /// Commit one blockless-menu data slot. The caller resolves the window generation
+    /// and validates the index before supplying a write.
+    pub fn set_menu_data(&mut self, index: u16, value: i32) {
+        let Some(menu) = &mut self.menu else { return };
+        let slot = &mut menu.blockless_data[usize::from(index)];
+        if *slot != value {
+            *slot = value;
+            let window = menu.window;
+            self.send_menu_data(window, index, value);
+        }
+    }
+
+    fn send_menu_data(&self, window: i32, index: u16, value: i32) {
+        use sunrise_protocol::menu_extra::{DATA_CHANNEL, DataSlot};
+        self.send(&play::Clientbound::CustomPayload(CustomPayload {
+            channel: DATA_CHANNEL.into(),
+            data: DataSlot {
+                window,
+                index,
+                value,
+            }
+            .encode(),
+        }));
+    }
     /// Whether this connection reads collider sync (`sunrise:collider_sync`).
     pub fn negotiated_collider_sync(&self) -> bool {
         crate::raw_payloads::negotiated(
             self.sender.payload_transport(),
             sunrise_protocol::collider_sync::CHANNEL,
+        )
+    }
+    /// Whether this connection reads connection-group sync (`sunrise:connection_groups`).
+    pub fn negotiated_connection_groups(&self) -> bool {
+        crate::raw_payloads::negotiated(
+            self.sender.payload_transport(),
+            sunrise_protocol::connection_groups::CHANNEL,
         )
     }
     /// Whether this connection reads general entity spawns (`sunrise:general_entity`): only
@@ -1028,7 +1130,9 @@ impl Guest {
     /// same player in another level (`restore_all`), only their base values
     /// after a death. The old body, for what else it hands over.
     pub fn new_body(&mut self, restore_all: bool) -> Option<Box<PlayerMotion>> {
+        self.travel_vetoed = false;
         if !restore_all {
+            self.carried_tick_count = None;
             self.carried_hit = None;
             self.death_canceled = false;
             self.death_time = 0;
@@ -1036,7 +1140,10 @@ impl Guest {
         let mut m = self.motion.take()?;
         self.carried_attributes = Some(m.carried_attributes(restore_all));
         if restore_all {
+            self.carried_tick_count = Some(m.health.tick_count);
             self.carried_hit = m.health.accepted_hit.take();
+        } else {
+            self.carried_tick_count = None;
         }
         Some(m)
     }
@@ -1132,7 +1239,9 @@ impl Guest {
         let slot = 36 + self.selected;
         self.menu_sent[slot] = self.menu_slot(slot);
         let told = self.inventory.get(self.selected).cloned().flatten();
-        if let Some(m) = self.menu.as_mut() {
+        if let Some(m) = self.menu.as_mut()
+            && m.player_slots() != 0
+        {
             let at = m.size + 27 + self.selected;
             if m.sent.len() <= at {
                 m.sent.resize(at + 1, None);
@@ -1610,6 +1719,29 @@ fn trim_component(
         (material, pattern) => Component::TrimDirect { material, pattern },
     })
 }
+/// Drop prototype-equivalent entries from an encoded live stack. Nested templates
+/// keep their own patches, even when an entry equals the item's prototype.
+pub fn canonicalize_stack_patch(
+    wire: &mut Stack,
+    source: &ItemStack,
+    items: &crate::items::Items,
+    builtin: &sunrise_protocol::registry::Builtin,
+) {
+    if wire.added.is_empty() && wire.removed.is_empty() {
+        return;
+    }
+    let keep = crate::item_data::component_patch_filter(source, items);
+    let component_types = builtin.get("minecraft:data_component_type");
+    let retain = |id, removed| {
+        component_types
+            .and_then(|types| types.name(id))
+            .or_else(|| sunrise_protocol::item::custom::name(id))
+            .is_none_or(|name| keep(&name.into(), removed))
+    };
+    wire.added.retain(|(id, _)| retain(*id, false));
+    wire.removed.retain(|id| retain(*id, true));
+}
+
 /// Convert a borrowed item template with the same component codecs as inventory slots.
 pub(super) fn network_stack(
     item_id: &dyn Fn(&str) -> i32,

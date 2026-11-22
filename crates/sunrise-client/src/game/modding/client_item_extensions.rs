@@ -60,17 +60,13 @@ impl ClientItemExtensionsRegistrar for Registration<'_> {
                 .ok_or_else(|| format!("armour model {name}: no registering provider"))?;
             let id = mod_api::Identifier::parse(name)
                 .map_err(|why| format!("armour model {name}: {why}"))?;
-            if id.namespace() != owner {
+            if id.namespace() == "minecraft"
+                || !mod_api::__private::owns_namespace(owner, id.namespace())
+            {
                 return Err(format!("armour model {name}: expected namespace {owner}"));
             }
             if self.state.models.iter().any(|model| model.name == name) {
                 return Err(format!("duplicate armour model {name}"));
-            }
-            use mod_api::wire::Wire;
-            let mut writer = mod_api::wire::Writer::new();
-            model.put(&mut writer);
-            if let Some(error) = writer.error() {
-                return Err(format!("armour model {name}: {error}"));
             }
             let part =
                 bake_model("root", model).map_err(|why| format!("armour model {name}: {why}"))?;
@@ -152,57 +148,69 @@ impl ClientItemExtensionsRegistrar for Registration<'_> {
     }
 }
 
-// ModelPart's shared Wire preflight bounds recursive depth before entering here.
+// Bounds the recursive bake and subsequent clones and traversal of the baked tree.
+const MAX_ARMOR_MODEL_DEPTH: usize = 32;
+
 // All unknown geometry is validated once while baking, never during a frame.
 fn bake_model(name: &str, model: &ModelPart) -> std::result::Result<Part, &'static str> {
-    let pose = [
-        model.x,
-        model.y,
-        model.z,
-        model.x_rot,
-        model.y_rot,
-        model.z_rot,
-        model.x_scale,
-        model.y_scale,
-        model.z_scale,
-    ];
-    if !pose.iter().all(|x| x.is_finite()) {
-        return Err("non-finite model pose");
-    }
-    let mut polygons = Vec::new();
-    for polygon in &model.polygons {
-        if !polygon.normal.iter().all(|x| x.is_finite())
-            || !polygon
-                .vertices
-                .iter()
-                .all(|v| v.pos.iter().chain([&v.u, &v.v]).all(|x| x.is_finite()))
-        {
-            return Err("non-finite model geometry");
+    fn bake(
+        name: &str,
+        model: &ModelPart,
+        depth: usize,
+    ) -> std::result::Result<Part, &'static str> {
+        if depth == 0 {
+            return Err("model has too many nested parts");
         }
-        if !model.skip_draw && model.visible {
-            polygons.push(Polygon {
-                normal: polygon.normal,
-                vertices: polygon
+        let pose = [
+            model.x,
+            model.y,
+            model.z,
+            model.x_rot,
+            model.y_rot,
+            model.z_rot,
+            model.x_scale,
+            model.y_scale,
+            model.z_scale,
+        ];
+        if !pose.iter().all(|x| x.is_finite()) {
+            return Err("non-finite model pose");
+        }
+        let mut polygons = Vec::new();
+        for polygon in &model.polygons {
+            if !polygon.normal.iter().all(|x| x.is_finite())
+                || !polygon
                     .vertices
-                    .map(|v| [v.pos[0], v.pos[1], v.pos[2], v.u, v.v]),
-                cull_back: false,
-            });
+                    .iter()
+                    .all(|v| v.pos.iter().chain([&v.u, &v.v]).all(|x| x.is_finite()))
+            {
+                return Err("non-finite model geometry");
+            }
+            if !model.skip_draw && model.visible {
+                polygons.push(Polygon {
+                    normal: polygon.normal,
+                    vertices: polygon
+                        .vertices
+                        .map(|v| [v.pos[0], v.pos[1], v.pos[2], v.u, v.v]),
+                    cull_back: false,
+                });
+            }
         }
+        let children = if model.visible {
+            model
+                .children()
+                .map(|(name, child)| bake(name, child, depth - 1))
+                .collect::<std::result::Result<Vec<_>, _>>()?
+        } else {
+            Vec::new()
+        };
+        Ok(Part {
+            name: name.to_owned(),
+            pose,
+            polygons,
+            children,
+        })
     }
-    let children = if model.visible {
-        model
-            .children()
-            .map(|(name, child)| bake_model(name, child))
-            .collect::<std::result::Result<Vec<_>, _>>()?
-    } else {
-        Vec::new()
-    };
-    Ok(Part {
-        name: name.to_owned(),
-        pose,
-        polygons,
-        children,
-    })
+    bake(name, model, MAX_ARMOR_MODEL_DEPTH)
 }
 
 impl Game<'_> {
@@ -487,6 +495,18 @@ mod tests {
             PartPose::ZERO,
         )
     }
+    #[test]
+    fn an_armour_model_tree_too_deep_to_bake_is_refused() {
+        let mut model = tree(0.0);
+        for _ in 0..MAX_ARMOR_MODEL_DEPTH {
+            model = ModelPart::new(Vec::new(), vec![("child".into(), model)], PartPose::ZERO);
+        }
+        assert_eq!(
+            bake_model("root", &model).err(),
+            Some("model has too many nested parts")
+        );
+    }
+
     struct TwoShapes {
         models: [ArmorModelRef; 2],
         textures: [ArmorTextureRef; 2],
@@ -1007,6 +1027,59 @@ mod tests {
                     }
                 },
             );
+        });
+    }
+
+    #[test]
+    fn served_by_armor_model_delegates_to_serving_host_only() {
+        let packages = vec![
+            mod_api::PackageInfo::new(
+                "host".into(),
+                "1".into(),
+                mod_api::PackageKind::Code,
+                mod_api::Side::Both,
+                vec!["host".into()],
+                vec![],
+            ),
+            mod_api::PackageInfo::new(
+                "other".into(),
+                "1".into(),
+                mod_api::PackageKind::Code,
+                mod_api::Side::Both,
+                vec!["other".into()],
+                vec![],
+            ),
+            mod_api::PackageInfo::new(
+                "runes".into(),
+                "1".into(),
+                mod_api::PackageKind::Content,
+                mod_api::Side::Both,
+                vec!["runes".into()],
+                vec![],
+            )
+            .with_served_by(Some("host".into())),
+        ];
+        mod_platform::__private::with_test_package_inventory(packages, || {
+            let mut registry = Registration {
+                state: Default::default(),
+                sprite_exists: &|_| true,
+                refused: None,
+            };
+            {
+                let _owner = owner("host");
+                registry.register_model("runes:helm", &tree(0.0)).unwrap();
+                assert!(
+                    registry
+                        .register_model("minecraft:helm", &tree(0.0))
+                        .is_err()
+                );
+            }
+            {
+                let _owner = owner("other");
+                assert!(registry.register_model("runes:other", &tree(0.0)).is_err());
+            }
+            assert_eq!(registry.state.models.len(), 1);
+            assert_eq!(registry.state.models[0].name, "runes:helm");
         });
     }
 }

@@ -554,6 +554,13 @@ impl GeneralTypeCatalog {
         self.entries[slot].pickable
     }
 
+    pub(in crate::game) fn piston_push_reaction(
+        &self,
+        slot: usize,
+    ) -> sunrise_world::level::PushReaction {
+        super::api_values::push_reaction(&self.entries[slot].piston_push_reaction).1
+    }
+
     /// The type's declared payload schema version, the one a fresh row starts at.
     pub fn payload_version(&self, slot: usize) -> u16 {
         self.entries[slot].payload_version
@@ -686,15 +693,16 @@ pub struct RiderIndex {
     stamp: Option<sunrise_client::join_seq::ListStamp>,
     length: usize,
     mounts: u64,
-    /// Each row's first rider's place; `None` carries none.
+    /// Each vehicle's first general rider. Places at and above `length` are
+    /// foreign vehicles, with no corresponding general row.
     pub(super) first_child: Vec<Option<usize>>,
     /// Each rider's next sibling's place on the same vehicle.
     pub(super) next_sibling: Vec<Option<usize>>,
     /// Each vehicle's latest rider of the ongoing rebuild.
     last_child: Vec<Option<usize>>,
-    /// Each row's place by id, for the rebuild's edge pass.
+    /// A general row or foreign vehicle's place by id.
     places: FxHashMap<u32, usize>,
-    boarded: Vec<usize>,
+    boarded: Vec<(usize, u32)>,
     pub(super) ticked: Vec<bool>,
     pub(super) pending: Vec<(usize, Option<u32>)>,
     pub(super) foreign_parents: Vec<(usize, i64, usize)>,
@@ -739,16 +747,20 @@ impl RiderIndex {
             self.places.insert(row.id, place);
         }
         self.boarded.clear();
+        self.boarded.extend(
+            rows.iter()
+                .enumerate()
+                .filter_map(|(place, row)| Some((place, row.mount?))),
+        );
         self.boarded
-            .extend(rows.iter().enumerate().filter_map(|(place, row)| {
-                row.mount
-                    .is_some_and(|vehicle| self.places.contains_key(&vehicle))
-                    .then_some(place)
-            }));
-        self.boarded
-            .sort_unstable_by_key(|&place| (rows[place].vehicle_order, rows[place].id));
-        for &place in &self.boarded {
-            let vehicle_place = self.places[&rows[place].mount.unwrap()];
+            .sort_unstable_by_key(|&(place, _)| (rows[place].vehicle_order, rows[place].id));
+        for &(place, vehicle) in &self.boarded {
+            let vehicle_place = *self.places.entry(vehicle).or_insert_with(|| {
+                let place = self.first_child.len();
+                self.first_child.push(None);
+                self.last_child.push(None);
+                place
+            });
             match self.last_child[vehicle_place] {
                 // The chain's tail takes the new rider; the head opens it.
                 Some(tail) => self.next_sibling[tail] = Some(place),
@@ -777,11 +789,8 @@ impl Game<'_> {
             return None;
         }
         if store.riders.is_fresh(&store.rows, store.mount_writes) {
-            return store
-                .riders
-                .places
-                .get(&id)
-                .map(|&place| &store.rows[place]);
+            let &place = store.riders.places.get(&id)?;
+            return store.rows.get(place);
         }
         store.rows.iter().find(|row| row.id == id)
     }
@@ -970,13 +979,16 @@ impl Game<'_> {
     /// handle of the source level reaches it again. A failure after the
     /// rows left — the destination level cannot open — puts every row back
     /// in the source, at its place and with the join identity it had; a
-    /// failure before leaves the tree untouched. The root lands at `at`;
-    /// a rider keeps its own position until the tree's own tick moves it.
+    /// failure before leaves the tree untouched. The root lands at `at`, and
+    /// each rider takes its own vehicle's transition on arrival.
     pub(in crate::game) fn teleport_general_tree_across(
         &mut self,
         root_id: u32,
         destination: crate::game::Dim,
         at: [f64; 3],
+        rotation: Option<[f32; 2]>,
+        turn_riders: bool,
+        motion: super::vehicle_teleport::TeleportMotion,
     ) -> Result<bool, String> {
         let source = self.dim;
         if source == destination {
@@ -1016,9 +1028,11 @@ impl Game<'_> {
         }
         // Extract: highest index first, each row with the place it left.
         tree.sort_unstable();
-        let mut extracted: Vec<(usize, GeneralRow)> = Vec::new();
+        let mut extracted = Vec::new();
         for &index in tree.iter().rev() {
-            extracted.push((index, self.resident_entities.general.rows.remove(index)));
+            let row = self.resident_entities.general.rows.remove(index);
+            let transient = self.persist.transient.remove(&row.id);
+            extracted.push((index, row, transient));
         }
         extracted.reverse();
         // The removals are leaves of the source level
@@ -1027,19 +1041,35 @@ impl Game<'_> {
         // The only failing step: if the destination cannot open, every row
         // returns to the source, at its place and with its join identity.
         if let Err(error) = self.enter_level(destination) {
-            for (index, row) in extracted {
+            for (index, row, transient) in extracted {
+                if transient {
+                    self.persist.transient.insert(row.id);
+                }
                 self.resident_entities.general.rows.insert(index, row);
             }
             return Err(format!("{error}"));
         }
         // The tree joins the destination: identities unchanged, join
         // identity new (a fresh admission — no source handle reaches it).
-        for (_, mut row) in extracted {
-            row.join = JoinSeq::UNJOINED;
-            if row.id == root_id {
-                row.position = Vec3::new(at[0], at[1], at[2]);
-                row.previous = row.position;
+        let (mut arrivals, transients): (Vec<_>, Vec<_>) = extracted
+            .into_iter()
+            .map(|(_, row, transient)| (row, transient))
+            .unzip();
+        super::vehicle_teleport::transfer_general_tree(
+            &mut arrivals,
+            root_id,
+            super::vehicle_teleport::Transition::to_level(
+                Vec3::new(at[0], at[1], at[2]),
+                motion,
+                rotation,
+            ),
+            turn_riders,
+        );
+        for (mut row, transient) in arrivals.into_iter().zip(transients) {
+            if transient {
+                self.persist.transient.insert(row.id);
             }
+            row.join = JoinSeq::UNJOINED;
             self.resident_entities.general.rows.push(row);
         }
         if let Err(error) = self.enter_level(source) {
@@ -1264,8 +1294,11 @@ impl Entity for GeneralRow {
     fn selector_target(&self) -> Option<Target> {
         Some(Target::General(self.id))
     }
-    fn native_type(&self) -> Cow<'static, str> {
-        Cow::Owned(general_type_catalog().key(self.type_slot).to_owned())
+    fn get_piston_push_reaction(&self) -> sunrise_world::level::PushReaction {
+        general_type_catalog().piston_push_reaction(self.type_slot)
+    }
+    fn native_type(&self) -> Cow<'_, str> {
+        Cow::Borrowed(general_type_catalog().key(self.type_slot))
     }
     fn save_nbt(
         game: &mut Game<'_>,
@@ -1500,6 +1533,7 @@ mod tests {
             save_policy: mod_api::GeneralSavePolicy::Save,
             summonable: true,
             pickable: false,
+            piston_push_reaction: mod_api::PushReaction::PushPull,
             tracking_chunks: 8,
             update_interval: 3,
             payload_version: 1,

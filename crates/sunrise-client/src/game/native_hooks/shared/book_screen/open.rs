@@ -1,14 +1,15 @@
 use super::*;
 
 impl Game<'_> {
-    /// The screen of menu type `menu`: a book-enabled menu's startup-validated
-    /// registered one, which is its block's alone, else what the menu type's
-    /// parts answer `native_screen`. `block` is the mod block whose menu it is.
+    /// The screen of menu type `menu`: its startup-validated registered book
+    /// layout, else what the menu type's parts answer `native_screen`. `block`
+    /// is the mod block whose menu it is, when the menu is block-backed.
     fn menu_screen(&self, menu: &str, block: Option<&str>) -> Option<mod_api::Screen> {
         let mut screen = mod_api::RecipeBookLayout::registered_screen(menu);
         if screen.is_some() {
-            // Its book places recipes into its block's grid.
-            return screen.filter(|_| block.is_some());
+            // A code-opened menu may provide its grid through native slot
+            // backing instead of a block entity.
+            return screen;
         }
         self.native_screen(menu, block, &mut screen);
         screen
@@ -80,6 +81,10 @@ impl Game<'_> {
         self.clear_mod_book_placement_screen();
         self.mod_screen = None;
         if let Some((block, mut screen)) = self.opened_screen(menu, target) {
+            let mod_type = sunrise_client::containers::mod_menu_type(menu);
+            if let Some(kind) = mod_type {
+                screen.slots.truncate(kind.slots);
+            }
             // Check sprite identifiers once at the client declaration boundary.
             for slot in screen.slots.iter_mut().flatten() {
                 if let Some(icon) = &slot.no_item_icon
@@ -102,6 +107,7 @@ impl Game<'_> {
                 menu: menu.to_owned(),
                 block,
                 screen,
+                mod_type,
                 data: Vec::new(),
                 extra,
             });

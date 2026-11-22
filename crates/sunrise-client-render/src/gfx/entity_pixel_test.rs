@@ -1131,6 +1131,7 @@ pub fn render_pack(
         &[],
         &mut |_, _, _, _| {},
         &std::sync::atomic::AtomicBool::new(false),
+        super::in_flight::poll_live,
     )
     .unwrap();
     let (color, read) = (screen.texture(), SIZE * 4);
@@ -1227,6 +1228,7 @@ fn probe_frame(hud: &HudBatch) -> super::Frame<'_> {
         see_through: &[],
         world_primitives: Default::default(),
         celestial: &[],
+        celestial_bodies: &[],
         stars: None,
         hand: &[],
         hand_items: &[],

@@ -717,7 +717,6 @@ sunrise-client game::general::save_load_tests::unknown_minecraft_kind_keeps_its_
 sunrise-client game::general::save_load_tests::unknown_rider_type_hands_the_tree_back lib daily resources
 sunrise-client game::general::tick_tests::a_canceled_passenger_still_follows_and_his_passengers_tick lib daily resources
 sunrise-client game::general::tick_tests::a_canceled_vehicle_pre_still_ticks_its_passengers lib daily resources
-sunrise-client game::general::tick_tests::a_listener_discarded_rider_stops_its_subtree lib daily resources
 sunrise-client game::general::tick_tests::a_listener_discarded_row_gets_no_callback lib daily resources
 sunrise-client game::general::tick_tests::a_listener_dismounted_rider_walks_as_a_root_after lib daily resources
 sunrise-client game::general::tick_tests::a_panicking_row_rolls_back_and_the_next_tick_proceeds lib daily resources
@@ -726,8 +725,6 @@ sunrise-client game::general::tick_tests::a_reloaded_row_reenters_ticking_behind
 sunrise-client game::general::tick_tests::a_reloaded_row_resumes_the_counter_and_refuses_its_old_handle lib daily resources
 sunrise-client game::general::tick_tests::a_removed_last_rider_leaves_no_stale_index_link lib daily resources
 sunrise-client game::general::tick_tests::a_removed_only_rider_leaves_no_stale_index_link lib daily resources
-sunrise-client game::general::tick_tests::a_rider_removed_in_its_own_canceled_pre_walks_no_descendants lib daily resources
-sunrise-client game::general::tick_tests::a_rider_removed_in_its_own_pre_walks_no_descendants lib daily resources
 sunrise-client game::general::tick_tests::a_row_discarded_from_an_earlier_pre_ticks_nothing lib daily resources
 sunrise-client game::general::tick_tests::a_row_joined_during_the_tick_span_ticks_the_next_phase lib daily resources
 sunrise-client game::general::tick_tests::counter_advances_one_per_tick lib daily resources
@@ -857,7 +854,7 @@ sunrise-client game::lan_actions::boat_holder_movement_tests::walking_then_still
 sunrise-client game::lan_actions::crack_feedback_tests::crack_packets_follow_start_clock_and_strict_observer_radius lib daily resources
 sunrise-client game::lan_actions::guest_body::tests::accepted_hit_moves_through_teleport_restore_but_not_respawn lib daily resources
 sunrise-client game::lan_actions::guest_body::tests::co_located_guests_own_distinct_streams_and_restore_the_saved_body lib daily resources
-sunrise-client game::lan_actions::guest_body::tests::fall_reset::a_guest_move_that_goes_up_ends_its_fall lib daily resources
+sunrise-client game::lan_actions::guest_body::tests::fall_reset::a_guest_move_that_goes_up_ends_its_fall lib daily child-process
 sunrise-client game::lan_actions::guest_close_listener_tests::ordinary_guest_final_close_posts_to_actual_listener lib daily resources
 sunrise-client game::lan_actions::hotbar_tests::a_hotbar_switch_fires_pre_then_post_and_pre_can_keep_the_slot lib daily resources
 sunrise-client game::lan_actions::item_on_block_cooldown_tests::actual_guest_placement_starts_its_cooldown lib daily resources
@@ -887,8 +884,8 @@ sunrise-client game::lan_actions::tests::replacing_empty_note_block_use_does_not
 sunrise-client game::lan_actions::tick::building_cache_tests::a_guest_killed_mid_tick_no_longer_blocks lib daily resources
 sunrise-client game::lan_actions::tick::building_cache_tests::a_guest_put_in_spectator_mid_tick_no_longer_blocks lib daily resources
 sunrise-client game::lan_actions::tick::building_cache_tests::a_teleported_guest_blocks_where_it_went_not_where_the_tick_began lib daily resources
-sunrise-client game::lan_actions::tick::fall_sound_tests::five_block_fall_sends_stone_once_except_guest lib daily resources
-sunrise-client game::lan_actions::tick::fall_sound_tests::three_block_fall_sends_no_stone_sound lib daily resources
+sunrise-client game::lan_actions::tick::fall_sound_tests::five_block_fall_sends_stone_once_except_guest lib daily child-process
+sunrise-client game::lan_actions::tick::fall_sound_tests::three_block_fall_sends_no_stone_sound lib daily child-process
 sunrise-client game::lan_crafting::empty_ingredient_placement_tests::server_packet_refuses_retained_empty_ingredient_recipes lib daily resources
 sunrise-client game::lan_crafting::lending_tests::inventory_menu_does_not_ask_recipe_sources lib daily resources
 sunrise-client game::lan_crafting::lending_tests::lent_chest_supplies_transfer_and_placement_and_is_written_back lib daily resources
@@ -1267,7 +1264,6 @@ sunrise-client game::native_entity_refs::tests::a_client_lists_another_player_in
 sunrise-client game::native_entity_refs::tests::a_client_refuses_a_box_with_a_bound_that_is_not_finite_and_swaps_an_inverted_one lib daily resources
 sunrise-client game::native_entity_refs::tests::a_fresh_case_whose_name_matches_no_test_fails lib daily child-process
 sunrise-client game::native_entity_refs::tests::a_level_bone_meals_a_block_and_sets_a_biome_cell lib daily resources
-sunrise-client game::native_entity_refs::tests::a_level_can_survive_asks_the_blocks_own_rule lib daily resources
 sunrise-client game::native_entity_refs::tests::a_level_handle_reads_redstone_as_signal_getter_does lib daily resources
 sunrise-client game::native_entity_refs::tests::a_level_handle_reads_redstone_through_should_check_weak_power lib daily resources
 sunrise-client game::native_entity_refs::tests::a_level_handle_updates_neighbours_as_vanillas_writes_do lib daily resources
@@ -1294,7 +1290,7 @@ sunrise-client game::native_entity_refs::tests::shearing_llama_and_happy_ghast_r
 sunrise-client game::native_entity_refs::tests::side_guards_agree_across_integrated_dedicated_and_client lib daily resources
 sunrise-client game::native_entity_refs::tests::sulfur_cube_absorbs_one_complete_stack_by_hand_and_pickup lib daily resources
 sunrise-client game::native_entity_refs::tests::typed_uuid_and_nbt_reads_follow_the_entity_level lib daily resources
-sunrise-client game::native_entity_remove::tests::destroying_a_cart_spills_all_slots_after_the_removal_flush lib daily resources
+sunrise-client game::native_entity_remove::tests::destroying_a_cart_spills_all_slots_before_removing_its_row lib daily resources
 sunrise-client game::native_entity_remove::tests::discard_mob_and_refuse_players_and_stale_handles lib daily resources
 sunrise-client game::native_entity_remove::tests::discard_other_clears_nbt_and_saved_entity lib daily resources
 sunrise-client game::native_entity_remove::tests::kill_command_forgets_other_entity_data lib daily resources
@@ -1461,7 +1457,7 @@ sunrise-client game::native_hooks::block_entity_on_load_routes_tests::tests::blo
 sunrise-client game::native_hooks::block_entity_on_load_routes_tests::tests::block_entity_on_load_shared_type_replacement_has_fresh_handle lib daily resources
 sunrise-client game::native_hooks::block_entity_on_load_routes_tests::tests::block_entity_on_load_stale_queued_identity_is_skipped lib daily resources
 sunrise-client game::native_hooks::block_entity_on_load_tests::tests::block_entity_on_load_client_instance_reads_received_fields lib daily resources
-sunrise-client game::native_hooks::block_entity_on_load_tests::tests::block_entity_on_load_saved_data_placement_rewrite_and_reload lib daily resources
+sunrise-client game::native_hooks::block_entity_on_load_tests::tests::block_entity_on_load_saved_data_placement_rewrite_and_reload lib daily child-process
 sunrise-client game::native_hooks::block_entity_on_load_tests::tests::block_entity_on_load_without_listener_preserves_data_and_never_queues lib daily resources
 sunrise-client game::native_hooks::block_landing::landing_crossing_tests::landing_crossing_refuses_invalid_writes_and_sibling_damage lib daily resources
 sunrise-client game::native_hooks::book_screen::lifecycle_tests::authoritative_custom_book_rebuilds_cached_geometry_without_observe_screen lib daily resources
@@ -1868,7 +1864,6 @@ sunrise-client game::native_player_disconnect_tests::a_second_disconnect_while_p
 sunrise-client game::native_player_disconnect_tests::disconnect_reaches_acting_and_displaced_players lib daily resources
 sunrise-client game::native_player_disconnect_tests::disconnect_refuses_the_owner_stale_and_offline_players lib daily resources
 sunrise-client game::native_player_disconnect_tests::disconnect_sends_the_reason_to_that_guest_only lib daily resources
-sunrise-client game::native_player_disconnect_tests::wasm_disconnect_crosses_the_generated_forwarder lib daily resources
 sunrise-client game::native_player_food::tests::a_stale_handle_gives_nothing lib daily resources
 sunrise-client game::native_player_food::tests::levels_are_added_taken_and_clamped_at_zero lib daily resources
 sunrise-client game::native_player_food::tests::more_points_than_an_int_are_refused_untouched lib daily resources
@@ -2256,7 +2251,7 @@ sunrise-client game::remote::interaction_event_tests::air_event_skips_the_item_a
 sunrise-client game::remote::interaction_event_tests::an_item_used_from_the_off_hand_reaches_the_use_hooks_on_the_server lib daily resources
 sunrise-client game::remote::interaction_event_tests::before_block_cancellation_pass_continues_but_fail_and_consuming_results_stop lib daily resources
 sunrise-client game::remote::interaction_event_tests::canceled_item_results_keep_the_stack_wrappers_side_effects lib daily resources
-sunrise-client game::remote::interaction_event_tests::interaction_event_wasm_tests::native_interaction_shared_matrix lib daily resources
+sunrise-client game::remote::interaction_event_tests::interaction_matrix_tests::native_interaction_shared_matrix lib daily resources
 sunrise-client game::remote::interaction_event_tests::interaction_key_tests::interaction_key_literal_matrix_preserves_actions_and_swing_independently lib daily resources
 sunrise-client game::remote::interaction_event_tests::interaction_key_tests::no_interaction_listener_attack_mining_offhand_and_pick lib daily resources
 sunrise-client game::remote::interaction_event_tests::interaction_key_tests::no_listener_preserves_natural_swing_and_unsuccessful_use_stays_quiet lib daily resources
@@ -2631,8 +2626,6 @@ sunrise-client game::villager_professions::tests::villager_native_slots_ignore_d
 sunrise-client game::villager_professions::tests::villager_no_mods_world_retains_farmer_composter_and_five_levels lib daily resources
 sunrise-client game::villager_professions::tests::villager_overlapping_poi_publishes_zero_entries lib daily resources
 sunrise-client game::villager_professions::tests::villager_reserved_profession_publishes_zero_entries lib daily resources
-sunrise-client game::villager_professions::tests::villager_wasm_engineer_declaration_resolves_with_assembler lib daily resources
-sunrise-client game::villager_professions::tests::villager_wasm_slots_ignore_declaring_mod_order lib daily resources
 sunrise-client game::villagers::birth_tests::rejected_birth_leaves_bed_free_and_parents_resting lib daily resources
 sunrise-client game::villagers::birth_tests::untouched_birth_claims_one_bed_and_announces_one_baby lib daily resources
 sunrise-client game::villagers::birth_tests::villager_birth_is_raw_and_does_not_post_the_animal_hook lib daily resources

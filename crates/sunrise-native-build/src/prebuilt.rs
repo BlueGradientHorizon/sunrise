@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use sunrise_mod_package::native_route::{self, Requirement};
 
 const IDENTITY: &str = "sunrise-prebuilt.json";
 #[cfg(test)]
@@ -71,49 +72,99 @@ pub fn refusal(projects: &[api::Project<'_>]) -> Option<Refusal> {
 
 /// Why `project` alone can't build against the prebuilt game, or `None` when it can.
 pub fn project_refusal(project: &api::Project<'_>) -> Option<Refusal> {
-    {
-        let mod_id = || project.bundle.manifest.id.clone();
-        let cargo = &project.cargo;
-        let package = cargo.get("package");
-        let build = package.and_then(|p| p.get("build"));
-        let has_script = build.is_some_and(|value| value.as_bool() != Some(false))
-            || (build.and_then(toml::Value::as_bool) != Some(false)
-                && project.bundle.dir.join("build.rs").is_file())
-            || cargo
-                .get("build-dependencies")
-                .and_then(toml::Value::as_table)
-                .is_some_and(|t| !t.is_empty());
-        if has_script {
-            return Some(Refusal::BuildScript { mod_id: mod_id() });
-        }
-        if cargo
-            .get("features")
+    refusal_with_script(project, project.bundle.dir.join("build.rs").is_file())
+}
+
+fn refusal_with_script(project: &api::Project<'_>, build_script: bool) -> Option<Refusal> {
+    let mod_id = || project.bundle.manifest.id.clone();
+    let cargo = &project.cargo;
+    let package = cargo.get("package");
+    let build = package.and_then(|p| p.get("build"));
+    let has_script = build.is_some_and(|value| value.as_bool() != Some(false))
+        || (build.and_then(toml::Value::as_bool) != Some(false) && build_script)
+        || cargo
+            .get("build-dependencies")
             .and_then(toml::Value::as_table)
-            .is_some_and(|t| !t.is_empty())
-        {
-            return Some(Refusal::Features { mod_id: mod_id() });
-        }
-        for (_, dependencies) in project.dependency_tables() {
-            for (key, value) in dependencies {
-                let krate = value
-                    .get("package")
-                    .and_then(toml::Value::as_str)
-                    .unwrap_or(key);
-                if !api::PACKAGES.iter().any(|(package, _)| *package == krate) {
-                    continue;
-                }
-                let own_features = value
-                    .get("features")
-                    .and_then(toml::Value::as_array)
-                    .is_some_and(|f| !f.is_empty())
-                    || value.get("default-features").and_then(toml::Value::as_bool) == Some(false);
-                if own_features {
-                    return Some(Refusal::Features { mod_id: mod_id() });
-                }
+            .is_some_and(|t| !t.is_empty());
+    if has_script {
+        return Some(Refusal::BuildScript { mod_id: mod_id() });
+    }
+    if cargo
+        .get("features")
+        .and_then(toml::Value::as_table)
+        .is_some_and(|t| !t.is_empty())
+    {
+        return Some(Refusal::Features { mod_id: mod_id() });
+    }
+    for (_, dependencies) in native_route::dependency_tables(&project.cargo) {
+        for (key, value) in dependencies {
+            let krate = value
+                .get("package")
+                .and_then(toml::Value::as_str)
+                .unwrap_or(key);
+            if !native_route::PACKAGES
+                .iter()
+                .any(|(package, _)| *package == krate)
+            {
+                continue;
+            }
+            let own_features = value
+                .get("features")
+                .and_then(toml::Value::as_array)
+                .is_some_and(|f| !f.is_empty())
+                || value.get("default-features").and_then(toml::Value::as_bool) == Some(false);
+            if own_features {
+                return Some(Refusal::Features { mod_id: mod_id() });
             }
         }
-        None
     }
+    None
+}
+
+/// A signed source package can accompany an independently built release library only if
+/// it can also use the API route on its own. This inspects the package; it never invokes Cargo.
+pub fn release_source(source: &sunrise_mod_package::index::native::Bundle) -> Result<(), String> {
+    let bundle = super::Bundle {
+        manifest: source.manifest.clone(),
+        dir: PathBuf::new(),
+    };
+    let cargo = source.files.get("Cargo.toml").ok_or("no Cargo.toml")?;
+    let cargo = std::str::from_utf8(cargo).map_err(|e| format!("Cargo.toml: {e}"))?;
+    let project = api::Project::parse_with(&bundle, cargo, |name| source.files.contains_key(name))
+        .map_err(|e| e.to_string())?;
+    require_release_api(&project, source.files.contains_key("build.rs"))?;
+    let lock = source
+        .files
+        .get("Cargo.lock")
+        .ok_or("the source package must carry Cargo.lock")?;
+    check_release_lock(lock)
+}
+
+/// Preflight a release build with the same inputs the source package's verifier uses.
+pub fn release_project(project: &api::Project<'_>) -> Result<(), String> {
+    require_release_api(project, project.bundle.dir.join("build.rs").is_file())
+}
+
+fn require_release_api(project: &api::Project<'_>, build_script: bool) -> Result<(), String> {
+    if let Some(refusal) = refusal_with_script(project, build_script) {
+        return Err(refusal.to_string());
+    }
+    if !matches!(Route::of(std::slice::from_ref(project)), Route::Api)
+        || !project.bundle.manifest.dependencies.is_empty()
+    {
+        return Err(
+            "a release library requires a standalone prebuilt-api mod without mod dependencies"
+                .into(),
+        );
+    }
+    Ok(())
+}
+
+pub fn check_release_lock(lock: &[u8]) -> Result<(), String> {
+    super::registry_lock::RegistryLock::parse(
+        std::str::from_utf8(lock).map_err(|e| format!("Cargo.lock: {e}"))?,
+    )?;
+    Ok(())
 }
 
 /// `name`'s sum in a `sha256sum` listing.
@@ -146,6 +197,9 @@ pub struct Identity {
     pub registry_patches: Option<toml::Table>,
     #[serde(default)]
     pub native_links: Option<Vec<super::registry_inventory::NativeLink>>,
+    /// The prebuilt API exports the native log sink and the entry template must install it.
+    #[serde(default)]
+    pub native_log: bool,
     #[serde(default)]
     facade_crates: std::collections::BTreeSet<String>,
     /// The game crate's features the SDK was built with: a patched function copied out of its
@@ -425,7 +479,6 @@ pub fn wrapper_externs(deps: &Path) -> Result<BTreeMap<String, PathBuf>, String>
         "sunrise_client",
         "mod_api",
         "mod_vocab",
-        "mod_points",
         "sunrise_mod_package",
     ] {
         externs.insert(name.to_owned(), library(deps, name)?);
@@ -447,10 +500,6 @@ fn facade_refused(krate: &str) -> String {
 /// What the patch library's source ends with: edition 2024 loads an `--extern` only when the source names it, and
 /// the dylib links the game's crates only through `sunrise_mod_host`.
 pub const PATCH_HOST_LINK: &str = "\nextern crate sunrise_mod_host as _;\n";
-
-/// The game's one wasmtime is code only inside `libsunrise_mod_wasm` (`sunrise-wasmtime` is metadata in `deps/`), so a
-/// mod that names it links that library: edition 2024 loads an `--extern` only when the source names it.
-pub const WASMTIME_LINK: &str = "\nextern crate sunrise_mod_wasm as _;\n";
 
 pub fn facade_library(deps: &Path, krate: &str, sdk: &Identity) -> Result<PathBuf, String> {
     if !sdk.facade_crates.contains(krate) {
@@ -521,7 +570,7 @@ pub fn rustc_with(rust: &dyn Toolchain, search: &[&Path], edition: &str) -> Comm
 
 /// How an instance's native mods are built against the prebuilt game: chosen once, from the whole
 /// set of mods, and never changed after a failure (SDK design §1).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Route {
     /// Every mod is API-only: build its own dylib from the package's API metadata.
     /// The engine archive is never read.
@@ -537,16 +586,17 @@ pub enum Route {
 impl Route {
     /// The route of the set `projects`: the strongest one any of its mods needs.
     pub fn of(projects: &[api::Project<'_>]) -> Self {
-        if projects.iter().any(registry_dependency) {
-            Self::Registry
-        } else if projects
+        projects
             .iter()
-            .any(|project| changes_game(project).is_some())
-        {
-            Self::Engine
-        } else {
-            Self::Api
-        }
+            .map(|project| {
+                match native_route::requirement(&project.bundle.manifest, &project.cargo) {
+                    Requirement::Api => Self::Api,
+                    Requirement::Engine(_) => Self::Engine,
+                    Requirement::Registry(_) => Self::Registry,
+                }
+            })
+            .max()
+            .unwrap_or(Self::Api)
     }
 
     /// The route's name in the SDK's input list (`sdk.json`'s `inputs.routes`): which slices
@@ -565,55 +615,6 @@ impl Route {
             Self::Engine | Self::Registry => "prebuilt",
         }
     }
-}
-
-/// How `project` reaches into the game's own code, which ties it to exactly the build it was made
-/// for: a `[native]` table row (named by its table), or game internals (`internals`); `None` for
-/// a mod on the mod API alone.
-pub fn changes_game(project: &api::Project<'_>) -> Option<&'static str> {
-    let manifest = &project.bundle.manifest;
-    // Every row kind by name: a new one does not compile until it is routed here.
-    if let Some(native) = &manifest.native {
-        let sunrise_mod_package::manifest::Native {
-            game: _,
-            sunrise: _,
-            mixins: _,
-            mixin,
-            module,
-            bridge,
-            state,
-            r#loop,
-        } = native;
-        for (empty, table) in [
-            (mixin.is_empty(), "[[native.mixin]]"),
-            (module.is_empty(), "[[native.module]]"),
-            (bridge.is_empty(), "[[native.bridge]]"),
-            (state.is_empty(), "[[native.state]]"),
-            (r#loop.is_empty(), "[[native.loop]]"),
-        ] {
-            if !empty {
-                return Some(table);
-            }
-        }
-    }
-    let facade = project
-        .api_dependencies()
-        .iter()
-        .any(|(_, package)| *package == "internals");
-    (internals::needed(manifest) || facade).then_some("internals")
-}
-
-/// Whether `project` depends on a crate that is not one of the game's own packages.
-fn registry_dependency(project: &api::Project<'_>) -> bool {
-    project.dependency_tables().any(|(_, dependencies)| {
-        dependencies.iter().any(|(key, value)| {
-            let name = value
-                .get("package")
-                .and_then(toml::Value::as_str)
-                .unwrap_or(key);
-            !api::PACKAGES.iter().any(|(package, _)| *package == name)
-        })
-    })
 }
 
 /// Creates `out`, a build folder directly under `builds`, itself directly under the native work
@@ -732,15 +733,14 @@ pub fn compile(
     let deps = game.join("deps");
     let sdk = identity(game)?;
     let mut libraries = std::collections::HashMap::new();
-    for (package, name) in api::PACKAGES {
-        if package != api::INTERNALS_PACKAGE {
+    for (package, name) in native_route::PACKAGES {
+        if package != native_route::INTERNALS_PACKAGE {
             libraries.insert(name, library(&deps, name)?);
         }
     }
     let game_library = library(&deps, "sunrise_client")?;
     let mut facades = std::collections::HashMap::new();
     libraries.insert("mod_vocab", library(&deps, "mod_vocab")?);
-    libraries.insert("sunrise_mod_wasm", library(&deps, "sunrise_mod_wasm")?);
     let mut rlibs: std::collections::HashMap<&str, PathBuf> = std::collections::HashMap::new();
     let mut crate_names: std::collections::HashMap<&str, String> = std::collections::HashMap::new();
     for (n, &index) in resolution.order.iter().enumerate() {
@@ -794,7 +794,6 @@ pub fn compile(
             &library_entry(
                 &api::template(&game.join(super::api_route::TEMPLATE))?,
                 &[&project.bundle.manifest],
-                &catalog,
                 sdk.commit(),
                 id,
                 &project.bundle.manifest.version.to_string(),
@@ -827,7 +826,6 @@ pub fn compile(
         let mut entry = library_entry(
             &template,
             &[],
-            &catalog,
             sdk.commit(),
             "sunrise_patch",
             "0",
@@ -870,7 +868,7 @@ pub fn compile(
 pub fn refuse_closure_rlib(id: &str, name: &str, path: &Path) -> Result<(), String> {
     if matches!(
         name,
-        "mod_api" | "mod_vocab" | "mod_points" | "sunrise_mod_runtime" | "sunrise_core"
+        "mod_api" | "mod_vocab" | "sunrise_mod_runtime" | "sunrise_core"
     ) && path.extension().is_some_and(|ext| ext == "rlib")
     {
         return Err(trf(
@@ -892,13 +890,12 @@ pub fn dylib_name(krate: &str) -> String {
 pub fn library_entry(
     template: &str,
     mods: &[&sunrise_mod_package::Manifest],
-    catalog: &internals::Catalog,
     build: &str,
     id: &str,
     version: &str,
     installs: &[String],
 ) -> String {
-    api::main_rs(template, mods, catalog)
+    api::main_rs(template, mods)
         .replace("mod_0::", "crate::")
         .replace(
             "/* NATIVE_BUILD */",
@@ -953,13 +950,6 @@ pub fn compile_mod<'a>(
     root.push_str(
         "\n#[allow(unsafe_code)]\n#[path = \"__sunrise_entry.rs\"] mod __sunrise_entry;\n",
     );
-    if project.uses_wasmtime() {
-        root.push_str(WASMTIME_LINK);
-        cmd.arg("--extern").arg(format!(
-            "sunrise_mod_wasm={}",
-            library("sunrise_mod_wasm").display()
-        ));
-    }
     fs::write(&source, root).map_err(|e| e.to_string())?;
     // Diagnostics as JSON, which `run_diagnosed` shows at the author's files: the compiler's
     // inputs and outputs stay those of the staged copy.
@@ -972,7 +962,7 @@ pub fn compile_mod<'a>(
     ])
     .arg("-C")
     .arg(format!("metadata={id}"));
-    for name in ["mod_api", "mod_vocab", "mod_points"] {
+    for name in ["mod_api", "mod_vocab"] {
         refuse_closure_rlib(id, name, library(name))?;
         cmd.arg("--extern")
             .arg(format!("{name}={}", library(name).display()));
@@ -1346,18 +1336,18 @@ mod tests {
     fn closure_rlib_refusal_names_the_mod_and_crate() {
         let message = super::refuse_closure_rlib(
             "example",
-            "mod_points",
-            std::path::Path::new("libmod_points.rlib"),
+            "mod_api",
+            std::path::Path::new("libmod_api.rlib"),
         )
         .unwrap_err();
         assert!(message.contains("example"), "{message}");
-        assert!(message.contains("mod_points"), "{message}");
+        assert!(message.contains("mod_api"), "{message}");
         assert!(message.contains("rlib"), "{message}");
         assert!(
             super::refuse_closure_rlib(
                 "example",
-                "mod_points",
-                std::path::Path::new("libmod_points.rmeta")
+                "mod_api",
+                std::path::Path::new("libmod_api.rmeta")
             )
             .is_ok()
         );
@@ -1383,7 +1373,7 @@ mod tests {
         };
         let api_only = write(
             "api_only",
-            "sunrise-mod-api={path='.sunrise/sdk/api/crates/sunrise-mod-api'}\nsunrise-mod-points={path='.sunrise/sdk/api/crates/sunrise-mod-points'}",
+            "sunrise-mod-api={path='.sunrise/sdk/api/crates/sunrise-mod-api'}",
         );
         let facade = write(
             "facade",
@@ -1463,8 +1453,10 @@ mod tests {
         }
         assert_eq!(route(&[&api_only, &registry]), Route::Registry);
         // What ties a mod to its exact build is named by its table.
-        let tie =
-            |bundle: &super::super::Bundle| changes_game(&api::Project::read(bundle).unwrap());
+        let tie = |bundle: &super::super::Bundle| {
+            let project = api::Project::read(bundle).unwrap();
+            native_route::changes_game(&bundle.manifest, &project.cargo)
+        };
         let ties: Vec<_> = engine.iter().map(tie).collect();
         assert_eq!(
             ties,
@@ -1567,19 +1559,14 @@ mod tests {
         let sdk: Identity = serde_json::from_value(serde_json::json!({
             "commit": "test", "rustc": "test", "target": "test", "side": "client", "link_args": [],
             "slices": {"runtime": [
-                "bin/sunrise-client.exe", "deps/sunrise_engine_slots.dll", "deps/sunrise_mod_host.dll",
-                "deps/libsunrise_mod_host.dll.a", "deps/libmod_api.so", "deps/mod_points.dylib",
+                "bin/sunrise-client.exe", "deps/sunrise_mod_host.dll",
+                "deps/libsunrise_mod_host.dll.a", "deps/libmod_api.so",
                 "sunrise-prebuilt.json",
             ], "api": []},
         }))
         .unwrap();
-        let recorded = [
-            "sunrise_engine_slots.dll",
-            "sunrise_mod_host.dll",
-            "libmod_api.so",
-            "mod_points.dylib",
-        ]
-        .map(|name| game.join("deps").join(name));
+        let recorded =
+            ["sunrise_mod_host.dll", "libmod_api.so"].map(|name| game.join("deps").join(name));
         for target in crate::rust::tests::HOSTS {
             let rust = crate::rust::tests::unpacked(scratch.path().join(target), target);
             let std = rust.target_libdir().unwrap().join("std-test.dll");
@@ -1666,14 +1653,14 @@ mod tests {
             ("bin/sunrise-client", "exe"),
             ("deps/libmod_api-1.rmeta", "api"),
             ("deps/libsunrise_client-1.rlib", "engine"),
-            ("points.json", "{}"),
+            ("internals.json", "{}"),
         ] {
             fs::create_dir_all(whole.join(name).parent().unwrap()).unwrap();
             fs::write(whole.join(name), text).unwrap();
         }
         let runtime = serde_json::json!([IDENTITY, "bin/sunrise-client"]);
         write(
-            serde_json::json!({"runtime": runtime, "api": ["deps/libmod_api-1.rmeta", "points.json"]}),
+            serde_json::json!({"runtime": runtime, "api": ["deps/libmod_api-1.rmeta", "internals.json"]}),
         );
         let package = lay_out(&whole, &dir.join("linked"), true).unwrap();
         assert_eq!(package, Package::at(&dir.join("linked")));
@@ -1684,7 +1671,7 @@ mod tests {
             read(package.engine.join("deps/libsunrise_client-1.rlib")),
             "engine"
         );
-        assert!(!package.engine.join("points.json").exists());
+        assert!(!package.engine.join("internals.json").exists());
         // Linking leaves the developer's folder as it was.
         assert_eq!(read(whole.join("bin/sunrise-client")), "exe");
         let union = package.whole(&dir.join("union")).unwrap();
@@ -1700,16 +1687,16 @@ mod tests {
         write(serde_json::json!({"runtime": runtime, "api": ["deps/gone.rmeta"]}));
         let error = lay_out(&whole, &dir.join("absent"), true).unwrap_err();
         assert!(error.contains("deps/gone.rmeta"), "{error}");
-        write(serde_json::json!({"runtime": runtime, "api": ["../points.json"]}));
+        write(serde_json::json!({"runtime": runtime, "api": ["../internals.json"]}));
         // Even when that file exists, outside the package.
-        fs::write(dir.join("points.json"), "{}").unwrap();
+        fs::write(dir.join("internals.json"), "{}").unwrap();
         let error = lay_out(&whole, &dir.join("escape"), true).unwrap_err();
         assert!(error.contains("not a plain path"), "{error}");
         write(serde_json::json!(null));
         assert!(lay_out(&whole, &dir.join("none"), true).is_err());
         // Moving (an unpacked download) leaves nothing behind.
         write(
-            serde_json::json!({"runtime": runtime, "api": ["deps/libmod_api-1.rmeta", "points.json"]}),
+            serde_json::json!({"runtime": runtime, "api": ["deps/libmod_api-1.rmeta", "internals.json"]}),
         );
         lay_out(&whole, &dir.join("moved"), false).unwrap();
         assert!(!whole.join("bin/sunrise-client").exists());
