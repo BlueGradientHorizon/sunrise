@@ -293,8 +293,14 @@ impl Game<'_> {
 
     /// The border of a resident server level, through the handle's lifetime check.
     pub(super) fn level_world_border(&self, level: LevelRef) -> Option<[f64; 4]> {
-        self.native_level_world(level)?;
-        Some(self.border.bounds())
+        if !self.is_logical_server() || !self.level_handle_current(level) {
+            return None;
+        }
+        if level.dimension() == self.dim.key() {
+            Some(self.border.bounds())
+        } else {
+            Some(self.levels.parked_of(level.dimension_id())?.border.bounds())
+        }
     }
     /// The world a handle names now, or None for a stale or foreign one.
     pub(super) fn native_level_world(&self, level: LevelRef) -> Option<&World> {

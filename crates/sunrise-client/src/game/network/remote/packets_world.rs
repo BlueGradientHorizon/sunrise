@@ -1,4 +1,5 @@
 use super::*;
+use sunrise_core::geometry::border::BorderError;
 
 impl Game<'_> {
     /// `C::ForgetLevelChunk`: its arms of `apply_packet`, guard and order kept.
@@ -76,25 +77,23 @@ impl Game<'_> {
         }
     }
 
-    /// `C::InitializeBorder`: its arms of `apply_packet`, guard and order kept.
-    pub(super) fn apply_initialize_border_packet(&mut self, p: play::InitializeBorder) {
+    /// `ClientPacketListener.handleInitializeBorder`: apply the level's incoming settings
+    /// in packet order, without running server listeners.
+    pub(super) fn apply_initialize_border_packet(
+        &mut self,
+        p: play::InitializeBorder,
+    ) -> std::result::Result<(), BorderError> {
         let b = &mut self.border;
-        let _ = b.set_center([p.center_x, p.center_z]);
+        b.set_center([p.center_x, p.center_z])?;
         if p.lerp_time > 0 {
-            let _ = b.lerp_between(p.old_size, p.new_size, p.lerp_time);
+            b.lerp_between(p.old_size, p.new_size, p.lerp_time)?;
         } else {
-            let _ = b.set_size(p.new_size);
+            b.set_size(p.new_size)?;
         }
-        b.set_absolute_max_size(p.absolute_max_size);
+        b.set_absolute_max_size(p.absolute_max_size)?;
         b.warning_distance = p.warning_blocks;
         b.warning_time = p.warning_time;
-    }
-
-    /// `C::SetBorderLerpSize`: its arms of `apply_packet`, guard and order kept.
-    pub(super) fn apply_set_border_lerp_size_packet(&mut self, p: play::SetBorderLerpSize) {
-        let _ = self
-            .border
-            .lerp_between(p.old_size, p.new_size, p.lerp_time);
+        Ok(())
     }
 
     /// `C::SetDefaultSpawnPosition`: its arms of `apply_packet`, guard and order kept.

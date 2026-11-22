@@ -1033,10 +1033,18 @@ impl Hub {
             .filter(move |g| self.watches(g) && loads(g))
             .map(Guest::chunk)
     }
-    /// `PlayerList.broadcastAll(packet, dimension)`: the players in the level in place.
+    /// `PlayerList.broadcastAll(packet, dimension)`: the players watching the level in place.
     pub fn broadcast_level(&self, packet: &C) {
+        self.broadcast_in_level(&self.config.dimension, packet);
+    }
+    /// `PlayerList.broadcastAll(packet, dimension)`, for a level whether or not it is in place.
+    pub fn broadcast_in_level(&self, dimension: &str, packet: &C) {
         let mut body = None;
-        for g in self.guests.simulation_iter().filter(|g| self.watches(g)) {
+        for g in self
+            .guests
+            .simulation_iter()
+            .filter(|g| g.watches_level(dimension))
+        {
             g.sender
                 .send(body.get_or_insert_with(|| packet.encode()).clone());
         }

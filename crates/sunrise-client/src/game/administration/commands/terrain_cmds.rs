@@ -1,13 +1,17 @@
 //! `/forceload`, `/fillbiome`, `/worldborder` and `/loot`.
 use super::{Arg, Context, Game, R, Target, err, items::Owner};
+use crate::game::world_border::BorderTarget;
 use sunrise_client::{
     command::CommandError,
     items::ItemStack,
     scoreboard_cmd::{Holder, Tracker},
     text::Text,
-    worldborder::{MAX_CENTER, MAX_SIZE},
 };
 use sunrise_core::{position::ChunkPos, random::RandomSource};
+
+// `WorldBorderCommand.setCenter` / `setSize` bounds (not the extent's bounds).
+const MAX_CENTER: f64 = 29_999_984.0;
+const MAX_SIZE: f64 = 59_999_968.0;
 
 /// `LocationCheck.test` / `BlockPredicate`: the measured loaded block-state subset.
 fn loot_location_block(
@@ -366,6 +370,8 @@ impl Game<'_> {
 
     pub(super) fn cmd_worldborder(&mut self, id: &str, ctx: &Context) -> R<i32> {
         let float2 = |v: f64| super::percent_f(v, 2);
+        let target = BorderTarget::InPlace;
+        let failed = |_| err("command.failed", &[]);
         let double = match ctx.get("distance") {
             Some(Arg::Double(d)) => *d,
             _ => 0.0,
@@ -389,9 +395,10 @@ impl Game<'_> {
                 // time, keeps a change in flight going for its remaining ticks
                 // plus the argument (`getLerpTime() + time`); `set` replaces it.
                 let (distance, ticks) = match (id, time) {
-                    ("worldborder.add", Some(t)) => {
-                        (current + double, self.border.remaining_ticks() + t)
-                    }
+                    ("worldborder.add", Some(t)) => (
+                        current + double,
+                        self.border.remaining_ticks().wrapping_add(t),
+                    ),
                     ("worldborder.add", None) => (current + double, 0),
                     (_, t) => (double, t.unwrap_or(0)),
                 };
@@ -407,9 +414,10 @@ impl Game<'_> {
                         &[&size_limit_text()],
                     ));
                 }
+                self.set_border_size(target, distance, ticks)
+                    .map_err(failed)?;
                 let shown = Text::literal(super::percent_f(distance, 1));
                 if ticks > 0 {
-                    let _ = self.border.lerp_to(distance, ticks);
                     let key = if distance > current {
                         "commands.worldborder.set.grow"
                     } else {
@@ -420,13 +428,11 @@ impl Game<'_> {
                         &[shown, Text::literal(ticks_to_seconds(ticks))],
                     ));
                 } else {
-                    let _ = self.border.set_size(distance);
                     self.feedback(Text::translate(
                         "commands.worldborder.set.immediate",
                         &[shown],
                     ));
                 }
-                self.native_world_border_bounds_changed();
                 Ok((distance - current) as i32)
             }
             "worldborder.center" => {
@@ -443,8 +449,7 @@ impl Game<'_> {
                         &[&"2.9999984E7"],
                     ));
                 }
-                let _ = self.border.set_center([x, z]);
-                self.native_world_border_center_changed();
+                self.set_border_center(target, [x, z]).map_err(failed)?;
                 self.feedback(Text::translate(
                     "commands.worldborder.center.success",
                     &[Text::literal(float2(x)), Text::literal(float2(z))],
@@ -457,12 +462,12 @@ impl Game<'_> {
                     Some(Arg::Float(v)) => f64::from(*v),
                     _ => 0.0,
                 };
-                let slot = if amount {
-                    &mut self.border.damage_per_block
+                let current = if amount {
+                    self.border.damage_per_block
                 } else {
-                    &mut self.border.safe_zone
+                    self.border.safe_zone
                 };
-                if *slot == value {
+                if current == value {
                     return Err(err(
                         if amount {
                             "commands.worldborder.damage.amount.failed"
@@ -472,7 +477,12 @@ impl Game<'_> {
                         &[],
                     ));
                 }
-                *slot = value;
+                let mut border = self.border_mut(target).map_err(failed)?;
+                if amount {
+                    Self::set_border_damage_per_block(&mut border, value);
+                } else {
+                    Self::set_border_safe_zone(&mut border, value);
+                }
                 self.feedback(Text::translate(
                     if amount {
                         "commands.worldborder.damage.amount.success"
@@ -491,7 +501,7 @@ impl Game<'_> {
                 if self.border.warning_distance == d {
                     return Err(err("commands.worldborder.warning.distance.failed", &[]));
                 }
-                self.border.warning_distance = d;
+                Self::set_border_warning_blocks(&mut self.border_mut(target).map_err(failed)?, d);
                 self.feedback(Text::translate(
                     "commands.worldborder.warning.distance.success",
                     &[num(d)],
@@ -506,7 +516,7 @@ impl Game<'_> {
                 if self.border.warning_time == ticks {
                     return Err(err("commands.worldborder.warning.time.failed", &[]));
                 }
-                self.border.warning_time = ticks;
+                Self::set_border_warning_time(&mut self.border_mut(target).map_err(failed)?, ticks);
                 self.feedback(Text::translate(
                     "commands.worldborder.warning.time.success",
                     &[Text::literal(ticks_to_seconds(i64::from(ticks)))],

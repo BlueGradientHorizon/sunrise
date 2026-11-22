@@ -1,12 +1,9 @@
-//! While dispatching a border or tick-rate notification, refuse a mod setter for
-//! the same control so it cannot recursively fire the hook. A nested setter may
-//! change another control, but cannot come back to one already in dispatch.
+//! While dispatching a tick-rate notification, refuse another tick-rate write
+//! so it cannot recursively fire the hook.
 use std::cell::Cell;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::game) enum LevelControl {
-    BorderCenter,
-    BorderBounds,
     TickRate,
 }
 

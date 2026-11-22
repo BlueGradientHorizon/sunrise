@@ -341,8 +341,8 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
   `wake_up_from_sleep` marker; a mod may set `Absolute`, `Relative` or another `Marker`, read with
   `level_clock_marker_time`. `new_time`: the morning, read only (contract 2). Level's own clock, resolved after every mod;
   a time before `current` or past `i64::MAX`, or a marker that clock lacks (only the Overworld's has any), moves to the morning.
-- **`world_border_bounds_changed()`**: `/worldborder set` or `/worldborder add` changed the border size or started a timed size change.
-- **`world_border_center_changed()`**: `/worldborder center` moved the border center. It hears successful commands only.
+- **`world_border_bounds_changed(level, lerp_ticks)`**: the server set the named level's border size through a command or a direct write. `lerp_ticks` is `None` for a fixed size or `Some(requested_ticks)` for a timed write.
+- **`world_border_center_changed(level)`**: the server set the named level's border center through a command or a direct write, including a direct write of its existing center.
 - **`spawn_change(dimension, pos, angle)`**: `/setworldspawn` moved the world's spawn point to `pos` in level `dimension`, after its level, position and rotation are applied.
 - **`portal_create(dimension, pos)`**: a Nether portal built for dimension travel or the End arrival platform was completed in `dimension`; `pos` is its lower corner or platform origin.
 - **`raid_spawn_wave(raid, pos, wave, raiders)`**: a raid wave is about to be spawned at `pos`; `raiders` is the count Sunrise will spawn.
@@ -361,7 +361,7 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
 - **`inventory_move_item(source, destination, item, cancel)`**: a hopper is about to move one item between containers (a composter's bone meal too). Set `cancel` to leave it in the source slot. A chest boat or minecart is reported at the block it is in.
 - **`hopper_inventory_search(hopper, container, entity)`**: a hopper selects a block container or container entity while searching for items.
 - **`vault_loot(pos, item)`**: a vault is about to eject a loot item, before the item entity spawns.
-- **`world_border_bounds_change_finish()`**: a timed world border size change finished on the server, after the border reached its final size.
+- **`world_border_bounds_change_finish(level)`**: the named level's moving border finished on the server, after a tick applied its final size.
 - **`player_launch_projectile(player, name, item)`**: a server player launched a snowball, egg, ender pearl,
   potion or trident. It fires after the projectile is created and only for guest players in a LAN world.
 - **`entity_unleash(entity, kind)`**: a mob's leash was removed, before any lead drop is handled.
@@ -2535,9 +2535,9 @@ registration path.
 
 - `spawn_change(dimension, pos, angle)` is told after `/setworldspawn` moves the world's spawn point, with its level, block position and rotation.
 
-- `world_border_bounds_changed()` is told after `/worldborder set` or `/worldborder add` changes the border size or starts its timed size change. It hears successful commands only.
+- `world_border_bounds_changed(level, lerp_ticks)` hears successful command and direct size writes, even timed writes to the current size. The level need not be in place.
 
-- `world_border_center_changed()` is told after `/worldborder center` moves the border center. It hears successful commands only.
+- `world_border_center_changed(level)` hears successful command and direct center writes, even equal-value direct writes. The level need not be in place.
 
 - A server player completed an advancement after progress was recorded; `advancement` is its identifier, such as `minecraft:story/mine_stone`.
 
@@ -2734,7 +2734,7 @@ registration path.
 
 - A vault is about to eject a loot item: `vault_loot(pos, item)` supplies the vault position and item identifier before it spawns.
 
-- A timed world border size change finished: `world_border_bounds_change_finish()` fires after the border reaches its final size.
+- A timed world border size change finished: `world_border_bounds_change_finish(level)` fires after a server tick applies the named border's final size. Starting or replacing an extent is not a finish.
 
 - `ClientHost::create_dynamic_texture(id, width, height, rgba)`, `update_dynamic_texture`, `free_dynamic_texture(id)` and `dynamic_texture_budget()`: vanilla's `DynamicTexture` registered in the `TextureManager` (`register`, `upload`, `release`), kept in the HUD atlas. A client mod names an RGBA image under its own namespace (`mymod:dynamic/panel`); it takes a slot of the atlas's pool, of the smallest of three size classes that holds it (`DYNAMIC_TEXTURE_CLASSES`: 64, 256 and 1024 pixels square, 32, 8 and 2 slots), and its id names it as a GUI sprite, so `DrawContext::sprite`, `gui_nine_slice`, `tiled_sprite` and `gui_sprite` reach it as any sprite. The pool is packed only when a client mod is loaded (decided at load and on a resource reload, with no mixin), so a game without mods has no slot and no atlas growth. An update re-patches the same slot (a size of another class is `ClassChange`), a free drops the name and returns the slot, and a resource reload keeps every name and patches the new atlas from the last pixels, which the game keeps and counts in the mod's budget: `DYNAMIC_TEXTURE_MOD_IMAGES` (16) images and `DYNAMIC_TEXTURE_MOD_BYTES` (4 MiB), read with `dynamic_texture_budget`. Every refusal is named (`DynamicTextureError`: `NotOwned`, `BadSize`, `TooLarge` past 1024 pixels, `NoSlot`, `OverBudget`, `NameTaken`, `Unknown`, `ClassChange`, `Unavailable`) and changes nothing. Replaces `native_mod_image`, one 1024 by 1024 slot shared by every mod. Diverges from upstream: horizon-rust/horizon keeps `native_mod_image`.
 - A living entity drowning (`living_drown`), with changeable drowning, damage and bubble count, and cancellation.

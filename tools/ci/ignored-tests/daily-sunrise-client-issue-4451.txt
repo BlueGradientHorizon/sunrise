@@ -1639,7 +1639,6 @@ sunrise-client game::native_knockback_tests::the_bridge_names_the_attacker_and_w
 sunrise-client game::native_knockback_tests::the_hook_names_the_entry_a_push_came_through_once_per_full_entry_call lib daily resources
 sunrise-client game::native_knockback_tests::the_push_draws_the_same_stream_with_and_without_a_mod_and_a_canceled_one_draws_nothing lib daily resources
 sunrise-client game::native_knockback_tests::thorns_name_the_wearer_not_the_incoming_attacker lib daily resources
-sunrise-client game::native_level_border::tests::border_writes_move_the_shared_border_and_refuse_bad_values lib daily resources
 sunrise-client game::native_level_events::tests::a_global_level_event_reaches_every_player_or_falls_back_to_a_plain_one lib daily resources
 sunrise-client game::native_level_events::tests::a_level_event_in_a_write_hook_joins_the_events_in_order lib daily resources
 sunrise-client game::native_level_events::tests::a_queued_block_event_runs_the_blocks_trigger_once lib daily resources

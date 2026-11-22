@@ -2674,17 +2674,18 @@ impl Game<'_> {
         self.fire_spawn_change(dimension, pos, angle);
     }
 
-    /// The server world's border bounds changed, either immediately or when
-    /// its timed size change was requested.
-    pub(in crate::game) fn native_world_border_bounds_changed(&mut self) {
-        crate::game::level_control_hooks::LevelControl::BorderBounds
-            .hear(|| self.fire_world_border_bounds_changed());
+    /// The named server level's border size was set or a timed size change was requested.
+    pub(in crate::game) fn native_world_border_bounds_changed(
+        &mut self,
+        level: LevelRef,
+        lerp_ticks: Option<i64>,
+    ) {
+        self.fire_world_border_bounds_changed(level, lerp_ticks);
     }
 
-    /// The server world's border center changed.
-    pub(in crate::game) fn native_world_border_center_changed(&mut self) {
-        crate::game::level_control_hooks::LevelControl::BorderCenter
-            .hear(|| self.fire_world_border_center_changed());
+    /// The named server level's border center was set.
+    pub(in crate::game) fn native_world_border_center_changed(&mut self, level: LevelRef) {
+        self.fire_world_border_center_changed(level);
     }
 
     /// A Nether portal was built for a dimension travel, or an End platform
@@ -2930,11 +2931,10 @@ impl Game<'_> {
     pub(in crate::game) fn native_vault_loot(&mut self, pos: [i32; 3], item: &str) {
         self.fire_vault_loot(pos, item);
     }
-    /// A timed world-border size change finished on the server, after its
-    /// final size was applied. Server-side, including the single-player
-    /// server.
-    pub(in crate::game) fn native_world_border_bounds_change_finish(&mut self) {
-        self.fire_world_border_bounds_change_finish();
+    /// A timed world-border size change finished on the named server level,
+    /// after its final size was applied.
+    pub(in crate::game) fn native_world_border_bounds_change_finish(&mut self, level: LevelRef) {
+        self.fire_world_border_bounds_change_finish(level);
     }
 
     /// A server player launched a projectile item, after it was created.

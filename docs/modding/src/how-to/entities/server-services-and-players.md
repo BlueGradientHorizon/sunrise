@@ -181,6 +181,33 @@ ticking is frozen, `None` on a client. A frozen server still runs the ticks `/ti
 `server_tick_start`'s `world_running` can be true while it is frozen; read this to tell a frozen server from a
 paused level.
 
+## World borders
+
+`level.world_border(host)` reads `[min_x, min_z, max_x, max_z]` for the resident
+server level the handle names, including when another level is in place. It
+returns `None` for a stale or closed level. These methods write through the
+same setters as `/worldborder`, without the command's range and no-change checks:
+
+- `level.set_world_border_center(host, [x, z])` sets a finite center. The
+  geometry clips the edges, not the center itself.
+- `level.set_world_border_size(host, size, ticks)` sets a finite, nonnegative
+  size (including sizes under one block). Nonpositive ticks set a fixed size;
+  positive ticks request a timed change from the current size.
+- `level.set_world_border_damage(host, per_block, safe_zone)` accepts signed,
+  finite damage settings. `level.set_world_border_warning(host, blocks, ticks)`
+  accepts signed warning settings.
+
+The setters return `false` on refusal, including invalid values or stale
+handles, and do not open or switch levels. Successful center, size and warning
+writes notify that level's watchers, even when a direct write repeats a value.
+The server's `world_border_center_changed` and `world_border_bounds_changed`
+listeners get `event.level`; the latter also gets `event.lerp_ticks`, either
+`None` for a fixed write or `Some(requested_ticks)` for a timed write. A timed
+write to the current size still fires that start notice but does not create a
+moving extent. `world_border_bounds_change_finish` gives `event.level` only
+after an actual moving extent reaches its target on a server tick. Loads and
+client packet application do not trigger these notifications.
+
 ## Finding blocks in a chunk
 
 `chunk.sections_with_block(host, block)` names the sections of a loaded chunk whose block palette may hold any

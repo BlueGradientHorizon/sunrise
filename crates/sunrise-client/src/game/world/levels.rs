@@ -200,7 +200,7 @@ pub(super) struct Parked {
     /// Server ticks since a player was last in the level.
     idle: u32,
     /// The level's own world border (`ServerLevel.getWorldBorder`).
-    border: sunrise_client::worldborder::WorldBorder,
+    pub(in crate::game) border: sunrise_client::worldborder::WorldBorder,
 }
 
 impl Parked {
@@ -1858,7 +1858,7 @@ mod tests {
         assert_eq!(game.border.remaining_ticks(), 1000);
         // Part way through the change, where the size is between its ends.
         for _ in 0..100 {
-            game.border.tick();
+            game.border.tick().unwrap();
         }
         assert_eq!(game.border.remaining_ticks(), 900);
         let from = game.border.size();

@@ -1,15 +1,160 @@
-//! The world border's tick, player collision and damage, and guest synchronization.
+//! The world border's server setters, guest synchronization, tick, collision and damage.
 use super::Game;
+use anyhow::{Context, Result, ensure};
+use mod_api::LevelRef;
+use sunrise_client::{lan::hub::Hub, worldborder::WorldBorder};
+use sunrise_protocol::packets::play::{self, Clientbound as C};
+
+/// A command's level in place or an unvalidated handle supplied by a mod.
+#[derive(Clone, Copy)]
+pub(in crate::game) enum BorderTarget {
+    InPlace,
+    Handle(LevelRef),
+}
+
+/// A resolved border and the player-list route for its level. Kept only for the write.
+pub(in crate::game) struct LevelBorderMut<'a> {
+    border: &'a mut WorldBorder,
+    hub: Option<&'a Hub>,
+    dimension: &'static str,
+}
+
+impl LevelBorderMut<'_> {
+    /// `PlayerList.addWorldborderListener`: only watchers of the border's level get the packet.
+    fn broadcast(&self, packet: &C) {
+        if let Some(hub) = self.hub {
+            hub.broadcast_in_level(self.dimension, packet);
+        }
+    }
+}
 
 impl Game<'_> {
+    pub(in crate::game) fn border_mut(
+        &mut self,
+        target: BorderTarget,
+    ) -> Result<LevelBorderMut<'_>> {
+        let (dimension, border) = match target {
+            BorderTarget::InPlace => (self.dim.id(), &mut self.border),
+            BorderTarget::Handle(level) => {
+                ensure!(self.is_logical_server(), "not on the logical server");
+                ensure!(self.level_handle_current(level), "stale level handle");
+                let dimension = level.dimension_id();
+                let border = if dimension == self.dim.id() {
+                    &mut self.border
+                } else {
+                    &mut self
+                        .levels
+                        .parked_mut_of(dimension)
+                        .context("level is not resident")?
+                        .border
+                };
+                (dimension, border)
+            }
+        };
+        Ok(LevelBorderMut {
+            border,
+            hub: self.lan.as_ref().map(|host| &host.hub),
+            dimension,
+        })
+    }
+
+    fn border_level_ref(&self, target: BorderTarget) -> Option<LevelRef> {
+        match target {
+            BorderTarget::Handle(level) => Some(level),
+            BorderTarget::InPlace if self.is_logical_server() => self
+                .native_lifecycle
+                .epoch()
+                .map(|epoch| self.level_ref(epoch, self.dim.key())),
+            BorderTarget::InPlace => None,
+        }
+    }
+
+    /// `WorldBorder.setCenter`: notify even if the centre did not move.
+    pub(in crate::game) fn set_border_center(
+        &mut self,
+        target: BorderTarget,
+        center: [f64; 2],
+    ) -> Result<()> {
+        let border = self.border_mut(target)?;
+        border.border.set_center(center)?;
+        let [x, z] = border.border.center();
+        border.broadcast(&C::SetBorderCenter(play::SetBorderCenter { x, z }));
+        if let Some(level) = self.border_level_ref(target) {
+            self.native_world_border_center_changed(level);
+        }
+        Ok(())
+    }
+
+    /// `WorldBorder.setSize` / `lerpSizeBetween`: read the packet back from the new extent.
+    pub(in crate::game) fn set_border_size(
+        &mut self,
+        target: BorderTarget,
+        size: f64,
+        ticks: i64,
+    ) -> Result<()> {
+        let border = self.border_mut(target)?;
+        let lerp_ticks = if ticks > 0 {
+            border
+                .border
+                .lerp_between(border.border.size(), size, ticks)?;
+            border.broadcast(&C::SetBorderLerpSize(play::SetBorderLerpSize {
+                old_size: border.border.size(),
+                new_size: border.border.target_size(),
+                lerp_time: border.border.remaining_ticks(),
+            }));
+            Some(ticks)
+        } else {
+            border.border.set_size(size)?;
+            border.broadcast(&C::SetBorderSize(play::SetBorderSize {
+                size: border.border.size(),
+            }));
+            None
+        };
+        if let Some(level) = self.border_level_ref(target) {
+            self.native_world_border_bounds_changed(level, lerp_ticks);
+        }
+        Ok(())
+    }
+
+    /// `WorldBorder.setDamagePerBlock`: a server setting, not broadcast.
+    pub(in crate::game) fn set_border_damage_per_block(
+        target: &mut LevelBorderMut<'_>,
+        per_block: f64,
+    ) {
+        target.border.damage_per_block = per_block;
+    }
+
+    /// `WorldBorder.setSafeZone`: a server setting, not broadcast.
+    pub(in crate::game) fn set_border_safe_zone(target: &mut LevelBorderMut<'_>, safe_zone: f64) {
+        target.border.safe_zone = safe_zone;
+    }
+
+    /// `WorldBorder.setWarningBlocks`.
+    pub(in crate::game) fn set_border_warning_blocks(target: &mut LevelBorderMut<'_>, blocks: i32) {
+        target.border.warning_distance = blocks;
+        target.broadcast(&C::SetBorderWarningDistance(
+            play::SetBorderWarningDistance { blocks },
+        ));
+    }
+
+    /// `WorldBorder.setWarningTime`.
+    pub(in crate::game) fn set_border_warning_time(target: &mut LevelBorderMut<'_>, delay: i32) {
+        target.border.warning_time = delay;
+        target.broadcast(&C::SetBorderWarningDelay(play::SetBorderWarningDelay {
+            delay,
+        }));
+    }
+
+    /// `WorldBorder.tick`: publish a finish only for a moving extent that reached its target.
     pub(in crate::game) fn tick_worldborder(&mut self) {
         let remaining = self.border.remaining_ticks();
-        self.border.tick();
-        if remaining > 0
+        if let Err(error) = self.border.tick() {
+            log::warn!("world border tick refused in {}: {error}", self.dim.id());
+        } else if remaining > 0
             && self.border.remaining_ticks() == 0
-            && (self.serving.is_some() || self.options.dedicated.is_some())
+            && let Some(level) = self.border_level_ref(BorderTarget::InPlace)
         {
-            self.native_world_border_bounds_change_finish();
+            self.native_world_border_bounds_change_finish(level);
         }
         self.player_border();
         self.border_damage();

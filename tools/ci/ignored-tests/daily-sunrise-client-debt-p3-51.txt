@@ -1,1 +1,2 @@
+sunrise-client game::native_level_border::tests::border_setters_notify_the_named_level lib daily resources
 sunrise-client game::native_level_weather::tests::weather_veto_does_not_undo_listener_work lib daily resources
