@@ -4173,6 +4173,36 @@ mod tests {
     }
 
     #[test]
+    fn block_entity_data_with_a_non_compound_root_disconnects_before_ingress() {
+        let (root, mut server, session, reader) = bundle_pipe("invalid-block-entity-root", 1 << 20);
+        let recorder = TestRecorder::default();
+        *session.recorder.lock().unwrap() = Some(Box::new(recorder.clone()));
+        server
+            .send(
+                &play::Clientbound::BlockEntityData(play::BlockEntityData {
+                    pos: [0; 3],
+                    kind: 0,
+                    tag: Tag::Int(1),
+                })
+                .encode(),
+            )
+            .unwrap();
+        let event = session.events.recv_timeout_owned(Duration::from_secs(5));
+        drop(server);
+        reader.join().unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+        assert!(recorder.decoded().is_empty());
+        let (event, _credit) = event.unwrap().into_parts();
+        assert!(matches!(
+            event,
+            Event::Disconnected {
+                from_server: false,
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn an_oversized_bundle_waits_for_credit_but_still_accepts_exactly_4096_members() {
         let ping = |id| play::Clientbound::Ping(cfg::Ping { id });
         let capacity = 2

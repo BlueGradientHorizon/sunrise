@@ -2,7 +2,7 @@
 //! scoreboard's objectives and scores, and the teams.
 use crate::{
     Error, Result,
-    buf::{Codec, List, Opt, Reader, Str, TrustedComponent, TrustedNbt, VarInt},
+    buf::{Codec, List, Opt, Reader, Str, TrustedComponent, TrustedStyle, VarInt},
     packet,
 };
 use sunrise_core::nbt::Tag;
@@ -152,7 +152,7 @@ impl Codec<NumberFormat> for NumberFormat {
     fn read(r: &mut Reader) -> Result<Self> {
         Ok(match r.varint()? {
             0 => NumberFormat::Blank,
-            1 => NumberFormat::Styled(TrustedNbt::read(r)?),
+            1 => NumberFormat::Styled(TrustedStyle::read(r)?),
             2 => NumberFormat::Fixed(TrustedComponent::read(r)?),
             other => return Err(crate::Error::new(format!("unknown number format {other}"))),
         })

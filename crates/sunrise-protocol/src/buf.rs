@@ -475,6 +475,21 @@ impl Codec<Tag> for TrustedNbt {
         Nbt::write(v, w)
     }
 }
+/// `ByteBufCodecs.TRUSTED_COMPOUND_TAG`: unlimited-heap NBT with a required compound root.
+pub struct TrustedCompound;
+impl Codec<Tag> for TrustedCompound {
+    fn read(r: &mut Reader) -> Result<Tag> {
+        let tag = TrustedNbt::read(r)?;
+        if !matches!(tag, Tag::Compound(_)) {
+            nbt::discard_tag(tag);
+            return Err(Error::new("Expected non-null compound tag"));
+        }
+        Ok(tag)
+    }
+    fn write(v: &Tag, w: &mut Writer) {
+        TrustedNbt::write(v, w)
+    }
+}
 /// `ComponentSerialization.TRUSTED_STREAM_CODEC` and `TRUSTED_CONTEXT_FREE_STREAM_CODEC`:
 /// read unlimited-heap NBT, then decode it as a component.
 pub struct TrustedComponent;
@@ -484,11 +499,9 @@ impl TrustedComponent {
         if *tag == Tag::End {
             return Err(Error::new("Expected non-null compound tag"));
         }
-        sunrise_world::component_value::source::from_component_tag_with_items(
-            "minecraft:custom_name",
-            tag,
-            &|item| r.contains_registry_entry("minecraft:item", item),
-        )
+        sunrise_world::component_value::source::text_from_tag(tag, &|item| {
+            r.contains_registry_entry("minecraft:item", item)
+        })
         .map_err(|e| Error::new(format!("Failed to decode: {e}")))?;
         Ok(())
     }
@@ -497,6 +510,25 @@ impl Codec<Tag> for TrustedComponent {
     fn read(r: &mut Reader) -> Result<Tag> {
         let tag = TrustedNbt::read(r)?;
         Self::validate_tag(&tag, r)?;
+        Ok(tag)
+    }
+    fn write(v: &Tag, w: &mut Writer) {
+        TrustedNbt::write(v, w)
+    }
+}
+/// `Style.Serializer.TRUSTED_STREAM_CODEC`: unlimited-heap NBT decoded as a style map.
+pub struct TrustedStyle;
+impl Codec<Tag> for TrustedStyle {
+    fn read(r: &mut Reader) -> Result<Tag> {
+        let tag = TrustedNbt::read(r)?;
+        if let Err(error) =
+            sunrise_world::component_value::source::validate_text_style(&tag, &|item| {
+                r.contains_registry_entry("minecraft:item", item)
+            })
+        {
+            nbt::discard_tag(tag);
+            return Err(Error::new(format!("Failed to decode: {error}")));
+        }
         Ok(tag)
     }
     fn write(v: &Tag, w: &mut Writer) {

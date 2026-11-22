@@ -1,11 +1,11 @@
 use super::*;
 use crate::{buf::NBT_QUOTA, packets::configuration};
 
-fn assert_trusted_limits<P: Codec<P> + std::fmt::Debug + PartialEq>(packet: impl Fn(Tag) -> P) {
+fn large_component() -> Tag {
     // Enough short text fragments to exceed the generic byte quota without
     // exceeding the individual NBT string limit.
     let fragment = "x".repeat(16 * 1024);
-    let large = Tag::compound([
+    Tag::compound([
         ("text", Tag::String("".into())),
         (
             "extra",
@@ -14,7 +14,17 @@ fn assert_trusted_limits<P: Codec<P> + std::fmt::Debug + PartialEq>(packet: impl
                 NBT_QUOTA / fragment.len()
             ]),
         ),
-    ]);
+    ])
+}
+
+fn assert_trusted_limits<P: Codec<P> + std::fmt::Debug + PartialEq>(packet: impl Fn(Tag) -> P) {
+    assert_trusted_limits_for(large_component(), packet);
+}
+
+fn assert_trusted_limits_for<P: Codec<P> + std::fmt::Debug + PartialEq>(
+    large: Tag,
+    packet: impl Fn(Tag) -> P,
+) {
     let expected = packet(large);
     let mut w = Writer::new();
     P::write(&expected, &mut w);
@@ -113,11 +123,62 @@ fn boss_bar_uses_trusted_nbt() {
 
 #[test]
 fn block_entity_data_uses_trusted_nbt() {
-    assert_trusted_limits(|tag| BlockEntityData {
+    let data = Tag::compound([("payload", Tag::ByteArray(vec![0; NBT_QUOTA]))]);
+    assert_trusted_limits_for(data, |tag| BlockEntityData {
         pos: [1, 2, 3],
         kind: 0,
         tag,
     });
+}
+
+#[test]
+fn block_entity_data_requires_a_non_null_compound() {
+    for (tag, accepted) in [
+        (Tag::Compound(Default::default()), true),
+        (Tag::End, false),
+        (Tag::List(vec![Tag::Int(1)]), false),
+    ] {
+        let packet = BlockEntityData {
+            pos: [1, 2, 3],
+            kind: 0,
+            tag,
+        };
+        let mut w = Writer::new();
+        BlockEntityData::write(&packet, &mut w);
+        let read = BlockEntityData::read(&mut Reader::new(&w.data));
+        if accepted {
+            assert_eq!(read.unwrap(), packet);
+        } else {
+            assert!(read.unwrap_err().to_string().contains("non-null compound"));
+        }
+    }
+}
+
+#[test]
+fn styled_number_format_decodes_a_style_map_not_a_component() {
+    let large = Tag::compound([
+        ("color", Tag::String("gold".into())),
+        (
+            "hover_event",
+            Tag::compound([
+                ("action", Tag::String("show_text".into())),
+                ("value", large_component()),
+            ]),
+        ),
+    ]);
+    assert_trusted_limits_for(large, NumberFormat::Styled);
+    for tag in [
+        Tag::String("not a style".into()),
+        Tag::compound([("bold", Tag::String("yes".into()))]),
+    ] {
+        let mut w = Writer::new();
+        NumberFormat::write(&NumberFormat::Styled(tag), &mut w);
+        let error = NumberFormat::read(&mut Reader::new(&w.data)).unwrap_err();
+        assert!(
+            error.to_string().starts_with("Failed to decode:"),
+            "{error}"
+        );
+    }
 }
 
 #[test]
@@ -127,8 +188,14 @@ fn common_disconnect_uses_trusted_nbt() {
 
 #[test]
 fn configuration_and_inline_play_dialogs_use_trusted_nbt() {
-    assert_trusted_limits(|dialog| configuration::ShowDialog { dialog });
-    assert_trusted_limits(|dialog| ShowDialog {
+    let notice = Tag::compound([
+        ("type", Tag::String("minecraft:notice".into())),
+        ("title", large_component()),
+    ]);
+    assert_trusted_limits_for(notice.clone(), |dialog| configuration::ShowDialog {
+        dialog,
+    });
+    assert_trusted_limits_for(notice, |dialog| ShowDialog {
         dialog: DialogHolder::Direct(dialog),
     });
 }
