@@ -136,18 +136,16 @@ impl Game<'_> {
         }
         self.observe_light_edits();
         self.ask_edited_light_emission();
-        if let (Some(map), Some(p), Some(lod)) = (&self.lod_blue_map, &self.player, &mut self.lod) {
-            map.set_center(p.position.x.floor() as i32, p.position.z.floor() as i32);
+        let camera_pos = self.visual_camera_position();
+        if let (Some(map), Some(pos), Some(lod)) = (&self.lod_blue_map, camera_pos, &mut self.lod) {
+            map.set_center(pos[0].floor() as i32, pos[2].floor() as i32);
             for change in map.take_changed() {
                 lod.refresh(change.area, change.widths);
             }
         }
-        if let Some(p) = &self.player {
-            self.streaming.center = (
-                (p.position.x.floor() as i32) >> 4,
-                (p.position.z.floor() as i32) >> 4,
-            );
-            self.streaming.center_y = p.position.y.floor() as i32;
+        if let Some(pos) = camera_pos {
+            self.streaming.center = ((pos[0].floor() as i32) >> 4, (pos[2].floor() as i32) >> 4);
+            self.streaming.center_y = pos[1].floor() as i32;
         }
         sunrise_client::spans::time("tick_pregen", || self.tick_pregen());
         // A headless game has nothing to draw sections with: like a server's, they aren't
@@ -315,11 +313,7 @@ impl Game<'_> {
         // `self.renderer.as_mut()` below borrows self mutably for the rest of
         // this function. Cheap: trigonometry on one angle, or None when the
         // view is not zoomed.
-        let lod_aim = self
-            .player
-            .as_ref()
-            .map(|p| [p.position.x, p.position.y, p.position.z])
-            .and_then(|camera| self.lod_aim(camera));
+        let lod_aim = camera_pos.and_then(|camera| self.lod_aim(camera));
         if let Some(renderer) = self.renderer.as_mut() {
             let g = &self.settings.sunrise;
             let budgeted = g.chunk_updates > 0 || g.upload_budget_kib > 0;
@@ -366,13 +360,8 @@ impl Game<'_> {
                 let centre = self.streaming.center;
                 // Section keys count from the world's bottom (`origin`'s min_y + y * 16).
                 let bottom = f64::from(self.world.bottom_y());
-                let cam_y = self
-                    .player
-                    .as_ref()
-                    .map_or(4, |p| ((p.position.y - bottom) / 16.0).floor() as i32);
-                let far = |k: &(i32, i32, i32)| {
-                    (k.0 - centre.0).pow(2) + (k.1 - cam_y).pow(2) + (k.2 - centre.1).pow(2)
-                };
+                let cam_y = camera_pos.map_or(4, |pos| ((pos[1] - bottom) / 16.0).floor() as i32);
+                let far = |k: &(i32, i32, i32)| section_distance_sq(*k, centre, cam_y);
                 let order = Some((centre, cam_y));
                 let priority = |upload: &sunrise_client::streaming::MeshUpload| {
                     std::cmp::Reverse(far(&upload.key))
@@ -463,7 +452,8 @@ impl Game<'_> {
                 let detail = self.remote.as_ref().map_or(self.streaming.radius, |r| {
                     self.streaming.radius.min(r.sent_radius())
                 });
-                let camera = [player.position.x, player.position.y, player.position.z];
+                let camera =
+                    camera_pos.unwrap_or([player.position.x, player.position.y, player.position.z]);
                 let meshes = sunrise_client::spans::time("lod_update", || {
                     lod.update(camera, detail, lod_distance, covered, lod_aim)
                 });
@@ -529,10 +519,34 @@ fn order_uploads<T, K: Ord>(
     [sorted, merged]
 }
 
+/// Squared section-grid distance in `i128` so extreme camera coordinates cannot overflow.
+fn section_distance_sq(key: (i32, i32, i32), centre: (i32, i32), cam_y: i32) -> i128 {
+    let dx = i128::from(key.0) - i128::from(centre.0);
+    let dy = i128::from(key.1) - i128::from(cam_y);
+    let dz = i128::from(key.2) - i128::from(centre.1);
+    dx * dx + dy * dy + dz * dz
+}
+
 #[cfg(test)]
 mod tests {
-    use super::order_uploads;
+    use super::{order_uploads, section_distance_sq};
     use std::cmp::Reverse;
+
+    #[test]
+    fn section_distance_sq_handles_extreme_coordinates_without_overflow() {
+        let far = section_distance_sq(
+            (i32::MAX, i32::MAX, i32::MAX),
+            (i32::MIN, i32::MIN),
+            i32::MIN,
+        );
+        let near = section_distance_sq(
+            (i32::MIN, i32::MIN, i32::MIN),
+            (i32::MIN, i32::MIN),
+            i32::MIN,
+        );
+        assert_eq!(near, 0);
+        assert!(far > near);
+    }
 
     #[test]
     fn stationary_upload_budget_gives_fresh_meshes_priority_on_ties() {

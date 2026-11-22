@@ -2710,6 +2710,9 @@ impl Game<'_> {
         // edge, scaled by the view scale.
         let range = (WIDTH + HEIGHT + WIDTH) / 3.0 * 64.0 * self.view_scale();
         for c in &self.carts[run] {
+            if self.hides_as_camera(c.id) {
+                continue;
+            }
             let Some(model) = self.cart_models.models.get(&c.kind) else {
                 continue;
             };

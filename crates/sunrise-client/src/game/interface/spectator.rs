@@ -93,7 +93,7 @@ impl Game<'_> {
         self.spectator_gui.on_mouse_scrolled(wheel, now);
     }
     /// `Hud.extractHotbar` for a spectator, and `extractAction`'s prompt.
-    pub(super) fn draw_spectator_hotbar(&mut self, batch: &mut HudBatch) {
+    pub(super) fn draw_spectator_hotbar(&mut self, batch: &mut HudBatch, show_action: bool) {
         let (w, h) = (batch.width as i32, batch.height as i32);
         let now = self.spectator_now();
         let labels: Vec<Text> = (1..=9)
@@ -103,7 +103,7 @@ impl Game<'_> {
         let mut draws = self
             .spectator_gui
             .hotbar(w, h, now, &|slot| labels[slot].clone(), font);
-        if self.own_player_is_spectator() {
+        if show_action {
             draws.extend(self.spectator_gui.action(
                 w,
                 h,
