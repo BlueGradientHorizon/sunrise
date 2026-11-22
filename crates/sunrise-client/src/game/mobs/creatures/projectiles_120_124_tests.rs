@@ -207,6 +207,13 @@ fn setup_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resource
     game.build_registries();
     game.set_allow_commands(true);
     game.load_ticking_neighbourhood(0, 0);
+    // The oracle waits for its forced chunk to be ready, including the neighbours
+    // that the sculk vibration ticker needs. The fixture uses empty chunk data instead.
+    for x in -2..=2 {
+        for z in -2..=2 {
+            std::sync::Arc::make_mut(game.world.chunks.get_mut(&(x, z)).unwrap()).lit = true;
+        }
+    }
     // Match vanilla WorldPresets.FLAT: solid ground across the 5x5 neighbourhood for teleports.
     let stone = game
         .pack

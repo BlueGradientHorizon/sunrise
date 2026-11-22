@@ -2016,6 +2016,7 @@ impl Game<'_> {
             owner,
             player: owner == Some(Who::Player) || self.rides_player(owner),
             dampening_state: self.state_dampens(Some(state)),
+            affected_state: Some(state),
             ..Context::default()
         };
         self.post_game_event("minecraft:projectile_land", at, ctx);
