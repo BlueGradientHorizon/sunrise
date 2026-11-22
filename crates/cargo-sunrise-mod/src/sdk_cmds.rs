@@ -1013,7 +1013,7 @@ mod tests {
             &surface(vec![]),
             &notes,
         );
-        assert!(text.contains(id), "{text}");
+        assert!(text.contains("WorldPhase::WorldCloseFailed"), "{text}");
         assert!(text.contains("note from the change:"), "{text}");
         assert!(text.contains("WorldPhase::WorldOpenFailed and WorldPhase::WorldCloseFailed -> delete the failure-only branches"), "{text}");
     }

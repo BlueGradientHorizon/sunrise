@@ -1945,10 +1945,10 @@ mod tests {
         );
         let source = ResourceSource::directory(root.clone());
         let atlas = || {
-            let mut atlas = HudAtlas::fonts(&ResourceSource::indexed(Default::default())).unwrap();
+            let mut atlas = HudAtlas::boot();
             // Two eight-pixel rows with one texel of padding. On the first row, 'z' and the
             // wide 'a' fit exactly; one intervening narrow glyph pushes 'a' to the second row.
-            atlas.font = Font::load(&source, &HashMap::new(), &[], (74, 40), (16, 17), white());
+            atlas.font = Font::load(&source, &atlas.sprites, &[], (74, 40), (16, 17), white());
             atlas.font.reseed(23);
             atlas.font.glyph('z'); // baseline upload, not yet in a batch
             atlas
