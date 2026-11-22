@@ -166,31 +166,37 @@ its saved UUID does not make another object's handle refer to it.
 
 `is_passenger` and `is_vehicle` describe the actual relationships, including
 retained off-level objects. Thus `is_passenger` can be `Some(true)` while
-`vehicle` is `None`, and `is_vehicle` can be `Some(true)` while `passengers`
-returns an empty list. Dying passengers keep their place until removed.
+`vehicle` is `None`, and `is_vehicle` can be `Some(true)` while `visit_passengers`
+completes without visiting anyone. Dying passengers keep their place until removed.
 
-`passengers` returns only resident direct passengers in boarding order.
-`indirect_passengers` walks the full tree depth-first, through retained objects,
-and omits only unrepresentable handles: a resident grandchild below an off-level
-passenger appears. `root_vehicle` also traverses retained intermediaries,
-but returns `None` if the actual root is off-level; it never returns a resident
-descendant in its place. `is_passenger_of_same_vehicle` compares the actual roots,
-so two resident entities can share an off-level root even though neither can
-obtain its handle. Cyclic relationships have no root and return `None`.
+`entity.visit_passengers(host, &mut visitor)` visits resident direct passengers in boarding order.
+`entity.visit_indirect_passengers(host, &mut visitor)` visits each passenger before its riders,
+walking through retained objects without lending their handles: it still visits a resident grandchild
+below an off-level passenger. Both visitors take an `EntityRef` and return `ControlFlow<()>`.
+Return `ControlFlow::Break(())` to stop, or `ControlFlow::Continue(())` to visit the next rider.
+`Ok(Continue(()))` means the visit completed, even if there were no handles. A stale handle returns
+`Err(EntityReadError::Stale)`, and an unavailable read returns `Err(EntityReadError::Unavailable)`.
+Push handles into your own collection inside the visitor only if you need to keep a list.
+
+`root_vehicle` also traverses retained intermediaries, but returns `None` if the actual root is
+off-level; it never returns a resident descendant in its place. `is_passenger_of_same_vehicle`
+compares the actual roots, so two resident entities can share an off-level root even though neither
+can obtain its handle. Cyclic relationships have no root and return `None`.
 
 `controlling_passenger` chooses the actual first passenger before checking whether
 its handle can be returned. An off-level first passenger means `None`, not a later
 resident rider. All these reads refuse stale input handles; none loads a retained
 object into the level or exposes a handle for it.
 
-On a client, `vehicle`, `is_passenger`, `passengers`, `root_vehicle` and
+On a client, `vehicle`, `is_passenger`, `visit_passengers`, `root_vehicle` and
 `is_vehicle` read the riding relationships sent in the server's passenger
 packets. They work for every tracked entity and the local player. A stale or
-untracked input returns `None`. Passenger lists for unknown vehicles and entities
-that cannot carry passengers (markers and ominous item spawners) are ignored.
-Unknown passengers and links that would form a cycle do not board.
-`passengers` returns client handles in the order they boarded from the list.
-The other riding reads and all riding writes are server-only.
+untracked input returns `None` for the optional reads and `Err(EntityReadError::Stale)`
+for the visitor. Passenger lists for unknown vehicles and entities that cannot
+carry passengers (markers and ominous item spawners) are ignored. Unknown
+passengers and links that would form a cycle do not board. `visit_passengers`
+visits client handles in packet seat order. The other riding reads and all
+riding writes are server-only.
 
 A declared general entity can ride a supported vehicle, and players, mobs and
 other general entities can ride a general vehicle. The vehicle type's optional

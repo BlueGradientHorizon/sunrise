@@ -687,6 +687,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn riding_reads_follow_the_server_passenger_lists() {
+        use crate::game::native_entity_refs::tests::collect_entity_visit;
         use crate::game::native_entity_refs::tests::run_fresh_cases;
         use mod_api::{ClientHost, EntityRef, WorldEpoch};
 
@@ -776,7 +777,10 @@ mod tests {
                 );
                 game.handle_packet(set(9, vec![99])).unwrap();
                 let host: &dyn ClientHost = game;
-                assert_eq!(vehicle.passengers(host), Some(vec![]));
+                assert_eq!(
+                    collect_entity_visit(|visit| vehicle.visit_passengers(host, visit)),
+                    Ok(vec![])
+                );
                 assert_eq!(vehicle.is_vehicle(host), Some(false));
 
                 game.handle_packet(set(9, vec![12, 99, 7])).unwrap();
@@ -784,15 +788,24 @@ mod tests {
                 game.position_riders();
                 assert_eq!(row.position(game), Some([2.5, 71.25, 1.5]));
                 let host: &dyn ClientHost = game;
-                assert_eq!(vehicle.passengers(host), Some(vec![row, me]));
+                assert_eq!(
+                    collect_entity_visit(|visit| vehicle.visit_passengers(host, visit)),
+                    Ok(vec![row, me])
+                );
                 assert_eq!(vehicle.is_vehicle(host), Some(true));
                 assert_eq!(row.vehicle(host), Some(vehicle));
                 assert_eq!(me.vehicle(host), Some(vehicle));
                 assert_eq!(cloud.is_passenger(host), Some(true));
                 assert_eq!(cloud.root_vehicle(host), Some(vehicle));
                 assert_eq!(unknown.vehicle(host), None);
-                assert_eq!(unknown.passengers(host), None);
-                assert_eq!(stale.passengers(host), None);
+                assert_eq!(
+                    collect_entity_visit(|visit| unknown.visit_passengers(host, visit)),
+                    Err(mod_api::EntityReadError::Stale)
+                );
+                assert_eq!(
+                    collect_entity_visit(|visit| stale.visit_passengers(host, visit)),
+                    Err(mod_api::EntityReadError::Stale)
+                );
                 assert_eq!(stale.is_vehicle(host), None);
 
                 // An unknown vehicle can't displace a real relationship. Later tracking
@@ -803,7 +816,10 @@ mod tests {
                 let late = game.entity(99).unwrap();
                 assert_eq!(late.is_passenger(game), Some(false));
                 assert_eq!(late.is_vehicle(game), Some(false));
-                assert_eq!(vehicle.passengers(game), Some(vec![row, me]));
+                assert_eq!(
+                    collect_entity_visit(|visit| vehicle.visit_passengers(game, visit)),
+                    Ok(vec![row, me])
+                );
 
                 game.handle_packet(set(4, vec![9])).unwrap();
                 assert_eq!(vehicle.vehicle(game), None);
@@ -815,7 +831,10 @@ mod tests {
                 for refused in [5, 6] {
                     let cannot_carry = game.entity(refused).unwrap();
                     game.handle_packet(set(refused as i32, vec![12])).unwrap();
-                    assert_eq!(cannot_carry.passengers(game), Some(vec![]));
+                    assert_eq!(
+                        collect_entity_visit(|visit| cannot_carry.visit_passengers(game, visit)),
+                        Ok(vec![])
+                    );
                     assert_eq!(row.vehicle(game), Some(vehicle));
                 }
 
@@ -850,13 +869,22 @@ mod tests {
                 );
                 let host: &dyn ClientHost = game;
                 assert_eq!(me.is_passenger(host), Some(false));
-                assert_eq!(me.passengers(host), Some(vec![]));
+                assert_eq!(
+                    collect_entity_visit(|visit| me.visit_passengers(host, visit)),
+                    Ok(vec![])
+                );
                 assert_eq!(late.is_passenger(host), Some(false));
-                assert_eq!(vehicle.passengers(host), Some(vec![row]));
+                assert_eq!(
+                    collect_entity_visit(|visit| vehicle.visit_passengers(host, visit)),
+                    Ok(vec![row])
+                );
                 assert_eq!(cloud.root_vehicle(host), Some(vehicle));
 
                 game.handle_packet(set(9, vec![])).unwrap();
-                assert_eq!(vehicle.passengers(game), Some(vec![]));
+                assert_eq!(
+                    collect_entity_visit(|visit| vehicle.visit_passengers(game, visit)),
+                    Ok(vec![])
+                );
                 assert_eq!(cloud.root_vehicle(game), Some(row));
             })
         });

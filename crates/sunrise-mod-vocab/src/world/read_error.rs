@@ -1,4 +1,26 @@
-//! Refusals of level and registry reads.
+//! Refusals of entity, level and registry reads.
+
+/// Why an `EntityRef` read cannot return its requested state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+// no wire: this refusal is returned only by in-process entity reads
+pub enum EntityReadError {
+    /// The handle does not name an entity in the current view.
+    Stale,
+    /// The requested state is not readable from this side, phase or view.
+    Unavailable,
+}
+
+impl crate::AccessRefusal for EntityReadError {
+    fn unavailable() -> Self {
+        Self::Unavailable
+    }
+}
+impl crate::NoBackend for EntityReadError {
+    fn no_backend() -> Self {
+        Self::Unavailable
+    }
+}
 
 /// Why a `LevelRef` read cannot return its requested state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

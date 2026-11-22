@@ -61,15 +61,21 @@ pub trait EntityIdentityBackend {
     #[access(WorldOnly)]
     fn entity_is_multipart(&self, entity: EntityRef) -> Option<bool>;
     /// Side: both.
-    /// The entities a multipart entity is made of (`Entity.getParts`), in
-    /// `getSubEntities` order: for the dragon its head, neck, body, three
-    /// tail segments and two wings. Each is a handle of the part's own entity
-    /// id, the eight after the dragon's, with the dragon's type, its own
-    /// position, rotation, velocity and box, and no living state; the
-    /// handle stops resolving with the dragon. Empty for an entity that is not
-    /// multipart, None for a stale handle.
+    /// Visit the entities a multipart entity is made of (NeoForge `IEntityExtension.getParts`).
+    /// For the dragon, `EnderDragon.getSubEntities` orders its head, neck, body, three tail
+    /// segments and two wings. Each is a handle of the part's own entity id, the eight after
+    /// the dragon's, with the dragon's type, its own position, rotation, velocity and box,
+    /// and no living state; the handle stops resolving with the dragon.
+    /// Return `ControlFlow::Break(())` to stop (`Ok(Break(()))`). `Ok(Continue(()))` means
+    /// the visit completed, without calling `visit` for a non-multipart entity. A stale handle
+    /// returns [`EntityReadError::Stale`]; unavailable world access or a multipart entity whose
+    /// parts cannot all be resolved returns [`EntityReadError::Unavailable`]. No refusal calls `visit`.
     #[access(WorldOnly)]
-    fn entity_parts(&self, entity: EntityRef) -> Option<Vec<EntityRef>>;
+    fn entity_visit_parts(
+        &self,
+        entity: EntityRef,
+        visit: &mut dyn FnMut(EntityRef) -> core::ops::ControlFlow<()>,
+    ) -> Result<core::ops::ControlFlow<()>, EntityReadError>;
     /// Side: server.
     /// `Entity.getSoundSource`: the group an entity's sounds play under.
     /// Players are `Players`; `Monster`s, the dragon, hoglins, ghasts,

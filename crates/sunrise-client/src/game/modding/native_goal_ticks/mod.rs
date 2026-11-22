@@ -609,11 +609,16 @@ impl mobs::part_goals::GoalHost for Game<'_> {
         self.merchant_read_lent(mob, |_, xp, level| (xp, level))
     }
 
-    fn player_passenger_seats(&self, vehicle: u32) -> Vec<(i64, u32)> {
-        self.seated_passengers(vehicle)
-            .into_iter()
-            .filter_map(|(order, id, player)| player.then_some((order, id)))
-            .collect()
+    fn visit_player_passenger_seats(&self, vehicle: u32, visit: &mut dyn FnMut(i64, u32) -> bool) {
+        self.any_player_passenger_seat(vehicle, visit);
+    }
+
+    fn next_passenger_seat(&self, vehicle: u32, after: Option<u32>) -> Option<u32> {
+        Game::next_passenger_seat(self, vehicle, after)
+    }
+
+    fn passenger_vehicle(&self, rider: u32) -> Option<u32> {
+        self.vehicle_of_any(rider)
     }
 
     fn mob_dismount_location(

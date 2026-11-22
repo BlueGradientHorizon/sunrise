@@ -12,6 +12,12 @@ the normal save rules; neither call alters an existing snapshot, and both keep t
 would save with. To omit a vehicle and all its passengers, set the flag on the root vehicle, not on a rider.
 The flag follows the live entity across dimensions but is never saved. The setter returns `Ok(false)` for players, dragon parts and handles that do not resolve in the current level.
 
+Use `entity.visit_parts(host, &mut visitor)` to visit the entities of a multipart body, not the mod API's
+behaviour Parts. It visits the ender dragon's children in `EnderDragon.getSubEntities` order. The visitor
+takes an `EntityRef`; return `ControlFlow::Break(())` to stop or `ControlFlow::Continue(())` to keep going.
+`Ok(Continue(()))` includes entities with no parts. A stale handle returns `Err(EntityReadError::Stale)`;
+if the view cannot supply all the parts, it returns `Err(EntityReadError::Unavailable)` before visiting any.
+
 Use `EntityRef::hurt` on the server with the fully qualified id of a registered damage type, vanilla
 or modded. Hurt hooks see that exact id. The direct and causing entities are separate from the type:
 passing a player as the cause of `minecraft:explosion` does not turn it into `minecraft:player_explosion`.

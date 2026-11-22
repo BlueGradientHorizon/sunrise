@@ -27,7 +27,7 @@ use super::{
 use core::ops::ControlFlow;
 use mod_api::{
     BlockFace, BlockShapeKind, BlockUpdateFlags, ClipBlock, ClipFluid, ClipHit, DimensionKey,
-    EntityRayHit, EntityRef, LevelReadError, LevelRef, NeighbourUpdate,
+    EntityRayHit, EntityReadError, EntityRef, LevelReadError, LevelRef, NeighbourUpdate,
 };
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_items::items::ItemStack;
@@ -179,16 +179,27 @@ impl Game<'_> {
             Target::Dragon(_)
         ))
     }
-    /// The entities a multipart entity is made of (`Entity.getParts`), in
-    /// `getSubEntities` order, each resolved as any handle is (`entity`): the dragon's
-    /// parts have the eight ids after its own. Empty for any other entity.
-    pub(super) fn entity_parts(&self, entity: EntityRef) -> Option<Vec<EntityRef>> {
-        let Target::Dragon(id) = self.native_entity_read_target(entity)? else {
-            return Some(Vec::new());
+    /// `IEntityExtension.getParts` in `EnderDragon.getSubEntities` order.
+    pub(super) fn entity_visit_parts(
+        &self,
+        entity: EntityRef,
+        visit: &mut dyn FnMut(EntityRef) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, EntityReadError> {
+        let Target::Dragon(id) = self
+            .native_entity_read_target(entity)
+            .ok_or(EntityReadError::Stale)?
+        else {
+            return Ok(ControlFlow::Continue(()));
         };
-        (1..=8)
-            .map(|offset| self.entity(id.checked_add(offset)?))
-            .collect()
+        // Project the eight part handles together before calling the visitor on any of them.
+        let mut parts = [entity; 8];
+        for (offset, part) in (1..).zip(&mut parts) {
+            *part = id
+                .checked_add(offset)
+                .and_then(|id| self.entity(id))
+                .ok_or(EntityReadError::Unavailable)?;
+        }
+        Ok(parts.into_iter().try_for_each(visit))
     }
     /// The level `dimension` (`minecraft:the_nether`) as a handle: on a client,
     /// the level it shows, whatever the server calls it, or one the server opened
@@ -1252,6 +1263,21 @@ pub(super) mod tests {
     use core::ops::ControlFlow;
     use mod_api::__private::game::*;
     use mod_api::{EntityRef, LevelReadError, LevelRef};
+
+    /// Collect only in fixtures that compare the whole result of an entity visit.
+    pub(in crate::game) fn collect_entity_visit(
+        enumerate: impl FnOnce(
+            &mut dyn FnMut(EntityRef) -> ControlFlow<()>,
+        ) -> Result<ControlFlow<()>, mod_api::EntityReadError>,
+    ) -> Result<Vec<EntityRef>, mod_api::EntityReadError> {
+        let mut entities = Vec::new();
+        let complete = enumerate(&mut |entity| {
+            entities.push(entity);
+            ControlFlow::Continue(())
+        })?;
+        assert_eq!(complete, ControlFlow::Continue(()));
+        Ok(entities)
+    }
 
     // Keep the handle and direct Game routes separate when collecting for assertions.
     pub(in crate::game) fn collect_all_entities(

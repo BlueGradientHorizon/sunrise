@@ -836,8 +836,9 @@ handle, an entity the client doesn't track and a level it doesn't show:
   else the block under its feet. `pick(host, distance)` clips `Entity.pick`'s ray from the eyes along the view
   against block outlines, no fluids, and returns the `ClipHit` (its `miss` set for a miss); entities are
   clipped by `LevelRef::ray_trace_nearest_entity` or `ray_trace_entities`, not `pick`.
-  `is_multipart(host)` and `parts(host)` are `Entity.isMultipartEntity` and `getParts`:
-  the ender dragon's eight `EnderDragonPart`s (not the Parts of this API), head, neck, body, three tail segments and
+  `is_multipart(host)` and `visit_parts(host, &mut visitor)` follow NeoForge's `IEntityExtension.isMultipartEntity`
+  and `getParts`. The visitor can break early. It visits the ender dragon's eight `EnderDragonPart`s (not the Parts
+  of this API), head, neck, body, three tail segments and
   two wings, each an `EntityRef` of its own entity id, resolved as any handle is. A part's `kind` is the dragon's, its position, rotation (none: zero), velocity (zero)
   and `bounding_box` are its own, `level` is the dragon's, and it is no living entity, mob or dragon handle; it
   stops resolving when its dragon does, and removing one is refused.

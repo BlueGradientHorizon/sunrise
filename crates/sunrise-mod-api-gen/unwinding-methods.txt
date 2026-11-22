@@ -305,7 +305,6 @@ entity_identity::entity_kind
 entity_identity::entity_level
 entity_identity::entity_name
 entity_identity::entity_owner
-entity_identity::entity_parts
 entity_identity::entity_set_custom_name
 entity_identity::entity_set_custom_name_visible
 entity_identity::entity_sound_source
@@ -352,11 +351,9 @@ entity_position::entity_teleport_to_level
 entity_riding::entity_controlling_passenger
 entity_riding::entity_dismount_location
 entity_riding::entity_eject_passengers
-entity_riding::entity_indirect_passengers
 entity_riding::entity_is_passenger
 entity_riding::entity_is_passenger_of_same_vehicle
 entity_riding::entity_is_vehicle
-entity_riding::entity_passengers
 entity_riding::entity_ride_player
 entity_riding::entity_root_vehicle
 entity_riding::entity_start_riding
