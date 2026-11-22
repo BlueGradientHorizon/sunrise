@@ -10756,6 +10756,7 @@ impl Game<'_> {
 
     /// Build the complete frame before handing its borrowed geometry and lighting to
     /// the consumer. Tests use the same boundary as GPU submission.
+    #[cfg(test)]
     fn render_with(
         &mut self,
         consume: impl FnOnce(&mut Renderer, &Frame<'_>) -> Result<bool>,

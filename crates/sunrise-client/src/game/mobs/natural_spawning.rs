@@ -1113,6 +1113,7 @@ impl<'a> Game<'a> {
     /// (finalizeSpawn's mounts ride by id, and its chickens carry their
     /// zombie). Every mob arrives with a provisional id; real ones are
     /// assigned in spawn order and the links rewritten.
+    #[cfg(test)]
     pub(super) fn add_spawned(
         &mut self,
         pending: Vec<Mob>,

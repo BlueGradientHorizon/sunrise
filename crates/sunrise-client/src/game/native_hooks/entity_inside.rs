@@ -320,7 +320,7 @@ mod sweep_tests {
                 resources: motion,
                 health: health_resources,
             };
-            w.finish_server_block_damage_freezing();
+            let _ = w.finish_server_block_damage_freezing();
         }
         let player = game.player.as_ref().unwrap();
         (before, player.velocity.x, player.health.dead_or_dying())
