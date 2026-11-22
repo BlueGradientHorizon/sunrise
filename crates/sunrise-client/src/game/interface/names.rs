@@ -643,19 +643,6 @@ impl Game<'_> {
         camera: glam::DVec3,
         alpha: f64,
         out: &mut Vec<Vertex>,
-        see_through: &mut Vec<Vertex>,
-    ) {
-        let mut collector = std::mem::take(&mut self.see_through_collector);
-        collector.clear();
-        self.name_tag_geometry_into(camera, alpha, out, &mut collector);
-        collector.flush(see_through);
-        self.see_through_collector = collector;
-    }
-    pub(super) fn name_tag_geometry_into(
-        &mut self,
-        camera: glam::DVec3,
-        alpha: f64,
-        out: &mut Vec<Vertex>,
         see_through: &mut super::text_displays::SeeThroughCollector,
     ) {
         let mut patches = Vec::new();

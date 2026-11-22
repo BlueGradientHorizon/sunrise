@@ -98,7 +98,7 @@ fn a_packs_text_draws_its_expression_uniforms() {
             sunrise_protocol::entity_data::Value::Text(sunrise_core::nbt::Tag::String("W".into())),
         )]);
         game.text_displays.insert(1, display);
-        game.tick_text_displays();
+        game.tick_text_displays(game.clock.runs_normally());
         // Fullbright, in its own process, is on from the first frame: it changes nothing.
         game.renderer.as_mut().unwrap().fullbright = fullbright;
         // The world text over the frame with the GUI hidden (F1), then the GUI's (F3's text)

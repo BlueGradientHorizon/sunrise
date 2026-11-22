@@ -918,10 +918,7 @@ impl Game<'_> {
     /// The displays' tick on a client (`ClientLevel.tickEntities` + `tickPassenger`).
     /// EntityTickEvent: once for the family, or each alone of a type a mod named, right before
     /// and right after its own tick; a canceled one keeps its state.
-    pub(super) fn tick_text_displays(&mut self) {
-        self.tick_text_displays_with_freeze(self.clock.runs_normally());
-    }
-    pub(super) fn tick_text_displays_with_freeze(&mut self, running: bool) {
+    pub(super) fn tick_text_displays(&mut self, running: bool) {
         let mut eligible = Vec::with_capacity(self.text_displays.len());
         for (&id, display) in &self.text_displays {
             if self.display_should_tick(id, display, running) {
@@ -1244,19 +1241,6 @@ impl Game<'_> {
         self.translucent_display_collector = translucent;
     }
     pub(super) fn text_display_geometry(
-        &mut self,
-        camera: glam::DVec3,
-        partial: f64,
-        normal: &mut Vec<Vertex>,
-        see_through: &mut Vec<Vertex>,
-    ) {
-        let mut collector = std::mem::take(&mut self.see_through_collector);
-        collector.clear();
-        self.text_display_geometry_into(camera, partial, normal, &mut collector);
-        collector.flush(see_through);
-        self.see_through_collector = collector;
-    }
-    pub(super) fn text_display_geometry_into(
         &mut self,
         camera: glam::DVec3,
         partial: f64,

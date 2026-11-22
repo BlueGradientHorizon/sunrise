@@ -3,7 +3,7 @@ use super::{RemoteTextDisplay, Shows};
 use crate::game::Game;
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 use crate::game::native_hooks::particle_count_tests::frame_scene;
-use glam::{DVec3, Mat4, Vec3};
+use glam::{DVec3, Mat4};
 use sunrise_client::{
     camera::CameraType,
     gfx::{
@@ -76,6 +76,20 @@ fn looking_south_frustum(fov_deg: f32, aspect: f32) -> JoinedFrusta {
     let proj = Mat4::perspective_rh(fov_deg.to_radians(), aspect, 256.0, 0.05);
     let view = sunrise_client::camera::view_matrix(0.0, 0.0);
     JoinedFrusta::new(Frustum::from_view_projection(proj * view), [])
+}
+
+fn collect_text_display_geometry(
+    game: &mut Game<'_>,
+    camera: DVec3,
+    partial: f64,
+    normal: &mut Vec<Vertex>,
+    see_through: &mut Vec<Vertex>,
+) {
+    let mut collector = std::mem::take(&mut game.see_through_collector);
+    collector.clear();
+    game.text_display_geometry(camera, partial, normal, &mut collector);
+    collector.flush(see_through);
+    game.see_through_collector = collector;
 }
 
 #[test]
@@ -334,22 +348,24 @@ fn display_camera_angles_and_billboard_use_active_camera_not_player_26_3() {
                 (13, 0, Value::Floats(vec![0.0, 1.0, 0.0, 0.0])),
                 (15, 0, Value::Byte(bb)),
             ]);
-            game.tick_text_displays();
+            game.tick_text_displays(game.clock.runs_normally());
             let mut out = Vec::new();
             game.block_item_display_geometry(DVec3::from_array(pos), 1.0, &mut out);
             assert!(!out.is_empty());
 
-            let expected_pose = Mat4::from_cols_array(&hex_f32_arr::<16>(&case["pose_bits"]));
+            // VertexConsumer.putBakedQuad transforms corners via JOML Matrix4f.transformPosition
+            // (right-to-left unfused fma), not glam's left-to-right Mat4::transform_point3.
+            let expected_pose = sunrise_client::camera::joml::Mat4::affine(Mat4::from_cols_array(
+                &hex_f32_arr::<16>(&case["pose_bits"]),
+            ));
             let expected_corners: Vec<[u32; 3]> = (0..8)
                 .map(|bits| {
-                    let c = Vec3::new(
-                        (bits & 1) as f32,
-                        ((bits >> 1) & 1) as f32,
-                        ((bits >> 2) & 1) as f32,
-                    );
                     expected_pose
-                        .transform_point3(c)
-                        .to_array()
+                        .transform_position([
+                            (bits & 1) as f32,
+                            ((bits >> 1) & 1) as f32,
+                            ((bits >> 2) & 1) as f32,
+                        ])
                         .map(f32::to_bits)
                 })
                 .collect();
@@ -399,9 +415,9 @@ fn no_culling_text_displays_are_not_frustum_culled_26_3() {
             (17, 2, Value::Float(0.03)),
             (23, 0, Value::Text(Tag::String("Menu".into()))),
         ]);
-        game.tick_text_displays();
+        game.tick_text_displays(game.clock.runs_normally());
         let (mut normal, mut see_through) = (Vec::new(), Vec::new());
-        game.text_display_geometry(cam, 1.0, &mut normal, &mut see_through);
+        collect_text_display_geometry(game, cam, 1.0, &mut normal, &mut see_through);
         assert!(!normal.is_empty());
 
         // Finite culling box behind the camera must be frustum-culled.
@@ -419,10 +435,10 @@ fn no_culling_text_displays_are_not_frustum_culled_26_3() {
             (21, 2, Value::Float(0.2)),
             (23, 0, Value::Text(Tag::String("Behind".into()))),
         ]);
-        game.tick_text_displays();
+        game.tick_text_displays(game.clock.runs_normally());
         normal.clear();
         see_through.clear();
-        game.text_display_geometry(cam, 1.0, &mut normal, &mut see_through);
+        collect_text_display_geometry(game, cam, 1.0, &mut normal, &mut see_through);
         assert!(normal.is_empty());
 
         // Infinite width alone must be frustum-culled (no +/-2 fallback) via JOML NaN rejection.
@@ -439,10 +455,10 @@ fn no_culling_text_displays_are_not_frustum_culled_26_3() {
             (21, 2, Value::Float(1.0)),
             (23, 0, Value::Text(Tag::String("Inf".into()))),
         ]);
-        game.tick_text_displays();
+        game.tick_text_displays(game.clock.runs_normally());
         normal.clear();
         see_through.clear();
-        game.text_display_geometry(cam, 1.0, &mut normal, &mut see_through);
+        collect_text_display_geometry(game, cam, 1.0, &mut normal, &mut see_through);
         assert!(normal.is_empty());
     });
 }
@@ -490,7 +506,7 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
             !out.is_empty(),
             bd_case["on_spawn_render_state_present"].as_bool().unwrap()
         );
-        game.tick_text_displays(); // empty tick before metadata
+        game.tick_text_displays(game.clock.runs_normally()); // empty tick before metadata
         game.block_item_display_geometry(DVec3::ZERO, 1.0, &mut out);
         assert_eq!(
             !out.is_empty(),
@@ -515,7 +531,7 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
                 .as_bool()
                 .unwrap()
         );
-        game.tick_text_displays();
+        game.tick_text_displays(game.clock.runs_normally());
         let mut after_stone = Vec::new();
         game.block_item_display_geometry(DVec3::ZERO, 0.0, &mut after_stone);
         assert_eq!(
@@ -546,7 +562,7 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
             bytemuck::cast_slice::<Vertex, u8>(&after_stone),
             "block swap must wait for the next display tick"
         );
-        game.tick_text_displays();
+        game.tick_text_displays(game.clock.runs_normally());
         let mut after_swap_tick = Vec::new();
         game.block_item_display_geometry(DVec3::ZERO, 0.5, &mut after_swap_tick);
         assert_ne!(
@@ -569,7 +585,7 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
             !out.is_empty(),
             id_case["before_tick_has_item_state"].as_bool().unwrap()
         );
-        game.tick_text_displays();
+        game.tick_text_displays(game.clock.runs_normally());
         let mut crystal_verts = Vec::new();
         game.block_item_display_geometry(DVec3::ZERO, 1.0, &mut crystal_verts);
         assert!(!crystal_verts.is_empty());
@@ -599,14 +615,15 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
             0,
             Value::Text(Tag::String("VR".into())),
         )]);
-        game.tick_text_displays();
+        game.tick_text_displays(game.clock.runs_normally());
         // Standalone view_range update (no render state id, no tick): range = 1.92.
         game.text_displays
             .get_mut(&2003)
             .unwrap()
             .metadata(&[(17, 2, Value::Float(0.03))]);
         let (mut normal, mut see_through) = (Vec::new(), Vec::new());
-        game.text_display_geometry(
+        collect_text_display_geometry(
+            game,
             DVec3::new(0.5 + 1.91, 301.62, 0.5),
             1.0,
             &mut normal,
@@ -617,7 +634,8 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
             live["live_vr_at_1_91"].as_bool().unwrap()
         );
         normal.clear();
-        game.text_display_geometry(
+        collect_text_display_geometry(
+            game,
             DVec3::new(0.5 + 1.93, 301.62, 0.5),
             1.0,
             &mut normal,
@@ -635,7 +653,8 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
             d.position = DVec3::new(2.5, 301.62, 0.5);
         }
         normal.clear();
-        game.text_display_geometry(
+        collect_text_display_geometry(
+            game,
             DVec3::new(0.5, 301.62, 0.5),
             0.0,
             &mut normal,
@@ -653,7 +672,8 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
             d.position = DVec3::new(0.5, 301.62, 0.5);
         }
         normal.clear();
-        game.text_display_geometry(
+        collect_text_display_geometry(
+            game,
             DVec3::new(0.5, 301.62, 0.5),
             0.0,
             &mut normal,
@@ -675,24 +695,25 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
             (11, 0, Value::Floats(vec![0.0, 0.0, 0.0])),
             (17, 2, Value::Float(0.05)), // range = 3.2
         ]);
-        game.tick_text_displays(); // tick 1
+        game.tick_text_displays(game.clock.runs_normally()); // tick 1
         game.text_displays.get_mut(&2004).unwrap().metadata(&[
             (8, 1, Value::Int(0)),
             (9, 1, Value::Int(4)),
             (11, 0, Value::Floats(vec![10.0, 0.0, 0.0])),
         ]);
-        game.tick_text_displays(); // tick 2
-        game.tick_text_displays(); // tick 3: progress(0.0) = 0.25
+        game.tick_text_displays(game.clock.runs_normally()); // tick 2
+        game.tick_text_displays(game.clock.runs_normally()); // tick 3: progress(0.0) = 0.25
         normal.clear();
-        game.text_display_geometry(DVec3::ZERO, 0.0, &mut normal, &mut see_through);
+        collect_text_display_geometry(game, DVec3::ZERO, 0.0, &mut normal, &mut see_through);
         assert!(!normal.is_empty());
         assert_eq!(
             game.text_displays[&2004].last_progress.to_bits(),
             hex_u32(&culled_case["visible_progress_bits"])
         );
-        game.tick_text_displays(); // tick 4: culled (camera 100 blocks away)
+        game.tick_text_displays(game.clock.runs_normally()); // tick 4: culled (camera 100 blocks away)
         normal.clear();
-        game.text_display_geometry(
+        collect_text_display_geometry(
+            game,
             DVec3::new(100.0, 0.0, 0.0),
             0.0,
             &mut normal,
@@ -705,7 +726,7 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
             (9, 1, Value::Int(4)),
             (11, 0, Value::Floats(vec![20.0, 0.0, 0.0])),
         ]);
-        game.tick_text_displays();
+        game.tick_text_displays(game.clock.runs_normally());
         let d = &game.text_displays[&2004];
         let p = d.progress(0.0);
         assert_eq!(
@@ -729,16 +750,16 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
             (23, 0, Value::Text(Tag::String("Z".into()))),
             (11, 0, Value::Floats(vec![0.0, 0.0, 0.0])),
         ]);
-        game.tick_text_displays(); // tick 1
+        game.tick_text_displays(game.clock.runs_normally()); // tick 1
         game.text_displays.get_mut(&2005).unwrap().metadata(&[
             (8, 1, Value::Int(0)),
             (9, 1, Value::Int(4)),
             (11, 0, Value::Floats(vec![8.0, 0.0, 0.0])),
         ]);
-        game.tick_text_displays(); // tick 2
-        game.tick_text_displays(); // tick 3: progress(0.0) = 0.25
+        game.tick_text_displays(game.clock.runs_normally()); // tick 2
+        game.tick_text_displays(game.clock.runs_normally()); // tick 3: progress(0.0) = 0.25
         normal.clear();
-        game.text_display_geometry(DVec3::ZERO, 0.0, &mut normal, &mut see_through);
+        collect_text_display_geometry(game, DVec3::ZERO, 0.0, &mut normal, &mut see_through);
         assert_eq!(
             game.text_displays[&2005].last_progress.to_bits(),
             hex_u32(&dur_case["progress_before_zero_bits"])
@@ -747,15 +768,15 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
             .get_mut(&2005)
             .unwrap()
             .metadata(&[(9, 1, Value::Int(0))]);
-        game.tick_text_displays(); // tick 4: duration = 0
+        game.tick_text_displays(game.clock.runs_normally()); // tick 4: duration = 0
         normal.clear();
-        game.text_display_geometry(DVec3::ZERO, 0.5, &mut normal, &mut see_through);
+        collect_text_display_geometry(game, DVec3::ZERO, 0.5, &mut normal, &mut see_through);
         game.text_displays.get_mut(&2005).unwrap().metadata(&[
             (8, 1, Value::Int(0)),
             (9, 1, Value::Int(4)),
             (11, 0, Value::Floats(vec![20.0, 0.0, 0.0])),
         ]);
-        game.tick_text_displays(); // tick 5: must start from 0.25 * 8 = 2.0, not 8.0
+        game.tick_text_displays(game.clock.runs_normally()); // tick 5: must start from 0.25 * 8 = 2.0, not 8.0
         let dz = &game.text_displays[&2005];
         let p_after = dz.progress(0.0);
         assert_eq!(
@@ -819,9 +840,9 @@ fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
         // Removing a middle display must preserve the remaining displays' insertion order.
         game.text_displays.shift_remove(&83242);
         expected_bgs.retain(|&(eid, _)| eid != 83242);
-        game.tick_text_displays();
+        game.tick_text_displays(game.clock.runs_normally());
         let (mut normal, mut see_through) = (Vec::new(), Vec::new());
-        game.text_display_geometry(DVec3::ZERO, 1.0, &mut normal, &mut see_through);
+        collect_text_display_geometry(game, DVec3::ZERO, 1.0, &mut normal, &mut see_through);
         let got_bgs: Vec<u32> = normal
             .as_chunks::<4>()
             .0
@@ -868,10 +889,10 @@ fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
                 (25, 1, Value::Int(bg as i32)),
                 (26, 0, Value::Byte(opacity)),
             ]);
-            game.tick_text_displays();
+            game.tick_text_displays(game.clock.runs_normally());
             normal.clear();
             see_through.clear();
-            game.text_display_geometry(DVec3::ZERO, 1.0, &mut normal, &mut see_through);
+            collect_text_display_geometry(game, DVec3::ZERO, 1.0, &mut normal, &mut see_through);
             let quads = normal.as_chunks::<4>().0;
             assert!(!quads.is_empty(), "{name}: emitted no quads");
             let route = find_route(name, false);
@@ -946,10 +967,10 @@ fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
                 (27, 0, Value::Byte(2)), // see_through
             ]);
         }
-        game.tick_text_displays();
+        game.tick_text_displays(game.clock.runs_normally());
         normal.clear();
         see_through.clear();
-        game.text_display_geometry(DVec3::ZERO, 1.0, &mut normal, &mut see_through);
+        collect_text_display_geometry(game, DVec3::ZERO, 1.0, &mut normal, &mut see_through);
         assert!(normal.is_empty());
         let expected_names: Vec<&str> = phases["see_through_sorted_order"]
             .as_array()
@@ -1025,10 +1046,10 @@ fn text_display_resolves_inline_player_head_profiles_26_3() {
             .get_mut(&83225)
             .unwrap()
             .metadata(&[(23, 0, Value::Text(tag))]);
-        game.tick_text_displays();
+        game.tick_text_displays(game.clock.runs_normally());
         let cam = DVec3::new(0.5, 301.62, 0.5);
         let (mut normal, mut see_through) = (Vec::new(), Vec::new());
-        game.text_display_geometry(cam, 1.0, &mut normal, &mut see_through);
+        collect_text_display_geometry(game, cam, 1.0, &mut normal, &mut see_through);
         assert_eq!(
             game.gui.atlas.object_skins.get(&id_key).map(String::as_str),
             Some(want_skin),
@@ -1081,7 +1102,7 @@ fn block_display_backface_culling_translucent_pass_and_light_emission_26_3() {
                 .get_mut(&id)
                 .unwrap()
                 .show(&[(23, 0, Value::Id(state.0 as i32))], None);
-            game.tick_text_displays();
+            game.tick_text_displays(game.clock.runs_normally());
             let mut out = Vec::new();
             game.block_item_display_geometry(DVec3::new(0.5, 64.0, 3.5), 1.0, &mut out);
             assert!(!out.is_empty(), "{block} emitted no vertices");
@@ -1185,7 +1206,7 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
             0,
             Value::Text(Tag::String("".into())),
         )]);
-        game.tick_text_displays();
+        game.tick_text_displays(game.clock.runs_normally());
         let tags = game.shown_name_tags(DVec3::new(0.0, 0.0, 5.0));
         assert!(tags.iter().any(|t| t == "DisplayTag"));
         // Zero view_range suppresses tag through the unified visibility decision.
@@ -1210,14 +1231,18 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
             (16, 1, Value::Int((15 << 20) | (15 << 4))),
             (0, 0, Value::Byte(0x02)),
         ]);
-        game.tick_text_displays();
+        game.tick_text_displays(game.clock.runs_normally());
         let (mut solid_tag, mut faded_tag) = (Vec::new(), Vec::new());
+        let mut tag_collector = std::mem::take(&mut game.see_through_collector);
+        tag_collector.clear();
         game.name_tag_geometry(
             DVec3::new(0.0, 0.0, 5.0),
             1.0,
             &mut solid_tag,
-            &mut faded_tag,
+            &mut tag_collector,
         );
+        tag_collector.flush(&mut faded_tag);
+        game.see_through_collector = tag_collector;
         assert!(!solid_tag.is_empty());
         assert!(
             faded_tag.is_empty(),
@@ -1257,7 +1282,7 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
             d.show(&[(23, 0, Value::Id(stone.0 as i32))], None);
             d.metadata(&[(0, 0, Value::Byte(0x01))]); // FLAG_ONFIRE
         }
-        game.tick_text_displays();
+        game.tick_text_displays(game.clock.runs_normally());
         let mut out = Vec::new();
         game.block_item_display_geometry(DVec3::new(0.5, 64.0, 3.5), 1.0, &mut out);
         assert!(!out.is_empty());
@@ -1269,7 +1294,7 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
             1,
             Value::Int((5 << 20) | (3 << 4)),
         )]);
-        game.tick_text_displays();
+        game.tick_text_displays(game.clock.runs_normally());
         out.clear();
         game.block_item_display_geometry(DVec3::new(0.5, 64.0, 3.5), 1.0, &mut out);
         assert!(!out.is_empty());
@@ -1324,7 +1349,7 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
             .get_mut(&7002)
             .unwrap()
             .show(&[(23, 0, Value::Id(stone.0 as i32))], None);
-        game.tick_text_displays();
+        game.tick_text_displays(game.clock.runs_normally());
         let mob_start = game.mobs.len();
         assert!(
             game.spawn_mob_raw("minecraft:zombie", [0.5, 65.5, 3.5], true)
@@ -1334,7 +1359,7 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
 
         let (mut normal, mut see_through, mut blocks, mut mob_verts) =
             (Vec::new(), Vec::new(), Vec::new(), Vec::new());
-        game.text_display_geometry(cam, 1.0, &mut normal, &mut see_through);
+        collect_text_display_geometry(game, cam, 1.0, &mut normal, &mut see_through);
         game.block_item_display_geometry(cam, 1.0, &mut blocks);
         game.begin_skinning();
         let mob_frame = game.begin_mob_geometry(cam, 1.0);
@@ -1354,7 +1379,7 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
         normal.clear();
         blocks.clear();
         mob_verts.clear();
-        game.text_display_geometry(cam, 1.0, &mut normal, &mut see_through);
+        collect_text_display_geometry(game, cam, 1.0, &mut normal, &mut see_through);
         game.block_item_display_geometry(cam, 1.0, &mut blocks);
         game.begin_skinning();
         let mob_frame = game.begin_mob_geometry(cam, 1.0);
@@ -1368,7 +1393,7 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
         normal.clear();
         blocks.clear();
         mob_verts.clear();
-        game.text_display_geometry(cam, 1.0, &mut normal, &mut see_through);
+        collect_text_display_geometry(game, cam, 1.0, &mut normal, &mut see_through);
         game.block_item_display_geometry(cam, 1.0, &mut blocks);
         game.begin_skinning();
         let mob_frame = game.begin_mob_geometry(cam, 1.0);
@@ -1396,9 +1421,15 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
                 0,
                 Value::Text(Tag::String("Out".into())),
             )]);
-            game.tick_text_displays();
+            game.tick_text_displays(game.clock.runs_normally());
             normal.clear();
-            game.text_display_geometry(DVec3::new(0.5, y, 0.5), 1.0, &mut normal, &mut see_through);
+            collect_text_display_geometry(
+                game,
+                DVec3::new(0.5, y, 0.5),
+                1.0,
+                &mut normal,
+                &mut see_through,
+            );
             assert!(!normal.is_empty(), "{label}");
         }
     });
@@ -1484,9 +1515,9 @@ fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
                 (26, 0, Value::Byte(-1)),
                 (27, 0, Value::Byte(1)),
             ]);
-            game.tick_text_displays();
+            game.tick_text_displays(game.clock.runs_normally());
             let (mut normal, mut see_through) = (Vec::new(), Vec::new());
-            game.text_display_geometry(cam_pos, 1.0, &mut normal, &mut see_through);
+            collect_text_display_geometry(game, cam_pos, 1.0, &mut normal, &mut see_through);
             let want_quads = case["quads"].as_array().unwrap();
             assert_eq!(
                 normal.len(),
@@ -1566,7 +1597,7 @@ fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
                 (16, 1, Value::Int(15_728_880)),
             ]);
         }
-        game.tick_text_displays();
+        game.tick_text_displays(game.clock.runs_normally());
         let mut block_verts = Vec::new();
         game.block_item_display_geometry(cam_pos, 1.0, &mut block_verts);
         assert_eq!(block_verts.len(), 24, "EID 83224 must emit 6 cube faces");
@@ -1674,7 +1705,7 @@ fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
             0,
             Value::Text(Tag::String("CamDisplay".into())),
         )]);
-        game.tick_text_displays_with_freeze(true);
+        game.tick_text_displays(true);
 
         // SetCamera packet targeting a tracked display attaches camera, hides in first person, shows in third person.
         game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 9001 }))
@@ -1692,7 +1723,8 @@ fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
         game.view.x_rot = 0.0;
         game.camera_type = CameraType::FirstPerson;
         let (mut normal, mut see_through) = (Vec::new(), Vec::new());
-        game.text_display_geometry(
+        collect_text_display_geometry(
+            game,
             DVec3::new(0.5, 64.0, 0.5),
             1.0,
             &mut normal,
@@ -1704,7 +1736,8 @@ fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
         );
 
         game.camera_type = CameraType::ThirdPersonBack;
-        game.text_display_geometry(
+        collect_text_display_geometry(
+            game,
             DVec3::new(0.5, 64.0, 0.5),
             1.0,
             &mut normal,
@@ -1746,12 +1779,12 @@ fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
             (26, 0, Value::Byte(-1)),
             (27, 0, Value::Byte(2)), // see_through
         ]);
-        game.tick_text_displays_with_freeze(true);
+        game.tick_text_displays(true);
         let mut collector = super::SeeThroughCollector::default();
         let (mut solid, mut st_out) = (Vec::new(), Vec::new());
         let cam = DVec3::new(0.0, 64.0, 0.0);
-        game.name_tag_geometry_into(cam, 1.0, &mut solid, &mut collector);
-        game.text_display_geometry_into(cam, 1.0, &mut solid, &mut collector);
+        game.name_tag_geometry(cam, 1.0, &mut solid, &mut collector);
+        game.text_display_geometry(cam, 1.0, &mut solid, &mut collector);
         collector.flush(&mut st_out);
         let far_bg = 0xFF33_2211u32;
         let first_far = st_out
@@ -1981,19 +2014,45 @@ fn review_parity_witness_matches_vanilla_26_3() {
     dg.metadata(&[(22, 1, Value::Int(0x0000FF))]);
     assert_eq!(dg.data.glow_color as i64, gl["blue"].as_i64().unwrap());
 
-    // 15. JOML exact arithmetic: translateX(16777216) * rotateZ(-45deg) on (1, 1, 0).
+    // 15. JOML exact arithmetic: translateX(16777216) * rotateZ(-45deg) on (1, 1, 0),
+    // plus TextDisplayData::pose's Transformation.compose quaternion path and JOML slerp.
     let jm = &rp["joml_arithmetic"];
-    let ang = (-45.0_f32).to_radians();
+    let ang = (-45.0_f64).to_radians() as f32;
+    let mut m = sunrise_client::camera::joml::Mat4::IDENTITY;
+    m.translate(16_777_216.0, 0.0, 0.0);
+    m.rotate_z(ang);
+    let pt = m.transform_position([1.0, 1.0, 0.0]);
+    assert_eq!(
+        pt.map(f32::to_bits).to_vec(),
+        hex_u32_vec(&jm["rot_neg45_trans_16m_bits"])
+    );
     let td_jm = sunrise_client::text_display::TextDisplayData {
         translation: [16_777_216.0, 0.0, 0.0],
         left_rotation: [0.0, 0.0, (ang * 0.5).sin(), (ang * 0.5).cos()],
         ..Default::default()
     };
-    let pt = td_jm
+    let td_pt = td_jm
         .pose([0.0; 3], [0.0; 2], [0.0; 2])
         .transform_position([1.0, 1.0, 0.0]);
     assert_eq!(
-        pt.map(f32::to_bits).to_vec(),
-        hex_u32_vec(&jm["rot_neg45_trans_16m_bits"])
+        td_pt[0].to_bits(),
+        hex_u32(&jm["rot_neg45_trans_16m_bits"][0])
+    );
+    let norm = |q: [f32; 4]| {
+        let len_sq = q[0] * q[0] + (q[1] * q[1] + (q[2] * q[2] + q[3] * q[3]));
+        let inv = 1.0 / (f64::from(len_sq).sqrt() as f32);
+        q.map(|c| c * inv)
+    };
+    let qa = sunrise_client::text_display::TextDisplayData {
+        left_rotation: norm([0.1, 0.2, 0.3, 0.9]),
+        ..Default::default()
+    };
+    let qb = sunrise_client::text_display::TextDisplayData {
+        left_rotation: norm([-0.4, 0.5, -0.2, 0.7]),
+        ..Default::default()
+    };
+    assert_eq!(
+        qb.blend(&qa, 0.37).left_rotation.map(f32::to_bits).to_vec(),
+        hex_u32_vec(&jm["slerp_bits"])
     );
 }

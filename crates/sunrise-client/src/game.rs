@@ -8245,10 +8245,10 @@ impl Game<'_> {
         see_through.clear();
         let mut st_collector = std::mem::take(&mut self.see_through_collector);
         st_collector.clear();
-        self.name_tag_geometry_into(camera, alpha, &mut out, &mut st_collector);
-        self.test_instance_marker_geometry_into(camera, &mut out, &mut st_collector);
+        self.name_tag_geometry(camera, alpha, &mut out, &mut st_collector);
+        self.test_instance_marker_geometry(camera, &mut out, &mut st_collector);
         self.debug_renderer_geometry(camera, &mut out);
-        self.text_display_geometry_into(camera, alpha, &mut out, &mut st_collector);
+        self.text_display_geometry(camera, alpha, &mut out, &mut st_collector);
         st_collector.flush(&mut see_through);
         self.see_through_collector = st_collector;
         self.see_through_vertices = see_through;

@@ -134,7 +134,7 @@ impl Game<'_> {
     pub(in crate::game) fn tick_remote_entities(&mut self, running: bool) {
         use crate::game::native_ticks::{PLAYER, TickKind};
 
-        self.tick_text_displays_with_freeze(running);
+        self.tick_text_displays(running);
         if running {
             self.tick_remote_ominous_item_spawners();
         }

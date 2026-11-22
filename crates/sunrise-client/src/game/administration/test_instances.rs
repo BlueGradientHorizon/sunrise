@@ -211,19 +211,6 @@ impl Game<'_> {
         &mut self,
         camera: glam::DVec3,
         out: &mut Vec<Vertex>,
-        see_through: &mut Vec<Vertex>,
-    ) {
-        let mut collector = std::mem::take(&mut self.see_through_collector);
-        collector.clear();
-        self.test_instance_marker_geometry_into(camera, out, &mut collector);
-        collector.flush(see_through);
-        self.see_through_collector = collector;
-    }
-
-    pub(super) fn test_instance_marker_geometry_into(
-        &mut self,
-        camera: glam::DVec3,
-        out: &mut Vec<Vertex>,
         see_through: &mut super::text_displays::SeeThroughCollector,
     ) {
         use sunrise_client::gizmos as g;
