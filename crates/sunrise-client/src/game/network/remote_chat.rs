@@ -5,7 +5,13 @@
 //! markMessageAsProcessed). Without a signed-in
 //! account, or on a server that plays the account under another profile
 //! (offline mode), there is no session and everything goes unsigned.
-use super::{Game, Screen, books::BookScreen, dialogs::ClosedDialog, native_net::PlaySend};
+use super::{
+    Game, Screen,
+    books::BookScreen,
+    dialogs::ClosedDialog,
+    native_net::PlaySend,
+    native_server::{ClientCommandOutcome, PendingClientCommand, PendingClientCommandKind},
+};
 use std::sync::Arc;
 use sunrise_client::{
     auth::{self, ChatKeyPair},
@@ -235,75 +241,102 @@ impl Game<'_> {
     /// `ClientPacketListener.sendChat` / `sendCommand`: the play listener, not
     /// the input box. The server still applies signatures, permissions and chat policy.
     pub(super) fn send_chat(&mut self, message: &str) -> Result<(), String> {
+        if let Some(command) = message.strip_prefix('/') {
+            return self.send_command(command).map(|_| ());
+        }
         let remote = self.remote.as_ref().ok_or("not connected to a server")?;
         if !remote.joined || remote.reconfiguring.is_some() {
             return Err("the player has not joined yet".into());
         }
-        if let Some(command) = message.strip_prefix('/') {
-            if self.client_mod_command(command) {
+        // NeoForge fires ClientChatEvent here, before signing, for direct and UI sends.
+        let outgoing;
+        let content = if mod_api::__private::listened(mod_api::HookId::ClientChat) {
+            let (id, uuid) = (self.own_entity_id(), remote.profile);
+            let mut text = message.to_owned();
+            let mut cancel = false;
+            self.native_client_chat(id, uuid, message, &mut text, &mut cancel);
+            if cancel {
                 return Ok(());
             }
-            let remote = self.remote.as_ref().ok_or("not connected to a server")?;
-            let arguments = if remote.chat_tree_received {
-                remote
-                    .chat_tree
-                    .parse(command, &self.ui.registries)
-                    .signable_arguments(&remote.chat_tree)
-            } else {
-                Vec::new()
-            };
-            if arguments.is_empty() {
-                return match self.send_play(S::ChatCommand(play::ChatCommand {
-                    command: command.to_owned(),
-                })) {
-                    PlaySend::Admitted | PlaySend::Cancelled => Ok(()),
-                    PlaySend::Unavailable => Err("command packet was not admitted".into()),
-                };
-            }
+            outgoing = text;
+            &outgoing
+        } else {
+            message
+        };
+        if !content.is_empty() {
             self.send_with_chat_state(|timestamp, salt, last_seen, sign| {
-                let arguments = arguments
-                    .into_iter()
-                    .filter_map(|(name, value)| {
-                        sign(&value).map(|signature| (name, signature.to_vec()))
-                    })
-                    .collect();
-                S::ChatCommandSigned(play::ChatCommandSigned {
-                    command: command.to_owned(),
+                S::Chat(play::Chat {
+                    message: content.to_owned(),
                     timestamp,
                     salt,
-                    arguments,
                     last_seen,
+                    signature: sign(content).map(|signature| signature.to_vec()),
                 })
             })?;
-        } else {
-            // NeoForge fires ClientChatEvent here, before signing, for direct and UI sends.
-            let outgoing;
-            let content = if mod_api::__private::listened(mod_api::HookId::ClientChat) {
-                let (id, uuid) = (self.own_entity_id(), remote.profile);
-                let mut text = message.to_owned();
-                let mut cancel = false;
-                self.native_client_chat(id, uuid, message, &mut text, &mut cancel);
-                if cancel {
-                    return Ok(());
-                }
-                outgoing = text;
-                &outgoing
-            } else {
-                message
-            };
-            if !content.is_empty() {
-                self.send_with_chat_state(|timestamp, salt, last_seen, sign| {
-                    S::Chat(play::Chat {
-                        message: content.to_owned(),
-                        timestamp,
-                        salt,
-                        last_seen,
-                        signature: sign(content).map(|signature| signature.to_vec()),
-                    })
-                })?;
-            }
         }
         Ok(())
+    }
+
+    /// Give the local dispatcher the command before the server sees it.
+    pub(super) fn send_command(
+        &mut self,
+        command: &str,
+    ) -> Result<Option<ClientCommandOutcome>, String> {
+        let remote = self.remote.as_ref().ok_or("not connected to a server")?;
+        if !remote.joined || remote.reconfiguring.is_some() {
+            return Err("the player has not joined yet".into());
+        }
+        if self.native_client_commands.executing {
+            self.native_client_commands
+                .pending_commands
+                .push(PendingClientCommand {
+                    command: command.to_owned(),
+                    kind: PendingClientCommandKind::Signed,
+                });
+            return Ok(None);
+        }
+        if let Some(outcome) = self.run_client_native_command(command) {
+            return Ok(Some(outcome));
+        }
+        if !self.studio_command(command) {
+            self.send_server_command(command)?;
+        }
+        Ok(None)
+    }
+
+    /// Sign only arguments from the remote dispatcher, never client-only display branches.
+    pub(super) fn send_server_command(&mut self, command: &str) -> Result<(), String> {
+        let remote = self.remote.as_ref().ok_or("not connected to a server")?;
+        let arguments = remote
+            .server_chat_tree
+            .as_ref()
+            .map_or_else(Vec::new, |tree| {
+                tree.parse(command, &self.ui.registries)
+                    .signable_arguments(tree)
+            });
+        if arguments.is_empty() {
+            return match self.send_play(S::ChatCommand(play::ChatCommand {
+                command: command.to_owned(),
+            })) {
+                PlaySend::Admitted | PlaySend::Cancelled => Ok(()),
+                PlaySend::Unavailable => Err("command packet was not admitted".into()),
+            };
+        }
+        self.send_with_chat_state(|timestamp, salt, last_seen, sign| {
+            let arguments = arguments
+                .into_iter()
+                .filter_map(|(name, value)| {
+                    sign(&value).map(|signature| (name, signature.to_vec()))
+                })
+                .collect();
+            S::ChatCommandSigned(play::ChatCommandSigned {
+                command: command.to_owned(),
+                timestamp,
+                salt,
+                arguments,
+                last_seen,
+            })
+        })
     }
 
     /// Build against the pending last-seen window and next signing links. Neither
@@ -370,18 +403,29 @@ impl Game<'_> {
         if command.is_empty() || !self.chat_abilities().allows(&format!("/{command}")) {
             return;
         }
-        if self.remote.is_none() || self.client_mod_command(command) {
+        if self.remote.is_none() {
             return;
         }
-        let Some(r) = self.remote.as_ref() else {
+        if self.native_client_commands.executing {
+            self.native_client_commands
+                .pending_commands
+                .push(PendingClientCommand {
+                    command: format!("/{command}"),
+                    kind: PendingClientCommandKind::Unattended,
+                });
             return;
-        };
+        }
+        if self.run_client_native_command(command).is_some() {
+            return;
+        }
         // Vanilla's dispatcher is empty until the server sends its tree.
-        let check = if r.chat_tree_received {
-            verify_command(&r.chat_tree, &self.ui.registries, command)
-        } else {
-            CommandCheck::ParseErrors
-        };
+        let check = self
+            .remote
+            .as_ref()
+            .and_then(|r| r.server_chat_tree.as_ref())
+            .map_or(CommandCheck::ParseErrors, |tree| {
+                verify_command(tree, &self.ui.registries, command)
+            });
         // screenAfterCommand: what stays once it has run, a dialog included.
         let over_screen = self.screen != Screen::Playing || self.dialog_open();
         let (message, accept) = match check {

@@ -4232,6 +4232,8 @@ struct Game<'a> {
     /// A mod asked for the command trees again (`native_refresh_commands`):
     /// the next server tick asks every mod for its commands and resends them.
     native_commands: native_server::NativeCommandState,
+    /// Client-side native mod commands bound to the current client dispatcher generation.
+    pub(in crate::game) native_client_commands: native_server::NativeClientCommandState,
     /// The abilities of the server player whose turn it is (`as_guest`): their record's
     /// copy, which the turn reads and writes and the put-back at the end of `guest_turn` stores. None outside a turn.
     acting_abilities: Option<sunrise_client::lan::abilities::PlayerAbilities>,
@@ -14158,6 +14160,7 @@ impl<'a> Game<'a> {
             lan_acting: None,
             acting_abilities: None,
             native_commands: Default::default(),
+            native_client_commands: Default::default(),
             lan_building_boxes: Default::default(),
             save_after_guest_turn: false,
             lan_guest_swaps: Vec::new(),

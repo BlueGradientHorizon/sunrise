@@ -312,20 +312,24 @@ impl Game<'_> {
         let chat_type = r.registries.data("minecraft:chat_type", bound.chat_type);
         comp_text(&chat_type_decorate(chat_type, decoration, bound, content))
     }
-    /// Submit chat through the play listener from an interactive input. The screen
-    /// has already normalized and recorded the line; control inputs also obey chat visibility.
-    pub(in crate::game) fn send_signed_chat_input(&mut self, message: &str) {
+    /// ClientPacketListener.sendChat / sendCommand, signed with a chat
+    /// session (game/network/remote_chat.rs). The Chat option's Hidden and System
+    /// levels keep chat out and Hidden keeps the commands out (ChatAbilities).
+    pub(in crate::game) fn send_signed_chat_input(
+        &mut self,
+        message: &str,
+    ) -> Option<crate::game::native_server::ClientCommandOutcome> {
         if message.is_empty() || !self.chat_abilities().allows(message) {
-            return;
+            return None;
         }
-        if message
-            .strip_prefix('/')
-            .is_some_and(|command| self.studio_command(command))
-        {
-            return;
-        }
-        if let Err(error) = self.send_chat(message) {
+        if let Some(command) = message.strip_prefix('/') {
+            match self.send_command(command) {
+                Ok(outcome) => return outcome,
+                Err(error) => log::warn!("Command input could not be sent: {error}"),
+            }
+        } else if let Err(error) = self.send_chat(message) {
             log::warn!("Chat input could not be sent: {error}");
         }
+        None
     }
 }

@@ -24,7 +24,7 @@ pub trait NetworkClientHost {
     /// Side: client.
     /// Sends directly through `ClientPacketListener.sendChat` or `sendCommand`
     /// (a leading `/` selects the command path). Chat passes through `client_chat`
-    /// before signing; commands go to client command listeners before the server.
+    /// before signing; commands run the local dispatcher before being sent to the server.
     /// This does not normalize input, check the client's Chat setting or add history.
     /// `Ok(())` means queued, handled locally or intentionally canceled; `Err` means
     /// the play listener was unavailable or local encoding or publication failed.

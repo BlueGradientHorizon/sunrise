@@ -99,8 +99,7 @@ fn mods_replace_and_cancel_received_chat() {
 fn direct_chat_sends_through_play_without_the_chat_screen_gate() {
     use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
     use mod_api::{
-        ClientChatEvent, ClientHost, CommandEvent, RegisterClientCommandsEvent,
-        prelude::NetworkClientHost,
+        ClientChatEvent, ClientHost, RegisterClientCommandsEvent, prelude::NetworkClientHost,
     };
     use sunrise_client::net::Session;
     use sunrise_protocol::packets::play::Serverbound as S;
@@ -138,15 +137,9 @@ fn direct_chat_sends_through_play_without_the_chat_screen_gate() {
             _: &mut dyn ClientHost,
             event: &mut RegisterClientCommandsEvent<'_>,
         ) {
-            event.commands.push(mod_api::Command::new("local_only"));
-        }
-
-        fn command(&self, _: &mut dyn ClientHost, event: &mut CommandEvent<'_>) -> Flow {
-            if event.command == "local_only" {
-                Flow::Cancel
-            } else {
-                Flow::Continue
-            }
+            event
+                .commands
+                .push(mod_api::Command::new("local_only").executes_client(|_, _| Some(1)));
         }
     }
     let mods = vec![

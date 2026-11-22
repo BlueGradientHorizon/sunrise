@@ -1,4 +1,4 @@
-//! The `command` hook: declarations the mod API generator reads (see `hooks/mod.rs`).
+//! The `update_shape` hook: declarations the mod API generator reads (see `hooks/mod.rs`).
 
 pub trait Hooks {
     /// An authoritative server is about to compute the state the block
@@ -36,18 +36,4 @@ pub trait Hooks {
         new: &mut Option<BlockState>,
         #[engine] ticks: &mut Ticks,
     );
-    /// A local client command without its leading slash, before it is sent to
-    /// the server, including commands submitted by `NetworkClientHost::send_chat`.
-    /// Return `Flow::Cancel` when the mod handles it. Server commands do not fire this hook.
-    #[hook(
-        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_command",
-        dispatch = "flat",
-        side = "client",
-        contract = "cancel",
-        out = "ran",
-        event_per_listener = true,
-        version = 3,
-        neoforge = "none (ClientChatEvent is for chat messages; client commands are added by RegisterClientCommandsEvent)"
-    )]
-    fn command(command: &str, ran: &mut bool);
 }

@@ -2,11 +2,11 @@
 //! with prepared resources and a disposable game directory. In an owned single-player save,
 //! use `/waypoint_set` to place a cyan marker. The most recent death appears in red after respawn.
 use mod_api::{
-    ClientHost, ClientTickPostEvent, CommandEvent, Flow, Hooks, ModEntry,
-    RegisterClientCommandsEvent, RenderLevelStage, RenderLevelStageEvent, WorldDepth, WorldLine,
+    ClientHost, ClientTickPostEvent, Hooks, ModEntry, RegisterClientCommandsEvent,
+    RenderLevelStage, RenderLevelStageEvent, WorldDepth, WorldLine,
 };
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::{fs, io};
 
 #[derive(Default)]
@@ -17,7 +17,7 @@ struct Markers {
 }
 
 #[derive(Default)]
-struct Waypoints(Mutex<Markers>);
+struct Waypoints(Arc<Mutex<Markers>>);
 
 /// Escape path separators and Windows-reserved characters so an imported save
 /// folder or namespaced dimension maps to one filename component.
@@ -68,39 +68,40 @@ impl Hooks for Waypoints {
         _: &mut dyn ClientHost,
         event: &mut RegisterClientCommandsEvent<'_>,
     ) {
-        event.commands.push(mod_api::Command::new("waypoint_set"));
-    }
-
-    fn command(&self, host: &mut dyn ClientHost, event: &mut CommandEvent<'_>) -> Flow {
-        if event.command != "waypoint_set" {
-            return Flow::Continue;
-        }
-        let dimension = host.dimension();
-        let target = host
-            .client_session()
-            .client_server()
-            .and_then(|server| {
-                let save = server.save_folder?;
-                let path = waypoint_path(&host.instance_dir(), save, dimension)?;
-                Some((save.to_owned(), path))
-            })
-            .zip(host.local_player().and_then(|player| {
-                player
-                    .entity()
-                    .position(host)
-                    .map(|pos| pos.map(|axis| axis.floor() as i32))
-            }));
-        if let Some(((save, path), position)) = target {
-            match write_waypoint(&path, position) {
-                Ok(()) => {
-                    let mut markers = self.0.lock().unwrap();
-                    markers.key = Some((save, dimension.to_owned()));
-                    markers.manual = Some(position);
-                }
-                Err(error) => log::warn!("Could not save the waypoint: {error}"),
-            }
-        }
-        Flow::Cancel
+        let state = Arc::clone(&self.0);
+        event
+            .commands
+            .push(
+                mod_api::Command::new("waypoint_set").executes_client(move |host, _| {
+                    let dimension = host.dimension();
+                    let target = host
+                        .client_session()
+                        .client_server()
+                        .and_then(|server| {
+                            let save = server.save_folder?;
+                            let path = waypoint_path(&host.instance_dir(), save, dimension)?;
+                            Some((save.to_owned(), path))
+                        })
+                        .zip(host.local_player().and_then(|player| {
+                            player
+                                .entity()
+                                .position(host)
+                                .map(|pos| pos.map(|axis| axis.floor() as i32))
+                        }));
+                    if let Some(((save, path), position)) = target {
+                        match write_waypoint(&path, position) {
+                            Ok(()) => {
+                                let mut markers = state.lock().unwrap();
+                                markers.key = Some((save, dimension.to_owned()));
+                                markers.manual = Some(position);
+                                return Some(1);
+                            }
+                            Err(error) => log::warn!("Could not save the waypoint: {error}"),
+                        }
+                    }
+                    None
+                }),
+            );
     }
 
     fn client_tick_post(&self, host: &mut dyn ClientHost, _: &mut ClientTickPostEvent) {
