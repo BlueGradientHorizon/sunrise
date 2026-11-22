@@ -172,7 +172,7 @@ fn client_toasts_share_the_draw_list_and_admit_replacements_before_updating() {
                     game.add_toast(ModToast::new(Text::literal("Pending at disconnect")))
                         .unwrap();
                     assert_eq!(game.toast_manager.pending_mod.borrow().len(), 1);
-                    game.hud_disconnected();
+                    game.leave_server(None).unwrap();
                     draw(game);
                     assert!(game.toast_manager.visible.is_empty());
                     assert!(game.toast_manager.queued.is_empty());
