@@ -125,13 +125,32 @@ mod pack_registries;
 pub use pack_registries::PackRegistryDefinitions;
 use pack_registries::bind_dialog_tags;
 
+/// Bind one registry's resource and pack tags to its actual holders. Shared by
+/// WorldLoader's pending condition context and the configuration tag snapshot.
+pub fn registry_tag_bindings(
+    resources: &Path,
+    overlay: &sunrise_world::loot::PackOverlay<'_>,
+    registry: &str,
+    contains: impl Fn(&str) -> bool,
+) -> Result<BTreeMap<String, Vec<String>>, String> {
+    if registry == "minecraft:dialog" {
+        // Dialog registry admission also tracks missing writable holders.
+        return Ok(bind_dialog_tags(&resources.join("data/minecraft"), overlay, contains).0);
+    }
+    let kind = registry.split_once(':').map_or(registry, |(_, path)| path);
+    sunrise_world::tag_layers::load(resources, kind, overlay, contains)
+        .map(|tags| tags.into_iter().collect())
+        .map_err(|error| error.to_string())
+}
+
 /// World overlays key definition files by `registry/id`.
 pub fn is_pack_registry_file(key: &str) -> bool {
-    key.split_once('/').is_some_and(|(kind, _)| {
-        PACK_REGISTRIES
-            .iter()
-            .any(|registry| registry.strip_prefix("minecraft:") == Some(kind))
-    })
+    key.starts_with("worldgen/biome/")
+        || key.split_once('/').is_some_and(|(kind, _)| {
+            PACK_REGISTRIES
+                .iter()
+                .any(|registry| registry.strip_prefix("minecraft:") == Some(kind))
+        })
 }
 
 /// A registry's entries from the resource root's namespaces other than
@@ -404,7 +423,7 @@ impl SyncData {
         );
         let root = resources.join("data/minecraft");
         for &key in SYNCHRONIZED {
-            if key == "minecraft:damage_type"
+            if matches!(key, "minecraft:damage_type" | BIOME_REGISTRY)
                 || PackRegistryDefinitions::includes_prepared_entries(key)
             {
                 continue;
@@ -542,6 +561,7 @@ impl SyncData {
         resources: &Path,
         overlay: &sunrise_world::loot::PackOverlay,
         damage: &FrozenDamage,
+        biomes: Option<&crate::biome::Biomes>,
         packed: Option<&Arc<PackRegistryDefinitions>>,
         defaults: &sunrise_world::item_defaults::ItemDefaults,
         sources: &crate::crafting::ResolvedSources,
@@ -550,7 +570,7 @@ impl SyncData {
         Self::load_with_frozen(
             resources,
             overlay,
-            None,
+            biomes,
             None,
             Some(damage),
             packed,
@@ -642,6 +662,34 @@ impl SyncData {
                 registries.push(((*key).into(), damage.0.clone()));
                 continue;
             }
+            if *key == BIOME_REGISTRY
+                && let Some(table) = biomes
+            {
+                let names = table.registry_order();
+                let modified = crate::mod_content::biomes::modified(resources);
+                let entries = Entries {
+                    data: names
+                        .iter()
+                        .map(|name| {
+                            table
+                                .pack_file(name)
+                                .or_else(|| table.builtin_file(name))
+                                .map_or_else(|| Tag::Compound(Default::default()), json_to_nbt)
+                        })
+                        .collect(),
+                    from_pack: names
+                        .iter()
+                        .map(|&name| table.pack_file(name).is_some() || modified.contains(name))
+                        .collect(),
+                    names: names.into_iter().map(str::to_owned).collect(),
+                };
+                dynamic.registries.insert(
+                    (*key).into(),
+                    entries.names.iter().map(|id| (id.clone(), None)).collect(),
+                );
+                registries.push(((*key).into(), entries));
+                continue;
+            }
             let path = key.trim_start_matches("minecraft:");
             let mut entries = if PackRegistryDefinitions::includes_prepared_entries(key) {
                 Vec::new()
@@ -670,14 +718,13 @@ impl SyncData {
                     let top: BTreeMap<String, &serde_json::value::RawValue> =
                         serde_json::from_slice(&bytes)
                             .map_err(|e| format!("damage type {id}: {e}"))?;
-                    let conditions = top
-                        .get("neoforge:conditions")
-                        .map(|raw| serde_json::from_str::<Value>(raw.get()))
-                        .transpose()
-                        .map_err(|e| format!("damage type {id}: {e}"))?;
-                    let conditions = serde_json::json!({ "neoforge:conditions": conditions.unwrap_or(Value::Null) });
-                    if !overlay.conditions.allows_id(&conditions, path, &id) {
-                        continue;
+                    if let Some(raw) = top.get("neoforge:conditions") {
+                        let payload: Value = serde_json::from_str(raw.get())
+                            .map_err(|e| format!("damage type {id}: {e}"))?;
+                        let conditions = serde_json::json!({ "neoforge:conditions": payload });
+                        if !overlay.conditions.allows_id(&conditions, path, &id) {
+                            continue;
+                        }
                     }
                     let definition =
                         sunrise_world::damage_source::Definition::from_json(&id, &bytes)
@@ -702,23 +749,6 @@ impl SyncData {
             };
             for ((ns, p), _, from_pack) in entries.iter_mut() {
                 *from_pack |= modified.contains(&format!("{ns}:{p}"));
-            }
-            if *key == BIOME_REGISTRY
-                && let Some(table) = biomes.filter(|b| b.has_packs())
-            {
-                // A pack's biome goes with its data: no client knows it.
-                let found: HashMap<_, _> = entries
-                    .drain(..)
-                    .map(|((ns, p), v, _)| (format!("{ns}:{p}"), v))
-                    .collect();
-                for name in table.registry_order() {
-                    let (ns, p) = name.split_once(':').unwrap_or(("minecraft", name));
-                    let pack = table.pack_file(name);
-                    let json = pack.or_else(|| found.get(name)).cloned();
-                    let json = json.unwrap_or_else(|| Value::Object(Default::default()));
-                    let packed = pack.is_some() || modified.contains(name);
-                    entries.push(((ns.to_owned(), p.to_owned()), json, packed));
-                }
             }
             condition_filter::filter(
                 &mut entries,
@@ -1060,24 +1090,12 @@ impl SyncData {
             let Some(names) = Self::registry_names(builtin, dynamic, key) else {
                 continue;
             };
-            let kind = match key.split_once(':') {
-                Some(("minecraft", path)) => path.to_owned(),
-                Some((ns, path)) => format!("{ns}/{path}"),
-                None => key.clone(),
-            };
-            let contains = |id: &str| names.contains_key(id);
-            let bound: BTreeMap<_, _> = if key == "minecraft:dialog" {
-                // Dialog registry admission also tracks missing writable holders.
-                bind_dialog_tags(&resources.join("data/minecraft"), overlay, contains).0
-            } else if key == "minecraft:damage_type" {
+            if key == "minecraft:damage_type" {
                 // `merge_damage_tags` binds this world-owned registry below.
                 continue;
-            } else {
-                sunrise_world::tag_layers::load(resources, &kind, overlay, contains)
-                    .map_err(|e| e.to_string())?
-                    .into_iter()
-                    .collect()
-            };
+            }
+            let bound =
+                registry_tag_bindings(resources, overlay, key, |id| names.contains_key(id))?;
             if !bound.is_empty() {
                 registries.push(RegistryTags {
                     registry: key.clone(),
@@ -1605,6 +1623,29 @@ mod tests {
         )
         .unwrap();
         assert!(fresh.id("minecraft:damage_type", "demo:heat").is_none());
+
+        let mut explicit_null = files;
+        explicit_null.push(("damage_type/demo:null_conditions".into(), vec![
+            br#"{"message_id":"test","scaling":"never","exhaustion":0,"neoforge:conditions":null}"#.to_vec(),
+        ]));
+        let conditions = sunrise_world::conditions::LoadConditions::new([]);
+        let error = SyncData::load(
+            &root,
+            &PackOverlay {
+                conditions: &conditions,
+                ..PackOverlay::new(&explicit_null)
+            },
+            &sunrise_world::item_defaults::read(&root).unwrap(),
+            &crate::crafting::ResolvedSources::default(),
+        )
+        .err()
+        .unwrap();
+        assert!(
+            error.contains(
+                "data/demo/damage_type/null_conditions.json: neoforge:conditions: expected a list"
+            ),
+            "{error}"
+        );
     }
 
     /// A content mod's enchantments (`data/<ns>/enchantment/`, in the resource

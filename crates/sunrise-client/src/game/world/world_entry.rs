@@ -293,13 +293,21 @@ impl Game<'_> {
                 .map(|(registry, tags)| (registry.to_owned(), tags.map(str::to_owned).collect()))
                 .collect(),
         };
-        for (kind, ids) in sunrise_world::tag_layers::builtin_ids(root)? {
-            let key = if kind.contains(':') {
-                kind
-            } else {
-                format!("minecraft:{kind}")
-            };
-            view.ids.entry(key).or_default().extend(ids);
+        use sunrise_client::lan::data::{BIOME_REGISTRY, PACK_REGISTRIES, SyncData};
+        let builtin = sunrise_protocol::registry::Builtin::find(root)
+            .map(|path| sunrise_protocol::registry::Builtin::load(&path))
+            .transpose()?
+            .map(sunrise_client::lan::data::with_custom_stats)
+            .unwrap_or_default();
+        for (key, ids) in &builtin.registries {
+            view.ids.insert(
+                key.clone(),
+                ids.names
+                    .iter()
+                    .filter(|id| !id.is_empty())
+                    .cloned()
+                    .collect(),
+            );
         }
         view.ids.insert(
             "minecraft:item".into(),
@@ -314,58 +322,63 @@ impl Game<'_> {
                 .map(|state| state.name.to_string())
                 .collect(),
         );
-        let biomes = self
-            .world_biomes_base
-            .as_ref()
-            .unwrap_or_else(|| self.res.biomes());
-        view.ids.insert(
-            "minecraft:worldgen/biome".into(),
-            biomes
-                .registry_order()
-                .into_iter()
-                .map(str::to_owned)
-                .collect(),
-        );
-
-        use sunrise_client::lan::data::{PACK_REGISTRIES, SyncData};
         let mut pack_tags = HashMap::new();
-        let mut bind_tags =
-            |registry: &str, directory: &'static str, view: &mut load_conditions::RegistryView| {
-                let ids = view.ids.get(registry);
-                match sunrise_world::tag_layers::load(root, directory, &tag_files, |id| {
-                    ids.is_some_and(|ids| ids.contains(id))
-                }) {
-                    Ok(tags) => {
-                        view.tags.insert(
-                            registry.to_owned(),
-                            tags.iter()
-                                .filter(|(_, members)| !members.is_empty())
-                                .map(|(tag, _)| tag.clone())
-                                .collect(),
-                        );
-                        pack_tags.insert(
-                            directory,
-                            tags.into_iter()
-                                .map(|(tag, members)| {
-                                    (tag, members.into_iter().collect::<HashSet<_>>())
-                                })
-                                .collect(),
-                        );
-                    }
-                    Err(error) => {
-                        log::warn!("Sunrise: the world's {directory} tags are not applied: {error}")
-                    }
-                }
-            };
         let gameplay_tags = WorldTables::PACK_TAG_REGISTRIES
             .into_iter()
             .chain(sunrise_client::neoforge_mob_maps::MAPS.map(|definition| definition.directory))
             .filter(|directory| *directory != "item")
             .collect::<std::collections::BTreeSet<_>>();
-        for &directory in &gameplay_tags {
-            if directory != "damage_type" {
-                bind_tags(&format!("minecraft:{directory}"), directory, &mut view);
+        let mut bind_tags = |registry: &str,
+                             view: &mut load_conditions::RegistryView|
+         -> Result<()> {
+            let ids = view.ids.get(registry);
+            let tags = sunrise_client::lan::data::registry_tag_bindings(
+                root,
+                &tag_files,
+                registry,
+                |id| ids.is_some_and(|ids| ids.contains(id)),
+            )?;
+            view.tags.insert(
+                registry.to_owned(),
+                tags.iter()
+                    .filter(|(_, members)| !members.is_empty())
+                    .map(|(tag, _)| tag.clone())
+                    .collect(),
+            );
+            if let Some(directory) = registry
+                .strip_prefix("minecraft:")
+                .and_then(|name| gameplay_tags.get(name))
+            {
+                pack_tags.insert(
+                    *directory,
+                    tags.into_iter()
+                        .map(|(tag, members)| (tag, members.into_iter().collect::<HashSet<_>>()))
+                        .collect(),
+                );
             }
+            Ok(())
+        };
+        // Item, block and fluid tags already came from Items' owning loader.
+        let static_registries = builtin
+            .registries
+            .keys()
+            .map(String::as_str)
+            .chain(gameplay_tags.iter().filter_map(|directory| {
+                view.ids
+                    .get_key_value(&format!("minecraft:{directory}"))
+                    .map(|(key, _)| key.as_str())
+            }))
+            .filter(|&key| {
+                !matches!(
+                    key,
+                    BIOME_REGISTRY | "minecraft:damage_type" | "minecraft:jukebox_song"
+                ) && !PACK_REGISTRIES.contains(&key)
+                    && !view.tags.contains_key(key)
+            })
+            .map(str::to_owned)
+            .collect::<std::collections::BTreeSet<_>>();
+        for registry in &static_registries {
+            bind_tags(registry, &mut view)?;
         }
         // WORLD_REGISTRIES codecs see static holders (not their own pending entries)
         // and NeoForge's ResourceManagerRegistryLoadTask uses VANILLA_SET.
@@ -376,7 +389,7 @@ impl Game<'_> {
             .chain(["minecraft:jukebox_song"]);
         let prepared_ids: Vec<_> = fixed
             .clone()
-            .chain(["minecraft:damage_type"])
+            .chain(["minecraft:damage_type", BIOME_REGISTRY])
             .filter_map(|key| view.ids.remove_entry(key))
             .collect();
         let registry_base = base_conditions.with_features(["minecraft:vanilla"]);
@@ -413,7 +426,27 @@ impl Game<'_> {
             );
             (Arc::new(packed), admission)
         };
+        let biomes = if let Some(tables) = frozen {
+            tables.biomes.clone()
+        } else {
+            Arc::new(world_loading::WorldBiomeRegistry::load(
+                self.res.biomes(),
+                root,
+                stack,
+                &registry_overlay,
+                &read_errors,
+            )?)
+        };
         view.ids.extend(prepared_ids);
+        view.ids.insert(
+            BIOME_REGISTRY.into(),
+            biomes
+                .table
+                .registry_order()
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+        );
         for (registry, id, admitted) in packed_registry_definitions.entries() {
             let ids = view.ids.entry(registry.to_owned()).or_default();
             if admitted {
@@ -434,12 +467,8 @@ impl Game<'_> {
                 .map(|(_, definition)| definition.name.clone())
                 .collect(),
         );
-        for registry in fixed {
-            bind_tags(
-                registry,
-                registry.trim_start_matches("minecraft:"),
-                &mut view,
-            );
+        for registry in fixed.chain([BIOME_REGISTRY]) {
+            bind_tags(registry, &mut view)?;
         }
         let damage_tags: HashMap<_, HashSet<_>> = health
             .damage
@@ -581,11 +610,7 @@ impl Game<'_> {
             |registry, id| match registry {
                 "minecraft:item" => items.items.contains_key(id),
                 "minecraft:villager_profession" => stations.professions.resolve(id).is_some(),
-                "minecraft:worldgen/biome" => self
-                    .world_biomes
-                    .as_ref()
-                    .unwrap_or_else(|| self.res.biomes())
-                    .contains(id),
+                "minecraft:worldgen/biome" => biomes.table.contains(id),
                 "minecraft:entity_type" => {
                     self.res.mob_types().contains_key(id)
                         || items
@@ -605,15 +630,9 @@ impl Game<'_> {
             .with_builtins(builtin)
             .with_biome_keys(mod_api::__private::BiomeKeys::new(
                 next_biome_keys_session(),
-                self.world_biomes
-                    .as_ref()
-                    .unwrap_or_else(|| self.res.biomes())
-                    .registry_order(),
+                biomes.table.registry_order(),
             ));
         drop(registries);
-        // The fixed registry tags used during staging do not replace the
-        // existing gameplay and network registry readers for those families.
-        pack_tags.retain(|directory, _| gameplay_tags.contains(directory));
         // The API's key order is live state as well: do not change it for a
         // candidate refused by the condition readers.
         api_values::resolve_enchantment_registry(&items)?;
@@ -641,6 +660,7 @@ impl Game<'_> {
                 priority_layers,
                 items: Arc::new(items),
                 packed_registries: packed_registry_definitions,
+                biomes,
                 loot,
                 loot_modifier_manager,
                 recipes,
@@ -659,6 +679,11 @@ impl Game<'_> {
         &mut self,
         staged: super::condition_reload_state::StagedWorldTables,
     ) -> Result<()> {
+        self.world_biomes_base = staged
+            .tables
+            .as_ref()
+            .map(|tables| tables.biomes.table.clone());
+        self.world_biomes = self.world_biomes_base.clone();
         self.world_tables = staged.tables;
         self.health_resources = staged.health;
         self.mods.datapack_registries = staged.datapack_registries.map(Arc::new);

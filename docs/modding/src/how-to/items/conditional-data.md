@@ -42,8 +42,9 @@ a check that reaches an unavailable context reports a load error.
 
 A registry file sees the current candidate's static holders and resolved static tags, including tags
 staged for the load but not yet published. A mod-declared registry also sees the available frozen world
-registries and completed dependencies in the candidate. The loader uses the decoded `registered` and
-`tag_empty` operands to order registries, not strings in a custom condition's arguments. It finishes each
+registries and completed dependencies in the candidate. Only `registered` and `tag_empty` tests that
+actually run can make a registry wait; short-circuited branches and strings in custom condition arguments
+are not dependencies. It finishes each
 dependency's entries and tags before testing its consumers. The file's own registry and registries in the
 same dependency cycle are still pending: their entries do not satisfy `registered` and their tags count
 as empty. A consumer outside the cycle sees the whole batch after it binds. A rejected file never makes
@@ -52,6 +53,9 @@ its ID visible, and no condition reads the previous generation to fill in missin
 Registry entry codecs use the vanilla feature flag set. Downstream readers such as recipes use the
 world's enabled flags and the completed candidate registry and tag view. If an entry condition needs
 an experimental world flag or a tag in its own registry, put that test in a downstream consumer instead.
+An unknown feature flag name is a decode error, distinct from a valid flag that is not enabled.
+A biome rejected at world open does not count for `registered`, does not bind as a tag member and is not
+sent to joining clients.
 
 ## Errors by loader
 

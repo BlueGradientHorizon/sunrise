@@ -14,7 +14,7 @@ use std::{
 };
 use sunrise_client::datapack::RegistryFiles;
 use sunrise_world::{
-    conditions::{ConditionContextRead, LoadConditions},
+    conditions::{ConditionProgress, LoadConditions},
     loot::PackOverlay,
 };
 
@@ -177,8 +177,7 @@ fn admit_datapack_registries(
             (declaration.key.as_str(), index)
         })
         .collect();
-    let mut dependencies = vec![BTreeSet::new(); declarations.len()];
-    let mut pending = vec![Vec::new(); declarations.len()];
+    let mut pending: Vec<_> = declarations.iter().map(|_| Vec::new()).collect();
     let mut errors = Vec::new();
     for (index, (declaration, directory)) in declarations.iter().zip(&directories).enumerate() {
         for ((file, pack, _), program) in winners.iter().zip(&programs) {
@@ -192,17 +191,7 @@ fn admit_datapack_registries(
             };
             match program {
                 Ok((json, program)) => {
-                    program.visit_context_reads(|read| {
-                        let registry = match read {
-                            ConditionContextRead::Registered { registry, .. }
-                            | ConditionContextRead::TagEmpty { registry, .. } => registry,
-                            ConditionContextRead::FeatureFlags => return,
-                        };
-                        if let Some(&producer) = producers.get(registry) {
-                            dependencies[index].insert(producer);
-                        }
-                    });
-                    pending[index].push((entry, *file, *pack, *json, program));
+                    pending[index].push((entry, *file, *pack, *json, program.evaluation()));
                 }
                 Err(reason) => errors.push(format!(
                     "datapack registry {} entry {entry} (pack {pack}, file {file}): {reason:?}",
@@ -213,35 +202,49 @@ fn admit_datapack_registries(
     }
 
     let mut builder = DatapackCandidateBuilder::default();
-    for batch in registry_batches(&dependencies) {
-        // Pending entries and tags in this batch are not bound while its codecs run.
+    let mut unbound = vec![true; declarations.len()];
+    let mut groups: Vec<_> = (0..declarations.len()).collect();
+    let mut cyclic = vec![false; declarations.len()];
+    let mut entries = vec![BTreeMap::new(); declarations.len()];
+    while unbound.contains(&true) {
         let context = view.conditions(base);
-        for index in batch {
-            let declaration = &declarations[index];
-            let mut entries = BTreeMap::new();
-            for (entry, file, pack, json, program) in pending[index].drain(..) {
-                let decoded = program
-                    .allows_file_isolated(&context, file)
-                    .map_err(malformed)
-                    .and_then(|accepted| {
-                        if !accepted {
-                            return Ok(None);
-                        }
-                        decode_datapack_entry(declaration, json, &["neoforge:conditions"])
-                            .map(Some)
-                            .map_err(Decode)
-                    });
-                match decoded {
-                    Ok(Some(value)) => {
-                        entries.insert(entry, (value, pack.to_owned()));
+        let mut dependencies = vec![BTreeSet::new(); declarations.len()];
+        for (index, declaration) in declarations.iter().enumerate() {
+            let group = groups[index];
+            pending[index].retain_mut(|(entry, file, pack, json, evaluation)| {
+                let decoded = match evaluation.advance(&context, |registry| {
+                    producers.get(registry).is_some_and(|&producer| {
+                        unbound[producer] && (groups[producer] != group || !cyclic[group])
+                    })
+                }) {
+                    Ok(ConditionProgress::NeedsRegistry(registry)) => {
+                        dependencies[group].insert(groups[producers[registry]]);
+                        return true;
                     }
-                    Ok(None) => {}
+                    Ok(ConditionProgress::Complete(false)) => return false,
+                    Ok(ConditionProgress::Complete(true)) => {
+                        decode_datapack_entry(declaration, json).map_err(Decode)
+                    }
+                    Err(error) => Err(malformed(error)),
+                };
+                match decoded {
+                    Ok(value) => {
+                        entries[index].insert(std::mem::take(entry), (value, (*pack).to_owned()));
+                    }
                     Err(reason) => errors.push(format!(
                         "datapack registry {} entry {entry} (pack {pack}, file {file}): {reason:?}",
                         declaration.key,
                     )),
                 }
+                false
+            });
+        }
+        let mut bound_any = false;
+        for (index, declaration) in declarations.iter().enumerate() {
+            if !unbound[index] || !dependencies[groups[index]].is_empty() {
+                continue;
             }
+            let entries = std::mem::take(&mut entries[index]);
             let tags = super::native_registry_entries::load_registry_tags(
                 root,
                 overlay,
@@ -265,6 +268,25 @@ fn admit_datapack_registries(
                     .collect(),
             );
             builder.stage_registry(&declaration.key, entries, tags);
+            unbound[index] = false;
+            bound_any = true;
+        }
+        if !bound_any {
+            // All pending groups are blocked. A sink component can test its internal
+            // reads as unbound; its entries and tags then become visible together, even
+            // if resuming a program reaches another dependency before it can finish.
+            let component = registry_components(&dependencies)
+                .into_iter()
+                .rev()
+                .find(|members| !dependencies[members[0]].is_empty())
+                .expect("nonempty graph of blocked registries");
+            let group = component[0];
+            cyclic[group] = true;
+            for current in &mut groups {
+                if component.contains(current) {
+                    *current = group;
+                }
+            }
         }
     }
     if !errors.is_empty() {
@@ -275,10 +297,9 @@ fn admit_datapack_registries(
         .map_err(|error| format_datapack_error(&error))
 }
 
-/// Group strongly connected registries (Kosaraju's two traversals), then sort
-/// the component graph into ready batches. An outside consumer waits for the
-/// entire cycle to bind. Use an explicit stack: pack input controls the depth.
-fn registry_batches(dependencies: &[BTreeSet<usize>]) -> Vec<Vec<usize>> {
+/// Strongly connected components, consumers before their dependencies
+/// (Kosaraju's two traversals). Pack input controls the depth, so use explicit stacks.
+fn registry_components(dependencies: &[BTreeSet<usize>]) -> Vec<Vec<usize>> {
     let mut consumers = vec![Vec::new(); dependencies.len()];
     for (consumer, producers) in dependencies.iter().enumerate() {
         for &producer in producers {
@@ -320,24 +341,7 @@ fn registry_batches(dependencies: &[BTreeSet<usize>]) -> Vec<Vec<usize>> {
         }
         components.push(component);
     }
-    let mut batches: Vec<Vec<usize>> = Vec::new();
-    let mut stages: Vec<Option<usize>> = vec![None; dependencies.len()];
-    for component in components.into_iter().rev() {
-        let stage = component
-            .iter()
-            .flat_map(|&index| &dependencies[index])
-            .filter_map(|&producer| stages[producer])
-            .max()
-            .map_or(0, |stage| stage + 1);
-        if batches.len() <= stage {
-            batches.resize_with(stage + 1, Vec::new);
-        }
-        for index in component {
-            stages[index] = Some(stage);
-            batches[stage].push(index);
-        }
-    }
-    batches
+    components
 }
 
 pub(super) fn conditions_for_mods(

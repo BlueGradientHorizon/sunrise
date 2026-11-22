@@ -447,40 +447,114 @@ pub struct DecodedFileConditions<'a> {
     nodes: Vec<Condition<'a>>,
 }
 
-/// A built-in operand that reads the loader's condition context.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ConditionContextRead<'a> {
-    FeatureFlags,
-    Registered { registry: &'a str, entry: &'a str },
-    TagEmpty { registry: &'a str, tag: &'a str },
+/// The outcome of advancing a condition program in a staged registry load.
+pub enum ConditionProgress<'a> {
+    Complete(bool),
+    NeedsRegistry(&'a str),
 }
 
-impl DecodedFileConditions<'_> {
-    /// Visit all typed context reads, including branches that testing may short-circuit.
-    pub fn visit_context_reads<'a>(&'a self, mut visit: impl FnMut(ConditionContextRead<'a>)) {
-        for node in &self.nodes {
-            node.visit_context_reads(&mut visit);
-        }
+/// A suspended program keeps its place in the condition tree, not a cached verdict.
+/// In particular, reaching a pending registry never re-invokes an earlier callback.
+pub struct ConditionEvaluation<'program, 'load> {
+    load: &'load LoadConditions,
+    frames: Vec<EvaluationFrame<'program, 'load>>,
+    missing_context: Option<&'static str>,
+}
+
+enum EvaluationFrame<'program, 'load> {
+    List(bool, std::slice::Iter<'program, Condition<'load>>),
+    Not,
+    Operand(&'program Condition<'load>),
+}
+
+impl<'program, 'load> ConditionEvaluation<'program, 'load> {
+    /// Test reached operands against the current view, stopping before a pending registry read.
+    pub fn advance(
+        &mut self,
+        view: &LoadConditions,
+        pending: impl Fn(&str) -> bool,
+    ) -> Result<ConditionProgress<'program>, String> {
+        self.advance_context(&view.context, pending)
+            .map_err(|error| error.message().to_owned())
     }
 
-    /// Test without adding to registry diagnostics, using `view` for the feature, registry and tag
-    /// context. The original load still supplies the enabled mod IDs, handlers and cached verdicts.
-    pub fn allows_file_isolated(&self, view: &LoadConditions, path: &str) -> Result<bool, String> {
-        self.verdict(&view.context, &|| path.to_owned())
-            .map_err(|error| error.message().to_owned())
+    fn advance_context(
+        &mut self,
+        context: &Context,
+        pending: impl Fn(&str) -> bool,
+    ) -> Result<ConditionProgress<'program>, ConditionError> {
+        loop {
+            let mut result = match self.frames.last_mut() {
+                Some(EvaluationFrame::List(and, children)) => match children.next() {
+                    Some(node) => {
+                        self.frames.push(EvaluationFrame::Operand(node));
+                        continue;
+                    }
+                    None => *and,
+                },
+                Some(EvaluationFrame::Operand(node)) => match *node {
+                    Condition::Combinator { and, children } => {
+                        let frame = EvaluationFrame::List(*and, children.iter());
+                        self.frames.pop();
+                        self.frames.push(frame);
+                        continue;
+                    }
+                    Condition::Not(child) => {
+                        let frame = EvaluationFrame::Operand(child);
+                        self.frames.pop();
+                        self.frames.push(EvaluationFrame::Not);
+                        self.frames.push(frame);
+                        continue;
+                    }
+                    Condition::Registered { registry, .. }
+                    | Condition::TagEmpty { registry, .. }
+                        if pending(registry) =>
+                    {
+                        return Ok(ConditionProgress::NeedsRegistry(registry));
+                    }
+                    node => node.test_operand(self.load, context, &mut self.missing_context)?,
+                },
+                _ => unreachable!("a running condition has a list or operand"),
+            };
+            self.frames.pop();
+            // A list continues only so long as its result is undecided. Unwind a
+            // decided result through NOT and the parent lists without reading their tails.
+            loop {
+                match self.frames.last() {
+                    Some(EvaluationFrame::List(and, _)) if *and == result => break,
+                    Some(EvaluationFrame::Not) => result = !result,
+                    Some(EvaluationFrame::List(..)) => {}
+                    _ => {
+                        return self
+                            .missing_context
+                            .map_or(Ok(ConditionProgress::Complete(result)), |reason| {
+                                Err(ConditionError::MissingContext(reason))
+                            });
+                    }
+                }
+                self.frames.pop();
+            }
+        }
+    }
+}
+
+impl<'load> DecodedFileConditions<'load> {
+    /// Start testing an already decoded program in candidate dependency order.
+    pub fn evaluation(&self) -> ConditionEvaluation<'_, 'load> {
+        ConditionEvaluation {
+            load: self.load,
+            frames: vec![EvaluationFrame::List(true, self.nodes.iter())],
+            missing_context: None,
+        }
     }
 
     fn verdict(&self, context: &Context, path: &dyn Fn() -> String) -> Verdict {
         let Some(payload) = self.payload else {
             return Ok(true);
         };
-        let evaluate = || {
-            let mut missing_context = None;
-            let allowed =
-                Condition::combine(true, &self.nodes, self.load, context, &mut missing_context)?;
-            missing_context.map_or(Ok(allowed), |reason| {
-                Err(ConditionError::MissingContext(reason))
-            })
+        let evaluate = || match self.evaluation().advance_context(context, |_| false)? {
+            ConditionProgress::Complete(allowed) => Ok(allowed),
+            ConditionProgress::NeedsRegistry(_) => unreachable!("no pending registries"),
         };
         if !self.load.has_registered() {
             return evaluate();
@@ -500,8 +574,7 @@ impl DecodedFileConditions<'_> {
             .expect("owning candidate diagnostics");
         // Context-free answers are shared across candidate views. Cache the
         // result, not its loader's recovery policy.
-        let mut reads_context = false;
-        self.visit_context_reads(|_| reads_context = true);
+        let reads_context = self.nodes.iter().any(Condition::reads_context);
         let cell = state
             .lock()
             .unwrap()
@@ -668,7 +741,22 @@ impl<'a> Condition<'a> {
                     .filter(|flags| !flags.is_empty())
                     .ok_or("flags")?
                     .iter()
-                    .map(|value| identifier(value, "flags"))
+                    .map(|value| {
+                        let id = identifier(value, "flags")?;
+                        // FeatureFlags.REGISTRY, not the enabled set in the condition context.
+                        match id.as_str() {
+                            "minecraft:vanilla"
+                            | "minecraft:trade_rebalance"
+                            | "minecraft:redstone_experiments"
+                            | "minecraft:minecart_improvements" => Ok(id),
+                            _ => {
+                                errors.invalid.insert(format!(
+                                    "neoforge:feature_flags_enabled: unknown flag {id}"
+                                ));
+                                Err("flags")
+                            }
+                        }
+                    })
                     .collect::<Result<_, _>>()?,
             ),
             Registered => Self::Registered {
@@ -697,30 +785,16 @@ impl<'a> Condition<'a> {
         }))
     }
 
-    fn visit_context_reads<'node>(
-        &'node self,
-        visit: &mut impl FnMut(ConditionContextRead<'node>),
-    ) {
+    fn reads_context(&self) -> bool {
         match self {
-            Self::FeatureFlags(_) => visit(ConditionContextRead::FeatureFlags),
-            Self::Registered { registry, value } => visit(ConditionContextRead::Registered {
-                registry,
-                entry: value,
-            }),
-            Self::TagEmpty { registry, tag } => {
-                visit(ConditionContextRead::TagEmpty { registry, tag });
-            }
-            Self::Not(child) => child.visit_context_reads(visit),
-            Self::Combinator { children, .. } => {
-                for child in children {
-                    child.visit_context_reads(visit);
-                }
-            }
-            Self::ModLoaded(_) | Self::Literal(_) | Self::Custom(..) => {}
+            Self::FeatureFlags(_) | Self::Registered { .. } | Self::TagEmpty { .. } => true,
+            Self::Not(child) => child.reads_context(),
+            Self::Combinator { children, .. } => children.iter().any(Self::reads_context),
+            Self::ModLoaded(_) | Self::Literal(_) | Self::Custom(..) => false,
         }
     }
 
-    fn test(
+    fn test_operand(
         &self,
         load: &LoadConditions,
         context: &Context,
@@ -753,29 +827,9 @@ impl<'a> Condition<'a> {
                 };
                 !tags.contains(registry, tag)
             }
-            Self::Not(child) => !child.test(load, context, missing_context)?,
-            Self::Combinator { and, children } => {
-                Self::combine(*and, children, load, context, missing_context)?
-            }
+            Self::Not(_) | Self::Combinator { .. } => unreachable!("not an operand"),
             Self::Custom(handler, args) => handler(args).map_err(ConditionError::Invalid)?,
         })
-    }
-
-    fn combine(
-        and: bool,
-        children: &[Self],
-        load: &LoadConditions,
-        context: &Context,
-        missing_context: &mut Option<&'static str>,
-    ) -> Verdict {
-        // ConditionalDecoder and AndCondition/OrCondition test left to right, stopping once decided.
-        for child in children {
-            let value = child.test(load, context, missing_context)?;
-            if value != and {
-                return Ok(value);
-            }
-        }
-        Ok(and)
     }
 }
 
@@ -950,6 +1004,27 @@ mod tests {
         let experiment = LoadConditions::new([])
             .with_features(["minecraft:vanilla", "minecraft:trade_rebalance"]);
         assert!(experiment.allows(&both));
+    }
+
+    #[test]
+    fn feature_flag_codec_rejects_unknown_flags_in_unreached_operands() {
+        let known_disabled =
+            json!({"type":"neoforge:feature_flags_enabled", "flags":["trade_rebalance"]});
+        let conditions = LoadConditions::new([]).with_features(["vanilla"]);
+        assert_eq!(
+            conditions.allows_file_isolated(&file(known_disabled), "known.json"),
+            Ok(false)
+        );
+        let skipped = file(json!({"type":"neoforge:or", "values":[
+            {"type":"neoforge:always"},
+            {"type":"neoforge:feature_flags_enabled", "flags":["test:typo"]}
+        ]}));
+        assert!(
+            conditions
+                .allows_file_isolated(&skipped, "skipped.json")
+                .unwrap_err()
+                .contains("unknown flag test:typo")
+        );
     }
 
     #[test]

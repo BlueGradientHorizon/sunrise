@@ -146,7 +146,6 @@ mod tests {
                     game.res.clone(),
                     game.pack.clone(),
                     game.options.clone(),
-                    game.settings.clone(),
                     Arc::new(sunrise_world::datafix::progress::UpgradeProgress::new()),
                 )
                 .unwrap();

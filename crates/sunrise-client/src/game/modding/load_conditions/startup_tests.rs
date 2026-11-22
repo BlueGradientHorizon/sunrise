@@ -30,6 +30,116 @@ impl mod_api::Hooks for Registrant {
 
 #[test]
 #[ignore = "daily"]
+fn first_open_conditions_see_static_tags_and_admitted_biomes() {
+    use serde_json::{Value, json};
+    use std::fs;
+    let scratch = tempfile::tempdir().unwrap();
+    let pack = scratch.path().join("datapacks/conditions");
+    fs::create_dir_all(&pack).unwrap();
+    fs::write(
+        pack.join("pack.mcmeta"),
+        r#"{"pack":{"description":"conditions","min_format":[121,0],"max_format":[121,0]}}"#,
+    )
+    .unwrap();
+    fs::write(
+        scratch.path().join("datapacks.json"),
+        r#"{"enabled":["vanilla","file/conditions"],"disabled":[]}"#,
+    )
+    .unwrap();
+    let write = |file: &str, value: Value| {
+        let path = pack.join("data/demo").join(file);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, value.to_string()).unwrap();
+    };
+    let registered =
+        |id| json!({"type":"neoforge:registered","registry":"minecraft:worldgen/biome","value":id});
+    let tag_empty =
+        |registry, tag| json!({"type":"neoforge:tag_empty","registry":registry,"tag":tag});
+    let not = |condition| json!({"type":"neoforge:not","value":condition});
+    crate::game::native_entity_refs::tests::with_game(|game| {
+        write(
+            "worldgen/biome/disabled.json",
+            json!({"neoforge:conditions":[{"type":"neoforge:never"}]}),
+        );
+        let mut enabled = game
+            .res
+            .biomes()
+            .builtin_file("minecraft:plains")
+            .unwrap()
+            .clone();
+        enabled["neoforge:conditions"] = json!([not(registered("minecraft:plains"))]);
+        write("worldgen/biome/enabled.json", enabled);
+        write(
+            "tags/worldgen/biome/disabled.json",
+            json!({"values":["demo:disabled"]}),
+        );
+        for (id, condition) in [
+            (
+                "static_tag",
+                not(tag_empty(
+                    "minecraft:point_of_interest_type",
+                    "minecraft:acquirable_job_site",
+                )),
+            ),
+            ("known_biome", registered("demo:enabled")),
+            ("unknown_biome", registered("demo:disabled")),
+            (
+                "empty_biome_tag",
+                tag_empty("minecraft:worldgen/biome", "demo:disabled"),
+            ),
+        ] {
+            write(
+                &format!("recipe/{id}.json"),
+                json!({
+                    "type":"minecraft:crafting_shapeless", "ingredients":["minecraft:flint"],
+                    "result":{"id":"minecraft:stick"}, "neoforge:conditions":[condition]
+                }),
+            );
+        }
+        let mut request = crate::game::world_loading::WorldRequest::new(
+            "condition-winners",
+            Some("test"),
+            Some(1),
+            true,
+            None,
+            Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+        )
+        .unwrap();
+        request.save_root = scratch.path().to_owned();
+        game.load_world(request).unwrap();
+        let biomes = game.world_biomes_base.as_ref().unwrap();
+        assert!(biomes.contains("demo:enabled"));
+        assert!(!biomes.contains("demo:disabled"));
+        for id in [
+            "demo:static_tag",
+            "demo:known_biome",
+            "demo:empty_biome_tag",
+        ] {
+            assert!(
+                game.recipes().recipe(id).is_some(),
+                "missing admitted recipe {id}"
+            );
+        }
+        assert!(game.recipes().recipe("demo:unknown_biome").is_none());
+        let sync = crate::game::lan::sync::sync_data(
+            &game.options.resources,
+            &game.res.core.item_data,
+            &game.pack_files(),
+        )
+        .unwrap();
+        assert!(
+            sync.id("minecraft:worldgen/biome", "demo:enabled")
+                .is_some()
+        );
+        assert!(
+            sync.id("minecraft:worldgen/biome", "demo:disabled")
+                .is_none()
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn startup_recipe_uses_registered_condition() {
     fn copy_tree(from: &std::path::Path, to: &std::path::Path) {
         std::fs::create_dir_all(to).unwrap();

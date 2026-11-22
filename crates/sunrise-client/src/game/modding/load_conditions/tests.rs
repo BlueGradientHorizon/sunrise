@@ -562,7 +562,13 @@ fn registered_reads_the_candidate_packs_not_the_last_load() {
     use sunrise_world::{conditions::LoadConditions, loot::PackOverlay};
 
     let root = tempfile::tempdir().unwrap();
-    let keys = ["test:a_downstream", "test:b_right", "test:c_left"];
+    let keys = [
+        "test:a_downstream",
+        "test:b_right",
+        "test:c_left",
+        "test:d_first",
+        "test:e_later",
+    ];
     let declarations = keys.map(|key| DatapackRegistryDeclaration {
         mod_id: "test".into(),
         key: key.into(),
@@ -626,13 +632,38 @@ fn registered_reads_the_candidate_packs_not_the_last_load() {
         "tags/test/b_right/bound.json",
         json!({"values":["test:holder"]}),
     );
+    write(
+        "top",
+        "test/d_first/first.json",
+        json!({
+            "enabled":true, "neoforge:conditions":[{"type":"neoforge:or", "values":[
+                {"type":"neoforge:always"}, registered("test:e_later", "test:later")
+            ]}]
+        }),
+    );
+    write(
+        "top",
+        "test/e_later/later.json",
+        json!({
+            "enabled":true, "neoforge:conditions":[
+                {"type":"test:counter"}, registered("test:d_first", "test:first")
+            ]
+        }),
+    );
     let packs = ["base", "top"].map(|layer| {
         DataPack::from_source(
             format!("file/{layer}"),
             ResourceSource::directory(root.path().join(layer)),
         )
     });
-    let base = LoadConditions::new([]).with_features(["minecraft:vanilla"]);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let counter = calls.clone();
+    let base = LoadConditions::new([])
+        .with_features(["minecraft:vanilla"])
+        .with_lookup([("test:counter", move |_: &Value| {
+            counter.fetch_add(1, Ordering::SeqCst);
+            Ok(true)
+        })]);
     let tags: Vec<_> = DataStore::load(&[&packs[0], &packs[1]])
         .files
         .into_iter()
@@ -653,6 +684,9 @@ fn registered_reads_the_candidate_packs_not_the_last_load() {
             .unwrap();
     assert_eq!(admitted.entries("test:c_left").unwrap(), ["test:seed"]);
     assert_eq!(admitted.entries("test:b_right").unwrap(), ["test:holder"]);
+    assert_eq!(admitted.entries("test:d_first").unwrap(), ["test:first"]);
+    assert_eq!(admitted.entries("test:e_later").unwrap(), ["test:later"]);
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
     assert_eq!(
         admitted.entries("test:a_downstream").unwrap(),
         ["test:answer"]
@@ -701,6 +735,71 @@ fn registered_reads_the_candidate_packs_not_the_last_load() {
             .conditions(&base)
             .allows(&test("test:a_downstream", "test:off"))
     );
+}
+
+#[test]
+fn unsynced_registry_admits_conditional_payloads_and_tags_without_worldgen_limit() {
+    use mod_api::{
+        DatapackField, DatapackFieldKind, DatapackRegistryDeclaration, DatapackRegistrySet,
+        DatapackRegistrySync, DatapackValue,
+    };
+    use sunrise_world::loot::PackOverlay;
+    let root = tempfile::tempdir().unwrap();
+    let declaration = DatapackRegistryDeclaration {
+        mod_id: "test".into(),
+        key: "test:spell".into(),
+        sync: DatapackRegistrySync::ServerOnly,
+        fields: vec![
+            DatapackField::required("enabled", DatapackFieldKind::Bool),
+            DatapackField::with_default(
+                "neoforge:conditions",
+                DatapackFieldKind::Bool,
+                DatapackValue::Bool(true),
+            ),
+        ],
+    };
+    assert!(
+        declaration
+            .decode_entry(r#"{"neoforge:value":{"enabled":true}}"#)
+            .is_err()
+    );
+    let winners = [
+        ("inline", br#"{"enabled":true,"neoforge:conditions":[{"type":"neoforge:always"}]}"#.as_slice()),
+        ("wrapped", br#"{"neoforge:value":{"enabled":false,"neoforge:conditions":false},"neoforge:conditions":[]}"#.as_slice()),
+    ].into_iter().map(|(id, bytes)| (format!("data/test/test/spell/{id}.json"), ("top".to_owned(), bytes.to_vec()))).collect();
+    let tagged = (0..8193)
+        .map(|index| {
+            (
+                format!("tags/test:test/spell/t{index}"),
+                vec![br#"{"values":["test:inline"]}"#.to_vec()],
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut view = super::RegistryView::default();
+    let admitted = super::admit_datapack_registries(
+        root.path(),
+        &PackOverlay::new(&tagged),
+        &mut view,
+        &[declaration],
+        &winners,
+    )
+    .unwrap();
+    let set = DatapackRegistrySet::from_candidate(admitted);
+    assert_eq!(
+        set.get("test:spell", "test:inline")
+            .unwrap()
+            .get("neoforge:conditions"),
+        Some(&DatapackValue::Bool(true))
+    );
+    assert_eq!(
+        set.get("test:spell", "test:wrapped").unwrap().values,
+        [
+            ("enabled".into(), DatapackValue::Bool(false)),
+            ("neoforge:conditions".into(), DatapackValue::Bool(false)),
+        ]
+    );
+    assert_eq!(view.tags["test:spell"].len(), 8193);
+    assert!(view.tags["test:spell"].contains("test:t8192"));
 }
 
 /// A handler that reads the world through the Host. Read in a load phase, it is a named refusal.

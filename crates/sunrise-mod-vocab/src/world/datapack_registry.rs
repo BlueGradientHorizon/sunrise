@@ -316,21 +316,27 @@ impl DatapackRegistryDeclaration {
     pub fn decode_entry(&self, text: &str) -> Result<DatapackEntry, DatapackDecodeError> {
         let json: Value = serde_json::from_str(text)
             .map_err(|error| DatapackDecodeError::Malformed(error.to_string()))?;
-        decode_datapack_entry(self, &json, &[])
+        let object = json.as_object().ok_or(DatapackDecodeError::NotAnObject)?;
+        decode_record(&self.fields, object, &[])
     }
 }
 
-/// Decode an already parsed entry. Only the owning resource loader may set
-/// aside metadata it has already checked, such as a file's load conditions.
+/// Decode a parsed resource whose load conditions have already passed, following
+/// ConditionalDecoder: unwrap `neoforge:value` or hide the outer conditions key.
 pub fn decode_datapack_entry(
     declaration: &DatapackRegistryDeclaration,
     json: &Value,
-    metadata: &[&str],
 ) -> Result<DatapackEntry, DatapackDecodeError> {
-    let Value::Object(object) = json else {
-        return Err(DatapackDecodeError::NotAnObject);
-    };
-    decode_record(&declaration.fields, object, metadata)
+    let mut object = json.as_object().ok_or(DatapackDecodeError::NotAnObject)?;
+    let mut ignored: &[&str] = &[];
+    if object.contains_key("neoforge:conditions") {
+        if let Some(inner) = object.get("neoforge:value") {
+            object = inner.as_object().ok_or(DatapackDecodeError::NotAnObject)?;
+        } else {
+            ignored = &["neoforge:conditions"];
+        }
+    }
+    decode_record(&declaration.fields, object, ignored)
 }
 
 /// Decodes a JSON object against a flat record schema, the same way for every user of it (a
@@ -351,7 +357,10 @@ pub(crate) fn decode_record(
     }
     let mut values = Vec::with_capacity(fields.len());
     for field in fields {
-        let value = match object.get(&field.name) {
+        let json = (!ignored.contains(&field.name.as_str()))
+            .then(|| object.get(&field.name))
+            .flatten();
+        let value = match json {
             Some(json) => decode_value(field, json)?,
             None => field
                 .default

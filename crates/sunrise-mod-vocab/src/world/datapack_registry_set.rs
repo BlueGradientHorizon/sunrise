@@ -184,7 +184,7 @@ impl DatapackCandidateBuilder {
                     })?;
                     parsed.insert(json)
                 };
-                let decoded = decode_datapack_entry(declaration, json, &["neoforge:conditions"])
+                let decoded = decode_datapack_entry(declaration, json)
                     .map_err(|error| fail(DatapackLoadReason::Decode(error)))?;
                 staged[index].insert(entry, (decoded, pack.to_owned()));
             }
@@ -202,8 +202,9 @@ impl DatapackCandidate {
     /// [`DatapackRegistryDeclaration::entry_file`]'s directory rule. Each file has versions in
     /// pack order, the last winning as `ResourceManager` hands them out. A physical file can
     /// match more than one registry directory. This constructor treats `neoforge:conditions`
-    /// as metadata without testing it: after a false condition, the caller omits the entire
-    /// path rather than exposing a lower version. A condition error is not a false result.
+    /// as metadata without testing it, and decodes `neoforge:value` when the wrapper supplies it.
+    /// After a false condition, the caller omits the entire path rather than exposing a lower
+    /// version. A condition error is not a false result.
     ///
     /// References resolve against the whole candidate, so a forward reference works and an
     /// absent target in a declared registry refuses everything. References to undeclared

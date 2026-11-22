@@ -991,8 +991,10 @@ The game selects the winning resource from mod content and enabled data packs be
 evaluates [its conditions](items/conditional-data.md#registry-conditions). If two registry directories contain
 that path, each interprets it relative to its own directory. A false condition omits the winner, without a
 lower-pack fallback. An unreadable winner refuses the load and names its pack and file. After conditions pass,
-the game decodes the entry against `fields`: an undeclared key, missing required key, wrong type or out-of-range
-value fails the entry. A default never stands in for invalid data. Tags resolve against accepted entries and
+the game decodes the entry against `fields`. When a resource has `neoforge:conditions`, write its schema object
+inside `neoforge:value` or write its fields beside the conditions array. In the second form the outer
+`neoforge:conditions` key is not a schema field. An undeclared key, missing required key, wrong type or
+out-of-range value fails the entry. A default never stands in for invalid data. Tags resolve against accepted entries and
 references are checked across the complete candidate. Local loading has no per-file byte, whole-candidate byte
 or collection count ceiling from network publication; the declared field schema still applies.
 

@@ -436,10 +436,9 @@ pub(super) fn load_registry_tags(
             }
         }
     }
-    definitions
-        .build(|id, _| known(id).then(|| id.to_owned()))
-        .map(|built| built.tags)
-        .map_err(|error| error.to_string())
+    Ok(definitions
+        .bind(|id, _| known(id).then(|| id.to_owned()))
+        .tags)
 }
 
 #[cfg(test)]

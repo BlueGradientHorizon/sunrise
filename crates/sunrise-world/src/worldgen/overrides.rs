@@ -213,6 +213,8 @@ pub struct WorldgenOverrides {
     templates: BTreeMap<String, sunrise_assets::resource_source::Resource>,
     /// Bundle name → id → the highest pack's JSON text for it.
     entries: BTreeMap<String, BTreeMap<String, String>>,
+    /// The winning file failed a world registry condition, including replaced base entries.
+    omitted_biomes: std::collections::BTreeSet<String>,
     /// Tag bundle name → (tag id, pack id, tag file text), lowest pack first.
     tags: BTreeMap<String, Vec<(String, String, String)>>,
 }
@@ -230,7 +232,23 @@ impl WorldgenOverrides {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.entries.is_empty() && self.tags.is_empty() && self.templates.is_empty()
+        self.entries.is_empty()
+            && self.tags.is_empty()
+            && self.templates.is_empty()
+            && self.omitted_biomes.is_empty()
+    }
+    /// Project already admitted biome files into the generator's bundle. A skipped
+    /// winning file must also remove any lower file in the prepared bundle.
+    pub fn set_biome_winners(
+        &mut self,
+        files: BTreeMap<String, String>,
+        omitted: std::collections::BTreeSet<String>,
+    ) {
+        self.entries.remove("biomes");
+        if !files.is_empty() {
+            self.entries.insert("biomes".into(), files);
+        }
+        self.omitted_biomes = omitted;
     }
     /// A pack's file for `id` in `bundle`: called for packs from the lowest
     /// to the highest, so the last call for an id wins.
@@ -506,6 +524,9 @@ impl WorldgenOverrides {
     ) -> BTreeMap<String, String> {
         for (id, json) in self.entries(bundle) {
             base.insert(id.to_owned(), json.to_owned());
+        }
+        if bundle == "biomes" {
+            base.retain(|id, _| !self.omitted_biomes.contains(id));
         }
         base
     }
