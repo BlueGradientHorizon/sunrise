@@ -412,6 +412,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn active_effect_ids_are_load_owned_slots() {
+        use sunrise_client::entities::ArmorStand;
+
         with_game(|game| {
             let kind = game
                 .res
@@ -430,13 +432,40 @@ mod tests {
                 true,
                 true,
             );
+            let slowness = ActiveEffect::new(
+                mod_platform::__private::part_tests::effect_key("minecraft:slowness"),
+                90,
+                2,
+                true,
+                false,
+                true,
+            );
             assert!(game.living_add_effect(zombie, &speed));
+            assert!(game.living_add_effect(zombie, &slowness));
             let listed = collect_effects(game, zombie).unwrap();
+            assert_eq!(listed, [speed.clone(), slowness]);
             assert_eq!(
                 listed[0].id,
                 mod_platform::__private::part_tests::effect_key("speed")
             );
             assert_eq!(listed[0].id.id(game), Some("minecraft:speed"));
+
+            let mut first = Vec::new();
+            assert_eq!(
+                zombie.visit_effects(game, &mut |effect| {
+                    first.push(effect);
+                    ControlFlow::Break(())
+                }),
+                Ok(ControlFlow::Break(()))
+            );
+            assert_eq!(first, [speed]);
+
+            game.armor_stands.push(ArmorStand::new(22, Vec3::ZERO, 0.0));
+            let stand = game.living(game.entity(22).unwrap()).unwrap();
+            assert_eq!(
+                stand.visit_effects(game, &mut |_| panic!("unavailable effects visited")),
+                Err(EntityReadError::Unavailable)
+            );
         });
     }
 

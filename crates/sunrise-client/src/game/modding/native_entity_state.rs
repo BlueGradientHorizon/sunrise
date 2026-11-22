@@ -753,6 +753,17 @@ mod tests {
             [(water.to_owned(), 0.4)]
         );
         assert!(touched_fluids((0.0, false), (0.0, false)).is_empty());
+
+        // A break visits only the first contact. Total order treats +0.0 as higher than -0.0.
+        let mut first = Vec::new();
+        assert_eq!(
+            visit_touched_fluids((-0.0, true), (0.0, true), &mut |id, depth| {
+                first.push((id.to_owned(), depth.to_bits()));
+                ControlFlow::Break(())
+            }),
+            ControlFlow::Break(())
+        );
+        assert_eq!(first, [(lava.to_owned(), 0.0_f64.to_bits())]);
         assert_eq!(eye_fluid(true, true), Some(water));
         assert_eq!(eye_fluid(false, true), Some(lava));
         assert_eq!(eye_fluid(false, false), None);

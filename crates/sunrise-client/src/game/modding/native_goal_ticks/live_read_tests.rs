@@ -1,5 +1,7 @@
 use super::*;
 use crate::game::native_entity_refs::tests::with_game;
+use mod_api::{ActiveEffect, AttributeOperation, EntityReadError};
+use std::ops::ControlFlow;
 use sunrise_core::geometry::Vec3;
 
 struct OneMob<'a>(&'a Mob);
@@ -33,19 +35,79 @@ fn scoped_host_reads_live_other_mob_before_stale_snapshot() {
         other.yaw = 37.0;
         other.head_pitch = -12.0;
         other.attrs.max_health = 73.0;
+        other.add_effect("minecraft:night_vision", 80, 1);
+        sunrise_client::mobs::finalize::add_modifier(
+            &mut other,
+            sunrise_client::mobs::finalize::Attr::MovementSpeed,
+            "test:loaned_speed",
+            0.25,
+            sunrise_client::mobs::finalize::Op::AddMultipliedTotal,
+        );
         let live = OneMob(&other);
         let mut world = game.mob_world_base(&snapshot);
         world.goal_host = Some(game);
         world.live_mobs = Some(&live);
         let epoch = game.native_lifecycle.epoch().unwrap();
         let entity = EntityRef::new(epoch, other.id);
+        let own = LivingRef::new(EntityRef::new(epoch, actor.id));
         let context = GoalCx {
             m: &mut actor,
             w: &world,
             host: game,
         };
         assert_eq!(entity.rotation(&context), Some([37.0, -12.0]));
-        assert_eq!(LivingRef::new(entity).max_health(&context), Some(73.0));
+        let living = LivingRef::new(entity);
+        assert_eq!(living.max_health(&context), Some(73.0));
+        assert_eq!(
+            own.visit_effects(&context, &mut |_| panic!("ticking mob has no effects")),
+            Ok(ControlFlow::Continue(()))
+        );
+        let mut effects = Vec::new();
+        assert_eq!(
+            living.visit_effects(&context, &mut |effect| {
+                effects.push(effect);
+                ControlFlow::Continue(())
+            }),
+            Ok(ControlFlow::Continue(()))
+        );
+        let night_vision =
+            mod_platform::__private::part_tests::effect_key("minecraft:night_vision");
+        assert_eq!(
+            effects,
+            [ActiveEffect::new(night_vision, 80, 1, false, true, true)]
+        );
+        let speed = "minecraft:movement_speed";
+        assert_eq!(
+            own.visit_attributes(&context, &mut |id| {
+                if id == speed {
+                    ControlFlow::Break(())
+                } else {
+                    ControlFlow::Continue(())
+                }
+            }),
+            Ok(ControlFlow::Break(()))
+        );
+        let mut modifiers = Vec::new();
+        assert_eq!(
+            living.visit_attribute_modifiers(&context, speed, &mut |m| {
+                modifiers.push((m.id.to_owned(), m.amount, m.operation));
+                ControlFlow::Break(())
+            }),
+            Ok(ControlFlow::Break(()))
+        );
+        assert_eq!(
+            modifiers,
+            [(
+                "test:loaned_speed".to_owned(),
+                0.25,
+                AttributeOperation::AddMultipliedTotal
+            )]
+        );
+        let stale_living = LivingRef::new(EntityRef::new(epoch, stale.id));
+        assert_eq!(
+            stale_living.visit_effects(&context, &mut |_| panic!("unloaned effects visited")),
+            Err(EntityReadError::Stale)
+        );
         assert!(context.lookup_entity(other.id).is_some());
         assert!(context.lookup_entity(stale.id).is_none());
         assert!(context.lookup_entity(9999).is_none());
@@ -88,6 +150,21 @@ fn scoped_host_resolves_other_real_players_from_the_game() {
             if id == 13 {
                 guest.vehicle = Some(9002);
                 guest.vehicle_order = 0;
+                let mut body = sunrise_client::motion::PlayerMotion::new(
+                    game.motion,
+                    Vec3::new(f64::from(id), 64.0, 5.0),
+                )
+                .unwrap();
+                body.entity_id = id as i32;
+                body.set_modifier(
+                    "minecraft:max_health",
+                    "test:guest_health",
+                    2.0,
+                    "add_value",
+                    true,
+                )
+                .unwrap();
+                guest.motion = Some(Box::new(body));
             }
             game.lan.as_mut().unwrap().hub.guests.push(guest);
         }
@@ -121,7 +198,23 @@ fn scoped_host_resolves_other_real_players_from_the_game() {
         let player = context.lookup_player(13).expect("other guest is online");
         assert_eq!(player.entity().id(), 13);
         assert_eq!(context.lookup_entity(13), Some(player.entity()));
-        assert!(context.lookup_living(player.entity()).is_some());
+        let living = context.lookup_living(player.entity()).unwrap();
+        let mut modifiers = Vec::new();
+        assert_eq!(
+            living.visit_attribute_modifiers(&context, "minecraft:max_health", &mut |m| {
+                modifiers.push((m.id.to_owned(), m.amount, m.operation));
+                ControlFlow::Continue(())
+            }),
+            Ok(ControlFlow::Continue(()))
+        );
+        assert_eq!(
+            modifiers,
+            [(
+                "test:guest_health".to_owned(),
+                2.0,
+                AttributeOperation::AddValue
+            )]
+        );
         assert_eq!(
             player.entity().position(&context),
             player.entity().position(game)

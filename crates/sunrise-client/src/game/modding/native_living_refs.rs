@@ -1610,33 +1610,48 @@ mod tests {
                 );
                 Ok(modifiers)
             };
-            // The zombie's type has these attributes, and the stand's lacks attack damage.
-            for name in [
+            // Zombie.createAttributes supports these; Attributes registers them in this order.
+            let known = [
+                "minecraft:armor",
+                "minecraft:attack_damage",
                 "minecraft:max_health",
                 "minecraft:movement_speed",
-                "minecraft:attack_damage",
-            ] {
-                assert!(
-                    read_names(game, zombie).iter().any(|id| id == name),
-                    "{name}"
-                );
-            }
+            ];
+            let names = read_names(game, zombie);
+            let matching: Vec<_> = names
+                .iter()
+                .map(String::as_str)
+                .filter(|id| known.contains(id))
+                .collect();
+            assert_eq!(matching, known);
+            let mut first_name = Vec::new();
+            assert_eq!(
+                zombie.visit_attributes(game, &mut |id| {
+                    first_name.push(id.to_owned());
+                    ControlFlow::Break(())
+                }),
+                Ok(ControlFlow::Break(()))
+            );
+            assert_eq!(first_name, ["minecraft:air_drag_modifier".to_owned()]);
             assert!(
                 !read_names(game, stand)
                     .iter()
                     .any(|id| id == "minecraft:attack_damage")
             );
 
-            // An attribute with no modifier answers an empty list, one the
-            // type lacks None.
+            // A known attribute with no modifiers completes; an unknown or unsupported one refuses.
             let speed = "minecraft:movement_speed";
             assert_eq!(read_modifiers(game, zombie, speed), Ok(Vec::new()));
             assert_eq!(
-                read_modifiers(game, zombie, "missing:attribute"),
+                zombie.visit_attribute_modifiers(game, "missing:attribute", &mut |_| panic!(
+                    "unknown attribute visited"
+                )),
                 Err(EntityReadError::Unavailable)
             );
             assert_eq!(
-                read_modifiers(game, stand, "minecraft:attack_damage"),
+                stand.visit_attribute_modifiers(game, "minecraft:attack_damage", &mut |_| panic!(
+                    "unsupported attribute visited"
+                )),
                 Err(EntityReadError::Unavailable)
             );
 
@@ -1660,6 +1675,19 @@ mod tests {
                     ("test:boost".to_owned(), 0.5, AddMultipliedTotal),
                 ])
             );
+            let mut first_modifier = Vec::new();
+            assert_eq!(
+                zombie.visit_attribute_modifiers(game, speed, &mut |m| {
+                    first_modifier.push((m.id.to_owned(), m.amount, m.operation));
+                    ControlFlow::Break(())
+                }),
+                Ok(ControlFlow::Break(()))
+            );
+            assert_eq!(
+                first_modifier,
+                [("test:fast".to_owned(), 1.0, AddMultipliedBase)]
+            );
+
             // Replacing puts the new one at the end, its lifetime changed.
             assert!(zombie.replace_attribute_modifier(
                 game,
@@ -1699,7 +1727,7 @@ mod tests {
                 Ok(vec![("test:hearty".to_owned(), 0.5, AddMultipliedBase)])
             );
 
-            // A stale handle reads None.
+            // A stale handle refuses before calling either visitor.
             game.mobs.clear();
             game.armor_stands.clear();
             assert_eq!(
