@@ -2032,7 +2032,7 @@ impl Game<'_> {
             &base,
             &self.mods,
             &jars,
-            self.mods.startup_admission(),
+            self.mods.startup_admission.as_deref(),
             &refused,
         )?;
         Ok(Some(overlay.root))
