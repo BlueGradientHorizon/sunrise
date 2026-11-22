@@ -610,8 +610,10 @@ impl ItemPlace {
         self.moved(host, tx, resource, amount, true)
     }
 
-    /// Takes up to `amount` of `resource` from here, in transaction `tx`: how much came
-    /// (`ItemAccess.extract`). A creative player's hand gives without losing any.
+    /// Takes up to `amount` from here, in transaction `tx`, when the item and components
+    /// match `resource` (`ItemAccess.extract`). In places the game handles directly, an
+    /// override equal to the item's default does not change the match, and the resource
+    /// need not be valid for insertion. A creative player's hand gives without losing any.
     pub fn extract(
         &self,
         host: &mut dyn ServerHost,

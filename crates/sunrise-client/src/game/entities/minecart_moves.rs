@@ -179,6 +179,8 @@ impl Game<'_> {
                 c.fall_distance,
             );
             c.velocity = self.finish_body_restitution(entity, c.position, response);
+            self.body_motion(&game_side!(self))
+                .apply_block_speed(c.position, &mut c.velocity);
         }
         // OldMinecartBehavior applies block effects here and at tick end.
         // NewMinecartBehavior applies them after recording each track step.

@@ -141,6 +141,12 @@ pub trait ReloadContext:
     fn entity_type_in_tag(&self, _entity_type: &str, _tag: &str) -> bool {
         false
     }
+    /// `DefaultAttributes.getSupplier(type).getValue(attribute)`: the entity type's default
+    /// attribute value within the attribute's range, including installed mod types and additions.
+    /// `None` before publication, or for an unknown type, a missing supplier or attribute.
+    fn entity_type_default_attribute(&self, entity_type: &str, attribute: &str) -> Option<f64> {
+        crate::__private::entity_type_default_attribute(entity_type, attribute)
+    }
     /// Published NBT value of `entry` in `registry`'s data map `map`.
     fn data_map_value(
         &self,
