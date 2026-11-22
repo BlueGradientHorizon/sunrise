@@ -146,8 +146,9 @@ fn content_keys() {
         extension_files.extend(
             content
                 .files
-                .into_iter()
-                .filter(|p| p.starts_with("data/sunrise/tags/")),
+                .iter()
+                .filter(|p| p.starts_with("data/sunrise/tags/"))
+                .cloned(),
         );
     }
 
