@@ -396,6 +396,14 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn connection_group_transactions_abort_silently_and_commit_with_block_writes() {
+        // The fixture's resource load replaces the process's block namespace table.
+        if crate::game::native_entity_refs::tests::run_fresh_cases(
+            "game::native_connection_groups::tests::connection_group_transactions_abort_silently_and_commit_with_block_writes",
+            "SUNRISE_GROUP_TRANSACTIONS_CHILD",
+            &["run"],
+        ) {
+            return;
+        }
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.native_lifecycle.world_open_ready().unwrap();
@@ -932,6 +940,109 @@ mod tests {
             game.transaction_close(&outer, false);
             assert_eq!(level.connection_group(game, pos), Ok(Some(10)));
             assert_eq!(nether.connection_group(game, pos), Ok(None));
+        });
+    }
+
+    /// Records, at each `block_changed`, the block at [`BULK_CELL`].
+    struct SeesBulkCell(Arc<std::sync::Mutex<Vec<([i32; 3], Option<mod_api::BlockState>)>>>);
+
+    const BULK_CELL: [i32; 3] = [12, 64, 12];
+
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for SeesBulkCell {
+        fn block_changed(
+            &self,
+            level: &dyn mod_api::LevelHost,
+            event: &mut mod_api::BlockChangedEvent,
+        ) {
+            let pos = [event.pos.x, event.pos.y, event.pos.z];
+            self.0
+                .lock()
+                .unwrap()
+                .push((pos, level.block_state(BULK_CELL)));
+        }
+    }
+
+    /// A callback replayed at the root commit before a later bulk edit sees the bulk cell's
+    /// block as it stood before the edit, alongside the group restored with it.
+    #[test]
+    #[ignore = "daily"]
+    fn a_replayed_callback_sees_a_later_bulk_cell_before_its_edit() {
+        if crate::game::native_entity_refs::tests::run_fresh_cases(
+            "game::native_connection_groups::tests::a_replayed_callback_sees_a_later_bulk_cell_before_its_edit",
+            "SUNRISE_GROUP_REPLAY_CHILD",
+            &["run"],
+        ) {
+            return;
+        }
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "sees_bulk_cell",
+            Box::new(SeesBulkCell(seen.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                game.options.dedicated = Some(Vec::new());
+                game.native_lifecycle.world_open_ready().unwrap();
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                game.world.connection_group_log = Some(Default::default());
+                let level = game.level("minecraft:overworld").unwrap();
+                let stone = state(game, "minecraft:stone");
+                let glass = state(game, "minecraft:glass");
+                let ordinary = [2, 64, 2];
+                assert_eq!(
+                    level.set_block(game, BULK_CELL, stone, BlockUpdateFlags::NONE),
+                    Ok(true)
+                );
+                assert_eq!(
+                    level.set_connection_group(game, BULK_CELL, Some(5)),
+                    Ok(true)
+                );
+                let edit = BlockEdit {
+                    palette: vec![glass],
+                    filters: Vec::new(),
+                    runs: vec![BlockRun {
+                        x: BULK_CELL[0],
+                        z: BULK_CELL[2],
+                        y: BULK_CELL[1],
+                        height: 1,
+                        surface: None,
+                        block: 0,
+                        only: None,
+                    }],
+                };
+                seen.lock().unwrap().clear();
+                {
+                    let host: &mut dyn ServerHost = game;
+                    let res: Result<(), ()> = host.transaction(|host, _tx| {
+                        assert_eq!(
+                            level.set_block(
+                                host,
+                                ordinary,
+                                stone,
+                                BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS,
+                            ),
+                            Ok(true)
+                        );
+                        assert_eq!(host.edit_blocks("minecraft:overworld", &edit), Ok(1));
+                        Ok(())
+                    });
+                    assert_eq!(res, Ok(()));
+                }
+                let heard: Vec<_> = seen
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|(pos, _)| *pos == ordinary)
+                    .map(|&(_, bulk)| bulk)
+                    .collect();
+                assert_eq!(heard, [Some(stone)]);
+                assert_eq!(level.block_state(game, BULK_CELL), Some(glass));
+                assert_eq!(level.connection_group(game, BULK_CELL), Ok(None));
+            });
         });
     }
 

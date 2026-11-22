@@ -2204,6 +2204,28 @@ impl Game<'_> {
             packets.publish();
         }
         self.commit_menu_data(level.menu_data);
+        // A strict cell is rewound to its storage before its first edit when an ordinary write
+        // shares it, or when its connection group is rewound below: replay then shows each
+        // callback the block and group together. For a rewound cell, work back from its final
+        // staged row to the row before its first edit. A strict step takes the row it installed
+        // from the next retirement, or from storage if it survived. Ordinary removal then
+        // observes its own row, never a row from a later strict edit. Other cells stay in final
+        // staged storage.
+        let rewound: indexmap::IndexSet<_> = level
+            .after
+            .iter()
+            .filter_map(|after| match after {
+                After::Block(step) if level.blocks[&step.pos].strict => Some(step.pos),
+                _ => None,
+            })
+            .chain(
+                level
+                    .connection_groups
+                    .keys()
+                    .copied()
+                    .filter(|pos| level.blocks.get(pos).is_some_and(|kept| kept.strict)),
+            )
+            .collect();
         // Replay from the old group so committed callbacks see writes in order. A fresh
         // publication entry survives only if the final group differs from that baseline.
         let mut clean_groups = Vec::new();
@@ -2218,22 +2240,10 @@ impl Game<'_> {
                 clean_groups.push((pos, was));
             }
         }
-        // For a mixed cell, work back from its final staged row to the row before its
-        // first edit. A strict step takes the row it installed from the next retirement,
-        // or from storage if it survived. Ordinary removal then observes its own row,
-        // never a row from a later strict edit. Other cells stay in final staged storage.
-        let mixed: indexmap::IndexSet<_> = level
-            .after
-            .iter()
-            .filter_map(|after| match after {
-                After::Block(step) if level.blocks[&step.pos].strict => Some(step.pos),
-                _ => None,
-            })
-            .collect();
         let mut rows = HashMap::new();
         for after in level.after.iter_mut().rev() {
             match after {
-                After::Block(step) if mixed.contains(&step.pos) => {
+                After::Block(step) if rewound.contains(&step.pos) => {
                     if let Some(removed) = &mut step.removed {
                         let slot = rows
                             .entry(step.pos)
@@ -2241,9 +2251,9 @@ impl Game<'_> {
                         *slot = removed.take();
                     }
                 }
-                After::BulkBlocks(_, _, _, writes) if !mixed.is_empty() => {
+                After::BulkBlocks(_, _, _, writes) if !rewound.is_empty() => {
                     for (&pos, step) in writes {
-                        if mixed.contains(&pos)
+                        if rewound.contains(&pos)
                             && let Some(removed) = &mut step.row
                         {
                             let slot = rows
@@ -2256,7 +2266,7 @@ impl Game<'_> {
                 _ => {}
             }
         }
-        for &pos in &mixed {
+        for &pos in &rewound {
             let (x, y, z) = pos;
             self.world.set_stored(x, y, z, level.blocks[&pos].state);
             if let Some((row, generation)) = rows.remove(&pos).flatten() {
@@ -2265,7 +2275,7 @@ impl Game<'_> {
         }
         for after in &mut level.after {
             if let After::Block(step) = after
-                && !mixed.contains(&step.pos)
+                && !rewound.contains(&step.pos)
                 && let Some(Some(row)) = step.removed.take()
             {
                 let first = level.removed_block_entities.entry(step.pos).or_default();
@@ -2290,7 +2300,7 @@ impl Game<'_> {
                     self.world.set_connection_group(x, y, z, group, true);
                     explicit_group_since_block.insert(pos);
                 }
-                After::Block(step) if mixed.contains(&step.pos) => {
+                After::Block(step) if rewound.contains(&step.pos) => {
                     let (x, y, z) = step.pos;
                     explicit_group_since_block.remove(&step.pos);
                     if step.removed.is_some() && !step.replay.replay_removal {
@@ -2309,7 +2319,7 @@ impl Game<'_> {
                         if step.clear_connection_group {
                             self.world.invalidate_replaced_group(pos);
                         }
-                        if mixed.contains(&pos) {
+                        if rewound.contains(&pos) {
                             let (x, y, z) = pos;
                             self.world.set_stored(x, y, z, step.to);
                             if let Some(row) = step.row {
