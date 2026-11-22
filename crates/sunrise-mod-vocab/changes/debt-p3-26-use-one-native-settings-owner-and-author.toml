@@ -1,5 +1,6 @@
 ids = [
     "hook:setting_changed",
+    "method:Hooks::setting_changed",
     "method:SettingsRegistrar::register_setting",
     "method:prelude::ConfigHost::setting",
     "method:prelude::ConfigHost::set_setting",
