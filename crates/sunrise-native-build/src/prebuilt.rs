@@ -1414,7 +1414,6 @@ mod tests {
                 })
             }),
             native(&|n| n.bridge.push(forwarded())),
-            native(&|n| n.state.push(forwarded())),
             native(&|n| {
                 n.r#loop.push(
                     toml::from_str::<loops::Loop>("id='l'\nloop='x.tick'\nhelper='l.rs'\nwith='L'")
@@ -1463,7 +1462,6 @@ mod tests {
                 Some("[[native.mixin]]"),
                 Some("[[native.module]]"),
                 Some("[[native.bridge]]"),
-                Some("[[native.state]]"),
                 Some("[[native.loop]]"),
                 Some("internals"),
                 Some("internals"),
