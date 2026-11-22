@@ -722,8 +722,9 @@ impl Game<'_> {
         }
     }
 
-    /// Dispatch a mouse click to mounted widgets in insertion order
-    /// (`ContainerEventHandler.getChildAt` / `AbstractWidget.mouseClicked`).
+    /// Dispatch a mouse click to the first hit mounted child in insertion order.
+    /// A hit consumes the click independently of whether the child takes focus
+    /// (`ContainerEventHandler.mouseClicked`). A miss leaves focus alone.
     pub(super) fn mounted_widget_mouse_clicked(
         &mut self,
         mouse: [f32; 2],
@@ -829,24 +830,36 @@ impl Game<'_> {
                 Hit::Miss => continue,
                 Hit::Button => {
                     if button != 0 {
-                        continue;
+                        return id.is_none();
                     }
-                    self.set_mounted_widget_focus(Some(idx));
                     self.audio.play_button_click();
-                    let _ = self.with_mounted_widget(idx, |game, entry| {
+                    let accepted = self.with_mounted_widget(idx, |game, entry| {
                         if let MountedWidgetKind::Button { state, on_press } = &mut entry.kind
                             && let Some(callback) = on_press.as_mut()
                         {
-                            call_owner(&entry.owner, &mut entry.disabled, "button_press", || {
-                                callback(state, game);
-                            });
+                            return call_owner(
+                                &entry.owner,
+                                &mut entry.disabled,
+                                "button_press",
+                                || {
+                                    callback(state, game);
+                                },
+                            )
+                            .is_some();
                         }
+                        true
                     });
+                    if accepted == Some(true)
+                        && self.screen_state.widgets.generation() == generation
+                    {
+                        self.set_mounted_widget_focus(Some(idx));
+                        self.screen_state.widgets.inner.borrow_mut().dragging = Some((idx, button));
+                    }
                     return true;
                 }
                 Hit::TextField => {
                     if button != 0 {
-                        continue;
+                        return id.is_none();
                     }
                     self.set_mounted_widget_focus(Some(idx));
                     let shift = (modifiers & 1) != 0;
@@ -885,22 +898,16 @@ impl Game<'_> {
                             }
                         })
                         .unwrap_or(false);
-                    if self.screen_state.widgets.generation() != generation {
-                        return handled;
-                    }
-                    if handled {
+                    if handled && self.screen_state.widgets.generation() == generation {
                         self.set_mounted_widget_focus(Some(idx));
                         if button == 0 {
                             self.screen_state.widgets.inner.borrow_mut().dragging =
                                 Some((idx, button));
                         }
-                        return true;
                     }
+                    return id.is_none() || handled;
                 }
             }
-        }
-        if id.is_none() {
-            self.clear_mounted_widget_focus();
         }
         false
     }
@@ -919,6 +926,9 @@ impl Game<'_> {
             return false;
         }
         self.screen_state.widgets.inner.borrow_mut().dragging = None;
+        if self.screen_state.widgets.focused_index() != Some(idx) {
+            return false;
+        }
         self.with_mounted_widget(idx, |game, entry| match &mut entry.kind {
             MountedWidgetKind::TextField {
                 active, visible, ..
@@ -930,7 +940,7 @@ impl Game<'_> {
                 || widget.mouse_released(game, mouse, button, modifiers),
             )
             .unwrap_or(false),
-            MountedWidgetKind::Button { .. } => false,
+            MountedWidgetKind::Button { .. } => true,
         })
         .unwrap_or(false)
     }
@@ -946,7 +956,7 @@ impl Game<'_> {
         let Some((idx, drag_button)) = self.screen_state.widgets.inner.borrow().dragging else {
             return false;
         };
-        if drag_button != button {
+        if drag_button != button || self.screen_state.widgets.focused_index() != Some(idx) {
             return false;
         }
         self.with_mounted_widget(idx, |game, entry| match &mut entry.kind {
@@ -969,7 +979,7 @@ impl Game<'_> {
                 || widget.mouse_dragged(game, mouse, button, delta, modifiers),
             )
             .unwrap_or(false),
-            MountedWidgetKind::Button { .. } => false,
+            MountedWidgetKind::Button { .. } => true,
         })
         .unwrap_or(false)
     }

@@ -350,7 +350,8 @@ impl fmt::Debug for TextField {
 ///
 /// The engine owns focus, hover, Tab traversal, drawing order, and input dispatch for mounted
 /// widgets. Override the methods the widget reacts to; every input handler defaults to `false`
-/// (unhandled) so input continues to the next widget or the screen underneath.
+/// (unhandled). A pointer press goes only to the first hit child; returning `false` from
+/// `mouse_clicked` leaves focus unchanged.
 // no wire: in-process custom widget trait object owned by the client screen while it stays open.
 pub trait ScreenWidget: Send + 'static {
     /// Where the widget is, `[x, y, width, height]` in GUI pixels.

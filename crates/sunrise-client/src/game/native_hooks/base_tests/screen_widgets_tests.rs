@@ -1195,6 +1195,11 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
                             host.close_screen();
                         },
                     ));
+                    event.widgets.add_button(Button::new(
+                        [20.0, 100.0, 80.0, 20.0],
+                        ApiText::literal("Stay"),
+                        |_, _| {},
+                    ));
                     // Custom widget for drag/scroll handled vs unhandled checks.
                     event.widgets.add_widget(Box::new(DragScrollWidget {
                         bounds: [20.0, 60.0, 80.0, 20.0],
@@ -1573,8 +1578,24 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
                 ]
             );
 
-            // 4) Drag & Scroll Post fire ONLY when unhandled.
-            //    Handled drag/scroll -> Pre fires, Post does NOT fire.
+            // 4) A focused button consumes a left drag and release, even
+            // outside its bounds. Drag.Post is absent; Release.Post says handled.
+            move_mouse(game, win_id, 40.0, 110.0);
+            send_mouse_button(game, win_id, MouseButton::Left, true);
+            take_log(&log);
+            move_mouse(game, win_id, 115.0, 110.0);
+            send_mouse_button(game, win_id, MouseButton::Left, false);
+            assert_eq!(
+                take_log(&log),
+                [
+                    "drag_pre:mod",
+                    "release_pre:mod:0",
+                    "release_post:mod:0:true"
+                ]
+            );
+
+            // Drag & Scroll Post fire ONLY when unhandled.
+            // Handled drag/scroll -> Pre fires, Post does NOT fire.
             handle_drag.store(true, Ordering::SeqCst);
             handle_scroll.store(true, Ordering::SeqCst);
             move_mouse(game, win_id, 40.0, 70.0);
