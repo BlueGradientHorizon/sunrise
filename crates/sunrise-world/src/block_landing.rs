@@ -266,6 +266,13 @@ impl BlockLandingRegistry {
             .copied()
             .ok_or_else(|| LandingError::Data(invalid("landing state outside registry")))
     }
+    /// Whether the state plays the stock shelf mushroom bounce sound.
+    pub fn has_shelf_bounce(&self, state: BlockStateId) -> bool {
+        self.states
+            .get(state.0 as usize)
+            .is_some_and(|s| s.shelf_mushroom_bounce)
+    }
+
     pub fn bounce_on<W: BlockLandingWorld>(
         &self,
         world: &mut W,

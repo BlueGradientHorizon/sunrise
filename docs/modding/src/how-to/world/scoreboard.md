@@ -76,8 +76,35 @@ visibility (`TeamVisibility`) and collision rule (`CollisionRule`).
 on one team at most, as `/team join`. `leave(holder)` takes it off this team, and answers `false`
 when it was not on it. A holder is a `ScoreHolder`, resolved as for scores: a `Player` and that
 player's `Entity` are one member, and a `Name` joins whether or not that player is online. A
-holder that is not on the server is `TeamError::UnknownHolder`, not a stale handle. `members()`
-lists in the team's own order, which vanilla leaves unspecified.
+holder that is not on the server is `TeamError::UnknownHolder`, not a stale handle.
+
+`team.visit_members(host, &mut visit)` visits holder keys in the team's native Java hash set
+order, which vanilla leaves unspecified. The visitor can make shared reads on the same host.
+It receives a borrowed `&str`, not a `ScoreHolder::Name(String)`, and sees offline holders too.
+The name is borrowed only for that callback. Return `core::ops::ControlFlow::Break(())` to stop
+or `Continue(())` to keep going. The call returns `Ok(Break(()))` on an early stop or
+`Ok(Continue(()))` on completion, including an empty team. `Err(TeamMembersReadError::Stale)`
+means the team was removed or the handle is from an earlier open;
+`Err(TeamMembersReadError::Unavailable)` means the server scoreboard isn't readable from this
+side or phase. Neither error calls the visitor.
+
+Compare names as `&str` without copying them. If you need to write, copy just the names
+needed for the write, then use `ScoreHolder::Name` after the visit:
+
+```rust,ignore
+use core::ops::ControlFlow::Continue;
+
+let mut to_remove = Vec::new();
+let _ = team.visit_members(host, &mut |name| {
+    if name.starts_with("#round-") {
+        to_remove.push(name.to_owned());
+    }
+    Continue(())
+})?;
+for name in to_remove {
+    team.leave(host, ScoreHolder::Name(name));
+}
+```
 
 Writes are the board's, so they are synced, saved and rolled back by an abort exactly as an
 objective's are.
@@ -87,5 +114,5 @@ objective's are.
 `ClientHost::client_scoreboard()` is what this client has been sent: the objectives shown in a
 display slot, with their slots and scores, and every team, as plain values. The server does not
 send a team's death message visibility, so a client has none to read. A client has no handles and
-cannot write. A text the API cannot hold (nested deeper than 512 component nodes) refuses the
-whole snapshot with `TextFormError::TooDeep`; nothing is flattened or skipped.
+cannot write. A text with unrepresentable opaque metadata refuses the whole snapshot with its
+`TextFormError`; nothing is flattened or skipped.

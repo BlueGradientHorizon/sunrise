@@ -5,10 +5,17 @@ impl Game<'_> {
     /// The block's clone answer for the requesting player, before block-entity data
     /// is copied onto the chosen stack (`handlePickItemFromBlock`).
     #[inline(always)]
+    #[allow(clippy::too_many_arguments, reason = "matches the hook declaration")]
     pub(in crate::game) fn native_clone_item_stack(
         &self,
-        call: super::fire::CloneItemStackCall<'_>,
+        dimension: LevelDimension,
+        pos: BlockPos,
+        block: &str,
+        state: BlockStateId,
+        include_data: bool,
+        player: PlayerRef,
+        stack: &mut Option<ItemStack>,
     ) {
-        self.fire_clone_item_stack(call);
+        self.fire_clone_item_stack(dimension, pos, block, state, include_data, player, stack);
     }
 }

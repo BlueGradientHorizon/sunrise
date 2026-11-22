@@ -189,6 +189,11 @@ pub(super) struct Loaded {
 /// ready, then the core bundle with a handle to the rest worker.
 pub(super) enum LoaderMsg {
     Ui(UiResources, PathBuf),
+    /// Clear the failed revision on the thread that owns settings, then acknowledge.
+    ClearPackSelection {
+        revision: u64,
+        ack: std::sync::mpsc::Sender<()>,
+    },
     Done(std::result::Result<Loaded, LoaderFailure>),
 }
 
@@ -284,15 +289,16 @@ pub(super) fn run_loading(
     started: Instant,
 ) -> Result<()> {
     let progress = Progress::new();
+    let menu = startup_menu::StartupMenu::new(&options, pack_error.as_deref())?;
     let (receiver, loader) = startup_menu::spawn_loader(
         &options,
         &settings,
+        menu.pack_selection_revision,
         mods::LoadRole::startup(options.execution_role),
         &vanilla_root,
         started,
         &progress,
     )?;
-    let menu = startup_menu::StartupMenu::new(&options, pack_error.as_deref())?;
     let loading = Loading {
         window: None,
         renderer: None,

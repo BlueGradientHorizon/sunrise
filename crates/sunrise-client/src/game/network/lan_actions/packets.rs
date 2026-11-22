@@ -1113,17 +1113,15 @@ impl Game<'_> {
                     let state = g.world.block(p.pos[0], p.pos[1], p.pos[2]);
                     let mut replacement = None;
                     if let Some(player) = g.native_acting_player() {
-                        g.native_clone_item_stack(crate::game::native_hooks::CloneItemStackCall {
-                            dimension: g.dim.level(),
-                            pos: sunrise_core::position::BlockPos::new(
-                                p.pos[0], p.pos[1], p.pos[2],
-                            ),
-                            block: &g.res.facts().get(state).name,
+                        g.native_clone_item_stack(
+                            g.dim.level(),
+                            sunrise_core::position::BlockPos::new(p.pos[0], p.pos[1], p.pos[2]),
+                            &g.res.facts().get(state).name,
                             state,
                             include_data,
                             player,
-                            stack: &mut replacement,
-                        });
+                            &mut replacement,
+                        );
                     }
                     let mut stack = replacement.or(stack)?;
                     if include_data {
@@ -1357,7 +1355,7 @@ impl Game<'_> {
         }
         if let Some(applied) = self
             .lan_owned_menu_click(conn, p)
-            .or_else(|| self.lan_mod_quick_move(conn, p))
+            .or_else(|| self.lan_mod_quick_move(conn, p, None))
         {
             return applied;
         }
@@ -1367,7 +1365,7 @@ impl Game<'_> {
         {
             return true;
         }
-        if let Some(applied) = self.lan_machine_click_asked(conn, p, Default::default()) {
+        if let Some(applied) = self.lan_machine_click(conn, p) {
             return applied;
         }
         if self.lan_station_click(conn, p)

@@ -174,7 +174,7 @@ impl Game<'_> {
             .and_then(|play| play.crafting.machine.as_ref())
             .filter(|(window, menu)| *window == before.window && menu.kind() == kind)
             .map_or_else(|| Box::new(Menu::new(kind)), |(_, menu)| menu.clone());
-        menu.reset_mod_visibility(&before.hidden);
+        menu.reset_mod_visibility(std::iter::empty());
         menu.set_registry_id(Some(before.kind.id));
         super::lan_crafting::load_player(&mut menu, guest);
         menu.set_container_limits(graph.limits());
@@ -322,7 +322,12 @@ impl Game<'_> {
                     return Err(());
                 }
                 let place = ItemPlace::MenuSlot { menu, slot: *slot };
-                if place.stack(host).as_ref() != before.as_ref() {
+                if place
+                    .with_stack(host, |stack| stack.project())
+                    .flatten()
+                    .as_ref()
+                    != before.as_ref()
+                {
                     return Err(());
                 }
                 if let Some(stack) = before {

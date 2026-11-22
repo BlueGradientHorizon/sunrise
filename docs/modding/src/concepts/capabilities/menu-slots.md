@@ -1,5 +1,24 @@
 # Menu slots
 
+## Backing indices and screen slots
+
+A menu's slot indices belong to the menu, not the window. Declare the slots the menu exposes
+in the menu type itself, and enforce server-side placement or pickup restrictions through
+`MenuPart::menu_slot_rules`. In the
+[screen factory](../../how-to/world/machine-menu-data.md#the-menus-screen), each entry in
+`MenuScreenLayout::slots` corresponds to its backing index; `None` (including omitted trailing
+entries) marks a slot that starts inactive/hidden (`Slot.isActive()`).
+
+For a mod menu backed by `ItemPlace`, pickup and quick move use these same
+rules. A display-only backing slot should refuse both `may_place` and
+`may_pickup`; a direct write to the backing `ItemPlace` still works. Hiding a
+slot in the client layout does not change what the server allows.
+
+Any mod can move, activate, or hide a slot of the open screen for `menu` through
+[`ClientHost::set_screen_slot`](../../how-to/client/screens.md#moving-or-hiding-a-mod-screens-slots)
+while this opening is shown. That change affects only the client; the server can still
+quick-move items into a locally hidden slot, and the slot's acceptance rules still apply.
+
 ## Mod-created recipe input sets
 
 `Hooks::recipe_property_sets` runs once after recipes resolve for each load and again after
@@ -45,17 +64,18 @@ Parts that read `context.setting(..)` or `side()` have no counterpart on the Hos
 
 ### Who and where: the slot's context
 
-A rule that depends on more than the stack reads `event.context`, a `MenuSlotContext` the game
-fills the same way on the server and on the client's prediction. `context.player` is the UUID of
-the player whose menu it is, `context.pos` the block entity the menu belongs to
-(`ContainerLevelAccess`), and `context.slots` a read-only copy of the menu's own containers'
-slots as they stand while the click plans, without the player's inventory. The containers are
-keyed by `MenuContainer`: `Main` for the menu's own slots, and for a mod menu type with a crafting
-grid `Grid` (the grid's slots, row by row) and `Result` (its crafted result, slot 0).
-`event.container` names the container the asked slot is in, and `event.slot` indexes inside it;
-`context.slot(container, index)` reads any of them. A machine whose upgrade slot takes one card
-per kind, a cable bus that asks its block entity what a part slot holds, a grid slot that looks at
-the result, or a slot only the block's owner fills answers from these:
+A rule that depends on more than the stack reads `event.context`, a `MenuSlotContext<'_>` lent
+for this ask on either the server or the predicting client. `context.player` is the UUID of
+the player whose menu it is, and `context.pos` locates the block entity the menu belongs to
+(`ContainerLevelAccess`). `event.container` names the container the asked slot is in, and
+`event.slot` indexes inside it. Read a live slot with `context.slot(container, index)`: use
+`MenuContainer::Main` for the menu's own slots, `Grid` (row by row) and `Result` (slot 0) on a
+mod menu type with a crafting grid, and `MenuContainer::Player` for the player's inventory
+(`0..36` inventory, `36..40` armor feet-to-head, `40` offhand, matching vanilla `Inventory`).
+Permission and capacity are separate live queries; after a quick-move transfer, the next
+destination sees the new source remainder as well as the changed destination.
+For example, a machine can use the view to accept only one upgrade card of each kind, or a grid
+slot can check whether a result is waiting to be taken:
 
 ```rust,ignore
 use mod_api::MenuContainer;
@@ -80,10 +100,16 @@ fn menu_slot_rules(&self, host: &dyn mod_api::Host, event: &mut mod_api::MenuSlo
 ```
 
 `player` is None where no player is known and `pos` None for a menu that is not a block's (one
-opened with no block by `PlayerRef::open_mod_menu`, a vehicle's); a slot that cannot cross to the API
-shows empty, and `slot` reads nothing for `MenuContainer::Player` or past a container's end. The
-context is built once per click plan, and only for a menu type a part answers: vanilla menus and
-types with no listening part never pay for it, and the asks of one click share one copy.
+opened with no block by `PlayerRef::open_mod_menu`, a vehicle's). `slot` converts just the requested
+stack and returns it as an owned `ItemStack`. It returns `None` for an empty, absent, or
+unrepresentable stack. There is no matrix to enumerate or retain. `event.max_stack` is bounded
+to `0..=99` and the item's stack limit (matching vanilla `Slot.getMaxStackSize` and
+`Container.getMaxStackSize`): setting `0` allows no items to be placed into the slot. Each live
+`mayPlace`, `mayPickup` and `getMaxStackSize` check during a click queries the parts directly
+against the current menu slots, matching vanilla `AbstractContainerMenu.doClick` and `Slot`.
+If a part panics, its answers are discarded and that callback is disabled for the session.
+The log and error toast name the mod; other parts still answer the check.
+
 ## Slots that keep what they show
 
 On a mod menu type, `menu_slot_rules` also answers `Slot.mayPickup` in `event.may_pickup`. It arrives true and
@@ -119,9 +145,8 @@ that ends on a single slot is a pickup click on that slot. A refused click leave
 were, and the server sends back the slots and cursor a client predicted otherwise. A slot that refuses placement
 gives up all of its stack or none of it. The slot's own rule comes first, and one ask answers `may_place` and
 `may_pickup` together. Vanilla menu types keep their slots' own `mayPickup`, and a shift-click a part answers
-with `menu_quick_move` is asked the pickup rule before that hook. A click asks once for each slot and stack: the
-take, the all-or-nothing check and a shift-click the parts leave to the game reuse that answer, so the server and
-the client's prediction ask the same number of times.
+with `menu_quick_move` is asked the pickup rule before that hook. Each live check during a click
+queries the rule directly against the current slots.
 
 ## Taking from a slot
 
@@ -235,7 +260,7 @@ change slots.
 Server hooks can also read the acting player's supported menu through
 `player.container_menu(host)`. Inventory, equipment, cursor and ender contents come from
 that player's current turn state, not the temporarily swapped-out record. The unsupported
-menu kinds, hidden-slot refusal and stale-generation checks still apply.
+menu kinds, permanent exclusions and stale-generation checks still apply.
 
 Mutable client hooks can submit a vanilla click with
 `menu.click(host, &[mod_api::MenuClick::QuickMove { slot }])`. The slot is the same menu-order
@@ -293,22 +318,27 @@ host.transaction(|host, tx| {
 })
 ```
 
-`MenuPart::menu_clicked` v3 runs on parts registered for the open mod menu's type. The event names
-that type and gives the raw slot, button and click type. Menu-button clicks, recipe placement and creative
-set-slot do not reach it. Return `Flow::Cancel` after doing the click yourself to skip the default. On
-`Flow::Continue`, the part and the default action share one transaction. If the part changes what the
-default would read, or if the default refuses, the action rolls back without trying a different click.
-The client still predicts the default action. After an override or refusal the server sends the full menu,
-cursor and any predicted swap target omitted from the menu. A display-only menu has no default moves.
+`menu_quick_move` (contract version 4) runs after the live menu allows pickup. The event's
+`stack` copies what the clicked slot shows, including a linked container's stack or the current
+crafting result. Return `Flow::Cancel` to handle the move, leaving the remainder in `stack`
+(`None` empties the source).
+The remainder goes back to the clicked source, not to `entity.items[slot]` for a linked slot or
+crafting result. If you handle a result, consume its crafting inputs yourself. The remainder stays
+available on later clicks against the inputs you leave, until the grid changes again. If you leave
+the move unhandled, the same menu routes the click without asking the source's pickup rule again.
 
-A click action cannot replace a screen: `open_menu` returns `Ok(None)` and `PlayerRef::open_mod_menu`
-returns `OpenMenuError::ClickInProgress`. `close_menu` and `MenuRef::close_container` wait for a
-successful commit. An abort leaves the window and its items in place and sends no close packet.
-`menu_set_items` changes also roll back without sending a packet if the action aborts.
+`menu_clicked` (contract version 2) and `menu_quick_move` each run as one action. Journaled writes
+are undone when the action fails. A panic in `menu_quick_move` is logged and shown in an error
+toast naming the mod, disables that mod's callback for this hook for the session, and publishes
+neither the detached block entity (including one-shot update fields) nor the proposed remainder or
+handled answer. A failed callback, an invalid answer, or a `Host` write to a player's inventory,
+cursor or menu storage refuses the move instead of falling back to the game's routing. If the API
+cannot read the owner or the clicked stack, the engine refuses the click before calling the
+listener and reports why each time.
 
-`menu_quick_move` v3 runs as one action too. An invalid answer, or a Host write to a player's inventory, cursor or
-menu storage, refuses that move instead of falling back to the game's routing. An answer's optional remainder
-holds what is left in the clicked slot (`None` empties it).
+`menu_clicked` hears the raw slot, button
+and click type on a menu a mod opened (a single-slot drag once); menu-button clicks, recipe placement and creative
+set-slot never reach it, and it cannot know whether the click changes anything.
 
 Inside `menu_clicked`, `ItemPlace::MenuSlot` can take from and give to the clicking
 player's inventory and hotbar slots as well as the menu's own storage. Inserts fill
