@@ -2901,99 +2901,171 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn toast_admission_cancels_edits_and_preserves_queue_behavior() {
-        use crate::game::toast_manager::Toast as QueuedToast;
-        use mod_api::{ClientHost, Flow, Hooks, ModEntry, ToastAddEvent, ToastKind};
-        struct Listener;
-        #[mod_api::__subscriptions]
-        impl Hooks for Listener {
-            fn toast_add(&self, _: &dyn ClientHost, event: &mut ToastAddEvent<'_>) -> Flow {
-                match event.description.as_ref().map(|text| &text.content) {
-                    Some(mod_api::text::TextContent::Literal(value)) if value == "cancel" => {
-                        Flow::Cancel
+        crate::game::in_own_process(
+            "game::advancements::tests::toast_admission_cancels_edits_and_preserves_queue_behavior",
+            || {
+                use crate::game::toast_manager::{SystemToastId, Toast as QueuedToast};
+                use mod_api::{ClientHost, Flow, Hooks, ModEntry, ToastAddEvent, ToastKind};
+                use std::time::Duration;
+                use sunrise_client::toasts::SystemToast;
+                struct Listener;
+                #[mod_api::__subscriptions]
+                impl Hooks for Listener {
+                    fn toast_add(&self, _: &dyn ClientHost, event: &mut ToastAddEvent<'_>) -> Flow {
+                        match event.description.as_ref().map(|text| &text.content) {
+                            Some(mod_api::text::TextContent::Literal(value))
+                                if value == "cancel" =>
+                            {
+                                Flow::Cancel
+                            }
+                            Some(mod_api::text::TextContent::Literal(value)) if value == "edit" => {
+                                *event.title = mod_api::Text::literal("replacement");
+                                event.title.style.color = Some("#123456".into());
+                                *event.description = Some(mod_api::Text::literal("changed"));
+                                Flow::Continue
+                            }
+                            _ => Flow::Continue,
+                        }
                     }
-                    Some(mod_api::text::TextContent::Literal(value)) if value == "edit" => {
-                        *event.title = mod_api::Text::literal("replacement");
-                        event.title.style.color = Some("#123456".into());
-                        *event.description = Some(mod_api::Text::literal("changed"));
-                        Flow::Continue
-                    }
-                    _ => Flow::Continue,
                 }
-            }
-        }
-        let mods: mod_api::Mods = vec![ModEntry::new("toasts", Box::new(Listener))].into();
-        mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
-                game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
-                let advancement = |name: &str| Toast {
-                    icon: ItemStack::new("minecraft:stone", 1),
-                    frame: Frame::Challenge,
-                    title: Text::translate("advancements.toast.challenge", &[]),
-                    description: Some(Text::literal(name)),
-                    slide: Slide::default(),
-                    recipes: vec![],
-                    changed: false,
-                    last_changed: 0,
-                };
-                game.add_advancement_toast(advancement("cancel"));
-                assert!(game.toast_manager.queued.is_empty());
-                game.add_advancement_toast(advancement("untouched"));
-                let QueuedToast::Advancement(original) = &game.toast_manager.queued[0] else {
-                    panic!("expected advancement toast")
-                };
-                assert_eq!(
-                    original.title.component(),
-                    serde_json::json!({"translate": "advancements.toast.challenge"})
-                );
-                assert_eq!(original.description.as_ref().unwrap().plain(), "untouched");
-                assert_eq!(original.icon, ItemStack::new("minecraft:stone", 1));
-                assert!(
-                    original.slide.origin.is_none(),
-                    "not animated before admission"
-                );
-                game.add_advancement_toast(advancement("edit"));
-                let QueuedToast::Advancement(edited) = &game.toast_manager.queued[1] else {
-                    panic!("expected advancement toast")
-                };
-                assert_eq!(edited.title.plain(), "replacement");
-                assert_eq!(edited.title.component()["color"], "#123456");
-                assert_eq!(edited.description.as_ref().unwrap().plain(), "changed");
-                assert_eq!(edited.frame, Frame::Challenge);
-                for kind in [
-                    ToastKind::Recipe,
-                    ToastKind::Tutorial,
-                    ToastKind::System,
-                    ToastKind::Other,
-                ] {
-                    let mut title = Text::literal("title");
-                    let mut description = Some(Text::literal("cancel"));
-                    assert!(!game.admit_toast(kind, &mut title, &mut description));
-                }
-                let mut system = sunrise_client::toasts::SystemToast::new("system".into(), None);
-                system.message = Some(Text::literal("edit"));
-                assert!(game.add_system_toast(None, system));
-                let Some(QueuedToast::System(_, system)) = game.toast_manager.queued.back() else {
-                    panic!("expected system toast")
-                };
-                assert_eq!(system.title.plain(), "replacement");
-                assert_eq!(system.message.as_ref().unwrap().plain(), "changed");
-                for role in [
-                    super::super::execution_role::ExecutionRole::IntegratedServer,
-                    super::super::execution_role::ExecutionRole::DedicatedServer,
-                ] {
-                    game.options.execution_role = role;
-                    let mut title = Text::literal("server");
-                    let mut description = Some(Text::literal("edit"));
-                    assert!(!game.admit_toast(
-                        ToastKind::Advancement,
-                        &mut title,
-                        &mut description
-                    ));
-                    assert_eq!(title.plain(), "server", "server must not invoke listener");
-                    assert_eq!(description.unwrap().plain(), "edit");
-                }
-            });
-        });
+                let mods: mod_api::Mods = vec![ModEntry::new("toasts", Box::new(Listener))].into();
+                mod_platform::testing::with_mods(mods, || {
+                    super::super::native_entity_refs::tests::with_game(|game| {
+                        game.options.execution_role =
+                            super::super::execution_role::ExecutionRole::Client;
+                        let advancement = |name: &str| Toast {
+                            icon: ItemStack::new("minecraft:stone", 1),
+                            frame: Frame::Challenge,
+                            title: Text::translate("advancements.toast.challenge", &[]),
+                            description: Some(Text::literal(name)),
+                            slide: Slide::default(),
+                            recipes: vec![],
+                            changed: false,
+                            last_changed: 0,
+                        };
+                        game.add_advancement_toast(advancement("cancel"));
+                        assert!(game.toast_manager.queued.is_empty());
+                        game.add_advancement_toast(advancement("untouched"));
+                        let QueuedToast::Advancement(original) = &game.toast_manager.queued[0]
+                        else {
+                            panic!("expected advancement toast")
+                        };
+                        assert_eq!(
+                            original.title.component(),
+                            serde_json::json!({"translate": "advancements.toast.challenge"})
+                        );
+                        assert_eq!(original.description.as_ref().unwrap().plain(), "untouched");
+                        assert_eq!(original.icon, ItemStack::new("minecraft:stone", 1));
+                        assert!(
+                            original.slide.origin.is_none(),
+                            "not animated before admission"
+                        );
+                        game.add_advancement_toast(advancement("edit"));
+                        let QueuedToast::Advancement(edited) = &game.toast_manager.queued[1] else {
+                            panic!("expected advancement toast")
+                        };
+                        assert_eq!(edited.title.plain(), "replacement");
+                        assert_eq!(edited.title.component()["color"], "#123456");
+                        assert_eq!(edited.description.as_ref().unwrap().plain(), "changed");
+                        assert_eq!(edited.frame, Frame::Challenge);
+                        for kind in [
+                            ToastKind::Recipe,
+                            ToastKind::Tutorial,
+                            ToastKind::System,
+                            ToastKind::Other,
+                        ] {
+                            let mut title = Text::literal("title");
+                            let mut description = Some(Text::literal("cancel"));
+                            assert!(!game.admit_toast(kind, &mut title, &mut description));
+                        }
+                        let mut system =
+                            sunrise_client::toasts::SystemToast::new("system".into(), None);
+                        system.message = Some(Text::literal("edit"));
+                        assert!(game.add_system_toast(None, system));
+                        let Some(QueuedToast::System(_, system)) = game.toast_manager.queued.back()
+                        else {
+                            panic!("expected system toast")
+                        };
+                        assert_eq!(system.title.plain(), "replacement");
+                        assert_eq!(system.message.as_ref().unwrap().plain(), "changed");
+                        for id in [SystemToastId::PackLoadFailure, SystemToastId::Narrator] {
+                            assert!(game.add_system_toast(
+                                Some(id),
+                                SystemToast::new("Other notice".into(), None)
+                            ));
+                        }
+                        assert_eq!(
+                            game.toast_manager.update(1.0),
+                            (None, true),
+                            "both challenges share a promotion sound"
+                        );
+                        assert_eq!(game.toast_manager.visible.len(), 5);
+                        assert_eq!(game.toast_manager.update(1.0), (Some(true), false));
+
+                        game.add_toast(mod_api::ModToast::new(mod_api::Text::literal(
+                            "Older mod toast",
+                        )))
+                        .unwrap();
+                        game.admit_mod_toasts();
+                        game.add_advancement_toast(advancement("newer advancement"));
+                        let fading = game
+                            .toast_manager
+                            .system_mut(SystemToastId::PackLoadFailure)
+                            .unwrap();
+                        fading.slide.origin = Some(Instant::now() - Duration::from_secs(1));
+                        fading.force_hide();
+                        assert_eq!(game.toast_manager.update(1.0), (Some(false), false));
+                        assert_eq!(
+                            game.toast_manager.queued.len(),
+                            2,
+                            "a sliding-out toast still owns its slot"
+                        );
+                        game.toast_manager
+                            .system_mut(SystemToastId::PackLoadFailure)
+                            .unwrap()
+                            .slide
+                            .origin = Some(Instant::now() - Duration::from_secs(2));
+                        assert_eq!(game.toast_manager.update(1.0), (None, false));
+                        assert!(matches!(
+                            game.toast_manager.visible.last().map(|entry| &entry.toast),
+                            Some(QueuedToast::Mod(_))
+                        ));
+                        assert!(matches!(
+                            game.toast_manager.queued.front(),
+                            Some(QueuedToast::Advancement(_))
+                        ));
+
+                        let narrator = game
+                            .toast_manager
+                            .system_mut(SystemToastId::Narrator)
+                            .unwrap();
+                        narrator.slide.origin = Some(Instant::now() - Duration::from_secs(1));
+                        narrator.force_hide();
+                        assert_eq!(
+                            game.toast_manager.update(1.0),
+                            (Some(false), false),
+                            "the first visibility change wins, even while another family slides in"
+                        );
+
+                        for role in [
+                            super::super::execution_role::ExecutionRole::IntegratedServer,
+                            super::super::execution_role::ExecutionRole::DedicatedServer,
+                        ] {
+                            game.options.execution_role = role;
+                            let mut title = Text::literal("server");
+                            let mut description = Some(Text::literal("edit"));
+                            assert!(!game.admit_toast(
+                                ToastKind::Advancement,
+                                &mut title,
+                                &mut description
+                            ));
+                            assert_eq!(title.plain(), "server", "server must not invoke listener");
+                            assert_eq!(description.unwrap().plain(), "edit");
+                        }
+                    });
+                });
+            },
+        );
     }
 
     #[test]
