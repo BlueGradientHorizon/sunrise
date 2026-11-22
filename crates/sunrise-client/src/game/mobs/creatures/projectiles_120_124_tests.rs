@@ -126,10 +126,18 @@ const STAR_FIREWORK_ITEM: &str = r#"{id:"minecraft:firework_rocket",count:1,comp
 const PLAIN_FIREWORK_ITEM: &str = r#"{id:"minecraft:firework_rocket",count:1}"#;
 
 fn load_witness() -> Witness {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tools/witness/26.3/projectile_targets/projectiles_120_124_witness.json");
-    let raw = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("failed to read witness {}: {e}", path.display()));
+    let dir = std::env::var_os("SUNRISE_PROJECTILE_WITNESS_DIR").unwrap_or_else(|| {
+        panic!(
+            "SUNRISE_PROJECTILE_WITNESS_DIR is unset; run tools/test_projectile_targets_parity.py"
+        )
+    });
+    let path = PathBuf::from(dir).join("projectiles_120_124_witness.json");
+    let raw = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        panic!(
+            "failed to read witness {} (record via tools/test_projectile_targets_parity.py): {e}",
+            path.display()
+        )
+    });
     let witness: Witness = serde_json::from_str(&raw).expect("valid 26.3 witness JSON");
     assert_eq!(witness.game_version, "26.3");
     witness
@@ -279,7 +287,7 @@ fn step_recording(game: &mut Game<'_>) -> (Vec<&'static str>, BTreeMap<String, u
 }
 
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_projectile_targets_parity.py"]
 fn witness_spectator_player_120() {
     let witness = load_witness();
     let mut resources = None;
@@ -406,7 +414,7 @@ fn witness_spectator_player_120() {
 }
 
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_projectile_targets_parity.py"]
 fn witness_wind_charge_end_crystal_121() {
     let witness = load_witness();
     let mut resources = None;
@@ -511,7 +519,7 @@ fn witness_wind_charge_end_crystal_121() {
 }
 
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_projectile_targets_parity.py"]
 fn witness_trident_enderman_dodge_122() {
     let witness = load_witness();
     let mut resources = None;
@@ -793,7 +801,7 @@ fn witness_trident_enderman_dodge_122() {
 }
 
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_projectile_targets_parity.py"]
 fn witness_piercing_arrow_multihit_123() {
     let witness = load_witness();
     let mut resources = None;
@@ -1065,7 +1073,7 @@ fn alive_124(game: &Game<'_>, t: Target124) -> bool {
 }
 
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_projectile_targets_parity.py"]
 fn witness_firework_rocket_targets_124() {
     let witness = load_witness();
     let mut resources = None;

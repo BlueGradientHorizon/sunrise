@@ -229,8 +229,10 @@ public final class VanillaProjectileTargetsOracle {
                 runWitness();
             } catch (Throwable t) {
                 t.printStackTrace();
+                deleteTree(tempUniverse);
                 Runtime.getRuntime().halt(2);
             }
+            deleteTree(tempUniverse);
             System.out.flush();
             Runtime.getRuntime().halt(0);
         }
@@ -730,12 +732,31 @@ public final class VanillaProjectileTargetsOracle {
         @Override public int getMaxPlayers() { return 8; }
     }
 
+    static void deleteTree(Path root) {
+        if (root == null || !Files.exists(root)) return;
+        try (var stream = Files.walk(root)) {
+            stream.sorted((a, b) -> b.compareTo(a)).forEach(p -> {
+                try { Files.deleteIfExists(p); } catch (Exception ignored) {}
+            });
+        } catch (Exception ignored) {}
+    }
+
+    static Path tempUniverse;
+
     public static void main(String[] args) throws Exception {
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
-        Path universe = Path.of(args[0]);
+        Path universe;
+        if ("-".equals(args[0])) {
+            universe = Files.createTempDirectory("sunrise-projectile-targets-oracle-");
+            tempUniverse = universe;
+        } else {
+            universe = Path.of(args[0]);
+            deleteTree(universe.resolve("witness"));
+            Files.createDirectories(universe);
+        }
         Path output = Path.of(args[1]).toAbsolutePath();
-        Files.createDirectories(universe);
+        if (output.getParent() != null) Files.createDirectories(output.getParent());
         LevelStorageSource.LevelStorageAccess access = LevelStorageSource.createDefault(universe).createAccess("witness");
         PackRepository packs = ServerPacksSource.createPackRepository(access);
         MinecraftServer.spin(thread -> {

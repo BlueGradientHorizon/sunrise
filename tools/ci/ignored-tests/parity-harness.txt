@@ -21,3 +21,14 @@ sunrise-client-lib mobs::villager_brain::reputation_witness_tests::witnesses_use
 sunrise-client-render packs::cache::tests::benchmark_real_resource_root SUNRISE_OVERLAY_BENCH_VANILLA harness
 sunrise-client game::campfire::block_entity_items_tests::block_entity_items_match_the_vanilla_cases tools/test_block_entity_item_geometry_parity.py harness
 sunrise-client-lib mobs::finalize::load_tests::a_loaded_health_is_clamped_to_the_loaded_max_health tools/test_mob_attribute_nbt_parity.py harness
+sunrise-client game::creatures::projectile_targets_tests::witness_armor_stand_targets tools/test_projectile_targets_parity.py harness
+sunrise-client game::creatures::projectile_targets_tests::witness_painting_and_cushion_targets tools/test_projectile_targets_parity.py harness
+sunrise-client game::creatures::projectile_targets_tests::witness_item_frame_targets tools/test_projectile_targets_parity.py harness
+sunrise-client game::creatures::projectile_targets_tests::witness_leash_knot_targets tools/test_projectile_targets_parity.py harness
+sunrise-client game::creatures::projectile_targets_tests::witness_falling_block_targets tools/test_projectile_targets_parity.py harness
+sunrise-client game::fishing::fishing_targets_tests::witness_fishing_bobber_targets tools/test_projectile_targets_parity.py harness
+sunrise-client game::creatures::projectiles_120_124_tests::witness_spectator_player_120 tools/test_projectile_targets_parity.py harness
+sunrise-client game::creatures::projectiles_120_124_tests::witness_wind_charge_end_crystal_121 tools/test_projectile_targets_parity.py harness
+sunrise-client game::creatures::projectiles_120_124_tests::witness_trident_enderman_dodge_122 tools/test_projectile_targets_parity.py harness
+sunrise-client game::creatures::projectiles_120_124_tests::witness_piercing_arrow_multihit_123 tools/test_projectile_targets_parity.py harness
+sunrise-client game::creatures::projectiles_120_124_tests::witness_firework_rocket_targets_124 tools/test_projectile_targets_parity.py harness

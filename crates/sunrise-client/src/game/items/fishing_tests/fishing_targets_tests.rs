@@ -41,10 +41,18 @@ struct GameEventSnap {
 }
 
 fn load_witness() -> FishingWitness {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tools/witness/26.3/projectile_targets/fishing_witness.json");
-    let raw = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("failed to read fishing witness {}: {e}", path.display()));
+    let dir = std::env::var_os("SUNRISE_PROJECTILE_WITNESS_DIR").unwrap_or_else(|| {
+        panic!(
+            "SUNRISE_PROJECTILE_WITNESS_DIR is unset; run tools/test_projectile_targets_parity.py"
+        )
+    });
+    let path = PathBuf::from(dir).join("fishing_witness.json");
+    let raw = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        panic!(
+            "failed to read fishing witness {} (record via tools/test_projectile_targets_parity.py): {e}",
+            path.display()
+        )
+    });
     let witness: FishingWitness = serde_json::from_str(&raw).expect("valid 26.3 fishing witness");
     assert_eq!(witness.game_version, "26.3");
     witness
@@ -416,7 +424,7 @@ fn run_case(
 }
 
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_projectile_targets_parity.py"]
 fn witness_fishing_bobber_targets() {
     let witness = load_witness();
     let mut resources = None;

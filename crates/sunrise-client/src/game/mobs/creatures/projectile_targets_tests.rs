@@ -64,10 +64,18 @@ struct DropSnap {
 }
 
 fn load_witness() -> Witness {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tools/witness/26.3/projectile_targets/witness.json");
-    let raw = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("failed to read witness {}: {e}", path.display()));
+    let dir = std::env::var_os("SUNRISE_PROJECTILE_WITNESS_DIR").unwrap_or_else(|| {
+        panic!(
+            "SUNRISE_PROJECTILE_WITNESS_DIR is unset; run tools/test_projectile_targets_parity.py"
+        )
+    });
+    let path = PathBuf::from(dir).join("witness.json");
+    let raw = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        panic!(
+            "failed to read witness {} (record via tools/test_projectile_targets_parity.py): {e}",
+            path.display()
+        )
+    });
     let witness: Witness = serde_json::from_str(&raw).expect("valid 26.3 witness JSON");
     assert_eq!(witness.game_version, "26.3");
     witness
@@ -636,31 +644,31 @@ fn run_family(filter: impl Fn(&str) -> bool) {
 }
 
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_projectile_targets_parity.py"]
 fn witness_armor_stand_targets() {
     run_family(|t| t.starts_with("armor_stand"));
 }
 
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_projectile_targets_parity.py"]
 fn witness_painting_and_cushion_targets() {
     run_family(|t| t == "painting" || t == "cushion");
 }
 
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_projectile_targets_parity.py"]
 fn witness_item_frame_targets() {
     run_family(|t| t.starts_with("item_frame") || t.starts_with("glow_item_frame"));
 }
 
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_projectile_targets_parity.py"]
 fn witness_leash_knot_targets() {
     run_family(|t| t.starts_with("leash_knot"));
 }
 
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_projectile_targets_parity.py"]
 fn witness_falling_block_targets() {
     run_family(|t| t == "falling_block");
 }
