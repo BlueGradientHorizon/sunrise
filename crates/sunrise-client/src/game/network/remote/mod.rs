@@ -2382,6 +2382,8 @@ mod attachment_query_tests;
 mod passage_cross_tests;
 #[cfg(test)]
 mod respawn_motion_tests;
+#[cfg(test)]
+mod riptide_tests;
 impl Remote {
     /// Project the session address for display once, dropping the memory transport's marker.
     pub(super) fn display_address_for(address: &str) -> Option<String> {
