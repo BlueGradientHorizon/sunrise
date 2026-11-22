@@ -318,10 +318,10 @@ impl ChunkMap {
     pub fn remove(&mut self, key: &Key) -> Option<Arc<Chunk>> {
         self.fresh.remove(key);
         let previous = self.columns.remove(key);
-        if let Some(chunk) = &previous {
-            if let Some(residency) = &mut self.group_residency {
-                residency.replace(chunk.connection_groups.len(), 0);
-            }
+        if let Some(chunk) = &previous
+            && let Some(residency) = &mut self.group_residency
+        {
+            residency.replace(chunk.connection_groups.len(), 0);
         }
         if previous.is_some() {
             self.ordered.remove(key);
