@@ -309,14 +309,11 @@ impl Game<'_> {
     }
     /// `HumanoidArmorLayer` for the player: (model, texture rect, colour,
     /// overlay) of each worn piece, head to feet.
-    pub(super) fn player_armor_layers(&self) -> Vec<(&Part, [f32; 4], u32, u32, bool)> {
+    pub(super) fn player_armor_layers(&self) -> Vec<WornLayer<'_>> {
         self.stack_armor_layers(&self.armor)
     }
     /// `HumanoidArmorLayer` for worn stacks (head to feet), trims included.
-    pub(super) fn stack_armor_layers(
-        &self,
-        armor: &[Option<ItemStack>; 4],
-    ) -> Vec<(&Part, [f32; 4], u32, u32, bool)> {
+    pub(super) fn stack_armor_layers(&self, armor: &[Option<ItemStack>; 4]) -> Vec<WornLayer<'_>> {
         self.armor_layers(
             armor
                 .each_ref()
@@ -325,7 +322,7 @@ impl Game<'_> {
     }
     /// `HumanoidArmorLayer` for another player's model: the armour it wears
     /// (`extra.equipment`, head to feet).
-    pub(super) fn worn_armor_layers(&self, m: &Mob) -> Vec<(&Part, [f32; 4], u32, u32, bool)> {
+    pub(super) fn worn_armor_layers(&self, m: &Mob) -> Vec<WornLayer<'_>> {
         let e = &m.extra;
         self.armor_layers(
             sunrise_items::equipment::ARMOR
@@ -334,10 +331,7 @@ impl Game<'_> {
     }
     /// The layers of the armour items `worn` (with their stacks when known,
     /// for trims and CIT armour rules), head to feet.
-    fn armor_layers(
-        &self,
-        worn: [Option<(&str, Option<&ItemStack>)>; 4],
-    ) -> Vec<(&Part, [f32; 4], u32, u32, bool)> {
+    fn armor_layers(&self, worn: [Option<(&str, Option<&ItemStack>)>; 4]) -> Vec<WornLayer<'_>> {
         let assets = &self.armor_stand_assets;
         let mut out = Vec::new();
         for (item, (layer, slot)) in worn.into_iter().zip([

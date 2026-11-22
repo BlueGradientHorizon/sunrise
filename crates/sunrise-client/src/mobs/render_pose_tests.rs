@@ -85,7 +85,7 @@ fn frame_model_lends_the_drawn_pose_without_changing_geometry() {
         let mut out = Vec::new();
         if layers_only {
             let extra = [(
-                &*cow.kind.model,
+                WornModel::Vanilla(&cow.kind.model),
                 [0.0, 0.0, 1.0, 1.0],
                 0xFFFF_FFFF,
                 0,
@@ -297,34 +297,33 @@ fn named_hidden_parts_leave_the_body_and_its_overlays_but_not_armour() {
     let (_, mut data) = humanoid_zombie();
     data.frame_models = BakedFrameModels::bake([&*cow.kind, &*villager.kind, &*layered.kind]);
     let atlas = |_: &str| Some([0.0, 0.0, 1.0, 1.0]);
-    let draw =
-        |mob: &Mob, names: &[&str], gpu: bool, extra: &[(&Part, [f32; 4], u32, u32, bool)]| {
-            let mut out = Vec::new();
-            let mut models = super::super::skin::SkinModels::default();
-            let mut skin_frame = crate::gfx::entity_skin::SkinFrame::default();
-            let mut skin = super::super::skin::Skin::new(&mut models, &mut skin_frame);
-            let mut frame = FrameDraw::default();
-            hide_in_draw(&mut frame, mob, &data, names);
-            render_visible(
-                mob,
-                0.5,
-                [glam::Mat4::IDENTITY],
-                &atlas,
-                0xf0f0,
-                &data,
-                extra,
-                Some(body_color(mob, 0.5)),
-                &mut frame,
-                &mut out,
-                gpu.then_some(&mut skin),
-            );
-            (
-                out.len() as u32,
-                skin_frame.jobs.iter().map(|job| job.count).sum::<u32>(),
-            )
-        };
+    let draw = |mob: &Mob, names: &[&str], gpu: bool, extra: &[WornLayer<'_>]| {
+        let mut out = Vec::new();
+        let mut models = super::super::skin::SkinModels::default();
+        let mut skin_frame = crate::gfx::entity_skin::SkinFrame::default();
+        let mut skin = super::super::skin::Skin::new(&mut models, &mut skin_frame);
+        let mut frame = FrameDraw::default();
+        hide_in_draw(&mut frame, mob, &data, names);
+        render_visible(
+            mob,
+            0.5,
+            [glam::Mat4::IDENTITY],
+            &atlas,
+            0xf0f0,
+            &data,
+            extra,
+            Some(body_color(mob, 0.5)),
+            &mut frame,
+            &mut out,
+            gpu.then_some(&mut skin),
+        );
+        (
+            out.len() as u32,
+            skin_frame.jobs.iter().map(|job| job.count).sum::<u32>(),
+        )
+    };
     let armour = [(
-        &*villager.kind.model,
+        WornModel::Vanilla(&villager.kind.model),
         [0.0, 0.0, 1.0, 1.0],
         0xf0f0,
         0,
@@ -349,7 +348,7 @@ fn named_hidden_parts_leave_the_body_and_its_overlays_but_not_armour() {
         );
     }
     for gpu_path in [false, true] {
-        let draw_armoured = |names: &[&str], extra: &[(&Part, [f32; 4], u32, u32, bool)]| {
+        let draw_armoured = |names: &[&str], extra: &[WornLayer<'_>]| {
             let (cpu, gpu) = draw(&villager, names, gpu_path, extra);
             cpu + gpu
         };

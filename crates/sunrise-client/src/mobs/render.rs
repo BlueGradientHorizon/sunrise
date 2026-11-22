@@ -135,7 +135,7 @@ fn eyes_layer(m: &Mob, layer: &Layer) -> bool {
 /// One draw of a model with a texture.
 pub struct Layer {
     /// Equipment owns its overlay; other layers inherit the body overlay.
-    pub equipment_texture_final: bool,
+    pub equipment_uv: Option<[f32; 4]>,
     pub equipment_overlay: Option<u32>,
     /// Reload-baked, slot-clipped replacement; never geometry supplied by a frame.
     pub equipment_model: Option<std::sync::Arc<Part>>,
@@ -613,7 +613,7 @@ pub fn layers(m: &Mob, age: f32) -> Vec<Layer> {
         v.push(Layer {
             equipment_overlay: None,
             equipment_model: None,
-            equipment_texture_final: false,
+            equipment_uv: None,
             model: model.into(),
             texture: texture.into(),
             color,
@@ -702,7 +702,7 @@ pub fn layers(m: &Mob, age: f32) -> Vec<Layer> {
             v.push(Layer {
                 equipment_overlay: None,
                 equipment_model: None,
-                equipment_texture_final: false,
+                equipment_uv: None,
                 model: "breeze#wind".into(),
                 texture: "entity/breeze/breeze_wind".into(),
                 color: white,
@@ -1003,7 +1003,7 @@ impl Layer {
             color,
             equipment_overlay: Some(overlay),
             equipment_model: None,
-            equipment_texture_final: false,
+            equipment_uv: None,
             full_bright: false,
             scroll: 0.0,
         }
@@ -1458,7 +1458,7 @@ pub fn render_with(
     atlas: Atlas,
     light: u32,
     data: &dyn RenderDataSource,
-    extra: &[(&Part, [f32; 4], u32, u32, bool)],
+    extra: &[WornLayer<'_>],
     out: &mut Vec<Vertex>,
 ) {
     render_with_frame(
@@ -1534,7 +1534,7 @@ pub fn render_with_frame(
     atlas: Atlas,
     light: u32,
     data: &dyn RenderDataSource,
-    extra: &[(&Part, [f32; 4], u32, u32, bool)],
+    extra: &[WornLayer<'_>],
     frame: &mut FrameDraw<'_>,
     out: &mut Vec<Vertex>,
 ) {
@@ -1861,7 +1861,7 @@ pub fn render_layers(
     atlas: Atlas,
     light: u32,
     data: &dyn RenderDataSource,
-    extra: &[(&Part, [f32; 4], u32, u32, bool)],
+    extra: &[WornLayer<'_>],
     frame: &mut FrameDraw<'_>,
     out: &mut Vec<Vertex>,
 ) {
@@ -1944,7 +1944,7 @@ pub fn drawn_textures(m: &Mob, data: &dyn RenderDataSource) -> Vec<String> {
             all_layers.push(Layer {
                 equipment_overlay: None,
                 equipment_model: None,
-                equipment_texture_final: false,
+                equipment_uv: None,
                 model: model.into(),
                 texture: texture.into(),
                 color: 0,
@@ -2025,7 +2025,7 @@ fn render_visible(
     atlas: Atlas,
     light: u32,
     data: &dyn RenderDataSource,
-    extra: &[(&Part, [f32; 4], u32, u32, bool)],
+    extra: &[WornLayer<'_>],
     // `submit`'s `tintedColor` to draw the body in, or `None` for its layers only.
     paint: Option<u32>,
     frame: &mut FrameDraw<'_>,
@@ -2087,7 +2087,7 @@ fn render_selected(
     atlas: Atlas,
     light: u32,
     data: &dyn RenderDataSource,
-    extra: &[(&Part, [f32; 4], u32, u32, bool)],
+    extra: &[WornLayer<'_>],
     paint: Option<u32>,
     body: &FrameBody<'_>,
     texture: &str,
@@ -2164,7 +2164,7 @@ fn render_selected(
                 all_layers.push(Layer {
                     equipment_overlay: None,
                     equipment_model: None,
-                    equipment_texture_final: false,
+                    equipment_uv: None,
                     model: model.into(),
                     texture: texture.into(),
                     color: ((a.clamp(0.0, 1.0) * 255.0) as u32) << 24 | 0x00FF_FFFF,
@@ -2907,8 +2907,14 @@ mod tests {
         let (mob, data) = humanoid_zombie();
         let atlas = |_: &str| Some([0.0, 0.0, 1.0, 1.0]);
         let armour = mob.kind.model.clone();
-        let extra = [(&*armour, [0.0, 0.0, 1.0, 1.0], 0xFFFF_FFFF, 0, false)];
-        let draw_parts = |names: &[&str], extra: &[(&Part, [f32; 4], u32, u32, bool)]| {
+        let extra = [(
+            WornModel::Vanilla(&armour),
+            [0.0, 0.0, 1.0, 1.0],
+            0xFFFF_FFFF,
+            0,
+            false,
+        )];
+        let draw_parts = |names: &[&str], extra: &[WornLayer<'_>]| {
             let mut out = Vec::new();
             let mut frame = FrameDraw::new(true);
             hide_in_draw(&mut frame, &mob, &data, names);
@@ -2925,9 +2931,7 @@ mod tests {
             );
             (out.len(), frame.model.expect("the body model"))
         };
-        let draw = |names: &[&str], extra: &[(&Part, [f32; 4], u32, u32, bool)]| {
-            draw_parts(names, extra).0
-        };
+        let draw = |names: &[&str], extra: &[WornLayer<'_>]| draw_parts(names, extra).0;
         let whole = draw(&[], &[]);
         let one_face = 4;
         assert_eq!(draw(&["right_arm"], &[]), whole - one_face);
@@ -3514,7 +3518,13 @@ mod tests {
                 &atlas,
                 0xf0f0,
                 &data,
-                &[(part, [0.5, 0.5, 0.75, 0.75], 0xFFFF_FFFF, overlay, false)],
+                &[(
+                    WornModel::Vanilla(part),
+                    [0.5, 0.5, 0.75, 0.75],
+                    0xFFFF_FFFF,
+                    overlay,
+                    false,
+                )],
                 &mut vertices,
             );
             let (armour, body): (Vec<&Vertex>, Vec<&Vertex>) =
@@ -4185,8 +4195,20 @@ mod emissive_tests {
         let atlas = |_: &str| Some([0.0, 0.0, 0.5, 0.5]);
         let part = m.kind.model.clone();
         let extra = [
-            (part.as_ref(), [0.5, 0.0, 1.0, 0.5], 0xFFFF_FFFF, 0, false),
-            (part.as_ref(), [0.5, 0.5, 1.0, 1.0], 0xFFFF_FFFF, 0, true),
+            (
+                WornModel::Vanilla(&part),
+                [0.5, 0.0, 1.0, 0.5],
+                0xFFFF_FFFF,
+                0,
+                false,
+            ),
+            (
+                WornModel::Vanilla(&part),
+                [0.5, 0.5, 1.0, 1.0],
+                0xFFFF_FFFF,
+                0,
+                true,
+            ),
         ];
         let mut out = Vec::new();
         render_with(
