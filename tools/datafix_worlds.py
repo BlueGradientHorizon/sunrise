@@ -387,7 +387,12 @@ def block_states(jar, java_exe):
 
 def place_states(run, states):
     """One block state at each odd x and z of a grid east of the scene, as vanilla's debug world lays them out
-    (DebugLevelSource.getBlockStateFor), on a stone floor and between barriers so fluids stay in their cell."""
+    (DebugLevelSource.getBlockStateFor), on a stone floor and between barriers so fluids stay in their cell.
+    Unlike the debug world this world ticks: random ticks and fire spread are turned off, but scheduled ticks still
+    run, so a few states (flowing fluids with no source, unsupported or unpowered redstone) may settle before the
+    save; the harness upgrades whatever was saved."""
+    run('gamerule randomTickSpeed 0')
+    run('gamerule doFireTick false')
     width = 1 + math.isqrt(len(states) - 1)   # DebugLevelSource.GRID_WIDTH: ceil(sqrt(state count))
     x0, side = 256, 2 * width + 1
     run(f'forceload add {x0} 0 {x0 + side} {side}')
