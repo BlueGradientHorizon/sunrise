@@ -1,0 +1,4 @@
+sunrise-client game::creatures::mob_dispatch_panic_tests::mob_despawn_listener_panic_preserves_owned_rows_and_lent_random lib daily child-process
+sunrise-client game::creatures::pending_birth_tests::a_panicking_baby_listener_leaves_no_reserved_state_behind lib daily child-process
+sunrise-client game::creatures::pending_birth_tests::a_panicking_listener_spawns_nothing_and_leaves_the_arena_usable lib daily child-process
+sunrise-client game::load_conditions::tests::load_conditions_recipe_reload_counts_and_failed_candidates_keep_old_recipes lib daily child-process

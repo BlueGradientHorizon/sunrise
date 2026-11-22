@@ -79,11 +79,12 @@ Expected implementation outcomes below are fixtures to write, not tests already 
 
 ## Implementation status
 
-**This is staged work.** `mob_split` and `baby_entity_spawn` now hand their listeners the engine-owned
-list described here. The pieces that need a transaction coordinator wait for
-[#784](https://github.com/arismoko/horizon/issues/784), which is not in main: outer rollback of a vetoed
-listener's Host writes and per-child join recovery. Until it lands, a veto or a stale refusal spawns no
-child but cannot undo what a listener wrote through the host. #825 stays open for that stage.
+`mob_split` and `baby_entity_spawn` hand their listeners the engine-owned list described here.
+The owning decision uses the [per-level journal](../../modding/src/concepts/transactions.md) after
+construction. A refusal, including a contained listener panic, rolls back journaled writes in the
+owning level and spawns no children. Work in another level commits at once when that level has no
+open transaction. Coordinating a wider outer abort and recovering per-child join vetoes are separate
+from that decision.
 
 What is built:
 

@@ -9,11 +9,17 @@
 //! installed for the test only.
 
 use super::*;
-use crate::game::native_entity_refs::tests::with_game;
+use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
 use mod_api::{
-    BabyEntitySpawnEvent, Flow, Hooks, MobSplitEvent, PendingMobSpec, ServerHost, UnspawnedMobError,
+    __private::{HookPanicReport, take_hook_panics},
+    BabyEntitySpawnEvent, BlockState, BlockUpdateFlags, Flow, Hooks, HostBlockStates,
+    MobSplitEvent, PendingMobSpec, ServerHost, UnspawnedMobError,
 };
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicUsize, Ordering},
+};
+use sunrise_client::chunk::Chunk;
 use sunrise_core::random::LegacyRandom;
 
 const IGNORE: &str = "needs prepared resources in SUNRISE_TEST_RESOURCES";
@@ -471,37 +477,79 @@ fn retained_native_tokens_fail_after_the_callback_returns() {
 #[test]
 #[ignore = "daily"]
 fn a_panicking_listener_spawns_nothing_and_leaves_the_arena_usable() {
-    let panic_now = Arc::new(Mutex::new(true));
-    let flag = panic_now.clone();
+    if run_fresh_cases(
+        "game::creatures::pending_birth_tests::a_panicking_listener_spawns_nothing_and_leaves_the_arena_usable",
+        "SUNRISE_SPLIT_PANIC_CHILD",
+        &["split"],
+    ) {
+        return;
+    }
+    const WRITE_AT: [i32; 3] = [4, 64, 4];
+    let calls = Arc::new(AtomicUsize::new(0));
+    let record = calls.clone();
     with_split(
-        move |_, event| {
+        move |host, event| {
             let child = event
                 .edits
                 .child(event.edits.children().unwrap(), 0)
                 .unwrap();
             event.edits.set_yaw(child, 1.0).unwrap();
-            if *flag.lock().unwrap() {
-                panic!("a listener fails before commit");
-            }
-            Flow::Continue
+            let level = host.level(event.dimension).unwrap();
+            let key = host.block_key("minecraft:stone").unwrap();
+            let stone = BlockState::of(&host.block_states(), key, &[]).unwrap();
+            assert_eq!(
+                level.set_block(host, WRITE_AT, stone, BlockUpdateFlags::NONE),
+                Ok(true)
+            );
+            assert_eq!(level.block_state(host, WRITE_AT), Some(stone));
+            // A contained failure before the edit and write above must not pass this test.
+            record.fetch_add(1, Ordering::SeqCst);
+            panic!("a listener fails before commit");
         },
         |game| {
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            let [x, y, z] = WRITE_AT;
+            let old_block = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:dirt")
+                .unwrap();
+            game.world.set(x, y, z, old_block).unwrap();
             let mut dying = cube(game, "minecraft:slime", 4, SEED);
             let next_id = game.next_entity;
-            let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                game.split_cube_children(&mut dying)
-            }));
-            assert!(unwound.is_err());
+            game.split_cube_children(&mut dying);
             assert!(game.mobs.is_empty(), "no child joined");
             assert_eq!(game.next_entity, next_id, "no entity number was issued");
-            // Pre-callback effects stay: the construction draws were spent.
+            assert_eq!(
+                game.world.block(x, y, z),
+                old_block,
+                "tentative block write survived"
+            );
             assert_eq!(dying.random.next_int(), NEXT_INT);
-            // The arena is reusable: the next split works from a fresh action.
-            *panic_now.lock().unwrap() = false;
+            assert_eq!(calls.load(Ordering::SeqCst), 1);
+            assert_eq!(
+                take_hook_panics(),
+                [HookPanicReport {
+                    mod_id: "split",
+                    hook: "mob_split"
+                }]
+            );
+
+            // The same install still takes the arena path, but skips the retired listener.
             let mut again = cube(game, "minecraft:slime", 4, SEED);
+            let first = game.next_entity + 1;
             game.split_cube_children(&mut again);
-            assert_eq!(game.mobs.len(), 3);
-            assert_eq!(game.mobs[0].yaw, 1.0);
+            assert_eq!(game.mobs.len(), YAWS.len());
+            for (i, (child, yaw)) in game.mobs.iter().zip(YAWS).enumerate() {
+                assert_eq!(child.id, first + i as u32);
+                assert_eq!(child.yaw, yaw);
+            }
+            assert_eq!(again.random.next_int(), NEXT_INT);
+            assert_eq!(calls.load(Ordering::SeqCst), 1);
+            assert!(take_hook_panics().is_empty());
         },
     );
 }
@@ -898,17 +946,45 @@ fn a_waiting_baby_publishes_its_uuid_only_when_it_joins() {
 #[test]
 #[ignore = "daily"]
 fn a_panicking_baby_listener_leaves_no_reserved_state_behind() {
+    if run_fresh_cases(
+        "game::creatures::pending_birth_tests::a_panicking_baby_listener_leaves_no_reserved_state_behind",
+        "SUNRISE_BABY_PANIC_CHILD",
+        &["breed"],
+    ) {
+        return;
+    }
+    let calls = Arc::new(AtomicUsize::new(0));
+    let record = calls.clone();
     with_baby(
-        |_, _| panic!("a listener fails"),
+        move |_, _| {
+            record.fetch_add(1, Ordering::SeqCst);
+            panic!("a listener fails");
+        },
         |game| {
             let (uuids, attachments) = (game.persist.uuids.len(), game.entity_attachments.len());
-            let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                breed_pair(game, "minecraft:cow")
-            }));
-            assert!(unwound.is_err());
+            let (parent, partner, child) = breed_pair(game, "minecraft:cow");
+            assert_eq!(child, None);
+            assert_eq!(
+                game.mobs.iter().map(|m| m.id).collect::<Vec<_>>(),
+                [parent, partner]
+            );
             assert_eq!(game.persist.uuids.len(), uuids, "the baby's UUID is gone");
             assert_eq!(game.entity_attachments.len(), attachments);
-            assert!(game.mobs.iter().all(|m| m.extra.age >= 0), "no baby joined");
+            assert_eq!(calls.load(Ordering::SeqCst), 1);
+            assert_eq!(
+                take_hook_panics(),
+                [HookPanicReport {
+                    mod_id: "baby",
+                    hook: "baby_entity_spawn"
+                }]
+            );
+
+            let (_, _, child) = breed_pair(game, "minecraft:cow");
+            let baby = child.expect("the next baby joined");
+            assert!(find(game, baby).extra.age < 0);
+            assert!(game.persist.uuids.contains_key(&baby));
+            assert_eq!(calls.load(Ordering::SeqCst), 1);
+            assert!(take_hook_panics().is_empty());
         },
     );
 }
