@@ -505,32 +505,6 @@ pub(crate) struct Slot {
     role: Role,
 }
 
-impl Slot {
-    fn mod_menu(kind: &crate::containers::ModMenuType, index: usize) -> Self {
-        match kind.crafting {
-            Some(c) if c.grid_slots().contains(&index) => Self {
-                container: GRID,
-                index: index - c.grid,
-                role: Role::Mod,
-            },
-            Some(c) if c.result == index => Self {
-                container: RESULT,
-                index: 0,
-                role: Role::CraftResult,
-            },
-            _ => Self {
-                container: MAIN,
-                index,
-                role: if kind.results.contains(&index) {
-                    Role::ModResult
-                } else {
-                    Role::Mod
-                },
-            },
-        }
-    }
-}
-
 /// `BeaconBlockEntity.BEACON_EFFECTS`: the powers of each pyramid level.
 pub const BEACON_EFFECTS: [&[&str]; 4] = [
     &["minecraft:speed", "minecraft:haste"],

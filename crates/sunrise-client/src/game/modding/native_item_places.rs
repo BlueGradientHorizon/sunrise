@@ -3375,7 +3375,6 @@ pub(super) mod tests {
         test: impl FnOnce(&mut super::Game<'_>, ItemPlace, i32, mod_api::ItemStack),
     ) {
         use crate::game::maps::MapData;
-        use mod_api::__private::game::Fields;
         use mod_api::{
             AttachedItems, AttachmentType, Holder, MenuReplace, MenuSlotPlace, StackList,
         };
