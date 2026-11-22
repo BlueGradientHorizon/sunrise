@@ -618,7 +618,7 @@ mod tests {
             .find(|p| p.name == "pre_remove_side_effects")
             .unwrap();
         assert_eq!(scoped.scope.as_ref().unwrap().kind, PartKind::BlockEntity);
-        assert_eq!(scoped.version, 3);
+        assert_eq!(scoped.version, 4);
         for (name, version, context) in [
             (
                 "add_client_reload_listeners",

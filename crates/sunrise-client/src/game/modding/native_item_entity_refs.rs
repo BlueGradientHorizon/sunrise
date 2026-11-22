@@ -11,18 +11,30 @@ use sunrise_client::{
 };
 
 impl Game<'_> {
-    fn native_item_entity_index(&self, item: ItemEntityRef) -> Option<usize> {
-        let Target::Item(id) = self.native_entity_target(item.entity())? else {
+    /// Resolve the stable item identity, reusing the caller's known slot while it still matches.
+    pub(super) fn native_item_entity_index(
+        &self,
+        item: ItemEntityRef,
+        hint: Option<usize>,
+    ) -> Option<usize> {
+        let (Target::Item(_), Some(location)) =
+            self.native_entity_target_with_location(item.entity())?
+        else {
             return None;
         };
-        self.dropped.iter().position(|entity| entity.id == id)
+        hint.filter(|&i| {
+            self.dropped
+                .get(i)
+                .is_some_and(|row| row.join == location.join)
+        })
+        .or_else(|| self.dropped.locate(location.join))
     }
 
     /// Narrows an entity to a dropped item, or None for another kind, a
     /// stale handle, a client, or an item temporarily taken out for ticking.
     pub(super) fn item_entity(&self, entity: EntityRef) -> Option<ItemEntityRef> {
         let item = ItemEntityRef::new(entity);
-        self.native_item_entity_index(item).map(|_| item)
+        self.native_item_entity_index(item, None).map(|_| item)
     }
 
     /// Lend `ItemEntity.getItem`. Encode components only when the reader projects the view.
@@ -33,7 +45,7 @@ impl Game<'_> {
     ) -> Option<()> {
         let stack = &self
             .dropped
-            .get(self.native_item_entity_index(item)?)?
+            .get(self.native_item_entity_index(item, None)?)?
             .stack;
         let metadata = stack_read_metadata(stack).ok()?;
         let project = |metadata| project_stack(stack, metadata).ok();
@@ -45,13 +57,11 @@ impl Game<'_> {
     /// remove an item entity, use the removal handle. False also for an
     /// unavailable item or outside a server.
     pub(super) fn item_entity_set_stack(&mut self, item: ItemEntityRef, stack: ItemStack) -> bool {
-        if stack.count == 0
-            || &*stack.item == "minecraft:air"
-            || self.native_item_entity_index(item).is_none()
-        {
+        if stack.count == 0 || &*stack.item == "minecraft:air" {
             return false;
         }
-        self.journal_set_item_entity(item.entity().id(), stack)
+        self.native_item_entity_index(item, None)
+            .is_some_and(|index| self.journal_set_item_entity_at(index, stack))
     }
 
     /// The signed pickup delay; the legacy infinite sentinel reads as vanilla's
@@ -59,7 +69,7 @@ impl Game<'_> {
     pub(super) fn item_entity_pickup_delay(&self, item: ItemEntityRef) -> Option<i32> {
         let delay = self
             .dropped
-            .get(self.native_item_entity_index(item)?)?
+            .get(self.native_item_entity_index(item, None)?)?
             .pickup_delay;
         if delay == i64::from(u32::MAX) {
             Some(i32::from(i16::MAX))
@@ -70,10 +80,10 @@ impl Game<'_> {
 
     /// `ItemEntity.setPickUpDelay`.
     pub(super) fn item_entity_set_pickup_delay(&mut self, item: ItemEntityRef, ticks: i32) -> bool {
-        let Some(index) = self.native_item_entity_index(item) else {
+        let Some(index) = self.native_item_entity_index(item, None) else {
             return false;
         };
-        self.dropped[index].pickup_delay = i64::from(ticks);
+        self.journal_set_item_pickup_delay(index, ticks);
         true
     }
 
@@ -94,14 +104,18 @@ impl Game<'_> {
 
     /// `ItemEntity.getAge`, including negative lifetime sentinels.
     pub(super) fn item_entity_age(&self, item: ItemEntityRef) -> Option<i32> {
-        Some(self.dropped.get(self.native_item_entity_index(item)?)?.age)
+        Some(
+            self.dropped
+                .get(self.native_item_entity_index(item, None)?)?
+                .age,
+        )
     }
 
     /// The UUID set by `ItemEntity.setTarget`, limiting pickup to that player;
     /// None also means an unavailable item. This is not the thrower.
     pub(super) fn item_entity_target(&self, item: ItemEntityRef) -> Option<u128> {
         self.dropped
-            .get(self.native_item_entity_index(item)?)?
+            .get(self.native_item_entity_index(item, None)?)?
             .target
             .map(ints_uuid)
     }
@@ -112,10 +126,10 @@ impl Game<'_> {
         item: ItemEntityRef,
         target: Option<u128>,
     ) -> bool {
-        let Some(index) = self.native_item_entity_index(item) else {
+        let Some(index) = self.native_item_entity_index(item, None) else {
             return false;
         };
-        self.dropped[index].target = target.map(uuid_ints);
+        self.journal_set_item_target(index, target.map(uuid_ints));
         true
     }
 
@@ -125,7 +139,7 @@ impl Game<'_> {
     pub(super) fn item_entity_owner(&self, item: ItemEntityRef) -> Option<EntityRef> {
         let uuid = self
             .dropped
-            .get(self.native_item_entity_index(item)?)?
+            .get(self.native_item_entity_index(item, None)?)?
             .thrower?;
         let target = self.target_by_uuid(ints_uuid(uuid))?;
         if self.target_level(target) != self.dim {

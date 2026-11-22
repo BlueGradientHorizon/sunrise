@@ -345,7 +345,7 @@ impl Game<'_> {
                     m.previous = Vec3::new(before.x, before.y - offset, before.z);
                     m.velocity = Vec3::ZERO;
                     m.fall_distance = 0.0;
-                    m.on_ground = false;
+                    m.ground.on_ground = false;
                     m.extra.passenger = true;
                     m.ai.nav.stop();
                     continue;
@@ -374,9 +374,9 @@ impl Game<'_> {
                     vehicle,
                     rider,
                     vehicle.rider.is_some() || self.riding == Some(v),
-                    self.res
-                        .mob_data()
-                        .entity_has("minecraft:non_controlling_rider", &rider.kind.id),
+                    self.items()
+                        .entity_type_tags
+                        .contains("minecraft:non_controlling_rider", &rider.kind.id),
                 );
                 let takes_body = riders::takes_vehicle_body(vehicle, rider, controlling);
                 let vehicle_width = vehicle.width();
@@ -391,7 +391,7 @@ impl Game<'_> {
                 m.previous = riders::seat(attach, offset, prev, prev_yaw);
                 m.velocity = Vec3::ZERO;
                 m.fall_distance = 0.0;
-                m.on_ground = false;
+                m.ground.on_ground = false;
                 if takes_body {
                     m.body_yaw = body;
                     m.previous_body_yaw = prev_body;

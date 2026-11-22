@@ -74,6 +74,9 @@ impl Game<'_> {
             keep_client_state(self.world.block_entities.get(&key), &mut loaded);
             let command_block = matches!(loaded, BlockEntity::CommandBlock(_));
             self.world.block_entities.insert(key, loaded);
+            if source == BlockEntityDataSource::Chunk {
+                sunrise_client::spans::note_block_entity_loads(1);
+            }
             self.update_spawner_display(key);
             // The section is drawn again with what the block entity shows.
             let state = self.world.block(pos[0], pos[1], pos[2]);
@@ -129,6 +132,10 @@ impl Game<'_> {
                 });
                 if same {
                     return;
+                }
+                // With no previous state this is a column load/adoption, not a block edit.
+                if previous.is_none() {
+                    sunrise_client::spans::note_block_entity_loads(1);
                 }
                 self.world.block_entities.replace(pos, entity)
             }

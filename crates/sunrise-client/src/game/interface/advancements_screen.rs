@@ -776,11 +776,10 @@ impl Game<'_> {
         self.draw_item(batch, &d.icon, ix + f(x + 8), iy + f(y + 5));
     }
     /// A left button press or release.
-    pub(super) fn advancements_mouse(&mut self, pressed: bool, size: [u32; 2]) {
+    pub(super) fn advancements_mouse(&mut self, pressed: bool, size: [u32; 2]) -> bool {
         if !pressed {
-            self.adv_ui.drag = None;
-            self.adv_ui.scrolling = false;
-            return;
+            let dragging = self.adv_ui.drag.take().is_some();
+            return std::mem::take(&mut self.adv_ui.scrolling) || dragging;
         }
         let b = HudBatch::new(size, self.settings.gui_scale_inputs());
         let (w, h) = (b.width, b.height);
@@ -794,7 +793,7 @@ impl Game<'_> {
             self.audio
                 .play("minecraft:ui.button.click", None, 0.25, 1.0);
             self.close_advancements();
-            return;
+            return true;
         }
         let view = self.adv_view();
         let (left, top) = window(w, h);
@@ -815,10 +814,11 @@ impl Game<'_> {
                     self.adv_ui.tab = Some(t);
                     self.adv_ui.scroll = None;
                 }
-                return;
+                return true;
             }
         }
         self.adv_ui.drag = Some(self.cursor);
+        true
     }
     /// `mouseDragged` with the left button: the first step starts
     /// scrolling, later ones move the tree.

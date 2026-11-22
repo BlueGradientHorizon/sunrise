@@ -194,10 +194,104 @@ fn client_modifier_snapshot_tracks_focus_loss() {
         assert!(snapshot.alt());
         assert!(!snapshot.control());
         assert!(!snapshot.super_key());
-        game.handle_window_event_inner(&TestLoop, WindowEvent::Focused(false), None);
+        game.handle_window_event_inner(&TestLoop, WindowEvent::Focused(false), None, None);
         assert_eq!((game as &dyn ClientHost).modifiers().bits, 0);
         assert_eq!(snapshot.bits, 5);
     });
+}
+
+#[test]
+#[ignore = "daily"]
+fn blank_inventory_presses_are_handled_and_feed_double_click_history() {
+    in_own_process(
+        "game::core_tests::blank_inventory_presses_are_handled_and_feed_double_click_history",
+        exercise_blank_inventory_presses,
+    );
+}
+
+fn exercise_blank_inventory_presses() {
+    use mod_api::{ClientHost, Hooks, ModEntry, ScreenMouseButtonPressedPostEvent};
+    use std::sync::Mutex;
+    use winit::{event::DeviceId, event_loop::ControlFlow};
+
+    struct TestLoop;
+    impl EventLoopCtl for TestLoop {
+        fn exit(&self) {}
+        fn set_control_flow(&self, _: ControlFlow) {}
+    }
+    type Post = (&'static str, bool, bool);
+    struct Observer(Arc<Mutex<Vec<Post>>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Observer {
+        fn screen_mouse_button_pressed_post(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut ScreenMouseButtonPressedPostEvent<'_>,
+        ) {
+            self.0.lock().unwrap().push((
+                event.screen.id,
+                event.was_click_handled,
+                event.double_click,
+            ));
+        }
+    }
+
+    let posts = Arc::new(Mutex::new(Vec::new()));
+    mod_platform::testing::with_mods(
+        vec![ModEntry::new(
+            "inventory_clicks",
+            Box::new(Observer(posts.clone())),
+        )]
+        .into(),
+        || {
+            super::native_entity_refs::tests::with_client_game(|game| {
+                let _window = super::native_hooks::particle_count_tests::frame_scene(game);
+                let mut millis = 0;
+                for (screen, id) in [
+                    (Screen::Inventory, "inventory"),
+                    (Screen::Creative, "creative"),
+                ] {
+                    game.set_screen(screen);
+                    let renderer = game.renderer.as_ref().unwrap();
+                    let batch = HudBatch::new(
+                        [renderer.config.width, renderer.config.height],
+                        game.settings.gui_scale_inputs(),
+                    );
+                    let (x, y) = game.inventory_origin(&batch);
+                    game.cursor = (x + 3.0, y + 3.0);
+                    assert_eq!(game.inventory_target(), (None, false));
+                    for button in [
+                        MouseButton::Left,
+                        MouseButton::Right,
+                        MouseButton::Middle,
+                        MouseButton::Other(300),
+                    ] {
+                        for state in [ElementState::Pressed, ElementState::Released].repeat(2) {
+                            let timestamp = (state == ElementState::Pressed).then(|| {
+                                millis += 100;
+                                millis
+                            });
+                            game.handle_window_event_inner(
+                                &TestLoop,
+                                WindowEvent::MouseInput {
+                                    device_id: DeviceId::dummy(),
+                                    state,
+                                    button,
+                                },
+                                None,
+                                timestamp,
+                            );
+                        }
+                        assert_eq!(
+                            std::mem::take(&mut *posts.lock().unwrap()),
+                            [(id, true, false), (id, true, true)],
+                            "{id} with {button:?}",
+                        );
+                    }
+                }
+            });
+        },
+    );
 }
 
 /// `ClipContext.Block.OUTLINE` for the SOURCE_ONLY ray (#8180): a ray
@@ -334,7 +428,7 @@ fn right_click_block_controls_cauldron_use() {
         mob.extra.leash = Some(sunrise_client::mobs::leash::Holder::Player);
         game.mobs.push(mob);
         game.inventory[game.selected] = Some(ItemStack::new("minecraft:lead", 1));
-        game.guest_use = Some(GuestUse::OnBlock(Hand::Main));
+        game.guest_use = Some(GuestUse::on_block(Hand::Main));
         game.forced_hit = Some(hit);
         cancel.store(true, Ordering::SeqCst);
         let before = calls.load(Ordering::SeqCst);
@@ -347,7 +441,7 @@ fn right_click_block_controls_cauldron_use() {
 
         // A spectator's packet reaches the event, even when canceled.
         game.set_mode_id(3);
-        game.guest_use = Some(GuestUse::OnBlock(Hand::Main));
+        game.guest_use = Some(GuestUse::on_block(Hand::Main));
         game.forced_hit = Some(hit);
         cancel.store(true, Ordering::SeqCst);
         let before = calls.load(Ordering::SeqCst);
@@ -393,7 +487,7 @@ fn fence_ties_without_a_lead_only_on_main_hand() {
         mob.extra.leash = Some(Holder::Player);
         game.mobs.push(mob);
         game.forced_hit = Some(hit);
-        game.guest_use = Some(GuestUse::OnBlock(Hand::Off));
+        game.guest_use = Some(GuestUse::on_block(Hand::Off));
         game.with_hand(Hand::Off, |game| game.use_hand(Some(&hit)))
             .unwrap();
         assert_eq!(game.mobs[0].extra.leash, Some(Holder::Player));
@@ -403,7 +497,7 @@ fn fence_ties_without_a_lead_only_on_main_hand() {
         assert_eq!(game.mobs[0].extra.leash, Some(Holder::Knot(hit.pos)));
         game.mobs[0].extra.leash = Some(Holder::Player);
         game.offhand = None;
-        game.guest_use = Some(GuestUse::OnBlock(Hand::Main));
+        game.guest_use = Some(GuestUse::on_block(Hand::Main));
         game.with_hand(Hand::Main, |game| game.use_hand(Some(&hit)))
             .unwrap();
         assert_eq!(game.mobs[0].extra.leash, Some(Holder::Knot(hit.pos)));
@@ -701,6 +795,7 @@ fn a_falling_block_keeps_its_model_offset() {
         join: Default::default(),
         id: 0,
         state: BlockStateId(7),
+        blocks_building: true,
         start_pos: BlockPos::new(3, 72, -2),
         position: at,
         previous: Vec3::new(3.5, 71.0, -1.5),
@@ -973,7 +1068,7 @@ fn selecting_creative_tabs_does_not_drop_the_carried_stack_on_release() {
                     false,
                     false
                 ),
-                Release::Nothing
+                Release::Swallowed
             );
         }
     }

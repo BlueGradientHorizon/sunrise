@@ -24,6 +24,9 @@ mod item_fallthrough;
 #[cfg(test)]
 #[path = "shared/label_tests.rs"]
 mod label_tests;
+#[cfg(test)]
+#[path = "shared/live_damage_tests.rs"]
+mod live_damage_tests;
 #[path = "shared/loot.rs"]
 mod loot;
 #[cfg(test)]
@@ -58,6 +61,24 @@ struct ContentsChangedGuard<'a, 'game> {
 impl Drop for ContentsChangedGuard<'_, '_> {
     fn drop(&mut self) {
         self.game.contents_changing.pop();
+    }
+}
+
+/// Write back a `menu_button` cursor edit without revalidating an untouched stack.
+fn apply_menu_button_cursor(
+    items: &sunrise_client::items::Items,
+    original: &Option<mod_api::ItemStack>,
+    cursor: &Option<mod_api::ItemStack>,
+    carried: &mut Option<ItemStack>,
+) {
+    if cursor == original {
+        return;
+    }
+    match cursor.try_into_engine(items) {
+        Ok(updated) => *carried = updated,
+        Err(error) => {
+            log::warn!("mod menu_button write refused: {error:?}");
+        }
     }
 }
 
@@ -123,6 +144,7 @@ impl Game<'_> {
             slots: 0,
             mouse: self.cursor(),
             partial_tick: self.clock.fraction() as f32,
+            regions: &[],
         }))
     }
 
@@ -299,6 +321,12 @@ impl Game<'_> {
         self.capture(false);
         self.screen_state.replacing = false;
     }
+    /// Install a screen instance without firing hooks or rebuilding its layout.
+    pub(super) fn activate_screen(&mut self, screen: Screen) {
+        self.screen = screen;
+        self.screen_activation = self.screen_activation.wrapping_add(1);
+    }
+
     /// What `set_screen` does once the hooks have answered: `screen` opens,
     /// and the mod `owner`'s own screen when one answered `ModScreen`.
     fn apply_screen(&mut self, screen: Screen, owner: Option<&str>) {
@@ -307,7 +335,7 @@ impl Game<'_> {
         if screen != Screen::Inventory && self.active_native_screen().is_some() {
             self.remote_close_container();
         }
-        self.screen = screen;
+        self.activate_screen(screen);
         if let Some(owner) = owner {
             self.native_mod_screen = Some(owner.to_owned());
         }
@@ -336,6 +364,9 @@ impl Game<'_> {
         opens: bool,
         closes: bool,
     ) -> Option<Answered<ScreenOpening>> {
+        // Asked before either screen draws: nothing beside it yet.
+        let current = &crate::game::screen_backgrounds::without_regions(current);
+        let new = &crate::game::screen_backgrounds::without_regions(new);
         let mut outcome = None;
         if opens {
             self.native_screen_opening(current, new, &mut outcome);
@@ -453,7 +484,7 @@ impl Game<'_> {
             .map(|view| self.observe_view(view))
     }
 
-    fn observe_view(&self, view: ScreenView<'_>) -> ObservedScreen {
+    pub(super) fn observe_view(&self, view: ScreenView<'_>) -> ObservedScreen {
         ObservedScreen {
             id: view.id,
             overlay: self.screen == Screen::Playing,
@@ -503,7 +534,7 @@ impl Game<'_> {
             ScreenDecision::Vanilla(target) => self.open_screen_target(target),
             ScreenDecision::Open => {
                 if let Some(title) = self.title.as_mut() {
-                    title.mode = mode;
+                    title.activate_mode(mode);
                 }
                 self.release_mappings_on_screen_open();
                 self.build_screen();
@@ -547,6 +578,7 @@ impl Game<'_> {
             self.title_change(None);
         }
         self.title = None;
+        self.screen_activation = self.screen_activation.wrapping_add(1);
         self.build_screen();
         self.screen_state.observed = self.observed_now();
     }
@@ -1036,10 +1068,40 @@ pub(crate) struct NativeRecipes {
     pub(crate) recipes: Vec<NativeRecipe>,
 }
 
-/// The Post a mouse input owes once the screen has handled it, built when
-/// its Pre let the input through (`Game::screen_mouse_post`).
+/// A physical press and its original receiver. Activation counters, unlike screen IDs or
+/// layout revisions, distinguish same-kind replacements but do not change on resize.
+#[derive(Clone, Copy)]
+pub(super) struct ScreenPress {
+    pub(super) activation: u64,
+    pub(super) screen: Screen,
+    pub(super) title_mode: Option<u64>,
+    pub(super) button: i32,
+    pub(super) millis: u64,
+}
+
+impl ScreenPress {
+    pub(super) fn is_double_click(self, last: Option<Self>) -> bool {
+        last.is_some_and(|last| {
+            self.activation == last.activation
+                && self.screen == last.screen
+                && self.title_mode == last.title_mode
+                && self.button == last.button
+                && self.millis - last.millis < 250 // MouseHandler.DOUBLE_CLICK_THRESHOLD_MS
+        })
+    }
+}
+
+/// The button event and its original receiver, retained across a handler that may replace it.
+pub(super) struct ScreenButtonPost {
+    pub(super) screen: ObservedScreen,
+    pub(super) button: i32,
+    pub(super) pressed: bool,
+    pub(super) modifiers: u32,
+    pub(super) double_click: bool,
+}
+
+/// A scroll/drag notice owed after its Pre let the input through.
 pub(super) enum ScreenMousePost {
-    Button { button: i32, pressed: bool },
     Scroll([f64; 2]),
     Drag { button: i32, delta: [f32; 2] },
 }
@@ -1174,6 +1236,39 @@ impl Game<'_> {
             self.native_panel_key(name);
         }
     }
+    /// Whether any mod listens to a hook given the open screen's
+    /// `ScreenView` (render, input, open and close, room, exclusion): only
+    /// then are its regions collected.
+    pub(super) fn screen_view_listened(&self) -> bool {
+        use mod_api::HookId;
+        [
+            HookId::ScreenRenderPre,
+            HookId::ScreenRenderBackground,
+            HookId::ScreenRenderForeground,
+            HookId::ScreenRenderPost,
+            HookId::ScreenMouseButtonPressedPre,
+            HookId::ScreenMouseButtonPressedPost,
+            HookId::ScreenMouseButtonReleasedPre,
+            HookId::ScreenMouseButtonReleasedPost,
+            HookId::ScreenMouseDraggedPre,
+            HookId::ScreenMouseDraggedPost,
+            HookId::ScreenMouseScrolledPre,
+            HookId::ScreenMouseScrolledPost,
+            HookId::ScreenKeyPressedPre,
+            HookId::ScreenKeyPressedPost,
+            HookId::ScreenKeyReleasedPre,
+            HookId::ScreenKeyReleasedPost,
+            HookId::ScreenCharTypedPre,
+            HookId::ScreenCharTypedPost,
+            HookId::ScreenOpening,
+            HookId::ScreenClosing,
+            HookId::ScreenInitPost,
+            HookId::ScreenRoom,
+            HookId::ScreenExclusionAreas,
+        ]
+        .into_iter()
+        .any(mod_api::__private::listened)
+    }
     /// Whether a mod listens to one of the four screen render hooks; nothing
     /// is built to fire them otherwise.
     pub(super) fn screen_render_listened(&self) -> bool {
@@ -1226,6 +1321,7 @@ impl Game<'_> {
             slots: self.slot_count(),
             mouse: self.cursor(),
             partial_tick: self.clock.fraction() as f32,
+            regions: self.screen_regions(screen),
         })
     }
     /// The title's own screen as a native mod sees it (`ScreenView`):
@@ -1243,6 +1339,7 @@ impl Game<'_> {
             slots: 0,
             mouse: self.cursor(),
             partial_tick: self.clock.fraction() as f32,
+            regions: &[],
         }))
     }
     /// The open screen's container panel in GUI pixels (`screen`'s, the one
@@ -1295,14 +1392,35 @@ impl Game<'_> {
             ScreenMousePre::Passed(ScreenMousePost::Drag { button, delta })
         }
     }
-    /// The Post of a mouse input whose Pre let it through, once the screen's
-    /// own handling has run. The screen is the one open then (none, and no
-    /// Post, when the input closed it). Nothing is built with no subscriber.
+    /// Button Post sees the original receiver and its answer; return the final handled bit.
+    pub(super) fn screen_button_post(&self, post: &ScreenButtonPost, handled: bool) -> bool {
+        let screen = post.screen.view();
+        let mut result = TriState::Default;
+        if post.pressed {
+            self.native_screen_mouse_button_pressed_post(
+                &screen,
+                post.button,
+                post.modifiers,
+                post.double_click,
+                handled,
+                &mut result,
+            );
+        } else {
+            self.native_screen_mouse_button_released_post(
+                &screen,
+                post.button,
+                post.modifiers,
+                handled,
+                &mut result,
+            );
+        }
+        result.or(handled)
+    }
+
+    /// Scroll/drag Post is a notice to the screen still open after the input.
     pub(super) fn screen_mouse_post(&self, post: ScreenMousePost) {
         use mod_api::HookId;
         let hook = match post {
-            ScreenMousePost::Button { pressed: true, .. } => HookId::ScreenMouseButtonPressedPost,
-            ScreenMousePost::Button { pressed: false, .. } => HookId::ScreenMouseButtonReleasedPost,
             ScreenMousePost::Scroll(_) => HookId::ScreenMouseScrolledPost,
             ScreenMousePost::Drag { .. } => HookId::ScreenMouseDraggedPost,
         };
@@ -1314,14 +1432,6 @@ impl Game<'_> {
         };
         let modifiers = super::glfw_modifiers(self.modifiers);
         match post {
-            ScreenMousePost::Button {
-                button,
-                pressed: true,
-            } => self.native_screen_mouse_button_pressed_post(&screen, button, modifiers),
-            ScreenMousePost::Button {
-                button,
-                pressed: false,
-            } => self.native_screen_mouse_button_released_post(&screen, button, modifiers),
             ScreenMousePost::Scroll(scroll) => {
                 self.native_screen_mouse_scrolled_post(&screen, scroll, modifiers)
             }
@@ -1492,14 +1602,18 @@ impl Game<'_> {
         let Some(text) = text else {
             return;
         };
+        // A held edit modifier makes a shortcut of the key, not text.
+        let text = chars_to_type(text, self.types_text());
+        self.screen_committed_chars(&text);
+    }
+
+    /// Characters already committed by the input method or the control socket are not shortcuts.
+    pub(in crate::game) fn screen_committed_chars(&mut self, text: &str) {
         if !self.screen_hooks_open() {
             return;
         }
-        // A held edit modifier makes a shortcut of the key, not text.
-        let text = chars_to_type(text, self.types_text());
-        self.screen_text_each(&text, |game, c| {
-            // `Err` only says no text box of the screen takes the character.
-            if game.type_chars_into_screen(c).is_err() {
+        self.screen_text_each(text, |game, c| {
+            if !c.starts_with(char::is_control) && game.type_chars_into_screen(c).is_err() {
                 game.screen_chars_post(c);
             }
         });
@@ -1539,7 +1653,7 @@ impl Game<'_> {
         Some(LivingRef::new(EntityRef::new(epoch, id)))
     }
     /// Deliver what the batch just ticked recorded, in order: `minecart_pass`
-    /// to the parts, and the writes a landing or a mid-walk `entity_inside`
+    /// to the parts, and the writes a landing, step, or mid-walk `entity_inside`
     /// contact asked for to the level. A write is skipped when the block at
     /// its position is no longer the state it touched, as vanilla never sees
     /// a stale one. The parts' own `entity_inside` contacts fire mid-walk now,
@@ -1674,6 +1788,112 @@ pub(super) fn invulnerability_check(
     invulnerable
 }
 
+fn engine_reduction(reduction: mod_api::Reduction) -> sunrise_world::living_damage::Reduction {
+    match reduction {
+        mod_api::Reduction::Invulnerability => {
+            sunrise_world::living_damage::Reduction::Invulnerability
+        }
+        mod_api::Reduction::Armor => sunrise_world::living_damage::Reduction::Armor,
+        mod_api::Reduction::Enchantments => sunrise_world::living_damage::Reduction::Enchantments,
+        mod_api::Reduction::MobEffects => sunrise_world::living_damage::Reduction::MobEffects,
+        mod_api::Reduction::Absorption => sunrise_world::living_damage::Reduction::Absorption,
+        mod_api::Reduction::InnateResistance => {
+            sunrise_world::living_damage::Reduction::InnateResistance
+        }
+        _ => unreachable!("unknown API reduction"),
+    }
+}
+
+struct LiveDamageRead<'a>(&'a sunrise_world::living_damage::DamageState);
+
+impl mod_api::__private::DamageContainerRead for LiveDamageRead<'_> {
+    fn original(&self) -> f32 {
+        self.0.original()
+    }
+    fn new_damage(&self) -> f32 {
+        self.0.new_damage()
+    }
+    fn blocked(&self) -> f32 {
+        self.0.blocked()
+    }
+    fn shield_damage(&self) -> f32 {
+        self.0.shield_damage()
+    }
+    fn post_attack_invulnerability_ticks(&self) -> i32 {
+        self.0.post_attack_invulnerability_ticks()
+    }
+    fn should_cause_side_effects(&self) -> bool {
+        self.0.should_cause_side_effects()
+    }
+    fn inflicted(&self) -> f32 {
+        self.0.inflicted()
+    }
+    fn health_damage(&self) -> f32 {
+        self.0.health_damage()
+    }
+    fn reduction(&self, reduction: mod_api::Reduction) -> f32 {
+        self.0.reduction(engine_reduction(reduction))
+    }
+}
+
+struct LiveDamageContainer<'a>(&'a mut DamageContainer);
+
+impl mod_api::__private::DamageContainerRead for LiveDamageContainer<'_> {
+    fn original(&self) -> f32 {
+        self.0.original()
+    }
+    fn new_damage(&self) -> f32 {
+        self.0.new_damage()
+    }
+    fn blocked(&self) -> f32 {
+        self.0.blocked()
+    }
+    fn shield_damage(&self) -> f32 {
+        self.0.shield_damage()
+    }
+    fn post_attack_invulnerability_ticks(&self) -> i32 {
+        self.0.post_attack_invulnerability_ticks()
+    }
+    fn should_cause_side_effects(&self) -> bool {
+        self.0.should_cause_side_effects()
+    }
+    fn inflicted(&self) -> f32 {
+        self.0.inflicted()
+    }
+    fn health_damage(&self) -> f32 {
+        self.0.health_damage()
+    }
+    fn reduction(&self, reduction: mod_api::Reduction) -> f32 {
+        self.0.reduction(engine_reduction(reduction))
+    }
+}
+
+impl mod_api::__private::DamageContainerBackend for LiveDamageContainer<'_> {
+    fn set_new_damage(&mut self, value: f32) {
+        self.0.record_new_damage(value);
+    }
+    fn set_post_attack_invulnerability_ticks(&mut self, value: i32) {
+        self.0.record_post_attack_invulnerability_ticks(value);
+    }
+    fn add_reduction_modifier(
+        &mut self,
+        reduction: mod_api::Reduction,
+        owner: Option<&'static str>,
+        modifier: Box<dyn FnMut(mod_api::DamageContainerView<'_>, f32) -> f32>,
+    ) {
+        let mut wrapped = mod_api::__private::wrap_reduction_modifier(owner, modifier);
+        self.0.add_reduction_modifier(
+            engine_reduction(reduction),
+            Box::new(move |engine_container: &DamageContainer, amount: f32| {
+                wrapped(
+                    mod_api::DamageContainerView::new(&LiveDamageRead(engine_container)),
+                    amount,
+                )
+            }),
+        );
+    }
+}
+
 /// `native_living_incoming_damage` for the damage code: whether it
 /// canceled the hit.
 pub(super) fn incoming_damage(
@@ -1682,7 +1902,14 @@ pub(super) fn incoming_damage(
     victim: Victim,
     container: &mut DamageContainer,
 ) -> bool {
-    if !mod_api::__private::listened(mod_api::HookId::LivingIncomingDamage) {
+    let listens_incoming = mod_api::__private::listened(mod_api::HookId::LivingIncomingDamage);
+    if listens_incoming
+        || mod_api::__private::listened(mod_api::HookId::LivingDamagePre)
+        || mod_api::__private::listened(mod_api::HookId::LivingDamagePost)
+    {
+        container.enable_live_reductions();
+    }
+    if !listens_incoming {
         return false;
     }
     let (entity, kind, source) = hurt_server_args(hurting, level.attack());
@@ -1697,7 +1924,7 @@ pub(super) fn incoming_damage(
     let Ok(causing_weapon) = causing_weapon.try_into_api() else {
         return false;
     };
-    let mut snapshot = (*container).try_into_api().expect("scalar damage snapshot");
+    let mut live = LiveDamageContainer(container);
     HitLevel(level).native_living_incoming_damage(mod_api::__private::LivingIncomingDamageCall {
         entity,
         kind,
@@ -1705,12 +1932,9 @@ pub(super) fn incoming_damage(
         victim: &victim,
         weapon: weapon.as_ref(),
         causing_weapon: causing_weapon.as_ref(),
-        container: &mut snapshot,
+        container: mod_api::DamageContainer::new(&mut live),
         canceled: &mut canceled,
     });
-    *container = snapshot
-        .try_into_engine(&())
-        .expect("scalar damage snapshot");
     canceled
 }
 
@@ -1723,12 +1947,15 @@ pub(super) fn damage_pre(
     if !mod_api::__private::listened(mod_api::HookId::LivingDamagePre) {
         return;
     }
+    container.enable_live_reductions();
     let (entity, kind, source) = hurt_server_args(hurting, level.attack());
-    let mut snapshot = (*container).try_into_api().expect("scalar damage snapshot");
-    HitLevel(level).native_living_damage_pre(entity, kind, &source, &mut snapshot);
-    *container = snapshot
-        .try_into_engine(&())
-        .expect("scalar damage snapshot");
+    let mut live = LiveDamageContainer(container);
+    HitLevel(level).native_living_damage_pre(mod_api::__private::LivingDamagePreCall {
+        entity,
+        kind,
+        source: &source,
+        container: mod_api::DamageContainer::new(&mut live),
+    });
 }
 
 /// `native_living_damage_post` for the damage code.
@@ -1741,8 +1968,13 @@ pub(super) fn damage_post(
         return;
     }
     let (entity, kind, source) = hurt_server_args(hurting, level.attack());
-    let snapshot = (*container).try_into_api().expect("scalar damage snapshot");
-    HitLevel(level).native_living_damage_post(entity, kind, &source, &snapshot);
+    let live = LiveDamageRead(container);
+    HitLevel(level).native_living_damage_post(
+        entity,
+        kind,
+        &source,
+        mod_api::DamageContainerView::new(&live),
+    );
 }
 
 /// `native_living_shield_block` for the damage code. Its one
@@ -1766,6 +1998,34 @@ pub(super) fn shield_block(
 }
 
 impl Game<'_> {
+    /// Finish a lethal or totem-protected hit only once the owning level has settled it.
+    pub(in crate::game) fn finish_damage_post(
+        &mut self,
+        entity: i32,
+        kind: &str,
+        post: std::sync::Arc<sunrise_client::health::DamagePost>,
+    ) {
+        let (source, state, original_lend) = post.view();
+        let (player, mobs) = (&mut self.player, &mut self.mobs);
+        let lend = original_lend.and_then(|id| {
+            sunrise_client::health::HitLend::attacking_player(player.as_mut(), id)
+                .or_else(|| sunrise_client::health::HitLend::attacking_mob(mobs.iter_mut(), id))
+        });
+        let level = crate::game::entity::damage_level_of!(
+            self,
+            &sunrise_client::health::NO_ATTACK,
+            no_push,
+            lend
+        );
+        let live = LiveDamageRead(state);
+        HitLevel(level.reborrow()).native_living_damage_post(
+            entity,
+            kind,
+            &source,
+            mod_api::DamageContainerView::new(&live),
+        );
+    }
+
     /// The [`Attack`] of `attacker` (an entity id, 0 for none) for the level a hit lands in
     /// ([`DamageLevel::attacked_by`]). While a native mod listens it also records what the
     /// attacker holds (the player's selected and off-hand stacks, a mob's main hand) for
@@ -1885,6 +2145,7 @@ pub(super) const DAMAGE_HOOKS: DamageHooks = DamageHooks {
     incoming: Some(incoming_damage),
     pre: Some(damage_pre),
     post: Some(damage_post),
+    owner_post_listened: Some(|| mod_api::__private::listened(mod_api::HookId::LivingDamagePost)),
     knockback: Some(knockback),
     totem: Some(use_totem),
     shield: Some(shield_block),
@@ -1894,14 +2155,22 @@ pub(super) const DAMAGE_HOOKS: DamageHooks = DamageHooks {
 /// reports them.
 pub(super) const BLOCK_CONTACT_HOOKS: sunrise_client::block_contact::Hooks =
     sunrise_client::block_contact::Hooks {
-        step_on: |dimension, c| {
-            Game::native_block_step_on(
-                dimension,
-                c.entity,
-                c.kind,
-                c.state,
-                [c.position.x, c.position.y, c.position.z],
-            );
+        step_listens: |state| {
+            crate::game::api_values::block_state::block_listens(mod_api::HookId::StepOn, state)
+        },
+        step_on: |level, step, movement| {
+            use self::bounce_restitution::StepOnView;
+            use sunrise_client::block_contact::StepLevel;
+            match level {
+                StepLevel::Server(level) => StepOnView(mod_api::LevelRandomSide::Server(
+                    &mut HitLevel(level.reborrow()),
+                ))
+                .native_step_on(step, movement),
+                StepLevel::Client(level) => StepOnView(mod_api::LevelRandomSide::Client(
+                    &crate::game::native_surface::FrictionView(level),
+                ))
+                .native_step_on(step, movement),
+            }
         },
         any_inside: || mod_api::__private::has_scoped_hook(mod_api::HookId::EntityInside),
         inside_listens: |state| {
@@ -2863,32 +3132,11 @@ impl Game<'_> {
         }
         true
     }
-    /// Puts back a mod block entity taken out for a call, unless the call
-    /// removed or replaced it, with what its `setChanged` does.
-    pub(super) fn put_back_mod_block_entity(
-        &mut self,
-        pos: Pos,
-        taken: EngineBlockEntity,
-        items: &[Option<ItemStack>],
-    ) {
-        if let Some(BlockEntity::Mod(m)) = self.world.block_entities.get_mut(&pos)
-            && m.id().is_empty()
-        {
-            let moved = taken.items != items;
-            **m = taken;
-            // BlockEntity.setChanged: the next save writes its chunk, and
-            // comparators read a container whose items changed.
-            self.world.modified.insert((pos.0 >> 4, pos.2 >> 4));
-            if moved {
-                self.container_changed(pos);
-            }
-        } else {
-            self.drop_unreturned_mod_contents(pos, taken);
-        }
-    }
     /// Menu button `id` on a mod menu (`clickMenuButton`), with the acting
     /// player's cursor stack (`carried`, read and written). A block-backed
-    /// menu lends its block entity; a blockless menu lends none.
+    /// menu lends its live resident block entity through `BlockEntityScope`;
+    /// a blockless menu lends no view while keeping `host()` and
+    /// `transaction(...)` usable.
     pub(super) fn mod_menu_button(
         &mut self,
         menu: &str,
@@ -2897,22 +3145,36 @@ impl Game<'_> {
         backing: Option<(i32, i32, i32)>,
         carried: &mut Option<ItemStack>,
     ) {
-        let Some(pos) = backing.filter(|&pos| self.mod_menu_at(pos) == Some(menu)) else {
-            self.api_menu_button(menu, block, &context, None, carried);
-            return;
-        };
-        let Some(BlockEntity::Mod(m)) = self.world.block_entities.get_mut(&pos) else {
-            self.api_menu_button(menu, block, &context, None, carried);
-            return;
-        };
-        if m.id().is_empty() {
-            self.api_menu_button(menu, block, &context, None, carried);
+        if !mod_api::__private::has_part_hook(mod_api::HookId::MenuButton) {
             return;
         }
-        let mut taken = std::mem::take(&mut **m);
-        let items = taken.items.clone();
-        self.api_menu_button(menu, block, &context, Some(&mut taken), carried);
-        self.put_back_mod_block_entity(pos, taken, &items);
+        let Ok(mut api_cursor) = carried.try_into_api() else {
+            return;
+        };
+        let original_api = api_cursor.clone();
+        let target_pos = backing.filter(|&pos| self.mod_menu_at(pos) == Some(menu));
+        let target = target_pos.and_then(|pos| self.resident_block_entity_target(pos));
+        let items_changed = {
+            let mut access = match target {
+                Some((handle, state)) => ResidentBlockEntityAccess::for_handle(self, handle, state),
+                None => ResidentBlockEntityAccess::blockless(self),
+            };
+            Game::native_menu_button(
+                menu,
+                block,
+                &context,
+                mod_api::BlockEntityScope::new(&mut access),
+                &mut api_cursor,
+            );
+            access.items_changed()
+        };
+        if items_changed
+            && let Some((handle, _)) = target
+            && let Some(pos) = self.native_block_entity_write_key(handle)
+        {
+            self.after_commit(crate::game::transactions::After::Changed(pos));
+        }
+        apply_menu_button_cursor(self.items(), &original_api, &api_cursor, carried);
     }
     /// A press consumed by the shown screen goes to the server as a menu button click.
     pub(super) fn native_screen_press(&mut self, right: bool) -> bool {
@@ -3445,12 +3707,14 @@ mod tests {
                 registrar
                     .block_entity_part(&kind, Press)
                     .expect("native type");
-                registrar
-                    .block_entity_capability(&PROBE, &kind, |_, _| Some(Box::new(Marker(6300))));
+                registrar.block_entity_capability(&PROBE, &kind, |_, _, _, _, offer| {
+                    offer.offer(|| Box::new(Marker(6300)))
+                });
                 record_key(&self.keys.shared, kind);
                 let vanilla = registrar.block_entity_type_key("minecraft:chest");
-                registrar
-                    .block_entity_capability(&PROBE, &vanilla, |_, _| Some(Box::new(Marker(26))));
+                registrar.block_entity_capability(&PROBE, &vanilla, |_, _, _, _, offer| {
+                    offer.offer(|| Box::new(Marker(26)))
+                });
                 record_key(&self.keys.vanilla, vanilla);
                 if let Some(id) = self.unknown {
                     registrar.block_entity_type_key(id);

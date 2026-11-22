@@ -698,6 +698,16 @@ impl ModsScreen {
 
     /// A left click: what it asks of the game, and whether it sounds as a button.
     pub fn click(&mut self, m: &Measure, x: f64, y: f64) -> (Action, bool) {
+        let (action, sound, _) = self.click_with_outcome(m, x, y);
+        (action, sound)
+    }
+
+    pub(crate) fn click_with_outcome(
+        &mut self,
+        m: &Measure,
+        x: f64,
+        y: f64,
+    ) -> (Action, bool, bool) {
         self.place();
         let g = self.geo();
         for (i, r) in g.footer.into_iter().enumerate() {
@@ -708,20 +718,20 @@ impl ModsScreen {
                 } else {
                     Action::Back
                 };
-                return (action, true);
+                return (action, true, true);
             }
         }
         if hit(g.search, x, y) {
             self.search.focused = true;
             self.list_focused = false;
             self.search.click(m, x, false, false);
-            return (Action::None, false);
+            return (Action::None, false, true);
         }
         self.search.focused = false;
         if hit(g.sort, x, y) {
             self.descending = !self.descending;
             self.refresh();
-            return (Action::None, true);
+            return (Action::None, true, true);
         }
         let [lx, ly, lw, lh] = g.list;
         if hit(g.list, x, y) {
@@ -730,7 +740,7 @@ impl ModsScreen {
             let scrollable = Scroll::max(content, lh) > 0;
             if scrollable && x >= f64::from(lx + lw - SCROLLBAR_W) {
                 self.list.held = Some(y);
-                return (Action::None, false);
+                return (Action::None, false, true);
             }
             let row_w = lw - 6 - if scrollable { SCROLLBAR_W } else { 0 };
             if (f64::from(lx + 3)..f64::from(lx + 3 + row_w)).contains(&x) {
@@ -741,10 +751,10 @@ impl ModsScreen {
                     self.select(entry);
                 }
             }
-            return (Action::None, false);
+            return (Action::None, false, true);
         }
         let Some(e) = self.current() else {
-            return (Action::None, false);
+            return (Action::None, false, false);
         };
         for (i, r) in g.buttons.into_iter().enumerate() {
             if !hit(r, x, y) {
@@ -759,11 +769,12 @@ impl ModsScreen {
                     _ => Action::None,
                 },
             };
-            return (action.clone(), action != Action::None);
+            let active = action != Action::None;
+            return (action, active, active);
         }
         let in_text = hit(g.panel, x, y);
         if !in_text && !hit(g.panel_track(0), x, y) {
-            return (Action::None, false);
+            return (Action::None, false, false);
         }
         let (items, content, _, pinned) = self.panel_items(m, e);
         self.panel_content.set(content);
@@ -772,10 +783,10 @@ impl ModsScreen {
         self.panel.set(self.panel.amount, content, view);
         if Scroll::max(content, view) > 0 && hit(g.panel_track(pinned), x, y) {
             self.panel.held = Some(y);
-            return (Action::None, false);
+            return (Action::None, false, true);
         }
         if !in_text {
-            return (Action::None, false);
+            return (Action::None, false, false);
         }
         for placed in &items {
             let fixed = placed.y < pinned;
@@ -788,7 +799,7 @@ impl ModsScreen {
                 Kind::Subtitle(pieces) => {
                     for piece in pieces {
                         if hit(row(piece.x, piece.w), x, y) {
-                            return (Action::Copy(piece.copy.clone()), false);
+                            return (Action::Copy(piece.copy.clone()), false, true);
                         }
                     }
                 }
@@ -797,12 +808,12 @@ impl ModsScreen {
                     link: Some(url),
                     ..
                 } if hit(row(0, *width), x, y) => {
-                    return (Action::Link(url.clone()), false);
+                    return (Action::Link(url.clone()), false, true);
                 }
                 _ => {}
             }
         }
-        (Action::None, false)
+        (Action::None, false, false)
     }
     /// The pointer moved with the button held: a held scrollbar follows it.
     pub fn drag(&mut self, y: f64) {
@@ -817,9 +828,8 @@ impl ModsScreen {
             g.panel[3] - pinned,
         );
     }
-    pub fn release(&mut self) {
-        self.list.held = None;
-        self.panel.held = None;
+    pub fn release(&mut self) -> bool {
+        self.list.held.take().is_some() | self.panel.held.take().is_some()
     }
     /// The mouse wheel over the list or the panel.
     pub fn scroll(&mut self, x: f64, y: f64, amount: f64) {

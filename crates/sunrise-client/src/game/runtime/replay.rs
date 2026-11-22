@@ -680,7 +680,7 @@ impl Game<'_> {
         self.replay.driver = Some(Box::new(driver));
         self.camera_type = sunrise_client::camera::CameraType::FirstPerson;
         self.title = None;
-        self.screen = Screen::Playing;
+        self.activate_screen(Screen::Playing);
         self.capture(false);
         self.dragging = false;
         // Apply timestamp-zero login, player pose, and chunk packets before the first rendered
@@ -731,12 +731,12 @@ impl Game<'_> {
             // restore. Start the next world in first person with visible hands.
             self.camera_type = sunrise_client::camera::CameraType::FirstPerson;
             if let Some(title) = self.title.as_mut() {
-                title.mode = sunrise_client::title::Mode::Main;
+                title.activate_mode(sunrise_client::title::Mode::Main);
             }
         } else if self.integrated.is_none() && self.lan.is_none() {
             let _ = self.close_world();
             if let Some(title) = self.title.as_mut() {
-                title.mode = sunrise_client::title::Mode::Main;
+                title.activate_mode(sunrise_client::title::Mode::Main);
             }
         }
         closed

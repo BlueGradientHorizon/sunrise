@@ -290,7 +290,6 @@ fn ordinary_only_wire_forms_refuse_registration_before_a_channel_exists() {
     let mut view = payloads.registrar("1");
     let ids = [
         refused::<crate::ModelPart>(&mut view, "test:model"),
-        refused::<Option<&'static str>>(&mut view, "test:interned"),
         refused::<Option<serde_json::Value>>(&mut view, "test:json"),
         refused::<crate::LegacyRandomSource>(&mut view, "test:converted"),
         refused::<crate::LevelKey>(&mut view, "test:level_key"),

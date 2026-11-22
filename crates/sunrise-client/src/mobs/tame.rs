@@ -377,7 +377,7 @@ impl Goal for SitWhenOrdered {
         if !m.extra.sitting && !m.extra.tame {
             return false;
         }
-        if m.fluids.in_water || !m.on_ground {
+        if m.fluids.in_water || !m.ground.on_ground {
             return false;
         }
         match owner_distance_sqr(m, cx.w) {
@@ -766,7 +766,7 @@ pub fn ai_step(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
 /// then `Wolf.tick` runs the shake (`shake_tick`). `wet` is
 /// `isInWaterOrRain`.
 pub fn server_shake(m: &mut Mob, wet: bool, events: &mut Vec<MobEvent>) {
-    if m.extra.flag2 && m.extra.counter2 == 0 && m.ai.nav.is_done() && m.on_ground {
+    if m.extra.flag2 && m.extra.counter2 == 0 && m.ai.nav.is_done() && m.ground.on_ground {
         start_shaking(m);
         broadcast(m, events, 8);
     }
@@ -2019,7 +2019,7 @@ mod tests {
         k.width = 0.6;
         k.height = 0.85;
         let mut m = Mob::new(1, kind, Vec3::ZERO, 0.0);
-        m.on_ground = true;
+        m.ground.on_ground = true;
         m
     }
     /// `Wolf.die`: the wet flag, the shake counter and both shake animations
@@ -2556,7 +2556,7 @@ mod tamable_panic_tests {
                 let kind = Arc::new(types.types[name].clone());
                 let mut m = Mob::new(1, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);
                 setup(&mut m);
-                m.on_ground = true;
+                m.ground.on_ground = true;
                 m.last_damage = Some((Damage::of(damage), i64::from(m.age)));
                 let mut events = Vec::new();
                 let mut test_level = crate::health::TestLevel::new(0);

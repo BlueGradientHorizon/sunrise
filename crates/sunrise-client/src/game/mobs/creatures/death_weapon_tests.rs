@@ -40,6 +40,7 @@ pub(super) fn isolated() -> bool {
 
 pub(super) struct WeaponProbe {
     pub(super) expected: Option<mod_api::ItemStack>,
+    pub(super) expected_source: Option<(&'static str, i32)>,
     pub(super) swap: Option<mod_api::ItemStack>,
     pub(super) seen: Arc<Mutex<usize>>,
 }
@@ -51,6 +52,10 @@ impl mod_api::Hooks for WeaponProbe {
         event: &mut mod_api::LootDropsEvent<'_>,
     ) {
         assert!(event.context.tool.is_none());
+        if let Some(expected) = self.expected_source {
+            let source = event.context.damage_source.unwrap();
+            assert_eq!((source.damage_type, source.causing), expected);
+        }
         assert_eq!(event.context.weapon_item(host), self.expected);
         if let Some(axe) = &self.swap {
             let source = event.context.damage_source.unwrap();
@@ -129,6 +134,7 @@ fn weapon_case(item: &str, enchantment: &str, level: u32, projectile: bool, swap
             "weapon_probe",
             Box::new(WeaponProbe {
                 expected: Some(expected),
+                expected_source: None,
                 swap: swap.then_some(axe),
                 seen: seen.clone(),
             }),
@@ -185,10 +191,9 @@ fn weapon_case(item: &str, enchantment: &str, level: u32, projectile: bool, swap
                 game.mobs.push(victim);
                 damage.kind = game.projectile_damage_kind(&shot);
                 assert!(game.damage_projectile_with_weapon(&shot, 70, 100.0, damage, None));
-                victim = game.mobs.iter().find(|mob| mob.id == 70).unwrap().clone();
-                drop(shot);
+            } else {
+                game.mob_die(&victim);
             }
-            game.mob_died(&victim);
         });
         assert_eq!(*seen.lock().unwrap(), 1);
     });
@@ -255,6 +260,7 @@ fn death_weapon_e_fall_has_no_weapon() {
             "fall_weapon_probe",
             Box::new(WeaponProbe {
                 expected: None,
+                expected_source: None,
                 swap: None,
                 seen: seen.clone(),
             }),
@@ -270,7 +276,7 @@ fn death_weapon_e_fall_has_no_weapon() {
             let mut victim = Mob::new(70, ty, Vec3::ZERO, 0.0);
             victim.health = 0.0;
             victim.last_damage = Some((Damage::fall(), 0));
-            game.mob_died(&victim);
+            game.mob_die(&victim);
         });
         assert_eq!(*seen.lock().unwrap(), 1);
     });

@@ -20,10 +20,11 @@
 //! whole on its first write, from wherever the player's state lives then: the acting fields
 //! or a parked guest's record. On abort, the journal follows that storage through guest turns.
 //! An item a write drops from a player waits for
-//! the root commit too. An item entity's stack is kept on its first write; one emptied stays,
-//! empty, until the root commit removes it. A guest's menu storage (ender chest, crafting grid,
-//! a mod's chest menu) is kept whole on its first write through a menu slot; a crafting grid
-//! changed by the transaction has its result made again at the root commit.
+//! the root commit too. Item entities keep their stack, pickup delay, target and velocity on
+//! first write; one emptied stays, empty, until the root commit removes it. General entity views
+//! keep velocity, rotation and fall distance on first write. A guest's menu storage (ender chest,
+//! crafting grid, a mod's chest menu) is kept whole on its first write through a menu slot; a
+//! crafting grid changed by the transaction has its result made again at the root commit.
 //! `LivingRef::set_health` keeps the player's synced float storage and unpublished update
 //! events, or the mob's health and sync dirtiness. This does not journal other health,
 //! damage, death or attribute operations. Mob effect writes keep their effect lists, dirty bit,
@@ -34,14 +35,15 @@ use super::{BlockEntity, BlockStateId, Dim, Game, machines::HopperState, maps::M
 use mod_api::{LevelRef, Transaction, TransactionLifecycle, TransactionSeal};
 use std::collections::{BTreeMap, HashMap};
 use sunrise_client::{
+    block_entities::BlockEntityIdentity,
     effects::EffectInstance,
     fast_hash::FxHashSet,
     items::ItemStack,
     living_attributes::ModifierChanges,
     mobs::{Mob, StoredEffect, finalize::EffectModifierUndo, gear::Gear},
-    world::{BlockEntityExtras, World},
+    world::{BlockEntityExtras, ModifiedChunks, World},
 };
-use sunrise_core::{position::BlockPos, random::LegacyRandom};
+use sunrise_core::{geometry::Vec3, position::BlockPos, random::LegacyRandom};
 use sunrise_items::equipment::Equipment;
 use sunrise_mod_runtime::attachments::{AttachmentQueryScopes, Attachments, Holder};
 use sunrise_world::level::flags;
@@ -53,6 +55,23 @@ mod entities;
 pub(in crate::game) use entities::{Announcement, ArrivalRollback};
 #[path = "transactions/scratch.rs"]
 mod scratch;
+
+/// A notice names the container that received the write, not a replacement at its position.
+pub(super) struct QuickMoveNotice {
+    dim: Dim,
+    holder: BlockEntityIdentity,
+}
+
+struct QuickMoveNotices<'a, 'g> {
+    game: &'a mut Game<'g>,
+    outer: Option<Vec<QuickMoveNotice>>,
+}
+
+impl Drop for QuickMoveNotices<'_, '_> {
+    fn drop(&mut self) {
+        self.game.transactions.quick_move_notices = self.outer.take();
+    }
+}
 
 type Pos = (i32, i32, i32);
 /// The last pending value at this depth for a connection, menu generation and data index.
@@ -67,6 +86,8 @@ pub(super) struct OpenTransactions {
     levels: Vec<Level>,
     pub(in crate::game) attachment_query_scopes: AttachmentQueryScopes,
     closing: Option<TransactionLifecycle>,
+    /// Implicit container notices waiting for this quick move's source settlement.
+    quick_move_notices: Option<Vec<QuickMoveNotice>>,
     /// How many writes the journals have been asked to keep, ever: a whole-state epoch that no
     /// restore moves back. A decision that read a player's inventory or a container's slots
     /// compares it before and after its listeners ran; an equal rewrite counts as a write.
@@ -80,11 +101,34 @@ pub(super) struct OpenTransactions {
     composter_epoch: Option<mod_api::WorldEpoch>,
     /// Each composter port owns its transactional random stream, independently of Level.random.
     composter_randoms: ComposterRandoms,
+    /// Active retained original-player attachment maps during `player_clone` dispatch,
+    /// kept in sync with open transaction frames so mutations roll back on abort.
+    retained_original_attachments:
+        Vec<std::sync::Arc<std::sync::Mutex<super::original_player::OriginalAttachmentSlot>>>,
     #[cfg(test)]
     pub(in crate::game) trace: Option<std::sync::Arc<std::sync::Mutex<Vec<String>>>>,
 }
 
 impl OpenTransactions {
+    pub(super) fn push_retained_original(
+        &mut self,
+        slot: std::sync::Arc<std::sync::Mutex<super::original_player::OriginalAttachmentSlot>>,
+    ) {
+        self.retained_original_attachments.push(slot);
+    }
+
+    pub(super) fn pop_retained_original(&mut self) {
+        self.retained_original_attachments.pop();
+    }
+
+    fn close_retained_originals(&self, token: u64, commit: bool) {
+        for slot in &self.retained_original_attachments {
+            slot.lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .close_frame(token, commit);
+        }
+    }
+
     pub(super) fn level_frame(&mut self, dim: super::Dim) -> Option<&mut Level> {
         entities::open_in(self, dim)
     }
@@ -95,21 +139,31 @@ impl OpenTransactions {
         self.last_mut()
     }
 
-    pub(super) fn journal_modifier_changes(&mut self, id: u32, changes: ModifierChanges) {
+    pub(super) fn journal_modifier_changes(&mut self, dim: Dim, id: u32, changes: ModifierChanges) {
         if let Some(level) = self.last_mut() {
-            level.modifier_changes.entry(id).or_default().merge(changes);
+            level
+                .modifier_changes
+                .entry((dim, id))
+                .or_default()
+                .merge(changes);
         }
     }
 
-    pub(super) fn keep_explicit_modifier_write(&mut self, mob: u32, attribute: &str, id: &str) {
+    pub(super) fn keep_explicit_modifier_write(
+        &mut self,
+        dim: Dim,
+        mob: u32,
+        attribute: &str,
+        id: &str,
+    ) {
         for level in self.iter_mut() {
-            if let Some(changes) = level.modifier_changes.get_mut(&mob) {
+            if let Some(changes) = level.modifier_changes.get_mut(&(dim, mob)) {
                 changes.keep_explicit_write(attribute, id);
             }
             for (_, kept) in level
                 .effect_modifiers
                 .iter_mut()
-                .filter(|(owner, _)| *owner == mob)
+                .filter(|(owner, _)| *owner == (dim, mob))
             {
                 kept.keep_explicit_write(attribute, id);
             }
@@ -141,34 +195,25 @@ impl OpenTransactions {
         }
     }
 
-    /// Positions with a connection-group restore baseline for the level being edited.
-    pub(super) fn journaled_connection_group_positions(&self, dim: Dim) -> FxHashSet<Pos> {
-        self.iter()
-            .flat_map(|level| level.connection_groups.keys())
-            .filter_map(|&(owner, pos)| (owner == dim).then_some(pos))
-            .collect()
-    }
-
-    /// A permanent bulk edit invalidated these groups. Update the restore baseline and drop
-    /// older group writes at those cells throughout the enclosing transactions, in this level only.
-    pub(super) fn reconcile_bulk_connection_group_clears(
+    pub(super) fn mark_scoped_menu_write(
         &mut self,
         dim: Dim,
-        cleared: &FxHashSet<Pos>,
+        chunk: (i32, i32),
+        modified: &mut ModifiedChunks,
     ) {
-        if cleared.is_empty() {
-            return;
+        if let Some(level) = entities::open_in(self, dim) {
+            level.save_chunks.insert((dim, chunk));
+        } else {
+            modified.insert(chunk);
         }
-        for level in self.iter_mut() {
-            for &pos in cleared {
-                if let Some(was) = level.connection_groups.get_mut(&(dim, pos)) {
-                    *was = None;
-                }
-            }
-            level.after.retain(|after| {
-                !matches!(after, After::ConnectionGroup(owner, pos, _) if *owner == dim && cleared.contains(pos))
-            });
-        }
+    }
+
+    /// Keep the first write to each field of a live general-entity subject.
+    pub(super) fn journal_general_entity(
+        &mut self,
+        join: crate::join_seq::JoinSeq,
+    ) -> Option<&mut KeptGeneralEntity> {
+        Some(self.last_mut()?.general_entities.entry(join).or_default())
     }
 
     /// The journaled-write epoch.
@@ -235,6 +280,7 @@ pub(super) struct StrictBlockStep {
     pub(super) to: BlockStateId,
     // Before the first replacement on this cell; swapped for the new row at commit.
     pub(super) row: Option<Option<RemovedRow>>,
+    pub(super) clear_connection_group: bool,
 }
 
 pub(super) type StrictBlockSteps = indexmap::IndexMap<Pos, StrictBlockStep>;
@@ -270,6 +316,14 @@ fn merge_block_update_flags(earlier: i32, later: i32) -> i32 {
         | (later & !(REQUESTED | SUPPRESSED))
 }
 
+/// Before-images of the fields a general-entity scope wrote, at one depth.
+#[derive(Default)]
+pub(super) struct KeptGeneralEntity {
+    pub(super) velocity: Option<Vec3>,
+    pub(super) rotation: Option<[f32; 2]>,
+    pub(super) fall_distance: Option<f64>,
+}
+
 /// One open transaction.
 #[derive(Default)]
 pub(super) struct Level {
@@ -287,6 +341,8 @@ pub(super) struct Level {
     /// removal with the row as it was then; abort uses the first write in `block_entities`.
     /// A removal without a resident row still marks the position for abort.
     removed_block_entities: HashMap<Pos, Option<RemovedRow>>,
+    /// A decorated pot lives in its chunk's saved block-entity tags, not the slot table.
+    saved_pots: HashMap<Pos, Option<sunrise_core::nbt::Tag>>,
     /// Each item slot (block entity, slot) a slot-only write changed, as it was before this
     /// transaction first wrote it, for a block entity not kept whole in `block_entities`: a
     /// move through a container keeps the slot it touches, not the entity's whole saved data.
@@ -295,15 +351,17 @@ pub(super) struct Level {
     blocks: HashMap<Pos, KeptBlock>,
     /// Each cell's original connection group before this transaction first changed it, used for
     /// silent rollback on abort and pre-replay restoration on root commit.
-    connection_groups: HashMap<(Dim, Pos), Option<u64>>,
+    connection_groups: HashMap<Pos, Option<u64>>,
     /// Level.random in this frame's own dimension before its first draw.
     level_random: Option<LegacyRandom>,
     /// Other levels drawn from at this depth. Only those draws allocate a map entry.
     parked_level_randoms: HashMap<LevelRef, LegacyRandom>,
+    /// Named loot streams before tentative block loot.
+    loot_sequences: Option<sunrise_items::random_sequences::RandomSequences>,
     /// Composter-local random streams before this depth first evaluated their layers.
     composter_randoms: ComposterRandoms,
-    /// Each quart cell before this transaction first wrote it.
-    biomes: HashMap<Pos, u16>,
+    /// Each quart cell before this transaction first wrote it, keyed by level.
+    biomes: HashMap<(Dim, Pos), u16>,
     /// Each player's inventory and saved data before this transaction first wrote them.
     players: HashMap<JournaledPlayer, KeptPlayer>,
     /// Ender storage has one journal shared by player and menu writes.
@@ -311,28 +369,30 @@ pub(super) struct Level {
     /// Saved player extra NBT (`level.player_extra` / `guest.saved`), shared by player and
     /// persistent-data writes, including dead players.
     player_extra: HashMap<JournaledPlayer, Option<sunrise_core::nbt::Tag>>,
-    /// Synced player health and its unpublished update events before set_health.
-    player_health: HashMap<u128, KeptPlayerHealth>,
-    /// Mob health and synchronization dirtiness before set_health.
-    mob_health: HashMap<u32, KeptMobHealth>,
-    /// Active and hidden effects before the first write to the mob at this depth.
-    mob_effects: HashMap<u32, KeptMobEffects>,
+    /// Synced player health and its unpublished update events before set_health, by player body.
+    player_health: HashMap<PlayerBodyKey, KeptPlayerHealth>,
+    /// Mob health and synchronization dirtiness before set_health, keyed by level.
+    mob_health: HashMap<(Dim, u32), KeptMobHealth>,
+    /// Active and hidden effects before the first write to the mob at this depth, keyed by level.
+    mob_effects: HashMap<(Dim, u32), KeptMobEffects>,
     /// Effect-owned modifier changes in write order, so rows can return to their positions.
-    effect_modifiers: Vec<(u32, EffectModifierUndo)>,
-    /// Each entity's inventory (`entity_slots`) before this transaction first wrote it.
-    entities: HashMap<u32, Vec<Option<ItemStack>>>,
+    effect_modifiers: Vec<((Dim, u32), EffectModifierUndo)>,
+    /// Each entity's inventory (`entity_slots`) before this transaction first wrote it, by level.
+    entities: HashMap<(Dim, u32), Vec<Option<ItemStack>>>,
     /// Each mob's or armor stand's equipment before this transaction first
-    /// wrote it (#932), told apart for the way back.
-    equipment: HashMap<u32, KeptEquipment>,
-    /// Live modifier diffs, also kept for rebuilds that write no slot.
-    modifier_changes: HashMap<u32, ModifierChanges>,
+    /// wrote it (#932), told apart for the way back and keyed by level.
+    equipment: HashMap<(Dim, u32), KeptEquipment>,
+    /// Live modifier diffs, also kept for rebuilds that write no slot, keyed by level.
+    modifier_changes: HashMap<(Dim, u32), ModifierChanges>,
     /// Each chested mob's item list's length before `entity_slots` first grew it to its slots
-    /// in this transaction.
-    mob_lengths: HashMap<u32, usize>,
-    /// Each item entity's stack before this transaction first wrote it.
-    item_entities: HashMap<u32, ItemStack>,
-    /// The merge fields of resident experience orbs before the first award touched them.
-    orbs: HashMap<crate::join_seq::JoinSeq, (i32, u32, i32)>,
+    /// in this transaction, keyed by level.
+    mob_lengths: HashMap<(Dim, u32), usize>,
+    /// Each item entity's changed fields before this transaction first wrote them.
+    item_entities: HashMap<crate::join_seq::JoinSeq, KeptItemEntity>,
+    /// Each general entity subject's changed fields before the first write.
+    general_entities: HashMap<crate::join_seq::JoinSeq, KeptGeneralEntity>,
+    /// The merge fields of resident experience orbs before the first award touched them, by level.
+    orbs: HashMap<(Dim, crate::join_seq::JoinSeq), (i32, u32, i32)>,
     /// Each detached station before the first click wrote it, by connection and owner.
     stations: HashMap<(u32, decision::MenuId), super::lan_stations::GuestStation>,
     /// Each guest's inventory crafting grid before the first write, by connection.
@@ -346,8 +406,9 @@ pub(super) struct Level {
     /// The scoreboard before this transaction first wrote it (`journal_scoreboard`), whole.
     board: Option<sunrise_client::scoreboard::Scoreboard>,
     /// Each entity's, player's, chunk's and the level's attachment map before this transaction
-    /// first reached it (a block entity's is kept with it).
-    attachments: HashMap<Holder, KeptAttachments>,
+    /// first reached it (a block entity's is kept with it). Per-level holders are keyed by level;
+    /// player-owned attachment maps are keyed by player body across dimensions.
+    attachments: HashMap<AttachmentKey, KeptAttachments>,
     /// Held once this transaction reaches an attachment map, until it closes: the save
     /// admission gate (`passes_settled`) refuses a save while a map may hold tentative
     /// values, which only the root commit makes saveable.
@@ -392,6 +453,24 @@ pub(super) struct Level {
 struct KeptSlot {
     stack: Option<ItemStack>,
     generation: Option<u64>,
+}
+
+/// Identity of one player body for transaction rollback: either the local host player
+/// (`lan_acting.is_none()`) or one guest record in `lan.hub.guests` (a real online guest shared
+/// across dimensions, or a per-level connectionless fake player), keyed by its unique `conn` id.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub(super) enum PlayerBodyKey {
+    Host,
+    Guest(u32),
+}
+
+/// Key for `Level::attachments`: per-level holders (`Entity`, `Chunk`, `Level`) are isolated by
+/// dimension, whereas player-owned attachment maps are keyed by the specific player body
+/// regardless of which level is swapped in. Retained originals have their own journal.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub(super) enum AttachmentKey {
+    Level(Dim, Holder),
+    Player(PlayerBodyKey),
 }
 
 struct KeptAttachments {
@@ -521,7 +600,6 @@ pub(super) enum After {
         sunrise_client::net::PreparedPacket,
         mod_api::ServerboundPlayPacket,
     ),
-    Cauldron(super::cauldron_interactions::Effects),
     Composter(super::composter::Effects),
     /// A mod's world pickup or placement of fluid, its block already set: what is left of it
     /// (`Game::commit_fluid_write`).
@@ -530,10 +608,10 @@ pub(super) enum After {
     FluidEffects(Box<super::world_fluids::FluidEffects>),
     /// `BlockEntity.setChanged`.
     Changed(Pos),
-    /// Detached mod entity state (not necessarily items) was edited.
-    DirtyBlockEntity(Pos),
-    /// A detached menu listener removed its holder; spill any unreturned contents only on commit.
-    LostMenuContents(Pos, Box<sunrise_client::containers::ModBlockEntity>),
+    /// `BlockEntity.setChanged` dirty/comparator updates without reentering `contents_changed`.
+    ChangedWithoutHook(Pos),
+    /// An implicit notice staged during a mod quick move.
+    QuickMoveChanged(QuickMoveNotice),
     GuestMenu(u32, Box<super::lan_crafting::GuestMenuEffects>),
     MenuClick(Box<super::lan_menus::MenuClickReply>),
     MenuPlacesNotice(u32, u128, i32),
@@ -557,7 +635,7 @@ pub(super) enum After {
     ),
     /// An explicit `LevelRef::set_connection_group` write, replayed in order with block writes at
     /// the root commit so cross-position cascades (e.g. popping a supported block) clear it.
-    ConnectionGroup(Dim, Pos, Option<u64>),
+    ConnectionGroup(Pos, Option<u64>),
     /// A validated level write host effect; never published on abort.
     LevelWrite(Box<super::journal_level_write::PendingWrite>),
     BlockGameEvent(
@@ -576,9 +654,15 @@ pub(super) enum After {
     Drop([i32; 3], ItemStack),
     /// `Player.drop(stack, false)` by the player with this UUID: what no longer fits.
     PlayerDrop(u128, ItemStack),
-    /// `/give`'s pickup sound for the player with this UUID, in the level that was in place
-    /// when the stack was accepted (a command run for a borrowed player swaps it in).
-    GivePickup(u128, super::Dim),
+    /// A respawn replaces the holder behind the player's UUID. Do not install a new
+    /// attachment generation or copy tentative data until the old generation is committed.
+    PlayerRespawn(u32),
+    /// `/give`'s fake item and pickup sound in the receiving player's level.
+    GivePickup {
+        uuid: u128,
+        dim: super::Dim,
+        prototype: ItemStack,
+    },
     InventoryTrigger(u128),
     GrindstoneEvent([i32; 3]),
     StationContent(u32, decision::MenuId, i32),
@@ -616,9 +700,10 @@ impl After {
             self,
             Self::Block(_)
                 | Self::BulkBlocks(..)
+                | Self::ConnectionGroup(..)
                 | Self::Changed(_)
-                | Self::DirtyBlockEntity(_)
-                | Self::LostMenuContents(..)
+                | Self::ChangedWithoutHook(_)
+                | Self::QuickMoveChanged(_)
                 | Self::Capabilities(_)
                 | Self::LevelWrite(_)
                 | Self::FluidWrite(_)
@@ -694,7 +779,14 @@ impl Level {
             });
     }
 
+    pub(super) fn keep_connection_group(&mut self, pos: Pos, group: Option<u64>) {
+        self.connection_groups.entry(pos).or_insert(group);
+    }
+
     fn merge_level_writes(&mut self, child: &mut Self) {
+        for (pos, group) in std::mem::take(&mut child.connection_groups) {
+            self.keep_connection_group(pos, group);
+        }
         // Slots before whole entities: a slot the outer transaction already kept the
         // whole entity of is older there, but one kept whole only by this child is not,
         // so the child's slot entries go up beside its capture.
@@ -705,6 +797,9 @@ impl Level {
         }
         for (pos, kept) in std::mem::take(&mut child.block_entities) {
             self.block_entities.entry(pos).or_insert(kept);
+        }
+        for (pos, tag) in std::mem::take(&mut child.saved_pots) {
+            self.saved_pots.entry(pos).or_insert(tag);
         }
         for (pos, removed) in std::mem::take(&mut child.removed_block_entities) {
             let first = self.removed_block_entities.entry(pos).or_default();
@@ -731,7 +826,13 @@ impl Level {
                 .or_insert(block);
         }
         for (id, kept) in std::mem::take(&mut child.item_entities) {
-            self.item_entities.entry(id).or_insert(kept);
+            self.item_entities.entry(id).or_default().merge(kept);
+        }
+        for (join, kept) in std::mem::take(&mut child.general_entities) {
+            let first = self.general_entities.entry(join).or_default();
+            first.velocity = first.velocity.or(kept.velocity);
+            first.rotation = first.rotation.or(kept.rotation);
+            first.fall_distance = first.fall_distance.or(kept.fall_distance);
         }
         for (chunk, mark) in std::mem::take(&mut child.chunk_marks) {
             self.chunk_marks.entry(chunk).or_insert(mark);
@@ -756,19 +857,20 @@ impl Level {
 
     /// Keeps chested mob `id`'s item list's length, `len`, before `entity_slots` grows it, if
     /// this transaction hasn't yet.
-    pub(super) fn keep_mob_length(&mut self, id: u32, len: usize) {
-        self.mob_lengths.entry(id).or_insert(len);
+    pub(super) fn keep_mob_length(&mut self, dim: Dim, id: u32, len: usize) {
+        self.mob_lengths.entry((dim, id)).or_insert(len);
     }
 
     /// Keep a resolved equipment row at its first write in this transaction.
     /// `mob_gear` is absent for a stand; a mob's overlay may itself be absent.
     pub(super) fn keep_equipment(
         &mut self,
+        dim: Dim,
         id: u32,
         equipment: &Equipment,
         mob_gear: Option<&Option<Box<Gear>>>,
     ) {
-        self.equipment.entry(id).or_insert_with(|| {
+        self.equipment.entry((dim, id)).or_insert_with(|| {
             let slots = Box::new(equipment.clone());
             match mob_gear {
                 Some(gear) => KeptEquipment::Mob {
@@ -824,6 +926,11 @@ impl Game<'_> {
             lifetimes,
             ..Level::default()
         });
+        for slot in &self.transactions.retained_original_attachments {
+            slot.lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .open_frame(token);
+        }
         #[cfg(test)]
         self.trace_storage_attempt("open".into());
         (token, close_token)
@@ -900,7 +1007,30 @@ impl Game<'_> {
     /// Closes the innermost transaction: `commit` hands its changes to the one around it, or
     /// at the root makes them final and tells the world; otherwise every storage it wrote goes
     /// back to how it was. Nothing happens with none open.
+    ///
+    /// Always switches into the top frame's recorded dimension for the entire close (retirement,
+    /// commit or rollback) and restores the caller's active dimension afterwards, so an abandoned
+    /// or cross-level frame never commits or restores its level-local snapshots into another level.
     fn close_storage_transaction(&mut self, commit: bool) {
+        let Some(owner) = self.transactions.last().map(|level| level.dimension) else {
+            return;
+        };
+        let owner = owner.unwrap_or(self.dim);
+        if self
+            .with_effect_level(owner, |game| {
+                game.close_storage_transaction_in_place(commit);
+            })
+            .is_none()
+        {
+            log::error!(
+                "Sunrise: could not switch to {} to close transaction; dropping level-local writes",
+                owner.id()
+            );
+            self.drop_unreachable_transaction_frame();
+        }
+    }
+    /// Closes the innermost transaction with its owning level already in place.
+    fn close_storage_transaction_in_place(&mut self, commit: bool) {
         let Some(level) = self.transactions.pop() else {
             return;
         };
@@ -928,6 +1058,53 @@ impl Game<'_> {
         guard.game.close_level(level, commit);
         if retire {
             guard.game.world.block_entities.publish_retirement();
+        }
+    }
+    /// Defensive fallback if a frame's recorded dimension is no longer parked: pop the frame so
+    /// abandon loops always terminate and discard its level-local snapshots rather than restoring
+    /// them into the wrong active level.
+    fn drop_unreachable_transaction_frame(&mut self) {
+        let Some(mut level) = self.transactions.pop() else {
+            return;
+        };
+        self.transactions
+            .attachment_query_scopes
+            .leave(level.parent_attachment_query_scope);
+        let closing = if self.transactions.is_empty() {
+            TransactionLifecycle::RootClosing
+        } else {
+            TransactionLifecycle::Closing
+        };
+        let outer = self.transactions.closing.replace(closing);
+        let guard = ClosingPhase { game: self, outer };
+        let mut merchant_corrections = std::mem::take(&mut level.trades.refused_clicks);
+        merchant_corrections.append(&mut level.trades.correct_on_abort);
+        let departed = std::mem::take(&mut level.departed);
+        guard
+            .game
+            .transactions
+            .close_retained_originals(level.token, false);
+        // Only roll back journals that don't rely on the owning level being in place.
+        level.blocks.clear();
+        level.connection_groups.clear();
+        level.block_entities.clear();
+        level.removed_block_entities.clear();
+        level.saved_pots.clear();
+        level.slots.clear();
+        level.item_entities.clear();
+        level.general_entities.clear();
+        level.level_random = None;
+        level.chunk_marks.clear();
+        level.after.clear();
+        let _ = std::mem::take(&mut level.lifetimes);
+        guard.game.roll_back(level);
+        guard.game.close_departures(departed);
+        if let Some(outer) = guard.game.transactions.last_mut() {
+            outer.trades.refused_clicks.extend(merchant_corrections);
+        } else {
+            for (conn, window) in merchant_corrections {
+                guard.game.resend_merchant_take(conn, window);
+            }
         }
     }
     /// What closing `level` does, with the closing phase already set.
@@ -967,6 +1144,8 @@ impl Game<'_> {
             None
         };
         let lifetimes = std::mem::take(&mut level.lifetimes);
+        self.transactions
+            .close_retained_originals(level.token, commit);
         let mut independent = None;
         if commit && let Some(outer) = self.transactions.last_mut() {
             if outer.dimension == level.dimension {
@@ -974,10 +1153,13 @@ impl Game<'_> {
             } else {
                 let mut local = Level {
                     block_entities: std::mem::take(&mut level.block_entities),
+                    saved_pots: std::mem::take(&mut level.saved_pots),
                     removed_block_entities: std::mem::take(&mut level.removed_block_entities),
                     slots: std::mem::take(&mut level.slots),
                     blocks: std::mem::take(&mut level.blocks),
+                    connection_groups: std::mem::take(&mut level.connection_groups),
                     item_entities: std::mem::take(&mut level.item_entities),
+                    general_entities: std::mem::take(&mut level.general_entities),
                     chunk_marks: std::mem::take(&mut level.chunk_marks),
                     after: level
                         .after
@@ -1005,9 +1187,6 @@ impl Game<'_> {
             (true, Some(outer)) => {
                 outer.actions.merge(level.actions);
                 outer.trades.merge(level.trades);
-                for (pos, was) in level.connection_groups {
-                    outer.connection_groups.entry(pos).or_insert(was);
-                }
                 if let Some(before) = level.level_random {
                     if outer.dimension == level.dimension {
                         outer.keep_level_random(None, || before);
@@ -1017,6 +1196,9 @@ impl Game<'_> {
                 }
                 for (owner, before) in level.parked_level_randoms {
                     outer.keep_level_random(Some(owner), || before);
+                }
+                if outer.loot_sequences.is_none() {
+                    outer.loot_sequences = level.loot_sequences;
                 }
                 for (chunk, randoms) in level.composter_randoms {
                     let kept = outer.composter_randoms.entry(chunk).or_default();
@@ -1210,6 +1392,30 @@ impl Game<'_> {
             level.composter_randoms.clear();
         }
     }
+    /// Keeps a pot's saved item and loot metadata until its level commits.
+    pub(super) fn journal_saved_pot(&mut self, pos: Pos) {
+        self.transactions.writes = self.transactions.writes.wrapping_add(1);
+        if let Some(level) = entities::open_in(&mut self.transactions, self.dim) {
+            level
+                .saved_pots
+                .entry(pos)
+                .or_insert_with(|| super::spill::saved_entity(&self.world, [pos.0, pos.1, pos.2]));
+            level
+                .save_gate
+                .get_or_insert_with(sunrise_client::join_seq::visibility::PassLease::enter);
+        }
+    }
+
+    /// An unseeded pot loot table may draw from either the level or a named stream.
+    pub(super) fn journal_block_loot_random(&mut self) {
+        self.journal_level_random();
+        if let Some(level) = self.transactions.last_mut() {
+            level
+                .loot_sequences
+                .get_or_insert_with(|| self.rand_sequences.clone());
+        }
+    }
+
     /// Keeps the block entity at `pos` as it is, with its attachments and a hopper's
     /// cooldown, if a transaction is open and hasn't yet.
     pub(super) fn journal_block_entity(&mut self, pos: Pos) {
@@ -1293,8 +1499,9 @@ impl Game<'_> {
     /// Keeps `holder`'s attachment map as it is, if a transaction is open and hasn't yet: a
     /// block entity's with the rest of it, any other's alone.
     pub(super) fn journal_attachments(&mut self, holder: Holder) {
+        let dim = self.dim;
         let level = if matches!(holder, Holder::BlockEntity(_)) {
-            entities::open_in(&mut self.transactions, self.dim)
+            entities::open_in(&mut self.transactions, dim)
         } else {
             self.transactions.last_mut()
         };
@@ -1302,32 +1509,43 @@ impl Game<'_> {
             level
                 .save_gate
                 .get_or_insert_with(sunrise_client::join_seq::visibility::PassLease::enter);
-            // The chunk that a block entity's or chunk's map marks unsaved (`world_attachments`).
-            let chunk = match holder {
-                Holder::BlockEntity([x, _, z]) => Some((x >> 4, z >> 4)),
-                Holder::Chunk(chunk) => Some((chunk[0], chunk[1])),
-                _ => None,
-            };
-            if let Some(chunk) = chunk {
-                let modified = &self.world.modified;
-                level
-                    .chunk_marks
-                    .entry(chunk)
-                    .or_insert_with(|| modified.mark(chunk));
-            }
+        }
+        // The chunk that a block entity's or chunk's map marks unsaved (`world_attachments`).
+        let chunk = match holder {
+            Holder::BlockEntity([x, _, z]) => Some((x >> 4, z >> 4)),
+            Holder::Chunk(chunk) => Some((chunk[0], chunk[1])),
+            _ => None,
+        };
+        if let Some(chunk) = chunk
+            && let Some(level) = entities::open_in(&mut self.transactions, dim)
+        {
+            let modified = &self.world.modified;
+            level
+                .chunk_marks
+                .entry(chunk)
+                .or_insert_with(|| modified.mark(chunk));
         }
         if let Holder::BlockEntity([x, y, z]) = holder {
             return self.journal_block_entity((x, y, z));
         }
+        let key = match holder {
+            Holder::Player(uuid) => {
+                let Some(body) = self.attachment_player_body(uuid) else {
+                    return;
+                };
+                AttachmentKey::Player(body)
+            }
+            other => AttachmentKey::Level(dim, other),
+        };
         let Some(level) = self.transactions.last() else {
             return;
         };
-        if level.attachments.contains_key(&holder) {
+        if level.attachments.contains_key(&key) {
             return;
         }
         let entity_bound = if let Holder::Entity(id) = holder {
             std::num::NonZeroU32::new(id).and_then(|id| {
-                match self.with_resident_slot(&self.dim.key(), id, |slot| slot.is_bound()) {
+                match self.with_resident_slot(&dim.key(), id, |slot| slot.is_bound()) {
                     super::entity_residency::SlotAccess::Done(bound) => Some(bound),
                     _ => None,
                 }
@@ -1345,7 +1563,7 @@ impl Game<'_> {
             return;
         };
         if let Some(level) = self.transactions.last_mut() {
-            level.attachments.insert(holder, kept);
+            level.attachments.insert(key, kept);
         }
     }
     /// Keeps the inventory of `uuid`, whose state is acting in `Game` now, on its first
@@ -1442,25 +1660,19 @@ impl Game<'_> {
     }
     /// Called with the target player's body swapped in, before set_health changes it.
     pub(super) fn journal_player_health(&mut self) {
-        let uuid = self.native_acting_id();
+        let body = self.acting_player_body();
         let Some(level) = self.transactions.last_mut() else {
             return;
         };
         let Some(player) = self.player.as_ref() else {
             return;
         };
-        let std::collections::hash_map::Entry::Vacant(entry) = level.player_health.entry(uuid)
+        let std::collections::hash_map::Entry::Vacant(entry) = level.player_health.entry(body)
         else {
             return;
         };
         let guest = self.lan_acting.and_then(|conn| {
-            let guest = self
-                .lan
-                .as_ref()?
-                .hub
-                .guests
-                .iter()
-                .find(|guest| guest.conn == conn)?;
+            let guest = self.lan.as_ref()?.hub.guest(conn)?;
             Some((conn, guest.death_canceled, guest.death_time))
         });
         entry.insert(KeptPlayerHealth {
@@ -1471,11 +1683,12 @@ impl Game<'_> {
         });
     }
     pub(super) fn journal_mob_health(&mut self, id: u32) {
+        let dim = self.dim;
         let Some(level) = self.transactions.last_mut() else {
             return;
         };
         if let Some(mob) = self.mobs.iter().find(|m| m.id == id && !m.removed) {
-            level.mob_health.entry(id).or_insert(KeptMobHealth {
+            level.mob_health.entry((dim, id)).or_insert(KeptMobHealth {
                 health: mob.health,
                 absorption: mob.absorption,
                 needs_sync: mob.needs_sync,
@@ -1493,6 +1706,7 @@ impl Game<'_> {
         effect: Option<&'static str>,
         mutate: impl FnOnce(&mut Mob) -> R,
     ) -> Option<R> {
+        let dim = self.dim;
         self.journal_mob_health(id);
         let mob = self
             .mobs
@@ -1503,7 +1717,7 @@ impl Game<'_> {
             let level = self.transactions.last_mut().expect("open transaction");
             level
                 .mob_effects
-                .entry(id)
+                .entry((dim, id))
                 .or_insert_with(|| KeptMobEffects {
                     active: mob.extra.effects.clone(),
                     chains: mob.extra.effect_chains.clone(),
@@ -1516,7 +1730,7 @@ impl Game<'_> {
                 None => mob.effect_modifier_undo(mob.extra.effects.iter().map(|effect| effect.id)),
             };
             if let Some(modifiers) = modifiers {
-                level.effect_modifiers.push((id, modifiers));
+                level.effect_modifiers.push(((dim, id), modifiers));
                 super::living_attributes::modifier_invalidation_undo(&self.motion.attributes, mob)
             } else {
                 None
@@ -1530,7 +1744,7 @@ impl Game<'_> {
         if let Some(changes) = invalidation
             && mob.extra.live.is_invalidated()
         {
-            self.transactions.journal_modifier_changes(id, changes);
+            self.transactions.journal_modifier_changes(dim, id, changes);
         }
         Some(result)
     }
@@ -1612,11 +1826,12 @@ impl Game<'_> {
         if self.transactions.is_empty() {
             return;
         }
+        let dim = self.dim;
         let Some(slots) = self.edit_entity_slots(id, |slots, _| slots.to_vec()) else {
             return;
         };
         if let Some(level) = self.transactions.last_mut() {
-            level.entities.entry(id).or_insert(slots);
+            level.entities.entry((dim, id)).or_insert(slots);
         }
     }
     /// Keeps the scoreboard as it is, if a transaction is open and hasn't yet: a copy of the
@@ -1633,16 +1848,17 @@ impl Game<'_> {
     /// Keeps the slots at their first write. Equipment collection records any
     /// actual modifier edits separately; a quiet edit does not run it.
     pub(super) fn journal_equipment(&mut self, id: u32) {
+        let dim = self.dim;
         let Some(level) = self.transactions.last_mut() else {
             return;
         };
-        if level.equipment.contains_key(&id) {
+        if level.equipment.contains_key(&(dim, id)) {
             return;
         }
         if let Some(mob) = self.mobs.iter().find(|m| m.id == id && !m.removed) {
-            level.keep_equipment(id, &mob.extra.equipment, Some(&mob.extra.gear));
+            level.keep_equipment(dim, id, &mob.extra.equipment, Some(&mob.extra.gear));
         } else if let Some(stand) = self.armor_stands.iter().find(|a| a.id == id) {
-            level.keep_equipment(id, &stand.equipment, None);
+            level.keep_equipment(dim, id, &stand.equipment, None);
         }
     }
     /// `drop_plain` by the player whose state is in `Game` now, `uuid`: at once, or at the root
@@ -1676,8 +1892,8 @@ impl Game<'_> {
             .world
             .set_connection_group_stored(pos[0], pos[1], pos[2], group);
         if changed {
-            level.connection_groups.entry((dim, key)).or_insert(old);
-            level.after.push(After::ConnectionGroup(dim, key, group));
+            level.keep_connection_group(key, old);
+            level.after.push(After::ConnectionGroup(key, group));
         }
         changed
     }
@@ -1732,10 +1948,7 @@ impl Game<'_> {
         replay.level_host = level_host;
         replay.clear_connection_group |= clears_group;
         if old_group.is_some() {
-            level
-                .connection_groups
-                .entry((self.dim, key))
-                .or_insert(old_group);
+            level.keep_connection_group(key, old_group);
         }
         level.after.push(After::Block(BlockStep {
             pos: key,
@@ -1792,8 +2005,9 @@ impl Game<'_> {
         join: crate::join_seq::JoinSeq,
         fields: (i32, u32, i32),
     ) {
+        let dim = self.dim;
         if let Some(level) = self.transactions.last_mut() {
-            level.orbs.entry(join).or_insert(fields);
+            level.orbs.entry((dim, join)).or_insert(fields);
         }
     }
     pub(super) fn journal_station_click(
@@ -1811,10 +2025,11 @@ impl Game<'_> {
     }
     /// Keep the original cell without publishing the tentative write.
     pub(in crate::game) fn journal_biome(&mut self, pos: [i32; 3], old: u16) {
+        let dim = self.dim;
         if let Some(level) = self.transactions.last_mut() {
             level
                 .biomes
-                .entry((pos[0] >> 2, pos[1] >> 2, pos[2] >> 2))
+                .entry((dim, (pos[0] >> 2, pos[1] >> 2, pos[2] >> 2)))
                 .or_insert(old);
         }
     }
@@ -1829,8 +2044,63 @@ impl Game<'_> {
     pub(super) fn defer_effect(&mut self, effect: DeferredEffect) {
         self.after_commit(After::Effect(effect));
     }
+    /// Collect committed implicit `setChanged` notices while the callback runs without opening
+    /// a transaction. Direct calls to `BlockEntityRef::set_changed` remain immediate.
+    pub(super) fn collect_quick_move_notices<R>(
+        &mut self,
+        dispatch: impl FnOnce(&mut Self) -> R,
+    ) -> (R, Vec<QuickMoveNotice>) {
+        let outer = self.transactions.quick_move_notices.replace(Vec::new());
+        let scope = QuickMoveNotices { game: self, outer };
+        let result = dispatch(&mut *scope.game);
+        let notices = scope
+            .game
+            .transactions
+            .quick_move_notices
+            .take()
+            .expect("active quick-move notice scope");
+        (result, notices)
+    }
+
+    /// Release accepted writes after source settlement, in their original levels and only to
+    /// the same storage rows. Don't enqueue the notices in an enclosing quick move again.
+    pub(super) fn publish_quick_move_notices(&mut self, notices: Vec<QuickMoveNotice>) {
+        for QuickMoveNotice { dim, holder } in notices {
+            let back = self.enter_command_level(dim);
+            let [x, y, z] = holder.position;
+            let pos = (x, y, z);
+            if self.dim == dim && self.world.block_entities.identity(pos) == Some(holder) {
+                self.container_changed(pos);
+            }
+            if let Some(back) = back {
+                self.enter_command_level(back);
+            }
+        }
+    }
+
     /// Runs `after` at once, or at the root commit inside a transaction.
     pub(super) fn after_commit(&mut self, after: After) {
+        let after = match after {
+            After::Changed(pos) => {
+                let reentering = !self.contents_changing.is_empty()
+                    && self.native_level_here().is_some_and(|level| {
+                        self.contents_notice_active(level, BlockPos::new(pos.0, pos.1, pos.2))
+                    });
+                if reentering {
+                    After::ChangedWithoutHook(pos)
+                } else if self.transactions.quick_move_notices.is_some()
+                    && let Some(holder) = self.world.block_entities.identity(pos)
+                {
+                    After::QuickMoveChanged(QuickMoveNotice {
+                        dim: self.dim,
+                        holder,
+                    })
+                } else {
+                    After::Changed(pos)
+                }
+            }
+            after => after,
+        };
         let frame = if after.level_owned() {
             entities::open_in(&mut self.transactions, self.dim)
         } else {
@@ -1843,10 +2113,10 @@ impl Game<'_> {
     }
     fn run_after(&mut self, after: After) {
         match after {
+            After::PlayerRespawn(conn) => self.commit_player_respawn(conn),
             After::Trade(effect) => self.commit_merchant_effect(*effect),
             After::Payload(payload) => payload.publish(),
             After::Packet(packet, body) => self.publish_mod_held(packet, body),
-            After::Cauldron(effects) => self.commit_cauldron_effects(effects),
             After::Composter(effects) => self.commit_composter_effects(effects),
             After::FluidWrite(written) => self.commit_fluid_write(*written),
             After::FluidEffects(effects) => self.commit_fluid_effects(*effects),
@@ -1855,10 +2125,14 @@ impl Game<'_> {
                 self.post_block_game_event(id, pos, Some(who), Some(state));
             }
             After::Changed(pos) => self.container_changed(pos),
-            After::DirtyBlockEntity(pos) => {
-                self.world.modified.insert((pos.0 >> 4, pos.2 >> 4));
+            After::ChangedWithoutHook(pos) => self.container_changed_without_hook(pos),
+            After::QuickMoveChanged(notice) => {
+                if let Some(queue) = &mut self.transactions.quick_move_notices {
+                    queue.push(notice);
+                } else {
+                    self.publish_quick_move_notices(vec![notice]);
+                }
             }
-            After::LostMenuContents(pos, taken) => self.drop_unreturned_mod_contents(pos, *taken),
             After::GuestMenu(conn, effects) => self.publish_guest_menu_effects(conn, *effects),
             After::MenuClick(reply) => self.publish_menu_click(*reply),
             After::MenuPlacesNotice(conn, uuid, window) => {
@@ -1901,17 +2175,20 @@ impl Game<'_> {
                 } => self.audio.play(sound, Some(at), volume, pitch),
             },
             // Only reached through a root commit, which replays blocks and connection groups in order.
-            After::Block(_) | After::ConnectionGroup(_, _, _) => {}
-            After::BulkBlocks(publication, tracked, removed, _) => {
-                self.publish_bulk_edit(publication, tracked, removed);
-            }
+            After::Block(_) | After::BulkBlocks(..) | After::ConnectionGroup(..) => {}
             After::Drop(pos, stack) => {
                 self.spawn_item(stack, pos.map(|p| f64::from(p) + 0.5), [0.0; 3], 10);
             }
-            After::GivePickup(uuid, dim) => {
+            After::GivePickup {
+                uuid,
+                dim,
+                prototype,
+            } => {
                 self.native_as_player(uuid, |g| {
                     let back = g.enter_command_level(dim);
-                    g.give_pickup();
+                    if g.dim == dim {
+                        g.give_pickup(prototype);
+                    }
                     if let Some(back) = back {
                         g.enter_command_level(back);
                     }
@@ -2002,14 +2279,6 @@ impl Game<'_> {
             }
         }
     }
-    fn connection_group_world_mut(&mut self, dim: Dim) -> Option<&mut World> {
-        if dim == self.dim {
-            Some(&mut self.world)
-        } else {
-            self.levels.parked_mut(dim).map(|level| &mut level.world)
-        }
-    }
-
     pub(in crate::game) fn pending_menu_data(&self, key: (u32, u64, usize)) -> Option<i32> {
         self.transactions
             .iter()
@@ -2062,47 +2331,46 @@ impl Game<'_> {
             packets.publish();
         }
         self.commit_menu_data(level.menu_data);
-        // A menu callback removed its detached block entity. Its accepted remainder is
-        // spilled separately and must not be replayed here.
-        let detached: std::collections::HashSet<_> = level
-            .after
-            .iter()
-            .filter_map(|after| match after {
-                After::LostMenuContents(pos, _) => Some(*pos),
-                _ => None,
-            })
-            .collect();
-        // Replay from the old group so committed callbacks see writes in order. A fresh
-        // publication entry survives only if the final group differs from that baseline.
-        let mut clean_groups = Vec::new();
-        for ((dim, (x, y, z)), was) in level.connection_groups {
-            if let Some(world) = self.connection_group_world_mut(dim) {
-                world.set_connection_group_stored(x, y, z, was);
-                if world
-                    .connection_group_log
-                    .as_ref()
-                    .is_some_and(|log| !log.contains(&(x, y, z)))
-                {
-                    clean_groups.push((dim, (x, y, z), was));
-                }
-            }
-        }
-        // For a mixed cell, work back from its final staged row to the row before its
-        // first edit. A strict step takes the row it installed from the next retirement,
-        // or from storage if it survived. Ordinary removal then observes its own row,
-        // never a row from a later strict edit. Other cells stay in final staged storage.
-        let mixed: indexmap::IndexSet<_> = level
+        // A strict cell is rewound to its storage before its first edit when an ordinary write
+        // shares it, or when its connection group is rewound below: replay then shows each
+        // callback the block and group together. For a rewound cell, work back from its final
+        // staged row to the row before its first edit. A strict step takes the row it installed
+        // from the next retirement, or from storage if it survived. Ordinary removal then
+        // observes its own row, never a row from a later strict edit. Other cells stay in final
+        // staged storage.
+        let rewound: indexmap::IndexSet<_> = level
             .after
             .iter()
             .filter_map(|after| match after {
                 After::Block(step) if level.blocks[&step.pos].strict => Some(step.pos),
                 _ => None,
             })
+            .chain(
+                level
+                    .connection_groups
+                    .keys()
+                    .copied()
+                    .filter(|pos| level.blocks.get(pos).is_some_and(|kept| kept.strict)),
+            )
             .collect();
+        // Replay from the old group so committed callbacks see writes in order. A fresh
+        // publication entry survives only if the final group differs from that baseline.
+        let mut clean_groups = Vec::new();
+        for (pos @ (x, y, z), was) in level.connection_groups {
+            self.world.set_connection_group_stored(x, y, z, was);
+            if self
+                .world
+                .connection_group_log
+                .as_ref()
+                .is_some_and(|log| !log.contains(&pos))
+            {
+                clean_groups.push((pos, was));
+            }
+        }
         let mut rows = HashMap::new();
         for after in level.after.iter_mut().rev() {
             match after {
-                After::Block(step) if mixed.contains(&step.pos) => {
+                After::Block(step) if rewound.contains(&step.pos) => {
                     if let Some(removed) = &mut step.removed {
                         let slot = rows
                             .entry(step.pos)
@@ -2110,9 +2378,9 @@ impl Game<'_> {
                         *slot = removed.take();
                     }
                 }
-                After::BulkBlocks(_, _, _, writes) if !mixed.is_empty() => {
+                After::BulkBlocks(_, _, _, writes) if !rewound.is_empty() => {
                     for (&pos, step) in writes {
-                        if mixed.contains(&pos)
+                        if rewound.contains(&pos)
                             && let Some(removed) = &mut step.row
                         {
                             let slot = rows
@@ -2125,7 +2393,7 @@ impl Game<'_> {
                 _ => {}
             }
         }
-        for &pos in &mixed {
+        for &pos in &rewound {
             let (x, y, z) = pos;
             self.world.set_stored(x, y, z, level.blocks[&pos].state);
             if let Some((row, generation)) = rows.remove(&pos).flatten() {
@@ -2134,7 +2402,7 @@ impl Game<'_> {
         }
         for after in &mut level.after {
             if let After::Block(step) = after
-                && !mixed.contains(&step.pos)
+                && !rewound.contains(&step.pos)
                 && let Some(Some(row)) = step.removed.take()
             {
                 let first = level.removed_block_entities.entry(step.pos).or_default();
@@ -2144,26 +2412,25 @@ impl Game<'_> {
             }
         }
         let mut told = std::collections::HashSet::new();
+        let mut told_silent = FxHashSet::default();
+        let mut told_holders = FxHashSet::default();
         let mut explicit_group_since_block = std::collections::HashSet::new();
         let mut biome_columns = std::collections::HashSet::new();
         for after in level.after {
             match after {
                 // Each storage tells the world once, after every write.
-                After::Changed(pos) if detached.contains(&pos) || !told.insert(Ok(pos)) => {}
-                After::ConnectionGroup(dim, pos, group) => {
-                    if let Some(world) = self.connection_group_world_mut(dim) {
-                        world.set_connection_group(pos.0, pos.1, pos.2, group, true);
-                    }
-                    if dim == self.dim {
-                        explicit_group_since_block.insert(pos);
-                    }
+                After::Changed(pos) if !told.insert(Ok(pos)) => {}
+                After::ChangedWithoutHook(pos) if !told_silent.insert(pos) => {}
+                After::QuickMoveChanged(ref notice)
+                    if !told_holders.insert((notice.dim, notice.holder)) => {}
+                After::ConnectionGroup(pos @ (x, y, z), group) => {
+                    self.world.set_connection_group(x, y, z, group, true);
+                    explicit_group_since_block.insert(pos);
                 }
-                After::Block(step) if mixed.contains(&step.pos) => {
+                After::Block(step) if rewound.contains(&step.pos) => {
                     let (x, y, z) = step.pos;
                     explicit_group_since_block.remove(&step.pos);
-                    if step.removed.is_some()
-                        && (!step.replay.replay_removal || detached.contains(&step.pos))
-                    {
+                    if step.removed.is_some() && !step.replay.replay_removal {
                         self.world.block_entities.remove(&step.pos);
                     }
                     self.set_block_live(
@@ -2176,7 +2443,10 @@ impl Game<'_> {
                 }
                 After::BulkBlocks(publication, tracked, removed, steps) => {
                     for (pos, step) in steps {
-                        if mixed.contains(&pos) {
+                        if step.clear_connection_group {
+                            self.world.invalidate_replaced_group(pos);
+                        }
+                        if rewound.contains(&pos) {
                             let (x, y, z) = pos;
                             self.world.set_stored(x, y, z, step.to);
                             if let Some(row) = step.row {
@@ -2217,8 +2487,7 @@ impl Game<'_> {
                     // stood at removal, or leave it in place if the old block kind survived.
                     let b = self.res.behaviours();
                     let net_keeps_group = b.keeps_block_entity(was, now);
-                    if !detached.contains(&pos)
-                        && (replay_removal || b.block(now) == b.block(was))
+                    if (replay_removal || b.block(now) == b.block(was))
                         && let Some((entity, generation)) =
                             level.removed_block_entities.remove(&pos).flatten()
                     {
@@ -2252,12 +2521,11 @@ impl Game<'_> {
                 after => self.run_after(after),
             }
         }
-        for (dim, (x, y, z), was) in clean_groups {
-            if let Some(world) = self.connection_group_world_mut(dim)
-                && world.connection_group(x, y, z) == was
-                && let Some(log) = world.connection_group_log.as_mut()
+        for (pos @ (x, y, z), was) in clean_groups {
+            if self.world.connection_group(x, y, z) == was
+                && let Some(log) = self.world.connection_group_log.as_mut()
             {
-                log.remove(&(x, y, z));
+                log.remove(&pos);
             }
         }
         // A crafting grid the transaction changed has its result made again, once for each
@@ -2298,42 +2566,55 @@ impl Game<'_> {
         // Restore slots and undo only their recorded modifier edits. Explicit
         // attribute writes survive an abort, and no item query runs here.
         let equipment = std::mem::take(&mut level.equipment);
-        for (id, kept) in equipment {
-            match kept {
+        for ((dim, id), kept) in equipment {
+            let _ = self.with_effect_level(dim, |game| match kept {
                 KeptEquipment::Mob { slots, gear } => {
-                    if let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed) {
+                    if let Some(mob) = game.mobs.iter_mut().find(|m| m.id == id && !m.removed) {
                         mob.extra.equipment = *slots;
                         mob.extra.gear = gear;
                     }
                 }
                 KeptEquipment::Stand(slots) => {
-                    if let Some(stand) = self.armor_stands.iter_mut().find(|a| a.id == id) {
+                    if let Some(stand) = game.armor_stands.iter_mut().find(|a| a.id == id) {
                         stand.equipment = *slots;
                     }
                 }
-            }
+            });
         }
 
-        for (id, kept) in level.mob_effects {
-            if let Some(mob) = self.mobs.iter_mut().find(|mob| mob.id == id) {
-                mob.extra.effects = kept.active;
-                mob.extra.effect_chains = kept.chains;
-                mob.extra.ambient_effects = kept.ambient;
-                mob.extra.hidden_effects = kept.hidden;
-                mob.effects_dirty = kept.dirty;
-            }
+        for ((dim, id), kept) in level.mob_effects {
+            let _ = self.with_effect_level(dim, |game| {
+                if let Some(mob) = game.mobs.iter_mut().find(|mob| mob.id == id) {
+                    mob.extra.effects = kept.active;
+                    mob.extra.effect_chains = kept.chains;
+                    mob.extra.ambient_effects = kept.ambient;
+                    mob.extra.hidden_effects = kept.hidden;
+                    mob.effects_dirty = kept.dirty;
+                }
+            });
         }
-        for (id, kept) in level.effect_modifiers.into_iter().rev() {
-            if let Some(mob) = self.mobs.iter_mut().find(|mob| mob.id == id) {
-                kept.restore(mob);
-            }
+        for ((dim, id), kept) in level.effect_modifiers.into_iter().rev() {
+            let _ = self.with_effect_level(dim, |game| {
+                if let Some(mob) = game.mobs.iter_mut().find(|mob| mob.id == id) {
+                    kept.restore(mob);
+                }
+            });
         }
-        for (id, changes) in std::mem::take(&mut level.modifier_changes) {
-            if let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed) {
-                super::living_attributes::undo_mob_modifiers(&self.motion.attributes, mob, changes);
-            }
+        for ((dim, id), changes) in std::mem::take(&mut level.modifier_changes) {
+            let _ = self.with_effect_level(dim, |game| {
+                if let Some(mob) = game.mobs.iter_mut().find(|m| m.id == id && !m.removed) {
+                    super::living_attributes::undo_mob_modifiers(
+                        &game.motion.attributes,
+                        mob,
+                        changes,
+                    );
+                }
+            });
         }
 
+        for ((x, y, z), tag) in level.saved_pots {
+            super::spill::set_saved_entity(&mut self.world, [x, y, z], tag);
+        }
         // Block entities whose published shapes the abort changed back.
         let mut reshaped = Vec::new();
         for (pos, kept) in level.block_entities {
@@ -2422,27 +2703,30 @@ impl Game<'_> {
                 }
             }
         }
-        let bottom_quart = self.world.bottom_y() >> 2;
-        for ((qx, qy, qz), biome) in level.biomes {
-            if let Some(chunk) = self.world.chunks.get_mut(&(qx >> 2, qz >> 2)) {
-                std::sync::Arc::make_mut(chunk).set_biome_cell(
-                    qx & 3,
-                    qy - bottom_quart,
-                    qz & 3,
-                    biome,
-                );
-            }
+        for ((dim, (qx, qy, qz)), biome) in level.biomes {
+            let _ = self.with_effect_level(dim, |game| {
+                let bottom_quart = game.world.bottom_y() >> 2;
+                if let Some(chunk) = game.world.chunks.get_mut(&(qx >> 2, qz >> 2)) {
+                    std::sync::Arc::make_mut(chunk).set_biome_cell(
+                        qx & 3,
+                        qy - bottom_quart,
+                        qz & 3,
+                        biome,
+                    );
+                }
+            });
         }
         for (pos, block) in level.blocks {
             self.world.set_stored(pos.0, pos.1, pos.2, block.state);
         }
-        for ((dim, (x, y, z)), group) in level.connection_groups {
-            if let Some(world) = self.connection_group_world_mut(dim) {
-                world.set_connection_group_stored(x, y, z, group);
-            }
+        for ((x, y, z), group) in level.connection_groups {
+            self.world.set_connection_group_stored(x, y, z, group);
         }
         if let Some(random) = level.level_random {
             *self.world.random = random;
+        }
+        if let Some(sequences) = level.loot_sequences {
+            self.rand_sequences = sequences;
         }
         for (owner, before) in level.parked_level_randoms {
             if let Some(random) = self.level_random_mut(owner) {
@@ -2466,28 +2750,49 @@ impl Game<'_> {
                 .or_default()
                 .extend(randoms);
         }
-        for (id, kept) in level.entities {
-            self.edit_entity_slots(id, |slots, _| {
-                for (slot, kept) in slots.iter_mut().zip(kept) {
-                    *slot = kept;
+        for ((dim, id), kept) in level.entities {
+            let _ = self.with_effect_level(dim, |game| {
+                game.edit_entity_slots(id, |slots, _| {
+                    for (slot, kept) in slots.iter_mut().zip(kept) {
+                        *slot = kept;
+                    }
+                });
+            });
+        }
+        for ((dim, id), len) in level.mob_lengths {
+            let _ = self.with_effect_level(dim, |game| {
+                if let Some(m) = game.mobs.iter_mut().find(|m| m.id == id) {
+                    m.extra.items.truncate(len);
                 }
             });
         }
-        for (id, len) in level.mob_lengths {
-            if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
-                m.extra.items.truncate(len);
+        for (join, kept) in level.item_entities {
+            if let Some(index) = self.dropped.locate(join) {
+                kept.restore(&mut self.dropped[index]);
             }
         }
-        for (id, kept) in level.item_entities {
-            if let Some(e) = self.dropped.iter_mut().find(|e| e.id == id) {
-                e.stack = kept;
+        let general = &mut self.resident_entities.general.rows;
+        for (join, kept) in level.general_entities {
+            if let Some(index) = general.locate(join) {
+                let row = &mut general[index];
+                if let Some(velocity) = kept.velocity {
+                    row.velocity = velocity;
+                }
+                if let Some(rotation) = kept.rotation {
+                    row.rotation = rotation;
+                }
+                if let Some(fall_distance) = kept.fall_distance {
+                    row.fall_distance = fall_distance;
+                }
             }
         }
-        for (join, kept) in level.orbs {
-            if let Some(i) = self.orbs.locate(join) {
-                let orb = &mut self.orbs[i];
-                (orb.value, orb.count, orb.age) = kept;
-            }
+        for ((dim, join), kept) in level.orbs {
+            let _ = self.with_effect_level(dim, |game| {
+                if let Some(i) = game.orbs.locate(join) {
+                    let orb = &mut game.orbs[i];
+                    (orb.value, orb.count, orb.age) = kept;
+                }
+            });
         }
         if let Some(host) = self.lan.as_mut() {
             for ((conn, owner), kept) in level.stations {
@@ -2546,20 +2851,31 @@ impl Game<'_> {
                 }
             });
         }
-        for (holder, kept) in level.attachments {
-            if let Ok(map) = self.attachment_slot(holder, mod_api::AttachmentAccess::Existing) {
-                map.replace_contents(kept.contents);
-                if !kept.indexed {
-                    map.unbind_index();
+        for (key, kept) in level.attachments {
+            match key {
+                AttachmentKey::Level(dim, holder) => {
+                    let _ = self.with_effect_level(dim, |game| {
+                        if let Ok(map) =
+                            game.attachment_slot(holder, mod_api::AttachmentAccess::Existing)
+                        {
+                            map.replace_contents(kept.contents);
+                            if !kept.indexed {
+                                map.unbind_index();
+                            }
+                        }
+                        if !kept.indexed
+                            && let Holder::Entity(id) = holder
+                            && let Some(id) = std::num::NonZeroU32::new(id)
+                        {
+                            game.with_resident_slot(&dim.key(), id, |slot| {
+                                *slot = Default::default();
+                            });
+                        }
+                    });
                 }
-            }
-            if !kept.indexed
-                && let Holder::Entity(id) = holder
-                && let Some(id) = std::num::NonZeroU32::new(id)
-            {
-                self.with_resident_slot(&self.dim.key(), id, |slot| {
-                    *slot = Default::default();
-                });
+                AttachmentKey::Player(body) => {
+                    self.restore_player_attachments(body, kept);
+                }
             }
         }
         self.restore_travelled(std::mem::take(&mut level.travelled));
@@ -2567,30 +2883,31 @@ impl Game<'_> {
         for (chunk, mark) in level.chunk_marks {
             self.world.modified.restore(chunk, mark);
         }
-        for (id, kept) in level.mob_health {
-            if let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id) {
-                mob.health = kept.health;
-                mob.absorption = kept.absorption;
-                mob.needs_sync = kept.needs_sync;
-                mob.death_time = kept.death_time;
-                mob.death_canceled = kept.death_canceled;
-                if kept.processed {
-                    self.died.insert(id);
-                } else {
-                    self.died.remove(&id);
+        for ((dim, id), kept) in level.mob_health {
+            let _ = self.with_effect_level(dim, |game| {
+                if let Some(mob) = game.mobs.iter_mut().find(|m| m.id == id) {
+                    mob.health = kept.health;
+                    mob.absorption = kept.absorption;
+                    mob.needs_sync = kept.needs_sync;
+                    mob.death_time = kept.death_time;
+                    mob.death_canceled = kept.death_canceled;
+                    if kept.processed {
+                        game.died.insert(id);
+                    } else {
+                        game.died.remove(&id);
+                    }
                 }
-            }
+            });
         }
-        for (uuid, kept) in level.player_health {
-            // Restoration must also reach a body tentatively set to zero health:
-            // native_as_player deliberately refuses dead bodies for public writes.
-            let target = if uuid == self.native_acting_id() {
+        for (body, kept) in level.player_health {
+            // Restoration must reach that exact player body even when tentatively set to zero
+            // health or when another level holds a fake player sharing the same UUID.
+            let target = if self.acting_player_body() == body {
                 Some(super::commands::Target::Player)
+            } else if let PlayerBodyKey::Guest(conn) = body {
+                Some(super::commands::Target::Guest(conn))
             } else {
-                self.lan
-                    .as_ref()
-                    .and_then(|host| host.hub.holder_guest(uuid, self.dim.id()))
-                    .map(|guest| super::commands::Target::Guest(guest.conn))
+                None
             };
             if let Some(target) = target {
                 self.for_player(target, |g| {
@@ -2601,8 +2918,7 @@ impl Game<'_> {
                     }
                     if let Some((conn, canceled, time)) = kept.guest
                         && let Some(host) = g.lan.as_mut()
-                        && let Some(gi) =
-                            host.hub.guests.iter().position(|guest| guest.conn == conn)
+                        && let Some(gi) = host.hub.guests.connection_index(conn)
                     {
                         host.hub.guests.update(gi, |guest| {
                             guest.death_canceled = canceled;
@@ -2658,6 +2974,67 @@ impl Game<'_> {
                     });
                 }
                 None => {}
+            }
+        }
+    }
+
+    /// Identity of the player body currently swapped into `Game`.
+    fn acting_player_body(&self) -> PlayerBodyKey {
+        if let Some(conn) = self.lan_acting {
+            return PlayerBodyKey::Guest(conn);
+        }
+        if let Some(uuid) = self.lan_acting_uuid
+            && let Some(conn) = self
+                .lan
+                .as_ref()
+                .and_then(|host| host.hub.holder_guest(uuid, self.dim.id()))
+                .map(|guest| guest.conn)
+        {
+            return PlayerBodyKey::Guest(conn);
+        }
+        PlayerBodyKey::Host
+    }
+
+    /// Resolves which player body `attachment_slot(Holder::Player(uuid), _)` addresses now:
+    /// the acting body when its UUID matches, else the exact guest `conn` resolved in `self.dim`
+    /// (online real player across dimensions, or the per-level fake player in `self.dim`).
+    fn attachment_player_body(&self, uuid: u128) -> Option<PlayerBodyKey> {
+        if self.lan_acting_uuid == Some(uuid) {
+            return Some(self.acting_player_body());
+        }
+        let conn = self
+            .cloning_guest(uuid)
+            .or_else(|| {
+                let host = self.lan.as_ref()?;
+                if self.entity_initialization.active == Some(Holder::Player(uuid)) {
+                    host.hub.guests.iter().find(|guest| guest.uuid == uuid)
+                } else {
+                    host.hub.holder_guest(uuid, self.dim.id())
+                }
+            })
+            .map(|guest| guest.conn)?;
+        (!self.lan_guest_swaps.contains(&conn)).then_some(PlayerBodyKey::Guest(conn))
+    }
+
+    /// Restore a player body's attachment map directly wherever that exact body's state lives
+    /// now (acting body in `player_state` or parked guest `conn` in `lan.hub.guests`), without
+    /// looking up by UUID across unrelated per-level fake players.
+    fn restore_player_attachments(&mut self, body: PlayerBodyKey, kept: KeptAttachments) {
+        let map = if self.acting_player_body() == body {
+            Some(&mut self.player_state.attachments)
+        } else if let PlayerBodyKey::Guest(conn) = body
+            && !self.lan_guest_swaps.contains(&conn)
+        {
+            self.lan
+                .as_mut()
+                .and_then(|host| host.hub.guests.attachments_mut(conn))
+        } else {
+            None
+        };
+        if let Some(map) = map {
+            map.replace_contents(kept.contents);
+            if !kept.indexed {
+                map.unbind_index();
             }
         }
     }
@@ -2787,11 +3164,17 @@ mod tests {
                 game.creative = false;
                 game.inventory[0] = Some(ItemStack::new("minecraft:water_bucket", 1));
                 game.open_storage_transaction();
-                assert!(game.use_on_cauldron(pos).unwrap());
+                assert_eq!(
+                    game.use_on_cauldron(pos).unwrap(),
+                    sunrise_client::cauldron::Outcome::Success
+                );
                 assert!(seen.lock().unwrap().is_empty());
                 game.close_storage_transaction(false);
                 assert!(seen.lock().unwrap().is_empty());
-                assert!(game.use_on_cauldron(pos).unwrap());
+                assert_eq!(
+                    game.use_on_cauldron(pos).unwrap(),
+                    sunrise_client::cauldron::Outcome::Success
+                );
                 assert_eq!(
                     seen.lock().unwrap().as_slice(),
                     &[(
@@ -2802,7 +3185,10 @@ mod tests {
                 game.world.set(pos[0], pos[1], pos[2], empty).unwrap();
                 game.inventory[0] = Some(ItemStack::new("minecraft:water_bucket", 1));
                 game.open_storage_transaction();
-                assert!(game.use_on_cauldron(pos).unwrap());
+                assert_eq!(
+                    game.use_on_cauldron(pos).unwrap(),
+                    sunrise_client::cauldron::Outcome::Success
+                );
                 assert_eq!(seen.lock().unwrap().len(), 1);
                 game.close_storage_transaction(true);
             })
@@ -2839,7 +3225,10 @@ mod tests {
                     game.inventory[0] = Some(ItemStack::new("minecraft:glass_bottle", 2));
                 };
                 setup(game);
-                assert!(game.use_on_cauldron(pos).unwrap());
+                assert_eq!(
+                    game.use_on_cauldron(pos).unwrap(),
+                    sunrise_client::cauldron::Outcome::Success
+                );
                 assert_eq!(
                     drops.lock().unwrap().as_slice(),
                     &[
@@ -2850,12 +3239,18 @@ mod tests {
                 drops.lock().unwrap().clear();
                 setup(game);
                 game.open_storage_transaction();
-                assert!(game.use_on_cauldron(pos).unwrap());
+                assert_eq!(
+                    game.use_on_cauldron(pos).unwrap(),
+                    sunrise_client::cauldron::Outcome::Success
+                );
                 assert!(drops.lock().unwrap().is_empty());
                 game.close_storage_transaction(false);
                 assert!(drops.lock().unwrap().is_empty());
                 game.open_storage_transaction();
-                assert!(game.use_on_cauldron(pos).unwrap());
+                assert_eq!(
+                    game.use_on_cauldron(pos).unwrap(),
+                    sunrise_client::cauldron::Outcome::Success
+                );
                 game.close_storage_transaction(true);
                 assert_eq!(
                     drops.lock().unwrap().as_slice(),
@@ -2903,7 +3298,10 @@ mod tests {
             let before = game.stats.get("custom", "minecraft:fill_cauldron");
             game.audio.capture = Some(Vec::new());
             game.open_storage_transaction();
-            assert!(game.use_on_cauldron(pos).unwrap());
+            assert_eq!(
+                game.use_on_cauldron(pos).unwrap(),
+                sunrise_client::cauldron::Outcome::Success
+            );
             assert_eq!(game.stats.get("custom", "minecraft:fill_cauldron"), before);
             assert!(game.audio.capture.as_ref().unwrap().is_empty());
             game.close_storage_transaction(false);
@@ -2916,7 +3314,10 @@ mod tests {
             assert!(game.audio.capture.as_ref().unwrap().is_empty());
             game.open_storage_transaction();
             game.open_storage_transaction();
-            assert!(game.use_on_cauldron(pos).unwrap());
+            assert_eq!(
+                game.use_on_cauldron(pos).unwrap(),
+                sunrise_client::cauldron::Outcome::Success
+            );
             game.close_storage_transaction(false);
             assert_eq!(game.world.block(pos[0], pos[1], pos[2]), empty);
             assert_eq!(
@@ -2926,7 +3327,10 @@ mod tests {
             game.close_storage_transaction(true);
             assert_eq!(game.stats.get("custom", "minecraft:fill_cauldron"), before);
             assert!(game.audio.capture.as_ref().unwrap().is_empty());
-            assert!(game.use_on_cauldron(pos).unwrap());
+            assert_eq!(
+                game.use_on_cauldron(pos).unwrap(),
+                sunrise_client::cauldron::Outcome::Success
+            );
             assert_ne!(game.world.block(pos[0], pos[1], pos[2]), empty);
             assert_eq!(
                 &*game.inventory[0].as_ref().unwrap().item,

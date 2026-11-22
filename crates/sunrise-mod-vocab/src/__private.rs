@@ -532,16 +532,6 @@ pub mod game {
         }
     }
 
-    pub fn original_player_ref(token: u64) -> OriginalPlayerRef {
-        OriginalPlayerRef { token }
-    }
-    impl Fields for OriginalPlayerRef {
-        type Fields<'a> = u64;
-        fn fields(&self) -> u64 {
-            self.token
-        }
-    }
-
     /// Allocate a fresh delayed task id for `schedule_task`, without exposing its raw value.
     pub fn allocate_task_id() -> Option<TaskId> {
         TaskId::allocate()
@@ -728,25 +718,6 @@ pub mod game {
     impl<'a> ClientBackendMutRefOf<'a> for ClientBackendMutRef<'a> {
         fn of(inner: &'a mut dyn ClientBackendMut) -> Self {
             ClientBackendMutRef::of(inner)
-        }
-    }
-
-    mod modblockentityviewnew {
-        #[allow(unused_imports)]
-        use crate::*;
-        #[allow(unused_imports)]
-        use serde_json::{Map, Value};
-        #[allow(unused_imports)]
-        use std::sync::{Arc, OnceLock};
-        #[allow(unused_imports)]
-        use std::time::Duration;
-        pub trait ModBlockEntityViewNew<'a>: Sized {
-            fn new(entity: &'a mut ModBlockEntity) -> Self;
-        }
-        impl<'a> ModBlockEntityViewNew<'a> for ModBlockEntityView<'a> {
-            fn new(entity: &'a mut ModBlockEntity) -> Self {
-                ModBlockEntityView::new(entity)
-            }
         }
     }
 

@@ -177,9 +177,9 @@ pub enum ParticleData {
     GeyserBase(i32, f32),
     /// Vibration: where it travels to, then its arrival time in ticks.
     Vibration { source: PositionSource, ticks: i32 },
-    /// Sunrise extension: a native mod's own particle type, by its namespaced
-    /// name (`mymod:spark`). Vanilla has no id for it; see `MOD_PARTICLE_ID`.
-    Mod(String),
+    /// Sunrise extension: a custom particle's namespaced ID and length-delimited
+    /// stream options. Asset-only and unit types have an empty body.
+    Mod { name: String, options: Vec<u8> },
 }
 /// Sunrise extension for a native mod's particle type. Vanilla's
 /// `minecraft:particle_type` ids are registry ids and never negative, so this
@@ -195,15 +195,14 @@ pub enum PositionSource {
     Entity { id: i32, y_offset: f32 },
 }
 impl Particle {
-    /// A native mod's particle travels as `MOD_PARTICLE_ID` (-1) plus its name.
+    /// A mod's particle travels as `MOD_PARTICLE_ID` (-1), its name and its options.
     /// Vanilla reads the id with `IdMap.byIdOrThrow`, which throws on -1 and
     /// drops the connection, so such a particle may only go to Sunrise clients.
     pub fn sunrise_only(&self) -> bool {
-        matches!(self.data, Some(ParticleData::Mod(_)))
+        self.id == MOD_PARTICLE_ID
     }
     pub fn read(r: &mut Reader) -> Result<Particle> {
         let id = r.varint()?;
-        // A native mod's type: the namespaced name follows the sentinel id.
         if id == MOD_PARTICLE_ID {
             let name = r.string(32767)?;
             if !name.contains(':') {
@@ -211,7 +210,11 @@ impl Particle {
             }
             return Ok(Particle {
                 id,
-                data: Some(ParticleData::Mod(name)),
+                data: Some(ParticleData::Mod {
+                    // Identifier.STREAM_CODEC, followed by options bounded by the play frame.
+                    name,
+                    options: r.byte_array(crate::frame::MAX_UNCOMPRESSED)?,
+                }),
             });
         }
         // `minecraft:particle_type` registry order as of 26.3 (`IdMap.byIdOrThrow`).
@@ -290,7 +293,10 @@ impl Particle {
                 w.varint(*d);
             }
             ParticleData::Item(s) => Template::write(s, w),
-            ParticleData::Mod(name) => w.string(name),
+            ParticleData::Mod { name, options } => {
+                w.string(name);
+                w.byte_array(options);
+            }
             ParticleData::Vibration { source, ticks } => {
                 match source {
                     PositionSource::Block(pos) => {
@@ -713,9 +719,9 @@ impl crate::retained::OwnedHeap for ParticleData {
             Self::Vibration { source, ticks } => 0usize
                 .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(source))
                 .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(ticks)),
-            Self::Mod(field_0) => {
-                0usize.saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(field_0))
-            }
+            Self::Mod { name, options } => 0usize
+                .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(name))
+                .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(options)),
         }
     }
 }
@@ -841,7 +847,10 @@ mod tests {
             // A native mod's type: the sentinel id, then the namespaced name.
             (
                 MOD_PARTICLE_ID,
-                Some(ParticleData::Mod("mymod:spark".to_owned())),
+                Some(ParticleData::Mod {
+                    name: "mymod:spark".into(),
+                    options: vec![1, 3, 7],
+                }),
             ),
             (
                 58,

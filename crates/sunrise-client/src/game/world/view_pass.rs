@@ -637,8 +637,8 @@ pub(in crate::game) mod tests {
     fn a_saved_block_entity_republishes_its_group_before_a_loaded_only_column_is_sent() {
         use crate::game::native_entity_refs::tests::{fixture_root, run_fresh_cases};
         use mod_api::{
-            Block, BlockEntityEvent, BlockEntityOnLoadEvent, BlockEntityPart, BlockPart,
-            BlockUpdateFlags, BlocksEvent, Compound, Hooks, HostSide, LevelSide, ModEntry, Mods,
+            Block, BlockEntityEvent, BlockEntityOnLoadEvent, BlockEntityPart, BlockEntitySideScope,
+            BlockPart, BlockUpdateFlags, BlocksEvent, Compound, Hooks, LevelSide, ModEntry, Mods,
             Registrar, RegistrationContext, Tag,
         };
         use sunrise_client::{
@@ -670,18 +670,20 @@ pub(in crate::game) mod tests {
             ) -> Option<Compound> {
                 Some(Compound::from([("group".into(), Tag::Long(1))]))
             }
-            fn block_entity_on_load(&self, host: HostSide, event: &mut BlockEntityOnLoadEvent) {
-                let HostSide::Server(host) = host else {
+            fn block_entity_on_load(&self, event: &mut BlockEntityOnLoadEvent<'_>) {
+                let BlockEntitySideScope::Server(scope) = &mut event.subject else {
                     return;
                 };
-                let data = event.entity.data(host).unwrap();
-                let Some(Tag::Long(group)) = data.get(&"group".into()) else {
-                    panic!("no saved group")
-                };
-                let pos = event.entity.position(host).unwrap();
-                let level = event.entity.level(host).unwrap();
+                let (level, pos, group) = scope
+                    .with_view(|view| {
+                        let Some(Tag::Long(group)) = view.nbt().get(&"group".into()) else {
+                            panic!("no saved group")
+                        };
+                        (view.level(), view.position(), *group as u64)
+                    })
+                    .expect("live resident block entity");
                 level
-                    .set_connection_group(host, pos, Some(*group as u64))
+                    .set_connection_group(scope.host(), pos, Some(group))
                     .unwrap();
             }
         }

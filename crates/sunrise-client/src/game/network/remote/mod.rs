@@ -20,7 +20,7 @@ mod interaction_actions;
 mod interaction_prediction;
 use inventory::{
     CREATIVE_SYNCED, Predicted, changed_slots, creative_sync_slot, creative_sync_stacks,
-    mark_synced, menu_items, predict_clicks,
+    mark_synced, menu_items, predict_clicks, predict_clicks_with,
 };
 mod level_format;
 mod raw_ingress;
@@ -36,7 +36,7 @@ use super::raw_backlog::Received;
 use super::remote_chunks::{ChunkDecoder, ChunkFormat, Next};
 use super::remote_vehicles::PassengerSeat;
 use super::render_tick::{mob_tracking_body, player_tracking_body};
-use super::{Dim, Game, Mining, Screen, item_use::ticks_left, level_sounds::LevelSound};
+use super::{Dim, Game, Hit, Mining, Screen, item_use::ticks_left, level_sounds::LevelSound};
 use crate::game::api_values::TryIntoApi;
 use mod_api::InteractionKey;
 use movement::MovePacket;
@@ -285,6 +285,29 @@ enum OwnProfile {
     Done(Option<sunrise_client::skins::Textures>),
 }
 
+pub(in crate::game) struct PendingCauldron {
+    hand: Hand,
+    hit: Hit,
+    attempt: mod_api::InteractionAttempt,
+    selected: usize,
+    main: Option<ItemStack>,
+    off: Option<ItemStack>,
+    aim: ItemUseAim,
+    swing: [bool; 2],
+    sequence: i32,
+    item_after_block: bool,
+}
+
+#[derive(PartialEq)]
+struct ItemUseAim {
+    // UseItem carries these angles but not the server's ray origin.
+    rotation: (f32, f32),
+    eye: Option<[f64; 3]>,
+    // The local ray can also come from a tracked input device.
+    ray: Option<([f64; 3], [f64; 3])>,
+    reach: f64,
+}
+
 /// The packet route that starts a remote level entry.
 pub(in crate::game) enum RemoteDimensionEntry {
     Login,
@@ -298,6 +321,8 @@ pub(super) struct Remote {
     /// Display-only address computed at connection setup. Never holds the raw friend invite.
     pub(super) display_address: Option<String>,
     pub brand: String,
+    /// `ClientPacketListener.random` draws packet spread, not provider RNG.
+    pub(super) particle_packet_random: sunrise_core::random::LegacyRandom,
     pub(super) recipe_viewer: crate::game::recipe_book::ViewerChannels,
     /// This connection's configured feature flags, carried through reconfiguration.
     pub(super) features: std::sync::Arc<[String]>,
@@ -309,6 +334,9 @@ pub(super) struct Remote {
     pub attachments: HashMap<Holder, ResidentAttachments>,
     /// The colliders the server sent, by entity id (`sunrise:collider_sync`).
     pub colliders: HashMap<u32, sunrise_client::colliders::ColliderState>,
+    /// The colliders at the last client tick, before any packets handled between ticks.
+    pub(super) collider_shove_start:
+        Option<(Dim, sunrise_client_render::moving_colliders::Prepared)>,
     /// How old the copy of the collider carrying the player is (`sunrise:carry_age`).
     pub carry_age: sunrise_client::colliders::CarryAge,
     /// The server samples far terrain for us, this far at most (`lod_net`).
@@ -450,6 +478,11 @@ pub(super) struct Remote {
     inventory_craft_grid: [Option<ItemStack>; 4],
     inventory_craft_result: Option<ItemStack>,
     use_target: Option<[i32; 3]>,
+    pub(super) cauldron_entries: Option<sunrise_client::cauldron::interactions::Dispatcher<()>>,
+    /// Receipts are connection-scoped; unlike block prediction sequences, they
+    /// are never reset on a level change.
+    cauldron_receipt: i64,
+    pub(in crate::game) pending_cauldrons: std::cell::RefCell<HashMap<i64, PendingCauldron>>,
     /// A mod menu's extra data, kept for the `OpenScreen` of its window that
     /// follows (`sunrise:menu_extra`).
     pub(in crate::game) menu_extra: Option<sunrise_protocol::menu_extra::Message>,
@@ -1064,6 +1097,15 @@ impl Game<'_> {
             // ClientCommonPacketListenerImpl.handlePing runs on the game
             // thread, after all preceding packets (especially teleports).
             C::Ping(p) => self.send(S::Pong(p)),
+            C::CustomPayload(p) if p.channel == super::cauldron_prediction::ENTRIES_CHANNEL => {
+                let entries = super::cauldron_prediction::decode_registrations(&p.data)?;
+                if let Some(remote) = &mut self.remote {
+                    remote.cauldron_entries = Some(entries);
+                }
+            }
+            C::CustomPayload(p) if p.channel == super::cauldron_prediction::USE_CHANNEL => {
+                self.receive_cauldron_use(&p.data)?;
+            }
             // The server's next generation of mod registries: all of it or the connection.
             C::CustomPayload(p) if p.channel == sunrise_client::datapack_net::CHANNEL => {
                 sunrise_client::datapack_net::accept_chunk(&p.data)?;
@@ -1131,6 +1173,7 @@ impl Game<'_> {
                 let delay = sunrise_client::net::ping_millis().wrapping_sub(p.time);
                 self.debug_charts.ping.log(delay);
             }
+            C::DebugSample(p) => self.debug_charts.log_remote_sample(&p.sample)?,
             C::Login(p) => self.apply_login_packet(p),
             C::Respawn(p) => self.apply_respawn_packet(p),
             C::PlayerPosition(p) => self.remote_teleport(&p)?,
@@ -2064,10 +2107,10 @@ impl sunrise_client::interaction_input::TargetUseWorld for RemoteUseWorld<'_, '_
         self.0.remote_use_entity(Hand::Main)
     }
     fn use_block(&mut self) -> bool {
-        self.0.remote_use_block(Hand::Main)
+        self.0.remote_use_block(Hand::Main, self.1, None)
     }
     fn use_item(&mut self) {
-        self.0.remote_use_hands(self.1);
+        self.0.remote_use_hands(Hand::Main, self.1, None);
     }
 }
 
@@ -2652,7 +2695,7 @@ pub(crate) mod tests {
     }
 
     /// Spawns the connected client in the overworld as entity 7, profile 42.
-    pub(super) fn spawn_menu_test(
+    pub(crate) fn spawn_menu_test(
         game: &mut super::Game<'_>,
     ) -> sunrise_protocol::packets::play::SpawnInfo {
         use crate::game::remote::RemoteDimensionEntry;
@@ -2834,7 +2877,8 @@ pub(crate) mod tests {
                         12,
                         game.guest_index(12).unwrap(),
                         hit,
-                        super::Hand::Main
+                        super::Hand::Main,
+                        None,
                     )
                     .unwrap()
                 );
@@ -3153,6 +3197,8 @@ mod boat_push_order_tests;
 mod item_use_tick_tests;
 #[cfg(test)]
 mod movement_input_tests;
+#[cfg(test)]
+mod swim_start_tests;
 /// `Entity.baseTick`'s fluid update for a mob this window only displays (`fluids`, sampled before
 /// the tick), with the splash it draws, and the block it stands on.
 pub(super) fn client_fluid_step(

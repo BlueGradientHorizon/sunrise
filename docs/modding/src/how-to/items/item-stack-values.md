@@ -96,13 +96,10 @@ Consuming mutable events such as `bonemeal` and
 `item_after_vertical_collision` lend `Option<ItemStack>` so a listener can consume the value by
 setting `None`.
 
-The `item_stacked_on_other` hook runs on the authoritative side only (a client predicts vanilla and the server corrects it). It does not lend the slot: it hands the listener the cursor and
-the clicked slot's stack, frozen, and takes a typed answer (`StackedOnOtherResult`: `handled`, and
-`StackResult::Keep` or `Set` for the cursor and the slot) that the game validates once and applies
-once. A stack can be set only by a cancelled click that is also `handled`; any other answer that
-sets one is refused. A replacement must pass the clicked slot's pickup, placement and capacity
-rules for the actual stacks. It cannot change a result slot or take an item from a brewing potion
-slot, because the replacement does not run the slot's take effects. A refused replacement keeps
+The global `Hooks::item_stacked_on_other` hook runs on the authoritative server side only (`StackedOnOtherDirection::Event`), while `ItemPart::item_stacked_on_other` runs on both sides (server clicks, client prediction with authoritative server reconciliation, and creative inventory-tab/hotbar pickups), dispatching first to the carried stack (`CarriedOnOther`) and then — unless a carried vanilla `BundleItem` takes the click — to the clicked stack (`OtherStackedOnMe`). It does not lend the slot: it hands the listener the cursor and
+the clicked slot's stack, frozen, and takes a typed answer (`StackedOnOtherResult`: `handled`,
+`StackResult::Keep` or `Set` for `carried`, and `ClickedStackResult::Keep`, `Set`, or `Take(count)` for `clicked`) that the game validates once and applies
+once. For global listeners, a stack can be set only by a cancelled click that is also `handled` (`ClickedStackResult::Take` is refused), and a replacement cannot change a result slot or take an item from a brewing potion slot, because the replacement does not run the slot's take effects. For `ItemPart` overrides, `ClickedStackResult::Set` performs a direct write without `Slot.onTake` side effects while `ClickedStackResult::Take(count)` takes through `Slot.safeTake` / `Slot.onTake`. If both Parts take from the slot, each take runs its own effects in carried-then-clicked order. A refused replacement keeps
 the slot and cursor as they were and undoes the listener's writes. A write through the `Host` to
 what the click read likewise makes the click stale and refuses it.
 
@@ -129,12 +126,16 @@ ordinary item use; see the linked example for registration and typed component r
 
 ## A stack's name
 
-`host.hover_name(&stack)` is `ItemStack.getHoverName()` as a component, on both sides: the custom
-name as written, else a potion's contents name, a written book's non-blank title, a player head's
-`%s's Head`, the `item_name` component, else the item's name as a translatable (`item.*` or
-`block.*`, with no fallback; a fallback written into a component is kept). It has no rarity colour or italics. Because it
-stays a component, each player renders it in their own language: put it into world text or a
-display as it is. Call `host.text_string(&name)` for a string, which is in the language of the
+`host.hover_name(&stack)` is `ItemStack.getHoverName()` as a component, on both sides. The
+custom name wins, then a written book's nonblank raw title. Otherwise the item's name is used:
+a mod item's `ItemPart::item_name` answer replaces its default; `None` keeps it. Vanilla item
+overrides (such as potion contents or a profiled player head) participate in the item-name step;
+the base item uses the stack's `item_name` patch or inherits its prototype's value.
+Removing `item_name` in the stack's patch gives an empty name. If a mod item's prototype
+has no `item_name` (including when the mod removes it), the game uses its item or block
+translation key instead. Only a fallback written into a component is kept. The result has
+no rarity colour or italics. Each player renders the component in their own language: put it into world
+text or a display as it is. Call `host.text_string(&name)` for a string in the language of the
 side that calls it. An invalid stack is a `TextFormError`.
 
 ## The NBT escape

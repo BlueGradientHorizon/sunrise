@@ -128,6 +128,10 @@ impl Game<'_> {
             self.crafter_slot_clicked(*slot, *button, *input);
         }
         if let Some(done) = self.stacked_menu_ops(ops) {
+            // CreativeModeInventoryScreen.slotClicked: the changed slots go out with the click.
+            if done && self.remote.is_some() && self.screen == Screen::Creative {
+                self.send_creative_slots();
+            }
             return done;
         }
         let ops = ops.to_vec();
@@ -611,12 +615,6 @@ impl Game<'_> {
             // Attached after the slots were set: setting them is not a click.
             menu.merchant = session.map(|(s, _)| s);
         }
-        // `FurnaceResultSlot.checkTakeAchievements` pays out on what left the output slot.
-        let furnace_before = if matches!(kind, Kind::Furnace(_)) {
-            menu.slot(2).cloned().map_or(0, |s| s.count)
-        } else {
-            0
-        };
         if anvil_open && self.remote.is_some() {
             // The AnvilScreen listens while the click is predicted (its slotChanged).
             menu.anvil.seen_input = before[0].clone();
@@ -645,11 +643,12 @@ impl Game<'_> {
             self.merchant_sync_out(s);
         }
         let after: Vec<Option<ItemStack>> = (0..total).map(|i| menu.slot(i).cloned()).collect();
-        // Only a furnace has a result slot to compare: an enchanting table has two slots.
-        let furnace_after = if matches!(kind, Kind::Furnace(_)) {
-            after[2].as_ref().map_or(0, |s| s.count)
+        // `FurnaceResultSlot.checkTakeAchievements` pays out only on actual takes (`onTake` /
+        // `onQuickCraft`), never on direct `Slot.set` edits.
+        let furnace_extracted = if matches!(kind, Kind::Furnace(_)) {
+            std::mem::take(&mut menu.furnace_extracted)
         } else {
-            0
+            Vec::new()
         };
         let carried = menu.carried.take();
         let dropped = std::mem::take(&mut menu.dropped);
@@ -698,7 +697,7 @@ impl Game<'_> {
             for stack in &brewed {
                 self.trigger_brewed_potion(stack);
             }
-            if furnace_before > furnace_after
+            if !furnace_extracted.is_empty()
                 && self.remote.is_none()
                 && let (Some(pos), Some(p)) = (self.container, self.player.as_ref())
             {
@@ -980,15 +979,15 @@ impl Game<'_> {
             self.container_changed(key);
         }
     }
-    pub(super) fn click_inventory(&mut self, right: bool) {
+    pub(super) fn click_inventory(&mut self, right: bool) -> bool {
         if self.mod_browser_press(right) || self.mount_click(right) {
-            return;
+            return true;
         }
         if self.recipe_book_click(right) {
-            return;
+            return true;
         }
         if self.station_click(right) {
-            return;
+            return true;
         }
         if self.remote.is_some() {
             return self.remote_click(right);
@@ -998,26 +997,26 @@ impl Game<'_> {
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
         else {
-            return;
+            return false;
         };
         let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
         let Some(slot) = self.slot_at(&batch, self.cursor.0, self.cursor.1) else {
-            return;
+            return false;
         };
         let held_shift = self.has_shift_down();
         if self.crafter_click(slot, held_shift, right) {
-            return;
+            return true;
         }
         if held_shift && self.container.is_some() && self.container_quick_move(slot) {
             if let Some(key) = self.container {
                 self.world.modified.insert((key.0 >> 4, key.2 >> 4));
             }
-            return;
+            return true;
         }
         if let Some(c) = &self.carried
             && self.refuses(slot, c)
         {
-            return;
+            return true;
         }
         let max = |items: &Items, s: &ItemStack| items.get(&s.item).map_or(64, |i| i.max_stack);
         let shift = held_shift;
@@ -1030,7 +1029,7 @@ impl Game<'_> {
         if is_furnace && slot == 302 {
             // FurnaceResultSlot: take only.
             let Some(result) = self.slot_mut(302).take() else {
-                return;
+                return true;
             };
             match &mut self.carried {
                 None => self.carried = Some(result),
@@ -1042,7 +1041,7 @@ impl Game<'_> {
                 }
                 _ => *self.slot_mut(302) = Some(result),
             }
-            return;
+            return true;
         }
         // Changing the input restarts cooking (AbstractFurnaceBlockEntity.setItem).
         let furnace_input = (is_furnace && slot == 300).then(|| self.slot_mut(300).clone());
@@ -1067,7 +1066,7 @@ impl Game<'_> {
                         {
                             c.count += result.count
                         }
-                        _ => return,
+                        _ => return true,
                     }
                 }
                 let remainders = self.craft_grid_remainders(&recipe);
@@ -1099,13 +1098,13 @@ impl Game<'_> {
                     break;
                 }
             }
-            return;
+            return true;
         }
         if shift
             && (slot < 36 || (500..504).contains(&slot) || (100..109).contains(&slot))
             && self.inventory_quick_move(slot)
         {
-            return;
+            return true;
         }
         if (500..504).contains(&slot) {
             let wanted = ["head", "chest", "legs", "feet"][slot - 500];
@@ -1117,11 +1116,11 @@ impl Game<'_> {
                     == Some(wanted)
             });
             if !fits {
-                return;
+                return true;
             }
             std::mem::swap(&mut self.carried, &mut self.armor[slot - 500]);
             self.apply_equipment();
-            return;
+            return true;
         }
         let carried = self.carried.take();
         let current = self.slot_mut(slot).take();
@@ -1168,6 +1167,7 @@ impl Game<'_> {
         {
             f.input_clicked(&self.loop_context, world_recipes!(self), before);
         }
+        true
     }
 
     /// A screen closed or lost its pointer: discard the unfinished click gesture.

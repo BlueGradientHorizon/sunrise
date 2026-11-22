@@ -277,14 +277,8 @@ impl Game<'_> {
         }
         let mut positions: Vec<_> = self.be_anims.bells.keys().copied().collect();
         positions.sort_unstable();
-        let raiders = self
-            .res
-            .stations()
-            .enchantments
-            .entity_tags
-            .get("minecraft:raiders")
-            .cloned()
-            .unwrap_or_default();
+        let raiders = self.items().entity_type_tags.clone();
+        let raiders = raiders.members().get("minecraft:raiders");
         for pos in positions {
             if self
                 .be_anims
@@ -293,13 +287,13 @@ impl Game<'_> {
             {
                 self.be_anims.bells.remove(&pos);
             } else if self.block_ticking_area()(pos[0], pos[2]) {
-                self.tick_bell(pos, &raiders);
+                self.tick_bell(pos, raiders);
             }
         }
     }
 
     /// `BellBlockEntity.tick` and `makeRaidersGlow`, using live entity/tag state.
-    fn tick_bell(&mut self, pos: [i32; 3], raiders: &std::collections::HashSet<String>) {
+    fn tick_bell(&mut self, pos: [i32; 3], raiders: Option<&std::collections::HashSet<String>>) {
         let player = self.player_view().map(|p| BellEntity {
             position: [p.position.x, p.position.y, p.position.z],
             alive: p.alive,
@@ -314,7 +308,7 @@ impl Game<'_> {
             Some(BellEntity {
                 position: [m.position.x, m.position.y, m.position.z],
                 alive: m.alive() && !m.removed,
-                raider: raiders.contains(&m.kind.id),
+                raider: raiders.is_some_and(|raiders| raiders.contains(&m.kind.id)),
             })
         };
         let tick = self
@@ -393,14 +387,8 @@ impl Game<'_> {
             Some(p) if !self.spectator() => vec![[p.position.x, p.position.y, p.position.z]],
             _ => Vec::new(),
         };
-        let raiders = self
-            .res
-            .stations()
-            .enchantments
-            .entity_tags
-            .get("minecraft:raiders")
-            .cloned()
-            .unwrap_or_default();
+        let raiders = self.items().entity_type_tags.clone();
+        let raiders = raiders.members().get("minecraft:raiders");
         let frames = self
             .res
             .items()
@@ -445,7 +433,7 @@ impl Game<'_> {
                     // Integrated servers already ticked this state above, independently
                     // of drawn block entities. Remote clients only animate their copy.
                     if self.remote.is_some() {
-                        self.tick_bell(pos, &raiders);
+                        self.tick_bell(pos, raiders);
                     }
                 }
                 Ticker::Conduit => {
@@ -728,12 +716,13 @@ impl Game<'_> {
                 self.mark_block_entity_updated(key);
             }
         }
-        let Some(m) = conduit
+        let Some(index) = conduit
             .target
-            .and_then(|id| self.mobs.iter_mut().find(|m| m.id == id))
+            .and_then(|id| self.mob_index.find(&self.mobs, id))
         else {
             return;
         };
+        let m = &mut self.mobs[index];
         let at = [m.position.x, m.position.y, m.position.z];
         m.damage(
             crate::game::entity::damage_level_of!(
@@ -745,6 +734,7 @@ impl Game<'_> {
             4.0,
             Damage::of(DamageKind::Magic),
         );
+        self.finish_mob_damage_at(index);
         self.audio
             .play("minecraft:block.conduit.attack.target", Some(at), 1.0, 1.0);
     }
