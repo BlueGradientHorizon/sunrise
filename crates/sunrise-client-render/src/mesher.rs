@@ -6,6 +6,7 @@
 pub use crate::render_geometry::Vertex;
 pub use mod_api::client::mesher::TintSource;
 mod extra_models;
+pub(crate) use extra_models::AttachedTintScratch;
 mod fluid;
 mod leaf_culling;
 mod lighting;
@@ -1367,6 +1368,11 @@ impl MeshTables {
             .and_then(|id| self.info.get(id as usize).map(|info| (id, info)))
             .unwrap_or(own)
     }
+    /// Whether the mesh tables have custom callbacks, rather than only built-in tint layers.
+    pub(crate) fn has_custom_tint_sources(&self) -> bool {
+        self.mod_tints.has_sources
+    }
+
     /// Tint source `index` of a state (its id and info) at section-local `pos` of `tints`'
     /// section: its `colorInWorld`, or with `particle` its `colorAsTerrainParticle`; `None` for
     /// an untinted (-1) layer. `nether` is the level's `CardinalLighting.NETHER`.
@@ -1379,7 +1385,10 @@ impl MeshTables {
         nether: bool,
         particle: bool,
     ) -> Option<u32> {
-        if index < 0 || index >= i32::from(info.tint_count) {
+        if index < 0
+            || index >= i32::from(info.tint_count)
+            || tints.preparing.is_some() && !tints.drawing_extras
+        {
             return None;
         }
         if let Some(colormap) = info.colormap
@@ -1401,15 +1410,45 @@ impl MeshTables {
             ModLayer::WaterParticles if particle => Some(tints.get(Resolver::Water, x, y, z)),
             ModLayer::WaterParticles => None,
             ModLayer::Source(source) => {
-                let prepared = tints.attached.as_ref().and_then(|a| a.get(pos, id, index));
-                prepared.or_else(|| {
-                    // The attachment pass never calls a source, even for meshes without a
-                    // prepared answer. The base pass reuses answers for the same cell and layer.
-                    Some(if tints.drawing_extras {
-                        0xFF_FFFF
-                    } else {
+                let key = (pos, id, index);
+                if let Some(preparing) = &tints.preparing {
+                    if let Some(&color) = preparing.colors.get(&key) {
+                        return Some(color);
+                    }
+                    let color = crate::crash::contain(|| {
                         mod_tint::ask(self, &**source, (id, index), tints, pos, nether, particle)
-                    })
+                    });
+                    let preparing = tints
+                        .preparing
+                        .as_mut()
+                        .expect("tint preparation is active");
+                    if color.is_err() {
+                        static SOURCE_FAILED: std::sync::atomic::AtomicBool =
+                            std::sync::atomic::AtomicBool::new(false);
+                        if !SOURCE_FAILED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                            log::warn!(
+                                "Sunrise: a block tint source panicked colouring an extra model; using white"
+                            );
+                        }
+                        preparing.failed = true;
+                    }
+                    let color = color.unwrap_or(0xFF_FFFF);
+                    preparing.colors.insert(key, color);
+                    return Some(color);
+                }
+                if let Some(prepared) = &tints.attached {
+                    if let Some(&color) = prepared.colors.get(&key) {
+                        return Some(color);
+                    }
+                    if prepared.failed {
+                        return Some(0xFF_FFFF);
+                    }
+                }
+                // An attachment without a prepared answer never calls a source on the worker.
+                Some(if tints.drawing_extras {
+                    0xFF_FFFF
+                } else {
+                    mod_tint::ask(self, &**source, (id, index), tints, pos, nether, particle)
                 })
             }
         }
@@ -1854,6 +1893,8 @@ struct Tints<'a> {
     asked_colors: Vec<(i32, u32)>,
     /// Colours of attachment faces and overlays resolved before scheduling the mesh.
     attached: Option<Arc<extra_models::AttachedTints>>,
+    /// While measuring the mesh on the scheduler, record rather than consume attachment tints.
+    preparing: Option<extra_models::AttachedTints>,
     /// The attachment pass uses white for a missing answer rather than calling a source.
     drawing_extras: bool,
     /// The packs' colormaps (`MeshTables::colormaps`), the water's, and their colours so far
@@ -1884,6 +1925,7 @@ impl<'a> Tints<'a> {
             asked: None,
             asked_colors: Vec::new(),
             attached: None,
+            preparing: None,
             drawing_extras: false,
             colormaps: &[],
             water_colormap: None,
@@ -2279,7 +2321,7 @@ impl Mesher<'_> {
         out: SectionMesh,
         scratch: &mut MeshScratch,
     ) -> SectionMesh {
-        self.mesh_masked::<_, false>(region, sy, out, scratch, &visibility_plan::NoMasks, 0)
+        self.mesh_masked::<_, false, false>(region, sy, out, scratch, &visibility_plan::NoMasks, 0)
     }
     /// Mesh a section prepared for `section_visibility`. The raw snapshot's missing neighbours
     /// are nonoccluding air, whether the listeners returned a mask or abstained. `visibility_bytes`
@@ -2294,7 +2336,7 @@ impl Mesher<'_> {
         visibility_bytes: usize,
     ) -> SectionMesh {
         match plan {
-            None => self.mesh_masked::<_, true>(
+            None => self.mesh_masked::<_, true, false>(
                 region,
                 sy,
                 out,
@@ -2306,13 +2348,17 @@ impl Mesher<'_> {
                 visibility_plan::hidden_terrain(self, region, sy, out)
             }
             Some(plan) => {
-                self.mesh_masked::<_, true>(region, sy, out, scratch, plan, visibility_bytes)
+                self.mesh_masked::<_, true, false>(region, sy, out, scratch, plan, visibility_bytes)
             }
         }
     }
     /// The mesher's one body: `M` is `NoMasks` on the no-mod path, a constant that compiles
     /// every visibility step out of it.
-    fn mesh_masked<M: visibility_plan::CellMasks, const MISSING_AS_AIR: bool>(
+    fn mesh_masked<
+        M: visibility_plan::CellMasks,
+        const MISSING_AS_AIR: bool,
+        const PREPARE_TINTS: bool,
+    >(
         &mut self,
         region: &[[Option<&Chunk>; 3]; 3],
         sy: i32,
@@ -2327,7 +2373,7 @@ impl Mesher<'_> {
         let section = &center.sections[sy as usize];
         let base_y = center.min_y() + sy * 16;
         if section.is_uniform(0) {
-            if !self.tables.section_geometry.is_empty() {
+            if !PREPARE_TINTS && !self.tables.section_geometry.is_empty() {
                 let mut tints = Tints::new(
                     region,
                     self.biomes,
@@ -2361,6 +2407,7 @@ impl Mesher<'_> {
         )
         .with_colormaps(self.tables);
         tints.attached = attached;
+        tints.preparing = PREPARE_TINTS.then(extra_models::AttachedTints::default);
         let info = &self.tables.info;
         let catalog = &self.render.model_catalog;
         let groups = self.group_cells(region, base_y, &mut scratch.groups);
@@ -2380,11 +2427,11 @@ impl Mesher<'_> {
                         continue;
                     }
                     let state = &info[id as usize];
-                    if state.block_entity {
+                    if !PREPARE_TINTS && state.block_entity {
                         out.block_entities
                             .push(([center.x * 16 + x, base_y + y, center.z * 16 + z], id));
                     }
-                    if state.emission > 0 {
+                    if !PREPARE_TINTS && state.emission > 0 {
                         out.lights
                             .push(([center.x * 16 + x, base_y + y, center.z * 16 + z], id));
                     }
@@ -2395,7 +2442,11 @@ impl Mesher<'_> {
                     if state.fluid.kind() != FluidKind::Empty && kept & visibility_plan::FLUID != 0
                     {
                         let start = [out.solid.len(), out.translucent.len()];
-                        let water = tints.water(x, y, z);
+                        let water = if PREPARE_TINTS {
+                            0xFF_FFFF
+                        } else {
+                            tints.water(x, y, z)
+                        };
                         let shade = (
                             self.nether_shading,
                             self.shader_pack_lighting,
@@ -2515,10 +2566,17 @@ impl Mesher<'_> {
                 visibility_bytes,
             );
         }
-        if !self.tables.section_geometry.is_empty() {
-            mod_geometry::add(self, &mut tints, &mut out, visibility_bytes);
+        if PREPARE_TINTS {
+            scratch.attached_tints = tints
+                .preparing
+                .filter(|prepared| !prepared.colors.is_empty())
+                .map(Arc::new);
+        } else {
+            if !self.tables.section_geometry.is_empty() {
+                mod_geometry::add(self, &mut tints, &mut out, visibility_bytes);
+            }
+            out.finish_sprite_layers();
         }
-        out.finish_sprite_layers();
         out
     }
     fn prepare_rows<M: visibility_plan::CellMasks>(
@@ -2807,14 +2865,19 @@ impl Mesher<'_> {
             };
             ([lighting::gray(directional); 4], [coords; 4], [1.0f32; 4])
         };
-        let tint = self.tables.tint_at(
-            (id, state),
-            q.tint_index,
-            tints,
-            pos,
-            self.nether_shading,
-            false,
-        );
+        let (pick, overlays) = self.face_tiles(pad, groups, tints, &at.sample, face);
+        let tint = if tints.drawing_extras && matches!(pick, Pick::Nothing) {
+            None
+        } else {
+            self.tables.tint_at(
+                (id, state),
+                q.tint_index,
+                tints,
+                pos,
+                self.nether_shading,
+                false,
+            )
+        };
         let tint = match q.color {
             Some(c) => {
                 let t = tint.unwrap_or(0xFF_FFFF);
@@ -2823,7 +2886,6 @@ impl Mesher<'_> {
             }
             None => tint,
         };
-        let (pick, overlays) = self.face_tiles(pad, groups, tints, &at.sample, face);
         let vertex = |tint: Option<u32>, i: usize, uv: [u16; 2]| {
             let g = gray[i] as u32;
             let rgb = match tint {

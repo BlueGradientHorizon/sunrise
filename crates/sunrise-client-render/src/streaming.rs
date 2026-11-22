@@ -291,8 +291,8 @@ struct MeshSettings {
     /// The section's frozen `section_visibility` plan; `None` on the no-mod path.
     visibility: Option<Arc<section_visibility::FrozenPlan>>,
     /// The colours mods' tint sources gave the section's extra models, asked when the job was
-    /// scheduled (`Mesher::prepare_attached_tints`); `None` for none.
-    attached_tints: Option<Arc<crate::mesher::AttachedTints>>,
+    /// scheduled (`Mesher::prepare_attached_tints`), with the resources used to prepare them.
+    attached_tints: Option<(Arc<WorkerContext>, Arc<crate::mesher::AttachedTints>)>,
 }
 enum Job {
     Generate(i32, i32),
@@ -655,6 +655,7 @@ pub struct Streaming {
     pub upload_backlog: usize,
     /// Sections waiting for the mods' `section_visibility` answers, and the answers kept.
     pub section_visibility: section_visibility::SectionPreparation,
+    attached_tint_preparation: mesh_job::TintPreparation,
     /// Dimension flags: sky light, Nether face shading.
     pub sky_light: bool,
     pub nether_shading: bool,
@@ -1144,10 +1145,13 @@ impl<G: ChunkGenerator> Jobs<G> {
                 Done::Lit(x, z, light_chunk(&borrow(&region), light, sky), seq)
             }
             Job::Mesh(x, sy, z, region, seq, settings) => {
-                let context = settings.visibility.as_ref().map_or_else(
-                    || shared.context.read().unwrap().clone(),
-                    |prepared| prepared.context.clone(),
-                );
+                let context = if let Some(prepared) = &settings.visibility {
+                    prepared.context.clone()
+                } else if let Some((context, _)) = &settings.attached_tints {
+                    context.clone()
+                } else {
+                    shared.context.read().unwrap().clone()
+                };
                 let recycled = shared.meshes.lock().unwrap().take();
                 let mesh = mesh_section(
                     &context,
@@ -1296,6 +1300,7 @@ impl Streaming {
             paused: false,
             upload_backlog: 0,
             section_visibility: Default::default(),
+            attached_tint_preparation: Default::default(),
             sky_light: true,
             nether_shading: false,
             shader_pack_lighting: false,
@@ -1334,6 +1339,7 @@ impl Streaming {
     /// were made with the old resources; their results are dropped.
     pub fn reload_resources(&mut self, world: &mut World, context: Arc<WorkerContext>) {
         *self.shared.context.write().unwrap() = context;
+        self.attached_tint_preparation = Default::default();
         self.reload_sections(world);
     }
     /// `LevelExtractor.allChanged`: discard mesh work made before the reload and
@@ -5562,6 +5568,12 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_resend_keeps_models_at_unchanged_resident_cells() {
+        if !crate::test_process::isolated(concat!(
+            "streaming::tests::",
+            stringify!(a_resend_keeps_models_at_unchanged_resident_cells)
+        )) {
+            return;
+        }
         for lit in [false, true] {
             let (mut world, mut streaming, stone) = fixture();
             let resend = |first| {

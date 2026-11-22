@@ -210,7 +210,7 @@ pub(super) struct World {
     pub(super) render: RenderAssets,
     facts: BlockFacts,
     biomes: Biomes,
-    root: std::path::PathBuf,
+    pub(super) root: std::path::PathBuf,
 }
 
 impl World {

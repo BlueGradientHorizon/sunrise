@@ -8,167 +8,58 @@
 //! the workers read the prepared colours and call no mod code for an extra model.
 use super::mod_geometry::{Budget, QUAD_BYTES};
 use super::{
-    CellFaces, FaceCell, GroupCells, MAX_OVERLAYS, Mesher, ModLayer, Padded, Pick, SectionMesh,
-    SectionVisibilityPlan, TerrainSource, Tint, Tints, mod_tint, pi, row_masks,
-    visibility_plan::{CellMasks, MODEL, NoMasks},
+    CellFaces, GroupCells, MAX_OVERLAYS, MeshScratch, Mesher, Padded, SectionMesh,
+    SectionVisibilityPlan, TerrainSource, Tints, visibility_plan::NoMasks,
 };
-use crate::{
-    chunk::Chunk,
-    fast_hash::{FxHashMap, FxHashSet},
-};
+use crate::{chunk::Chunk, fast_hash::FxHashMap};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use sunrise_core::position::BlockPos;
 
-/// The colours mods' own tint sources gave the blocks with extra models in one section, by
-/// section-local position, state and tint index, asked before the section's mesh was scheduled
-/// ([`Mesher::prepare_attached_tints`]). An extra model's face reads its colour here; one
-/// not prepared is white.
-#[derive(Debug, Default, PartialEq)]
-pub struct AttachedTints(FxHashMap<([i32; 3], u32, i32), u32>);
-
-impl AttachedTints {
-    /// The prepared colour of tint `index` of state `id` at section-local `pos`.
-    pub(super) fn get(&self, pos: [i32; 3], id: u32, index: i32) -> Option<u32> {
-        self.0.get(&(pos, id, index)).copied()
-    }
+/// The section's extra-model colours from custom sources, keyed by section-local position,
+/// state and tint index. A failure also disables untaken source calls in the base mesh: a
+/// *different* provider can share state (such as a poisoned mutex) with the failed one.
+#[derive(Debug, Default)]
+pub struct AttachedTints {
+    pub(super) colors: FxHashMap<([i32; 3], u32, i32), u32>,
+    pub(super) failed: bool,
 }
 
-/// Whether a tint source has panicked while asked for an extra model: logged once.
-static SOURCE_FAILED: AtomicBool = AtomicBool::new(false);
+/// Reused assembly buffers for the scheduling thread's tint pass. The pass shares actual face
+/// emission and budget accounting with the worker, so only faces that fit ask a source.
+#[derive(Default)]
+pub(crate) struct AttachedTintScratch {
+    mesh: SectionMesh,
+    scratch: MeshScratch,
+}
 
 impl Mesher<'_> {
-    /// Ask only the mod tint sources used by a section's attachment faces and overlays, before
-    /// sending the mesh to a worker. A failed source supplies white to both passes.
     pub(crate) fn prepare_attached_tints(
         &mut self,
         region: &[[Option<&Chunk>; 3]; 3],
         sy: i32,
-        visibility_job: bool,
+        visibility_bytes: Option<usize>,
         plan: Option<&SectionVisibilityPlan>,
+        preparation: &mut AttachedTintScratch,
     ) -> Option<Arc<AttachedTints>> {
-        let center = region[1][1]?;
-        let mut cells: Vec<_> = center
-            .extra_models
-            .iter()
-            .filter(|(cell, _)| (**cell >> 12) as i32 == sy)
-            .collect();
-        if cells.is_empty() || self.tables.mod_tints.layers.is_empty() {
-            return None;
-        }
-        cells.sort_unstable_by_key(|(cell, _)| **cell);
-        let colors = match plan {
-            Some(plan) if plan.hides_terrain() => return None,
-            Some(plan) => self.collect_attached_tints::<_, true>(region, center, sy, &cells, plan),
-            None if visibility_job => {
-                self.collect_attached_tints::<_, true>(region, center, sy, &cells, &NoMasks)
-            }
-            None => self.collect_attached_tints::<_, false>(region, center, sy, &cells, &NoMasks),
+        let out = std::mem::take(&mut preparation.mesh);
+        let scratch = &mut preparation.scratch;
+        preparation.mesh = match plan {
+            Some(plan) if plan.hides_terrain() => out,
+            Some(plan) => self.mesh_masked::<_, true, true>(
+                region,
+                sy,
+                out,
+                scratch,
+                plan,
+                visibility_bytes.unwrap_or_default(),
+            ),
+            None => match visibility_bytes {
+                Some(bytes) => {
+                    self.mesh_masked::<_, true, true>(region, sy, out, scratch, &NoMasks, bytes)
+                }
+                None => self.mesh_masked::<_, false, true>(region, sy, out, scratch, &NoMasks, 0),
+            },
         };
-        (!colors.0.is_empty()).then(|| Arc::new(colors))
-    }
-
-    fn collect_attached_tints<M: CellMasks, const MISSING_AS_AIR: bool>(
-        &mut self,
-        region: &[[Option<&Chunk>; 3]; 3],
-        center: &Chunk,
-        sy: i32,
-        cells: &[(&u32, &Arc<[mod_api::ModelRef]>)],
-        masks: &M,
-    ) -> AttachedTints {
-        let base_y = center.min_y() + sy * 16;
-        let mut pad = Padded::default();
-        pad.fill::<MISSING_AS_AIR>(region, sy, &mut Box::new([0; 4096]));
-        let mut rows = Vec::new();
-        self.prepare_rows(&mut pad, &mut rows, masks);
-        let (_, hidden) = row_masks(&rows);
-        let mut groups = None;
-        let groups = self.group_cells(region, base_y, &mut groups);
-        let mut tints = Tints::new(
-            region,
-            self.biomes,
-            self.zoom,
-            self.blend_radius,
-            [center.x, center.z, base_y],
-        )
-        .with_colormaps(self.tables);
-        let mut colors = FxHashMap::default();
-        let mut seen = FxHashSet::default();
-        for &(&key, models) in cells {
-            let (x, wy, z) = center.dynamic_cell_coords(key);
-            let pos @ [x, y, z] = [i32::from(x), wy - base_y, i32::from(z)];
-            let cell = pi(x, y, z);
-            let id = pad.blocks[cell];
-            let state = &self.tables.info[id as usize];
-            if state.air
-                || hidden[(y * 16 + z) as usize] >> x & 1 != 0
-                || masks.at(cell) & MODEL == 0
-            {
-                continue;
-            }
-            let at = FaceCell {
-                pos,
-                cell,
-                id,
-                state,
-                world: BlockPos::new(center.x * 16 + x, wy, center.z * 16 + z),
-                visible: self.visible_faces(region, &pad, base_y, pos, masks),
-            };
-            seen.clear();
-            for &model in models.iter() {
-                if !seen.insert(model) {
-                    continue;
-                }
-                let Ok(model) = self.render.resolve_model(model) else {
-                    continue;
-                };
-                for face in &model.faces {
-                    if !self.draws_model_face(&pad, &at, face) {
-                        continue;
-                    }
-                    let (pick, overlays) = self.face_tiles(&pad, groups, &tints, &at, face);
-                    let face_tint =
-                        (!matches!(pick, Pick::Nothing)).then_some((face.quad.tint_index, None));
-                    for (index, block) in face_tint.into_iter().chain(
-                        overlays
-                            .into_iter()
-                            .flatten()
-                            .filter_map(|overlay| overlay.tint),
-                    ) {
-                        let (id, state) = self.tables.overlay_tint_state((id, at.state), block);
-                        let Tint::Mod(slot) = state.tints[0] else {
-                            continue;
-                        };
-                        if index < 0 || index >= i32::from(state.tint_count) {
-                            continue;
-                        }
-                        let ModLayer::Source(source) =
-                            &self.tables.mod_tints.layers[slot as usize][index as usize]
-                        else {
-                            continue;
-                        };
-                        if state
-                            .colormap
-                            .is_some_and(|map| tints.colormap(map, x, y, z).is_some())
-                        {
-                            continue;
-                        }
-                        colors.entry((pos, id, index)).or_insert_with(|| {
-                            crate::crash::contain(|| {
-                                mod_tint::ask(self.tables, &**source, (id, index), &mut tints, pos,
-                                    self.nether_shading, false)
-                            }).unwrap_or_else(|_| {
-                                if !SOURCE_FAILED.swap(true, Ordering::Relaxed) {
-                                    log::warn!("Sunrise: a block tint source panicked colouring an extra model; using white");
-                                }
-                                0xFF_FFFF
-                            })
-                        });
-                    }
-                }
-            }
-        }
-        AttachedTints(colors)
+        scratch.attached_tints.take()
     }
 }
 

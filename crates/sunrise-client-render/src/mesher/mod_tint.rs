@@ -152,6 +152,7 @@ impl ModLayer {
 pub(super) struct ModTints {
     pub(super) layers: Vec<Box<[ModLayer]>>,
     pub(super) values: Option<ModTintValues>,
+    pub(super) has_sources: bool,
 }
 
 /// API values prepared by the owning game before mesh tables are built.
@@ -190,6 +191,7 @@ impl MeshTables {
             };
         let mut mod_tints = ModTints {
             values,
+            has_sources: sources,
             ..Default::default()
         };
         let mut found = std::collections::BTreeSet::new();

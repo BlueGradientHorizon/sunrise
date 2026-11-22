@@ -1,7 +1,9 @@
 //! One section meshed on a pool worker: the `Job::Mesh` of the player's level and a viewed
 //! level's mesh job (`viewed_meshing`) run the same mesher with the same settings.
 use super::{MeshSettings, Streaming, WorkerContext};
-use crate::mesher::{MeshScratch, MeshTables, Mesher, Region, SectionMesh, borrow};
+use crate::mesher::{
+    AttachedTintScratch, MeshScratch, MeshTables, Mesher, Region, SectionMesh, borrow,
+};
 use std::sync::Arc;
 use sunrise_world::block_render::FaceVisibility;
 
@@ -26,7 +28,10 @@ pub(super) fn mesh_section(
     };
     let mut mesher = section_mesher(context, settings, visibility);
     let region = borrow(region);
-    scratch.attached_tints = settings.attached_tints.clone();
+    scratch.attached_tints = settings
+        .attached_tints
+        .as_ref()
+        .map(|(_, colors)| colors.clone());
     let mut mesh = if let Some(prepared) = &settings.visibility {
         mesher.mesh_planned(
             &region,
@@ -71,22 +76,53 @@ fn section_mesher<'a>(
     }
 }
 
-pub(super) fn prepare_attached_tints(
-    context: &WorkerContext,
-    settings: &MeshSettings,
-    region: &Region,
-    sy: i32,
-) -> Option<Arc<crate::mesher::AttachedTints>> {
-    if region[1][1].as_ref()?.extra_models.is_empty() {
-        return None;
+/// Buffers and face-visibility cache used only for attachment tint preparation.
+#[derive(Default)]
+pub(super) struct TintPreparation {
+    buffers: AttachedTintScratch,
+    faces: Faces,
+}
+
+impl TintPreparation {
+    pub(super) fn prepare(
+        &mut self,
+        context: &Arc<WorkerContext>,
+        settings: &mut MeshSettings,
+        region: &Region,
+        sy: i32,
+    ) {
+        if !context.tables.has_custom_tint_sources()
+            || !region[1][1].as_ref().is_some_and(|chunk| {
+                chunk
+                    .extra_models
+                    .keys()
+                    .any(|cell| (cell >> 12) as i32 == sy)
+            })
+        {
+            return;
+        }
+        let plan = settings.visibility.as_ref().and_then(|v| v.plan.as_ref());
+        if plan.is_some_and(|plan| plan.hides_terrain()) {
+            return;
+        }
+        let visibility = match self.faces.take() {
+            Some((tables, visibility)) if Arc::ptr_eq(&tables, &context.tables) => visibility,
+            _ => context.tables.visibility.clone(),
+        };
+        let mut mesher = section_mesher(context, settings, visibility);
+        let colors = mesher.prepare_attached_tints(
+            &borrow(region),
+            sy,
+            settings
+                .visibility
+                .as_ref()
+                .map(|_| super::section_visibility::REQUEST_BYTES),
+            plan,
+            &mut self.buffers,
+        );
+        self.faces = Some((context.tables.clone(), mesher.visibility));
+        settings.attached_tints = colors.map(|colors| (context.clone(), colors));
     }
-    let mut mesher = section_mesher(context, settings, context.tables.visibility.clone());
-    mesher.prepare_attached_tints(
-        &borrow(region),
-        sy,
-        settings.visibility.is_some(),
-        settings.visibility.as_ref().and_then(|v| v.plan.as_ref()),
-    )
 }
 
 impl Streaming {

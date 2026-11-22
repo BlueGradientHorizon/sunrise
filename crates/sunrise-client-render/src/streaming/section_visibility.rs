@@ -228,8 +228,8 @@ impl Streaming {
             .is_some_and(|c| !c.extra_models.is_empty())
         {
             let context = self.shared.context.read().unwrap().clone();
-            settings.attached_tints =
-                super::mesh_job::prepare_attached_tints(&context, &settings, region, sy);
+            self.attached_tint_preparation
+                .prepare(&context, &mut settings, region, sy);
         }
         let job = Job::Mesh(x, sy, z, region.clone(), self.sequence, settings);
         self.submit(Some((x, z)), if first { 2 } else { 0 }, job);
@@ -290,8 +290,8 @@ impl Streaming {
             halo,
             _lease: lease.split(WORKER_BYTES),
         }));
-        settings.attached_tints =
-            super::mesh_job::prepare_attached_tints(&context, &settings, &region, sy);
+        self.attached_tint_preparation
+            .prepare(&context, &mut settings, &region, sy);
         let job = Job::Mesh(x, sy, z, region, seq, settings);
         self.submit(Some((x, z)), if first { 2 } else { 0 }, job);
     }
