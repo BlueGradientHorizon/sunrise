@@ -1783,7 +1783,7 @@ sunrise-client game::native_merchant_refs::tests::merchant_handles_edit_offers_a
 sunrise-client game::native_merchant_refs::tests::unresolved_profession_preserves_offers_but_cannot_trade_them lib daily resources
 sunrise-client game::native_minecart_refs::tests::a_carts_display_block_and_offset_round_trip_through_its_handle lib daily resources
 sunrise-client game::native_minecart_refs::tests::a_furnace_carts_push_is_read_and_set_through_its_handle lib daily resources
-sunrise-client game::native_minecart_refs::tests::minecart_handles_narrow_read_and_write_by_kind lib daily resources
+sunrise-client game::native_minecart_refs::tests::minecart_handles_narrow_read_and_write_by_kind lib daily child-process
 sunrise-client game::native_mob_goals::tests::follow_mob_uses_the_mobs_actual_navigation lib daily resources
 sunrise-client game::native_mob_goals::tests::goal_constructors_follow_vanilla_classes lib daily resources
 sunrise-client game::native_mob_goals::tests::goals_read_add_remove_and_refuse_what_the_mob_does_not_hold lib daily resources
