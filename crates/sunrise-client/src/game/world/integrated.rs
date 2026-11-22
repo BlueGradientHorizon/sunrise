@@ -1761,7 +1761,7 @@ pub(super) mod tests {
                         Err("open failed after map publication".into())
                     } else {
                         server.world_adopted = true;
-                        Ok(super::server_lifecycle::ServerRunOutcome::Orderly)
+                        Ok(crate::game::server_lifecycle::ServerRunOutcome::Orderly)
                     }
                 });
                 if failed_open {
@@ -2107,7 +2107,7 @@ pub(super) mod tests {
             let error = game
                 .run_server_lifecycle(false, |game| {
                     game.integrated_tick_loop(&flags)?;
-                    Ok(super::server_lifecycle::ServerRunOutcome::Orderly)
+                    Ok(crate::game::server_lifecycle::ServerRunOutcome::Orderly)
                 })
                 .unwrap_err();
             assert_eq!(

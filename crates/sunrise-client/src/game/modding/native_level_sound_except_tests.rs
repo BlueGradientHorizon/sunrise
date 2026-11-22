@@ -2302,7 +2302,7 @@ fn cross_level_sound_listener_player_attachment_writes_rollback_to_original_and_
                     },
                 }),
                 copy_on_death: true,
-                sync: false,
+                sync_codec: None,
             };
 
             struct NetherPlayerAttachmentHook {
@@ -2318,8 +2318,11 @@ fn cross_level_sound_listener_player_attachment_writes_rollback_to_original_and_
                     r: &mut dyn mod_api::Registrar,
                     _: &mod_api::RegistrationContext,
                 ) {
-                    r.register_attachment_type("cross_level_sound_test:mark", false)
-                        .unwrap();
+                    r.register_attachment_type(
+                        mod_api::AttachmentDescriptor::new("cross_level_sound_test:mark", || 0i32)
+                            .copy_on_death(true),
+                    )
+                    .unwrap();
                 }
 
                 fn play_level_sound_at_position(
@@ -2569,7 +2572,7 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
                     },
                 }),
                 copy_on_death: false,
-                sync: false,
+                sync_codec: None,
             };
 
             #[derive(Clone, Copy)]
@@ -2626,8 +2629,11 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
                     r: &mut dyn mod_api::Registrar,
                     _: &mod_api::RegistrationContext,
                 ) {
-                    r.register_attachment_type("cross_level_fake_test:mark", false)
-                        .unwrap();
+                    r.register_attachment_type(mod_api::AttachmentDescriptor::new(
+                        "cross_level_fake_test:mark",
+                        || 0i32,
+                    ))
+                    .unwrap();
                 }
 
                 fn play_level_sound_at_position(

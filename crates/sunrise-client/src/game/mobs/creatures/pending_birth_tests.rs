@@ -12,13 +12,14 @@ use super::*;
 use crate::game::native_entity_refs::tests::with_game;
 use crate::game::pending_births::escaping_fault::{self, At};
 use mod_api::{
-    AttachmentType, BabyEntitySpawnEvent, EntityConstructingEvent, EntityJoinLevelEvent, Flow,
-    Holder, Hooks, HostSide, MobSplitEvent, PendingMobSpec, ServerHost, UnspawnedMob,
+    AttachmentDescriptor, BabyEntitySpawnEvent, EntityConstructingEvent, EntityJoinLevelEvent,
+    Flow, Holder, Hooks, HostSide, MobSplitEvent, PendingMobSpec, ServerHost, UnspawnedMob,
     UnspawnedMobError,
 };
 use std::sync::{Arc, Mutex};
 use sunrise_client::mobs::goals::{Cx, Goal};
 use sunrise_core::random::LegacyRandom;
+use sunrise_mod_runtime::attachments::AttachmentType;
 
 const IGNORE: &str = "needs prepared resources in SUNRISE_TEST_RESOURCES";
 
@@ -1220,14 +1221,17 @@ fn a_breeding_constructor_engine_fault_retires_only_the_unpublished_child() {
         default: || 0,
         codec: None,
         copy_on_death: false,
-        sync: false,
+        sync_codec: None,
     };
     struct Constructor(Arc<AtomicBool>);
     #[mod_api::__subscriptions]
     impl Hooks for Constructor {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-            r.register_attachment_type("pending_birth_constructor:marker", false)
-                .unwrap();
+            r.register_attachment_type(AttachmentDescriptor::new(
+                "pending_birth_constructor:marker",
+                || 0i32,
+            ))
+            .unwrap();
         }
 
         fn entity_constructing(&self, host: HostSide<'_>, event: &mut EntityConstructingEvent) {
@@ -1342,7 +1346,7 @@ fn detached_constructed_baby_preserves_attachments_and_reattaches_across_worlds_
         default: || 0,
         codec: None,
         copy_on_death: false,
-        sync: false,
+        sync_codec: None,
     };
     thread_local! {
         static STASH: std::cell::RefCell<Option<UnspawnedMob>> =
@@ -1355,7 +1359,7 @@ fn detached_constructed_baby_preserves_attachments_and_reattaches_across_worlds_
     #[mod_api::__subscriptions]
     impl Hooks for CrossWorldMod {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-            r.register_attachment_type("pending_birth:marker", false)
+            r.register_attachment_type(AttachmentDescriptor::new("pending_birth:marker", || 0i32))
                 .unwrap();
         }
         fn entity_constructing(&self, host: HostSide<'_>, event: &mut EntityConstructingEvent) {
@@ -1502,7 +1506,7 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
         default: || 0,
         codec: None,
         copy_on_death: false,
-        sync: false,
+        sync_codec: None,
     };
     #[derive(Clone, Copy, PartialEq, Eq)]
     enum Mode {
@@ -1517,7 +1521,7 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
     #[mod_api::__subscriptions]
     impl Hooks for OrderMod {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-            r.register_attachment_type("pending_split:marker", false)
+            r.register_attachment_type(AttachmentDescriptor::new("pending_split:marker", || 0i32))
                 .unwrap();
         }
         fn mob_split(&self, _: &mut dyn ServerHost, event: &mut MobSplitEvent<'_>) -> Flow {

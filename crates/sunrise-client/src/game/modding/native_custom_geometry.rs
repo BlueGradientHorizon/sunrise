@@ -617,11 +617,11 @@ mod tests {
     use super::*;
     use glam::{DVec3, Mat4, Quat, Vec3};
     use mod_api::{
-        ClientHost, Hooks, Identifier, LightCoords, ModEntry, ModelInstance, ModelRef, Overlay,
-        SubmitCustomGeometryEvent, WorldDrawContext,
+        ClientHost, Hooks, Identifier, InstanceGroups, LightCoords, ModEntry, ModelInstance,
+        ModelRef, Overlay, SubmitCustomGeometryEvent, WorldDrawContext,
     };
     use std::sync::Mutex;
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use sunrise_client::mesher::Vertex;
 
     static FILL_MODEL: Mutex<Option<ModelRef>> = Mutex::new(None);
@@ -1647,15 +1647,14 @@ mod tests {
             _: &mod_api::RegistrationContext,
             event: &mut mod_api::RegisterDebugRenderersEvent<'_>,
         ) {
-            event.renderers.push(mod_api::DebugRenderer::new(
-                "staged:guide".into(),
-                |_, _, draw| {
+            event
+                .renderers
+                .push(mod_api::DebugRenderer::new(|_, _, draw| {
                     if STAGES_ARMED.load(Ordering::Relaxed) {
                         STAGE_ORDER.lock().unwrap().push("debug_renderer");
                         draw.lines(&[marker(35.0)]).unwrap();
                     }
-                },
-            ));
+                }));
         }
         fn prepare_render_buffers(
             &self,
@@ -1820,13 +1819,8 @@ mod tests {
                 )]
                 .into(),
             );
-            let mut renderers = Vec::new();
-            Game::native_register_debug_renderers(
-                &mod_api::RegistrationContext::new(),
-                &mut renderers,
-            );
-            assert_eq!(renderers.len(), 1);
-            game.debug_renderers = renderers;
+            game.refresh_debug_renderers();
+            assert_eq!(game.debug_renderers.len(), 1);
             game.debug_renderers_version = Some(game.debug_entries.enabled_version());
             let mut draw = WorldGeometry::default();
             let frame_camera = test_camera([0.0; 3], Mat4::IDENTITY);
@@ -1995,14 +1989,13 @@ mod tests {
             _: &mod_api::RegistrationContext,
             event: &mut mod_api::RegisterDebugRenderersEvent<'_>,
         ) {
-            event.renderers.push(mod_api::DebugRenderer::new(
-                "prepare_view:check".into(),
-                |_, view, _| {
+            event
+                .renderers
+                .push(mod_api::DebugRenderer::new(|_, view, _| {
                     if VIEW_CHECK_ARMED.load(Ordering::Relaxed) {
                         assert_expected_world_view(view);
                     }
-                },
-            ));
+                }));
         }
         fn submit_custom_geometry(
             &self,
@@ -2086,7 +2079,6 @@ mod tests {
             sunrise_client::models::standalone_fixture(vec!["minecraft:block/grass_block".into()]);
         super::super::native_entity_refs::tests::with_client_game(|game| {
             let _restore = Restore;
-            let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
             let model = grass(game);
             sunrise_client::gfx::cap_prepared_instance_slots(16);
             game.view_frustum = None;
@@ -2098,13 +2090,8 @@ mod tests {
             mod_platform::__private::install(
                 vec![ModEntry::new("prepare_view", Box::new(PrepareViewMod))].into(),
             );
-            let mut renderers = Vec::new();
-            Game::native_register_debug_renderers(
-                &mod_api::RegistrationContext::new(),
-                &mut renderers,
-            );
-            assert_eq!(renderers.len(), 1);
-            game.debug_renderers = renderers;
+            game.refresh_debug_renderers();
+            assert_eq!(game.debug_renderers.len(), 1);
             game.debug_renderers_version = Some(game.debug_entries.enabled_version());
 
             let camera_view = Mat4::from_translation(Vec3::new(1.0, -2.0, 3.0));
@@ -2347,11 +2334,10 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn render_panics_use_the_shared_boundary_without_rolling_back_draws() {
-        use mod_api::__private::{HookPanicReport, ModPhase, PhaseOwner, take_hook_panics};
+        use mod_api::__private::{HookPanicReport, take_hook_panics};
         use sunrise_client::gfx::world_primitives::FrameHooks;
 
         super::super::native_entity_refs::tests::with_client_game(|game| {
-            let _world = PhaseOwner::scope(ModPhase::World);
             mod_platform::__private::install(
                 [("render_fault", true), ("render_healthy", false)]
                     .into_iter()
@@ -2413,77 +2399,6 @@ mod tests {
                         hook: "render_level_stage"
                     },
                 ],
-            );
-        });
-    }
-
-    static GATED_BEFORE: AtomicUsize = AtomicUsize::new(0);
-    static GATED_AFTER: AtomicUsize = AtomicUsize::new(0);
-
-    /// Asks the Host for a level in both geometry hooks, and counts the calls that came back.
-    struct Gated;
-    #[mod_api::__subscriptions]
-    impl Hooks for Gated {
-        fn submit_custom_geometry(
-            &self,
-            host: &dyn ClientHost,
-            _: &mut SubmitCustomGeometryEvent<'_>,
-        ) {
-            GATED_BEFORE.fetch_add(1, Ordering::Relaxed);
-            let _ = host.level("minecraft:overworld");
-            GATED_AFTER.fetch_add(1, Ordering::Relaxed);
-        }
-        fn render_level_stage(
-            &self,
-            host: &dyn ClientHost,
-            _: &mut mod_api::RenderLevelStageEvent<'_>,
-        ) {
-            GATED_BEFORE.fetch_add(1, Ordering::Relaxed);
-            let _ = host.level("minecraft:overworld");
-            GATED_AFTER.fetch_add(1, Ordering::Relaxed);
-        }
-    }
-
-    /// Custom geometry runs in frames, after the thread reached World. Fired in Setup and in Reloading
-    /// anyway, a listener's world read is refused inside the hook's own containment (the listener
-    /// never gets past it), never the no-scope panic; in World the same read is answered.
-    #[test]
-    #[ignore = "daily"]
-    fn custom_geometry_outside_the_world_is_refused_not_a_panic() {
-        use mod_api::__private::{ModPhase, PhaseOwner};
-        super::super::native_entity_refs::tests::with_client_game(|game| {
-            mod_platform::__private::install(vec![ModEntry::new("gated", Box::new(Gated))].into());
-            let fill = |game: &mut Game<'_>| {
-                let frame_camera = test_camera([0.0; 3], Mat4::IDENTITY);
-                game.fill_world_geometry(
-                    false,
-                    Some(&frame_camera),
-                    [0.0; 3],
-                    Mat4::IDENTITY,
-                    0.0,
-                    false,
-                    &[],
-                    &mut WorldGeometry::default(),
-                    &mut Vec::new(),
-                );
-            };
-            for reloading in [false, true] {
-                let setup = PhaseOwner::scope(ModPhase::Setup);
-                let _reload = reloading.then(|| setup.reloading().unwrap());
-                GATED_BEFORE.store(0, Ordering::Relaxed);
-                GATED_AFTER.store(0, Ordering::Relaxed);
-                fill(game);
-                assert!(GATED_BEFORE.load(Ordering::Relaxed) > 0, "the hooks fired");
-                assert_eq!(GATED_AFTER.load(Ordering::Relaxed), 0, "every read refused");
-            }
-            let _world = PhaseOwner::scope(ModPhase::World);
-            GATED_BEFORE.store(0, Ordering::Relaxed);
-            GATED_AFTER.store(0, Ordering::Relaxed);
-            fill(game);
-            assert_eq!(
-                GATED_AFTER.load(Ordering::Relaxed),
-                GATED_BEFORE.load(Ordering::Relaxed),
-                "in World the read is answered"
             );
         });
     }

@@ -195,7 +195,10 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
                 );
                 let next_set = DatapackRegistrySet::from_candidate(candidate(29));
                 let (tx, rx) = ingress::channel(1024, |_| 1).unwrap();
-                tx.send(Event::Reconfiguring).unwrap();
+                tx.send(Event::Reconfiguring(Box::new(
+                    sunrise_client::net::PhaseChange::dummy_for_test(),
+                )))
+                .unwrap();
                 // The next configuration has already accepted all its registry fragments
                 // and queued the handoff before the game can unload the retiring level.
                 tx.send(Event::Reconfigured {
@@ -240,7 +243,10 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
                 })
                 .unwrap();
                 assert_eq!(reloaded_power, Some(31));
-                tx.send(Event::Reconfiguring).unwrap();
+                tx.send(Event::Reconfiguring(Box::new(
+                    sunrise_client::net::PhaseChange::dummy_for_test(),
+                )))
+                .unwrap();
                 let (event, credit) = rx.try_recv_owned().unwrap().into_parts();
                 game.remote
                     .as_mut()

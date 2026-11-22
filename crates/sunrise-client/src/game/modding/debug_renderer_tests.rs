@@ -301,6 +301,7 @@ fn the_renderer_list_refreshes_with_the_selection_and_leaves_nothing_behind() {
         game.connect_local(pipe, "Steve").unwrap();
         game.handle_packet(login()).unwrap();
         assert_eq!(refreshes(fixture), 1);
+        let frame_camera = test_camera(CAMERA);
         game.fill_world_geometry(
             false,
             Some(&frame_camera),
@@ -368,7 +369,6 @@ fn invalidation_refreshes(
         game.handle_packet(login()).unwrap();
         game.debug_entries.set_status(SHOWN, Status::AlwaysOn);
         game.debug_entries.set_status(OTHER, Status::AlwaysOn);
-        let frame_camera = test_camera(CAMERA);
         let mut draw = WorldGeometry::default();
         push(fixture, &[SHOWN]);
         assert_eq!(frame(game, fixture, false, &mut draw).1, [SHOWN]);
@@ -409,7 +409,6 @@ fn same_value_event(event: i8, expected: &[&'static str]) {
         push(fixture, &[SHOWN]);
         game.handle_packet(C::EntityEvent(play::EntityEvent { id: 7, event }))
             .unwrap();
-        let frame_camera = test_camera(CAMERA);
         let mut draw = WorldGeometry::default();
         frame(game, fixture, false, &mut draw);
         assert_eq!(refreshes(fixture), 1);

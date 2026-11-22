@@ -370,6 +370,7 @@ mod tests {
         let mut storage = InstanceGroupStorage {
             next: 1,
             groups: vec![Some(group)],
+            retired: Default::default(),
         };
         assert!(storage.get(handle, 1).is_ok());
         // Disabling a mod must not retire unmarked engine-owned groups.

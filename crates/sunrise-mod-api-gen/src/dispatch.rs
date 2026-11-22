@@ -1875,6 +1875,12 @@ fn stack_crossing_routed(
     {
         before.push_str("let __boundary_items = self.stack_boundary_items(); ");
     }
+    let has_mutable_boundary = parameters.iter().any(|(_, ty)| {
+        (contains_boundary(ty, STACK_VALUES)
+            || contains_boundary(ty, INFALLIBLE_VALUES)
+            || contains_boundary(ty, BLOCK_VALUES))
+            && matches!(ty, Type::Reference(r) if r.mutability.is_some())
+    });
     let mut arguments = Vec::new();
     let mut stack_validators = Vec::new();
     let mut validations = String::new();
@@ -1886,7 +1892,7 @@ fn stack_crossing_routed(
         let mutable = matches!(ty, Type::Reference(r) if r.mutability.is_some());
         if surfaces.contains_key(name.as_str())
             || matches!(ty, Type::Reference(r) if matches!(&*r.elem, Type::TraitObject(_)))
-            || (!stack && !block && !infallible && !mutable)
+            || (!stack && !block && !infallible && (!mutable || !has_mutable_boundary))
         {
             arguments.push(name.clone());
             continue;

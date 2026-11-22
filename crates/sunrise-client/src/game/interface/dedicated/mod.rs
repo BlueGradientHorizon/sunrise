@@ -2358,7 +2358,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn stop_dedicated(&mut self, crashed: bool, run_error: Option<&str>) -> Result<()> {
+    pub(super) fn stop_dedicated(&mut self, crashed: bool) -> Result<()> {
         self.streaming.abort_generation();
         self.levels.abort_parked_generation();
         // The close request starts before player and world saves.

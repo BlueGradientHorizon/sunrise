@@ -149,7 +149,7 @@ pub(super) struct Parked {
     pub(super) world: World,
     streaming: Streaming,
     locator: Option<Arc<VanillaTerrain>>,
-    save: Arc<SaveDir>,
+    pub(super) save: Arc<SaveDir>,
     block_ticks: Ticks,
     tick_chunks: TickChunkMembership,
     tickets: ChunkTickets,
@@ -2731,7 +2731,7 @@ mod tests {
 
             // Normal server shutdown saves worlds and fires `level_unload` once each.
             game.run_server_lifecycle(true, |_| {
-                Ok(super::server_lifecycle::ServerRunOutcome::Orderly)
+                Ok(crate::game::server_lifecycle::ServerRunOutcome::Orderly)
             })
             .unwrap();
             assert_eq!(*unloads.lock().unwrap(), BUILT_INS);

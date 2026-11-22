@@ -528,6 +528,7 @@ fn empty_mod_never_defers_breeding_xp() {
                 resources: game.res.clone(),
                 attributes: game.motion.attributes.clone(),
                 dimension: game.dim,
+                constraint: super::super::native_pending_children::ChildConstraint::BreedingAgeable,
             };
             game.native_baby_entity_spawn(mod_api::__private::BabyEntitySpawnCall {
                 dimension: "minecraft:overworld",

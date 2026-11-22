@@ -425,7 +425,7 @@ fn freezing_cramming_and_a_mod_hurt_each_teleport_inside_the_hurt() {
         world.set(8, 64, 8, air).unwrap();
     };
     assert!(
-        with_built_contact_test_world(world, |w, types, generic| {
+        with_built_contact_test_world(world, |w, types, _generic| {
             let mut landed = [0; 3];
             for seed in 0..40 {
                 // Freezing: fully frozen in powder snow, on the 40-tick beat.
@@ -571,7 +571,7 @@ fn two_hurts_in_a_tick_each_teleport_inside_their_own_hurt() {
         world.set(8, 64, 8, air).unwrap();
     };
     assert!(
-        with_built_contact_test_world(world, |w, types, generic| {
+        with_built_contact_test_world(world, |w, types, _generic| {
             let pig = |id: u32, x: f64| {
                 let kind = std::sync::Arc::new(types.types["minecraft:pig"].clone());
                 let mut p = Mob::new(id, kind, Vec3::new(x, 64.0, 8.5), 0.0);

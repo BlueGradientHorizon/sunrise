@@ -1313,6 +1313,17 @@ impl PhaseChange {
         );
         let _ = self.resume.send(result);
     }
+
+    #[cfg(feature = "test-payload-probe")]
+    pub fn dummy_for_test() -> Self {
+        let (resume, _rx) = std::sync::mpsc::channel();
+        Self {
+            writer: Arc::new(Mutex::new(None)),
+            configuring: Arc::new(AtomicBool::new(false)),
+            payloads: crate::raw_payloads::Transport::empty(),
+            resume,
+        }
+    }
 }
 
 enum Cookie {

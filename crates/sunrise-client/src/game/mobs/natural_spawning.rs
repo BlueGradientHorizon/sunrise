@@ -3248,7 +3248,6 @@ mod tests {
                             let mob = level.finalize_spawned(request, random)?;
                             reference.push((mob.position, mob.random.state()));
                             Some(spawn_selection::Spawned {
-                                bounds: mob.bounds(),
                                 cluster_size: None,
                                 school: true,
                             })

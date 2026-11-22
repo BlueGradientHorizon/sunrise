@@ -862,7 +862,7 @@ impl Game<'_> {
             // ClientLevel's constructor posts Load before Minecraft.setLevel unloads
             // the old level. Give the new level its own handle without retiring the
             // old one, which must still read its existing chunks during Unload.
-            let epoch = super::native_lifecycle::fresh_epoch();
+            let epoch = crate::game::native_lifecycle::fresh_epoch();
             let handle = mod_api::LevelRef::new(epoch, level_key);
             let mut world = Game::world_for_mods(self.res.facts().air, spawn.seed);
             world.shape = format.shape;

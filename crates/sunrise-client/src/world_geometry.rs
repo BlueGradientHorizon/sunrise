@@ -1105,7 +1105,7 @@ mod tests {
         );
         draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
         assert!(draw.batch().is_empty());
-        assert_eq!(draw.usage().quads, 0);
+        assert_eq!(draw.quads.iter().map(Vec::len).sum::<usize>(), 0);
         assert_eq!(
             capacities,
             (
@@ -1458,7 +1458,7 @@ mod tests {
         let capacities = draw.labels.each_ref().map(Vec::capacity);
         draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
         assert_eq!(draw.labels().map(<[Vertex]>::len), [0, 0]);
-        assert_eq!(draw.usage().quads, 0);
+        assert_eq!(draw.quads.iter().map(Vec::len).sum::<usize>(), 0);
     }
 
     #[test]

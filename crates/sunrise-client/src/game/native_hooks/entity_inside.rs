@@ -1545,7 +1545,7 @@ mod sweep_tests {
                 let mut batch = sunrise_client::hud::HudBatch::scratch([640, 480]);
                 game.draw_every_toast(&mut batch, true, false);
                 assert!(mod_api::__private::take_hook_panics().is_empty());
-                let [Some(toast)] = game.server_packs.hook_panics.as_slice() else {
+                let [(Some(toast), _)] = game.server_packs.hook_panics.as_slice() else {
                     panic!("expected exactly one shared error toast");
                 };
                 assert_eq!(

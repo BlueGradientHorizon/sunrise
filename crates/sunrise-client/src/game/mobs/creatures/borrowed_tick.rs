@@ -746,6 +746,7 @@ impl Game<'_> {
                                     &mut level,
                                     &mut events,
                                     from,
+                                    &base.teams,
                                 );
                             }
                             // Return every player loan before ending the world borrow.
@@ -1307,6 +1308,7 @@ impl Game<'_> {
             return false;
         }
         if self
+            .res
             .mob_data()
             .entity_has("minecraft:freeze_immune_entity_types", &m.kind.id)
         {

@@ -2983,7 +2983,7 @@ mod tests {
                 game,
                 surface: &mut surface,
             };
-            assert_eq!(drawn.text_width(&deep), Ok(6.0));
+            assert_eq!(drawn.text_width(&deep), 6.0);
             assert_eq!(drawn.text(&deep, [0.0, 0.0], 0xFFFFFF, true, None), Ok(6.0));
             assert_eq!(surface.vertices.len(), 4);
 

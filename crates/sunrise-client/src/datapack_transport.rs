@@ -20,7 +20,7 @@ pub fn chunks(bytes: &[u8]) -> Result<impl Iterator<Item = Vec<u8>> + '_, String
     }))
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct Assembly {
     pending: Option<(usize, Vec<u8>)>,
 }
@@ -62,7 +62,7 @@ impl Assembly {
 }
 
 /// A single client configuration's synchronized registries and in-flight snapshot.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Receiver {
     assembly: Assembly,
     received: Option<Arc<mod_api::DatapackRegistrySet>>,

@@ -1335,6 +1335,33 @@ impl Game<'_> {
         effects.apply_and_clear(&mut access);
     }
 
+    fn apply_item_write(&mut self, item: &mut ItemEntity, write: mod_api::EntityWrite) {
+        let triple = |v: [f64; 3]| Vec3::new(v[0], v[1], v[2]);
+        match write {
+            mod_api::EntityWrite::Push(v) => {
+                item.velocity = item.velocity.add_vector(triple(v));
+            }
+            mod_api::EntityWrite::SetMovement(v) => item.velocity = triple(v),
+            mod_api::EntityWrite::StuckIn(v) => {
+                item.stuck = triple(v);
+                item.fall_distance = 0.0;
+            }
+            mod_api::EntityWrite::Hurt {
+                damage_type,
+                amount,
+            } => {
+                if let Some(name) =
+                    mod_api::__private::parts_installation::damage_type_name(damage_type)
+                {
+                    self.hurt_moving_item(item, name, amount);
+                }
+            }
+            mod_api::EntityWrite::ResetFallDistance => item.fall_distance = 0.0,
+            mod_api::EntityWrite::SetFireTicks(ticks) => item.fire_ticks = ticks,
+            mod_api::EntityWrite::AddEffect { .. } => {}
+        }
+    }
+
     /// The projectile's `Entity.checkInsideBlocks`, the same batch sweep the
     /// item's is: the shared walk over its move, the isolated fire over a lent
     /// level, and the flush into this projectile's own tick.

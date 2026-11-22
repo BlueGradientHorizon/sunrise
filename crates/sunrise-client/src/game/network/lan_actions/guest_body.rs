@@ -405,7 +405,6 @@ impl Game<'_> {
             w.player.shift_key_down = sneaking;
             let _ = w.player.set_sleeping(sleeping);
             w.player.freeze_immune = freeze_immune;
-            w.player.burn_from_stepping_immune = burn_immune;
             let mut contact = None;
             let inside_effects = loop {
                 let progress = w.server_block_damage_until_hit(start, &mut contact);
@@ -912,16 +911,6 @@ impl mod_api::InsideEntityAccess for GamePlayerInsideAccess<'_, '_> {
         let Some(p) = self.game.player.as_ref() else {
             return false;
         };
-        if p.burn_from_stepping_immune
-            && matches!(
-                damage_type
-                    .strip_prefix("minecraft:")
-                    .unwrap_or(damage_type),
-                "hot_floor" | "campfire"
-            )
-        {
-            return false;
-        }
         let subject_id = p.entity_id as u32;
         let subject_pos = [p.position.x, p.position.y, p.position.z];
         let Some((direct, causing, from)) = self.game.resolve_inside_damage_sources(

@@ -567,7 +567,7 @@ fn a_world_saved_panic_discards_only_its_listeners_journal() {
 }
 
 fn world_saved_panic_during_shutdown() {
-    use mod_api::__private::{HookPanicReport, ModPhase, PhaseOwner, take_hook_panics};
+    use mod_api::__private::{HookPanicReport, take_hook_panics};
     use mod_api::{BlockState, BlockUpdateFlags, HostTransaction, WorldSavedEvent};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use sunrise_client::{chunk::Chunk, save};
@@ -643,7 +643,6 @@ fn world_saved_panic_during_shutdown() {
         .into(),
         || {
             with_game(|game| {
-                let _world = PhaseOwner::scope(ModPhase::World);
                 let root = tempfile::tempdir().unwrap();
                 game.join_world_rest().unwrap();
                 game.world_root = root.path().to_path_buf();

@@ -8,7 +8,6 @@ use super::{
     Game,
     commands::{Target, place_summoned, strip_finalize_tree},
 };
-use sunrise_client::mobs::Mob;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::{Compound, Tag};
 

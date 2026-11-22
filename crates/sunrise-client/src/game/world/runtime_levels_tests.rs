@@ -432,7 +432,7 @@ fn the_idle_close_keeps_a_runtime_level_open_until_its_unload() {
                 .block(1, 64, 1),
             stone
         );
-        assert_eq!(save.load_entities(0, 0).len(), 1);
+        assert_eq!(save.load_entities(0, 0).unwrap().len(), 1);
         assert!(game.levels.parked[&dim].world.chunks.is_empty());
         assert!(seen.unloads.lock().unwrap().is_empty());
         assert!(game.runtime_level_is_open("idle:a"));
