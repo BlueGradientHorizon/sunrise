@@ -147,8 +147,12 @@ def compile_diagnostics(output):
         elif re.match(r"^\s*--> [\w./-]+:\d+:\d+$", line):
             headings.append(line)
     for line in headings[:20]:
+        location = re.match(r"^\s*--> ([\w./-]+):\d+:\d+$", line)
+        # A location is published only when it is a tracked source: a generated file's path is the runner's own.
+        if location and source_lines(location[1]) is None:
+            line, location = "  --> location withheld (not a tracked Rust source)", None
         print("  compiler: " + line[:300] + (" [shortened]" if len(line) > 300 else ""))
-        if line.strip().startswith("--> "):
+        if location:
             panic_source(line.strip()[4:], kind="compiler")
     if len(headings) > 20:
         print(f"  compiler diagnostics truncated: {len(headings) - 20} more headings")
@@ -544,7 +548,7 @@ def assertion_source(path, line):
 def failure_diagnostics(output):
     """One record per failed result occurrence, including repeated names across targets.
 
-    Panic contexts use libtest's name model and the first panic for that name.
+    Panic contexts use libtest's name model and the last panic for that name: the one the test failed on.
     They cannot disambiguate identical names in different targets.
     Beside the classified reason, a record shows the statement that panicked and any part of the payload (a
     message, an operand) that occurs verbatim in the tracked source around it (public_text): the checkout's own text,
@@ -556,9 +560,14 @@ def failure_diagnostics(output):
     aborts = []
     panic_reason_pending = False
     thread_name = None
-    # Collect compiler codes only after a panic that already exposed a tracked message.
+    # Collect compiler codes only after a panic that already exposed a tracked message, or one whose payload starts as
+    # rustc's own output does.
     compiler_codes = {}
     pending_codes = None
+    # Which captured-output block a line is in (a result line or a test's `---- … ----` header starts the next), and
+    # the block each kept context came from.
+    block = 0
+    kept_block = {}
     # The tracked (path, line) of the current panic, and whether its `left:`/`right:` operand lines may follow.
     where = None
     operands_pending = False
@@ -606,6 +615,10 @@ def failure_diagnostics(output):
                 ("index out of bounds", "index out of bounds"),
                 ("attempt to", "arithmetic failure"),
             ) if line.strip().startswith(prefix)), "custom panic")
+            # A test that compiles a generated program panics with rustc's own output: its codes are categories.
+            compiler = RUSTC_ERROR.match(line.strip())
+            if compiler:
+                reason = "rustc could not compile a test program"
             withheld_text = "payload withheld (resource privacy)"
             if reason == "Result::unwrap on an error":
                 if shape := unwrap_error_shape(line.strip().split(" value: ", 1)[-1]):
@@ -618,7 +631,10 @@ def failure_diagnostics(output):
                 message = line.strip().split("failed: ", 1)[1] if "failed: " in line else None
             elif where and reason in ("assertion condition failed", "custom panic"):
                 message = line.strip()
-            if shown := (public_text(message, *where) if message else None):
+            if compiler and context is contexts.get(thread_name):
+                context.append(f"  panic reason: {reason}; {withheld_text}")
+                pending_codes = compiler_codes[thread_name] = [compiler[1]]
+            elif shown := (public_text(message, *where) if message else None):
                 context.append(f"  panic reason: {reason}; message: {shown}")
                 if context is contexts.get(thread_name):
                     pending_codes = compiler_codes[thread_name] = []
@@ -632,12 +648,20 @@ def failure_diagnostics(output):
         if found := RESULT.match(line):
             if found[2] == "FAILED":
                 failures.append(found[1])
+        if RESULT.match(line) or line.startswith("---- "):
+            block += 1
         if panic:
             context = []
             thread_name = panic[1]
-            if thread_name not in contexts:
+            if thread_name in contexts and kept_block[thread_name] == block:
+                # A test that catches a panic it raises on purpose (a listener's) fails on its last one: a later
+                # panic in the same captured output replaces the earlier.
+                contexts[thread_name] = context
+                compiler_codes.pop(thread_name, None)
+            elif thread_name not in contexts:
                 if len(contexts) < DIAGNOSTIC_CONTEXTS:
                     contexts[thread_name] = context
+                    kept_block[thread_name] = block
                 else:
                     skipped_contexts += 1
                     continue

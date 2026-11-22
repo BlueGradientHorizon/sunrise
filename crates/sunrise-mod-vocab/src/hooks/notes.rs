@@ -1069,7 +1069,7 @@ steers a mob through the engine's own controls, each a momentary wish the mob's 
 
 `crates/sunrise-client/src/game/modding/native_mob_draw.rs`: `render_living_pre(entity, draw, model, canceled)` (client) is asked
 once a frame for every mob and player in view, before its model (NeoForge's `RenderLivingEvent.Pre`). Set `canceled` and nothing
-more of it draws this frame: model, layers, name tag, shadow, flames, leash, outline and `render_living_post`.
+more of its own drawing happens this frame: model, layers, name tag, leash, outline and `render_living_post`. Its flames and shadow still draw (#1285).
 
 - `event.model` borrows the selected body's hierarchy in bind pose. To leave out a part and
   its descendants after animation, hide its model-local index for this draw only:
@@ -1410,8 +1410,8 @@ start and again after each resource reload, and a server builds one when it star
 mods and again on each `/reload`, so a reload captures fresh settings. A LAN or dedicated server's hub holds the server's
 current one, so its Tab list and chat names, and the clicks of its players, see it too.
 
-`item_stacked_on_other(host, event, result, canceled)` is NeoForge's `ItemStackedOnOtherEvent`, fired inside a pickup click on
-the authoritative side only (the server: single player's server thread, a LAN host and its guests, a dedicated server) with the game's `Host` and the click frozen in `event`; see its hook documentation. `player_name_format(context, username,
+`item_stacked_on_other(host, event, result, canceled)` is NeoForge's `ItemStackedOnOtherEvent` plus vanilla's `Item.overrideStackedOnOther` / `Item.overrideOtherStackedOnMe` on `ItemPart`, fired inside a pickup click on
+the authoritative side only (the server: single player's server thread, a LAN host and its guests, a dedicated server) with the game's `Host` and the click frozen in `event` (`event.direction` distinguishes `Event`, `CarriedOnOther`, and `OtherStackedOnMe` in vanilla `AbstractContainerMenu.tryItemClickBehaviourOverride` order); see its hook documentation. `player_name_format(context, username,
 displayname)` and `player_tab_list_name_format(context, player, name, display_name)` format a player's name for chat and
 commands (both sides) and for the Tab list (server). The name hooks are contract version `2`: a mod written for `1` takes the
 context as a new first argument of the `Hooks` method, and reads the side from it instead of `event.side`.
@@ -2209,8 +2209,8 @@ registration path.
 
 - Mobs drawn by client mods: `render_living_pre(entity, draw, model, canceled)` is asked each frame for every mob and player in
   view, with its id, kind, custom name and the frame's body and head turns and walk cycle; a mod draws a model of its own with the
-  block entity drawing helpers under `draw`'s pose (at the feet, turned with the body) and sets `canceled` to draw nothing else of
-  it.
+  block entity drawing helpers under `draw`'s pose (at the feet, turned with the body) and sets `canceled` to skip the rest of its own drawing (its flames and
+  shadow still draw).
 
 - A screen of a client mod's own: `native_mod_screen_open(mod_id)` opens one over the world (every mod's own screen has the `ScreenView.id` `mod`: check `native_mod_screen()` is yours; it doesn't pause a single-player game; it opens only on the window's own client, over the world with no overlay up; a gamepad can close it but not click on it), the screen hooks fire over it as over any other, so the mod draws it in `screen_render_post` and takes its clicks, scroll, keys and typing from them, and Escape closes it (`native_mod_screen()` says whose is open, `native_mod_screen_close(mod_id)` closes it); and two drawing helpers beside `native_fill`: `native_quad(batch, points, argb)` and `native_item_model(batch, item, model, at, size)`, an icon drawn with another `item_model`.
 
@@ -2329,7 +2329,7 @@ registration path.
 
 - A mob's, an armor stand's or a player's equipment changing, on the single player server thread and on a dedicated server: `living_equipment_change(entity, kind, slot, from, to)` once for each slot (`mainhand`, `offhand`, `feet`, `legs`, `chest`, `head`, `body`, `saddle`) that holds another stack than the mods last heard (NeoForge's `LivingEquipmentChangeEvent`, vanilla's `LivingEntity.collectEquipmentChanges`). A mob new to the level counts from empty on its first tick. A mod that hooks it also hooks `living_equipment_listened(listened)` and sets `*listened = true`: otherwise the game does not read every mob's and connected player's equipment each tick, and only armor stands are told. Players connected to the server (a dedicated server's, a published world's guests) are told the same way with `kind` `minecraft:player`, for their six slots `mainhand` (the selected hotbar slot, so a hotbar selection counts), `offhand`, `feet`, `legs`, `chest` and `head`; their `body` and `saddle` are never told. The world host's own player isn't told here: `on_equip` hears it. It only hears.
 
-- `render_player_pre(player, who, draw, model, canceled)` fires once a frame for each other player in view and for this window's player in third person, before its `render_living_pre`, with the same frame (`MobRender`, a `BlockEntityDraw` at the feet turned with the body) and `who` (profile name, whether it is the local player); set `canceled` to draw nothing of the player this frame (`RenderPlayerEvent.Pre`). `render_living_post(entity, model, draw)` and then, for a player, `render_player_post(player, who, model, draw)` fire once a frame after the vanilla model and layers of every mob and player in view whose pre hooks weren't canceled (but a player whose `render_living_pre` alone was canceled still gets `render_player_post`, with no model), and what the mod adds in that frame is drawn with it (`RenderLivingEvent.Post`, `RenderPlayerEvent.Post`; layers of one type's renderer are `register_entity_layers`, `EntityRenderersEvent.AddLayers`). The draw starts in the entity's frame; the optional model lends the final poses and hierarchy to anyone attaching geometry to bones. The game asks once a frame whether any mod listens to the four, and with none builds nothing for them.
+- `render_player_pre(player, who, draw, model, canceled)` fires once a frame for each other player in view and for this window's player in third person, before its `render_living_pre`, with the same frame (`MobRender`, a `BlockEntityDraw` at the feet turned with the body) and `who` (profile name, whether it is the local player); set `canceled` to skip the player's own drawing this frame (its flames and shadow still draw) (`RenderPlayerEvent.Pre`). `render_living_post(entity, model, draw)` and then, for a player, `render_player_post(player, who, model, draw)` fire once a frame after the vanilla model and layers of every mob and player in view whose pre hooks weren't canceled (but a player whose `render_living_pre` alone was canceled still gets `render_player_post`, with no model), and what the mod adds in that frame is drawn with it (`RenderLivingEvent.Post`, `RenderPlayerEvent.Post`; layers of one type's renderer are `register_entity_layers`, `EntityRenderersEvent.AddLayers`). The draw starts in the entity's frame; the optional model lends the final poses and hierarchy to anyone attaching geometry to bones. The game asks once a frame whether any mod listens to the four, and with none builds nothing for them.
 
 - A player finishing a sign: `native_sign_changed(player, name, dimension, pos, front, lines, cancel)` is heard when a player sends the text they wrote on a sign they were editing, right before it goes on the sign, once the checks have passed, on a server, with the player's state swapped in (`PlayerRef::tell` reaches them). A mod may rewrite `lines` (four lines of plain text) or set `cancel` so the sign keeps its old text; a waxed sign is not told.
 

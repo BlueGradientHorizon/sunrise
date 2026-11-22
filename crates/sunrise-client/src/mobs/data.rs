@@ -204,8 +204,6 @@ pub struct MobData {
     pub blinks: std::sync::RwLock<sunrise_optifine::blink::Blinks>,
     /// Biome tags (spawns_warm_variant_farm_animals, is_ocean...) by tag id.
     pub biome_tags: HashMap<String, std::collections::HashSet<String>>,
-    /// Entity type tags (`data/*/tags/entity_type`).
-    pub entity_tags: HashMap<String, std::collections::HashSet<String>>,
     /// The villager POI type of every block state (`PoiTypes.forState`),
     /// worked out the first time a villager looks for one.
     pub pois: std::sync::OnceLock<Vec<Option<sunrise_world::poi::PoiType>>>,
@@ -241,9 +239,6 @@ impl MobData {
             &sunrise_world::loot::PackOverlay::NONE,
         )
         .unwrap_or_default();
-        data.entity_tags =
-            crate::items::load_tags(root, "entity_type", &sunrise_world::loot::PackOverlay::NONE)
-                .unwrap_or_default();
         data.villager_hats =
             std::sync::RwLock::new(super::villager_hats::VillagerHats::load(source));
         let random = sunrise_optifine::random_textures::RandomTextures::scan(source);
@@ -316,11 +311,6 @@ impl MobData {
             slot.path.store(path as u8, Ordering::Relaxed);
         }
     }
-    pub fn entity_has(&self, tag: &str, entity: &str) -> bool {
-        self.entity_tags
-            .get(tag)
-            .is_some_and(|s| s.contains(entity))
-    }
     pub fn biome_has(&self, tag: &str, biome: &str) -> bool {
         self.biome_tags.get(tag).is_some_and(|s| s.contains(biome))
     }
@@ -382,7 +372,6 @@ impl MobData {
             emissive: Default::default(),
             blinks: Default::default(),
             biome_tags: HashMap::new(),
-            entity_tags: HashMap::new(),
             pois: Default::default(),
             species_placements: Default::default(),
             mod_spawns: Default::default(),
@@ -447,7 +436,6 @@ impl MobData {
             emissive: Default::default(),
             blinks: Default::default(),
             biome_tags: HashMap::new(),
-            entity_tags: HashMap::new(),
             pois: Default::default(),
             species_placements: Default::default(),
             mod_spawns: Default::default(),

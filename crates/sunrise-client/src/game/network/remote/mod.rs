@@ -20,7 +20,7 @@ mod interaction_actions;
 mod interaction_prediction;
 use inventory::{
     CREATIVE_SYNCED, Predicted, changed_slots, creative_sync_slot, creative_sync_stacks,
-    mark_synced, menu_items, predict_clicks,
+    mark_synced, menu_items, predict_clicks, predict_clicks_with,
 };
 mod level_format;
 mod raw_ingress;
@@ -1172,6 +1172,7 @@ impl Game<'_> {
                 let delay = sunrise_client::net::ping_millis().wrapping_sub(p.time);
                 self.debug_charts.ping.log(delay);
             }
+            C::DebugSample(p) => self.debug_charts.log_remote_sample(&p.sample)?,
             C::Login(p) => self.apply_login_packet(p),
             C::Respawn(p) => self.apply_respawn_packet(p),
             C::PlayerPosition(p) => self.remote_teleport(&p)?,
@@ -2693,7 +2694,7 @@ pub(crate) mod tests {
     }
 
     /// Spawns the connected client in the overworld as entity 7, profile 42.
-    pub(super) fn spawn_menu_test(
+    pub(crate) fn spawn_menu_test(
         game: &mut super::Game<'_>,
     ) -> sunrise_protocol::packets::play::SpawnInfo {
         use crate::game::remote::RemoteDimensionEntry;

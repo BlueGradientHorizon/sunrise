@@ -268,9 +268,9 @@ impl Game<'_> {
                 }
                 let rider = self.mobs.iter().find(|m| m.id == first.id())?;
                 let tagged = self
-                    .res
-                    .mob_data()
-                    .entity_has("minecraft:non_controlling_rider", &rider.kind.id);
+                    .items()
+                    .entity_type_tags
+                    .contains("minecraft:non_controlling_rider", &rider.kind.id);
                 (!mob.no_ai && !tagged).then(|| LivingRef::new(first))
             }
             _ => None,
