@@ -702,15 +702,37 @@ mod tests {
         );
         let mut c = DebugCharts::default();
         // Overflowing sums, differences and heights, in every dimension, for a full chart.
+        // A tick time whose bar height is `i32::MIN + 100`: `bottom - height` wraps, so the bar's
+        // span overflows an `int` where the painter subtracts its corners.
+        let tall = -1_789_569_666_666_667;
+        assert_eq!(
+            Chart::Tps { mspt: 50.0 }.height(tall as f64),
+            -2_147_483_600
+        );
         for _ in 0..CAPACITY {
+            c.log_remote_sample(&[tall]).unwrap();
             c.log_remote_sample(&[i64::MAX, i64::MIN, i64::MAX, i64::MIN])
                 .unwrap();
             c.log_remote_sample(&[i64::MIN, i64::MAX, i64::MIN, i64::MAX])
                 .unwrap();
         }
-        let tps = Chart::Tps { mspt: 50.0 };
         let width = Chart::width(i32::MAX);
-        assert!(!tps.draw(&font, &c.tick_times, 0, width, 100).is_empty());
+        let atlas =
+            crate::hud::HudAtlas::build(&crate::resource_source::ResourceSource::directory(
+                "/nonexistent/sunrise-test-assets".into(),
+            ))
+            .unwrap();
+        // A NaN tick rate makes the clock's milliseconds per tick 0 (`millisecondsPerTick`).
+        let mut manager = crate::clock::TickRateManager::default();
+        manager.set_tick_rate(f32::NAN);
+        for mspt in [50.0, manager.milliseconds_per_tick()] {
+            let draws = Chart::Tps { mspt }.draw(&font, &c.tick_times, 0, width, 100);
+            assert!(!draws.is_empty());
+            // The painter takes the wrapped bar ends (`bottom - height` overflows an `int`).
+            let mut batch = crate::hud::HudBatch::scratch([854, 480]);
+            crate::hud_layout::paint(&mut batch, &atlas, &draws);
+        }
+        let tps = Chart::Tps { mspt: 50.0 };
         // `sum` of 240 `Long.MIN_VALUE - Long.MAX_VALUE` wraps: 240 * 1 mod 2^64.
         let index = CAPACITY - 1;
         assert_eq!(

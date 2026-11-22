@@ -2370,7 +2370,7 @@ pub(super) fn register_enchantment_damage_effects() {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     /// A mod's live-switch verdict is read once per version of the mod: a later look finds
     /// it without reading the files again, a `--dev-mod` is always read, and the mod
     /// replaced (a new modification time) is read again.
@@ -4109,7 +4109,7 @@ mod tests {
     /// Runs `test` again in a child process whose working directory is its own
     /// empty folder: the overlay's `.sunrise-cache` lives under the home, set here to
     /// the working directory, so children sharing one (the temp dir) race on that cache.
-    fn run_in_child(test: &str, mode: &str) {
+    pub(in crate::game) fn run_in_child(test: &str, mode: &str) {
         let cwd = std::env::temp_dir().join(format!(
             "sunrise-game-mods-cwd-{}-{mode}",
             std::process::id()

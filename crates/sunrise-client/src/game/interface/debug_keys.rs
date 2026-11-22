@@ -395,7 +395,7 @@ impl Game<'_> {
                 width,
                 height,
                 self.settings.max_fps,
-                1000.0 / self.clock.rate(),
+                self.clock.millis_per_tick(),
                 !self.has_singleplayer_server(),
             );
             draws.push(hud_layout::GuiDraw::Push(vec![hud_layout::PoseOp::Scale(
