@@ -494,6 +494,13 @@ fn entity_draw_order_after_client_packets() {
 #[test]
 #[ignore = "daily"]
 fn a_canceled_living_pre_skips_the_model_and_the_post_hook() {
+    if super::native_entity_refs::tests::run_fresh_cases(
+        "game::native_render_pair_tests::a_canceled_living_pre_skips_the_model_and_the_post_hook",
+        "SUNRISE_RENDER_PAIR_CHILD",
+        &["game"],
+    ) {
+        return;
+    }
     let heard: Arc<Mutex<Heard>> = Arc::default();
     with_pair(&heard, |game| {
         game.mobs.push(mob(game, "minecraft:zombie", 91, 0.0));
@@ -644,6 +651,13 @@ fn zombie_flame_and_shadow(game: &Game<'_>) -> (usize, usize) {
 #[test]
 #[ignore = "daily"]
 fn a_canceled_pre_keeps_the_flames_and_the_shadow() {
+    if super::native_entity_refs::tests::run_fresh_cases(
+        "game::native_render_pair_tests::a_canceled_pre_keeps_the_flames_and_the_shadow",
+        "SUNRISE_RENDER_PAIR_CHILD",
+        &["game"],
+    ) {
+        return;
+    }
     let heard: Arc<Mutex<Heard>> = Arc::default();
     with_pair(&heard, |game| {
         place_stone_floor(game);
@@ -663,6 +677,13 @@ fn a_canceled_pre_keeps_the_flames_and_the_shadow() {
 #[test]
 #[ignore = "daily"]
 fn a_canceled_pre_keeps_the_local_players_flames() {
+    if super::native_entity_refs::tests::run_fresh_cases(
+        "game::native_render_pair_tests::a_canceled_pre_keeps_the_local_players_flames",
+        "SUNRISE_RENDER_PAIR_CHILD",
+        &["game"],
+    ) {
+        return;
+    }
     let heard: Arc<Mutex<Heard>> = Arc::default();
     with_pair(&heard, |game| {
         place_stone_floor(game);
