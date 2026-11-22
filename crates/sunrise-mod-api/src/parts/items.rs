@@ -652,7 +652,7 @@ pub mod tests {
     pub(crate) fn an_entitys_items_come_from_its_types_provider_and_none_outside_the_level_in_place()
      {
         install_parts(&[], &crate::parts::tests::rule_schema(), |_| false).unwrap();
-        game_thread();
+        install_shared_parts(true);
         let entity = |id| EntityRef::new(WorldEpoch::new(1), id);
         let mut player = player_world(None);
         let host: &mut dyn ServerHost = &mut player;

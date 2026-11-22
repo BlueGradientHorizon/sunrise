@@ -1,7 +1,11 @@
 /// The test mods, their parts installed, on a thread that runs a game.
 pub fn game_thread() -> crate::Mods {
+    install_shared_parts(false)
+}
+
+pub(crate) fn install_shared_parts(mock_robot: bool) -> crate::Mods {
     let mods: crate::Mods = vec![
-        ModEntry::new("doubler", Box::new(Doubler { mock_robot: false })),
+        ModEntry::new("doubler", Box::new(Doubler { mock_robot })),
         ModEntry::new("chemist", Box::new(Chemist)),
         ModEntry::new("test", Box::new(FixtureContent)),
     ]
