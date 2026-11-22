@@ -159,8 +159,9 @@ pub(super) fn err(key: &str, args: &[&dyn std::fmt::Display]) -> CommandError {
     CommandError::tr(key, args)
 }
 
-/// Format the failure exactly as the sink sees it, including the timestamp for
-/// command blocks and minecarts. The command result is recorded before output.
+/// Format and validate the failure as the sink sees it, including any timestamp.
+/// Both sinks use the 512-container depth from `NbtAccounter`, even for trusted
+/// SystemChat. The command result is recorded before output.
 fn formatted_command_failure(message: Text, timestamp: Option<Text>) -> Text {
     use serde_json::Value;
     use sunrise_core::nbt;
