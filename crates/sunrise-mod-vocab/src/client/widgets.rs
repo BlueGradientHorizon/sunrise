@@ -5,7 +5,7 @@
 //! (`Screen.addRenderableWidget`), rather than drawing widgets manually or forwarding screen input
 //! hooks by hand. The engine owns drawing, hover, focus, Tab traversal, controller navigation,
 //! narration, and mouse/keyboard dispatch for mounted widgets on every screen, clearing and
-//! rebuilding them whenever the screen initializes or resizes.
+//! rebuilding them when the screen initializes or rebuilds its children, not on a layout-only resize.
 //!
 //! Built-in buttons and text fields match vanilla's `Button` (`Button.Builder` / `Button.OnPress`)
 //! and `EditBox`, sharing the same editing core ([`TextEdit`]) as the game's own fields.
@@ -15,10 +15,10 @@
 //! use mod_api::Text;
 //! let _name = TextField::new([20.0, 20.0, 150.0, 20.0], 32)
 //!     .value("Steve")
-//!     .hint(Text::literal("Player name"));
+//!     .hint(Text::translate("mymod.screen.player_name", vec![]));
 //! let done = Button::new(
 //!     [20.0, 50.0, 150.0, 20.0],
-//!     Text::literal("Done"),
+//!     Text::translate("gui.done", vec![]),
 //!     |state, _host| {
 //!         state.active = false;
 //!     },
@@ -63,7 +63,7 @@ impl ButtonSprites {
     }
 }
 
-/// Identifier of a widget mounted on the current screen during `Hooks::screen_init_post`.
+/// Identifier of a child on the current screen during `Hooks::screen_init_post`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // no wire: screen-local widget handle issued by the engine during `screen_init_post`, never serialized.
 // exhaustive: opaque per-screen handle whose inner value is private; mods only compare and pass it back.
@@ -91,6 +91,7 @@ impl ScreenWidgetId {
 #[non_exhaustive]
 pub struct ButtonState {
     /// Where it is, `[x, y, width, height]` in GUI pixels (vanilla's are 20 high).
+    /// A press callback's non-finite rectangle is ignored, retaining the previous bounds.
     pub rect: [f32; 4],
     /// Its label, centred and scrolled when it does not fit.
     pub label: Text,
@@ -203,7 +204,7 @@ pub struct TextFieldParts {
     pub value: String,
     /// Optional hint text shown when the field is empty (`EditBox.setHint`).
     pub hint: Option<Text>,
-    /// Maximum number of characters accepted (`EditBox.setMaxLength`).
+    /// Maximum number of UTF-16 code units accepted (`EditBox.setMaxLength`, `insertText`).
     pub max_length: usize,
     /// Whether the player may edit the text (`EditBox.setEditable`).
     pub editable: bool,
@@ -239,7 +240,7 @@ pub struct TextField {
 
 impl TextField {
     /// An empty, editable, active, visible, bordered text field taking up to `max_length`
-    /// characters (`EditBox`).
+    /// UTF-16 code units (`EditBox.setMaxLength` and `EditBox.insertText`).
     pub fn new(rect: [f32; 4], max_length: usize) -> Self {
         Self {
             rect,
@@ -350,7 +351,8 @@ impl fmt::Debug for TextField {
 ///
 /// The engine owns focus, hover, Tab traversal, drawing order, and input dispatch for mounted
 /// widgets. Override the methods the widget reacts to; every input handler defaults to `false`
-/// (unhandled) so input continues to the next widget or the screen underneath.
+/// (unhandled). A pointer press goes only to the first hit child; returning `false` from
+/// `mouse_clicked` leaves focus unchanged.
 // no wire: in-process custom widget trait object owned by the client screen while it stays open.
 pub trait ScreenWidget: Send + 'static {
     /// Where the widget is, `[x, y, width, height]` in GUI pixels.
@@ -480,12 +482,40 @@ pub trait ScreenWidget: Send + 'static {
     }
 }
 
+/// An initialized child listed by [`ScreenWidgets::children`].
+#[derive(Clone, Debug, PartialEq)]
+// no wire: live screen-local child snapshot containing an opaque ScreenWidgetId.
+#[non_exhaustive]
+pub struct ScreenChild {
+    /// The screen-local handle used to remove the child.
+    pub id: ScreenWidgetId,
+    /// `[x, y, width, height]` in GUI pixels at registration.
+    pub rect: [f32; 4],
+    /// The child's label, if it supplies one.
+    pub label: Option<Text>,
+}
+
+impl ScreenChild {
+    /// Build the value exposed by the engine's registrar.
+    // hidden: only the engine issues ScreenWidgetId handles for initialized children.
+    #[doc(hidden)]
+    pub fn new(id: ScreenWidgetId, rect: [f32; 4], label: Option<Text>) -> Self {
+        Self { id, rect, label }
+    }
+}
+
 /// Screen-scoped widget registrar passed to `Hooks::screen_init_post` (`ScreenEvent.Init.Post`).
 ///
 /// Widgets added here live as long as the current screen stays open and are cleared and rebuilt
-/// whenever the screen re-initializes (for example on resize).
+/// whenever the screen re-initializes (for example on a resize that rebuilds children).
+/// Mounting a widget with non-finite bounds returns an ID that is not present in the screen.
 // no wire: borrowed registrar scoped to a single `screen_init_post` dispatch.
 pub trait ScreenWidgets {
+    /// Registered children in initialization order (`ScreenEvent.Init.getListenersList`).
+    /// Includes earlier listeners' accepted edits and this listener's staged edits. Vanilla
+    /// controls are present on screens that register their initialized controls with the engine.
+    fn children(&self) -> &[ScreenChild];
+
     /// Mount a vanilla-style push button on the screen (`Screen.addRenderableWidget`).
     fn add_button(&mut self, button: Button) -> ScreenWidgetId;
 
@@ -500,9 +530,9 @@ pub trait ScreenWidgets {
     /// Returns `true` when `id` names a widget this listener mounted that can take focus.
     fn set_initial_focus(&mut self, id: ScreenWidgetId) -> bool;
 
-    /// Remove a widget this listener mounted during `screen_init_post` (`Screen.removeWidget`).
-    ///
-    /// Returns `true` if `id` was present and removed.
+    /// Remove a listed child (`ScreenEvent.Init.removeListener`), including one registered by
+    /// the game or mounted by an earlier listener. Returns `true` if the child was present.
+    /// This listener's removals take effect only if it completes normally.
     fn remove(&mut self, id: ScreenWidgetId) -> bool;
 }
 

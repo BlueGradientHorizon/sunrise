@@ -324,16 +324,24 @@ and on vanilla screens alike, matching vanilla's `Screen.addRenderableWidget` an
 {{#include ../../../examples/src/widget_screen.rs:widget_screen}}
 ```
 
+Include `assets/widget_example/lang/en_us.json` in the example mod's resources, and use other
+language files for translations. Done uses vanilla's `gui.done`; a note echoed from the text field
+stays literal because it is player input.
+
 The engine owns drawing order (mounted widgets draw inside the screen's Pre-guarded contents pass,
 before `screen_render_foreground` and tooltips, so cancelling `screen_render_pre` skips them),
 hover, focus, unified Tab / Shift+Tab and arrow navigation across native and mounted controls,
 controller navigation, narration, and mouse/keyboard dispatch on screens, title screens, and
-overlays alike. Mounted widgets are cleared and rebuilt whenever the screen initializes or resizes
-(while preserving same-instance `MouseHandler` double-click timing), so keep any persistent text or
-selection state on your mod struct and seed widgets from it in `screen_init_post`. Use
-`event.widgets.set_initial_focus(id)` to focus a mounted widget on open (`Screen.setInitialFocus`),
-or `event.widgets.remove(id)` to remove a widget added during the same `screen_init_post` call
-(`Screen.removeWidget`). There is no live focus setter or mutable lookup for built-in widgets.
+overlays alike. Mounted widgets are cleared when the screen closes or rebuilds its children
+(for example on a resize that calls `Screen.rebuildWidgets`). A reposition-only resize preserves
+children and focus, and same-instance resizes preserve `MouseHandler` double-click timing. Keep
+text or selection that must survive a rebuild on your mod struct and seed the new widgets from it. Use
+`event.widgets.set_initial_focus(id)` to focus a widget mounted by your listener on open
+(`Screen.setInitialFocus`). Read `event.widgets.children()` for the ordered child list and
+use `event.widgets.remove(child.id)` to remove a listed child (`ScreenEvent.Init.removeListener`).
+The list includes earlier accepted mounts and the native controls on the pause menu. A later
+listener sees your edits only if your callback completes normally. There is no live focus setter
+or mutable lookup for built-in widgets.
 A custom widget can track its own focus via `set_focused` and read or change the state it owns.
 
 ### Buttons with your own art
@@ -354,7 +362,7 @@ art.disabled = Some("mymod:open_disabled".into());
 art.label_offset = [1.0, -1.0];
 
 event.widgets.add_button(
-    Button::new([20.0, 24.0, 80.0, 20.0], Text::literal("Open"), |state, host| {
+    Button::new([20.0, 24.0, 80.0, 20.0], Text::translate("mymod.screen.open", vec![]), |state, host| {
         state.active = false;
         host.mod_screen_open("mymod");
     })
@@ -366,8 +374,9 @@ Custom art stretches the full sprite into the button's rectangle rather than nin
 Inactive takes precedence over hover or focus. An omitted or unknown state sprite falls back to
 the custom normal sprite, then to the vanilla nine-slice for that state. `label_offset` is in GUI
 pixels and moves only the label, not the hitbox or overflow clip. Mounted buttons register for
-narration and controller focus automatically and activate on left click, Enter, or Space while
-focused. Inside `on_press`, mutate `&mut ButtonState` (`rect`, `label`, `active`, `visible`,
+narration and controller focus automatically. They activate on left click, on Enter or Space with
+keyboard focus, and through controller activation with controller focus. Controller activation
+calls the widget without dispatching screen mouse hooks. Inside `on_press`, mutate `&mut ButtonState` (`rect`, `label`, `active`, `visible`,
 `sprites`) directly.
 
 ### Text fields, IME and double-click
@@ -375,6 +384,8 @@ focused. Inside `on_press`, mutate `&mut ButtonState` (`rect`, `label`, `active`
 Mount a single-line text field with `TextField::new(rect, max_length)` and configure it with
 `.value(...)`, `.hint(...)`, `.editable(bool)`, `.active(bool)`, `.visible(bool)`,
 `.bordered(bool)`, `.on_change(|text, host| ...)`, and `.on_submit(|text, host| ...)`.
+`max_length` counts UTF-16 code units, following vanilla `EditBox.setMaxLength` and
+`EditBox.insertText`. An emoji represented by a surrogate pair needs two units.
 
 The engine owns the `EditBox` layout, horizontal scroll, cursor, selection, and blink state
 locally—mods never round-trip layout records or forward screen input hooks manually. Focused
@@ -395,8 +406,9 @@ Implement [`ScreenWidget`] for controls beyond vanilla buttons and text fields a
 `event.widgets.add_widget(Box::new(...))`. Implement `bounds(&self) -> [f32; 4]` and override only
 the callbacks you need (`visible`, `active`, `render`, `mouse_clicked`, `mouse_released`,
 `mouse_dragged`, `mouse_scrolled`, `key_pressed`, `key_released`, `char_typed`, `captures_input`,
-`set_focused`). Every input callback defaults to `false` (unhandled), letting the event continue to
-later widgets or the screen underneath. Return `true` from `captures_input()` when a focused custom
+`set_focused`). Every input callback defaults to `false` (unhandled). A pointer press goes only
+to the first hit child; if that child declines it, focus stays where it was. Return `true` from
+`captures_input()` when a focused custom
 widget consumes typing so screen hotkeys yield to it and IME stays enabled. A panic inside a
 mounted widget callback disables that mod's widget callbacks for the session and reports an error
 naming the mod without breaking other widgets or the screen.

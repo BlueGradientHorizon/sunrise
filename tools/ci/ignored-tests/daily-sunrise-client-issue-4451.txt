@@ -1435,6 +1435,7 @@ sunrise-client game::native_hooks::base::screen_open_tests::replacing_opening_op
 sunrise-client game::native_hooks::base::screen_open_tests::the_creative_screen_excludes_its_two_tab_rows lib daily resources
 sunrise-client game::native_hooks::base::screen_open_tests::the_same_screen_again_fires_nothing lib daily resources
 sunrise-client game::native_hooks::base::screen_open_tests::the_title_appears_and_goes_through_screen_opening lib daily resources
+sunrise-client game::native_hooks::base::screen_widgets_tests::mounted_widgets_draw_as_the_games_own lib daily child-process
 sunrise-client game::native_hooks::base::text_tests::text_takes_argb_and_skips_transparent_text lib daily resources
 sunrise-client game::native_hooks::block_entity_client_tick_tests::a_clients_frames_tick_its_declared_copies_until_they_go lib daily resources
 sunrise-client game::native_hooks::block_entity_client_tick_tests::a_server_never_ticks_a_client_ticker lib daily resources
@@ -2043,10 +2044,10 @@ sunrise-client game::pad::parity_tests::a_keyboard_release_keeps_the_sneak_the_p
 sunrise-client game::pad::parity_tests::a_release_from_a_screen_can_not_strand_the_pads_attack lib daily resources
 sunrise-client game::pad::parity_tests::a_spectators_bumpers_set_the_flying_speed_as_the_wheel_does lib daily resources
 sunrise-client game::pad::parity_tests::bumpers_step_the_hotbar_where_the_wheel_does lib daily resources
-sunrise-client game::pad::parity_tests::resolved_mapping_reads_live_state_and_binding lib daily resources
 sunrise-client game::pad::parity_tests::pad_number_actions_select_the_hotbar_as_their_keys_do lib daily resources
 sunrise-client game::pad::parity_tests::pad_smooth_camera_binding_toggles_the_cinematic_camera lib daily resources
 sunrise-client game::pad::parity_tests::readers_of_the_movement_keys_see_the_stick lib daily resources
+sunrise-client game::pad::parity_tests::resolved_mapping_reads_live_state_and_binding lib daily resources
 sunrise-client game::pad::parity_tests::the_mouse_letting_go_leaves_what_the_pad_holds_and_back lib daily resources
 sunrise-client game::pad::parity_tests::the_pads_attack_and_use_reach_what_the_mouse_tells_mods lib daily resources
 sunrise-client game::pandas::nested_spawn_tests::lifted_mob_callback_keeps_nested_spawns_until_the_next_pass lib daily resources
@@ -2240,12 +2241,12 @@ sunrise-client game::remote::interaction_event_tests::air_event_skips_the_item_a
 sunrise-client game::remote::interaction_event_tests::an_item_used_from_the_off_hand_reaches_the_use_hooks_on_the_server lib daily resources
 sunrise-client game::remote::interaction_event_tests::before_block_cancellation_pass_continues_but_fail_and_consuming_results_stop lib daily resources
 sunrise-client game::remote::interaction_event_tests::canceled_item_results_keep_the_stack_wrappers_side_effects lib daily resources
-sunrise-client game::remote::interaction_event_tests::interaction_matrix_tests::native_interaction_shared_matrix lib daily child-process
 sunrise-client game::remote::interaction_event_tests::interaction_key_tests::interaction_key_literal_matrix_preserves_actions_and_swing_independently lib daily resources
 sunrise-client game::remote::interaction_event_tests::interaction_key_tests::no_interaction_listener_attack_mining_offhand_and_pick lib daily resources
 sunrise-client game::remote::interaction_event_tests::interaction_key_tests::no_listener_preserves_natural_swing_and_unsuccessful_use_stays_quiet lib daily resources
 sunrise-client game::remote::interaction_event_tests::interaction_key_tests::pick_keeps_packet_veto_and_never_swings lib daily resources
 sunrise-client game::remote::interaction_event_tests::interaction_key_tests::silent_policy_does_not_leak_into_next_ordinary_use lib daily resources
+sunrise-client game::remote::interaction_event_tests::interaction_matrix_tests::native_interaction_shared_matrix lib daily child-process
 sunrise-client game::remote::interaction_event_tests::item_fallthrough_tests::air_use_fires_once_and_passing_hands_fire_in_main_off_order lib daily resources
 sunrise-client game::remote::interaction_event_tests::item_fallthrough_tests::apple_on_stone_passes_to_item_fallthrough_once lib daily resources
 sunrise-client game::remote::interaction_event_tests::item_fallthrough_tests::axe_strips_oak_log_before_item_fallthrough lib daily resources

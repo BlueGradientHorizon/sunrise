@@ -110,7 +110,7 @@ impl Hooks for WidgetScreen {
         let field = event.widgets.add_text_field(
             TextField::new([x, 40.0, 200.0, 20.0], 64)
                 .value(initial)
-                .hint(Text::literal("Type a note"))
+                .hint(Text::translate("widget_example.screen.note_hint", vec![]))
                 .on_change(move |text, _host| {
                     if let Ok(mut draft) = on_change_draft.lock() {
                         *draft = text.to_owned();
@@ -134,14 +134,14 @@ impl Hooks for WidgetScreen {
         event.widgets.add_button(
             Button::new(
                 [x, 70.0, 98.0, 20.0],
-                Text::literal("Echo"),
+                Text::translate("widget_example.screen.echo", vec![]),
                 move |state, _host| {
                     let text = echo_draft
                         .lock()
                         .map(|draft| draft.clone())
                         .unwrap_or_default();
                     state.label = if text.is_empty() {
-                        Text::literal("Echo")
+                        Text::translate("widget_example.screen.echo", vec![])
                     } else {
                         Text::literal(text)
                     };
@@ -151,7 +151,7 @@ impl Hooks for WidgetScreen {
         );
         event.widgets.add_button(Button::new(
             [x + 102.0, 70.0, 98.0, 20.0],
-            Text::literal("Done"),
+            Text::translate("gui.done", vec![]),
             |_state, host| {
                 host.close_screen();
             },

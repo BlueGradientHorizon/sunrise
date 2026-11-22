@@ -1,6 +1,6 @@
 //! The pause menu (PauseScreen) and death screen (DeathScreen) layouts.
 use super::screen_build::{PauseInputs, PauseLayout};
-use super::{Game, Screen};
+use super::{Game, Screen, api_values::TryIntoApi};
 use sunrise_client::{
     Result,
     confirm_screen::Confirm,
@@ -356,6 +356,40 @@ impl Game<'_> {
             icons: pause_icons(w, h, inputs.links, inputs.additions, &inputs.rows),
         }
     }
+    /// Native controls built by PauseScreen.init, in the grid's registration order.
+    pub(super) fn pause_init_children(&self) -> Vec<(u8, [f32; 4], Option<mod_api::Text>)> {
+        if self.screen != Screen::Paused || !self.pause_menu {
+            return Vec::new();
+        }
+        let [w, h] = self.gui_frame_now().1.size.map(|axis| axis as f32);
+        let Some(layout) = self.built_pause(w, h) else {
+            return Vec::new();
+        };
+        let buttons = layout.buttons.iter().map(|&(x, y, bw, key, id, _)| {
+            let label = if id == 14 {
+                self.pause_screen_additions()
+                    .and_then(|(text, _)| text.try_into_api().ok())
+            } else {
+                Some(mod_api::Text::translate(key, Vec::new()))
+            };
+            (id, [x, y, bw, 20.0], label)
+        });
+        let icons = layout.icons.iter().enumerate().map(|(i, &(x, y, _))| {
+            let id = if i == FRIENDS_ICON { 10 } else { 12 + i as u8 };
+            (
+                id,
+                [x, y, 20.0, 20.0],
+                Some(mod_api::Text::translate(ICON_LABELS[i], Vec::new())),
+            )
+        });
+        buttons
+            .clone()
+            .take(3)
+            .chain(icons)
+            .chain(buttons.skip(3))
+            .collect()
+    }
+
     pub(super) fn draw_pause_menu(&mut self, batch: &mut HudBatch) {
         let friends = self.friends_shown();
         let atlas = &self.gui.atlas;
@@ -383,7 +417,12 @@ impl Game<'_> {
             }
         };
         let mut tooltip = None;
-        for &(x, y, bw, key, id, active) in &layout.buttons {
+        let mut icon_narration_index = 0;
+        for (index, &(x, y, bw, key, id, active)) in layout.buttons.iter().enumerate() {
+            if self.pause_child_removed(id) {
+                continue;
+            }
+            icon_narration_index += usize::from(index < 3);
             let is_focused = self.pause_focus == Some(id);
             let hover = active && (ui::hovered(self.cursor, x, y, bw, 20.0) || is_focused);
             let label = match (id, &additions) {
@@ -407,9 +446,12 @@ impl Game<'_> {
             }
         }
         for (i, &(x, y, sprite)) in layout.icons.iter().enumerate() {
+            let id = if i == FRIENDS_ICON { 10 } else { 12 + i as u8 };
+            if self.pause_child_removed(id) {
+                continue;
+            }
             let active = icon_active(i, friends);
-            let is_focused = (self.pause_focus == Some(10) && i == FRIENDS_ICON)
-                || (self.pause_focus == Some(12 + i as u8));
+            let is_focused = self.pause_focus == Some(id);
             let hover = active && (ui::hovered(self.cursor, x, y, 20.0, 20.0) || is_focused);
             // The icon has no label: name it for controller focus and the
             // control socket's widget tree.
@@ -429,7 +471,7 @@ impl Game<'_> {
             );
             // PauseScreen adds the icon row after Statistics: the icons'
             // messages (their tooltips too), the friends button's own.
-            widgets::last_narratable_at(3 + i, |n| {
+            widgets::last_narratable_at(icon_narration_index, |n| {
                 let t = |key: &str| Text::translate(key, &[]).plain();
                 let key = [
                     "menu.reportBugs",
@@ -445,6 +487,7 @@ impl Game<'_> {
                 }
                 .hovered(hover);
             });
+            icon_narration_index += 1;
             // SpriteIconButton.CenteredIcon: the 15x15 sprite at
             // x + width / 2 - 15 / 2 in integer pixels, untinted even
             // when the button is inactive.
@@ -543,17 +586,24 @@ impl Game<'_> {
             .buttons
             .iter()
             .copied()
-            .find(|b| b.5 && ui::hovered(self.cursor, b.0, b.1, b.2, 20.0))
+            .find(|b| {
+                b.5 && !self.pause_child_removed(b.4)
+                    && ui::hovered(self.cursor, b.0, b.1, b.2, 20.0)
+            })
             .map(|b| b.4)
             .or_else(|| {
                 // The report bugs, feedback and player reporting icons (ids 12, 13 and 15).
                 [0, 1, 3]
                     .into_iter()
-                    .find(|&i| ui::hovered(self.cursor, icons[i].0, icons[i].1, 20.0, 20.0))
+                    .find(|&i| {
+                        !self.pause_child_removed(12 + i as u8)
+                            && ui::hovered(self.cursor, icons[i].0, icons[i].1, 20.0, 20.0)
+                    })
                     .map(|i| 12 + i as u8)
             })
             .or_else(|| {
                 (self.friends_shown()
+                    && !self.pause_child_removed(10)
                     && ui::hovered(
                         self.cursor,
                         icons[FRIENDS_ICON].0,
@@ -590,16 +640,20 @@ impl Game<'_> {
         };
         // The widget tuples are `Copy`: one small copy per press keeps the
         // build readable while the focus moves.
-        let buttons = layout.buttons.to_vec();
-        let icons = layout.icons;
-        let mut active_ids: Vec<u8> = buttons
+        let buttons: Vec<_> = layout
+            .buttons
             .iter()
             .copied()
-            .filter(|b| b.5)
-            .map(|b| b.4)
+            .filter(|b| b.5 && !self.pause_child_removed(b.4))
             .collect();
+        let icons = layout.icons;
+        let mut active_ids: Vec<u8> = buttons.iter().map(|b| b.4).collect();
         let friends = self.friends_shown();
-        active_ids.extend(pause_icon_focus_ids(friends));
+        active_ids.extend(
+            pause_icon_focus_ids(friends)
+                .into_iter()
+                .filter(|&id| !self.pause_child_removed(id)),
+        );
         if active_ids.is_empty() {
             return Ok(false);
         }
@@ -638,16 +692,12 @@ impl Game<'_> {
                 Ok(true)
             }
             KeyCode::ArrowUp | KeyCode::ArrowDown | KeyCode::ArrowLeft | KeyCode::ArrowRight => {
-                let mut rects: Vec<(u8, f32, f32, f32)> = buttons
-                    .iter()
-                    .copied()
-                    .filter(|b| b.5)
-                    .map(|b| (b.4, b.0, b.1, b.2))
-                    .collect();
+                let mut rects: Vec<(u8, f32, f32, f32)> =
+                    buttons.iter().map(|b| (b.4, b.0, b.1, b.2)).collect();
                 let friends = self.friends_shown();
                 for (i, &(x, y, _)) in icons.iter().enumerate() {
-                    if icon_active(i, friends) {
-                        let id = if i == FRIENDS_ICON { 10 } else { 12 + i as u8 };
+                    let id = if i == FRIENDS_ICON { 10 } else { 12 + i as u8 };
+                    if icon_active(i, friends) && !self.pause_child_removed(id) {
                         rects.push((id, x, y, 20.0));
                     }
                 }
@@ -689,7 +739,7 @@ impl Game<'_> {
                 Ok(true)
             }
             KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => {
-                if let Some(hit) = self.pause_focus {
+                if let Some(hit) = self.pause_focus.filter(|id| active_ids.contains(id)) {
                     self.audio.play_button_click();
                     self.execute_pause_action(hit)?;
                     Ok(true)

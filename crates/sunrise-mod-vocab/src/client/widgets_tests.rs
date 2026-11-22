@@ -139,30 +139,34 @@ fn screen_widget_defaults_and_registrar_ids_work() {
     #[derive(Default)]
     struct FakeRegistrar {
         next: u64,
-        ids: Vec<ScreenWidgetId>,
+        children: Vec<ScreenChild>,
         initial_focus: Option<ScreenWidgetId>,
     }
     impl ScreenWidgets for FakeRegistrar {
+        fn children(&self) -> &[ScreenChild] {
+            &self.children
+        }
+
         fn add_button(&mut self, _button: Button) -> ScreenWidgetId {
             self.next += 1;
             let id = ScreenWidgetId::from_raw(self.next);
-            self.ids.push(id);
+            self.children.push(ScreenChild::new(id, [0.0; 4], None));
             id
         }
         fn add_text_field(&mut self, _field: TextField) -> ScreenWidgetId {
             self.next += 1;
             let id = ScreenWidgetId::from_raw(self.next);
-            self.ids.push(id);
+            self.children.push(ScreenChild::new(id, [0.0; 4], None));
             id
         }
         fn add_widget(&mut self, _widget: Box<dyn ScreenWidget>) -> ScreenWidgetId {
             self.next += 1;
             let id = ScreenWidgetId::from_raw(self.next);
-            self.ids.push(id);
+            self.children.push(ScreenChild::new(id, [0.0; 4], None));
             id
         }
         fn set_initial_focus(&mut self, id: ScreenWidgetId) -> bool {
-            if self.ids.contains(&id) {
+            if self.children.iter().any(|child| child.id == id) {
                 self.initial_focus = Some(id);
                 true
             } else {
@@ -170,8 +174,8 @@ fn screen_widget_defaults_and_registrar_ids_work() {
             }
         }
         fn remove(&mut self, id: ScreenWidgetId) -> bool {
-            if let Some(pos) = self.ids.iter().position(|&item| item == id) {
-                self.ids.remove(pos);
+            if let Some(pos) = self.children.iter().position(|child| child.id == id) {
+                self.children.remove(pos);
                 true
             } else {
                 false
