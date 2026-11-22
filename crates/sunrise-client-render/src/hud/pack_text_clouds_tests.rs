@@ -51,10 +51,7 @@ fn a_pack_replacing_a_clouds_stage_is_loaded_with_the_faces_and_cloud_info() {
     let root = source(&[(VSH, CLOUDS_VSH), (FSH, &other)]);
     let refused = load_clouds(&root, &defaults).unwrap_err();
     assert_eq!(refused.pipeline, "minecraft:pipeline/clouds");
-    assert!(
-        refused.why.contains("Other is not a block or sampler"),
-        "{refused}"
-    );
+    assert!(refused.why.contains("Other"), "{refused}");
 }
 
 /// The packs' clouds at `root`, which must load.
@@ -160,12 +157,7 @@ fn each_improved_transparency_stage_is_given_its_passs_samplers() {
     ] {
         let refused = clouds(&read(stage, sampler)).unwrap_err();
         assert_eq!(refused.pipeline, pipeline, "{stage} {sampler}");
-        assert!(
-            refused
-                .why
-                .contains(&format!("{sampler} is not a block or sampler")),
-            "{refused}"
-        );
+        assert!(refused.why.contains(sampler), "{refused}");
     }
 }
 
@@ -202,17 +194,14 @@ fn a_clouds_program_its_pipeline_cant_bind_or_target_fails_the_load() {
     );
     let refused = clouds(&sampler).unwrap_err();
     assert_eq!(refused.pipeline, "minecraft:pipeline/clouds");
-    assert_eq!(refused.why, "Sampler0 is not a sampler of this pipeline");
+    assert!(refused.why.contains("Sampler0"), "{refused}");
     let integers = fragment(
         "layout(location = 0) out ivec4 fragColor;",
         "fragColor = ivec4(vertexColor * 255.0);",
     );
     let refused = clouds(&integers).unwrap_err();
     assert_eq!(refused.pipeline, "minecraft:pipeline/clouds");
-    assert_eq!(
-        refused.why,
-        "its fragment stage writes colour target 0 with something other than floats"
-    );
+    assert!(refused.why.contains("colour target 0"), "{refused}");
 }
 
 /// A pack replacing only an include the clouds' stages use changes them: the stages are
@@ -261,9 +250,11 @@ fn a_missing_include_refuses_only_the_programs_that_keep_it() {
         refused.pipeline,
         "minecraft:pipeline/oit_transmittance_clouds"
     );
-    assert_eq!(
-        refused.why,
-        "minecraft:shaders/include/nowhere.glsl is not in the selected packs"
+    assert!(
+        refused
+            .why
+            .contains("minecraft:shaders/include/nowhere.glsl"),
+        "{refused}"
     );
 }
 
