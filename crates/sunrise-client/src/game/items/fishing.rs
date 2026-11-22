@@ -79,7 +79,7 @@ enum State {
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum EntityCollision {
     Hooked,
-    Deflected { first: bool },
+    Deflected { first: bool, rot: f32 },
 }
 pub(super) struct Hook {
     pub(super) uuid: [i32; 4],
@@ -97,8 +97,8 @@ pub(super) struct Hook {
     hooked_in: Option<u32>,
     /// `Projectile.leftOwner`: until true, caster's root-vehicle tree is excluded from hits.
     left_owner: bool,
-    /// `Entity.yRot` updated on `ProjectileDeflection.REVERSE`.
-    yaw: f32,
+    /// `Entity.yRot` updated on `Projectile.updateRotation` and `ProjectileDeflection.REVERSE`.
+    pub(super) yaw: f32,
     last_deflected_by: Option<u32>,
     needs_sync: bool,
     tick_count: i32,
@@ -273,14 +273,15 @@ impl Hook {
     fn hit_entity(&mut self, id: u32, deflects: bool) -> EntityCollision {
         if deflects {
             let first = self.last_deflected_by != Some(id);
+            let mut rot = 0.0;
             if first {
-                let rot = 170.0 + self.random.next_float() * 20.0;
+                rot = 170.0 + self.random.next_float() * 20.0;
                 self.yaw += rot;
                 self.velocity = self.velocity.scale(-0.5);
                 self.last_deflected_by = Some(id);
                 self.needs_sync = true;
             }
-            return EntityCollision::Deflected { first };
+            return EntityCollision::Deflected { first, rot };
         }
         // FishingHook.onHitEntity sets hookedIn only; state flips to HOOKED_IN_ENTITY next tick.
         self.hooked_in = Some(id);
@@ -1069,6 +1070,7 @@ impl Game<'_> {
             return None;
         }
         h.tick_count += 1;
+        let mut old_yaw = h.yaw;
         // Projectile.tick: update leftOwner using the caster's full root-vehicle tree.
         if !h.left_owner {
             let swept = h.bounds().expand_towards(h.velocity).inflate(Vec3::ONE);
@@ -1214,8 +1216,9 @@ impl Game<'_> {
                             );
                         }
                         match h.hit_entity(id, breeze.is_some()) {
-                            EntityCollision::Deflected { first } => {
+                            EntityCollision::Deflected { first, rot } => {
                                 if first {
+                                    old_yaw += rot;
                                     self.audio.play(
                                         "minecraft:entity.breeze.deflect",
                                         breeze,
@@ -1457,6 +1460,10 @@ impl Game<'_> {
                 wanted,
                 moved,
                 &mut h.velocity,
+            );
+            h.yaw = sunrise_client::arrows::lerp_rotation(
+                old_yaw,
+                sunrise_core::geometry::trig::atan2_degrees(h.velocity.x, h.velocity.z),
             );
             if h.state == State::Flying && (h.ground.on_ground || h.ground.horizontal_collision) {
                 h.velocity = Vec3::ZERO;

@@ -226,10 +226,15 @@ impl Game<'_> {
         to: Holder,
         skip: Option<usize>,
     ) -> bool {
+        let knot_id = match to {
+            Holder::Knot(fence) => self.knot_ids.get(&fence).copied(),
+            _ => None,
+        };
         let mut any = false;
         for j in self.player_leashed(center) {
             if Some(j) != skip && self.can_attach_lead(j, center) {
                 self.mobs[j].extra.leash = Some(to);
+                self.mobs[j].extra.leash_knot_id = knot_id;
                 any = true;
             }
         }
@@ -321,6 +326,10 @@ impl Game<'_> {
         holder: Holder,
         player: Option<[i32; 4]>,
     ) -> bool {
+        let knot_id = match holder {
+            Holder::Knot(fence) => self.knot_ids.get(&fence).copied(),
+            _ => None,
+        };
         match target {
             Target::Mob(id) => {
                 let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) else {
@@ -328,6 +337,7 @@ impl Game<'_> {
                 };
                 let old = m.extra.leash;
                 m.extra.leash = Some(holder);
+                m.extra.leash_knot_id = knot_id;
                 m.extra.leash_player = player;
                 m.extra.leash_pending = None;
                 if old != Some(holder) {
@@ -342,6 +352,7 @@ impl Game<'_> {
                 let old = self.boats[i].leash;
                 self.boats.update(i, |b| {
                     b.leash = Some(holder);
+                    b.leash_knot_id = knot_id;
                     b.leash_player = player;
                     b.leash_pending = None;
                 });

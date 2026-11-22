@@ -430,6 +430,10 @@ impl Game<'_> {
     /// sneak click on a mob, `LeadItem.bindPlayerMobs`, the knot's
     /// `interact`), the ones in reach of `at`. Whether any did.
     pub(super) fn tie_player_boats(&mut self, at: glam::DVec3, to: Holder) -> bool {
+        let knot_id = match to {
+            Holder::Knot(fence) => self.knot_ids.get(&fence).copied(),
+            _ => None,
+        };
         let mut any = false;
         for i in self.player_led_boats(at) {
             // Leashable.setLeashedTo: `this != holder`.
@@ -439,7 +443,7 @@ impl Game<'_> {
             if self.boat_can_attach(i, at) {
                 self.boats.update(i, |b| {
                     b.leash = Some(to);
-                    b.leash_knot_id = None;
+                    b.leash_knot_id = knot_id;
                     b.leash_player = None;
                 });
                 any = true;

@@ -358,6 +358,8 @@ public final class VanillaProjectileTargetsOracle {
                     cases.add(runCase(level, proj, target));
                 }
             }
+            // Mob-owned arrow hitting an item frame (BLOCK_CHANGE source attribution, finding #22).
+            cases.add(runCase(level, "arrow_skeleton", "item_frame"));
 
             root.add("cases", cases);
             Files.createDirectories(output.getParent());
@@ -485,18 +487,25 @@ public final class VanillaProjectileTargetsOracle {
             activeTargetId = target.getId();
             fEntityRandom.set(target, RandomSource.create(PROJECTILE_SEED));
 
-            // Configure owner gamemode if this is an owned projectile case.
+            // Configure owner gamemode or mob owner if this is an owned projectile case.
             boolean owned = projKind.endsWith("_owned") || projKind.endsWith("_creative");
+            boolean mobOwned = projKind.equals("arrow_skeleton");
+            Entity mobOwner = null;
             if (projKind.endsWith("_creative")) {
                 player.setGameMode(GameType.CREATIVE);
             } else if (projKind.endsWith("_owned")) {
                 player.setGameMode(GameType.SURVIVAL);
+            } else if (mobOwned) {
+                Set<Integer> beforeMob = entityIds(level);
+                cmd("summon minecraft:skeleton 0.5 64.0 2.5 {NoAI:1b,Silent:1b}");
+                mobOwner = findNewEntity(level, beforeMob, Entity.class);
+                if (mobOwner == null) throw new IllegalStateException("skeleton failed to spawn");
             }
 
             // Summon projectile.
             double y0 = spawnY(targetKind);
             Set<Integer> beforeProj = entityIds(level);
-            String baseKind = projKind.replace("_creative", "").replace("_owned", "");
+            String baseKind = projKind.replace("_creative", "").replace("_owned", "").replace("_skeleton", "");
             switch (baseKind) {
                 case "arrow" -> cmd("summon minecraft:arrow 1.5 " + y0 + " 4.5 {pickup:1b,Motion:[1.0d,0.0d,0.0d]}");
                 case "spectral_arrow" -> cmd("summon minecraft:spectral_arrow 1.5 " + y0 + " 4.5 {pickup:1b,Motion:[1.0d,0.0d,0.0d]}");
@@ -513,6 +522,7 @@ public final class VanillaProjectileTargetsOracle {
             if (proj == null) throw new IllegalStateException("projectile failed to spawn: " + projKind);
             activeProjId = proj.getId();
             if (owned) proj.setOwner(player);
+            if (mobOwner != null) proj.setOwner(mobOwner);
             fEntityRandom.set(proj, RandomSource.create(PROJECTILE_SEED));
             level.getRandom().setSeed(LEVEL_SEED);
 

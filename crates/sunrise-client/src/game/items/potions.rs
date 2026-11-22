@@ -2239,7 +2239,7 @@ impl Game<'_> {
             ))
             .fluid
             == sunrise_client::blocks::Fluid::Water;
-        let inertia = if water { 0.8 } else { 0.99 };
+        let inertia = f64::from(if water { 0.8_f32 } else { 0.99_f32 });
         t.velocity = Vec3::new(
             t.velocity.x * inertia,
             (t.velocity.y - gravity) * inertia,

@@ -55,6 +55,8 @@ struct TargetSnap {
 #[derive(Deserialize)]
 struct GameEventSnap {
     id: String,
+    pos_bits: [String; 3],
+    source: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -307,7 +309,29 @@ fn target_bounds(game: &Game<'_>, target: TrackedTarget) -> Aabb {
     }
 }
 
-fn summon_projectile(game: &mut Game<'_>, proj: &str, y0: f64, proj_seed: i64) -> TrackedProj {
+fn summon_projectile(
+    game: &mut Game<'_>,
+    proj: &str,
+    y0: f64,
+    proj_seed: i64,
+) -> (TrackedProj, Option<u32>) {
+    if proj == "arrow_skeleton" {
+        assert!(game.run_command("summon minecraft:skeleton 0.5 64.0 2.5 {NoAI:1b,Silent:1b}"));
+        let skel_id = game.mobs.last().unwrap().id;
+        let skel_uuid = Some(game.mob_uuid(skel_id));
+        let cmd =
+            format!("summon minecraft:arrow 1.5 {y0} 4.5 {{pickup:1b,Motion:[1.0d,0.0d,0.0d]}}");
+        assert!(game.run_command(&cmd), "{cmd}");
+        let idx = game.creatures.projectiles.len() - 1;
+        let id = game.creatures.projectiles[idx].id;
+        game.creatures.projectiles.update(idx, |p| {
+            p.entity_random().set_seed(proj_seed);
+            p.owner = Some(Who::Mob(skel_id));
+            p.owner_uuid = skel_uuid;
+            p.left_owner = true;
+        });
+        return (TrackedProj::Projectile(id), Some(skel_id));
+    }
     let owned = proj.ends_with("_owned") || proj.ends_with("_creative");
     if proj.ends_with("_creative") {
         game.set_mode(sunrise_client::command::args::GameMode::Creative);
@@ -354,7 +378,7 @@ fn summon_projectile(game: &mut Game<'_>, proj: &str, y0: f64, proj_seed: i64) -
                 t.owner_uuid = owner_uuid;
             }
         });
-        TrackedProj::Trident(id)
+        (TrackedProj::Trident(id), None)
     } else {
         let idx = game.creatures.projectiles.len() - 1;
         let id = game.creatures.projectiles[idx].id;
@@ -366,7 +390,7 @@ fn summon_projectile(game: &mut Game<'_>, proj: &str, y0: f64, proj_seed: i64) -
                 p.owner_uuid = owner_uuid;
             }
         });
-        TrackedProj::Projectile(id)
+        (TrackedProj::Projectile(id), None)
     }
 }
 
@@ -412,7 +436,8 @@ fn check_case(game: &mut Game<'_>, case: &Case, proj_seed: i64, level_seed: i64)
         }
     }
 
-    let tracked_proj = summon_projectile(game, &case.projectile, case.spawn_y, proj_seed);
+    let (tracked_proj, skel_id) =
+        summon_projectile(game, &case.projectile, case.spawn_y, proj_seed);
     game.world.random.set_seed(level_seed);
     let mut seen_drops: std::collections::HashSet<u32> =
         game.dropped.iter().map(|d| d.id).collect();
@@ -582,7 +607,28 @@ fn check_case(game: &mut Game<'_>, case: &Case, proj_seed: i64, level_seed: i64)
             _ => {}
         }
 
-        // Check key game events on hit tick (projectile_land, entity_die, block_change).
+        // Check exact projectile_land positions on every tick (both directions).
+        let exp_lands: Vec<&[String; 3]> = expected
+            .game_events
+            .iter()
+            .filter(|g| g.id == "minecraft:projectile_land")
+            .map(|g| &g.pos_bits)
+            .collect();
+        let act_lands: Vec<[String; 3]> = posted
+            .iter()
+            .filter(|(id, _, _)| *id == "minecraft:projectile_land")
+            .map(|(_, at, _)| [bits(at[0]), bits(at[1]), bits(at[2])])
+            .collect();
+        if act_lands.len() != exp_lands.len()
+            || act_lands.iter().zip(&exp_lands).any(|(a, e)| a != *e)
+        {
+            errors.push(format!(
+                "{label} t={}: projectile_land pos_bits expected {exp_lands:?} got {act_lands:?}",
+                expected.tick
+            ));
+        }
+
+        // Check key game events on hit tick (projectile_land, entity_die, block_change + source).
         if case.hit_tick == Some(expected.tick) {
             let important = |id: &str| {
                 matches!(
@@ -590,22 +636,41 @@ fn check_case(game: &mut Game<'_>, case: &Case, proj_seed: i64, level_seed: i64)
                     "minecraft:entity_die" | "minecraft:block_change" | "minecraft:projectile_land"
                 )
             };
-            let exp_ev: Vec<&str> = expected
+            let exp_ev: Vec<&GameEventSnap> = expected
                 .game_events
                 .iter()
-                .map(|g| g.id.as_str())
-                .filter(|id| important(id))
+                .filter(|g| important(g.id.as_str()))
                 .collect();
-            let act_ev: Vec<&str> = posted
+            let act_ev: Vec<(&str, Option<Who>)> = posted
                 .iter()
-                .map(|(id, _, _)| *id)
-                .filter(|id| important(id))
+                .filter(|(id, _, _)| important(id))
+                .map(|(id, _, who)| (*id, *who))
                 .collect();
-            if act_ev != exp_ev {
+            let exp_ids: Vec<&str> = exp_ev.iter().map(|g| g.id.as_str()).collect();
+            let act_ids: Vec<&str> = act_ev.iter().map(|(id, _)| *id).collect();
+            if act_ids != exp_ids {
                 errors.push(format!(
-                    "{label} t={}: game_events expected {:?} got {:?}",
-                    expected.tick, exp_ev, act_ev
+                    "{label} t={}: game_events expected {exp_ids:?} got {act_ids:?}",
+                    expected.tick
                 ));
+            } else {
+                for (exp_g, (_, act_who)) in exp_ev.iter().zip(&act_ev) {
+                    if exp_g.id == "minecraft:block_change" {
+                        let expected_who = match exp_g.source.as_deref() {
+                            Some("minecraft:skeleton") => skel_id.map(Who::Mob),
+                            Some("player") => Some(Who::Player),
+                            _ => None,
+                        };
+                        if let Some(want) = expected_who
+                            && *act_who != Some(want)
+                        {
+                            errors.push(format!(
+                                "{label} t={}: block_change source expected {want:?} got {act_who:?}",
+                                expected.tick
+                            ));
+                        }
+                    }
+                }
             }
         }
         if !errors.is_empty() {

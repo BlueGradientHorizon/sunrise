@@ -6539,6 +6539,14 @@ impl Game<'_> {
                     | ProjectileKind::LargeFireball { .. }
             ) {
                 self.projectile_hit_landed_event(p.id, p.owner, hit);
+                if matches!(p.kind, ProjectileKind::ShulkerBullet { .. }) {
+                    // ShulkerBullet.onHit calls destroy(), which posts ENTITY_DAMAGE at its position.
+                    self.entity_event_by(
+                        "minecraft:entity_damage",
+                        [p.position.x, p.position.y, p.position.z],
+                        Some(Who::Mob(p.id)),
+                    );
+                }
                 return Ok(());
             }
         }
@@ -7093,6 +7101,11 @@ impl Game<'_> {
                     }
                 }
                 self.projectile_hit_landed_event(p.id, p.owner, hit);
+                self.entity_event_by(
+                    "minecraft:entity_damage",
+                    [p.position.x, p.position.y, p.position.z],
+                    Some(Who::Mob(p.id)),
+                );
             }
             (ProjectileKind::DragonFireball, _) => {
                 self.projectile_hit_landed_event(p.id, p.owner, hit);
@@ -7117,6 +7130,11 @@ impl Game<'_> {
                     }
                 }
                 self.projectile_hit_landed_event(p.id, p.owner, hit);
+                self.entity_event_by(
+                    "minecraft:entity_damage",
+                    [p.position.x, p.position.y, p.position.z],
+                    Some(Who::Mob(p.id)),
+                );
             }
             _ => {
                 self.projectile_hit_landed_event(p.id, p.owner, hit);

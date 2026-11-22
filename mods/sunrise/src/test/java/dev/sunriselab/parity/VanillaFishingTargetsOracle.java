@@ -8,6 +8,9 @@ import com.google.gson.JsonObject;
 import com.mojang.authlib.GameProfile;
 import com.mojang.authlib.services.ServicesKeySet;
 import com.mojang.serialization.Lifecycle;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelOutboundHandlerAdapter;
+import io.netty.channel.ChannelPromise;
 import io.netty.channel.embedded.EmbeddedChannel;
 import java.lang.reflect.Field;
 import java.net.Proxy;
@@ -34,6 +37,8 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.PacketFlow;
+import net.minecraft.network.protocol.game.ClientboundSoundEntityPacket;
+import net.minecraft.network.protocol.game.ClientboundSoundPacket;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.Services;
@@ -69,6 +74,7 @@ import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragonPart;
 import net.minecraft.world.entity.decoration.LeashFenceKnotEntity;
 import net.minecraft.world.entity.projectile.FishingHook;
+import net.minecraft.world.entity.vehicle.boat.AbstractBoat;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ChunkPos;
@@ -151,6 +157,7 @@ public final class VanillaFishingTargetsOracle {
         ServerPlayer player;
         EmbeddedChannel channel;
         final List<JsonObject> tickGameEvents = new ArrayList<>();
+        final List<String> tickSounds = new ArrayList<>();
 
         Field fEntityRandom;
         Field fCurrentState;
@@ -217,6 +224,17 @@ public final class VanillaFishingTargetsOracle {
             player = new ServerPlayer(this, level, profile, ClientInformation.createDefault());
             Connection connection = new Connection(PacketFlow.SERVERBOUND);
             channel = new EmbeddedChannel(connection);
+            channel.pipeline().addFirst("capture", new ChannelOutboundHandlerAdapter() {
+                @Override
+                public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+                    if (msg instanceof ClientboundSoundPacket p) {
+                        tickSounds.add(p.getSound().unwrapKey().map(k -> k.identifier().toString()).orElse("direct"));
+                    } else if (msg instanceof ClientboundSoundEntityPacket p) {
+                        tickSounds.add(p.getSound().unwrapKey().map(k -> k.identifier().toString()).orElse("direct"));
+                    }
+                    super.write(ctx, msg, promise);
+                }
+            });
             this.getPlayerList().placeNewPlayer(connection, player, cookie);
             player.setGameMode(GameType.SURVIVAL);
             player.snapTo(0.5, 64.0, 4.5, -90.0f, 0.0f);
@@ -255,10 +273,11 @@ public final class VanillaFishingTargetsOracle {
                 cases.add(runCase(level, target));
             }
             root.add("cases", cases);
+            root.add("extra_cases", runExtraCases(level));
             Files.createDirectories(output.getParent());
             Gson gson = new GsonBuilder().serializeNulls().create();
             Files.writeString(output, gson.toJson(root) + "\n", StandardCharsets.UTF_8);
-            System.out.println("Wrote " + cases.size() + " fishing cases to " + output);
+            System.out.println("Wrote " + cases.size() + " fishing cases + extra cases to " + output);
         }
 
         void resetArena(ServerLevel level, String target) {
@@ -295,6 +314,9 @@ public final class VanillaFishingTargetsOracle {
             if (target.startsWith("leash_knot")) {
                 level.setBlock(new BlockPos(3, 64, 4), Blocks.OAK_FENCE.defaultBlockState(), 2);
             }
+            if (player.isPassenger()) {
+                player.stopRiding();
+            }
             player.setGameMode(GameType.SURVIVAL);
             player.snapTo(0.5, 64.0, 4.5, -90.0f, 0.0f);
             player.setDeltaMovement(Vec3.ZERO);
@@ -303,6 +325,7 @@ public final class VanillaFishingTargetsOracle {
             channel.runPendingTasks();
             channel.outboundMessages().clear();
             tickGameEvents.clear();
+            tickSounds.clear();
         }
 
         Set<Integer> entityIds(ServerLevel level) {
@@ -383,12 +406,14 @@ public final class VanillaFishingTargetsOracle {
             JsonObject rec = new JsonObject();
             rec.addProperty("target", targetKind);
             rec.addProperty("spawn_y", y0);
+            rec.addProperty("target_id_mod4", target.getId() & 3);
             rec.addProperty("target_bb_height_bits", fBits(target.getBbHeight()));
             rec.add("target_pos0_bits", vecBits(target.position()));
 
             JsonArray ticksArr = new JsonArray();
             for (int t = 1; t <= TICKS; t++) {
                 tickGameEvents.clear();
+                tickSounds.clear();
                 stepTick();
                 channel.runPendingTasks();
                 channel.outboundMessages().clear();
@@ -400,6 +425,7 @@ public final class VanillaFishingTargetsOracle {
                 row.add("hook_pos", vecArr(hook.position()));
                 row.add("hook_pos_bits", vecBits(hook.position()));
                 row.add("hook_vel_bits", vecBits(hook.getDeltaMovement()));
+                row.addProperty("hook_yaw_bits", fBits(hook.getYRot()));
 
                 Entity hooked = hook.getHookedIn();
                 if (hooked == null) {
@@ -439,6 +465,226 @@ public final class VanillaFishingTargetsOracle {
             rec.add("target_pos_after_retrieve_tick_bits", vecBits(target.position()));
             rec.add("target_vel_after_retrieve_tick_bits", vecBits(target.getDeltaMovement()));
             return rec;
+        }
+
+        JsonObject snapHookTick(int t, FishingHook hook, Entity target) throws Exception {
+            JsonObject row = new JsonObject();
+            row.addProperty("tick", t);
+            row.addProperty("hook_alive", !hook.isRemoved());
+            row.addProperty("hook_state", String.valueOf(fCurrentState.get(hook)));
+            row.add("hook_pos_bits", vecBits(hook.position()));
+            row.add("hook_vel_bits", vecBits(hook.getDeltaMovement()));
+            row.addProperty("hook_yaw_bits", fBits(hook.getYRot()));
+            Entity hooked = hook.getHookedIn();
+            if (hooked == null) {
+                row.add("hooked_type", JsonNull.INSTANCE);
+                row.addProperty("hooked_is_player", false);
+            } else {
+                row.addProperty("hooked_type", BuiltInRegistries.ENTITY_TYPE.getKey(hooked.getType()).toString());
+                row.addProperty("hooked_is_player", hooked == player);
+            }
+            if (target != null) {
+                row.addProperty("target_alive", !target.isRemoved());
+                row.add("target_pos_bits", vecBits(target.position()));
+                row.add("target_vel_bits", vecBits(target.getDeltaMovement()));
+            }
+            JsonArray gEvents = new JsonArray();
+            tickGameEvents.forEach(gEvents::add);
+            row.add("game_events", gEvents);
+            JsonArray snds = new JsonArray();
+            tickSounds.forEach(snds::add);
+            row.add("sounds", snds);
+            return row;
+        }
+
+        JsonArray runExtraCases(ServerLevel level) throws Exception {
+            JsonArray out = new JsonArray();
+
+            // 1. Finding #6: Owner and Pig share an oak boat; bobber ignores boat & co-passenger while !leftOwner.
+            {
+                resetArena(level, "extra");
+                level.getRandom().setSeed(LEVEL_SEED);
+                Set<Integer> bb = entityIds(level);
+                cmd("summon minecraft:oak_boat 1.5 64.0 4.5 {}");
+                AbstractBoat boat = (AbstractBoat) findNewEntity(level, bb, AbstractBoat.class);
+                Set<Integer> bp = entityIds(level);
+                cmd("summon minecraft:pig 1.5 64.0 4.5 {NoAI:1b,Silent:1b}");
+                Pig copassenger = (Pig) findNewEntity(level, bp, Pig.class);
+                player.startRiding(boat, true, false);
+                copassenger.startRiding(boat, true, false);
+                Set<Integer> bs = entityIds(level);
+                cmd("summon minecraft:armor_stand 5.5 64.0 4.5 {}");
+                Entity stand = findNewEntity(level, bs, Entity.class);
+                stepTick();
+                channel.runPendingTasks();
+                channel.outboundMessages().clear();
+
+                FishingHook hook = new FishingHook(player, level, 0, 0);
+                hook.snapTo(1.5, 64.8, 4.5, -90.0f, 0.0f);
+                hook.setDeltaMovement(new Vec3(1.0, 0.0, 0.0));
+                fEntityRandom.set(hook, RandomSource.create(HOOK_SEED));
+                level.addFreshEntity(hook);
+                level.getRandom().setSeed(LEVEL_SEED);
+                tickGameEvents.clear();
+                tickSounds.clear();
+
+                JsonObject rec = new JsonObject();
+                rec.addProperty("case", "owner_vehicle_passenger");
+                JsonArray ticks = new JsonArray();
+                for (int t = 1; t <= 8; t++) {
+                    tickGameEvents.clear();
+                    tickSounds.clear();
+                    stepTick();
+                    channel.runPendingTasks();
+                    channel.outboundMessages().clear();
+                    ticks.add(snapHookTick(t, hook, stand));
+                }
+                rec.add("ticks", ticks);
+                out.add(rec);
+            }
+
+            // 2. Findings #6 & #14: Bobber leaves owner, hits Breeze (REVERSE + yaw + sound), returns and catches owner.
+            {
+                resetArena(level, "extra");
+                level.getRandom().setSeed(LEVEL_SEED);
+                Set<Integer> bb = entityIds(level);
+                cmd("summon minecraft:breeze 3.5 64.0 4.5 {NoAI:1b,Silent:1b}");
+                Entity breeze = findNewEntity(level, bb, Entity.class);
+
+                FishingHook hook = new FishingHook(player, level, 0, 0);
+                hook.snapTo(1.8, 65.4, 4.5, -90.0f, 0.0f);
+                hook.setDeltaMovement(new Vec3(1.0, 0.0, 0.0));
+                fEntityRandom.set(hook, RandomSource.create(HOOK_SEED));
+                level.addFreshEntity(hook);
+                level.getRandom().setSeed(LEVEL_SEED);
+                tickGameEvents.clear();
+                tickSounds.clear();
+
+                JsonObject rec = new JsonObject();
+                rec.addProperty("case", "deflected_hook_catches_owner");
+                JsonArray ticks = new JsonArray();
+                for (int t = 1; t <= 12; t++) {
+                    tickGameEvents.clear();
+                    tickSounds.clear();
+                    stepTick();
+                    channel.runPendingTasks();
+                    channel.outboundMessages().clear();
+                    ticks.add(snapHookTick(t, hook, breeze));
+                }
+                rec.add("ticks", ticks);
+                out.add(rec);
+            }
+
+            // 3. Findings #7 & #27: Wall endpoint rejects entity at x=4.0 and posts PROJECTILE_LAND at block center (4.5,64.5,4.5).
+            {
+                resetArena(level, "extra");
+                level.getRandom().setSeed(LEVEL_SEED);
+                level.setBlock(new BlockPos(4, 64, 4), Blocks.STONE.defaultBlockState(), 2);
+                Set<Integer> bs = entityIds(level);
+                cmd("summon minecraft:armor_stand 4.25 64.0 4.75 {NoGravity:1b}");
+                Entity stand = findNewEntity(level, bs, Entity.class);
+
+                FishingHook hook = new FishingHook(player, level, 0, 0);
+                hook.snapTo(3.5, 64.5, 4.5, -90.0f, 0.0f);
+                hook.setDeltaMovement(new Vec3(1.0, 0.0, 0.0));
+                fEntityRandom.set(hook, RandomSource.create(HOOK_SEED));
+                level.addFreshEntity(hook);
+                level.getRandom().setSeed(LEVEL_SEED);
+                tickGameEvents.clear();
+                tickSounds.clear();
+
+                JsonObject rec = new JsonObject();
+                rec.addProperty("case", "wall_endpoint_boundary");
+                JsonArray ticks = new JsonArray();
+                for (int t = 1; t <= 4; t++) {
+                    tickGameEvents.clear();
+                    tickSounds.clear();
+                    stepTick();
+                    channel.runPendingTasks();
+                    channel.outboundMessages().clear();
+                    ticks.add(snapHookTick(t, hook, stand));
+                }
+                rec.add("ticks", ticks);
+                out.add(rec);
+            }
+
+            // 4. Finding #7: Tick-8 computeMargin f32 boundary (0.3f > 0.3d) catches stand offset at z=5.050000005.
+            {
+                resetArena(level, "extra");
+                level.getRandom().setSeed(LEVEL_SEED);
+                Set<Integer> bs = entityIds(level);
+                cmd("summon minecraft:armor_stand 6.9 64.0 5.050000005 {NoGravity:1b}");
+                Entity stand = findNewEntity(level, bs, Entity.class);
+
+                FishingHook hook = new FishingHook(player, level, 0, 0);
+                hook.snapTo(1.5, 65.5, 4.5, -90.0f, 0.0f);
+                hook.setDeltaMovement(new Vec3(0.85, 0.0, 0.0));
+                fEntityRandom.set(hook, RandomSource.create(HOOK_SEED));
+                level.addFreshEntity(hook);
+                level.getRandom().setSeed(LEVEL_SEED);
+                tickGameEvents.clear();
+                tickSounds.clear();
+
+                JsonObject rec = new JsonObject();
+                rec.addProperty("case", "tick8_margin_boundary");
+                JsonArray ticks = new JsonArray();
+                for (int t = 1; t <= 10; t++) {
+                    tickGameEvents.clear();
+                    tickSounds.clear();
+                    stepTick();
+                    channel.runPendingTasks();
+                    channel.outboundMessages().clear();
+                    ticks.add(snapHookTick(t, hook, stand));
+                }
+                rec.add("ticks", ticks);
+                out.add(rec);
+            }
+
+            // 5. Finding #24: Immediate same-tick retrieve on hit tick (while state is still FLYING, hookedIn != null).
+            {
+                resetArena(level, "extra");
+                level.getRandom().setSeed(LEVEL_SEED);
+                Set<Integer> bi = entityIds(level);
+                cmd("summon minecraft:item 3.5 64.0 4.5 {Item:{id:\"minecraft:diamond\",count:1},Motion:[0.0d,0.0d,0.0d],PickupDelay:32767}");
+                Entity item = findNewEntity(level, bi, Entity.class);
+
+                FishingHook hook = new FishingHook(player, level, 0, 0);
+                hook.snapTo(1.5, 64.15, 4.5, -90.0f, 0.0f);
+                hook.setDeltaMovement(new Vec3(1.0, 0.0, 0.0));
+                fEntityRandom.set(hook, RandomSource.create(HOOK_SEED));
+                level.addFreshEntity(hook);
+                level.getRandom().setSeed(LEVEL_SEED);
+                tickGameEvents.clear();
+                tickSounds.clear();
+
+                JsonObject rec = new JsonObject();
+                rec.addProperty("case", "same_tick_retrieve_item");
+                rec.addProperty("target_id_mod4", item.getId() & 3);
+                JsonArray ticks = new JsonArray();
+                for (int t = 1; t <= 6; t++) {
+                    tickGameEvents.clear();
+                    tickSounds.clear();
+                    stepTick();
+                    channel.runPendingTasks();
+                    channel.outboundMessages().clear();
+                    ticks.add(snapHookTick(t, hook, item));
+                    if (hook.getHookedIn() != null) {
+                        rec.addProperty("retrieve_on_tick", t);
+                        rec.addProperty("state_at_retrieve", String.valueOf(fCurrentState.get(hook)));
+                        int dmg = hook.retrieve(player.getMainHandItem());
+                        rec.addProperty("retrieve_damage", dmg);
+                        rec.add("target_vel_after_retrieve_bits", vecBits(item.getDeltaMovement()));
+                        stepTick();
+                        rec.add("target_pos_after_retrieve_tick_bits", vecBits(item.position()));
+                        rec.add("target_vel_after_retrieve_tick_bits", vecBits(item.getDeltaMovement()));
+                        break;
+                    }
+                }
+                rec.add("ticks", ticks);
+                out.add(rec);
+            }
+
+            return out;
         }
 
         void stepTick() {

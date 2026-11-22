@@ -45,6 +45,7 @@ TESTS = [
     'game::creatures::projectiles_120_124_tests::witness_trident_enderman_dodge_122',
     'game::creatures::projectiles_120_124_tests::witness_piercing_arrow_multihit_123',
     'game::creatures::projectiles_120_124_tests::witness_firework_rocket_targets_124',
+    'game::creatures::projectiles_120_124_tests::witness_review_round1_regressions',
 ]
 
 
