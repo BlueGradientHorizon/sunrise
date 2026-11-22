@@ -52,6 +52,7 @@ impl Game<'_> {
         unchanged: impl FnOnce(&Self) -> bool,
     ) -> Option<sunrise_client::breathing::Breath> {
         let mut breath = vanilla;
+        let failures = mod_api::runtime::isolated_failures();
         let answered: Result<(), ()> = mod_api::run_transaction(self, |game, _| {
             game.native_living_breathe(
                 living,
@@ -59,7 +60,11 @@ impl Game<'_> {
                 &mut breath.consume,
                 &mut breath.refill,
             );
-            if unchanged(game) { Ok(()) } else { Err(()) }
+            if mod_api::runtime::isolated_failures() == failures && unchanged(game) {
+                Ok(())
+            } else {
+                Err(())
+            }
         });
         answered.ok().map(|()| breath)
     }
