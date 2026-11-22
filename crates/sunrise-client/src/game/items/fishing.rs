@@ -1428,7 +1428,10 @@ impl Game<'_> {
             }
         }
         if !in_water && !h.ground.on_ground && h.hooked_in.is_none() {
-            h.velocity.y -= f64::from(0.03_f32);
+            // FishingHook.tick adds all three components, including the horizontal zeroes.
+            h.velocity = h
+                .velocity
+                .add_vector(Vec3::new(0.0, -f64::from(0.03_f32), 0.0));
         }
         let mut scene = SceneCollisions {
             world: &self.world,
@@ -2429,7 +2432,7 @@ impl Game<'_> {
             }
         }
         if !in_water && !ground.on_ground {
-            velocity.y -= f64::from(0.03_f32);
+            velocity = velocity.add_vector(Vec3::new(0.0, -f64::from(0.03_f32), 0.0));
         }
         let mut scene = SceneCollisions {
             world: &self.world,

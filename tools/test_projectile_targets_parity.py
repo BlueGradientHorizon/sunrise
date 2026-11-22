@@ -9,7 +9,7 @@ mods/sunrise/src/test/java/dev/sunriselab/parity/:
 
 Outputs and a meta.json manifest are written to .local/witness/<version>/projectile_targets/
 (gitignored). Unless --record-only is given, builds the sunrise-client lib test binary once
-and runs all 11 witness tests against that directory via SUNRISE_PROJECTILE_WITNESS_DIR.
+and runs the registered witness tests against that directory via SUNRISE_PROJECTILE_WITNESS_DIR.
 
   test_projectile_targets_parity.py [--prepare] [--record-only] [--filter SUBSTRING] [--resources DIR]
 """
