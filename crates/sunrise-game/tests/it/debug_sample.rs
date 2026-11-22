@@ -7,6 +7,7 @@ use std::{
     path::Path,
     time::{Duration, Instant},
 };
+use sunrise_core::nbt::Tag;
 use sunrise_protocol::{
     buf::Reader,
     connection::Connection,
@@ -19,6 +20,16 @@ use sunrise_protocol::{
 };
 
 const TICK_MARKER: &str = "sample-test-tick-boundary";
+
+/// A literal marker may be a component itself or an argument of a chat component.
+fn has_marker(component: &Tag, marker: &Tag) -> bool {
+    match component {
+        Tag::String(_) => component == marker,
+        Tag::List(entries) => entries.iter().any(|entry| has_marker(entry, marker)),
+        Tag::Compound(entries) => entries.iter().any(|(_, entry)| has_marker(entry, marker)),
+        _ => false,
+    }
+}
 
 /// A vanilla tick function marks every running server tick before its wait and sample.
 fn install_tick_marker(game: &Path) {
@@ -106,6 +117,7 @@ impl Bot {
         ));
     }
     /// Require the boundary/acknowledgement; count samples before it in wire order.
+    #[track_caller]
     fn until(
         &mut self,
         expected: &str,
@@ -124,10 +136,12 @@ impl Bot {
         }
         panic!("did not receive {expected}; saw {} samples", samples.len());
     }
+    #[track_caller]
     fn until_chat(&mut self, marker: &str) -> Vec<Vec<i64>> {
+        let literal = Tag::String(marker.into());
         self.until(marker, |p, _| match p {
-            C::DisguisedChat(c) => format!("{:?}", c.message).contains(marker),
-            C::SystemChat(c) => format!("{:?}", c.content).contains(marker),
+            C::DisguisedChat(c) => has_marker(&c.message, &literal),
+            C::SystemChat(c) => has_marker(&c.content, &literal),
             _ => false,
         })
     }
