@@ -180,6 +180,7 @@ mod can_harvest_block;
 mod can_perform_action;
 mod can_place_item;
 mod can_player_sleep;
+mod can_start_swimming;
 mod can_sustain_plant;
 mod chat_recipient;
 mod chat_suggestion_applied;
