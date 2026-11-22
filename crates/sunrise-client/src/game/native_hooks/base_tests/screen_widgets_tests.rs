@@ -30,6 +30,9 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::KeyCode;
 use winit::window::Window;
 
+#[path = "screen_widgets_input_tests.rs"]
+mod input_routing;
+
 struct NoLoop;
 impl EventLoopCtl for NoLoop {
     fn exit(&self) {}
