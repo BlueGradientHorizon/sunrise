@@ -44,3 +44,12 @@ whose listener panics, is reported with its coordinates and storage type. A flus
 waits for all attempts to finish. An individual record failure does not fail the
 command, timer save or shutdown, but a failed region sync fails the flush. The server
 does not retry the failed snapshot. A later edit can be saved in a new snapshot.
+
+## Disk NBT budgets
+
+The job checks the uncompressed disk NBT: at most 65,536 bytes per named
+`value` tag, 64 container levels in the value, and 1,048,576 bytes for the
+whole `sunrise:attachments` entry. These budgets include tag IDs, names,
+compound terminators, mixed-list wrappers, empty namespaces and opaque
+unknown data as applicable. Over-budget data or data that would need
+truncation (such as an overlong modified UTF-8 string) refuses the job.
