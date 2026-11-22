@@ -10,13 +10,13 @@ permissions:
   contents: read
 jobs:
   command:
+    # Only comments that mention a command start a runner; claim_command.py's parse finds it on any line
+    # (`🤖 Agent:` on the first line, `/claim` on the next) or ignores the comment.
     if: >-
       github.repository == 'sunrise-org/sunrise' && github.event_name == 'issue_comment' &&
       github.event.comment.user.type != 'Bot' && (
-      startsWith(github.event.comment.body, '/claim') ||
-      startsWith(github.event.comment.body, '/unclaim') ||
-      startsWith(github.event.comment.body, '🤖 Agent: /claim') ||
-      startsWith(github.event.comment.body, '🤖 Agent: /unclaim'))
+      contains(github.event.comment.body, '/claim') ||
+      contains(github.event.comment.body, '/unclaim'))
     concurrency:
       group: claim-${{ github.event.issue.number }}
     runs-on: ubuntu-latest

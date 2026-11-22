@@ -494,6 +494,16 @@ class WorkflowTests(unittest.TestCase):
             if "github.event.comment" in line and "run:" in line:
                 self.fail(f"comment data in a shell line: {line}")
 
+    def test_a_command_on_a_later_line_starts_the_job(self):
+        # The job's condition is the first filter: one that only looks at the start of the comment skips the job, and
+        # parse never sees `🤖 Agent:\n/claim` (#4474, 2026-11-22).
+        text = (ROOT / ".github/workflows/fork-claim.yml").read_text()
+        condition = text.split("  command:\n", 1)[1].split("    concurrency:", 1)[0]
+        self.assertNotIn("startsWith(github.event.comment.body", condition)
+        for command in ("/claim", "/unclaim"):
+            self.assertIn(f"contains(github.event.comment.body, '{command}')", condition)
+        self.assertEqual(cc.parse("🤖 Agent:\n/claim"), cc.Command("claim"))
+
     def test_the_command_gets_what_exempts_the_repositorys_own_people_from_the_limit(self):
         # Without them the script reads every commenter as association NONE with no exempt logins, and refuses an org
         # member's sixth claim (#4463, 2026-11-22).
