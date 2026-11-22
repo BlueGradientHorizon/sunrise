@@ -317,8 +317,8 @@ impl Game<'_> {
             Hit::Entity { at, .. } => {
                 self.projectile_landed_event(p.id, p.owner, [at.x, at.y, at.z]);
             }
-            Hit::Block { at, face, .. } if face != [0; 3] => {
-                self.projectile_landed_event(p.id, p.owner, [at.x, at.y, at.z]);
+            Hit::Block { pos, face, .. } if face != [0; 3] => {
+                self.projectile_block_landed_event(p.id, p.owner, pos);
             }
             _ => {}
         }
@@ -356,19 +356,12 @@ impl Game<'_> {
     /// were all found first, so the saved charge ticks again now, without the
     /// broken vehicle. Leave publication and handling to the caller.
     pub(super) fn broken_vehicle_retick(&self, mut again: Projectile) -> (Projectile, bool, Hit) {
-        let mut targets = self
-            .projectile_targets_for(super::creatures::TargetFilter::for_projectile(&again.kind));
-        if again.owner != Some(Who::Player) || super::lan_pvp::meets_players(&again.kind) {
-            targets.extend(self.lan_projectile_targets());
-        }
-        let border = Some(self.border.bounds());
+        let include_guests =
+            again.owner != Some(Who::Player) || super::lan_pvp::meets_players(&again.kind);
+        let query = super::creatures::TargetQuery::for_projectile(&again, include_guests);
         let (keep, hit) = {
-            let w = self.mob_world_base(&[]);
-            again.tick(&super::creatures::ProjWorld {
-                w: &w,
-                targets: &targets,
-                border,
-            })
+            let live = self.live_proj_world(query, &[]);
+            again.tick(&live)
         };
         // The first run of this tick already gave these.
         again.take_shoot_event();
@@ -391,12 +384,15 @@ impl Game<'_> {
             // not hit (`AbstractWindCharge.canHitEntity`).
             Who::Mob(id) if id >= super::dragon::SPECIAL => {
                 if id < super::dragon::SPECIAL + 8 {
-                    self.hit_special(
+                    let owner = self.resolved_projectile_owner(p.owner, p.guest);
+                    self.hit_special_full(
                         id,
                         1.0,
-                        p.owner == Some(Who::Player),
+                        owner,
+                        p.guest,
                         sunrise_client::mobs::DamageKind::WindCharge,
-                        Some(p),
+                        Some("minecraft:wind_charge"),
+                        Some(super::dragon::DirectHit::from_projectile(p)),
                     );
                 }
             }

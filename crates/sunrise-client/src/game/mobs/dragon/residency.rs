@@ -103,10 +103,9 @@ impl Game<'_> {
         {
             return Some(d.part_box((id - d.id - 1) as usize));
         }
-        let i = self.crystals.iter().position(|c| c.id == id)?;
-        self.special_targets()
-            .into_iter()
-            .find(|(s, _)| *s == CRYSTAL_IDS + i as u32)
-            .map(|(_, b)| b)
+        self.crystals
+            .iter()
+            .find(|c| c.id == id)
+            .map(Crystal::bounds)
     }
 }

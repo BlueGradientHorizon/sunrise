@@ -1144,6 +1144,7 @@ impl Game<'_> {
             // own doPush is empty; only this shove runs.
             self.push_rideable_minecarts(i);
             let id = self.armor_stands[i].id;
+            let prev_fire = self.armor_stands[i].fire_ticks;
             let saved = ["minecraft:on_fire", "minecraft:in_fire"]
                 .map(|damage| self.saved_refuses_damage(id, damage, false));
             let tags = world_items!(self);
@@ -1181,6 +1182,12 @@ impl Game<'_> {
                 },
             ) {
                 dead.push((id, damage_type));
+            }
+            if self.armor_stands[i].fire_ticks > 0
+                && self.armor_stands[i].fire_ticks >= prev_fire
+                && let Some(sunrise_core::nbt::Tag::Compound(map)) = self.persist.raw.get_mut(&id)
+            {
+                map.remove(&"TicksFrozen".into());
             }
             let (id, from, to) = section_step;
             self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);

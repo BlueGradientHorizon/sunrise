@@ -514,8 +514,25 @@ impl Game<'_> {
         }
         // BLOCK_CHANGE by the attacker after the drops: ItemFrame.hurtServer
         // for the item, ItemFrame.dropItem(level, causedBy) for the frame.
-        let who = by_player.then_some(sunrise_client::mobs::Who::Player);
-        let ctx = self.who_context(who, None);
+        let ctx = match source {
+            Some(super::commands::Target::Player) => {
+                self.who_context(Some(sunrise_client::mobs::Who::Player), None)
+            }
+            Some(super::commands::Target::Guest(conn)) => {
+                let who = self
+                    .command_guest(conn)
+                    .map(|g| sunrise_client::mobs::Who::Mob(g.entity_id as u32))
+                    .or(Some(sunrise_client::mobs::Who::Player));
+                self.who_context(who, None)
+            }
+            Some(super::commands::Target::Mob(id)) => {
+                self.who_context(Some(sunrise_client::mobs::Who::Mob(id)), None)
+            }
+            _ => {
+                let who = by_player.then_some(sunrise_client::mobs::Who::Player);
+                self.who_context(who, None)
+            }
+        };
         self.post_game_event("minecraft:block_change", at, ctx);
         if !with_frame {
             // ItemFrame.hurtServer plays this after the event.

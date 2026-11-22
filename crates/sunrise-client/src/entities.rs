@@ -2194,9 +2194,14 @@ impl ArmorStand {
             if self.fire_ticks >= 0 {
                 self.fire_ticks = self.fire_ticks.max(160);
             }
-            if !self.invisible && self.fire_ticks > 0 && !invulnerable(world, "minecraft:in_fire") {
-                self.health -= 0.15;
-                hit_by = Some("minecraft:in_fire");
+            if !self.invisible && !invulnerable(world, "minecraft:in_fire") {
+                if self.fire_ticks > 0 {
+                    self.health -= 0.15;
+                    hit_by = Some("minecraft:in_fire");
+                } else {
+                    // ArmorStand.hurtServer(#ignites_armor_stands): not on fire yet -> ignite 5s.
+                    self.fire_ticks = self.fire_ticks.max(100);
+                }
             }
         }
         // Dead: the damage type that ran its health out, which vanilla's

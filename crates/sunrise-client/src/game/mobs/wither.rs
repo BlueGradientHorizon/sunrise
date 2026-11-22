@@ -182,17 +182,15 @@ impl Game<'_> {
     pub(super) fn wither_skull_hit(
         &mut self,
         p: &Projectile,
-        who: Option<Who>,
+        hit: sunrise_client::projectiles::Hit,
         at: [f64; 3],
     ) -> sunrise_client::Result<()> {
-        // Projectile.getOwner: none once the owner is gone.
-        let live_owner = match p.owner {
-            Some(Who::Mob(id)) if self.mobs.iter().any(|m| m.id == id && !m.removed) => {
-                Some(Who::Mob(id))
-            }
-            Some(Who::Mob(_)) => None,
-            other => other,
+        let who = match hit {
+            sunrise_client::projectiles::Hit::Entity { who, .. } => Some(who),
+            _ => None,
         };
+        // Projectile.getOwner: none once the owner is gone.
+        let live_owner = self.resolved_projectile_owner(p.owner, p.guest);
         let owner = match live_owner {
             Some(Who::Mob(id)) => Some(id),
             _ => None,
@@ -236,13 +234,22 @@ impl Game<'_> {
                     self.heal_skull_owner(p, live_owner);
                 }
             }
-            // EnderDragonPart.hurtServer: EnderDragon.hurt routes it by the
-            // part, a skull is no arrow a perched dragon shrugs off, and only
-            // a player's skull takes health. A part is no LivingEntity
-            // (no withering) and stays alive (no heal).
-            Some(Who::Mob(id)) if id >= super::dragon::SPECIAL => {
-                let by_player = live_owner == Some(Who::Player);
-                self.hit_special(id, amount, by_player, kind, Some(p));
+            // EnderDragonPart.hurtServer / EndCrystal.hurtServer: skull with live owner uses wither_skull, else magic.
+            Some(Who::Mob(id)) if self.is_special_target(id) => {
+                let damage_type = if live_owner.is_some() {
+                    "minecraft:wither_skull"
+                } else {
+                    "minecraft:magic"
+                };
+                self.hit_special_full(
+                    id,
+                    amount,
+                    live_owner,
+                    p.guest,
+                    kind,
+                    Some(damage_type),
+                    Some(super::dragon::DirectHit::from_projectile(p)),
+                );
             }
             Some(Who::Mob(id)) => {
                 let owner_species = owner
@@ -320,7 +327,7 @@ impl Game<'_> {
             None => {}
         }
         // Projectile.onHit emits PROJECTILE_LAND after onHitEntity and before WitherSkull.onHit explodes.
-        self.projectile_landed_event(p.id, p.owner, at);
+        self.projectile_hit_landed_event(p.id, p.owner, hit);
         self.combat.explosion_owner = owner;
         self.combat.explosion_in_water = p.touching_water;
         // The blast's source names a player owner, for the dragon's kill credit.
