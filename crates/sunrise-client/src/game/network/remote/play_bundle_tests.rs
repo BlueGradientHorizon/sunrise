@@ -769,6 +769,11 @@ fn standalone_transfer_keeps_its_earlier_cookie_even_after_source_eof() {
             let mut target = target.join().unwrap();
             assert_eq!(login_cookie(&mut target, bundled), (!eof).then(|| vec![1]));
             assert_eq!(login_cookie(&mut target, standalone), Some(vec![2]));
+            // The admitted tail can drain before or after the login listener takes its copy.
+            // Write a separate cookie after Hello to distinguish a snapshot from a shared map.
+            let after_hello = "bundle_probe:after_hello";
+            old.lock().unwrap().insert(after_hello.into(), vec![44]);
+            assert_eq!(login_cookie(&mut target, after_hello), None);
             assert_eq!(old.lock().unwrap().get(standalone), Some(&vec![2]));
             assert_eq!(old.lock().unwrap().get(late), Some(&vec![43]));
             if !eof {
