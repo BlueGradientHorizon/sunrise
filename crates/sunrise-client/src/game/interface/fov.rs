@@ -130,12 +130,14 @@ impl Game<'_> {
         } else {
             (None, None)
         };
+        let first_person = self.camera_type.is_first_person();
         let target = player.map_or(1.0, |player| {
-            let base = field_of_view_modifier(
-                &player,
-                self.camera_type.is_first_person(),
-                self.fov_effect_scale(),
-            );
+            let base = field_of_view_modifier(&player, first_person, self.fov_effect_scale());
+            // AbstractClientPlayer.getFieldOfViewModifier returns 0.1 before
+            // Mth.lerp / ComputeFovModifierEvent when scoping in first person.
+            if first_person && matches!(player.using, Some((UseItem::Spyglass, _))) {
+                return base;
+            }
             let mut modifier = base;
             self.native_compute_fov_modifier(&player, base, &mut modifier);
             valid_fov_modifier(modifier, base)

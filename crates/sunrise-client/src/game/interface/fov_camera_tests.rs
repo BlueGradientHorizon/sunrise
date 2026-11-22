@@ -91,15 +91,23 @@ fn spectated_player_fov_uses_their_own_attributes_and_item_use() {
         game.camera_type = CameraType::FirstPerson;
         game.tick_fov();
         assert_eq!(
-            game.view.fov_modifier, 0.75,
-            "ease halfway to the mod's 0.5"
+            game.view.fov_modifier, 0.55,
+            "ease halfway toward the 0.1 first-person spyglass target"
+        );
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "first-person spyglass returns 0.1 before compute_fov_modifier"
         );
 
         game.camera_type = CameraType::ThirdPersonBack;
         game.tick_fov();
-        // Vanilla: 0.1 for the first-person scope, (0.2 / 0.1 + 1) / 2 otherwise.
-        // The packet's speed is used directly; the sprint flag adds nothing to it.
-        assert_eq!(*calls.lock().unwrap(), [(inputs, 0.1), (inputs, 1.5)]);
+        assert_eq!(
+            game.view.fov_modifier, 0.525,
+            "ease halfway toward the mod's 0.5"
+        );
+        // Vanilla: (0.2 / 0.1 + 1) / 2 in third person; the packet's speed is
+        // used directly and the sprint flag adds nothing to it.
+        assert_eq!(*calls.lock().unwrap(), [(inputs, 1.5)]);
     });
 }
 

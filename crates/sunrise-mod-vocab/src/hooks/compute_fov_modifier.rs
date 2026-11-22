@@ -3,8 +3,10 @@
 pub trait Hooks {
     /// Player FOV scale for the effective camera player (local or spectated),
     /// after vanilla effects and before camera easing. The hook doesn't fire for
-    /// a non-player camera. `player.using` reports the camera player's item use,
-    /// not the local player's when those differ.
+    /// a non-player camera or while the camera player scopes with a spyglass in
+    /// first person (`AbstractClientPlayer.getFieldOfViewModifier` returns `0.1`
+    /// before `ComputeFovModifierEvent`). `player.using` reports the camera
+    /// player's item use, not the local player's when those differ.
     /// Invalid values or values outside 0.01..=10 revert to base.
     #[hook(
         receiver = "read",

@@ -16,8 +16,9 @@ spectated. It runs after vanilla's effects (such as sprinting and a drawn bow) a
 | `modifier` | The scale to use; write it to change the field of view |
 
 A value that is not finite, or lies outside `0.01..=10`, falls back to `base`. The hook does not run when the
-camera follows a non-player entity. Use `client_tick_pre` or `client_tick_post` for state updates that must
-run even then.
+camera follows a non-player entity, or while the camera player is scoping with a spyglass in first person
+(`AbstractClientPlayer.getFieldOfViewModifier` returns `0.1` before `ComputeFovModifierEvent`). Use
+`client_tick_pre` or `client_tick_post` for state updates that must run even then.
 
 `compute_fov` runs after `Camera.calculateFov` and fluid/death adjustment, before projection and nausea spin
 (NeoForge's `ViewportEvent.ComputeFov`), letting a listener replace the final world FOV in degrees (finite values
@@ -25,12 +26,12 @@ in `1..=179`). There is no separate zoom pass before this hook. Hand/HUD FOV use
 
 To compose a zoom feature (like a telescope key), check `host.playing()` and your registered key mapping.
 Keep the zoom state in your mod. Divide the modifier by your zoom factor in `compute_fov_modifier` (eased by
-vanilla `Camera.tickFov`), or divide the angle in `compute_fov` (immediate). Scale relative look speed across
-mouse, controller and keyboard in `player_turn` (or adjust mouse sensitivity and cinematic smoothing in
-`calculate_player_turn`). To yield to the camera player's first-person spyglass use, check `event.player.using`
-for `UseItem::Spyglass` in `compute_fov_modifier` and check `host.camera_type().is_first_person()`. For the
-local player outside the modifier hook, `host.local_item_use()` reports the hand, not the item: inspect that
-hand's stack with `LivingRef::with_hand_item`.
+vanilla `Camera.tickFov`, where a first-person spyglass already bypasses the hook and returns `0.1`), or
+divide the angle in `compute_fov` (immediate). Scale relative look speed across mouse, controller and
+keyboard in `player_turn` (or adjust mouse sensitivity and cinematic smoothing in `calculate_player_turn`).
+When applying zoom or turn scaling in `compute_fov` or `player_turn`, if you want a local first-person
+spyglass to take precedence, check `host.camera_type().is_first_person()`, read `host.local_item_use()` for
+the active hand, and inspect that hand's stack with `LivingRef::with_hand_item`.
 
 ## Name tags
 
