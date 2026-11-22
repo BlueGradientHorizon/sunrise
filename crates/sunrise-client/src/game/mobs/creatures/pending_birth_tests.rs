@@ -554,6 +554,146 @@ fn a_panicking_listener_spawns_nothing_and_leaves_the_arena_usable() {
     );
 }
 
+struct NetherBiomeOnJoin {
+    biome: String,
+    writes: Arc<AtomicUsize>,
+}
+
+#[mod_api::__subscriptions]
+impl Hooks for NetherBiomeOnJoin {
+    fn baby_entity_spawn(
+        &self,
+        host: &mut dyn ServerHost,
+        _: &mut BabyEntitySpawnEvent<'_>,
+    ) -> Flow {
+        assert!(
+            host.commands()
+                .run_command("execute in minecraft:the_nether run summon minecraft:pig 4 64 4")
+        );
+        assert_eq!(self.writes.load(Ordering::SeqCst), 1);
+        panic!("abort the Overworld birth");
+    }
+
+    fn entity_join_level(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut mod_api::EntityJoinLevelEvent<'_>,
+    ) -> Flow {
+        if event.kind == "minecraft:pig" {
+            assert_eq!(event.dimension, Dim::Nether.id());
+            let level = host.level(event.dimension).unwrap();
+            assert!(level.set_biome(host, [4, 64, 4], &self.biome));
+            self.writes.fetch_add(1, Ordering::SeqCst);
+        }
+        Flow::Continue
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_birth_panic_does_not_undo_or_misroute_a_biome_write_in_another_level() {
+    use sunrise_client::lan::{Out, PlayerSender};
+    use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
+
+    if run_fresh_cases(
+        "game::creatures::pending_birth_tests::a_birth_panic_does_not_undo_or_misroute_a_biome_write_in_another_level",
+        "SUNRISE_BIRTH_BIOME_CHILD",
+        &["biome"],
+    ) {
+        return;
+    }
+    crate::game::native_guest_turn_tests::with_guests(|game| {
+        game.build_registries();
+        let key = (0, 0);
+        let (overworld, nether, changed) = (0_u16, 1_u16, 2_u16);
+        for (dim, biome) in [(Dim::Nether, nether), (Dim::Overworld, overworld)] {
+            game.enter_level(dim).unwrap();
+            let mut chunk = Chunk::with_layout(0, 0, game.world.layout());
+            chunk.set_biome_cell(1, (64 - game.world.bottom_y()) >> 2, 1, biome);
+            game.world.chunks.insert(key, Arc::new(chunk));
+            game.world.modified.clear();
+            game.world.dirty_sections.clear();
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        game.lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .update_guest(12, |guest| {
+                guest.dimension = Dim::Nether.id().into();
+                guest.sender = PlayerSender::new(tx, Arc::default());
+                guest.sent_chunks.insert(key);
+            })
+            .unwrap();
+        let biome = world_biomes!(game).list[usize::from(changed)].name.clone();
+        let wire_biome = game
+            .lan
+            .as_ref()
+            .unwrap()
+            .hub
+            .registry_id("minecraft:worldgen/biome", &biome)
+            .unwrap();
+        let writes = Arc::new(AtomicUsize::new(0));
+        let mods = vec![mod_api::ModEntry::new(
+            "nether-biome",
+            Box::new(NetherBiomeOnJoin {
+                biome,
+                writes: writes.clone(),
+            }),
+        )];
+        mod_platform::testing::with_mods(mods.into(), || {
+            assert_eq!(breed_pair(game, "minecraft:cow").2, None);
+            assert_eq!(writes.load(Ordering::SeqCst), 1);
+            assert_eq!(
+                take_hook_panics(),
+                [HookPanicReport {
+                    mod_id: "nether-biome",
+                    hook: "baby_entity_spawn",
+                }]
+            );
+        });
+        assert_eq!(game.dim, Dim::Overworld);
+        assert_eq!(game.world.chunks[&key].biome(4, 64, 4), overworld);
+        assert!(!game.world.modified.contains(&key));
+        let resends = rx
+            .try_iter()
+            .filter_map(|out| {
+                let Out::Packet(body) = out else { return None };
+                let mut reader = Reader::new(&body);
+                let id = reader.varint().unwrap();
+                match Clientbound::decode(id, reader.rest()).unwrap() {
+                    Clientbound::ChunksBiomes(packet) => Some(packet),
+                    _ => None,
+                }
+            })
+            .collect::<Vec<_>>();
+        let [resend] = resends.as_slice() else {
+            panic!("the Nether watcher must receive exactly one biome update");
+        };
+        let [column] = resend.chunks.as_slice() else {
+            panic!("one biome column changed");
+        };
+        assert_eq!(column.pos, [0, 0]);
+
+        game.enter_level(Dim::Nether).unwrap();
+        let sections = column
+            .biomes((game.world.shape.height >> 4) as usize, 8)
+            .unwrap();
+        let section = ((64 - game.world.shape.min_y) >> 4) as usize;
+        // Local quart (1, 0, 1) in that section.
+        assert_eq!(sections[section].get(5), wire_biome);
+        assert_eq!(game.world.chunks[&key].biome(4, 64, 4), changed);
+        assert!(
+            game.world.modified.contains(&key),
+            "the biome is marked for save"
+        );
+        assert!(
+            game.world.dirty_sections.contains(&(0, 0, 0)),
+            "the column was dirtied"
+        );
+    });
+}
+
 // Breeding.
 
 /// Two cows bred directly, as `breeding_announces_the_orb_before_the_lower_id_child` does: the
