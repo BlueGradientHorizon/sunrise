@@ -160,7 +160,15 @@ jobs:
         run: |
           export CARGO_TARGET_DIR="$PWD/.local/parity-target"
           exec > "$PARITY_LOG_DIR/game-probes.log" 2>&1
-          scripts=(tools/test_*_parity.py)
+          # This share's harnesses, from the one plan (a shard NAME#N is NAME's script); a run with no plan scans all.
+          plan="$RUNNER_TEMP/plan/bucket-${BUCKET:-0}.json"
+          if [ -f "$plan" ]; then
+            scripts=($(python3 -c 'import json, sys
+          for name in sorted({entry.split("#")[0] for entry in json.load(open(sys.argv[1]))}): print(f"tools/test_{name}_parity.py")' "$plan"))
+          else
+            scripts=(tools/test_*_parity.py)
+          fi
+          [ ${#scripts[@]} -gt 0 ] || exit 0
           if grep -q "'--example', 'client_probe'" "${scripts[@]}"; then
             cargo build --profile fast -p sunrise-client-lib --example client_probe
           fi
