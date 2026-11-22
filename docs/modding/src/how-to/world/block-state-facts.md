@@ -31,6 +31,7 @@ known state reads as `Ok(None)`; unavailable metadata, invalid states and refuse
 | `map_color(state) -> Option<u8>` | `BlockState.getMapColor`: the `MapColor.id` a map item colours a column by, 0 for none |
 | `map_color_rgba(packed) -> Option<[u8; 4]>` | `MapColor.getColorFromPackedId`: decode a map pixel to `[red, green, blue, alpha]`; ID 0 and undefined IDs decode to transparent RGBA; `None` means no game backend |
 | `block_class(state, class: BlockClass) -> Result<Option<bool>, LevelReadError>` | Java `instanceof` on the block's vanilla class, subclasses included: `Stair`, `Entity` (`EntityBlock`), `IronBars`, `StainedGlassPane`, `TrapDoor`. See below |
+| `piston_push_reaction(state) -> Result<Option<PushReaction>, LevelReadError>` | `BlockState.getPistonPushReaction()`: the resolved reaction used by pistons, including Part answers. See [piston push reactions](piston-push-reactions.md) |
 | `states_of(block) -> Option<BlockStateRange>` | `StateDefinition.getPossibleStates`, as owned values in canonical local-ordinal order |
 | `definition(block) -> Option<StateProperties<'_>>` | Borrowed property names and legal serialized values |
 | `matches(state, block, constraints)` | Partial property match with typed invalid-property and invalid-value errors |
@@ -61,7 +62,7 @@ The conductor query uses the same exported predicate as redstone, not render sol
 placed block, use `LevelRef::is_redstone_conductor(host, pos)` (server side, `None` for an unloaded
 position).
 
-Queries return `None` for an unknown state or block, including an invalid local ordinal, and on a host with no game behind it (a mod's test double). The ordinal order is defined by the complete canonical property constraints, not by the engine's numeric enumeration.
+Option-only queries return `None` for an unknown state or block, including an invalid local ordinal, and on a host with no game behind it (a mod's test double). Queries returning `Result<Option<_>, LevelReadError>` distinguish unknown states (`Ok(None)`) from unavailable metadata (`Err(LevelReadError::Unavailable)`). The ordinal order is defined by the complete canonical property constraints, not by the engine's numeric enumeration.
 
 ## Contextual friction
 
@@ -84,6 +85,33 @@ client prediction and replay.
 A part's answer is used as given, as vanilla uses what `getFriction` returns: any finite value,
 above 1 or below 0 included. A non-finite answer is refused and the state's own coefficient is
 used.
+
+## Contextual light emission
+
+`level.get_light_emission(host, pos, state)` asks how much light the supplied state emits in
+an open server level or the current client level. The position supplies context: the state need
+not be placed there, and the query doesn't load its chunk. A block declaring `dynamic_light`
+can answer through its [Part](../../concepts/parts/block-parts.md#light-emission); a static state
+or a Part that declines uses the declared emission. The query returns the raw value, including
+`Ok(0)` for zero emission. `LevelReadError::Stale` means a stale level handle;
+`Unavailable` means the level, state or view is unavailable, or a light-emission
+provider is already answering for this state. That refusal applies even at another level or
+position; a provider can still ask another state. The read neither publishes light nor requests a relight.
+
+`host.block_states().light_emission(state)` reads only the declared value. To read the light
+already propagated to a position, use `level.brightness(host, layer, pos)` instead.
+
+## Contextual enchanting power
+
+`level.get_enchant_power_bonus(host, pos, state, table_pos)` reads the effective power of
+`state` on either side. To ask the placed block, get its state from `level.block_state(host, pos)`
+first. `table_pos` is context for the [Part](../../concepts/parts/block-parts.md#enchanting-power),
+not a block the read validates. The default is 1.0 for a provider-tagged block and 0.0 otherwise.
+The read preserves the Part's answer, including signed fractions, NaN and infinity. Apply
+your own scan and transmitter checks if summing powers for a table; the read doesn't round or
+cap them. It doesn't load chunks or write to the world. A stale handle or unavailable view
+or state refuses the query. A nested enchanting-power query for an active provider state
+is also refused, even at another level or position; it can still ask a different state.
 
 ## Block classes
 

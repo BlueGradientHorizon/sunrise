@@ -43,19 +43,33 @@ hook never runs on a server. See [Random display ticks for blocks](../../how-to/
 
 `BlockPart::light_emission` supplies positional light for blocks that declare
 `dynamic_light: true`. It runs on both sides with a read-only host. Return `Some(level)`
-to replace the state's emission or `None` to keep it.
+to replace the state's emission or `None` to keep it. Use `event.state` as the emitter;
+a [contextual query](../../how-to/world/block-state-facts.md#contextual-light-emission) can name
+an unplaced state at that position.
 
 | Rule | Behavior |
 | --- | --- |
 | Eligibility | Every state of a block declaring `dynamic_light` is queried; other blocks are not. |
-| Calls | Chunk arrival, block edits and `LevelRef::check_light(host, pos)` query emission. |
+| Calls | Explicit `LevelRef::get_light_emission` reads, chunk arrival, block edits and `LevelRef::check_light` query emission. |
 | Caching | Light workers read the stored answer; they do not call your Part. Call `check_light` when data your answer depends on changes. |
 | Thread | The callback runs on the thread that owns the level. |
-| Range | Values above 15 are clamped to 15 before entering the light queue. |
+| Range | Explicit reads return the Part's raw answer. Values above 15 are clamped only before entering the light queue. |
 | Client updates | A server light update queries each affected section's cells at most once per cell per update. |
 | Exclusions | The block's own rendered light, ambient occlusion and mob-spawn rules use the state's light instead. |
 
 Keep the callback a pure function of the level, position and state, without side effects.
+
+## Enchanting power
+
+`BlockPart::enchant_power_bonus` receives the queried `state`, provider `pos`, `table_pos`,
+and a read-only host. `event.power` starts at 1.0 for `#minecraft:enchantment_power_provider`
+and 0.0 otherwise. Explicit reads receive the answer unchanged; offers and particles keep the
+default if the Part answers with NaN or infinity.
+
+For live offers and `LevelRef::get_enchant_power_bonus`, `event.level` names the level to use
+for contextual reads, even if it is not the level in play. An explicit query may supply a state
+that isn't at `pos` or positions outside a table's bookshelf scan. For the client particle
+snapshot, `event.level` is `None` and both positions are the origin; answer from the state alone.
 
 ## Path classification
 

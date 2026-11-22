@@ -3,5 +3,8 @@ pub use client::particle_providers::{
     ParticleProviderRegistry, ParticleProviders,
 };
 pub mod __private {
-    pub use crate::client::particle_providers::{particle_batch_from_vec, particle_batch_into_vec};
+    pub use crate::client::particle_providers::{
+        BoundParticleProvider, bind_particle_provider, particle_batch_from_vec,
+        particle_batch_into_vec,
+    };
 }

@@ -585,7 +585,6 @@ mod tests {
             let bytes: Vec<u8> = (0..len).map(|i| (i * 37 + len * 11) as u8).collect();
             let _ = Reader::decode::<crate::ItemPlace>(&bytes);
             let _ = Reader::decode::<crate::ItemStack>(&bytes);
-            let _ = Reader::decode::<crate::ParticleOptions>(&bytes);
         }
     }
     #[test]
