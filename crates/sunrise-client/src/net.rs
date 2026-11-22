@@ -1832,7 +1832,15 @@ fn configure(
     // named itself Sunrise by brand: a vanilla server is sent what vanilla's client sends,
     // whatever mods are installed.
     loop {
-        let (id, payload) = reader.recv().map_err(|e| connection_lost(e, lang))?;
+        let (id, payload) = match reader.recv() {
+            Ok(frame) => frame,
+            Err(e) => {
+                if let Some(reason) = config.take_packet_error() {
+                    return Err(reason);
+                }
+                return Err(connection_lost(e, lang));
+            }
+        };
         let packet =
             cfg::Clientbound::decode_with_payload_codecs(id, &payload, &payloads.local.codecs)
                 .map_err(|err| {
@@ -1982,9 +1990,14 @@ fn configure(
             cfg::Clientbound::ResourcePackPop(p) => {
                 let _ = send.send_wait(Event::PackPop(p.id));
             }
-            // ClientCommonPacketListenerImpl.handlePostEffects: player is null during configuration.
+            // ClientCommonPacketListenerImpl.handlePostEffects: queue in listener order so
+            // earlier Ping/Pong replies drain before disconnect.packetError closes the connection.
             cfg::Clientbound::PostEffects(_) => {
-                return Err(Reason::keyed("disconnect.packetError", lang));
+                config.queue(
+                    &io,
+                    send,
+                    ConfigurationAction::PostEffects(Reason::keyed("disconnect.packetError", lang)),
+                )?;
             }
             // The game shows it immediately, before Joined/Reconfigured installs
             // the play registries. Only the dialog entries and tags are dynamic
@@ -2022,7 +2035,7 @@ fn configure(
                 };
                 let (resume, ready) = std::sync::mpsc::channel();
                 send.send_wait(Event::FinishConfiguration(Box::new(FinishConfiguration {
-                    listener: config,
+                    listener: config.clone(),
                     writer: writer.clone(),
                     configuring: configuring.clone(),
                     play,
@@ -2031,7 +2044,15 @@ fn configure(
                     resume,
                 })))
                 .map_err(|error| Reason::plain(error.to_string()))?;
-                let registries = ready.recv().map_err(|_| Reason::plain("Disconnected"))??;
+                let registries = match ready.recv() {
+                    Ok(result) => result?,
+                    Err(_) => {
+                        if let Some(reason) = config.take_packet_error() {
+                            return Err(reason);
+                        }
+                        return Err(Reason::plain("Disconnected"));
+                    }
+                };
                 if let Some(features) = features {
                     let _ = send.send_wait(Event::Features(features));
                 }
@@ -5202,23 +5223,41 @@ mod tests {
             .into_iter()
             .collect();
             let thread = std::thread::spawn(move || {
-                let (send, _events) = event_channel();
-                configure(
-                    &mut reader,
-                    &client_writer,
-                    &Arc::new(AtomicBool::new(true)),
-                    &lang,
-                    &send,
-                    &Cookies::default(),
-                    &data,
-                    &crate::raw_payloads::Transport::empty(),
+                drive_configuration(
+                    |send| {
+                        configure(
+                            &mut reader,
+                            &client_writer,
+                            &Arc::new(AtomicBool::new(true)),
+                            &lang,
+                            send,
+                            &Cookies::default(),
+                            &data,
+                            &crate::raw_payloads::Transport::empty(),
+                        )
+                    },
+                    |_| {},
                 )
             });
             let mut server = Connection::local(server);
+            server
+                .reader
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            let _ = server.send(&cfg::Clientbound::Ping(cfg::Ping { id: 19 }).encode());
             let _ = server.send(&raw_frame);
             let _ = server.send(&cfg::Clientbound::FinishConfiguration(Empty).encode());
+            let mut replies = Vec::new();
+            while let Ok((id, body)) = server.recv() {
+                replies.push(cfg::Serverbound::decode(id, &body).unwrap());
+            }
             let ended = thread.join().unwrap();
             drop(shared_writer);
+            assert_eq!(
+                replies,
+                vec![cfg::Serverbound::Pong(cfg::Ping { id: 19 })],
+                "config post_effects ({case_name}): earlier Ping must drain as Pong and FinishConfiguration must not send"
+            );
             let got = match ended {
                 Ok(_) => "none".to_owned(),
                 Err(reason) => reason.key.unwrap_or(reason.text),

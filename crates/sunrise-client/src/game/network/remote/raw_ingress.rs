@@ -9,10 +9,19 @@ fn local_transfer_notice() -> Event {
     }
 }
 
+fn packet_error_notice() -> Event {
+    Event::Disconnected {
+        reason: sunrise_client::lang::get("disconnect.packetError"),
+        key: Some("disconnect.packetError".into()),
+        from_server: false,
+    }
+}
+
 #[derive(Default)]
 struct ListenerTurn {
     opening: Option<RemoteOpening>,
     end: Option<Event>,
+    packet_error: bool,
 }
 
 impl Remote {
@@ -296,7 +305,7 @@ impl Game<'_> {
             match io.bundle_member(packet) {
                 BundleStep::Event(event) => {
                     self.handle_remote_event(event, turn)?;
-                    if self.remote.is_none() {
+                    if self.remote.is_none() || turn.packet_error {
                         return Ok(());
                     }
                 }
@@ -520,15 +529,15 @@ impl Game<'_> {
                     self.remote_perf_reply(&p.data)
                 }
                 packet => match self.handle_packet(packet) {
-                    // ClientCommonPacketListenerImpl.onPacketError.
+                    // ClientCommonPacketListenerImpl.onPacketError: close first, keep any earlier
+                    // disconnect reason, and finalize teardown once at the end of the turn.
                     Err(e) if e.is::<PacketError>() => {
                         log::warn!("Sunrise: disconnected: {e}");
-                        self.connection_ended(
-                            &e.to_string(),
-                            Some("disconnect.packetError"),
-                            sunrise_hooks::connection::By::Connection,
-                        );
-                        self.leave_server(Some(Text::translate("disconnect.packetError", &[])))?;
+                        if let Some(remote) = &self.remote {
+                            remote.session.close_after_pending();
+                        }
+                        turn.end.get_or_insert_with(packet_error_notice);
+                        turn.packet_error = true;
                     }
                     other => other?,
                 },
@@ -571,6 +580,9 @@ impl Game<'_> {
         else {
             unreachable!("listener only retains the disconnect notice");
         };
+        if let Some(remote) = &self.remote {
+            remote.session.close_after_pending();
+        }
         self.reset_book_view();
         log::info!("Sunrise: disconnected: {reason}");
         let by = if from_server {
@@ -579,7 +591,11 @@ impl Game<'_> {
             sunrise_hooks::connection::By::Connection
         };
         self.connection_ended(&reason, key.as_deref(), by);
-        self.leave_server(Some(Text::literal(reason)))
+        let screen_reason = match key.as_deref() {
+            Some(k) if sunrise_client::lang::get(k) == reason => Text::translate(k, &[]),
+            _ => Text::literal(reason),
+        };
+        self.leave_server(Some(screen_reason))
     }
 }
 
