@@ -196,8 +196,9 @@ transaction boundary:
   listener can refill a crafting grid and the next iteration sees it). A panicking listener is contained and disabled
   for `menu_slot_take` for the rest of the session, and the click aborts its enclosing transaction (undoing both the
   click and the listener's writes) before resending the menu.
-- **Handled `menu_quick_move` shift-clicks**: `menu_quick_move` applies its remainder to the resident container slot
-  and publishes `BlockEntity.setChanged` before calling `menu_slot_take`, with no enclosing click transaction. Wrap
+- **Handled `menu_quick_move` shift-clicks**: `menu_quick_move` settles its remainder to the actual clicked source:
+  the resident or linked container slot, the player's inventory slot, or the stored crafting result. It publishes
+  any resulting `BlockEntity.setChanged` notices before calling `menu_slot_take`, with no enclosing click transaction. Wrap
   writes that must commit or abort together in `event.subject.transaction(...)`. A panicking listener is contained and
   disabled for `menu_slot_take` for the rest of the session; any open `event.subject.transaction(...)` aborts, live
   writes made outside a transaction survive (and still publish container updates), and the earlier quick-move

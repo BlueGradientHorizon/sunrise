@@ -593,12 +593,21 @@ pub(super) enum After {
         spawn: Box<super::spill::Spawn>,
         play_events: bool,
     },
+    /// Sound and smoke for a mod's accepted dispense reply, after its behaviour's effects.
+    DispenserFeedback {
+        pos: Pos,
+        facing: sunrise_core::geometry::Direction,
+        event: i32,
+    },
     /// `BlockEntity.setChanged`.
     Changed(Pos),
     /// `BlockEntity.setChanged` dirty/comparator updates without reentering `contents_changed`.
     ChangedWithoutHook(Pos),
-    /// An implicit notice staged during a mod quick move.
-    QuickMoveChanged(QuickMoveNotice),
+    /// A notice for a specific resident row, not a replacement at the same position.
+    ChangedHolder {
+        holder: BlockEntityIdentity,
+        silent: bool,
+    },
     GuestMenu(u32, Box<super::lan_crafting::GuestMenuEffects>),
     MenuClick(Box<super::lan_menus::MenuClickReply>),
     MenuPlacesNotice(u32, u128, i32),
@@ -690,12 +699,13 @@ impl After {
                 | Self::ConnectionGroup(..)
                 | Self::Changed(_)
                 | Self::ChangedWithoutHook(_)
-                | Self::QuickMoveChanged(_)
+                | Self::ChangedHolder { .. }
                 | Self::Capabilities(_)
                 | Self::LevelWrite(_)
                 | Self::FluidWrite(_)
                 | Self::FluidEffects(_)
                 | Self::DispenserDrop { .. }
+                | Self::DispenserFeedback { .. }
                 | Self::BlockGameEvent(..)
                 | Self::Drop(..)
                 | Self::Spawn(..)
@@ -2062,10 +2072,8 @@ impl<'g> Game<'g> {
     pub(super) fn publish_quick_move_notices(&mut self, notices: Vec<QuickMoveNotice>) {
         for QuickMoveNotice { dim, holder } in notices {
             let back = self.enter_command_level(dim);
-            let [x, y, z] = holder.position;
-            let pos = (x, y, z);
-            if self.dim == dim && self.world.block_entities.identity(pos) == Some(holder) {
-                self.container_changed(pos);
+            if self.dim == dim {
+                self.publish_holder_changed(holder, false);
             }
             if let Some(back) = back {
                 self.enter_command_level(back);
@@ -2073,27 +2081,57 @@ impl<'g> Game<'g> {
         }
     }
 
+    fn publish_holder_changed(&mut self, holder: BlockEntityIdentity, silent: bool) {
+        let [x, y, z] = holder.position;
+        let pos = (x, y, z);
+        if self.world.block_entities.identity(pos) == Some(holder) {
+            if silent {
+                self.container_changed_without_hook(pos);
+            } else {
+                self.container_changed(pos);
+            }
+        }
+    }
+
+    fn container_change_effect(&self, pos: Pos, holder: Option<BlockEntityIdentity>) -> After {
+        let silent = !self.contents_changing.is_empty()
+            && self.native_level_here().is_some_and(|level| {
+                self.contents_notice_active(level, BlockPos::new(pos.0, pos.1, pos.2))
+            });
+        let holder = holder.or_else(|| {
+            // Other writes to a dispenser's slots share its identity-bound notice, so they
+            // coalesce with the dispense rather than leaving a positional notice behind.
+            let dispenser = &*self
+                .res
+                .facts()
+                .get(self.world.block(pos.0, pos.1, pos.2))
+                .name
+                == "minecraft:dispenser";
+            if dispenser || (!silent && self.transactions.quick_move_notices.is_some()) {
+                self.world.block_entities.identity(pos)
+            } else {
+                None
+            }
+        });
+        if let Some(holder) = holder {
+            After::ChangedHolder { holder, silent }
+        } else if silent {
+            After::ChangedWithoutHook(pos)
+        } else {
+            After::Changed(pos)
+        }
+    }
+
+    /// Journal a container notice already bound to the row that received the write.
+    pub(super) fn after_holder_changed(&mut self, holder: BlockEntityIdentity) {
+        let [x, y, z] = holder.position;
+        self.after_commit(self.container_change_effect((x, y, z), Some(holder)));
+    }
+
     /// Runs `after` at once, or at the root commit inside a transaction.
     pub(super) fn after_commit(&mut self, after: After) {
         let after = match after {
-            After::Changed(pos) => {
-                let reentering = !self.contents_changing.is_empty()
-                    && self.native_level_here().is_some_and(|level| {
-                        self.contents_notice_active(level, BlockPos::new(pos.0, pos.1, pos.2))
-                    });
-                if reentering {
-                    After::ChangedWithoutHook(pos)
-                } else if self.transactions.quick_move_notices.is_some()
-                    && let Some(holder) = self.world.block_entities.identity(pos)
-                {
-                    After::QuickMoveChanged(QuickMoveNotice {
-                        dim: self.dim,
-                        holder,
-                    })
-                } else {
-                    After::Changed(pos)
-                }
-            }
+            After::Changed(pos) => self.container_change_effect(pos, None),
             after => after,
         };
         let frame = if after.level_owned() {
@@ -2123,17 +2161,23 @@ impl<'g> Game<'g> {
             } => {
                 self.commit_dispensed(pos, facing, *spawn, play_events);
             }
+            After::DispenserFeedback { pos, facing, event } => {
+                self.commit_dispense_feedback(pos, facing, event);
+            }
             After::LevelWrite(write) => self.commit_level_write(*write),
             After::BlockGameEvent(id, pos, who, state) => {
                 self.post_block_game_event(id, pos, Some(who), Some(state));
             }
             After::Changed(pos) => self.container_changed(pos),
             After::ChangedWithoutHook(pos) => self.container_changed_without_hook(pos),
-            After::QuickMoveChanged(notice) => {
-                if let Some(queue) = &mut self.transactions.quick_move_notices {
-                    queue.push(notice);
+            After::ChangedHolder { holder, silent } => {
+                if !silent && let Some(queue) = &mut self.transactions.quick_move_notices {
+                    queue.push(QuickMoveNotice {
+                        dim: self.dim,
+                        holder,
+                    });
                 } else {
-                    self.publish_quick_move_notices(vec![notice]);
+                    self.publish_holder_changed(holder, silent);
                 }
             }
             After::GuestMenu(conn, effects) => self.publish_guest_menu_effects(conn, *effects),
@@ -2424,8 +2468,8 @@ impl<'g> Game<'g> {
                 // Each storage tells the world once, after every write.
                 After::Changed(pos) if !told.insert(Ok(pos)) => {}
                 After::ChangedWithoutHook(pos) if !told_silent.insert(pos) => {}
-                After::QuickMoveChanged(ref notice)
-                    if !told_holders.insert((notice.dim, notice.holder)) => {}
+                After::ChangedHolder { holder, silent }
+                    if !told_holders.insert((holder, silent)) => {}
                 After::ConnectionGroup(pos @ (x, y, z), group) => {
                     self.world.set_connection_group(x, y, z, group, true);
                     explicit_group_since_block.insert(pos);
