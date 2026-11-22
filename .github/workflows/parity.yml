@@ -193,9 +193,10 @@ jobs:
           cargo build --release -p sunrise-world --example world_probe
       # Keep complete legacy datafix seed inputs in $DYNA_CI_KEEP/datafix-seeds/<key> so each share
       # copies immutable inputs instead of regenerating every legacy server inside the harness timeout.
-      # Failure writes a marker and continues so other harnesses in this share still run and report,
-      # while datafix fails immediately without retrying generation.
+      # Failure is passed via steps.datafix-seeds.outcome so other harnesses in this share still run
+      # and report, while datafix fails immediately without retrying generation.
       - name: Prepare datafix seed worlds from keep
+        id: datafix-seeds
         continue-on-error: true
         run: |
           [ -n "${DYNA_CI_KEEP:-}" ] || exit 0
@@ -203,16 +204,12 @@ jobs:
           if [ -f "$plan" ] && ! grep -Eq '"datafix(#|")' "$plan"; then
             exit 0
           fi
-          rm -f "$SUNRISE_DATAFIX_ROOT/.seed-prepare-failed"
           export SUNRISE_DATAFIX_SEED_KEEP="$DYNA_CI_KEEP/datafix-seeds"
-          if ! python3 tools/datafix_seeds.py > "$PARITY_LOG_DIR/datafix-seeds.log" 2>&1; then
-            mkdir -p "$SUNRISE_DATAFIX_ROOT"
-            : > "$SUNRISE_DATAFIX_ROOT/.seed-prepare-failed"
-            exit 1
-          fi
+          python3 tools/datafix_seeds.py > "$PARITY_LOG_DIR/datafix-seeds.log" 2>&1
       - name: Run every automatic harness
         env:
           PARITY_HOSTS: ''
+          SUNRISE_DATAFIX_SEEDS_OUTCOME: ${{ steps.datafix-seeds.outcome }}
         run: |
           # The runner writes retry reasons to the step summary as well as stdout; keep both private.
           export GITHUB_STEP_SUMMARY="$RUNNER_TEMP/parity-private-summary"

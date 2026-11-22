@@ -40,7 +40,7 @@ class DatafixSeedKeyTests(unittest.TestCase):
             'jre-legacy': {'manifest_sha1': 'c' * 40, 'manifest_url': 'https://invalid.test/jre'},
             'java-runtime-gamma': {'manifest_sha1': 'd' * 40, 'manifest_url': 'https://invalid.test/gamma'},
         }
-        self.default_java = 'openjdk version "25.0.5" 2026-10-20 LTS'
+        self.default_java = {'/jdk/bin/java': '1' * 64, '/jdk/lib/modules': '2' * 64}
 
     def key(self, **overrides):
         params = dict(
@@ -83,8 +83,44 @@ class DatafixSeedKeyTests(unittest.TestCase):
             self.key(runtime_pins={**self.runtime_pins, 'jre-legacy': {**self.runtime_pins['jre-legacy'], 'manifest_sha1': 'f' * 40}}),
             base,
         )
-        self.assertNotEqual(self.key(default_java='openjdk version "25.0.6" 2027-01-01 LTS'), base)
+        self.assertNotEqual(
+            self.key(default_java={**self.default_java, '/jdk/lib/modules': '3' * 64}),
+            base,
+        )
         self.assertNotEqual(self.key(expected=[*self.expected, ('worlds', '1.20.1')]), base)
+
+    def test_default_java_identity_hashes_jdk_content_via_parity_shim(self):
+        jdk = self.root / 'jdk'
+        launcher = jdk / 'bin' / 'java'
+        launcher.parent.mkdir(parents=True)
+        launcher.write_bytes(b'#!/bin/sh\necho "openjdk version 25.0.5"\n')
+        launcher.chmod(0o755)
+        (jdk / 'release').write_text('JAVA_VERSION="25.0.5"\n', encoding='utf-8')
+        modules = jdk / 'lib' / 'modules'
+        modules.parent.mkdir(parents=True)
+        modules.write_bytes(b'modules-v1')
+        libjvm = jdk / 'lib' / 'server' / 'libjvm.so'
+        libjvm.parent.mkdir(parents=True)
+        libjvm.write_bytes(b'jvm-v1')
+
+        env = {'JAVA_HOME': str(jdk), 'PATH': str(launcher.parent)}
+        with mock.patch.dict(os.environ, env, clear=True):
+            before = datafix_seeds.default_java_identity()
+            # In-place JDK patch keeping identical java -version banner changes the content identity.
+            libjvm.write_bytes(b'jvm-v2')
+            after = datafix_seeds.default_java_identity()
+        self.assertNotEqual(before, after)
+        self.assertIn(str(libjvm.resolve()), after)
+
+        # A wrapper outside JAVA_HOME is refused rather than keyed only by its script text.
+        wrapper_dir = self.root / 'wrappers'
+        wrapper_dir.mkdir()
+        wrapper = wrapper_dir / 'java'
+        wrapper.write_bytes(b'#!/bin/sh\nexec "$JAVA_HOME/bin/java" "$@"\n')
+        wrapper.chmod(0o755)
+        with mock.patch.dict(os.environ, {'JAVA_HOME': str(jdk), 'PATH': str(wrapper_dir)}, clear=True):
+            with self.assertRaises(RuntimeError):
+                datafix_seeds.default_java_identity()
 
     def test_resolve_version_pins_verifies_every_required_version(self):
         manifest = {'versions': [
@@ -153,11 +189,56 @@ class DatafixSeedSnapshotTests(unittest.TestCase):
         meta = snap / 'worlds' / '1.19' / 'datafix-source.json'
         meta.write_text('{bad', encoding='utf-8')
         self.assertFalse(datafix_seeds.snapshot_complete(snap, self.expected, strict_top=True))
-        meta.write_text(json.dumps({'version': '1.19', 'data_version': 3105}), encoding='utf-8')
+        meta.write_text(json.dumps({'version': '1.19', 'data_version': 3105, 'problems': []}), encoding='utf-8')
 
         # Missing world is rejected.
         (snap / 'worlds-pre-1.17' / '1.12.2-flat' / 'level.dat').unlink()
         self.assertFalse(datafix_seeds.snapshot_complete(snap, self.expected, strict_top=True))
+
+    def test_recorded_required_case_failure_blocks_publication(self):
+        keep = self.base / 'keep'
+        dest = self.base / 'job' / 'datafix'
+        key = '5' * 64
+
+        for label, recorded in (
+            ('last-tick', [['last tick', ['the transient states were not saved in one tick']]]),
+            ('lab-actions', [['lab_actions', ['the bot lost its connection: EOF']]]),
+            ('save-all-flush', [['save-all flush', ['Failed to save chunks']]]),
+        ):
+            with self.subTest(case=label):
+                def generate_with_failure(scratch, _manifest, problems=recorded):
+                    self.populate(scratch)
+                    meta = scratch / 'worlds-pre-1.17' / '1.12.2' / 'datafix-source.json'
+                    meta.write_text(
+                        json.dumps({'version': '1.12.2', 'data_version': 1343, 'problems': problems}),
+                        encoding='utf-8',
+                    )
+
+                with self.assertRaises(RuntimeError):
+                    datafix_seeds.prepare(dest, keep, key=key, expected=self.expected, generate=generate_with_failure)
+                self.assertEqual([p.name for p in keep.iterdir()], [datafix_seeds.LOCK_NAME])
+
+        # Deterministic version-skew command failures and server tick-lag warnings remain tolerated,
+        # matching tools/test_datafix_parity.py.
+        def generate_with_tolerated_problems(scratch, _manifest):
+            self.populate(scratch)
+            meta = scratch / 'worlds' / '1.19' / 'datafix-source.json'
+            meta.write_text(
+                json.dumps({
+                    'version': '1.19',
+                    'data_version': 3105,
+                    'problems': [
+                        ['summon minecraft:piglin 1 100 1', ['Unknown entity']],
+                        ['save-all flush', ["Can't keep up! Is the server overloaded?"]],
+                    ],
+                }),
+                encoding='utf-8',
+            )
+
+        res = datafix_seeds.prepare(dest, keep, key=key, expected=self.expected,
+                                    generate=generate_with_tolerated_problems)
+        self.assertEqual(res['status'], 'miss')
+        self.assertTrue(datafix_seeds.snapshot_complete(keep / key, self.expected, strict_top=True))
 
     def test_cold_publish_strips_scratch_and_warm_hit_copies_independently(self):
         keep = self.base / 'keep'
@@ -279,7 +360,6 @@ class DatafixSeedSnapshotTests(unittest.TestCase):
               mock.patch.object(datafix_paths, 'ROOT', checkout),
               mock.patch.dict(sys.modules, {'datafix_paths': datafix_paths})):
             sys.modules.pop('test_datafix_parity', None)
-            self.addCleanup(sys.modules.pop, 'test_datafix_parity', None)
             parity_mod = importlib.import_module('test_datafix_parity')
             out = self.base / 'run' / '1.19-vanilla'
             out.parent.mkdir(parents=True)
@@ -316,7 +396,6 @@ class DatafixSeedSnapshotTests(unittest.TestCase):
               mock.patch.object(datafix_paths, 'ROOT', checkout),
               mock.patch.dict(sys.modules, {'datafix_paths': datafix_paths})):
             sys.modules.pop('datafix_worlds', None)
-            self.addCleanup(sys.modules.pop, 'datafix_worlds', None)
             worlds = importlib.import_module('datafix_worlds')
             with (mock.patch.dict(os.environ, {'SUNRISE_DATAFIX_MANIFEST': str(manifest_file)}, clear=True),
                   mock.patch.object(worlds.urllib.request, 'urlopen', fake_urlopen)):
@@ -324,16 +403,16 @@ class DatafixSeedSnapshotTests(unittest.TestCase):
         self.assertEqual(got['downloads']['server']['sha1'], '0' * 40)
         self.assertEqual(fetched, ['https://invalid.test/1.19.json'])
 
-    def test_harness_fails_fast_when_seed_prepare_marker_present(self):
+    def test_harness_fails_fast_when_seed_prepare_outcome_failed(self):
         checkout = self.base / 'checkout'
         checkout.mkdir()
         local_root = self.base / 'job-datafix'
-        local_root.mkdir()
-        marker = local_root / datafix_seeds.FAIL_MARKER
-        marker.write_text('', encoding='utf-8')
+        # Even if a snapshot already sits in the private root, a failed prepare outcome fails datafix at once.
+        self.populate(local_root)
         env = {
             datafix_paths.VARIABLE: str(local_root),
             datafix_seeds.KEEP_VARIABLE: str(self.base / 'keep'),
+            datafix_seeds.OUTCOME_VARIABLE: 'failure',
         }
         with_path = mock.patch.object(sys, 'path', [str(Path(__file__).resolve().parents[1] / 'tools'), *sys.path])
         with (with_path,
@@ -341,7 +420,6 @@ class DatafixSeedSnapshotTests(unittest.TestCase):
               mock.patch.object(datafix_paths, 'ROOT', checkout),
               mock.patch.dict(sys.modules, {'datafix_paths': datafix_paths, 'datafix_seeds': datafix_seeds})):
             sys.modules.pop('test_datafix_parity', None)
-            self.addCleanup(sys.modules.pop, 'test_datafix_parity', None)
             parity_mod = importlib.import_module('test_datafix_parity')
             with (mock.patch.object(sys, 'argv', ['test_datafix_parity.py']),
                   mock.patch.object(datafix_seeds, 'prepare', side_effect=AssertionError('must not retry prepare')),
@@ -349,7 +427,6 @@ class DatafixSeedSnapshotTests(unittest.TestCase):
                 with self.assertRaises(SystemExit) as raised:
                     parity_mod.main()
         self.assertEqual(str(raised.exception), 'seed preparation failed, see datafix-seeds.log')
-        self.assertTrue(marker.exists())
 
 
 if __name__ == '__main__':

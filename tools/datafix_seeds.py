@@ -33,10 +33,14 @@ except ImportError:
 ROOT = Path(__file__).resolve().parent.parent
 KEEP_VARIABLE = 'SUNRISE_DATAFIX_SEED_KEEP'
 MANIFEST_VARIABLE = 'SUNRISE_DATAFIX_MANIFEST'
+OUTCOME_VARIABLE = 'SUNRISE_DATAFIX_SEEDS_OUTCOME'
 LOCK_NAME = 'seeds.lock'
-FAIL_MARKER = '.seed-prepare-failed'
 CACHE_FORMAT = 1
 SNAPSHOT_DIRS = ('worlds', 'worlds-pre-1.17')
+# Stage failures recorded in datafix-source.json['problems'] by tools/datafix_scene_12.py when a
+# required fixture stage did not complete (deterministic version-skew command failures are still
+# tolerated, matching tools/test_datafix_parity.py).
+BLOCKING_PROBLEM_STAGES = frozenset({'last tick', 'lab_actions'})
 # Dedicated budget beside ORACLE_KEEP_BUDGET (12 GiB in tools/parity.py): holds several revisions
 # while keeping oracles + seeds under Dyna's 20 GiB CI keep ceiling and preventing oracle churn
 # from evicting the active seed set.
@@ -66,6 +70,14 @@ def _worlds_module():
     except ImportError:
         import datafix_worlds
     return datafix_worlds
+
+
+def _parity_shim_module():
+    try:
+        from . import parity_shim
+    except ImportError:
+        import parity_shim
+    return parity_shim
 
 
 def keep_root(path):
@@ -127,9 +139,26 @@ def resolve_version_pins(versions=None, manifest=None):
 
 
 def default_java_identity():
-    """Identity of the default `java` executable used for 1.20.5+ servers."""
-    out = subprocess.check_output(['java', '-version'], stderr=subprocess.STDOUT, text=True)
-    return '\n'.join(line.strip() for line in out.splitlines() if line.strip())
+    """Content identity of the default `java` JDK used for 1.20.5+ servers, reusing
+    tools/parity_shim.py's direct-JDK check and JDK content hashing."""
+    shim = _parity_shim_module()
+    program = shim.real('java') if os.environ.get('PARITY_SHIM_REAL_PATH') else shutil.which('java')
+    if not program:
+        raise RuntimeError('java not found on PATH')
+    if os.environ.get('JAVA_HOME') and not shim.direct_jdk(program, 'java'):
+        raise RuntimeError(f'java ({program}) is not JAVA_HOME direct launcher; cannot key JDK by content')
+    resolved = os.path.realpath(program)
+
+    class _FileHasher:
+        @staticmethod
+        def file(path):
+            with open(path, 'rb') as stream:
+                return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+    identity = shim.toolchain(resolved, _FileHasher())
+    if len(identity) <= 1:
+        raise RuntimeError(f'java ({resolved}) lacks JDK runtime files ({", ".join(shim.JDK_FILES)})')
+    return identity
 
 
 def seed_key(root=ROOT, *, version_pins=None, platform_name=None, runtime_pins=None, default_java=None, expected=None):
@@ -183,6 +212,19 @@ def snapshot_complete(root, expected=None, *, strict_top=False):
             if (not isinstance(info, dict) or not isinstance(info.get('version'), str)
                     or type(info.get('data_version')) is not int):
                 return False
+            problems = info.get('problems')
+            if not isinstance(problems, list):
+                return False
+            for entry in problems:
+                if (not isinstance(entry, list) or len(entry) != 2
+                        or not isinstance(entry[0], str) or not isinstance(entry[1], list)
+                        or not all(isinstance(line, str) for line in entry[1])):
+                    return False
+                stage, lines = entry
+                if stage in BLOCKING_PROBLEM_STAGES:
+                    return False
+                if stage == 'save-all flush' and (not lines or any("Can't keep up" not in line for line in lines)):
+                    return False
     return True
 
 
@@ -300,7 +342,6 @@ def prepare(dest_root, keep_dir, *, key=None, manifest=None, expected=None, gene
         if snapshot_dir.exists() and snapshot_complete(snapshot_dir, expected, strict_top=True):
             os.utime(snapshot_dir)
             copy_snapshot(snapshot_dir, dest)
-            (dest / FAIL_MARKER).unlink(missing_ok=True)
             prune_seed_keep(keep)
             return {'key': key, 'status': 'hit', 'worlds': len(expected), 'elapsed': time.monotonic() - started}
         if snapshot_dir.exists():
@@ -320,7 +361,6 @@ def prepare(dest_root, keep_dir, *, key=None, manifest=None, expected=None, gene
                 raise RuntimeError('staged datafix seed snapshot failed completeness check')
             os.rename(staging, snapshot_dir)
             copy_snapshot(snapshot_dir, dest)
-            (dest / FAIL_MARKER).unlink(missing_ok=True)
             prune_seed_keep(keep)
         except Exception:
             shutil.rmtree(staging, ignore_errors=True)

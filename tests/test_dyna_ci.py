@@ -806,17 +806,20 @@ class ParityWorkflowTests(unittest.TestCase):
         (self.root / "tools/datafix_seeds.py").write_text(
             "import sys\nprint('private seed generation error', file=sys.stderr)\nsys.exit(1)\n")
         prepare_step = self.steps["Prepare datafix seed worlds from keep"]
+        run_step = self.steps["Run every automatic harness"]
+        self.assertEqual(prepare_step.get("id"), "datafix-seeds")
         self.assertEqual(prepare_step.get("continue-on-error"), "true")
+        self.assertEqual(run_step["env"]["SUNRISE_DATAFIX_SEEDS_OUTCOME"], "${{ steps.datafix-seeds.outcome }}")
         prep = self.step("Prepare datafix seed worlds from keep")
         self.assertEqual(prep.returncode, 1)
         self.assertEqual(prep.stdout, "")
         self.assertEqual(prep.stderr, "")
         self.assertIn("private seed generation error", (self.slot / "datafix-seeds.log").read_text())
-        self.assertTrue((datafix_root / ".seed-prepare-failed").exists())
-        # Because the seed step has continue-on-error, the harness step still runs every other harness.
+        # GitHub Actions records steps.datafix-seeds.outcome=failure and continues to the harness step.
+        self.env["SUNRISE_DATAFIX_SEEDS_OUTCOME"] = "failure"
         (self.root / "tools/parity.py").write_text(
             "import os, sys\nfrom pathlib import Path\n"
-            "assert (Path(os.environ['SUNRISE_DATAFIX_ROOT']) / '.seed-prepare-failed').exists()\n"
+            "assert os.environ['SUNRISE_DATAFIX_SEEDS_OUTCOME'] == 'failure'\n"
             "Path(sys.argv[-1]).write_text('[\"loot_a\", \"datafix#1\"]')\n"
             "print('PASS loot_a 3s')\n"
             "print('FAIL datafix#1 0s  (private path)')\n"

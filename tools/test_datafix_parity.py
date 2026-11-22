@@ -215,6 +215,8 @@ def main():
     p.add_argument('--band', type=int, metavar='TARGET', help='check the data fixes up to this DataVersion only (not the '
                    'file fixes), on the sample worlds saved before it, for developing the fixes of a range of versions')
     args = p.parse_args()
+    if os.environ.get('SUNRISE_DATAFIX_SEEDS_OUTCOME') == 'failure':
+        sys.exit('seed preparation failed, see datafix-seeds.log')
     import datafix_worlds
     import file_lock
     WORLDS.parent.mkdir(parents=True, exist_ok=True)
@@ -223,8 +225,6 @@ def main():
         seed_keep = os.environ.get('SUNRISE_DATAFIX_SEED_KEEP')
         if seed_keep:
             import datafix_seeds
-            if (LOCAL / datafix_seeds.FAIL_MARKER).exists():
-                sys.exit('seed preparation failed, see datafix-seeds.log')
             if not datafix_seeds.snapshot_complete(LOCAL):
                 datafix_seeds.prepare(LOCAL, seed_keep)
         else:
