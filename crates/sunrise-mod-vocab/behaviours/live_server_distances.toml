@@ -1,0 +1,6 @@
+version = 1
+doc = "ConfigServerHost reads and writes the live PlayerList distances on either logical server, including unpublished integrated worlds. Writes from mods take 2 through 32 chunks and affect both what the PlayerList advertises and chunk-ticket settings; refusals leave both unchanged. The integrated server restores the owner's view distance on its next running tick, but overrides a mod's simulation distance only when the owner's simulation option changes."
+tests = [
+    "crates/sunrise-client/src/game/modding/native_server_distances.rs::a_mod_reads_and_sets_the_servers_distances",
+    "crates/sunrise-client/src/game/world/integrated.rs::owner_simulation_option_only_overrides_a_mod_write_when_it_changes",
+]

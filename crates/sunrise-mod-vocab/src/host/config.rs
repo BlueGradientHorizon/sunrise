@@ -99,30 +99,33 @@ pub trait ConfigServerHost {
     #[access(WorldOnly)]
     fn tick_times(&self) -> Vec<u64>;
     /// Side: server.
-    /// The server's view distance in chunks (`PlayerList.getViewDistance`, `view-distance`):
-    /// how far players are sent chunks at most. None off a server open to players.
+    /// The live view distance in chunks advertised by `PlayerList.getViewDistance`.
+    /// Available on dedicated and integrated servers, including unpublished worlds;
+    /// `None` when no logical server player list is available.
     #[access(WorldOnly)]
     fn server_view_distance(&self) -> Option<i32>;
     /// Side: server.
-    /// The server's simulation distance in chunks (`PlayerList.getSimulationDistance`,
-    /// `simulation-distance`): how far around each player chunks tick. None off a server open
-    /// to players.
+    /// The live simulation distance in chunks advertised by `PlayerList.getSimulationDistance`.
+    /// Available on dedicated and integrated servers, including unpublished worlds;
+    /// `None` when no logical server player list is available.
     #[access(WorldOnly)]
     fn server_simulation_distance(&self) -> Option<i32>;
     /// Side: server.
-    /// Sets the server's view distance live, as `PlayerList.setViewDistance` (and the
-    /// management protocol's `serversettings/view_distance/set`) do: every player is sent
-    /// `ClientboundSetChunkCacheRadiusPacket` and their chunks follow, each up to what their
-    /// client asked for. `server.properties` is not written, so a restart goes back to it.
-    /// False for a distance outside 2 to 32, and off a dedicated server (an integrated
-    /// server follows its window's option).
+    /// Sets the live view distance through `PlayerList.setViewDistance` on either server,
+    /// including unpublished worlds. Players get the new chunk radius, and chunk tracking
+    /// and loading tickets use the new distance. Returns `false` and logs the refusal if
+    /// the player list is unavailable or the input is outside `ChunkMap`'s 2–32 supported range.
+    /// The integrated server follows the owner's render distance again on its next running tick.
+    /// This does not change `server.properties` or the owner's options.
     #[access(WorldOnly)]
     fn server_set_view_distance(&mut self, distance: i32) -> bool;
     /// Side: server.
-    /// Sets the server's simulation distance live, as `PlayerList.setSimulationDistance`
-    /// does: every player is sent `ClientboundSetSimulationDistancePacket`, and the chunks
-    /// around the players tick to the new distance from the next tick. `server.properties`
-    /// is not written. False for a distance outside 2 to 32, and off a dedicated server.
+    /// Sets the live simulation distance through `PlayerList.setSimulationDistance` on either
+    /// server, including unpublished worlds. Players get the new distance and simulation tickets
+    /// use it. Returns `false` and logs the refusal if the player list is unavailable or the input
+    /// is outside the 2–32 supported endpoints of `Options.simulationDistance`.
+    /// An unchanged owner option does not override this write; a changed one does.
+    /// This does not change `server.properties` or the owner's options.
     #[access(WorldOnly)]
     fn server_set_simulation_distance(&mut self, distance: i32) -> bool;
     /// Side: server.

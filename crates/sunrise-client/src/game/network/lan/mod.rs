@@ -1736,11 +1736,18 @@ impl Game<'_> {
         }
     }
 
-    /// Update the live view distance used for player chunk tracking.
-    pub(super) fn set_view_distance(&mut self, distance: i32) {
-        if let Some(host) = self.lan.as_mut() {
-            host.hub.set_view_distance(distance);
+    /// `PlayerList.setViewDistance`: store and advertise the supplied distance. Ticket
+    /// generation applies the chunk source's effective bounds separately.
+    pub(super) fn set_view_distance(&mut self, distance: i32) -> bool {
+        if !self.is_logical_server() {
+            return false;
         }
+        let Some(host) = self.lan.as_mut() else {
+            return false;
+        };
+        host.hub.set_view_distance(distance);
+        self.settings.render_distance = distance;
+        true
     }
 
     /// Update the live spawn-protection radius.
@@ -1750,11 +1757,18 @@ impl Game<'_> {
         }
     }
 
-    /// Update the live simulation distance sent to player clients.
-    pub(super) fn set_simulation_distance(&mut self, distance: i32) {
-        if let Some(host) = self.lan.as_mut() {
-            host.hub.set_simulation_distance(distance);
+    /// `PlayerList.setSimulationDistance`: store and advertise the supplied distance
+    /// and update the setting used for simulation tickets.
+    pub(super) fn set_simulation_distance(&mut self, distance: i32) -> bool {
+        if !self.is_logical_server() {
+            return false;
         }
+        let Some(host) = self.lan.as_mut() else {
+            return false;
+        };
+        host.hub.set_simulation_distance(distance);
+        self.settings.simulation_distance = distance;
+        true
     }
 
     /// Update the live entity tracking range percentage.

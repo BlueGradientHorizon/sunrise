@@ -245,7 +245,10 @@ impl Game<'_> {
                 rpc(format!(
                     "Update simulation distance from {current} to {distance}"
                 ));
-                self.set_simulation_distance(distance);
+                // Update the live PlayerList without the mod API's input range.
+                if !self.set_simulation_distance(distance) {
+                    return json!({ "error": "no server player list" });
+                }
                 state.view.1 = distance.max(0) as u32;
                 self.store_property("simulation-distance", distance.to_string());
                 return json!({
@@ -272,7 +275,9 @@ impl Game<'_> {
                     .as_ref()
                     .map_or(0, |host| host.hub.config.view_distance);
                 rpc(format!("Update view distance from {current} to {distance}"));
-                self.set_view_distance(distance);
+                if !self.set_view_distance(distance) {
+                    return json!({ "error": "no server player list" });
+                }
                 state.view.0 = distance.max(0) as u32;
                 self.store_property("view-distance", distance.to_string());
                 return json!({

@@ -1,6 +1,6 @@
 //! Real-game regressions for native handles used during a guest's turn.
 
-use super::lan::LanSettings;
+use super::{execution_role::ExecutionRole, lan::LanSettings};
 use mod_api::{EntityMoveEvent, Flow, Hooks, LoopContext, MoveCause, prelude::*};
 use std::sync::{
     Arc, Mutex,
@@ -21,7 +21,15 @@ pub(in crate::game) fn with_guests_at(
     root: std::path::PathBuf,
     test: impl FnOnce(&mut super::Game<'_>),
 ) {
-    super::native_entity_refs::tests::with_game_at(root, |game| {
+    with_guests_for_role(root, ExecutionRole::IntegratedServer, test);
+}
+
+pub(in crate::game) fn with_guests_for_role(
+    root: std::path::PathBuf,
+    role: ExecutionRole,
+    test: impl FnOnce(&mut super::Game<'_>),
+) {
+    super::native_entity_refs::tests::with_game_role(root, role, |game| {
         let settings = LanSettings {
             port: 0,
             guest_commands: false,
@@ -44,7 +52,7 @@ pub(in crate::game) fn with_guests_at(
             allow_flight: true,
             seed: 0,
             max_players: 2,
-            integrated: true,
+            integrated: role == ExecutionRole::IntegratedServer,
             levels: game.level_shapes,
             level_seeds: game.levels.runtime.seeds(),
         };

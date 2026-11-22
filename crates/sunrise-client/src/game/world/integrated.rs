@@ -336,6 +336,9 @@ pub(super) struct Serving {
     /// Open to LAN or closed from inside a player's command, while the hub
     /// is out of its place: applied after the tick.
     pending: Option<Publish>,
+    /// `IntegratedServer.previousSimulationDistance`: the last owner option applied,
+    /// independent of the live distance a mod can write to the player list.
+    previous_simulation_distance: i32,
     /// Where the load focus is and how far the player's chunks are.
     load: LoadPhase,
 }
@@ -368,6 +371,7 @@ impl Serving {
             tasks,
             owner: 1,
             pending: None,
+            previous_simulation_distance: 0,
             load: LoadPhase::default(),
         }
     }
@@ -1024,6 +1028,7 @@ impl Game<'_> {
             tasks,
             owner,
             pending: None,
+            previous_simulation_distance: 0,
             load: LoadPhase::default(),
         });
         // MinecraftServer.prepareLevels: the saved tickets' chunks load; the
@@ -1244,28 +1249,29 @@ impl Game<'_> {
         self.apply_publish();
         true
     }
-    /// IntegratedServer.tickServer: the server follows the window's render
-    /// and simulation distances when they change.
+    /// `IntegratedServer.tickServer`: view follows the window whenever the live
+    /// distance differs; simulation follows only a change to the window's option.
     fn follow_distances(&mut self, flags: &Flags) {
         // IntegratedServer.getScaledTrackingDistance reads the option each time.
         self.settings.entity_distance =
             f64::from_bits(flags.entity_distance.load(Ordering::Relaxed));
-        let Some(host) = self.lan.as_mut() else {
+        let Some(old_view) = self.server_view_distance() else {
             return;
         };
         let view = flags.render_distance.load(Ordering::Relaxed).max(2);
-        let old = host.hub.config.view_distance;
-        if view != old {
-            log::info!("Changing view distance to {view}, from {old}");
-            host.hub.set_view_distance(view);
-            self.settings.render_distance = view;
+        if view != old_view {
+            log::info!("Changing view distance to {view}, from {old_view}");
+            self.set_view_distance(view);
         }
+        let Some(serving) = self.serving.as_mut() else {
+            return;
+        };
         let simulation = flags.simulation_distance.load(Ordering::Relaxed).max(2);
-        let old = host.hub.config.simulation_distance;
-        if simulation != old {
-            log::info!("Changing simulation distance to {simulation}, from {old}");
-            host.hub.set_simulation_distance(simulation);
-            self.settings.simulation_distance = simulation;
+        let old_simulation = serving.previous_simulation_distance;
+        if simulation != old_simulation {
+            log::info!("Changing simulation distance to {simulation}, from {old_simulation}");
+            serving.previous_simulation_distance = simulation;
+            self.set_simulation_distance(simulation);
         }
     }
 
@@ -1616,6 +1622,7 @@ pub(super) mod tests {
             tasks: receiver,
             owner: 0,
             pending: None,
+            previous_simulation_distance: 0,
             load: LoadPhase::default(),
         });
         move || {
@@ -1623,6 +1630,46 @@ pub(super) mod tests {
             flags.published.load(Ordering::Relaxed) == 0
                 && tasks.send(OwnerRequest::SetPregen(false)).is_err()
         }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn owner_simulation_option_only_overrides_a_mod_write_when_it_changes() {
+        crate::game::in_own_process(
+            "game::integrated::tests::owner_simulation_option_only_overrides_a_mod_write_when_it_changes",
+            || {
+                crate::game::native_guest_turn_tests::with_guests(|game| {
+                    let serving = Serving::fixture(0);
+                    let window = Integrated::fixture_for(&serving);
+                    game.serving = Some(serving);
+
+                    let live = |game: &Game<'_>| {
+                        let config = &game.lan.as_ref().unwrap().hub.config;
+                        (config.view_distance, config.simulation_distance)
+                    };
+                    window.set_distances(48, 7, 1.0);
+                    game.follow_distances(&window.flags);
+                    assert_eq!(live(game), (48, 7));
+
+                    let host: &mut dyn ServerHost = game;
+                    assert!(host.server_set_view_distance(6));
+                    assert!(host.server_set_simulation_distance(5));
+                    game.follow_distances(&window.flags);
+                    assert_eq!(live(game), (48, 5));
+
+                    window.set_distances(50, 9, 1.0);
+                    game.follow_distances(&window.flags);
+                    assert_eq!(live(game), (50, 9));
+                    assert_eq!(
+                        (
+                            game.settings.render_distance,
+                            game.settings.simulation_distance
+                        ),
+                        (50, 9)
+                    );
+                });
+            },
+        );
     }
 
     #[test]
@@ -1807,6 +1854,7 @@ pub(super) mod tests {
                 tasks,
                 owner: 1,
                 pending: None,
+                previous_simulation_distance: 0,
                 load: LoadPhase::default(),
             });
             let error = game.integrated_tick_loop(&flags).unwrap_err();

@@ -171,10 +171,16 @@ return `false` for a stale handle, a client, or a value the rule refuses.
 On a server, `host.tick_times()` returns the last 100 tick durations in
 nanoseconds (the tick numbered `n` at index `n % 100`; `tick_stats()` has the
 average). `host.server_view_distance()` and `host.server_simulation_distance()`
-read the distances in chunks; `host.server_set_view_distance(d)` and
-`host.server_set_simulation_distance(d)` change them live for 2 to 32 on a
-dedicated server and return `false` otherwise. `server.properties` is not
-written.
+read the live distances in chunks, or return `None` without a logical server
+player list. `host.server_set_view_distance(d)` and
+`host.server_set_simulation_distance(d)` update the distances sent to players
+and used for chunk tickets on either server, even in a world not open to LAN.
+The setters take 2 through 32 chunks and return `false` and log a refusal for
+an out-of-range distance or an unavailable player list.
+
+The setters change neither `server.properties` nor the owner's options. In an
+integrated world, the owner's render distance takes over again on the next
+running tick; their simulation distance only takes over when that option changes.
 
 `host.set_tick_rate(tps)` uses the integrated or dedicated server's clock setter, not
 `/tick rate`'s parser. Finite rates below 1 become 1; non-finite rates are refused and
