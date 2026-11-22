@@ -1486,7 +1486,7 @@ fn encode_full(
                     let mod_item_slots = block_mod_item_slots(&block);
                     let items_are_payload =
                         matches!(e, crate::containers::BlockEntity::Mod(_)) && mod_item_slots == 0;
-                    let loaded = decode_block_entity_with_history(original, None, mod_item_slots)
+                    let loaded = decode_block_entity_with_history(original, None, Some(&block))
                         .map_or_else(
                             || current.clone(),
                             |(q, e)| {
@@ -8212,12 +8212,8 @@ mod tests {
         );
 
         // Reloading with the declared shape restores slots 0, 255 and 256 with no aliasing.
-        let (loaded_pos, BlockEntity::Mod(reloaded)) =
-            decode_block_entity_with_history(&encoded, None, 257).expect("declared mod vault")
-        else {
-            panic!("expected mod block entity");
-        };
-        assert_eq!(loaded_pos, pos);
+        let reloaded = decode_mod_block_entity("test:vault".into(), &encoded, 257)
+            .expect("declared mod vault");
         assert_eq!(reloaded.items.len(), 257);
         assert_eq!(reloaded.items[0].as_ref(), Some(&stone));
         assert_eq!(reloaded.items[255].as_ref(), Some(&iron));
@@ -8226,7 +8222,7 @@ mod tests {
         assert_eq!(
             block_entity_encode::encode(
                 pos,
-                &BlockEntity::Mod(reloaded),
+                &BlockEntity::Mod(Box::new(reloaded)),
                 "test:vault",
                 &Default::default(),
             ),
@@ -8235,11 +8231,12 @@ mod tests {
 
         // Generic decode without a declared shape preserves low slots and leaves extended
         // rows opaque without growing the modeled vector.
-        let (_, BlockEntity::Mod(unknown)) =
+        let (loaded_pos, BlockEntity::Mod(unknown)) =
             decode_block_entity(&encoded).expect("unknown-block decode")
         else {
             panic!("expected mod block entity");
         };
+        assert_eq!(loaded_pos, pos);
         assert_eq!(unknown.items.len(), 256);
         assert_eq!(unknown.items[0].as_ref(), Some(&stone));
         assert_eq!(unknown.items[255].as_ref(), Some(&iron));
@@ -8262,11 +8259,8 @@ mod tests {
         let mixed = parse(
             r#"{id:"test:vault",x:4,y:64,z:-2,Items:[{Slot:0b,id:"minecraft:stone",count:3},{Slot:256,id:"minecraft:dirt",count:7},{Slot:257,id:"minecraft:gold_ingot",count:1},{Slot:1000000,id:"minecraft:diamond",count:1},{Slot:-1,id:"minecraft:coal",count:1},{Slot:1,id:"minecraft:sand",count:1},{raw:"no slot"}]}"#,
         );
-        let (_, BlockEntity::Mod(bounded)) =
-            decode_block_entity_with_history(&mixed, None, 257).expect("bounded vault")
-        else {
-            panic!("expected mod block entity");
-        };
+        let bounded =
+            decode_mod_block_entity("test:vault".into(), &mixed, 257).expect("bounded vault");
         assert_eq!(bounded.items.len(), 257);
         assert_eq!(bounded.items[0].as_ref(), Some(&stone));
         assert_eq!(bounded.items[256].as_ref(), Some(&dirt));
@@ -8281,16 +8275,13 @@ mod tests {
         let dup_extended = parse(
             r#"{id:"test:vault",x:4,y:64,z:-2,Items:[{Slot:256,id:"minecraft:stone",count:1},{Slot:256,id:"minecraft:dirt",count:1}]}"#,
         );
-        let (_, BlockEntity::Mod(dup)) =
-            decode_block_entity_with_history(&dup_extended, None, 257).expect("dup extended")
-        else {
-            panic!("expected mod block entity");
-        };
+        let dup =
+            decode_mod_block_entity("test:vault".into(), &dup_extended, 257).expect("dup extended");
         assert!(dup.items.is_empty());
         assert_eq!(
             block_entity_encode::encode(
                 pos,
-                &BlockEntity::Mod(dup),
+                &BlockEntity::Mod(Box::new(dup)),
                 "test:vault",
                 &Default::default(),
             ),
@@ -8298,11 +8289,7 @@ mod tests {
         );
 
         // Slotless declared shape keeps Items verbatim in nbt.
-        let (_, BlockEntity::Mod(slotless)) =
-            decode_block_entity_with_history(&encoded, None, 0).expect("slotless")
-        else {
-            panic!("expected mod block entity");
-        };
+        let slotless = decode_mod_block_entity("test:vault".into(), &encoded, 0).expect("slotless");
         assert!(slotless.items.is_empty());
         assert_eq!(slotless.nbt.get(&"Items".into()), encoded.get("Items"));
 
@@ -8310,11 +8297,8 @@ mod tests {
         let opaque_pair = parse(
             r#"{id:"test:vault",x:4,y:64,z:-2,Items:[{Slot:0b,raw:"low"},{Slot:256,raw:"high"}]}"#,
         );
-        let (_, BlockEntity::Mod(mut claimed)) =
-            decode_block_entity_with_history(&opaque_pair, None, 257).expect("opaque pair")
-        else {
-            panic!("expected mod block entity");
-        };
+        let mut claimed =
+            decode_mod_block_entity("test:vault".into(), &opaque_pair, 257).expect("opaque pair");
         assert!(claimed.has_opaque_item_slot(0));
         assert!(claimed.has_opaque_item_slot(256));
         claimed.items.resize(257, None);
@@ -8326,7 +8310,7 @@ mod tests {
         assert_eq!(
             block_entity_encode::encode(
                 pos,
-                &BlockEntity::Mod(claimed),
+                &BlockEntity::Mod(Box::new(claimed)),
                 "test:vault",
                 &Default::default(),
             )
