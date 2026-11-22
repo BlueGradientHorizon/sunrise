@@ -5,7 +5,6 @@ ids = [
     "hook:player_commands_sent.names",
     "hook:player_commands_sent.tree",
     "method:Hooks::player_commands_sent",
-    "type:PlayerCommandsSentEvent",
     "type:PlayerCommandsSentEvent.player",
     "type:PlayerCommandsSentEvent.name",
     "type:PlayerCommandsSentEvent.names",
