@@ -821,6 +821,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn culling_uses_the_next_taa_size_before_the_first_jitter_or_resize() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, _)) = test_device() else {
@@ -846,6 +847,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn baked_light_changes_and_returning_from_a_pack_reject_taa_history() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, _)) = test_device() else {
@@ -901,12 +903,12 @@ mod tests {
     }
 
     fn test_device() -> Option<(wgpu::Device, wgpu::Queue)> {
-        let instance = crate::gfx::test_gpu::instance();
-        let adapter = pollster::block_on(instance.request_adapter(&Default::default())).ok()?;
-        pollster::block_on(adapter.request_device(&Default::default())).ok()
+        let (_, device, queue) = crate::gfx::test_gpu::optional_device()?;
+        Some((device, queue))
     }
 
     #[test]
+    #[ignore = "daily"]
     fn world_post_pipelines_compile_or_fall_back() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, _)) = test_device() else {
