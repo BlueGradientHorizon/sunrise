@@ -480,16 +480,21 @@ fn structure_transform_placement_rotations_mirrors_unset_and_refusal() {
         );
         assert_eq!(
             logs.iter()
-                .filter(|line| line.contains("mod test:")
-                    && line.contains("fixture panic")
-                    && line.contains("disabled"))
+                .filter(
+                    |line| line.contains("mod test panicked in hook block_entity_transform")
+                        && line.contains("fixture panic")
+                        && line.contains("disabled")
+                )
                 .count(),
             1
         );
-        let notices = mod_api::__private::game::take_callback_panic_notices();
-        assert_eq!(notices.len(), 1);
-        assert_eq!(notices[0].mod_id, "test");
-        assert_eq!(notices[0].operation, "block_entity_transform");
+        assert_eq!(
+            mod_api::__private::take_hook_panics(),
+            [mod_api::__private::HookPanicReport {
+                mod_id: "test",
+                hook: "block_entity_transform",
+            }]
+        );
     });
 }
 

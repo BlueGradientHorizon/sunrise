@@ -5580,6 +5580,7 @@ mod tests {
                 .unwrap()
                 .names
                 .clone(),
+            [],
         );
         let states = ["minecraft:air", "test:machine"].map(|n| (Arc::<str>::from(n), false, None));
         hub.encoder =
