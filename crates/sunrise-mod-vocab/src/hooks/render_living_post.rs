@@ -11,12 +11,12 @@ pub trait Hooks {
     /// flag after animation and Pre edits. A successful replacement renderer or other draw
     /// without a body pose supplies `None`.
     /// The order today: before this hook its model, its vanilla layers and the mods'
-    /// layers are drawn; after it, in the frame's later passes, its name tag and its leash (the
-    /// reference draws them first, #1285), then the flames of a burning entity and its shadow,
-    /// which the frame queues after the entity's drawing: this hook neither sees nor replaces
-    /// them, and a canceled `render_living_pre` doesn't stop them. A type with a mod's registered
-    /// renderer (`register_entity_renderers`) has its own model's order, the renderer in the
-    /// model's place, so it changes with #1285 and not before. For a player, its
+    /// layers are drawn; after it, the frame's later passes draw its name tag, its leash, and
+    /// the flames of a burning entity and its shadow, each as its own pass. This hook neither
+    /// sees nor replaces the flames and the shadow, and a canceled `render_living_pre` doesn't
+    /// stop them. A type with a mod's registered renderer (`register_entity_renderers`) has the
+    /// same later passes, the renderer in the model's place. The reference draws the leash and
+    /// the name tag before this hook: that move is the follow-up in #1285. For a player, its
     /// `render_player_post` follows. In the ordered body pass, each entity's hooks finish
     /// before the next entity's submission begins, including any general entity renderer at its
     /// own level join slot.

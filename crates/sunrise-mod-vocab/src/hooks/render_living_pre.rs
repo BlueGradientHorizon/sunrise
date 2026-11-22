@@ -26,7 +26,7 @@ pub trait Hooks {
         receiver = "read",
         dispatch = "flat",
         side = "client",
-        version = 6,
+        version = 7,
         contract = "cancel",
         out = "canceled",
         neoforge = "RenderLivingEvent.Pre",
