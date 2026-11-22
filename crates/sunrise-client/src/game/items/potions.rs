@@ -4147,13 +4147,11 @@ pub(super) mod tests {
                     deny.store(true, Ordering::SeqCst);
                     assert!(!game.add_player_effect(EffectInstance::from_def(comfort, 100, 0)));
                     deny.store(false, Ordering::SeqCst);
-                    game.mobs[0].load_effect(sunrise_client::mobs::StoredEffect {
-                        id: "minecraft:regeneration",
-                        registry_index: brewing::effect("regeneration").map(|e| e.index),
-                        duration: 100,
-                        amplifier: 0,
-                        show_icon: true,
-                    });
+                    game.mobs[0].load_effect(sunrise_client::mobs::StoredEffect::new(
+                        "minecraft:regeneration",
+                        100,
+                        0,
+                    ));
                     assert!(log.lock().unwrap().is_empty());
                 });
             },
