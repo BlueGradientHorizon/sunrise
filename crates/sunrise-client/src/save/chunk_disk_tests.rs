@@ -27,10 +27,15 @@ impl Hooks for Listener {
 }
 
 fn check_saved_nbt_upgrade(host: &dyn ChunkDiskHost) {
-    let state = |name: &str| Compound::from_iter([("Name".into(), Tag::String(name.into()))]);
+    let state =
+        |key: &str, name: &str| Compound::from_iter([(key.into(), Tag::String(name.into()))]);
     assert_eq!(
-        host.upgrade_nbt(NbtDataType::BlockState, 2586, state("minecraft:grass_path")),
-        Ok(state("minecraft:dirt_path")),
+        host.upgrade_nbt(
+            NbtDataType::BlockState,
+            2586,
+            state("Name", "minecraft:grass_path")
+        ),
+        Ok(state("id", "minecraft:dirt_path")),
     );
 }
 

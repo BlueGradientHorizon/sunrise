@@ -73,7 +73,7 @@ Unknown mod IDs are preserved, though generic format changes like the item-stack
 components still apply. A well-formed compound from the current game version is unchanged.
 
 `NbtUpgradeError` distinguishes a future source version, a version without a source schema,
-a malformed compound (for example, one missing its `id` or block-state `Name`), and unavailable
-legacy tables in the prepared game resources. `TooDeep` and `UpgradedTooDeep` distinguish
+a malformed compound (for example, one missing its `id`, called `Name` on block states before
+DataVersion 5006), and legacy tables that a fix needed but could not read. `TooDeep` and `UpgradedTooDeep` distinguish
 input and output past vanilla's NBT read depth. This counts the root at level zero and includes
 wrapper compounds when a mixed list is encoded. The upgrade has no size or node cap.

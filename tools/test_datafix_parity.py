@@ -63,7 +63,11 @@ SINGLE_COMPOUNDS = [
     ('named_wool', 'item_stack', 1343, '{id:"minecraft:wool",Damage:14s,Count:3b,tag:{display:{Name:"Quest reward"}}}'),
     ('numeric_wool', 'item_stack', 99, '{id:35s,Damage:14s,Count:3b}'),
     ('mod_item', 'item_stack', 1343, '{id:"example:token",Count:3b,tag:{quest:"welcome"}}'),
+    ('legacy_granite', 'block_state', 1400, '{Name:"minecraft:stone",Properties:{variant:"granite"}}'),
+    ('post_flattening_state', 'block_state', 1519, '{Name:"minecraft:stone",Properties:{variant:"granite"}}'),
+    ('unknown_legacy_block', 'block_state', 1400, '{Name:"example:decorative_stone"}'),
     ('block_state', 'block_state', 2586, '{Name:"minecraft:grass_path"}'),
+    ('renamed_state_fields', 'block_state', 5006, '{id:"minecraft:oak_stairs",properties:{facing:"north"}}'),
     # The direct root write keeps Text1 alongside the new front_text; a chunk write does not.
     ('block_entity_keeps_root_remainder', 'block_entity', 3400, '''{id:"minecraft:sign",Text1:'"Quest"'}'''),
     ('entity', 'entity', 1900, '{id:"minecraft:villager",Profession:1,Career:2,CareerLevel:1,Passengers:[{id:"minecraft:villager",Profession:2,Career:1,CareerLevel:1}]}'),

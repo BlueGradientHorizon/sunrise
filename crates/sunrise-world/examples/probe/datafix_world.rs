@@ -3,9 +3,10 @@
 //! `datafix_world IN_WORLD OUT_WORLD [TARGET]` (used by tools/test_datafix_parity.py).
 //! With a TARGET DataVersion only the data fixes up to it run, on a world in the
 //! layout of before 1.16. `--single CASES VANILLA_NBT` checks standalone upgrades.
+use mod_api::NbtDataType;
 use std::{fs, io, path::Path, process::ExitCode};
 use sunrise_core::nbt::{Limits, Tag, parse_snbt, read_named};
-use sunrise_world::datafix::{CompoundType, files, upgrade_compound};
+use sunrise_world::datafix::{files, upgrade_compound};
 
 fn copy(from: &Path, to: &Path) -> io::Result<()> {
     fs::create_dir_all(to)?;
@@ -75,11 +76,11 @@ fn single_compounds(cases: &Path, expected: &Path) -> Result<(), Box<dyn std::er
             return Err(format!("bad standalone datafix case: {line}").into());
         };
         let kind = match kind {
-            "item_stack" => CompoundType::ItemStack,
-            "block_state" => CompoundType::BlockState,
-            "block_entity" => CompoundType::BlockEntity,
-            "entity" => CompoundType::Entity,
-            "entity_tree" => CompoundType::EntityTree,
+            "item_stack" => NbtDataType::ItemStack,
+            "block_state" => NbtDataType::BlockState,
+            "block_entity" => NbtDataType::BlockEntity,
+            "entity" => NbtDataType::Entity,
+            "entity_tree" => NbtDataType::EntityTree,
             _ => return Err(format!("unknown datafix type: {kind}").into()),
         };
         let (Tag::Compound(tag), _) = parse_snbt(snbt)? else {

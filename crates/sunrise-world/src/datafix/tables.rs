@@ -8,6 +8,7 @@
 //! test, so the order is not part of their meaning. `block_state_data` keeps the order of
 //! vanilla's `register` calls (see `block_state_data.rs`).
 
+use mod_api::NbtUpgradeError;
 use serde::Deserialize;
 use std::cell::Cell;
 use std::fmt::Display;
@@ -250,17 +251,15 @@ pub(super) fn required<T>(result: Result<T, impl Display>) -> T {
     }
 }
 
-pub(super) fn standalone<T>(
-    run: impl FnOnce() -> T + UnwindSafe,
-) -> Result<T, super::UpgradeError> {
+pub(super) fn standalone<T>(run: impl FnOnce() -> T + UnwindSafe) -> Result<T, NbtUpgradeError> {
     let previous = STANDALONE.replace(true);
     let result = catch_unwind(run);
     STANDALONE.set(previous);
     result.map_err(|failure| {
         if failure.is::<TableUnavailable>() {
-            super::UpgradeError::LegacyTablesUnavailable
+            NbtUpgradeError::LegacyTablesUnavailable
         } else {
-            super::UpgradeError::MalformedCompound
+            NbtUpgradeError::MalformedCompound
         }
     })
 }
@@ -277,7 +276,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn standalone_upgrade_only_refuses_at_a_failed_table_lookup() {
-        use crate::datafix::{CompoundType, UpgradeError, dynamic, upgrade_compound};
+        use crate::datafix::{dynamic, upgrade_compound};
+        use mod_api::NbtDataType;
         use sunrise_core::nbt::{Compound, Tag};
 
         const CHILD: &str = "SUNRISE_DATAFIX_TABLE_REFUSAL_CHILD";
@@ -310,15 +310,18 @@ mod tests {
         let sign = state("minecraft:sign");
         // 1.13.2 predates the sign rename (1802), but no fix on this path needs the tables.
         assert_eq!(
-            upgrade_compound(CompoundType::BlockState, 1631, sign),
-            Ok(state("minecraft:oak_sign")),
+            upgrade_compound(NbtDataType::BlockState, 1631, sign),
+            Ok(Compound::from_iter([(
+                "id".into(),
+                dynamic::string("minecraft:oak_sign")
+            )])),
         );
         // The coral-fan rename (1515) is in range but cannot see a block state here.
         let sign = Compound::from_iter([("id".into(), dynamic::string("minecraft:sign"))]);
-        assert!(upgrade_compound(CompoundType::BlockEntity, 1510, sign).is_ok());
+        assert!(upgrade_compound(NbtDataType::BlockEntity, 1510, sign).is_ok());
         assert_eq!(
-            upgrade_compound(CompoundType::BlockState, 1400, state("minecraft:stone")),
-            Err(UpgradeError::LegacyTablesUnavailable),
+            upgrade_compound(NbtDataType::BlockState, 1400, state("minecraft:stone")),
+            Err(NbtUpgradeError::LegacyTablesUnavailable),
         );
 
         let prepared = PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -327,24 +330,24 @@ mod tests {
         raw["ITEM_FLATTENING"] = serde_json::json!([["minecraft:wool", "minecraft:red_wool"]]);
         std::fs::write(path(), serde_json::to_vec(&raw).unwrap()).unwrap();
         assert_eq!(
-            upgrade_compound(CompoundType::BlockState, 1400, state("minecraft:stone")),
-            Err(UpgradeError::LegacyTablesUnavailable),
+            upgrade_compound(NbtDataType::BlockState, 1400, state("minecraft:stone")),
+            Err(NbtUpgradeError::LegacyTablesUnavailable),
         );
         assert_eq!(
             upgrade_compound(
-                CompoundType::ItemStack,
+                NbtDataType::ItemStack,
                 1343,
                 Compound::from_iter([("id".into(), dynamic::string("minecraft:wool"))]),
             ),
-            Err(UpgradeError::LegacyTablesUnavailable),
+            Err(NbtUpgradeError::LegacyTablesUnavailable),
         );
         assert_eq!(
             upgrade_compound(
-                CompoundType::ItemStack,
+                NbtDataType::ItemStack,
                 1343,
                 Compound::from_iter([("id".into(), Tag::Int(35))]),
             ),
-            Err(UpgradeError::MalformedCompound),
+            Err(NbtUpgradeError::MalformedCompound),
         );
     }
 

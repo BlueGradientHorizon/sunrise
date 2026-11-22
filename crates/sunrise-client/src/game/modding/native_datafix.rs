@@ -8,6 +8,6 @@ impl Game<'_> {
         data_version: i32,
         nbt: Compound,
     ) -> Result<Compound, NbtUpgradeError> {
-        sunrise_world::datafix::upgrade_mod_nbt(kind, data_version, nbt)
+        sunrise_world::datafix::upgrade_compound(kind, data_version, nbt)
     }
 }

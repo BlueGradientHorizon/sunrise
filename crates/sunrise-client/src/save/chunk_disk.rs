@@ -44,7 +44,7 @@ impl DiskRuntime {
         // `state_with_property` answers None, as worldgen does before the index is published.
         job.run(
             &mod_api::OwningWorldgen::new(&reader, &|_, _, _| None),
-            sunrise_world::datafix::upgrade_mod_nbt,
+            sunrise_world::datafix::upgrade_compound,
         )
         .clone()
         .map_err(|failure| {
