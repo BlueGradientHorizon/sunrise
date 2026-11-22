@@ -1086,7 +1086,7 @@ impl Game<'_> {
             let plain = &*r.item.item == "minecraft:firework_rocket"
                 && r.item.count == 1
                 && r.item.extra.is_none();
-            let item = (!plain).then(|| hub.stack(&Some(r.item.clone())));
+            let item = (!plain).then(|| hub.stack(&Some(r.item.as_ref().clone())));
             let boosted = match r.guest {
                 Some(conn) => hub
                     .guests

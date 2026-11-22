@@ -116,18 +116,11 @@ impl Game<'_> {
                 return Ok(());
             }
             if game.ordered.defer_landings {
-                // A wave of landings: leave the resident in its slot with its final state,
-                // finish the block from a copy, and remove the whole wave in one pass once the
-                // run ends. Taking each block out at once shifts the list tail per block.
-                let Some(at) = game.falling.locate(join) else {
-                    return Ok(());
-                };
-                if !game.falling.store_back(at, f) {
-                    return Ok(());
-                }
-                let owner = game.falling[at].clone();
-                game.ordered.landed.push(join);
-                game.finish_falling_step(step, owner);
+                // Only other falling blocks run before compaction, and their
+                // collision search excludes falling blocks. Finish this entity
+                // now so subsequent falls see its placed block.
+                game.ordered.landed.insert(join);
+                game.finish_falling_step(step, f);
                 return Ok(());
             }
             // Only terminal owners leave storage. Carry the original lifetime
@@ -147,7 +140,11 @@ impl Game<'_> {
         match step {
             FallStep::Gone => {}
             FallStep::Dropped(at) => self.drop_falling_block(owner.state, at),
-            FallStep::Landed(pos) => self.finish_falling_block(owner, pos),
+            FallStep::Landed(pos) => {
+                let sample = sunrise_client::spans::SpanTotal::start();
+                self.finish_falling_block(owner, pos);
+                self.ordered.landing_time.add(sample);
+            }
             FallStep::Falling => unreachable!(),
         }
     }

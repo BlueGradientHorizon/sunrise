@@ -2799,17 +2799,10 @@ impl Game<'_> {
             // An entity that left the level since the last tick (a snowball
             // that hit) is dropped by the tracker below: its event goes out
             // first, as `Level.broadcastEntityEvent` precedes the discard.
-            // A set of the live ids: a scan of every entity per event is quadratic when
-            // thousands of them die in one tick (`/kill` of a farm).
-            let (gone, later): (Vec<_>, Vec<_>) = if self.lan_entity_events.is_empty() {
-                Default::default()
-            } else {
-                let present: sunrise_core::fast_hash::FxHashSet<_> =
-                    entities.iter().map(|e| e.id).collect();
-                std::mem::take(&mut self.lan_entity_events)
-                    .into_iter()
-                    .partition(|(id, ..)| !present.contains(id))
-            };
+            let (gone, later) = partition_lan_entity_events(
+                std::mem::take(&mut self.lan_entity_events),
+                entities.iter().map(|entity| entity.id),
+            );
             self.lan_entity_events = later;
             for (id, event) in gone {
                 host.hub.entity_event(id, event);
@@ -3618,6 +3611,42 @@ impl Game<'_> {
 pub(super) fn living_flags(using: Option<(usize, u32)>, spinning: bool) -> i8 {
     using.map_or(0, |(slot, _)| if slot == OFFHAND_SLOT { 3 } else { 1 })
         | if spinning { 4 } else { 0 }
+}
+
+/// Tracker updates go between the two groups. Partition preserves the
+/// enqueue order within each group.
+fn partition_lan_entity_events(
+    events: Vec<(i32, i8)>,
+    mut live_ids: impl Iterator<Item = i32>,
+) -> (Vec<(i32, i8)>, Vec<(i32, i8)>) {
+    match events.as_slice() {
+        [] => (Vec::new(), Vec::new()),
+        [(id, _)] if live_ids.any(|live| live == *id) => (Vec::new(), events),
+        [_] => (events, Vec::new()),
+        _ => {
+            let present: sunrise_core::fast_hash::FxHashSet<_> = live_ids.collect();
+            events
+                .into_iter()
+                .partition(|(id, _)| !present.contains(id))
+        }
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn entity_event_partition_keeps_delivery_order() {
+    let live = [1, 3, 5];
+    let events = [(2, 17), (1, 18), (2, 19), (5, 20), (4, 21)];
+    for batch in [events.as_slice(), &events[..1], &events[1..2], &[]] {
+        let expected = batch
+            .iter()
+            .copied()
+            .partition(|(id, _)| !live.contains(id));
+        assert_eq!(
+            partition_lan_entity_events(batch.to_vec(), live.into_iter()),
+            expected
+        );
+    }
 }
 
 #[cfg(test)]

@@ -29,13 +29,14 @@ fn record_tick(ticks: &mut VecDeque<Instant>, at: Instant) {
     }
 }
 
-fn measured_tps(ticks: &VecDeque<Instant>) -> f64 {
-    match (ticks.front(), ticks.back()) {
-        (Some(first), Some(last)) if ticks.len() > 1 => {
-            (ticks.len() - 1) as f64 / last.duration_since(*first).as_secs_f64().max(1e-9)
-        }
-        _ => 0.0,
-    }
+fn measured_tps(ticks: &VecDeque<Instant>, include_boundary: bool) -> f64 {
+    let (Some(first), Some(last)) = (ticks.front(), ticks.back()) else {
+        return 0.0;
+    };
+    let boundary = usize::from(!include_boundary && last.duration_since(*first) > TPS_WINDOW);
+    let intervals = ticks.len() - 1 - boundary;
+    let elapsed = last.duration_since(ticks[boundary]).as_secs_f64().max(1e-9);
+    intervals as f64 / elapsed
 }
 
 impl ServerState {
@@ -45,7 +46,12 @@ impl ServerState {
     }
     /// Ticks per second over the last few seconds.
     pub(super) fn tps(&self) -> f64 {
-        measured_tps(&self.ticks)
+        measured_tps(&self.ticks, true)
+    }
+
+    /// Keep shutdown hand-over timing on the original five-second window.
+    pub(super) fn transfer_tps(&self) -> f64 {
+        measured_tps(&self.ticks, false)
     }
 }
 
@@ -220,14 +226,17 @@ mod tests {
         let start = std::time::Instant::now();
         super::record_tick(&mut ticks, start);
         super::record_tick(&mut ticks, start + std::time::Duration::from_secs(20));
-        assert_eq!(super::measured_tps(&ticks), 0.05);
-        for tick in 1..=120 {
+        assert_eq!(super::measured_tps(&ticks, true), 0.05);
+        assert_eq!(super::measured_tps(&ticks, false), 0.0);
+        super::record_tick(&mut ticks, start + std::time::Duration::from_millis(20_050));
+        assert_eq!(super::measured_tps(&ticks, false), 20.0);
+        for tick in 2..=120 {
             super::record_tick(
                 &mut ticks,
                 start + std::time::Duration::from_millis(20_000 + tick * 50),
             );
         }
-        assert_eq!(super::measured_tps(&ticks), 20.0);
+        assert_eq!(super::measured_tps(&ticks, true), 20.0);
     }
     use serde_json::json;
 

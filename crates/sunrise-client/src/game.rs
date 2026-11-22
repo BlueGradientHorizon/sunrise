@@ -5268,11 +5268,8 @@ impl Game<'_> {
         &mut self,
         f: impl FnOnce(&Behaviours, &mut GameLevel<'_>, &mut Ticks) -> R,
     ) -> R {
-        let before = sunrise_client::spans::guard("wl_ensure");
         self.ensure_stateful_entity_table();
-        drop(before);
         let result = self.with_level_access(false, f);
-        let _after = sunrise_client::spans::guard("wl_after");
         self.flush_spill();
         if self.lan.is_some() {
             self.flush_lan_particles();
@@ -5294,7 +5291,6 @@ impl Game<'_> {
         placement_preview: bool,
         f: impl FnOnce(&Behaviours, &mut GameLevel<'_>, &mut Ticks) -> R,
     ) -> R {
-        let setup = sunrise_client::spans::guard("wl_setup");
         let darken = self.sky_darken();
         let (rain, thunder) = self.weather_levels(1.0);
         let (
@@ -5545,8 +5541,6 @@ impl Game<'_> {
             drop_breaker_at: None,
             drop_into: None,
         };
-        drop(setup);
-        let _run = sunrise_client::spans::guard("wl_run");
         f(self.res.behaviours(), &mut level, &mut self.block_ticks)
     }
     pub(super) fn native_block_ignite_allowed(
