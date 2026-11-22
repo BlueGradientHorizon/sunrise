@@ -3053,27 +3053,17 @@ impl Game<'_> {
     ) {
         self.fire_tooltip(stack, context, lines);
     }
-    /// Client-side image component for this stack's tooltip. Answer its width/height
-    /// in GUI pixels; finite positive dimensions reserve space after text and any
-    /// vanilla bundle component. None keeps the vanilla tooltip unchanged.
-    pub(in crate::game) fn native_tooltip_component(
+    /// `Item.getTooltipImage`: optional tooltip component data for this item stack.
+    /// Answer `Some(TooltipComponent::custom(data))` (or `Some(TooltipComponent::bundle(stack))`)
+    /// to insert a component after the item's name line before
+    /// `render_tooltip_gather_components` runs. Answer `None` to leave the vanilla tooltip
+    /// component unchanged. Client-side.
+    pub(in crate::game) fn native_tooltip_image(
         &self,
         stack: &ItemStack,
-        size: &mut Option<[f32; 2]>,
+        component: &mut Option<mod_api::TooltipComponent>,
     ) {
-        self.fire_tooltip_component(stack, size);
-    }
-    /// Render the measured component at origin, inside the tooltip background.
-    /// Stack is the component's data. Use native_sprite/native_fill/native_text;
-    /// size is the measurement returned by native_tooltip_component this frame.
-    pub(in crate::game) fn native_tooltip_component_draw(
-        &self,
-        stack: &ItemStack,
-        draw: &mut HudBatch,
-        origin: [f32; 2],
-        size: [f32; 2],
-    ) {
-        self.fire_tooltip_component_draw(stack, draw, origin, size);
+        self.fire_tooltip_image(stack, component);
     }
 
     /// The small bar `GuiGraphicsExtractor.itemDecorations` draws under an

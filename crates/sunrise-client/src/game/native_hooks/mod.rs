@@ -40,12 +40,12 @@ use mod_api::{
     ClientAudioOptions, ClientChatOptions, ClientGraphicsOptions, ClientGuiOptions,
     ClientInputOptions, ClientMiningPrediction, ClientModifiers, ClientReloadListeners,
     ColorResolvers, EnchantmentDamageEffects, EnchantmentInfo, EntityLayers, EntityRef,
-    EntityRenderers, GameRuleActor, HandDrawContext, HandRender, InsideEffects,
-    InteractionAttempt, InteractionKey, ItemEntityRef, LifecycleContext,
-    LivingRef, LoadConditions, NoteBlockChange, ParticleProviders, PathComputationType, Placement,
-    PlayerRef, PoiTypeExtensions, RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget,
-    ScreenshotImage, ServerReloadListeners, ServerTickPhase, SpecialModelRenderers,
-    TicketController, ToolUse, VillagerProfessions, WorldPhase,
+    EntityRenderers, GameRuleActor, HandDrawContext, HandRender, InsideEffects, InteractionAttempt,
+    InteractionKey, ItemEntityRef, LifecycleContext, LivingRef, LoadConditions, NoteBlockChange,
+    ParticleProviders, PathComputationType, Placement, PlayerRef, PoiTypeExtensions,
+    RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget, ScreenshotImage,
+    ServerReloadListeners, ServerTickPhase, SpecialModelRenderers, TicketController, ToolUse,
+    VillagerProfessions, WorldPhase,
 };
 use mod_api::{
     ActiveEffect, AttachmentStore, BlockClick, BlockUpdateFlags, BonemealSource, ChunkRef,
@@ -440,6 +440,7 @@ mod register_block_tint_sources;
 mod register_cauldron_fluid_content;
 mod register_cauldron_interaction;
 mod register_client_item_extensions;
+mod register_client_tooltip_component_factories;
 mod register_color_resolvers;
 mod register_configuration_tasks;
 mod register_debug_entries;
