@@ -1560,12 +1560,13 @@ mod tests {
             view_distance: 2,
             chunks: &chunks,
             sources: None,
+            attachment_sender: None,
             tracker,
             out: &mut out,
         }];
         let riding = Riding::default();
         for _ in 0..sunrise_client::lan::tracking::settings("minecraft:armor_stand").1 {
-            level.tick(&rows, &riding, &mut viewers, |kind| {
+            level.tick(&rows, &riding, &mut viewers, None, |kind| {
                 sync.id("minecraft:entity_type", kind)
             });
         }
