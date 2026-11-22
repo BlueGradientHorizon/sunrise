@@ -138,7 +138,11 @@ fn a_give_to_a_player_in_another_level_drops_overflow_there() {
                     let aborted = host.transaction(|host, _| {
                         Err::<(), _>(player.give_stack(host, three.clone()))
                     });
-                    assert_eq!(aborted, Err(Ok(None)), "{case}: abort");
+                    assert_eq!(
+                        aborted,
+                        Err(mod_api::TransactionError::Aborted(Ok(None))),
+                        "{case}: abort"
+                    );
                     assert_eq!(diamonds(game, conn), 63, "{case}: inventory restored");
                     assert_eq!(
                         dropped(game),
