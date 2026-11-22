@@ -48,6 +48,12 @@ it sits on disk. A
 package installed as a `.smod` archive has no path (`NotAFolder`), and a later edit of a folder is yours to guard
 against. A mod whose package declares no `[runtime]` gets `RuntimeFilesError::NoRuntimeFiles`.
 
+Although the archive accepts `build.rs`, a native build refuses it unless you disable it with
+`build = false` in Cargo's `[package]` table and remove build dependencies.
+
+A native `.smod` carries both source and content: the launcher compiles the source, and the game
+loads the package's `assets/` and `data/`. All packages take their identity from `sunrise-mod.toml`.
+
 ## Another package's files
 
 A mod that turns other packages' files into what it registers (a script host whose script packages carry
@@ -66,16 +72,13 @@ fn scripts(cx: &mod_api::RegistrationContext) -> Result<Vec<Vec<u8>>, Box<dyn st
 }
 ```
 
-The view is content loading's: the same `assets/` and `data/` files, the same checks, and each `read` goes to the
-package then, so a `--dev-mod` folder gives what it holds at that moment. The file list is taken on the first call
-and stays fixed. `list(folder)` returns the paths under that prefix in sorted order (`""` lists them all). `read`
-returns `PackageReadError::NotFound` for a path the package doesn't have, including `..` and absolute paths.
-`package_files` returns `PackageFilesError::NotEnabled` for a package that isn't enabled (the packages
-`cx.mods()` lists), `Unreadable` when the package's files can't be listed, and `Unavailable` outside a mod's
-registration.
+The file list is fixed when startup admits the package, and declaration loading uses that same list and reader.
+Reads use the archive opened at admission, or the current bytes of a listed file in a `--dev-mod` folder.
+`list(folder)` returns sorted paths under that folder, with or without a trailing slash (`""` lists every file).
+`read` returns `PackageReadError::NotFound` for an unlisted path, including `..` and absolute paths, or when a
+listed loose file has been removed.
 
-Although the archive accepts `build.rs`, a native build refuses it unless you disable it with
-`build = false` in Cargo's `[package]` table and remove build dependencies.
-
-A native `.smod` carries both source and content: the launcher compiles the source, and the game
-loads the package's `assets/` and `data/`. All packages take their identity from `sunrise-mod.toml`.
+`package_files` returns `PackageFilesError::NotEnabled` if the package isn't in `cx.mods()`, `Unreadable` when
+the package's files can't be listed, and `Unavailable` outside a mod's registration. A native mod switched off
+in settings still registers, so its package is listed. Namespace and declaration checks that need registration
+results run later, during content loading.

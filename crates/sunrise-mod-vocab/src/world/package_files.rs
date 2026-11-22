@@ -4,9 +4,9 @@
 //! (`ModList.getModFileById(id).getFile().getContents()`, a `JarContents`: `containsFile`,
 //! `readFile`, `visitContent`). Here a native mod lists and reads any enabled package's `assets/`
 //! and `data/` files from registration on, so it can turn another package's files into the
-//! blocks and items it registers. The view is content loading's own: the same file list, and
-//! each read through the same reader and checks.
-use std::sync::Arc;
+//! blocks and items it registers. The list is the one used to load the package's declarations,
+//! and each read uses the same reader and checks.
+use std::{borrow::Cow, sync::Arc};
 
 /// The game's side of one enabled package's content files. A mod reaches it through
 /// [`RegistrationContext::package_files`](crate::RegistrationContext::package_files), not
@@ -27,7 +27,7 @@ pub enum PackageFilesError {
     /// The call is outside any mod's registration dispatch (a test, a tool, the engine's own
     /// call).
     Unavailable,
-    /// No enabled package has this id: it is not installed, switched off, or was refused.
+    /// No admitted package has this id: it is not installed, not selected, or was refused.
     NotEnabled,
     /// The package's files cannot be listed: the reason, as content loading would report it.
     Unreadable(String),
@@ -64,9 +64,9 @@ impl std::error::Error for PackageReadError {}
 
 /// One enabled package's content files, from
 /// [`RegistrationContext::package_files`](crate::RegistrationContext::package_files). The list is
-/// fixed when the handle is made; the mod may keep it and read from any thread. Each read goes to
-/// the package as content loading does: a `.smod` reads the same bytes every time, a development
-/// folder (`--dev-mod`) what it holds at that moment.
+/// fixed when the package is admitted at startup; the mod may keep it and read from any thread.
+/// Reads use the archive opened at admission, or the current bytes of a listed file in a
+/// development folder (`--dev-mod`).
 // exhaustive: its fields are private, so mods cannot build or destructure it
 // no wire: a mod-side handle around the game's source, which crosses as its own resource.
 #[derive(Clone)]
@@ -76,19 +76,26 @@ pub struct PackageFiles {
 }
 
 impl PackageFiles {
-    /// The package-relative paths that start with `folder` (`"data/lumen_demo/lumen/"`), sorted;
+    /// Sorted package-relative paths under `folder`, with or without a trailing slash.
     /// `""` lists every file. Only `assets/…` and `data/…` files are listed.
     pub fn list(&self, folder: &str) -> impl Iterator<Item = &str> {
-        let start = self.names.partition_point(|name| name.as_str() < folder);
+        let prefix = if folder.is_empty() || folder.ends_with('/') {
+            Cow::Borrowed(folder)
+        } else {
+            Cow::Owned(format!("{folder}/"))
+        };
+        let start = self
+            .names
+            .partition_point(|name| name.as_str() < prefix.as_ref());
         self.names[start..]
             .iter()
-            .take_while(move |name| name.starts_with(folder))
+            .take_while(move |name| name.starts_with(prefix.as_ref()))
             .map(String::as_str)
     }
 
     /// The bytes of the file at `path`, a package-relative path [`list`](Self::list) gives.
-    /// [`NotFound`](PackageReadError::NotFound) for any other path, `..` and absolute ones
-    /// included.
+    /// [`NotFound`](PackageReadError::NotFound) for any other path, including `..` and absolute
+    /// paths, or if a listed loose file has since been removed.
     pub fn read(&self, path: &str) -> Result<Vec<u8>, PackageReadError> {
         self.names
             .binary_search_by(|name| name.as_str().cmp(path))
@@ -98,10 +105,11 @@ impl PackageFiles {
 }
 
 impl crate::RegistrationContext {
-    /// The content files (`assets/…`, `data/…`) of the enabled package `id`, as content loading
-    /// sees them. Any enabled package may be read, the caller's own included: the same packages
-    /// [`mods`](Self::mods) lists. Available from registration on, before content is loaded;
-    /// keep the handle to read later.
+    /// The `assets/…` and `data/…` file list that declaration loading uses for package `id`.
+    /// The caller can read its own package or any other package [`mods`](Self::mods) lists.
+    /// A native mod switched off in settings still registers, so its package is listed.
+    /// Namespace and declaration checks that need registration results run later, during content loading.
+    /// Keep the handle to read after registration.
     pub fn package_files(&self, id: &str) -> Result<PackageFiles, PackageFilesError> {
         crate::content::crash::current_native_mod().ok_or(PackageFilesError::Unavailable)?;
         let source = self
@@ -120,8 +128,7 @@ mod tests {
     use super::*;
     use std::collections::BTreeMap;
 
-    /// A package with two scripts and a model, read back as `read:<name>`; `unreadable` has a
-    /// file that fails to read.
+    /// A package with a model, two readable scripts, and one script that fails to read.
     struct Fake;
     impl PackageFileSource for Fake {
         fn names(&self) -> Result<Arc<[String]>, String> {
@@ -135,17 +142,23 @@ mod tests {
             .into())
         }
         fn read(&self, name: &str) -> Result<Vec<u8>, PackageReadError> {
-            if name == "data/demo/lumen/b.luau" {
-                return Err(PackageReadError::Read(format!("{name}: gone")));
-            }
-            Ok(format!("read:{name}").into_bytes())
+            let bytes: &[u8] = match name {
+                "assets/demo/models/item/gem.json" => b"{}",
+                "data/demo/lumen/a.luau" => b"return 1",
+                "data/demo/lumen/b.luau" => {
+                    return Err(PackageReadError::Read("read failed".into()));
+                }
+                "data/demo/lumen_extra/c.luau" => b"return 3",
+                _ => return Err(PackageReadError::NotFound),
+            };
+            Ok(bytes.to_vec())
         }
     }
     /// A package whose files cannot be listed.
     struct Broken;
     impl PackageFileSource for Broken {
         fn names(&self) -> Result<Arc<[String]>, String> {
-            Err("more than 65536 content files".into())
+            Err("listing failed".into())
         }
         fn read(&self, _: &str) -> Result<Vec<u8>, PackageReadError> {
             unreachable!("an unlisted package is never read")
@@ -191,21 +204,26 @@ mod tests {
     fn a_mod_lists_a_folder_and_reads_only_listed_files() {
         let cx = context();
         let files = in_dispatch(|| cx.package_files("demo")).unwrap();
-        assert_eq!(
-            files.list("data/demo/lumen/").collect::<Vec<_>>(),
-            ["data/demo/lumen/a.luau", "data/demo/lumen/b.luau"]
-        );
+        for folder in ["data/demo/lumen", "data/demo/lumen/"] {
+            assert_eq!(
+                files.list(folder).collect::<Vec<_>>(),
+                ["data/demo/lumen/a.luau", "data/demo/lumen/b.luau"]
+            );
+        }
         assert_eq!(files.list("").count(), 4);
         assert_eq!(files.list("data/other/").count(), 0);
         assert_eq!(
-            files.read("data/demo/lumen/a.luau").unwrap(),
-            b"read:data/demo/lumen/a.luau"
+            files.read("assets/demo/models/item/gem.json").unwrap(),
+            b"{}"
+        );
+        assert_eq!(files.read("data/demo/lumen/a.luau").unwrap(), b"return 1");
+        assert_eq!(
+            files.read("data/demo/lumen_extra/c.luau").unwrap(),
+            b"return 3"
         );
         assert_eq!(
             files.read("data/demo/lumen/b.luau"),
-            Err(PackageReadError::Read(
-                "data/demo/lumen/b.luau: gone".into()
-            ))
+            Err(PackageReadError::Read("read failed".into()))
         );
         for unlisted in [
             "data/demo/lumen/missing.luau",
@@ -232,9 +250,7 @@ mod tests {
         );
         assert_eq!(
             refused(in_dispatch(|| cx.package_files("broken"))),
-            Some(PackageFilesError::Unreadable(
-                "more than 65536 content files".into()
-            ))
+            Some(PackageFilesError::Unreadable("listing failed".into()))
         );
         assert_eq!(
             refused(cx.package_files("demo")),
