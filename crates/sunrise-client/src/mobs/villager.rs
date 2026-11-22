@@ -394,10 +394,10 @@ pub fn hurt_by(m: &mut Mob, source: &super::Damage, uuid: [i32; 4], minted: bool
         crate::gossip::GossipType::MinorNegative,
         crate::gossip::REPUTATION_CHANGE_PER_EVENT,
     );
-    let player = who == super::Who::Player;
+    let player = (who == super::Who::Player).then_some(uuid);
     m.outbox.push(MobEvent::VillagerHurt {
         mob: m.id,
-        angry: m.alive() && player,
+        angry: m.alive() && player.is_some(),
         player,
         attacker_uuid: match who {
             super::Who::Mob(id) if minted => Some((id, uuid)),

@@ -2076,6 +2076,9 @@ impl Game<'_> {
         let mut killed = false;
         let mut hurt = false;
         let mut infested = Vec::new();
+        let mut sounds = Vec::new();
+        let mut villager_hurts = Vec::new();
+        let mut center = [0.0; 3];
         let catch_up = self.catch_up_countdowns(source.attacker, target);
         let aim = self.attacker_aim(source.attacker);
         // So `living_knockback` sees who hit and what they hold.
@@ -2123,13 +2126,18 @@ impl Game<'_> {
             if hit {
                 killed = !t.alive();
                 // The hurt or death sound the mob raised.
-                let center = t.center();
+                center = t.center();
                 for event in std::mem::take(&mut t.outbox) {
                     match event {
-                        MobEvent::Sound(s, _, volume, pitch) => {
-                            self.audio.play(&full_id(s), Some(center), volume, pitch);
-                        }
+                        MobEvent::Sound(s, _, volume, pitch) => sounds.push((s, volume, pitch)),
                         MobEvent::Infested { at, velocities } => infested.push((at, velocities)),
+                        // Raised inside the hit: before its hurt sound.
+                        MobEvent::VillagerHurt {
+                            mob,
+                            angry,
+                            player,
+                            attacker_uuid,
+                        } => villager_hurts.push((mob, angry, player, attacker_uuid)),
                         other => {
                             // Left for the end of the tick.
                             t.outbox.push(other);
@@ -2137,6 +2145,13 @@ impl Game<'_> {
                     }
                 }
             }
+        }
+        for (mob, angry, player, attacker_uuid) in villager_hurts {
+            self.villager_hurt_event(mob, angry, player, attacker_uuid);
+        }
+        for (s, volume, pitch) in sounds {
+            self.audio
+                .play(&full_id(s), Some(center), volume, pitch);
         }
         for (at, velocities) in infested {
             self.spawn_infested(at, velocities);

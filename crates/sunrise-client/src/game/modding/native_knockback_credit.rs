@@ -124,7 +124,14 @@ impl Game<'_> {
             .or_else(|| self.persist.uuids.get(&id).copied())
         {
             Some(uuid) => (uuid, false),
-            None => (sunrise_client::save::random_uuid(), true),
+            None => (
+                *self
+                    .minted_attackers
+                    .borrow_mut()
+                    .entry(id)
+                    .or_insert_with(sunrise_client::save::random_uuid),
+                true,
+            ),
         }
     }
     /// The credited entity and its main hand: in the level in place, or a mob
@@ -219,7 +226,8 @@ impl Game<'_> {
             .iter()
             .any(|m| m.id as i32 == victim && m.species() == Species::Villager)
             .then(|| HurtBy {
-                player: self.player_uuid_of(self.lan_acting),
+                // The hit's own player (a guest's cloud's owner), not whoever acts now.
+                player: attack.player_uuid,
                 attacker: match attacker {
                     Some(Who::Mob(id)) => {
                         let (uuid, minted) = self.attacker_uuid_of(id);

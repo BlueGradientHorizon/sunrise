@@ -493,17 +493,19 @@ impl Game<'_> {
         &mut self,
         mob: u32,
         angry: bool,
-        player: bool,
+        player: Option<[i32; 4]>,
         attacker_uuid: Option<(u32, [i32; 4])>,
     ) {
         if let Some((id, uuid)) = attacker_uuid {
             self.persist.uuids.get_or_insert_with(id, || uuid);
+            self.minted_attackers.borrow_mut().remove(&id);
         }
         if angry {
             self.mob_event_particles(mob, 13);
         }
-        if player {
-            self.villager_prices_changed(mob);
+        // onReputationEventFrom: only the player whose hit it was.
+        if let Some(uuid) = player {
+            self.villager_prices_changed(mob, Some(uuid));
         }
     }
     /// `Villager.tellWitnessesThatIWasMurdered`: the villagers that saw a
@@ -558,11 +560,13 @@ impl Game<'_> {
         // Villager.customServerAiStep after a trade: entity event 14.
         self.mob_event_particles(id, 14);
         // onReputationEventFrom refreshes the current trading player's prices.
-        self.villager_prices_changed(id);
+        self.villager_prices_changed(id, Some(uuid));
     }
-    /// `Villager.updateSpecialPrices` for the players trading with villager `id`.
-    fn villager_prices_changed(&mut self, id: u32) {
-        if self
+    /// `Villager.updateSpecialPrices` for the players trading with villager `id`
+    /// (only the player `only`, when given).
+    fn villager_prices_changed(&mut self, id: u32, only: Option<[i32; 4]>) {
+        if only.is_none_or(|uuid| self.level.player_uuid == Some(uuid))
+            && self
             .station
             .as_ref()
             .and_then(|s| s.merchant.as_ref())
@@ -578,7 +582,7 @@ impl Game<'_> {
                 Some(true)
             });
         }
-        self.lan_merchant_reputation(id);
+        self.lan_merchant_reputation(id, only);
     }
     /// `Villager.getPlayerReputation` of the local player.
     pub(super) fn villager_reputation(&self, id: u32) -> i32 {

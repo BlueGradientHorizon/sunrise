@@ -1,6 +1,6 @@
 //! Actual murder notification, with no server or world tick.
 use super::*;
-use sunrise_client::mobs::{Damage, MobEvent, Who};
+use sunrise_client::mobs::{Damage, Who};
 
 #[test]
 #[ignore = "daily"]
@@ -63,6 +63,11 @@ fn every_accepted_hurt_counts_for_its_own_attacker() {
                 .push(Mob::new(id, kind.clone(), Vec3::new(x, 100.0, 1.0), 0.0));
         }
         game.persist.uuids.insert(92, [0, 0, 0, 4]);
+        // A player's hit names its player through the player entity.
+        game.player = Some(
+            sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(1.0, 100.0, 1.0))
+                .unwrap(),
+        );
         let (host, guest) = ([0, 0, 0, 2], 0x3u128);
         game.level.player_uuid = Some(host);
         let hit = |game: &mut Game<'_>, attacker: Who, amount| {
@@ -95,27 +100,11 @@ fn every_accepted_hurt_counts_for_its_own_attacker() {
             "the cooldown refuses a hit this weak"
         );
         assert!(guest_hit(game, 0x5, 1000.0));
-        let events: Vec<_> = game.mobs[0]
-            .outbox
-            .iter()
-            .filter_map(|e| match e {
-                MobEvent::VillagerHurt { angry, player, .. } => Some((*angry, *player)),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(
-            events,
-            [(false, false), (true, true), (true, true), (false, true)]
-        );
-        let minted = game.mobs[0].outbox.iter().find_map(|e| match e {
-            MobEvent::VillagerHurt { attacker_uuid, .. } => *attacker_uuid,
-            _ => None,
-        });
-        let (id, mob_uuid) = minted.expect("the zombie had no UUID yet");
-        assert_eq!(id, zombie.id);
-        let events = std::mem::take(&mut game.mobs[0].outbox);
-        game.handle_mob_events(events).unwrap();
-        assert_eq!(game.persist.uuids.get(&id), Some(&mob_uuid));
+        let mob_uuid = *game
+            .persist
+            .uuids
+            .get(&zombie.id)
+            .expect("the zombie's made-up UUID is kept at the hit");
         let got = [
             mob_uuid,
             host,
@@ -159,5 +148,58 @@ fn every_accepted_hurt_counts_for_its_own_attacker() {
             ));
             assert_eq!(game.villager_reputation_of(93, uuid), -25);
         }
+    });
+}
+
+/// A mob with no UUID hitting a villager twice before the end of the tick keeps one UUID, and
+/// the gossip is under the one the mob keeps.
+#[test]
+#[ignore = "daily"]
+fn two_hits_of_a_mob_without_uuid_share_one() {
+    crate::game::native_entity_refs::tests::with_game(|game| {
+        game.mobs.clear();
+        let kind = game
+            .res
+            .mob_types()
+            .get("minecraft:villager")
+            .unwrap()
+            .clone();
+        game.mobs
+            .push(Mob::new(91, kind, Vec3::new(1.0, 100.0, 1.0), 0.0));
+        let first = game.attacker_uuid_of(90).0;
+        let second = game.attacker_uuid_of(90).0;
+        assert_eq!(first, second, "two hits before the drain mint one UUID");
+        game.persist.uuids.insert(90, first);
+        assert_eq!(game.attacker_uuid_of(90), (first, false));
+    });
+}
+
+/// `Villager.onReputationEventFrom` refreshes only the trader the hit came from, and a hit's
+/// player is the hit's own, not the player acting now.
+#[test]
+#[ignore = "daily"]
+fn hurt_gossip_belongs_to_the_hits_own_player() {
+    crate::game::native_entity_refs::tests::with_game(|game| {
+        game.mobs.clear();
+        let kind = game
+            .res
+            .mob_types()
+            .get("minecraft:villager")
+            .unwrap()
+            .clone();
+        game.mobs
+            .push(Mob::new(91, kind, Vec3::new(1.0, 100.0, 1.0), 0.0));
+        let (host, guest) = ([0, 0, 0, 2], [0, 0, 0, 9]);
+        game.level.player_uuid = Some(host);
+        let attack = sunrise_client::health::Attack {
+            player_uuid: Some(guest),
+            ..Default::default()
+        };
+        let plan = game.prepare_knockback_credit(91, Some(Who::Player), &attack);
+        let credit = plan.lend(&mut game.last_hurt_by_player);
+        assert_eq!(
+            sunrise_client::health::KnockbackCredit::hurt_by_uuid(&credit, &Damage::player([1.0; 3])),
+            Some((guest, false))
+        );
     });
 }

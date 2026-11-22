@@ -1940,7 +1940,7 @@ pub enum MobEvent {
     VillagerHurt {
         mob: u32,
         angry: bool,
-        player: bool,
+        player: Option<[i32; 4]>,
         attacker_uuid: Option<(u32, [i32; 4])>,
     },
     /// `OfferFlowerGoal.stop`: the item goes to the target's antenna (saddle)

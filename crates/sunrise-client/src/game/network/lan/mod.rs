@@ -5876,17 +5876,22 @@ mod merchant_packet_tests {
             assert_eq!(state.xp, 22);
             // An actual price refresh sends the snapshot even if only uses/XP
             // changed, and even a repeated refresh must reach the client.
-            game.lan_merchant_reputation(0);
+            game.lan_merchant_reputation(0, None);
             assert!(
                 packets(&rx).0.is_empty(),
                 "unrelated merchants do not refresh this menu"
             );
-            game.lan_merchant_reputation(77);
+            game.lan_merchant_reputation(77, None);
             let refreshed = packets(&rx).0;
             assert_eq!(refreshed.len(), 1);
             assert_eq!(refreshed[0].offers[0].uses, 2);
             assert_eq!(refreshed[0].xp, 22);
-            game.lan_merchant_reputation(77);
+            // A hurt gossip refreshes only the trader whose hit it was.
+            game.lan_merchant_reputation(77, Some([0, 0, 0, 2]));
+            assert!(packets(&rx).0.is_empty(), "another player's hit leaves it");
+            game.lan_merchant_reputation(77, Some([0, 0, 0, 1]));
+            assert_eq!(packets(&rx).0.len(), 1);
+            game.lan_merchant_reputation(77, None);
             assert_eq!(
                 packets(&rx).0.len(),
                 1,
