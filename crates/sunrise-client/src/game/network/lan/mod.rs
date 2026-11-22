@@ -4072,15 +4072,15 @@ mod tests {
             vec![br#"{"type":"minecraft:notice","title":"Before"}"#.to_vec()],
         )];
         let initial = PackOverlay::new(&initial);
-        let packed = sunrise_client::lan::data::SyncData::stage_registry_definitions(
+        let (packed, admitted) = sunrise_client::lan::data::SyncData::stage_registry_definitions(
             &root,
             item_data.defaults(),
             &initial,
             &Default::default(),
             &Default::default(),
             |_| true,
-        )
-        .unwrap();
+        );
+        admitted.unwrap();
         let mut cache = SyncCache {
             packed_registries: Some(std::sync::Arc::new(packed)),
             ..SyncCache::default()

@@ -550,69 +550,157 @@ fn load_condition_panic_disables_only_that_handler_across_generations() {
     );
 }
 
-/// `neoforge:registered` reads the candidate's registries: the built-in entries the prepared root
-/// exports and what this load's packs add, so a new pack entry counts on its first load and one
-/// a pack dropped stops counting, whatever an earlier load put in the game's registries.
+/// Only decoded holders (not file names or the previous load's IDs) count.
 #[test]
 fn registered_reads_the_candidate_packs_not_the_last_load() {
+    use super::{RegistryView, admit_datapack_registries};
+    use mod_api::{
+        DatapackField, DatapackFieldKind, DatapackRegistryDeclaration, DatapackRegistrySync,
+    };
+    use sunrise_assets::resource_source::ResourceSource;
+    use sunrise_client::datapack::{DataPack, DataStore, RegistryFiles, registry_files};
+    use sunrise_world::{conditions::LoadConditions, loot::PackOverlay};
+
     let root = tempfile::tempdir().unwrap();
-    std::fs::write(
-        root.path().join("command-registries.json"),
-        json!({"by_registry": {
-            "minecraft:item": {"ids": ["minecraft:stone"]},
-            "minecraft:worldgen/biome": {"ids": ["minecraft:plains"]}
-        }})
-        .to_string(),
+    let keys = ["test:a_downstream", "test:b_right", "test:c_left"];
+    let declarations = keys.map(|key| DatapackRegistryDeclaration {
+        mod_id: "test".into(),
+        key: key.into(),
+        fields: vec![DatapackField::required("enabled", DatapackFieldKind::Bool)],
+        sync: DatapackRegistrySync::ServerOnly,
+    });
+    let registered = |registry: &str, value: &str| json!({"type": "neoforge:registered", "registry": registry, "value": value});
+    let bound = json!({"type":"neoforge:tag_empty","registry":"test:b_right","tag":"test:bound"});
+    let write = |layer: &str, file: &str, json: Value| {
+        let path = root.path().join(layer).join("data/test").join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, json.to_string()).unwrap();
+    };
+    write(
+        "base",
+        "test/a_downstream/off.json",
+        json!({"enabled":true}),
+    );
+    write(
+        "top",
+        "test/a_downstream/off.json",
+        json!({
+            "enabled":true, "neoforge:conditions":[{"type":"neoforge:never"}]
+        }),
+    );
+    write(
+        "top",
+        "test/a_downstream/answer.json",
+        json!({
+            "enabled":true, "neoforge:conditions":[
+                registered("test:c_left", "test:seed"),
+                {"type":"neoforge:not","value":bound.clone()},
+                registered("minecraft:item", "minecraft:stone")
+            ]
+        }),
+    );
+    write(
+        "top",
+        "test/c_left/seed.json",
+        json!({
+            "enabled":true, "neoforge:conditions":[bound]
+        }),
+    );
+    write(
+        "top",
+        "test/c_left/self.json",
+        json!({
+            "enabled":true, "neoforge:conditions":[registered("test:c_left", "test:seed")]
+        }),
+    );
+    write(
+        "top",
+        "test/b_right/edge.json",
+        json!({
+            "enabled":true, "neoforge:conditions":[registered("test:c_left", "test:seed")]
+        }),
+    );
+    write("top", "test/b_right/holder.json", json!({"enabled":true}));
+    write(
+        "top",
+        "tags/test/b_right/bound.json",
+        json!({"values":["test:holder"]}),
+    );
+    let packs = ["base", "top"].map(|layer| {
+        DataPack::from_source(
+            format!("file/{layer}"),
+            ResourceSource::directory(root.path().join(layer)),
+        )
+    });
+    let base = LoadConditions::new([]).with_features(["minecraft:vanilla"]);
+    let tags: Vec<_> = DataStore::load(&[&packs[0], &packs[1]])
+        .files
+        .into_iter()
+        .collect();
+    let overlay = PackOverlay {
+        conditions: &base,
+        files: &tags,
+        ..PackOverlay::default()
+    };
+    let view = || RegistryView {
+        ids: [("minecraft:item".into(), ["minecraft:stone".into()].into())].into(),
+        ..RegistryView::default()
+    };
+    let mut first = view();
+    let winners = registry_files(&[&packs[0], &packs[1]], &keys).unwrap();
+    let admitted =
+        admit_datapack_registries(root.path(), &overlay, &mut first, &declarations, &winners)
+            .unwrap();
+    assert_eq!(admitted.entries("test:c_left").unwrap(), ["test:seed"]);
+    assert_eq!(admitted.entries("test:b_right").unwrap(), ["test:holder"]);
+    assert_eq!(
+        admitted.entries("test:a_downstream").unwrap(),
+        ["test:answer"]
+    );
+
+    let test = |registry, value| json!({"neoforge:conditions":[registered(registry, value)]});
+    assert!(
+        first
+            .conditions(&base)
+            .allows(&test("test:a_downstream", "test:answer"))
+    );
+    let mut next = view();
+    admit_datapack_registries(
+        root.path(),
+        &overlay,
+        &mut next,
+        &declarations,
+        &RegistryFiles::new(),
     )
     .unwrap();
-    let registered = |registry: &str, value: &str| {
-        json!({"neoforge:conditions": [
-            {"type": "neoforge:registered", "registry": registry, "value": value}
-        ]})
-    };
-    let dunes = registered("minecraft:worldgen/biome", "test:dunes");
-    let admission = sunrise_world::conditions::LoadConditions::new([])
-        .with_lookup([("test:flag", |args: &Value| {
-            Ok(args["value"] != "neoforge:registered")
-        })]);
-    let mut files = Vec::from(
-        ["worldgen/biome/test:dunes", "recipe/test:a/b"]
-            .map(|key| (key.to_owned(), vec![b"{}".to_vec()])),
+    let next = next.conditions(&base);
+    assert!(!next.allows(&test("test:a_downstream", "test:answer")));
+    assert!(next.allows(&test("minecraft:item", "minecraft:stone")));
+
+    // Changing only the top file to an unknown condition is an owning-loader
+    // error, never permission to restore the valid lower file.
+    write(
+        "top",
+        "test/a_downstream/off.json",
+        json!({
+            "enabled":true, "neoforge:conditions":[{"type":"test:unknown"}]
+        }),
     );
-    // The winning file tests false; the string argument is not a registry read,
-    // and the lower pack's unconditional entry must not be used instead.
-    files.push((
-        "worldgen/biome/test:off".into(),
-        vec![
-            b"{}".to_vec(),
-            br#"{"neoforge:conditions":[{"type":"test:flag","value":"neoforge:registered"}]}"#
-                .to_vec(),
-        ],
-    ));
-    let registry_files = sunrise_client::datapack::RegistryFiles::new();
-    let first = super::candidate_registries(root.path(), &files, &registry_files, &[], &admission);
-    let first = sunrise_world::conditions::LoadConditions::new([]).with_registries(
-        first
-            .iter()
-            .map(|(registry, ids)| (registry.as_str(), ids.iter().map(String::as_str))),
-    );
+    let winners = registry_files(&[&packs[0], &packs[1]], &keys).unwrap();
+    let mut refused = view();
+    let error =
+        admit_datapack_registries(root.path(), &overlay, &mut refused, &declarations, &winners)
+            .unwrap_err();
     assert!(
-        first.allows(&dunes),
-        "a pack's new biome counts on its first load"
+        error.contains("pack file/top, file data/test/test/a_downstream/off.json"),
+        "{error}"
     );
-    assert!(first.allows(&registered("minecraft:worldgen/biome", "minecraft:plains")));
-    assert!(!first.allows(&registered("minecraft:worldgen/biome", "test:off")));
-    assert!(first.allows(&registered("minecraft:item", "minecraft:stone")));
-    let next = super::candidate_registries(root.path(), &[], &registry_files, &[], &admission);
-    let next = sunrise_world::conditions::LoadConditions::new([]).with_registries(
-        next.iter()
-            .map(|(registry, ids)| (registry.as_str(), ids.iter().map(String::as_str))),
-    );
+    assert!(error.contains("test:unknown"), "{error}");
     assert!(
-        !next.allows(&dunes),
-        "the pack no longer has it: not registered"
+        !refused
+            .conditions(&base)
+            .allows(&test("test:a_downstream", "test:off"))
     );
-    assert!(next.allows(&registered("minecraft:worldgen/biome", "minecraft:plains")));
 }
 
 /// A handler that reads the world through the Host. Read in a load phase, it is a named refusal.

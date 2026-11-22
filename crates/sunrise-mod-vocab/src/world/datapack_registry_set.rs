@@ -139,12 +139,10 @@ impl DatapackCandidateBuilder {
         })
     }
 
-    /// Decode selected resources `(file, pack, bytes)`, testing each physical winner before
-    /// decoding its entry in every matching registry.
-    pub fn from_winners<'a>(
+    /// Decode already selected and admitted resources `(file, pack, bytes)`.
+    fn from_winners<'a>(
         declarations: &[DatapackRegistryDeclaration],
         files: impl IntoIterator<Item = (&'a str, &'a str, &'a [u8])>,
-        mut accepts: impl FnMut(&str, &Value) -> bool,
     ) -> Result<DatapackCandidate, Box<DatapackLoadError>> {
         let directories: Vec<_> = declarations
             .iter()
@@ -178,21 +176,14 @@ impl DatapackCandidateBuilder {
                 } else {
                     let text = std::str::from_utf8(bytes)
                         .map_err(|_| fail(DatapackLoadReason::NotUtf8))?;
-                    let mut json: Value = serde_json::from_str(text).map_err(|error| {
+                    let json: Value = serde_json::from_str(text).map_err(|error| {
                         fail(DatapackLoadReason::Decode(DatapackDecodeError::Malformed(
                             error.to_string(),
                         )))
                     })?;
-                    if !accepts(file, &json) {
-                        break;
-                    }
-                    // Conditions are resource metadata, not a field in the registry schema.
-                    if let Value::Object(object) = &mut json {
-                        object.remove("neoforge:conditions");
-                    }
                     parsed.insert(json)
                 };
-                let decoded = decode_datapack_entry(declaration, json)
+                let decoded = decode_datapack_entry(declaration, json, &["neoforge:conditions"])
                     .map_err(|error| fail(DatapackLoadReason::Decode(error)))?;
                 staged[index].insert(entry, (decoded, pack.to_owned()));
             }
@@ -225,7 +216,6 @@ impl DatapackCandidate {
                 let (pack, bytes) = versions.last()?;
                 Some((file.as_str(), pack.as_str(), bytes.as_slice()))
             }),
-            |_, _| true,
         )
     }
 
@@ -395,12 +385,24 @@ impl DatapackRegistrySet {
     pub fn tag_contains(&self, registry: &str, entry: &str, tag: &str) -> Option<bool> {
         self.get(registry, entry).ok()?;
         Some(
-            self.tags
-                .get(registry)
-                .and_then(|tags| tags.get(tag))
-                .is_some_and(|members| members.iter().any(|member| member == entry)),
+            datapack_tag_members(self, registry, tag)
+                .iter()
+                .any(|member| member == entry),
         )
     }
+}
+
+/// Members already bound by the load that produced this registry set.
+pub fn datapack_tag_members<'a>(
+    set: &'a DatapackRegistrySet,
+    registry: &str,
+    tag: &str,
+) -> &'a [String] {
+    set.tags
+        .get(registry)
+        .and_then(|tags| tags.get(tag))
+        .map(Vec::as_slice)
+        .unwrap_or_default()
 }
 
 impl From<DatapackCandidate> for DatapackRegistrySet {

@@ -209,7 +209,7 @@ impl DatapackEntry {
 }
 
 /// Whether `text` is a lowercase `namespace:path` id the way registrations name theirs.
-pub(crate) fn valid_namespaced(text: &str) -> bool {
+pub fn valid_namespaced(text: &str) -> bool {
     let Some((namespace, path)) = text.split_once(':') else {
         return false;
     };
@@ -314,20 +314,21 @@ impl DatapackRegistryDeclaration {
     pub fn decode_entry(&self, text: &str) -> Result<DatapackEntry, DatapackDecodeError> {
         let json: Value = serde_json::from_str(text)
             .map_err(|error| DatapackDecodeError::Malformed(error.to_string()))?;
-        decode_datapack_entry(self, &json)
+        decode_datapack_entry(self, &json, &[])
     }
 }
 
-/// Decode an already parsed entry. The resource loader handles pack conditions
-/// and removes their metadata before handing the JSON to the schema.
+/// Decode an already parsed entry. Only the owning resource loader may set
+/// aside metadata it has already checked, such as a file's load conditions.
 pub fn decode_datapack_entry(
     declaration: &DatapackRegistryDeclaration,
     json: &Value,
+    metadata: &[&str],
 ) -> Result<DatapackEntry, DatapackDecodeError> {
     let Value::Object(object) = json else {
         return Err(DatapackDecodeError::NotAnObject);
     };
-    decode_record(&declaration.fields, object, &[])
+    decode_record(&declaration.fields, object, metadata)
 }
 
 /// Decodes a JSON object against a flat record schema, the same way for every user of it (a

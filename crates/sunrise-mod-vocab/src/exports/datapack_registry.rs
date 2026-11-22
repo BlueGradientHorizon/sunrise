@@ -14,10 +14,10 @@ pub use world::datapack_snapshot::{
 mod __private {
     mod game {
         pub use crate::world::datapack_registry::{
-            datapack_registry_directory, decode_datapack_entry,
+            datapack_registry_directory, decode_datapack_entry, valid_namespaced,
         };
         pub use crate::world::datapack_registry_set::{
-            DatapackCandidateBuilder, datapack_entry_id,
+            DatapackCandidateBuilder, datapack_entry_id, datapack_tag_members,
         };
     }
 }

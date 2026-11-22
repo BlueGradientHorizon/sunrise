@@ -110,7 +110,7 @@ pub const CORE_PACK: (&str, &str, &str) = ("minecraft", "core", sunrise_protocol
 /// world's pack definitions too, so their ids must reach clients.
 /// World clocks are too: a dimension type's `default_clock` must name a
 /// clock the client was sent, or it reads that dimension's time as zero.
-const PACK_REGISTRIES: &[&str] = &[
+pub const PACK_REGISTRIES: &[&str] = &[
     "minecraft:banner_pattern",
     "minecraft:instrument",
     "minecraft:painting_variant",
@@ -384,6 +384,7 @@ pub fn component_nbt(v: &Value) -> Tag {
 impl SyncData {
     /// Admit the typed pack winners and collect conditions from the other
     /// files used by the lazy wire reader, even if typed admission fails.
+    /// Keep tombstones available for dependent diagnostics on a refused candidate.
     /// The world's damage catalog is already staged, and supplies its frozen wire data.
     pub fn stage_registry_definitions(
         resources: &Path,
@@ -392,7 +393,7 @@ impl SyncData {
         read_errors: &BTreeMap<String, String>,
         text_registries: &crate::command::Registries,
         sound_exists: impl Fn(&str) -> bool,
-    ) -> Result<PackRegistryDefinitions, String> {
+    ) -> (PackRegistryDefinitions, Result<(), String>) {
         let (packed, admitted) = PackRegistryDefinitions::stage(
             resources,
             defaults,
@@ -414,7 +415,7 @@ impl SyncData {
             packed.discard_replaced(key, &mut entries);
             condition_filter::filter(&mut entries, false, overlay.conditions, path);
         }
-        admitted.map(|()| packed)
+        (packed, admitted)
     }
 
     /// No registries, tags or recipes: enough for tests of the login phase.
@@ -1199,7 +1200,7 @@ mod tests {
         std::fs::write(root.path().join("items.json"), b"{}").unwrap();
         let defaults = sunrise_world::item_defaults::read(root.path()).unwrap();
         let conditions = sunrise_world::conditions::LoadConditions::new([]);
-        let Err(typed) = SyncData::stage_registry_definitions(
+        let (packed, Err(typed)) = SyncData::stage_registry_definitions(
             root.path(),
             &defaults,
             &sunrise_world::loot::PackOverlay {
@@ -1221,6 +1222,9 @@ mod tests {
             assert!(typed.contains(diagnostic), "{typed}");
         }
         assert!(!typed.contains("absent:loser"), "{typed}");
+        assert!(packed.entries().any(|(registry, id, admitted)| {
+            registry == "minecraft:instrument" && id == "minecraft:override" && !admitted
+        }));
         let untyped = conditions.check_errors().unwrap_err();
         assert!(untyped.contains("data/test/worldgen/biome/wire_biome.json: unknown load conditions [absent:wire_biome]"), "{untyped}");
         for losing_or_already_checked in [
@@ -1247,7 +1251,7 @@ mod tests {
         for (tags, emitted) in [(["test:unrelated"], true), (["test:marker"], false)] {
             let conditions = sunrise_world::conditions::LoadConditions::new([])
                 .with_tags([("minecraft:item", tags)]);
-            let packed = SyncData::stage_registry_definitions(
+            let (packed, admitted) = SyncData::stage_registry_definitions(
                 root.path(),
                 &defaults,
                 &sunrise_world::loot::PackOverlay {
@@ -1258,9 +1262,17 @@ mod tests {
                 &BTreeMap::new(),
                 &Default::default(),
                 |_| true,
-            )
-            .unwrap();
+            );
+            admitted.unwrap();
             assert_eq!(conditions.check_errors(), Ok(()));
+            assert_eq!(
+                packed.entries().collect::<Vec<_>>(),
+                [(
+                    "minecraft:world_clock",
+                    "test:conditional".to_owned(),
+                    emitted
+                ),]
+            );
             let mut entries = Vec::new();
             packed.append_encoded("minecraft:world_clock", &mut entries);
             assert_eq!(

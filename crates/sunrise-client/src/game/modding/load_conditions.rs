@@ -1,11 +1,22 @@
 //! Load-scoped registration and per-candidate condition lookup.
 use super::Game;
 use mod_api::__private::game::{
-    CallbackOwner, RegistrationContextNew, datapack_entry_id, datapack_registry_directory,
+    CallbackOwner, DatapackCandidateBuilder, RegistrationContextNew, datapack_entry_id,
+    datapack_registry_directory, decode_datapack_entry, valid_namespaced,
 };
-use std::{borrow::Cow, collections::BTreeMap, sync::Arc};
+use mod_api::{
+    DatapackCandidate, DatapackDecodeError, DatapackLoadReason, DatapackRegistryDeclaration,
+};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::Path,
+    sync::Arc,
+};
 use sunrise_client::datapack::RegistryFiles;
-use sunrise_world::conditions::ConditionContextRead;
+use sunrise_world::{
+    conditions::{ConditionContextRead, LoadConditions},
+    loot::PackOverlay,
+};
 
 pub(super) type ConditionTable =
     Arc<BTreeMap<mod_api::Identifier, (CallbackOwner, Arc<dyn mod_api::LoadCondition>)>>;
@@ -66,156 +77,267 @@ impl Game<'_> {
                 || !self.mods.native.packages().is_empty())
     }
 
-    /// The conditions of a load from `root` over the candidate pack `files`.
-    pub(super) fn registered_load_conditions(
-        &self,
-        inventory: &sunrise_mod_package::enabled::EnabledMods,
+    /// Stage the enabled packs’ actual winners before readers use their holders.
+    pub(super) fn stage_datapack_registries(
         stack: &super::functions::PackStack,
-        root: &std::path::Path,
-        files: &[(String, Vec<Vec<u8>>)],
-    ) -> Result<(sunrise_world::conditions::LoadConditions, RegistryFiles), String> {
-        // `ICondition.IContext`: the world's feature flags and every registry's
-        // entries as this candidate holds them. Tags join later, once this load has bound them.
-        let features = || stack.features.iter().map(String::as_str);
-        // Admission of a pack entry reads every condition but the registries this builds. It
-        // shares the load's verdicts, so a condition that reads no registry runs once per file.
-        let base = conditions_for_mods(&self.mods, inventory)?;
-        let admission = base.clone().with_features(features());
-        // DataStore's fixed content folders omit mod-declared registry folders.
-        // Include those entries from this candidate's packs before conditions read them.
+        root: &Path,
+        overlay: &PackOverlay<'_>,
+        view: &mut RegistryView,
+    ) -> Result<Option<DatapackCandidate>, String> {
         let declarations = mod_api::__private::datapack_registry_declarations();
-        let registry_files =
-            candidate_registry_files(stack, declarations).map_err(|error| format!("{error:?}"))?;
-        let registries =
-            candidate_registries(root, files, &registry_files, declarations, &admission);
-        let conditions = base.with_features(features()).with_registries(
-            registries
-                .iter()
-                .map(|(registry, ids)| (registry.as_str(), ids.iter().map(String::as_str))),
-        );
-        Ok((conditions, registry_files))
-    }
-}
-
-/// Select the physical winners used by both the condition context and registry decoding.
-fn candidate_registry_files(
-    stack: &super::functions::PackStack,
-    declarations: &[mod_api::DatapackRegistryDeclaration],
-) -> Result<RegistryFiles, Box<mod_api::DatapackLoadError>> {
-    let keys: Vec<_> = declarations
-        .iter()
-        .map(|declaration| declaration.key.as_str())
-        .collect();
-    let packs: Vec<_> = std::iter::once(&stack.content)
-        .chain(stack.enabled_packs())
-        .collect();
-    sunrise_client::datapack::registry_files(&packs, &keys)
-}
-
-/// Every registry's entries as the candidate load holds them, which `neoforge:registered` reads:
-/// the built-in ones the prepared root exports (`command-registries.json`, never what an earlier
-/// load added), and the entries the candidate's pack `files` add to a registry that takes them
-/// (vanilla's, or a datapack registry a mod declared). So an id a pack adds counts on its first
-/// load, and one a pack no longer has stops counting on the next.
-fn candidate_registries(
-    root: &std::path::Path,
-    files: &[(String, Vec<Vec<u8>>)],
-    declared_files: &RegistryFiles,
-    declarations: &[mod_api::DatapackRegistryDeclaration],
-    admission: &sunrise_world::conditions::LoadConditions,
-) -> BTreeMap<String, std::collections::BTreeSet<String>> {
-    let export: serde_json::Value = std::fs::read(root.join("command-registries.json"))
-        .ok()
-        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-        .unwrap_or_default();
-    let mut registries: BTreeMap<String, std::collections::BTreeSet<String>> =
-        export["by_registry"]
-            .as_object()
-            .into_iter()
-            .flatten()
-            .map(|(registry, entry)| {
-                let ids = entry["ids"].as_array().into_iter().flatten();
-                let ids = ids.filter_map(serde_json::Value::as_str).map(str::to_owned);
-                (registry.clone(), ids.collect())
-            })
-            .collect();
-    for declaration in declarations {
-        registries.entry(declaration.key.clone()).or_default();
-    }
-    let mut by_folder: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    for registry in registries.keys() {
-        if let Some(directory) = datapack_registry_directory(registry) {
-            by_folder
-                .entry(directory.into_owned())
-                .or_default()
-                .push(registry.clone());
+        if declarations.is_empty() {
+            return Ok(None);
         }
-    }
-    // DataStore keys spell the same physical resource as `<folder>/<namespace>:<path>`.
-    // Keep one winner even when the same file was also listed for a declared registry.
-    let overlay_winners = files.iter().filter_map(|(key, versions)| {
-        let (prefix, path) = key.split_once(':')?;
-        let (directory, namespace) = prefix.rsplit_once('/')?;
-        let file = format!("data/{namespace}/{directory}/{path}.json");
-        (!declared_files.contains_key(&file))
-            .then_some((Cow::Owned(file), versions.last()?.as_slice()))
-    });
-    let winners = overlay_winners.chain(
-        declared_files
+        let keys: Vec<_> = declarations
             .iter()
-            .map(|(file, (_, bytes))| (Cow::Borrowed(file.as_str()), bytes.as_slice())),
-    );
-    for (file, bytes) in winners {
-        let Some((_, path)) = file
-            .strip_prefix("data/")
-            .and_then(|rest| rest.split_once('/'))
-        else {
-            continue;
-        };
-        let mut folders = path
-            .match_indices('/')
-            .filter_map(|(slash, _)| by_folder.get_key_value(&path[..slash]))
-            .peekable();
-        if folders.peek().is_none() {
-            continue;
-        }
-        if let Ok(json) = serde_json::from_slice::<serde_json::Value>(bytes) {
-            // An admission probe is not the entry's loader. A codec error
-            // omits it here; the owning loader will report it.
-            let Ok(conditions) = admission.decode_file_conditions(&json) else {
+            .map(|declaration| declaration.key.as_str())
+            .collect();
+        let packs: Vec<_> = std::iter::once(&stack.content)
+            .chain(stack.enabled_packs())
+            .collect();
+        let files = sunrise_client::datapack::registry_files(&packs, &keys)
+            .map_err(|error| format_datapack_error(&error))?;
+        admit_datapack_registries(root, overlay, view, declarations, &files).map(Some)
+    }
+}
+
+#[derive(Default)]
+pub(super) struct RegistryView {
+    pub(super) ids: BTreeMap<String, BTreeSet<String>>,
+    pub(super) tags: BTreeMap<String, BTreeSet<String>>,
+}
+
+impl RegistryView {
+    pub(super) fn conditions(&self, base: &LoadConditions) -> LoadConditions {
+        base.clone()
+            .with_registries(
+                self.ids
+                    .iter()
+                    .map(|(key, ids)| (key.as_str(), ids.iter().map(String::as_str))),
+            )
+            .with_tags(
+                self.tags
+                    .iter()
+                    .map(|(key, tags)| (key.as_str(), tags.iter().map(String::as_str))),
+            )
+    }
+}
+
+fn format_datapack_error(error: &mod_api::DatapackLoadError) -> String {
+    format!(
+        "datapack registry {} entry {} (pack {}, file {}): {:?}",
+        error.registry, error.entry, error.pack, error.file, error.reason
+    )
+}
+
+fn admit_datapack_registries(
+    root: &Path,
+    overlay: &PackOverlay<'_>,
+    view: &mut RegistryView,
+    declarations: &[DatapackRegistryDeclaration],
+    files: &RegistryFiles,
+) -> Result<DatapackCandidate, String> {
+    use DatapackLoadReason::{Decode, InvalidEntryId, NotUtf8};
+    let base = overlay.conditions;
+    let malformed = |message| Decode(DatapackDecodeError::Malformed(message));
+    let winners: Vec<_> = files
+        .iter()
+        .map(|(file, (pack, bytes))| {
+            let json = std::str::from_utf8(bytes)
+                .map_err(|_| NotUtf8)
+                .and_then(|text| {
+                    serde_json::from_str::<serde_json::Value>(text)
+                        .map_err(|error| malformed(error.to_string()))
+                });
+            (file.as_str(), pack.as_str(), json)
+        })
+        .collect();
+    let programs: Vec<_> = winners
+        .iter()
+        .map(|(_, _, json)| {
+            let json = json.as_ref().map_err(Clone::clone)?;
+            base.decode_file_conditions(json)
+                .map(|program| (json, program))
+                .map_err(malformed)
+        })
+        .collect();
+    let directories = declarations
+        .iter()
+        .map(|declaration| {
+            datapack_registry_directory(&declaration.key)
+                .ok_or_else(|| format!("invalid datapack registry key {}", declaration.key))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let producers: BTreeMap<_, _> = declarations
+        .iter()
+        .enumerate()
+        .map(|(index, declaration)| {
+            view.ids.remove(&declaration.key);
+            view.tags.remove(&declaration.key);
+            (declaration.key.as_str(), index)
+        })
+        .collect();
+    let mut dependencies = vec![BTreeSet::new(); declarations.len()];
+    let mut pending = vec![Vec::new(); declarations.len()];
+    let mut errors = Vec::new();
+    for (index, (declaration, directory)) in declarations.iter().zip(&directories).enumerate() {
+        for ((file, pack, _), program) in winners.iter().zip(&programs) {
+            let Some(entry) = datapack_entry_id(directory, file) else {
                 continue;
             };
-            let mut reads_candidate = false;
-            conditions.visit_context_reads(|read| {
-                reads_candidate |= matches!(
-                    read,
-                    ConditionContextRead::Registered { .. } | ConditionContextRead::TagEmpty { .. }
-                );
-            });
-            // This pass does not have the candidate's registry and tag views yet.
-            if !reads_candidate
-                && !conditions
-                    .allows_file_isolated(admission, &file)
-                    .unwrap_or(false)
-            {
-                continue;
-            }
-        }
-        // A resource under nested folders, or a folder shared by two registry
-        // keys, contributes the entry seen by each independent FileToIdConverter.
-        for (directory, keys) in folders {
-            let Some(id) = datapack_entry_id(directory, &file) else {
-                continue;
+            let program = if valid_namespaced(&entry) {
+                program.as_ref()
+            } else {
+                Err(&InvalidEntryId)
             };
-            for registry in keys {
-                registries
-                    .get_mut(registry)
-                    .expect("named above")
-                    .insert(id.clone());
+            match program {
+                Ok((json, program)) => {
+                    program.visit_context_reads(|read| {
+                        let registry = match read {
+                            ConditionContextRead::Registered { registry, .. }
+                            | ConditionContextRead::TagEmpty { registry, .. } => registry,
+                            ConditionContextRead::FeatureFlags => return,
+                        };
+                        if let Some(&producer) = producers.get(registry) {
+                            dependencies[index].insert(producer);
+                        }
+                    });
+                    pending[index].push((entry, *file, *pack, *json, program));
+                }
+                Err(reason) => errors.push(format!(
+                    "datapack registry {} entry {entry} (pack {pack}, file {file}): {reason:?}",
+                    declaration.key,
+                )),
             }
         }
     }
-    registries
+
+    let mut builder = DatapackCandidateBuilder::default();
+    for batch in registry_batches(&dependencies) {
+        // Pending entries and tags in this batch are not bound while its codecs run.
+        let context = view.conditions(base);
+        for index in batch {
+            let declaration = &declarations[index];
+            let mut entries = BTreeMap::new();
+            for (entry, file, pack, json, program) in pending[index].drain(..) {
+                let decoded = program
+                    .allows_file_isolated(&context, file)
+                    .map_err(malformed)
+                    .and_then(|accepted| {
+                        if !accepted {
+                            return Ok(None);
+                        }
+                        decode_datapack_entry(declaration, json, &["neoforge:conditions"])
+                            .map(Some)
+                            .map_err(Decode)
+                    });
+                match decoded {
+                    Ok(Some(value)) => {
+                        entries.insert(entry, (value, pack.to_owned()));
+                    }
+                    Ok(None) => {}
+                    Err(reason) => errors.push(format!(
+                        "datapack registry {} entry {entry} (pack {pack}, file {file}): {reason:?}",
+                        declaration.key,
+                    )),
+                }
+            }
+            let tags = super::native_registry_entries::load_registry_tags(
+                root,
+                overlay,
+                &directories[index],
+                |id| entries.contains_key(id),
+            )
+            .unwrap_or_else(|error| {
+                errors.push(format!(
+                    "datapack registry {} tags: {error}",
+                    declaration.key
+                ));
+                BTreeMap::new()
+            });
+            view.ids
+                .insert(declaration.key.clone(), entries.keys().cloned().collect());
+            view.tags.insert(
+                declaration.key.clone(),
+                tags.iter()
+                    .filter(|(_, members)| !members.is_empty())
+                    .map(|(tag, _)| tag.clone())
+                    .collect(),
+            );
+            builder.stage_registry(&declaration.key, entries, tags);
+        }
+    }
+    if !errors.is_empty() {
+        return Err(errors.join("\n"));
+    }
+    builder
+        .finish(declarations)
+        .map_err(|error| format_datapack_error(&error))
+}
+
+/// Group strongly connected registries (Kosaraju's two traversals), then sort
+/// the component graph into ready batches. An outside consumer waits for the
+/// entire cycle to bind. Use an explicit stack: pack input controls the depth.
+fn registry_batches(dependencies: &[BTreeSet<usize>]) -> Vec<Vec<usize>> {
+    let mut consumers = vec![Vec::new(); dependencies.len()];
+    for (consumer, producers) in dependencies.iter().enumerate() {
+        for &producer in producers {
+            consumers[producer].push(consumer);
+        }
+    }
+    let mut seen = vec![false; dependencies.len()];
+    let mut finished = Vec::with_capacity(dependencies.len());
+    let mut stack = Vec::new();
+    for root in 0..dependencies.len() {
+        stack.push((root, false));
+        while let Some((index, leaving)) = stack.pop() {
+            if leaving {
+                finished.push(index);
+            } else if !std::mem::replace(&mut seen[index], true) {
+                stack.push((index, true));
+                stack.extend(
+                    dependencies[index]
+                        .iter()
+                        .map(|&producer| (producer, false)),
+                );
+            }
+        }
+    }
+    seen.fill(false);
+    let mut components = Vec::new();
+    let mut stack = Vec::new();
+    for root in finished.into_iter().rev() {
+        if seen[root] {
+            continue;
+        }
+        let mut component = Vec::new();
+        stack.push(root);
+        while let Some(index) = stack.pop() {
+            if !std::mem::replace(&mut seen[index], true) {
+                component.push(index);
+                stack.extend(consumers[index].iter().copied());
+            }
+        }
+        components.push(component);
+    }
+    let mut batches: Vec<Vec<usize>> = Vec::new();
+    let mut stages: Vec<Option<usize>> = vec![None; dependencies.len()];
+    for component in components.into_iter().rev() {
+        let stage = component
+            .iter()
+            .flat_map(|&index| &dependencies[index])
+            .filter_map(|&producer| stages[producer])
+            .max()
+            .map_or(0, |stage| stage + 1);
+        if batches.len() <= stage {
+            batches.resize_with(stage + 1, Vec::new);
+        }
+        for index in component {
+            stages[index] = Some(stage);
+            batches[stage].push(index);
+        }
+    }
+    batches
 }
 
 pub(super) fn conditions_for_mods(
