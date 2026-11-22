@@ -208,7 +208,22 @@ impl Streaming {
         first: bool,
         visibility: Option<Lease>,
     ) {
-        let settings = self.mesh_settings();
+        let mut settings = self.mesh_settings();
+        // A mod's tint source colouring an extra model is asked here, not on the worker.
+        if region[1][1]
+            .as_ref()
+            .is_some_and(|centre| !centre.extra_models.is_empty())
+        {
+            let context = self.shared.context.read().unwrap().clone();
+            settings.attached_tints = context.tables.prepare_attached_tints(
+                &crate::mesher::borrow(region),
+                key.1,
+                &context.biomes,
+                settings.zoom,
+                settings.blend_radius,
+                settings.nether,
+            );
+        }
         if let Some(lease) = visibility {
             let context = self.shared.context.read().unwrap().clone();
             self.section_visibility.pending.push(VisibilityRequest {

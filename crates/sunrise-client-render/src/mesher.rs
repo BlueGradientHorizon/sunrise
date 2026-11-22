@@ -34,6 +34,7 @@ use crate::{
     graphics::LeafCullingMode,
     models::catalog::BakedFace,
 };
+pub use extra_models::AttachedTints;
 pub use mod_geometry::{has_section_geometry, register_section_geometry};
 use mod_tint::ModLayer;
 pub use mod_tint::{
@@ -1387,6 +1388,14 @@ impl MeshTables {
             ModLayer::Split { world, .. } => Some(*world),
             ModLayer::WaterParticles if particle => Some(tints.get(Resolver::Water, x, y, z)),
             ModLayer::WaterParticles => None,
+            // An extra model's face: the colour prepared before the mesh was scheduled, white
+            // where none was; the mesh workers call no mod code for it.
+            ModLayer::Source(_) if let Some(attached) = &tints.attached => Some(
+                attached
+                    .as_ref()
+                    .and_then(|a| a.get(pos, id, index))
+                    .unwrap_or(0xFF_FFFF),
+            ),
             ModLayer::Source(source) => Some(mod_tint::ask(
                 self,
                 &**source,
@@ -1601,6 +1610,9 @@ pub struct MeshScratch {
     /// Per padded row (`pi(-B, y, z) / P`), bit `x + B` set where the block
     /// is `isSolidRender` (`MeshTables::solid`).
     solid_rows: Vec<u32>,
+    /// The next section's extra-model tints (`MeshTables::prepare_attached_tints`), taken by
+    /// its mesh.
+    pub(crate) attached_tints: Option<Arc<extra_models::AttachedTints>>,
 }
 /// Fills `rows` with the padded section's `isSolidRender` blocks, one bit each (`MeshScratch::solid_rows`).
 fn solid_rows(pad: &Padded, solid: &[bool], rows: &mut Vec<u32>) {
@@ -1833,6 +1845,9 @@ struct Tints<'a> {
     /// (`ModelBlockRenderer.computeTintColor`).
     asked: Option<([i32; 3], u32)>,
     asked_colors: Vec<(i32, u32)>,
+    /// While extra models draw (`extra_models::add`): the colours mods' sources gave them before
+    /// the mesh was scheduled, read in place of asking a source.
+    attached: Option<Option<Arc<extra_models::AttachedTints>>>,
     /// The packs' colormaps (`MeshTables::colormaps`), the water's, and their colours so far
     /// by colormap and section-local block.
     colormaps: &'a [Arc<crate::environment::Colormap>],
@@ -1860,6 +1875,7 @@ impl<'a> Tints<'a> {
             uniform: None,
             asked: None,
             asked_colors: Vec::new(),
+            attached: None,
             colormaps: &[],
             water_colormap: None,
             sampled: Default::default(),
@@ -2297,6 +2313,7 @@ impl Mesher<'_> {
         visibility_bytes: usize,
     ) -> SectionMesh {
         out.clear();
+        let attached = scratch.attached_tints.take();
         let center = region[1][1].expect("centre chunk");
         let section = &center.sections[sy as usize];
         let base_y = center.min_y() + sy * 16;
@@ -2548,6 +2565,7 @@ impl Mesher<'_> {
                 &mut out,
                 &extras,
                 visibility_bytes,
+                attached,
             );
         }
         if !self.tables.section_geometry.is_empty() {

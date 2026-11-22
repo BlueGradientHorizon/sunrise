@@ -290,6 +290,9 @@ struct MeshSettings {
     leaf_culling: LeafCullingMode,
     /// The section's frozen `section_visibility` plan; `None` on the no-mod path.
     visibility: Option<Arc<section_visibility::FrozenPlan>>,
+    /// The colours mods' tint sources gave the section's extra models, asked when the job was
+    /// scheduled (`MeshTables::prepare_attached_tints`); `None` for none.
+    attached_tints: Option<Arc<crate::mesher::AttachedTints>>,
 }
 enum Job {
     Generate(i32, i32),

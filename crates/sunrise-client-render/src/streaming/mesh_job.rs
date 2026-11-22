@@ -45,6 +45,7 @@ pub(super) fn mesh_section(
         visibility,
     };
     let region = borrow(region);
+    scratch.attached_tints = settings.attached_tints.clone();
     let mut mesh = if let Some(prepared) = &settings.visibility {
         mesher.mesh_planned(
             &region,
@@ -78,6 +79,7 @@ impl Streaming {
             translucent_layers: self.translucent_layers.clone(),
             leaf_culling: self.leaf_culling,
             visibility: None,
+            attached_tints: None,
         }
     }
 }

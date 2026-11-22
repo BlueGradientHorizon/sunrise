@@ -201,3 +201,108 @@ fn extra_models_stay_within_the_sections_limits() {
     assert_eq!(bytes(&again.solid), bytes(&mesh.solid));
     assert_eq!(bytes(&again.translucent), bytes(&mesh.translucent));
 }
+
+/// A mod's own tint source for stone: green, or a panic, counting the times it is asked.
+struct Counted {
+    asked: std::sync::atomic::AtomicUsize,
+    panics: bool,
+}
+impl mod_api::BlockTintSource for Counted {
+    fn color(&self, _: &mod_api::BlockState, _: &dyn mod_api::BlockMetadata) -> u32 {
+        0x00_FF00
+    }
+    fn color_in_world(
+        &self,
+        _: &mod_api::BlockState,
+        _: &dyn mod_api::BlockMetadata,
+        _: &dyn mod_api::BlockAndTintGetter,
+        _: [i32; 3],
+    ) -> u32 {
+        self.asked
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        assert!(!self.panics, "no neighbour data at the chunk edge");
+        0x00_FF00
+    }
+}
+
+/// An extra model tinted through its block's own mod source (oak leaves, tint index 0, drawn as
+/// part of stone coloured by `source`): the source is asked when the mesh is scheduled
+/// (`prepare_attached_tints`), never while the section meshes, and a source that panics there
+/// colours white and the meshing goes on.
+#[test]
+fn a_mod_tint_source_is_asked_before_the_mesh_not_by_the_worker() {
+    let Some(world) = World::load() else {
+        return;
+    };
+    let registry = world.assets.registry;
+    let leaves = model_of(&world, "minecraft:oak_leaves", world.render.generation);
+    let chunk = with_extra(world.cube(), &[leaves]);
+    let mut region = [[None; 3]; 3];
+    region[1][1] = Some(&chunk);
+    let leaf_layer = layer(&world, "minecraft:block/oak_leaves");
+    // The red channel of the leaf vertices: none under green, some under white.
+    let reds = |mesh: &SectionMesh| -> Vec<u32> {
+        let mut all = on_layer(&mesh.solid, leaf_layer);
+        all.extend(on_layer(&mesh.translucent, leaf_layer));
+        assert_eq!(quads(&all), 6, "the leaves' six faces");
+        all.iter().map(|v| v.color & 0xFF).collect()
+    };
+    for panics in [false, true] {
+        let source = Arc::new(Counted {
+            asked: Default::default(),
+            panics,
+        });
+        let asked = || source.asked.load(std::sync::atomic::Ordering::Relaxed);
+        let mut tables = world.tables(Vec::new());
+        let layers = std::collections::BTreeMap::from([(
+            "minecraft:stone".to_string(),
+            Arc::from([mod_api::TintLayer::Source(source.clone())]),
+        )]);
+        tables
+            .apply_tint_layers(
+                registry,
+                &layers,
+                Some(super::mod_tint_tests::tint_values(registry)),
+            )
+            .unwrap();
+        let mut mesher = world.mesher(&tables);
+        // Scheduled without preparing (a viewed level's mesh): white, the source never asked.
+        let unprepared = mesher.mesh(&region, 0);
+        assert_eq!(asked(), 0, "the mesh asked the source");
+        assert!(reds(&unprepared).iter().all(|&r| r > 0));
+        // Prepared on the scheduling thread, then meshed on a worker.
+        let prepared = tables.prepare_attached_tints(
+            &region,
+            0,
+            mesher.biomes,
+            mesher.zoom,
+            mesher.blend_radius,
+            false,
+        );
+        assert_eq!(asked(), 1, "asked once, when prepared");
+        let prepared = prepared.expect("the stone's source colours its extra model");
+        let mesh = std::thread::scope(|scope| {
+            scope
+                .spawn(|| {
+                    let mut scratch = MeshScratch {
+                        attached_tints: Some(prepared.clone()),
+                        ..Default::default()
+                    };
+                    world.mesher(&tables).mesh_reusing(
+                        &region,
+                        0,
+                        SectionMesh::default(),
+                        &mut scratch,
+                    )
+                })
+                .join()
+                .expect("the worker kept running")
+        });
+        assert_eq!(asked(), 1, "the worker asked the source");
+        if panics {
+            assert!(reds(&mesh).iter().all(|&r| r > 0), "white after a panic");
+        } else {
+            assert!(reds(&mesh).iter().all(|&r| r == 0), "the source's green");
+        }
+    }
+}
