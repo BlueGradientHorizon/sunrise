@@ -197,26 +197,6 @@ impl Game<'_> {
         })
     }
 
-    /// `EndCrystal.isPickable`: the nearest tracked crystal the view hits within reach.
-    pub(super) fn crystal_hit(&self) -> Option<(usize, f64)> {
-        if let Some(hit) = self.cached_entity_pick() {
-            let (entity, distance, _) = hit?;
-            let index = self.crystals.iter().position(|c| c.id == entity.id())?;
-            return Some((index, distance));
-        }
-        let (eye, dir) = self.aim()?;
-        let reach = self.entity_reach;
-        let (from, to) = super::pick_accumulator::pick_ray_segment(eye, dir, reach);
-        let mut pick = super::pick_accumulator::PickAccumulator::new(reach * reach);
-        let mut hit = None;
-        for (i, crystal) in self.crystals.iter().enumerate().filter(|(_, c)| c.id != 0) {
-            if pick.consider_box(self, crystal.id, from, to, crystal.bounds()) {
-                hit = Some((i, pick.hovered.unwrap().distance_sq.sqrt()));
-            }
-        }
-        hit
-    }
-
     /// `ClientPacketListener.handleSetEntityPassengersPacket`: who rides
     /// `vehicle` now. The local player gets in or out; mobs and other
     /// players sit where the server keeps them.

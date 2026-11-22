@@ -798,11 +798,6 @@ fn singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3() 
         game.riding = Some(110);
         place_player(game, [0.5, 65.0, 0.5], 0.0, 0.0);
         assert_eq!(
-            game.interaction_hit(),
-            None,
-            "interaction_hit must exclude same-root-vehicle interaction"
-        );
-        assert_eq!(
             game.crosshair_entity_id(),
             Some(202),
             "horse co-passenger stand and interaction must be excluded"

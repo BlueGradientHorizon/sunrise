@@ -128,26 +128,6 @@ impl RemoteInteraction {
 }
 
 impl Game<'_> {
-    /// `Interaction` under the crosshair within entity reach, excluding camera and shared root vehicle.
-    pub(super) fn interaction_hit(&self) -> Option<(i32, f64)> {
-        if let Some(hit) = self.cached_entity_pick() {
-            let (entity, distance, _) = hit?;
-            return self
-                .interactions
-                .contains_key(&(entity.id() as i32))
-                .then_some((entity.id() as i32, distance));
-        }
-        let (eye, dir) = self.aim()?;
-        let reach = self.entity_reach;
-        let (from, to) = super::pick_accumulator::pick_ray_segment(eye, dir, reach);
-        let mut pick = super::pick_accumulator::PickAccumulator::new(reach * reach);
-        for (&id, i) in &self.interactions {
-            if let Ok(uid) = u32::try_from(id) {
-                pick.consider_box(self, uid, from, to, i.bounds());
-            }
-        }
-        pick.hovered.map(|h| (h.id as i32, h.distance_sq.sqrt()))
-    }
     /// An `Interaction` keeps `Entity`'s no-op interpolation handler: the
     /// server's position replaces its own at once.
     pub(super) fn move_remote_interaction(&mut self, id: i32, position: [f64; 3]) {
