@@ -2126,3 +2126,506 @@ fn cross_level_sound_listener_player_attachment_writes_rollback_to_original_and_
         },
     );
 }
+
+/// Same-UUID fake players in the Overworld and the Nether own separate bodies (`Guest::conn`):
+/// writing attachment, health, and inventory on the Nether fake only (directly in the Nether,
+/// through a nested committed transaction, or from a Nether sound listener during an Overworld
+/// transaction) and aborting must restore the Nether fake's original state without touching the
+/// earlier Overworld fake sharing the same UUID.
+#[test]
+#[ignore = "daily"]
+fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory_independently() {
+    in_isolated_process(
+        "same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory_independently",
+        || {
+            use mod_api::{Flow, HostSide, ItemPlace, ItemResource, LivingRef, ServerHost};
+            use std::sync::Mutex;
+            use std::sync::atomic::{AtomicUsize, Ordering};
+            use sunrise_client::items::ItemStack;
+            use sunrise_core::nbt::{Compound, Tag};
+            use sunrise_mod_runtime::attachments::{
+                AttachmentCodec, AttachmentError, AttachmentType, Holder,
+            };
+
+            const FAKE_UUID: u128 = 2345;
+            const OW_MARK: i32 = 11;
+            const OW_HEALTH: f32 = 14.0;
+            const NETHER_MARK: i32 = 22;
+            const NETHER_HEALTH: f32 = 18.0;
+
+            const MARK: AttachmentType<i32> = AttachmentType {
+                namespace: "cross_level_fake_test",
+                name: "mark",
+                default: || 0,
+                codec: Some(AttachmentCodec {
+                    encode: |value| Ok(Compound::from([("n".into(), Tag::Int(*value))])),
+                    decode: |data| match data.get(&"n".into()) {
+                        Some(Tag::Int(n)) => Ok(*n),
+                        _ => Err(AttachmentError::Decode),
+                    },
+                }),
+                copy_on_death: false,
+                sync: false,
+            };
+
+            #[derive(Clone, Copy)]
+            struct FakeWritePlan {
+                living: LivingRef,
+                mark: i32,
+                health: f32,
+                item: &'static str,
+                count: u32,
+                nested: bool,
+            }
+
+            fn item_resource(id: &str) -> ItemResource {
+                ItemResource::of(&crate::game::api_values::test_snapshot(&ItemStack::new(
+                    id, 1,
+                )))
+            }
+
+            fn replace_fake_slot0(
+                server: &mut dyn ServerHost,
+                tx: &mod_api::Transaction,
+                item: &str,
+                count: u32,
+            ) {
+                let place = ItemPlace::PlayerSlot {
+                    player: FAKE_UUID,
+                    slot: 0,
+                };
+                if let Some(existing) = place.stack(server) {
+                    let res = ItemResource::of(&existing);
+                    assert_eq!(
+                        place.extract(server, tx, &res, existing.count()),
+                        existing.count()
+                    );
+                }
+                let next = item_resource(item);
+                assert_eq!(place.insert(server, tx, &next, count), count);
+            }
+
+            struct NetherFakeWriteHook {
+                plan: Arc<Mutex<Option<FakeWritePlan>>>,
+                calls: Arc<AtomicUsize>,
+            }
+            #[mod_api::__subscriptions]
+            impl mod_api::Hooks for NetherFakeWriteHook {
+                fn register(
+                    &self,
+                    r: &mut dyn mod_api::Registrar,
+                    _: &mod_api::RegistrationContext,
+                ) {
+                    r.register_attachment_type("cross_level_fake_test:mark", false)
+                        .unwrap();
+                }
+
+                fn play_level_sound_at_position(
+                    &self,
+                    host: HostSide<'_>,
+                    e: &mut mod_api::PlayLevelSoundAtPositionEvent,
+                ) -> Flow {
+                    if e.level.dimension_id() != "minecraft:the_nether" {
+                        return Flow::Continue;
+                    }
+                    let Some(plan) = *self.plan.lock().unwrap() else {
+                        return Flow::Continue;
+                    };
+                    self.calls.fetch_add(1, Ordering::SeqCst);
+                    if let HostSide::Server(server) = host {
+                        let apply = |server: &mut dyn ServerHost, tx: &mod_api::Transaction| {
+                            MARK.set(server, Holder::Player(FAKE_UUID), plan.mark)
+                                .unwrap();
+                            replace_fake_slot0(server, tx, plan.item, plan.count);
+                            assert!(plan.living.set_health(server, plan.health));
+                        };
+                        if plan.nested {
+                            let merged = mod_api::run_transaction(server, |server, tx| {
+                                apply(server, tx);
+                                Ok::<(), ()>(())
+                            });
+                            assert!(merged.is_ok());
+                        } else {
+                            let tx = server.transaction_current().expect("active transaction");
+                            apply(server, &tx);
+                        }
+                    }
+                    Flow::Continue
+                }
+            }
+
+            let plan = Arc::new(Mutex::new(None));
+            let calls = Arc::new(AtomicUsize::new(0));
+            let mods = vec![mod_api::ModEntry::new(
+                "cross_level_fake_test",
+                Box::new(NetherFakeWriteHook {
+                    plan: Arc::clone(&plan),
+                    calls: Arc::clone(&calls),
+                }),
+            )]
+            .into();
+
+            mod_platform::testing::with_mods(mods, || {
+                with_guests(|game| {
+                    game.options.dedicated = Some(Vec::new());
+                    let holder = Holder::Player(FAKE_UUID);
+                    let place = ItemPlace::PlayerSlot {
+                        player: FAKE_UUID,
+                        slot: 0,
+                    };
+
+                    // Create Overworld fake and seed distinct attachment, health, and slot 0.
+                    let overworld = game.level("minecraft:overworld").unwrap();
+                    let ow_fake = game.fake_player(overworld, FAKE_UUID, "parked").unwrap();
+                    let ow_living = LivingRef::new(ow_fake.entity());
+                    {
+                        let host: &mut dyn ServerHost = game;
+                        MARK.set(host, holder, OW_MARK).unwrap();
+                        assert!(ow_living.set_health(host, OW_HEALTH));
+                        let seeded = mod_api::run_transaction(host, |host, tx| {
+                            replace_fake_slot0(host, tx, "minecraft:apple", 2);
+                            Ok::<(), ()>(())
+                        });
+                        assert!(seeded.is_ok());
+                    }
+
+                    // Enter Nether and create a second fake with the EXACT same UUID.
+                    assert!(game.enter_command_level(super::Dim::Nether).is_some());
+                    let nether = game.level("minecraft:the_nether").unwrap();
+                    let nether_fake = game.fake_player(nether, FAKE_UUID, "parked").unwrap();
+                    assert_ne!(ow_fake, nether_fake);
+                    let nether_living = LivingRef::new(nether_fake.entity());
+                    {
+                        let host: &mut dyn ServerHost = game;
+                        MARK.set(host, holder, NETHER_MARK).unwrap();
+                        assert!(nether_living.set_health(host, NETHER_HEALTH));
+                        let seeded = mod_api::run_transaction(host, |host, tx| {
+                            replace_fake_slot0(host, tx, "minecraft:emerald", 5);
+                            Ok::<(), ()>(())
+                        });
+                        assert!(seeded.is_ok());
+                    }
+
+                    let ow_conn = game
+                        .lan
+                        .as_ref()
+                        .unwrap()
+                        .hub
+                        .guests
+                        .iter()
+                        .find(|g| g.entity_id as u32 == ow_fake.entity().id())
+                        .unwrap()
+                        .conn;
+                    let nether_conn = game
+                        .lan
+                        .as_ref()
+                        .unwrap()
+                        .hub
+                        .guests
+                        .iter()
+                        .find(|g| g.entity_id as u32 == nether_fake.entity().id())
+                        .unwrap()
+                        .conn;
+                    assert_ne!(ow_conn, nether_conn);
+                    {
+                        let guests = &mut game.lan.as_mut().unwrap().hub.guests;
+                        let ow_i = guests.connection_index(ow_conn).unwrap();
+                        guests.update(ow_i, |g| {
+                            g.ender_items[0] = Some(ItemStack::new("minecraft:diamond", 1));
+                        });
+                        let nether_i = guests.connection_index(nether_conn).unwrap();
+                        guests.update(nether_i, |g| {
+                            g.ender_items[0] = Some(ItemStack::new("minecraft:gold_ingot", 3));
+                        });
+                    }
+
+                    let assert_fake_state =
+                        |game: &mut super::Game<'_>,
+                         conn: u32,
+                         living: LivingRef,
+                         expected_mark: i32,
+                         expected_health: f32,
+                         expected_item: &str,
+                         expected_count: u32,
+                         label: &str| {
+                            let mark = {
+                                let map = game
+                                    .lan
+                                    .as_mut()
+                                    .unwrap()
+                                    .hub
+                                    .guests
+                                    .attachments_mut(conn)
+                                    .unwrap();
+                                MARK.get_existing(map, Holder::Level)
+                            };
+                            assert_eq!(mark, Ok(Some(expected_mark)), "{label}: attachment");
+                            assert_eq!(
+                                living.health(game),
+                                Some(expected_health),
+                                "{label}: health"
+                            );
+                            let guest = game.lan.as_ref().unwrap().hub.guest(conn).unwrap();
+                            let slot = guest.inventory[0].as_ref().expect("slot 0 occupied");
+                            assert_eq!(slot.item.as_ref(), expected_item, "{label}: slot 0 item");
+                            assert_eq!(slot.count, expected_count, "{label}: slot 0 count");
+                            let (expected_ender, expected_ender_count) = if conn == ow_conn {
+                                ("minecraft:diamond", 1)
+                            } else {
+                                ("minecraft:gold_ingot", 3)
+                            };
+                            let ender = guest.ender_items[0]
+                                .as_ref()
+                                .expect("ender slot 0 occupied");
+                            assert_eq!(
+                                ender.item.as_ref(),
+                                expected_ender,
+                                "{label}: ender slot 0 item"
+                            );
+                            assert_eq!(
+                                ender.count, expected_ender_count,
+                                "{label}: ender slot 0 count"
+                            );
+                        };
+
+                    // 1. Direct write to Nether fake only while in Nether, then abort.
+                    {
+                        let host: &mut dyn ServerHost = game;
+                        let aborted: Result<(), ()> = mod_api::run_transaction(host, |host, tx| {
+                            MARK.set(host, holder, 99).unwrap();
+                            assert!(nether_living.set_health(host, 4.0));
+                            replace_fake_slot0(host, tx, "minecraft:stick", 1);
+                            assert_eq!(MARK.get_existing(host, holder), Ok(Some(99)));
+                            assert_eq!(nether_living.health(host), Some(4.0));
+                            assert_eq!(place.stack(host).unwrap().count(), 1);
+                            Err(())
+                        });
+                        assert!(aborted.is_err());
+                    }
+                    assert_fake_state(
+                        game,
+                        ow_conn,
+                        ow_living,
+                        OW_MARK,
+                        OW_HEALTH,
+                        "minecraft:apple",
+                        2,
+                        "direct in-Nether abort (Overworld fake)",
+                    );
+                    assert_fake_state(
+                        game,
+                        nether_conn,
+                        nether_living,
+                        NETHER_MARK,
+                        NETHER_HEALTH,
+                        "minecraft:emerald",
+                        5,
+                        "direct in-Nether abort (Nether fake)",
+                    );
+
+                    // 2. Nested-merge abort in Nether: outer writes Nether fake, inner commits a
+                    // second write (including zero health), then outer aborts.
+                    {
+                        let host: &mut dyn ServerHost = game;
+                        let aborted: Result<(), ()> = mod_api::run_transaction(host, |host, tx| {
+                            MARK.set(host, holder, 50).unwrap();
+                            assert!(nether_living.set_health(host, 12.0));
+                            replace_fake_slot0(host, tx, "minecraft:coal", 3);
+                            let inner = mod_api::run_transaction(host, |host, inner_tx| {
+                                MARK.set(host, holder, 99).unwrap();
+                                replace_fake_slot0(host, inner_tx, "minecraft:stick", 1);
+                                assert!(nether_living.set_health(host, 0.0));
+                                Ok::<(), ()>(())
+                            });
+                            assert!(inner.is_ok());
+                            assert_eq!(MARK.get_existing(host, holder), Ok(Some(99)));
+                            assert_eq!(nether_living.health(host), Some(0.0));
+                            Err(())
+                        });
+                        assert!(aborted.is_err());
+                    }
+                    assert_fake_state(
+                        game,
+                        ow_conn,
+                        ow_living,
+                        OW_MARK,
+                        OW_HEALTH,
+                        "minecraft:apple",
+                        2,
+                        "nested-merge in-Nether abort (Overworld fake)",
+                    );
+                    assert_fake_state(
+                        game,
+                        nether_conn,
+                        nether_living,
+                        NETHER_MARK,
+                        NETHER_HEALTH,
+                        "minecraft:emerald",
+                        5,
+                        "nested-merge in-Nether abort (Nether fake)",
+                    );
+
+                    // 3. Cross-level abort from Overworld: Nether sound listener writes attachment,
+                    // health, and inventory on the Nether fake only (direct + nested-merge), then
+                    // the outer Overworld transaction aborts while `self.dim == Overworld`.
+                    game.enter_level(super::Dim::Overworld).unwrap();
+                    let at = [3.0, 64.0, 5.0];
+                    let bell = "minecraft:block.bell.use";
+
+                    *plan.lock().unwrap() = Some(FakeWritePlan {
+                        living: nether_living,
+                        mark: 88,
+                        health: 6.0,
+                        item: "minecraft:stick",
+                        count: 1,
+                        nested: false,
+                    });
+                    let cross_direct = mod_api::run_transaction(game, |game, _| {
+                        assert!(game.level_play_sound(
+                            nether,
+                            bell,
+                            at,
+                            SoundSource::Blocks,
+                            1.0,
+                            1.0,
+                            None,
+                        ));
+                        Err::<(), ()>(())
+                    });
+                    assert!(cross_direct.is_err());
+                    assert_eq!(calls.load(Ordering::SeqCst), 1);
+                    assert_eq!(game.dim, super::Dim::Overworld);
+                    assert_fake_state(
+                        game,
+                        ow_conn,
+                        ow_living,
+                        OW_MARK,
+                        OW_HEALTH,
+                        "minecraft:apple",
+                        2,
+                        "cross-level direct abort (Overworld fake)",
+                    );
+                    assert_fake_state(
+                        game,
+                        nether_conn,
+                        nether_living,
+                        NETHER_MARK,
+                        NETHER_HEALTH,
+                        "minecraft:emerald",
+                        5,
+                        "cross-level direct abort (Nether fake)",
+                    );
+
+                    // Cross-level nested-merge abort: first listener write direct, second listener
+                    // write inside a committed nested transaction (including zero health), then
+                    // outer Overworld transaction aborts.
+                    let cross_nested = mod_api::run_transaction(game, |game, _| {
+                        *plan.lock().unwrap() = Some(FakeWritePlan {
+                            living: nether_living,
+                            mark: 55,
+                            health: 10.0,
+                            item: "minecraft:coal",
+                            count: 3,
+                            nested: false,
+                        });
+                        assert!(game.level_play_sound(
+                            nether,
+                            bell,
+                            at,
+                            SoundSource::Blocks,
+                            1.0,
+                            1.0,
+                            None,
+                        ));
+                        *plan.lock().unwrap() = Some(FakeWritePlan {
+                            living: nether_living,
+                            mark: 99,
+                            health: 0.0,
+                            item: "minecraft:stick",
+                            count: 1,
+                            nested: true,
+                        });
+                        assert!(game.level_play_sound(
+                            nether,
+                            bell,
+                            at,
+                            SoundSource::Blocks,
+                            1.0,
+                            1.0,
+                            None,
+                        ));
+                        Err::<(), ()>(())
+                    });
+                    assert!(cross_nested.is_err());
+                    assert_eq!(calls.load(Ordering::SeqCst), 3);
+                    assert_eq!(game.dim, super::Dim::Overworld);
+                    assert_fake_state(
+                        game,
+                        ow_conn,
+                        ow_living,
+                        OW_MARK,
+                        OW_HEALTH,
+                        "minecraft:apple",
+                        2,
+                        "cross-level nested-merge abort (Overworld fake)",
+                    );
+                    assert_fake_state(
+                        game,
+                        nether_conn,
+                        nether_living,
+                        NETHER_MARK,
+                        NETHER_HEALTH,
+                        "minecraft:emerald",
+                        5,
+                        "cross-level nested-merge abort (Nether fake)",
+                    );
+
+                    // Cross-level nested-merge commit: persists only on the Nether fake while
+                    // leaving the Overworld fake intact.
+                    *plan.lock().unwrap() = Some(FakeWritePlan {
+                        living: nether_living,
+                        mark: 77,
+                        health: 9.0,
+                        item: "minecraft:stick",
+                        count: 4,
+                        nested: true,
+                    });
+                    let cross_commit = mod_api::run_transaction(game, |game, _| {
+                        assert!(game.level_play_sound(
+                            nether,
+                            bell,
+                            at,
+                            SoundSource::Blocks,
+                            1.0,
+                            1.0,
+                            None,
+                        ));
+                        Ok::<(), ()>(())
+                    });
+                    assert!(cross_commit.is_ok());
+                    assert_eq!(calls.load(Ordering::SeqCst), 4);
+                    assert_fake_state(
+                        game,
+                        ow_conn,
+                        ow_living,
+                        OW_MARK,
+                        OW_HEALTH,
+                        "minecraft:apple",
+                        2,
+                        "cross-level nested-merge commit (Overworld fake)",
+                    );
+                    assert_fake_state(
+                        game,
+                        nether_conn,
+                        nether_living,
+                        77,
+                        9.0,
+                        "minecraft:stick",
+                        4,
+                        "cross-level nested-merge commit (Nether fake)",
+                    );
+                });
+            });
+        },
+    );
+}

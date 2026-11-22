@@ -242,12 +242,12 @@ pub(super) struct Level {
     composter_randoms: ComposterRandoms,
     /// Each quart cell before this transaction first wrote it, keyed by level.
     biomes: HashMap<(Dim, Pos), u16>,
-    /// Each player's inventory before this transaction first wrote it, by UUID.
-    players: HashMap<u128, KeptPlayer>,
-    /// Ender storage has one journal shared by player and menu writes.
-    ender_items: HashMap<u128, Vec<Option<ItemStack>>>,
-    /// Synced player health and its unpublished update events before set_health.
-    player_health: HashMap<u128, KeptPlayerHealth>,
+    /// Each player body's inventory before this transaction first wrote it.
+    players: HashMap<PlayerBodyKey, KeptPlayer>,
+    /// Ender storage has one journal shared by player and menu writes, keyed by player body.
+    ender_items: HashMap<PlayerBodyKey, Vec<Option<ItemStack>>>,
+    /// Synced player health and its unpublished update events before set_health, by player body.
+    player_health: HashMap<PlayerBodyKey, KeptPlayerHealth>,
     /// Mob health and synchronization dirtiness before set_health, keyed by level.
     mob_health: HashMap<(Dim, u32), KeptMobHealth>,
     /// Active and hidden effects before the first write to the mob at this depth, keyed by level.
@@ -330,24 +330,23 @@ struct KeptSlot {
     generation: Option<u64>,
 }
 
+/// Identity of one player body for transaction rollback: either the local host player
+/// (`lan_acting.is_none()`) or one guest record in `lan.hub.guests` (a real online guest shared
+/// across dimensions, or a per-level connectionless fake player), keyed by its unique `conn` id.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub(super) enum PlayerBodyKey {
+    Host,
+    Guest(u32),
+}
+
 /// Key for `Level::attachments`: per-level holders (`Entity`, `Chunk`, `Level`) are isolated by
-/// dimension, whereas player-owned attachment maps (`Player`, `OriginalPlayer`) live once per
-/// player/snapshot regardless of which level is swapped in.
+/// dimension, whereas player-owned attachment maps (`Player`, `OriginalPlayer`) are keyed by the
+/// specific player body or death-clone snapshot regardless of which level is swapped in.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(super) enum AttachmentKey {
     Level(Dim, Holder),
-    Player(u128),
+    Player(PlayerBodyKey),
     OriginalPlayer(u64),
-}
-
-impl AttachmentKey {
-    fn of(dim: Dim, holder: Holder) -> Self {
-        match holder {
-            Holder::Player(uuid) => Self::Player(uuid),
-            Holder::OriginalPlayer(token) => Self::OriginalPlayer(token),
-            other => Self::Level(dim, other),
-        }
-    }
 }
 
 struct KeptAttachments {
@@ -392,7 +391,6 @@ impl Kept {
 }
 
 struct KeptPlayerHealth {
-    dim: Dim,
     data: sunrise_world::synced_floats::SyncedFloats,
     events_len: usize,
     dead: bool,
@@ -418,7 +416,6 @@ struct KeptMobEffects {
 
 #[derive(Clone)]
 struct KeptPlayer {
-    dim: Dim,
     player_extra: Option<sunrise_core::nbt::Tag>,
     inventory: Vec<Option<ItemStack>>,
     armor: [Option<ItemStack>; 4],
@@ -794,11 +791,11 @@ impl Game<'_> {
                 for (pos, biome) in level.biomes {
                     outer.biomes.entry(pos).or_insert(biome);
                 }
-                for (uuid, kept) in level.players {
-                    outer.players.entry(uuid).or_insert(kept);
+                for (body, kept) in level.players {
+                    outer.players.entry(body).or_insert(kept);
                 }
-                for (uuid, kept) in level.player_health {
-                    outer.player_health.entry(uuid).or_insert(kept);
+                for (body, kept) in level.player_health {
+                    outer.player_health.entry(body).or_insert(kept);
                 }
                 for (id, kept) in level.mob_health {
                     outer.mob_health.entry(id).or_insert(kept);
@@ -831,8 +828,8 @@ impl Game<'_> {
                 for (id, len) in level.mob_lengths {
                     outer.mob_lengths.entry(id).or_insert(len);
                 }
-                for (uuid, kept) in level.ender_items {
-                    outer.ender_items.entry(uuid).or_insert(kept);
+                for (body, kept) in level.ender_items {
+                    outer.ender_items.entry(body).or_insert(kept);
                 }
                 for (conn, kept) in level.menus {
                     outer.menus.entry(conn).or_insert(kept);
@@ -1084,7 +1081,16 @@ impl Game<'_> {
         if let Holder::BlockEntity([x, y, z]) = holder {
             return self.journal_block_entity((x, y, z));
         }
-        let key = AttachmentKey::of(dim, holder);
+        let key = match holder {
+            Holder::Player(uuid) => {
+                let Some(body) = self.attachment_player_body(uuid) else {
+                    return;
+                };
+                AttachmentKey::Player(body)
+            }
+            Holder::OriginalPlayer(token) => AttachmentKey::OriginalPlayer(token),
+            other => AttachmentKey::Level(dim, other),
+        };
         let Some(level) = self.transactions.last() else {
             return;
         };
@@ -1114,21 +1120,20 @@ impl Game<'_> {
             level.attachments.insert(key, kept);
         }
     }
-    /// Keeps the inventory of the player whose state is in `Game` now, `uuid`, as it is, if a
-    /// transaction is open and hasn't yet. Called inside `native_as_player`.
-    pub(super) fn journal_player(&mut self, uuid: u128) {
+    /// Keeps the inventory of the player whose state is in `Game` now as it is, if a
+    /// transaction is open and hasn't yet. Called inside `native_as_player` / acting turns.
+    pub(super) fn journal_player(&mut self, _uuid: u128) {
         self.transactions.player_writes = self.transactions.player_writes.wrapping_add(1);
         self.transactions.writes = self.transactions.writes.wrapping_add(1);
-        let dim = self.dim;
+        let body = self.acting_player_body();
         let Some(level) = self.transactions.last_mut() else {
             return;
         };
         level
             .ender_items
-            .entry(uuid)
+            .entry(body)
             .or_insert_with(|| self.ender_items.clone());
-        level.players.entry(uuid).or_insert_with(|| KeptPlayer {
-            dim,
+        level.players.entry(body).or_insert_with(|| KeptPlayer {
             player_extra: self.level.player_extra.clone(),
             inventory: self.inventory.clone(),
             armor: self.armor.clone(),
@@ -1139,30 +1144,22 @@ impl Game<'_> {
     }
     /// Called with the target player's body swapped in, before set_health changes it.
     pub(super) fn journal_player_health(&mut self) {
-        let uuid = self.native_acting_id();
-        let dim = self.dim;
+        let body = self.acting_player_body();
         let Some(level) = self.transactions.last_mut() else {
             return;
         };
         let Some(player) = self.player.as_ref() else {
             return;
         };
-        let std::collections::hash_map::Entry::Vacant(entry) = level.player_health.entry(uuid)
+        let std::collections::hash_map::Entry::Vacant(entry) = level.player_health.entry(body)
         else {
             return;
         };
         let guest = self.lan_acting.and_then(|conn| {
-            let guest = self
-                .lan
-                .as_ref()?
-                .hub
-                .guests
-                .iter()
-                .find(|guest| guest.conn == conn)?;
+            let guest = self.lan.as_ref()?.hub.guest(conn)?;
             Some((conn, guest.death_canceled, guest.death_time))
         });
         entry.insert(KeptPlayerHealth {
-            dim,
             data: player.health.data.clone(),
             events_len: player.events.len(),
             dead: player.health.dead,
@@ -1258,8 +1255,8 @@ impl Game<'_> {
         if grid.is_none() && native.is_none() {
             return;
         }
-        let uuid = player.uuid();
-        let ender = (!level.ender_items.contains_key(&uuid)).then(|| {
+        let body = PlayerBodyKey::Guest(conn);
+        let ender = (!level.ender_items.contains_key(&body)).then(|| {
             if self.lan_acting == Some(conn) {
                 self.ender_items.clone()
             } else {
@@ -1274,7 +1271,7 @@ impl Game<'_> {
                 level.native_menu_slots.insert(generation, slots);
             }
             if let Some(ender) = ender {
-                level.ender_items.insert(uuid, ender);
+                level.ender_items.insert(body, ender);
             }
         }
     }
@@ -2197,8 +2194,8 @@ impl Game<'_> {
                         }
                     });
                 }
-                AttachmentKey::Player(uuid) => {
-                    self.restore_player_attachments(uuid, kept);
+                AttachmentKey::Player(body) => {
+                    self.restore_player_attachments(body, kept);
                 }
                 AttachmentKey::OriginalPlayer(token) => {
                     if let Ok(map) = self.attachment_slot(
@@ -2236,39 +2233,34 @@ impl Game<'_> {
                 }
             });
         }
-        for (uuid, kept) in level.player_health {
-            // Restoration must also reach a body tentatively set to zero health:
-            // native_as_player deliberately refuses dead bodies for public writes.
-            let restore_dim = self.player_restore_dim(uuid, kept.dim);
-            let _ = self.with_effect_level(restore_dim, |game| {
-                let target = if uuid == game.native_acting_id() {
-                    Some(super::commands::Target::Player)
-                } else {
-                    game.lan
-                        .as_ref()
-                        .and_then(|host| host.hub.holder_guest(uuid, game.dim.id()))
-                        .map(|guest| super::commands::Target::Guest(guest.conn))
-                };
-                if let Some(target) = target {
-                    game.for_player(target, |g| {
-                        if let Some(player) = g.player.as_mut() {
-                            player.health.data = kept.data;
-                            player.events.truncate(kept.events_len);
-                            player.health.dead = kept.dead;
-                        }
-                        if let Some((conn, canceled, time)) = kept.guest
-                            && let Some(host) = g.lan.as_mut()
-                            && let Some(gi) =
-                                host.hub.guests.iter().position(|guest| guest.conn == conn)
-                        {
-                            host.hub.guests.update(gi, |guest| {
-                                guest.death_canceled = canceled;
-                                guest.death_time = time;
-                            });
-                        }
-                    });
-                }
-            });
+        for (body, kept) in level.player_health {
+            // Restoration must reach that exact player body even when tentatively set to zero
+            // health or when another level holds a fake player sharing the same UUID.
+            let target = if self.acting_player_body() == body {
+                Some(super::commands::Target::Player)
+            } else if let PlayerBodyKey::Guest(conn) = body {
+                Some(super::commands::Target::Guest(conn))
+            } else {
+                None
+            };
+            if let Some(target) = target {
+                self.for_player(target, |g| {
+                    if let Some(player) = g.player.as_mut() {
+                        player.health.data = kept.data;
+                        player.events.truncate(kept.events_len);
+                        player.health.dead = kept.dead;
+                    }
+                    if let Some((conn, canceled, time)) = kept.guest
+                        && let Some(host) = g.lan.as_mut()
+                        && let Some(gi) = host.hub.guests.connection_index(conn)
+                    {
+                        host.hub.guests.update(gi, |guest| {
+                            guest.death_canceled = canceled;
+                            guest.death_time = time;
+                        });
+                    }
+                });
+            }
         }
         level.actions.rollback_in(self);
         level.trades.rollback(self);
@@ -2276,55 +2268,92 @@ impl Game<'_> {
             self.score.board.restore(saved);
             self.sync_score_registries();
         }
-        for (uuid, kept) in level.ender_items {
-            if self.native_acting_id() == uuid {
+        for (body, kept) in level.ender_items {
+            if self.acting_player_body() == body {
                 self.ender_items = kept;
-            } else if let Some(host) = self.lan.as_mut()
-                && let Some(index) = host
-                    .hub
-                    .guests
-                    .iter()
-                    .position(|g| g.placed && g.uuid == uuid)
+            } else if let PlayerBodyKey::Guest(conn) = body
+                && !self.lan_guest_swaps.contains(&conn)
+                && let Some(host) = self.lan.as_mut()
+                && let Some(index) = host.hub.guests.connection_index(conn)
             {
                 host.hub.guests.update(index, |g| g.ender_items = kept);
             }
         }
-        for (uuid, kept) in level.players {
-            let restore_dim = self.player_restore_dim(uuid, kept.dim);
-            let _ = self.with_effect_level(restore_dim, |game| {
-                game.native_as_player(uuid, |g| {
-                    g.level.player_extra = kept.player_extra;
-                    g.inventory = kept.inventory;
-                    g.armor = kept.armor;
-                    g.offhand = kept.offhand;
-                    g.equipment = kept.equipment;
-                    g.carried = kept.carried;
-                });
-            });
+        for (body, kept) in level.players {
+            let restore = |g: &mut Self| {
+                g.level.player_extra = kept.player_extra;
+                g.inventory = kept.inventory;
+                g.armor = kept.armor;
+                g.offhand = kept.offhand;
+                g.equipment = kept.equipment;
+                g.carried = kept.carried;
+            };
+            if self.acting_player_body() == body {
+                restore(self);
+            } else if let PlayerBodyKey::Guest(conn) = body {
+                self.for_player(super::commands::Target::Guest(conn), restore);
+            }
         }
     }
 
-    /// Restore a player's single per-player attachment map directly wherever their state lives
-    /// now (acting body in `player_state` or parked guest in `lan.hub.guests`), independent of
-    /// which dimension is currently active.
-    fn restore_player_attachments(&mut self, uuid: u128, kept: KeptAttachments) {
-        let map = if self.lan_acting_uuid == Some(uuid) {
+    /// Identity of the player body currently swapped into `Game`.
+    fn acting_player_body(&self) -> PlayerBodyKey {
+        if let Some(conn) = self.lan_acting {
+            return PlayerBodyKey::Guest(conn);
+        }
+        if let Some(uuid) = self.lan_acting_uuid
+            && let Some(conn) = self
+                .lan
+                .as_ref()
+                .and_then(|host| host.hub.holder_guest(uuid, self.dim.id()))
+                .map(|guest| guest.conn)
+        {
+            return PlayerBodyKey::Guest(conn);
+        }
+        PlayerBodyKey::Host
+    }
+
+    /// Resolves which player body `attachment_slot(Holder::Player(uuid), _)` addresses now:
+    /// the acting body when its UUID matches, else the exact guest `conn` resolved in `self.dim`
+    /// (online real player across dimensions, or the per-level fake player in `self.dim`).
+    fn attachment_player_body(&self, uuid: u128) -> Option<PlayerBodyKey> {
+        let holder = Holder::Player(uuid);
+        let cloning = self
+            .player_state
+            .originals
+            .iter()
+            .any(|snapshot| snapshot.uuid() == uuid);
+        if self.lan_acting_uuid == Some(uuid) {
+            return Some(self.acting_player_body());
+        }
+        let conn = self
+            .lan
+            .as_ref()
+            .and_then(|host| {
+                if self.entity_initialization.active == Some(holder) || cloning {
+                    host.hub.guests.iter().find(|guest| guest.uuid == uuid)
+                } else {
+                    host.hub.holder_guest(uuid, self.dim.id())
+                }
+            })
+            .map(|guest| guest.conn)?;
+        (!self.lan_guest_swaps.contains(&conn)).then_some(PlayerBodyKey::Guest(conn))
+    }
+
+    /// Restore a player body's attachment map directly wherever that exact body's state lives
+    /// now (acting body in `player_state` or parked guest `conn` in `lan.hub.guests`), without
+    /// looking up by UUID across unrelated per-level fake players.
+    fn restore_player_attachments(&mut self, body: PlayerBodyKey, kept: KeptAttachments) {
+        let map = if self.acting_player_body() == body {
             Some(&mut self.player_state.attachments)
+        } else if let PlayerBodyKey::Guest(conn) = body
+            && !self.lan_guest_swaps.contains(&conn)
+        {
+            self.lan
+                .as_mut()
+                .and_then(|host| host.hub.guests.attachments_mut(conn))
         } else {
-            let conn = self.lan.as_ref().and_then(|host| {
-                host.hub
-                    .guests
-                    .iter()
-                    .find(|guest| guest.placed && guest.uuid == uuid)
-                    .or_else(|| host.hub.guests.iter().find(|guest| guest.uuid == uuid))
-                    .map(|guest| guest.conn)
-            });
-            conn.filter(|conn| !self.lan_guest_swaps.contains(conn))
-                .and_then(|conn| {
-                    self.lan
-                        .as_mut()
-                        .and_then(|host| host.hub.guests.attachments_mut(conn))
-                })
+            None
         };
         if let Some(map) = map {
             map.replace_contents(kept.contents);
@@ -2332,25 +2361,6 @@ impl Game<'_> {
                 map.unbind_index();
             }
         }
-    }
-
-    /// Dimension to use when restoring a player-owned journal entry: if the player is acting in
-    /// place, stay in the current level; otherwise prefer the guest's current dimension over the
-    /// level active at first write (which may differ if written from a cross-level listener).
-    fn player_restore_dim(&self, uuid: u128, fallback: Dim) -> Dim {
-        if self.lan_acting_uuid == Some(uuid) {
-            return self.dim;
-        }
-        self.lan
-            .as_ref()
-            .and_then(|host| {
-                host.hub
-                    .guests
-                    .iter()
-                    .find(|g| g.placed && g.uuid == uuid)
-                    .map(|g| Dim::from_id(&g.dimension))
-            })
-            .unwrap_or(fallback)
     }
 }
 
