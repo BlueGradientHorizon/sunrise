@@ -392,15 +392,19 @@ fn mod_lines(headers: bool) -> Vec<(String, String)> {
     if lines.is_empty() {
         return Vec::new();
     }
+    let run = move |_: &()| {
+        lines
+            .into_iter()
+            .map(|(owner, label, call)| (owner, label, call()))
+            .collect::<Vec<_>>()
+    };
+    // The worker must queue panics on the caller's scoped mod installation in tests.
+    #[cfg(test)]
+    let run = mod_platform::testing::inherit_mods(run);
     let replies = std::thread::Builder::new()
         .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
         .name("Crash report details".into())
-        .spawn(move || {
-            lines
-                .into_iter()
-                .map(|(owner, label, call)| (owner, label, call()))
-                .collect::<Vec<_>>()
-        })
+        .spawn(move || run(&()))
         .and_then(|worker| {
             worker
                 .join()
@@ -1767,15 +1771,22 @@ pub(crate) mod tests {
                         assert_eq!(good.0, "diagnostics: healthy");
                         assert_eq!(good.1, "still here");
 
-                        let notices = take_callback_panic_notices();
-                        assert_eq!(notices.len(), 2);
-                        assert_eq!(notices[0].mod_id, "diagnostics");
-                        assert_eq!(notices[0].operation, "crash_header");
-                        assert_eq!(notices[1].mod_id, "diagnostics");
-                        assert_eq!(notices[1].operation, "crash_section");
+                        assert_eq!(
+                            mod_api::__private::take_hook_panics(),
+                            [
+                                mod_api::__private::HookPanicReport {
+                                    mod_id: "diagnostics",
+                                    hook: "crash_header",
+                                },
+                                mod_api::__private::HookPanicReport {
+                                    mod_id: "diagnostics",
+                                    hook: "crash_section",
+                                },
+                            ]
+                        );
                         assert_eq!(mod_headers().as_slice(), std::slice::from_ref(good_header));
                         assert_eq!(mod_lines(false).as_slice(), std::slice::from_ref(good));
-                        assert!(take_callback_panic_notices().is_empty());
+                        assert!(mod_api::__private::take_hook_panics().is_empty());
                     },
                 );
             },
