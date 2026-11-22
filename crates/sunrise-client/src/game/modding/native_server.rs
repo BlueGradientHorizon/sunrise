@@ -5349,26 +5349,21 @@ mod tests {
     }
 
     #[test]
-    fn client_command_tree_refuses_server_only_handle_kinds_and_binds_slots() {
+    fn client_command_tree_admits_builtin_argument_kinds_and_binds_slots() {
         let arguments = command_arguments();
-        let server_only = [
+        let selectors = [
             mod_api::Command::new("c_player <target:player>"),
             mod_api::Command::new("c_players <targets:players>"),
             mod_api::Command::new("c_entity <target:entity>"),
             mod_api::Command::new("c_entities <targets:entities>"),
             mod_api::Command::new("c_dim <dim:dimension>"),
         ];
-        let (refused_tree, _, refused_problems) =
-            client_command_tree(&server_only, &arguments, None);
-        assert_eq!(
-            refused_problems.len(),
-            server_only.len(),
-            "{refused_problems:?}"
-        );
+        let (selector_tree, _, problems) = client_command_tree(&selectors, &arguments, None);
+        assert!(problems.is_empty(), "{problems:?}");
         for root in ["c_player", "c_players", "c_entity", "c_entities", "c_dim"] {
             assert!(
-                refused_tree["children"].get(root).is_none(),
-                "{root} should be refused on the client"
+                selector_tree["children"].get(root).is_some(),
+                "{root} uses the same vanilla argument parser on the client"
             );
         }
 

@@ -1394,7 +1394,7 @@ impl Dispatcher {
         };
         if !deep {
             if let Some(r) = n.redirect {
-                let target = if r == 0 {
+                let target = if matches!(self.nodes[r].kind, NodeKind::Root) {
                     "...".to_owned()
                 } else {
                     format!("-> {}", self.nodes[r].usage_text())
