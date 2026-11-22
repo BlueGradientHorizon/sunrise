@@ -772,7 +772,7 @@ mod tests {
             &[(PASS, PipelineBlend::Translucent, WorldDepth::Tested)],
         );
         let id = Identifier::parse("test:p0").unwrap();
-        let handle = set.resolve(&id).unwrap();
+        let handle = set.resolve(&id, mod_api::PipelineKind::Optional).unwrap();
         let renderer = ModPipelines::new(&device, wgpu::TextureFormat::Rgba8Unorm);
         let mut broken = set.built()[0].clone().unwrap();
         broken.owner = "owning_mod".into();
@@ -783,7 +783,10 @@ mod tests {
         broken.shader = "not wgsl".into();
         assert!(renderer.pipeline(&device, &broken, None).is_err());
         assert!(set.invalidate(0));
-        assert_eq!(set.resolve(&id), Err(mod_api::RenderPipelineError::Invalid));
+        assert_eq!(
+            set.resolve(&id, mod_api::PipelineKind::Optional),
+            Err(mod_api::RenderPipelineError::Invalid)
+        );
         assert_eq!(set.slot(handle), Err(mod_api::RenderPipelineError::Invalid));
     }
 
@@ -799,7 +802,7 @@ mod tests {
             &[(PASS, PipelineBlend::Translucent, WorldDepth::Tested)],
         );
         let id = Identifier::parse("test:p0").unwrap();
-        let handle = set.resolve(&id).unwrap();
+        let handle = set.resolve(&id, mod_api::PipelineKind::Optional).unwrap();
         let mut renderer = ModPipelines::new(&device, wgpu::TextureFormat::Rgba8Unorm);
         renderer
             .build_with(&set, |_, _| Err("injected refusal".into()))
@@ -825,7 +828,7 @@ mod tests {
             &[(PASS, PipelineBlend::Translucent, WorldDepth::Tested)],
         );
         let id = Identifier::parse("test:p0").unwrap();
-        let handle = set.resolve(&id).unwrap();
+        let handle = set.resolve(&id, mod_api::PipelineKind::Optional).unwrap();
         let mut refusing = ModPipelines::new(&device, wgpu::TextureFormat::Rgba8Unorm);
         refusing
             .build_with(&set, |_, _| Err("injected refusal".into()))
@@ -835,7 +838,7 @@ mod tests {
         recovered.build(&device, &set, None).unwrap();
         assert!(recovered.pipelines[0].is_some());
         assert_eq!(set.slot(handle), Ok(0));
-        assert!(set.resolve(&id).is_ok());
+        assert!(set.resolve(&id, mod_api::PipelineKind::Optional).is_ok());
     }
 
     #[test]
@@ -864,7 +867,7 @@ mod tests {
         registered[0].optional = false;
         let next = Pipelines::build(&registered, 42, |_| Ok(PASS.to_owned())).unwrap();
         let id = Identifier::parse("test:p0").unwrap();
-        let handle = next.resolve(&id).unwrap();
+        let handle = next.resolve(&id, mod_api::PipelineKind::Required).unwrap();
         let error = renderer
             .build_with(&next, |_, _| Err("injected refusal".into()))
             .unwrap_err();
@@ -875,7 +878,13 @@ mod tests {
         assert_eq!(renderer.generation, 41);
         assert_eq!(renderer.pipelines.len(), 1);
         assert_eq!(next.slot(handle), Ok(0));
-        assert!(next.resolve(&Identifier::parse("test:p1").unwrap()).is_ok());
+        assert!(
+            next.resolve(
+                &Identifier::parse("test:p1").unwrap(),
+                mod_api::PipelineKind::Optional,
+            )
+            .is_ok()
+        );
         renderer.build(&device, &next, None).unwrap();
         assert_eq!(renderer.generation, 42);
         assert_eq!(renderer.pipelines.len(), 2);
@@ -1106,7 +1115,7 @@ mod tests {
             .build(device, &set, Some(sources))
             .unwrap();
         assert_eq!(
-            set.resolve(&id(2)),
+            set.resolve(&id(2), mod_api::PipelineKind::Optional),
             Err(mod_api::RenderPipelineError::Invalid),
             "a sprite the atlas lacks"
         );

@@ -2209,6 +2209,50 @@ fn start_block_walk(
             }
         }
     }
+    fn apply_entity_write(
+        m: &mut Mob,
+        w: &MobWorld,
+        level: &mut DamageLevel<'_>,
+        events: &mut Vec<MobEvent>,
+        write: mod_api::EntityWrite,
+    ) {
+        let triple = |v: [f64; 3]| Vec3::new(v[0], v[1], v[2]);
+        match write {
+            mod_api::EntityWrite::Push(v) => {
+                m.velocity = m.velocity.add_vector(triple(v));
+            }
+            mod_api::EntityWrite::SetMovement(v) => m.velocity = triple(v),
+            mod_api::EntityWrite::StuckIn(v) => {
+                m.fall_distance = 0.0;
+                m.stuck_multiplier = triple(v);
+            }
+            mod_api::EntityWrite::Hurt {
+                damage_type,
+                amount,
+            } => {
+                if let Some(named) =
+                    super::NamedDamage::from_contact_key(w.side.damage_types(), damage_type)
+                {
+                    m.damage(level, amount, Damage::of(DamageKind::Named(named)));
+                    // The hurt's own teleport, inside it (#1697).
+                    hurt_teleports(m, w, events);
+                }
+            }
+            mod_api::EntityWrite::ResetFallDistance => m.fall_distance = 0.0,
+            mod_api::EntityWrite::SetFireTicks(ticks) => m.fire_ticks = ticks,
+            mod_api::EntityWrite::AddEffect {
+                effect,
+                duration,
+                amplifier,
+            } => {
+                // `LivingEntity.addEffect`, as the write's contract names: one
+                // instance an effect, its attribute modifiers stored.
+                if let Some(id) = mod_api::__private::effect_key_id(effect) {
+                    m.add_effect(id, duration, i32::from(amplifier));
+                }
+            }
+        }
+    }
     // `Entity.checkInsideBlocks` itself, the shared walk: each axis of the
     // move in vanilla's order, a 16-iteration budget, one visited set, the
     // alive check. The mob's own per-block moments run mid-walk where vanilla

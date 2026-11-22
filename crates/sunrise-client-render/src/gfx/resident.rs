@@ -599,6 +599,12 @@ mod tests {
         }
     }
 
+    impl ResidentSize for bool {
+        fn census_bytes(&self) -> (u64, usize) {
+            (0, 0)
+        }
+    }
+
     impl ResidentSize for [i32; 3] {
         fn census_bytes(&self) -> (u64, usize) {
             (0, 0)
