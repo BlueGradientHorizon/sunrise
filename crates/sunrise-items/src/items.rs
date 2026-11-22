@@ -21,7 +21,7 @@ use sunrise_world::loot::number::int_value;
 use sunrise_world::registry::{BlockRegistry, BlockStateId};
 use sunrise_world::{
     item_defaults::ItemDefaults,
-    loot::{MAX_LOOT_LEVEL, PackOverlay},
+    loot::{ItemTagNames, MAX_LOOT_LEVEL, PackOverlay},
     tag_layers,
 };
 
@@ -788,6 +788,7 @@ pub struct Items {
     /// Item tags in vanilla's order (`TagLoader`: file order, nested tags in
     /// place, first occurrence kept), the order `TagSlotDisplay` resolves.
     pub item_tag_order: HashMap<String, Vec<String>>,
+    pub(crate) item_tag_names: Option<ItemTagNames>,
     tags_loaded: [bool; 3],
     /// Block tags in the same order.
     pub block_tag_order: HashMap<String, Vec<String>>,
@@ -1633,7 +1634,10 @@ impl Items {
     pub fn set_tags(&mut self, registry: TagRegistry, tags: HashMap<String, Vec<String>>) {
         let (sets, order) = match registry {
             TagRegistry::Block => (&mut self.block_tags, &mut self.block_tag_order),
-            TagRegistry::Item => (&mut self.item_tags, &mut self.item_tag_order),
+            TagRegistry::Item => {
+                self.item_tag_names = Some(ItemTagNames::bind(&tags));
+                (&mut self.item_tags, &mut self.item_tag_order)
+            }
             TagRegistry::Fluid => (&mut self.fluid_tags, &mut self.fluid_tag_order),
         };
         *sets = tags

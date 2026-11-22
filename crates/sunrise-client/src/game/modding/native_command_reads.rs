@@ -191,53 +191,62 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_console_command_executes_in_the_level_execute_in_names() {
-        use std::sync::{Arc, Mutex};
-        type Heard = Arc<Mutex<Vec<(mod_api::CommandSource, CommandInvocation)>>>;
-        struct Where(Heard);
-        #[mod_api::__subscriptions]
-        impl mod_api::Hooks for Where {
-            fn register_commands(
-                &self,
-                _: &mut dyn mod_api::ServerHost,
-                event: &mut mod_api::RegisterCommandsEvent<'_>,
-            ) {
-                let heard = self.0.clone();
-                event.commands.push(mod_api::Command::new("where").executes(
-                    move |_, source, command| {
-                        heard
-                            .lock()
-                            .unwrap()
-                            .push((source.clone(), command.clone()));
-                        Some(1)
-                    },
-                ));
-            }
-        }
-        let heard: Heard = Arc::default();
-        mod_platform::testing::with_mods(
-            vec![mod_api::ModEntry::new(
-                "where",
-                Box::new(Where(heard.clone())),
-            )]
-            .into(),
+        crate::game::in_own_process(
+            "game::native_command_reads::tests::a_console_command_executes_in_the_level_execute_in_names",
             || {
-                super::super::native_guest_turn_tests::with_guests(|game| {
-                    game.build_registries();
-                    game.register_native_commands();
-                    assert!(game.native_run_command("where"));
-                    assert!(game.native_run_command("execute in minecraft:the_nether run where"));
-                    let heard = heard.lock().unwrap();
-                    assert_eq!(heard.len(), 2);
-                    for (source, _) in heard.iter() {
-                        assert!(
-                            matches!(source, mod_api::CommandSource::Console { .. }),
-                            "{source:?}"
-                        );
+                use std::sync::{Arc, Mutex};
+                type Heard = Arc<Mutex<Vec<(mod_api::CommandSource, CommandInvocation)>>>;
+                struct Where(Heard);
+                #[mod_api::__subscriptions]
+                impl mod_api::Hooks for Where {
+                    fn register_commands(
+                        &self,
+                        _: &mut dyn mod_api::ServerHost,
+                        event: &mut mod_api::RegisterCommandsEvent<'_>,
+                    ) {
+                        let heard = self.0.clone();
+                        event.commands.push(mod_api::Command::new("where").executes(
+                            move |_, source, command| {
+                                heard
+                                    .lock()
+                                    .unwrap()
+                                    .push((source.clone(), command.clone()));
+                                Ok(1)
+                            },
+                        ));
                     }
-                    assert_eq!(heard[0].1.dimension, mod_api::DimensionKey::OVERWORLD);
-                    assert_eq!(heard[0].1.position, game.server_position());
-                    assert_eq!(heard[1].1.dimension, mod_api::DimensionKey::NETHER);
-                });
+                }
+                let heard: Heard = Arc::default();
+                mod_platform::testing::with_mods(
+                    vec![mod_api::ModEntry::new(
+                        "where",
+                        Box::new(Where(heard.clone())),
+                    )]
+                    .into(),
+                    || {
+                        super::super::native_guest_turn_tests::with_guests(|game| {
+                            game.build_registries();
+                            game.register_native_commands();
+                            assert!(game.native_run_command("where"));
+                            assert!(
+                                game.native_run_command(
+                                    "execute in minecraft:the_nether run where"
+                                )
+                            );
+                            let heard = heard.lock().unwrap();
+                            assert_eq!(heard.len(), 2);
+                            for (source, _) in heard.iter() {
+                                assert!(
+                                    matches!(source, mod_api::CommandSource::Console { .. }),
+                                    "{source:?}"
+                                );
+                            }
+                            assert_eq!(heard[0].1.dimension, mod_api::DimensionKey::OVERWORLD);
+                            assert_eq!(heard[0].1.position, game.server_position());
+                            assert_eq!(heard[1].1.dimension, mod_api::DimensionKey::NETHER);
+                        });
+                    },
+                );
             },
         );
     }
