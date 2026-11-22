@@ -14,9 +14,14 @@ pub fn identifier(s: &str) -> Result<String> {
 /// The saved component codec's identifier admission without cloning qualified names.
 #[doc(hidden)]
 pub fn normalized_identifier(s: &str) -> Result<std::borrow::Cow<'_, str>> {
+    codec_identifier(s, false)
+}
+
+/// `Identifier.CODEC` checks the characters in each part, even for an empty path.
+fn codec_identifier(s: &str, allow_empty_path: bool) -> Result<std::borrow::Cow<'_, str>> {
     use std::borrow::Cow;
     let (namespace, path) = s.split_once(':').unwrap_or(("", s));
-    if path.is_empty()
+    if (!allow_empty_path && path.is_empty())
         || !namespace
             .bytes()
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || b"_.-".contains(&c))
@@ -229,7 +234,11 @@ fn text_contents(r: &mut Record<'_>, kind: &str, source: Source) -> Result<()> {
                 "storage" => r.required("storage", text_identifier)?,
                 _ => return Err("unknown text NBT source".into()),
             }
-            r.optional("separator", |v| text(v, source))
+            // NbtContents uses a lenient optional, unlike SelectorContents.
+            if let Some(separator) = t.get("separator").and_then(|v| text(v, source).ok()) {
+                r.fields.push((Value::string("separator"), separator));
+            }
+            Ok(())
         }
         "object" => {
             let atlas = |r: &mut Record<'_>| {
@@ -303,8 +312,7 @@ pub fn text_shadow_color(t: &Tag) -> Result<i32> {
 }
 
 fn text_identifier(t: &Tag) -> Result<Value> {
-    let id = sunrise_core::identifier::Identifier::parse(&string(t)?).map_err(|e| e.to_string())?;
-    Ok(Value::string(&id.to_string()))
+    Ok(Value::string(&codec_identifier(&string(t)?, true)?))
 }
 
 fn text_color(t: &Tag) -> Result<Value> {
@@ -498,6 +506,8 @@ fn integer_list(t: &Tag) -> Result<Vec<i32>> {
     match t {
         Tag::IntArray(v) => Ok(v.clone()),
         Tag::List(v) => v.iter().map(integer).collect(),
+        Tag::ByteArray(v) => Ok(v.iter().map(|&value| i32::from(value as i8)).collect()),
+        Tag::LongArray(v) => Ok(v.iter().map(|&value| value as i32).collect()),
         _ => Err("expected list".into()),
     }
 }
@@ -969,20 +979,24 @@ fn predicate(t: &Tag, source: Source) -> Result<Value> {
 pub fn from_component_tag(id: &str, t: &Tag) -> Result<Value> {
     from_component_tag_with(id, t, |_| false)
 }
-/// Decode the built-in component codec while checking item template IDs against a registry.
-pub fn from_component_tag_with_items(
-    id: &str,
-    t: &Tag,
-    has_item: &dyn Fn(&str) -> bool,
-) -> Result<Value> {
-    component_tag(
-        &identifier(id)?,
+/// `ComponentSerialization.CODEC` over NBT, with the owning registry's item names.
+pub fn text_from_tag(t: &Tag, has_item: &dyn Fn(&str) -> bool) -> Result<Value> {
+    text(
         t,
         Source {
             has_item: Some(has_item),
             ..Source::SAVED
         },
     )
+}
+
+/// `Style.Serializer.CODEC` over NBT. Shares the field decoders used by `text_from_tag`.
+pub fn validate_text_style(t: &Tag, has_item: &dyn Fn(&str) -> bool) -> Result<()> {
+    let source = Source {
+        has_item: Some(has_item),
+        ..Source::SAVED
+    };
+    record(t, |r| text_style(r, source)).map(drop)
 }
 /// Project a live component, reusing its admitted effects and reporting any effects
 /// newly materialized from deferred templates to the caller.
@@ -1498,8 +1512,14 @@ fn profile(t: &Tag) -> Result<Value> {
             let properties = if let Tag::Compound(entries) = properties {
                 let mut out = vec![];
                 for (k, values) in entries {
-                    let Tag::List(values) = values else {
-                        return Err("profile property values are not a list".into());
+                    // NbtOps exposes primitive arrays as lists too. Only an empty
+                    // primitive array can decode as a list of strings.
+                    let values = match values {
+                        Tag::List(values) => values.as_slice(),
+                        Tag::ByteArray(values) if values.is_empty() => &[],
+                        Tag::IntArray(values) if values.is_empty() => &[],
+                        Tag::LongArray(values) if values.is_empty() => &[],
+                        _ => return Err("profile property values are not a string list".into()),
                     };
                     for v in values {
                         out.push(Value::Map(vec![
@@ -2412,7 +2432,7 @@ mod tests {
             r#"color:7"#,
             r#"color:"reset""#,
             r##"color:"#1000000""##,
-            r#"font:"..:uniform""#,
+            r#"font:"UPPER:uniform""#,
             r#"font:{id:"uniform"}"#,
             r#"click_event:{action:"open_file",path:"x"}"#,
             r#"click_event:{action:"open_url",url:"https://example.org/%zz"}"#,
@@ -2432,6 +2452,47 @@ mod tests {
                     .to_component_tag("custom_name")
                     .is_err(),
                 "{style}"
+            );
+        }
+    }
+
+    #[test]
+    fn saved_nbt_component_drops_the_invalid_separator_but_selector_refuses_it() {
+        let nbt = parse(r#"{nbt:"foo",storage:"test:bar",separator:{text:1}}"#);
+        let no_separator = parse(r#"{nbt:"foo",storage:"test:bar"}"#);
+        let decoded = from_component_tag("custom_name", &nbt).unwrap();
+        assert_eq!(
+            decoded.to_component_tag("custom_name").unwrap(),
+            no_separator
+        );
+        assert_eq!(text_from_tag(&nbt, &|_| false).unwrap(), decoded);
+
+        let selector = parse(r#"{selector:"@s",separator:{text:1}}"#);
+        assert!(from_component_tag("custom_name", &selector).is_err());
+        assert!(text_from_tag(&selector, &|_| false).is_err());
+    }
+
+    #[test]
+    fn text_accepts_vanilla_codec_identifiers_and_primitive_array_lists() {
+        for (input, expected) in [
+            (r#"{text:"x",font:"..:"}"#, r#"{text:"x",font:"..:"}"#),
+            (
+                r#"{text:"x",hover_event:{action:"show_entity",id:"pig",uuid:[B;1b,2b,3b,4b]}}"#,
+                r#"{text:"x",hover_event:{action:"show_entity",id:"minecraft:pig",uuid:[I;1,2,3,4]}}"#,
+            ),
+            (
+                r#"{text:"x",hover_event:{action:"show_entity",id:"pig",uuid:[L;1L,2L,3L,4L]}}"#,
+                r#"{text:"x",hover_event:{action:"show_entity",id:"minecraft:pig",uuid:[I;1,2,3,4]}}"#,
+            ),
+            (
+                r#"{object:"player",player:{name:"Steve",properties:{unused:[I;]}}}"#,
+                r#"{player:{name:"Steve"}}"#,
+            ),
+        ] {
+            let value = text_from_tag(&parse(input), &|_| false).unwrap();
+            assert_eq!(
+                value.to_component_tag("custom_name").unwrap(),
+                parse(expected)
             );
         }
     }

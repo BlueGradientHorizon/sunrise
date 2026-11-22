@@ -638,8 +638,11 @@ impl Levels {
                 continue;
             }
             let active = is_active(dim);
+            // A live `UNKNOWN` ticket keeps its column, so the level stays open (not ticking)
+            // until the ticket expires.
             if step_parked_idle(dim, &mut p.idle, active, false, saving_enabled)
                 == IdleAction::Close
+                && !p.streaming.has_unknown_tickets()
             {
                 close.push(dim);
             }
@@ -703,6 +706,16 @@ impl Levels {
             .iter_mut()
             .find(|(dim, _)| dim.id() == dimension)
             .map(|(_, level)| &mut level.streaming)
+    }
+
+    /// `TicketStorage.purgeStaleTickets` for the `UNKNOWN` tickets of the parked levels that
+    /// `purge` names.
+    pub(super) fn purge_unknown_tickets(&mut self, purge: impl Fn(Dim) -> bool) {
+        for (&dim, level) in &mut self.parked {
+            if purge(dim) {
+                level.streaming.purge_unknown_tickets();
+            }
+        }
     }
 
     /// `ServerLevel.setChunkForced`: force a column in an already open level without changing the acting
@@ -1483,6 +1496,10 @@ impl Game<'_> {
             if observe_level && let Some(level) = self.level(dim.id()) {
                 self.native_level_tick_pre(level);
             }
+            // ServerChunkCache.tick's purge, before the update that may unload the columns.
+            if running == Some(true) {
+                self.streaming.purge_unknown_tickets();
+            }
             sunrise_client::spans::time("dedicated_streaming", || {
                 self.update_dedicated_streaming();
             });
@@ -1557,6 +1574,12 @@ impl Game<'_> {
                     self.enter_level(dim)?;
                 }
             }
+        }
+        // Vanilla ticks the chunk source of every level, ticked here or not: the levels left
+        // parked purge their tickets too.
+        if running == Some(true) {
+            self.levels
+                .purge_unknown_tickets(|dim| !order.contains(&dim));
         }
         // Levels held only by loading tickets: stream them without running the world tick.
         if result.is_ok() {
@@ -1850,6 +1873,7 @@ impl Game<'_> {
             let now_active = self.active_levels().contains(&dim);
             let eligible = self.levels.parked.get_mut(&dim).is_some_and(|p| {
                 custom_close_still_eligible(dim, &mut p.idle, now_active, saving_enabled)
+                    && !p.streaming.has_unknown_tickets()
             });
             if eligible {
                 self.close_parked_level(dim)?;
@@ -2007,6 +2031,86 @@ fn slowest_steps(notes: &[(f32, String)]) -> String {
         .map(|(ms, what)| format!("{what} {ms:.1}"))
         .collect();
     list.join(", ")
+}
+
+impl Game<'_> {
+    /// `Level.getChunk(x, z)` (`ServerChunkCache.getChunk(x, z, FULL, true)`) on the server
+    /// thread: column `chunk` of the level in place (`parked: None`) or of the parked level
+    /// `parked`, without switching levels, loaded or generated to FULL (resident and lit) under
+    /// an `UNKNOWN` ticket (`Streaming::begin_full_column`). It blocks until then, with no
+    /// timeout, as vanilla's `managedBlock`. Each column the wait brings in is announced while
+    /// it is resident, before this returns: its `dynamic_light` cells asked (the light job
+    /// waits for them) and `chunk_load` fired, at the same point as vanilla's FULL task fires
+    /// NeoForge's `ChunkEvent.Load` inside `getChunk`. False when `begin_full_column` refuses,
+    /// when the level is gone, and when generation is aborted during the wait.
+    pub(in crate::game) fn load_full_chunk(
+        &mut self,
+        parked: Option<mod_api::LevelRef>,
+        chunk: (i32, i32),
+    ) -> bool {
+        use sunrise_client::streaming::{FullColumn, full_column_ready};
+        let id = parked.map(|level| level.dimension_id());
+        let Some((streaming, world)) = self.full_load_level(id) else {
+            return false;
+        };
+        match streaming.begin_full_column(world, chunk) {
+            FullColumn::Ready => return true,
+            FullColumn::Refused => return false,
+            FullColumn::Pending => {}
+        }
+        loop {
+            let Some((streaming, world)) = self.full_load_level(id) else {
+                return false;
+            };
+            let alive = streaming.pump_column(world);
+            self.announce_synchronous_loads(parked);
+            let Some((streaming, world)) = self.full_load_level(id) else {
+                return false;
+            };
+            if !alive || full_column_ready(world, chunk) {
+                return streaming.end_full_column(world, chunk);
+            }
+            streaming.wait(Duration::from_millis(5));
+        }
+    }
+
+    /// The streaming and world of the level in place, or of the parked level `parked`.
+    fn full_load_level(
+        &mut self,
+        parked: Option<&str>,
+    ) -> Option<(&mut sunrise_client::streaming::Streaming, &mut World)> {
+        match parked {
+            None => Some((&mut self.streaming, &mut self.world)),
+            Some(id) => {
+                let level = self.levels.parked_mut_of(id)?;
+                Some((&mut level.streaming, &mut level.world))
+            }
+        }
+    }
+
+    /// The columns a synchronous load brought into the level, told to the mods as the level's
+    /// own update tells them (`native_chunks_loaded`), their `dynamic_light` cells asked first.
+    fn announce_synchronous_loads(&mut self, parked: Option<mod_api::LevelRef>) {
+        let Some(level) = parked else {
+            self.ask_loaded_light_emission();
+            self.native_chunks_loaded();
+            return;
+        };
+        let id = level.dimension_id();
+        let Some(world) = self.levels.parked_world_mut_of(id) else {
+            return;
+        };
+        let loaded = std::mem::take(&mut world.loaded_chunks);
+        if self.pack.context.light.any_dynamic() {
+            let dimension = Self::light_emission_dimension(level);
+            for &(x, z, _) in &loaded {
+                self.ask_level_chunk_light_emission(Some(id), dimension, (x, z));
+            }
+        }
+        for (x, z, new) in loaded {
+            self.native_chunk_load(id, [x, z], new);
+        }
+    }
 }
 
 impl Game<'_> {
