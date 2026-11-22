@@ -84,11 +84,11 @@ impl Names {
 }
 
 thread_local! {
-    static CACHE: [[Cell<(usize, u16)>; SLOTS]; 2] = const { [const { [const { Cell::new((0, 0)) }; SLOTS] }; 2] };
+    static CACHE: [[Cell<(usize, usize, u16)>; SLOTS]; 2] = const { [const { [const { Cell::new((0, 0, 0)) }; SLOTS] }; 2] };
     static TICK: Cell<u64> = const { Cell::new(0) };
 }
 
-/// The id of `name`, found by the address of its bytes; `verify` re-checks the text, for strings that can be freed and reused.
+/// The id of `name`, found by the address and length of its bytes; `verify` re-checks the text, for strings that can be freed and reused.
 ///
 /// The cache is two-way: each address may sit in its slot or the slot's pair, so two hot names that hash
 /// to the same slot don't evict each other on every call. A miss moves the slot's entry to its pair.
@@ -99,9 +99,12 @@ fn id_of(space: Space, name: &str, verify: bool) -> u16 {
     }
     let (names, key) = (&NAMES[space as usize], name.as_ptr() as usize);
     let slot = (key >> 3).wrapping_mul(0x9E37_79B9_7F4A_7C15) >> (usize::BITS - 10);
-    let found = |hit: (usize, u16)| {
-        (hit.0 == key && hit.1 != 0 && (!verify || names.name(hit.1) == Some(name)))
-            .then_some(hit.1)
+    let found = |hit: (usize, usize, u16)| {
+        (hit.0 == key
+            && hit.1 == name.len()
+            && hit.2 != 0
+            && (!verify || names.name(hit.2) == Some(name)))
+        .then_some(hit.2)
     };
     let (first, second) = CACHE.with(|c| {
         (
@@ -115,7 +118,7 @@ fn id_of(space: Space, name: &str, verify: bool) -> u16 {
     let id = names.intern(name);
     CACHE.with(|c| {
         c[space as usize][slot ^ 1].set(first);
-        c[space as usize][slot].set((key, id));
+        c[space as usize][slot].set((key, name.len(), id));
     });
     id
 }
