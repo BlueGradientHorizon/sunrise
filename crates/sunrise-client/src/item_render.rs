@@ -763,6 +763,24 @@ fn special_foil_uv(
     })
 }
 
+/// `MaterialBaker.get`: explicit `missingno` resolves on blocks; otherwise stitched items, then
+/// stitched blocks, then the blocks missing sprite.
+fn resolve_cuboid_glint(
+    name: &str,
+    items: &glint_atlas::GlintAtlas,
+    blocks: &glint_atlas::GlintAtlas,
+) -> Option<Rect> {
+    if name == "missingno" {
+        blocks.missing().or_else(|| items.missing())
+    } else {
+        items
+            .get_stitched(name)
+            .or_else(|| blocks.get_stitched(name))
+            .or_else(|| blocks.missing())
+            .or_else(|| items.missing())
+    }
+}
+
 /// `ItemFeatureRenderer.prepareMainSubmit` for one cuboid layer.
 fn submit_quads(
     renderer: &ItemRenderer,
@@ -860,15 +878,10 @@ fn submit_quads(
                     Some((sprite, rect)) if sprite == q.material.sprite => rect,
                     _ => {
                         let name = sprite_name(&q.material.sprite);
-                        let items = item_atlas.as_deref();
-                        let blocks = block_atlas.as_deref();
-                        // `MaterialBaker.bake`: items atlas first, then blocks, then missingno.
-                        let rect = items
-                            .and_then(|a| a.get(name))
-                            .or_else(|| blocks.and_then(|a| a.get(name)))
-                            .or_else(|| blocks.and_then(|a| a.get("missingno")))
-                            .or_else(|| items.and_then(|a| a.get("missingno")))
-                            .copied();
+                        let rect = item_atlas
+                            .as_deref()
+                            .zip(block_atlas.as_deref())
+                            .and_then(|(items, blocks)| resolve_cuboid_glint(name, items, blocks));
                         last_glint = Some((&q.material.sprite, rect));
                         rect
                     }
@@ -1032,9 +1045,9 @@ pub struct ItemRenderer {
     /// The enabled packs' OptiFine CIT rules and their swapped bakes; `None`
     /// without rules.
     pub cit: Option<cit::CitModels>,
-    glint_atlas: Mutex<HashMap<String, Rect>>,
-    block_glint_atlas: Mutex<HashMap<String, Rect>>,
-    shield_glint_atlas: Mutex<HashMap<String, Rect>>,
+    glint_atlas: Mutex<glint_atlas::GlintAtlas>,
+    block_glint_atlas: Mutex<glint_atlas::GlintAtlas>,
+    shield_glint_atlas: Mutex<glint_atlas::GlintAtlas>,
 }
 
 /// Every winning `items/**/*.json` client item definition, by identifier. An error or panic
@@ -1126,7 +1139,7 @@ impl ItemRenderer {
                 maximum,
             )?
         } else {
-            HashMap::new()
+            glint_atlas::GlintAtlas::default()
         };
         let shield = if listing.defines("minecraft:shield_patterns") {
             glint_atlas::load_atlas(
@@ -1137,7 +1150,7 @@ impl ItemRenderer {
                 maximum,
             )?
         } else {
-            HashMap::new()
+            glint_atlas::GlintAtlas::default()
         };
         *self
             .glint_atlas
@@ -2136,7 +2149,7 @@ mod tests {
         assert_eq!(mask.frames, vec![vec![true], vec![false]]);
         assert!(sprites.translucent("example:item/mask"));
         let atlas = glint_atlas::load_atlas(&source, "minecraft:items", 0, 0, 1024).unwrap();
-        assert!(atlas.contains_key("example:item/mask"));
+        assert!(atlas.get_stitched("example:item/mask").is_some());
         assert_eq!(fs::read_dir(&folder).unwrap().count(), 0);
         fs::remove_dir(&folder).unwrap();
     }

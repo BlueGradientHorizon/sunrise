@@ -6,6 +6,35 @@ use sunrise_assets::resource_source::ResourceSource;
 
 type Entry = (String, u32, u32);
 
+/// `SpriteLoader.Preparations` for one atlas: stitched regions kept separate from missing fallback.
+#[derive(Clone, Debug, Default)]
+pub(super) struct GlintAtlas {
+    regions: HashMap<String, Rect>,
+    missing: Option<Rect>,
+}
+
+impl GlintAtlas {
+    /// `SpriteLoader.Preparations.getSprite`: only sprites that actually stitched.
+    pub(super) fn get_stitched(&self, name: &str) -> Option<Rect> {
+        self.regions.get(name).copied()
+    }
+
+    /// `SpriteLoader.Preparations.missing`: this atlas's `missingno` sprite.
+    pub(super) fn missing(&self) -> Option<Rect> {
+        self.missing
+    }
+
+    /// `TextureAtlas.getSprite` / `SpriteGetter`: stitched sprite, else this atlas's `missingno`.
+    pub(super) fn get_or_missing(&self, name: &str) -> Option<Rect> {
+        self.get_stitched(name).or(self.missing)
+    }
+
+    #[cfg(test)]
+    pub(super) fn len(&self) -> usize {
+        self.regions.len()
+    }
+}
+
 /// `SpriteLoader.stitch` for any atlas (`items`, `blocks`, `shield_patterns`) with vanilla mipmap
 /// clamping and anisotropic padding (`(1 << mip_level) << aniso_shift`).
 pub(super) fn load_atlas(
@@ -14,14 +43,14 @@ pub(super) fn load_atlas(
     max_mip: u32,
     aniso_shift: u32,
     maximum: u32,
-) -> crate::Result<HashMap<String, Rect>> {
-    let (entries, names) = collect_entries(root, atlas_id);
+) -> crate::Result<GlintAtlas> {
+    let entries = collect_entries(root, atlas_id);
     let mip_level = mip_level_for(&entries, max_mip);
     let padding = (1u32 << mip_level) << aniso_shift;
-    finish_atlas(atlas_id, &entries, &names, mip_level, padding, maximum)
+    finish_atlas(atlas_id, &entries, mip_level, padding, maximum)
 }
 
-fn collect_entries(root: &ResourceSource, atlas_id: &str) -> (Vec<Entry>, Vec<String>) {
+fn collect_entries(root: &ResourceSource, atlas_id: &str) -> Vec<Entry> {
     let listing = atlas_sources::listing(root);
     let listed = listing.sprites(atlas_id);
     let decode = |name: &str| {
@@ -33,9 +62,7 @@ fn collect_entries(root: &ResourceSource, atlas_id: &str) -> (Vec<Entry>, Vec<St
         .ok()
     };
     let mut entries = vec![("minecraft:missingno".into(), 16, 16)];
-    let mut names = Vec::new();
     for (id, origin) in listed {
-        names.push(id.clone());
         let dimensions = match &origin {
             atlas_sources::SpriteOrigin::File(texture) => (|| {
                 let (w, h, _) = decode(texture)?;
@@ -75,31 +102,23 @@ fn collect_entries(root: &ResourceSource, atlas_id: &str) -> (Vec<Entry>, Vec<St
             entries.push((id.clone(), w, h));
         }
     }
-    (entries, names)
+    entries
 }
 
 fn finish_atlas(
     atlas_id: &str,
     entries: &[Entry],
-    names: &[String],
     mip_level: u32,
     padding: u32,
     maximum: u32,
-) -> crate::Result<HashMap<String, Rect>> {
-    let mut sprites = stitch(entries, mip_level, padding, maximum).ok_or_else(|| {
+) -> crate::Result<GlintAtlas> {
+    let regions = stitch(entries, mip_level, padding, maximum).ok_or_else(|| {
         std::io::Error::other(format!(
             "{atlas_id} atlas does not fit texture limit {maximum} with padding {padding}"
         ))
     })?;
-    // TextureAtlas.getSprite returns missingno for rejected or unplaced source sprites.
-    if let Some(missing) = sprites.get("missingno").copied() {
-        for name in names {
-            sprites
-                .entry(super::sprite_name(name).to_owned())
-                .or_insert(missing);
-        }
-    }
-    Ok(sprites)
+    let missing = regions.get("missingno").copied();
+    Ok(GlintAtlas { regions, missing })
 }
 
 /// `SpriteLoader.stitch`: clamp `max_mip` to the smallest sprite side and lowest power-of-two bit.

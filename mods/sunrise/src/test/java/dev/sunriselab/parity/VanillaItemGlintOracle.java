@@ -1,6 +1,7 @@
 package dev.sunriselab.parity;
 
 import com.google.gson.*;
+import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.QuadInstance;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -60,6 +61,7 @@ import net.minecraft.client.resources.model.cuboid.ItemModelGenerator;
 import net.minecraft.client.resources.model.cuboid.MissingCuboidModel;
 import net.minecraft.client.resources.model.geometry.BakedQuad;
 import net.minecraft.client.resources.model.geometry.ItemQuads;
+import net.minecraft.client.resources.model.sprite.Material;
 import net.minecraft.client.resources.model.sprite.MaterialBaker;
 import net.minecraft.client.resources.model.sprite.SpriteGetter;
 import net.minecraft.client.resources.model.sprite.SpriteId;
@@ -70,6 +72,11 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.RegistryOps;
+import net.minecraft.server.packs.PackLocationInfo;
+import net.minecraft.server.packs.PackType;
+import net.minecraft.server.packs.PathPackResources;
+import net.minecraft.server.packs.repository.PackSource;
+import net.minecraft.server.packs.resources.MultiPackResourceManager;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.util.FormattedCharSequence;
@@ -1193,6 +1200,90 @@ public final class VanillaItemGlintOracle {
             specialModelsJson.put(key, perCtx);
         }
 
+        Map<String, Object> materialBakerJson;
+        {
+            TextureAtlasSprite vanillaMissing = materialBaker
+                .get(new Material(Identifier.withDefaultNamespace("missingno")), () -> "oracle")
+                .sprite();
+            Path synthRoot = Files.createTempDirectory("sunrise-glint-material-baker-");
+            try {
+                Path atlasesDir = synthRoot.resolve("assets/minecraft/atlases");
+                Path texDir = synthRoot.resolve("assets/test/textures");
+                Files.createDirectories(atlasesDir);
+                Files.createDirectories(texDir);
+                Files.writeString(
+                    atlasesDir.resolve("items.json"),
+                    "{\"sources\":[{\"type\":\"single\",\"resource\":\"test:bad_item\",\"sprite\":\"test:shared\"}]}",
+                    StandardCharsets.UTF_8
+                );
+                Files.writeString(
+                    atlasesDir.resolve("blocks.json"),
+                    "{\"sources\":[{\"type\":\"single\",\"resource\":\"test:good_block\",\"sprite\":\"test:shared\"},{\"type\":\"single\",\"resource\":\"test:big_block\"}]}",
+                    StandardCharsets.UTF_8
+                );
+                Files.writeString(texDir.resolve("bad_item.png"), "not a png", StandardCharsets.UTF_8);
+                try (NativeImage img = new NativeImage(16, 16, false)) {
+                    img.fillRect(0, 0, 16, 16, 0xFFFFFFFF);
+                    img.writeToFile(texDir.resolve("good_block.png"));
+                }
+                try (NativeImage img = new NativeImage(128, 128, false)) {
+                    img.fillRect(0, 0, 128, 128, 0xFFFFFFFF);
+                    img.writeToFile(texDir.resolve("big_block.png"));
+                }
+                var packInfo = new PackLocationInfo("synth", Component.literal("synth"), PackSource.BUILT_IN, Optional.empty());
+                try (MultiPackResourceManager synthMgr = new MultiPackResourceManager(
+                    PackType.CLIENT_RESOURCES,
+                    List.of(new PathPackResources(packInfo, synthRoot))
+                )) {
+                    SpriteLoader.Preparations synthItems = new SpriteLoader(TextureAtlas.LOCATION_ITEMS, 16384)
+                        .loadAndStitch(synthMgr, AtlasIds.ITEMS, 0, Runnable::run, Set.of())
+                        .join();
+                    SpriteLoader.Preparations synthBlocks = new SpriteLoader(TextureAtlas.LOCATION_BLOCKS, 16384)
+                        .loadAndStitch(synthMgr, AtlasIds.BLOCKS, 0, Runnable::run, Set.of())
+                        .join();
+                    MaterialBaker synthBaker = new MaterialBaker(synthBlocks, synthItems);
+                    TextureAtlasSprite shared = synthBaker
+                        .get(new Material(Identifier.parse("test:shared")), () -> "oracle")
+                        .sprite();
+                    TextureAtlasSprite synthMissing = synthBaker
+                        .get(new Material(Identifier.withDefaultNamespace("missingno")), () -> "oracle")
+                        .sprite();
+                    materialBakerJson = map(
+                        "vanilla_missingno_bits", new long[] {
+                            u32(vanillaMissing.getU0()),
+                            u32(vanillaMissing.getV0()),
+                            u32(vanillaMissing.getU1()),
+                            u32(vanillaMissing.getV1())
+                        },
+                        "synth_items_has_shared", synthItems.getSprite(Identifier.parse("test:shared")) != null,
+                        "synth_shared_atlas", shared.atlasLocation().toString(),
+                        "synth_shared_bits", new long[] {
+                            u32(shared.getU0()),
+                            u32(shared.getV0()),
+                            u32(shared.getU1()),
+                            u32(shared.getV1())
+                        },
+                        "synth_missingno_atlas", synthMissing.atlasLocation().toString(),
+                        "synth_missingno_bits", new long[] {
+                            u32(synthMissing.getU0()),
+                            u32(synthMissing.getV0()),
+                            u32(synthMissing.getU1()),
+                            u32(synthMissing.getV1())
+                        }
+                    );
+                }
+            } finally {
+                try (var walk = Files.walk(synthRoot)) {
+                    walk.sorted(Comparator.reverseOrder()).forEach(p -> {
+                        try {
+                            Files.deleteIfExists(p);
+                        } catch (Exception ignored) {
+                        }
+                    });
+                }
+            }
+        }
+
         Map<String, Object> root = map(
             "meta", map(
                 "game_version", SharedConstants.getCurrentVersion().name(),
@@ -1202,6 +1293,7 @@ public final class VanillaItemGlintOracle {
             ),
             "transforms", transformsJson,
             "atlases", atlasesJson,
+            "material_baker", materialBakerJson,
             "end_crystal_item_display", eid83245Json,
             "contexts", contextsJson,
             "block_item", blockItemJson,

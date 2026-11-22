@@ -211,7 +211,12 @@ fn gui_glint_matches_pinned_vanilla_atlas_input() {
         ("test:item/enchanted_book", 19, 33, 16, 16),
         ("missingno", 37, 33, 16, 16),
     ] {
-        let r = renderer.glint_atlas.lock().unwrap()[name];
+        let r = renderer
+            .glint_atlas
+            .lock()
+            .unwrap()
+            .get_stitched(name)
+            .unwrap();
         assert_eq!(
             [r.u0, r.v0, r.u1, r.v1],
             [x, y, x + w, y + h].map(|n| n as f32 / 64.0)
@@ -296,7 +301,12 @@ fn gui_glint_matches_pinned_vanilla_atlas_input() {
             .map(|v| (v.pos, v.uv, v.color))
             .collect::<Vec<_>>()
     );
-    let book_rect = renderer.glint_atlas.lock().unwrap()["item/enchanted_book"];
+    let book_rect = renderer
+        .glint_atlas
+        .lock()
+        .unwrap()
+        .get_stitched("item/enchanted_book")
+        .unwrap();
     let book_atlas_uv = [
         [book_rect.u0, book_rect.v0],
         [book_rect.u0, book_rect.v1],
@@ -388,7 +398,7 @@ fn glint_atlas_boundaries() {
             16384,
         )
         .unwrap();
-        let r = atlas["item/enchanted_book"];
+        let r = atlas.get_stitched("item/enchanted_book").unwrap();
         assert_eq!(
             [r.u0, r.v0, r.u1, r.v1],
             [
@@ -413,7 +423,7 @@ fn glint_atlas_boundaries() {
         32768,
     )
     .unwrap();
-    let book = atlas["item/enchanted_book"];
+    let book = atlas.get_stitched("item/enchanted_book").unwrap();
     assert_eq!(
         [book.u0, book.v0, book.u1, book.v1],
         [1.0 / 32768.0, 33.0 / 64.0, 17.0 / 32768.0, 49.0 / 64.0]
@@ -426,12 +436,16 @@ fn glint_atlas_boundaries() {
         16384,
     )
     .unwrap();
-    let book = atlas["item/enchanted_book"];
+    let book = atlas.get_stitched("item/enchanted_book").unwrap();
     assert_eq!(
         [book.u0, book.v0, book.u1, book.v1],
         [1.0 / 64.0, 33.0 / 128.0, 17.0 / 64.0, 49.0 / 128.0]
     );
-    assert_eq!(atlas["item/wide"].u0, atlas["missingno"].u0);
+    assert!(atlas.get_stitched("item/wide").is_none());
+    assert_eq!(
+        atlas.get_or_missing("item/wide").unwrap().u0,
+        atlas.missing().unwrap().u0
+    );
     assert!(
         glint_atlas::load_atlas(
             &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
@@ -496,23 +510,24 @@ fn invalid_and_generated_sprites_match_vanilla() {
     .unwrap();
     // Real SpriteResourceLoader rejects both invalid animations; TextureAtlas resolves missingno.
     for name in ["item/invalid_size", "item/invalid_metadata"] {
-        let r = atlas[name];
+        assert!(atlas.get_stitched(name).is_none());
+        let r = atlas.get_or_missing(name).unwrap();
         assert_eq!(
             [r.u0, r.v0, r.u1, r.v1],
             [103.0 / 128.0, 1.0 / 64.0, 119.0 / 128.0, 17.0 / 64.0]
         );
     }
-    let r = atlas["item/not_animated"];
+    let r = atlas.get_stitched("item/not_animated").unwrap();
     assert_eq!(
         [r.u0, r.v0, r.u1, r.v1],
         [1.0 / 128.0, 1.0 / 64.0, 17.0 / 128.0, 33.0 / 64.0]
     );
-    let r = atlas["test:trim_red"];
+    let r = atlas.get_stitched("test:trim_red").unwrap();
     assert_eq!(
         [r.u0, r.v0, r.u1, r.v1],
         [19.0 / 128.0, 37.0 / 64.0, 27.0 / 128.0, 53.0 / 64.0]
     );
-    assert!(!atlas.contains_key("test:missing_alias"));
+    assert!(atlas.get_stitched("test:missing_alias").is_none());
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -548,7 +563,10 @@ fn namespaces_sharing_a_prefix_are_all_listed_in_the_glint_atlas() {
     )
     .unwrap();
     // Each is its own 16 x 16 cell; one the listing missed would be the missing sprite's.
-    let corner = |name: &str| [atlas[name].u0, atlas[name].v0];
+    let corner = |name: &str| {
+        let r = atlas.get_stitched(name).unwrap();
+        [r.u0, r.v0]
+    };
     assert_ne!(corner("a:item/one"), corner("a0:item/two"));
     assert_ne!(corner("a:item/one"), corner("missingno"));
     assert_ne!(corner("a0:item/two"), corner("missingno"));
@@ -578,15 +596,16 @@ fn invalid_texture_metadata_does_not_move_book_glint() {
             16384,
         )
         .unwrap();
-        let rejected = atlas["item/large"];
-        let missing = atlas["missingno"];
+        assert!(atlas.get_stitched("item/large").is_none(), "{invalid}");
+        let rejected = atlas.get_or_missing("item/large").unwrap();
+        let missing = atlas.missing().unwrap();
         assert_eq!(
             [rejected.u0, rejected.v0, rejected.u1, rejected.v1],
             [missing.u0, missing.v0, missing.u1, missing.v1],
             "{invalid}"
         );
         // Existing real-vanilla fixture: rejecting the extra image leaves its book unchanged.
-        let book = atlas["item/enchanted_book"];
+        let book = atlas.get_stitched("item/enchanted_book").unwrap();
         assert_eq!(
             [book.u0, book.v0, book.u1, book.v1],
             [1.0 / 64.0, 33.0 / 64.0, 17.0 / 64.0, 49.0 / 64.0],
@@ -609,7 +628,8 @@ fn invalid_texture_metadata_does_not_move_book_glint() {
             16384,
         )
         .unwrap();
-        assert_eq!((atlas["item/large"].w, atlas["item/large"].h), (512, 256));
+        let large = atlas.get_stitched("item/large").unwrap();
+        assert_eq!((large.w, large.h), (512, 256));
     }
     fs::remove_dir_all(root).unwrap();
 }
@@ -639,12 +659,152 @@ fn glint_atlas_reads_prepared_images_and_metadata_together() {
         16384,
     )
     .unwrap();
-    assert_eq!(atlas["item/large"].u0, atlas["missingno"].u0);
-    let book = atlas["item/enchanted_book"];
+    assert!(atlas.get_stitched("item/large").is_none());
+    assert_eq!(
+        atlas.get_or_missing("item/large").unwrap().u0,
+        atlas.missing().unwrap().u0
+    );
+    let book = atlas.get_stitched("item/enchanted_book").unwrap();
     assert_eq!(
         [book.u0, book.v0, book.u1, book.v1],
         [1.0 / 64.0, 33.0 / 64.0, 17.0 / 64.0, 49.0 / 64.0]
     );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn cuboid_glint_prefers_stitched_blocks_and_blocks_missingno() {
+    let root = fixture("material-baker-fallback");
+    // Extra large sprite in `blocks` makes its `missingno` rectangle distinct from `items`.
+    fs::write(
+        root.join("assets/minecraft/atlases/items.json"),
+        r#"{"sources":[
+            {"type":"single","resource":"test:bad_item","sprite":"test:shared"},
+            {"type":"single","resource":"minecraft:item/enchanted_book"}
+        ]}"#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("assets/minecraft/atlases/blocks.json"),
+        r#"{"sources":[
+            {"type":"single","resource":"test:good_block","sprite":"test:shared"},
+            {"type":"single","resource":"test:big_block"}
+        ]}"#,
+    )
+    .unwrap();
+    // Corrupt PNG in `items` fails to decode; valid PNG in `blocks` stitches for the same ID.
+    fs::create_dir_all(root.join("assets/test/textures")).unwrap();
+    fs::write(root.join("assets/test/textures/bad_item.png"), b"not a png").unwrap();
+    png(
+        &root.join("assets/test/textures/good_block.png"),
+        16,
+        16,
+        [255; 4],
+    );
+    png(
+        &root.join("assets/test/textures/big_block.png"),
+        128,
+        128,
+        [255; 4],
+    );
+    let data = crate::test_resources::item_data(
+        &root,
+        sunrise_world::native_load_context::DataLoadOrigin::ClientPreload,
+    )
+    .unwrap();
+    let renderer = ItemRenderer::load(
+        &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
+        &data,
+    )
+    .unwrap();
+    renderer
+        .prepare_glint_atlas_with_mips(16384, (0, 2), 0)
+        .unwrap();
+
+    let items_missing = renderer.glint_atlas.lock().unwrap().missing().unwrap();
+    let blocks_missing = renderer
+        .block_glint_atlas
+        .lock()
+        .unwrap()
+        .missing()
+        .unwrap();
+    let blocks_shared = renderer
+        .block_glint_atlas
+        .lock()
+        .unwrap()
+        .get_stitched("test:shared")
+        .unwrap();
+    assert!(
+        renderer
+            .glint_atlas
+            .lock()
+            .unwrap()
+            .get_stitched("test:shared")
+            .is_none()
+    );
+    assert_eq!(
+        renderer
+            .glint_atlas
+            .lock()
+            .unwrap()
+            .get_or_missing("test:shared")
+            .unwrap(),
+        items_missing
+    );
+    assert_ne!(
+        [
+            items_missing.u0,
+            items_missing.v0,
+            items_missing.u1,
+            items_missing.v1
+        ],
+        [
+            blocks_missing.u0,
+            blocks_missing.v0,
+            blocks_missing.u1,
+            blocks_missing.v1
+        ]
+    );
+
+    let dummy = Rect {
+        u0: 0.0,
+        v0: 0.0,
+        u1: 1.0,
+        v1: 1.0,
+        w: 16,
+        h: 16,
+    };
+    let sprites = HashMap::from([("test:shared".into(), dummy), ("missingno".into(), dummy)]);
+    let rect_uv = |r: Rect| [[r.u0, r.v0], [r.u0, r.v1], [r.u1, r.v1], [r.u1, r.v0]];
+
+    // Failed items source + stitched blocks source resolves to blocks' stitched rectangle.
+    let mut shared_quads = Vec::new();
+    state("test:shared", FoilType::Standard, DisplayContext::Gui).submit(
+        &renderer,
+        &sprites,
+        &NoHost,
+        Mat4::IDENTITY,
+        &mut shared_quads,
+    );
+    assert_eq!(shared_quads.len(), 1);
+    assert_eq!(shared_quads[0].gui_glint_uv, Some(rect_uv(blocks_shared)));
+
+    // Explicit `minecraft:missingno` resolves to blocks' missingno, never items' missingno.
+    let mut missing_quads = Vec::new();
+    state(
+        "minecraft:missingno",
+        FoilType::Standard,
+        DisplayContext::Gui,
+    )
+    .submit(
+        &renderer,
+        &sprites,
+        &NoHost,
+        Mat4::IDENTITY,
+        &mut missing_quads,
+    );
+    assert_eq!(missing_quads.len(), 1);
+    assert_eq!(missing_quads[0].gui_glint_uv, Some(rect_uv(blocks_missing)));
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -662,7 +822,7 @@ fn prepared_item_atlas_matches_pinned_vanilla() {
     )
     .unwrap();
     assert_eq!(atlas.len(), 896);
-    let book = atlas["item/enchanted_book"];
+    let book = atlas.get_stitched("item/enchanted_book").unwrap();
     assert_eq!(
         [book.u0, book.v0, book.u1, book.v1],
         [437.0 / 1024.0, 163.0 / 512.0, 453.0 / 1024.0, 179.0 / 512.0]
@@ -708,7 +868,7 @@ fn external_item_atlas_oracle() {
     )
     .unwrap();
     for (name, value) in expected["sprites"].as_object().unwrap() {
-        let actual = sprites[sprite_name(name)];
+        let actual = sprites.get_stitched(sprite_name(name)).unwrap();
         for (got, key) in [actual.u0, actual.v0, actual.u1, actual.v1]
             .into_iter()
             .zip(["u0", "v0", "u1", "v1"])
@@ -721,9 +881,11 @@ fn external_item_atlas_oracle() {
         }
     }
     if let Some(rejected) = expected["rejected"].as_array() {
-        let missing = sprites["missingno"];
+        let missing = sprites.missing().unwrap();
         for name in rejected {
-            let actual = sprites[sprite_name(name.as_str().unwrap())];
+            let key = sprite_name(name.as_str().unwrap());
+            assert!(sprites.get_stitched(key).is_none(), "{key}");
+            let actual = sprites.get_or_missing(key).unwrap();
             assert_eq!(
                 [actual.u0, actual.v0, actual.u1, actual.v1],
                 [missing.u0, missing.v0, missing.u1, missing.v1]
@@ -1389,7 +1551,12 @@ fn compass_special_foil_uses_decal_uv_26_3() {
         ("ground_posed", DisplayContext::Ground, ground_posed),
     ];
 
-    let compass_rect = renderer.glint_atlas.lock().unwrap()["item/compass_16"];
+    let compass_rect = renderer
+        .glint_atlas
+        .lock()
+        .unwrap()
+        .get_stitched("item/compass_16")
+        .unwrap();
     for (case_key, ctx, pose) in cases {
         let expected_quads = witness["special_foil"][case_key]["quads"]
             .as_array()
@@ -1701,7 +1868,7 @@ fn glint_atlases_match_vanilla_26_3_mip_and_aniso() {
     .expect("26.3 prepared item data");
     let renderer = ItemRenderer::load(&ResourceRoot::directory(root), &data).unwrap();
 
-    let check = |atlas: &HashMap<String, Rect>, key: &str| {
+    let check = |atlas: &glint_atlas::GlintAtlas, key: &str| {
         let expected = &witness["atlases"][key];
         assert_eq!(
             atlas.len(),
@@ -1709,7 +1876,7 @@ fn glint_atlases_match_vanilla_26_3_mip_and_aniso() {
             "{key} sprite_count"
         );
         for (id, sprite) in expected["sprites"].as_object().unwrap() {
-            let r = atlas[sprite_name(id)];
+            let r = atlas.get_stitched(sprite_name(id)).unwrap();
             let got = [r.u0, r.v0, r.u1, r.v1].map(f32::to_bits);
             let want = [
                 sprite["u0_bits"].as_u64().unwrap() as u32,
@@ -1732,6 +1899,44 @@ fn glint_atlases_match_vanilla_26_3_mip_and_aniso() {
     check(
         &renderer.shield_glint_atlas.lock().unwrap(),
         "shield_patterns_none",
+    );
+    // `MaterialBaker.get` maps explicit `minecraft:missingno` to the blocks atlas's missing sprite.
+    let resolved_missing = resolve_cuboid_glint(
+        "missingno",
+        &renderer.glint_atlas.lock().unwrap(),
+        &renderer.block_glint_atlas.lock().unwrap(),
+    )
+    .unwrap();
+    let want_missing: [u32; 4] = witness["material_baker"]["vanilla_missingno_bits"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_u64().unwrap() as u32)
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+    assert_eq!(
+        [
+            resolved_missing.u0,
+            resolved_missing.v0,
+            resolved_missing.u1,
+            resolved_missing.v1
+        ]
+        .map(f32::to_bits),
+        want_missing,
+        "26.3 MaterialBaker missingno"
+    );
+    assert_eq!(
+        witness["material_baker"]["synth_items_has_shared"].as_bool(),
+        Some(false)
+    );
+    assert_eq!(
+        witness["material_baker"]["synth_shared_atlas"].as_str(),
+        Some("minecraft:blocks")
+    );
+    assert_eq!(
+        witness["material_baker"]["synth_missingno_atlas"].as_str(),
+        Some("minecraft:blocks")
     );
 
     renderer

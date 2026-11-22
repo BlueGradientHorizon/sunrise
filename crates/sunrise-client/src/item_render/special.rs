@@ -697,7 +697,7 @@ pub(super) fn submit(
                         .shield_glint_atlas
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    atlas.get(base).or_else(|| atlas.get("missingno")).copied()
+                    atlas.get_or_missing(base)
                 })
                 .flatten();
             let mut shield_part = |texture: &str, color: u32| {
