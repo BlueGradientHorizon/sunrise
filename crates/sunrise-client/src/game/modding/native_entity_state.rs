@@ -347,7 +347,7 @@ impl Game<'_> {
     /// kinds its portal walk carries (zero when it keeps no state for one).
     pub(super) fn entity_portal_cooldown(&self, entity: EntityRef) -> Option<i32> {
         let id = match self.native_entity_target(entity)? {
-            // The acting guest's state is in place for its turn (`enter_guest`).
+            // The acting guest's state is in place for its turn (the entry of `guest_turn`).
             Target::Player => return Some(self.portals.player.cooldown),
             Target::Guest(conn) => {
                 let play = self.lan.as_ref()?.play.get(&conn);
