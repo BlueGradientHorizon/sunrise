@@ -279,7 +279,7 @@ mod tests {
                 std::sync::Arc::default(),
                 std::sync::Arc::clone(&modifiers),
                 Vec::new(),
-                std::collections::HashMap::new(),
+                Default::default(),
             )
             .unwrap();
         let mut random = sunrise_core::random::LegacyRandom::new(0);
@@ -318,7 +318,7 @@ mod tests {
                 std::sync::Arc::clone(&predicates),
                 std::sync::Arc::default(),
                 Vec::new(),
-                std::collections::HashMap::new(),
+                Default::default(),
             )
             .unwrap();
         let mut random = sunrise_core::random::LegacyRandom::new(0);

@@ -74,7 +74,7 @@ fn queried_parameters_reach_native_mod_condition() {
                     std::sync::Arc::clone(&predicates),
                     std::sync::Arc::default(),
                     Vec::new(),
-                    std::collections::HashMap::new(),
+                    Default::default(),
                 )
                 .unwrap();
             let holds = bindings.test(

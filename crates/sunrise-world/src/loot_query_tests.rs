@@ -13,7 +13,7 @@ fn data(tables: Vec<(&str, Value)>) -> LootData {
             Arc::clone(&predicates),
             Arc::clone(&modifiers),
             Vec::new(),
-            HashMap::new(),
+            Default::default(),
         )
         .unwrap();
     LootData {

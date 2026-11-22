@@ -58,7 +58,7 @@ fn data(tables: Vec<(&str, Value)>) -> Items {
             Arc::clone(&items.predicates),
             Arc::clone(&items.loot_modifiers),
             Vec::new(),
-            HashMap::new(),
+            Default::default(),
         )
         .unwrap();
     items.loot = loot;

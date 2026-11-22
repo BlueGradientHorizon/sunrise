@@ -110,7 +110,7 @@ fn ordinary_callback_refusals_report_each_call_with_type_location_and_reason() {
             Arc::clone(&predicates),
             Arc::clone(&modifiers),
             Vec::new(),
-            HashMap::new(),
+            Default::default(),
         )
         .unwrap();
     let ctx = loot::LootContext {
