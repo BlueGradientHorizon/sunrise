@@ -1380,11 +1380,12 @@ impl Game<'_> {
             self.reply_menu_click(conn, ClickReply::Resend(click.container));
             return true;
         }
-        if !open.slots.valid(&self.world) {
-            self.guest_close_menus_and_tell(conn);
+        let slot_out_of_range =
+            usize::try_from(click.slot).is_ok_and(|slot| slot >= open.slot_count());
+        if !self.guest_validate_menu(conn) {
             return true;
         }
-        if usize::try_from(click.slot).is_ok_and(|slot| slot >= open.slot_count()) {
+        if slot_out_of_range {
             self.reply_menu_click(conn, ClickReply::Resend(click.container));
             return true;
         }

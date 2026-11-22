@@ -187,8 +187,7 @@ impl Game<'_> {
         true
     }
 
-    /// Screen replacement cannot publish while a transaction owns a click. The older
-    /// merchant guard protects its own guest; a scoped mod click can reach any guest's menu.
+    /// A speculative merchant action still owns its guest's window until commit.
     pub(super) fn menu_click_in_progress(&self, conn: u32) -> bool {
         self.transactions
             .iter()

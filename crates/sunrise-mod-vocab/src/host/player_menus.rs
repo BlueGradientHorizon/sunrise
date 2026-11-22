@@ -27,7 +27,9 @@ pub trait PlayerMenusBackendMut {
     /// Opens a block entity's menu for a connected player (`ServerPlayer.openMenu`).
     /// Returns Stale for an invalidated entity; Ok(false) for a wrong-level player,
     /// non-provider, cancelled open, active speculative trade action, an out-of-range slot
-    /// exclusion, or an unconnected player such as a fake player.
+    /// exclusion, or an unconnected player such as a fake player. Inside a transaction,
+    /// `Ok(true)` means queued; the provider runs at outermost commit and can still refuse.
+    /// An abort does not open the menu.
     #[access(WorldOnly)]
     fn player_open_menu(
         &mut self,
@@ -59,7 +61,9 @@ pub trait PlayerMenusBackendMut {
     /// `PlayerUnavailable` (including a client that does not support the blockless layout, a
     /// disconnect in progress or a turn unavailable for the veto), `TooLarge`,
     /// `DataCountMismatch`, `Title` or `TitleNotEncodable`. A cancelled or refused open
-    /// does not close the old menu.
+    /// does not close the old menu. In a transaction, `Ok(Some(window))` reserves the id
+    /// for the outermost commit. The old menu stays live until then, and an abort does not
+    /// open the new one. Look up or back the new menu after commit or in `player_container_open`.
     #[access(WorldOnly)]
     fn player_open_mod_menu(
         &mut self,
@@ -104,8 +108,10 @@ pub trait PlayerMenusBackendMut {
     /// cancel). Inside a hook of the player's own action (`use_item`, `right_click_item`,
     /// `right_click_block`, their command), the menu opens when that action ends, as a block's
     /// menu the same action opens does. Ok(true) inside an action means queued: the menu is
-    /// still subject to cancellation when the queue runs; outside one it opened. Ok(false) is an
-    /// immediate cancellation by a mod. Errors:
+    /// still subject to cancellation when the queue runs; outside one it opened. In a
+    /// transaction, `Ok(true)` also means queued, until the outermost commit; an abort drops
+    /// the request. `Ok(false)` is an immediate cancellation by a mod or a refusal during an
+    /// active speculative trade action. Errors:
     /// `PlayerUnavailable` (stale, dead, fake, or on a client), or `Title` for a title that
     /// could not cross; nothing opens then.
     #[access(WorldOnly)]

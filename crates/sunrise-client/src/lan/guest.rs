@@ -588,13 +588,29 @@ impl Guest {
         self.ip_address = address.ip().to_string();
     }
 
-    /// Allocate the next protocol window and a non-reusable menu identity.
-    pub fn next_menu_window(&mut self) -> i32 {
-        self.next_window = self.next_window % 100 + 1;
+    /// `ServerPlayer.nextContainerCounter` wraps the protocol id from 100 to 1.
+    pub(super) fn upcoming_menu_window(&self) -> i32 {
+        self.next_window % 100 + 1
+    }
+
+    /// Reserve the next protocol id without changing the live menu or either cursor.
+    pub fn reserve_menu_window(&mut self) -> i32 {
+        self.next_window = self.upcoming_menu_window();
+        self.next_window
+    }
+
+    /// Activate a reserved window with its own cursor and a non-reusable identity.
+    pub(super) fn begin_menu_window(&mut self, window: i32) {
         self.menu_generation = menu_generation();
         self.inactive_inventory_carried = self.carried.take();
-        self.open_carried_sent = Some((self.next_window, None));
-        self.next_window
+        self.open_carried_sent = Some((window, None));
+    }
+
+    /// Allocate the next protocol window and activate it.
+    pub fn next_menu_window(&mut self) -> i32 {
+        let window = self.reserve_menu_window();
+        self.begin_menu_window(window);
+        window
     }
 
     /// Retire an open menu, returning its carried stack for `AbstractContainerMenu.removed`.

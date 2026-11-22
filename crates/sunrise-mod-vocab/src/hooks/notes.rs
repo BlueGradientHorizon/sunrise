@@ -1328,9 +1328,10 @@ stock client shows as a chest (`generic_9x1` to `generic_9x6`); nothing is insta
 - A display menu's default click moves nothing. `MenuPart::menu_clicked` v4 runs directly on parts registered for
   the menu type before default click execution, with no synthetic decided-action wrapper or whole-inventory rollback.
   Returning `Flow::Cancel` skips only the default click and resyncs the menu, cursor and any omitted swap target;
-  returning `Flow::Continue` rechecks the live menu preconditions and runs default click execution on the live menu.
-  A panic in a part's `menu_clicked` callback disables only that mod's `menu_clicked` callback for the session with
-  an error log and error toast.
+  returning `Flow::Continue` rechecks the live menu, including `stillValid`, before running its default. An open or
+  close in a transaction takes effect at the outermost commit; an abort leaves the old menu and both cursors intact.
+  A panic disables only that mod's `menu_clicked` callback for the session with an error log and toast. It skips the
+  default for that click, keeping committed edits and resyncing the still-live menu.
 - `menu_closed` v2 names the player and window and passes any opening hand and detached owned slot values.
 - A trade on these menus leaves the offered stacks in their owners' inventories until both sides are settled. Then,
   in one `host.transaction`, each offered inventory index is checked to still hold exactly what was offered, taken

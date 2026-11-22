@@ -15,7 +15,10 @@ pub trait MenusServerHost {
     /// `MenuReplace::InPlace` changes the title and rows without the client
     /// centring the mouse again. Packets for the old window are ignored. The
     /// items of an open menu change through its slots (`menu`), not by
-    /// opening it again. An active speculative trade action refuses the open with `Ok(None)`.
+    /// opening it again. In a transaction, the returned window id is reserved for the
+    /// outermost commit; it cannot be used to look up or change the new menu until then.
+    /// An abort keeps the current menu. An active speculative trade action still refuses
+    /// an open with `Ok(None)`.
     #[access(WorldOnly)]
     fn open_menu(
         &mut self,
@@ -36,9 +39,9 @@ pub trait MenusServerHost {
     #[access(WorldOnly)]
     fn menu(&self, uuid: u128, window: i32) -> Option<MenuRef>;
     /// Side: server.
-    /// Closes the player's native menu (a `menu_closed` follows). During an active speculative
-    /// trade action, the close waits for the transaction to commit; an abort leaves the window
-    /// open.
+    /// Closes the player's native menu (a `menu_closed` follows). Without a transaction it
+    /// closes immediately. Inside one, the same window closes only at outermost commit;
+    /// an abort leaves it open.
     #[access(WorldOnly)]
     fn close_menu(&mut self, uuid: u128);
     /// Side: server.
@@ -205,9 +208,9 @@ pub trait MenusBackendMut {
     /// `ContainerClose`, then removes the menu, returns the carried stack to the inventory,
     /// and fires `player_container_close`. Refuses stale menus, clients, a player whose state
     /// is swapped in for a turn, a pending disconnect, and the player's own inventory menu.
-    /// During an active speculative trade action, true accepts a request to close that same
-    /// window at commit; an aborted action leaves it open. A client closes its own screen with
-    /// `close`.
+    /// Outside a transaction the close is immediate. Inside one, true accepts a request
+    /// to close that same window at outermost commit; an abort leaves it open. A client
+    /// closes its own screen with `close`.
     #[access(WorldOnly)]
     fn menu_close_container(&mut self, menu: MenuRef) -> bool;
     /// Side: server.

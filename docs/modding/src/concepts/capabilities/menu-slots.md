@@ -316,17 +316,22 @@ no synthetic decided-action wrapper or whole-inventory rollback: open a transact
 `host.transaction(...)` when a callback wants atomic multi-step edits, and prior unrelated writes
 stand even when the default click is cancelled or refused. Return `Flow::Cancel` after doing the
 click yourself to skip only the default click. On `Flow::Continue`, the server rechecks receiver
-preconditions (live player, same menu generation and window, non-spectator, valid backing slots and
-slot index) and runs the default click on the live menu. The client still predicts the default
+preconditions (live player, same menu generation and window, non-spectator, the menu's
+`stillValid` answer and a valid slot index) and runs the default click on the live menu. The client still predicts the default
 action; after an override or refusal the server sends the full menu, cursor and any predicted swap
 target omitted from the menu. A display-only menu has no default moves.
 
-Inside `menu_clicked`, `open_menu`, `PlayerRef::open_mod_menu`, `close_menu` and
-`MenuRef::close_container` run directly on the player's live menu. Closing or replacing the menu
-inside `menu_clicked` prevents the default click from running on the old menu. A panic in a part's
-`menu_clicked` callback aborts any transaction that callback opened, disables only that mod's
-`menu_clicked` callback for the session with an error log and error toast naming the mod, and lets
-remaining parts continue.
+Inside `menu_clicked`, `host.open_menu`, `PlayerRef::open_mod_menu`, `PlayerRef::open_menu`,
+`PlayerRef::open_ender_chest`, `host.close_menu` and `MenuRef::close_container` can act on the
+player's live menu. Outside a transaction the close or replacement is immediate. Inside one it
+takes effect only at the outermost commit; an abort leaves the live menu and its cursors alone.
+The id returned by a queued open is reserved, so look up or back the new menu after commit or in
+`player_container_open`. A close or replacement that takes effect before default execution prevents
+it from running on the old menu.
+
+A panic aborts any transaction still open in the callback and disables only that mod's `menu_clicked`
+callback for the session, with an error log and toast naming the mod. Other parts still run, but the
+server skips the failed click's default, preserves committed edits and resyncs the still-live menu.
 
 `menu_quick_move` v3 runs as one action too. An invalid answer, or a Host write to a player's inventory, cursor or
 menu storage, refuses that move instead of falling back to the game's routing. An answer's optional remainder

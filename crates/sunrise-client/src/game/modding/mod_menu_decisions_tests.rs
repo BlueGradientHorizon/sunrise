@@ -44,6 +44,7 @@ struct Script {
     write_clicked_block: bool,
     continue_after_player_write: bool,
     replace_display: bool,
+    replace_other: bool,
 }
 
 thread_local! {
@@ -264,6 +265,19 @@ impl mod_api::MenuPart for ClickPart {
         assert_eq!(event.menu, "minecraft:generic_9x1");
         assert_eq!(event.uuid, 12);
         let s = SCRIPT.with(|s| s.borrow().clone());
+        if s.replace_other {
+            assert!(
+                host.open_menu(
+                    13,
+                    1,
+                    mod_api::Text::literal("Other player's display"),
+                    vec![],
+                    mod_api::MenuReplace::InPlace
+                )
+                .unwrap()
+                .is_some()
+            );
+        }
         if s.write_dirt && s.panic {
             let _ = host.transaction(|host, tx| -> Result<(), ()> {
                 write_dirt_in_tx(host, tx);
@@ -1264,6 +1278,148 @@ fn a_listener_for_another_menu_type_does_not_admit_a_click_decision() {
             game.lan_guest_packet(12, container_click(window, 3, 0));
             assert_eq!(decided(), 0);
         })
+    });
+}
+
+fn chest(
+    game: &mut crate::game::Game<'_>,
+    dimension: mod_api::DimensionKey,
+) -> mod_api::BlockEntityRef {
+    use sunrise_client::chunk::Chunk;
+    use sunrise_world::chunk::BlockState;
+
+    game.world
+        .chunks
+        .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+    let state = game
+        .pack
+        .assets
+        .registry
+        .resolve(&BlockState {
+            name: "minecraft:chest".into(),
+            properties: [
+                ("facing".into(), "north".into()),
+                ("type".into(), "single".into()),
+                ("waterlogged".into(), "false".into()),
+            ]
+            .into_iter()
+            .collect(),
+        })
+        .unwrap();
+    let level = mod_api::LevelRef::new(game.native_lifecycle.epoch().unwrap(), dimension);
+    let pos = [POS.0, POS.1, POS.2];
+    assert_eq!(
+        game.level_set_block(level, pos, state, mod_api::BlockUpdateFlags::NEIGHBORS),
+        Ok(true)
+    );
+    game.block_entity(level, pos).unwrap()
+}
+
+#[test]
+#[ignore = "daily"]
+fn block_and_ender_menu_providers_replace_the_live_window_only_on_commit() {
+    with_guests(|game| {
+        let chest = chest(game, mod_api::DimensionKey::OVERWORLD);
+        let player = game.player(12).unwrap();
+        let active = |game: &crate::game::Game<'_>| {
+            game.lan
+                .as_ref()
+                .unwrap()
+                .hub
+                .guest(12)
+                .unwrap()
+                .menu
+                .as_ref()
+                .map(|menu| menu.slots)
+        };
+        for commit in [false, true] {
+            let result = game.transaction(|host, _| {
+                assert_eq!(player.open_menu(host, chest), Ok(true));
+                assert_eq!(
+                    player.container_menu(host).unwrap().container_id(host),
+                    Some(0)
+                );
+                if commit { Ok(()) } else { Err(()) }
+            });
+            assert_eq!(result.is_ok(), commit);
+            assert_eq!(active(game), commit.then_some(Slots::Block(POS)));
+            assert_eq!(game.lid_openers.get(&POS).copied(), commit.then_some(1));
+        }
+        let window = player
+            .container_menu(game)
+            .unwrap()
+            .container_id(game)
+            .unwrap();
+        for commit in [false, true] {
+            let result = game.transaction(|host, _| {
+                assert_eq!(
+                    player.open_ender_chest(host, mod_api::Text::literal("Ender chest")),
+                    Ok(true)
+                );
+                assert_eq!(
+                    player.container_menu(host).unwrap().container_id(host),
+                    Some(window)
+                );
+                if commit { Ok(()) } else { Err(()) }
+            });
+            assert_eq!(result.is_ok(), commit);
+            assert_eq!(
+                active(game),
+                Some(if commit {
+                    Slots::Ender
+                } else {
+                    Slots::Block(POS)
+                })
+            );
+            assert_eq!(game.lid_openers.get(&POS).copied(), (!commit).then_some(1));
+        }
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_click_replaces_another_players_container_in_its_own_level() {
+    use crate::game::Dim;
+
+    let mods: Mods = vec![ModEntry::new("clickmod", Box::new(ClickMod))].into();
+    mod_platform::testing::with_mods(mods.clone(), || {
+        crate::game::api_values::install_parts(&mods).unwrap();
+        with_guests(|game| {
+            game.lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .update_guest(13, |g| {
+                    g.dimension = Dim::Nether.id().to_owned();
+                })
+                .unwrap();
+            let window = open_native_menu(game);
+            chest(game, mod_api::DimensionKey::OVERWORLD);
+            // An opener at the same coordinates in the caller's level must not be closed.
+            assert!(game.container_openers_changed(POS, true));
+            game.enter_level(Dim::Nether).unwrap();
+            let other_chest = chest(game, mod_api::DimensionKey::NETHER);
+            let other = game.player(13).unwrap();
+            assert_eq!(other.open_menu(game, other_chest), Ok(true));
+            assert_eq!(game.lid_openers.get(&POS), Some(&1));
+            game.enter_level(Dim::Overworld).unwrap();
+
+            script(Script {
+                replace_other: true,
+                ..Script::default()
+            });
+            game.lan_guest_packet(12, container_click(window, 0, 0));
+            assert_eq!(game.dim, Dim::Overworld);
+            assert_eq!(game.lid_openers.get(&POS), Some(&1));
+            let hub = &game.lan.as_ref().unwrap().hub;
+            assert_eq!(hub.guest(12).unwrap().menu.as_ref().unwrap().window, window);
+            assert_eq!(
+                hub.guest(13).unwrap().menu.as_ref().unwrap().slots,
+                Slots::Native
+            );
+            game.enter_level(Dim::Nether).unwrap();
+            assert!(!game.lid_openers.contains_key(&POS));
+        });
     });
 }
 

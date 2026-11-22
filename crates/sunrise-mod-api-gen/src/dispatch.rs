@@ -1322,9 +1322,11 @@ pub(super) fn emit<'a>(
                     // An isolated scoped cancel hook catches panics per part, poisons only
                     // that mod's callback for this hook, reports loudly, and continues to
                     // remaining parts. Phase refusals report each time without poisoning.
+                    // Either failure suppresses the default: a part may have already made
+                    // committed edits before failing to return an answer.
                     let o = out.unwrap();
                     format!(
-                        "for (mod_id, {part_item}) in super::entered_isolated_parts(HookId::{hook_id}, {part_list}, \"{name}\") {{ match super::callback_owner::contain_unwind(|| super::runtime::refusable(contained, || {part_item}.{name}({invoke}))) {{ Ok(Ok(Flow::Cancel)) => {{ *{o} = true; {stack_after} break; }} Ok(Ok(Flow::Continue)) => {{ {stack_after} }} Ok(Err(refusal)) => {{ refusal.report_each(); }} Err(message) => {{ super::callback_owner::report_scoped_part_panic(HookId::{hook_id}, mod_id, \"{name}\", message); }} }} }}"
+                        "for (mod_id, {part_item}) in super::entered_isolated_parts(HookId::{hook_id}, {part_list}, \"{name}\") {{ match super::callback_owner::contain_unwind(|| super::runtime::refusable(contained, || {part_item}.{name}({invoke}))) {{ Ok(Ok(Flow::Cancel)) => {{ *{o} = true; {stack_after} break; }} Ok(Ok(Flow::Continue)) => {{ {stack_after} }} Ok(Err(refusal)) => {{ *{o} = true; refusal.report_each(); }} Err(message) => {{ *{o} = true; super::callback_owner::report_scoped_part_panic(HookId::{hook_id}, mod_id, \"{name}\", message); }} }} }}"
                     )
                 } else {
                     format!(

@@ -18,11 +18,14 @@ pub trait Hooks {
     /// when a callback wants atomic multi-step edits, and prior unrelated writes stand even if
     /// the default click is cancelled or refused. On [`Flow::Continue`], the server rechecks
     /// receiver preconditions (live player, same menu generation and window, non-spectator,
-    /// valid backing slots and slot index) before running default click execution on the live
-    /// menu; closing or replacing the menu inside the callback skips the default click.
-    /// A panic in a part's `menu_clicked` callback is isolated: any transaction opened by that
-    /// callback unwinds and aborts, only that mod's `menu_clicked` callback is disabled for the
-    /// session with an error log and error toast naming the mod, and remaining parts continue.
+    /// the menu's `stillValid` answer and slot index) before running default click execution on
+    /// the live menu. Closing or replacing it prevents the default; inside a transaction, the
+    /// close or replacement takes effect only when the outermost transaction commits.
+    /// A panic aborts any transaction still open in that callback and disables only that mod's
+    /// `menu_clicked` callback for the session, with an error log and toast naming the mod.
+    /// Remaining parts continue, but the failed click's default never runs. The server resyncs
+    /// the still-live menu and keeps committed edits. Phase refusals are reported each time
+    /// without disabling the callback.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_menu_clicked",
         dispatch = "api_carrier",
