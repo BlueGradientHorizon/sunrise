@@ -270,10 +270,15 @@ mod tests {
             assert_eq!(effects[0].duration, 200);
             assert_eq!(effects[0].amplifier, 1);
             let replacement = host.player(event.player).unwrap();
-            let replacement_effects = mod_api::LivingRef::new(replacement.entity())
-                .effects(host)
-                .unwrap();
-            assert_eq!(replacement_effects.len(), usize::from(!self.death));
+            let mut replacement_count = 0;
+            assert_eq!(
+                mod_api::LivingRef::new(replacement.entity()).visit_effects(host, &mut |_| {
+                    replacement_count += 1;
+                    std::ops::ControlFlow::Continue(())
+                }),
+                Ok(std::ops::ControlFlow::Continue(()))
+            );
+            assert_eq!(replacement_count, usize::from(!self.death));
             assert_eq!(original.inventory_slot(host, 99), None);
             // Replacement writes cannot alter the captured old values.
             VALUE.set(host, Holder::Player(event.player), 99).unwrap();

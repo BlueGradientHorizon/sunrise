@@ -135,6 +135,23 @@ impl Game<'_> {
             self.native_client_entity_target(entity)
         }
     }
+    /// Resolve a read target, distinguishing a stale handle from a missing body
+    /// of a tracked entity or a client without a live world.
+    pub(super) fn native_entity_visit_target(
+        &self,
+        entity: EntityRef,
+    ) -> Result<Target, mod_api::EntityReadError> {
+        self.native_entity_read_target(entity).ok_or_else(|| {
+            if !self.is_logical_server()
+                && (self.remote.as_ref().is_none_or(|remote| !remote.logged_in)
+                    || self.native_client_tracked(entity).is_some())
+            {
+                mod_api::EntityReadError::Unavailable
+            } else {
+                mod_api::EntityReadError::Stale
+            }
+        })
+    }
     /// The entity `id` (the id events carry) as a handle for the `entity_*`
     /// methods: None with no world open, or for no such entity in the level
     /// in place or among the server's players. On a client (API

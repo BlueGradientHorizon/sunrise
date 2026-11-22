@@ -259,7 +259,6 @@ entity_actions::entity_run_command_with_output
 entity_actions::entity_spawn_at_location
 entity_air_fluids::entity_air_supply
 entity_air_fluids::entity_eye_fluid
-entity_air_fluids::entity_fluid_heights
 entity_air_fluids::entity_is_in_lava
 entity_air_fluids::entity_is_in_water
 entity_air_fluids::entity_is_under_water
@@ -643,9 +642,7 @@ living::living_alive
 living::living_apply_consume_effect
 living::living_arrow_count
 living::living_attribute_base
-living::living_attribute_modifiers
 living::living_attribute_value
-living::living_attributes
 living::living_baby
 living::living_bed_orientation
 living::living_can_breathe_underwater
@@ -656,7 +653,6 @@ living::living_dimensions_for_pose
 living::living_drop
 living::living_effect
 living::living_effect_blend_factor
-living::living_effects
 living::living_equipment
 living::living_gliding_ticks
 living::living_hand_item

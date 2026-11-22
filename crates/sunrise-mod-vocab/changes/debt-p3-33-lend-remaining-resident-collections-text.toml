@@ -6,12 +6,26 @@ ids = [
     "handle:EntityRef::parts",
     "handle:EntityRef::visit_parts",
     "type:EntityReadError",
+    "handle:EntityRef::fluid_heights",
+    "handle:EntityRef::visit_fluid_heights",
+    "handle:EntityRef::eye_fluid",
+    "handle:LivingRef::effects",
+    "handle:LivingRef::visit_effects",
+    "handle:LivingRef::attributes",
+    "handle:LivingRef::visit_attributes",
+    "handle:LivingRef::attribute_modifiers",
+    "handle:LivingRef::visit_attribute_modifiers",
+    "type:AttributeModifierView",
 ]
-why = "Riding and multipart reads no longer allocate a list for the caller. Resident riding handles follow vanilla Entity.addPassenger and Entity.getPassengers order, Entity.getIndirectPassengers pre-order, and ClientPacketListener.handleSetEntityPassengersPacket seat order. Multipart handles follow the resident order of vanilla EnderDragon.getSubEntities and NeoForge IEntityExtension.getParts (implemented by EnderDragon.getParts)."
+why = "Riding and multipart reads no longer allocate a list for the caller. Resident riding handles follow vanilla Entity.addPassenger and Entity.getPassengers order, Entity.getIndirectPassengers pre-order, and ClientPacketListener.handleSetEntityPassengersPacket seat order. Multipart handles follow the resident order of vanilla EnderDragon.getSubEntities and NeoForge IEntityExtension.getParts (implemented by EnderDragon.getParts). Fluid reads lend the last body sample, as in vanilla Entity.getFluidHeight and Entity.isEyeInFluid and NeoForge IEntityExtension.getFluidTypeHeight, getMaxHeightFluidType and getFirstEyeInFluidType. Living reads visit the existing state behind vanilla LivingEntity.getActiveEffects, LivingEntity.getAttributes and AttributeInstance.getModifiers without building a list or copying IDs per call."
 migrate = """
 - Replace `entity.passengers(host)` with `entity.visit_passengers(host, &mut |rider| { /* read rider */ ControlFlow::Continue(()) })`. The visit is available on either side and omits riders without a resident handle.
 - Replace `entity.indirect_passengers(host)` with `entity.visit_indirect_passengers(host, &mut |rider| { /* read rider */ ControlFlow::Continue(()) })`. This remains server-only and still finds resident riders below a retained, off-level intermediary.
 - Replace `entity.parts(host)` with `entity.visit_parts(host, &mut |part| { /* read part */ ControlFlow::Continue(()) })`. Non-multipart entities complete without a call; a multipart read resolves all parts before the first call.
 - Import `std::ops::ControlFlow`. Return `ControlFlow::Break(())` to stop visiting; the call then returns `Ok(ControlFlow::Break(()))`. `Ok(ControlFlow::Continue(()))` means the visit completed, possibly without a call. If you need an owned list, declare `let mut handles = Vec::new();` and collect only what you need by calling `handles.push(handle)` inside a visitor that returns `ControlFlow::Continue(())`.
-- Replace an old `None` check with `Err(EntityReadError::Stale)` for a handle not present in the current view, and handle `Err(EntityReadError::Unavailable)` for a read the side, phase or view cannot supply. Neither refusal visits a handle. Discard the distinction only if both errors were equivalent for your caller.
+- Replace an old `None` check with `Err(EntityReadError::Stale)` for a handle not present in the current view, and handle `Err(EntityReadError::Unavailable)` for a read the side, phase or view cannot supply. Neither refusal visits an entry. Discard the distinction only if both errors were equivalent for your caller.
+- Replace `entity.fluid_heights(host)` with `entity.visit_fluid_heights(host, &mut |id, depth| { /* use id: &str and depth: f64 */ ControlFlow::Continue(()) })`. The first visit is the deepest contact (water before lava on a tie); break there if you only need that contact. `entity.eye_fluid(host)` still returns `Some(None)` in air and `None` without a readable body, but its inner value is now `&'static str`, not `String`. Use `.map(|fluid| fluid.map(str::to_owned))` only if you need to keep the old owned return type.
+- Replace `living.effects(host)` with `living.visit_effects(host, &mut |effect| { /* use or retain this ActiveEffect */ ControlFlow::Continue(()) })`. Entries are still passed by value, in effect-store order.
+- Replace `living.attributes(host)` with `living.visit_attributes(host, &mut |id| { /* use id: &str */ ControlFlow::Continue(()) })`. If you need to retain an id, call `id.to_owned()` inside the visitor. The visitor uses registry order.
+- Replace `living.attribute_modifiers(host, id)` with `living.visit_attribute_modifiers(host, id, &mut |m| { /* use m.id, m.amount and m.operation */ ControlFlow::Continue(()) })`. The `AttributeModifierView` borrows its `id` for the call. To retain a writable modifier, parse `m.id` with `Identifier::parse` inside the visitor and store `AttributeModifier::new(parsed_id, m.amount, m.operation)` on success. The owned write type and write methods are unchanged. An unknown or unsupported attribute is `Err(EntityReadError::Unavailable)`, not a successful empty visit.
 """
