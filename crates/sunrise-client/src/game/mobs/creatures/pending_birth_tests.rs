@@ -12,8 +12,8 @@ use super::*;
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
 use mod_api::{
     __private::{HookPanicReport, take_hook_panics},
-    BabyEntitySpawnEvent, BlockState, BlockUpdateFlags, Flow, Hooks, MobSplitEvent, PendingMobSpec,
-    ServerHost, UnspawnedMobError,
+    BabyEntitySpawnEvent, BlockState, BlockUpdateFlags, Flow, Hooks, HostBlockStates,
+    MobSplitEvent, PendingMobSpec, ServerHost, UnspawnedMobError,
 };
 use std::sync::{
     Arc, Mutex,
