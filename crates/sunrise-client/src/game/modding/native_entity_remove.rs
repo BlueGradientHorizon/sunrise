@@ -168,6 +168,7 @@ impl Game<'_> {
         };
         mob.removed = true;
         let position = mob.position;
+        self.last_hurt_by_player.remove(&id);
         self.dismount_mob(id);
         self.dismount_removed_passengers(id, position.y);
         if self.has_seated_passengers(id)

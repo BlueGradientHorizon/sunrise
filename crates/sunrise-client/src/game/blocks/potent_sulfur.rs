@@ -299,8 +299,8 @@ impl Game<'_> {
             let m = &self.mobs[j as usize];
             m.alive() && m.bounds().intersects(area)
         });
-        let tags = &self.res.stations().enchantments.entity_tags;
-        let immune = tags.get("minecraft:not_affected_by_geysers");
+        let tags = self.items().entity_type_tags.clone();
+        let immune = tags.members().get("minecraft:not_affected_by_geysers");
         for &j in &near {
             let mob = &mut self.mobs[j as usize];
             // Entity.checkFallDistanceAccumulation.
