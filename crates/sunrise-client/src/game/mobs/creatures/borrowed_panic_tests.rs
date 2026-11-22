@@ -437,6 +437,10 @@ fn tick_in_level(game: &mut Game<'_>) -> Result<()> {
 
 fn prime_hook(mob: &mut Mob, family: Family) {
     mob.invulnerable_time = 0;
+    if matches!(family, Family::Knockback | Family::Totem) {
+        // These hooks need the hit to pass LivingEntity.hurtServer's damageCooldownTime check.
+        mob.invulnerable = 0;
+    }
     match family {
         Family::Damage | Family::Shield | Family::Totem => {
             // Entity.baseTick deals an on-fire hit on the 20-tick boundary.
