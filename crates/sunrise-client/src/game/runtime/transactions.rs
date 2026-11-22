@@ -1072,11 +1072,15 @@ impl Game<'_> {
         let mut merchant_corrections = std::mem::take(&mut level.trades.refused_clicks);
         merchant_corrections.append(&mut level.trades.correct_on_abort);
         let departed = std::mem::take(&mut level.departed);
+        // Only roll back journals that don't rely on the owning level being in place.
         level.blocks.clear();
+        level.connection_groups.clear();
         level.block_entities.clear();
         level.removed_block_entities.clear();
+        level.saved_pots.clear();
         level.slots.clear();
         level.item_entities.clear();
+        level.general_entities.clear();
         level.level_random = None;
         level.chunk_marks.clear();
         level.after.clear();
