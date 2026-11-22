@@ -54,8 +54,9 @@ Usage: sunrise-prepare [--prepare] [--server-jar PATH] [--minecraft-dir PATH] [-
                         With --server, this overrides discovery.
   --root PATH           The Sunrise folder to prepare (default: the folder this program is
                         in, else the nearest folder above the current one with research-lock.json)
-  --output PATH         Where the resources go (default: <root>/.local/sunrise-client/<version>);
-                        the exporters' scratch files stay in <root>/.local
+  --output PATH         Where the resources go. Full: <root>/.local/sunrise-client/<version>;
+                        --server: <root>/game-files/sunrise-client/<version>-server.
+                        Exporters' scratch files stay in <root>/.local.
   --check               Exit 0 when the resources are complete and current for this preparer,
                         else 1: each gap on stdout with what it needs, or an error: line on
                         stderr when it can't check. Runs no Java and reads no game files; it tests
@@ -68,12 +69,12 @@ Usage: sunrise-prepare [--prepare] [--server-jar PATH] [--minecraft-dir PATH] [-
   --launch-api          Print what this preparer supports as JSON (the Launch API's version, the
                         pinned Minecraft and Java, the resources' layout, the options) and exit 0
 
-Needs Minecraft played once from the official launcher, and Java of the version
-research-lock.json pins. Releases use a runtime; development or changed exporters need a JDK.
+Full preparation needs the player's installed Minecraft client files. The separate --server
+profile needs only the pinned server.jar, downloaded from Mojang or supplied with --server-jar.
+Releases can use the pinned Java runtime; development or changed exporters need a JDK.
 compile-exporters builds and validates a release bundle from the already imported pinned jars.
-The resources go to <root>/.local/sunrise-client/<version>, or --output; pass that to
-sunrise-client --resources. Exit codes: 0 done, 1 failed (or --check found gaps), 2 a refused
-command line (docs/api/launch.md).
+Pass the corresponding output folder to sunrise-client --resources. Exit codes: 0 done,
+1 failed (or --check found gaps), 2 a refused command line (docs/api/launch.md).
 
 sunrise-prepare panorama repairs the classic menu background in existing resources without Java.
 sunrise-prepare fonts adds the GNU Unifont glyphs (characters the bitmap fonts lack) the same way.

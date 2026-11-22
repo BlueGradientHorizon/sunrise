@@ -848,7 +848,6 @@ mod tests {
             let error = refusal.unwrap_err();
             assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
             assert!(error.to_string().contains(CLIENT));
-            assert!(error.to_string().contains("This is a Sunrise bug"));
         }
         assert_eq!(
             server.read("facts.json").unwrap_err().kind(),

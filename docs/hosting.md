@@ -88,8 +88,14 @@ compiled exporters and need only a runtime.
 
 Or prepare on another computer with `sunrise-prepare --server` and copy its `game-files/sunrise-client/26.3-server`
 folder to the server. Use `sunrise-server import-resources DIR` to install that copy, or
-`sunrise-server init --resources DIR` to use it in place. Existing full prepared folders still work; they include
-client files, which are downloaded only by the launcher for a signed-in account that owns Minecraft.
+`sunrise-server init --resources DIR` to use it in place.
+
+Managed server files are prepared again when `sunrise-server run` finds they are missing or stale; do not rerun
+`init` on an existing server. For a folder you set in `[engine] resources`, run
+`sunrise-prepare --server --output DIR` for server-only output. To repair a full folder, including output v7,
+run `sunrise-prepare --prepare --server-jar PATH --output DIR` with your own client files. Full output v8 is
+required. Use `--complete` to copy the sounds and run the full check, including client extras. Only the launcher downloads
+client files, for a signed-in account that owns Minecraft. Keep full and server-only output in separate folders.
 
 ## 3. First run
 

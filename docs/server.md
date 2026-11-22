@@ -618,11 +618,12 @@ sunrise-server update --archive FILE --version NAME     an archive you have (you
 sunrise-server mcp                       MCP server on stdio (section 8)
 sunrise-server import-resources <dir>    copy game files prepared elsewhere into place (checked first)
 
-Planned:
-sunrise-server prepare --server-jar PATH
 ```
 
 - Every command takes `--dir` (the server folder; default: the current folder).
+- Managed game files are prepared on setup or startup when missing or stale. For explicitly configured files,
+  use the profile-specific [re-prepare command](hosting.md#2-prepare-the-game-files); full output v7 must be
+  re-prepared for the current game.
 - While the server runs, management commands go through the control API, so the engine applies them as
   vanilla's console would and its lists stay right. While it's stopped, `op`, `deop`, `whitelist`, `ban`,
   `pardon`, `ban-ip` and `pardon-ip` edit the vanilla files directly with the same code the engine uses
@@ -973,7 +974,6 @@ machine, then published in `benchmarks/`; and item 5.
 
 - the Nether and End for remote players;
 - the headless engine and its RAM win;
-- a server-only prepare without a JDK;
 - a Windows service, hot reload, modpacks in the panel;
 
 Online mode works, so a public server can check accounts. An offline server should still run only on a
