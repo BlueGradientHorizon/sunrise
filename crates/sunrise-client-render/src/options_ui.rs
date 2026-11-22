@@ -36,6 +36,11 @@ use self::layout::OptionsLayout;
 mod wheel;
 pub(crate) use wheel::slider_unsnapped;
 
+/// `Options.renderDistance`'s upper bound in 26.3 (`IntRange(2, 32)`; 16 below 1 GiB of JVM heap).
+/// Sunrise has no JVM heap to size it by, so the classic page takes the 32; Sunrise Graphics goes
+/// to `MAX_RENDER_DISTANCE`.
+pub(crate) const VANILLA_MAX_RENDER_DISTANCE: i32 = 32;
+
 fn tr(key: &str) -> Text {
     Text::translate(key, &[])
 }
@@ -235,7 +240,7 @@ impl Opt {
     pub(crate) fn caption(self) -> &'static str {
         match self {
             Opt::Fov => "options.fov",
-            Opt::RenderDistance => "options.renderDistance",
+            Opt::RenderDistance | Opt::VanillaRenderDistance => "options.renderDistance",
             Opt::SimulationDistance => "options.simulationDistance",
             Opt::Sensitivity => "options.sensitivity",
             Opt::WheelSensitivity => "options.mouseWheelSensitivity",
@@ -388,6 +393,12 @@ impl Opt {
                 2.0,
                 crate::options_file::MAX_RENDER_DISTANCE as f64,
             ),
+            // OptionInstance clamps a value outside its range for display; the saved one stays.
+            Opt::VanillaRenderDistance => unit(
+                s.render_distance.min(VANILLA_MAX_RENDER_DISTANCE) as f64,
+                2.0,
+                VANILLA_MAX_RENDER_DISTANCE as f64,
+            ),
             Opt::SimulationDistance => unit(s.simulation_distance as f64, 5.0, 32.0),
             Opt::Sensitivity => Kind::Slider(s.sensitivity),
             Opt::WheelSensitivity => wheel::kind(s.mouse_wheel_sensitivity),
@@ -490,6 +501,7 @@ impl Opt {
             Opt::ChatDelay => Some(60),
             Opt::Fov => Some(80),
             Opt::RenderDistance => Some((crate::options_file::MAX_RENDER_DISTANCE - 2) as u32),
+            Opt::VanillaRenderDistance => Some((VANILLA_MAX_RENDER_DISTANCE - 2) as u32),
             Opt::SimulationDistance => Some(27),
             Opt::MaxFps => Some(25),
             Opt::CloudRange => Some(126),
@@ -564,6 +576,13 @@ impl Opt {
                 v => generic(c, Text::literal(v.to_string())),
             },
             Opt::RenderDistance => generic(c, Text::tr("options.chunks", &[&s.render_distance])),
+            Opt::VanillaRenderDistance => generic(
+                c,
+                Text::tr(
+                    "options.chunks",
+                    &[&s.render_distance.min(VANILLA_MAX_RENDER_DISTANCE)],
+                ),
+            ),
             Opt::SimulationDistance => {
                 generic(c, Text::tr("options.chunks", &[&s.simulation_distance]))
             }
@@ -951,6 +970,9 @@ impl Opt {
                 s.render_distance =
                     step(2.0, crate::options_file::MAX_RENDER_DISTANCE as f64) as i32
             }
+            Opt::VanillaRenderDistance => {
+                s.render_distance = step(2.0, VANILLA_MAX_RENDER_DISTANCE as f64) as i32
+            }
             Opt::SimulationDistance => s.simulation_distance = step(5.0, 32.0) as i32,
             Opt::Sensitivity => s.sensitivity = v,
             Opt::WheelSensitivity => s.mouse_wheel_sensitivity = wheel::from_slider(v),
@@ -1014,6 +1036,7 @@ impl Opt {
         matches!(
             self,
             Opt::RenderDistance
+                | Opt::VanillaRenderDistance
                 | Opt::SimulationDistance
                 | Opt::SmoothLighting
                 | Opt::Clouds
@@ -2838,7 +2861,7 @@ impl OptionsUi {
                 rows.push(Row::Big(Opt::Preset));
                 rows.extend(pairs(&[
                     Opt::BiomeBlend,
-                    Opt::RenderDistance,
+                    Opt::VanillaRenderDistance,
                     Opt::ChunkBuilder,
                     Opt::SimulationDistance,
                     Opt::SmoothLighting,
@@ -5120,6 +5143,46 @@ mod tests {
     }
 
     #[test]
+    fn video_settings_render_distance_stops_at_vanilla_range_and_keeps_saved_value() {
+        let mut s = Settings::default();
+        // Sunrise Graphics' slider still reaches the extended range.
+        set_slider(Opt::RenderDistance, &mut s, 1.0);
+        assert_eq!(s.render_distance, crate::options_file::MAX_RENDER_DISTANCE);
+        // The classic page's slider stops at 32.
+        set_slider(Opt::VanillaRenderDistance, &mut s, 1.0);
+        assert_eq!(s.render_distance, 32);
+        set_slider(Opt::VanillaRenderDistance, &mut s, 0.0);
+        assert_eq!(s.render_distance, 2);
+        // Page rows use the classic slider, never the extended one.
+        let mut ui = OptionsUi::default();
+        ui.show(Page::Video);
+        let rows = ui.list_rows(&s);
+        let has = |opt| {
+            rows.iter().any(|r| match r {
+                Row::Big(o) => *o == opt,
+                Row::Pair(a, b) => *a == opt || *b == Some(opt),
+                _ => false,
+            })
+        };
+        assert!(has(Opt::VanillaRenderDistance) && !has(Opt::RenderDistance));
+        // A saved 64 shows clamped to 32 and is not rewritten by looking at it.
+        s.render_distance = 64;
+        assert_eq!(Opt::VanillaRenderDistance.slider_position(&s), Some(1.0));
+        assert_eq!(
+            Opt::VanillaRenderDistance.label(&s).plain(),
+            Opt::VanillaRenderDistance
+                .label(&Settings {
+                    render_distance: 32,
+                    ..Settings::default()
+                })
+                .plain()
+        );
+        let _ = ui.list_rows(&s);
+        assert_eq!(s.render_distance, 64);
+        assert!(Opt::RenderDistance.slider_position(&s).unwrap() > 0.4);
+    }
+
+    #[test]
     fn render_distance_slider_round_trips_through_extended_options_range() {
         let mut s = Settings::default();
         for (position, distance) in [(0.0, 2), (0.5, 65), (1.0, 128)] {
@@ -6518,7 +6581,7 @@ mod tests {
         assert_eq!(headers(ui.list_rows(&settings)), all_headers);
         for (opt, header) in [
             (Opt::Fullscreen, all_headers[0]),
-            (Opt::RenderDistance, all_headers[1]),
+            (Opt::VanillaRenderDistance, all_headers[1]),
             (Opt::Preset, all_headers[1]),
             (Opt::Autosave, all_headers[2]),
         ] {
@@ -7693,6 +7756,9 @@ mod tests {
             for o in opts {
                 let id = match o {
                     Opt::GraphicsBackend => "graphics-api".to_owned(),
+                    // The classic page's Render Distance row is the graphics screen's
+                    // RenderDistance row: the same saved setting.
+                    Opt::VanillaRenderDistance => "RenderDistance".to_owned(),
                     o => format!("{o:?}"),
                 };
                 // macOS has one graphics API: the graphics screen leaves the row out.
@@ -8109,6 +8175,7 @@ mod tests {
         let stepped_opts = [
             Opt::Fov,
             Opt::RenderDistance,
+            Opt::VanillaRenderDistance,
             Opt::SimulationDistance,
             Opt::MaxFps,
             Opt::CloudRange,
