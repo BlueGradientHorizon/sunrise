@@ -297,6 +297,8 @@ pub(super) struct Remote {
     /// Display-only address computed at connection setup. Never holds the raw friend invite.
     pub(super) display_address: Option<String>,
     pub brand: String,
+    /// `ClientPacketListener.random` draws packet spread, not provider RNG.
+    pub(super) particle_packet_random: sunrise_core::random::LegacyRandom,
     pub(super) recipe_viewer: crate::game::recipe_book::ViewerChannels,
     /// This connection's configured feature flags, carried through reconfiguration.
     pub(super) features: std::sync::Arc<[String]>,
