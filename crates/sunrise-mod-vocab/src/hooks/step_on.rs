@@ -1,4 +1,4 @@
-//! `step_on` declaration read by the mod API generator (see `hooks/mod.rs`).
+//! The `step_on` hook: declaration read by the mod API generator (see `hooks/mod.rs`).
 // catalog-order: 0085
 
 pub trait Hooks {
@@ -17,7 +17,7 @@ pub trait Hooks {
     /// `event.write_entity(EntityWrite::…)` for the stepping entity before the inside scan.
     /// Use `LevelHost::entity_type_is_living(event.kind)` when the block only affects living
     /// bodies, as magma does. Other Parts may still hurt nonliving bodies such as dropped items.
-    /// Contact Parts cannot hurt boats or minecarts yet (#4177).
+    /// Boats, minecarts, armor stands and projectiles ignore contact hurt.
     /// `event.request(LandingWrite::…)` queues a change at `pos` through the `fall_on`
     /// drain: requests apply at the batch end if `pos` still holds `state`.
     /// A Part's invalid block state or non-finite movement or damage discards only its
@@ -32,6 +32,7 @@ pub trait Hooks {
         scope = "block",
         key = "state",
         host = "level_random_side",
+        dispatch = "direct",
         target = "sunrise_client::game::native_hooks::bounce_restitution::StepOnView<'_>::native_step_on",
         neoforge = "none (vanilla Block.stepOn)"
     )]

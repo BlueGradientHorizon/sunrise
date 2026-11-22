@@ -1025,8 +1025,11 @@ impl<const ORDER: u8> BlockPart for StepAnswer<ORDER> {
                 event.request(LandingWrite::DestroyBlock { drop: false });
                 match event.pos.x {
                     4 => {
-                        let unknown = mod_api::BlockStateRecord::new(event.state.block(), u16::MAX);
-                        event.request(LandingWrite::SetBlock(unknown.into()));
+                        let unknown = mod_api::__private::block_state_from_ordinal(
+                            event.state.block(),
+                            u16::MAX,
+                        );
+                        event.request(LandingWrite::SetBlock(unknown));
                     }
                     5 => {
                         event.write_entity(EntityWrite::SetMovement([f64::INFINITY, 0.0, 0.0]));

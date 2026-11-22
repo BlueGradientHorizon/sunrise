@@ -1221,6 +1221,9 @@ impl Game<'_> {
             }
             if !client {
                 self.sweep_item_inside(item);
+                if item.health <= 0 {
+                    return (false, true);
+                }
             }
         }
         item.finish_move_block_effects(&self.world, self.res.facts(), step);
@@ -1543,7 +1546,6 @@ fn draw_runs(lists: EntityLists<'_>, mut extra: DrawExtras<'_>, runs: &mut Vec<D
         .into_iter()
         .flat_map(|g| g.rows.values())
         .enumerate()
-        .filter(|(_, row)| row.shown)
         .peekable();
     let mut next_extra = || {
         let (join, head) = [
@@ -1741,12 +1743,11 @@ macro_rules! damage_level_of {
     };
 }
 pub(super) use damage_level_of;
-/// `$game`'s [`PlayerResolver`](sunrise_client::health::PlayerResolver) over its
-/// `last_hurt_by_player` records, borrowing only the fields it reads (`Game::acting_uuid`'s).
+/// `$game`'s [`PlayerResolver`](sunrise_client::health::PlayerResolver),
+/// borrowing only the fields it reads (`Game::acting_uuid`'s).
 macro_rules! player_resolver {
     ($game:ident) => {
         sunrise_client::health::PlayerResolver {
-            memory: &$game.last_hurt_by_player,
             in_place: $game.player.is_some().then(|| {
                 $game
                     .lan_acting_uuid
