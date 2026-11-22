@@ -1,7 +1,0 @@
-# Client local game mode vs PlayerInfo split and unified client abilities (26.3 parity).
-sunrise-client game::remote::abilities::gamemode_split_tests::change_game_mode_updates_only_local_mode_and_abilities_26_3 lib daily resources
-sunrise-client game::remote::abilities::gamemode_split_tests::genpvp_menu_settled_witness_player_mode_and_physics_26_3 lib daily resources
-sunrise-client game::remote::abilities::gamemode_split_tests::genpvp_packet_sequence_matches_26_3_oracle_step_by_step lib daily resources
-sunrise-client game::remote::abilities::gamemode_split_tests::live_player_info_updates_toggle_no_physics_while_local_spectator_26_3 lib daily resources
-sunrise-client game::remote::abilities::gamemode_split_tests::login_and_respawn_set_previous_mode_and_fresh_abilities_26_3 lib daily resources
-sunrise-client game::remote::abilities::gamemode_split_tests::split_local_and_player_info_physics_matrix_26_3 lib daily resources

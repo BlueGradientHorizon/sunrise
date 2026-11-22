@@ -164,13 +164,6 @@ def command(args):
         cmd[cp] = os.pathsep.join([str(args.classes), cmd[cp]])
         main = cmd.index("net.minecraft.client.main.Main")
         cmd[main:main + 1] = [f"-Dsunrise.lanPort={args.lan_port}", "dev.sunriselab.parity.OfflineLanHost"]
-    elif getattr(args, "probe_out", None) is not None:
-        cp = cmd.index("-cp") + 1
-        cmd[cp] = os.pathsep.join([str(args.classes), cmd[cp]])
-        main = cmd.index("net.minecraft.client.main.Main")
-        probe_class = getattr(args, "probe_class", None) or "dev.sunriselab.parity.VanillaClientStateProbe"
-        jvm_args = list(getattr(args, "jvm_arg", None) or ())
-        cmd[main:main + 1] = [f"-Dsunrise.probeOut={args.probe_out}", *jvm_args, probe_class]
     if args.backend:
         cmd += ["--graphicsBackend", args.backend]
     return cmd
@@ -195,14 +188,8 @@ def main():
     parser.add_argument("--height", type=int, default=800)
     parser.add_argument("--lan-port", type=int,
                         help="open the --world to LAN on this port without authentication (needs --classes)")
-    parser.add_argument("--probe-out", type=Path,
-                        help="write probe JSON lines here (needs --classes)")
-    parser.add_argument("--probe-class", default="dev.sunriselab.parity.VanillaClientStateProbe",
-                        help="main class to launch instead of VanillaClientStateProbe when --probe-out is set")
-    parser.add_argument("--jvm-arg", action="append", default=[],
-                        help="extra JVM argument when --probe-out is set")
     parser.add_argument("--classes", type=Path, default=ROOT / ".local/mp/oracle",
-                        help="compiled helper classes (mods/sunrise/src/test/java)")
+                        help="compiled OfflineLanHost (mods/sunrise/src/test/java)")
     parser.add_argument("--backend", help="graphics backend (opengl or vulkan)")
     parser.add_argument("--option", action="append", default=[], help="KEY:VALUE for options.txt")
     parser.add_argument("--print", action="store_true", help="print the command and exit")

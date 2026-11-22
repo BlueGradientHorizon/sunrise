@@ -1,21 +1,25 @@
-//! Red parity tests for Minecraft 26.3 client local-game-mode vs `PlayerInfo` split (Item 3).
-//! Witnesses:
-//! - `tools/witness/26.3/genpvp_menu/{settled.json,ticks.jsonl}` (real 26.3 client replay)
-//! - `tools/witness/26.3/gamemode_split/witness.json` (`VanillaClientGameModeSplitOracle`, JDK 25)
+//! Parity tests for Minecraft 26.3 client local-game-mode vs `PlayerInfo` split (Item 3).
+//! Witness recorded into `.local` by `tools/test_gamemode_split_parity.py` (`VanillaClientGameModeSplitOracle`, JDK 25).
 use super::super::*;
 use crate::game::game_mode::mode_from_id;
 use crate::game::native_entity_refs::tests::with_client_game;
 use serde_json::Value as JsonValue;
-use std::path::Path;
 use sunrise_client::command::args::GameMode;
 use sunrise_protocol::connection::ConnReader;
 
-const ORACLE_WITNESS: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../tools/witness/26.3/gamemode_split/witness.json"
-));
 const SELF_UUID: u128 = 0xdf71_dcc7_da3b_3506_b229_6d1f_589e_2569;
 const SELF_NAME: &str = "BX0W";
+
+fn oracle_witness() -> JsonValue {
+    let path = std::env::var("SUNRISE_GAMEMODE_SPLIT_WITNESS")
+        .expect("run through tools/test_gamemode_split_parity.py, which records the witness");
+    let raw = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+        panic!(
+            "failed to read SUNRISE_GAMEMODE_SPLIT_WITNESS={path} (run through tools/test_gamemode_split_parity.py): {err}"
+        )
+    });
+    serde_json::from_str(&raw).expect("valid 26.3 gamemode split witness JSON")
+}
 
 fn f32_bits(hex: &JsonValue) -> u32 {
     u32::from_str_radix(hex.as_str().unwrap().trim_start_matches("0x"), 16).unwrap()
@@ -311,226 +315,13 @@ fn assert_row_core(
     }
 }
 
-/// Real 26.3 client menu witness (`tools/witness/26.3/genpvp_menu/{settled.json,ticks.jsonl}`):
-/// after the genpvp join sequence (`CHANGE_GAME_MODE` Spectator, `PlayerInfo` Adventure,
-/// `PlayerAbilities` 0x00) and 100 idle ticks over solid ground, the local player matches the
-/// recorded vanilla `player.*` state bit for bit instead of falling into the void.
-#[test]
-#[ignore = "daily"]
-fn genpvp_menu_settled_witness_player_mode_and_physics_26_3() {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/witness/26.3/genpvp_menu");
-    let settled: JsonValue = serde_json::from_str(
-        &std::fs::read_to_string(dir.join("settled.json"))
-            .expect("genpvp_menu/settled.json witness must exist"),
-    )
-    .unwrap();
-    let ticks_raw = std::fs::read_to_string(dir.join("ticks.jsonl"))
-        .expect("genpvp_menu/ticks.jsonl witness must exist");
-    let last_tick: JsonValue = serde_json::from_str(
-        ticks_raw
-            .lines()
-            .rev()
-            .find(|l| !l.trim().is_empty())
-            .expect("ticks.jsonl non-empty"),
-    )
-    .unwrap();
-    assert_eq!(settled["meta"]["game_version"].as_str(), Some("26.3"));
-    let wp = &settled["player"];
-
-    with_client_game(|game| {
-        let (mut peer, _writer) = super::super::tests::connect_menu_test(game);
-        peer.set_read_timeout(Some(std::time::Duration::from_secs(5)))
-            .unwrap();
-        {
-            let remote = game.remote.as_mut().unwrap();
-            remote.profile = SELF_UUID;
-            remote.profile_name = SELF_NAME.into();
-        }
-        // Replay genpvp's exact join packet order up to the settled menu state.
-        game.handle_packet(login_packet(83081, 1, None)).unwrap();
-        install_stone_floor(game);
-        game.handle_packet(abilities_packet(0x0d, 0.05, 0.10))
-            .unwrap();
-        game.handle_packet(position_packet(1, [0.5, 64.0, 0.5]))
-            .unwrap();
-        game.handle_packet(player_info_add_mode(SELF_UUID, SELF_NAME, 1))
-            .unwrap();
-        game.handle_packet(abilities_packet(0x00, 0.05, 0.10))
-            .unwrap();
-        game.handle_packet(player_info_mode(SELF_UUID, 2)).unwrap();
-        game.handle_packet(change_mode_packet(2.0)).unwrap();
-        game.handle_packet(abilities_packet(0x00, 0.05, 0.10))
-            .unwrap();
-        game.handle_packet(position_packet(2, [0.5, 64.0, 0.5]))
-            .unwrap();
-        game.handle_packet(change_mode_packet(1.0)).unwrap();
-        game.handle_packet(abilities_packet(0x0d, 0.0, 0.0))
-            .unwrap();
-        game.handle_packet(change_mode_packet(3.0)).unwrap();
-        game.handle_packet(abilities_packet(0x00, 0.0, 0.0))
-            .unwrap();
-        {
-            let remote = game.remote.as_mut().unwrap();
-            remote.loaded_sent = true;
-            remote.level_load.finish();
-        }
-        game.screen = Screen::Playing;
-        let _ = drain_sent_abilities(game, &mut peer);
-
-        for _ in 0..100 {
-            run_local_tick(game);
-        }
-        let sent = drain_sent_abilities(game, &mut peer);
-        assert!(sent.is_empty(), "no flight toggle packets during idle menu");
-
-        let ab = game.local_player().unwrap().abilities(&*game).unwrap();
-        let p = game.player.as_ref().unwrap();
-        let want_pos = wp["pos_bits"].as_array().unwrap();
-        assert_eq!(
-            [
-                p.position.x.to_bits(),
-                p.position.y.to_bits(),
-                p.position.z.to_bits(),
-            ],
-            [
-                f64_bits(&want_pos[0]),
-                f64_bits(&want_pos[1]),
-                f64_bits(&want_pos[2]),
-            ],
-            "settled player.pos_bits"
-        );
-        assert_eq!(
-            p.ground.on_ground,
-            wp["on_ground"].as_bool().unwrap(),
-            "settled player.on_ground"
-        );
-        assert_eq!(
-            p.spectator,
-            wp["no_physics"].as_bool().unwrap(),
-            "settled player.no_physics"
-        );
-        assert_eq!(
-            p.spectator,
-            wp["is_spectator"].as_bool().unwrap(),
-            "settled player.is_spectator"
-        );
-        assert_eq!(
-            game.mode.name().to_ascii_lowercase(),
-            wp["local_game_mode"].as_str().unwrap().to_ascii_lowercase(),
-            "settled player.local_game_mode"
-        );
-        assert_eq!(
-            player_info_mode_name(game).map(str::to_ascii_lowercase),
-            Some(
-                wp["player_info_game_mode"]
-                    .as_str()
-                    .unwrap()
-                    .to_ascii_lowercase()
-            ),
-            "settled player.player_info_game_mode"
-        );
-        let wab = &wp["abilities"];
-        assert_eq!(
-            (p.flying, ab.flying),
-            (
-                wab["flying"].as_bool().unwrap(),
-                wab["flying"].as_bool().unwrap()
-            ),
-            "settled abilities.flying"
-        );
-        assert_eq!(
-            (p.may_fly, ab.may_fly),
-            (
-                wab["may_fly"].as_bool().unwrap(),
-                wab["may_fly"].as_bool().unwrap()
-            ),
-            "settled abilities.may_fly"
-        );
-        assert_eq!(
-            (p.invulnerable, ab.invulnerable),
-            (
-                wab["invulnerable"].as_bool().unwrap(),
-                wab["invulnerable"].as_bool().unwrap()
-            ),
-            "settled abilities.invulnerable"
-        );
-        assert_eq!(
-            (game.instabuild(), ab.instabuild),
-            (
-                wab["instabuild"].as_bool().unwrap(),
-                wab["instabuild"].as_bool().unwrap()
-            ),
-            "settled abilities.instabuild"
-        );
-        assert_eq!(
-            (p.flying_speed.to_bits(), ab.fly_speed.to_bits()),
-            (
-                f32_bits(&wab["fly_speed_bits"]),
-                f32_bits(&wab["fly_speed_bits"])
-            ),
-            "settled abilities.fly_speed_bits"
-        );
-        assert_eq!(
-            (
-                game.remote_walking_speed().to_bits(),
-                ab.walk_speed.to_bits()
-            ),
-            (
-                f32_bits(&wab["walk_speed_bits"]),
-                f32_bits(&wab["walk_speed_bits"])
-            ),
-            "settled abilities.walk_speed_bits"
-        );
-
-        let tick_pos = last_tick["player_pos_bits"].as_array().unwrap();
-        assert_eq!(
-            [
-                p.position.x.to_bits(),
-                p.position.y.to_bits(),
-                p.position.z.to_bits(),
-            ],
-            [
-                f64_bits(&tick_pos[0]),
-                f64_bits(&tick_pos[1]),
-                f64_bits(&tick_pos[2]),
-            ],
-            "ticks.jsonl final player_pos_bits"
-        );
-        assert_eq!(
-            p.ground.on_ground,
-            last_tick["on_ground"].as_bool().unwrap(),
-            "ticks.jsonl final on_ground"
-        );
-        assert_eq!(
-            p.spectator,
-            last_tick["no_physics"].as_bool().unwrap(),
-            "ticks.jsonl final no_physics"
-        );
-        assert_eq!(
-            game.mode.name().to_ascii_lowercase(),
-            last_tick["local_game_mode"]
-                .as_str()
-                .unwrap()
-                .to_ascii_lowercase(),
-            "ticks.jsonl final local_game_mode"
-        );
-        assert_eq!(
-            player_info_mode_name(game).map(str::to_ascii_lowercase),
-            last_tick["player_info_game_mode"]
-                .as_str()
-                .map(str::to_ascii_lowercase),
-            "ticks.jsonl final player_info_game_mode"
-        );
-    });
-}
-
-/// Real 26.3 oracle witness (`tools/witness/26.3/gamemode_split/witness.json`):
+/// Real 26.3 oracle witness (`scenarios.genpvp_packet_sequence`, recorded by `tools/test_gamemode_split_parity.py`):
 /// step-by-step replay of the genpvp packet sequence plus 5 ticks on stone, verifying every
 /// mode, ability (including `may_build`), physics flag, and exact position/velocity bits.
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_gamemode_split_parity.py"]
 fn genpvp_packet_sequence_matches_26_3_oracle_step_by_step() {
-    let witness: JsonValue = serde_json::from_str(ORACLE_WITNESS).unwrap();
+    let witness = oracle_witness();
     assert_eq!(witness["version"].as_str(), Some("26.3"));
     let rows = witness["scenarios"]["genpvp_packet_sequence"]
         .as_array()
@@ -572,9 +363,9 @@ fn genpvp_packet_sequence_matches_26_3_oracle_step_by_step() {
 /// running server-side `in_range_of_ground` landing, and applying in exact packet order relative
 /// to `PlayerAbilities`.
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_gamemode_split_parity.py"]
 fn change_game_mode_updates_only_local_mode_and_abilities_26_3() {
-    let witness: JsonValue = serde_json::from_str(ORACLE_WITNESS).unwrap();
+    let witness = oracle_witness();
     assert_eq!(witness["version"].as_str(), Some("26.3"));
     let rows = witness["scenarios"]["change_game_mode_abilities"]
         .as_array()
@@ -647,9 +438,9 @@ fn change_game_mode_updates_only_local_mode_and_abilities_26_3() {
 /// `LocalPlayer.aiStep()` (forced spectator flight when `may_fly`, keeping `flying` on landing)
 /// follows `MultiPlayerGameMode.isSpectator()`.
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_gamemode_split_parity.py"]
 fn split_local_and_player_info_physics_matrix_26_3() {
-    let witness: JsonValue = serde_json::from_str(ORACLE_WITNESS).unwrap();
+    let witness = oracle_witness();
     assert_eq!(witness["version"].as_str(), Some("26.3"));
     let rows = witness["scenarios"]["split_mode_physics_matrix"]
         .as_array()
@@ -765,9 +556,9 @@ fn split_local_and_player_info_physics_matrix_26_3() {
 /// while `local_game_mode` stays Spectator and abilities stay 0x00, `PlayerInfoUpdate` flips
 /// `noPhysics` live between `false` (absent / Adventure / Survival) and `true` (Spectator).
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_gamemode_split_parity.py"]
 fn live_player_info_updates_toggle_no_physics_while_local_spectator_26_3() {
-    let witness: JsonValue = serde_json::from_str(ORACLE_WITNESS).unwrap();
+    let witness = oracle_witness();
     assert_eq!(witness["version"].as_str(), Some("26.3"));
     let rows = witness["scenarios"]["live_player_info_transitions"]
         .as_array()
@@ -816,9 +607,9 @@ fn live_player_info_updates_toggle_no_physics_while_local_spectator_26_3() {
 /// runs `adjustPlayer` with the previous local mode (`Spectator -> Creative` preserves `flying`),
 /// then applies `setLocalMode(gameType, previousGameType)`.
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_gamemode_split_parity.py"]
 fn login_and_respawn_set_previous_mode_and_fresh_abilities_26_3() {
-    let witness: JsonValue = serde_json::from_str(ORACLE_WITNESS).unwrap();
+    let witness = oracle_witness();
     assert_eq!(witness["version"].as_str(), Some("26.3"));
     let rows = witness["scenarios"]["login_and_respawn_previous_mode"]
         .as_array()
