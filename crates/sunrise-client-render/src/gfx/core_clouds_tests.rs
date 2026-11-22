@@ -1000,3 +1000,46 @@ fn the_native_clouds_draw_in_the_frames_path_without_a_pack() {
     };
     assert_eq!(picked(shader_pack), (false, false, None));
 }
+
+#[test]
+fn linear_light_links_the_required_programs_before_suppressing_the_draw() {
+    let Some((device, _queue)) = oit_device() else {
+        return;
+    };
+    let frame = super::super::FrameConfiguration {
+        format: wgpu::TextureFormat::Rgba16Float,
+        linear_light: true,
+        ..super::super::EffectiveOutput::NONE.frame
+    };
+    let vertex = "layout(location = 0) flat out float tag;\nvoid main() { gl_Position = vec4(1.0); tag = 1.0; }";
+    let fragment = "layout(location = 0) flat in float tag;\nlayout(location = 0) out vec4 pixel;\nvoid main() { pixel = vec4(float(tag)); }";
+    let programs = |fragment: &str| crate::clouds::pack::Programs {
+        classic: crate::core_shader::translate_core(
+            vertex,
+            fragment,
+            &CLASSIC_DEFINES,
+            &|_| None,
+            &GLUE,
+        )
+        .unwrap(),
+        oit: Box::new(oit_programs_of(vertex, fragment, &|_| None)),
+    };
+    assert!(
+        clouds_for_frame(&device, frame, &programs(fragment))
+            .unwrap()
+            .is_none()
+    );
+    for (guard, pipeline) in [
+        ("1", CLASSIC_PIPELINE),
+        ("defined(OIT_TRANSMITTANCE)", OIT_STAGES[1].pipeline),
+    ] {
+        let varying = format!(
+            "#if {guard}\nlayout(location = 0) flat in int tag;\n#else\nlayout(location = 0) flat in float tag;\n#endif"
+        );
+        let mismatch = fragment.replace("layout(location = 0) flat in float tag;", &varying);
+        let error = clouds_for_frame(&device, frame, &programs(&mismatch))
+            .err()
+            .expect("device refused the varying");
+        assert!(error.starts_with(pipeline), "{error}");
+    }
+}

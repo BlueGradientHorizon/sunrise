@@ -278,3 +278,39 @@ fn every_clouds_program_has_the_zero_to_one_depth_define() {
     );
     assert!(clouds(&fsh).expect("every program").is_some());
 }
+
+#[test]
+fn only_an_active_include_override_selects_or_refuses_clouds() {
+    const INCLUDE: &str = "assets/minecraft/shaders/include/variant.glsl";
+    for (condition, active) in [("0", false), ("defined(OIT_TRANSMITTANCE)", true)] {
+        let fsh = format!("#if {condition}\n#include <variant.glsl>\n#endif\n{CLOUDS_FSH}");
+        let defaults = source(&[(VSH, CLOUDS_VSH), (FSH, &fsh), (INCLUDE, "")]);
+        let root = source(&[
+            (VSH, CLOUDS_VSH),
+            (FSH, &fsh),
+            (INCLUDE, "uniform float Broken;"),
+        ]);
+        if active {
+            let refused = load_clouds(&root, &defaults).unwrap_err();
+            assert_eq!(
+                refused.pipeline,
+                "minecraft:pipeline/oit_transmittance_clouds"
+            );
+            let valid = source(&[
+                (VSH, CLOUDS_VSH),
+                (FSH, &fsh),
+                (INCLUDE, "const float tint = 1.0;"),
+            ]);
+            assert!(load_clouds(&valid, &defaults).unwrap().is_some());
+        } else {
+            assert!(load_clouds(&root, &defaults).unwrap().is_none());
+            let changed = format!("{CLOUDS_VSH}\n// pack override");
+            let root = source(&[
+                (VSH, &changed),
+                (FSH, &fsh),
+                (INCLUDE, "uniform float Broken;"),
+            ]);
+            assert!(load_clouds(&root, &defaults).unwrap().is_some());
+        }
+    }
+}

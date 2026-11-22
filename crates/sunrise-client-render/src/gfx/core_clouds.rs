@@ -677,15 +677,26 @@ impl super::Renderer {
         &mut self,
         programs: Option<&crate::clouds::pack::Programs>,
     ) -> Result<(), String> {
-        let programs = programs.filter(|_| !self.output.frame.linear_light);
         self.core_clouds = programs
-            .map(|p| {
-                let programs = (Some(&p.classic), Some(&*p.oit));
-                CoreClouds::new(&self.device, self.output.frame.format, programs)
-            })
-            .transpose()?;
+            .map(|p| clouds_for_frame(&self.device, self.output.frame, p))
+            .transpose()?
+            .flatten();
         Ok(())
     }
+}
+
+/// Link every required pipeline before deciding whether this frame draws the pack's clouds.
+fn clouds_for_frame(
+    device: &wgpu::Device,
+    frame: super::FrameConfiguration,
+    programs: &crate::clouds::pack::Programs,
+) -> Result<Option<CoreClouds>, String> {
+    let clouds = CoreClouds::new(
+        device,
+        frame.format,
+        (Some(&programs.classic), Some(&programs.oit)),
+    )?;
+    Ok((!frame.linear_light).then_some(clouds))
 }
 
 #[cfg(test)]

@@ -111,78 +111,81 @@ fn translate_pair(
     glue: &Glue,
     provided: &dyn Fn(&str) -> bool,
 ) -> Option<Result<CoreProgram, Refusal>> {
-    // The first stage refused while reading, which the shader is refused for.
-    let rejected = std::cell::RefCell::new(None);
-    let read = |base: &ResourceSource, path: &str| {
-        read_shader_file(base, path).unwrap_or_else(|e| {
-            rejected.borrow_mut().get_or_insert(e);
+    let stages = match selected_stages(root, defaults, (vertex_name, name), &[defines])? {
+        Ok(stages) => stages,
+        Err(e) => return Some(Err(e)),
+    };
+    Some(translate_selected(root, &stages, defines, glue, provided))
+}
+
+/// Return both selected stage files if any required variant uses a pack override.
+fn selected_stages(
+    root: &ResourceSource,
+    defaults: &ResourceSource,
+    (vertex_name, fragment_name): (&str, &str),
+    variants: &[&[&str]],
+) -> Option<Result<(String, String), Refusal>> {
+    let stage = |name, extension| {
+        let path = format!("assets/minecraft/shaders/core/{name}.{extension}");
+        let selected = read_shader_file(root, &path)?;
+        let game = read_shader_file(defaults, &path).ok().flatten();
+        let changed = match (&selected, &game) {
+            (None, _) => defaults.contains(&path),
+            (Some(text), Some(game)) if text == game => variants.iter().any(|defines| {
+                let resolved = |base| {
+                    crate::core_shader::expand_core_imports(
+                        text,
+                        "minecraft:shaders/core/",
+                        defines,
+                        &|id| include_of(base, id).1,
+                    )
+                };
+                resolved(root) != resolved(defaults)
+            }),
+            _ => selected != game,
+        };
+        Ok((selected.ok_or(Refusal::StageHidden { path }), changed))
+    };
+    let result = || {
+        let (vertex, v) = stage(vertex_name, "vsh")?;
+        let (fragment, f) = stage(fragment_name, "fsh")?;
+        Ok(if v || f {
+            Some((vertex?, fragment?))
+        } else {
             None
         })
     };
-    let refused = || rejected.borrow().clone().map(Err);
-    let vertex_path = format!("assets/minecraft/shaders/core/{vertex_name}.vsh");
-    let fragment_path = format!("assets/minecraft/shaders/core/{name}.fsh");
-    let (vertex, fragment) = (read(root, &vertex_path), read(root, &fragment_path));
-    if let Some(refused) = refused() {
-        return Some(refused);
-    }
-    let dir = "minecraft:shaders/core/";
-    // A stage with its includes as `base` resolves them, for telling the packs' from the game's.
-    let resolved = |base: &ResourceSource, text: &str| {
-        crate::core_shader::expand_core_imports(text, dir, &|id| include_of(base, id).1)
-    };
-    let own = |path: &str, text: &Option<String>| {
-        let Some(text) = text else {
-            return defaults.contains(path);
-        };
-        match read_shader_file(defaults, path).ok().flatten() {
-            Some(game) => resolved(root, text) != resolved(defaults, &game),
-            None => true,
-        }
-    };
-    if !(own(&vertex_path, &vertex) || own(&fragment_path, &fragment)) {
-        return None;
-    }
-    let (Some(vertex), Some(fragment)) = (&vertex, &fragment) else {
-        let path = if vertex.is_none() {
-            vertex_path
-        } else {
-            fragment_path
-        };
-        return Some(Err(Refusal::StageHidden { path }));
-    };
-    // The includes the packs can't give, each with why: the translation names the first its
-    // defines keep (`core_shader::expand_core_imports`). A missing `polytone_globals.glsl` is
-    // the built-in one (`core_shader::expand_imports`).
-    let unavailable = std::cell::RefCell::new(Vec::<(String, Refusal)>::new());
-    let include = |id: &str| -> Result<Option<String>, String> {
+    crate::crash::contain(result)
+        .map_err(Refusal::Panicked)
+        .and_then(|r| r)
+        .transpose()
+}
+
+fn translate_selected(
+    root: &ResourceSource,
+    (vertex, fragment): &(String, String),
+    defines: &[&str],
+    glue: &Glue,
+    provided: &dyn Fn(&str) -> bool,
+) -> Result<CoreProgram, Refusal> {
+    let unavailable = std::cell::RefCell::new(None);
+    let include = |id: &str| {
         let (refusal, text) = include_of(root, id);
-        if let Some(refusal) = refusal {
-            unavailable.borrow_mut().push((id.to_owned(), refusal));
-        }
+        *unavailable.borrow_mut() = refusal;
         text
     };
     let stages = crate::core_shader::Stages {
-        dir,
+        dir: "minecraft:shaders/core/",
         vertex,
         fragment,
     };
     let translated = contained(|| {
         crate::core_shader::translate_core_at(&stages, defines, &include, glue, provided)
     });
-    Some(translated.map_err(|e| {
-        match e {
-            Refusal::Translation(error) => (unavailable.into_inner().into_iter())
-                .find(|(id, refusal)| match refusal {
-                    Refusal::IncludeMissing { .. } => {
-                        error == crate::core_shader::ImportRefusal::NotFound(id.clone()).to_string()
-                    }
-                    unreadable => error == unreadable.to_string(),
-                })
-                .map_or(Refusal::Translation(error), |(_, refusal)| refusal),
-            e => e,
-        }
-    }))
+    translated.map_err(|e| match e {
+        Refusal::Translation(_) => unavailable.into_inner().unwrap_or(e),
+        _ => e,
+    })
 }
 
 /// The include `id` (`ns:path`) as `base` has it, for the translator: its text, none when `base`
@@ -381,37 +384,31 @@ fn load_clouds(
     defaults: &ResourceSource,
 ) -> Result<Option<Arc<crate::clouds::pack::Programs>>, RequiredShaderRefused> {
     use crate::gfx::core_clouds::{self as clouds, CLASSIC_DEFINES, OIT_STAGES};
-    let translate = |defines: &[&str], samplers: &[&str], targets: usize, pipeline| {
-        let translated = translate_pair(
-            root,
-            defaults,
-            ("clouds", "clouds"),
-            defines,
-            &clouds::GLUE,
-            &|name| matches!(name, clouds::INFO_BLOCK | clouds::FACES) || samplers.contains(&name),
-        )?;
-        Some(
-            translated
-                .map_err(|e| e.to_string())
-                .and_then(|program| clouds::check(&program, targets).map(|()| program))
-                .map_err(|why| RequiredShaderRefused { pipeline, why }),
-        )
-    };
-    // None: the packs don't change the shader.
-    let Some(classic) = translate(&CLASSIC_DEFINES, &[], 1, clouds::CLASSIC_PIPELINE) else {
+    let variants = [
+        &CLASSIC_DEFINES[..],
+        OIT_STAGES[0].defines,
+        OIT_STAGES[1].defines,
+        OIT_STAGES[2].defines,
+    ];
+    let Some(stages) = selected_stages(root, defaults, ("clouds", "clouds"), &variants) else {
         return Ok(None);
     };
-    let classic = classic?;
+    let stages = stages.map_err(|e| RequiredShaderRefused {
+        pipeline: clouds::CLASSIC_PIPELINE,
+        why: e.to_string(),
+    })?;
+    let translate = |defines: &[&str], samplers: &[&str], targets: usize, pipeline| {
+        translate_selected(root, &stages, defines, &clouds::GLUE, &|name| {
+            matches!(name, clouds::INFO_BLOCK | clouds::FACES) || samplers.contains(&name)
+        })
+        .map_err(|e| e.to_string())
+        .and_then(|program| clouds::check(&program, targets).map(|()| program))
+        .map_err(|why| RequiredShaderRefused { pipeline, why })
+    };
+    let classic = translate(&CLASSIC_DEFINES, &[], 1, clouds::CLASSIC_PIPELINE)?;
     let stage = |i: usize| {
         let s = &OIT_STAGES[i];
-        let targets = clouds::oit_targets(i);
-        // The same files as the classic program's: the packs change them for every stage.
-        translate(s.defines, s.samplers, targets, s.pipeline).unwrap_or(Err(
-            RequiredShaderRefused {
-                pipeline: s.pipeline,
-                why: "the packs changed the shader between its programs".into(),
-            },
-        ))
+        translate(s.defines, s.samplers, clouds::oit_targets(i), s.pipeline)
     };
     let oit = Box::new([stage(0)?, stage(1)?, stage(2)?]);
     log::info!("the resource pack's clouds shader translated, with Improved Transparency's");
