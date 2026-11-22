@@ -71,6 +71,34 @@ trait ServerHost: Host {
 }
 trait ClientHost: Host {}
 
+mod client {
+    pub(super) mod tooltip_components {
+        pub(in crate::tests) fn retain_gather_tooltip_payloads(
+            _: &'static str,
+            _: &[super::super::TooltipElement],
+        ) {
+        }
+        pub(in crate::tests) fn invoke_tooltip_image<P: ?Sized, R>(
+            part: &&P,
+            call: impl FnOnce(&P) -> Option<R>,
+        ) -> Option<R> {
+            let disabled = super::super::DISABLED_BLOCK_PART.get();
+            if disabled == Some(std::ptr::from_ref(*part).cast())
+                || super::super::runtime::poisoned(super::super::HookId::TooltipImage, "part")
+            {
+                return None;
+            }
+            super::super::runtime::invoke(
+                super::super::HookId::TooltipImage,
+                "tooltip_image",
+                "part",
+                || call(*part),
+            )
+            .flatten()
+        }
+    }
+}
+
 mod item {
     pub(super) mod transaction {
         use super::super::ServerHost;
