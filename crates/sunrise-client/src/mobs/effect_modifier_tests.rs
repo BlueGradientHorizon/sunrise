@@ -91,45 +91,92 @@ fn tick(m: &mut Mob, times: usize) {
         );
     }
 }
-/// The content mods' effects the lib's tests share: the registry is set
-/// once per process, so each test that needs one registers this same list.
-/// `testfx:stun` declares modifiers on a mob's movement speed and attack
-/// damage, and on luck, which a mob has no instance of.
-pub(crate) fn register_test_mod_effects() {
+/// The content mods' effects of the lib's tests, registered in this
+/// thread's own scope until the guard drops. `testfx:stun` declares
+/// modifiers on a mob's movement speed and attack damage (its own store),
+/// its armor and scale (its attribute maps), and luck, which a mob has no
+/// instance of. `testfx:shield` lowers the maximum absorption,
+/// `testfx:grown` names the baby speed bonus and `testfx:still` changes
+/// nothing.
+pub(crate) fn register_test_mod_effects() -> impl Drop {
     use crate::brewing::{Category, ModEffect, register_mod_effects};
     use sunrise_world::attributes::Operation;
-    static ONCE: std::sync::Once = std::sync::Once::new();
-    ONCE.call_once(|| {
-        let stun = |attribute: &str, id: &str, amount, operation| {
-            (attribute.to_owned(), id.to_owned(), amount, operation)
-        };
-        assert!(register_mod_effects([
-            ModEffect::new("testfx:glow", 1, Category::Harmful, "testfx"),
-            ModEffect {
-                modifiers: vec![
-                    stun(
-                        "minecraft:movement_speed",
-                        "testfx:effect/stun_speed",
-                        -0.25,
-                        Operation::AddMultipliedTotal,
-                    ),
-                    stun(
-                        "minecraft:attack_damage",
-                        "testfx:effect/stun_damage",
-                        1.5,
-                        Operation::AddValue,
-                    ),
-                    stun(
-                        "minecraft:luck",
-                        "testfx:effect/stun_luck",
-                        1.0,
-                        Operation::AddValue,
-                    ),
-                ],
-                ..ModEffect::new("testfx:stun", 2, Category::Harmful, "testfx")
-            },
-        ]));
-    });
+    let scope = sunrise_client_core::potions::isolate_mod_effects();
+    let modifier = |attribute: &str, id: &str, amount, operation| {
+        (attribute.to_owned(), id.to_owned(), amount, operation)
+    };
+    assert!(register_mod_effects([
+        ModEffect::new("testfx:glow", 1, Category::Harmful, "testfx"),
+        ModEffect {
+            modifiers: vec![
+                modifier(
+                    "minecraft:movement_speed",
+                    "testfx:effect/stun_speed",
+                    -0.25,
+                    Operation::AddMultipliedTotal,
+                ),
+                modifier(
+                    "minecraft:attack_damage",
+                    "testfx:effect/stun_damage",
+                    1.5,
+                    Operation::AddValue,
+                ),
+                modifier(
+                    "minecraft:armor",
+                    "testfx:effect/stun_armor",
+                    2.0,
+                    Operation::AddValue,
+                ),
+                modifier(
+                    "minecraft:scale",
+                    "testfx:effect/stun_scale",
+                    0.5,
+                    Operation::AddMultipliedBase,
+                ),
+                modifier(
+                    "minecraft:luck",
+                    "testfx:effect/stun_luck",
+                    1.0,
+                    Operation::AddValue,
+                ),
+                modifier(
+                    "minecraft:knockback_resistance",
+                    "testfx:effect/stun_knockback",
+                    0.5,
+                    Operation::AddValue,
+                ),
+            ],
+            ..ModEffect::new("testfx:stun", 2, Category::Harmful, "testfx")
+        },
+        ModEffect {
+            modifiers: vec![modifier(
+                "minecraft:max_absorption",
+                "testfx:effect/shield",
+                -2.0,
+                Operation::AddValue,
+            )],
+            ..ModEffect::new("testfx:shield", 3, Category::Harmful, "testfx")
+        },
+        ModEffect {
+            modifiers: vec![modifier(
+                "minecraft:movement_speed",
+                "minecraft:baby",
+                0.1,
+                Operation::AddMultipliedBase,
+            )],
+            ..ModEffect::new("testfx:grown", 4, Category::Neutral, "testfx")
+        },
+        ModEffect {
+            modifiers: vec![modifier(
+                "minecraft:movement_speed",
+                "testfx:effect/still",
+                0.0,
+                Operation::AddValue,
+            )],
+            ..ModEffect::new("testfx:still", 5, Category::Neutral, "testfx")
+        },
+    ]));
+    scope
 }
 fn types() -> HashMap<String, Arc<MobType>> {
     HashMap::from([
@@ -202,17 +249,84 @@ fn the_modifier_leaves_when_the_effect_runs_out() {
     assert_eq!(m.attrs.speed, 0.25);
 }
 
+/// A zombie whose type has its catalog, with armor and scale besides its
+/// own store's attributes, as a loaded type has.
+fn cataloged_zombie() -> (Mob, Arc<sunrise_world::attributes::entity::Catalog>) {
+    let bits = |v: f64| format!("{:016x}", v.to_bits());
+    let attribute = |id: &str, default: f64, min: f64, max: f64| serde_json::json!({"id": id, "default": bits(default), "min": bits(min), "max": bits(max), "syncable": true});
+    let catalog = Arc::new(
+        sunrise_world::attributes::entity::Catalog::from_json(&serde_json::json!({
+            "data_version": sunrise_world::DATA_VERSION,
+            "attributes": [
+                attribute("minecraft:max_health", 20.0, 1.0, 1024.0),
+                attribute("minecraft:movement_speed", 0.7, 0.0, 1024.0),
+                attribute("minecraft:attack_damage", 2.0, 0.0, 2048.0),
+                attribute("minecraft:armor", 0.0, 0.0, 30.0),
+                attribute("minecraft:scale", 1.0, 0.0625, 16.0),
+                attribute("minecraft:luck", 0.0, -1024.0, 1024.0),
+            ],
+            "entities": {"minecraft:zombie": {
+                "minecraft:max_health": bits(20.0),
+                "minecraft:movement_speed": bits(0.23),
+                "minecraft:attack_damage": bits(3.0),
+                "minecraft:armor": bits(2.0),
+                "minecraft:scale": bits(1.0),
+            }},
+        }))
+        .unwrap(),
+    );
+    let mut t = (*zombie_type()).clone();
+    t.attribute_bounds = finalize::AttrBounds::of(&catalog);
+    let mut m = Mob::new(2, Arc::new(t), Vec3::ZERO, 0.0);
+    m.health = 20.0;
+    (m, catalog)
+}
+
 /// #4473: a content mod's effect puts on the modifiers its declaration lists
-/// as vanilla's effects do theirs: each amount times the amplifier plus one,
-/// replaced when the amplifier changes, none for an attribute the mob has
-/// no instance of, and all taken off when the effect runs out or
-/// `/effect clear` (`removeAllEffects`) removes it.
+/// as vanilla's effects do theirs, on every attribute instance the mob has:
+/// its own store's (movement speed, attack damage) and its attribute maps'
+/// (armor, scale), which `/attribute`, the save and the sync read. Each
+/// amount is times the amplifier plus one, replaced when the amplifier
+/// changes; an attribute the mob has no instance of (luck) gets none; and
+/// all of them leave when the effect runs out or `/effect clear`
+/// (`removeAllEffects`) removes it.
 #[test]
 fn a_declared_effect_adds_and_removes_its_modifiers() {
-    register_test_mod_effects();
+    let _scope = register_test_mod_effects();
     let stun = crate::brewing::effect("testfx:stun").unwrap().id;
     let (speed, damage) = ("testfx:effect/stun_speed", "testfx:effect/stun_damage");
-    let mut m = zombie();
+    let (armor, scale) = ("testfx:effect/stun_armor", "testfx:effect/stun_scale");
+    // The live map's value and modifiers of `name`, what the save and the
+    // sync read, and the attribute map's value, what `/attribute` reads.
+    let maps = |m: &Mob, catalog: &Arc<_>, name: &str| {
+        let seed = || {
+            crate::entity_nbt::attribute_entries(m)
+                .into_iter()
+                .map(|(_, e)| e)
+                .collect()
+        };
+        let live = m.extra.live.read(
+            catalog,
+            &m.kind.id,
+            name,
+            sunrise_world::attribute_map::ValueKind::Computed,
+            seed,
+        );
+        let modifiers: Vec<_> = m
+            .extra
+            .live
+            .modifiers(catalog, &m.kind.id, name, seed)
+            .unwrap()
+            .iter()
+            .map(|x| (x.id().to_owned(), x.amount()))
+            .collect();
+        let map = m.extra.generic_attributes.as_deref().and_then(|map| {
+            let key = map.catalog().id(name)?;
+            map.instance(key).map(|instance| instance.value())
+        });
+        (live, modifiers, map)
+    };
+    let (mut m, catalog) = cataloged_zombie();
     m.add_effect(stun, 100, 0);
     assert_eq!(
         stored(&m, Attr::MovementSpeed, speed),
@@ -224,6 +338,15 @@ fn a_declared_effect_adds_and_removes_its_modifiers() {
     );
     assert_eq!(finalize::value(&m, Attr::MovementSpeed), 0.23 * 0.75);
     assert_eq!(m.attrs.attack_damage, 4.5);
+    assert_eq!(
+        maps(&m, &catalog, "minecraft:armor"),
+        (Some(4.0), vec![(armor.to_owned(), 2.0)], Some(4.0))
+    );
+    assert_eq!(crate::mobs::armor::values(&m).0, 4.0);
+    assert_eq!(
+        maps(&m, &catalog, "minecraft:scale"),
+        (Some(1.5), vec![(scale.to_owned(), 0.5)], Some(1.5))
+    );
     m.add_effect(stun, 100, 2);
     assert_eq!(
         stored(&m, Attr::MovementSpeed, speed),
@@ -235,6 +358,14 @@ fn a_declared_effect_adds_and_removes_its_modifiers() {
     );
     assert_eq!(finalize::value(&m, Attr::MovementSpeed), 0.23 * 0.25);
     assert_eq!(m.attrs.attack_damage, 7.5);
+    assert_eq!(
+        maps(&m, &catalog, "minecraft:armor"),
+        (Some(8.0), vec![(armor.to_owned(), 6.0)], Some(8.0))
+    );
+    assert_eq!(
+        maps(&m, &catalog, "minecraft:scale"),
+        (Some(2.5), vec![(scale.to_owned(), 1.5)], Some(2.5))
+    );
     let untouched = |m: &Mob| {
         assert!(
             m.extra
@@ -244,8 +375,23 @@ fn a_declared_effect_adds_and_removes_its_modifiers() {
         );
         assert_eq!(finalize::value(m, Attr::MovementSpeed), 0.23);
         assert_eq!(m.attrs.attack_damage, 3.0);
+        assert_eq!(
+            maps(m, &catalog, "minecraft:armor"),
+            (Some(2.0), vec![], Some(2.0))
+        );
+        assert_eq!(
+            maps(m, &catalog, "minecraft:scale"),
+            (Some(1.0), vec![], Some(1.0))
+        );
+        assert!(
+            m.extra
+                .live
+                .modifiers(&catalog, &m.kind.id, "minecraft:luck", Vec::new)
+                .is_none(),
+            "a zombie has no luck"
+        );
     };
-    let mut expiring = zombie();
+    let (mut expiring, _) = cataloged_zombie();
     expiring.add_effect(stun, 3, 1);
     assert_eq!(
         stored(&expiring, Attr::AttackDamage, damage),
@@ -261,6 +407,59 @@ fn a_declared_effect_adds_and_removes_its_modifiers() {
     p.add_effect(stun, -1, 0);
     assert!(stored(&p, Attr::AttackDamage, damage).is_empty());
     assert_eq!(stored(&p, Attr::MovementSpeed, speed).len(), 1);
+}
+
+/// #4473: refreshing an effect whose modifier lowers the maximum absorption
+/// lowers an absorption above the new maximum
+/// (`onAttributeUpdated(MAX_ABSORPTION)`), as removing one does; the
+/// maximum coming back up gives nothing back.
+#[test]
+fn a_refreshed_modifier_lowering_the_maximum_absorption_clamps_it() {
+    let _scope = register_test_mod_effects();
+    let shield = crate::brewing::effect("testfx:shield").unwrap().id;
+    let mut m = zombie();
+    m.add_effect("minecraft:absorption", -1, 1);
+    assert_eq!(
+        (crate::mobs::armor::max_absorption(&m), m.absorption),
+        (8.0, 8.0)
+    );
+    m.add_effect(shield, -1, 0);
+    assert_eq!(
+        (crate::mobs::armor::max_absorption(&m), m.absorption),
+        (6.0, 6.0)
+    );
+    m.add_effect(shield, -1, 1);
+    assert_eq!(
+        (crate::mobs::armor::max_absorption(&m), m.absorption),
+        (4.0, 4.0)
+    );
+    assert!(m.retain_effects(|e| e.id != shield));
+    assert_eq!(
+        (crate::mobs::armor::max_absorption(&m), m.absorption),
+        (8.0, 4.0)
+    );
+}
+
+/// #4473: a declared modifier with the baby speed bonus's id replaces it as
+/// `/attribute ... modifier remove minecraft:baby` does: the bonus is gone,
+/// only the effect's modifier counts, and its removal brings no bonus back.
+#[test]
+fn a_declared_modifier_replaces_the_baby_speed_bonus() {
+    let _scope = register_test_mod_effects();
+    let grown = crate::brewing::effect("testfx:grown").unwrap().id;
+    let mut m = zombie();
+    finalize::set_baby(&mut m, true);
+    assert_eq!(m.movement_speed(), 0.23 + 0.23 * 0.5);
+    m.add_effect(grown, -1, 0);
+    assert_eq!(finalize::transient(&m, Attr::MovementSpeed), None);
+    assert_eq!(
+        stored(&m, Attr::MovementSpeed, "minecraft:baby"),
+        [(0.1, Op::AddMultipliedBase)]
+    );
+    assert_eq!(m.movement_speed(), 0.23 + 0.23 * 0.1);
+    assert!(m.retain_effects(|_| false));
+    assert!(stored(&m, Attr::MovementSpeed, "minecraft:baby").is_empty());
+    assert_eq!(m.movement_speed(), 0.23);
 }
 
 /// `addEffect` -> `onEffectUpdated(true)`: removeAttributeModifiers, then

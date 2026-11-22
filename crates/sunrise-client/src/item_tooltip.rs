@@ -333,35 +333,6 @@ pub fn attribute_lines_filtered(
     lines
 }
 
-/// The attribute modifiers a mob effect adds per amplifier level
-/// (`MobEffect.createModifiers`): attribute, amount, operation id. Vanilla's
-/// (`MobEffects`), or those a content mod declared for its effect.
-fn effect_modifiers(effect: &str) -> impl Iterator<Item = (&'static str, f64, usize)> {
-    let declared = crate::brewing::declared_modifiers(effect).iter().map(
-        |&(attribute, _, amount, operation)| {
-            let path = attribute.strip_prefix("minecraft:").unwrap_or(attribute);
-            (path, amount, operation as usize)
-        },
-    );
-    effect_modifier(effect.trim_start_matches("minecraft:"))
-        .into_iter()
-        .chain(declared)
-}
-
-/// [`effect_modifiers`] of a vanilla effect.
-fn effect_modifier(effect: &str) -> Option<(&'static str, f64, usize)> {
-    Some(match effect {
-        "speed" => ("movement_speed", 0.2, 2),
-        "slowness" => ("movement_speed", -0.15, 2),
-        "strength" => ("attack_damage", 3.0, 0),
-        "weakness" => ("attack_damage", -4.0, 0),
-        "jump_boost" => ("safe_fall_distance", 1.0, 0),
-        "luck" => ("luck", 1.0, 0),
-        "invisibility" => ("waypoint_transmit_range", -1.0, 2),
-        _ => return None,
-    })
-}
-
 fn is_potion_item(item: &str) -> bool {
     item.ends_with("potion") || item == "minecraft:tipped_arrow"
 }
@@ -973,52 +944,66 @@ pub fn potion_modifier_lines(
     if !is_potion_item(&stack.item) {
         return Vec::new();
     }
-    let effects = stack
-        .potion()
-        .and_then(crate::brewing::potion)
-        .into_iter()
-        .flat_map(|p| p.effects.iter())
-        .map(|(effect, _, amplifier)| (*effect, *amplifier));
-    effect_modifier_lines(effects, translate)
+    let effects = crate::brewing::contents_effects(stack);
+    effect_modifier_lines(
+        effects
+            .iter()
+            .map(|&(effect, _, amplifier)| (effect, amplifier)),
+        translate,
+    )
 }
 
-/// `addPotionTooltip`'s attribute block for (effect id, amplifier) entries.
+/// `addPotionTooltip`'s attribute block for (effect id, amplifier) entries:
+/// each effect's `MobEffect.createModifiers`, vanilla's or the ones a content
+/// mod's effect declares, under an empty line and "When Applied:" whenever
+/// there is one; a modifier of amount 0 adds the heading but no line. The
+/// amount reads as itself added, times 100 multiplied, whatever the
+/// attribute (no `ItemAttributeModifiers` display rule applies here).
 fn effect_modifier_lines<'a>(
     effects: impl IntoIterator<Item = (&'a str, i32)>,
     translate: &dyn Fn(&str) -> Option<String>,
 ) -> Vec<(String, u32)> {
-    let applied: Vec<(String, u32)> = effects
-        .into_iter()
-        .flat_map(|(effect, amplifier)| {
-            effect_modifiers(effect).map(move |modifier| (modifier, amplifier))
-        })
-        .filter_map(|((attribute, amount, operation), amplifier)| {
-            let amount = amount * (amplifier + 1) as f64;
-            let line = modifier_line(
-                translate,
-                attribute,
-                amount,
-                operation,
-                false,
-                Display::Ranged,
-            )?;
-            let color = if amount > 0.0 {
-                rgba(85, 85, 255, 255)
+    let text = |key: &str| translate(key).unwrap_or_else(|| key.to_owned());
+    let mut any = false;
+    let mut applied = Vec::new();
+    for (effect, amplifier) in effects {
+        let Some(def) = crate::brewing::effect(effect) else {
+            continue;
+        };
+        for (attribute, _, amount, operation) in crate::effects::effect_modifiers(def) {
+            any = true;
+            let amount = amount * f64::from(amplifier.wrapping_add(1));
+            let operation = operation as usize;
+            let shown = if operation == 0 {
+                amount
             } else {
-                rgba(255, 85, 85, 255)
+                amount * 100.0
             };
-            Some((line, color))
-        })
-        .collect();
-    if applied.is_empty() {
+            let (kind, shown, color) = if amount > 0.0 {
+                ("plus", shown, rgba(85, 85, 255, 255))
+            } else if amount < 0.0 {
+                ("take", -shown, rgba(255, 85, 85, 255))
+            } else {
+                continue;
+            };
+            let path = attribute.strip_prefix("minecraft:").unwrap_or(attribute);
+            let line = crate::text::format_translation(
+                &text(&format!("attribute.modifier.{kind}.{operation}")),
+                &[
+                    crate::text::Text::literal(format_amount(shown)),
+                    crate::text::Text::literal(text(&format!("attribute.name.{path}"))),
+                ],
+            )
+            .plain();
+            applied.push((line, color));
+        }
+    }
+    if !any {
         return applied;
     }
     let mut lines = vec![
         (String::new(), u32::MAX),
-        (
-            translate("potion.whenDrank").unwrap_or_else(|| "potion.whenDrank".into()),
-            rgba(170, 0, 170, 255),
-        ),
+        (text("potion.whenDrank"), rgba(170, 0, 170, 255)),
     ];
     lines.extend(applied);
     lines
@@ -1378,7 +1363,7 @@ pub fn detail_lines(
             _ => 1.0,
         };
         lines.extend(
-            crate::brewing::tooltip(stack.potion(), scale, translate)
+            crate::brewing::tooltip(stack, scale, translate)
                 .into_iter()
                 .map(|l| l.0),
         );
@@ -1895,40 +1880,79 @@ mod tests {
         assert!(lines(&ItemStack::new("minecraft:bowl", 1), true).is_empty());
     }
 
-    /// #4473: "When Applied:" lists a content mod's effect's declared
-    /// modifiers as it lists vanilla's (`MobEffect.createModifiers`), each
-    /// amount times the amplifier plus one.
+    /// #4473: a potion's tooltip reads `PotionContents.getAllEffects`, its
+    /// potion's effects then its `custom_effects`, and "When Applied:" lists
+    /// each one's `MobEffect.createModifiers`, a content mod's declared ones
+    /// as vanilla's: times the amplifier plus one, an added amount as itself
+    /// (knockback resistance too) and a multiplied one times 100. A list of
+    /// zero amounts still has its heading (`addPotionTooltip`, read in 26.2).
     #[test]
-    fn a_declared_effects_modifiers_show_when_applied() {
-        crate::mobs::ai::effect_modifier_tests::register_test_mod_effects();
+    fn a_potions_tooltip_lists_its_custom_effects_and_their_modifiers() {
+        use sunrise_core::nbt::Tag;
+        let _scope = crate::mobs::ai::effect_modifier_tests::register_test_mod_effects();
         let translate = |key: &str| {
             Some(
                 match key {
+                    "effect.minecraft.speed" => "Speed",
+                    "effect.testfx.stun" => "Stun",
+                    "potion.potency.1" => "II",
                     "potion.whenDrank" => "When Applied:",
                     "attribute.modifier.plus.0" => "+%s %s",
+                    "attribute.modifier.plus.1" => "+%s%% %s",
                     "attribute.modifier.plus.2" => "+%s%% %s",
                     "attribute.modifier.take.2" => "-%s%% %s",
+                    "attribute.name.armor" => "Armor",
                     "attribute.name.attack_damage" => "Attack Damage",
+                    "attribute.name.knockback_resistance" => "Knockback Resistance",
                     "attribute.name.luck" => "Luck",
                     "attribute.name.movement_speed" => "Speed",
+                    "attribute.name.scale" => "Scale",
                     _ => return None,
                 }
                 .to_owned(),
             )
         };
+        let custom = |id: &str, amplifier: i8| {
+            let mut stack =
+                ItemStack::new("minecraft:potion", 1).with_potion("minecraft:swiftness");
+            stack.data_mut().potion_extra.push((
+                "custom_effects".into(),
+                Tag::List(vec![Tag::compound([
+                    ("id", Tag::String(id.into())),
+                    ("duration", Tag::Int(600)),
+                    ("amplifier", Tag::Byte(amplifier)),
+                ])]),
+            ));
+            stack
+        };
+        let stunned = custom("testfx:stun", 1);
+        let names: Vec<_> = crate::brewing::tooltip(&stunned, 1.0, &translate)
+            .into_iter()
+            .map(|(line, _)| line)
+            .collect();
+        assert_eq!(names, ["Speed (03:00)", "Stun II (00:30)"]);
         let (blue, red) = (rgba(85, 85, 255, 255), rgba(255, 85, 85, 255));
-        assert_eq!(
-            effect_modifier_lines([("testfx:stun", 1), ("minecraft:speed", 0)], &translate),
-            [
-                (String::new(), u32::MAX),
-                ("When Applied:".to_owned(), rgba(170, 0, 170, 255)),
-                ("-50% Speed".to_owned(), red),
-                ("+3 Attack Damage".to_owned(), blue),
-                ("+2 Luck".to_owned(), blue),
-                ("+20% Speed".to_owned(), blue),
-            ]
-        );
-        assert!(effect_modifier_lines([("testfx:glow", 0)], &translate).is_empty());
+        let heading = [
+            (String::new(), u32::MAX),
+            ("When Applied:".to_owned(), rgba(170, 0, 170, 255)),
+        ];
+        let mut expected = heading.to_vec();
+        expected.extend([
+            ("+20% Speed".to_owned(), blue),
+            ("-50% Speed".to_owned(), red),
+            ("+3 Attack Damage".to_owned(), blue),
+            ("+4 Armor".to_owned(), blue),
+            ("+100% Scale".to_owned(), blue),
+            ("+2 Luck".to_owned(), blue),
+            ("+1 Knockback Resistance".to_owned(), blue),
+        ]);
+        assert_eq!(potion_modifier_lines(&stunned, &translate), expected);
+        let mut still = custom("testfx:still", 0);
+        still.data_mut().potion = None;
+        assert_eq!(potion_modifier_lines(&still, &translate), heading);
+        let mut plain = custom("testfx:glow", 0);
+        plain.data_mut().potion = None;
+        assert!(potion_modifier_lines(&plain, &translate).is_empty());
     }
 
     #[test]

@@ -867,8 +867,7 @@ attribute: a second for the same attribute, or an attribute the game does not ha
 effect is on an entity, player or mob, each modifier is on it with `amount × (amplifier + 1)`, replaced when the
 amplifier changes and removed with the effect, however it ends (expiry, milk, `/effect clear`, death); an entity with
 no such attribute gets none. The modifiers are saved and synced as the entity's others are, and a potion's "When
-Applied:" lines list them. On a mob, a modifier reaches the attributes its movement, combat and health read; one on
-another attribute (`minecraft:scale`, a mod's own) is not applied to mobs yet.
+Applied:" lines list them, for the potion's own effects and its `custom_effects`.
 
 It is the effect `<id>:<name>`: `/effect give @s ruby:glow 30` gives it, saves and mobs keep it, and it reaches LAN and
 dedicated server players who run the same mods (its network id follows vanilla's). Its name is the translation

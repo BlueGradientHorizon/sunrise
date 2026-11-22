@@ -351,7 +351,7 @@ impl MobTypes {
     pub fn load_with_defaults(
         root: &Path,
         defaults: &sunrise_world::item_defaults::Defaults,
-        attributes: &sunrise_world::attributes::entity::Catalog,
+        attributes: &Arc<sunrise_world::attributes::entity::Catalog>,
     ) -> crate::Result<Self> {
         Self::load_with_models(root, true, None, Some(defaults), attributes)
     }
@@ -361,7 +361,7 @@ impl MobTypes {
     /// rather than parsing and retaining every entity-model layer.
     pub fn load_for_server(
         root: &Path,
-        attributes: &sunrise_world::attributes::entity::Catalog,
+        attributes: &Arc<sunrise_world::attributes::entity::Catalog>,
     ) -> crate::Result<Self> {
         Self::load_with_models(root, false, None, None, attributes)
     }
@@ -379,16 +379,16 @@ impl MobTypes {
         root: &Path,
         document: &EntityModelDocument,
         defaults: &sunrise_world::item_defaults::Defaults,
-        attributes: &sunrise_world::attributes::entity::Catalog,
+        attributes: &Arc<sunrise_world::attributes::entity::Catalog>,
     ) -> crate::Result<Self> {
         Self::load_with_models(root, true, Some(document), Some(defaults), attributes)
     }
 
-    fn root_catalog(root: &Path) -> crate::Result<sunrise_world::attributes::entity::Catalog> {
+    fn root_catalog(root: &Path) -> crate::Result<Arc<sunrise_world::attributes::entity::Catalog>> {
         let json = sunrise_world::json_file::read(&root.join("attributes.json"))?;
-        Ok(sunrise_world::attributes::entity::Catalog::from_json(
-            &json,
-        )?)
+        Ok(Arc::new(
+            sunrise_world::attributes::entity::Catalog::from_json(&json)?,
+        ))
     }
 
     /// `attributes`: the catalog whose bounds the types' mobs clamp to.
@@ -397,7 +397,7 @@ impl MobTypes {
         models_needed: bool,
         document: Option<&EntityModelDocument>,
         item_defaults: Option<&sunrise_world::item_defaults::Defaults>,
-        attributes: &sunrise_world::attributes::entity::Catalog,
+        attributes: &Arc<sunrise_world::attributes::entity::Catalog>,
     ) -> crate::Result<Self> {
         let attribute_bounds = finalize::AttrBounds::of(attributes);
         let bytes = fs::read(root.join("entity-types.json"))?;
@@ -522,7 +522,7 @@ impl MobTypes {
                     shadow: crate::shadows::content_shadow(t),
                     species: def.species,
                     item_stack_limits: item_stack_limits.clone(),
-                    attribute_bounds,
+                    attribute_bounds: attribute_bounds.clone(),
                     width: t["width"].as_f64().unwrap_or(0.6),
                     height: t["height"].as_f64().unwrap_or(1.8),
                     eye_height: t["eye_height"].as_f64().unwrap_or(1.6),
@@ -1091,8 +1091,10 @@ pub struct Extra {
     /// `UnspawnedMobEdits`): the level keeps a joined entity's tags with its
     /// saved data, so they move there when the mob joins.
     pub spawn_tags: Vec<String>,
-    /// Command-created armor instances, shared by commands and runtime damage.
-    pub armor_attributes: Option<Box<sunrise_world::attributes::entity::EntityAttributes>>,
+    /// The instances of the attributes outside `finalize`'s store (armor,
+    /// toughness, a sulfur cube's archetype, every other attribute): what
+    /// `/attribute` and the effects' modifiers write, shared with runtime damage.
+    pub generic_attributes: Option<Box<sunrise_world::attributes::entity::EntityAttributes>>,
     /// `Mob.lootTable`: the table its death rolls instead of its type's
     /// (saved as `DeathLootTable`).
     pub death_loot_table: Option<String>,
@@ -4756,30 +4758,16 @@ impl Mob {
         self.extra.effects.retain(|e| {
             let keep = keep(e);
             if !keep {
-                removed.push(e.id);
+                removed.push((e.id, e.registry_index));
             }
             keep
         });
-        // `removeModifier` dirties `max_absorption` only when the modifier
-        // is there, permanent or a mod's transient one with its id: a loaded
-        // Absorption, which added none, clamps nothing.
-        let cap = finalize::Attr::MaxAbsorption;
-        let cap_removed = removed.iter().any(|effect| {
-            finalize::effect_modifiers(self, effect, 0)
-                .iter()
-                .any(|(a, id, _, _)| {
-                    *a == cap
-                        && (finalize::modifier_amount(self, cap, id).is_some()
-                            || finalize::has_transient_modifier(self, cap, id))
-                })
-        });
-        for effect in removed {
-            self.set_effect_modifiers(effect, None);
-        }
-        if cap_removed {
-            // LivingEntity.onAttributeUpdated clamps to the remaining maximum;
-            // removing Absorption does not subtract the hearts it granted.
-            self.absorption = self.absorption.min(armor::max_absorption(self));
+        // LivingEntity.onAttributeUpdated clamps the absorption to the
+        // remaining maximum; removing Absorption does not subtract the hearts
+        // it granted.
+        for (effect, index) in removed {
+            let def = index.and_then(sunrise_client_core::potions::effect_by_index);
+            self.set_effect_modifiers(effect, def, None);
         }
         let changed = self.extra.effects.len() != before;
         if changed {
@@ -4885,7 +4873,10 @@ impl Mob {
         // `onEffectAdded` for a new effect, `onEffectUpdated(_, true, _)` for a
         // changed one: the modifiers follow the active amplifier.
         if changed {
-            self.set_effect_modifiers(effect, Some(active.amplifier));
+            let def = active
+                .registry_index
+                .and_then(sunrise_client_core::potions::effect_by_index);
+            self.set_effect_modifiers(effect, def, Some(active.amplifier));
         }
         // Then `MobEffectInstance.onEffectStarted`, for every `addEffect`:
         // `AbsorptionMobEffect` raises the amount within the maximum the
@@ -7273,7 +7264,7 @@ fn content_mob_tag_slot_uses_the_entity_registry_index() {
         "attributes": [], "entities": {},
     }))
     .unwrap();
-    let types = MobTypes::load_for_server(root, &attributes).unwrap();
+    let types = MobTypes::load_for_server(root, &Arc::new(attributes)).unwrap();
     let defaults = sunrise_world::item_defaults::read(root).unwrap();
     let items = Items::tags_only(root, &PackOverlay::NONE, &defaults).unwrap();
     let ids = items.component_registry.ids(EntityTypeTags::REGISTRY);

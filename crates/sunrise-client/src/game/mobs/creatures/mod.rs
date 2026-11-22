@@ -523,9 +523,10 @@ impl Game<'_> {
     fn init_sulfur_attribute_maps(&mut self) {
         for m in &mut self.mobs {
             if m.species() == sunrise_client::mobs::Species::SulfurCube
-                && m.extra.armor_attributes.is_none()
+                && m.extra.generic_attributes.is_none()
             {
-                m.extra.armor_attributes = self.motion.attributes.create(&m.kind.id).map(Box::new);
+                m.extra.generic_attributes =
+                    self.motion.attributes.create(&m.kind.id).map(Box::new);
             }
         }
     }

@@ -1750,6 +1750,38 @@ impl Game<'_> {
     ) -> Option<R> {
         let dim = self.dim;
         self.journal_mob_health(id);
+        // A declared effect's modifiers outside the mob's own store live in
+        // its live map, which the effect journal does not keep: their rows
+        // are journaled as an attribute write's are.
+        let generic: Vec<(&'static str, &'static str)> = if self.transactions.is_empty() {
+            Vec::new()
+        } else {
+            self.mobs
+                .iter()
+                .find(|mob| mob.id == id && !mob.removed)
+                .map(|mob| {
+                    let defs: Vec<_> = match effect {
+                        Some(effect) => sunrise_client::brewing::effect(effect)
+                            .into_iter()
+                            .collect(),
+                        None => mob
+                            .extra
+                            .effects
+                            .iter()
+                            .filter_map(|e| sunrise_client::brewing::effect(e.id))
+                            .collect(),
+                    };
+                    defs.into_iter()
+                        .flat_map(|def| {
+                            sunrise_client::mobs::finalize::generic_effect_modifier_keys(mob, def)
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        let generic_before = (!generic.is_empty())
+            .then(|| self.snapshot_mob_modifiers(id))
+            .flatten();
         let mob = self
             .mobs
             .iter_mut()
@@ -1785,6 +1817,14 @@ impl Game<'_> {
         // equipment rows and detection state go to the general modifier journal.
         if let Some(changes) = invalidation
             && mob.extra.live.is_invalidated()
+        {
+            self.transactions.journal_modifier_changes(dim, id, changes);
+        }
+        if let Some(before) = generic_before
+            && let Some(after) = self.snapshot_mob_modifiers(id)
+            && let Some(changes) = before
+                .diff(&after)
+                .and_then(|changes| changes.only(|a, i| generic.contains(&(a, i))))
         {
             self.transactions.journal_modifier_changes(dim, id, changes);
         }

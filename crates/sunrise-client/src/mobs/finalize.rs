@@ -29,6 +29,7 @@ use crate::{
 use serde_json::Value;
 use std::{borrow::Cow, fs, path::Path, sync::Arc};
 use sunrise_core::{equipment_slot::EquipmentSlot, geometry::Aabb, random::RandomSource};
+use sunrise_world::attributes::{AttributeError, Instance, Observer, Operation};
 
 /// What a level's finalizeSpawn event decided for a mob another mob's
 /// finalizeSpawn created: the rider is dropped, added without its own rolls,
@@ -430,18 +431,26 @@ impl Attr {
 /// The definition of each [`Attr`] (`RangedAttribute`'s default and
 /// bounds), read once from the attribute catalog when the mob types load:
 /// what a mob's own attribute record sanitizes its values with, as
-/// `AttributeInstance` does. A type built without a catalog (a test fixture,
-/// the player's render type) has none, and its values are not clamped.
-#[derive(Clone, Copy, Debug, Default)]
+/// `AttributeInstance` does; and the catalog itself, from which a mob builds
+/// the instances of its other attributes. A type built without a catalog (a
+/// test fixture, the player's render type) has none, and its values are not
+/// clamped.
+#[derive(Clone, Debug, Default)]
 pub struct AttrBounds {
     attrs: [Option<sunrise_world::attributes::Definition>; Attr::ALL.len()],
+    catalog: Option<Arc<sunrise_world::attributes::entity::Catalog>>,
 }
 impl AttrBounds {
     /// Each attribute's definition in `catalog`.
-    pub fn of(catalog: &sunrise_world::attributes::entity::Catalog) -> Self {
+    pub fn of(catalog: &Arc<sunrise_world::attributes::entity::Catalog>) -> Self {
         Self {
             attrs: Attr::ALL.map(|a| catalog.definition(a.id())),
+            catalog: Some(catalog.clone()),
         }
+    }
+    /// The catalog the type took its bounds from.
+    pub fn catalog(&self) -> Option<&Arc<sunrise_world::attributes::entity::Catalog>> {
+        self.catalog.as_ref()
     }
     /// `RangedAttribute.sanitizeValue` of `a`: NaN to the minimum, then into
     /// the bounds.
@@ -520,7 +529,7 @@ pub struct Attributes {
 }
 /// The attribute `/attribute` names (`follow_range`, not
 /// `minecraft:follow_range`) when gameplay reads it from this store. Armor
-/// has its own map (`armor_attributes`).
+/// has its own map (`generic_attributes`).
 pub fn command_attr(short: &str) -> Option<Attr> {
     Attr::ALL
         .into_iter()
@@ -649,33 +658,122 @@ fn effect_modifier_id(name: &str) -> String {
         _ => format!("minecraft:effect.{name}"),
     }
 }
-/// Each modifier `effect` puts on the attributes `m` keeps in its store, at
-/// `amplifier`: (attribute, id, amount, operation). Vanilla's come from
-/// `effect_modifier`; a content mod's effect has those its declaration lists
-/// (`MobEffect.addAttributeModifier`), the amount times the amplifier plus one
-/// (`AttributeTemplate.create`). An attribute the mob has no instance of is
-/// left out (`AttributeMap.getInstance` is null), as is one outside the
-/// store: the attributes mob gameplay reads are all in it.
-pub(super) fn effect_modifiers(
+/// Where a mob keeps the attribute `name`: `Some(Some(a))` for one of its
+/// own store's that its type has, `Some(None)` for one outside the store,
+/// which its attribute maps hold, and `None` for one of the store's that its
+/// type does not have.
+fn store_attr(m: &Mob, name: &str) -> Option<Option<Attr>> {
+    match command_attr(name.strip_prefix("minecraft:").unwrap_or(name)) {
+        Some(a) => default_value(m, a).map(|_| Some(a)),
+        None => Some(None),
+    }
+}
+/// The stored modifiers of the mob's own attributes that `effect` puts on it,
+/// as (attribute, id): vanilla's, then those its declaration lists.
+fn own_effect_modifier_keys(
     m: &Mob,
     effect: &str,
-    amplifier: i32,
-) -> Vec<(Attr, String, f64, Op)> {
+    def: Option<&sunrise_client_core::potions::EffectDef>,
+) -> impl Iterator<Item = (Attr, Cow<'static, str>)> {
     let name = effect.trim_start_matches("minecraft:");
-    let vanilla = Attr::ALL.into_iter().filter_map(|a| {
-        let (amount, op) = effect_modifier(name, amplifier, a)?;
-        default_value(m, a)?;
-        Some((a, effect_modifier_id(name), amount, op))
-    });
-    let declared = sunrise_client_core::potions::declared_modifiers(effect)
+    let vanilla: Vec<_> = Attr::ALL
+        .into_iter()
+        .filter(|&a| effect_modifier(name, 0, a).is_some() && default_value(m, a).is_some())
+        .map(|a| (a, Cow::Owned(effect_modifier_id(name))))
+        .collect();
+    let declared: Vec<_> = def
+        .map_or(&[][..], |d| d.modifiers)
         .iter()
-        .filter_map(|&(attribute, id, amount, operation)| {
-            let a = command_attr(attribute.strip_prefix("minecraft:")?)?;
-            default_value(m, a)?;
-            let amount = amount * f64::from(amplifier.wrapping_add(1));
-            Some((a, id.to_owned(), amount, operation.into()))
+        .filter_map(|&(attribute, id, ..)| Some((store_attr(m, attribute)??, Cow::Borrowed(id))))
+        .collect();
+    vanilla.into_iter().chain(declared)
+}
+/// The (attribute, id) of each modifier a content mod's effect `def` puts on
+/// the attribute maps of `m`, outside its own store.
+pub fn generic_effect_modifier_keys<'a>(
+    m: &'a Mob,
+    def: &'static sunrise_client_core::potions::EffectDef,
+) -> impl Iterator<Item = (&'static str, &'static str)> + 'a {
+    def.modifiers
+        .iter()
+        .filter(|&&(attribute, ..)| store_attr(m, attribute) == Some(None))
+        .map(|&(attribute, id, ..)| (attribute, id))
+}
+/// `AttributeInstance.removeModifier(id)`, then with `modifier`
+/// `addPermanentModifier`, on an attribute instance.
+fn replace_modifier<O: Observer>(
+    value: &mut Instance,
+    observer: &mut O,
+    id: &str,
+    modifier: Option<&sunrise_world::attributes::Modifier>,
+) -> Result<(), AttributeError<O::Error>> {
+    value.remove(id, observer)?;
+    if let Some(modifier) = modifier {
+        value.add_permanent(modifier.clone(), observer)?;
+    }
+    Ok(())
+}
+/// One effect modifier on an attribute outside the mob's own store, where
+/// the mob's other attribute writes go: its attribute map
+/// (`generic_attributes`, the one `/attribute` writes, armor included) and
+/// its live map, which saves and syncs it. The id goes first, then with
+/// `modifier` the modifier is added for good. Nothing for an attribute the
+/// mob's type does not have, or a type built without a catalog.
+fn set_generic_effect_modifier(
+    m: &mut Mob,
+    name: &str,
+    id: &str,
+    modifier: Option<(f64, Operation)>,
+) {
+    let Some(catalog) = m.kind.attribute_bounds.catalog().cloned() else {
+        return;
+    };
+    let Some(key) = catalog.id(name) else {
+        return;
+    };
+    if catalog.default_base(&m.kind.id, key).is_none() {
+        return;
+    }
+    let modifier = modifier.and_then(|(amount, operation)| {
+        sunrise_world::attributes::Modifier::new(id, amount, operation).ok()
+    });
+    if m.extra.generic_attributes.is_none() {
+        m.extra.generic_attributes = catalog.create(&m.kind.id).map(Box::new);
+    }
+    if let Some(map) = m.extra.generic_attributes.as_deref_mut() {
+        let _ = map.edit(key, |value, observer| {
+            replace_modifier(value, observer, id, modifier.as_ref())
         });
-    vanilla.chain(declared).collect()
+    }
+    let mut live = std::mem::take(&mut m.extra.live);
+    live.keep_transient(name, id, None);
+    let _ = live.edit(
+        &catalog,
+        &m.kind.id,
+        name,
+        true,
+        || {
+            crate::entity_nbt::attribute_entries(m)
+                .into_iter()
+                .map(|(_, entry)| entry)
+                .collect()
+        },
+        |value, observer| replace_modifier(value, observer, id, modifier.as_ref()),
+    );
+    m.extra.live = live;
+}
+/// `removeModifier(SPEED_MODIFIER_BABY_ID)` on `a` when `id` names the baby
+/// speed bonus, which no store row holds: the store remembers it is gone.
+/// True when it was on.
+pub fn remove_baby_modifier(m: &mut Mob, a: Attr, id: &str) -> bool {
+    if id != "minecraft:baby" || transient(m, a).is_none() {
+        return false;
+    }
+    m.extra
+        .attributes
+        .get_or_insert_with(Box::default)
+        .baby_speed_removed = true;
+    true
 }
 /// One effect mutation's before-order in the legacy and live modifier seed stores.
 /// A clear is one batch: restore all of its rows together, not at stale indices.
@@ -754,8 +852,11 @@ impl Mob {
         effects: impl Iterator<Item = &'static str>,
     ) -> Option<EffectModifierUndo> {
         let keys: Vec<_> = effects
-            .flat_map(|effect| effect_modifiers(self, effect, 0))
-            .map(|(attr, id, _, _)| (attr, id))
+            .flat_map(|effect| {
+                let def = sunrise_client_core::potions::effect(effect);
+                own_effect_modifier_keys(self, effect, def)
+            })
+            .map(|(attr, id)| (attr, id.into_owned()))
             .collect();
         if keys.is_empty() {
             return None;
@@ -782,12 +883,14 @@ impl Mob {
     /// `MobEffectInstance.update` changed the active instance, or a hidden
     /// instance taking over in `tickServer`): `MobEffect.addAttributeModifiers`
     /// removes each of the effect's modifiers (`minecraft:effect.<name>`, see
-    /// `effect_modifier_id`, or the ids a content mod's effect declares), then
-    /// adds it again with `amount * (amplifier + 1)`. `None` is `onEffectsRemoved`
-    /// (`removeEffect`, `removeAllEffects`, the effect running out):
-    /// `removeAttributeModifiers` removes them. Both skip an attribute the
-    /// mob has no instance of (`AttributeMap.getInstance` is null: a pig has
-    /// no attack damage, so Strength adds nothing to it).
+    /// `effect_modifier_id`, or the ids `def`, a content mod's effect,
+    /// declares), then adds it again with `amount * (amplifier + 1)`. `None`
+    /// is `onEffectsRemoved` (`removeEffect`, `removeAllEffects`, the effect
+    /// running out): `removeAttributeModifiers` removes them. Both skip an
+    /// attribute the mob has no instance of (`AttributeMap.getInstance` is
+    /// null: a pig has no attack damage, so Strength adds nothing to it). A
+    /// declared modifier on an attribute outside the mob's own store goes to
+    /// its attribute maps (`set_generic_effect_modifier`).
     ///
     /// Loading `active_effects` calls none of these (`readAdditionalSaveData`
     /// puts the instances straight into the map), so a loaded effect has the
@@ -795,32 +898,70 @@ impl Mob {
     ///
     /// A max health change then runs `health_boost_changed`, which lowers a
     /// health above the new maximum as `onAttributeUpdated(MAX_HEALTH)` does
-    /// and never heals.
-    pub fn set_effect_modifiers(&mut self, effect: &str, amplifier: Option<i32>) {
-        for (a, id, amount, op) in effect_modifiers(self, effect, amplifier.unwrap_or(0)) {
-            // `removeModifier` takes the id off whatever holds it: the store's
-            // permanent and transient lists, and the transient one the live
-            // map keeps for its next build (a mod's, added before the effect).
-            if let Some(s) = self.extra.attributes.as_mut() {
-                s.modifiers.retain(|x| x.attr != a || x.id != id);
-                s.transient.retain(|x| x.attr != a || x.id != id);
+    /// and never heals; a max absorption change lowers an absorption above
+    /// the new maximum (`onAttributeUpdated(MAX_ABSORPTION)`).
+    pub fn set_effect_modifiers(
+        &mut self,
+        effect: &str,
+        def: Option<&sunrise_client_core::potions::EffectDef>,
+        amplifier: Option<i32>,
+    ) {
+        let name = effect.trim_start_matches("minecraft:");
+        let level = amplifier.map(|amplifier| f64::from(amplifier.wrapping_add(1)));
+        for a in Attr::ALL {
+            let Some((amount, op)) = effect_modifier(name, 0, a) else {
+                continue;
+            };
+            if default_value(self, a).is_some() {
+                let modifier = level.map(|level| (amount * level, op));
+                self.set_own_effect_modifier(a, &effect_modifier_id(name), modifier);
             }
-            self.extra.live.keep_transient(a.id(), &id, None);
-            if amplifier.is_some() {
-                let s = self.extra.attributes.get_or_insert_with(Box::default);
-                s.modifiers.push(Modifier {
-                    attr: a,
-                    id: id.into(),
-                    amount,
-                    op,
-                });
+        }
+        for &(attribute, id, amount, operation) in def.map_or(&[][..], |d| d.modifiers) {
+            let modifier = level.map(|level| (amount * level, operation));
+            match store_attr(self, attribute) {
+                Some(Some(a)) => {
+                    let modifier = modifier.map(|(amount, operation)| (amount, operation.into()));
+                    self.set_own_effect_modifier(a, id, modifier);
+                }
+                Some(None) => set_generic_effect_modifier(self, attribute, id, modifier),
+                None => {}
             }
-            self.extra.live.invalidate();
-            if a == Attr::MaxHealth {
-                health_boost_changed(self);
-            } else {
-                refresh(self, a);
+        }
+    }
+
+    /// One effect modifier on an attribute of the mob's own store:
+    /// `removeModifier` takes the id off whatever holds it (the store's
+    /// permanent and transient lists, the transient one the live map keeps
+    /// for its next build, a mod's added before the effect, and the baby
+    /// speed bonus), then with `modifier` it is stored again.
+    fn set_own_effect_modifier(&mut self, a: Attr, id: &str, modifier: Option<(f64, Op)>) {
+        let held = remove_baby_modifier(self, a, id)
+            || has_modifier(self, a, id)
+            || has_transient_modifier(self, a, id);
+        if let Some(s) = self.extra.attributes.as_mut() {
+            s.modifiers.retain(|x| x.attr != a || x.id != id);
+            s.transient.retain(|x| x.attr != a || x.id != id);
+        }
+        self.extra.live.keep_transient(a.id(), id, None);
+        if let Some((amount, op)) = modifier {
+            let s = self.extra.attributes.get_or_insert_with(Box::default);
+            s.modifiers.push(Modifier {
+                attr: a,
+                id: id.to_owned().into(),
+                amount,
+                op,
+            });
+        }
+        self.extra.live.invalidate();
+        match a {
+            Attr::MaxHealth => health_boost_changed(self),
+            // `removeModifier` dirties the instance only when the id was on
+            // it: a loaded Absorption, which added none, clamps nothing.
+            Attr::MaxAbsorption if held || modifier.is_some() => {
+                self.absorption = self.absorption.min(value(self, a) as f32);
             }
+            _ => refresh(self, a),
         }
     }
 }
@@ -2798,7 +2939,7 @@ mod tests {
         };
         let mob = |catalog: &Catalog| {
             let mut kind = (*crate::mobs::sensor_scan_tests::kind()).clone();
-            kind.attribute_bounds = AttrBounds::of(catalog);
+            kind.attribute_bounds = AttrBounds::of(&Arc::new(catalog.clone()));
             let mut m = Mob::new(1, Arc::new(kind), sunrise_core::geometry::Vec3::ZERO, 0.0);
             set_base(&mut m, Attr::MaxHealth, 5000.0);
             set_base(&mut m, Attr::KnockbackResistance, -1.5);

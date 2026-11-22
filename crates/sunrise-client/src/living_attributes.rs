@@ -315,6 +315,13 @@ impl ModifierChanges {
         self.modifiers
             .retain(|m| m.attribute != attribute || m.id != id);
     }
+
+    /// Only the rows `owned` names, and no equipment detection state.
+    pub fn only(mut self, owned: impl Fn(&str, &str) -> bool) -> Option<Self> {
+        self.worn_before = None;
+        self.modifiers.retain(|m| owned(&m.attribute, &m.id));
+        (!self.modifiers.is_empty()).then_some(self)
+    }
 }
 
 impl ModifierSnapshot {

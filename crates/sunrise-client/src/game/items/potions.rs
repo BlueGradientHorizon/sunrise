@@ -1657,7 +1657,10 @@ impl Game<'_> {
         if self.remote.is_some() {
             return;
         }
-        for (attribute, id, amount, operation) in effect_modifiers(effect) {
+        let modifiers = brewing::effect(effect)
+            .into_iter()
+            .flat_map(effect_modifiers);
+        for (attribute, id, amount, operation) in modifiers {
             let amount = amount * f64::from(amplifier.wrapping_add(1));
             // MobEffect.addAttributeModifiers replaces by id and stores permanently.
             if let Some(write) = AttributeWrite::add(id, amount, operation, true, true) {
@@ -1676,7 +1679,10 @@ impl Game<'_> {
             return;
         }
         for effect in effects {
-            for (attribute, id, _, _) in effect_modifiers(effect) {
+            for (attribute, id, _, _) in brewing::effect(effect)
+                .into_iter()
+                .flat_map(effect_modifiers)
+            {
                 self.write_attribute(
                     Target::Player,
                     attribute,

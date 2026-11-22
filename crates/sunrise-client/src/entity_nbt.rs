@@ -1791,7 +1791,7 @@ fn put_sulfur_attributes(map: &mut EntityTagWriter, m: &Mob) {
     if m.species() != crate::mobs::Species::SulfurCube {
         return;
     }
-    let Some(attributes) = m.extra.armor_attributes.as_deref() else {
+    let Some(attributes) = m.extra.generic_attributes.as_deref() else {
         return;
     };
     let mut list = match map.get(&"attributes".into()) {

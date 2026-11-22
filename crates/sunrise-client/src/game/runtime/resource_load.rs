@@ -581,7 +581,7 @@ pub(super) fn check_effect_modifier_attributes(
 /// its map from the catalog alone.
 pub(super) fn take_modified_attribute_rows(
     types: &mut HashMap<String, sunrise_client::mobs::MobType>,
-    catalog: &sunrise_world::attributes::entity::Catalog,
+    catalog: &Arc<sunrise_world::attributes::entity::Catalog>,
     modifications: &[mod_api::__private::EntityAttributeModification],
 ) {
     let modified: std::collections::BTreeSet<&str> = modifications

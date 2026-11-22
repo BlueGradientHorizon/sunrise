@@ -147,6 +147,7 @@ sunrise-theme = { path = "../sunrise-theme" }
 sunrise-client-render = { path = "../sunrise-client-render", features = ["test-support"] }
 sunrise-items = { path = "../sunrise-items", features = ["test-support"] }
 sunrise-world = { path = "../sunrise-world", features = ["test-support"] }
+sunrise-client-core = { path = "../sunrise-client-core", features = ["test-effect-registry"] }
 # Reads back the captures the server_perf tests write.
 sunrise-perf = { path = "../sunrise-perf" }
 # Every WGSL shader translated as wgpu's DirectX 12 backend does (gfx.rs tests).

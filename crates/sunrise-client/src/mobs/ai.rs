@@ -5031,7 +5031,10 @@ fn tick_effects_until_hurt(
                 m.extra.effects[i].update_from_instance(&hidden);
                 // `tickServer`'s onExpire: `onEffectUpdated(instance, true, null)`,
                 // the modifiers of the amplifier that is active now.
-                m.set_effect_modifiers(effect, Some(hidden.amplifier));
+                let def = m.extra.effects[i]
+                    .registry_index
+                    .and_then(sunrise_client_core::potions::effect_by_index);
+                m.set_effect_modifiers(effect, def, Some(hidden.amplifier));
                 m.extra.ambient_effects.retain(|e| *e != effect);
                 if hidden.ambient {
                     m.extra.ambient_effects.push(effect);

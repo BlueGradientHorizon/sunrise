@@ -592,7 +592,11 @@ impl PlayerEffects {
     pub fn modifiers(&self) -> Vec<EffectModifier> {
         let mut out = Vec::new();
         for e in &self.list {
-            for (a, id, amount, op) in effect_modifiers(e.id) {
+            let def = e
+                .registry_index
+                .and_then(potions::effect_by_index)
+                .or_else(|| potions::effect(e.id));
+            for (a, id, amount, op) in def.into_iter().flat_map(effect_modifiers) {
                 out.push((a, id, amount * f64::from(e.amplifier.wrapping_add(1)), op));
             }
         }
@@ -644,10 +648,10 @@ pub use potions::EffectModifier;
 /// (`MobEffect.addAttributeModifier`): (attribute, id, amount, operation),
 /// vanilla's or those a content mod declared for its effect. Each level
 /// multiplies the amount (`amplifier + 1`).
-pub fn effect_modifiers(effect: &str) -> impl Iterator<Item = EffectModifier> {
-    effect_modifier(effect)
+pub fn effect_modifiers(effect: &potions::EffectDef) -> impl Iterator<Item = EffectModifier> {
+    effect_modifier(effect.id)
         .into_iter()
-        .chain(potions::declared_modifiers(effect).iter().copied())
+        .chain(effect.modifiers.iter().copied())
 }
 
 /// The attribute modifier a vanilla effect adds at amplifier 0. Vanilla's
@@ -858,25 +862,23 @@ mod tests {
         let poison = loaded.get("poison").expect("level I resumed");
         assert_eq!((poison.amplifier, poison.duration), (0, 480));
     }
-    /// The mod effects these tests share: the registry is set once per
-    /// process, so every test registers the same list.
-    fn register_ruby_glow() {
-        static ONCE: std::sync::Once = std::sync::Once::new();
-        ONCE.call_once(|| {
-            assert!(potions::register_mod_effects([potions::ModEffect {
-                modifiers: vec![(
-                    "minecraft:movement_speed".into(),
-                    "ruby:effect/glow".into(),
-                    -0.25,
-                    Operation::AddMultipliedTotal,
-                )],
-                ..potions::ModEffect::new("ruby:glow", 0xFF0000, potions::Category::Neutral, "ruby")
-            }]));
-        });
+    /// `ruby:glow`, registered in this thread's own scope until the guard drops.
+    fn register_ruby_glow() -> impl Drop {
+        let scope = potions::isolate_mod_effects();
+        assert!(potions::register_mod_effects([potions::ModEffect {
+            modifiers: vec![(
+                "minecraft:movement_speed".into(),
+                "ruby:effect/glow".into(),
+                -0.25,
+                Operation::AddMultipliedTotal,
+            )],
+            ..potions::ModEffect::new("ruby:glow", 0xFF0000, potions::Category::Neutral, "ruby")
+        }]));
+        scope
     }
     #[test]
     fn a_mod_effect_saves_under_its_namespace() {
-        register_ruby_glow();
+        let _scope = register_ruby_glow();
         let mut fx = PlayerEffects::default();
         fx.add(EffectInstance::new(
             potions::effect("ruby:glow").unwrap().id,
@@ -1033,7 +1035,7 @@ mod tests {
     /// lists, each amount times the amplifier plus one, as vanilla's do.
     #[test]
     fn a_mod_effects_declared_modifier_scales_with_amplifier() {
-        register_ruby_glow();
+        let _scope = register_ruby_glow();
         let mut fx = PlayerEffects::default();
         fx.add(EffectInstance::new("ruby:glow", 2400, 0));
         fx.add(EffectInstance::new("speed", 2400, 0));
