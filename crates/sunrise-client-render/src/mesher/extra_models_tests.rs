@@ -34,10 +34,9 @@ fn on_layer(vertices: &[TerrainVertex], layer: u16) -> Vec<TerrainVertex> {
 }
 
 #[test]
+#[ignore = "daily"]
 fn extra_models_draw_with_the_blocks_place_and_light() {
-    let Some(world) = World::load() else {
-        return;
-    };
+    let world = World::load().expect("prepared Sunrise resources are required");
     let tables = world.tables(Vec::new());
     let mut mesher = world.mesher(&tables);
     let gold = model_of(&world, "minecraft:gold_block", world.render.generation);
@@ -66,10 +65,9 @@ fn extra_models_draw_with_the_blocks_place_and_light() {
 }
 
 #[test]
+#[ignore = "daily"]
 fn extra_faces_are_culled_by_neighbours_and_keep_their_pass() {
-    let Some(world) = World::load() else {
-        return;
-    };
+    let world = World::load().expect("prepared Sunrise resources are required");
     let tables = world.tables(Vec::new());
     let mut mesher = world.mesher(&tables);
     let generation = world.render.generation;
@@ -98,10 +96,9 @@ fn extra_faces_are_culled_by_neighbours_and_keep_their_pass() {
 }
 
 #[test]
+#[ignore = "daily"]
 fn a_stale_handle_draws_nothing() {
-    let Some(world) = World::load() else {
-        return;
-    };
+    let world = World::load().expect("prepared Sunrise resources are required");
     let tables = world.tables(Vec::new());
     let mut mesher = world.mesher(&tables);
     let stale = model_of(&world, "minecraft:gold_block", world.render.generation + 1);
@@ -123,13 +120,12 @@ fn bytes(vertices: &[TerrainVertex]) -> &[u8] {
 /// it was, keeps the extra models in cell order and then list order up to the limit, and is the
 /// same on every build.
 #[test]
+#[ignore = "daily"]
 fn extra_models_stay_within_the_sections_limits() {
     use super::extra_models::FACE_QUADS;
     use super::mod_geometry::{MAX_QUADS, MAX_SECTION_BYTES};
 
-    let Some(world) = World::load() else {
-        return;
-    };
+    let world = World::load().expect("prepared Sunrise resources are required");
     let tables = world.tables(Vec::new());
     let mut mesher = world.mesher(&tables);
     let stone = world
@@ -202,10 +198,25 @@ fn extra_models_stay_within_the_sections_limits() {
     assert_eq!(bytes(&again.translucent), bytes(&mesh.translucent));
 }
 
-/// A mod's own tint source for stone: green, or a panic, counting the times it is asked.
+/// A mod's own tint source: green, an ordinary panic, or a panic with a hostile payload.
+#[derive(Clone, Copy)]
+enum Answer {
+    Green,
+    Panic,
+    DropPanic,
+}
+
+struct PanicsOnDrop;
+impl Drop for PanicsOnDrop {
+    fn drop(&mut self) {
+        // A second payload can also have a panicking destructor.
+        std::panic::panic_any(PanicsOnDrop);
+    }
+}
+
 struct Counted {
     asked: std::sync::atomic::AtomicUsize,
-    panics: bool,
+    answer: Answer,
 }
 impl mod_api::BlockTintSource for Counted {
     fn color(&self, _: &mod_api::BlockState, _: &dyn mod_api::BlockMetadata) -> u32 {
@@ -220,72 +231,109 @@ impl mod_api::BlockTintSource for Counted {
     ) -> u32 {
         self.asked
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        assert!(!self.panics, "no neighbour data at the chunk edge");
-        0x00_FF00
+        assert_eq!(std::thread::current().name(), Some("main"));
+        match self.answer {
+            Answer::Green => 0x00_FF00,
+            Answer::Panic => panic!("no neighbour data at the chunk edge"),
+            Answer::DropPanic => std::panic::panic_any(PanicsOnDrop),
+        }
     }
 }
 
-/// An extra model tinted through its block's own mod source (oak leaves, tint index 0, drawn as
-/// part of stone coloured by `source`): the source is asked when the mesh is scheduled
-/// (`prepare_attached_tints`), never while the section meshes, and a source that panics there
-/// colours white and the meshing goes on.
+/// Oak leaves use the same tint index in their base mesh and in an attached copy. The
+/// provider is asked once, before the worker runs, and failure colours both sets white.
 #[test]
+#[ignore = "daily"]
 fn a_mod_tint_source_is_asked_before_the_mesh_not_by_the_worker() {
-    let Some(world) = World::load() else {
+    const CHILD: &str = "SUNRISE_TEST_ATTACHED_TINT_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        let result = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--ignored", "--exact", "mesher::extra_models_tests::a_mod_tint_source_is_asked_before_the_mesh_not_by_the_worker"])
+            .env(CHILD, "1")
+            .status().unwrap();
+        assert!(result.success(), "isolated tint regression: {result}");
         return;
-    };
+    }
+    let home = tempfile::tempdir().unwrap();
+    crate::crash::install(home.path().to_path_buf(), "client");
+    // Exercise the fatal-client branch of the production panic hook if containment is missing.
+    std::thread::Builder::new()
+        .name("main".into())
+        .spawn(run_tint_cases)
+        .unwrap()
+        .join()
+        .unwrap();
+    assert!(
+        !home.path().join("crash-reports").exists(),
+        "a recoverable tint panic wrote a fatal report"
+    );
+    assert!(
+        crate::crash::report_error(home.path(), "client", &crate::crash::DebugCrash::new())
+            .is_some(),
+        "a recoverable tint panic consumed the fatal report slot"
+    );
+}
+
+fn run_tint_cases() {
+    use std::sync::atomic::Ordering;
+
+    let world = World::load().expect("prepared Sunrise resources are required");
     let registry = world.assets.registry;
+    let values = super::mod_tint_tests::tint_values(registry);
     let leaves = model_of(&world, "minecraft:oak_leaves", world.render.generation);
-    let chunk = with_extra(world.cube(), &[leaves]);
+    let mut chunk = world.cube();
+    chunk.set(
+        2,
+        MIN_Y + 4,
+        2,
+        registry.default_state("minecraft:oak_leaves").unwrap().0,
+    );
+    let chunk = with_extra(chunk, &[leaves]);
     let mut region = [[None; 3]; 3];
     region[1][1] = Some(&chunk);
     let leaf_layer = layer(&world, "minecraft:block/oak_leaves");
-    // The red channel of the leaf vertices: none under green, some under white.
-    let reds = |mesh: &SectionMesh| -> Vec<u32> {
-        let mut all = on_layer(&mesh.solid, leaf_layer);
-        all.extend(on_layer(&mesh.translucent, leaf_layer));
-        assert_eq!(quads(&all), 6, "the leaves' six faces");
-        all.iter().map(|v| v.color & 0xFF).collect()
-    };
-    for panics in [false, true] {
+    for answer in [Answer::Green, Answer::Panic, Answer::DropPanic] {
         let source = Arc::new(Counted {
             asked: Default::default(),
-            panics,
+            answer,
         });
-        let asked = || source.asked.load(std::sync::atomic::Ordering::Relaxed);
+        let unused = Arc::new(Counted {
+            asked: Default::default(),
+            answer: Answer::Panic,
+        });
         let mut tables = world.tables(Vec::new());
         let layers = std::collections::BTreeMap::from([(
-            "minecraft:stone".to_string(),
-            Arc::from([mod_api::TintLayer::Source(source.clone())]),
+            "minecraft:oak_leaves".to_string(),
+            Arc::from([
+                mod_api::TintLayer::Source(source.clone()),
+                mod_api::TintLayer::Source(unused.clone()),
+            ]),
         )]);
         tables
             .apply_tint_layers(
                 registry,
                 &layers,
-                Some(super::mod_tint_tests::tint_values(registry)),
+                Some(ModTintValues {
+                    states: values.states.clone(),
+                    metadata: values.metadata,
+                }),
             )
             .unwrap();
         let mut mesher = world.mesher(&tables);
-        // Scheduled without preparing (a viewed level's mesh): white, the source never asked.
-        let unprepared = mesher.mesh(&region, 0);
-        assert_eq!(asked(), 0, "the mesh asked the source");
-        assert!(reds(&unprepared).iter().all(|&r| r > 0));
-        // Prepared on the scheduling thread, then meshed on a worker.
-        let prepared = tables.prepare_attached_tints(
-            &region,
-            0,
-            mesher.biomes,
-            mesher.zoom,
-            mesher.blend_radius,
-            false,
+        let prepared = mesher
+            .prepare_attached_tints(&region, 0, false, None)
+            .expect("the source colours the extra model");
+        assert_eq!(
+            source.asked.load(Ordering::Relaxed),
+            1,
+            "asked once while preparing"
         );
-        assert_eq!(asked(), 1, "asked once, when prepared");
-        let prepared = prepared.expect("the stone's source colours its extra model");
         let mesh = std::thread::scope(|scope| {
-            scope
-                .spawn(|| {
+            std::thread::Builder::new()
+                .name("sunrise-worker-test".into())
+                .spawn_scoped(scope, || {
                     let mut scratch = MeshScratch {
-                        attached_tints: Some(prepared.clone()),
+                        attached_tints: Some(prepared),
                         ..Default::default()
                     };
                     world.mesher(&tables).mesh_reusing(
@@ -295,14 +343,41 @@ fn a_mod_tint_source_is_asked_before_the_mesh_not_by_the_worker() {
                         &mut scratch,
                     )
                 })
+                .unwrap()
                 .join()
-                .expect("the worker kept running")
+                .expect("the mesh worker kept running")
         });
-        assert_eq!(asked(), 1, "the worker asked the source");
-        if panics {
-            assert!(reds(&mesh).iter().all(|&r| r > 0), "white after a panic");
+        assert_eq!(
+            source.asked.load(Ordering::Relaxed),
+            1,
+            "the base and attachment reused the answer"
+        );
+        assert_eq!(
+            unused.asked.load(Ordering::Relaxed),
+            0,
+            "the unused tint layer was never asked"
+        );
+        let mut vertices = on_layer(&mesh.solid, leaf_layer);
+        vertices.extend(on_layer(&mesh.translucent, leaf_layer));
+        assert_eq!(quads(&vertices), 12, "six base and six attached leaf faces");
+        // With AO off the upward quads are unshaded, so their RGB is literal green or white.
+        let expected = if matches!(answer, Answer::Green) {
+            0x00_FF00
         } else {
-            assert!(reds(&mesh).iter().all(|&r| r == 0), "the source's green");
-        }
+            0xFF_FFFF
+        };
+        let tops: Vec<_> = vertices
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|quad| quad.iter().all(|v| v.pos[1] == 5.0))
+            .flatten()
+            .collect();
+        assert_eq!(
+            tops.len(),
+            8,
+            "the base and attachment each have a top face"
+        );
+        assert!(tops.iter().all(|v| v.color & 0xFF_FFFF == expected));
     }
 }
