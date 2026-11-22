@@ -9,6 +9,7 @@ use crate::{
 };
 use std::{
     collections::VecDeque,
+    net::SocketAddr,
     sync::{
         Arc,
         atomic::{AtomicI32, AtomicU64, Ordering},
@@ -24,6 +25,7 @@ use sunrise_protocol::{
     },
     passage_sync,
 };
+use sunrise_world::component_value::consume_effects::Admitted;
 
 /// Unique across reconnects and server instances in this process, even when
 /// the protocol's container id wraps back to the same number.
@@ -126,12 +128,12 @@ struct GuestInit {
     conn: u32,
     uuid: u128,
     name: String,
-    properties: Vec<sunrise_protocol::packets::login::Property>,
+    properties: Vec<sunrise_core::profile::AccountProperty>,
     info: ClientInformation,
     brand: String,
     sender: PlayerSender,
     latency: Arc<AtomicI32>,
-    address: std::net::SocketAddr,
+    address: SocketAddr,
     expected: bool,
 }
 
@@ -170,8 +172,8 @@ pub struct Guest {
     pub residency: crate::join_seq::residency::member::Member,
     pub kind: GuestKind,
     pub conn: u32,
-    /// The client's address (IP bans, `list`).
-    pub address: std::net::SocketAddr,
+    address: SocketAddr,
+    ip_address: String,
     /// The hub tick of the player's last action (ServerPlayer.lastActionTime),
     /// for player-idle-timeout.
     pub last_action_tick: u64,
@@ -205,7 +207,7 @@ pub struct Guest {
     pub uuid: u128,
     pub name: String,
     /// The profile's properties, for the player list (skins).
-    pub properties: Vec<sunrise_protocol::packets::login::Property>,
+    pub properties: Vec<sunrise_core::profile::AccountProperty>,
     pub entity_id: i32,
     pub sender: PlayerSender,
     pub latency: Arc<AtomicI32>,
@@ -574,6 +576,22 @@ pub struct Guest {
 }
 
 impl Guest {
+    /// The client's socket address, including the port.
+    pub fn address(&self) -> SocketAddr {
+        self.address
+    }
+
+    /// The client's IP address as text, without the port.
+    pub fn ip_address(&self) -> &str {
+        &self.ip_address
+    }
+
+    /// Replaces the address and keeps its cached IP text in sync.
+    pub fn set_address(&mut self, address: SocketAddr) {
+        self.address = address;
+        self.ip_address = address.ip().to_string();
+    }
+
     /// Allocate the next protocol window and a non-reusable menu identity.
     pub fn next_menu_window(&mut self) -> i32 {
         self.next_window = self.next_window % 100 + 1;
@@ -744,6 +762,7 @@ impl Guest {
             kind,
             conn: j.conn,
             address: j.address,
+            ip_address: j.address.ip().to_string(),
             last_action_tick: 0,
             chat_index: 0,
             chain: Default::default(),
@@ -939,23 +958,39 @@ impl Guest {
             Err(error) => eprintln!("[lan] send refused: {error}"),
         }
     }
-    /// Send the complete committed data of this guest's current blockless menu.
+    /// Send the committed data that fits the negotiated blockless packet's index.
     pub fn send_menu_data_snapshot(&self) {
         let Some(menu) = &self.menu else { return };
-        for (index, &value) in menu.blockless_data.iter().enumerate() {
-            self.send_menu_data(menu.window, index as u16, value);
+        for (index, &value) in (0..=u16::MAX).zip(&menu.blockless_data) {
+            self.send_menu_data(menu.window, index, value);
+        }
+        let wire_len = usize::from(u16::MAX) + 1;
+        if menu.blockless_data.len() > wire_len {
+            log::warn!(
+                "Sunrise: blockless menu window {} cannot sync data slots at indices {wire_len}..{} (DataSlot index max is {})",
+                menu.window,
+                menu.blockless_data.len(),
+                u16::MAX,
+            );
         }
     }
 
     /// Commit one blockless-menu data slot. The caller resolves the window generation
     /// and validates the index before supplying a write.
-    pub fn set_menu_data(&mut self, index: u16, value: i32) {
+    pub fn set_menu_data(&mut self, index: usize, value: i32) {
         let Some(menu) = &mut self.menu else { return };
-        let slot = &mut menu.blockless_data[usize::from(index)];
+        let slot = &mut menu.blockless_data[index];
         if *slot != value {
             *slot = value;
             let window = menu.window;
-            self.send_menu_data(window, index, value);
+            if let Ok(wire_index) = u16::try_from(index) {
+                self.send_menu_data(window, wire_index, value);
+            } else {
+                log::warn!(
+                    "Sunrise: blockless menu window {window} cannot sync data slot {index} (DataSlot index max is {})",
+                    u16::MAX,
+                );
+            }
         }
     }
 
@@ -1322,7 +1357,7 @@ fn sign_text_bytes(text: &sunrise_core::nbt::Tag) -> Option<Vec<u8>> {
         Some(Tag::List(lines)) if lines.len() == 4 => Some(lines),
         _ => None,
     };
-    let mut w = sunrise_protocol::buf::Writer::new();
+    let mut w = ::sunrise_core::vanilla_bytes::Writer::new();
     lines("messages")?.iter().for_each(|line| w.nbt(line));
     let filtered = lines("filtered_messages");
     w.bool(filtered.is_some());
@@ -1344,7 +1379,22 @@ pub fn stack_to_network(
     synced_id: impl Fn(&str, &str) -> Option<i32>,
     s: &Option<ItemStack>,
 ) -> Option<Stack> {
-    Some(network_stack(&item_id, &synced_id, s.as_ref()?))
+    stack_to_network_projecting(item_id, synced_id, s, &|_| ())
+}
+
+/// Send the stack and expose effects materialized during this encoding to its hash input.
+pub fn stack_to_network_projecting(
+    item_id: impl Fn(&str) -> i32,
+    synced_id: impl Fn(&str, &str) -> Option<i32>,
+    s: &Option<ItemStack>,
+    projected: &dyn Fn(&Admitted),
+) -> Option<Stack> {
+    Some(network_stack_projecting(
+        &item_id,
+        &synced_id,
+        s.as_ref()?,
+        projected,
+    ))
 }
 /// `ProvidesTrimMaterial.STREAM_CODEC`, `ProvidesBannerPatterns.STREAM_CODEC`,
 /// `AdventureModePredicate.STREAM_CODEC` and `ItemAttributeModifiers.STREAM_CODEC`:
@@ -1356,7 +1406,7 @@ fn builtin_component(
     ids: &dyn Fn(&str, &str) -> Option<i32>,
 ) -> Option<sunrise_protocol::item::Component> {
     use sunrise_core::nbt::Tag;
-    use sunrise_protocol::buf::Writer;
+    use sunrise_core::vanilla_bytes::Writer;
     let mut w = Writer::new();
     match name {
         "minecraft:attribute_modifiers" => {
@@ -1424,7 +1474,7 @@ fn builtin_component(
 fn write_tool(
     value: &sunrise_core::nbt::Tag,
     ids: &dyn Fn(&str, &str) -> Option<i32>,
-    w: &mut sunrise_protocol::buf::Writer,
+    w: &mut ::sunrise_core::vanilla_bytes::Writer,
 ) -> Option<()> {
     use sunrise_core::nbt::Tag;
     use sunrise_world::datafix::dynamic::{as_bool_opt, as_number};
@@ -1472,7 +1522,7 @@ fn write_holder_set(
     registry: &str,
     value: &sunrise_core::nbt::Tag,
     ids: &dyn Fn(&str, &str) -> Option<i32>,
-    w: &mut sunrise_protocol::buf::Writer,
+    w: &mut ::sunrise_core::vanilla_bytes::Writer,
 ) -> Option<()> {
     use sunrise_core::nbt::Tag;
     if let Tag::String(name) = value {
@@ -1516,7 +1566,7 @@ fn write_holder_set(
 fn write_block_predicate(
     value: &sunrise_core::nbt::Tag,
     ids: &dyn Fn(&str, &str) -> Option<i32>,
-    w: &mut sunrise_protocol::buf::Writer,
+    w: &mut ::sunrise_core::vanilla_bytes::Writer,
 ) -> Option<()> {
     use sunrise_core::nbt::Tag;
     let Tag::Compound(map) = value else {
@@ -1617,7 +1667,7 @@ fn write_block_predicate(
 fn write_matchers(
     value: &sunrise_core::nbt::Tag,
     ids: &dyn Fn(&str, &str) -> Option<i32>,
-    w: &mut sunrise_protocol::buf::Writer,
+    w: &mut ::sunrise_core::vanilla_bytes::Writer,
 ) -> Option<()> {
     use sunrise_core::nbt::Tag;
     for (field, expected, registry) in [
@@ -1754,12 +1804,25 @@ pub(super) fn network_stack(
     synced_id: &dyn Fn(&str, &str) -> Option<i32>,
     s: &ItemStack,
 ) -> Stack {
+    network_stack_projecting(item_id, synced_id, s, &|_| ())
+}
+
+fn network_stack_projecting(
+    item_id: &dyn Fn(&str) -> i32,
+    synced_id: &dyn Fn(&str, &str) -> Option<i32>,
+    s: &ItemStack,
+    projected: &dyn Fn(&Admitted),
+) -> Stack {
     let enchantment_id = |name: &str| synced_id("minecraft:enchantment", name);
     let mut stack = Stack::new(item_id(&s.item), s.count as i32);
-    if s.damage > 0 {
+    if stack.item <= 0 {
+        log::warn!("Cannot send item {}: no registered network id", s.item);
+    }
+    // Send the stack's own damage, including an explicit zero, not the prototype.
+    if s.carries_component(None, "minecraft:damage") {
         stack.added.push((
             sunrise_protocol::item::component::DAMAGE,
-            sunrise_protocol::item::Component::Int(s.damage as i32),
+            sunrise_protocol::item::Component::Int(s.effective_damage(None)),
         ));
     }
     let enchantments: Vec<(i32, i32)> = s
@@ -1853,30 +1916,6 @@ pub(super) fn network_stack(
                 stack.added.push((kind, component));
             }
         }
-        for (name, value) in d.preserved_components() {
-            let (removed, kind) = match name.strip_prefix('!') {
-                Some(kind) => (true, kind),
-                None => (false, name.as_str()),
-            };
-            if removed {
-                // Resolve every removal through the peer's canonical registry, including
-                // built-ins without a modelled value. Earlier codec branches may have
-                // already recorded this removal.
-                if let Some(id) = synced_id("minecraft:data_component_type", kind)
-                    && !stack.removed.contains(&id)
-                {
-                    stack.removed.push(id);
-                }
-            } else if sunrise_protocol::item::custom::id(kind).is_some() {
-                if let Some(id) = synced_id("minecraft:data_component_type", kind) {
-                    stack
-                        .added
-                        .push((id, sunrise_protocol::item::Component::Nbt(value.clone())));
-                } else {
-                    log::warn!("Cannot send custom component {kind} to this peer");
-                }
-            }
-        }
         if let Some(rgb) = d.dyed_color {
             stack.added.push((
                 sunrise_protocol::item::component::DYED_COLOR,
@@ -1907,7 +1946,7 @@ pub(super) fn network_stack(
                 ))
             })
             .collect();
-        if let Some(layers) = layers.filter(|layers| !layers.is_empty()) {
+        if let Some(layers) = layers.filter(|_| d.sets_component("minecraft:banner_patterns")) {
             stack.added.push((
                 sunrise_protocol::item::component::BANNER_PATTERNS,
                 sunrise_protocol::item::Component::BannerPatterns(layers),
@@ -2002,22 +2041,6 @@ pub(super) fn network_stack(
             ));
         }
         stack.added.extend(firework_components(d));
-        // A goat horn's instrument, by its `minecraft:instrument` id.
-        if let Some(id) = d
-            .other("minecraft:instrument")
-            .and_then(|t| crate::save::text(Some(t)))
-            .and_then(|name| {
-                synced_id(
-                    "minecraft:instrument",
-                    &sunrise_world::datafix::dynamic::namespaced(&name),
-                )
-            })
-        {
-            stack.added.push((
-                sunrise_protocol::item::component::INSTRUMENT,
-                sunrise_protocol::item::Component::Instrument(id),
-            ));
-        }
         // The compass's lodestone target.
         if let Some(t) = d.other("minecraft:lodestone_tracker") {
             let target = t.get("target").and_then(|g| {
@@ -2031,22 +2054,6 @@ pub(super) fn network_stack(
             stack.added.push((
                 sunrise_protocol::item::component::LODESTONE_TRACKER,
                 sunrise_protocol::item::Component::LodestoneTracker { target, tracked },
-            ));
-        }
-        // PotionContents: the potion by its `minecraft:potion` id.
-        if let Some(id) = (d.potion.as_deref()).and_then(|potion| {
-            synced_id(
-                "minecraft:potion",
-                &sunrise_world::datafix::dynamic::namespaced(potion),
-            )
-        }) {
-            stack.added.push((
-                sunrise_protocol::item::component::POTION_CONTENTS,
-                sunrise_protocol::item::Component::Potion {
-                    potion: Some(id),
-                    color: None,
-                    rest: Vec::new(),
-                },
             ));
         }
         // SuspiciousStewEffects: each effect by its `minecraft:mob_effect` id.
@@ -2069,7 +2076,7 @@ pub(super) fn network_stack(
             let charged = d
                 .charged
                 .iter()
-                .map(|c| network_stack(item_id, synced_id, c))
+                .map(|c| network_stack_projecting(item_id, synced_id, c, projected))
                 .collect();
             stack.added.push((
                 sunrise_protocol::item::component::CHARGED_PROJECTILES,
@@ -2084,12 +2091,17 @@ pub(super) fn network_stack(
             let slots: Vec<(i32, Stack)> = d
                 .container
                 .iter()
-                .map(|(slot, s)| (i32::from(*slot), network_stack(item_id, synced_id, s)))
+                .map(|(slot, s)| {
+                    (
+                        i32::from(*slot),
+                        network_stack_projecting(item_id, synced_id, s, projected),
+                    )
+                })
                 .collect();
             // The saved list names only the filled slots; the codec counts them
             // all, from the first to the last that holds one.
             let size = slots.iter().map(|(slot, _)| slot + 1).max().unwrap_or(0);
-            let mut w = sunrise_protocol::buf::Writer::new();
+            let mut w = ::sunrise_core::vanilla_bytes::Writer::new();
             w.varint(size);
             for slot in 0..size {
                 let stack = slots.iter().find(|(at, _)| *at == slot).map(|(_, s)| s);
@@ -2111,7 +2123,7 @@ pub(super) fn network_stack(
             let contents = d
                 .bundle_contents
                 .iter()
-                .map(|c| network_stack(item_id, synced_id, c))
+                .map(|c| network_stack_projecting(item_id, synced_id, c, projected))
                 .collect();
             stack.added.push((
                 sunrise_protocol::item::component::BUNDLE_CONTENTS,
@@ -2263,6 +2275,112 @@ pub(super) fn network_stack(
             custom_model_data(t),
         ));
     }
+    if let Some(d) = s.data() {
+        use sunrise_protocol::item::persistent;
+
+        let ids = |registry: &str, name: &str| {
+            if registry == "minecraft:item" {
+                let id = item_id(name);
+                (id > 0).then_some(id)
+            } else {
+                synced_id(registry, name)
+            }
+        };
+        let mut encode_saved = |name: &str, value: &sunrise_core::nbt::Tag| {
+            let key = name.strip_prefix('!').unwrap_or(name);
+            let kind = persistent::component_id(key);
+            if key != name {
+                // The peer registry can name a removal even when we have no value codec.
+                let peer_kind = synced_id("minecraft:data_component_type", key)
+                    .or_else(|| kind.filter(|&id| id < persistent::BUILTIN_COMPONENT_COUNT as i32));
+                if let Some(id) = peer_kind
+                    && !stack.removed.contains(&id)
+                {
+                    stack.removed.push(id);
+                }
+                return;
+            }
+            let Some(kind) = kind else { return };
+            if kind >= persistent::BUILTIN_COMPONENT_COUNT as i32
+                && synced_id("minecraft:data_component_type", key) != Some(kind)
+            {
+                // The peer did not negotiate this native component.
+                return;
+            }
+            let encoded = if crate::item_data::StackData::CONSUME_EFFECT_COMPONENTS.contains(&key) {
+                persistent::component_from_admitted_tag(
+                    kind,
+                    value,
+                    &ids,
+                    &|tag| d.find_admitted_consume_effect(&|effect| effect.matches_tag(tag)),
+                    projected,
+                )
+            } else {
+                persistent::component_from_tag(kind, value, &ids)
+            };
+            match encoded {
+                Ok(component) => stack.added.push((kind, component)),
+                Err(error) => {
+                    log::warn!("Cannot send component {name} on {}: {error}", s.item);
+                }
+            }
+        };
+        // Consumable is modeled separately from the preserved fields, but its
+        // saved value is available by reference alongside those overrides.
+        if let Some(value) = d.other("minecraft:consumable") {
+            encode_saved("minecraft:consumable", value);
+        }
+        for (name, value) in d.preserved_components() {
+            // These fields have specialized encoders above; only the other
+            // saved overrides go through the general protocol codec.
+            if !matches!(
+                name.as_str(),
+                "minecraft:enchantment_glint_override"
+                    | "minecraft:max_damage"
+                    | "minecraft:unbreakable"
+                    | "minecraft:kinetic_weapon"
+                    | "minecraft:provides_trim_material"
+                    | "minecraft:provides_banner_patterns"
+                    | "minecraft:can_place_on"
+                    | "minecraft:can_break"
+                    | "minecraft:tool"
+                    | "minecraft:attribute_modifiers"
+                    | "minecraft:tooltip_display"
+                    | "minecraft:painting/variant"
+                    | "minecraft:sign_text_front"
+                    | "minecraft:sign_text_back"
+                    | "minecraft:lodestone_tracker"
+                    | "minecraft:custom_name"
+                    | "minecraft:lore"
+                    | "minecraft:rarity"
+                    | "minecraft:max_stack_size"
+                    | "minecraft:item_name"
+                    | "minecraft:item_model"
+                    | "minecraft:custom_data"
+                    | "minecraft:custom_model_data"
+                    | "minecraft:consumable"
+                    | "minecraft:potion_contents"
+                    | "minecraft:pot_decorations"
+            ) {
+                encode_saved(name, value);
+            }
+        }
+        if let Some(sunrise_core::nbt::Tag::Compound(entries)) =
+            crate::item_data::encode_extra_components_matching(s, |name| {
+                matches!(
+                    name,
+                    "minecraft:potion_contents" | "minecraft:pot_decorations"
+                )
+            })
+        {
+            for (name, value) in &entries {
+                let name = name.to_string_lossy();
+                if !name.starts_with('!') {
+                    encode_saved(&name, value);
+                }
+            }
+        }
+    }
     stack
 }
 
@@ -2325,7 +2443,8 @@ pub fn within_block_range(eye: [f64; 3], range: f64, pos: [i32; 3]) -> bool {
 mod tests {
     use super::*;
     use sunrise_core::nbt::Tag;
-    use sunrise_protocol::buf::{Codec, Reader, Writer};
+    use sunrise_core::vanilla_bytes::Writer;
+    use sunrise_protocol::buf::{Codec, Reader};
     use sunrise_protocol::item::{Component, component};
 
     #[test]

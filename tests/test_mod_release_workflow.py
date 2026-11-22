@@ -161,6 +161,16 @@ binaries = "{self.base}/{descriptor}"
         with self.assertRaisesRegex(SystemExit, "different build"):
             self.confirm()
 
+    def test_a_published_body_change_blocks_the_append(self):
+        index = json_read(self.published)
+        index["releases"].append(self.target)
+        index["projects"][0]["versions"][0]["verdicts"] = {
+            self.target["tag"]: {"verdict": "rebuild", "review": ["game::tick"], "targets": []},
+        }
+        json_write(self.published, index)
+        with self.assertRaisesRegex(SystemExit, "published fit break"):
+            self.confirm()
+
     def test_a_new_owner_key_file_or_takedown_blocks_the_append(self):
         for old, new in [("[42]", "[99]"), ("reviewed key", "other key"), ("original signature", "changed signature"),
                          (self.record["url"], f"{self.base}/different.smod")]:

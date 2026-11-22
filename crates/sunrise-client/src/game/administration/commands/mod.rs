@@ -841,8 +841,10 @@ impl Game<'_> {
             }
             // A client's own copy of a row its server shows it.
             _ => self
-                .shown_remote_general(id as i32)
-                .map(|_| Target::General(id)),
+                .remote
+                .as_ref()
+                .is_some_and(|r| r.general.rows.contains_key(&(id as i32)))
+                .then_some(Target::General(id)),
         }
     }
     /// `ServerLevel.getEntityOrPart` for a part: the `EnderDragonPart` of the
@@ -1027,8 +1029,10 @@ impl Game<'_> {
                     && !id.ends_with("get")
                     && let Ok(t) = self.entities(ctx, "target", false)
                 {
-                    let target = self.waypoint_target(t[0]);
-                    self.cmds.waypoint_dirty.push(target);
+                    // Players already have a live attribute dirty callback.
+                    if !matches!(t[0], Target::Player | Target::Guest(_)) {
+                        self.cmds.waypoint_dirty.push(t[0]);
+                    }
                 }
                 result
             }
@@ -1352,9 +1356,24 @@ impl Game<'_> {
                     return;
                 }
             }
+            let motion = sunrise_client::motion::BodyMotion {
+                world: &g.world,
+                collision: g.collision,
+                facts: g.res.facts(),
+                blocks: Some(&g.res.motion().blocks),
+                context: &g.loop_context,
+                side: None,
+            };
             target_entity_mut!(g, t, e => {
                 e.velocity_mut().y = 0.0;
-                e.set_on_ground(true);
+                let (feet, bounds) = (e.position(), e.bounds());
+                if let Some(ground) = e.ground_state_mut() {
+                    ground.on_ground = true;
+                    motion.update_support(ground, feet, bounds, None,
+                        sunrise_world::collision_context::CollisionContext::empty(false), None);
+                } else {
+                    e.set_on_ground(true);
+                }
             });
         });
     }
@@ -4408,6 +4427,7 @@ capabilities = ["registries"]
                     nodes: vec![],
                     args,
                     command: None,
+                    executor: None,
                     range: (0, 0),
                     child: None,
                     literals: vec![],
@@ -4677,6 +4697,7 @@ mod query_feedback_tests {
                     nodes: Vec::new(),
                     args: Vec::new(),
                     command: None,
+                    executor: None,
                     range: (0, 0),
                     child: None,
                     literals: vec!["gamerule".into(), input.into()],

@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 use sunrise_client::{
     advancements::Tree,
     crafting::ResolvedSources,
+    items::Items,
     lan::data::{FrozenDamage, PackRegistryDefinitions, SyncData},
 };
 use sunrise_world::item_defaults::ItemData;
@@ -37,9 +38,10 @@ pub(super) fn overlay_key(overlay: &sunrise_world::loot::PackOverlay) -> u64 {
 pub(in crate::game) fn server_sources(
     root: &std::path::Path,
     item_data: &ItemData,
+    items: &Items,
     overlay: &sunrise_world::loot::PackOverlay,
 ) -> std::io::Result<Arc<ResolvedSources>> {
-    server_sources_with(root, item_data, overlay, false, || {
+    server_sources_with(root, item_data, items, overlay, false, || {
         server_data_load(root, item_data)
     })
 }
@@ -50,9 +52,10 @@ pub(in crate::game) fn server_sources(
 fn server_sources_collecting(
     root: &std::path::Path,
     item_data: &ItemData,
+    items: &Items,
     overlay: &sunrise_world::loot::PackOverlay,
 ) -> std::io::Result<Arc<ResolvedSources>> {
-    server_sources_with(root, item_data, overlay, true, || {
+    server_sources_with(root, item_data, items, overlay, true, || {
         server_data_load(root, item_data)
     })
 }
@@ -60,6 +63,7 @@ fn server_sources_collecting(
 fn server_sources_with(
     root: &std::path::Path,
     item_data: &ItemData,
+    items: &Items,
     overlay: &sunrise_world::loot::PackOverlay,
     collecting: bool,
     load: impl FnOnce() -> std::io::Result<sunrise_world::native_load_context::LoadContext>,
@@ -74,7 +78,7 @@ fn server_sources_with(
         return Ok(held.sources.clone());
     }
     let context = load()?;
-    let sources = collect(root, overlay, &context, collecting)?;
+    let sources = collect(root, items, overlay, &context, collecting)?;
     if sources.is_complete() {
         *slot = Some(ServerSources {
             root: root.to_owned(),
@@ -88,11 +92,12 @@ fn server_sources_with(
 
 fn collect(
     root: &std::path::Path,
+    items: &Items,
     overlay: &sunrise_world::loot::PackOverlay,
     context: &sunrise_world::native_load_context::LoadContext,
     collecting: bool,
 ) -> std::io::Result<Arc<ResolvedSources>> {
-    let loaded = ResolvedSources::load_collecting(root, overlay, context)
+    let loaded = ResolvedSources::load_collecting(root, items, overlay, context)
         .map_err(|error| std::io::Error::other(error.to_string()))?;
     if !collecting {
         loaded
@@ -108,14 +113,22 @@ fn collect(
 pub(in crate::game) fn initial_sources(
     root: &std::path::Path,
     item_data: &ItemData,
+    items: &Items,
     overlay: &sunrise_world::loot::PackOverlay,
 ) -> std::io::Result<Arc<ResolvedSources>> {
     use sunrise_world::native_load_context::DataLoadOrigin;
     let context = item_data.context();
     if context.origin() == DataLoadOrigin::ServerDataLoad {
-        server_sources_with(root, item_data, overlay, true, || Ok(context.clone()))
+        server_sources_with(
+            root,
+            item_data,
+            items,
+            overlay,
+            true,
+            || Ok(context.clone()),
+        )
     } else {
-        collect(root, overlay, context, true)
+        collect(root, items, overlay, context, true)
     }
 }
 
@@ -124,9 +137,16 @@ pub(in crate::game) fn initial_sources(
 pub(in crate::game) fn prepare_server_sources(
     root: &std::path::Path,
     item_data: &ItemData,
+    items: &Items,
     overlay: &sunrise_world::loot::PackOverlay,
 ) -> std::io::Result<Arc<ResolvedSources>> {
-    collect(root, overlay, &server_data_load(root, item_data)?, true)
+    collect(
+        root,
+        items,
+        overlay,
+        &server_data_load(root, item_data)?,
+        true,
+    )
 }
 
 pub(in crate::game) fn install_server_sources(
@@ -147,14 +167,18 @@ pub(in crate::game) fn install_server_sources(
 pub(in crate::game) fn load_sources(
     root: &std::path::Path,
     item_data: &ItemData,
+    items: &Items,
     origin: sunrise_world::native_load_context::DataLoadOrigin,
     overlay: &sunrise_world::loot::PackOverlay,
 ) -> std::io::Result<Arc<ResolvedSources>> {
     use sunrise_world::native_load_context::DataLoadOrigin;
     match origin {
-        DataLoadOrigin::ServerDataLoad => server_sources_collecting(root, item_data, overlay),
+        DataLoadOrigin::ServerDataLoad => {
+            server_sources_collecting(root, item_data, items, overlay)
+        }
         DataLoadOrigin::ClientPreload | _ => collect(
             root,
+            items,
             overlay,
             &data_load_context(root, item_data, origin)?,
             true,
@@ -200,10 +224,11 @@ static SYNC: Mutex<SyncCache> = Mutex::new(SyncCache {
 pub(in crate::game) fn sync_data(
     root: &std::path::Path,
     item_data: &ItemData,
+    items: &Items,
     overlay: &sunrise_world::loot::PackOverlay,
 ) -> std::result::Result<Arc<SyncData>, String> {
     let mut sync = SYNC.lock().unwrap_or_else(|e| e.into_inner());
-    cached_sync_data(&mut sync, root, overlay, item_data)
+    cached_sync_data(&mut sync, root, overlay, item_data, items)
 }
 
 pub(super) fn cached_sync_data(
@@ -211,6 +236,7 @@ pub(super) fn cached_sync_data(
     root: &std::path::Path,
     overlay: &sunrise_world::loot::PackOverlay,
     item_data: &ItemData,
+    items: &Items,
 ) -> std::result::Result<Arc<SyncData>, String> {
     let packs = !overlay.files.is_empty();
     let generation = item_data.defaults().generation();
@@ -223,7 +249,7 @@ pub(super) fn cached_sync_data(
     }
     let load = |packed, advancements| {
         let sources =
-            server_sources(root, item_data, overlay).map_err(|error| error.to_string())?;
+            server_sources(root, item_data, items, overlay).map_err(|error| error.to_string())?;
         match &sync.damage {
             Some(damage) => SyncData::load_with_frozen_damage(
                 root,
@@ -259,6 +285,7 @@ pub(super) fn cached_sync_data(
 pub(in crate::game) fn prepare_world_sync_data(
     root: &std::path::Path,
     item_data: &ItemData,
+    items: &Items,
     overlay: &sunrise_world::loot::PackOverlay,
     damage: &sunrise_world::damage_source::Catalog,
     packed_registries: Option<Arc<PackRegistryDefinitions>>,
@@ -270,7 +297,7 @@ pub(in crate::game) fn prepare_world_sync_data(
         advancements: Some(advancements),
         ..Default::default()
     };
-    initialize_world_sync_data(&mut staged, root, overlay, damage, item_data)?;
+    initialize_world_sync_data(&mut staged, root, overlay, damage, item_data, items)?;
     Ok(staged)
 }
 
@@ -284,6 +311,7 @@ pub(super) fn initialize_world_sync_data(
     overlay: &sunrise_world::loot::PackOverlay,
     damage: &sunrise_world::damage_source::Catalog,
     item_data: &ItemData,
+    items: &Items,
 ) -> std::result::Result<(), String> {
     sync.world_packs = !overlay.files.is_empty();
     if sync.world_packs
@@ -295,7 +323,7 @@ pub(super) fn initialize_world_sync_data(
     }
     sync.damage = Some(FrozenDamage::new(damage, overlay));
     if overlay.kind("damage_type").next().is_some() {
-        cached_sync_data(sync, root, overlay, item_data)?;
+        cached_sync_data(sync, root, overlay, item_data, items)?;
     }
     Ok(())
 }
@@ -434,7 +462,10 @@ pub(in crate::game) struct SyncPreload {
 
 /// Start reading the server's data beside the world's preparation; `None`
 /// when it is read already, or being read (`preload_world_data`).
-pub(in crate::game) fn preload_sync_data(item_data: &Arc<ItemData>) -> Option<SyncPreload> {
+pub(in crate::game) fn preload_sync_data(
+    item_data: &Arc<ItemData>,
+    items: Arc<Items>,
+) -> Option<SyncPreload> {
     let generation = item_data.defaults().generation();
     if !SYNC.try_lock().is_ok_and(|sync| {
         sync.damage.is_none()
@@ -448,23 +479,26 @@ pub(in crate::game) fn preload_sync_data(item_data: &Arc<ItemData>) -> Option<Sy
     let root = item_data.root().to_owned();
     let item_data = Arc::clone(item_data);
     // Loading recipes asks mods' ingredient and recipe property set hooks.
-    sunrise_guest_stack::spawn("Server data preload".into(), move || {
-        let none = sunrise_world::loot::PackOverlay::NONE;
-        SyncData::load(
-            item_data.root(),
-            &none,
-            item_data.defaults(),
-            server_sources(item_data.root(), &item_data, &none)
-                .map_err(|error| error.to_string())?
-                .as_ref(),
-        )
-    })
-    .map(|worker| SyncPreload {
-        root,
-        generation,
-        worker,
-    })
-    .ok()
+    std::thread::Builder::new()
+        .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
+        .name("Server data preload".into())
+        .spawn(move || {
+            let none = sunrise_world::loot::PackOverlay::NONE;
+            SyncData::load(
+                item_data.root(),
+                &none,
+                item_data.defaults(),
+                server_sources(item_data.root(), &item_data, &items, &none)
+                    .map_err(|error| error.to_string())?
+                    .as_ref(),
+            )
+        })
+        .map(|worker| SyncPreload {
+            root,
+            generation,
+            worker,
+        })
+        .ok()
 }
 
 impl SyncPreload {
@@ -503,8 +537,15 @@ mod initial_source_tests {
         let inputs = Arc::new(LoadInputs::new(Default::default(), Default::default()));
         let context = LoadContext::new(DataLoadOrigin::ClientPreload, inputs, [] as [&str; 0]);
         let data = ItemData::load(root.path(), context).unwrap();
+        let items = Items::for_tests(Default::default());
         assert!(
-            initial_sources(root.path(), &data, &sunrise_world::loot::PackOverlay::NONE).is_err()
+            initial_sources(
+                root.path(),
+                &data,
+                &items,
+                &sunrise_world::loot::PackOverlay::NONE
+            )
+            .is_err()
         );
     }
 
@@ -523,19 +564,21 @@ mod initial_source_tests {
         let inputs = Arc::new(LoadInputs::new(Default::default(), Default::default()));
         let context = LoadContext::new(DataLoadOrigin::ClientPreload, inputs, [] as [&str; 0]);
         let data = ItemData::load(root.path(), context).unwrap();
-        let sources =
-            initial_sources(root.path(), &data, &sunrise_world::loot::PackOverlay::NONE).unwrap();
+        let items = Items::for_tests(Default::default());
+        let sources = initial_sources(
+            root.path(),
+            &data,
+            &items,
+            &sunrise_world::loot::PackOverlay::NONE,
+        )
+        .unwrap();
         assert!(!sources.is_complete());
         let none = sunrise_world::loot::PackOverlay::NONE;
-        let error = sunrise_client::crafting::Recipes::from_resolved(
-            root.path(),
-            &sunrise_client::items::Items::for_tests(Default::default()),
-            &none,
-            &sources,
-        )
-        .err()
-        .unwrap()
-        .to_string();
+        let error =
+            sunrise_client::crafting::Recipes::from_resolved(root.path(), &items, &none, &sources)
+                .err()
+                .unwrap()
+                .to_string();
         assert!(error.starts_with("2 recipes failed to load:"), "{error}");
         assert!(
             error.find("recipe/a.json").unwrap() < error.find("recipe/b.json").unwrap(),

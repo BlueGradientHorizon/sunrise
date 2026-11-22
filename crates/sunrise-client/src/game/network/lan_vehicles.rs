@@ -483,7 +483,7 @@ impl Game<'_> {
                 b.velocity,
                 b.bounds(),
                 0.0,
-                b.on_ground,
+                b.ground.on_ground,
             )
         } else if let Some(i) = mount {
             let m = &self.mobs[i];
@@ -730,7 +730,7 @@ impl Game<'_> {
             b.position = target;
             b.previous_yaw = b.yaw;
             b.yaw = p.yaw;
-            b.on_ground = p.on_ground;
+            b.ground.on_ground = p.on_ground;
         });
         // handleMoveVehicle's `vehicle.move` counts the fall
         // (AbstractBoat.checkFallDamage); the server's baseTick resets it in

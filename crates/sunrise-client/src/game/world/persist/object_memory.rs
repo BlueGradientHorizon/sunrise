@@ -261,7 +261,9 @@ impl Game<'_> {
                 },
                 drop_item,
                 fall_distance,
-                on_ground: entity_nbt::flag(&tag, "OnGround"),
+                ground: sunrise_world::ground_support::GroundState::from_ground_flag(
+                    entity_nbt::flag(&tag, "OnGround"),
+                ),
                 fire_ticks: crate::game::boats::saved_fire(&tag),
                 sync_velocity: false,
                 stuck: Vec3::ZERO,
@@ -354,7 +356,9 @@ impl Game<'_> {
                 velocity: entity_nbt::motion(&tag),
                 fuse,
                 ticks: 0,
-                on_ground: entity_nbt::flag(&tag, "OnGround"),
+                ground: sunrise_world::ground_support::GroundState::from_ground_flag(
+                    entity_nbt::flag(&tag, "OnGround"),
+                ),
                 fall_distance: sunrise_client::save::float(tag.get("fall_distance")).unwrap_or(0.0),
                 stuck: Vec3::ZERO,
                 in_water: false,
@@ -399,12 +403,12 @@ impl Game<'_> {
             let mut b =
                 crate::game::boats::Boat::new(id, std::sync::Arc::from(wood), position, yaw);
             b.no_gravity = entity_nbt::flag(&tag, "NoGravity");
-            b.on_ground = entity_nbt::flag(&tag, "OnGround");
+            b.ground.on_ground = entity_nbt::flag(&tag, "OnGround");
             b.fire_ticks = crate::game::boats::saved_fire(&tag);
             b.ticks_frozen = crate::game::boats::saved_ticks_frozen(&tag);
             b.pitch = entity_nbt::rotation(&tag)[1];
             // Entity.load: OnGround and fall_distance, as saved.
-            (b.on_ground, b.fall_distance) = entity_nbt::ground_from_nbt(&tag);
+            (b.ground.on_ground, b.fall_distance) = entity_nbt::ground_from_nbt(&tag);
             if chest {
                 b = b.with_chest();
                 b.items = sunrise_client::save::decode_items(
@@ -591,7 +595,6 @@ impl Game<'_> {
     /// from goes (`EntityType.loadPassengersRecursive` mounts only a loaded
     /// one): not a compound, or no registered type (`EntityType.by`).
     pub(super) fn take_passengers(&mut self, tag: &mut Tag) -> Vec<Tag> {
-        self.load_entity_types();
         // Without the registry nothing can be told apart: keep every entry.
         let registry = self.entity_types_loaded();
         let mut riders = Vec::new();

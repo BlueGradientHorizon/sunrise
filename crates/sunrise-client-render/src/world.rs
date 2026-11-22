@@ -840,6 +840,7 @@ impl World {
     pub fn is_air(&self, state: BlockStateId) -> bool {
         state == self.air
     }
+    #[inline]
     pub fn loaded(&self, x: i32, z: i32) -> bool {
         self.chunks.contains_key(&(x >> 4, z >> 4))
     }
@@ -951,19 +952,7 @@ impl World {
     /// The fields Sunrise keeps beside a block entity's model, for a journal: the tag it was
     /// loaded or set with (its `lock`) and its pending loot metadata.
     pub fn block_entity_extras(&self, key: (i32, i32, i32)) -> BlockEntityExtras {
-        let saved = self
-            .chunks
-            .get(&(key.0 >> 4, key.2 >> 4))
-            .and_then(|chunk| chunk.saved.as_ref());
-        BlockEntityExtras {
-            source: saved.and_then(|s| {
-                s.block_entity_sources
-                    .iter()
-                    .find(|(p, _)| *p == key)
-                    .map(|(_, tag)| tag.clone())
-            }),
-            pending_loot: saved.and_then(|s| s.pending_loot.get(&key).cloned()),
-        }
+        BlockEntityExtras::capture(&self.chunks, key)
     }
     /// Puts back what [`World::block_entity_extras`] kept.
     pub fn set_block_entity_extras(&mut self, key: (i32, i32, i32), kept: BlockEntityExtras) {
@@ -1314,4 +1303,22 @@ mod tests {
 pub struct BlockEntityExtras {
     pub source: Option<sunrise_core::nbt::Tag>,
     pub pending_loot: Option<crate::chunk::PendingContainerLoot>,
+}
+
+impl BlockEntityExtras {
+    /// Capture the saved side fields without borrowing the block-entity map.
+    pub fn capture(chunks: &crate::chunk_map::ChunkMap, key: (i32, i32, i32)) -> Self {
+        let saved = chunks
+            .get(&(key.0 >> 4, key.2 >> 4))
+            .and_then(|chunk| chunk.saved.as_ref());
+        Self {
+            source: saved.and_then(|s| {
+                s.block_entity_sources
+                    .iter()
+                    .find(|(p, _)| *p == key)
+                    .map(|(_, tag)| tag.clone())
+            }),
+            pending_loot: saved.and_then(|s| s.pending_loot.get(&key).cloned()),
+        }
+    }
 }

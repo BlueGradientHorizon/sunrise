@@ -1,7 +1,10 @@
 //! Publish fit from workflow-supplied SDK files. This route never fetches a build or runs a mod.
 use crate::sdk_cmds::{PackageSubject, Subject, compare_fit, compare_game, package_subject};
 use crate::sdk_fetch::{BUILD_DATA, SURFACE};
-use mod_surface::{ReadError, Surface, uses::Fit};
+use mod_surface::{
+    ReadError, Surface,
+    uses::{Change, Fit},
+};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 use sunrise_mod_package::{
@@ -292,6 +295,12 @@ fn binary_errors(
             Some(FitVerdict::Breaks { changed }) => {
                 format!("source does not fit: {}", changed.join(", "))
             }
+            Some(FitVerdict::Rebuild { review }) => {
+                format!(
+                    "source does not fit: function bodies changed: {}",
+                    review.join(", ")
+                )
+            }
             None => "no stable fit verdict for this build".to_owned(),
             Some(_) => continue,
         };
@@ -340,14 +349,31 @@ fn native<'a>(
         ),
         Fit::Fits => (Vec::new(), None),
     };
-    // Current SDKs provide a whole-function span hash, not a body-only fingerprint. Every
-    // game-code mismatch is a break; none can prove that the declaration was unchanged.
     changed.extend(game.misfits);
     if !changed.is_empty() {
+        if exact_reason.is_none()
+            && comparison.report.deferred.is_none()
+            && !game.unrecorded
+            && game.unjudged.is_empty()
+            && let Some(review) = changed
+                .iter()
+                .map(|m| match &m.change {
+                    Change::BodyChanged { function } => Some(function.clone()),
+                    _ => None,
+                })
+                .collect::<Option<BTreeSet<_>>>()
+        {
+            return FitVerdict::Rebuild {
+                review: review.into_iter().collect(),
+            };
+        }
         return FitVerdict::Breaks {
             changed: changed
                 .into_iter()
-                .map(|m| m.id)
+                .map(|m| match m.change {
+                    Change::BodyChanged { .. } | Change::DeclarationChanged { .. } => m.to_string(),
+                    _ => m.id,
+                })
                 .collect::<BTreeSet<_>>()
                 .into_iter()
                 .take(5)

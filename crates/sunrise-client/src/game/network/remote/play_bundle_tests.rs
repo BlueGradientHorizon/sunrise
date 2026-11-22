@@ -1,5 +1,5 @@
 use super::super::Received;
-use super::{connect_play_test, finish_play_test, spawn_menu_test};
+use super::{connect_play_test, finish_play_test, offer_test_payloads, spawn_menu_test};
 use crate::game::{native_entity_refs::tests::with_client_game, viewed_worlds::tests::column};
 use mod_api::{
     HandlerThread, Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes,
@@ -21,7 +21,6 @@ use sunrise_protocol::{
         handshake, login,
         play::{self, Clientbound as C, Serverbound as S},
     },
-    payload_negotiation::{CHANNEL, Control},
 };
 
 const MAIN: &str = "bundle_probe:main";
@@ -241,30 +240,10 @@ fn connect_probe(
 ) {
     let local = raw_payloads::Local::capture(raw_payloads::Side::Server).unwrap();
     let (reader, writer) = connect_play_test(game, |reader, writer| {
-        offer_probe(reader, writer, &local);
+        offer_test_payloads(reader, writer, &local.manifest);
     });
     spawn_menu_test(game);
     (local, reader, writer)
-}
-
-fn offer_probe(
-    reader: &mut sunrise_protocol::connection::ConnReader,
-    writer: &mut sunrise_protocol::connection::ConnWriter,
-    local: &raw_payloads::Local,
-) {
-    writer
-        .send(
-            &cfg::Clientbound::CustomPayload(CustomPayload {
-                channel: CHANNEL.into(),
-                data: Control::Offer(local.manifest.clone()).encode().unwrap(),
-            })
-            .encode(),
-        )
-        .unwrap();
-    let (id, body) = reader.recv().unwrap();
-    assert!(
-        matches!(cfg::Serverbound::decode(id, &body).unwrap(), cfg::Serverbound::CustomPayload(p) if p.channel == CHANNEL)
-    );
 }
 
 #[test]
@@ -491,7 +470,7 @@ fn a_grouped_column_split_across_tcp_reads_is_adopted_as_one_bundle() {
         let local = raw_payloads::Local::capture(raw_payloads::Side::Server).unwrap();
         let (_reader, mut writer) =
             finish_play_test(game, accept_tcp(listener), |reader, writer| {
-                offer_probe(reader, writer, &local);
+                offer_test_payloads(reader, writer, &local.manifest);
             });
         spawn_menu_test(game);
         let counters = game
