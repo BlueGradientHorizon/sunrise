@@ -1293,7 +1293,7 @@ fn live_section_host_builds_play_packets_and_refuses_container_click() {
         packets::play::{Attack, Serverbound},
     };
 
-    let host = LiveSectionHost(None);
+    let host = LiveSectionHost::new(None);
     let packet = host
         .build_play_packet(&PlayPacketRequest::Attack { entity: 9 })
         .unwrap();
