@@ -325,7 +325,6 @@ impl Game<'_> {
             self.as_guest(conn, |game| game.server_spin_attack());
         }
         let in_wall = !sleeping && self.in_wall(conn, at, dimensions);
-        let mut soul = None;
         let events = self.as_guest(conn, |game| {
             let (rules, motion) = (game.world.health_rules, game.motion);
             let health = &motion.health;
@@ -468,6 +467,8 @@ impl Game<'_> {
                     _ => {}
                 }
             }
+            // `LivingEntity.baseTick` runs the equipment tick before location effects.
+            game.tick_equipment_enchantments(super::super::commands::Target::Player, id);
             // LivingEntity.baseTick: a new block position runs the worn
             // enchantments' location_changed effects (frost walker).
             game.location_changed_effects([start.x, start.y, start.z], from_ground);
@@ -489,9 +490,7 @@ impl Game<'_> {
                 let _ = w.server_player_pose_tick();
             }
             game.apply_player_waypoint_updates();
-            // Soul Speed's effects (LivingEntity.baseTick's location_changed
-            // and tick effects); its particle goes to the players around.
-            soul = game.tick_soul_speed();
+            game.update_soul_speed_location();
             game.handle_shoulder_entities();
             let Some(player) = game.player.as_mut() else {
                 return (Vec::new(), None, ServerTravel::Continue);
@@ -543,11 +542,7 @@ impl Game<'_> {
             .lan
             .as_mut()
             .is_some_and(|host| host.hub.apply_server_travel(conn, travel_teleport, travel));
-        if let Some((at, velocity)) = soul
-            && let Some(host) = self.lan.as_ref()
-        {
-            crate::game::lan_particles::send_soul_particle(host, at, velocity);
-        }
+
         self.as_guest(conn, |game| {
             game.sculk_step_on_player();
             game.tick_player_sculk_events();

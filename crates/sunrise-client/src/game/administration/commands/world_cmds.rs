@@ -298,14 +298,14 @@ impl Game<'_> {
         match direct {
             Some(Target::Projectile(id)) => {
                 if let Some(shot) = self.creatures.projectiles.iter().find(|shot| shot.id == id) {
-                    Self::set_projectile_attack(&mut attack, shot);
+                    self.set_projectile_attack(&mut attack, shot);
                 }
             }
             Some(Target::Trident(id)) => {
                 if let Some(shot) = self.tridents.iter().find(|shot| shot.id == id) {
                     attack.projectile = Some(id as i32);
                     attack.projectile_kind = DirectEntity::Arrow;
-                    Self::set_projectile_weapon(&mut attack, Some(&shot.stack));
+                    self.set_projectile_weapon(&mut attack, Some(&shot.stack));
                 }
             }
             _ => {}

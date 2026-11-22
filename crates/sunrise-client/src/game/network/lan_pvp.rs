@@ -58,6 +58,7 @@ pub(super) struct Strike {
     /// yaw), and whether the hit is a sprinting knockback attack.
     knockback: (f32, f64, f64),
     knockback_attack: bool,
+    direct_motion: Option<(f64, bool)>,
     /// The attacker's team, for the victim's `Player.canHarmPlayer`.
     team: Option<sunrise_client::scoreboard::Team>,
     /// The attacker's main-hand item with a custom name, for the death
@@ -92,8 +93,9 @@ impl Strike {
             from: [3.0, 64.0, 5.0],
             disable_blocking: 0.0,
             sweep: None,
-            knockback: (0.5, 1.0, 0.0),
+            knockback: (1.0, 1.0, 0.0),
             knockback_attack: false,
+            direct_motion: None,
             team: None,
             item: None,
             weapon: None,
@@ -134,14 +136,6 @@ pub(super) struct Sweep {
     pub(super) hit_box: Aabb,
     /// The entity id of the player the sweep started from, which it spares.
     pub(super) skip: Option<i32>,
-}
-
-impl Strike {
-    /// Whether it has extra knockback, which stops the attacker's sprint
-    /// once it lands (Player.causeExtraKnockback).
-    pub(super) fn stops_sprint(&self) -> bool {
-        self.knockback.0 > 0.0
-    }
 }
 
 impl Game<'_> {
@@ -187,7 +181,8 @@ impl Game<'_> {
         let (amount, scale, crit, magic) =
             self.melee_damage("minecraft:player", true, Some(victim));
         let sweep = self.sweep_attack_position(scale, crit, "minecraft:player");
-        let (strength, knockback_attack) = self.extra_knockback("minecraft:player", scale);
+        let strength = self.player_attack_knockback();
+        let knockback_attack = scale > 0.9 && self.player.as_ref().is_some_and(|p| p.sprinting);
         let (xd, zd) = self.extra_knockback_direction();
         self.attack_ticks = 0;
         self.swing_arm();
@@ -217,6 +212,7 @@ impl Game<'_> {
             sweep,
             knockback: (strength, xd, zd),
             knockback_attack,
+            direct_motion: Some(motion),
             team: self.player_team().cloned(),
             item: self.main_hand_custom_name(),
             weapon,
@@ -332,11 +328,9 @@ impl Game<'_> {
     }
 
     /// The hit landing on the victim with its extra knockback, then the
-    /// attacker's attack sound. Whether the victim was hurt.
-    pub(super) fn pvp_land(&mut self, victim: Victim, s: &Strike) -> bool {
-        let Some(host) = self.lan.as_ref() else {
-            return false;
-        };
+    /// attacker's attack sound. A landed hit returns whether it stopped the attacker's sprint.
+    pub(super) fn pvp_land(&mut self, victim: Victim, s: &Strike) -> Option<bool> {
+        let host = self.lan.as_ref()?;
         let team = match victim {
             Victim::Guest(conn) => host
                 .hub
@@ -373,8 +367,25 @@ impl Game<'_> {
                 }
                 let hurt = g.mob_hits_player_from(s.amount, s.from, &s.damage_type, s.creative);
                 g.combat.player_attacker = None;
-                let (strength, xd, zd) = s.knockback;
-                if hurt && strength > 0.0 {
+                if !hurt {
+                    return None;
+                }
+                let (base, xd, zd) = s.knockback;
+                let source = attack.player_source(&s.damage_type, attack.attacker);
+                let mut ctx = attack.enchantment_context(source, "minecraft:player");
+                ctx.direct_motion = s.direct_motion;
+                ctx.attacker_motion = s.direct_motion;
+                let strength = s.weapon.as_ref().map_or(base, |weapon| {
+                    g.evaluate_weapon_value(
+                        weapon,
+                        "minecraft:knockback",
+                        Some(g.own_entity_id() as u32),
+                        ctx,
+                        base,
+                    )
+                });
+                let strength = strength * 0.5 + if s.knockback_attack { 0.5 } else { 0.0 };
+                if strength > 0.0 {
                     g.knock_back_player_full(
                         f64::from(strength),
                         xd,
@@ -385,13 +396,15 @@ impl Game<'_> {
                         true,
                     );
                 }
-                hurt
+                Some(strength > 0.0)
             })
         };
-        let hurt = harm
-            && match victim {
-                Victim::Guest(conn) => self.guest_struck_by(conn, land).unwrap_or_default(),
-            };
+        let landed = harm
+            .then(|| match victim {
+                Victim::Guest(conn) => self.guest_struck_by(conn, land).flatten(),
+            })
+            .flatten();
+        let hurt = landed.is_some();
         if hurt && (s.crit || s.magic) {
             let target = match victim {
                 Victim::Guest(conn) => self
@@ -449,7 +462,7 @@ impl Game<'_> {
         if swept.is_none() || s.crit {
             self.audio.play(sound, Some(s.from), 1.0, 1.0);
         }
-        hurt
+        landed
     }
 
     /// `ServerPlayer.die`'s `killer.awardKillScore(this, source)` for a guest,

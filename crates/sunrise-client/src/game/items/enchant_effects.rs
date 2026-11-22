@@ -12,7 +12,7 @@ use mod_api::EquipmentSlot;
 use serde_json::Value;
 use sunrise_client::health::{Attack, HurtSource};
 use sunrise_client::{
-    enchant::{EffectContext, Enchantments, level_value},
+    enchant::{EffectContext, Enchantments, EntityEffect, level_value},
     items::{ItemStack, Items},
     mobs::{Damage, DamageKind, Who},
     random_source,
@@ -152,6 +152,16 @@ struct PostAttack<'a> {
     kind: &'a str,
     attack: &'a Attack,
     source: HurtSource<'a>,
+}
+
+pub(super) struct EntityEffectUse<'a> {
+    pub stack: &'a ItemStack,
+    pub holder: Option<u32>,
+    pub slot: Option<EquipmentSlot>,
+    pub affected: u32,
+    pub level: u32,
+    pub position: Option<[f64; 3]>,
+    pub attack: Option<(u32, HurtSource<'a>)>,
 }
 
 impl Game<'_> {
@@ -297,88 +307,54 @@ impl Game<'_> {
             items: None,
             ..Default::default()
         };
-        self.evaluate_weapon_damage(
-            held,
-            actors.map(|(attacker, _)| attacker),
-            actors.map(|(_, victim)| victim),
-            ctx,
-            base,
-        )
+        self.evaluate_weapon_damage(held, actors.map(|(_, victim)| victim), ctx, base)
     }
 
     pub(super) fn evaluate_weapon_damage(
         &mut self,
         held: &ItemStack,
-        attacker: Option<u32>,
         victim: Option<u32>,
         ctx: EffectContext<'_>,
         base: f32,
     ) -> f32 {
-        let ctx = EffectContext {
-            items: Some(world_items!(self)),
-            ..ctx
-        };
-        // Read effective levels once: get_enchantment_level may itself be mod-provided.
+        self.evaluate_weapon_value(held, "minecraft:damage", victim, ctx, base)
+    }
+
+    pub(super) fn evaluate_weapon_value(
+        &mut self,
+        held: &ItemStack,
+        component: &str,
+        victim: Option<u32>,
+        mut ctx: EffectContext<'_>,
+        base: f32,
+    ) -> f32 {
         let levels = held.all_enchantments();
         if levels.is_empty() {
             return base;
         }
-        let custom = self.remote.is_none()
-            && self.is_logical_server()
-            && world_stations!(self)
-                .enchantments
-                .has_custom_damage(&levels);
-        let actors = attacker
-            .zip(victim)
-            .filter(|_| custom)
-            .and_then(|(attacker, victim)| {
-                let epoch = self.native_lifecycle.epoch()?;
-                Some((
-                    mod_api::EntityRef::new(epoch, attacker),
-                    mod_api::EntityRef::new(epoch, victim),
-                ))
-            });
-        let weapon = actors.and_then(|_| {
-            use crate::game::api_values::TryIntoApi;
-            held.try_into_api().ok()
-        });
-        let mut random = self.world.random.clone();
-        let mut victim_random = victim
-            .and_then(|id| self.damage_victim_random(id))
-            .map_or_else(|| (*random).clone(), |rng| rng.clone());
-        let value = world_stations!(self).enchantments.modify_damage(
-            &levels,
-            &ctx,
-            &mut random,
-            &mut victim_random,
-            base,
-            &mut |slot, config, level, value| {
-                let Some(((attacker, victim), weapon)) = actors.zip(weapon.as_ref()) else {
-                    return value;
-                };
-                let Some(effect) = super::mods::ENCHANTMENT_DAMAGE_EFFECTS
-                    .get()
-                    .and_then(|effects| effects.get(slot))
-                else {
-                    return value;
-                };
-                effect.apply(
-                    self,
-                    &mod_api::EnchantmentDamageContext {
-                        attacker: mod_api::LivingRef::new(attacker),
-                        victim,
-                        weapon,
-                        level,
-                        config,
-                    },
-                    value,
-                )
-            },
-        );
-        self.world.random = random;
-        if let Some(rng) = victim.and_then(|id| self.damage_victim_random(id)) {
-            *rng = victim_random;
+        let enchantments = self.stations().enchantments.clone();
+        let mut level_random = self.world.random.clone();
+        let mut fallback = (*level_random).clone();
+        let authoritative = self.remote.is_none() && self.is_logical_server();
+        if authoritative && ctx.this_motion.is_none() {
+            ctx.this_motion = victim
+                .and_then(|id| self.enchantment_actor(id as i32))
+                .and_then(|actor| actor.motion);
         }
+        let victim_random = if authoritative {
+            victim.and_then(|id| self.damage_victim_random(id))
+        } else {
+            None
+        };
+        let value = enchantments.modify_entity_value(
+            &levels,
+            component,
+            &ctx,
+            &mut level_random,
+            victim_random.unwrap_or(&mut fallback),
+            base,
+        );
+        self.world.random = level_random;
         value
     }
 
@@ -402,6 +378,14 @@ impl Game<'_> {
                 id,
                 kind: "minecraft:player".into(),
                 motion: motion.map(|p| (p.fall_distance, p.fall_flying || p.flying)),
+            });
+        }
+        if let Some(index) = self.mob_index.find(&self.mobs, id as u32) {
+            let mob = &self.mobs[index];
+            return Some(EnchantmentActor {
+                id,
+                kind: mob.kind.id.clone().into(),
+                motion: Some((mob.fall_distance, mob.extra.fall_flying)),
             });
         }
         let EntityLookup::Found { value, .. } = self.server_resident_entity(id as u32) else {
@@ -457,36 +441,54 @@ impl Game<'_> {
     /// `Player.attack`'s extra knockback: `getKnockback` (the ATTACK_KNOCKBACK
     /// attribute, plus the weapon's knockback enchantment, halved) plus 0.5 for a
     /// sprinting full-strength hit, and whether the hit is that knockback attack.
-    pub(super) fn extra_knockback(&mut self, target_kind: &str, scale: f32) -> (f32, bool) {
+    pub(super) fn extra_knockback(
+        &mut self,
+        target: &str,
+        victim: u32,
+        scale: f32,
+        source: Option<&str>,
+    ) -> (f32, bool) {
         let sprinting = self.player.as_ref().is_some_and(|p| p.sprinting);
-        // LivingEntity.getKnockback: `(float)getAttributeValue(ATTACK_KNOCKBACK)`, which
-        // the weapon's knockback enchantment then adds to (EnchantmentHelper.modifyKnockback).
-        let base = self
-            .player
-            .as_mut()
-            .and_then(|p| p.attribute("minecraft:attack_knockback").ok())
-            .unwrap_or(0.0) as f32;
-        let enchanted = match self.held().cloned() {
-            Some(held) => {
-                let ctx = EffectContext {
-                    this: Some(target_kind),
-                    attacker: Some("minecraft:player"),
-                    direct_attacker: Some("minecraft:player"),
-                    is_direct: true,
-                    items: Some(world_items!(self)),
-                    ..Default::default()
-                };
-                world_stations!(self).enchantments.modify_value(
+        let base = self.player_attack_knockback();
+        let enchanted = if self.remote.is_none()
+            && self.is_logical_server()
+            && let Some(held) = self.held().cloned()
+        {
+            let attack = self.attack_of(self.own_entity_id());
+            let damage_type = source.map(str::to_owned).unwrap_or_else(|| {
+                self.stack_melee_damage_type(
                     Some(&held),
-                    "minecraft:knockback",
-                    &ctx,
-                    &mut self.world.random,
-                    base,
+                    self.player
+                        .as_ref()
+                        .map_or((0.0, false), |p| (p.fall_distance, p.fall_flying)),
+                    true,
                 )
-            }
-            None => base,
+            });
+            // Melee's direct and causing entities are the attacker even when the item overrides the type.
+            let source = HurtSource {
+                damage_type: &damage_type,
+                causing: attack.attacker,
+                direct: attack.attacker,
+                position: None,
+            };
+            self.evaluate_weapon_value(
+                &held,
+                "minecraft:knockback",
+                Some(victim),
+                attack.enchantment_context(source, target),
+                base,
+            )
+        } else {
+            base
         };
         sunrise_client::attack_strength::extra_knockback(enchanted, scale, sprinting)
+    }
+
+    pub(super) fn player_attack_knockback(&mut self) -> f32 {
+        self.player
+            .as_mut()
+            .and_then(|p| p.attribute("minecraft:attack_knockback").ok())
+            .unwrap_or(0.0) as f32
     }
     /// `causeExtraKnockback`'s direction, `(sin yRot, -cos yRot)` from Mth's
     /// sine table: the target flies where the attacker looks, not away from
@@ -574,7 +576,7 @@ impl Game<'_> {
         self.post_attack(victim, kind, &attack, source, weapon, false);
     }
 
-    fn post_attack_target(&self, id: u32) -> Option<Target> {
+    pub(super) fn post_attack_target(&self, id: u32) -> Option<Target> {
         if id == 0 {
             return None;
         }
@@ -602,19 +604,7 @@ impl Game<'_> {
             };
             if let Some(slot) = slot {
                 let name = sunrise_items::equipment::SLOT_NAMES[slot as usize];
-                if !def.slots.iter().any(|group| match group.as_str() {
-                    "any" => true,
-                    "hand" => matches!(slot, EquipmentSlot::MainHand | EquipmentSlot::OffHand),
-                    "armor" => matches!(
-                        slot,
-                        EquipmentSlot::Feet
-                            | EquipmentSlot::Legs
-                            | EquipmentSlot::Chest
-                            | EquipmentSlot::Head
-                            | EquipmentSlot::Body
-                    ),
-                    group => group == name,
-                }) {
+                if !def.matches_slot(name) {
                     continue;
                 }
             }
@@ -627,9 +617,16 @@ impl Game<'_> {
                 if entry["enchanted"] != enchanted {
                     continue;
                 }
-                let ctx = actors
+                let mut ctx = actors
                     .attack
                     .enchantment_context(actors.source, actors.kind);
+                if entry.get("requirements").is_some() {
+                    ctx.weather = Some(self.enchantment_weather());
+                    ctx.sees_sky = self
+                        .post_attack_target(actors.victim)
+                        .and_then(|target| self.target_position(target))
+                        .map(|at| self.enchantment_sees_sky(at));
+                }
                 if entry.get("requirements").is_some_and(|req| {
                     !enchantments.condition(req, *level, &ctx, &mut self.world.random)
                 }) {
@@ -645,13 +642,79 @@ impl Game<'_> {
                     continue;
                 }
                 let effect = &entry["effect"];
-                if let Some(data) = def.native_post_attack.get(&index) {
-                    if let Some(kind) = effect["type"].as_str() {
-                        self.native_enchant_effect(id, kind, data, *level, affected);
-                    }
+                if let Some(bound) = enchantments.entity_effect(id, "minecraft:post_attack", index)
+                {
+                    let invocation = EntityEffectUse {
+                        stack,
+                        holder,
+                        slot,
+                        affected,
+                        level: *level,
+                        position: None,
+                        attack: Some((actors.victim, actors.source)),
+                    };
+                    self.apply_bound_entity_effect(bound, &invocation, &mut |game, effect| {
+                        game.apply_post_attack(effect, *level, affected, holder, slot);
+                    });
                 } else {
                     self.apply_post_attack(effect, *level, affected, holder, slot);
                 }
+            }
+        }
+    }
+
+    pub(super) fn apply_bound_entity_effect(
+        &mut self,
+        effect: &EntityEffect,
+        invocation: &EntityEffectUse<'_>,
+        builtin: &mut impl FnMut(&mut Self, &Value),
+    ) {
+        match effect {
+            EntityEffect::Builtin(effect) => builtin(self, effect),
+            EntityEffect::AllOf(effects) => {
+                for effect in effects {
+                    self.apply_bound_entity_effect(effect, invocation, builtin);
+                }
+            }
+            EntityEffect::Native(effect) => {
+                if self.remote.is_some() || !self.is_logical_server() {
+                    return;
+                }
+                use super::api_values::TryIntoApi;
+                let Some(epoch) = self.native_lifecycle.epoch() else {
+                    return;
+                };
+                let entity = |id| (id != 0).then(|| mod_api::EntityRef::new(epoch, id));
+                let Some(affected) = entity(invocation.affected) else {
+                    return;
+                };
+                let position = invocation.position.or_else(|| {
+                    self.post_attack_target(invocation.affected)
+                        .and_then(|target| self.target_position(target))
+                });
+                let Some(position) = position else { return };
+                let Ok(item) = invocation.stack.try_into_api() else {
+                    return;
+                };
+                let context = mod_api::EnchantmentEntityEffectContext {
+                    level: invocation.level,
+                    item: &item,
+                    affected,
+                    position,
+                    holder: invocation
+                        .holder
+                        .and_then(entity)
+                        .map(mod_api::LivingRef::new),
+                    slot: invocation.slot,
+                    victim: invocation.attack.and_then(|(victim, _)| entity(victim)),
+                    causing: invocation
+                        .attack
+                        .and_then(|(_, source)| entity(source.causing as u32)),
+                    direct: invocation
+                        .attack
+                        .and_then(|(_, source)| entity(source.direct as u32)),
+                };
+                effect.apply(self, &context);
             }
         }
     }
@@ -708,6 +771,16 @@ impl Game<'_> {
             }
             Some("apply_mob_effect") => {
                 self.apply_post_attack_mob_effect(effect, level, affected, target, holder)
+            }
+            Some("summon_entity") => {
+                if let Some(at) = target.and_then(|target| self.target_position(target)) {
+                    self.summon_enchantment_entity(effect, at, holder);
+                }
+            }
+            Some("play_sound") => {
+                if let Some(at) = target.and_then(|target| self.target_position(target)) {
+                    self.play_enchantment_sound(effect, level, affected, at);
+                }
             }
             Some("explode") if effect["block_interaction"] == "trigger" => {
                 let Some(feet) = target.and_then(|target| self.target_position(target)) else {
@@ -852,6 +925,112 @@ impl Game<'_> {
         );
     }
 
+    /// `EnchantmentHelper.onHitBlock`, at the block-clamped impact point.
+    pub(super) fn hit_block_enchantment_effects(
+        &mut self,
+        stack: &ItemStack,
+        holder: Option<u32>,
+        projectile: u32,
+        kind: &str,
+        at: Vec3,
+        block: [i32; 3],
+    ) {
+        const COMPONENT: &str = "minecraft:hit_block";
+        let edge = f64::from(1.0e-5_f32);
+        let mut position = at.components();
+        for (value, origin) in position.iter_mut().zip(block) {
+            *value = value.clamp(f64::from(origin) + edge, f64::from(origin) + 1.0 - edge);
+        }
+        let table = self.stations().enchantments.clone();
+        // AbstractArrow supplies the state it hit, not the state a preceding effect writes.
+        let [x, y, z] = block;
+        let hit_state = self.pack.assets.registry.state(self.world.block(x, y, z));
+        for (id, level) in stack.all_enchantments().iter() {
+            let Some(entries) = table
+                .get(id)
+                .and_then(|def| def.effects[COMPONENT].as_array())
+            else {
+                continue;
+            };
+            for (index, entry) in entries.iter().enumerate() {
+                let Some(bound) = table.entity_effect(id, COMPONENT, index) else {
+                    continue;
+                };
+                let ctx = EffectContext {
+                    this: Some(kind),
+                    items: Some(world_items!(self)),
+                    weather: Some(self.enchantment_weather()),
+                    sees_sky: Some(self.enchantment_sees_sky(position)),
+                    hit_block: hit_state.map(|state| state.name.as_str()),
+                    hit_state,
+                    ..Default::default()
+                };
+                if entry
+                    .get("requirements")
+                    .is_none_or(|r| table.condition(r, *level, &ctx, &mut self.world.random))
+                {
+                    let invocation = EntityEffectUse {
+                        stack,
+                        holder,
+                        slot: None,
+                        affected: projectile,
+                        level: *level,
+                        position: Some(position),
+                        attack: None,
+                    };
+                    self.apply_bound_entity_effect(bound, &invocation, &mut |game, effect| {
+                        match effect["type"]
+                            .as_str()
+                            .map(|s| s.trim_start_matches("minecraft:"))
+                        {
+                            Some("summon_entity") => {
+                                game.summon_enchantment_entity(effect, position, holder)
+                            }
+                            Some("play_sound") => {
+                                game.play_enchantment_sound(effect, *level, projectile, position);
+                            }
+                            _ => {}
+                        }
+                    });
+                }
+            }
+        }
+    }
+
+    fn enchantment_weather(&self) -> (bool, bool) {
+        let (rain, thunder) = self.weather_levels(1.0);
+        (rain > 0.2, self.can_have_weather() && thunder > 0.9)
+    }
+
+    fn enchantment_sees_sky(&self, at: [f64; 3]) -> bool {
+        super::native_world_read::can_see_sky(&self.world, at.map(|v| v.floor() as i32))
+    }
+
+    /// `SummonEntityEffect`: the Channeling bolt credits the enchanted item's owner.
+    fn summon_enchantment_entity(&mut self, effect: &Value, at: [f64; 3], holder: Option<u32>) {
+        if effect["entity"] != "minecraft:lightning_bolt" {
+            return;
+        }
+        let player = holder.and_then(|id| match self.combat_player(id)? {
+            CombatPlayer::InPlace => Some((
+                self.lan_acting,
+                sunrise_client::lan::playerdata::ints_uuid(self.acting_player_uuid()),
+            )),
+            CombatPlayer::Parked(guest) => Some((Some(guest.conn), guest.uuid)),
+            CombatPlayer::Displaced(..) => None,
+        });
+        if self.lightning_strike_allowed(
+            player.map(|(_, uuid)| uuid),
+            at.map(|v| v.floor() as i32),
+            "trident",
+        ) {
+            self.spawn_bolt(at, false);
+            if let Some(bolt) = self.bolts.last_mut() {
+                bolt.cause = player.map(|(conn, _)| conn);
+            }
+        }
+    }
+
     /// `EnchantmentHelper.doPostPiercingAttackEffects`: the
     /// `minecraft:post_piercing_attack` effects of the weapon in hand after a
     /// jab (Lunge's dash).
@@ -859,36 +1038,62 @@ impl Game<'_> {
         let Some(held) = self.held().cloned() else {
             return;
         };
-        let mut effects = Vec::new();
+        const COMPONENT: &str = "minecraft:post_piercing_attack";
+        let table = self.stations().enchantments.clone();
         for (id, level) in held.all_enchantments().iter() {
-            let Some(def) = self.stations().enchantments.get(id) else {
+            let level = *level;
+            let Some(entries) = table
+                .get(id)
+                .filter(|def| def.matches_slot("mainhand"))
+                .and_then(|def| def.effects[COMPONENT].as_array())
+            else {
                 continue;
             };
-            for entry in def.effects["minecraft:post_piercing_attack"]
-                .as_array()
-                .into_iter()
-                .flatten()
-            {
-                effects.push((*level, entry["effect"].clone()));
+            for (index, entry) in entries.iter().enumerate() {
+                let Some(p) = self.player.as_ref() else {
+                    return;
+                };
+                let position = p.position.components();
+                let actor = p.entity_id as u32;
+                let applies = if id.as_ref() == "minecraft:lunge" {
+                    self.riding.is_none()
+                        && !p.fall_flying
+                        && !p.fluids.was_touching_water
+                        && (self.creative || p.health.food.food >= 7)
+                } else {
+                    let ctx = EffectContext {
+                        this: Some("minecraft:player"),
+                        this_motion: Some((p.fall_distance, p.fall_flying || p.flying)),
+                        items: Some(world_items!(self)),
+                        ..Default::default()
+                    };
+                    entry
+                        .get("requirements")
+                        .is_none_or(|r| table.condition(r, level, &ctx, &mut self.world.random))
+                };
+                if !applies {
+                    continue;
+                }
+                if let Some(bound) = table.entity_effect(id, COMPONENT, index) {
+                    let invocation = EntityEffectUse {
+                        stack: &held,
+                        holder: Some(actor),
+                        slot: Some(EquipmentSlot::MainHand),
+                        affected: actor,
+                        level,
+                        position: Some(position),
+                        attack: None,
+                    };
+                    self.apply_bound_entity_effect(bound, &invocation, &mut |game, effect| {
+                        game.apply_piercing_effect(effect, level)
+                    });
+                } else {
+                    self.apply_piercing_effect(&entry["effect"], level);
+                }
             }
         }
-        // Lunge's requirements: not riding, gliding or in water, and a
-        // player outside creative with at least 7 food.
-        let Some(p) = self.player.as_ref() else {
-            return;
-        };
-        if effects.is_empty()
-            || self.riding.is_some()
-            || p.fall_flying
-            || p.fluids.was_touching_water
-            || !(self.creative || p.health.food.food >= 7)
-        {
-            return;
-        }
-        for (level, effect) in effects {
-            self.apply_piercing_effect(&effect, level);
-        }
     }
+
     /// One `post_piercing_attack` effect on the player: `AllOf`,
     /// `ChangeItemDamage`, `ApplyExhaustion`, `ApplyEntityImpulse` and
     /// `PlaySoundEffect`.
@@ -1142,58 +1347,110 @@ impl Game<'_> {
             PlayerSlot::Armor(i) => &mut self.armor[i],
         }
     }
-    /// Bow enchantments at release: (extra base damage, infinity keeps the arrow).
-    /// `ammo` is the item being fired: `Enchantment.itemContext` hands it to the
-    /// `ammo_use` conditions as the tool, so Infinity only frees plain arrows.
-    pub(super) fn bow_enchantments(&mut self, ammo: &str) -> (f64, bool) {
-        let Some(bow) = self.held().cloned() else {
-            return (0.0, false);
+    /// `ProjectileWeaponItem.draw`: count on the shooter, then ammo use on its stack.
+    /// The caller debits the selected slot; copies are made before the first shot spends it.
+    pub(super) fn draw_weapon_ammo(
+        &mut self,
+        weapon: &ItemStack,
+        ammo: &ItemStack,
+        shooter: u32,
+        kind: &str,
+        infinite: bool,
+    ) -> (Vec<ItemStack>, u32) {
+        let count =
+            self.entity_enchantment_value(weapon, shooter, kind, "minecraft:projectile_count", 1.0)
+                as i32;
+        let count = count.max(0);
+        if count == 0 {
+            return (Vec::new(), 0);
+        }
+        let wanted = if infinite || !self.is_logical_server() {
+            0
+        } else {
+            let ctx = EffectContext {
+                tool: Some(&ammo.item),
+                items: Some(world_items!(self)),
+                ..Default::default()
+            };
+            world_stations!(self).enchantments.modify_value(
+                Some(weapon),
+                "minecraft:ammo_use",
+                &ctx,
+                &mut self.world.random,
+                1.0,
+            ) as i32
         };
-        let e = &world_stations!(self).enchantments;
-        // Damage is evaluated at impact, with the real victim (AbstractArrow.onHitEntity).
-        let power = 0.0;
-        let ammo_ctx = EffectContext {
-            tool: Some(ammo),
+        let mut drawn = Vec::new();
+        let mut debit = 0;
+        if let Ok(wanted) = u32::try_from(wanted)
+            && wanted <= ammo.count
+        {
+            let mut first = sunrise_client::arrows::drawn_ammo(ammo, wanted == 0);
+            first.count = wanted.max(1);
+            drawn.push(first);
+            debit = wanted;
+        }
+        drawn.extend((1..count).map(|_| sunrise_client::arrows::drawn_ammo(ammo, true)));
+        (drawn, debit)
+    }
+
+    /// Entity-filtered effects process their value on the subject's stream.
+    pub(super) fn entity_enchantment_value(
+        &mut self,
+        weapon: &ItemStack,
+        shooter: u32,
+        kind: &str,
+        component: &str,
+        base: f32,
+    ) -> f32 {
+        if !self.is_logical_server() {
+            return base;
+        }
+        let ctx = EffectContext {
+            this: Some(kind),
+            this_motion: self
+                .enchantment_actor(shooter as i32)
+                .and_then(|actor| actor.motion),
+            ..Default::default()
+        };
+        self.evaluate_weapon_value(weapon, component, Some(shooter), ctx, base)
+    }
+
+    /// `AbstractArrow` uses the drawn pickup stack as the tool and stores piercing as a byte.
+    pub(super) fn projectile_pierce(&mut self, weapon: &ItemStack, ammo: &ItemStack) -> u8 {
+        if !self.is_logical_server() {
+            return 0;
+        }
+        let ctx = EffectContext {
+            tool: Some(&ammo.item),
             items: Some(world_items!(self)),
             ..Default::default()
         };
-        let infinity = e.has_component(&bow, "minecraft:ammo_use")
-            && e.modify_value(
-                Some(&bow),
-                "minecraft:ammo_use",
-                &ammo_ctx,
-                &mut self.world.random,
-                1.0,
-            ) == 0.0;
-        (power, infinity)
+        let value = world_stations!(self).enchantments.modify_value(
+            Some(weapon),
+            "minecraft:projectile_piercing",
+            &ctx,
+            &mut self.world.random,
+            0.0,
+        ) as i32;
+        value.max(0) as u8
     }
-    /// Soul Speed (`data/minecraft/enchantment/soul_speed.json`), the parts of
-    /// `Enchantment.runLocationChangedEffects` and `tick` that file uses. The
-    /// `location_changed` effects run when the player enters a new block, lands,
-    /// or its boots change:
-    /// - the speed and movement efficiency modifiers turn on over a soul speed
-    ///   block (not flying, not riding) and stay on while airborne, then off
-    ///   (`enchantment_active_check`);
-    /// - the boots lose 1 durability with a 4% chance when on such a block.
-    ///
-    /// Every fifth tick the player walking on one also gets a soul particle
-    /// (returned as its position and velocity, for the caller to show or send
-    /// to the players around) and sometimes a sound. Runs for the window's own
-    /// player and for each guest on the server (`guest_server_tick`); a remote
-    /// client leaves it to its server.
-    pub(super) fn tick_soul_speed(&mut self) -> Option<([f64; 3], [f64; 3])> {
+
+    /// Soul Speed's *location-based* modifiers and boots wear belong to the separate
+    /// location-effect registry. Its particles and sound run in equipment tick order below.
+    pub(super) fn update_soul_speed_location(&mut self) {
         const ID: &str = "minecraft:soul_speed";
-        let player = self.player.as_mut()?;
+        let Some(player) = self.player.as_mut() else {
+            return;
+        };
         if player.client_side {
-            return None;
+            return;
         }
         let level = self.armor[3]
             .as_ref()
             .map_or(0, |s| s.enchantment_level(ID));
         let position = player.position;
         let (on_ground, flying) = (player.ground.on_ground, player.flying);
-        let moved = position.subtract(player.old_position);
-        let (tick, width) = (player.health.tick_count, player.dimensions.width);
         let fx = &mut player.location_effects;
         let on_soul = fx.on_soul_speed_block;
         let block = BlockPos::containing(position);
@@ -1214,9 +1471,6 @@ impl Game<'_> {
             wear = roll && on_ground && on_soul;
         }
         fx.applied_level = if active { level } else { 0 };
-        // `Entity.getKnownMovement` horizontal speed of at least 1.0E-5.
-        let walking = moved.x * moved.x + moved.z * moved.z >= 1.0e-10;
-        let tick_effects = level > 0 && !flying && on_ground && walking && on_soul && tick % 5 == 0;
         // The attribute effects were applied to the player before: swap them.
         if was_active > 0 && (!active || equipped) {
             for (attribute, id, _, op) in
@@ -1235,27 +1489,198 @@ impl Game<'_> {
         if wear && !self.creative {
             self.wear_boots(1);
         }
-        if level == 0 {
-            return None;
+    }
+
+    /// `EnchantmentHelper.tickEffects`: slot order, then enchantment and entry order.
+    pub(super) fn tick_equipment_enchantments(&mut self, target: Target, actor: u32) {
+        if self.remote.is_some() || !self.is_logical_server() {
+            return;
         }
-        let (particle, pitch) = soul_speed_tick(
-            [position.x, position.y, position.z],
-            [moved.x, moved.y, moved.z],
-            width,
-            tick_effects,
-            &mut self.world.random,
-            &mut random_source::entity(),
-        );
-        if let Some(pitch) = pitch {
-            self.audio.play(
-                "minecraft:particle.soul_escape",
-                Some([position.x, position.y, position.z]),
-                0.6,
+        const COMPONENT: &str = "minecraft:tick";
+        let table = self.stations().enchantments.clone();
+        let mut kind = None;
+        for slot in EquipmentSlot::ALL {
+            let Some(stack) = self.equipment_stack_for(target, slot) else {
+                continue;
+            };
+            let stack = stack.project();
+            if !table.has_component(&stack, COMPONENT) {
+                continue;
+            }
+            let stack = stack.into_owned();
+            let kind = kind.get_or_insert_with(|| self.target_type(target));
+            for (id, level) in stack.all_enchantments().iter() {
+                let level = *level;
+                let name = sunrise_items::equipment::SLOT_NAMES[slot as usize];
+                let Some(def) = table.get(id).filter(|def| def.matches_slot(name)) else {
+                    continue;
+                };
+                for (index, entry) in def.effects[COMPONENT]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .enumerate()
+                {
+                    let Some(bound) = table.entity_effect(id, COMPONENT, index) else {
+                        continue;
+                    };
+                    let Some(body) = self.enchantment_tick_body(target) else {
+                        return;
+                    };
+                    let support = sunrise_client::motion::block_support_at(
+                        &self.world,
+                        Some(&self.res.motion().blocks),
+                        body.position,
+                        body.support,
+                        sunrise_world::movement_support::MOVEMENT_SUPPORT_OFFSET,
+                    );
+                    let movement_block = self.block_name([support.x, support.y, support.z]);
+                    let position = body.position.components();
+                    let ctx = EffectContext {
+                        this: Some(kind.as_str()),
+                        this_motion: Some(body.motion),
+                        items: Some(world_items!(self)),
+                        grounded: Some(body.grounded),
+                        horizontal_speed: Some(body.movement.x.hypot(body.movement.z)),
+                        movement_block: Some(&movement_block),
+                        tick: Some(body.tick),
+                        ..Default::default()
+                    };
+                    if entry
+                        .get("requirements")
+                        .is_some_and(|r| !table.condition(r, level, &ctx, &mut self.world.random))
+                    {
+                        continue;
+                    }
+                    let invocation = EntityEffectUse {
+                        stack: &stack,
+                        holder: Some(actor),
+                        slot: Some(slot),
+                        affected: actor,
+                        level,
+                        position: Some(position),
+                        attack: None,
+                    };
+                    self.apply_bound_entity_effect(bound, &invocation, &mut |game, effect| {
+                        match effect["type"]
+                            .as_str()
+                            .map(|s| s.trim_start_matches("minecraft:"))
+                        {
+                            Some("spawn_particles")
+                                if effect["particle"]["type"] == "minecraft:soul" =>
+                            {
+                                let Some(random) = game.damage_victim_random(actor) else {
+                                    return;
+                                };
+                                let (at, velocity) = soul_speed_particle(
+                                    position,
+                                    body.movement.components(),
+                                    body.width,
+                                    random,
+                                );
+                                if let Some(lan) = game.lan.as_mut() {
+                                    crate::game::lan_particles::send_soul_particle(
+                                        lan, at, velocity,
+                                    );
+                                }
+                            }
+                            _ => game.apply_post_attack(
+                                effect,
+                                level,
+                                actor,
+                                Some(actor),
+                                Some(slot),
+                            ),
+                        }
+                    });
+                }
+            }
+        }
+    }
+
+    /// The selected living body's entity loot context and particle geometry.
+    fn enchantment_tick_body(&self, target: Target) -> Option<TickBody> {
+        Some(match target {
+            Target::Player => {
+                let p = self.player.as_ref()?;
+                TickBody {
+                    position: p.position,
+                    movement: p.position.subtract(p.old_position),
+                    width: f64::from(p.dimensions.width),
+                    tick: p.health.tick_count as u32,
+                    grounded: p.ground.on_ground,
+                    support: p.ground.supporting_block,
+                    motion: (p.fall_distance, p.fall_flying || p.flying),
+                }
+            }
+            Target::Mob(id) => {
+                let mob = &self.mobs[self.mob_index.find(&self.mobs, id)?];
+                TickBody {
+                    position: mob.position,
+                    movement: mob.position.subtract(mob.previous),
+                    width: mob.kind.width,
+                    tick: mob.age.wrapping_add(1),
+                    grounded: mob.ground.on_ground,
+                    support: mob.ground.supporting_block,
+                    motion: (mob.fall_distance, mob.extra.fall_flying),
+                }
+            }
+            Target::Stand(id) => {
+                let stand = self.armor_stands.iter().find(|stand| stand.id == id)?;
+                TickBody {
+                    position: stand.position,
+                    movement: stand.position.subtract(stand.previous),
+                    width: stand.bounds().size().x,
+                    tick: stand.enchantment_tick,
+                    grounded: stand.ground.on_ground,
+                    support: stand.ground.supporting_block,
+                    motion: (stand.enchantment_fall_distance, false),
+                }
+            }
+            Target::Dragon(id) => {
+                let d = self.dragon.as_ref().filter(|d| d.id == id)?;
+                TickBody {
+                    position: d.position,
+                    movement: d.position.subtract(d.previous),
+                    // EntityType.ENDER_DRAGON uses the 16-wide parent, not a part.
+                    width: 16.0,
+                    tick: d.ticks.wrapping_add(1) as u32,
+                    grounded: false,
+                    support: None,
+                    motion: (0.0, false),
+                }
+            }
+            _ => return None,
+        })
+    }
+
+    fn play_enchantment_sound(&mut self, effect: &Value, level: u32, actor: u32, at: [f64; 3]) {
+        let sound = if let Some(index) = self
+            .creatures
+            .projectiles
+            .iter()
+            .position(|p| p.id == actor)
+        {
+            self.creatures
+                .projectiles
+                .update(index, |p| enchantment_sound(effect, level, &mut p.random.0))
+        } else if let Some(trident) = self.tridents.iter_mut().find(|t| t.id == actor) {
+            enchantment_sound(effect, level, &mut trident.random)
+        } else {
+            self.damage_victim_random(actor)
+                .and_then(|random| enchantment_sound(effect, level, random))
+        };
+        if let Some((sound, volume, pitch)) = sound {
+            self.audio.play_on(
+                mod_api::SoundSource::Neutral as usize,
+                sound,
+                Some(at),
+                volume,
                 pitch,
             );
         }
-        particle
     }
+
     /// `ItemStack.hurtAndBreak` on the worn boots (`change_item_damage`):
     /// Unbreaking applies, and they break when worn out.
     fn wear_boots(&mut self, amount: u32) {
@@ -1692,13 +2117,14 @@ fn repair_from_xp(
         items,
         ..Default::default()
     };
-    enchantments.modify_value(
+    let repair = enchantments.modify_value(
         Some(stack),
         "minecraft:repair_with_xp",
         &ctx,
         random,
         amount as f32,
-    ) as u32
+    );
+    (repair as i32).max(0) as u32
 }
 
 /// `ExperienceOrb.repairPlayerItems`: the damage `to_repair` xp per point takes
@@ -1743,37 +2169,41 @@ fn pick_mending_slot(
     Some(candidates[index])
 }
 
-/// `SpawnParticlesEffect.apply` and `PlaySoundEffect.apply` for Soul Speed's
-/// `minecraft:tick` effects: the sound's `random_chance` (35%) draws from
-/// `level_random` (`Enchantment.entityContext`), while the particle coordinates
-/// and sound pitch draw from `wearer_random` (`entity.getRandom()`).
-fn soul_speed_tick(
+struct TickBody {
+    position: Vec3,
+    movement: Vec3,
+    width: f64,
+    tick: u32,
+    grounded: bool,
+    support: Option<BlockPos>,
+    motion: (f64, bool),
+}
+
+/// `SpawnParticlesEffect.apply` for Soul Speed's in-bounds horizontal position.
+fn soul_speed_particle(
     position: [f64; 3],
     moved: [f64; 3],
-    width: f32,
-    tick_effects: bool,
-    level_random: &mut impl RandomSource,
-    wearer_random: &mut impl RandomSource,
-) -> (Option<([f64; 3], [f64; 3])>, Option<f32>) {
-    // `spawn_particles`: in the bounding box, 0.1 above the feet, thrown
-    // back against the movement (-0.2) and up (0.1).
-    let particle = tick_effects.then(|| {
-        let x = position[0] + (wearer_random.next_double() - 0.5) * f64::from(width);
-        let z = position[2] + (wearer_random.next_double() - 0.5) * f64::from(width);
-        (
-            [x, position[1] + 0.1, z],
-            [moved[0] * -0.2, 0.1, moved[2] * -0.2],
-        )
-    });
-    // `play_sound`: its `random_chance` (35%) comes first in its `all_of`,
-    // so the level random is drawn every tick the boots are worn; volume
-    // 0.6, pitch 0.6 to 1.0 from the wearer's random.
-    let pitch = if level_random.next_float() < 0.35 && tick_effects {
-        Some(wearer_random.next_float() * 0.4 + 0.6)
-    } else {
-        None
-    };
-    (particle, pitch)
+    width: f64,
+    random: &mut LegacyRandom,
+) -> ([f64; 3], [f64; 3]) {
+    let x = position[0] + (random.next_double() - 0.5) * width;
+    let z = position[2] + (random.next_double() - 0.5) * width;
+    (
+        [x, position[1] + 0.1, z],
+        [moved[0] * -0.2, 0.1, moved[2] * -0.2],
+    )
+}
+
+pub(super) fn enchantment_sound<'a>(
+    effect: &'a Value,
+    level: u32,
+    random: &mut LegacyRandom,
+) -> Option<(&'a str, f32, f32)> {
+    use super::projectile_spawned::{float_provider, level_sound};
+    let sound = level_sound(effect, level)?;
+    let volume = float_provider(&effect["volume"])?;
+    let pitch = float_provider(&effect["pitch"])?;
+    Some((sound, volume.sample(random), pitch.sample(random)))
 }
 
 #[cfg(test)]
@@ -1824,8 +2254,8 @@ mod tests {
     }
 
     use super::{
-        Enchantments, armor_changes, block_break_speed_factor, pick_mending_slot, repair_from_xp,
-        repaired_and_left, soul_speed_tick,
+        Enchantments, armor_changes, block_break_speed_factor, enchantment_sound,
+        pick_mending_slot, repair_from_xp, repaired_and_left, soul_speed_particle,
     };
 
     use sunrise_client::items::ItemStack;
@@ -2066,41 +2496,37 @@ mod tests {
     fn soul_speed_samples_particle_and_pitch_from_wearer_rng() {
         let pos = [10.0, 64.0, -4.0];
         let moved = [0.25, 0.0, -0.5];
-        let width = 0.6f32;
-
+        let width = f64::from(0.6f32);
+        let table = Enchantments::default();
+        let requirement = serde_json::json!({"type": "minecraft:random_chance", "chance": 0.35});
+        let sound = serde_json::json!({
+            "sound": "minecraft:particle.soul_escape", "volume": 0.6,
+            "pitch": {"type": "minecraft:uniform", "min_inclusive": 0.6, "max_exclusive": 1.0}
+        });
         for seed in 0..32 {
             let mut l_rng = LegacyRandom::new(seed);
-            let mut expected_level = LegacyRandom::new(seed);
+            let mut expected_level = l_rng.clone();
             let mut w_rng = LegacyRandom::new(seed + 1_000);
-            let mut expected_wearer = LegacyRandom::new(seed + 1_000);
-
-            let out = soul_speed_tick(pos, moved, width, true, &mut l_rng, &mut w_rng);
-            let want_x = pos[0] + (expected_wearer.next_double() - 0.5) * f64::from(width);
-            let want_z = pos[2] + (expected_wearer.next_double() - 0.5) * f64::from(width);
-            let want_pos = [want_x, pos[1] + 0.1, want_z];
-            let want_vel = [moved[0] * -0.2, 0.1, moved[2] * -0.2];
-            assert_eq!(out.0, Some((want_pos, want_vel)));
-            let want_pitch = if expected_level.next_float() < 0.35 {
-                Some(expected_wearer.next_float() * 0.4 + 0.6)
-            } else {
-                None
-            };
-            assert_eq!(out.1, want_pitch);
+            let mut expected_wearer = w_rng.clone();
+            let particle = soul_speed_particle(pos, moved, width, &mut w_rng);
+            let want_x = pos[0] + (expected_wearer.next_double() - 0.5) * width;
+            let want_z = pos[2] + (expected_wearer.next_double() - 0.5) * width;
+            assert_eq!(
+                particle,
+                (
+                    [want_x, pos[1] + 0.1, want_z],
+                    [moved[0] * -0.2, 0.1, moved[2] * -0.2]
+                )
+            );
+            let pitch = table
+                .condition(&requirement, 1, &EffectContext::default(), &mut l_rng)
+                .then(|| enchantment_sound(&sound, 1, &mut w_rng).unwrap().2);
+            let want_pitch = (expected_level.next_float() < 0.35)
+                .then(|| expected_wearer.next_float() * (1.0 - 0.6) + 0.6);
+            assert_eq!(pitch, want_pitch);
             assert_eq!(l_rng.next_long(), expected_level.next_long());
             assert_eq!(w_rng.next_long(), expected_wearer.next_long());
         }
-
-        // When tick_effects is false, the leading 35% random_chance still draws
-        // one float from level_rng while wearer_rng is untouched.
-        let mut l_rng = LegacyRandom::new(77);
-        let mut expected_level = LegacyRandom::new(77);
-        let mut w_rng = LegacyRandom::new(88);
-        let mut expected_wearer = LegacyRandom::new(88);
-        let out = soul_speed_tick(pos, moved, width, false, &mut l_rng, &mut w_rng);
-        let _ = expected_level.next_float();
-        assert_eq!(out, (None, None));
-        assert_eq!(l_rng.next_long(), expected_level.next_long());
-        assert_eq!(w_rng.next_long(), expected_wearer.next_long());
     }
 
     /// A pack's `repair_with_xp` gated on swords: `Enchantment.itemContext`

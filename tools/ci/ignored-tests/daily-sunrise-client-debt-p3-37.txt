@@ -1,0 +1,3 @@
+sunrise-client game::native_hooks::register_enchantment_effects::tests::borrowed_mob_tick_applies_equipment_effects_once_in_slot_order lib daily resources
+sunrise-client game::native_hooks::register_enchantment_effects::tests::decoded_enchantment_effects_run_on_real_hits_and_rebind_on_load lib daily resources
+sunrise-client game::native_hooks::register_enchantment_effects::tests::sweep_applies_victim_effect_then_attacker_tree_only_on_a_landed_hit lib daily resources

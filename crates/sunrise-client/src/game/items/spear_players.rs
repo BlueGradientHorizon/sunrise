@@ -157,7 +157,12 @@ impl Game<'_> {
         let (xd, zd) = self.extra_knockback_direction();
         let strength = if deals_knockback {
             // causeExtraKnockback: the attacker stops sprinting.
-            let (strength, _) = self.extra_knockback("minecraft:player", 0.0);
+            let (strength, _) = self.extra_knockback(
+                "minecraft:player",
+                self.stab_players[target].entity_id as u32,
+                0.0,
+                Some("minecraft:spear"),
+            );
             self.stop_sprint_after_extra_knockback();
             strength
         } else {

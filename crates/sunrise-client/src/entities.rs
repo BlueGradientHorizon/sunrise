@@ -1825,6 +1825,8 @@ pub struct ArmorStand {
     pub disabled_slots: i32,
     /// Server-only `LivingEntity.lastPos` for location-based enchantments.
     pub enchantment_block: Option<BlockPos>,
+    /// `Entity.tickCount` for periodic equipment effects.
+    pub enchantment_tick: u32,
     /// `Entity.fallDistance`, also used by `LivingEntity.checkFallDamage`'s landing callback.
     /// Each downward movement is narrowed to float before adding to this double.
     pub enchantment_fall_distance: f64,
@@ -2104,6 +2106,7 @@ impl ArmorStand {
                 disabled_slots: 0,
                 enchantment_block: None,
                 enchantment_fall_distance: 0.0,
+                enchantment_tick: 0,
                 enchantment_equipment: Default::default(),
                 live: Default::default(),
                 first_tick: true,

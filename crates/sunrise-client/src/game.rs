@@ -14466,7 +14466,7 @@ pub(crate) fn run_with(
         mods::register_range_select_item_model_properties(options.execution_role);
         mods::register_select_item_model_properties(options.execution_role);
         mods::register_resource_sources(options.execution_role);
-        mods::register_enchantment_damage_effects();
+        mods::register_enchantment_effects();
         mods::register_client_presentations(options.execution_role)?;
         mods::register_meshing(options.execution_role);
         mods::register_particles(options.execution_role)?;

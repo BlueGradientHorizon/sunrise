@@ -2696,7 +2696,11 @@ impl Game<'_> {
     fn tick_dragon(&mut self) {
         // Entity.baseTick: the saved invulnerability window counts down
         // (#916), before the dragon's own borrow of the game.
-        if let Some(id) = self.dragon.as_ref().map(|d| d.id) {
+        if let Some(dragon) = self.dragon.as_ref() {
+            let id = dragon.id;
+            if !dragon.equipment.is_empty() {
+                self.tick_equipment_enchantments(super::commands::Target::Dragon(id), id);
+            }
             self.tick_saved_invulnerable_time(id);
         }
         let Some(d) = self.dragon.as_mut() else {

@@ -290,6 +290,7 @@ impl Game<'_> {
             let mut t =
                 crate::game::trident::ThrownTrident::from_nbt(n, &tag, self.pack.assets.registry);
             t.id = self.take_entity_id();
+            self.resolve_trident_loyalty(&mut t);
             // One that came through a portal keeps its cooldown.
             let id = t.id;
             self.tridents.push(t);

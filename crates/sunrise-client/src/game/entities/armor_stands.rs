@@ -800,7 +800,8 @@ impl Game<'_> {
         let sweep = self.sweep_before_hit("minecraft:armor_stand", crit);
         let hurt = self.hit_armor_stand(i, |g, area, id| {
             let knockback = if admitted {
-                g.extra_knockback("minecraft:armor_stand", scale).0
+                g.extra_knockback("minecraft:armor_stand", id, scale, None)
+                    .0
             } else {
                 0.0
             };
@@ -1008,13 +1009,30 @@ impl Game<'_> {
         // `isPassengerOfSameVehicle` leaves those riders out.
         let mut obstacles: Option<sunrise_client::entities::ObstacleGrid> = None;
         let mut nearby = Vec::new();
-        for i in 0..self.armor_stands.len() {
+        let stands = self
+            .armor_stands
+            .iter()
+            .map(|stand| stand.join)
+            .collect::<Vec<_>>();
+        for join in stands {
+            let Some(i) = self.armor_stands.locate(join) else {
+                continue;
+            };
             let at = self.armor_stands[i].position;
             if !ticking(at.x.floor() as i32, at.z.floor() as i32) {
                 self.armor_stands[i].previous = at;
                 self.armor_stands[i].previous_yaw = self.armor_stands[i].yaw;
                 continue;
             }
+            let id = self.armor_stands[i].id;
+            self.armor_stands[i].enchantment_tick =
+                self.armor_stands[i].enchantment_tick.wrapping_add(1);
+            if !self.armor_stands[i].equipment.is_empty() {
+                self.tick_equipment_enchantments(super::commands::Target::Stand(id), id);
+            }
+            let Some(i) = self.armor_stands.locate(join) else {
+                continue;
+            };
             self.armor_stands[i].first_tick = false;
             // Entity.baseTick: the saved invulnerability window counts down
             // (#916).

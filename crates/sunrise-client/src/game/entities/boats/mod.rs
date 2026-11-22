@@ -2165,7 +2165,8 @@ impl Game<'_> {
         if damage > 0.0
             && let Some(destroyed) = hurt
         {
-            let (knockback, _) = self.extra_knockback(&kind, scale);
+            let (knockback, _) =
+                self.extra_knockback(&kind, id as u32, scale, Some("minecraft:player_attack"));
             if knockback > 0.0 {
                 // Player.causeExtraKnockback uses Entity.push for a boat,
                 // not LivingEntity.knockback (no resistance or velocity halving).

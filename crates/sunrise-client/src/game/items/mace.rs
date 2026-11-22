@@ -110,13 +110,6 @@ pub(super) fn stack_smash_damage(
     ctx: &EffectContext<'_>,
     random: &mut sunrise_core::random::LegacyRandom,
 ) -> f32 {
-    let damage = if fall <= 3.0 {
-        4.0 * fall
-    } else if fall <= 8.0 {
-        12.0 + 2.0 * (fall - 3.0)
-    } else {
-        22.0 + fall - 8.0
-    };
     let per_block = enchantments.modify_value(
         Some(stack),
         "minecraft:smash_damage_per_fallen_block",
@@ -124,6 +117,17 @@ pub(super) fn stack_smash_damage(
         random,
         0.0,
     );
+    smash_damage(fall, per_block)
+}
+
+fn smash_damage(fall: f64, per_block: f32) -> f32 {
+    let damage = if fall <= 3.0 {
+        4.0 * fall
+    } else if fall <= 8.0 {
+        12.0 + 2.0 * (fall - 3.0)
+    } else {
+        22.0 + fall - 8.0
+    };
     (damage + f64::from(per_block) * fall) as f32
 }
 
@@ -190,7 +194,7 @@ impl Game<'_> {
     /// `MaceItem.getAttackDamageBonus` against `victim`: 4 per block for the
     /// first three blocks fallen, 2 for the next five, 1 after that, plus
     /// `smash_damage_per_fallen_block` (Density) for every block.
-    pub(super) fn smash_damage_bonus(&mut self, victim: &str) -> f32 {
+    pub(super) fn smash_damage_bonus(&mut self, victim: &str, victim_id: Option<u32>) -> f32 {
         if !self.smash_attack() {
             return 0.0;
         }
@@ -215,16 +219,16 @@ impl Game<'_> {
                 .player
                 .as_ref()
                 .map(|p| (p.fall_distance, p.fall_flying)),
-            items: Some(world_items!(self)),
             ..Default::default()
         };
-        stack_smash_damage(
-            &world_stations!(self).enchantments,
+        let per_block = self.evaluate_weapon_value(
             &held,
-            fall,
-            &ctx,
-            &mut self.world.random,
-        )
+            "minecraft:smash_damage_per_fallen_block",
+            victim_id,
+            ctx,
+            0.0,
+        );
+        smash_damage(fall, per_block)
     }
     /// `source.getEntity()` of a blow as `SulfurCube.knockback` reads it: its eye position
     /// (`getEyePosition`), view direction (`getLookAngle`, `calculateViewVector(xRot, yRot)`)
@@ -253,29 +257,21 @@ impl Game<'_> {
             }
         }
     }
-    /// `DamageSource.getWeaponItem` for a hit on the player, when its
-    /// `armor_effectiveness` enchantments (Breach) can thin the armour: the
-    /// stack the mob that swung holds, and the registry its effects are read
-    /// from. A projectile's weapon (an arrow's `firedFromWeapon`) is not
-    /// passed: no vanilla bow carries the component.
+    /// `DamageSource.getWeaponItem` names the direct entity's weapon, including the
+    /// saved weapon of an arrow or trident, never the shooter's current hand.
     pub(super) fn player_armor_weapon(
         &self,
-        attacker: Option<u32>,
-        projectile: bool,
+        attack: &sunrise_client::health::Attack,
+        source: sunrise_client::health::HurtSource<'_>,
     ) -> Option<ArmorWeapon> {
-        if projectile {
-            return None;
-        }
-        let mob = self.mobs.iter().find(|m| Some(m.id) == attacker)?;
-        let stack = mob.extra.main_hand_stack()?;
-        let enchantments = world_stations!(self).enchantments.clone();
-        if !enchantments.has_component(stack, "minecraft:armor_effectiveness") {
-            return None;
-        }
-        Some(ArmorWeapon {
-            stack: stack.clone(),
-            enchantments,
-        })
+        let stack = attack.weapon_of(source.direct)?;
+        let enchantments = &world_stations!(self).enchantments;
+        enchantments
+            .has_component(stack, "minecraft:armor_effectiveness")
+            .then(|| ArmorWeapon {
+                stack: stack.clone(),
+                enchantments: enchantments.clone(),
+            })
     }
     /// `LivingEntity.hurtServer` of the mob at `index` by the player's hit:
     /// the weapon's `armor_effectiveness` enchantments (Breach) thin its armor.
@@ -289,22 +285,7 @@ impl Game<'_> {
         let attack = self.attack_of_who(Some(sunrise_client::mobs::Who::Player));
         let plan =
             self.prepare_knockback_credit(self.mobs[index].id as i32, source.attacker, &attack);
-        let held = self.held().cloned();
         let aim = self.attacker_aim(source.attacker);
-        let kind = self.mobs[index].kind.id.clone();
-        let ctx =
-            attack.enchantment_context(sunrise_client::health::mob_source(&source, &attack), &kind);
-        let enchantments = &world_stations!(self).enchantments;
-        // CombatRules.getDamageAfterAbsorb: EnchantmentHelper.modifyArmorEffectiveness.
-        let mut breach = |fraction: f32, random: &mut sunrise_core::random::LegacyRandom| {
-            enchantments.modify_value(
-                held.as_ref(),
-                "minecraft:armor_effectiveness",
-                &ctx,
-                random,
-                fraction,
-            )
-        };
         let (id, join, old_health) = (
             self.mobs[index].id,
             self.mobs[index].join,
@@ -317,11 +298,10 @@ impl Game<'_> {
         self.mobs[index].attacker_aim = aim;
         self.mobs[index].dealt_absorbed = 0;
         let mut credit = plan.lend(&mut self.last_hurt_by_player);
-        let hurt = self.mobs[index].damage_with(
+        let hurt = self.mobs[index].damage(
             crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),
             amount,
             source,
-            Some(&mut breach),
         );
         self.mobs[index].attacker_aim = None;
         self.mobs[index].creative_attacker = false;

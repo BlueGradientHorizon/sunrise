@@ -1966,15 +1966,7 @@ impl Game<'_> {
                 let total: f32 = armor
                     .iter()
                     .flatten()
-                    .map(|s| {
-                        e.modify_value(
-                            Some(s),
-                            "minecraft:damage_protection",
-                            &ctx,
-                            &mut random,
-                            0.0,
-                        )
-                    })
+                    .map(|s| e.preview_value(s, "minecraft:damage_protection", &ctx, &mut random))
                     .sum();
                 if total > 0.0 {
                     table.push((def.name.clone(), total));

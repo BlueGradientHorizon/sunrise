@@ -746,13 +746,13 @@ sites are named by function. Each hook below records a gap; no keys are added.
 | `world_drawn` | **Gap:** `LevelRenderEvents.END_MAIN` (different firing point) | [The level render events][level-render-events] lines 160-169 declare `END_MAIN`, fired by [the level renderer mixin][level-renderer-mixin] line 131 at the end of the main pass after terrain, entities, block entities and particles but before clouds, weather, late debug and the fabulous combine. Sunrise's `mod_render::render::world_drawn` is called from the client renderer after the whole world pass, weather and the world post pass included, with a `WorldDrawn` giving the drawn world's depth and camera. Weather and post-processing are already drawn at Sunrise's moment: gap. |
 | `render_needs` | **Gap:** none; nearest `LevelRenderEvents.COLLECT_SUBMITS` | [The level render events][level-render-events] line 71 declare `COLLECT_SUBMITS`, fired by [the level renderer mixin][level-renderer-mixin] line 92 at `LevelRenderer.submitFeatures` `RETURN`, with a `LevelRenderContext` for submitting render work rather than collecting render requirements. Sunrise's `mod_render::render::render_needs` is asked by `needs` as a frame is built, with a mutable `RenderNeeds` (entity spans and world depth) that several mods may set. No Fabric event fires at that moment or offers that out: gap. |
 
-## Event counterparts: base block queries, dispense, survival, placement, bone meal, step-on, consume and enchant effects (#1014)
+## Event counterparts: base block queries, dispense, survival, placement, bone meal, step-on and consume effects (#1014)
 
 Fabric evidence is at `fabric-26.3/` pinned `2065040b236a0d5ac011bd6a45625dc49579b222`. Sunrise call
-sites are named by function. Scope: the twelve `base` hooks `has_analog_output`, `analog_output`,
+sites are named by function. Scope: the `base` hooks `has_analog_output`, `analog_output`,
 `dispense_item`, `can_survive`, `may_place_on`, `is_valid_bonemeal_target`, `is_bonemeal_success`,
-`perform_bonemeal`, `BlockPart::step_on`, `consume_effect`, `state_for_placement` and `enchant_effect`. All
-twelve record a gap; no keys are added.
+`perform_bonemeal`, `BlockPart::step_on`, `consume_effect`, `state_for_placement`. Each
+records a gap; no keys are added.
 
 | Sunrise hook | Fabric event considered / status | Evidence and porting boundary |
 |---|---|---|
@@ -767,7 +767,6 @@ twelve record a gap; no keys are added.
 | `BlockPart::step_on` | **Gap:** none | Fabric API 26.3 has no event for `Block.stepOn`. Sunrise calls the contacted block's Part on the simulating side before inside effects and lets it edit the grounded entity's velocity. The client level is read-only; the server also accepts entity writes and guarded block writes. No Fabric key. |
 | `consume_effect` | **Gap:** `ServerMobEffectEvents.AFTER_ADD` (different moment and data) | [The effect events][effect-api] lines 79-86 and 136-143 declare `AFTER_ADD` and `AFTER_REMOVE`, fired by [their mixin][effect-mixin] lines 95-106 and 209-221 at `LivingEntity.onEffectAdded` and `onEffectsRemoved` `RETURN` on the server with a `MobEffectInstance` and a `LivingEntity`. Sunrise's `Game::native_consume_effect` is fired by `apply_consume_effect` for a custom `ConsumeEffect` in the effective stack's ordered list. The kind's namespace owner receives the kind, definition NBT, pre-consumption stack snapshot and consuming player or mob handle. No Fabric event fires at `ConsumeEffect.apply` or passes that data. No key. |
 | `state_for_placement` | **Gap:** none | Fabric API 26.3 declares no event for `Block.getStateForPlacement`, and the nearest [use-block event][use-block-api] lines 28-55 receives the player, level, hand and hit result, not a `BlockPlaceContext`; [its server mixin][spgm-mixin] lines 85-87 fires at `useItemOn` `HEAD` before placement. Sunrise's `LevelView::native_state_for_placement` is asked by `before_state_for_placement` on both sides (a client's placement prediction too) with the block's default state, the placement context, the fluid at the target position and a mutable `Option<Option<BlockStateId>>` that chooses a state or refuses the placement. No Fabric event fires at that query or returns a state. No key. |
-| `enchant_effect` | **Gap:** none | The pinned index has no hit-effect or post-attack entry: [the enchantment events][base-has-enchantment-api] lines 54, 84 and 107 cover enchantment eligibility and definition modification (`ALLOW_ENCHANTING`, `MODIFY`, `MODIFY_WITH_LOOKUP`), not the effects a carried enchantment applies on a hit, and [the effect events][effect-api] lines 79-86 and 136-143 report status-effect addition and removal. Sunrise's `Game::native_enchant_effect` is fired by `post_attack` in the enchantment-effect code once for each `minecraft:post_attack` entry of a mod's own kind, with the enchantment id, the kind, the effect JSON, the level and the victim's id. No Fabric event fires at that moment or carries those arguments. No key. |
 
 ## Event counterparts: screen mouse input, camera shake, shader parameters, block outline, hand render and item-use queries (#1014)
 
@@ -999,7 +998,7 @@ record a gap and no keys are added.
 ## Event counterparts: base hopper, inventory, item and block hooks (#1014)
 
 Fabric evidence is at `fabric-26.3/` pinned `2065040b236a0d5ac011bd6a45625dc49579b222`. Sunrise call sites
-are named by function. Scope: the `base` hooks `hopper_pickup_item`, `ingredient`,
+are named by function. Scope: the twelve `base` hooks `hopper_pickup_item`, `ingredient`,
 `inventory_block_start`, `inventory_move_item`, `item_crafted`, `item_expire`, `item_spawn`,
 `leaves_decay`, `lightning_strike`, `menu_quick_move` and `moisture_change`; all record a gap and no
 keys are added.

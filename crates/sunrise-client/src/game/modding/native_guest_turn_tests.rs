@@ -1507,6 +1507,7 @@ fn guest_damage_unwind_restores_and_next_same_connection_hit_lands() {
                     super::lan_pvp::Victim::Guest(13),
                     &super::lan_pvp::Strike::test_blow(12),
                 )
+                .is_some()
             };
             assert!(hit(game));
             assert_eq!(health(game), before - 1.0);
@@ -1581,6 +1582,7 @@ fn guest_message_capture_is_restored_after_a_real_native_panic() {
                     super::lan_pvp::Victim::Guest(12),
                     &super::lan_pvp::Strike::test_blow(13),
                 )
+                .is_some()
             };
             assert_eq!(game.as_guest_messaged(13, hit), Some(true));
             assert_eq!(

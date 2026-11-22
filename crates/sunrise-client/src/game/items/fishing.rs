@@ -542,9 +542,6 @@ impl Game<'_> {
                 0.5,
                 pitch,
             );
-            // FishingHook(player, level, luck, lureSpeed)
-            let lure = stack.enchantment_level("minecraft:lure") as i32 * 5 * 20;
-            let luck = stack.enchantment_level("minecraft:luck_of_the_sea") as i32;
             let (yaw, pitch) = (self.yaw, self.pitch);
             let (y_sin, y_cos, dir_y) = cast_direction(yaw, pitch);
             let eye_y = p.position.y + f64::from(p.dimensions.eye_height);
@@ -554,6 +551,24 @@ impl Game<'_> {
                 eye_y,
                 p.position.z - f64::from(y_cos) * 0.3,
             );
+            // FishingRodItem samples lure time, then luck, from the fisher's stream.
+            let shooter = self.own_entity_id() as u32;
+            let lure = self.entity_enchantment_value(
+                stack,
+                shooter,
+                "minecraft:player",
+                "minecraft:fishing_time_reduction",
+                0.0,
+            );
+            let lure = ((if lure < 0.0 { 0.0 } else { lure }) * 20.0) as i32;
+            let luck = (self.entity_enchantment_value(
+                stack,
+                shooter,
+                "minecraft:player",
+                "minecraft:fishing_luck_bonus",
+                0.0,
+            ) as i32)
+                .max(0);
             // The hook's own random (`Entity.random`).
             let mut random = random_source::entity();
             let uuid = sunrise_client::save::insecure_uuid(&mut random);

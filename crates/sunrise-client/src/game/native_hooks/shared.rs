@@ -1980,24 +1980,35 @@ impl Game<'_> {
     /// `living_knockback` and the weapon of `living_incoming_damage`; without one it is the
     /// id alone, two `None`s and no allocation. Taken before the level's borrows of the game.
     pub(super) fn attack_of(&self, attacker: i32) -> Attack {
-        let held = if mod_api::__private::mods().is_empty() {
-            [None, None]
-        } else if self
+        let listens = !mod_api::__private::mods().is_empty();
+        let enchantments = &world_stations!(self).enchantments;
+        let main = |stack: Option<&sunrise_client::items::ItemStack>| {
+            stack
+                .filter(|stack| {
+                    listens || enchantments.has_component(stack, "minecraft:armor_effectiveness")
+                })
+                .cloned()
+        };
+        let held = if self
             .player
             .as_ref()
             .is_some_and(|p| p.entity_id == attacker)
         {
-            [self.stack_in(self.selected).cloned(), self.offhand.clone()]
-        } else if let Some(mob) = self.mobs.iter().find(|m| m.id as i32 == attacker) {
-            [mob.extra.main_hand_stack().cloned(), None]
+            [
+                main(self.stack_in(self.selected)),
+                listens.then(|| self.offhand.clone()).flatten(),
+            ]
+        } else if let Some(index) = self.mob_index.find(&self.mobs, attacker as u32) {
+            let mob = &self.mobs[index];
+            [main(mob.extra.main_hand_stack()), None]
         } else if let Some(guest) = self
             .lan
             .as_ref()
             .and_then(|host| host.hub.guests.iter().find(|g| g.entity_id == attacker))
         {
             [
-                guest.inventory.get(guest.selected).cloned().flatten(),
-                guest.offhand.clone(),
+                main(guest.inventory.get(guest.selected).and_then(Option::as_ref)),
+                listens.then(|| guest.offhand.clone()).flatten(),
             ]
         } else {
             [None, None]
