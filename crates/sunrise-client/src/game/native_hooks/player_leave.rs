@@ -7,11 +7,11 @@ impl Game<'_> {
     /// A network guest the hub removed leaves the world: the leave lines, then
     /// `player_logged_out` where `PlayerList.remove` starts (NeoForge's
     /// `PlayerLoggedOutEvent`), after their menu closed and before the leave statistic, the
-    /// vehicle and the save. They are listed again while the mods hear it, in their place in
-    /// join order, as when the server stops (`native_players_leaving`), so what a listener
-    /// changes on them is saved with them; one who quit from the End credits counts as online
-    /// then (`Hub::departing`) without going back into a level. Their disconnect counts as
-    /// begun, so a listener's own is refused.
+    /// vehicle and any player save. They are listed again in join order while the mods hear it,
+    /// as when the server stops (`native_players_leaving`). A listener's edits persist only if
+    /// this server saves the player: a completed proxy hand-over or a crash writes no logout
+    /// save. A guest who quit from the End credits counts as online (`Hub::departing`) without
+    /// going back into a level. Their disconnect counts as begun, so a listener's own is refused.
     pub(in crate::game) fn native_guest_left(&mut self, mut guest: Box<Guest>) -> Box<Guest> {
         if !self.announce_guest_left(&guest) {
             return guest;
