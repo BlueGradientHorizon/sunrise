@@ -505,19 +505,39 @@ impl Game<'_> {
         }
     }
 
-    /// Camera.alignWithEntity's NewMinecartBehavior branch: sample the
-    /// vehicle's curved path at this frame, then apply the player's seat
-    /// attachment. Camera's own eye-height interpolation still runs afterwards.
-    pub(super) fn remote_minecart_rider_position(&self, partial: f32) -> Option<[f64; 3]> {
+    /// `Camera.alignWithEntity`'s `NewMinecartBehavior` branch: sample the
+    /// vehicle's curved path at `partial`, then apply the camera entity's seat
+    /// and vehicle attachment offsets. Camera's eye-height lerp runs afterwards.
+    pub(super) fn remote_minecart_camera_position(
+        &self,
+        subject: &super::remote_camera::ResolvedCameraEntity,
+        partial: f32,
+    ) -> Option<[f64; 3]> {
         if !self.minecart_improvements() {
             return None;
         }
-        let id = self.riding?;
-        self.carts
-            .iter()
-            .find(|c| c.id == id && c.kind == super::minecarts::CartKind::Rideable)?;
+        let id = if subject.is_local_player {
+            self.riding?
+        } else {
+            self.remote
+                .as_ref()
+                .filter(|r| r.detached_camera.is_none())?
+                .passenger_vehicle(subject.entity_id)?
+        };
+        self.carts.iter().find(|c| c.id == id)?;
         let (mut position, _, _) = self.remote_minecart_lerp(id, partial)?;
-        position[1] += super::minecarts::SEAT;
+        let seat_offset = if subject.is_local_player {
+            let scale = f64::from(subject.camera.living.map_or(1.0, |l| l.scale));
+            sunrise_gameplay::minecart_seat::PASSENGER_Y - 0.6 * scale
+        } else if let Some(m) = self.mob_index.get_ref(&self.mobs, subject.entity_id) {
+            sunrise_gameplay::minecart_seat::cart_seat_offset(
+                m.species(),
+                sunrise_client::mobs::riders::vehicle_attachment(m, 0.98),
+            )
+        } else {
+            sunrise_gameplay::minecart_seat::PASSENGER_Y
+        };
+        position[1] += seat_offset;
         Some(position)
     }
 

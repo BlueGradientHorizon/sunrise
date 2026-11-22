@@ -124,6 +124,70 @@ mod tests {
     }
 
     #[test]
+    fn native_block_container_refuses_slots_it_cannot_save() {
+        struct Container {
+            block: &'static str,
+            slots: usize,
+        }
+
+        #[mod_api::__subscriptions]
+        impl Hooks for Container {
+            fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+                let block = r.block_key(self.block);
+                r.block_container(
+                    &block,
+                    crate::ModContainer {
+                        slots: self.slots,
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+
+        let max_saved_slots = i32::MAX as usize;
+        let oversized_slots = max_saved_slots + 1;
+        let registrar = super::super::register_all(
+            &[
+                ModEntry::new(
+                    "fitting",
+                    Box::new(Container {
+                        block: "fitting:machine",
+                        slots: max_saved_slots,
+                    }),
+                ),
+                ModEntry::new(
+                    "oversized",
+                    Box::new(Container {
+                        block: "oversized:machine",
+                        slots: oversized_slots,
+                    }),
+                ),
+            ],
+            |_| false,
+        );
+        assert_eq!(
+            registrar.parts.default_block_containers["fitting:machine"][0]
+                .1
+                .slots,
+            max_saved_slots
+        );
+        assert!(
+            !registrar
+                .parts
+                .default_block_containers
+                .contains_key("oversized:machine")
+        );
+        let [refusal] = registrar.refused.as_slice() else {
+            panic!("expected one refusal, got {:?}", registrar.refused);
+        };
+        let oversized = oversized_slots.to_string();
+        let limit = max_saved_slots.to_string();
+        for field in ["oversized:machine", oversized.as_str(), limit.as_str()] {
+            assert!(refusal.contains(field), "{refusal}");
+        }
+    }
+
+    #[test]
     fn requested_entity_type_slots_resolve_without_renumbering_and_refuse_unknown_ids() {
         let mut registrar = super::super::PartRegistrar::new("requester");
         let registrar_api = &mut registrar as &mut dyn Registrar;

@@ -17,6 +17,17 @@ pub trait ClientViewClientHost {
     /// This does not change the player's F1 preference for mandatory mod-error diagnostics.
     fn set_hud_mode(&mut self, mode: HudMode);
     /// Side: client.
+    /// Shows `line` over this window's hotbar (the action bar), as `Hud.setOverlayMessage`
+    /// does: it replaces the current line, empty text included, and restarts the stock
+    /// overlay timer and fade (`Hud.tick`, `Hud.extractOverlayMessage`). `animate_color`
+    /// cycles the colour as a jukebox's "Now Playing" line does. One slot: a server's
+    /// action-bar packet or a jukebox message replaces a mod's line, and a mod's line
+    /// replaces theirs. Nothing joins chat or its history, no chat event fires, nothing is
+    /// narrated and nothing is sent. Text the boundary refuses is an error and the previous
+    /// line stays.
+    fn set_overlay_message(&mut self, line: Text, animate_color: bool)
+    -> Result<(), TextFormError>;
+    /// Side: client.
     /// The window's camera type (`Options.getCameraType`), including its latest pending request.
     fn camera_type(&self) -> CameraType;
     /// Side: client.

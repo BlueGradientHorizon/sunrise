@@ -3277,7 +3277,7 @@ capabilities = ["registries"]
             &[
                 (
                     "data/ruby/sunrise/menu/wide.json",
-                    br#"{"slots": 1, "data_slots": 300}"#,
+                    br#"{"slots": 300, "data_slots": 300}"#,
                 ),
                 (
                     "data/ruby/sunrise/menu/huge.json",
@@ -3286,12 +3286,16 @@ capabilities = ["registries"]
             ],
         )
         .unwrap();
+        // Menu declarations do not create saved containers; the item slot count can exceed 256.
         let wide_counts: Vec<_> = wide
             .menu_types
             .iter()
-            .map(|m| (m.id.as_str(), m.data_slots))
+            .map(|m| (m.id.as_str(), m.slots, m.data_slots))
             .collect();
-        assert_eq!(wide_counts, [("ruby:huge", 70_000), ("ruby:wide", 300)]);
+        assert_eq!(
+            wide_counts,
+            [("ruby:huge", 1, 70_000), ("ruby:wide", 300, 300)]
+        );
         for (case, file, details) in [
             ("menu-large-with-inv", r#"{"slots": 32733}"#, &["32769"][..]),
             (

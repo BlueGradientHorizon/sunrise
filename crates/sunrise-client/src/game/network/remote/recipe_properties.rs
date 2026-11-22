@@ -21,6 +21,8 @@ impl Game<'_> {
                 return;
             }
             remote.logged_out = true;
+            remote.camera = None;
+            remote.detached_camera = None;
         }
         let player = self
             .remote
@@ -28,7 +30,10 @@ impl Game<'_> {
             .filter(|remote| remote.has_level())
             .and_then(|_| self.local_player());
         let game_mode = player.map(|_| self.mode);
+        self.clear_spectated_entity_post_effect();
         self.reset_client_item_use();
+        // Camera.reset clears initialization while keeping the last aligned position.
+        self.view.initialized = false;
         self.native_client_player_logging_out(player, game_mode);
         if self.remote.is_none() {
             return;

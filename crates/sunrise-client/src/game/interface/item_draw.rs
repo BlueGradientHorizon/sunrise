@@ -879,20 +879,23 @@ impl Game<'_> {
         out: &mut Vec<Vertex>,
         run: std::ops::Range<usize>,
     ) {
-        let live = self.dropped[run].iter().map(|item| {
-            let (p, q) = (item.previous, item.position);
-            let at = [
-                p.x + (q.x - p.x) * alpha,
-                p.y + (q.y - p.y) * alpha,
-                p.z + (q.z - p.z) * alpha,
-            ];
-            ItemEntityDraw {
-                item,
-                at,
-                partial: alpha as f32,
-                entity: true,
-            }
-        });
+        let live = self.dropped[run]
+            .iter()
+            .filter(|item| !self.hides_as_camera(item.id))
+            .map(|item| {
+                let (p, q) = (item.previous, item.position);
+                let at = [
+                    p.x + (q.x - p.x) * alpha,
+                    p.y + (q.y - p.y) * alpha,
+                    p.z + (q.z - p.z) * alpha,
+                ];
+                ItemEntityDraw {
+                    item,
+                    at,
+                    partial: alpha as f32,
+                    entity: true,
+                }
+            });
         self.item_entity_geometry(camera, live, out);
     }
 

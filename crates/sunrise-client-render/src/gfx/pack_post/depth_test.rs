@@ -613,6 +613,7 @@ pub(super) fn fixture_frame(hud: &HudBatch) -> Frame<'_> {
         pitch: 0.0,
         roll: 0.0,
         fov_degrees: 90.0,
+        cull_fov_degrees: 90.0,
         bob: glam::Mat4::IDENTITY,
         spin: glam::Mat4::IDENTITY,
         sky: crate::environment::Sky::default(),

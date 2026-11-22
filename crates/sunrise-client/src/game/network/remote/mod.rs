@@ -206,8 +206,13 @@ impl ChunkGenerator for NoTerrain {
 
 /// A server entity the client tracks (position as last sent).
 pub(super) struct Tracked {
-    kind: String,
+    pub(in crate::game) kind: String,
     pub(in crate::game) position: [f64; 3],
+    pub(in crate::game) previous: [f64; 3],
+    pub(in crate::game) yaw: f32,
+    pub(in crate::game) pitch: f32,
+    pub(in crate::game) previous_yaw: f32,
+    pub(in crate::game) previous_pitch: f32,
     /// `Entity.getPositionCodec`'s base: the position the server last
     /// reported (AddEntity, MoveEntity, EntityPositionSync), which a move
     /// packet's delta counts from. A TeleportEntity moves the entity but not
@@ -365,6 +370,8 @@ pub(super) struct Remote {
     /// `Minecraft.cameraEntity` when the server put the view on another
     /// entity (ClientboundSetCameraPacket); None while it is the player.
     pub(super) camera: Option<i32>,
+    /// Detached camera snapshot retained after `RemoveEntities` until `SetCamera` replaces it.
+    pub(super) detached_camera: Option<Box<crate::game::remote_camera::ResolvedCameraEntity>>,
     /// The item the player's use began with (`LivingEntity.useItem`).
     pub(super) use_item: Option<Arc<str>>,
     pub(super) dimension: DimensionType,
@@ -487,7 +494,10 @@ pub(super) struct Remote {
     /// A mod menu's extra data, kept for the `OpenScreen` of its window that
     /// follows (`sunrise:menu_extra`).
     pub(in crate::game) menu_extra: Option<sunrise_protocol::menu_extra::Message>,
-    pub(super) entities: HashMap<i32, Tracked>,
+    pub(in crate::game) entities: HashMap<i32, Tracked>,
+    /// Synced entity attributes keyed by entity id and attribute id.
+    pub(super) synced_attributes:
+        HashMap<i32, HashMap<sunrise_world::attributes::entity::AttributeId, f64>>,
     /// Per-tick remote entity scratch retained between frames.
     tick_fluids: Vec<Option<sunrise_client::mobs::living::Fluids>>,
     tick_rain: Vec<bool>,
@@ -2433,8 +2443,23 @@ pub(crate) mod tests {
     mod client_block_changed_tests {
         include!("client_block_changed_tests.rs");
     }
+    mod camera_draw_tests {
+        include!("camera_draw_tests.rs");
+    }
     mod client_camera_tests {
         include!("client_camera_tests.rs");
+    }
+    mod camera_parity_red_tests {
+        include!("camera_parity_red_tests.rs");
+    }
+    mod set_camera_kinds_tests {
+        include!("set_camera_kinds_tests.rs");
+    }
+    mod camera_death_tests {
+        include!("camera_death_tests.rs");
+    }
+    mod client_hud_camera_tests {
+        include!("client_hud_camera_tests.rs");
     }
     mod client_day_time_tests {
         include!("client_day_time_tests.rs");

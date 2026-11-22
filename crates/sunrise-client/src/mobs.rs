@@ -1317,6 +1317,16 @@ pub struct Extra {
     pub illusions: Option<illusioner::Illusions>,
     /// A villager's claimed bed head and meeting bell.
     pub bed: Option<[i32; 3]>,
+    /// `LivingEntity.SLEEPING_POS_ID` synced from a server.
+    pub sleeping_pos: Option<[i32; 3]>,
+    /// `Player.hurtDir` received from `ClientboundHurtAnimationPacket`.
+    pub hurt_dir: f32,
+    /// `LivingEntity.refreshDirtyAttributes`: clamp health to max health on next living tick.
+    pub max_health_dirty: bool,
+    /// Synced client-side mob effects from `UpdateMobEffect` / `RemoveMobEffect`.
+    pub client_effects: crate::effects::PlayerEffects,
+    /// `MobEffectInstance.BlendState` (previous, current) for client-side darkness on this mob.
+    pub darkness_blend: (f32, f32),
     pub meeting: Option<[i32; 3]>,
     /// Villager and wandering trader offers and experience.
     pub trade: Option<Box<crate::merchant::Trader>>,

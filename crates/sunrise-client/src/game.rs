@@ -254,6 +254,8 @@ mod bundle_use_tests;
 mod bundles;
 #[path = "game/items/cake_eligibility.rs"]
 mod cake_eligibility;
+#[path = "game/interface/camera_hud.rs"]
+mod camera_hud;
 #[cfg(test)]
 #[path = "game/interface/camera_submersion_tests.rs"]
 mod camera_submersion_tests;
@@ -4873,11 +4875,10 @@ impl Game<'_> {
         Some(b)
     }
     fn outline_context_kind(&self) -> sunrise_world::collision_context::EntityContextKind {
-        if self.spectated_camera_snapshot().is_some() {
-            sunrise_world::collision_context::EntityContextKind::Living
-        } else {
-            sunrise_world::collision_context::EntityContextKind::Player
-        }
+        self.camera_subject().map_or(
+            sunrise_world::collision_context::EntityContextKind::Player,
+            |c| c.collision_kind,
+        )
     }
     /// A block's outline boxes in world space (`getShape` plus the random offset).
     fn outline_boxes(&self, pos: [i32; 3]) -> Vec<[f64; 6]> {
@@ -7448,6 +7449,7 @@ impl Game<'_> {
         // crosshair, hotbar, effects, bars, sidebar, action bar, titles and chat;
         // the sleep overlay, debug screen and open screens still draw.
         let spectator = self.spectator();
+        let camera = self.camera_player();
         let (wi, hi) = (w as i32, h as i32);
         let mut gui_canceled = false;
         let replaying = self.replay.playing();
@@ -7526,26 +7528,16 @@ impl Game<'_> {
                     return;
                 }
                 if spectator {
-                    g.draw_spectator_hotbar(batch);
-                } else {
-                    let partial = g.clock.fraction() as f32;
-                    let inputs = hud_layout::HotbarInputs {
-                        selected: g.selected as i32,
-                        right_handed: !g.settings.main_hand_left,
-                        offhand: g.offhand.is_some(),
-                        slots: std::array::from_fn(|i| {
-                            g.inventory[i]
-                                .as_ref()
-                                .map(|_| (f32::from(g.hotbar_pop[i]) - partial).max(0.0))
-                        }),
-                        offhand_pop: (f32::from(g.hotbar_pop[9]) - partial).max(0.0),
-                        attack: attack
-                            .filter(|_| indicator == 2)
-                            .map(|(strength, _)| strength),
-                    };
+                    g.draw_spectator_hotbar(batch, g.own_player_is_spectator());
+                } else if let Some((inputs, source)) = g.camera_hotbar(
+                    camera,
+                    attack
+                        .filter(|_| indicator == 2)
+                        .map(|(strength, _)| strength),
+                ) {
                     let draws = hud_layout::hotbar(wi, hi, &inputs);
                     // `extractSlot` for each item, in order, on the path `gui_paint` takes.
-                    let mut items = crate::game::gui_paint_items::HotbarItems { game: g };
+                    let mut items = crate::game::gui_paint_items::HotbarItems { game: g, source };
                     hud_layout::paint_items(batch, &g.gui.atlas, &draws, &mut items);
                 }
             });
@@ -7571,7 +7563,7 @@ impl Game<'_> {
             let mount = if !show_hud {
                 None
             } else {
-                self.camera_player_vehicle_health()
+                self.camera_vehicle_health(camera)
             };
             // NeoForge applies hudVisible and survivalVisible to the vanilla bodies only.
             let show_survival_status = show_hud && self.can_hurt_player();
@@ -7582,23 +7574,7 @@ impl Game<'_> {
                     if !show_survival_status {
                         return;
                     }
-                    let (tick, millis) = (g.visual_ticks() as i32, g.visual_millis());
-                    let Some(p) = &mut g.player else { return };
-                    let blink = g.health_hud.update_health(
-                        p.health.health(),
-                        tick,
-                        millis,
-                        p.health.hurt.cooldown > 0,
-                    );
-                    let inputs = hud_layout::HealthInputs {
-                        tick,
-                        max_health: p.attribute("minecraft:max_health").unwrap_or(20.0) as f32,
-                        absorption: p.health.absorption(),
-                        regeneration: g.potions.effects.get("regeneration").is_some(),
-                        hardcore: g.level.hardcore,
-                        blink,
-                    };
-                    let Some(kind) = g.player_heart_kind() else {
+                    let Some((inputs, kind)) = g.camera_health_inputs(camera) else {
                         return;
                     };
                     status_rows.clear();
@@ -7617,11 +7593,9 @@ impl Game<'_> {
                 if !show_survival_status {
                     return;
                 }
-                let Some(p) = &mut g.player else { return };
-                let armor = p
-                    .attribute("minecraft:armor")
-                    .or_else(|_| p.attribute("armor"))
-                    .unwrap_or(0.0) as i32;
+                let Some(armor) = g.camera_armor(camera) else {
+                    return;
+                };
                 status_rows.clear();
                 hud_layout::armor_level(armor, wi, hi, &mut status_heights, &mut status_rows);
                 hud_layout::paint(batch, &g.gui.atlas, &status_rows);
@@ -7630,12 +7604,8 @@ impl Game<'_> {
                 if !show_survival_status || mount.is_some_and(|(hearts, _)| hearts != 0) {
                     return;
                 }
-                let Some(p) = &g.player else { return };
-                let inputs = hud_layout::FoodInputs {
-                    tick: g.visual_ticks() as i32,
-                    food: p.health.food.food,
-                    saturation: p.health.food.saturation,
-                    hunger: g.potions.effects.get("hunger").is_some(),
+                let Some(inputs) = g.camera_food_inputs(camera) else {
+                    return;
                 };
                 status_rows.clear();
                 g.health_hud
@@ -7665,23 +7635,19 @@ impl Game<'_> {
                 if !show_survival_status {
                     return;
                 }
-                let Some(p) = &g.player else { return };
-                let inputs = hud_layout::AirInputs {
-                    tick: g.visual_ticks() as i32,
-                    air: p.air,
-                    max_air: 300,
-                    // Hud.extractAirBubbles checks the fluid at the eyes, not the block.
-                    under_water: p.is_eye_in_fluid(sunrise_client::motion::WATER),
+                let Some((inputs, sound_at)) = g.camera_air_inputs(camera) else {
+                    return;
                 };
-                let at = [p.position.x, p.position.y, p.position.z];
                 status_rows.clear();
                 let pop_sound =
                     g.health_hud
                         .air_level(&inputs, wi, hi, &mut status_heights, &mut status_rows);
                 hud_layout::paint(batch, &g.gui.atlas, &status_rows);
-                // Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard
-                // by this client only.
-                if let Some((volume, pitch)) = pop_sound {
+                // Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard by this
+                // client only, so another player's bubbles pop silently.
+                if let Some((volume, pitch)) = pop_sound
+                    && let Some(at) = sound_at
+                {
                     let players = sunrise_client::settings::SOUND_SOURCES
                         .iter()
                         .position(|s| *s == "player")
@@ -8059,11 +8025,7 @@ impl Game<'_> {
         // One scan for both passes that draw them (block entities below and the
         // overlay near the end of this function).
         let cracks = self.cracks(camera);
-        let fire_yaw = if self.camera_type == sunrise_client::camera::CameraType::ThirdPersonFront {
-            self.yaw + 180.0
-        } else {
-            self.yaw
-        };
+        let fire_yaw = self.posed_rotation.map_or(self.view.y_rot, |(y, _, _)| y);
         // Packs may move vertices or draw from another camera. The guarded
         // billboard frustum covers TAA's jitter without changing model culling.
         let fire_view = billboard_frustum
@@ -8076,6 +8038,9 @@ impl Game<'_> {
         };
         laps.lap("eg_prep");
         for item in &self.dropped {
+            if self.hides_as_camera(item.id) {
+                continue;
+            }
             if item.fire_ticks > 0
                 && self
                     .stack_can_be_hurt_by(&item.stack, "minecraft:in_fire")
@@ -8103,6 +8068,9 @@ impl Game<'_> {
         }
         laps.lap("eg_fire_items");
         for stand in &self.armor_stands {
+            if self.hides_as_camera(stand.id) {
+                continue;
+            }
             if stand.is_on_fire() && !stand.marker {
                 let scale = if stand.small { 0.5 } else { 1.0 };
                 let at = stand.render_position(alpha);
@@ -8157,7 +8125,9 @@ impl Game<'_> {
                 }
                 F::Dragon => {
                     // A dragon summoned outside the End draws at its join slot too.
-                    if let Some(dragon) = self.dragon.as_ref() {
+                    if let Some(dragon) =
+                        self.dragon.as_ref().filter(|d| !self.hides_as_camera(d.id))
+                    {
                         self.dragon_geometry(dragon, camera, alpha, &mut out, additive);
                     }
                 }
@@ -8175,14 +8145,17 @@ impl Game<'_> {
                 }
                 F::Orb => {
                     self.mark_entity(out.len(), "minecraft:experience_orb");
-                    let live = self.orbs[range].iter().map(|o| {
-                        let at = [
-                            o.previous.x + (o.position.x - o.previous.x) * alpha,
-                            o.previous.y + (o.position.y - o.previous.y) * alpha,
-                            o.previous.z + (o.position.z - o.previous.z) * alpha,
-                        ];
-                        (o, at, alpha as f32)
-                    });
+                    let live = self.orbs[range]
+                        .iter()
+                        .filter(|o| !self.hides_as_camera(o.id))
+                        .map(|o| {
+                            let at = [
+                                o.previous.x + (o.position.x - o.previous.x) * alpha,
+                                o.previous.y + (o.position.y - o.previous.y) * alpha,
+                                o.previous.z + (o.position.z - o.previous.z) * alpha,
+                            ];
+                            (o, at, alpha as f32)
+                        });
                     let frame = orb_frame.get_or_init(|| self.orb_frame());
                     self.orb_geometry(camera, frame, live, orb_view, &mut out);
                 }
@@ -8238,6 +8211,9 @@ impl Game<'_> {
         laps.lap("eg_other_creatures");
         // These billboards stay in their later pass, outside the ordered body runs.
         for m in &self.mobs {
+            if self.hides_as_camera(m.id) {
+                continue;
+            }
             // Blaze.isOnFire: a charged blaze burns.
             let blazing = m.species() == sunrise_client::mobs::Species::Blaze && m.extra.flag;
             if (m.is_on_fire() || blazing) && !m.removed {
@@ -8333,19 +8309,32 @@ impl Game<'_> {
             };
             // Each caster carries (interpolated placement pos, current distance pos, radius, strength).
             let mut casters: Vec<(glam::DVec3, glam::DVec3, f32, f32)> =
-                sunrise_client::shadows::mob_casters(&self.mobs, a)
-                    .map(|(pos, r, s)| (pos, pos, r, s))
-                    .collect();
+                sunrise_client::shadows::mob_casters(
+                    self.mobs.iter().filter(|m| !self.hides_as_camera(m.id)),
+                    a,
+                )
+                .map(|(pos, r, s)| (pos, pos, r, s))
+                .collect();
             let item = sunrise_client::shadows::shadow_params("minecraft:item");
-            casters.extend(self.dropped.iter().map(|i| {
-                let p = lerp(i.previous, i.position);
-                (p, p, item.0, item.1)
-            }));
+            casters.extend(
+                self.dropped
+                    .iter()
+                    .filter(|i| !self.hides_as_camera(i.id))
+                    .map(|i| {
+                        let p = lerp(i.previous, i.position);
+                        (p, p, item.0, item.1)
+                    }),
+            );
             let orb = sunrise_client::shadows::shadow_params("minecraft:experience_orb");
-            casters.extend(self.orbs.iter().map(|o| {
-                let p = lerp(o.previous, o.position);
-                (p, p, orb.0, orb.1)
-            }));
+            casters.extend(
+                self.orbs
+                    .iter()
+                    .filter(|o| !self.hides_as_camera(o.id))
+                    .map(|o| {
+                        let p = lerp(o.previous, o.position);
+                        (p, p, orb.0, orb.1)
+                    }),
+            );
             // Text, block and item displays: same visibility gate, per-entity partial tick,
             // and current-position distance fade as `EntityRenderer.extractShadow`.
             let display_scale = self.view_scale();
@@ -8712,6 +8701,9 @@ impl Game<'_> {
         } = *setup;
         let tables = &self.pack.context.tables;
         for f in &self.falling[run] {
+            if self.hides_as_camera(f.id) {
+                continue;
+            }
             let p = f.model_origin(alpha, |state, x, z| tables.offset(state, x, z)) - camera;
             let o = p.as_vec3();
             // Only rear-origin models pay for the envelope/depth check. The
@@ -11015,9 +11007,8 @@ impl Game<'_> {
         pr.lap("pr_setup");
         let alpha = self.frame_world_partial_tick();
         self.refresh_client_pick(alpha as f32);
-        // Camera.getCameraEntityPartialTicks: the view, the hand and the
-        // player's own model stay smooth while the level is frozen.
-        let camera_alpha = self.clock.camera_fraction();
+        // Camera.getCameraEntityPartialTicks: only players and their mounts stay unfrozen.
+        let camera_alpha = self.camera_partial_tick();
         let view = self.frame_camera(camera_alpha as f32);
         self.check_screenshot_sequence_camera(view);
         // What faces the camera (particles, item sprites, block entity text) faces the frame's
@@ -11263,44 +11254,29 @@ impl Game<'_> {
         // CAN_PLACE_ON item matching the block, and spectators with a menu block; Sunrise
         // does not open menus for spectators, so those never show it. An open
         // screen does not hide it: vanilla checks the HUD and the game mode, not the screen.
-        let adventure = self.mode == sunrise_client::command::args::GameMode::Adventure;
-        let can_build = self.may_build() || adventure;
-        let outline = if block_outline_drawn(
-            self.ui.hide_gui,
-            self.entity_targeted(),
-            can_build,
-            self.shows_panorama(),
-        ) {
-            self.pick()
-                .filter(|h| {
-                    self.may_build()
-                        || !self.block_action_restricted(h.pos)
-                        || self.can_place_on_in_adventure(h.pos)
-                })
-                .filter(|h| {
-                    let state = self.world.block(h.pos[0], h.pos[1], h.pos[2]);
-                    let mut canceled = false;
-                    self.native_block_highlight(h.pos, state, alpha as f32, &mut canceled);
-                    !canceled
-                })
-                .map(|h| {
-                    let state = self.world.block(h.pos[0], h.pos[1], h.pos[2]);
-                    outline_after_terrain = self
-                        .pack
-                        .render
-                        .model_catalog
-                        .collect(state, BlockPos::new(h.pos[0], h.pos[1], h.pos[2]))
-                        .is_ok_and(|models| {
-                            models
-                                .iter()
-                                .any(|(_, model)| model.faces.iter().any(|f| f.translucent))
-                        });
-                    self.outline_edges_iter(state, h.pos).collect()
-                })
-                .unwrap_or_default()
-        } else {
-            Vec::new()
-        };
+        let outline: Vec<_> = self
+            .block_outline_hit()
+            .filter(|h| {
+                let state = self.world.block(h.pos[0], h.pos[1], h.pos[2]);
+                let mut canceled = false;
+                self.native_block_highlight(h.pos, state, alpha as f32, &mut canceled);
+                !canceled
+            })
+            .map(|h| {
+                let state = self.world.block(h.pos[0], h.pos[1], h.pos[2]);
+                outline_after_terrain = self
+                    .pack
+                    .render
+                    .model_catalog
+                    .collect(state, BlockPos::new(h.pos[0], h.pos[1], h.pos[2]))
+                    .is_ok_and(|models| {
+                        models
+                            .iter()
+                            .any(|(_, model)| model.faces.iter().any(|f| f.translucent))
+                    });
+                self.outline_edges_iter(state, h.pos).collect()
+            })
+            .unwrap_or_default();
         pr.lap("pr_outline");
         let title = self.shows_panorama();
         let (yaw, pitch, roll) = if title {
@@ -11326,6 +11302,11 @@ impl Game<'_> {
         } else {
             self.fov_degrees(camera_alpha as f32, camera.to_array())
         };
+        let cull_fov_degrees = if title {
+            85.0
+        } else {
+            sunrise_client::gfx::cull_fov(fov_degrees, (self.settings.fov as i32) as f32)
+        };
         let camera_effects = fov::camera_effects_enabled(title, self.studio.flying());
         let bob = if !camera_effects {
             glam::Mat4::IDENTITY
@@ -11335,7 +11316,7 @@ impl Game<'_> {
         let spin = if !camera_effects {
             glam::Mat4::IDENTITY
         } else {
-            self.spinning_matrix(camera_alpha as f32)
+            self.spinning_matrix(alpha as f32)
         };
         let terrain_distance = self.terrain_distance();
         let distance = (terrain_distance * 16) as f32;
@@ -11451,16 +11432,22 @@ impl Game<'_> {
         self.give_poly_globals(core_globals.as_ref());
         self.expression_frame = frame;
         // Camera.createProjectionMatrixForCulling: max(fov, configuredFov), without bob or spin.
-        let cull_fov = fov_degrees.max(self.settings.fov);
         self.view_frustum = self.world_view_frustum(
             camera,
-            [cull_fov, yaw, pitch, roll],
+            [cull_fov_degrees, yaw, pitch, roll],
             glam::Mat4::IDENTITY,
             depth_far,
         );
         let billboard_frustum = if self.settings.sunrise.taa {
             self.renderer.as_ref().map(|r| {
-                r.camera_frustum_with_jitter(fov_degrees, yaw, pitch, roll, bob * spin, depth_far)
+                r.camera_frustum_with_jitter(
+                    cull_fov_degrees,
+                    yaw,
+                    pitch,
+                    roll,
+                    glam::Mat4::IDENTITY,
+                    depth_far,
+                )
             })
         } else {
             self.view_frustum
@@ -11513,12 +11500,10 @@ impl Game<'_> {
             self.dragon_fireball_geometry(camera, alpha, &mut entities);
         }
         pr.lap("pr_dragon_fireballs_bolts");
+        let sky_effect_blocked = self.camera_subject().is_some_and(|c| c.blocks_sky);
         let (celestial, celestial_bodies, stars) = if title {
             (Vec::new(), Vec::new(), None)
-        } else if self.overworld_skybox()
-            && self.potions.effects.get("darkness").is_none()
-            && self.potions.effects.get("blindness").is_none()
-        {
+        } else if self.overworld_skybox() && !sky_effect_blocked {
             // Camera.doesMobEffectBlockSky: no sun, moon or stars.
             self.celestial_geometry(&sky, rain)
         } else if self.end_skybox() && self.settings.sunrise.sky {
@@ -11669,6 +11654,7 @@ impl Game<'_> {
             pitch,
             roll,
             fov_degrees,
+            cull_fov_degrees,
             eye: eye.filter(|_| !title).map_or(camera, |e| e.0),
             eye_rotation: eye.filter(|_| !title).map_or([yaw, pitch], |e| e.1),
             first_person: eye.is_none() || title || !self.view.detached,
@@ -11696,8 +11682,7 @@ impl Game<'_> {
             title,
             sky_blocked: sunrise_client::fog::sky_pass_skipped(
                 self.camera_fog_type([camera.x, camera.y, camera.z]),
-                self.potions.effects.get("blindness").is_some()
-                    || self.potions.effects.get("darkness").is_some(),
+                sky_effect_blocked,
                 self.boss_overlay.should_create_world_fog(),
             ),
             skybox: self.overworld_skybox() && self.settings.sunrise.sky,
@@ -14736,7 +14721,9 @@ pub(crate) use closest_space::closest_space_nudge;
 use inventory_input::drop_whole_stack;
 use subtitles::{Subtitles, in_game_ui, subtitles};
 
-use hud_render::{block_outline_drawn, debug_crosshair_drawn, is_game_master_block};
+#[cfg(test)]
+use hud_render::block_outline_drawn;
+use hud_render::{debug_crosshair_drawn, is_game_master_block};
 #[cfg(test)]
 mod test_neighbourhood {
     //! Shared fixture step for tests that tick entities on prepared data.

@@ -320,29 +320,21 @@ impl Game<'_> {
     }
     /// Resolve the camera entity snapshot and collision context inputs for `Camera.alignWithEntity`.
     fn camera_alignment_source(&mut self, partial: f32) -> Option<CameraAlignment> {
-        use sunrise_world::collision_context::EntityContextKind;
-        // Minecraft.cameraEntity: a server's spectator camera on a mob or
-        // another player.
-        if let Some(entity) = self.spectated_camera_snapshot() {
-            return Some(CameraAlignment {
-                entity,
-                descending: false,
-                entity_kind: EntityContextKind::Living,
-                interpolating_minecart: false,
-            });
-        }
-        let mut entity = self.player_camera_entity()?;
-        let minecart_position = self.remote_minecart_rider_position(partial);
+        let subject = self.camera_subject()?;
+        let mut entity = subject.camera;
+        let minecart_position = self.remote_minecart_camera_position(&subject, partial);
         if let Some(position) = minecart_position {
             // Already evaluated at partial: do not linearly interpolate
             // between tick endpoints across a corner a second time.
             entity.position = position;
             entity.previous = position;
         }
+        let descending =
+            subject.is_local_player && self.player.as_ref().is_some_and(|p| p.shift_key_down);
         Some(CameraAlignment {
             entity,
-            descending: self.player.as_ref()?.shift_key_down,
-            entity_kind: EntityContextKind::Player,
+            descending,
+            entity_kind: subject.collision_kind,
             interpolating_minecart: minecart_position.is_some(),
         })
     }
@@ -531,20 +523,10 @@ impl Game<'_> {
                 _ => None,
             })
         });
-        // Camera.setup: the living mount's scale and camera distance
-        // attributes (the happy ghast's is 8, the default 4).
         let mount = self
             .riding
             .and_then(|id| self.mobs.iter().find(|m| m.id == id))
-            .map(|m| {
-                let attribute = |name: &str, default: f64| {
-                    m.kind.attributes.get(name).copied().unwrap_or(default)
-                };
-                (
-                    attribute("minecraft:scale", 1.0) as f32,
-                    attribute("minecraft:camera_distance", 4.0),
-                )
-            });
+            .map(Mob::camera_scale_and_distance);
         // AbstractBoat.positionRider turns a passenger by the boat's
         // deltaRotation after its yRotO was saved, and LocalPlayer.getViewYRot
         // interpolates a passenger's yaw: the boat's turn is spread over the

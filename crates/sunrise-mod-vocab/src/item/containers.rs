@@ -185,9 +185,11 @@ impl ModContainerInsertRule {
 /// ignored without changing `slots`. Extended slot indices (`>= 256`) persist in mod block-entity
 /// `Items` entries as NBT `Int` `Slot` values.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-// exhaustive: the game builds it with a literal; mods only read it
+// exhaustive: mods construct the declaration when calling Registrar::block_container
 #[derive(sunrise_mod_api_macros::Wire)]
 pub struct ModContainer {
+    /// Number of persisted slots. Registration refuses counts over 256: vanilla's
+    /// `ItemStackWithSlot.CODEC` stores slot indices in an unsigned byte.
     pub slots: usize,
     pub faces: [Vec<usize>; 6],
     pub inputs: Vec<usize>,

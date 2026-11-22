@@ -765,6 +765,13 @@ impl PotionState {
     }
     /// A server's move: thrown potions have no interpolation handler, so
     /// `moveOrInterpolateTo` puts them there at once. False when `id` isn't one.
+    pub(in crate::game) fn remote_thrown_pose(&self, id: u32) -> Option<([f64; 3], [f64; 3])> {
+        let t = self.thrown.iter().find(|t| t.id == id)?;
+        Some((
+            [t.position.x, t.position.y, t.position.z],
+            [t.previous.x, t.previous.y, t.previous.z],
+        ))
+    }
     pub(super) fn move_remote_thrown(&mut self, id: u32, at: Vec3) -> bool {
         let Some(t) = self.thrown.iter_mut().find(|t| t.id == id) else {
             return false;
@@ -2575,6 +2582,9 @@ impl Game<'_> {
     ) {
         let orientation = glam::Mat4::from_quat(self.camera_orientation());
         for t in &self.potions.thrown {
+            if self.hides_as_camera(t.id) {
+                continue;
+            }
             let previous = glam::DVec3::new(t.previous.x, t.previous.y, t.previous.z);
             let position = glam::DVec3::new(t.position.x, t.position.y, t.position.z);
             // ThrowableProjectile.shouldRenderAtSqrDistance: hidden for its
@@ -3118,7 +3128,7 @@ impl sunrise_client::mobs::ModEffectTicks for Game<'_> {
 /// counts its effect down, then ticks its `BlendState`. The darkness effect's
 /// is the fade `darkness_lighting` and `darkness_fog` draw; the integrated
 /// level's `tick_sculk_entities` is not run for a server's client (#3393).
-fn client_tick_effects(effects: &mut PlayerEffects, darkness: &mut (f32, f32)) {
+pub(in crate::game) fn client_tick_effects(effects: &mut PlayerEffects, darkness: &mut (f32, f32)) {
     for e in &mut effects.list {
         e.tick_client();
     }

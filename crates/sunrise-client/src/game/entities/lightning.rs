@@ -857,8 +857,10 @@ impl Game<'_> {
         self.bolts
             .iter()
             .filter(|b| {
-                let at = glam::DVec3::new(b.at[0], b.at[1], b.at[2]);
-                at.distance_squared(camera) < range * range
+                !self.hides_as_camera(b.id) && {
+                    let at = glam::DVec3::new(b.at[0], b.at[1], b.at[2]);
+                    at.distance_squared(camera) < range * range
+                }
             })
             .map(|b| sunrise_client::gfx::lightning::Bolt {
                 at: b.at,

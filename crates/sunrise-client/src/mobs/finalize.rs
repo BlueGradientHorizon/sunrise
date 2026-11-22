@@ -505,6 +505,8 @@ pub struct Attributes {
     pub name_tag_distance: Option<f64>,
     /// `BELOW_NAME_DISTANCE` from a server attribute update.
     pub below_name_distance: Option<f64>,
+    /// `CAMERA_DISTANCE` from a server attribute update; never saved.
+    pub camera_distance: Option<f64>,
     /// The transient minecraft:baby speed modifier was taken away
     /// (`/attribute ... modifier remove`) until the next setBaby. Not
     /// saved: a load runs setBaby again.
@@ -1482,17 +1484,27 @@ pub fn stored_stack(m: &Mob, slot: usize) -> Option<ItemStack> {
     }
     Some(read.project().into_owned())
 }
-/// What a mob has in `slot` as a stack: the one it kept, else one item with
-/// its enchantments.
+/// What a mob has in `slot` as a stack, including its count, enchantments and trim.
 pub fn item_stack(m: &Mob, slot: usize) -> Option<crate::items::ItemStack> {
-    stored_stack(m, slot).or_else(|| {
-        let mut stack = crate::items::ItemStack::new(&item(m, slot)?, 1);
-        stack.set_crafting_enchantments(slot_enchantments(m, slot));
-        if let Some(trim) = gear::gear(m).and_then(|g| g.trims[gear_slot(slot)].clone()) {
-            stack.data_mut().trim = Some(trim);
-        }
-        Some(stack)
-    })
+    if !matches!(slot, MAINHAND..=HEAD | SADDLE) {
+        return None;
+    }
+    let read = equipment_slot(m, *EquipmentSlot::ALL.get(slot)?)?;
+    let base = read.base();
+    if slot <= HEAD && (base.damage != 0 || base.count > 1 || base.extra.is_some()) {
+        return Some(read.project().into_owned());
+    }
+    let mut stack = ItemStack {
+        item: base.item.clone(),
+        count: base.count,
+        damage: 0,
+        extra: None,
+    };
+    stack.set_crafting_enchantments(slot_enchantments(m, slot));
+    if let Some(trim) = gear::gear(m).and_then(|g| g.trims[gear_slot(slot)].clone()) {
+        stack.data_mut().trim = Some(trim);
+    }
+    Some(stack)
 }
 /// `LivingEntity.getItemBySlot` from the stacks a mob keeps: the hands and
 /// armour from `item_stack` (`EquipmentSlot` ordinals match these slots), the

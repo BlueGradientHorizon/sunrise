@@ -1198,7 +1198,7 @@ impl Game<'_> {
         // shouldRender: not while attached to an entity (`isAttachedToEntity`).
         for r in self.rockets[run]
             .iter()
-            .filter(|r| !r.attached && r.attached_to.is_none())
+            .filter(|r| !r.attached && r.attached_to.is_none() && !self.hides_as_camera(r.id))
         {
             // FireworkRocketEntity.shouldRenderAtSqrDistance: within 64 blocks;
             // EntityRenderer.shouldRender: its 0.25 box in the view.

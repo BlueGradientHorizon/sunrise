@@ -186,7 +186,7 @@ impl Game<'_> {
             self.studio.flying(),
             self.ui.hands_drawn(
                 self.spectator(),
-                self.sleeping.is_some(),
+                self.camera_subject().is_some_and(|c| c.is_sleeping),
                 self.camera_type.is_first_person(),
                 self.player
                     .as_ref()

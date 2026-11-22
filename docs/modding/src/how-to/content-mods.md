@@ -1176,8 +1176,9 @@ make it immune to ordinary fire.
 
 #### Block entity containers
 
-A code mod declares a block entity's `ModContainer` with `Registrar::block_container`. The
-container's `faces` say which slots each side reaches; `inputs` lists the slots insertion may use.
+A code mod declares a block entity's `ModContainer` with `Registrar::block_container`.
+Content files can declare menu layouts, not saved block container storage. The container's `faces`
+say which slots each side reaches; `inputs` lists the slots insertion may use.
 Per-slot `insert_rules` provide static admission, with missing entries treated as `Any`.
 
 Registration validates the declared shape: `slots` must fit in a nonnegative `i32`, every index in
@@ -1216,10 +1217,11 @@ provider. Menu clicks and quick-move still use the declared rules and `menu_slot
 
 #### Menu types
 
-A mod menu type (vanilla's `MenuType`) is declared in `data/<id>/sunrise/menu/<name>.json`: its container's slot count
-(0 to 32,767, the 16-bit signed index limit of vanilla container packets), the data slots its menu syncs (`ContainerData`,
-0 to 32,767, 0 by default), and the slots players only take
-from (`results`, as a furnace's result slot):
+A mod menu type (vanilla's `MenuType`) is declared in `data/<id>/sunrise/menu/<name>.json`: its layout's slot count,
+the data slots its menu syncs (`ContainerData`, 0 by default), and the slots players only take from
+(`results`, as a furnace's result slot). The layout and any appended player inventory can total up to
+32,768 slots (indices 0 to 32,767 in vanilla's signed-short container packets). A menu type does not
+allocate a block's saved item slots.
 
 ```json
 { "slots": 9, "data_slots": 2, "results": [7, 8], "inputs": [0, 1] }

@@ -1188,6 +1188,7 @@ fn probe_frame(hud: &HudBatch) -> super::Frame<'_> {
         pitch: 0.0,
         roll: 0.0,
         fov_degrees: 90.0,
+        cull_fov_degrees: 90.0,
         bob: Mat4::IDENTITY,
         spin: Mat4::IDENTITY,
         sky: crate::environment::Sky::default(),

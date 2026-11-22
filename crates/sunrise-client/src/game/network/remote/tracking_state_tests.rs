@@ -157,6 +157,11 @@ fn any_tracked_passenger_makes_its_vehicle_a_vehicle() {
     let tracked = |kind: &str| Tracked {
         kind: kind.to_owned(),
         position: [0.0, 64.0, 0.0],
+        previous: [0.0, 64.0, 0.0],
+        yaw: 0.0,
+        pitch: 0.0,
+        previous_yaw: 0.0,
+        previous_pitch: 0.0,
         codec_base: [0.0, 64.0, 0.0],
         on_fire: false,
         mod_fire_immune: false,

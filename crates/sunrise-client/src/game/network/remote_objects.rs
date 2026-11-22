@@ -82,7 +82,7 @@ impl Game<'_> {
             // The width, height and response follow in SetEntityData.
             self.interactions.insert(
                 id as i32,
-                super::interactions::RemoteInteraction::new(position),
+                super::interactions::RemoteInteraction::new_with_rotation(position, yaw, pitch),
             );
         } else if let Some(cart) = super::minecarts::CartKind::from_id(kind) {
             let mut c = super::minecarts::Minecart::new(id, cart, at);
@@ -100,7 +100,11 @@ impl Game<'_> {
             }
             self.boats.push(b);
         } else if kind == "minecraft:armor_stand" {
-            self.armor_stands.push(ArmorStand::new(id, at, yaw));
+            let mut stand = ArmorStand::new(id, at, yaw);
+            let clamped = (pitch % 360.0).clamp(-90.0, 90.0);
+            stand.pitch = clamped;
+            stand.previous_pitch = clamped;
+            self.armor_stands.push(stand);
         } else if kind == "minecraft:item_frame" || kind == "minecraft:glow_item_frame" {
             self.item_frames.push(ItemFrame {
                 attachment_lifetime: Default::default(),

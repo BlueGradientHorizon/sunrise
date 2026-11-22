@@ -7,7 +7,7 @@
 #[path = "fov_camera_tests.rs"]
 mod camera_tests;
 
-use super::{Game, remote_camera::SpectatedEntity};
+use super::Game;
 use sunrise_core::position::BlockPos;
 
 pub(super) fn camera_effects_enabled(title: bool, studio_freecam: bool) -> bool {
@@ -19,7 +19,7 @@ pub(super) fn studio_draws_hand(studio_freecam: bool, ordinary_hand_visible: boo
 }
 use sunrise_client::{
     camera::{
-        BobState, CameraFluid, FovPlayer, HurtBob, UseItem, bob_matrix, field_of_view_modifier,
+        BobState, CameraFluid, FovPlayer, UseItem, bob_matrix, field_of_view_modifier,
         spinning_effect_matrix,
     },
     fog::{FogType, fog_type},
@@ -76,63 +76,41 @@ impl Game<'_> {
         let intensity = portal.max(self.nausea_blend(partial)) * (scale * scale);
         spinning_effect_matrix(intensity, fx.spinning_time + partial * fx.spinning_speed)
     }
-    /// `Camera.tick`: ease the eye height and FOV modifier toward the current
-    /// camera's values. `Camera.tickFov` uses the modifier of an
-    /// `AbstractClientPlayer` (local or remote), or 1 for anything else.
+    /// What `AbstractClientPlayer.getFieldOfViewModifier` reads.
+    pub(super) fn fov_player(&self) -> Option<FovPlayer> {
+        let p = self.player.as_ref()?;
+        let using = self.using.and_then(|(slot, ticks)| {
+            let stack = self.stack_in(slot)?;
+            Some((fov_use_item(&stack.item), ticks as i32))
+        });
+        Some(FovPlayer {
+            flying: p.flying,
+            walking_speed: self.remote_walking_speed(),
+            // Player.aiStep keeps `speed` as the float movement speed attribute.
+            movement_speed: f64::from(p.speed),
+            using,
+        })
+    }
+    /// `Camera.tick`: the eye height and the field-of-view modifier ease
+    /// halfway toward the camera player's each tick.
     pub(super) fn tick_fov(&mut self) {
-        let (eye, player) = if let Some(camera) = self.spectated_camera() {
-            let player = match camera {
-                SpectatedEntity::Mob(m) if m.kind.id == "minecraft:player" => {
-                    let using = if m.extra.using_item > 0 {
-                        let hand = if m.extra.using_off_hand {
-                            sunrise_items::equipment::OFFHAND
-                        } else {
-                            sunrise_items::equipment::MAINHAND
-                        };
-                        m.extra
-                            .slot_stack(hand)
-                            .map(|stack| (fov_use_item(&stack.item), m.extra.using_item - 1))
-                    } else {
-                        None
-                    };
-                    Some(FovPlayer {
-                        // ClientPacketListener.handlePlayerAbilities updates only the local player.
-                        // A RemotePlayer keeps its default Abilities and synced movement attribute.
-                        flying: false,
-                        walking_speed: 0.1,
-                        movement_speed: m.attrs.speed,
-                        using,
-                    })
-                }
-                _ => None,
-            };
-            (Some(camera.snapshot().eye_height), player)
-        } else if let Some(p) = &self.player {
-            let eye = if self.sleeping.is_some() {
-                0.2
-            } else {
-                p.dimensions.eye_height
-            };
-            let using = self.using.and_then(|(slot, ticks)| {
-                self.stack_in(slot)
-                    .map(|stack| (fov_use_item(&stack.item), ticks as i32))
-            });
-            (
-                Some(eye),
-                Some(FovPlayer {
-                    flying: p.flying,
-                    walking_speed: self.remote_walking_speed(),
-                    // Player.aiStep keeps `speed` as the float movement speed attribute.
-                    movement_speed: f64::from(p.speed),
-                    using,
-                }),
-            )
-        } else {
-            (None, None)
-        };
         let first_person = self.camera_type.is_first_person();
-        let target = player.map_or(1.0, |player| {
-            let base = field_of_view_modifier(&player, first_person, self.fov_effect_scale());
+        let effect = self.fov_effect_scale();
+        let (fov_player, eye) = match self.camera_subject() {
+            Some(cam) if !cam.is_local_player => (cam.fov_player, Some(cam.camera.eye_height)),
+            _ => (
+                self.fov_player(),
+                self.player.as_ref().map(|p| {
+                    if self.sleeping.is_some() {
+                        0.2
+                    } else {
+                        p.dimensions.eye_height
+                    }
+                }),
+            ),
+        };
+        let target = fov_player.map_or(1.0, |player| {
+            let base = field_of_view_modifier(&player, first_person, effect);
             // AbstractClientPlayer.getFieldOfViewModifier returns 0.1 before
             // Mth.lerp / ComputeFovModifierEvent when scoping in first person.
             if first_person && matches!(player.using, Some((UseItem::Spyglass, _))) {
@@ -152,6 +130,12 @@ impl Game<'_> {
         p.health
             .dead_or_dying()
             .then(|| self.ui.death_time.min(i32::MAX as u32) as i32)
+    }
+    /// `modifyFovBasedOnDeathOrFluid`'s death time: the camera entity's, so a spectated entity's.
+    fn camera_death_time(&self) -> Option<i32> {
+        self.camera_subject()
+            .and_then(|c| c.camera.living)
+            .and_then(|l| l.dead)
     }
     /// `Camera.getFluidInCamera` for the camera at `camera`, where the parts of each block it
     /// reads may answer the state the camera sees there (`state_at_viewpoint`), and the mods may
@@ -200,7 +184,7 @@ impl Game<'_> {
             partial,
             self.settings.fov as i32,
             self.fov_effect_scale(),
-            self.death_time(),
+            self.camera_death_time(),
             self.camera_fluid(camera),
             false,
         );
@@ -234,8 +218,9 @@ impl Game<'_> {
         if !self.settings.extras.lod_zoom_detail {
             return None;
         }
+        let yaw = self.camera_subject().map_or(self.yaw, |c| c.camera.y_rot);
         sunrise_client::lod::ZoomAim::new(
-            self.yaw,
+            yaw,
             self.fov_degrees(1.0, camera),
             self.zoom_magnification(camera),
         )
@@ -245,28 +230,24 @@ impl Game<'_> {
         self.view.calculate_hud_fov(
             partial,
             self.fov_effect_scale(),
-            self.death_time(),
+            self.camera_death_time(),
             self.camera_fluid(camera),
         )
     }
     /// The pose `GameRenderer.renderLevel` multiplies into the projection:
     /// `bobHurt`, then `bobView` with the View Bobbing option.
     pub(super) fn bob_matrix(&self, partial: f32) -> glam::Mat4 {
-        let Some(p) = self.player.as_ref() else {
+        let Some(cam) = self.camera_subject() else {
             return glam::Mat4::IDENTITY;
         };
-        let hurt = &p.health.hurt;
         let state = BobState {
-            living: Some(HurtBob {
-                hurt_time: p.health.hurt_animation_time as f32 - partial,
-                hurt_duration: hurt.hurt_duration,
-                hurt_dir: p.health.hurt_dir,
-                death_time: self.death_time().map(|t| t as f32 + partial),
+            living: cam.hurt.map(|h| h.bob(partial)),
+            player: cam.avatar_bob.map(|avatar| {
+                (
+                    avatar.backwards_interpolated_walk_distance(partial),
+                    avatar.interpolated_bob(partial),
+                )
             }),
-            player: Some((
-                self.avatar.backwards_interpolated_walk_distance(partial),
-                self.avatar.interpolated_bob(partial),
-            )),
         };
         let tilt = self.settings.file.double("damageTiltStrength");
         glam::Mat4::from_cols_array(&bob_matrix(&state, tilt, self.settings.view_bobbing).m)
