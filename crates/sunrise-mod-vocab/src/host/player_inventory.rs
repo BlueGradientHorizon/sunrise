@@ -98,8 +98,9 @@ pub trait PlayerInventoryBackendMut {
     /// Refuses, with nothing given, with `Stale`, `Client`,
     /// `Dead` or `Stack`, as `player_set_inventory_slot` does.
     /// This happens in the player's own level, even when the hook runs in another one.
-    /// Returns `Ok(None)` when all items went in or were thrown. If the player's level is
-    /// unavailable, returns the overflow as `Ok(Some(rest))` rather than throwing it elsewhere.
+    /// `Ok(None)` means every item was accepted. The ordinary entity-join hook can still
+    /// cancel the overflow drop. If the player's level is unavailable, returns the overflow
+    /// as `Ok(Some(rest))` rather than throwing it elsewhere.
     /// An open transaction journals this write; an abort restores the previous value.
     /// Overflow drops, the pickup visual and the sound wait for the outermost commit.
     fn player_give_stack(
