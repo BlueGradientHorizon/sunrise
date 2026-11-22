@@ -1406,12 +1406,10 @@ mod tests {
         let from = (cam_sx, cam_sy_abs - min_sec_y, cam_sz);
         // Literal `ChunkTrackingView.isWithinDistance(cam_sx, cam_sz, radius, x, z, false)`.
         let within_xz = |x: i32, z: i32| {
-            let gx = (x - cam_sx).abs().saturating_sub(1);
-            let gz = (z - cam_sz).abs().saturating_sub(1);
-            gx < radius
-                && gz < radius
-                && i64::from(gx) * i64::from(gx) + i64::from(gz) * i64::from(gz)
-                    < i64::from(radius) * i64::from(radius)
+            let gx = ((i64::from(x) - i64::from(cam_sx)).abs() - 1).max(0);
+            let gz = ((i64::from(z) - i64::from(cam_sz)).abs() - 1).max(0);
+            let r = i64::from(radius);
+            r > 0 && gx < r && gz < r && gx * gx + gz * gz < r * r
         };
         let block = |k: SectionKey| {
             [
@@ -2263,5 +2261,24 @@ mod tests {
         o.running = None;
         o.settle(at((0, 11, 0)), 2, true);
         assert!(o.contains((0, 13, 0)));
+    }
+
+    #[test]
+    fn reference_includes_adjacent_columns_at_distance_one() {
+        let mut o = Occlusion::new(0, 6);
+        load_square(&mut o, 0, 0, 3);
+        let camera = at((0, 2, 0));
+        o.settle(camera, 1, true);
+        let expected = reference(&o.columns, camera, 1, true, true);
+        for x in -2..=2 {
+            for z in -2..=2 {
+                for y in 0..6 {
+                    let key = (x, y, z);
+                    let in_box = x.abs() <= 1 && z.abs() <= 1 && (y - 2).abs() <= 1;
+                    assert_eq!(expected.contains(&key), in_box, "reference at {key:?}");
+                    assert_eq!(o.contains(key), in_box, "occlusion at {key:?}");
+                }
+            }
+        }
     }
 }

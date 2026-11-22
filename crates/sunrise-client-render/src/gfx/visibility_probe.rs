@@ -6,13 +6,13 @@ use super::{
     frustum,
     gpu_culling::{FrameInputs, Record, UNBOUNDED, keeps, rounded_box, tables},
     occlusion::Occlusion,
-    resident::{Resident, ResidentSize},
+    resident::{Resident, ResidentSize, origin as section_origin},
     view_sections::view_sections,
     world_projection,
 };
-use glam::{DVec3, Vec4};
+use glam::{DVec3, Vec3, Vec4};
 use serde_json::Value;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 struct ProbeSlot;
@@ -69,6 +69,38 @@ fn parse_excluded_chunks(case: &Value) -> HashSet<(i32, i32)> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn parse_tight_bounds(case: &Value, min_sec_y: i32) -> HashMap<(i32, i32, i32), [Vec3; 2]> {
+    let mut out = HashMap::new();
+    if let Some(entries) = case.get("tight_bounds").and_then(Value::as_array) {
+        for entry in entries {
+            let s = entry["section"].as_array().expect("tight_bounds section");
+            let lo = entry["min"].as_array().expect("tight_bounds min");
+            let hi = entry["max"].as_array().expect("tight_bounds max");
+            let key = (
+                s[0].as_i64().unwrap() as i32,
+                s[1].as_i64().unwrap() as i32 - min_sec_y,
+                s[2].as_i64().unwrap() as i32,
+            );
+            out.insert(
+                key,
+                [
+                    Vec3::new(
+                        lo[0].as_f64().unwrap() as f32,
+                        lo[1].as_f64().unwrap() as f32,
+                        lo[2].as_f64().unwrap() as f32,
+                    ),
+                    Vec3::new(
+                        hi[0].as_f64().unwrap() as f32,
+                        hi[1].as_f64().unwrap() as f32,
+                        hi[2].as_f64().unwrap() as f32,
+                    ),
+                ],
+            );
+        }
+    }
+    out
 }
 
 fn loaded_bounds(case: &Value, cam_cx: i32, cam_cz: i32, rd: i32) -> (i32, i32, i32, i32) {
@@ -295,34 +327,31 @@ pub fn verify_witness(path: &Path) -> Result<usize, String> {
             }
         }
 
-        // 4. Resident::visible & gpu_culling tables/keeps (open-world cases with full loaded grid).
+        // 4. Resident::visible & gpu_culling tables/keeps (open-world cases with full loaded grid),
+        // tested independently of the occlusion graph and with out-of-height sentinel rows.
         if case.get("vis_overrides").is_none()
             && excluded.is_empty()
             && case.get("partial_step").is_none()
         {
+            let tight_bounds = parse_tight_bounds(case, min_sec_y);
             let mut r = Resident::default();
             r.set_min_y(min_y);
             r.set_sections(sections);
             for x in cam_cx - rd - 1..=cam_cx + rd + 1 {
                 for z in cam_cz - rd - 1..=cam_cz + rd + 1 {
-                    for y in 0..sections {
+                    for y in -1..=sections {
                         let sy = y + min_sec_y;
-                        if non_empty.as_ref().is_none_or(|set| set.contains(&sy)) {
-                            r.insert_marked((x, y, z), ProbeSlot, None, false);
+                        let out_of_height = y < 0 || y >= sections;
+                        if out_of_height || non_empty.as_ref().is_none_or(|set| set.contains(&sy)) {
+                            let bounds = tight_bounds.get(&(x, y, z)).copied();
+                            r.insert_marked((x, y, z), ProbeSlot, bounds, false);
                         }
                     }
                 }
             }
 
             let mut out = Vec::new();
-            r.visible(
-                camera,
-                rd,
-                &all_frustum,
-                |k| o.contains(k),
-                |_, _| false,
-                &mut out,
-            );
+            r.visible(camera, rd, &all_frustum, |_| true, |_, _| false, &mut out);
             let mut actual_res: Vec<[i32; 3]> = out
                 .iter()
                 .map(|v| [v.key.0, v.key.1 + min_sec_y, v.key.2])
@@ -343,13 +372,16 @@ pub fn verify_witness(path: &Path) -> Result<usize, String> {
             let mut actual_gpu = Vec::new();
             for x in cam_cx - rd - 1..=cam_cx + rd + 1 {
                 for z in cam_cz - rd - 1..=cam_cz + rd + 1 {
-                    for y in 0..sections {
+                    for y in -1..=sections {
                         let sy = y + min_sec_y;
-                        if non_empty.as_ref().is_some_and(|set| !set.contains(&sy)) {
+                        let out_of_height = y < 0 || y >= sections;
+                        if !out_of_height
+                            && non_empty.as_ref().is_some_and(|set| !set.contains(&sy))
+                        {
                             continue;
                         }
                         let record = Record::new((x, y, z), 0, 0, 1, UNBOUNDED);
-                        if o.contains((x, y, z)) && keeps(&params, &words, &record) {
+                        if keeps(&params, &words, &record) {
                             actual_gpu.push([x, sy, z]);
                         }
                     }
@@ -375,14 +407,7 @@ pub fn verify_witness(path: &Path) -> Result<usize, String> {
                 let expected_set: HashSet<[i32; 3]> = expected_frustum.iter().copied().collect();
 
                 out.clear();
-                r.visible(
-                    camera,
-                    rd,
-                    &view_frustum,
-                    |k| o.contains(k),
-                    |_, _| false,
-                    &mut out,
-                );
+                r.visible(camera, rd, &view_frustum, |_| true, |_, _| false, &mut out);
                 let mut res_vis: Vec<[i32; 3]> = out
                     .iter()
                     .map(|v| [v.key.0, v.key.1 + min_sec_y, v.key.2])
@@ -396,13 +421,17 @@ pub fn verify_witness(path: &Path) -> Result<usize, String> {
                 let mut gpu_vis = Vec::new();
                 for x in cam_cx - rd - 1..=cam_cx + rd + 1 {
                     for z in cam_cz - rd - 1..=cam_cz + rd + 1 {
-                        for y in 0..sections {
+                        for y in -1..=sections {
                             let sy = y + min_sec_y;
-                            if non_empty.as_ref().is_some_and(|set| !set.contains(&sy)) {
+                            let out_of_height = y < 0 || y >= sections;
+                            if !out_of_height
+                                && non_empty.as_ref().is_some_and(|set| !set.contains(&sy))
+                            {
                                 continue;
                             }
-                            let record = Record::new((x, y, z), 0, 0, 1, rounded_box(None));
-                            if o.contains((x, y, z)) && keeps(&params, &words, &record) {
+                            let bounds = tight_bounds.get(&(x, y, z)).copied();
+                            let record = Record::new((x, y, z), 0, 0, 1, rounded_box(bounds));
+                            if keeps(&params, &words, &record) {
                                 gpu_vis.push([x, sy, z]);
                             }
                         }
@@ -447,6 +476,21 @@ pub fn verify_witness(path: &Path) -> Result<usize, String> {
                         "case {name}: witness sanity check failed: expected (0,-4,0) in and (2,-4,0) out"
                     ));
                 }
+                if name == "outside_height_octree_below_rd2_square39_tight_bounds" {
+                    let offset = view_frustum.offset_to_fully_include_camera_cube(camera, 8);
+                    let sec_min = section_origin((2, 0, 0), min_y, camera).as_vec3();
+                    let [bmin, bmax] = tight_bounds
+                        .get(&(2, 0, 0))
+                        .copied()
+                        .ok_or("missing tight_bounds for (2, -4, 0)")?;
+                    if !expected_set.contains(&[2, -4, 0])
+                        || offset.intersects(sec_min + bmin, sec_min + bmax)
+                    {
+                        return Err(format!(
+                            "case {name}: witness sanity check failed: (2,-4,0) must be kept while X=46..47 misses"
+                        ));
+                    }
+                }
                 if name == "genpvp_menu_looking_down" {
                     let view = crate::render_views::WorldView::new(
                         1,
@@ -470,9 +514,9 @@ pub fn verify_witness(path: &Path) -> Result<usize, String> {
         }
         checked += 1;
     }
-    if checked < 30 {
+    if checked < 31 {
         return Err(format!(
-            "expected at least 30 visibility cases, got {checked}"
+            "expected at least 31 visibility cases, got {checked}"
         ));
     }
     Ok(checked)

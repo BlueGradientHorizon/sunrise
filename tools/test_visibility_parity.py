@@ -205,6 +205,15 @@ def build_cases():
             'camera': [0.0, -160.0, 0.0], 'smart_cull': True,
             'frustum': {'yaw': 0.0, 'pitch': -90.0, 'fov': 35.0, 'aspect': 1.0},
         },
+        {
+            'name': 'outside_height_octree_below_rd2_square39_tight_bounds',
+            'min_y': -64, 'sections': 24, 'render_distance': 2,
+            'camera': [0.0, -160.0, 0.0], 'smart_cull': True,
+            'frustum': {'yaw': 0.0, 'pitch': -90.0, 'fov': 39.0, 'aspect': 1.0},
+            'tight_bounds': [
+                {'section': [2, -4, 0], 'min': [14.0, 0.0, 0.0], 'max': [15.0, 16.0, 16.0]},
+            ],
+        },
         # 25-26: Face-closed barrier with smart_cull on vs off (bounded graph still clamps when off).
         {
             'name': 'barrier_wall_smart_cull_on',

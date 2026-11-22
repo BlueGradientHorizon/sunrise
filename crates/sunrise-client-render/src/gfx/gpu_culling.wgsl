@@ -124,6 +124,8 @@ const DRAWN2: u32 = 10u;
 // gpu_culling.rs `rounded_box` for a box past what its codes hold: no plane
 // rejects it.
 const UNBOUNDED: u32 = 0x80000000u;
+// Packed full 16x16x16 section box (`[0, 0, 0]..[16, 16, 16]` with `CODE_OFFSET = 8`).
+const FULL_SECTION_BOX: u32 = 0x318C2108u;
 // In `params.flags`: cave culling's graph is in `params.reach`.
 const REACH: u32 = 1u;
 // In a section's `a.w`: it fades in or out, and the CPU draws it with its fade.
@@ -366,6 +368,7 @@ fn cull(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
     var skip_frustum = false;
+    var test_box = s.a.z;
     if (params.flags & TREE) != 0u {
         let col = c.z * params.cells.x + c.x;
         let state = (tables[params.tree + (col >> 4u)] >> ((col & 15u) * 2u)) & 3u;
@@ -373,8 +376,9 @@ fn cull(@builtin(global_invocation_id) gid: vec3<u32>) {
             return;
         }
         skip_frustum = state == 2u;
+        test_box = FULL_SECTION_BOX;
     }
-    if !skip_frustum && !in_frustum(c, s.a.z) {
+    if !skip_frustum && !in_frustum(c, test_box) {
         return;
     }
     // Kept, whether or not a quad of it can face the eye.

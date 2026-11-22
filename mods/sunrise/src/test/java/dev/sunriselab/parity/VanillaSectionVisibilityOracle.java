@@ -367,6 +367,9 @@ public final class VanillaSectionVisibilityOracle {
             if (c.has("frustum")) {
                 out.add("frustum", c.get("frustum"));
             }
+            if (c.has("tight_bounds")) {
+                out.add("tight_bounds", c.get("tight_bounds"));
+            }
             if (c.has("partial_step")) {
                 JsonObject ps = c.getAsJsonObject("partial_step");
                 double nextCamX = camX;

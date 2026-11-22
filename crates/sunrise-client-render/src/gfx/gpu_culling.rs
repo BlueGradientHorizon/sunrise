@@ -198,6 +198,8 @@ const RUN_WORDS: u64 = 1 + 2 * RUNS as u64 + 2;
 /// frustum plane rejects it, so it is drawn wherever its column is within the
 /// render distance.
 pub(super) const UNBOUNDED: u32 = 1 << 31;
+/// Packed full 16x16x16 section box (`rounded_box(None)`), used for outside-height octree leaves.
+const FULL_SECTION_BOX: u32 = 8 | (8 << 5) | (8 << 10) | (24 << 15) | (24 << 20) | (24 << 25);
 /// What a box's ends, -8 to 23 blocks from its section's origin, add to make
 /// their 5-bit codes.
 const CODE_OFFSET: i32 = 8;
@@ -649,6 +651,7 @@ pub(super) fn keeps(params: &Params, words: &[u32], record: &Record) -> bool {
     if (key[3] as u32) >= params.pages || !(0..3).all(|i| c[i] < params.cells[i]) {
         return false;
     }
+    let mut test_box = a[2];
     if (params.flags & TREE) != 0 {
         let col = (c[2] * params.cells[0] + c[0]) as usize;
         let state = (words[params.tree as usize + (col >> 4)] >> ((col & 15) * 2)) & 3;
@@ -658,8 +661,9 @@ pub(super) fn keeps(params: &Params, words: &[u32], record: &Record) -> bool {
         if state == 2 {
             return true;
         }
+        test_box = FULL_SECTION_BOX;
     }
-    in_frustum(params, words, c, a[2])
+    in_frustum(params, words, c, test_box)
 }
 
 /// Whether GPU culling is offered: where the device draws a count the GPU wrote
@@ -2263,9 +2267,11 @@ mod tests {
             ("BLOCK", u64::from(WORKGROUP)),
             ("STATS", STATS),
             ("UNBOUNDED", u64::from(UNBOUNDED)),
+            ("FULL_SECTION_BOX", u64::from(FULL_SECTION_BOX)),
             ("REACH", u64::from(REACH)),
             ("FADING", u64::from(FADING)),
             ("EYE", u64::from(EYE)),
+            ("TREE", u64::from(TREE)),
             ("RUN_WORDS", RUN_WORDS),
         ] {
             assert_eq!(constant(name), value, "{name}");
@@ -2841,6 +2847,7 @@ mod tests {
 
     #[test]
     fn outside_height_octree_culls_off_axis_seeds() {
+        assert_eq!(FULL_SECTION_BOX, rounded_box(None));
         let camera = DVec3::new(0.0, 400.0, 0.0);
         let proj = super::super::world_projection(70.0, 1.0, 192.0);
         let view = crate::camera::view_matrix(0.0, 90.0);
@@ -2854,6 +2861,36 @@ mod tests {
         let off_axis = Record::new((2, 23, 0), 0, 0, 1, rounded_box(None));
         assert!(keeps(&params, &words, &center), "center seed kept");
         assert!(!keeps(&params, &words, &off_axis), "off-axis seed culled");
+
+        // Intersecting outside-height branch tests FULL_SECTION_BOX, not tight mesh bounds:
+        // from (0, -160, 0) looking up at 39° with rd 2, (2, -4, 0) (y=0) stays kept even
+        // when its mesh is confined to X=46..47 (local x in [14, 15]).
+        let camera = DVec3::new(0.0, -160.0, 0.0);
+        let proj = super::super::world_projection(39.0, 1.0, 192.0);
+        let view = crate::camera::view_matrix(0.0, -90.0);
+        let frustum = Frustum::from_planes(super::super::frustum(proj * view));
+        let input = inputs(camera, 2, &frustum);
+        let mut params = tables(&input, &mut words).expect("tables fit");
+        params.pages = 1;
+        assert_ne!(params.flags & TREE, 0, "below-world octree active");
+        let tight = rounded_box(Some([
+            Vec3::new(14.0, 0.0, 0.0),
+            Vec3::new(15.0, 16.0, 16.0),
+        ]));
+        let c = [
+            (2 - params.first[0]) as u32,
+            (0 - params.first[1]) as u32,
+            (0 - params.first[2]) as u32,
+        ];
+        assert!(
+            !in_frustum(&params, &words, c, tight),
+            "tight X=46..47 box alone misses the offset frustum"
+        );
+        let tight_record = Record::new((2, 0, 0), 0, 0, 1, tight);
+        assert!(
+            keeps(&params, &words, &tight_record),
+            "intersecting outside-height branch keeps (2, -4, 0) using FULL_SECTION_BOX"
+        );
     }
 
     /// A device on `adapter` that draws counts with first instances, if it
@@ -3634,7 +3671,23 @@ struct Quad {
             params.pages = gpu.pass_pages;
             let mut expected = vec![[0; 4]; (width * height) as usize];
             let (mut kept, mut hidden) = (0, 0);
+            let (mut clamped_y, mut in_band_y) = (0, 0);
             for (i, &(key, sides, record)) in sections.iter().enumerate() {
+                if frame == 0
+                    && record.page().is_some()
+                    && in_view_distance((0, 0), radius, key.0, key.2)
+                {
+                    // Camera Y=70.625 (0-based cam_sy=8), radius=4 -> inclusive vertical band 4..=12.
+                    if (4..=12).contains(&key.1) {
+                        in_band_y += 1;
+                    } else {
+                        clamped_y += 1;
+                        assert!(
+                            !keeps(&params, &words, &record),
+                            "frame 0: out-of-band section {key:?} must be vertically clamped"
+                        );
+                    }
+                }
                 if keeps(&params, &words, &record) {
                     let origin = resident::origin(key, min_y, camera).as_vec3();
                     let instance = super::super::section_instance(origin.to_array(), 0, 1.0);
@@ -3647,6 +3700,12 @@ struct Quad {
                     });
                     kept += 1;
                 }
+            }
+            if frame == 0 {
+                assert!(
+                    clamped_y > 0 && in_band_y > 0,
+                    "frame 0 must exercise both clamped ({clamped_y}) and in-band ({in_band_y}) rows"
+                );
             }
             assert!(kept > 0 && kept < before, "frame {frame}: {kept} kept");
             assert_eq!(
@@ -3692,6 +3751,127 @@ struct Quad {
             for (p, (got, want)) in got.chunks(4).zip(&expected).enumerate() {
                 let (i, q) = (p / row * 16 + p % row / 4, p % 4);
                 assert_eq!(got, want, "frame {frame}, section {i}, quad {q}");
+            }
+        }
+
+        // Exercise vertical clamping and outside-height octree culling (including the
+        // intersecting-branch full-section-box rule) through real indirect draws and pixel
+        // readback, reusing page 0's already-uploaded quads at pixels (12 * k, 0).
+        let below_39 = Frustum::from_planes(super::super::frustum(
+            super::super::world_projection(39.0, 1.0, 192.0)
+                * crate::camera::view_matrix(0.0, -90.0),
+        ));
+        let above_70 = Frustum::from_planes(super::super::frustum(
+            super::super::world_projection(70.0, 1.0, 192.0)
+                * crate::camera::view_matrix(0.0, 90.0),
+        ));
+        let tight_x46_47 = rounded_box(Some([
+            Vec3::new(14.0, 0.0, 0.0),
+            Vec3::new(15.0, 16.0, 16.0),
+        ]));
+        let in_world_probes = [
+            ((0, 7, 0), FULL_SECTION_BOX, false),
+            ((0, 8, 0), FULL_SECTION_BOX, true),
+            ((0, 10, 0), FULL_SECTION_BOX, true),
+            ((0, 12, 0), FULL_SECTION_BOX, true),
+            ((0, 13, 0), FULL_SECTION_BOX, false),
+        ];
+        let below_probes = [
+            ((0, 0, 0), FULL_SECTION_BOX, true),
+            ((2, 0, 0), tight_x46_47, true),
+            ((0, 1, 0), FULL_SECTION_BOX, false),
+        ];
+        let above_probes = [
+            ((0, 23, 0), FULL_SECTION_BOX, true),
+            ((2, 23, 0), FULL_SECTION_BOX, false),
+            ((0, 22, 0), FULL_SECTION_BOX, false),
+        ];
+        let clamp_cases: [(&str, DVec3, i32, &Frustum, &[(SectionKey, u32, bool)]); 3] = [
+            (
+                "in-world vertical clamp (Y=111, rd=2, band y=8..=12)",
+                DVec3::new(8.0, 111.0, 8.0),
+                2,
+                &all,
+                &in_world_probes,
+            ),
+            (
+                "outside-height intersecting branch keeps tight X=46..47 mesh",
+                DVec3::new(0.0, -160.0, 0.0),
+                2,
+                &below_39,
+                &below_probes,
+            ),
+            (
+                "outside-height rejected branch culls off-axis seed",
+                DVec3::new(0.0, 400.0, 0.0),
+                2,
+                &above_70,
+                &above_probes,
+            ),
+        ];
+        for (label, camera, case_radius, frustum, probes) in clamp_cases {
+            gpu.records.clear();
+            let mut records = Vec::new();
+            for (k, &(key, boxed, drawn)) in probes.iter().enumerate() {
+                let record = Record::new(key, 0, k as u64 * grain, 1, boxed);
+                let id = gpu.records.insert(record);
+                assert_eq!(id, k as u32, "{label}: sequential id");
+                records.push((k, key, record, drawn));
+            }
+            let mut encoder = device.create_command_encoder(&Default::default());
+            let input = FrameInputs::new(camera, min_y, levels, case_radius, frustum);
+            let prepared = gpu.prepare(device, queue, &mut uploads, &mut encoder, &input, None);
+            assert_eq!(prepared, Prepared::Gpu, "{label}");
+            let mut params = tables(&input, &mut words).expect("the planes fit");
+            params.pages = gpu.pass_pages;
+            let mut expected = vec![[0; 4]; (width * height) as usize];
+            for &(k, key, record, drawn) in &records {
+                assert_eq!(
+                    keeps(&params, &words, &record),
+                    drawn,
+                    "{label}: CPU keeps disagrees at {key:?}"
+                );
+                if drawn {
+                    let origin = resident::origin(key, min_y, camera).as_vec3();
+                    let instance = super::super::section_instance(origin.to_array(), 0, 1.0);
+                    expected[12 * k] = instance.map(f32::to_bits);
+                }
+            }
+            gpu.dispatch(&mut encoder, None);
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: None,
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    depth_slice: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                ..Default::default()
+            });
+            pass.set_pipeline(&pipeline);
+            pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
+            gpu.draw(&mut pass, &arena, |_| None, 0);
+            drop(pass);
+            encoder.copy_texture_to_buffer(
+                target.as_image_copy(),
+                wgpu::TexelCopyBufferInfo {
+                    buffer: &pixels,
+                    layout: wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(width * 16),
+                        rows_per_image: None,
+                    },
+                },
+                target.size(),
+            );
+            uploads.finish(&encoder);
+            queue.submit([encoder.finish()]);
+            let got = read(device, queue, &pixels, pixels.size());
+            for (p, (got, want)) in got.chunks(4).zip(&expected).enumerate() {
+                assert_eq!(got, want, "{label}: pixel {p}");
             }
         }
     }

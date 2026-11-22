@@ -711,7 +711,8 @@ impl<T> Resident<T> {
                     }
                     let oy = (i64::from(self.min_y) + i64::from(y) * 16) as f64 - camera.y;
                     let min = Vec3::new(min_x, oy as f32, min_z);
-                    let bounds = self.bounds[slot as usize].filter(|_| frustum.tight());
+                    let bounds =
+                        self.bounds[slot as usize].filter(|_| frustum.tight() && !use_tree_frustum);
                     let (bmin, bmax) = section_box(min, bounds);
                     let seen = if use_tree_frustum && let Some(offset) = &tree_frustum {
                         offset.intersects(bmin, bmax)
@@ -1258,6 +1259,62 @@ mod tests {
         assert!(
             !kept.contains(&(2, 23, 0)),
             "off-axis seed whose octree branch misses the frustum is culled"
+        );
+
+        // Intersecting outside-height branch tests the full 16x16x16 section box (as vanilla's
+        // Octree.Leaf does), not tight mesh bounds: from (0, -160, 0) looking up at 39° with rd 2,
+        // section (2, -4, 0) (0-based y=0) stays kept even when its mesh is confined to X=46..47.
+        let mut below = Resident::default();
+        let tight = [Vec3::new(14.0, 0.0, 0.0), Vec3::new(15.0, 16.0, 16.0)];
+        below.insert_with_bounds((2, 0, 0), (), Some(tight));
+        let camera = DVec3::new(0.0, -160.0, 0.0);
+        let projection = super::super::world_projection(39.0, 1.0, 192.0);
+        let frustum = Frustum::from_planes(super::super::frustum(
+            projection * crate::camera::view_matrix(0.0, -90.0),
+        ));
+        let offset = frustum.offset_to_fully_include_camera_cube(camera, 8);
+        let sec_min = origin((2, 0, 0), crate::chunk::MIN_Y, camera).as_vec3();
+        assert!(
+            !offset.intersects(sec_min + tight[0], sec_min + tight[1]),
+            "tight X=46..47 bounds alone miss the offset frustum"
+        );
+        out.clear();
+        below.visible(camera, 2, &frustum, |_| true, |_, _| false, &mut out);
+        assert_eq!(
+            out.iter().map(|v| v.key).collect::<Vec<_>>(),
+            [(2, 0, 0)],
+            "intersecting outside-height branch keeps (2, -4, 0) by its full section box"
+        );
+    }
+
+    #[test]
+    fn nether_vertical_bound_excludes_row_above_top() {
+        // Nether height: min_y = 0, 16 sections (y = 0..=15); camera at top section y = 15, rd = 3.
+        let camera = DVec3::new(8.5, 248.5, 8.5);
+        let all = Frustum::from_planes([glam::Vec4::W; 6]);
+        let mut nether = Resident::default();
+        nether.set_min_y(0);
+        nether.set_sections(16);
+        for y in 0..=16 {
+            nether.insert((0, y, 0), ());
+        }
+        let mut out = Vec::new();
+        nether.visible(camera, 3, &all, |_| true, |_, _| false, &mut out);
+        let mut ys: Vec<i32> = out.iter().map(|v| v.key.1).collect();
+        ys.sort_unstable();
+        assert_eq!(ys, [12, 13, 14, 15]);
+
+        // Without set_sections(16), the default 24-section height would leak row y = 16.
+        let mut default_height = Resident::default();
+        default_height.set_min_y(0);
+        for y in 0..=16 {
+            default_height.insert((0, y, 0), ());
+        }
+        out.clear();
+        default_height.visible(camera, 3, &all, |_| true, |_, _| false, &mut out);
+        assert!(
+            out.iter().any(|v| v.key == (0, 16, 0)),
+            "row y=16 catches omitting set_sections(16)"
         );
     }
 
