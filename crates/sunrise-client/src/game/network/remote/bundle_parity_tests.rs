@@ -911,8 +911,7 @@ fn entity_data_validation_inline_painting_and_pre_login_bundle_case(case_name: &
                     *REASON.lock().unwrap() = Some(end.reason.to_owned());
                     if let Some(peer) = PEER.lock().unwrap().as_mut() {
                         let mut saw_pong = false;
-                        let mut closed = false;
-                        loop {
+                        let closed = loop {
                             match peer.recv() {
                                 Ok((id, body)) => {
                                     if matches!(S::decode(id, &body), Ok(S::Pong(p)) if p.id == 12)
@@ -920,12 +919,9 @@ fn entity_data_validation_inline_painting_and_pre_login_bundle_case(case_name: &
                                         saw_pong = true;
                                     }
                                 }
-                                Err(err) => {
-                                    closed = err.is_end_of_stream();
-                                    break;
-                                }
+                                Err(err) => break err.is_end_of_stream(),
                             }
-                        }
+                        };
                         PONG_DRAINED.store(saw_pong, Ordering::SeqCst);
                         CHANNEL_CLOSED.store(closed, Ordering::SeqCst);
                     }

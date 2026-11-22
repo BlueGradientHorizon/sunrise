@@ -218,7 +218,7 @@ fn post_effects_cleared_on_login_respawn_and_reconfigure_body() {
         // Reusing the frame buffer keeps unchanged String allocations and preserves repeats.
         let mut reused = Vec::new();
         game.sync_requested_post_effects(&mut reused, std::iter::empty());
-        let ptrs: Vec<*const u8> = reused.iter().map(String::as_ptr).collect();
+        let ptrs: Vec<*const u8> = reused.iter().map(|s| s.as_ptr()).collect();
         game.sync_requested_post_effects(&mut reused, std::iter::empty());
         assert_eq!(
             reused,
@@ -229,7 +229,7 @@ fn post_effects_cleared_on_login_respawn_and_reconfigure_body() {
             ]
         );
         assert_eq!(
-            reused.iter().map(String::as_ptr).collect::<Vec<_>>(),
+            reused.iter().map(|s| s.as_ptr()).collect::<Vec<_>>(),
             ptrs,
             "unchanged effect IDs must reuse their String allocations across frames"
         );
