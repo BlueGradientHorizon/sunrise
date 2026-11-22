@@ -363,7 +363,9 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         update_flags: i32,
         limit: i32,
     ) -> bool {
-        if !self.is_in_valid_bounds(pos) || !self.level.is_loaded(pos) {
+        if self.ticks.placement.is_some()
+            && (!self.is_in_valid_bounds(pos) || !self.level.is_loaded(pos))
+        {
             return false;
         }
         if let Some(placement) = &mut self.ticks.placement {
