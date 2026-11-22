@@ -14,6 +14,7 @@ use mod_vocab::{__private::DeclarationKind, DeclarationError};
 use serde::Deserialize;
 use std::{
     collections::{BTreeMap, BTreeSet},
+    fmt,
     io::{self, Read},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -1095,7 +1096,7 @@ pub const MAX_SIGNED_DATA_SLOTS: u16 = (i16::MAX as u16) + 1;
 /// (`0..=65,535`, count `65,536`).
 pub const MAX_BLOCKLESS_DATA_SLOTS: usize = u16::MAX as usize + 1;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 enum Source {
     Dir(PathBuf),
     Zip {
@@ -1106,8 +1107,17 @@ enum Source {
     Code,
 }
 
+impl fmt::Debug for Source {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Dir(path) => f.debug_tuple("Dir").field(path).finish(),
+            Self::Zip { path, .. } => f.debug_tuple("Zip").field(path).finish(),
+            Self::Code => f.write_str("Code"),
+        }
+    }
+}
+
 /// A mod's content: its files and declarations.
-#[derive(Debug)]
 pub struct Content {
     source: Source,
     from_admission: bool,
@@ -1128,6 +1138,26 @@ pub struct Content {
     pub menu_types: Vec<MenuType>,
     /// The namespaces it owns: the mod id, then the manifest's `namespaces`.
     pub namespaces: Vec<String>,
+}
+
+impl fmt::Debug for Content {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // The release-line corpus records the declarations, not loader bookkeeping.
+        f.debug_struct("Content")
+            .field("source", &self.source)
+            .field("files", &self.files)
+            .field("blocks", &self.blocks)
+            .field("items", &self.items)
+            .field("effects", &self.effects)
+            .field("creative_tabs", &self.creative_tabs)
+            .field("fluids", &self.fluids)
+            .field("fluid_interactions", &self.fluid_interactions)
+            .field("entity_types", &self.entity_types)
+            .field("block_entity_types", &self.block_entity_types)
+            .field("menu_types", &self.menu_types)
+            .field("namespaces", &self.namespaces)
+            .finish()
+    }
 }
 
 macro_rules! declaration_kinds {
