@@ -114,4 +114,30 @@ fn mod_raycasts_hit_loaded_blocks_only_with_far_terrain_on_or_off() {
     for bad in [0.0, -1.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
         assert_eq!(game.raycast(bad), None);
     }
+
+    // Starting inside a block uses the caller's original `(from, to)` endpoints for
+    // `VoxelShape.clip` (nudge `(to - from) * 0.001` and sub-`1e-7`-squared sweep rejection),
+    // independent of unrelated far loaded chunks.
+    assert!(game.run_command("setblock 0 101 0 stone"));
+    let inside_with_far = game.raycast(100.0).expect("inside stone with far chunk");
+    assert_eq!(
+        (
+            inside_with_far.block_x,
+            inside_with_far.block_y,
+            inside_with_far.block_z
+        ),
+        (0, 101, 0)
+    );
+    assert_eq!(inside_with_far.z, 0.6);
+    assert_eq!(
+        game.raycast(0.0001),
+        None,
+        "sub-1e-7 squared sweep inside a block misses as in VoxelShape.clip"
+    );
+    game.world.chunks.remove(&(0, 100));
+    assert_eq!(
+        game.raycast(100.0),
+        Some(inside_with_far),
+        "unloading an unrelated far chunk must not change the inside-block clip point"
+    );
 }

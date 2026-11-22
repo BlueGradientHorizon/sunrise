@@ -1291,22 +1291,23 @@ It names the level it means by its `dimension` (`minecraft:overworld`), as `nati
 
 ### Column reads
 
-`crates/sunrise-client/src/game/modding/native_world_columns.rs`: helpers for server mods, for the level in place, on a server
-only, that read many columns in one call. They name the level they mean by its `dimension` (`minecraft:overworld`), as
-`native_set_block` does, and answer `Err` with the reason, reading nothing, on a client, for another dimension or for
-a read too big, so a mod can tell "ask for less" from "wrong level". They run on the server tick: read a big area in
-pieces.
+`crates/sunrise-client/src/game/modding/native_world_columns.rs`: streaming column queries on a
+typed `LevelRef`, working on active and parked server levels (and, for heights, the client's open
+level) without loading chunks or imposing guest column/block caps. Refusals return
+`LevelReadError` without invoking `visit`, and returning `ControlFlow::Break(())` stops early.
 
-- `native_surface_heights(dimension, columns, heightmap)` answers each column's height on `heightmap` (`Heightmap`,
-  as `native_edit_blocks` reads it: one above the highest block that counts), `None` for a column whose chunk isn't
-  loaded; at most 65,536 columns a call.
-- `native_read_columns(dimension, columns, heightmap, (below, above))` reads, for each column, the blocks from `below`
-  under its height to `above` - 1 over it, bottom first: `ColumnBlocks` holds the heights (`bases`), the block
-  complete `BlockState` values seen (`palette`), the blocks as indexes into it, and each column's biome JSON water
-  colour (`water_colors`, `0xRRGGBB`, at the column's top). Blocks outside the level's height, and every block of a
-  column not loaded, read as air (its water colour as 0). `below + above` must be 1 to the level's height, and the
-  read at most 1,048,576 blocks. Read blended grass and foliage tints on the client with
-  `BlockAndTintGetter::block_tint` inside tint callbacks or `ClientHost::biome_tint` in other hooks.
+- `LevelRef::visit_surface_heights(host, columns, heightmap, visit)` (both sides) visits each
+  column's height on `heightmap` (`Heightmap`, one above the highest block that counts), `None`
+  for a column whose chunk isn't loaded.
+- `LevelRef::visit_columns(host, columns, heightmap, (below, above), visit)` (server) visits each
+  loaded column as a borrowed `ColumnSlice<'a>` carrying its heightmap `base`, complete
+  `BlockState` slice (`blocks`, bottom first, air outside the chunk's vertical range), and
+  server-side biome JSON water colour (`water_color`, `0xRRGGBB`, at `base - 1`); unloaded columns
+  yield `None`. `below + above` must be `1..=level_height` (`LevelHeightAccessor.getHeight`). Read
+  blended grass and foliage tints on the client with `BlockAndTintGetter::block_tint` inside tint
+  callbacks or `ClientHost::biome_tint` in other hooks.
+- `LevelRef::visit_terrain_surface(host, columns, visit)` (server) visits the level generator's
+  undecorated `Option<TerrainColumn>` per column without creating or loading chunks.
 
 ### Chat and commands a client mod sends
 
@@ -2260,7 +2261,7 @@ registration path.
 
 - `native_edit_blocks(dimension, edit)` for server mods: runs up columns, from a height or a heightmap's, of block states and filters written as commands write them, made at once straight into the chunks of the level being ticked with what `fill ... strict` does for block entities; the chunks changed go to the players whole.
 
-- Column reads for server mods, in the level being ticked: `native_surface_heights(dimension, columns, heightmap)` and `native_read_columns(dimension, columns, heightmap, (below, above))`, the blocks round each column's height as a palette and indexes with each column's biome JSON water colour (`water_colors`). Client-side blended biome tints are read with `BlockAndTintGetter::block_tint` in block tint callbacks or `ClientHost::biome_tint` in other client hooks.
+- Streaming column reads on `LevelRef` (active and parked open levels): `LevelRef::visit_surface_heights` (both sides), `LevelRef::visit_columns` (server: borrowed `ColumnSlice<'a>` with complete `BlockState` values and biome JSON water colour `water_color`), and `LevelRef::visit_terrain_surface` (server: undecorated generator surface without loading chunks). Client-side blended biome tints are read with `BlockAndTintGetter::block_tint` in block tint callbacks or `ClientHost::biome_tint` in other client hooks.
 
 - `experience_orb_can_merge(dimension, into, from, into_value, from_value, can_merge)` is asked for each pair of orbs whose boxes meet, when an orb spawns (`ExperienceOrb.tryMergeToExisting`; `from` is 0, the new orb is no entity yet) and every 20 ticks as an orb scans (`scanForMerges`); `can_merge` holds vanilla's `canMerge` answer, which a mod may flip either way. `experience_orb_merge` follows a yes and may cancel it (its own notes). A merged orb counts as `count` orbs of the keeper's value. `native_set_experience_orb(dimension, id, value, count, age)` writes an orb's `value`, `count` and `age` (each optional; false for a `count` of 0 or an orb that isn't there; signed `value` is preserved, including zero and negative values).
 

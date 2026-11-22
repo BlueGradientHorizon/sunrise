@@ -31,7 +31,16 @@ impl Game<'_> {
         self.cast_view_ray(None)
     }
     fn cast_view_ray(&self, max_distance: Option<f64>) -> Option<(f32, mod_api::Hit)> {
-        self.player.as_ref()?;
+        use sunrise_client::collisions::SceneCollisions;
+        use sunrise_core::geometry::{Vec3, traverse_blocks};
+        use sunrise_world::{
+            collision_context::{
+                CollisionContext, CollisionEntity, CollisionItem, EntityContextKind,
+            },
+            entity_obstruction::EntityIdentity,
+            world_ray::{RayBlockMode, RayWorld, clip_with_interaction},
+        };
+        let player = self.player.as_ref()?;
         let eye = self.eye_position()?;
         let dir = super::view_vector(self.yaw, self.pitch);
         let (t_start, t_end) = loaded_ray_segment(
@@ -42,31 +51,86 @@ impl Game<'_> {
             dir,
             max_distance,
         )?;
-        let origin = if t_start > 0.0 {
-            [
+        let clip_from = Vec3::new(eye[0], eye[1], eye[2]);
+        let clip_t = max_distance.unwrap_or(t_end);
+        let clip_to = Vec3::new(
+            eye[0] + dir[0] * clip_t,
+            eye[1] + dir[1] * clip_t,
+            eye[2] + dir[2] * clip_t,
+        );
+        if !clip_to.is_finite() {
+            return None;
+        }
+        let walk_from = if t_start > 0.0 {
+            Vec3::new(
                 eye[0] + dir[0] * t_start,
                 eye[1] + dir[1] * t_start,
                 eye[2] + dir[2] * t_start,
-            ]
+            )
         } else {
-            eye
+            clip_from
         };
-        let hit = self.clip_ray(origin, dir, t_end - t_start)?;
-        let (pos, point) = (hit.pos, hit.point);
-        let state = self.world.block(pos[0], pos[1], pos[2]);
-        let distance = (0..3)
-            .map(|i| (point[i] - eye[i]).powi(2))
-            .sum::<f64>()
-            .sqrt();
+        let walk_to = Vec3::new(
+            eye[0] + dir[0] * t_end,
+            eye[1] + dir[1] * t_end,
+            eye[2] + dir[2] * t_end,
+        );
+        let mut rays = super::explosion::ColliderRays {
+            scene: SceneCollisions {
+                world: &self.world,
+                binding: self.collision,
+                subject: None,
+            },
+            context: CollisionContext::for_entity(
+                CollisionEntity {
+                    identity: EntityIdentity(0),
+                    kind: EntityContextKind::Player,
+                    y: player.position.y,
+                    descending: false,
+                    main_hand: Some(CollisionItem::EMPTY),
+                },
+                false,
+            ),
+            clip_data: Some(super::explosion::ClipData {
+                facts: self.res.facts(),
+                behaviours: self.res.behaviours(),
+                tables: &self.pack.context.tables,
+                registry: self.pack.assets.registry,
+            }),
+        };
+        let (bottom_y, top_y) = (self.world.bottom_y(), self.world.top_y());
+        let (state, hit) = traverse_blocks(walk_from, walk_to, usize::MAX, |p| {
+            if !(bottom_y..top_y).contains(&p.y)
+                || !self.world.chunks.contains_key(&(p.x >> 4, p.z >> 4))
+            {
+                return None;
+            }
+            let state = self.world.block(p.x, p.y, p.z);
+            if self.res.facts().is_air(state) {
+                return None;
+            }
+            match rays
+                .block_shape(state, p, RayBlockMode::Outline)
+                .and_then(|shape| {
+                    clip_with_interaction(&mut rays, clip_from, clip_to, p, &shape, state)
+                }) {
+                Ok(Some(hit)) => Some(Ok((state, hit))),
+                Ok(None) => None,
+                Err(error) => Some(Err(error)),
+            }
+        })
+        .ok()??
+        .ok()?;
+        let distance = clip_from.distance_squared(hit.location).sqrt();
         Some((
             distance as f32,
             mod_api::Hit {
-                block_x: pos[0],
-                block_y: pos[1],
-                block_z: pos[2],
-                x: point[0],
-                y: point[1],
-                z: point[2],
+                block_x: hit.block.x,
+                block_y: hit.block.y,
+                block_z: hit.block.z,
+                x: hit.location.x,
+                y: hit.location.y,
+                z: hit.location.z,
                 block: mod_api::__private::block_key(&self.res.facts().get(state).name)?,
             },
         ))

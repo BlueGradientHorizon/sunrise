@@ -302,16 +302,31 @@ impl Game<'_> {
             .ok_or(mod_api::LevelReadError::Stale)
     }
     /// The world a handle names for a read that works on both sides: the
+    /// server's level (active or parked), or on a client the one it shows
+    /// (`Minecraft.level`, its copy of the server's).
+    pub(super) fn native_level_read_world_result(
+        &self,
+        level: LevelRef,
+    ) -> Result<&World, mod_api::LevelReadError> {
+        if self.is_logical_server() {
+            return self.native_level_world_result(level);
+        }
+        if !self.remote.as_ref().is_some_and(|r| r.logged_in) {
+            return Err(mod_api::LevelReadError::Unavailable);
+        }
+        if !self.level_handle_current(level) {
+            return Err(mod_api::LevelReadError::Stale);
+        }
+        if level.dimension() != self.native_level_key() {
+            return Err(mod_api::LevelReadError::Unavailable);
+        }
+        Ok(&self.world)
+    }
+    /// The world a handle names for a read that works on both sides: the
     /// server's level, or on a client the one it shows (`Minecraft.level`, its
     /// copy of the server's). None for a stale handle or another dimension.
     pub(super) fn native_level_read_world(&self, level: LevelRef) -> Option<&World> {
-        if self.is_logical_server() {
-            return self.native_level_world(level);
-        }
-        (self.remote.as_ref().is_some_and(|r| r.logged_in)
-            && self.level_handle_current(level)
-            && level.dimension() == self.native_level_key())
-        .then_some(&self.world)
+        self.native_level_read_world_result(level).ok()
     }
     /// Find a loaded chunk in an open server level.
     pub(super) fn chunk(&self, level: LevelRef, pos: [i32; 2]) -> Option<ChunkRef> {
