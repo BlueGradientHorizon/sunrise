@@ -1104,14 +1104,12 @@ impl Game<'_> {
             }
             if step.is_some() && !self.armor_stands[i].no_physics(None) {
                 let stand = &self.armor_stands[i];
-                let (id, footprint, mut ground, mut velocity) = (
+                let (id, footprint, ground, mut velocity) = (
                     stand.id,
                     (stand.position, stand.bounds()),
-                    stand.support,
+                    stand.ground,
                     stand.velocity,
                 );
-                // The stand keeps the on-ground flag separately from its retained support.
-                ground.on_ground = stand.on_ground;
                 let writes = self.body_step_on((id, TYPE_ID), footprint, &ground, &mut velocity);
                 let stand = &mut self.armor_stands[i];
                 // `ArmorStand.hurtServer` does not take generic damage; the stand
@@ -1124,6 +1122,7 @@ impl Game<'_> {
                     Some(&mut stand.fire_ticks),
                 );
                 stand.velocity = velocity;
+                // BubbleColumnBlock.entityInside runs in the sweep after Block.stepOn.
                 let mut tops = Vec::new();
                 stand.push_by_bubble_column_over(
                     &self.world,
