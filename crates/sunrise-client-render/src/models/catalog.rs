@@ -973,13 +973,13 @@ mod tests {
             |_| false,
         );
         assert!(!connected.is_empty());
-        let mod_emissive = [mod_api::Answered {
-            mod_id: "demo",
-            answer: mod_api::EmissiveSpriteRegistration::new(
+        let mod_emissive = crate::native_emissive::test_registrations([(
+            "demo",
+            vec![mod_api::EmissiveSpriteRegistration::new(
                 mod_api::Identifier::parse("demo:block/stone").unwrap(),
                 mod_api::Identifier::parse("demo:emissive/glow").unwrap(),
-            ),
-        }];
+            )],
+        )]);
         let mod_pairs = crate::native_emissive::resolve_registered(&mod_emissive, &mut sprites);
         assert!(sprites.files.contains_key("demo:emissive/glow"));
         assert!(mod_pairs.contains_key(&base));

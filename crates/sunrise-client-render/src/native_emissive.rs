@@ -203,6 +203,37 @@ fn assemble_table(
 }
 
 #[cfg(test)]
+pub(crate) fn test_registrations(
+    entries: impl IntoIterator<Item = (&'static str, Vec<EmissiveSpriteRegistration>)>,
+) -> Vec<Answered<EmissiveSpriteRegistration>> {
+    use mod_api::{
+        __private::game::RegistrationContextNew, EmissiveEvent, Hooks, ModEntry,
+        RegistrationContext,
+    };
+
+    struct Register(Vec<EmissiveSpriteRegistration>);
+
+    #[mod_api::__subscriptions]
+    impl Hooks for Register {
+        fn emissive(&self, _: &RegistrationContext, event: &mut EmissiveEvent<'_>) {
+            for pair in &self.0 {
+                event.register(pair.clone());
+            }
+        }
+    }
+
+    let mods = entries
+        .into_iter()
+        .map(|(id, pairs)| ModEntry::new(id, Box::new(Register(pairs))))
+        .collect::<Vec<_>>();
+    mod_platform::testing::with_mods(mods.into(), || {
+        let mut layers = Vec::new();
+        mod_api::dispatch_emissive(&RegistrationContext::new(), &mut layers);
+        layers
+    })
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use mod_api::Identifier;
@@ -223,18 +254,11 @@ mod tests {
         writer.write_image_data(&pixels).unwrap();
     }
 
-    fn registration(
-        mod_id: &'static str,
-        base: &str,
-        overlay: &str,
-    ) -> Answered<EmissiveSpriteRegistration> {
-        Answered {
-            mod_id,
-            answer: EmissiveSpriteRegistration::new(
-                Identifier::parse(base).unwrap(),
-                Identifier::parse(overlay).unwrap(),
-            ),
-        }
+    fn registration(base: &str, overlay: &str) -> EmissiveSpriteRegistration {
+        EmissiveSpriteRegistration::new(
+            Identifier::parse(base).unwrap(),
+            Identifier::parse(overlay).unwrap(),
+        )
     }
 
     #[test]
@@ -359,7 +383,7 @@ mod tests {
             let base = format!("demo:block/lamp_{i}");
             let overlay = format!("demo:glow/lamp_{i}");
             sprites.insert(&base).unwrap();
-            registrations.push(registration("demo", &base, &overlay));
+            registrations.push(registration(&base, &overlay));
         }
         // Broken overlay texture and missing base must not break the valid 40 entries.
         png(
@@ -372,16 +396,17 @@ mod tests {
         )
         .unwrap();
         sprites.insert("demo:block/broken_base").unwrap();
-        registrations.push(registration(
-            "broken",
-            "demo:block/broken_base",
-            "demo:glow/corrupt",
-        ));
-        registrations.push(registration(
-            "missing",
-            "demo:block/no_such_block",
-            "demo:glow/lamp_0",
-        ));
+        let registrations = test_registrations([
+            ("demo", registrations),
+            (
+                "broken",
+                vec![registration("demo:block/broken_base", "demo:glow/corrupt")],
+            ),
+            (
+                "missing",
+                vec![registration("demo:block/no_such_block", "demo:glow/lamp_0")],
+            ),
+        ]);
 
         let table = load_layers(
             &ResourceSource::directory(root.clone()),
@@ -411,10 +436,16 @@ mod tests {
         let layer_a = sprites.insert("minecraft:block/a").unwrap();
         let layer_b = sprites.insert("minecraft:block/b").unwrap();
 
-        let regs = [
-            registration("mod_a", "minecraft:block/a", "mod_a:overlay/first"),
-            registration("mod_b", "minecraft:block/a", "mod_b:overlay/second"),
-        ];
+        let regs = test_registrations([
+            (
+                "mod_a",
+                vec![registration("minecraft:block/a", "mod_a:overlay/first")],
+            ),
+            (
+                "mod_b",
+                vec![registration("minecraft:block/a", "mod_b:overlay/second")],
+            ),
+        ]);
         let table = load_layers(
             &ResourceSource::directory(root.clone()),
             &regs,

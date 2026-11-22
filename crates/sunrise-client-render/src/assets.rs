@@ -133,7 +133,7 @@ impl RenderAssets {
             sprite_layers: Default::default(),
             sprite_names: Vec::new(),
             file_layers: Default::default(),
-            emissive: Vec::new(),
+            emissive_layers: Vec::new(),
             translucent_layers: Vec::new(),
             sprite_mips: Vec::new(),
             pbr_normals: Vec::new(),

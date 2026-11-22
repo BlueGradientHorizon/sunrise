@@ -931,7 +931,7 @@ fn paint_with<'a>(
                 let draw = |batch: &mut crate::hud::HudBatch,
                             name: &str,
                             r,
-                            [x, y, w, h],
+                            [x, y, w, h]: [f32; 4],
                             color| {
                     let start = batch.vertices.len();
                     batch.rect_uv(x, y, w, h, r, color);
