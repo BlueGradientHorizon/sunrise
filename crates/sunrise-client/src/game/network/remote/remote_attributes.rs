@@ -89,8 +89,5 @@ impl Game<'_> {
         if let Some(value) = nameplate.below_name {
             m.set_below_name_distance(value);
         }
-        // `EntityEvent.Size` when `minecraft:scale` changed its size
-        // (`LivingEntity.onAttributeUpdated` → `refreshDimensions`).
-        self.native_remote_mob_size(id as u32);
     }
 }

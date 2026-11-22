@@ -2016,7 +2016,7 @@ impl Game<'_> {
         let reach: f64 = self.entity_reach;
         let mut best: Option<(usize, f64)> = None;
         for (i, b) in self.boats.iter().enumerate() {
-            let bb = b.bounds();
+            let bb = self.client_copy_box(b.id, b.position, b.bounds());
             let (lo, hi) = (bb.min_position(), bb.max_position());
             let (lo, hi) = ([lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]);
             let (mut t0, mut t1) = (0.0f64, reach);

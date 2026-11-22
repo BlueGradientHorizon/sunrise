@@ -218,6 +218,9 @@ pub(super) struct Tracked {
     silent: bool,
     /// `Entity.vehicle`: the entity it rides (`SetPassengers`), whatever either one's type.
     pub(in crate::game) vehicle: Option<u32>,
+    /// What `entity_size` answered at this copy's last size refresh, with the synced pose it
+    /// was asked for, unless the copy is a mob, which keeps its own (`Mob::size_answer`).
+    pub(in crate::game) size_answer: Option<sunrise_client::pose::SizeAnswer>,
 }
 
 /// An item has joined the client level, but has no stack to draw yet.

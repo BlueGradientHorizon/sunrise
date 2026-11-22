@@ -582,7 +582,7 @@ impl Game<'_> {
             if a.marker {
                 continue;
             }
-            let b = a.bounds();
+            let b = self.client_copy_box(a.id, a.position, a.bounds());
             let (lo, hi) = (b.min_position(), b.max_position());
             let (lo, hi) = ([lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]);
             let (mut t0, mut t1) = (0.0f64, reach);

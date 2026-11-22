@@ -214,8 +214,9 @@ impl Game<'_> {
         // to its scripts, for both uses and attacks.
         let reach = self.entity_reach;
         for (&id, i) in &self.interactions {
+            let bounds = self.client_copy_box(id as u32, i.position, i.bounds());
             if let Some(d) =
-                ray_box(eye, dir, reach, i.bounds()).filter(|&d| pick.consider(self, id as u32, d))
+                ray_box(eye, dir, reach, bounds).filter(|&d| pick.consider(self, id as u32, d))
             {
                 let p = i.position;
                 hit = Some((id, d, [p.x, p.y, p.z]));
@@ -279,7 +280,8 @@ impl Game<'_> {
     ) -> Option<(usize, f64)> {
         let mut hit = None;
         for (i, crystal) in self.crystals.iter().enumerate().filter(|(_, c)| c.id != 0) {
-            if let Some(d) = ray_box(eye, dir, self.entity_reach, crystal.bounds())
+            let bounds = self.client_copy_box(crystal.id, crystal.position, crystal.bounds());
+            if let Some(d) = ray_box(eye, dir, self.entity_reach, bounds)
                 .filter(|&d| pick.consider(self, crystal.id, d))
             {
                 hit = Some((i, d));

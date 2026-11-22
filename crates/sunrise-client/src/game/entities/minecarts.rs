@@ -2206,7 +2206,7 @@ impl Game<'_> {
         let reach: f64 = self.entity_reach;
         let mut best: Option<(usize, f64)> = None;
         for (i, c) in self.carts.iter().enumerate() {
-            let bb = c.bounds();
+            let bb = self.client_copy_box(c.id, c.position, c.bounds());
             let (lo, hi) = (bb.min_position(), bb.max_position());
             let (lo, hi) = ([lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]);
             let (mut t0, mut t1) = (0.0f64, reach);

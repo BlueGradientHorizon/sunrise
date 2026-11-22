@@ -63,16 +63,21 @@ pub(super) fn attackable(p: &Projectile) -> bool {
     redirectable(p) || (!p.stuck && matches!(p.kind, ProjectileKind::ShulkerBullet { .. }))
 }
 
-/// Its box for the crosshair: the entity's (a fireball 1 x 1, a wind charge or a
+/// Its box for the crosshair: the entity's `bounds` (a fireball 1 x 1, a wind charge or a
 /// shulker bullet 0.3125, a wind charge's 0.15 below its feet) grown by the pick
 /// radius, which only `AbstractHurtingProjectile` has (`getPickRadius`: 1; a
 /// shulker bullet's is 0).
-fn pick_box(p: &Projectile) -> Aabb {
+fn pick_box(p: &Projectile, bounds: Aabb) -> Aabb {
     let radius = pick_radius(p);
-    p.bounds().inflate(Vec3::new(radius, radius, radius))
+    bounds.inflate(Vec3::new(radius, radius, radius))
 }
 
 impl Game<'_> {
+    /// [`pick_box`] of `p`, in the box a client's copy takes from its `entity_size` answer.
+    fn projectile_pick_box(&self, p: &Projectile) -> Aabb {
+        pick_box(p, self.client_copy_box(p.id, p.position, p.bounds()))
+    }
+
     /// The redirectable projectile under the crosshair within the attack
     /// reach, and how far along the view it is.
     pub(super) fn redirectable_hit(&self) -> Option<(usize, f64)> {
@@ -100,7 +105,7 @@ impl Game<'_> {
             .enumerate()
             .filter(|(_, p)| attackable(p))
             .filter_map(|(i, p)| {
-                ray_box(eye, dir, reach, pick_box(p))
+                ray_box(eye, dir, reach, self.projectile_pick_box(p))
                     .filter(|&t| pick.consider(self, p.id, t))
                     .map(|t| (i, t))
             })
@@ -177,7 +182,7 @@ impl Game<'_> {
         let (Some(eye), Some(p)) = (self.eye_position(), self.creatures.projectiles.get(i)) else {
             return false;
         };
-        let b = pick_box(p);
+        let b = self.projectile_pick_box(p);
         let (lo, hi) = (b.min_position(), b.max_position());
         let r = pick_radius(&self.creatures.projectiles[i]);
         let (lo, hi) = (
@@ -294,10 +299,10 @@ mod tests {
         );
         assert!(attackable(&bullet) && !redirectable(&bullet));
         assert!(!attackable(&small));
-        let b = pick_box(&bullet);
+        let b = pick_box(&bullet, bullet.bounds());
         assert_eq!(b.max_position().y, 64.3125);
         // The pick box: a block round the fireball's 1 x 1 box.
-        let b = pick_box(&large);
+        let b = pick_box(&large, large.bounds());
         assert_eq!(b.min_position().x, -1.5);
         assert_eq!(b.max_position().y, 66.0);
     }

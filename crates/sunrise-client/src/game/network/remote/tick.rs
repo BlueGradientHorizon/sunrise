@@ -634,6 +634,9 @@ impl Game<'_> {
             }
             let section_id = m.id;
             let section_to = m.position;
+            // `refreshDimensions` from its tick: a `minecraft:scale` the server sent since
+            // (`LivingEntity.refreshDirtyAttributes`), a shulker's lid (`onPeekAmountChange`).
+            self.native_client_copy_size(section_id, None);
             if let Some(player) = player_ref {
                 self.native_player_tick_post(mod_api::__private::PlayerTickPostCall { player });
             }

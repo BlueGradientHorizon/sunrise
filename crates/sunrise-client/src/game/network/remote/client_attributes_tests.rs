@@ -40,6 +40,7 @@ fn update_attributes_answers_the_local_players_living_reads() {
                 mod_fire_immune: false,
                 silent: false,
                 vehicle: None,
+                size_answer: None,
             },
         );
 

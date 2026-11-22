@@ -162,6 +162,7 @@ fn any_tracked_passenger_makes_its_vehicle_a_vehicle() {
         mod_fire_immune: false,
         silent: false,
         vehicle: None,
+        size_answer: None,
     };
     let mut entities = HashMap::from([
         (42, tracked("minecraft:player")),
