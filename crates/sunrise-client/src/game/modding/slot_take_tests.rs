@@ -3,6 +3,7 @@
 //! take is silent; and a failing listener undoes its writes with the take. The fixtures need
 //! prepared resources.
 use crate::game::native_guest_turn_tests::with_guests;
+use mod_api::item::menu::{ClickedStackResult, StackedOnOtherDirection};
 use mod_api::{
     BlockEntityPart, BlockPart, Hooks, HostBlockStates, HostTransaction, ITEMS, ItemCraftedEvent,
     ItemPlace, ItemResource, MenuPart, MenuSlotRulesEvent, MenuSlotTakeEvent, ModEntry, Mods,
@@ -45,6 +46,7 @@ type Heard = (u128, String, usize, (String, u32), Option<(String, u32)>);
 #[derive(Clone, Copy)]
 enum TakeScript {
     Hear,
+    CheckLiveRemainder,
     ChargeInputs,
     Reward,
     Panic,
@@ -126,6 +128,14 @@ impl BlockEntityPart for Pot {
         };
         match SCRIPT.get() {
             TakeScript::Hear | TakeScript::ChargeInputs => {}
+            TakeScript::CheckLiveRemainder => {
+                let live = event.subject.with_view(|entity| {
+                    entity
+                        .item_slot(event.slot as u32)
+                        .map(|stack| stack.count())
+                });
+                assert_eq!(live, Some(event.left.map(|stack| stack.count())));
+            }
             TakeScript::PanicWithoutReward => panic!("a broken craft listener"),
             TakeScript::Reward | TakeScript::Panic => {
                 let host = event.subject.host();
@@ -254,8 +264,27 @@ impl MenuPart for Rules {
         }
     }
 }
+struct TakeOne;
+#[mod_api::sunrise_part]
+impl mod_api::ItemPart for TakeOne {
+    fn item_stacked_on_other(
+        &self,
+        _: mod_api::HostSide<'_>,
+        event: &mut mod_api::ItemStackedOnOtherEvent<'_>,
+    ) -> mod_api::Flow {
+        event.result.clicked = ClickedStackResult::Take(1);
+        if event.event.direction == StackedOnOtherDirection::OtherStackedOnMe {
+            event.result.handled = true;
+            mod_api::Flow::Cancel
+        } else {
+            mod_api::Flow::Continue
+        }
+    }
+}
+
 struct TakeMod {
     menu_slot_take: bool,
+    item_parts_take: bool,
 }
 #[mod_api::__subscriptions]
 impl Hooks for TakeMod {
@@ -265,6 +294,12 @@ impl Hooks for TakeMod {
 
     fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
         r.menu_part(MENU, Rules);
+        if self.item_parts_take {
+            let carried = r.item_key("minecraft:stick");
+            let clicked = r.item_key("minecraft:stone");
+            r.item_part(carried, TakeOne);
+            r.item_part(clicked, TakeOne);
+        }
         let stone = r.block_key("minecraft:stone");
         r.block_part(stone, Pot);
         let kind = r.block_entity_type("pot").blocks(&[]).build();
@@ -309,6 +344,7 @@ fn with_pot(menu_type: &'static ModMenuType, test: impl FnOnce(&mut crate::game:
         menu_type,
         TakeMod {
             menu_slot_take: true,
+            item_parts_take: false,
         },
         test,
     );
@@ -444,6 +480,28 @@ fn a_pickup_hears_what_left_the_slot_and_what_stayed() {
         assert_eq!(menu.carried.as_ref().map(|c| c.count), Some(5));
         assert!(heard().is_empty());
     });
+}
+
+#[test]
+#[ignore = "daily"]
+fn each_part_take_hears_its_live_remainder_before_the_next_take() {
+    crate::game::in_own_process(
+        "game::slot_take_tests::each_part_take_hears_its_live_remainder_before_the_next_take",
+        || {
+            let parts = TakeMod {
+                menu_slot_take: true,
+                item_parts_take: true,
+            };
+            with_pot_parts(pot_type(SLOTS, None), parts, |game| {
+                SCRIPT.set(TakeScript::CheckLiveRemainder);
+                set(game, &[(0, stone(4))], &[], item("minecraft:stick", 1));
+                click(game, 0, 0, sunrise_client::lan::menu::input::PICKUP);
+                assert_eq!(heard(), [took(0, 1, 3), took(0, 1, 2)]);
+                assert_eq!(in_pot(game, 0), 2);
+                assert_eq!(held(game, 0), (0, 1));
+            });
+        },
+    );
 }
 
 #[test]
@@ -854,6 +912,7 @@ fn a_click_sends_the_other_slots_written_by_contents_changed() {
             // its changed-slot list, hiding whether the last-sent comparison works.
             let parts = TakeMod {
                 menu_slot_take: false,
+                item_parts_take: false,
             };
             with_pot_parts(pot_type(SLOTS, None), parts, |game| {
                 set(

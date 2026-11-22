@@ -917,19 +917,17 @@ impl Game<'_> {
                         loop {
                             let after = menu.container_items();
                             write_back(game, menu, after != previous);
-                            let mut menu_live = true;
-                            while let Some(take) = menu.take_notice() {
+                            let menu_live = if let Some(take) = menu.take_notice() {
                                 if game.as_guest(conn, |game| {
                                     game.mod_menu_slot_take(pos, uuid, &menu_id, &take)
                                 }) != Some(true)
                                 {
                                     return None;
                                 }
-                                menu_live = refresh(game, menu);
-                                if !menu_live {
-                                    break;
-                                }
-                            }
+                                refresh(game, menu)
+                            } else {
+                                true
+                            };
                             let Some(step) = rest.ok()? else {
                                 break;
                             };
@@ -942,7 +940,7 @@ impl Game<'_> {
                             } else {
                                 break;
                             };
-                            let next = game.guest_menu_edit(gi, menu, None, |menu, env| {
+                            let next = game.guest_menu_edit(gi, menu, stacked, |menu, env| {
                                 menu.resume_click(env, step)
                             })?;
                             if !menu_live {

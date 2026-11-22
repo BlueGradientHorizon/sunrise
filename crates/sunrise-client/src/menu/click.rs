@@ -48,6 +48,17 @@ enum ClickStep {
         repeat: bool,
     },
     ResultNotifications,
+    PartAfterTake {
+        slot: usize,
+        primary: bool,
+        remainder: Option<ItemStack>,
+        edit: StackedClickedEdit,
+    },
+    PickupAfterTake {
+        slot: usize,
+        primary: bool,
+        resume: StackedResume,
+    },
     PickAll {
         next: i32,
         step: i32,
@@ -57,7 +68,7 @@ enum ClickStep {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct TakeTracker(std::collections::VecDeque<SlotTake>);
+pub(super) struct TakeTracker(Option<SlotTake>);
 
 /// Validate a direct `Slot.set` write for `StackedEditPolicy::Part` against `old` and `kind`.
 fn part_set_allowed(
@@ -641,7 +652,7 @@ impl Menu {
                 if !in_range(slot_index) {
                     return Err(OUT_OF_BOUNDS);
                 }
-                self.pickup(env, slot_index as usize, primary);
+                return Ok(self.pickup(env, slot_index as usize, primary));
             }
         } else if input == Input::Swap && ((0..9).contains(&button) || button == 40) {
             if !in_range(slot_index) {
@@ -706,18 +717,18 @@ impl Menu {
 
     /// Starts take recording for an authoritative block-backed mod menu click.
     pub fn track_takes(&mut self, track: bool) {
-        self.takes = track.then(|| TakeTracker(Default::default()));
+        self.takes = track.then_some(TakeTracker(None));
     }
 
-    /// The next take performed before the click yielded or finished.
+    /// The take performed before the click yielded or finished.
     pub fn take_notice(&mut self) -> Option<SlotTake> {
-        self.takes.as_mut()?.0.pop_front()
+        self.takes.as_mut()?.0.take()
     }
 
     fn take_pending(&self) -> bool {
         self.takes
             .as_ref()
-            .is_some_and(|tracker| !tracker.0.is_empty())
+            .is_some_and(|tracker| tracker.0.is_some())
     }
 
     /// Suspend multi-slot clicks whenever `AnvilMenu.createResult` or `GrindstoneMenu.createResult`
@@ -763,11 +774,7 @@ impl Menu {
     pub(super) fn note_take(&mut self, s: usize, taken: &ItemStack) {
         if taken.count > 0 && self.tracks_take(s) {
             let left = self.slot(s).cloned();
-            self.takes
-                .as_mut()
-                .unwrap()
-                .0
-                .push_back((s, taken.clone(), left));
+            self.takes.as_mut().unwrap().0 = Some((s, taken.clone(), left));
         }
     }
 
@@ -791,20 +798,61 @@ impl Menu {
 
     /// The PICKUP branch of `doClick`: a bundle's override, else the
     /// plain click, ending with `slot.setChanged()`.
-    pub(super) fn pickup(&mut self, env: &Env, s: usize, primary: bool) {
+    fn pickup(&mut self, env: &Env, s: usize, primary: bool) -> Option<ClickContinuation> {
         self.touch();
         let mut resume = StackedResume::VanillaAll;
         if let Some(outcome) = env.stacked {
             resume = outcome.resume;
+            let tracked = self.tracks_take(s);
             let mut target = MenuSlotTarget {
                 menu: self,
                 env,
                 slot: s,
             };
+            if tracked && outcome.policy == StackedEditPolicy::Part {
+                let pair = match &outcome.clicked {
+                    Some(StackedClickedEdit::TakeThenTake { first, second }) => {
+                        Some((*first, StackedClickedEdit::Take(*second)))
+                    }
+                    Some(StackedClickedEdit::TakeThenSet { take, then }) => {
+                        Some((*take, StackedClickedEdit::Set(then.clone())))
+                    }
+                    _ => None,
+                };
+                if let Some((first, edit)) = pair {
+                    // Both sequences start with a partial take. Yield to onTake with its actual
+                    // remainder still in the slot, before applying the second Part's edit.
+                    let kind = target.slot_kind();
+                    if target.menu.slot(s).is_none_or(|stack| first >= stack.count)
+                        || !part_take(&mut target, kind, first)
+                    {
+                        outcome.refused.set(true);
+                        return None;
+                    }
+                    return Some(ClickContinuation(ClickStep::PartAfterTake {
+                        slot: s,
+                        primary,
+                        remainder: self.slot(s).cloned(),
+                        edit,
+                    }));
+                }
+            }
             if !apply_stacked_outcome(&mut target, outcome) {
-                return;
+                return None;
+            }
+            if self.take_pending() {
+                return Some(ClickContinuation(ClickStep::PickupAfterTake {
+                    slot: s,
+                    primary,
+                    resume,
+                }));
             }
         }
+        self.finish_pickup(env, s, primary, resume);
+        None
+    }
+
+    fn finish_pickup(&mut self, env: &Env, s: usize, primary: bool, resume: StackedResume) {
         let handled = match resume {
             StackedResume::Done => true,
             StackedResume::Plain => false,
@@ -1377,6 +1425,51 @@ impl Menu {
                     pass += 1;
                     next = start;
                 }
+            }
+            ClickStep::PartAfterTake {
+                slot,
+                primary,
+                remainder,
+                edit,
+            } => {
+                let outcome = env
+                    .stacked
+                    .expect("a suspended Part click keeps its decision");
+                if self.slot(slot) != remainder.as_ref() {
+                    outcome.refused.set(true);
+                    return None;
+                }
+                let second = StackedOutcome {
+                    policy: StackedEditPolicy::Part,
+                    carried: outcome.carried.clone(),
+                    clicked: Some(edit),
+                    ..Default::default()
+                };
+                let mut target = MenuSlotTarget {
+                    menu: self,
+                    env,
+                    slot,
+                };
+                if !apply_stacked_outcome(&mut target, &second) {
+                    outcome.refused.set(true);
+                    return None;
+                }
+                let resume = outcome.resume;
+                if self.take_pending() {
+                    return Some(ClickContinuation(ClickStep::PickupAfterTake {
+                        slot,
+                        primary,
+                        resume,
+                    }));
+                }
+                self.finish_pickup(env, slot, primary, resume);
+            }
+            ClickStep::PickupAfterTake {
+                slot,
+                primary,
+                resume,
+            } => {
+                self.finish_pickup(env, slot, primary, resume);
             }
             ClickStep::SwapOverflow(mut taken) => {
                 if !self.inventory_add(env, &mut taken) {
