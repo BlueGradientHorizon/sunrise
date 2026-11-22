@@ -389,7 +389,22 @@ impl Game<'_> {
     pub(super) fn advancement_tree(&mut self) -> Arc<Tree> {
         if self.adv.tree.list.is_empty() {
             let overlay = self.pack_files();
-            self.adv.tree = Tree::shared(&self.options.resources.join("data"), &overlay);
+            self.adv.tree = if self.fns.store.predicates.is_empty() {
+                Tree::shared(&self.options.resources.join("data"), &overlay)
+            } else {
+                let predicates: std::collections::HashMap<String, Value> = self
+                    .fns
+                    .store
+                    .predicates
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                Arc::new(Tree::load_with_predicates(
+                    &self.options.resources.join("data"),
+                    &overlay,
+                    &predicates,
+                ))
+            };
             self.inventory_index();
         }
         self.adv.tree.clone()
@@ -867,7 +882,15 @@ impl Game<'_> {
     pub(super) fn trigger(
         &mut self,
         name: &str,
-        test: impl FnMut(&Value, &dyn adv::World) -> bool,
+        mut test: impl FnMut(&Value, &dyn adv::World) -> bool,
+    ) {
+        self.trigger_custom(name, |c, view| test(&c.conditions, view));
+    }
+    /// `SimpleCriterionTrigger.trigger` with access to each loaded [`adv::Criterion`].
+    pub(super) fn trigger_custom(
+        &mut self,
+        name: &str,
+        test: impl FnMut(&adv::Criterion, &dyn adv::World) -> bool,
     ) {
         if self.lan_acting_fake || self.remote.is_some() || self.no_player_here() {
             return;
@@ -877,7 +900,7 @@ impl Game<'_> {
         let Some(list) = tree.by_trigger.get(name) else {
             return;
         };
-        self.trigger_criteria(&tree, list, test);
+        self.trigger_criteria_with(&tree, list, test);
     }
     /// `trigger` for some of a trigger's criteria: (advancement, criterion)
     /// indexes in `tree`, in tree order.
@@ -886,6 +909,14 @@ impl Game<'_> {
         tree: &Tree,
         list: &[(usize, usize)],
         mut test: impl FnMut(&Value, &dyn adv::World) -> bool,
+    ) {
+        self.trigger_criteria_with(tree, list, |c, view| test(&c.conditions, view));
+    }
+    fn trigger_criteria_with(
+        &mut self,
+        tree: &Tree,
+        list: &[(usize, usize)],
+        mut test: impl FnMut(&adv::Criterion, &dyn adv::World) -> bool,
     ) {
         if self.lan_acting_fake {
             return;
@@ -899,7 +930,7 @@ impl Game<'_> {
                 if self.adv.progress.has(&a.id, &c.name) || self.adv.progress.done(a) {
                     continue;
                 }
-                if test(&c.conditions, &view) {
+                if test(c, &view) {
                     hits.push((ai, ci));
                 }
             }
@@ -2835,6 +2866,7 @@ impl Game<'_> {
                         name: name.clone(),
                         trigger: String::new(),
                         conditions: Value::Null.into(),
+                        player: None,
                     });
                 }
             }
@@ -3227,6 +3259,7 @@ mod tests {
             name: "c".into(),
             trigger: trigger.into(),
             conditions: sunrise_world::lazy_json::LazyJson::new(&conditions),
+            player: None,
         };
         let looking = serde_json::json!({"player": {"type": "minecraft:entity_properties",
             "entity": "this", "predicate": {"minecraft:type_specific/player":
@@ -3260,6 +3293,7 @@ mod tests {
             name: "c".into(),
             trigger: trigger.into(),
             conditions: sunrise_world::lazy_json::LazyJson::new(&conditions),
+            player: None,
         };
         let nbt = serde_json::json!({"entity": [{"condition": "minecraft:entity_properties",
             "entity": "this", "predicate": {"minecraft:nbt": "{Variant:1}"}}]});

@@ -666,6 +666,7 @@ fn another_guests_services_work_during_a_turn() {
                 name: "seen".into(),
                 trigger: "turns:probe".into(),
                 conditions: serde_json::Value::Null.into(),
+                player: None,
             }],
             requirements: vec![vec!["seen".into()]],
             rewards: Default::default(),

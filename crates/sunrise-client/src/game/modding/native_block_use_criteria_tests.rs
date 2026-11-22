@@ -30,6 +30,11 @@ fn install(game: &mut Game<'_>) {
             json!({"location":{"type":"minecraft:location_check","offsetX":4096,"predicate":{"block":{"blocks":"minecraft:air"}}}}),
         ),
         (
+            "same_column_light",
+            "default_block_use",
+            json!({"location":{"type":"minecraft:location_check","offsetY":1,"predicate":{"light":{"light":{"min":15}}}}}),
+        ),
+        (
             "event_air",
             "default_block_use",
             json!({"location":{"type":"minecraft:match_block","blocks":"minecraft:air"}}),
@@ -88,6 +93,7 @@ fn install(game: &mut Game<'_>) {
                 name: "seen".into(),
                 trigger,
                 conditions: conditions.into(),
+                player: None,
             }],
             requirements: vec![vec!["seen".into()]],
             rewards: Default::default(),
@@ -214,6 +220,7 @@ fn block_use_refusals_grant_nothing() {
 fn block_use_resolves_saved_event_block_without_requiring_the_location_neighbour() {
     use sunrise_client::{
         containers::BlockEntity,
+        level_loading::Status,
         save::{Persistent, SaveDir},
         streaming::Streaming,
         testgen::TestTerrain,
@@ -261,16 +268,55 @@ fn block_use_resolves_saved_event_block_without_requiring_the_location_neighbour
         let original = mod_api::ItemStack::new(key, 2).unwrap();
         assert!(!g.world.chunks.contains_key(&column));
         assert_eq!(p.trigger_item_used_on_block(g, at, &original), Ok(()));
+        assert_eq!(
+            g.streaming.latest_status(&g.world, column.0, column.1),
+            Some(Status::Full)
+        );
+        assert!(g.world.chunks.get(&column).unwrap().lit);
         assert!(has(g, "item2"));
         assert!(has(g, "event_chest_entity"));
         assert!(!has(g, "event_wrong_entity"));
         assert_eq!(p.trigger_block_use(g, at), Ok(()));
         assert!(has(g, "default_unconditional"));
         assert!(has(g, "event_chest"));
+        assert!(has(g, "same_column_light"));
         assert!(!has(g, "default_has_entity"));
         assert!(!has(g, "event_air"));
         assert!(!has(g, "position_requires_chunk"));
         assert!(!g.streaming.commanded().contains(&column));
+
+        // A resident column still at InitializeLight must wait for lighting before
+        // same-column location_check predicates read light.
+        let unlit = (24, 26);
+        g.world
+            .chunks
+            .insert(unlit, Arc::new(Chunk::empty(unlit.0, unlit.1)));
+        assert_eq!(
+            g.streaming.latest_status(&g.world, unlit.0, unlit.1),
+            Some(Status::InitializeLight)
+        );
+        assert_eq!(g.world.light(unlit.0 * 16, 65, unlit.1 * 16), 0);
+        let p13 = g.player(13).unwrap();
+        assert_eq!(
+            p13.trigger_block_use(g, [unlit.0 * 16, 64, unlit.1 * 16]),
+            Ok(())
+        );
+        assert_eq!(
+            g.streaming.latest_status(&g.world, unlit.0, unlit.1),
+            Some(Status::Full)
+        );
+        assert!(g.world.chunks.get(&unlit).unwrap().lit);
+        assert!(
+            g.lan
+                .as_ref()
+                .unwrap()
+                .hub
+                .guest(13)
+                .unwrap()
+                .advancements
+                .has("test:same_column_light", "seen")
+        );
+        assert!(!g.streaming.commanded().contains(&unlit));
         g.streaming = previous;
     });
 }
@@ -326,7 +372,29 @@ fn custom_trigger_borrows_conditions_and_uses_the_target_players_predicate() {
         install(g);
         let dir = tempfile::tempdir().unwrap();
         let advancements = dir.path().join("test/advancement");
+        let predicates = dir.path().join("test/predicate");
         std::fs::create_dir_all(&advancements).unwrap();
+        std::fs::create_dir_all(&predicates).unwrap();
+        std::fs::write(
+            predicates.join("dry_weather.json"),
+            json!({
+                "type": "minecraft:weather_check",
+                "raining": false,
+                "condition": "minecraft:all_of"
+            })
+            .to_string(),
+        )
+        .unwrap();
+        std::fs::write(
+            predicates.join("rainy_weather.json"),
+            json!({
+                "type": "minecraft:weather_check",
+                "raining": true,
+                "condition": "minecraft:all_of"
+            })
+            .to_string(),
+        )
+        .unwrap();
         for (id, player) in [
             ("pipe", serde_json::Value::Null),
             (
@@ -336,6 +404,27 @@ fn custom_trigger_borrows_conditions_and_uses_the_target_players_predicate() {
                     "predicate": {"minecraft:flags": {"is_on_fire": true}}
                 }),
             ),
+            (
+                "pipe_conflicting",
+                json!({
+                    "type": "minecraft:weather_check",
+                    "raining": true,
+                    "condition": "minecraft:all_of"
+                }),
+            ),
+            (
+                "pipe_ref_ok",
+                json!({"type": "minecraft:all_of", "terms": ["test:dry_weather"]}),
+            ),
+            (
+                "pipe_ref_rainy",
+                json!({"type": "minecraft:all_of", "terms": ["test:rainy_weather"]}),
+            ),
+            (
+                "pipe_ref_missing",
+                json!({"type": "minecraft:all_of", "terms": ["test:missing_predicate"]}),
+            ),
+            ("pipe_missing_terms", json!({"type": "minecraft:all_of"})),
         ] {
             std::fs::write(
                 advancements.join(format!("{id}.json")),
@@ -344,6 +433,8 @@ fn custom_trigger_borrows_conditions_and_uses_the_target_players_predicate() {
             ).unwrap();
         }
         g.adv.tree = Arc::new(a::Tree::load(dir.path()));
+        assert!(g.adv.tree.get("test:pipe_ref_missing").is_none());
+        assert!(g.adv.tree.get("test:pipe_missing_terms").is_none());
         let p = g.player(12).unwrap();
         let trigger = Identifier::parse("minecraft:test_pipe_connected").unwrap();
         let stone = mod_api::__private::item_key("minecraft:stone").unwrap();
@@ -360,6 +451,7 @@ fn custom_trigger_borrows_conditions_and_uses_the_target_players_predicate() {
             Ok(())
         );
         assert!(!has(g, "pipe"));
+        assert!(!has(g, "pipe_ref_ok"));
         assert_eq!(
             p.trigger_criterion(
                 g,
@@ -372,8 +464,11 @@ fn custom_trigger_borrows_conditions_and_uses_the_target_players_predicate() {
             Ok(())
         );
         assert!(has(g, "pipe"));
+        assert!(has(g, "pipe_ref_ok"));
         assert!(!has(g, "pipe_burning"));
-        assert_eq!(counts, [2, 2, 2, 2]);
+        assert!(!has(g, "pipe_conflicting"));
+        assert!(!has(g, "pipe_ref_rainy"));
+        assert_eq!(counts, [2; 10]);
     });
 }
 

@@ -953,6 +953,7 @@ impl ServerAdvancements {
                 name: "tick".into(),
                 trigger: "minecraft:tick".into(),
                 conditions: Value::Null.into(),
+                player: None,
             }],
             requirements: vec![vec!["tick".into()]],
             rewards: Rewards {
@@ -1197,6 +1198,7 @@ mod tests {
                     name: name.into(),
                     trigger: "minecraft:tick".into(),
                     conditions: Value::Null.into(),
+                    player: None,
                 })
                 .collect(),
             requirements: vec![vec!["first".into()], vec!["second".into()]],

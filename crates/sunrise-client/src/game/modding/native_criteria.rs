@@ -118,13 +118,22 @@ impl Game<'_> {
             interacting: None,
         };
         let mut refused = None;
-        self.trigger(trigger, |conditions, world| {
+        self.trigger_custom(trigger, |criterion, world| {
             if refused.is_some() {
                 return false;
             }
-            let context = NativeCriterion { conditions, world };
+            let context = NativeCriterion {
+                conditions: &criterion.conditions,
+                world,
+            };
             match mod_api::__private::game::run_criterion_test(trigger, test, &context) {
-                Ok(matched) => matched && adv::conditions(&conditions["player"], &player, world),
+                Ok(matched) => {
+                    matched
+                        && criterion
+                            .player
+                            .as_ref()
+                            .is_none_or(|pred| pred.test(&player, world))
+                }
                 Err(error) => {
                     refused = Some(error);
                     false

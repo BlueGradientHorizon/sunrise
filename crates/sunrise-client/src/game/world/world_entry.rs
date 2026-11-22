@@ -338,10 +338,14 @@ impl Game<'_> {
             self.res.core.item_data.defaults(),
             &health.damage,
         );
-        let advancements = Arc::new(sunrise_client::advancements::Tree::load_with(
-            &root.join("data"),
-            &overlay,
-        ));
+        let advancements = Arc::new(match &loot {
+            Ok(loot) => sunrise_client::advancements::Tree::load_with_predicates(
+                &root.join("data"),
+                &overlay,
+                loot.predicates(),
+            ),
+            Err(_) => sunrise_client::advancements::Tree::load_with(&root.join("data"), &overlay),
+        });
         let datapack_candidate = self.datapack_candidate(stack, &conditions);
         // The recipe tables, the stations and the recipe book read one folder:
         // hold its files so it is read once.

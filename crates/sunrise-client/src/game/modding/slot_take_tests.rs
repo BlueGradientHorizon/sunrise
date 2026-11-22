@@ -786,7 +786,7 @@ fn a_partial_mod_craft_keeps_crafting_bookkeeping_but_not_item_crafted() {
         tree.list.push(Advancement {
             id: ID.into(), parent: None, display: None, rewards: Default::default(),
             requirements: vec![vec![CRITERION.into()]],
-            criteria: vec![Criterion { name: CRITERION.into(), trigger: TRIGGER.into(), conditions: serde_json::json!({"recipes": [PLANKS], "ingredients": [{"items": LOG}]}).into() }],
+            criteria: vec![Criterion { name: CRITERION.into(), trigger: TRIGGER.into(), conditions: serde_json::json!({"recipes": [PLANKS], "ingredients": [{"items": LOG}]}).into(), player: None }],
         });
         tree.by_id.insert(ID.into(), 0);
         tree.by_trigger.insert(TRIGGER.into(), vec![(0, 0)]);
