@@ -630,8 +630,8 @@ const BOUNDS_CLEAR: wgpu::Color = wgpu::Color {
 ///   4 x 0.5625 = 2.25; the tree from index 11: coefficient 5 = (0.25 - 0.1875) x 2 x 4 = 0.5,
 ///   coefficient 2 = (0.5 - 0.4375) x sqrt 2 x 4 = 0.3536 (0.353515625 in half floats),
 ///   coefficient 1 = 0.4375 x 4 = 1.75;
-/// - accumulate (`sampleColorForAccumulation`), no coefficients yet: transmittance 1, the colour
-///   premultiplied, 0.25, 0.5, 0.75, 1.
+/// - accumulate (`sampleColorForAccumulation`), distinct coefficient inputs and bounds 2 to 6:
+///   transmittance rounds to 0.5 in RGBA16Float, scaling the premultiplied colour.
 #[test]
 #[ignore = "daily"]
 fn vanillas_clouds_fragment_shader_draws_each_improved_transparency_stage() {
@@ -661,9 +661,9 @@ fn vanillas_clouds_fragment_shader_draws_each_improved_transparency_stage() {
     )
     .expect("pipelines");
     assert!(core.improved_transparency() && !core.classic());
-    let mut filled = vec![false; 16];
-    filled[3] = true;
-    let texture = (4, 4, filled);
+    let mut cells = vec![false; 16];
+    cells[3] = true;
+    let texture = (4, 4, cells);
     assert_eq!(
         prepare(
             &device,
@@ -678,7 +678,7 @@ fn vanillas_clouds_fragment_shader_draws_each_improved_transparency_stage() {
         wgpu::TextureFormat::Rgba32Float,
         wgpu::TextureFormat::Rgba16Float,
     );
-    // What the transmittance and accumulate stages sample: bounds 2 to 4 blocks, no coefficients.
+    // The transmittance stage samples bounds 2 to 4 blocks.
     let bounds_in = oit_texture(&device, bounds_format);
     let texels: Vec<f32> = [-2.0f32, 4.0, 0.0, 0.0].repeat((SIZE * SIZE) as usize);
     queue.write_texture(
@@ -725,6 +725,35 @@ fn vanillas_clouds_fragment_shader_draws_each_improved_transparency_stage() {
     );
     assert_eq!(f16s(&texels[0]), [2.25, 1.75, 362.0 / 1024.0, 0.0]);
     assert_eq!(f16s(&texels[1]), [0.0, 0.5, 0.0, 0.0]);
+    // Accumulate at depth 1/4 in the new bounds. With coefficients 2 and 3 zero,
+    // the shader's wavelet interpolation gives absorbance c0 - c1 + c4 - 0.75.
+    // Here it is just below ln(2), so the scaled colour rounds to the exact half
+    // values below. Swapping the inputs instead gives absorbance 0.25.
+    for (texture, coefficient) in coefficients_in
+        .iter()
+        .zip([[1.25, 233.0 / 4096.0, 0.0, 0.0], [0.25, 0.5, 0.0, 0.0]])
+    {
+        let texel = coefficient.map(|value| half::f16::from_f32(value).to_bits());
+        queue.write_texture(
+            texture.as_image_copy(),
+            bytemuck::cast_slice(&texel.repeat((SIZE * SIZE) as usize)),
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(SIZE * 8),
+                rows_per_image: Some(SIZE),
+            },
+            texture.size(),
+        );
+    }
+    let bounds = filled(&device, &queue, [-2.0, 6.0, 0.0, 0.0]);
+    let bounds_view = bounds.create_view(&Default::default());
+    core.bind_oit(
+        &device,
+        &super::super::oit::CloudSamples {
+            generation: 2,
+            views: [&bounds_view, &views[1], &views[2]],
+        },
+    );
     let accumulated = oit_texture(&device, coefficient_format);
     let (texels, _) = draw_stage(
         gpu,
@@ -732,7 +761,7 @@ fn vanillas_clouds_fragment_shader_draws_each_improved_transparency_stage() {
         (Stage::Accumulate, true),
         &[(&accumulated, wgpu::Color::TRANSPARENT)],
     );
-    assert_eq!(f16s(&texels[0]), [0.25, 0.5, 0.75, 1.0]);
+    assert_eq!(f16s(&texels[0]), [0.125, 0.25, 0.375, 0.5]);
 }
 
 /// An 8 by 8 `Rgba32Float` texture of `texel` everywhere.
