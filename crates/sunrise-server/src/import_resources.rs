@@ -51,18 +51,25 @@ pub fn command(dir: &Path, args: &[String], out: &mut impl Write) -> Result<(), 
                 .into(),
         );
     };
-    let config = config::Config::load(dir).unwrap_or_default();
-    let program = launch::program(&config, dir).ok();
+    let config = config::Config::load(dir);
+    let program = match &config {
+        Ok(config) => launch::program(config, dir),
+        Err(_) => launch::program(&config::Config::default(), dir),
+    };
     let install = program
         .as_deref()
+        .ok()
         .and_then(Install::around)
         .or_else(Install::find);
+    let configured = config
+        .as_ref()
+        .map_or("", |cfg| cfg.engine.resources.as_str());
     let target = import(
         Path::new(source),
         |profile| {
             destination_for(
                 dir,
-                &config.engine.resources,
+                configured,
                 install.as_ref().map(|i| i.root.as_path()),
                 profile,
             )
@@ -71,10 +78,16 @@ pub fn command(dir: &Path, args: &[String], out: &mut impl Write) -> Result<(), 
     )?;
     writeln!(out, "Imported the game files into {}", target.display())
         .map_err(|e| e.to_string())?;
+    let (config, program) = match (config, program) {
+        (Ok(config), Ok(program)) => (config, program),
+        (Err(error), _) | (_, Err(error)) => {
+            return writeln!(out, "Cannot start the server: {error}").map_err(|e| e.to_string());
+        }
+    };
     let selected = resources::select(
         &config,
         dir,
-        program.as_deref(),
+        Some(&program),
         install.as_ref().map(|i| i.root.as_path()),
         false,
     );
@@ -354,6 +367,26 @@ mod tests {
         assert!(reply.contains("sunrise-server restart"), "{reply}");
         assert!(!reply.contains("set [engine] resources"), "{reply}");
         assert_eq!(tag(&full), "full");
+
+        config.engine.path = "missing-engine".into();
+        config.engine.resources = "files/server".into();
+        put(
+            &server.join(config::FILE),
+            config::render(&config).as_bytes(),
+        );
+        let reply = guide();
+        assert!(
+            reply.contains("engine.path missing-engine is not a file"),
+            "{reply}"
+        );
+        assert!(!reply.contains("sunrise-server start"), "{reply}");
+        assert!(!reply.contains("set [engine] resources"), "{reply}");
+        let copied = server.join("files/server");
+        assert_eq!(resources::check_prepared(&copied), Ok(Profile::Server));
+        assert_eq!(
+            std::fs::read(copied.join("facts.json")).unwrap(),
+            std::fs::read(source.join("facts.json")).unwrap()
+        );
         std::fs::remove_dir_all(&root).unwrap();
     }
 
