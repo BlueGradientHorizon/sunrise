@@ -38,7 +38,7 @@ pub enum GuiDrawError {
     Abort,
     /// A coordinate, pose, or result of draw arithmetic was not finite.
     NotFinite,
-    /// Text could not cross to the game (for example, its component tree is too deep).
+    /// Text could not be represented by the game (for example, it contains non-finite metadata).
     Text(TextFormError),
     /// The stack could not be read for rendering. Storage count and damage limits do not apply.
     Stack(StackWriteError),

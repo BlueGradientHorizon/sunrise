@@ -632,17 +632,17 @@ mod tests {
         let mut styled = Text::literal("A");
         styled.style.color = Some("#112233".into());
         styled.style.underlined = Some(true);
-        let too_deep = (0..512).fold(Text::literal("leaf"), |child, _| {
-            Text::literal("").append(child)
-        });
+        let mut invalid = Text::literal("Not representable");
+        invalid.metadata =
+            mod_api::Tag::compound([("test:nonfinite", mod_api::Tag::Double(f64::NAN.to_bits()))]);
         let at = [10.0, 20.0];
         let mut batch = HudBatch::scratch([320, 240]);
         assert_eq!(
             GameGuiCanvas::draw(&mut batch, &atlas, None, None, &mut |root| {
                 root.text(&styled, at, u32::MAX, false)?;
-                root.text(&too_deep, at, u32::MAX, false)
+                root.text(&invalid, at, u32::MAX, false)
             }),
-            Err(GuiDrawError::Text(mod_api::text::TextFormError::TooDeep))
+            Err(GuiDrawError::Text(mod_api::text::TextFormError::NonFinite))
         );
         assert!(batch.vertices.is_empty());
         GameGuiCanvas::draw(&mut batch, &atlas, None, None, &mut |root| {
