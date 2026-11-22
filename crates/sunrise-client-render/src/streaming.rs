@@ -62,6 +62,10 @@ impl ProtoSnapshot<'_> {
 pub trait ChunkGenerator: Send + Sync + 'static {
     type Worker: Send + 'static;
     fn worker(&self) -> Self::Worker;
+    /// `ChunkGenerator.getSpawnHeight` (specialized by flat generators).
+    fn spawn_height(&self) -> i32 {
+        64
+    }
     /// The persistent wrapper supplies starts from their owning chunk, in every dimension.
     fn set_saved_starts(
         &self,
@@ -553,6 +557,7 @@ pub struct StreamingCommit {
 
 pub struct Streaming {
     shared: Arc<Shared>,
+    spawn_height: i32,
     /// Columns generated and saved as they were left behind: new when they
     /// next arrive, though read from the save (`World::loaded_chunks`).
     dropped_new: FxHashSet<(i32, i32)>,
@@ -1258,6 +1263,7 @@ impl Streaming {
         };
         Self {
             shared,
+            spawn_height: generator.spawn_height(),
             non_air_sections,
             proto_bytes,
             caches,
@@ -1777,6 +1783,11 @@ impl Streaming {
                 && !world.dirty_sections.contains(&upload.key)
                 && self.section_visibility.halo_current(world, upload))
     }
+    /// Spawn height of this level's generator, not the initial world's cached origin.
+    pub fn spawn_height(&self) -> i32 {
+        self.spawn_height
+    }
+
     pub fn is_lit(&self, x: i32, z: i32) -> bool {
         self.lit.contains(&(x, z))
     }
