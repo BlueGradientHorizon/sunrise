@@ -31,8 +31,19 @@ impl mod_api::Hooks for Registrant {
 #[test]
 #[ignore = "daily"]
 fn first_open_conditions_see_static_tags_and_admitted_biomes() {
+    use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
     use serde_json::{Value, json};
     use std::fs;
+    use sunrise_client::lan::data::BIOME_REGISTRY;
+
+    // World opening installs part/entity/particle registries and the LAN sync cache.
+    if run_fresh_cases(
+        "game::load_conditions::startup_tests::first_open_conditions_see_static_tags_and_admitted_biomes",
+        "SUNRISE_BIOME_ADMISSION_CHILD",
+        &["world"],
+    ) {
+        return;
+    }
     let scratch = tempfile::tempdir().unwrap();
     let pack = scratch.path().join("datapacks/conditions");
     fs::create_dir_all(&pack).unwrap();
@@ -56,10 +67,13 @@ fn first_open_conditions_see_static_tags_and_admitted_biomes() {
     let tag_empty =
         |registry, tag| json!({"type":"neoforge:tag_empty","registry":registry,"tag":tag});
     let not = |condition| json!({"type":"neoforge:not","value":condition});
-    crate::game::native_entity_refs::tests::with_game(|game| {
+    with_game(|game| {
         write(
             "worldgen/biome/disabled.json",
-            json!({"neoforge:conditions":[{"type":"neoforge:never"}]}),
+            json!({
+                "neoforge:conditions":[{"type":"neoforge:never"}],
+                "neoforge:value":{}
+            }),
         );
         let mut enabled = game
             .res
@@ -67,8 +81,14 @@ fn first_open_conditions_see_static_tags_and_admitted_biomes() {
             .builtin_file("minecraft:plains")
             .unwrap()
             .clone();
-        enabled["neoforge:conditions"] = json!([not(registered("minecraft:plains"))]);
-        write("worldgen/biome/enabled.json", enabled);
+        enabled["effects"]["water_color"] = json!([1.0, 0.5, 0.0]);
+        write(
+            "worldgen/biome/enabled.json",
+            json!({
+                "neoforge:conditions":[not(registered("minecraft:plains"))],
+                "neoforge:value":enabled
+            }),
+        );
         write(
             "tags/worldgen/biome/disabled.json",
             json!({"values":["demo:disabled"]}),
@@ -109,6 +129,7 @@ fn first_open_conditions_see_static_tags_and_admitted_biomes() {
         game.load_world(request).unwrap();
         let biomes = game.world_biomes_base.as_ref().unwrap();
         assert!(biomes.contains("demo:enabled"));
+        assert_eq!(biomes.get(biomes.id("demo:enabled")).water, 0xff7f00);
         assert!(!biomes.contains("demo:disabled"));
         for id in [
             "demo:static_tag",
@@ -127,14 +148,27 @@ fn first_open_conditions_see_static_tags_and_admitted_biomes() {
             &game.pack_files(),
         )
         .unwrap();
+        let packet = sync
+            .registry_packets(true, &game.level_shapes)
+            .into_iter()
+            .find(|packet| packet.registry == BIOME_REGISTRY)
+            .unwrap();
         assert!(
-            sync.id("minecraft:worldgen/biome", "demo:enabled")
-                .is_some()
+            packet
+                .entries
+                .iter()
+                .all(|entry| entry.id != "demo:disabled")
         );
-        assert!(
-            sync.id("minecraft:worldgen/biome", "demo:disabled")
-                .is_none()
-        );
+        let wire = packet
+            .entries
+            .into_iter()
+            .find(|entry| entry.id == "demo:enabled")
+            .unwrap()
+            .data
+            .unwrap();
+        let wire = sunrise_client::scoreboard::tag_to_json(&wire);
+        assert_eq!(wire["effects"]["water_color"], "#ff7f00");
+        assert!(wire.get("neoforge:value").is_none());
     });
 }
 

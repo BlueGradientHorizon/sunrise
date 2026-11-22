@@ -1,14 +1,85 @@
-//! Multi-noise biome resolution over an imported immutable parameter table.
-//! Vanilla biome JSON codecs and built-in preset builders remain separate work.
+//! Biome definitions and multi-noise biome resolution over an imported parameter table.
 use super::{
     DecodeError,
+    biome_temperature::BiomeTemperatureSettings,
     climate::{
         ClimateIndex, ClimateSampler, ClimateSearch, ClimateVolume, IndexError, Parameter,
         ParameterPoint,
     },
     density::identifier,
 };
+use crate::environment_attributes::{AttributeMap, packed_rgb};
+use serde_json::Value;
 use sunrise_core::density::{SampleError, SamplerContext};
+
+/// The admitted biome file, retaining the fields needed by the generation and join readers.
+/// `Biome.DIRECT_CODEC` reads climate, positional attributes, special effects and generation
+/// settings. `Biome.NETWORK_CODEC` reads the same climate and effects, without the generation
+/// holder sets. Those sets are resolved by the generator against its worldgen registries.
+pub struct BiomeDefinition(Value);
+
+impl BiomeDefinition {
+    pub fn decode(mut value: Value) -> Result<Self, DecodeError> {
+        BiomeTemperatureSettings::from_json(&value.to_string())?;
+        let record = value.as_object_mut().ok_or(DecodeError::Field("biome"))?;
+        if let Some(attributes) = record.get("attributes") {
+            let attributes = AttributeMap::parse(attributes).map_err(DecodeError::Registry)?;
+            // EnvironmentAttributes' two `notPositional` attributes, refused by
+            // EnvironmentAttributeMap.CODEC_ONLY_POSITIONAL.
+            if let Some(attribute) = attributes
+                .attributes()
+                .find(|a| matches!(a.id, "gameplay/sky_light_level" | "gameplay/fast_lava"))
+            {
+                return Err(DecodeError::Registry(format!(
+                    "attribute {} cannot be positional",
+                    attribute.id
+                )));
+            }
+        }
+        let effects = record
+            .get_mut("effects")
+            .and_then(Value::as_object_mut)
+            .ok_or(DecodeError::Field("effects"))?;
+        // BiomeSpecialEffects.CODEC and ExtraCodecs.STRING_RGB_COLOR. Canonical hex
+        // carries the decoded value to the renderer and the network, including vector inputs.
+        for (key, field, required) in [
+            ("water_color", "effects.water_color", true),
+            ("foliage_color", "effects.foliage_color", false),
+            ("dry_foliage_color", "effects.dry_foliage_color", false),
+            ("grass_color", "effects.grass_color", false),
+        ] {
+            match effects.get_mut(key) {
+                Some(color) => {
+                    let rgb = packed_rgb(color).ok_or(DecodeError::Field(field))?;
+                    *color = Value::String(format!("#{rgb:06x}"));
+                }
+                None if required => return Err(DecodeError::Field(field)),
+                None => {}
+            }
+        }
+        if let Some(modifier) = effects.get("grass_color_modifier")
+            && !matches!(modifier.as_str(), Some("none" | "dark_forest" | "swamp"))
+        {
+            return Err(DecodeError::Field("effects.grass_color_modifier"));
+        }
+        // BiomeGenerationSettings.CODEC requires both fields. The carver holder set
+        // accepts a single holder, a tag or a list; feature steps are always a list.
+        if !record
+            .get("carvers")
+            .is_some_and(|set| set.is_string() || set.is_array() || set.is_object())
+        {
+            return Err(DecodeError::Field("carvers"));
+        }
+        if !record.get("features").is_some_and(Value::is_array) {
+            return Err(DecodeError::Field("features"));
+        }
+        Ok(Self(value))
+    }
+
+    pub fn into_json(self) -> Value {
+        self.0
+    }
+}
 
 /// Identity within an immutable biome registry snapshot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

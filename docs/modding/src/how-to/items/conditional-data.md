@@ -54,8 +54,10 @@ Registry entry codecs use the vanilla feature flag set. Downstream readers such 
 world's enabled flags and the completed candidate registry and tag view. If an entry condition needs
 an experimental world flag or a tag in its own registry, put that test in a downstream consumer instead.
 An unknown feature flag name is a decode error, distinct from a valid flag that is not enabled.
-A biome rejected at world open does not count for `registered`, does not bind as a tag member and is not
-sent to joining clients.
+At world open, a biome's `neoforge:value` (or its fields beside `neoforge:conditions`) must decode as a
+biome after its conditions pass. For example, the `effects` object must include `water_color`. A false
+condition omits the biome without decoding it; a passing condition on an invalid biome fails world open.
+Only admitted biomes count for `registered`, bind as tag members and reach joining clients.
 
 ## Errors by loader
 

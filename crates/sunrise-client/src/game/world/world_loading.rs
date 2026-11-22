@@ -582,6 +582,7 @@ impl WorldBiomeRegistry {
             borrow::Cow,
             collections::{BTreeMap, BTreeSet},
         };
+        use sunrise_world::worldgen::biome::BiomeDefinition;
         const KIND: &str = "worldgen/biome";
         if let Some((file, error)) = read_errors
             .iter()
@@ -606,17 +607,25 @@ impl WorldBiomeRegistry {
                 omitted.insert(id.to_owned());
                 continue;
             }
-            if winner.get("neoforge:conditions").is_some() {
+            let payload = if winner.get("neoforge:conditions").is_some() {
                 let mut payload = winner.into_owned();
                 if let Some(inner) = payload.get_mut("neoforge:value") {
-                    payload = inner.take();
-                } else if let Some(map) = payload.as_object_mut() {
-                    map.remove("neoforge:conditions");
+                    inner.take()
+                } else {
+                    if let Some(map) = payload.as_object_mut() {
+                        map.remove("neoforge:conditions");
+                    }
+                    payload
                 }
-                files.insert(id.to_owned(), payload.to_string());
             } else if let Cow::Owned(winner) = winner {
-                files.insert(id.to_owned(), winner.to_string());
-            }
+                winner
+            } else {
+                // The unchanged prepared definition is already in both base readers.
+                continue;
+            };
+            let admitted =
+                BiomeDefinition::decode(payload).map_err(|error| format!("biome {id}: {error}"))?;
+            files.insert(id.to_owned(), admitted.into_json().to_string());
         }
         let enabled: Vec<_> = stack.enabled_packs().collect();
         let (mut overrides, _) = sunrise_client::datapack::worldgen_overrides(&enabled, |_| true);
@@ -626,17 +635,20 @@ impl WorldBiomeRegistry {
             &overrides,
         )
         .unwrap_or(overrides);
-        let packed: Vec<(String, Value)> = overrides
+        let packed = overrides
             .entries("biomes")
-            .filter_map(|(id, file)| Some((id.to_owned(), serde_json::from_str(file).ok()?)))
-            .collect();
+            .map(|(id, file)| {
+                serde_json::from_str::<Value>(file)
+                    .map(|file| (id, file))
+                    .map_err(|error| format!("biome {id}: {error}"))
+            })
+            .collect::<std::result::Result<Vec<_>, _>>()?;
         let table = if packed.is_empty() && omitted.is_empty() {
             base.clone()
         } else {
-            Arc::new(base.with_admitted_packs(
-                packed.iter().map(|(id, file)| (id.as_str(), file)),
-                &omitted,
-            ))
+            Arc::new(
+                base.with_admitted_packs(packed.iter().map(|(id, file)| (*id, file)), &omitted),
+            )
         };
         Ok(Self {
             table,
@@ -1594,10 +1606,74 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
-    /// The pack biome the saved-biome test enables: the fields the generator reads of every
-    /// biome (climate, `carvers`; `features` is optional).
-    const PACK_BIOME: &str =
-        r#"{"temperature":0.8,"downfall":0.4,"has_precipitation":true,"effects":{},"carvers":[]}"#;
+    /// A minimal direct-codec biome used by the world loader fixtures.
+    const PACK_BIOME: &str = r##"{"temperature":0.8,"downfall":0.4,"has_precipitation":true,"effects":{"water_color":"#2301ef"},"carvers":[],"features":[]}"##;
+
+    #[test]
+    fn biome_loader_checks_winning_conditions_and_decodes_passing_payloads() {
+        use serde_json::{Value, json};
+        use sunrise_assets::resource_source::ResourceRoot;
+        use sunrise_client::datapack::DataPack;
+        use sunrise_world::{conditions::LoadConditions, loot::PackOverlay};
+
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("data/minecraft/worldgen/biome");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("fixture.json"), PACK_BIOME).unwrap();
+        let resources = ResourceRoot::directory(root.path().to_owned());
+        let base = Arc::new(Biomes::load_for_server(&resources).unwrap());
+        let stack = crate::game::functions::PackStack {
+            builtin: None,
+            content: DataPack::from_source("sunrise-content".into(), resources.data().clone()),
+            packs: Vec::new(),
+            enabled: Vec::new(),
+            features: Vec::new(),
+        };
+        let unknown = |condition| json!({"neoforge:conditions":[{"type":condition}]});
+        let load = |winner: Value, conditions: &LoadConditions| {
+            let files = [(
+                "worldgen/biome/minecraft:fixture".into(),
+                vec![
+                    unknown("absent:loser").to_string().into_bytes(),
+                    winner.to_string().into_bytes(),
+                ],
+            )];
+            WorldBiomeRegistry::load(
+                &base,
+                root.path(),
+                &stack,
+                &PackOverlay {
+                    files: &files,
+                    conditions,
+                    ..PackOverlay::default()
+                },
+                &Default::default(),
+            )
+        };
+
+        let conditions = LoadConditions::new([]);
+        let refused = load(unknown("absent:wire_biome"), &conditions).unwrap();
+        assert!(!refused.table.contains("minecraft:fixture"));
+        assert_eq!(
+            conditions.check_errors().unwrap_err(),
+            "data/minecraft/worldgen/biome/fixture.json: unknown load conditions [absent:wire_biome]"
+        );
+
+        let mut invalid: Value = serde_json::from_str(PACK_BIOME).unwrap();
+        invalid.as_object_mut().unwrap().remove("effects");
+        let conditions = LoadConditions::new([]);
+        let error = load(
+            json!({"neoforge:conditions":[{"type":"neoforge:always"}],"neoforge:value":invalid}),
+            &conditions,
+        )
+        .err()
+        .expect("a passing condition does not excuse an invalid biome");
+        assert_eq!(
+            error.to_string(),
+            "biome minecraft:fixture: invalid world generation field: effects"
+        );
+        assert_eq!(conditions.check_errors(), Ok(()));
+    }
 
     #[test]
     fn the_saved_biome_tests_pack_biome_decodes() {

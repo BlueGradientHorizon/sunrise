@@ -1184,11 +1184,9 @@ mod tests {
                 .to_string()
                 .into_bytes()
         };
-        std::fs::create_dir(root.path().join("worldgen")).unwrap();
-        std::fs::write(
-            root.path().join("worldgen/biomes.json"),
-            serde_json::json!({"test:wire_biome": String::from_utf8(bad("absent:wire_biome")).unwrap()}).to_string(),
-        ).unwrap();
+        let chat = root.path().join("data/minecraft/chat_type");
+        std::fs::create_dir_all(&chat).unwrap();
+        std::fs::write(chat.join("rejected.json"), bad("absent:chat")).unwrap();
         let instrument = root.path().join("data/minecraft/instrument");
         std::fs::create_dir_all(&instrument).unwrap();
         std::fs::write(
@@ -1244,7 +1242,12 @@ mod tests {
             registry == "minecraft:instrument" && id == "minecraft:override" && !admitted
         }));
         let untyped = conditions.check_errors().unwrap_err();
-        assert!(untyped.contains("data/test/worldgen/biome/wire_biome.json: unknown load conditions [absent:wire_biome]"), "{untyped}");
+        assert!(
+            untyped.contains(
+                "data/minecraft/chat_type/rejected.json: unknown load conditions [absent:chat]"
+            ),
+            "{untyped}"
+        );
         for losing_or_already_checked in [
             "absent:root_instrument",
             "absent:dialog",

@@ -391,6 +391,23 @@ fn vector<const N: usize>(json: &Json) -> Option<[f32; N]> {
     Some(out)
 }
 
+/// `ExtraCodecs.STRING_RGB_COLOR`: `#rrggbb`, an int, or three float channels.
+pub(crate) fn packed_rgb(json: &Json) -> Option<u32> {
+    hex(json, 6)
+        .or_else(|| int(json))
+        .or_else(|| {
+            let [r, g, b] = json.as_array()?.as_slice() else {
+                return None;
+            };
+            Some(sunrise_core::color::opaque_rgb_from_floats([
+                r.as_f64()? as f32,
+                g.as_f64()? as f32,
+                b.as_f64()? as f32,
+            ]))
+        })
+        .map(|rgb| rgb as u32 & 0xff_ffff)
+}
+
 /// `ExtraCodecs.STRING_RGB_VEC3_COLOR`: `#rrggbb`, else `[r, g, b]`, else an int.
 fn rgb(json: &Json) -> Result<[f32; 3], String> {
     let from_int = |c: i32| {

@@ -317,7 +317,7 @@ impl DatapackRegistryDeclaration {
         let json: Value = serde_json::from_str(text)
             .map_err(|error| DatapackDecodeError::Malformed(error.to_string()))?;
         let object = json.as_object().ok_or(DatapackDecodeError::NotAnObject)?;
-        decode_record(&self.fields, object, &[])
+        decode_record(&self.fields, object, RecordMetadata::None)
     }
 }
 
@@ -327,37 +327,54 @@ pub fn decode_datapack_entry(
     declaration: &DatapackRegistryDeclaration,
     json: &Value,
 ) -> Result<DatapackEntry, DatapackDecodeError> {
-    let mut object = json.as_object().ok_or(DatapackDecodeError::NotAnObject)?;
-    let mut ignored: &[&str] = &[];
-    if object.contains_key("neoforge:conditions") {
-        if let Some(inner) = object.get("neoforge:value") {
-            object = inner.as_object().ok_or(DatapackDecodeError::NotAnObject)?;
-        } else {
-            ignored = &["neoforge:conditions"];
-        }
-    }
-    decode_record(&declaration.fields, object, ignored)
+    let object = json.as_object().ok_or(DatapackDecodeError::NotAnObject)?;
+    let (object, metadata) = if !object.contains_key("neoforge:conditions") {
+        (object, RecordMetadata::None)
+    } else if let Some(inner) = object.get("neoforge:value") {
+        (
+            inner.as_object().ok_or(DatapackDecodeError::NotAnObject)?,
+            RecordMetadata::None,
+        )
+    } else {
+        (object, RecordMetadata::DatapackConditions)
+    };
+    decode_record(&declaration.fields, object, metadata)
 }
 
-/// Decodes a JSON object against a flat record schema, the same way for every user of it (a
-/// datapack registry's entries, a mod feature type's configs): an undeclared key (other than
-/// the `ignored` ones the caller owns, a configured feature's `type`), a missing required key, a
-/// wrong type or an out-of-range value fails the whole record. Nothing here runs mod code.
+pub(crate) enum RecordMetadata {
+    None,
+    /// The feature dispatch key is allowed, and a schema can also read it.
+    FeatureType,
+    /// The inlined condition wrapper's key is not part of the schema input.
+    DatapackConditions,
+}
+
+/// Decodes a JSON object against a flat record schema. An undeclared key (other than
+/// the caller's metadata), a missing required key, a wrong type or an out-of-range
+/// value fails the whole record. Nothing here runs mod code.
 pub(crate) fn decode_record(
     fields: &[DatapackField],
     object: &serde_json::Map<String, Value>,
-    ignored: &[&str],
+    metadata: RecordMetadata,
 ) -> Result<DatapackEntry, DatapackDecodeError> {
-    if let Some(unknown) = object.keys().find(|key| {
-        !ignored.contains(&key.as_str()) && !fields.iter().any(|field| &field.name == *key)
-    }) {
+    let (extra, hidden) = match metadata {
+        RecordMetadata::None => (None, None),
+        RecordMetadata::FeatureType => (Some("type"), None),
+        RecordMetadata::DatapackConditions => {
+            (Some("neoforge:conditions"), Some("neoforge:conditions"))
+        }
+    };
+    if let Some(unknown) = object
+        .keys()
+        .find(|key| Some(key.as_str()) != extra && !fields.iter().any(|field| &field.name == *key))
+    {
         return Err(DatapackDecodeError::UnknownField {
             field: unknown.clone(),
         });
     }
     let mut values = Vec::with_capacity(fields.len());
     for field in fields {
-        let json = (!ignored.contains(&field.name.as_str()))
+        let json = (Some(field.name.as_str()) != hidden)
             .then(|| object.get(&field.name))
             .flatten();
         let value = match json {
@@ -557,6 +574,41 @@ mod tests {
             err(r#"{"power": {"a": 1}}"#),
             DatapackDecodeError::WrongType { .. }
         ));
+    }
+
+    #[test]
+    fn wrapper_metadata_and_configured_feature_dispatch_have_distinct_visibility() {
+        use crate::world::feature_type::decode_feature_config;
+        use serde_json::json;
+
+        let declaration = DatapackRegistryDeclaration {
+            fields: vec![DatapackField::with_default(
+                "neoforge:conditions",
+                DatapackFieldKind::Bool,
+                DatapackValue::Bool(false),
+            )],
+            ..spell()
+        };
+        let wrapped = json!({"neoforge:conditions":[{"type":"neoforge:always"}]});
+        assert_eq!(
+            decode_datapack_entry(&declaration, &wrapped)
+                .unwrap()
+                .get("neoforge:conditions"),
+            Some(&DatapackValue::Bool(false))
+        );
+
+        let feature = json!({"type":"example:crystal"});
+        assert!(decode_feature_config(&[], &feature).is_ok());
+        let schema = [DatapackField::required(
+            "type",
+            DatapackFieldKind::Identifier,
+        )];
+        assert_eq!(
+            decode_feature_config(&schema, &feature)
+                .unwrap()
+                .get("type"),
+            Some(&DatapackValue::Text("example:crystal".into()))
+        );
     }
 
     #[test]
