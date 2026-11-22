@@ -1,0 +1,2 @@
+sunrise-client-render crash::tests::a_panicking_crash_section_disables_only_itself lib daily child-process
+sunrise-client-render crash::tests::a_blocked_crash_section_does_not_hide_a_finished_reply lib daily slow

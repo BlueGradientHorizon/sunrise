@@ -115,7 +115,8 @@ const COMMENTS: &[&str] = &[
 /// One crash, ready to be written.
 pub struct Report {
     pub time: DateTime<Local>,
-    /// The lines mods put under the title (`Registrar::crash_header`), `<mod id>: <text>`.
+    /// The entries mods put under the title (`Registrar::crash_header`), `<mod id>: <text>` with
+    /// continuation lines marked `\t<mod id> | `.
     pub headers: Vec<String>,
     pub description: String,
     /// The error's message, first line of the stack section.
@@ -344,7 +345,8 @@ pub fn system_details(side: &str) -> Vec<(String, String)> {
     out
 }
 
-/// The lines mods put under a report's title, `<mod id>: <text>`.
+/// The entries mods put under a report's title, `<mod id>: <text>` with continuation lines marked
+/// `\t<mod id> | `.
 fn mod_headers() -> Vec<String> {
     mod_lines(true)
         .into_iter()
@@ -352,88 +354,126 @@ fn mod_headers() -> Vec<String> {
         .collect()
 }
 
-/// How long a report waits for the mods' lines, all of them together: a line waiting on a lock the
-/// crashing thread holds must not keep the report from being written.
-const MOD_LINES_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
+/// Keep the existing report wait bounded: a callable can need a lock the crashing thread holds.
+const MOD_LINES_WAIT: Duration = Duration::from_secs(2);
 
-/// The mods' `Registrar::crash_header` lines (`headers`) or `crash_section` lines, in registration
-/// order, as `(<mod id>: <label>, text)`, or `(<mod id>, text)` for a header. Each is asked once,
-/// under [`contain`], on a dedicated worker: this runs inside the panic hook, where a second
-/// panic would end the process before any catch could. A line that panics, traps or misses
-/// [`MOD_LINES_WAIT`] reads `~~ERROR~~`; one that answers `None` is left out, as are the lines of
-/// the mod this thread's crash is attributed to. No mod line, no thread.
+/// Preserves the full diagnostic text while marking every physical continuation line with `prefix`
+/// so no line of a mod's label, value, header or error can resemble another source's report entry.
+fn prefix_continuations(text: &str, prefix: &str) -> String {
+    if !text.contains([
+        '\n', '\r', '\u{000B}', '\u{000C}', '\u{0085}', '\u{2028}', '\u{2029}',
+    ]) {
+        return text.to_owned();
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\r' => {
+                if chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+                out.push('\n');
+                out.push_str(prefix);
+            }
+            '\n' => {
+                out.push('\n');
+                out.push_str(prefix);
+            }
+            '\u{000B}' | '\u{000C}' | '\u{0085}' | '\u{2028}' | '\u{2029}' => {
+                out.push(ch);
+                out.push_str(prefix);
+            }
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+/// Append system details as in `SystemReport.setDetail`, or collect the headers separately.
+/// Run each callable off the panic hook's thread: a panic there would abort before it could be
+/// caught. Run callbacks sequentially in registration order on a shared worker; only if one exceeds
+/// its share of [`MOD_LINES_WAIT`] or fails to reply is that worker detached so later entries
+/// still run in order on a fresh worker.
 fn mod_lines(headers: bool) -> Vec<(String, String)> {
-    let faulted = current_native_mod();
-    let lines: Vec<_> = mod_api::__private::game::mod_crash_lines()
-        .into_iter()
-        .filter(|(owner, label, _)| label.is_none() == headers && Some(*owner) != faulted)
-        .collect();
+    type CrashLineCall = Box<dyn FnOnce() -> Result<Option<String>, String> + Send + 'static>;
+
+    let lines: Vec<_> = mod_api::__private::game::mod_crash_lines(headers).collect();
     if lines.is_empty() {
         return Vec::new();
     }
-    let (send, answers) = std::sync::mpsc::channel();
-    let asked: Vec<_> = lines
-        .iter()
-        .map(|(owner, _, line)| (*owner, line.clone()))
-        .collect();
-    // A thread that doesn't start drops `send`: every line then reads as an error.
-    let _ = std::thread::Builder::new()
-        .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
-        .name("Crash report lines".into())
-        .spawn(move || {
-            for (owner, line) in asked {
-                let answer = contain(|| {
-                    let _mod = enter_native_mod(ModCall {
-                        id: owner,
-                        hook: "crash_section",
-                        part: None,
-                    });
-                    line.value()
-                });
-                if send.send(answer.ok()).is_err() {
-                    break;
-                }
-            }
-        });
-    let deadline = std::time::Instant::now() + MOD_LINES_WAIT;
-    let mut waiting = true;
-    lines
-        .into_iter()
-        .filter_map(|(owner, label, _)| {
-            // After one line misses the wait, a later answer would belong to that line, not this.
-            let answer = waiting
-                .then(|| {
-                    answers
-                        .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
-                        .ok()
-                })
-                .flatten();
-            waiting = answer.is_some();
-            let text = match answer {
-                Some(Some(None)) => return None,
-                Some(Some(Some(text))) => one_line(&text),
-                _ => "~~ERROR~~".to_owned(),
-            };
-            let name = match label {
-                Some(label) => format!("{owner}: {}", one_line(&label)),
-                None => owner.to_owned(),
-            };
-            Some((name, text))
-        })
-        .collect()
-}
+    let deadline = Instant::now() + MOD_LINES_WAIT;
+    let mut remaining = lines.len();
+    let mut worker = None;
+    let mut out = Vec::with_capacity(remaining);
+    for (owner, label, call) in lines {
+        let left = deadline.saturating_duration_since(Instant::now());
+        let wait = if remaining > 1 { left / 2 } else { left };
+        remaining -= 1;
 
-/// `text` on one line, so no mod line passes for one of the report's own: control characters
-/// become spaces, and it is cut to 4096 bytes at a character boundary.
-fn one_line(text: &str) -> String {
-    let mut end = text.len().min(4096);
-    while !text.is_char_boundary(end) {
-        end -= 1;
+        let reply = if wait.is_zero() {
+            worker = None;
+            Err("timed out waiting for crash report entry".to_owned())
+        } else {
+            let active = match worker.take() {
+                Some(pair) => Ok(pair),
+                None => {
+                    let (call_tx, call_rx) = std::sync::mpsc::channel::<CrashLineCall>();
+                    let (reply_tx, reply_rx) = std::sync::mpsc::channel();
+                    std::thread::Builder::new()
+                        .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
+                        .name("Crash report line".into())
+                        .spawn(move || {
+                            for call in call_rx {
+                                if reply_tx.send(call()).is_err() {
+                                    break;
+                                }
+                            }
+                        })
+                        .map(|_| (call_tx, reply_rx))
+                        .map_err(|error| error.to_string())
+                }
+            };
+            active.and_then(|(call_tx, reply_rx)| {
+                call_tx
+                    .send(Box::new(call))
+                    .map_err(|error| error.to_string())?;
+                let result = reply_rx
+                    .recv_timeout(wait)
+                    .map_err(|error| error.to_string())?;
+                worker = Some((call_tx, reply_rx));
+                Ok(result)
+            })
+        };
+        let raw_text = match reply {
+            Ok(Ok(Some(value))) => value,
+            Ok(Ok(None)) => continue,
+            Ok(Err(error)) => format!("~~ERROR~~ {error}"),
+            Err(error) => {
+                match label {
+                    Some(label) => {
+                        log::warn!("Crash report entry {owner}: {label:?} did not answer: {error}");
+                    }
+                    None => {
+                        log::warn!("Crash report header {owner:?} did not answer: {error}");
+                    }
+                }
+                format!("~~ERROR~~ {error}")
+            }
+        };
+        let continuation = if headers {
+            format!("\t{owner} | ")
+        } else {
+            format!("\t\t{owner} | ")
+        };
+        let name = match label {
+            Some(label) => format!("{owner}: {}", prefix_continuations(label, &continuation)),
+            None => owner.to_owned(),
+        };
+        let text = prefix_continuations(&raw_text, &continuation);
+        out.push((name, text));
     }
-    text[..end]
-        .chars()
-        .map(|c| if c.is_control() { ' ' } else { c })
-        .collect()
+    out
 }
 
 /// The thread's name as vanilla's reports say it: the main thread is the client's "Render thread"
@@ -1478,68 +1518,348 @@ pub(crate) mod tests {
         }
     }
 
-    struct Line(Option<&'static str>);
-    impl mod_api::CrashSection for Line {
+    struct Line<F>(F);
+    impl<F: Fn() -> Option<String> + Send + Sync + 'static> mod_api::CrashSection for Line<F> {
         fn value(&self) -> Option<String> {
-            self.0.map(str::to_owned)
+            (self.0)()
         }
     }
 
-    struct Panics;
-    impl mod_api::CrashSection for Panics {
-        fn value(&self) -> Option<String> {
-            panic!("a broken crash line")
-        }
-    }
-
-    struct Lines;
+    type FixtureLine = (Option<String>, std::sync::Arc<dyn mod_api::CrashSection>);
+    struct Lines(Vec<FixtureLine>);
     impl mod_api::Hooks for Lines {
         fn subscribed(&self) -> &'static [Option<mod_api::HookId>] {
             &[]
         }
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-            r.crash_section(
-                "caches",
-                std::sync::Arc::new(Line(Some("3 caches\n\tSunrise Version: forged"))),
-            );
-            r.crash_section("idle", std::sync::Arc::new(Line(None)));
-            r.crash_section("worker", std::sync::Arc::new(Panics));
-            r.crash_header(std::sync::Arc::new(Line(Some("modded"))));
+            for (label, line) in &self.0 {
+                if let Some(label) = label {
+                    r.crash_section(label, line.clone());
+                } else {
+                    r.crash_header(line.clone());
+                }
+            }
         }
     }
 
-    #[test]
-    fn mod_lines_are_asked_when_the_report_is_written() {
-        let _hook = PANIC_HOOK.lock().unwrap_or_else(|e| e.into_inner());
-        let mods: mod_api::Mods =
-            std::sync::Arc::from([mod_api::ModEntry::new("test", Box::new(Lines))]);
+    fn with_crash_lines(lines: Vec<FixtureLine>, run: impl FnOnce()) {
+        let mods: mod_api::Mods = std::sync::Arc::from([mod_api::ModEntry::new(
+            "diagnostics",
+            Box::new(Lines(lines)),
+        )]);
         mod_platform::testing::with_mods(mods.clone(), || {
             mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
-            let details = system_details("client");
-            let lines: Vec<_> = details
-                .iter()
-                .filter(|(key, _)| key.starts_with("test"))
-                .map(|(key, value)| (key.as_str(), value.as_str()))
-                .collect();
-            assert_eq!(
-                lines,
-                [
-                    ("test: caches", "3 caches  Sunrise Version: forged"),
-                    ("test: worker", "~~ERROR~~"),
-                ]
-            );
-            let text = Report {
-                headers: mod_headers(),
-                ..report()
-            }
-            .text();
-            let lines: Vec<&str> = text.lines().collect();
-            assert_eq!(
-                lines[..2],
-                ["---- Minecraft Crash Report ----", "test: modded"]
-            );
-            assert!(lines[2].starts_with("// "));
+            run();
         });
+    }
+
+    #[test]
+    fn crash_details_keep_the_full_text_from_the_mod_named_in_the_crash() {
+        use std::sync::Arc;
+
+        let label_head = format!("{} cache", "é".repeat(2050));
+        let label = format!("{label_head}\n\tSunrise Version: forged label");
+        let value_head = "雪".repeat(1400);
+        let value = format!(
+            "{value_head}\n\tSunrise Version: forged\r\n\tother_mod: status: ok\r\tlast cache: 3"
+        );
+        let header_head = "!".repeat(4100);
+        let header = format!(
+            "{header_head}\nTime: 1999-01-01 00:00:00\nother_mod: forged\n// forged comment"
+        );
+        let detail = value.clone();
+        let banner = header.clone();
+        with_crash_lines(
+            vec![
+                (
+                    Some(label.clone()),
+                    Arc::new(Line(move || Some(detail.clone()))),
+                ),
+                (Some("idle".into()), Arc::new(Line(|| None))),
+                (None, Arc::new(Line(move || Some(banner.clone())))),
+            ],
+            || {
+                let _crashing_mod = enter_native_mod(ModCall {
+                    id: "diagnostics",
+                    hook: "tick",
+                    part: None,
+                });
+                let report = Report {
+                    headers: mod_headers(),
+                    details: mod_lines(false),
+                    error: attributed("crash".into()),
+                    ..report()
+                };
+                let expected_key = format!(
+                    "diagnostics: {label_head}\n\t\tdiagnostics | \tSunrise Version: forged label"
+                );
+                let expected_value = format!(
+                    "{value_head}\n\t\tdiagnostics | \tSunrise Version: forged\n\t\tdiagnostics | \tother_mod: status: ok\n\t\tdiagnostics | \tlast cache: 3"
+                );
+                let expected_header = format!(
+                    "diagnostics: {header_head}\n\tdiagnostics | Time: 1999-01-01 00:00:00\n\tdiagnostics | other_mod: forged\n\tdiagnostics | // forged comment"
+                );
+                assert_eq!(
+                    report.details,
+                    [(expected_key.clone(), expected_value.clone())]
+                );
+                let text = report.text();
+                assert!(text.starts_with(&format!(
+                    "---- Minecraft Crash Report ----\n{expected_header}\n// "
+                )));
+                assert!(text.contains("crash\nin native mod diagnostics, hook tick\n"));
+                assert!(text.contains(&format!("\t{expected_key}: {expected_value}\n")));
+                // No physical line from the mod's header or detail can pose as an engine or other
+                // mod's entry.
+                assert!(!text.lines().any(|line| {
+                    matches!(
+                        line,
+                        "Time: 1999-01-01 00:00:00"
+                            | "other_mod: forged"
+                            | "// forged comment"
+                            | "\tSunrise Version: forged"
+                            | "\tother_mod: status: ok"
+                    ) || line.starts_with("\tSunrise Version: forged label")
+                }));
+            },
+        );
+    }
+
+    #[test]
+    fn crash_callbacks_run_in_registration_order() {
+        use std::sync::Arc;
+
+        let order = Arc::new(Mutex::new(Vec::new()));
+        let detail_snapshot = Arc::new(Mutex::new(None::<String>));
+        let header_snapshot = Arc::new(Mutex::new(None::<String>));
+
+        let o1 = order.clone();
+        let ds1 = detail_snapshot.clone();
+        let o2 = order.clone();
+        let ds2 = detail_snapshot.clone();
+        let o3 = order.clone();
+        let ho1 = order.clone();
+        let hs1 = header_snapshot.clone();
+        let ho2 = order.clone();
+        let hs2 = header_snapshot.clone();
+
+        with_crash_lines(
+            vec![
+                (
+                    Some("snapshot".into()),
+                    Arc::new(Line(move || {
+                        o1.lock().unwrap().push("detail_1");
+                        *ds1.lock().unwrap() = Some("captured-detail".into());
+                        Some("ready".into())
+                    })),
+                ),
+                (
+                    Some("reading".into()),
+                    Arc::new(Line(move || {
+                        o2.lock().unwrap().push("detail_2");
+                        ds2.lock().unwrap().clone()
+                    })),
+                ),
+                (
+                    Some("final".into()),
+                    Arc::new(Line(move || {
+                        o3.lock().unwrap().push("detail_3");
+                        Some("done".into())
+                    })),
+                ),
+                (
+                    None,
+                    Arc::new(Line(move || {
+                        ho1.lock().unwrap().push("header_1");
+                        *hs1.lock().unwrap() = Some("captured-header".into());
+                        Some("banner".into())
+                    })),
+                ),
+                (
+                    None,
+                    Arc::new(Line(move || {
+                        ho2.lock().unwrap().push("header_2");
+                        hs2.lock().unwrap().clone()
+                    })),
+                ),
+            ],
+            || {
+                let details = mod_lines(false);
+                let headers = mod_headers();
+                assert_eq!(
+                    *order.lock().unwrap(),
+                    ["detail_1", "detail_2", "detail_3", "header_1", "header_2"]
+                );
+                assert_eq!(
+                    details,
+                    [
+                        ("diagnostics: snapshot".to_owned(), "ready".to_owned()),
+                        (
+                            "diagnostics: reading".to_owned(),
+                            "captured-detail".to_owned()
+                        ),
+                        ("diagnostics: final".to_owned(), "done".to_owned()),
+                    ]
+                );
+                assert_eq!(
+                    headers,
+                    [
+                        "diagnostics: banner".to_owned(),
+                        "diagnostics: captured-header".to_owned(),
+                    ]
+                );
+            },
+        );
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_panicking_crash_section_disables_only_itself() {
+        use std::sync::Arc;
+
+        // Keep the process-wide panic hook and error-toast queue away from concurrent tests.
+        const CHILD: &str = "SUNRISE_CRASH_SECTION_TEST_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--ignored",
+                    "--exact",
+                    "crash::tests::a_panicking_crash_section_disables_only_itself",
+                ])
+                .env(CHILD, "1")
+                .output()
+                .unwrap();
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(
+                output.status.success() && stdout.contains("test result: ok. 1 passed;"),
+                "{stdout}{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            return;
+        }
+
+        let caught = Arc::new(Mutex::new((Vec::new(), Vec::new())));
+        let sink = caught.clone();
+        with_claimed_panics(
+            move |info| match payload_text(info.payload()).as_str() {
+                "a broken crash detail\n\tSunrise Version: forged"
+                | "a broken crash header\nTime: forged" => {
+                    record_contained_panic(&|| panic_message(info))
+                }
+                "original crash" => {
+                    *sink.lock().unwrap() = (mod_headers(), mod_lines(false));
+                    true
+                }
+                _ => false,
+            },
+            || {
+                with_crash_lines(
+                    vec![
+                        (
+                            Some("broken".into()),
+                            Arc::new(Line(|| -> Option<String> {
+                                panic!("a broken crash detail\n\tSunrise Version: forged")
+                            })),
+                        ),
+                        (
+                            Some("healthy".into()),
+                            Arc::new(Line(|| Some("still here".into()))),
+                        ),
+                        (
+                            None,
+                            Arc::new(Line(|| -> Option<String> {
+                                panic!("a broken crash header\nTime: forged")
+                            })),
+                        ),
+                        (None, Arc::new(Line(|| Some("healthy header".into())))),
+                    ],
+                    || {
+                        let _ = std::panic::catch_unwind(|| panic!("original crash"));
+                        let (headers, details) = caught.lock().unwrap().clone();
+                        let [bad_header, good_header] = headers.as_slice() else {
+                            panic!("unexpected crash headers: {headers:?}");
+                        };
+                        assert!(bad_header.starts_with("diagnostics: ~~ERROR~~ "));
+                        assert!(bad_header.contains(
+                            "\n\tdiagnostics | a broken crash header\n\tdiagnostics | Time: forged\n\tdiagnostics | in native mod diagnostics, hook crash_header"
+                        ));
+                        assert!(!bad_header.lines().any(|line| line == "Time: forged"));
+                        assert_eq!(good_header, "diagnostics: healthy header");
+
+                        let [(bad_key, error), good] = details.as_slice() else {
+                            panic!("unexpected crash details: {details:?}");
+                        };
+                        assert_eq!(bad_key, "diagnostics: broken");
+                        assert!(error.starts_with("~~ERROR~~ "));
+                        assert!(error.contains(
+                            "\n\t\tdiagnostics | a broken crash detail\n\t\tdiagnostics | \tSunrise Version: forged\n\t\tdiagnostics | in native mod diagnostics, hook crash_section"
+                        ));
+                        assert!(
+                            !error
+                                .lines()
+                                .any(|line| line == "\tSunrise Version: forged")
+                        );
+                        assert_eq!(good.0, "diagnostics: healthy");
+                        assert_eq!(good.1, "still here");
+
+                        let notices = take_callback_panic_notices();
+                        assert_eq!(notices.len(), 2);
+                        assert_eq!(notices[0].mod_id, "diagnostics");
+                        assert_eq!(notices[0].operation, "crash_header");
+                        assert_eq!(notices[1].mod_id, "diagnostics");
+                        assert_eq!(notices[1].operation, "crash_section");
+                        assert_eq!(mod_headers().as_slice(), std::slice::from_ref(good_header));
+                        assert_eq!(mod_lines(false).as_slice(), std::slice::from_ref(good));
+                        assert!(take_callback_panic_notices().is_empty());
+                    },
+                );
+            },
+        );
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_blocked_crash_section_does_not_hide_a_finished_reply() {
+        use std::sync::Arc;
+
+        let held_by_reporter = Arc::new(Mutex::new(()));
+        let held = held_by_reporter.lock().unwrap();
+        let also_held = held_by_reporter.clone();
+        let snapshot = Arc::new(Mutex::new(None::<String>));
+        let write_snapshot = snapshot.clone();
+        with_crash_lines(
+            vec![
+                (
+                    Some("blocked".into()),
+                    Arc::new(Line(move || {
+                        let _lock = also_held.lock().unwrap();
+                        Some("too late".into())
+                    })),
+                ),
+                (
+                    Some("ready".into()),
+                    Arc::new(Line(move || {
+                        *write_snapshot.lock().unwrap() = Some("after-ready".into());
+                        Some("collected".into())
+                    })),
+                ),
+                (
+                    Some("ordered".into()),
+                    Arc::new(Line(move || snapshot.lock().unwrap().clone())),
+                ),
+            ],
+            || {
+                let details = mod_lines(false);
+                drop(held);
+                assert_eq!(details.len(), 3);
+                assert_eq!(details[0].0, "diagnostics: blocked");
+                assert!(details[0].1.starts_with("~~ERROR~~ "));
+                assert_eq!(details[1].0, "diagnostics: ready");
+                assert_eq!(details[1].1, "collected");
+                assert_eq!(details[2].0, "diagnostics: ordered");
+                assert_eq!(details[2].1, "after-ready");
+            },
+        );
     }
 
     #[test]
