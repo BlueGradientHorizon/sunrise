@@ -2718,7 +2718,7 @@ mod tests {
         }
     }
 
-    fn with_command_sources(test: impl FnOnce(&mut Game<'_>)) {
+    pub(super) fn with_command_sources(test: impl FnOnce(&mut Game<'_>)) {
         use sunrise_client::{
             chunk::Chunk, chunk::block_entity::BlockEntity, command_block::CommandBlock,
         };

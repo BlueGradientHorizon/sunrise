@@ -176,7 +176,7 @@ fn formatted_command_failure(message: Text, timestamp: Option<Text>) -> Text {
     let output = format(message);
     let serializes = || {
         let component = output.component_view();
-        let limits = nbt::Limits::default();
+        let mut limits = nbt::Limits::default();
         // Check before recursing into the component converters. The writer checks
         // the full tag, including synthetic list wrappers not present in the JSON.
         let mut pending = vec![(component.as_ref(), 0)];
@@ -193,7 +193,14 @@ fn formatted_command_failure(message: Text, timestamp: Option<Text>) -> Text {
         } else {
             sunrise_client::lan::data::component_nbt(&component)
         };
-        // This is the writer used for SystemChat and command block updates.
+        if timestamp.is_some() {
+            // The saved component sits under three containers: the chunk root,
+            // the block_entities or Entities list, and the block or cart entry.
+            // NbtAccounter counts those before it reads LastOutput.
+            limits.max_depth = nbt::Limits::saved().max_depth - 3;
+        }
+        // Use the strict writer so overlong strings are refused, not saved empty.
+        // It also counts wrappers introduced when encoding heterogeneous lists.
         nbt::write_network(&tag, limits).is_ok()
     };
     if serializes() {

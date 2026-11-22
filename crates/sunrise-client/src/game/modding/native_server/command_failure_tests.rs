@@ -46,7 +46,35 @@ impl mod_api::Hooks for FailingCommand {
                     Err(message.into())
                 }));
         }
+        for (name, fits) in [("rejectsavededge", true), ("rejectsavedover", false)] {
+            event
+                .commands
+                .push(mod_api::Command::new(name).executes(move |_, _, _| {
+                    let mut leaf = mod_api::Text::literal("tracked failure");
+                    if fits {
+                        leaf.style.bold = Some(true);
+                    }
+                    // The timestamp and red parent add four containers. Each nested
+                    // `extra` adds two. A styled leaf is a compound, an unstyled leaf
+                    // is a string. Including the save's three containers: 512 or 513.
+                    for _ in 0..if fits { 252 } else { 253 } {
+                        leaf = mod_api::Text::literal("").append(leaf);
+                    }
+                    Err(leaf.into())
+                }));
+        }
     }
+}
+
+fn with_failure_sources(test: impl FnOnce(&mut crate::game::Game<'_>)) {
+    mod_platform::testing::with_mods(
+        vec![mod_api::ModEntry::new(
+            "failure_test",
+            Box::new(FailingCommand(Arc::default())),
+        )]
+        .into(),
+        || super::tests::with_command_sources(test),
+    );
 }
 
 #[test]
@@ -157,6 +185,83 @@ fn executor_failure_respects_source_silence_and_stores_zero() {
                     });
                 },
             );
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn tracked_executor_failure_survives_saved_depth_boundary() {
+    use crate::game::{
+        minecarts::{CartKind, Minecart},
+        native_entity_refs::tests::run_with_game_stack,
+    };
+    use sunrise_client::{
+        chunk::block_entity::BlockEntity,
+        save::{LevelShape, SaveDir},
+    };
+    use sunrise_core::position::BlockPos;
+
+    in_own_process(
+        "game::native_server::command_failure_tests::tracked_executor_failure_survives_saved_depth_boundary",
+        || {
+            run_with_game_stack(|| {
+                with_failure_sources(|game| {
+                    let pos = (1, 64, 1);
+                    let fallback = text::Text::tr("command.failed", &[]).plain();
+                    for (command, expected) in [
+                        ("rejectsavededge", "tracked failure"),
+                        ("rejectsavedover", fallback.as_str()),
+                    ] {
+                        let Some(BlockEntity::CommandBlock(block)) =
+                            game.world.block_entities.get_mut(&pos)
+                        else {
+                            panic!("expected a command block");
+                        };
+                        block.set_command(command);
+                        game.carts
+                            .update(0, |cart| cart.command.set_command(command));
+                        game.world.game_time += 1;
+                        game.command_block_tick(BlockPos::new(pos.0, pos.1, pos.2));
+                        assert!(game.perform_cart_command(99));
+
+                        let Some(BlockEntity::CommandBlock(block)) =
+                            game.world.block_entities.get(&pos)
+                        else {
+                            panic!("expected a command block");
+                        };
+                        for command_block in [&**block, &game.carts[0].command] {
+                            assert_eq!(&command_block.last_output_string()[11..], expected);
+                        }
+                        game.world.modified.insert((0, 0));
+                        game.save_level(true).unwrap();
+                        let reopened = SaveDir::new(
+                            game.save.root.clone(),
+                            LevelShape::OVERWORLD,
+                            Some(Default::default()),
+                        );
+                        let reloaded = reopened
+                            .load(0, 0, game.pack.assets.registry, world_biomes!(game))
+                            .unwrap();
+                        let Some((_, BlockEntity::CommandBlock(block))) =
+                            reloaded.block_entities.iter().find(|(key, _)| *key == pos)
+                        else {
+                            panic!("saved block missing");
+                        };
+                        let entities = reopened.load_entities(0, 0).unwrap();
+                        let cart = entities
+                            .iter()
+                            .find_map(|tag| Minecart::from_nbt(tag, 99, CartKind::CommandBlock))
+                            .unwrap();
+                        for command_block in [&**block, &cart.command] {
+                            assert_eq!(command_block.command, command);
+                            assert_eq!(command_block.last_execution, game.world.game_time);
+                            assert_eq!(command_block.success_count, 0);
+                            assert_eq!(&command_block.last_output_string()[11..], expected);
+                        }
+                    }
+                })
+            })
         },
     );
 }
