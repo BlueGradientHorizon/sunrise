@@ -920,7 +920,9 @@ fn parse_quad_pos_bits(v: &Value) -> PosBits {
 fn vertex_quad_glint_bits(verts: &[Vertex]) -> Vec<UvBits> {
     assert_eq!(verts.len() % 4, 0);
     verts
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|quad| std::array::from_fn(|i| quad[i].glint_uv.map(f32::to_bits)))
         .collect()
 }
@@ -952,7 +954,7 @@ fn submitted_quads(
     assert_eq!(verts.len(), quads.len() * 4);
     quads
         .iter()
-        .zip(verts.chunks_exact(4))
+        .zip(verts.as_chunks::<4>().0)
         .map(|(q, vquad)| {
             let pos: PosBits = std::array::from_fn(|i| vquad[i].pos.map(f32::to_bits));
             for i in 0..4 {

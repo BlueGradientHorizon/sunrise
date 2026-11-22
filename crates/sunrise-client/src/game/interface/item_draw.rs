@@ -1753,7 +1753,9 @@ mod tests {
                     .collect();
                 want_shield.sort();
                 let mut got_shield: Vec<[[u32; 2]; 4]> = shield_out
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .map(|quad| std::array::from_fn(|i| quad[i].glint_uv.map(f32::to_bits)))
                     .collect();
                 got_shield.sort();
