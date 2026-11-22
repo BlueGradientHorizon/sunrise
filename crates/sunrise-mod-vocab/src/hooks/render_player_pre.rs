@@ -6,9 +6,10 @@ pub trait Hooks {
     /// holds the camera, before its `render_living_pre`. `player` is its render state, `who` its profile name and whether it is
     /// this window's own player, and `draw` the frame `render_living_pre` gets. Set `canceled` to
     /// skip the player's own drawing this frame, `render_living_pre`, `render_living_post` and
-    /// `render_player_post` included. The flames of a burning player and its shadow, which the
-    /// frame queues after the player's drawing, still draw. `event.model` borrows the selected player's hierarchy and
-    /// bind pose as a [`crate::FrameModelEdit`]. Look up `model.part("head")` and call
+    /// `render_player_post` included. Canceling only `render_living_pre` skips Living Post but
+    /// still calls Player Post with `model: None`. Either cancel leaves eligible flames and shadows
+    /// to the frame; a replacement body should not submit them again. `event.model` borrows the
+    /// selected player's hierarchy and bind pose as a [`crate::FrameModelEdit`]. Look up `model.part("head")` and call
     /// `model.hide(index)` if it exists. That leaves the head and its children out for this draw
     /// after Skin Customization. Living Pre sees the same draw-local edits. Armour, held items
     /// and other independent layers, including the cape, are unaffected. In the ordered body pass,

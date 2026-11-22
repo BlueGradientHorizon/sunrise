@@ -494,6 +494,13 @@ fn entity_draw_order_after_client_packets() {
 #[test]
 #[ignore = "daily"]
 fn a_canceled_living_pre_skips_the_model_and_the_post_hook() {
+    if super::native_entity_refs::tests::run_fresh_cases(
+        "game::native_render_pair_tests::a_canceled_living_pre_skips_the_model_and_the_post_hook",
+        "SUNRISE_RENDER_PAIR_CHILD",
+        &["game"],
+    ) {
+        return;
+    }
     let heard: Arc<Mutex<Heard>> = Arc::default();
     with_pair(&heard, |game| {
         game.mobs.push(mob(game, "minecraft:zombie", 91, 0.0));
@@ -567,88 +574,21 @@ fn zombie_frame(game: &mut Game<'_>, burning: bool, shadows: bool) -> usize {
     entity_frame(game)
 }
 
-/// The fire yaw the entity pass uses for billboards.
-fn fire_yaw(game: &Game<'_>) -> f32 {
-    if game.camera_type == sunrise_client::camera::CameraType::ThirdPersonFront {
-        game.yaw + 180.0
-    } else {
-        game.yaw
-    }
-}
-
-/// Vertices `fire_render::flames` would add for a box of `width`×`height` at `feet`, with this
-/// frame's fire yaw, sprites and light — not through `entity_geometry`.
-fn flame_vertices(game: &Game<'_>, feet: [f64; 3], width: f32, height: f32) -> usize {
-    let mut out = Vec::new();
-    sunrise_client::fire_render::flames(
-        feet,
-        width,
-        height,
-        CAMERA,
-        fire_yaw(game),
-        &game.gui.atlas.sprites,
-        game.world.light(
-            feet[0].floor() as i32,
-            feet[1].floor() as i32,
-            feet[2].floor() as i32,
-        ),
-        &mut out,
-    );
-    out.len()
-}
-
-/// Vertices `shadows::shadow` would add for one caster — not through `entity_geometry`.
-fn shadow_vertices(game: &Game<'_>, pos: glam::DVec3, radius: f32, strength: f32) -> usize {
-    let Some(sprite) = game.gui.atlas.sprites.get("misc/shadow").copied() else {
-        return 0;
-    };
-    let mut out = Vec::new();
-    sunrise_client::shadows::shadow(
-        &game.world,
-        game.res.facts(),
-        &|state| {
-            game.res
-                .collision()
-                .cached_shapes()
-                .cached_shape(state)
-                .ok()
-                .flatten()
-                .and_then(|shape| shape.bounds())
-        },
-        sprite,
-        CAMERA,
-        pos,
-        radius,
-        strength,
-        game.dimension_type().ambient_light,
-        game.sky_darken(),
-        &mut out,
-    );
-    out.len()
-}
-
-/// Independent flame and shadow vertex counts for a zombie at the test stand.
-fn zombie_flame_and_shadow(game: &Game<'_>) -> (usize, usize) {
-    let zombie = mob(game, "minecraft:zombie", 91, 0.0);
-    let at = zombie.previous.lerp(zombie.position, 1.0);
-    let (radius, strength) = (
-        sunrise_client::shadows::mob_shadow_radius(&zombie),
-        sunrise_client::shadows::shadow_params(&zombie.kind.id).1,
-    );
-    (
-        flame_vertices(game, [at.x, at.y, at.z], zombie.width(), zombie.height()),
-        shadow_vertices(game, glam::DVec3::new(at.x, at.y, at.z), radius, strength),
-    )
-}
-
 #[test]
 #[ignore = "daily"]
 fn a_canceled_pre_keeps_the_flames_and_the_shadow() {
+    if super::native_entity_refs::tests::run_fresh_cases(
+        "game::native_render_pair_tests::a_canceled_pre_keeps_the_flames_and_the_shadow",
+        "SUNRISE_RENDER_PAIR_CHILD",
+        &["game"],
+    ) {
+        return;
+    }
     let heard: Arc<Mutex<Heard>> = Arc::default();
     with_pair(&heard, |game| {
         place_stone_floor(game);
-        let (flames, shadow) = zombie_flame_and_shadow(game);
-        assert!(flames > 0 && shadow > 0, "{flames} {shadow}");
+        // FlameFeatureRenderer submits six quads for an adult zombie; the stone gives one shadow quad.
+        let (flames, shadow) = (24, 4);
         let plain = zombie_frame(game, false, false);
         assert_eq!(zombie_frame(game, true, false) - plain, flames);
         assert_eq!(zombie_frame(game, false, true) - plain, shadow);
@@ -663,24 +603,19 @@ fn a_canceled_pre_keeps_the_flames_and_the_shadow() {
 #[test]
 #[ignore = "daily"]
 fn a_canceled_pre_keeps_the_local_players_flames() {
+    if super::native_entity_refs::tests::run_fresh_cases(
+        "game::native_render_pair_tests::a_canceled_pre_keeps_the_local_players_flames",
+        "SUNRISE_RENDER_PAIR_CHILD",
+        &["game"],
+    ) {
+        return;
+    }
     let heard: Arc<Mutex<Heard>> = Arc::default();
     with_pair(&heard, |game| {
         place_stone_floor(game);
         admit_own_player(game, false);
         game.settings.entity_shadows = false;
-        let expected = {
-            let p = game.player.as_ref().unwrap();
-            let feet = game
-                .previous_position
-                .lerp(p.position, game.clock.camera_fraction());
-            flame_vertices(
-                game,
-                [feet.x, feet.y, feet.z],
-                p.dimensions.width,
-                p.dimensions.height,
-            )
-        };
-        assert!(expected > 0, "{expected}");
+        let expected = 20; // FlameFeatureRenderer submits five quads for a standing player.
         let added = |game: &mut Game<'_>| {
             game.player.as_mut().unwrap().fire_ticks = 0;
             let plain = entity_frame(game);
