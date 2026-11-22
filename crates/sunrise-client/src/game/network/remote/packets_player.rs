@@ -461,6 +461,16 @@ impl Game<'_> {
                 if let Some(name) = e.name {
                     r.players.insert(e.uuid, name);
                 }
+                // `Player.isPickable` sees `AbstractClientPlayer.gameMode` as soon as
+                // `ClientPacketListener.applyPlayerInfoUpdate` publishes its new mode.
+                if mode_change.is_some()
+                    && let Some(id) = r.player_entity(e.uuid)
+                    && let Some(index) = self.mob_index.find(&self.mobs, id)
+                {
+                    let spectator = r.remote_player_info_game_mode(id as i32) == Some(SPECTATOR);
+                    self.mobs
+                        .update(index, |mob| mob.extra.spectator = spectator);
+                }
             }
         }
     }
