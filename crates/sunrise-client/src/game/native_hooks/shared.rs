@@ -3012,6 +3012,7 @@ impl Game<'_> {
                 let mut container = None;
                 self.native_block_entity_container(&state.name, &mut container);
                 container.map(|mut c| {
+                    c.slots = sunrise_client::containers::mod_container_slot_count(&c);
                     let n = c.slots;
                     c.menu = c
                         .menu

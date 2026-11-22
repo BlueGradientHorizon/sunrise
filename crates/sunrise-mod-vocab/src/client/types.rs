@@ -296,6 +296,10 @@ pub struct ClientGuiOptions {
     pub menu_blur: i32,
     /// Distortion / screen effect intensity scale (`Options.screenEffectScale`, 0 to 1).
     pub screen_effect_scale: f32,
+    /// How far the camera tilts when the player is hurt, 0 (off) to 1 (`damageTiltStrength`,
+    /// the Damage Tilt accessibility option): the factor of vanilla's own hurt tilt, so a mod's
+    /// camera shake can scale with it as that tilt does.
+    pub damage_tilt_strength: f64,
 }
 
 /// A snapshot of the client's chat preferences.

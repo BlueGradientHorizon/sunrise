@@ -1260,13 +1260,8 @@ fn a_type_resolves_to_its_provider_at_load_and_other_types_stay_declarative() {
         ("mymod:particle/one".into(), rect),
         ("mymod:particle/two".into(), rect),
     ]);
-    let mut e = ParticleEngine::with_factories(
-        &root,
-        &atlas,
-        &HashSet::new(),
-        &[],
-        HashMap::from([(ty.key(), factory)]),
-    );
+    let mut e = ParticleEngine::with_factories(&[], HashMap::from([(ty.key(), factory)]));
+    e.reload(&root, &atlas, &HashSet::new());
     let scene = Scene::new();
     let level = scene.level();
     let options = typed(ty, ());

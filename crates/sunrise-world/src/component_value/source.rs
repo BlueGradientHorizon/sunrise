@@ -83,6 +83,12 @@ fn boolean(t: &Tag) -> Result<Value> {
 /// `ComponentSerialization.CODEC`: normalize the decoded contents and style before
 /// projection or hashing. A component list appends its tail to the first component.
 fn text(t: &Tag, source: Source<'_>) -> Result<Value> {
+    if let Some(project) = source.project_text {
+        let tag = project(t).ok_or("invalid text component")?;
+        let value = Value::from_nbt(&tag, &[]);
+        sunrise_core::nbt::discard_tag(tag);
+        return Ok(value);
+    }
     if let Tag::String(s) = t {
         return Ok(Value::String(s.0.clone()));
     }
@@ -254,30 +260,7 @@ fn text_contents(r: &mut Record<'_>, kind: &str, source: Source<'_>) -> Result<(
 /// `Style.Serializer.MAP_CODEC`: known fields are strict optional fields.
 fn text_style(r: &mut Record<'_>, source: Source<'_>) -> Result<()> {
     r.optional("color", text_color)?;
-    r.optional("shadow_color", |t| {
-        if let Ok(color) = int(t) {
-            return Ok(color);
-        }
-        let value = list(t, float)?;
-        let Value::List(values) = &value else {
-            unreachable!()
-        };
-        let [
-            Value::Float(red),
-            Value::Float(green),
-            Value::Float(blue),
-            Value::Float(alpha),
-        ] = values.as_slice()
-        else {
-            return Err("expected four shadow color channels".into());
-        };
-        let color = [*alpha, *red, *green, *blue].map(|bits| {
-            let x = f32::from_bits(bits) * 255.0;
-            let n = x as i32;
-            (if x < n as f32 { n.wrapping_sub(1) } else { n }) as u8
-        });
-        Ok(Value::Int(i32::from_be_bytes(color)))
-    })?;
+    r.optional("shadow_color", |t| text_shadow_color(t).map(Value::Int))?;
     for key in [
         "bold",
         "italic",
@@ -293,14 +276,43 @@ fn text_style(r: &mut Record<'_>, source: Source<'_>) -> Result<()> {
     r.optional("hover_event", |v| hover_event(v, source))
 }
 
+/// `ExtraCodecs.ARGB_COLOR_CODEC`: a packed int or four floats in RGBA order.
+pub fn text_shadow_color(t: &Tag) -> Result<i32> {
+    if let Ok(color) = integer(t) {
+        return Ok(color);
+    }
+    let value = list(t, float)?;
+    let Value::List(values) = &value else {
+        unreachable!()
+    };
+    let [
+        Value::Float(red),
+        Value::Float(green),
+        Value::Float(blue),
+        Value::Float(alpha),
+    ] = values.as_slice()
+    else {
+        return Err("expected four shadow color channels".into());
+    };
+    let color = [*alpha, *red, *green, *blue].map(|bits| {
+        let x = f32::from_bits(bits) * 255.0;
+        let n = x as i32;
+        (if x < n as f32 { n.wrapping_sub(1) } else { n }) as u8
+    });
+    Ok(i32::from_be_bytes(color))
+}
+
 fn text_identifier(t: &Tag) -> Result<Value> {
     let id = sunrise_core::identifier::Identifier::parse(&string(t)?).map_err(|e| e.to_string())?;
     Ok(Value::string(&id.to_string()))
 }
 
-/// `TextColor.parseColor`: named colors or a signed Java base-16 integer in RGB range.
 fn text_color(t: &Tag) -> Result<Value> {
-    let name = string(t)?;
+    Ok(Value::string(&text_color_name(&string(t)?)?))
+}
+
+/// `TextColor.parseColor` followed by `TextColor.serialize`.
+pub fn text_color_name(name: &str) -> Result<std::borrow::Cow<'_, str>> {
     if let Some(hex) = name.strip_prefix('#') {
         let negative = hex.starts_with('-');
         let hex = hex.strip_prefix(['+', '-']).unwrap_or(hex);
@@ -319,14 +331,11 @@ fn text_color(t: &Tag) -> Result<Value> {
         if negative && value != 0 {
             return Err(bad());
         }
-        return Ok(Value::string(&format!("#{value:06X}")));
+        return Ok(format!("#{value:06X}").into());
     }
-    match name.as_str() {
-        "black" | "dark_blue" | "dark_green" | "dark_aqua" | "dark_red" | "dark_purple"
-        | "gold" | "gray" | "dark_gray" | "blue" | "green" | "aqua" | "red" | "light_purple"
-        | "yellow" | "white" => Ok(Value::string(&name)),
-        _ => Err(format!("invalid text color {name}")),
-    }
+    sunrise_core::text::named_color(name)
+        .map(|_| name.into())
+        .ok_or_else(|| format!("invalid text color {name}"))
 }
 
 fn click_event(t: &Tag, source: Source<'_>) -> Result<Value> {
@@ -788,12 +797,15 @@ fn no_native(_: &str) -> bool {
     false
 }
 
+type TextProjection<'a> = dyn Fn(&Tag) -> Option<Tag> + 'a;
+
 #[derive(Clone, Copy)]
 struct Source<'a> {
     upgraded: bool,
     is_native: &'a dyn Fn(&str) -> bool,
     has_item: Option<&'a dyn Fn(&str) -> bool>,
     effects: EffectSource<'a>,
+    project_text: Option<&'a TextProjection<'a>>,
     deferred_template: bool,
 }
 impl Source<'_> {
@@ -802,6 +814,7 @@ impl Source<'_> {
         is_native: &no_native,
         has_item: None,
         effects: EffectSource::Decode,
+        project_text: None,
         deferred_template: false,
     };
 
@@ -887,19 +900,41 @@ fn compound_template_tag(t: &Tag, source: Source<'_>) -> Result<Template> {
     } else {
         validate_template_count(count)?;
     }
-    let patch = match t.get("components") {
-        Some(c) => patch_tag(c, source)?,
-        None => vec![],
-    };
+    let patch = t
+        .get("components")
+        .map(|c| template_patch(c, source))
+        .transpose()?
+        .unwrap_or_default();
     Ok(Template { item, count, patch })
 }
 
-fn patch_tag(c: &Tag, source: Source<'_>) -> Result<Patch> {
-    let Tag::Compound(c) = c else {
+/// Decode a `DataComponentPatch` and encode its persistent form, as carried by `HoverEvent.ShowItem`.
+/// Resolve inner item and native component IDs against the caller's registries,
+/// and project embedded text through the caller's registry-aware component codec.
+pub fn normalize_template_patch(
+    tag: &Tag,
+    has_item: &dyn Fn(&str) -> bool,
+    is_native: fn(&str) -> bool,
+    project_text: &TextProjection<'_>,
+) -> Result<Option<Tag>> {
+    let patch = template_patch(
+        tag,
+        Source {
+            has_item: Some(has_item),
+            is_native: &is_native,
+            project_text: Some(project_text),
+            ..Source::SAVED
+        },
+    )?;
+    super::template_patch_tag(&patch, super::Projection::Codec)
+}
+
+fn template_patch(tag: &Tag, source: Source<'_>) -> Result<Patch> {
+    let Tag::Compound(components) = tag else {
         return Err("template components are not a map".into());
     };
-    let mut patch: Patch = Vec::with_capacity(c.len());
-    for (name, value) in c {
+    let mut patch = Vec::with_capacity(components.len());
+    for (name, value) in components {
         let name = name.to_string_lossy();
         let (remove, name) = name
             .strip_prefix('!')

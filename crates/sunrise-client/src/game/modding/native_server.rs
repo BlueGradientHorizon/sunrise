@@ -990,8 +990,7 @@ impl Game<'_> {
         if let Some(guest) = self.cloning_guest(uuid).or_else(|| {
             self.lan.as_ref().and_then(|host| {
                 host.hub.guests.simulation_iter().find(|guest| {
-                    guest.placed
-                        && guest.participates_online()
+                    host.hub.online(guest)
                         && guest.uuid == uuid
                         && !self.lan_guest_swaps.contains(&guest.conn)
                 })
@@ -4186,7 +4185,7 @@ mod tests {
                     let unchanged = host.hub.commands_packet(0);
                     for (conn, rx) in [12, 13].into_iter().zip(receivers) {
                         if conn == 12 {
-                            game.lan_guest_joined(conn, &[], [3.0, 64.0, 5.0]);
+                            game.lan_guest_joined(conn, &[], [3.0, 64.0, 5.0], None);
                             assert!(game.lan.as_ref().unwrap().hub.guest(conn).unwrap().placed);
                         } else {
                             game.send_player_command_tree(conn);

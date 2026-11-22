@@ -89,6 +89,13 @@ pub trait ConfigServerHost {
     /// `None` when no logical server player list is available.
     fn server_simulation_distance(&self) -> Option<i32>;
     /// Side: server.
+    /// Whether the server is open to players other than a single-player world's owner
+    /// (`MinecraftServer.isPublished`): always true on a dedicated server; on a single-player
+    /// world's server, true while it is open to LAN (the Open to LAN screen or `/publish`) and
+    /// false again once that ends (`/unpublish`). No hook fires when it changes: read it when
+    /// the answer matters.
+    fn server_is_published(&self) -> bool;
+    /// Side: server.
     /// Sets the live view distance through `PlayerList.setViewDistance` on either server,
     /// including unpublished worlds. Players get the new chunk radius, and chunk tracking
     /// and loading tickets use the new distance. Returns `false` and logs the refusal if

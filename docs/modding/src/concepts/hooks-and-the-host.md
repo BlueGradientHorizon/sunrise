@@ -62,6 +62,12 @@ level upkeep and outgoing state updates still run. The server resolves whether
 the body runs before the pre hook; a listener changing the player's position
 does not change that decision for the current tick.
 
+## Player logout
+
+`player_logged_out` fires while the player is still listed, before any logout save.
+A listener's edits persist only on leaves this server saves. A completed proxy hand-over
+and a crash write no logout save. A kicked fake player is already off the list and is not saved.
+
 ## Entity tick hooks
 
 `entity_tick_pre` and `entity_tick_post` version 4 observe the covered entity families on both logical sides

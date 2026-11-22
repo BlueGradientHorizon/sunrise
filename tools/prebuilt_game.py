@@ -62,7 +62,7 @@ SMOKE = "prebuilt-smoke"
 # Where `smoke` installs the same executable without selected mods, for `start`.
 SMOKE_API = "prebuilt-smoke-api"
 EXECUTABLE = "sunrise-client.exe" if sys.platform == "win32" else "sunrise-client"
-# The furthest a game started without its prepared files gets (game.rs `missing_resources`): past loading the
+# The furthest a game started without its prepared files gets (`loading_screen::preflight_resources`): past loading the
 # game's libraries and the mods' runtime environment (`entry::main_with`), where a split allocator aborts (#3877).
 NO_RESOURCES = "Sunrise's prepared game files are missing"
 # The MinGW runtime the game's GNU DLLs import on Windows, installed beside the executable.
@@ -968,9 +968,11 @@ def runtime_libraries(out: Path) -> list[Path]:
 
 
 def start(out: Path) -> None:
-    """Start two installations of the fixed executable (with smoke's two libraries and without mods),
-    each in dedicated mode with no game data: it loads the game's libraries and sets up the mods' runtime, then
-    stops at the missing prepared files. Only a client SDK registers the launcher download hook. Fails on a crash,
+    """Start two installations of the fixed executable (with smoke's two libraries and without mods)
+    with no game data: it loads the game's libraries and sets up the mods' runtime, then stops at the missing
+    prepared files. A client SDK starts as a headless client, whose refusal names the launcher's download page
+    (the hook only its official layer registers); a server SDK starts as a dedicated server, which never
+    advertises the launcher. Fails on a crash,
     a hang or any other stop, so an archive whose libraries disagree (two allocators, #3877) cannot ship. On Windows
     it runs without MinGW on PATH, as on a player's computer, so a runtime DLL the launcher would not install fails
     here (#3521)."""
@@ -1021,7 +1023,8 @@ def start(out: Path) -> None:
                 if probe.returncode != 0:
                     sys.exit(f"bundled launch API failed: {probe.stderr}")
                 json.loads(probe.stdout)
-            command = [str(executable), "--resources", str(scratch / "no-resources"), "--dedicated", "--nogui"]
+            role = ["--headless"] if client else ["--dedicated", "--nogui"]
+            command = [str(executable), "--resources", str(scratch / "no-resources"), *role]
             print("+", " ".join(command), flush=True)
             result = subprocess.run(command, cwd=game, env=environment, stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT, encoding="utf-8", errors="replace", timeout=300)

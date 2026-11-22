@@ -1247,6 +1247,7 @@ struct Parts {
     info: ClientInformation,
     brand: String,
     datapack_offer: Option<Vec<u8>>,
+    configured: Option<super::configuration_tasks::Configured>,
     channels: super::config_payloads::EngineChannels,
 }
 
@@ -1615,7 +1616,7 @@ fn login_and_configure(
         lost(shared, &format!("{name} ({})", uuid_string(uuid)), &text);
         return Ok(None);
     }
-    configuration_tasks::configure(
+    let configured = configuration_tasks::configure(
         c,
         shared,
         uuid,
@@ -1661,6 +1662,7 @@ fn login_and_configure(
         info,
         brand,
         datapack_offer,
+        configured,
     }))
 }
 
@@ -2132,7 +2134,7 @@ fn play(
     let mut session = Box::new(session);
     if shared
         .events
-        .send(NetEvent::Joined(Box::new(joined)))
+        .send(NetEvent::Joined(Box::new(joined), parts.configured))
         .is_err()
     {
         session.left("server closed".to_owned());
@@ -2319,7 +2321,11 @@ impl io_pool::Session for PlayConn {
         self.payload_tick(now)
     }
     fn left(&mut self, reason: String) {
-        let _ = self.shared.events.send(NetEvent::Left(self.conn, reason));
+        // Publish logout before releasing the profile, even if gameplay filled its queue.
+        let _ = self
+            .shared
+            .events
+            .send_terminal(NetEvent::Left(self.conn, reason));
         self.shared.closing.fetch_add(1, Ordering::AcqRel);
     }
     fn closed(&mut self) {
@@ -3156,7 +3162,7 @@ mod tests {
             }
             assert!(announced);
             let (event, _credit) = lan.events.recv_timeout_owned(timeout).unwrap().into_parts();
-            let NetEvent::Joined(joined) = event else {
+            let NetEvent::Joined(joined, _) = event else {
                 panic!("expected a play connection");
             };
             assert_eq!(joined.brand, brand);

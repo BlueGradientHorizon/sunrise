@@ -775,7 +775,8 @@ const COMPACT_MOD_ITEM_SLOTS: usize = 256;
 
 /// The declared item slot count owned by a mod block's stock container.
 fn block_mod_item_slots(block: &str) -> usize {
-    mod_api::__private::parts_installation::block_container(block).map_or(0, |c| c.slots)
+    mod_api::__private::parts_installation::block_container(block)
+        .map_or(0, crate::containers::mod_container_slot_count)
 }
 
 /// Decode an entity at a known block, refusing undeclared IDs and invalid native membership.
@@ -794,13 +795,22 @@ pub fn decode_block_entity_replacing(
     block: &str,
     previous: Option<&crate::containers::BlockEntity>,
 ) -> Option<((i32, i32, i32), crate::containers::BlockEntity)> {
-    let decoded = decode_block_entity_with_history(tag, previous, Some(block))?;
+    let slots = block_mod_item_slots(block);
+    let mut decoded = decode_block_entity_with_history(tag, previous, Some(block))?;
     // Several vanilla types share a decoded representation (for example barrel
     // and chest). Membership belongs to the saved type, not that representation.
     let saved_id = text(tag.get("id"))?;
-    let valid = match &decoded.1 {
+    let valid = match &mut decoded.1 {
         crate::containers::BlockEntity::Mod(m) => {
-            crate::block_entity_types::valid(block, m.id()) == Some(true)
+            if crate::block_entity_types::valid(block, m.id()) != Some(true) {
+                return None;
+            }
+            // Missing saved stacks are empty slots, not a shorter container.
+            // Keep any saved stacks past the declared size out of the menu but on disk.
+            if m.items.len() < slots {
+                m.items.resize(slots, None);
+            }
+            true
         }
         _ => crate::block_entity_types::valid(block, &saved_id)
             .unwrap_or_else(|| decoded.1.fits(block)),
@@ -5319,6 +5329,9 @@ impl SaveDir {
 
 impl<G: ChunkGenerator> ChunkGenerator for Persistent<G> {
     type Worker = G::Worker;
+    fn spawn_height(&self) -> i32 {
+        self.inner.spawn_height()
+    }
     fn worker(&self) -> G::Worker {
         let save = self.save.clone();
         self.inner.set_saved_starts(Arc::new(move |pos| {

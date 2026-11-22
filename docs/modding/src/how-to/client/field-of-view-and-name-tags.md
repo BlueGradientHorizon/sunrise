@@ -33,6 +33,13 @@ When applying zoom or turn scaling in `compute_fov` or `player_turn`, if you wan
 spyglass to take precedence, check `host.camera_type().is_first_person()`, read `host.local_item_use()` for
 the active hand, and inspect that hand's stack with `LivingRef::with_hand_item`.
 
+## The Damage Tilt option
+
+`host.gui_options().damage_tilt_strength` is the player's Damage Tilt accessibility option, 0 (off) to 1
+(vanilla's `Options.damageTiltStrength`): the factor vanilla's own hurt tilt takes. Scale a hurt shake
+(`camera_shake`) or a field-of-view punch by it, so a player who turned the tilt off for comfort doesn't get yours
+either.
+
 ## Name tags
 
 `render_name_tag` runs when the game decides whether to show the name tag of a player, mob, armor stand or item

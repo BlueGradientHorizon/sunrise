@@ -18,6 +18,9 @@ use sunrise_client::{
 };
 use sunrise_protocol::packets::play::{ContainerButtonClick, ContainerClick, Serverbound};
 
+#[path = "mod_menu_decisions_tests/container_layout.rs"]
+mod container_layout;
+
 #[derive(Clone, Default)]
 struct Script {
     /// Put dirt in guest slot 20 through the `Host`, in the listener's own nested transaction.

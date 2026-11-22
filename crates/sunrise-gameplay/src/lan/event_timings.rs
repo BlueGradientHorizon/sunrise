@@ -105,7 +105,7 @@ pub type EventKind = (&'static str, Option<u32>, Option<String>);
 
 pub fn event_kind(event: &HostEvent) -> EventKind {
     match event {
-        HostEvent::Joined(c) => ("join", Some(*c), None),
+        HostEvent::Joined(c, _) => ("join", Some(*c), None),
         HostEvent::Left(g) => ("leave", None, Some(g.name.clone())),
         HostEvent::CloseInvalidContainer { conn, .. } => {
             ("close invalid container", Some(*conn), None)

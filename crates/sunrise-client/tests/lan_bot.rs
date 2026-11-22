@@ -194,7 +194,7 @@ impl Server {
         let events = self.hub.tick(&mut ctx);
         for event in events {
             match event {
-                HostEvent::Joined(conn) => {
+                HostEvent::Joined(conn, _) => {
                     if let Some(i) = self.hub.begin_player_join(conn, &ctx) {
                         self.hub.send_commands(
                             i,

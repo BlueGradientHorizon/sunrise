@@ -473,7 +473,7 @@ class SdkAssetTests(unittest.TestCase):
         for platform, host, expected_link_args in (
             ("linux", "x86_64-unknown-linux-gnu", ["link-arg=-Wl,-rpath,$ORIGIN"]),
             ("darwin", "aarch64-apple-darwin", ["link-arg=-Wl,-rpath,@executable_path"]),
-            ("win32", "aarch64-pc-windows-msvc", ["link-arg=/STACK:8388608"]),
+            ("win32", "x86_64-pc-windows-msvc", ["link-arg=/STACK:8388608"]),
             ("win32", "x86_64-pc-windows-gnu", ["link-arg=-Wl,--stack,8388608"]),
         ):
             with self.subTest(host=host), tempfile.TemporaryDirectory() as directory, \
@@ -1116,6 +1116,8 @@ class SmokeStartTests(unittest.TestCase):
                     else:
                         with self.assertRaisesRegex(SystemExit, refusal):
                             prebuilt_game.start(out)
+                role = run.call_args.args[0][3:]
+                self.assertEqual(role, ["--headless"] if side == "client" else ["--dedicated", "--nogui"])
                 environment = run.call_args.kwargs["env"]
                 for key in ("SUNRISE_HOME", "SUNRISE_LAUNCHER_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME"):
                     self.assertTrue(Path(environment[key]).is_relative_to(root))

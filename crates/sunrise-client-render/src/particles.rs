@@ -1230,18 +1230,19 @@ fn below_half_pixel(radius: f64, distance_squared: f64, pixel_focal_length: f32)
 }
 
 impl ParticleEngine {
+    /// Build the particle tables without loading any presentation resources.
+    pub fn without_sprites() -> Self {
+        Self::with_factories(&[], HashMap::new())
+    }
+
     pub fn new(
         root: &ResourceSource,
         atlas: &HashMap<String, Rect>,
         translucent: &HashSet<String>,
     ) -> Self {
-        Self::with_factories(
-            root,
-            atlas,
-            translucent,
-            groups::registered(),
-            native::registered().clone(),
-        )
+        let mut engine = Self::with_factories(groups::registered(), native::registered().clone());
+        engine.reload(root, atlas, translucent);
+        engine
     }
 
     /// Integrated and dedicated servers do not instantiate logical-client factories.
@@ -1250,7 +1251,9 @@ impl ParticleEngine {
         atlas: &HashMap<String, Rect>,
         translucent: &HashSet<String>,
     ) -> Self {
-        Self::with_factories(root, atlas, translucent, &[], HashMap::new())
+        let mut engine = Self::with_factories(&[], HashMap::new());
+        engine.reload(root, atlas, translucent);
+        engine
     }
 
     /// A scoped fixture that does not modify either session-wide factory table.
@@ -1260,13 +1263,9 @@ impl ParticleEngine {
         atlas: &HashMap<String, Rect>,
         providers: mod_api::ParticleProviderRegistry,
     ) -> Self {
-        Self::with_factories(
-            root,
-            atlas,
-            &HashSet::new(),
-            &[],
-            providers.into_providers(),
-        )
+        let mut engine = Self::with_factories(&[], providers.into_providers());
+        engine.reload(root, atlas, &HashSet::new());
+        engine
     }
 
     #[cfg(test)]
@@ -1276,17 +1275,16 @@ impl ParticleEngine {
         translucent: &HashSet<String>,
         factories: &[groups::Factory],
     ) -> Self {
-        Self::with_factories(root, atlas, translucent, factories, HashMap::new())
+        let mut engine = Self::with_factories(factories, HashMap::new());
+        engine.reload(root, atlas, translucent);
+        engine
     }
 
     fn with_factories(
-        root: &ResourceSource,
-        atlas: &HashMap<String, Rect>,
-        translucent: &HashSet<String>,
         factories: &[groups::Factory],
         providers: HashMap<ParticleKey, Arc<ParticleProviderFactory>>,
     ) -> Self {
-        let mut engine = Self {
+        Self {
             particles: Vec::new(),
             groups: groups::Group::all(factories),
             pending: Vec::new(),
@@ -1324,9 +1322,7 @@ impl ParticleEngine {
             sounds: Vec::new(),
             made: Default::default(),
             item_sprites: HashMap::new(),
-        };
-        engine.reload(root, atlas, translucent);
-        engine
+        }
     }
     /// Where a provider's level view finds the block states, by engine state id: the game's
     /// table, or `None` while it has none, which stops the providers from running so that none
