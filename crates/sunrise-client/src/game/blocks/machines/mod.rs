@@ -859,6 +859,14 @@ impl Game<'_> {
             let at = BlockPos::new(pos.0, pos.1, pos.2);
             self.native_contents_changed(level, at, self.world.block(pos.0, pos.1, pos.2), None);
         }
+        self.container_changed_without_hook(pos);
+    }
+
+    /// `BlockEntity.setChanged` updates without dispatching `contents_changed` again.
+    pub(super) fn container_changed_without_hook(&mut self, pos: Pos) {
+        if pos.1 == super::minecarts::CART_KEY_Y {
+            return;
+        }
         self.chiseled_bookshelf_synced(pos);
         if matches!(
             self.world.block_entities.get(&pos),

@@ -222,6 +222,7 @@ impl Game<'_> {
         let original = held.clone();
         let (result, notices) = self.collect_quick_move_notices(|game| {
             mod_api::run_transaction(game, |game, _| {
+                game.transactions.last_mut().unwrap().menu_click_active = Some(conn);
                 let mut handled = false;
                 let mut access = ResidentBlockEntityAccess::for_handle(game, subject, state);
                 let panicked = Self::native_menu_quick_move(

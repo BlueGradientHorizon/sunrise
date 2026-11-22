@@ -254,15 +254,17 @@ impl BlockEntityPart for Part {
                 Ok(true)
             );
             if s.remove_and_reopen {
-                host.open_menu(
-                    12,
-                    1,
-                    mod_api::Text::literal("reopened by menu_quick_move"),
-                    Vec::new(),
-                    mod_api::MenuReplace::InPlace,
-                )
-                .unwrap()
-                .expect("guest is online");
+                assert_eq!(
+                    host.open_menu(
+                        12,
+                        1,
+                        mod_api::Text::literal("reopened by menu_quick_move"),
+                        Vec::new(),
+                        mod_api::MenuReplace::InPlace,
+                    ),
+                    Ok(None),
+                    "a tentative quick-move transaction refuses speculative screen replacement"
+                );
             }
             assert!(event.subject.with_view(|_| ()).is_none());
             if s.handle_replace || s.remove_and_reopen {
@@ -1770,6 +1772,7 @@ fn an_untaken_quick_move_discards_its_transfer_and_routes_once() {
 
             // Aborting an enclosing transaction also undoes that click's normal routing.
             let window = open_depot(game);
+            second_block(game);
             let seal = game.transaction_open();
             game.lan_guest_packet(12, container_click(window, 0, 1));
             assert_eq!(stone_everywhere(game), (0, 0, 20));

@@ -285,6 +285,7 @@ fn with_pot(menu_type: &'static ModMenuType, test: impl FnOnce(&mut crate::game:
     let mods: Mods = vec![ModEntry::new("take", Box::new(TakeMod))].into();
     mod_platform::testing::with_mods(mods.clone(), || {
         crate::game::api_values::install_parts(&mods).unwrap();
+        mod_api::__private::resolve_block_entity_types(["take:pot"], |_| Some(())).unwrap();
         with_guests(|game| {
             game.world
                 .chunks

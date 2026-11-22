@@ -595,6 +595,8 @@ pub(super) enum After {
     FluidEffects(Box<super::world_fluids::FluidEffects>),
     /// `BlockEntity.setChanged`.
     Changed(Pos),
+    /// `BlockEntity.setChanged` dirty/comparator updates without reentering `contents_changed`.
+    ChangedWithoutHook(Pos),
     /// An implicit notice staged during a mod quick move.
     QuickMoveChanged(QuickMoveNotice),
     GuestMenu(u32, Box<super::lan_crafting::GuestMenuEffects>),
@@ -683,6 +685,7 @@ impl After {
             Self::Block(_)
                 | Self::BulkBlocks(..)
                 | Self::Changed(_)
+                | Self::ChangedWithoutHook(_)
                 | Self::QuickMoveChanged(_)
                 | Self::Capabilities(_)
                 | Self::LevelWrite(_)
@@ -1948,12 +1951,16 @@ impl Game<'_> {
     /// Runs `after` at once, or at the root commit inside a transaction.
     pub(super) fn after_commit(&mut self, after: After) {
         let after = match after {
-            After::Changed(pos) if self.transactions.quick_move_notices.is_some() => {
+            After::Changed(pos) => {
                 let reentering = !self.contents_changing.is_empty()
                     && self.native_level_here().is_some_and(|level| {
                         self.contents_notice_active(level, BlockPos::new(pos.0, pos.1, pos.2))
                     });
-                if !reentering && let Some(holder) = self.world.block_entities.identity(pos) {
+                if reentering {
+                    After::ChangedWithoutHook(pos)
+                } else if self.transactions.quick_move_notices.is_some()
+                    && let Some(holder) = self.world.block_entities.identity(pos)
+                {
                     After::QuickMoveChanged(QuickMoveNotice {
                         dim: self.dim,
                         holder,
@@ -1988,6 +1995,7 @@ impl Game<'_> {
                 self.post_block_game_event(id, pos, Some(who), Some(state));
             }
             After::Changed(pos) => self.container_changed(pos),
+            After::ChangedWithoutHook(pos) => self.container_changed_without_hook(pos),
             After::QuickMoveChanged(notice) => {
                 if let Some(queue) = &mut self.transactions.quick_move_notices {
                     queue.push(notice);
@@ -2270,6 +2278,7 @@ impl Game<'_> {
             }
         }
         let mut told = std::collections::HashSet::new();
+        let mut told_silent = FxHashSet::default();
         let mut told_holders = FxHashSet::default();
         let mut explicit_group_since_block = std::collections::HashSet::new();
         let mut biome_columns = std::collections::HashSet::new();
@@ -2277,6 +2286,7 @@ impl Game<'_> {
             match after {
                 // Each storage tells the world once, after every write.
                 After::Changed(pos) if !told.insert(Ok(pos)) => {}
+                After::ChangedWithoutHook(pos) if !told_silent.insert(pos) => {}
                 After::QuickMoveChanged(ref notice)
                     if !told_holders.insert((notice.dim, notice.holder)) => {}
                 After::ConnectionGroup(dim, pos, group) => {
