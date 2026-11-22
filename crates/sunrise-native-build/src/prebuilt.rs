@@ -130,8 +130,7 @@ pub fn release_source(source: &sunrise_mod_package::index::native::Bundle) -> Re
     };
     let cargo = source.files.get("Cargo.toml").ok_or("no Cargo.toml")?;
     let cargo = std::str::from_utf8(cargo).map_err(|e| format!("Cargo.toml: {e}"))?;
-    let project = api::Project::parse_with(&bundle, cargo, |name| source.files.contains_key(name))
-        .map_err(|e| e.to_string())?;
+    let project = api::Project::parse(&bundle, cargo).map_err(|e| e.to_string())?;
     require_release_api(&project, source.files.contains_key("build.rs"))?;
     let lock = source
         .files
