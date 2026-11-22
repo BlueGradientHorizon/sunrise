@@ -1154,7 +1154,7 @@ impl Renderer {
         let entity_group = entity_group_for(&atlas_view);
         let screen_page_groups = hud
             .atlas_page_views()
-            .map(|view| view.map(&entity_group_for))
+            .map(|view| view.map(entity_group_for))
             .collect();
         let static_entity_transform =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
