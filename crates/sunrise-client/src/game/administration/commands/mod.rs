@@ -889,7 +889,7 @@ impl Game<'_> {
         Some(result)
     }
     pub(in crate::game) fn entity_tag_matches(&self, tag: &str, ty: &str) -> bool {
-        let tag = sunrise_client::command::args::normalize(tag);
+        let tag = sunrise_client::command::args::normalized(tag);
         self.items().entity_type_tags.contains(&tag, ty)
     }
     /// EntityArgument.getEntities / getPlayers / getEntity / getPlayer.
