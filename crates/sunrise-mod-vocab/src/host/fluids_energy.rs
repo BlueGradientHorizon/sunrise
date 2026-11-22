@@ -40,12 +40,12 @@ pub trait FluidsEnergyBackendMut {
     /// `SimpleEnergyHandler.insert`: puts up to `amount` into the buffer at `at`
     /// (`native_energy_amount`) through its side, no more than its room and its limit per call,
     /// kept by transaction `tx`. How much went in.
-    fn energy_insert(&mut self, at: BlockSide, amount: u32, tx: &Transaction) -> u32;
+    fn energy_insert(&mut self, at: BlockSide, amount: u32, tx: &TransactionContext) -> u32;
     /// Side: server.
     /// `SimpleEnergyHandler.extract`: takes up to `amount` out of the buffer at `at`
     /// (`native_energy_amount`) by its side, no more than it holds and its limit per call, kept
     /// by transaction `tx`. How much came out.
-    fn energy_extract(&mut self, at: BlockSide, amount: u32, tx: &Transaction) -> u32;
+    fn energy_extract(&mut self, at: BlockSide, amount: u32, tx: &TransactionContext) -> u32;
     /// Side: server.
     /// Puts as much of `fluid` as tank `tank` of those `at`'s side reaches takes: a mod
     /// block's fillable tank, empty or holding that fluid, up to its capacity; a cauldron by
@@ -57,7 +57,7 @@ pub trait FluidsEnergyBackendMut {
         at: BlockSide,
         tank: usize,
         fluid: FluidStack,
-        tx: &Transaction,
+        tx: &TransactionContext,
     ) -> Option<FluidStack>;
     /// Side: server.
     /// Takes up to `max` out of tank `tank` of those `at`'s side reaches: a mod block's
@@ -68,7 +68,7 @@ pub trait FluidsEnergyBackendMut {
         at: BlockSide,
         tank: usize,
         max: u32,
-        tx: &Transaction,
+        tx: &TransactionContext,
     ) -> Option<FluidStack>;
     /// Side: server.
     /// `BucketPickup.pickupBlock` for a mod's fluid container (NeoForge's
@@ -76,8 +76,8 @@ pub trait FluidsEnergyBackendMut {
     /// waterlogged block's water or a bubble column's, as an empty bucket would, `player`
     /// picking it up when given (only a creative player drains a barrier). What came out, a
     /// bucket of it. None, with nothing done, where the block gives no fluid (a flowing fluid,
-    /// powder snow, any other block), in another level, a chunk that isn't loaded, or a
-    /// transaction that isn't open.
+    /// powder snow, any other block), in another level, or in a chunk that isn't loaded.
+    /// Panics unless `tx` is the innermost open transaction on this host.
     ///
     /// Kept by transaction `tx`: the block is decided and written at the call, so later reads
     /// in the transaction see it drained and a second pickup there gets nothing; its updates, a
@@ -89,7 +89,7 @@ pub trait FluidsEnergyBackendMut {
         level: LevelRef,
         pos: [i32; 3],
         player: Option<PlayerRef>,
-        tx: &Transaction,
+        tx: &TransactionContext,
     ) -> Option<FluidStack>;
     /// Side: server.
     /// `BucketItem.emptyContents` of a bucket of `fluid` for a mod's fluid container (NeoForge's
@@ -99,8 +99,8 @@ pub trait FluidsEnergyBackendMut {
     /// The acceptance query lends `player` when supplied. With `validate`, a container's
     /// false placement answer fails instead of emptying the bucket (NeoForge's `validatePlaced`). True
     /// when it was placed or hissed away; false, with nothing done, for a fluid with no world
-    /// form, where it can't be placed, in another level, a chunk that isn't loaded, or a
-    /// transaction that isn't open.
+    /// form, where it can't be placed, in another level, or in a chunk that isn't loaded.
+    /// Panics unless `tx` is the innermost open transaction on this host.
     ///
     /// Kept by transaction `tx` as [`level_pickup_fluid`](Self::level_pickup_fluid) is: the
     /// block written at the call, its updates, the fluid tick, a replaced block's drops, a doused
@@ -113,7 +113,7 @@ pub trait FluidsEnergyBackendMut {
         fluid: FluidKey,
         player: Option<PlayerRef>,
         validate: bool,
-        tx: &Transaction,
+        tx: &TransactionContext,
     ) -> bool;
     /// Side: server.
     /// The bucket's sound and game event for `fluid` at the centre of `pos` in the level in
@@ -129,6 +129,6 @@ pub trait FluidsEnergyBackendMut {
         fluid: FluidKey,
         pickup: bool,
         player: Option<PlayerRef>,
-        tx: &Transaction,
+        tx: &TransactionContext,
     ) -> bool;
 }

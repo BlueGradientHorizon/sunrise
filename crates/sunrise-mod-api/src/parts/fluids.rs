@@ -167,7 +167,7 @@ pub mod tests {
         fn insert_at(
             &self,
             host: &mut dyn ServerHost,
-            tx: &Transaction,
+            tx: &TransactionContext,
             index: usize,
             resource: &FluidResource,
             amount: u32,
@@ -185,7 +185,7 @@ pub mod tests {
         fn extract_at(
             &self,
             host: &mut dyn ServerHost,
-            tx: &Transaction,
+            tx: &TransactionContext,
             index: usize,
             resource: &FluidResource,
             amount: u32,
@@ -269,13 +269,19 @@ pub mod tests {
             (from, from_side): ([i32; 3], Option<Direction>),
             (to, to_side): ([i32; 3], Option<Direction>),
             max: u32,
-        ) -> Result<u32, Overanswered> {
+        ) -> Result<u32, crate::TransactionError<Overanswered>> {
             let host: &mut dyn ServerHost = self;
             let source = here().capability(host, &FLUIDS, from, from_side).unwrap();
             let target = here().capability(host, &FLUIDS, to, to_side).unwrap();
-            host.transaction(|host, tx| {
+            match host.transaction(|host, tx| {
                 move_resources(host, &source, &target, |_| true, max, Some(tx))
-            })
+            }) {
+                Ok(moved) => Ok(moved),
+                Err(crate::TransactionError::Aborted(over)) => Err(over),
+                Err(crate::TransactionError::Unavailable) => {
+                    panic!("TankWorld supports transactions")
+                }
+            }
         }
     }
     #[cfg(test)]
@@ -357,8 +363,9 @@ pub mod tests {
             BlockSide { pos, .. }: BlockSide,
             _: usize,
             fluid: FluidStack,
-            _: &Transaction,
+            tx: &TransactionContext,
         ) -> Option<FluidStack> {
+            self.journal.assert_current(tx);
             let Some(tank) = self.tanks.get_mut(&pos).filter(|tank| tank.fills) else {
                 return Some(fluid);
             };
@@ -394,8 +401,9 @@ pub mod tests {
             BlockSide { pos, .. }: BlockSide,
             _: usize,
             max: u32,
-            _: &Transaction,
+            tx: &TransactionContext,
         ) -> Option<FluidStack> {
+            self.journal.assert_current(tx);
             let tank = self.tanks.get_mut(&pos).filter(|tank| tank.drains)?;
             let held = tank.held.clone()?;
             let asked = if tank.short {
@@ -439,24 +447,35 @@ pub mod tests {
                 self,
             ))
         }
+        fn with_transaction_scope(
+            &mut self,
+            callback: &mut dyn for<'loan> FnMut(
+                &'loan mut dyn ServerHost,
+                &'loan TransactionContext,
+            ) -> bool,
+        ) -> Result<(), crate::TransactionUnavailable> {
+            FakeJournal::with_scope(
+                self,
+                |world| &mut world.journal,
+                |world| world.tanks.clone(),
+                |world, tanks| world.tanks = tanks,
+                callback,
+            )
+        }
+        fn transaction_matches(&self, tx: Option<&TransactionContext>) -> bool {
+            self.journal.matches(tx)
+        }
     }
     #[cfg(test)]
     mod_api::impl_server_host_areas!(TankWorld, except(mod_state));
     #[cfg(test)]
     impl crate::prelude::ModStateServerHost for TankWorld {
-        fn transaction_open(&mut self) -> TransactionSeal {
-            self.journal.open(self.tanks.clone())
-        }
-        fn transaction_close(&mut self, seal: &TransactionSeal, commit: bool) {
-            if let Some(tanks) = self.journal.close(seal, commit) {
-                self.tanks = tanks;
+        fn transaction_lifecycle(&self) -> crate::TransactionLifecycle {
+            if self.journal.depth() == 0 {
+                crate::TransactionLifecycle::None
+            } else {
+                crate::TransactionLifecycle::Open
             }
-        }
-        fn transaction_current(&self) -> Option<Transaction> {
-            self.journal.current()
-        }
-        fn transaction_depth(&self, tx: &Transaction) -> Option<u32> {
-            self.journal.depth_of(tx)
         }
     }
 
@@ -598,9 +617,13 @@ pub mod tests {
             let moved = host.transaction(|host, tx| {
                 let first = move_resources(host, &other, &tank, |_| true, 300, Some(tx))?;
                 let second = move_resources(host, &source, &tank, |_| true, 300, Some(tx))?;
-                Ok(first + second)
+                Ok::<_, crate::TransactionError<Overanswered>>(first + second)
             });
-            let error: Overanswered = moved.unwrap_err();
+            let crate::TransactionError::Aborted(crate::TransactionError::Aborted(error)) =
+                moved.unwrap_err()
+            else {
+                panic!("expected aborted Overanswered");
+            };
             assert_eq!(error.owner.as_deref(), Some("doubler"), "{liar}");
             assert!(crate::parts::warned_about("doubler"));
             let held = [SOURCE, OTHER, TANK].map(|pos| world.held(pos));
@@ -614,7 +637,11 @@ pub mod tests {
         world.types.insert(SOURCE, "test:gives_more");
         world.tank(TANK, None, true);
         world.tanks.get_mut(&TANK).unwrap().halving = true;
-        let error = world.moved((SOURCE, None), (TANK, None), 1000).unwrap_err();
+        let crate::TransactionError::Aborted(error) =
+            world.moved((SOURCE, None), (TANK, None), 1000).unwrap_err()
+        else {
+            panic!("expected aborted Overanswered");
+        };
         assert_eq!(error.owner.as_deref(), Some("doubler"));
         assert_eq!([world.held(SOURCE), world.held(TANK)], [water(1000), None]);
     }

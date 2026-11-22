@@ -578,6 +578,8 @@ fn player_and_dispenser_apply_only_the_context_seen_by_the_veto() {
                         ItemStack::new("minecraft:shulker_box", 2),
                     )
                     .unwrap()
+                    .continue_value()
+                    .unwrap()
                     .unwrap();
                 let count = if occupy_target { 2 } else { 1 };
                 assert_eq!(game.held().unwrap().count, count);
@@ -612,6 +614,8 @@ fn player_and_dispenser_apply_only_the_context_seen_by_the_veto() {
                     Direction::East,
                     ItemStack::new("minecraft:shulker_box", 2),
                 )
+                .unwrap()
+                .continue_value()
                 .unwrap()
                 .unwrap();
             assert_eq!(

@@ -5,7 +5,7 @@
 use super::{Game, Insertion, Kind, MoveIn, PlacementAttempt, Pos, Slots, View};
 use crate::game::{decorated_pot::DECORATED_POT, transactions::After};
 use mod_api::{
-    BlockCapabilitySite, BlockSide, ItemResource, LevelReadError, LevelRef, Transaction,
+    BlockCapabilitySite, BlockSide, ItemResource, LevelReadError, LevelRef, TransactionContext,
 };
 use sunrise_client::{containers::BlockEntity, items::ItemStack, save};
 use sunrise_core::geometry::Direction;
@@ -186,7 +186,7 @@ impl Game<'_> {
             return false;
         };
         let resource = mod_api::ItemResource::of(&snapshot);
-        mod_api::run_transaction(self, |game, tx| {
+        self.storage_transaction(|game, tx| {
             let (pos, index) = source.locate(slot).ok_or(())?;
             game.journal_block_entity_slot(pos, index);
             // Reserve the offered item before writable insertion notices can re-enter.
@@ -279,11 +279,9 @@ impl Game<'_> {
         &mut self,
         at: BlockSide,
         limit: u32,
-        tx: &Transaction,
+        tx: &TransactionContext,
     ) -> bool {
-        if !self.transaction_holds(tx) {
-            return false;
-        }
+        self.assert_current_transaction(tx);
         if !(1..=99).contains(&limit) {
             return false;
         }
@@ -356,15 +354,13 @@ impl Game<'_> {
         slot: usize,
         resource: &ItemStack,
         amount: u32,
-        tx: &Transaction,
+        tx: &TransactionContext,
     ) -> Option<ItemStack> {
+        self.assert_current_transaction(tx);
         let stack = ItemStack {
             count: amount,
             ..resource.clone()
         };
-        if !self.transaction_holds(tx) {
-            return Some(stack);
-        }
         let Some(view) = self.capability_view(at) else {
             return Some(stack);
         };
@@ -463,9 +459,10 @@ impl Game<'_> {
         at: BlockSide,
         resource: &ItemStack,
         amount: u64,
-        tx: &Transaction,
+        tx: &TransactionContext,
     ) -> u64 {
-        if amount == 0 || !self.transaction_holds(tx) {
+        self.assert_current_transaction(tx);
+        if amount == 0 {
             return 0;
         }
         let Some(view) = self.capability_view(at) else {
@@ -516,9 +513,10 @@ impl Game<'_> {
         at: BlockSide,
         resource: &ItemStack,
         amount: u64,
-        tx: &Transaction,
+        tx: &TransactionContext,
     ) -> u64 {
-        if amount == 0 || !self.transaction_holds(tx) {
+        self.assert_current_transaction(tx);
+        if amount == 0 {
             return 0;
         }
         let Some(view) = self.capability_view(at) else {
@@ -580,11 +578,9 @@ impl Game<'_> {
         at: BlockSide,
         slot: usize,
         max: u32,
-        tx: &Transaction,
+        tx: &TransactionContext,
     ) -> Option<ItemStack> {
-        if !self.transaction_holds(tx) {
-            return None;
-        }
+        self.assert_current_transaction(tx);
         let view = self.capability_view(at)?;
         let slot = view.capability_slots(at.side).nth(slot)?;
         let c = self.containers();

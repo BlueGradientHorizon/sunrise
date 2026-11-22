@@ -1,7 +1,7 @@
 //! Sequential loans of a resident block entity and its server Host.
 use crate::{
     BlockEntityItemError, BlockEntityRef, BlockState, Compound, ItemKey, ItemStack, JavaString,
-    LevelRef, ServerHost, Tag, Transaction,
+    LevelRef, ServerHost, Tag, TransactionContext, TransactionError, TransactionUnavailable,
 };
 
 /// A resident block entity lent by a server callback. Its storage stays in the level.
@@ -199,25 +199,32 @@ impl<'a> BlockEntityScope<'a> {
 
     /// Run an atomic operation spanning the subject and other world storage. The
     /// callback can alternate between view and Host, under one explicit transaction.
-    /// `Err` or unwind rolls back its journaled edits. Ordinary loans join an already
-    /// open transaction and never open a savepoint by themselves.
+    /// A closure error becomes [`TransactionError::Aborted`] and, like an unwind, rolls back
+    /// its journaled edits. Returns [`TransactionError::Unavailable`] without calling `f` if a
+    /// transaction cannot be opened. Ordinary loans join an already open transaction and never
+    /// open a savepoint by themselves.
     pub fn transaction<T, E>(
         &mut self,
-        f: impl FnOnce(&mut BlockEntityScope<'_>, &Transaction) -> Result<T, E>,
-    ) -> Result<T, E> {
+        f: impl for<'loan> FnOnce(
+            &'loan mut BlockEntityScope<'_>,
+            &'loan TransactionContext,
+        ) -> Result<T, E>,
+    ) -> Result<T, TransactionError<E>> {
         let mut f = Some(f);
         let mut result = None;
-        self.0.transaction(&mut |access, tx| {
-            let Some(f) = f.take() else {
-                return false;
-            };
-            let mut scope = BlockEntityScope::new(access);
-            let out = f(&mut scope, tx);
-            let commit = out.is_ok();
-            result = Some(out);
-            commit
-        });
-        result.expect("BlockEntityAccess::transaction invokes its callback once")
+        self.0
+            .with_transaction_scope(&mut |access, tx| {
+                let Some(f) = f.take() else { return false };
+                let mut scope = BlockEntityScope::new(access);
+                let outcome = f(&mut scope, tx);
+                let commit = outcome.is_ok();
+                result = Some(outcome);
+                commit
+            })
+            .map_err(|TransactionUnavailable| TransactionError::Unavailable)?;
+        result
+            .ok_or(TransactionError::Unavailable)?
+            .map_err(TransactionError::Aborted)
     }
 }
 
@@ -227,7 +234,15 @@ impl<'a> BlockEntityScope<'a> {
 pub trait BlockEntityAccess {
     fn with_view(&mut self, f: &mut dyn FnMut(BlockEntityView<'_>));
     fn host(&mut self) -> &mut dyn ServerHost;
-    fn transaction(&mut self, f: &mut dyn FnMut(&mut dyn BlockEntityAccess, &Transaction) -> bool);
+    fn with_transaction_scope(
+        &mut self,
+        _callback: &mut dyn for<'loan> FnMut(
+            &'loan mut dyn BlockEntityAccess,
+            &'loan TransactionContext,
+        ) -> bool,
+    ) -> Result<(), TransactionUnavailable> {
+        Err(TransactionUnavailable)
+    }
 }
 
 /// Engine backing for a checked, journaled row loan.

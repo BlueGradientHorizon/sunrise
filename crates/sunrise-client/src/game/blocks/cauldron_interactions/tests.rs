@@ -439,12 +439,13 @@ fn cauldron_outer_abort_discards_effects_and_drops() {
         for slot in game.inventory.iter_mut().skip(1) {
             *slot = Some(ItemStack::new("minecraft:stone", 64));
         }
-        let seal = game.transaction_open();
-        assert_eq!(game.use_on_cauldron(POS).unwrap(), Outcome::Success);
-        assert_eq!(events(), 0);
-        assert!(game.creatures.lan_sounds.is_empty());
-        assert!(game.audio.capture.as_ref().unwrap().is_empty());
-        game.transaction_close(&seal, false);
+        game.storage_scope(|game, _| {
+            assert_eq!(game.use_on_cauldron(POS).unwrap(), Outcome::Success);
+            assert_eq!(events(), 0);
+            assert!(game.creatures.lan_sounds.is_empty());
+            assert!(game.audio.capture.as_ref().unwrap().is_empty());
+            ((), false)
+        });
         unchanged(game, seen);
         assert_eq!(events(), 0);
         assert!(game.creatures.lan_sounds.is_empty());

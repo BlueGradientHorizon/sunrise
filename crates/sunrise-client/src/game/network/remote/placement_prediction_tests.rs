@@ -174,7 +174,7 @@ impl mod_api::ResourceHandler<mod_api::ItemResource> for StoragePort {
     fn insert_at(
         &self,
         _: &mut dyn mod_api::ServerHost,
-        _: &mod_api::Transaction,
+        _: &mod_api::TransactionContext,
         _: usize,
         _: &mod_api::ItemResource,
         _: u32,
@@ -184,7 +184,7 @@ impl mod_api::ResourceHandler<mod_api::ItemResource> for StoragePort {
     fn extract_at(
         &self,
         _: &mut dyn mod_api::ServerHost,
-        _: &mod_api::Transaction,
+        _: &mod_api::TransactionContext,
         _: usize,
         _: &mod_api::ItemResource,
         _: u32,
