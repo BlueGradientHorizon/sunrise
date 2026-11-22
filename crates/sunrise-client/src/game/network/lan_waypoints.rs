@@ -5,6 +5,14 @@ use sunrise_client::lan::waypoints::{self, PLAYER_RANGE};
 use sunrise_client::motion::MotionEvent;
 
 impl Game<'_> {
+    /// `ServerLevel.EntityCallbacks.onTrackingStart`: register from the loaded
+    /// attributes. Saved equipment contributes modifiers on the first living tick.
+    pub(in crate::game) fn lan_register_player_waypoint(&mut self, conn: u32) {
+        self.as_guest(conn, |game| {
+            game.update_waypoint_transmitter(Target::Guest(conn));
+        });
+    }
+
     /// `LivingEntity.onAttributeUpdated` runs both at a player tick and on
     /// effect updates/removals. Dispatch its transmit requests where it runs.
     pub(in crate::game) fn apply_player_waypoint_updates(&mut self) {
