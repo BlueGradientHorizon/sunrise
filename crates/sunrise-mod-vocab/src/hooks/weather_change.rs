@@ -2,7 +2,8 @@
 // catalog-order: 0341
 
 pub trait Hooks {
-    /// Before `/weather` or a mod sets the server-wide weather parameters.
+    /// Before an explicit server-wide weather parameter write by `/weather`, a
+    /// mod or a GameTest weather environment.
     /// `dimension` is the origin of the write, not its scope. `clear_ticks`
     /// is the requested clear timer and `weather_ticks` sets both the rain
     /// and thunder timers. These timers and the `raining` and `thundering`

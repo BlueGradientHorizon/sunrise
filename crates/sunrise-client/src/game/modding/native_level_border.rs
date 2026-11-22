@@ -290,11 +290,28 @@ mod tests {
                 );
 
                 heard.lock().unwrap().clear();
-                game.enter_level(Dim::Nether).unwrap();
-                game.tick_worldborder();
+                game.lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .update_guest(13, |guest| {
+                        guest.dimension = Dim::Overworld.id().to_owned();
+                    })
+                    .unwrap();
+                assert_eq!(game.levels_to_tick(), [Dim::Overworld]);
+                game.tick_server(false).unwrap();
                 assert!(heard.lock().unwrap().is_empty());
-                game.tick_worldborder();
-                game.tick_worldborder();
+                assert_eq!(
+                    game.levels
+                        .parked_border(Dim::Nether)
+                        .unwrap()
+                        .remaining_ticks(),
+                    1,
+                );
+                game.tick_server(false).unwrap();
+                game.tick_server(false).unwrap();
+                assert_eq!(game.dim, Dim::Overworld);
+                assert_eq!(game.levels_to_tick(), [Dim::Overworld]);
                 assert_eq!(
                     *heard.lock().unwrap(),
                     [Notice::Finish(nether, Some([7.75, 17.75, 12.25, 22.25]))]

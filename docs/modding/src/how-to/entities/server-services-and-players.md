@@ -179,8 +179,9 @@ The setters take 2 through 32 chunks and return `false` and log a refusal for
 an out-of-range distance or an unavailable player list.
 
 The setters change neither `server.properties` nor the owner's options. In an
-integrated world, the owner's render distance takes over again on the next
-running tick; their simulation distance only takes over when that option changes.
+integrated world, the owner's render distance takes over at the end of an unpaused
+server tick, including the tick in which a listener wrote the distance. The owner's
+simulation distance only takes over when that option changes.
 
 `host.set_tick_rate(tps)` uses the integrated or dedicated server's clock setter, not
 `/tick rate`'s parser. Finite rates below 1 become 1; the command's upper limit does
@@ -214,9 +215,10 @@ can veto all the timers and flags together. The call returns `false` on a final 
 or invalid level; a veto does not undo other writes a listener already made.
 
 To change the interpolated strengths immediately instead, call
-`level.set_weather_levels(host, 0.5, 0.25)` on the level in place. Both strengths
-clamp to 0–1, including infinities. NaN or a level that is not in place is refused.
-This setter does not call `weather_change` or change the timers or flags.
+`level.set_weather_levels(host, 0.5, 0.25)` on the resident level the handle names,
+including a parked level. Both strengths clamp to 0–1, including infinities. NaN
+or an unavailable level is refused. This setter changes neither other levels'
+strengths nor the shared parameters, and does not call `weather_change`.
 
 ## World borders
 
@@ -227,9 +229,10 @@ same setters as `/worldborder`, without the command's range and no-change checks
 
 - `level.set_world_border_center(host, [x, z])` sets a finite center. The
   geometry clips the edges, not the center itself.
-- `level.set_world_border_size(host, size, ticks)` sets a finite, nonnegative
-  size (including sizes under one block). Nonpositive ticks set a fixed size;
-  positive ticks request a timed change from the current size.
+- `level.set_world_border_size(host, size, ticks)` sets a finite size. A size
+  is refused if the clamped and outward-rounded collision bounds would be
+  inverted. Nonpositive ticks set a fixed size; positive ticks request a timed
+  change from the current size.
 - `level.set_world_border_damage(host, per_block, safe_zone)` accepts signed,
   finite damage settings. `level.set_world_border_warning(host, blocks, ticks)`
   accepts signed warning settings.
@@ -256,8 +259,9 @@ listener also gets `event.lerp_ticks`: `None` for a fixed write, or
 `Some(requested_ticks)` for a timed write. A timed write to the current size
 still fires that start notice but creates no moving extent.
 `world_border_bounds_change_finish` names the level only after an actual
-moving extent reaches its target on a server tick. Loads and client packet
-application do not trigger these notifications.
+moving extent reaches its target at the start of the level's normal tick, even
+if it is idle and parked. Loads and client packet application do not trigger
+these notifications.
 
 ### Calling a setter from a listener
 

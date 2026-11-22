@@ -183,7 +183,8 @@ hooks can run on any loading thread; item default changes must be identical on e
 `LevelRef::set_weather(host, clear_ticks, weather_ticks, raining, thundering)` takes signed
 timers. Any resident server level can name the origin, even when parked, but the write applies
 to the whole server. `Hooks::weather_change` hears it once, just as it hears an explicit
-`/weather` write. Version 2 of `WeatherChangeEvent` includes the origin dimension, both
+`/weather` write or a GameTest weather parameter write. Version 2 of `WeatherChangeEvent`
+includes the origin dimension, both
 requested tick values and both flags. Each mod gets its own copy of those inputs.
 
 Return `Flow::Cancel` or set `event.cancelled` to veto the whole proposal. The setter returns
@@ -192,8 +193,9 @@ from the listener still stand. A nested weather write can proceed without callin
 already handling `weather_change` on that thread.
 
 For an immediate change in strength instead, use `LevelRef::set_weather_levels(host, rain, thunder)`
-on the level in place. Both interpolants clamp to the 0–1 interval, including infinities; NaN is refused.
-Neither strength changes nor the natural weather cycle fires `weather_change`.
+on the addressed resident level, including a parked one. Both interpolants clamp to the 0–1
+interval, including infinities; NaN is refused. Strengths belong to each level. Neither strength
+changes nor the natural weather cycle fires `weather_change`.
 
 ## Which thread runs a hook
 

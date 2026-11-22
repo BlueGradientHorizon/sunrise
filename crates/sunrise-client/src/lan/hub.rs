@@ -111,6 +111,11 @@ pub struct HubConfig {
     pub level_seeds: std::collections::BTreeMap<String, i64>,
 }
 
+/// `ChunkMap.setServerViewDistance`: bounds for chunk loading and tracking, not the advertised radius.
+pub fn effective_view_distance(advertised: i32) -> i32 {
+    advertised.clamp(2, 32)
+}
+
 /// What the other players see of a player's body besides sneaking and
 /// sprinting: the pose and the rest of `Entity.DATA_SHARED_FLAGS_ID`.
 #[derive(Clone, Copy, Debug, Default)]
@@ -961,16 +966,16 @@ impl Hub {
     /// and each one's chunks follow it, up to what they asked for
     /// (ChunkMap.getPlayerViewDistance).
     pub fn set_view_distance(&mut self, distance: i32) {
+        let previous = effective_view_distance(self.config.view_distance);
         self.config.view_distance = distance;
         self.broadcast(&C::SetChunkCacheRadius(play::Distance { distance }));
-        self.guests.update_all(|g| {
-            // Mth.clamp(requested, 2, serverViewDistance): Java's max then min order also
-            // handles a management value below two without panicking when the bounds cross.
-            g.view_distance = i32::from(g.info.view_distance)
-                .max(2)
-                .min(self.config.view_distance);
-            g.center = None;
-        });
+        let effective = effective_view_distance(distance);
+        if effective != previous {
+            self.guests.update_all(|g| {
+                g.view_distance = i32::from(g.info.view_distance).clamp(2, effective);
+                g.center = None;
+            });
+        }
     }
     /// PlayerList.setSimulationDistance.
     pub fn set_simulation_distance(&mut self, distance: i32) {
@@ -1400,7 +1405,12 @@ impl Hub {
         *ctx.next_entity += 1;
         let entity_id = *ctx.next_entity as i32;
         let conn = j.conn;
-        let mut guest = Guest::new(j, entity_id, ctx.spawn, self.config.view_distance);
+        let mut guest = Guest::new(
+            j,
+            entity_id,
+            ctx.spawn,
+            effective_view_distance(self.config.view_distance),
+        );
         self.bind_raw_player(&guest, entity_id);
         guest.last_action_tick = self.ticks;
         guest.game_mode = self.config.default_game_mode;
@@ -4266,14 +4276,11 @@ impl Hub {
                     }
                 }
                 S::ClientInformation(info) => {
+                    let effective = effective_view_distance(self.config.view_distance);
                     let (was_hat, hat, uuid) = self.guests.update(i, |g| {
                         // PlayerModelPart.HAT (bit 6): the tab list shows the hat layer.
                         let was_hat = g.info.model_customisation & 0x40 != 0;
-                        // max(2).min(view), not clamp: a live management value
-                        // below 2 would cross the bounds and panic (horizon-rust/horizon#8118).
-                        g.view_distance = i32::from(info.view_distance)
-                            .max(2)
-                            .min(self.config.view_distance);
+                        g.view_distance = i32::from(info.view_distance).clamp(2, effective);
                         let old_info = self.mods_loaded.then(|| Box::new(g.info.clone()));
                         g.info = info;
                         if let Some(old) = old_info {

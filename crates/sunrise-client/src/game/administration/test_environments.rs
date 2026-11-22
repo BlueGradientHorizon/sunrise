@@ -2,7 +2,7 @@
 //! while it runs (game rules, weather, the day time, difficulty, functions,
 //! all of them), set up when the batch starts and torn down after it. The
 //! definitions are the data pack's `test_environment` entries, or inline.
-use super::Game;
+use super::{Dim, Game};
 use serde_json::Value as Json;
 use sunrise_client_core::gamerules::Value;
 pub(super) use sunrise_gameplay::test_environments::{
@@ -34,21 +34,25 @@ impl Game<'_> {
     }
 
     /// `TestEnvironmentDefinition.activate`.
-    pub(super) fn activate_test_environment(&mut self, environment: Environment) -> Activation {
-        let saved = self.set_up_environment(&environment);
+    pub(super) fn activate_test_environment(
+        &mut self,
+        environment: Environment,
+        dim: Dim,
+    ) -> Activation {
+        let saved = self.set_up_environment(&environment, dim);
         Activation { environment, saved }
     }
 
     /// `Activation.teardown`.
-    pub(super) fn tear_down_test_environment(&mut self, activation: Activation) {
-        self.tear_down_environment(&activation.environment, activation.saved);
+    pub(super) fn tear_down_test_environment(&mut self, activation: Activation, dim: Dim) {
+        self.tear_down_environment(&activation.environment, activation.saved, dim);
     }
 
-    fn set_up_environment(&mut self, environment: &Environment) -> Saved {
+    fn set_up_environment(&mut self, environment: &Environment, dim: Dim) -> Saved {
         match environment {
             Environment::AllOf(all) => Saved::AllOf(
                 all.iter()
-                    .map(|e| (e.clone(), self.set_up_environment(e)))
+                    .map(|e| (e.clone(), self.set_up_environment(e, dim)))
                     .collect(),
             ),
             Environment::ClockTime { clock, time } => {
@@ -95,17 +99,20 @@ impl Game<'_> {
                 } else {
                     WeatherType::Clear
                 };
-                self.set_weather_type(*kind);
-                Saved::Weather(previous)
+                if self.set_weather_type(dim, *kind) {
+                    Saved::Weather(previous)
+                } else {
+                    Saved::Unit
+                }
             }
         }
     }
 
-    fn tear_down_environment(&mut self, environment: &Environment, saved: Saved) {
+    fn tear_down_environment(&mut self, environment: &Environment, saved: Saved, dim: Dim) {
         match (environment, saved) {
             (Environment::AllOf(_), Saved::AllOf(all)) => {
                 for (e, s) in all.into_iter().rev() {
-                    self.tear_down_environment(&e, s);
+                    self.tear_down_environment(&e, s, dim);
                 }
             }
             (Environment::ClockTime { clock, .. }, Saved::Clock(previous)) => {
@@ -129,7 +136,7 @@ impl Game<'_> {
                 w.raining = false;
                 w.thunder_time = 0;
                 w.thundering = false;
-                self.set_weather_type(previous);
+                self.set_weather_type(dim, previous);
             }
             _ => {}
         }
@@ -147,15 +154,11 @@ impl Game<'_> {
         self.sync_rules();
     }
 
-    /// `Weather.Type.apply`: `ServerLevel.setWeatherParameters`.
-    fn set_weather_type(&mut self, kind: WeatherType) {
+    /// `TestEnvironmentDefinition.Weather.Type.apply`: the test level is the origin
+    /// of a write to `MinecraftServer.setWeatherParameters`.
+    fn set_weather_type(&mut self, dim: Dim, kind: WeatherType) -> bool {
         let (clear, rain, raining, thundering) = kind.parameters();
-        let w = &mut self.world.weather;
-        w.clear_time = clear;
-        w.rain_time = rain;
-        w.thunder_time = rain;
-        w.raining = raining;
-        w.thundering = thundering;
+        self.set_weather_parameters(dim.id(), clear, rain, raining, thundering)
     }
 
     /// `Functions.run`: the function with game master permission and

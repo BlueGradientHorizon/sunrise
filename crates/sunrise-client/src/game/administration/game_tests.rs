@@ -179,6 +179,7 @@ impl Info {
 pub(super) struct Batch {
     pub(super) index: i32,
     pub(super) environment: String,
+    dimension: Dim,
     pub(super) infos: Vec<Info>,
 }
 
@@ -235,29 +236,33 @@ struct Tracked {
 /// (and dimension), `size` to a batch.
 fn batch_infos(infos: Vec<Info>, size: usize) -> Vec<Batch> {
     let mut batches: Vec<Batch> = Vec::new();
-    let mut counts: Vec<(String, i32)> = Vec::new();
+    let mut counts: Vec<(String, Dim, i32)> = Vec::new();
     for info in infos {
         let env = info.def.environment.clone();
         let open = batches
             .iter_mut()
-            .find(|b| b.environment == env && b.infos.len() < size);
+            .find(|b| b.environment == env && b.dimension == info.dim && b.infos.len() < size);
         if let Some(batch) = open {
             batch.infos.push(info);
             continue;
         }
-        let index = match counts.iter_mut().find(|(e, _)| *e == env) {
-            Some((_, n)) => {
+        let index = match counts
+            .iter_mut()
+            .find(|(e, dim, _)| *e == env && *dim == info.dim)
+        {
+            Some((_, _, n)) => {
                 *n += 1;
                 *n
             }
             None => {
-                counts.push((env.clone(), 0));
+                counts.push((env.clone(), info.dim, 0));
                 0
             }
         };
         batches.push(Batch {
             index,
             environment: env,
+            dimension: info.dim,
             infos: vec![info],
         });
     }
@@ -288,6 +293,7 @@ pub(super) fn verify_batches(infos: &[Info], mut next_id: impl FnMut() -> u32) -
             batches.push(Batch {
                 index: ordinal as i32,
                 environment: info.def.environment.clone(),
+                dimension: info.dim,
                 infos: copies,
             });
         }
@@ -466,7 +472,7 @@ pub(super) struct GameTests {
     /// `TestBatchSummaryDisplayer`'s lines then and there.
     command_start: bool,
     /// `GameTestRunner.currentEnvironment`.
-    environment: Option<Activation>,
+    environment: Option<(Dim, Activation)>,
 }
 
 impl GameTests {
@@ -633,7 +639,8 @@ impl Game<'_> {
             return;
         };
         let mut infos = std::mem::take(&mut batch.infos);
-        let (environment, batch_number) = (batch.environment.clone(), batch.index);
+        let (environment, batch_number, dimension) =
+            (batch.environment.clone(), batch.index, batch.dimension);
         // createStructuresForBatch: `StructureSpawner.IN_PLACE`.
         let mut spawned = Vec::new();
         for mut info in infos.drain(..) {
@@ -649,8 +656,8 @@ impl Game<'_> {
         self.end_test_environment();
         match self.test_environment(&environment) {
             Some(definition) => {
-                let activation = self.activate_test_environment(definition);
-                self.game_tests.environment = Some(activation);
+                let activation = self.activate_test_environment(definition, dimension);
+                self.game_tests.environment = Some((dimension, activation));
             }
             None => log::error!("Missing test environment {environment}"),
         }
@@ -677,8 +684,8 @@ impl Game<'_> {
 
     /// `GameTestRunner.endCurrentEnvironment`.
     fn end_test_environment(&mut self) {
-        if let Some(activation) = self.game_tests.environment.take() {
-            self.tear_down_test_environment(activation);
+        if let Some((dimension, activation)) = self.game_tests.environment.take() {
+            self.tear_down_test_environment(activation, dimension);
         }
     }
 
@@ -1764,6 +1771,110 @@ pub(in crate::game) mod tests {
         assert!(!tests.has_tests_in(Dim::Overworld));
         // A rerun keeps the level of the test it copies.
         assert_eq!(tests.ticker[0].copy_reset(2).dim, Dim::Nether);
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn game_test_batch_uses_the_weather_parameter_veto() {
+        use mod_api::{Flow, Hooks, ModEntry, ServerHost, WeatherChangeEvent};
+        use std::sync::{Arc, Mutex};
+
+        type Proposal = (String, i32, i32, bool, bool);
+        struct RefuseThunder(Arc<Mutex<Vec<Proposal>>>);
+        #[mod_api::__subscriptions]
+        impl Hooks for RefuseThunder {
+            fn weather_change(
+                &self,
+                _: &mut dyn ServerHost,
+                event: &mut WeatherChangeEvent<'_>,
+            ) -> Flow {
+                self.0.lock().unwrap().push((
+                    event.dimension.to_owned(),
+                    event.clear_ticks,
+                    event.weather_ticks,
+                    event.raining,
+                    event.thundering,
+                ));
+                if event.thundering {
+                    Flow::Cancel
+                } else {
+                    Flow::Continue
+                }
+            }
+        }
+
+        crate::game::in_own_process(
+            "game::game_tests::tests::game_test_batch_uses_the_weather_parameter_veto",
+            || {
+                let seen = Arc::new(Mutex::new(Vec::new()));
+                let mods = vec![ModEntry::new(
+                    "test_weather",
+                    Box::new(RefuseThunder(seen.clone())),
+                )];
+                mod_platform::testing::with_mods(mods.into(), || {
+                    crate::game::native_entity_refs::tests::with_game(|game| {
+                        game.enter_level(Dim::Nether).unwrap();
+                        game.enter_level(Dim::Overworld).unwrap();
+                        let root = tempfile::tempdir().unwrap();
+                        game.options.resources = root.path().to_path_buf();
+                        let environments = root.path().join("data/example/test_environment");
+                        std::fs::create_dir_all(&environments).unwrap();
+                        for weather in ["rain", "thunder"] {
+                            std::fs::write(environments.join(format!("{weather}.json")),
+                                serde_json::json!({"type": "minecraft:weather", "weather": weather}).to_string(),
+                            ).unwrap();
+                        }
+                        // Exercise the real runner's environment lifecycle without spawning a structure.
+                        let run_batch = |game: &mut Game<'_>, name: &str| {
+                            game.track_and_start_batches(
+                                vec![Batch {
+                                    index: 0,
+                                    environment: format!("example:{name}"),
+                                    dimension: Dim::Nether,
+                                    infos: Vec::new(),
+                                }],
+                                RunnerOptions::new(false, None, false),
+                            );
+                        };
+                        let parameters = |game: &Game<'_>| {
+                            let w = &game.world.weather;
+                            (
+                                w.clear_time,
+                                w.rain_time,
+                                w.thunder_time,
+                                w.raining,
+                                w.thundering,
+                            )
+                        };
+                        game.world.weather.raining = true;
+                        game.world.weather.thundering = true;
+                        run_batch(game, "rain");
+                        assert_eq!(parameters(game), (0, 100_000, 100_000, true, false));
+                        game.world.weather.clear_time = 73;
+                        game.clear_game_tests();
+                        // resetWeatherCycle still runs, but the saved thunder write is vetoed.
+                        assert_eq!(parameters(game), (73, 0, 0, false, false));
+
+                        game.world.weather.rain_time = 9;
+                        run_batch(game, "thunder");
+                        assert_eq!(parameters(game), (73, 9, 0, false, false));
+                        game.clear_game_tests();
+                        // The vetoed setup must not arrange a teardown that changes the weather.
+                        assert_eq!(parameters(game), (73, 9, 0, false, false));
+                        let nether = || String::from("minecraft:the_nether");
+                        assert_eq!(
+                            *seen.lock().unwrap(),
+                            [
+                                (nether(), 0, 100_000, true, false),
+                                (nether(), 0, 100_000, true, true),
+                                (nether(), 0, 100_000, true, true),
+                            ]
+                        );
+                        assert_eq!(game.dim, Dim::Overworld);
+                    });
+                });
+            },
+        );
     }
 
     #[test]

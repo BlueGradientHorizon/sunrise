@@ -115,7 +115,8 @@ pub trait ConfigServerHost {
     /// including unpublished worlds. Players get the new chunk radius, and chunk tracking
     /// and loading tickets use the new distance. Returns `false` and logs the refusal if
     /// the player list is unavailable or the input is outside `ChunkMap`'s 2–32 supported range.
-    /// The integrated server follows the owner's render distance again on its next running tick.
+    /// The integrated server follows the owner's render distance at the end of an unpaused tick.
+    /// A view-distance write from a server-tick listener can be superseded at the end of that tick.
     /// This does not change `server.properties` or the owner's options.
     #[access(WorldOnly)]
     fn server_set_view_distance(&mut self, distance: i32) -> bool;

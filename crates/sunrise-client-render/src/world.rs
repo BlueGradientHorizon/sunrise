@@ -222,6 +222,15 @@ pub struct Weather {
     pub thunder_level: (f32, f32),
 }
 impl Weather {
+    /// `MinecraftServer.getWeatherData` is shared; the Level interpolants are not.
+    pub fn copy_parameters_from(&mut self, weather: Self) {
+        self.clear_time = weather.clear_time;
+        self.rain_time = weather.rain_time;
+        self.thunder_time = weather.thunder_time;
+        self.raining = weather.raining;
+        self.thundering = weather.thundering;
+    }
+
     /// The timers of `advanceWeatherCycle`, which run only while
     /// `advance_weather` is on.
     pub fn tick_timers(&mut self, random: &mut sunrise_core::random::LegacyRandom) {

@@ -323,8 +323,8 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
 - **`prepare_item_craft(player, name, pos, result)`**: a crafting-grid result was prepared; `pos` is the crafting table, or None for the player's inventory grid. Change it before it is sent to the menu. Guest state is not swapped in.
 - **`trade_select(player, name, villager, index)`**: a player selected offer `index` in a villager's trading menu; `villager` is its entity id when known. The menu has updated and the player's state is not swapped in.
 - **`hopper_pickup_item(dimension, pos, item, count, cancel)`**: a hopper at `pos` is about to pick up a dropped stack; set `cancel` to leave it in the world.
-- **`weather_change(host, event)`** (`WeatherChangeEvent`, version 2): before `/weather` or
-  `level.set_weather` sets the server's shared timers and flags. `event.dimension` names the origin,
+- **`weather_change(host, event)`** (`WeatherChangeEvent`, version 2): before `/weather`,
+  `level.set_weather` or a GameTest weather environment writes the server's shared timers and flags. `event.dimension` names the origin,
   not the scope. `event.clear_ticks` is the proposed clear timer, and `event.weather_ticks` is
   the proposed rain and thunder timer. Inspect both flags (`event.raining` and `event.thundering`)
   in this one callback. Return `Flow::Cancel` or set `event.cancelled` to veto the whole write;
@@ -367,9 +367,9 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
 - **`inventory_move_item(source, destination, item, cancel)`**: a hopper is about to move one item between containers (a composter's bone meal too). Set `cancel` to leave it in the source slot. A chest boat or minecart is reported at the block it is in.
 - **`hopper_inventory_search(hopper, container, entity)`**: a hopper selects a block container or container entity while searching for items.
 - **`vault_loot(pos, item)`**: a vault is about to eject a loot item, before the item entity spawns.
-- **`world_border_bounds_change_finish(host, event)`** (version 2): after a server tick
-  applied the final size of an actual moving extent at `event.level`. Starting or replacing
-  an extent is not a finish.
+- **`world_border_bounds_change_finish(host, event)`** (version 2): when an actual moving extent
+  reaches its target size at the start of `event.level`'s normal tick, even when the level is idle and
+  parked. Starting or replacing an extent is not a finish.
 - **`player_launch_projectile(player, name, item)`**: a server player launched a snowball, egg, ender pearl,
   potion or trident. It fires after the projectile is created and only for guest players in a LAN world.
 - **`entity_unleash(entity, kind)`**: a mob's leash was removed, before any lead drop is handled.
@@ -2755,8 +2755,8 @@ registration path.
 
 - A vault is about to eject a loot item: `vault_loot(pos, item)` supplies the vault position and item identifier before it spawns.
 
-- `world_border_bounds_change_finish` gives `event.level` after a server tick applies the final
-  size of its moving border. Starting or replacing an extent is not a finish. Panics isolate just
+- `world_border_bounds_change_finish` gives `event.level` when its moving border reaches the target
+  at the start of its normal tick. Starting or replacing an extent is not a finish. Panics isolate just
   that callback for the session, with a log and error toast, as for the center and size notices.
 
 - `ClientHost::create_dynamic_texture(id, width, height, rgba)`, `update_dynamic_texture`, `free_dynamic_texture(id)` and `dynamic_texture_budget()`: vanilla's `DynamicTexture` registered in the `TextureManager` (`register`, `upload`, `release`), kept in the HUD atlas. A client mod names an RGBA image under its own namespace (`mymod:dynamic/panel`); it takes a slot of the atlas's pool, of the smallest of three size classes that holds it (`DYNAMIC_TEXTURE_CLASSES`: 64, 256 and 1024 pixels square, 32, 8 and 2 slots), and its id names it as a GUI sprite, so `DrawContext::sprite`, `gui_nine_slice`, `tiled_sprite` and `gui_sprite` reach it as any sprite. The pool is packed only when a client mod is loaded (decided at load and on a resource reload, with no mixin), so a game without mods has no slot and no atlas growth. An update re-patches the same slot (a size of another class is `ClassChange`), a free drops the name and returns the slot, and a resource reload keeps every name and patches the new atlas from the last pixels, which the game keeps and counts in the mod's budget: `DYNAMIC_TEXTURE_MOD_IMAGES` (16) images and `DYNAMIC_TEXTURE_MOD_BYTES` (4 MiB), read with `dynamic_texture_budget`. Every refusal is named (`DynamicTextureError`: `NotOwned`, `BadSize`, `TooLarge` past 1024 pixels, `NoSlot`, `OverBudget`, `NameTaken`, `Unknown`, `ClassChange`, `Unavailable`) and changes nothing. Replaces `native_mod_image`, one 1024 by 1024 slot shared by every mod. Diverges from upstream: horizon-rust/horizon keeps `native_mod_image`.

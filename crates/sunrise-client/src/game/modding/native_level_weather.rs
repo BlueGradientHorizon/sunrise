@@ -1,6 +1,6 @@
 //! Weather writes for native server mods. Parameters are shared across levels as in
 //! `MinecraftServer.setWeatherParameters`; strengths are immediate interpolants of the
-//! level in place, as in `Level.setRainLevel` and `Level.setThunderLevel`.
+//! addressed level, as in `Level.setRainLevel` and `Level.setThunderLevel`.
 use super::Game;
 use mod_api::LevelRef;
 
@@ -29,7 +29,7 @@ impl Game<'_> {
         )
     }
 
-    /// Set both interpolants for each weather strength on the level in place.
+    /// Set both interpolants for each weather strength on the addressed resident level.
     pub(super) fn level_set_weather_levels(
         &mut self,
         level: LevelRef,
@@ -43,14 +43,21 @@ impl Game<'_> {
             );
             return false;
         }
-        if !self.level_in_place(level) {
+        let world = if !self.is_logical_server() || !self.level_handle_current(level) {
+            None
+        } else if level.dimension() == self.dim.key() {
+            Some(&mut self.world)
+        } else {
+            self.levels.parked_world_mut_of(level.dimension_id())
+        };
+        let Some(world) = world else {
             let mod_id = mod_api::content::crash::current_native_mod().unwrap_or("unknown");
             log::warn!(
-                "mod {mod_id}: set_weather_levels refused for {level:?}: level not in place"
+                "mod {mod_id}: set_weather_levels refused for {level:?}: no resident server level"
             );
             return false;
-        }
-        self.world.weather.set_levels(rain, thunder);
+        };
+        world.weather.set_levels(rain, thunder);
         true
     }
 }
@@ -76,51 +83,100 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn weather_parameters_are_shared_and_strengths_are_local() {
-        with_game(|game| {
-            let level = game.level(game.dim.id()).unwrap();
-            let stale = LevelRef::new(WorldEpoch::new(level.epoch().get() + 1), level.dimension());
-            let nether = LevelRef::new(level.epoch(), mod_api::DimensionKey::NETHER);
+        crate::game::in_own_process(
+            "game::native_level_weather::tests::weather_parameters_are_shared_and_strengths_are_local",
+            || {
+                with_game(|game| {
+                    let level = game.level(game.dim.id()).unwrap();
+                    let stale =
+                        LevelRef::new(WorldEpoch::new(level.epoch().get() + 1), level.dimension());
+                    let nether = LevelRef::new(level.epoch(), mod_api::DimensionKey::NETHER);
 
-            assert!(
-                !nether.set_weather(game, 0, 10, true, false),
-                "not yet open"
-            );
-            assert!(level.set_weather(game, -9, -37, true, true));
-            assert_eq!(parameters(&game.world.weather), (-9, -37, -37, true, true));
-            assert!(!stale.set_weather(game, 0, 10, false, false));
-            assert_eq!(parameters(&game.world.weather), (-9, -37, -37, true, true));
+                    assert!(
+                        !nether.set_weather(game, 0, 10, true, false),
+                        "not yet open"
+                    );
+                    assert!(level.set_weather(game, -9, -37, true, true));
+                    assert_eq!(parameters(&game.world.weather), (-9, -37, -37, true, true));
+                    assert!(!stale.set_weather(game, 0, 10, false, false));
+                    assert_eq!(parameters(&game.world.weather), (-9, -37, -37, true, true));
 
-            game.enter_level(Dim::Nether).unwrap();
-            game.enter_level(Dim::Overworld).unwrap();
-            assert_eq!(parameters(&game.world.weather), (-9, -37, -37, true, true));
-            assert!(nether.set_weather(game, 1200, 0, false, false));
-            assert_eq!(parameters(&game.world.weather), (1200, 0, 0, false, false));
-            assert_eq!(
-                game.dim,
-                Dim::Overworld,
-                "a parked origin does not switch levels"
-            );
+                    game.enter_level(Dim::Nether).unwrap();
+                    game.enter_level(Dim::Overworld).unwrap();
+                    assert_eq!(parameters(&game.world.weather), (-9, -37, -37, true, true));
+                    assert!(nether.set_weather(game, 1200, 0, false, false));
+                    assert_eq!(parameters(&game.world.weather), (1200, 0, 0, false, false));
+                    assert_eq!(
+                        game.dim,
+                        Dim::Overworld,
+                        "a parked origin does not switch levels"
+                    );
 
-            assert!(level.set_weather_levels(game, f32::NEG_INFINITY, f32::INFINITY));
-            let w = &game.world.weather;
-            assert_eq!((w.rain_level, w.thunder_level), ((0.0, 0.0), (1.0, 1.0)));
-            assert!(level.set_weather_levels(game, 0.5, 2.0));
-            assert_eq!(
-                level.weather(game),
-                Some((0.5, 0.5)),
-                "thunder scales with rain"
-            );
-            assert!(!level.set_weather_levels(game, f32::NAN, 0.0));
-            assert!(!level.set_weather_levels(game, 0.0, f32::NAN));
-            assert!(!stale.set_weather_levels(game, 0.0, 0.0));
-            assert!(!nether.set_weather_levels(game, 0.0, 0.0), "parked");
-            let w = &game.world.weather;
-            assert_eq!(
-                (w.rain_level, w.thunder_level),
-                ((0.5, 0.5), (1.0, 1.0)),
-                "refusals change neither interpolant",
-            );
-        });
+                    assert!(level.set_weather_levels(game, f32::NEG_INFINITY, f32::INFINITY));
+                    let w = &game.world.weather;
+                    assert_eq!((w.rain_level, w.thunder_level), ((0.0, 0.0), (1.0, 1.0)));
+                    assert!(level.set_weather_levels(game, 0.5, 2.0));
+                    assert_eq!(
+                        level.weather(game),
+                        Some((0.5, 0.5)),
+                        "thunder scales with rain"
+                    );
+                    assert!(!level.set_weather_levels(game, f32::NAN, 0.0));
+                    assert!(!level.set_weather_levels(game, 0.0, f32::NAN));
+                    assert!(!stale.set_weather_levels(game, 0.0, 0.0));
+                    let w = &game.world.weather;
+                    assert_eq!(
+                        (w.rain_level, w.thunder_level),
+                        ((0.5, 0.5), (1.0, 1.0)),
+                        "refusals change neither interpolant",
+                    );
+
+                    let root = tempfile::tempdir().unwrap();
+                    game.world_root = root.path().to_path_buf();
+                    let wet_id = "weather_test:wet";
+                    let wet = {
+                        let _caller = mod_api::content::crash::enter_native_mod(
+                            mod_api::content::crash::ModCall {
+                                id: "weather_test",
+                                hook: "level_tick_post",
+                                part: None,
+                            },
+                        );
+                        game.runtime_level_open(
+                            wet_id,
+                            mod_api::RuntimeLevel::new(
+                                "minecraft:overworld",
+                                mod_api::RuntimeGenerator::Flat,
+                                1,
+                            ),
+                        )
+                        .unwrap()
+                    };
+                    game.apply_runtime_levels();
+                    assert!(wet.set_weather_levels(game, 0.75, 0.25));
+                    assert_eq!(game.dim, Dim::Overworld);
+                    assert_eq!(wet.weather(game), Some((0.75, 0.1875)));
+                    assert_eq!(level.weather(game), Some((0.5, 0.5)));
+
+                    let wet_dim = Dim::extra(wet_id).unwrap();
+                    game.enter_level(wet_dim).unwrap();
+                    assert!(game.can_have_weather());
+                    let w = &game.world.weather;
+                    assert_eq!(
+                        (w.rain_level, w.thunder_level),
+                        ((0.75, 0.75), (0.25, 0.25))
+                    );
+                    assert_eq!(parameters(w), (1200, 0, 0, false, false));
+                    assert!(level.set_weather_levels(game, 0.25, 0.5));
+                    assert_eq!(wet.weather(game), Some((0.75, 0.1875)));
+
+                    game.enter_level(Dim::Overworld).unwrap();
+                    let w = &game.world.weather;
+                    assert_eq!((w.rain_level, w.thunder_level), ((0.25, 0.25), (0.5, 0.5)));
+                    assert_eq!(wet.weather(game), Some((0.75, 0.1875)));
+                })
+            },
+        );
     }
 
     #[test]

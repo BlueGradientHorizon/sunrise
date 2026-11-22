@@ -31,7 +31,10 @@ pub trait LevelWorldBorderBackendMut {
     /// Side: server.
     /// Sets the named level's border size at once when `ticks <= 0` (`WorldBorder.setSize`),
     /// or starts a timed change from its current size (`WorldBorder.lerpSizeBetween`).
-    /// Accepts finite nonnegative sizes without `/worldborder set`'s size range.
+    /// Accepts finite sizes with a valid extent: after clipping the edges to the
+    /// absolute bounds and rounding them out as in `WorldBorder.StaticBorderExtent`,
+    /// `Shapes.box` requires the minima not to exceed the maxima. The command's size
+    /// range does not apply.
     /// Every success notifies the level's watchers and fires `world_border_bounds_changed`,
     /// including equal-value writes. A timed write to the current size sends a lerp notice
     /// but does not start a moving extent. A nested write skips callbacks for this hook

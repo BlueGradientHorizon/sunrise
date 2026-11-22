@@ -8,8 +8,9 @@
 //! in, so the tick code runs unchanged, one level at a time.
 //!
 //! Shared by every level, as vanilla's derived levels share the
-//! Overworld's level data: the game time, the day time and the weather, the
-//! game rules, the scoreboard, the maps and the entities waiting to arrive
+//! Overworld's level data: the game time, the day time and the weather parameters
+//! (not the rain and thunder interpolants), the game rules, the scoreboard,
+//! the maps and the entities waiting to arrive
 //! through a portal.
 
 use super::commands::Target;
@@ -433,16 +434,24 @@ impl Default for Pass {
 
 pub(in crate::game) enum ServerTickPhase {
     Level(usize, Dim),
+    IdleLevel(Dim),
     Connections,
 }
 
-/// `MinecraftServer.tickChildren`: finish the level phase before ticking connections.
-pub(in crate::game) fn server_tick_phases(levels: &[Dim]) -> impl Iterator<Item = ServerTickPhase> {
-    levels
+/// `MinecraftServer.tickChildren`: visit levels in server order, then tick connections.
+/// Only the active subset needs its chunks and entities simulated.
+pub(in crate::game) fn server_tick_phases<'a>(
+    dimensions: &'a [Dim],
+    active: &'a [Dim],
+) -> impl Iterator<Item = ServerTickPhase> + 'a {
+    let mut active = active.iter().copied().enumerate().peekable();
+    dimensions
         .iter()
         .copied()
-        .enumerate()
-        .map(|(index, dim)| ServerTickPhase::Level(index, dim))
+        .map(move |dim| match active.next_if(|(_, next)| *next == dim) {
+            Some((index, _)) => ServerTickPhase::Level(index, dim),
+            None => ServerTickPhase::IdleLevel(dim),
+        })
         .chain(std::iter::once(ServerTickPhase::Connections))
 }
 
@@ -757,6 +766,20 @@ impl Game<'_> {
         let mut world = Game::world_for_mods(self.res.facts().air, seed);
         world.attachments = save.load_attachments();
         world.shape = self.level_shapes.get(dim.id());
+        world.weather.copy_parameters_from(self.world.weather);
+        // ServerLevel.prepareWeather seeds a new level's current strengths from
+        // WeatherData, never from another level's interpolants.
+        if super::level_can_have_weather(
+            world.shape.sky_light,
+            world.shape.has_ceiling,
+            dim == Dim::End,
+        ) && world.weather.raining
+        {
+            world.weather.rain_level.1 = 1.0;
+            if world.weather.thundering {
+                world.weather.thunder_level.1 = 1.0;
+            }
+        }
         world.fast_lava = self.dimension_type_of(dim).fast_lava;
         world.infiniburn = Some(self.resolve_level_infiniburn(self.dimension_type_of(dim)));
         Ok(Parked {
@@ -1032,7 +1055,7 @@ impl Game<'_> {
         let clock = self.level_clock_name(target);
         p.world.day_time = self.switch_clock(&clock);
         p.world.end_clock = self.world.end_clock;
-        p.world.weather = self.world.weather;
+        p.world.weather.copy_parameters_from(self.world.weather);
         // The game rules and the difficulty are the server's, not a
         // level's: natural regeneration holds in every dimension.
         p.world.health_rules = self.world.health_rules;
@@ -1051,7 +1074,7 @@ impl Game<'_> {
 
     /// Put `target`'s level in place, opening it first if it is not loaded.
     /// The level that was in place is kept with the others; the shared
-    /// clock and weather go with the swap.
+    /// clock and weather parameters go with the swap.
     pub(super) fn enter_level(&mut self, target: Dim) -> Result<()> {
         // A client holds no levels.
         if self.options.execution_role.is_client() {
@@ -1294,10 +1317,17 @@ impl Game<'_> {
         }
         let observe_level =
             running.is_some() && (self.serving.is_some() || self.options.dedicated.is_some());
-        let order = self.levels_to_tick();
+        let dimensions = Dim::all();
+        let order = self.levels_to_tick_in(&dimensions);
         let n = order.len();
         let mut result = Ok(());
-        for phase in server_tick_phases(&order) {
+        for phase in server_tick_phases(&dimensions, &order) {
+            if let ServerTickPhase::IdleLevel(dim) = phase {
+                if running == Some(true) {
+                    self.tick_level_environment(dim);
+                }
+                continue;
+            }
             let ServerTickPhase::Level(k, dim) = phase else {
                 if running.is_some() && self.lan.is_some() {
                     let holding = sunrise_client::lan::Holding::start();
@@ -1371,6 +1401,9 @@ impl Game<'_> {
                             self.tick_server_first()
                         } else {
                             let running = running.unwrap_or_else(|| self.clock.world_runs());
+                            if running {
+                                self.tick_level_environment(dim);
+                            }
                             // ClientLevel.tick: the sky flash fades in a frozen level too.
                             self.tick_weather_effects();
                             self.tick_world(running)
@@ -1541,12 +1574,17 @@ impl Game<'_> {
     /// (the Overworld, the Nether, the End): every level with a player in
     /// it, forced chunks or a `/pregen` task, or the Overworld while idle.
     pub(super) fn levels_to_tick(&self) -> Vec<Dim> {
+        self.levels_to_tick_in(&Dim::all())
+    }
+
+    fn levels_to_tick_in(&self, dimensions: &[Dim]) -> Vec<Dim> {
         let guests = self
             .lan
             .as_ref()
             .map_or(&[][..], |h| h.hub.guests.as_slice());
-        let mut dims: Vec<Dim> = Dim::all()
-            .into_iter()
+        let mut dims: Vec<Dim> = dimensions
+            .iter()
+            .copied()
             .filter(|d| {
                 // `/forceload`ed chunks, or a native mod's tickets.
                 let held = |s: &Streaming| !s.forced.is_empty();
@@ -2586,7 +2624,13 @@ impl Game<'_> {
         self.tick_first_level()
     }
 
-    /// A server's tick of its first level: the clock, functions, autosave and weather it owns, then the level.
+    /// `ServerLevel.tick`: advance the world border, then the natural weather cycle.
+    fn tick_level_environment(&mut self, dim: Dim) {
+        self.tick_worldborder(dim);
+        self.tick_level_weather(dim);
+    }
+
+    /// A server's tick of its first active level, with the shared functions, clock and autosave.
     pub(super) fn tick_first_level(&mut self) -> Result<()> {
         // Only a server ticks its own world from here: its players are guests, swapped in for
         // their turns (`as_guest`), and the window's player is a client of it.
@@ -2607,14 +2651,7 @@ impl Game<'_> {
             self.load_scoreboard();
             span("tick_functions", || self.tick_functions());
             self.world.game_time += 1;
-            if self
-                .ui
-                .rules
-                .bool_at(sunrise_client::gamerules::vanilla::ADVANCE_WEATHER)
-            {
-                self.world.weather.tick_timers(&mut self.world.random);
-            }
-            self.world.weather.tick_levels();
+            self.tick_level_environment(self.dim);
         } else if self.clock.still() {
             // Under `SUNRISE_STILL` a frozen world's rain and thunder sit at their levels, as a
             // shader pack's smoothed values do, so `/weather rain` shows full rain without

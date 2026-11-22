@@ -1736,8 +1736,8 @@ impl Game<'_> {
         }
     }
 
-    /// `PlayerList.setViewDistance`: store and advertise the supplied distance. Ticket
-    /// generation applies the chunk source's effective bounds separately.
+    /// `PlayerList.setViewDistance`: advertise the supplied distance, but keep the
+    /// effective `ChunkMap` radius for the server's streaming and tickets.
     pub(super) fn set_view_distance(&mut self, distance: i32) -> bool {
         if !self.is_logical_server() {
             return false;
@@ -1746,7 +1746,7 @@ impl Game<'_> {
             return false;
         };
         host.hub.set_view_distance(distance);
-        self.settings.render_distance = distance;
+        self.settings.render_distance = sunrise_client::lan::hub::effective_view_distance(distance);
         true
     }
 
@@ -2731,7 +2731,11 @@ impl Game<'_> {
                 let mut idle_states = std::mem::take(&mut host.idle_states);
                 let mut kept = if self.level_pass.packets_drained {
                     let percent = if host.hub.config.integrated {
-                        (self.settings.entity_distance * 100.0).round() as i32
+                        let scale = self.serving.as_ref().map_or(
+                            self.settings.entity_distance,
+                            super::integrated::Serving::entity_distance,
+                        );
+                        (scale * 100.0).round() as i32
                     } else {
                         host.hub.entity_range_percent
                     };
@@ -2846,8 +2850,11 @@ impl Game<'_> {
                 // option scales what an integrated server or a LAN host tracks (a
                 // dedicated one keeps its entity-broadcast-range-percentage).
                 if host.hub.config.integrated {
-                    host.hub.entity_range_percent =
-                        (self.settings.entity_distance * 100.0).round() as i32;
+                    let scale = self.serving.as_ref().map_or(
+                        self.settings.entity_distance,
+                        super::integrated::Serving::entity_distance,
+                    );
+                    host.hub.entity_range_percent = (scale * 100.0).round() as i32;
                 }
                 host.hub.set_immediate_respawn(
                     self.ui
@@ -3466,7 +3473,8 @@ impl Game<'_> {
         // chunks past it. An extra area finishes its chunks out to its radius + 1. That covers what
         // the player tracks (`ChunkTrackingView`, within its view distance + 1) and those chunks'
         // lit neighbours. The viewed areas (#3716) are squares of their own.
-        let radius = host.hub.config.view_distance + 1;
+        let radius =
+            sunrise_client::lan::hub::effective_view_distance(host.hub.config.view_distance) + 1;
         let rule = self
             .ui
             .rules

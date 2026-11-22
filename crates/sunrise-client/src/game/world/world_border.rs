@@ -1,5 +1,5 @@
 //! The world border's server setters, guest synchronization, tick, collision and damage.
-use super::Game;
+use super::{Dim, Game};
 use anyhow::{Context, Result, ensure};
 use mod_api::LevelRef;
 use sunrise_client::{lan::hub::Hub, worldborder::WorldBorder};
@@ -145,19 +145,27 @@ impl Game<'_> {
         }));
     }
 
-    /// `WorldBorder.tick`: publish a finish only for a moving extent that reached its target.
-    pub(in crate::game) fn tick_worldborder(&mut self) {
-        let remaining = self.border.remaining_ticks();
-        if let Err(error) = self.border.tick() {
-            log::warn!("world border tick refused in {}: {error}", self.dim.id());
+    /// `ServerLevel.tick` advances its border before weather, including on an idle level.
+    /// Publish a finish only for a moving extent that reached its target.
+    pub(in crate::game) fn tick_worldborder(&mut self, dim: Dim) {
+        let border = if dim == self.dim {
+            &mut self.border
+        } else if let Some(parked) = self.levels.parked_mut(dim) {
+            &mut parked.border
+        } else {
+            return;
+        };
+        let remaining = border.remaining_ticks();
+        if let Err(error) = border.tick() {
+            log::warn!("world border tick refused in {}: {error}", dim.id());
         } else if remaining > 0
-            && self.border.remaining_ticks() == 0
-            && let Some(level) = self.border_level_ref(BorderTarget::InPlace)
+            && border.remaining_ticks() == 0
+            && self.is_logical_server()
+            && let Some(epoch) = self.native_lifecycle.epoch()
         {
+            let level = self.level_ref(epoch, dim.key());
             self.native_world_border_bounds_change_finish(level);
         }
-        self.player_border();
-        self.border_damage();
     }
     /// The player's movement collides with the border as it is now
     /// (`CollisionGetter.borderCollision`): from inside, its walls stop it.

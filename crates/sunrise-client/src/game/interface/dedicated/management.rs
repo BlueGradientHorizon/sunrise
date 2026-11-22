@@ -872,6 +872,101 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn management_view_distance_advertises_raw_but_bounds_loading_and_tracking() {
+        use crate::game::{
+            execution_role::ExecutionRole, native_entity_refs::tests::fixture_root,
+            native_guest_turn_tests::with_guests_for_role,
+        };
+        use std::{
+            path::Path,
+            sync::{Arc, Mutex, mpsc},
+            time::Instant,
+        };
+        use sunrise_client::{
+            lan::{Out, PlayerSender},
+            server::properties::{ServerProperties, SystemEntropy},
+            server_perf::ServerPerf,
+        };
+        use sunrise_protocol::{buf::Reader, packets::play::Clientbound as C};
+
+        crate::game::in_own_process(
+            "game::dedicated::management::tests::management_view_distance_advertises_raw_but_bounds_loading_and_tracking",
+            || {
+                with_guests_for_role(fixture_root(), ExecutionRole::DedicatedServer, |game| {
+                    let directory = tempfile::tempdir().unwrap();
+                    let previous = std::env::current_dir().unwrap();
+                    std::env::set_current_dir(directory.path()).unwrap();
+                    let properties = Path::new("server.properties");
+                    std::fs::write(properties, "view-distance=10\n").unwrap();
+                    let (_console, console) = mpsc::channel();
+                    let mut state = ServerState {
+                        lists: Arc::new(Mutex::new(super::super::Lists::load())),
+                        console,
+                        empty_ticks: 0,
+                        pause_when_empty_seconds: 0,
+                        ticks: Default::default(),
+                        paused: false,
+                        broadcast_console: false,
+                        broadcast_rcon: false,
+                        op_level: 4,
+                        report: None,
+                        memory_due: None,
+                        perf: ServerPerf::new(0.0, 50.0),
+                        perf_epoch: Instant::now(),
+                        sunrise: Default::default(),
+                        view: (10, 2),
+                        max_players: 2,
+                        compression: 256,
+                        game_mode: 0,
+                        force_game_mode: false,
+                    };
+                    let (tx, received) = mpsc::channel();
+                    let hub = &mut game.lan.as_mut().unwrap().hub;
+                    hub.update_guest(12, |guest| {
+                        guest.info.view_distance = 64;
+                        guest.sender = PlayerSender::new(tx, Arc::default());
+                    })
+                    .unwrap();
+
+                    for (advertised, effective) in [(i32::MAX, 32), (1, 2)] {
+                        let result = game.management(&mut state, &format!(r#"1 {{"method":"serversettings/view_distance/set","value":{advertised}}}"#));
+                        assert_eq!(result, json!({"value": advertised}));
+                        let Out::Packet(packet) = received.try_recv().unwrap() else {
+                            panic!("expected the advertised radius packet");
+                        };
+                        let mut reader = Reader::new(&packet);
+                        let id = reader.varint().unwrap();
+                        let C::SetChunkCacheRadius(radius) = C::decode(id, reader.rest()).unwrap()
+                        else {
+                            panic!("expected SetChunkCacheRadius");
+                        };
+                        assert_eq!(radius.distance, advertised);
+                        let persisted =
+                            ServerProperties::from_file(properties, &mut SystemEntropy::default())
+                                .unwrap();
+                        assert_eq!(persisted.view_distance, advertised);
+
+                        game.update_dedicated_streaming();
+                        assert_eq!(game.streaming.radius, effective);
+                        game.lan_update_streaming();
+                        assert!(!game.streaming.extra.is_empty());
+                        assert!(
+                            game.streaming
+                                .extra
+                                .iter()
+                                .all(|&(_, radius)| radius == effective + 1)
+                        );
+                        let hub = &game.lan.as_ref().unwrap().hub;
+                        assert_eq!(hub.guest(12).unwrap().view_distance, effective);
+                    }
+                    std::env::set_current_dir(previous).unwrap();
+                })
+            },
+        );
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn management_online_skips_fake_players_by_name_and_id() {
         crate::game::native_guest_turn_tests::with_guests(|game| {
             let level = game.level("minecraft:overworld").unwrap();

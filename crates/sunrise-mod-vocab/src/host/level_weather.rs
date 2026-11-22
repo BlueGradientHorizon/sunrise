@@ -54,10 +54,11 @@ pub trait LevelWeatherBackendMut {
     ) -> bool;
     /// Side: server.
     /// How strong the rain and thunder are now (`Level.setRainLevel`, `setThunderLevel`),
-    /// each clamped to 0 to 1 (including infinities) and set without fading. They still drift
-    /// toward the weather the level has (`set_weather`) by 0.01 a tick, as vanilla's do.
-    /// Does not fire `weather_change`. Returns `false` and logs the refusal for NaN, a parked
-    /// level, a stale handle or a client.
+    /// each clamped to 0 to 1 (including infinities) and set without fading on the
+    /// named resident level, even if it is parked. `ServerLevel.advanceWeatherCycle`
+    /// moves the strengths by 0.01 per normal tick toward the server-wide weather.
+    /// Does not fire `weather_change`. Returns `false` and logs the refusal for NaN,
+    /// a stale handle, a closed level or a client.
     #[access(WorldOnly)]
     fn level_set_weather_levels(&mut self, level: LevelRef, rain: f32, thunder: f32) -> bool;
     /// Side: server.
