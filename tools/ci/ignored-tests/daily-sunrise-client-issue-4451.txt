@@ -387,7 +387,6 @@ sunrise-client game::creatures::breeding_heart_tests::a_bred_turtle_posts_no_hea
 sunrise-client game::creatures::breeding_orb_tests::breeding_drops_one_orb_of_the_whole_roll lib daily resources
 sunrise-client game::creatures::breeding_tests::breeding_announces_the_orb_before_the_lower_id_child lib daily resources
 sunrise-client game::creatures::breeding_tests::camel_breeding_leaves_the_parent_stream_unchanged lib daily resources
-sunrise-client game::creatures::breeding_tests::empty_mod_never_defers_breeding_xp lib daily resources
 sunrise-client game::creatures::breeding_tests::equine_breeding_inheritance_precedes_same_tick_healing_and_grazing lib daily resources
 sunrise-client game::creatures::breeding_tests::first_chicken_breed_matches_without_mods_and_with_an_empty_mod lib daily resources
 sunrise-client game::creatures::breeding_tests::wolf_breeding_selects_either_coat_from_the_parent_stream lib daily resources

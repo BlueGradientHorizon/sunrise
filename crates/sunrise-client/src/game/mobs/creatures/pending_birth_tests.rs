@@ -17,7 +17,7 @@ use mod_api::{
 };
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicUsize, Ordering},
+    atomic::{AtomicU32, AtomicUsize, Ordering},
 };
 use sunrise_client::chunk::Chunk;
 use sunrise_core::random::LegacyRandom;
@@ -1129,12 +1129,116 @@ fn a_panicking_baby_listener_leaves_no_reserved_state_behind() {
     );
 }
 
+#[test]
+#[ignore = "daily"]
+fn discarding_a_parent_in_the_birth_listener_refuses_the_baby() {
+    if run_fresh_cases(
+        "game::creatures::pending_birth_tests::discarding_a_parent_in_the_birth_listener_refuses_the_baby",
+        "SUNRISE_BIRTH_DISCARD_CHILD",
+        &["discard"],
+    ) {
+        return;
+    }
+    with_baby(
+        |host, event| {
+            let parent = host.entity(event.parent).unwrap();
+            assert!(parent.discard(host));
+            assert!(host.entity(event.parent).is_none());
+            Flow::Continue
+        },
+        |game| {
+            let (parent, partner, child) = breed_pair(game, "minecraft:cow");
+            assert_eq!(child, None);
+            assert!(take_hook_panics().is_empty());
+            assert_eq!(
+                game.mobs.iter().map(|mob| mob.id).collect::<Vec<_>>(),
+                [parent, partner]
+            );
+            assert!(
+                game.entity(parent).is_some(),
+                "the stale refusal rolled back the discard"
+            );
+            assert!(game.orbs.is_empty());
+        },
+    );
+}
+
+#[derive(Default)]
+struct DiscardParentOnPigJoin(AtomicU32);
+
+#[mod_api::__subscriptions]
+impl Hooks for DiscardParentOnPigJoin {
+    fn baby_entity_spawn(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut BabyEntitySpawnEvent<'_>,
+    ) -> Flow {
+        self.0.store(event.parent, Ordering::SeqCst);
+        assert!(host.commands().run_command("summon minecraft:pig 4 64 4"));
+        assert!(host.entity(event.parent).is_some(), "the join is deferred");
+        Flow::Continue
+    }
+
+    fn entity_join_level(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut mod_api::EntityJoinLevelEvent<'_>,
+    ) -> Flow {
+        if event.kind == "minecraft:pig" {
+            let parent = self.0.load(Ordering::SeqCst);
+            // This fixture reserves the two parent IDs and then the original baby ID.
+            assert!(
+                host.entity(parent + 2).is_some(),
+                "apply precedes join publication"
+            );
+            assert!(host.entity(parent).unwrap().discard(host));
+        }
+        Flow::Continue
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_deferred_join_can_remove_a_parent_only_after_the_baby_is_applied() {
+    if run_fresh_cases(
+        "game::creatures::pending_birth_tests::a_deferred_join_can_remove_a_parent_only_after_the_baby_is_applied",
+        "SUNRISE_BIRTH_JOIN_CHILD",
+        &["join"],
+    ) {
+        return;
+    }
+    let mods = vec![mod_api::ModEntry::new(
+        "parent-on-join",
+        Box::new(DiscardParentOnPigJoin::default()),
+    )];
+    mod_platform::testing::with_mods(mods.into(), || {
+        crate::game::native_guest_turn_tests::with_guests(|game| {
+            game.build_registries();
+            let (parent, _, child) = breed_pair(game, "minecraft:cow");
+            assert_eq!(child, Some(parent + 2));
+            assert!(take_hook_panics().is_empty());
+            assert!(
+                game.entity(parent).is_none(),
+                "the deferred join did remove the parent"
+            );
+            assert!(find(game, parent + 2).extra.age < 0);
+        });
+    });
+}
+
 /// What a listener's host write does to a parent, stood in for by a closure the production
 /// dispatch runs where the listeners run (the host methods that move a mob are not reachable
 /// from a hook's `ServerHost` in the fixture world).
 #[test]
 #[ignore = "daily"]
 fn a_parent_changed_during_dispatch_refuses_the_baby_and_nothing_is_rebuilt() {
+    if run_fresh_cases(
+        "game::creatures::pending_birth_tests::a_parent_changed_during_dispatch_refuses_the_baby_and_nothing_is_rebuilt",
+        "SUNRISE_BIRTH_STALE_CHILD",
+        &["stale"],
+    ) {
+        return;
+    }
     with_game(|game| {
         let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
         let base = game.next_entity;
@@ -1162,10 +1266,11 @@ fn a_parent_changed_during_dispatch_refuses_the_baby_and_nothing_is_rebuilt() {
                         parent.extra.in_love = 600;
                     }
                 },
+                |_, children| children.len(),
             )
         };
         // Unchanged parents: the baby is accepted.
-        assert_eq!(run(game, false).len(), 1);
+        assert_eq!(run(game, false), Some(1));
         // The id is still live but the parent is not what the baby was built from: refused,
         // and the dispatch never rebuilds or draws again.
         let draws = game
@@ -1173,7 +1278,7 @@ fn a_parent_changed_during_dispatch_refuses_the_baby_and_nothing_is_rebuilt() {
             .iter()
             .map(|m| m.random.state())
             .collect::<Vec<_>>();
-        assert!(run(game, true).is_empty());
+        assert_eq!(run(game, true), None);
         assert_eq!(
             game.mobs
                 .iter()
