@@ -588,6 +588,12 @@ mod item_resource_property_tests {
         defaults["minecraft:bundle"]["minecraft:bundle_contents"] =
             json!([{"id": "minecraft:stone", "count": 32}]);
         defaults["sunrise:consumable_fixture"] = defaults["minecraft:stick"].clone();
+        defaults["minecraft:stick"]["minecraft:bundle_contents"] =
+            json!([{"id": "minecraft:stone", "count": 32}]);
+        defaults["minecraft:red_bundle"]
+            .as_object_mut()
+            .unwrap()
+            .remove("minecraft:bundle_contents");
         // A mod item belongs to the registry as well as the component report.
         let mut registries: Value =
             serde_json::from_slice(&fs::read(resources.join("command-registries.json")).unwrap())
@@ -663,25 +669,176 @@ mod item_resource_property_tests {
             assert_eq!(engine(&removed, 1).effective_damage(info), 0);
             assert!(removed.bar(game).is_none());
 
-            let bundle = ItemResource::of(&super::super::api_values::test_snapshot(
-                &ItemStack::new("minecraft:bundle", 1),
-            ));
+            let bundle_stack = ItemStack::new("minecraft:bundle", 1);
+            let stone = ItemStack::new("minecraft:stone", 1);
+            let bundle = ItemResource::of(&super::super::api_values::test_snapshot(&bundle_stack));
             // Vanilla BundleItem: half a stack weighs 1/2, showing 1 + floor(12 / 2)
-            // pixels in the not-full colour. An explicitly empty or removed component
-            // suppresses the prototype's bar rather than inheriting its contents.
+            // pixels in the not-full colour. Bar, capacity, tooltip and nested weight
+            // all read the same effective component.
             let bar = bundle.bar(game).unwrap();
             assert_eq!((bar.width, bar.color), (7, 0x7087FF));
+            let items = game.items();
+            assert_eq!(
+                sunrise_client::bundle::Contents::of(items, &bundle_stack)
+                    .unwrap()
+                    .items(),
+                &[ItemStack::new("minecraft:stone", 32)]
+            );
+            assert_eq!(
+                sunrise_client::bundle::Contents::room_in_stack(items, &bundle_stack, &stone),
+                Some(32)
+            );
+            let layout =
+                sunrise_client::bundle::tooltip_layout(items, &bundle_stack, 0.0, 0.0, 96.0, 2)
+                    .unwrap();
+            assert_eq!(layout.slots.len(), 1);
+            assert_eq!(layout.slots[0].1, ItemStack::new("minecraft:stone", 32));
+            assert_eq!(layout.fill, 47.0);
+            assert_eq!(layout.label, None);
+
+            // An explicitly empty or removed component suppresses the prototype's
+            // contents rather than inheriting them.
             let contents = ComponentId::new("minecraft:bundle_contents").unwrap();
             let empty = bundle
                 .with_component(game, &contents, Tag::List(Vec::new()))
                 .unwrap();
+            let empty_stack = engine(&empty, 1);
             assert!(empty.bar(game).is_none());
             assert!(
-                bundle
-                    .without_component(game, &contents)
+                sunrise_client::bundle::Contents::of(items, &empty_stack)
+                    .unwrap()
+                    .items()
+                    .is_empty()
+            );
+            assert_eq!(
+                sunrise_client::bundle::Contents::room_in_stack(items, &empty_stack, &stone),
+                Some(64)
+            );
+            assert_eq!(
+                sunrise_client::bundle::tooltip_layout(items, &empty_stack, 0.0, 0.0, 96.0, 2)
+                    .unwrap()
+                    .label,
+                Some("item.minecraft.bundle.empty")
+            );
+
+            // Emptying a bundle with nonempty defaults preserves explicit emptiness.
+            let mut emptied = bundle_stack.clone();
+            let mut mutable = sunrise_client::bundle::Contents::of(items, &emptied).unwrap();
+            assert_eq!(
+                mutable.remove_one(items),
+                Some(ItemStack::new("minecraft:stone", 32))
+            );
+            mutable.store(items, &mut emptied);
+            assert!(
+                sunrise_client::bundle::Contents::of(items, &emptied)
+                    .unwrap()
+                    .items()
+                    .is_empty()
+            );
+            assert_eq!(
+                sunrise_client::bundle::Contents::room_in_stack(items, &emptied, &stone),
+                Some(64)
+            );
+            assert_eq!(
+                sunrise_client::bundle::tooltip_layout(items, &emptied, 0.0, 0.0, 96.0, 2)
+                    .unwrap()
+                    .label,
+                Some("item.minecraft.bundle.empty")
+            );
+            assert!(
+                ItemResource::of(&super::super::api_values::test_snapshot(&emptied))
                     .bar(game)
                     .is_none()
             );
+
+            let removed_bundle = bundle.without_component(game, &contents);
+            let removed_bundle_stack = engine(&removed_bundle, 1);
+            assert!(removed_bundle.bar(game).is_none());
+            assert!(sunrise_client::bundle::Contents::of(items, &removed_bundle_stack).is_none());
+            assert_eq!(
+                sunrise_client::bundle::Contents::room_in_stack(
+                    items,
+                    &removed_bundle_stack,
+                    &stone
+                ),
+                None
+            );
+            assert!(
+                sunrise_client::bundle::tooltip_layout(
+                    items,
+                    &removed_bundle_stack,
+                    0.0,
+                    0.0,
+                    96.0,
+                    2
+                )
+                .is_none()
+            );
+
+            // Nested prototype-backed bundle: 1/2 contents + 1/16 overhead = 9/16,
+            // leaving 28/64 room and drawing 1 + floor(9 * 12 / 16) = 7 pixels.
+            let mut outer = ItemStack::new("minecraft:blue_bundle", 1);
+            outer.data_mut().bundle_contents = vec![bundle_stack];
+            let outer_bar = ItemResource::of(&super::super::api_values::test_snapshot(&outer))
+                .bar(game)
+                .unwrap();
+            assert_eq!((outer_bar.width, outer_bar.color), (7, 0x7087FF));
+            assert_eq!(
+                sunrise_client::bundle::Contents::room_in_stack(items, &outer, &stone),
+                Some(28)
+            );
+            assert_eq!(
+                sunrise_client::bundle::tooltip_layout(items, &outer, 0.0, 0.0, 96.0, 2)
+                    .unwrap()
+                    .fill,
+                52.0
+            );
+            // An outer bundle holding the emptied inner bundle counts only its 1/16 overhead.
+            let mut outer_empty_inner = ItemStack::new("minecraft:blue_bundle", 1);
+            outer_empty_inner.data_mut().bundle_contents = vec![emptied];
+            let inner_empty_bar =
+                ItemResource::of(&super::super::api_values::test_snapshot(&outer_empty_inner))
+                    .bar(game)
+                    .unwrap();
+            assert_eq!(
+                (inner_empty_bar.width, inner_empty_bar.color),
+                (1, 0x7087FF)
+            );
+            assert_eq!(
+                sunrise_client::bundle::Contents::room_in_stack(items, &outer_empty_inner, &stone),
+                Some(60)
+            );
+
+            // Vanilla ItemStack.isBarVisible/getBarWidth/getBarColor dispatch to the
+            // registered item behavior, independently of mutable prototype defaults.
+            let stick_stack = ItemStack::new("minecraft:stick", 1);
+            let stick = ItemResource::of(&super::super::api_values::test_snapshot(&stick_stack));
+            assert!(stick.bar(game).is_none());
+            assert!(
+                sunrise_items::properties::stack_bar(
+                    items,
+                    &stick_stack,
+                    items.get(&stick_stack.item)
+                )
+                .is_none()
+            );
+
+            let red_bundle = ItemResource::of(&super::super::api_values::test_snapshot(
+                &ItemStack::new("minecraft:red_bundle", 1),
+            ));
+            assert!(red_bundle.bar(game).is_none());
+            let patched_red = red_bundle
+                .with_component(
+                    game,
+                    &contents,
+                    Tag::List(vec![Tag::compound([
+                        ("id", Tag::String("minecraft:stone".into())),
+                        ("count", Tag::Int(32)),
+                    ])]),
+                )
+                .unwrap();
+            let red_bar = patched_red.bar(game).unwrap();
+            assert_eq!((red_bar.width, red_bar.color), (7, 0x7087FF));
 
             let enchanted = resource
                 .with_component(

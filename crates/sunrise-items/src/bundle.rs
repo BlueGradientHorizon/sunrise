@@ -2,7 +2,7 @@
 //! weight. The menus (`menu`, `lan::menu`) run `BundleItem`'s click
 //! overrides on it.
 use crate::item_data::BundleSelected;
-use crate::items::{ItemInfo, ItemStack, Items};
+use crate::items::{ItemStack, Items};
 use crate::properties::ItemBar;
 use sunrise_core::nbt::Tag;
 
@@ -71,12 +71,22 @@ pub(crate) fn max_stack(items: &Items, stack: &ItemStack) -> u32 {
         .max(1) as u32
 }
 
-/// The stack's `bundle_contents`, when it has the component.
-fn contents_of<'a>(items: &Items, stack: &'a ItemStack) -> Option<&'a [ItemStack]> {
-    let inside = stack.data().map_or(&[][..], |d| &d.bundle_contents[..]);
-    stack
-        .carries_component(items.get(&stack.item), "minecraft:bundle_contents")
-        .then_some(inside)
+/// The stack's effective `minecraft:bundle_contents`: its own component patch
+/// (including an explicitly empty list), `None` when removed with
+/// `!minecraft:bundle_contents`, otherwise the item prototype's default.
+pub fn contents_of<'a>(items: &'a Items, stack: &'a ItemStack) -> Option<&'a [ItemStack]> {
+    if let Some(data) = stack.data() {
+        if data.sets_component("minecraft:bundle_contents") {
+            return Some(&data.bundle_contents);
+        }
+        if data.other("!minecraft:bundle_contents").is_some() {
+            return None;
+        }
+    }
+    let prototype = items.get(&stack.item)?.component_prototype.data()?;
+    prototype
+        .sets_component("minecraft:bundle_contents")
+        .then_some(&prototype.bundle_contents[..])
 }
 
 /// `BundleContents.getWeight`: a nested bundle weighs its contents plus
@@ -103,14 +113,9 @@ fn contents_weight(items: &Items, inside: &[ItemStack]) -> Weight {
 }
 
 /// `BundleItem.isBarVisible`, `getBarWidth` and `getBarColor`, over the
-/// effective component. A removed component has no bar.
-pub(crate) fn stack_bar(items: &Items, stack: &ItemStack, info: &ItemInfo) -> Option<ItemBar> {
-    let inside = match stack.data() {
-        Some(data) if data.sets_component("minecraft:bundle_contents") => &data.bundle_contents,
-        Some(data) if data.other("!minecraft:bundle_contents").is_some() => return None,
-        _ => &info.component_prototype.data()?.bundle_contents,
-    };
-    let Weight { n, d } = contents_weight(items, inside);
+/// effective component. Missing or empty contents show no bar.
+pub(crate) fn stack_bar(items: &Items, stack: &ItemStack) -> Option<ItemBar> {
+    let Weight { n, d } = contents_weight(items, contents_of(items, stack)?);
     if n <= 0 {
         return None;
     }
@@ -277,10 +282,28 @@ impl Contents {
         self.weight.n >= self.weight.d
     }
 
-    /// `toImmutable`, written back into the bundle's component.
-    pub fn store(self, bundle: &mut ItemStack) {
+    /// `toImmutable`, written back into the bundle's component, preserving an
+    /// explicitly empty patch when the item's prototype does not default to empty.
+    pub fn store(self, items: &Items, bundle: &mut ItemStack) {
         let data = bundle.data_mut();
-        data.bundle_contents = self.items;
+        data.set_other("!minecraft:bundle_contents", None);
+        if self.items.is_empty() {
+            data.bundle_contents.clear();
+            let prototype_is_empty = items
+                .get(&bundle.item)
+                .and_then(|info| info.component_prototype.data())
+                .is_some_and(|proto| {
+                    proto.sets_component("minecraft:bundle_contents")
+                        && proto.bundle_contents.is_empty()
+                });
+            data.set_other(
+                "minecraft:bundle_contents",
+                (!prototype_is_empty).then_some(Tag::List(Vec::new())),
+            );
+        } else {
+            data.bundle_contents = self.items;
+            data.set_other("minecraft:bundle_contents", None);
+        }
         data.bundle_selected = BundleSelected(self.selected);
         bundle.tidy();
     }

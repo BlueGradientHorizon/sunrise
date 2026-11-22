@@ -1365,7 +1365,7 @@ fn bundle_click(view: &mut View, i: usize, right: bool, rules: &dyn Rules) -> bo
                 }
             }
         }
-        contents.store(&mut carried);
+        contents.store(items, &mut carried);
         view.guest.carried = Some(carried);
         return true;
     }
@@ -1399,7 +1399,7 @@ fn bundle_click(view: &mut View, i: usize, right: bool, rules: &dyn Rules) -> bo
             return false;
         }
     }
-    contents.store(&mut bundle);
+    contents.store(items, &mut bundle);
     view.set(i, Some(bundle));
     true
 }

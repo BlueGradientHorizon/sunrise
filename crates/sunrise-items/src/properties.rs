@@ -72,10 +72,11 @@ pub fn same_item_id(a: &str, b: &str) -> bool {
 }
 
 /// `ItemStack.isBarVisible`, `getBarWidth` and `getBarColor`, before client
-/// drawing extensions. Read the resolved stack rather than encoding its patch.
+/// drawing extensions. Dispatch on registered `BundleItem` behavior rather than
+/// mutable defaults, then read the effective component.
 pub fn stack_bar(items: &Items, stack: &ItemStack, info: Option<&ItemInfo>) -> Option<ItemBar> {
-    if let Some(info) = info.filter(|item| item.bundle) {
-        return crate::bundle::stack_bar(items, stack, info);
+    if info.is_some_and(|item| item.bundle) {
+        return crate::bundle::stack_bar(items, stack);
     }
     if !damageable(|id| stack.carries_component(info, id)) {
         return None;
