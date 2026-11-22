@@ -1116,15 +1116,18 @@ fn sound_listener_transaction_preserves_mixed_play_and_stop_packet_order() {
     in_isolated_process(
         "sound_listener_transaction_preserves_mixed_play_and_stop_packet_order",
         || {
-            use mod_api::{Flow, HostSide, HostTransaction, PlayerRef};
+            use mod_api::{EntityRef, Flow, HitHost, HostSide, HostTransaction, PlayerRef};
             use std::sync::{
                 Mutex,
                 atomic::{AtomicBool, AtomicUsize, Ordering},
             };
             use sunrise_core::random::{LegacyRandom, RandomSource};
 
+            const HIT_SOUND: &str = "minecraft:entity.player.attack.strong";
+
             struct PlayThenStopHook {
                 target: Arc<Mutex<Option<PlayerRef>>>,
+                hurt_on_bell: Arc<Mutex<Option<EntityRef>>>,
                 cancel_bell: Arc<AtomicBool>,
                 emit_extra_burp: Arc<AtomicBool>,
                 calls: Arc<AtomicUsize>,
@@ -1170,15 +1173,37 @@ fn sound_listener_transaction_preserves_mixed_play_and_stop_packet_order() {
                             Ok(())
                         });
                         assert!(res.is_ok());
+                        if let Some(victim) = self.hurt_on_bell.lock().unwrap().take() {
+                            assert_eq!(
+                                victim.hurt(server, "minecraft:generic", 1.0, None, None),
+                                Some(false)
+                            );
+                        }
                         if self.cancel_bell.load(Ordering::SeqCst) {
                             return Flow::Cancel;
                         }
                     }
                     Flow::Continue
                 }
+
+                fn living_incoming_damage(
+                    &self,
+                    hit: &mut dyn HitHost,
+                    _: &mut mod_api::LivingIncomingDamageEvent<'_>,
+                ) -> Flow {
+                    assert!(hit.play_sound_at(
+                        HIT_SOUND,
+                        [3.0, 64.0, 5.0],
+                        SoundSource::Players,
+                        1.0,
+                        1.0
+                    ));
+                    Flow::Cancel
+                }
             }
 
             let target = Arc::new(Mutex::new(None));
+            let hurt_on_bell = Arc::new(Mutex::new(None));
             let cancel_bell = Arc::new(AtomicBool::new(false));
             let emit_extra_burp = Arc::new(AtomicBool::new(false));
             let calls = Arc::new(AtomicUsize::new(0));
@@ -1186,6 +1211,7 @@ fn sound_listener_transaction_preserves_mixed_play_and_stop_packet_order() {
                 "play_then_stop_sound_test",
                 Box::new(PlayThenStopHook {
                     target: Arc::clone(&target),
+                    hurt_on_bell: Arc::clone(&hurt_on_bell),
                     cancel_bell: Arc::clone(&cancel_bell),
                     emit_extra_burp: Arc::clone(&emit_extra_burp),
                     calls: Arc::clone(&calls),
@@ -1228,6 +1254,13 @@ fn sound_listener_transaction_preserves_mixed_play_and_stop_packet_order() {
                         .hub
                         .registry_id("minecraft:sound_event", burp)
                         .unwrap();
+                    let hit_id = game
+                        .lan
+                        .as_ref()
+                        .unwrap()
+                        .hub
+                        .registry_id("minecraft:sound_event", HIT_SOUND)
+                        .unwrap();
                     decode_packets(&rx12);
 
                     let classify = |packets: Vec<C>| -> Vec<&'static str> {
@@ -1237,6 +1270,7 @@ fn sound_listener_transaction_preserves_mixed_play_and_stop_packet_order() {
                                 C::Sound(s) if s.sound.0 == bell_id => "sound_bell",
                                 C::Sound(s) if s.sound.0 == anvil_id => "sound_anvil",
                                 C::Sound(s) if s.sound.0 == burp_id => "sound_burp",
+                                C::Sound(s) if s.sound.0 == hit_id => "hit_sound",
                                 C::StopSound(s) if s.sound.as_deref() == Some(anvil) => {
                                     "stop_anvil"
                                 }
@@ -1358,9 +1392,19 @@ fn sound_listener_transaction_preserves_mixed_play_and_stop_packet_order() {
                     );
 
                     // 4. Non-transactional tick flush (`lan_sounds`): listener's committed transaction
-                    // delivers `[sound_anvil, stop_anvil]` cleanly before the outer bell sound with
-                    // nothing left piling up in `lan_sounds`.
+                    // delivers `[sound_anvil, stop_anvil]` before the outer bell sound, but the
+                    // raw hit sound appended by the callback belongs to the next flush.
+                    let victim = game
+                        .spawn_mob(
+                            "minecraft:zombie",
+                            at,
+                            true,
+                            super::creatures::SpawnSite::Raw,
+                        )
+                        .unwrap();
+                    *hurt_on_bell.lock().unwrap() = Some(game.entity(victim).unwrap());
                     cancel_bell.store(false, Ordering::SeqCst);
+                    calls.store(0, Ordering::SeqCst);
                     assert!(game.level_play_sound(
                         level,
                         bell,
@@ -1371,11 +1415,15 @@ fn sound_listener_transaction_preserves_mixed_play_and_stop_packet_order() {
                         None
                     ));
                     game.flush_native_sounds();
-                    assert!(game.creatures.lan_sounds.is_empty());
                     assert_eq!(
                         classify(decode_packets(&rx12)),
-                        vec!["sound_anvil", "stop_anvil", "sound_bell"]
+                        ["sound_anvil", "stop_anvil", "sound_bell"]
                     );
+                    assert_eq!(calls.load(Ordering::SeqCst), 1);
+                    game.flush_native_sounds();
+                    assert_eq!(classify(decode_packets(&rx12)), ["hit_sound"]);
+                    assert_eq!(calls.load(Ordering::SeqCst), 1);
+                    assert!(game.creatures.lan_sounds.is_empty());
                 });
             });
         },
