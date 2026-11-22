@@ -109,7 +109,8 @@ class Budgets(unittest.TestCase):
 
     def test_a_panic_that_is_rustc_output_shows_its_codes_not_its_text(self):
         with patch.object(ci, 'tracked_rust_paths', return_value={'crates/example.rs'}), \
-                patch.object(ci, 'source_lines', return_value=['assert!(output.status.success(), "{}", stderr);']):
+                patch.object(ci, 'source_lines', return_value=['assert!(output.status.success(), "{}", stderr);']), \
+                patch.dict(ci._panic_locations, clear=True):
             log = self.render(
                 "thread 'generated' panicked at crates/example.rs:1:1:\n"
                 "error[E0425]: cannot find function `PRIVATE` in module `super::runtime`\n"
