@@ -65,7 +65,11 @@ enum Flow {
     Cancel,
 }
 trait Host {}
-trait ServerHost: Host {}
+trait ServerHost: Host {
+    fn transaction_current(&self) -> Option<()> {
+        None
+    }
+}
 trait ClientHost: Host {}
 
 mod item {
