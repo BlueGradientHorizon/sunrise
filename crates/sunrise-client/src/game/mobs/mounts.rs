@@ -2142,6 +2142,31 @@ mod off_level_tests {
             "game::mounts::off_level_tests::underwater_dismount_uses_the_levels_current_mount_tag",
             || {
                 crate::game::native_entity_refs::tests::with_game(|game| {
+                    let tags = &game.items().entity_type_tags;
+                    // Default membership from the 26.3 dismounts_underwater tag.
+                    for (kind, expected) in [
+                        ("minecraft:camel", true),
+                        ("minecraft:chicken", true),
+                        ("minecraft:donkey", true),
+                        ("minecraft:happy_ghast", true),
+                        ("minecraft:horse", true),
+                        ("minecraft:llama", true),
+                        ("minecraft:mule", true),
+                        ("minecraft:pig", true),
+                        ("minecraft:ravager", true),
+                        ("minecraft:spider", true),
+                        ("minecraft:strider", true),
+                        ("minecraft:trader_llama", true),
+                        ("minecraft:zombie_horse", true),
+                        ("minecraft:skeleton_horse", false),
+                        ("minecraft:camel_husk", false),
+                        ("minecraft:cow", false),
+                    ] {
+                        let mob_type = game.res.mob_types().get(kind).unwrap().clone();
+                        let mob = Mob::new(0, mob_type, Vec3::ZERO, 0.0);
+                        assert_eq!(dismounts_underwater(tags, &mob), expected, "{kind}");
+                    }
+
                     for (id, kind, mount) in [
                         (71, "minecraft:pig", None),
                         (72, "minecraft:zombie", Some(71)),
