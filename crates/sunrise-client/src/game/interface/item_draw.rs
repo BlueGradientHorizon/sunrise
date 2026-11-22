@@ -1685,240 +1685,262 @@ mod tests {
     /// `items` atlas UV) and for an enchanted shield (`ENTITY_GLINT_TEXTURING` 0.5 +
     /// `shield_patterns` atlas UV).
     #[test]
-    #[ignore = "run by tools/test_glint_parity.py"]
+    #[ignore = "daily"]
     fn item_display_end_crystal_world_submit_uses_vanilla_glint_scale_and_atlas_uv_26_3() {
-        let witness_path = std::env::var("SUNRISE_ITEM_GLINT_WITNESS")
-            .expect("SUNRISE_ITEM_GLINT_WITNESS must be set (run via tools/test_glint_parity.py)");
-        let witness_text = std::fs::read_to_string(&witness_path)
-            .unwrap_or_else(|e| panic!("failed to read item glint witness {witness_path}: {e}"));
-        let witness: Value =
-            serde_json::from_str(&witness_text).expect("valid 26.3 item_glint witness");
-        let root = std::env::var_os("SUNRISE_TEST_RESOURCES")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| {
-                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("../../.local/sunrise-client/26.3")
-            });
-        fn parse_pos(v: &Value) -> [[u32; 3]; 4] {
-            let arr = v.as_array().unwrap();
-            std::array::from_fn(|i| {
-                let p = arr[i].as_array().unwrap();
-                [
-                    p[0].as_u64().unwrap() as u32,
-                    p[1].as_u64().unwrap() as u32,
-                    p[2].as_u64().unwrap() as u32,
-                ]
-            })
-        }
-        fn parse_quad(v: &Value) -> [[u32; 2]; 4] {
-            let arr = v.as_array().unwrap();
-            std::array::from_fn(|i| {
-                let p = arr[i].as_array().unwrap();
-                [p[0].as_u64().unwrap() as u32, p[1].as_u64().unwrap() as u32]
-            })
-        }
-        fn assert_extruded_match(
-            verts: &[Vertex],
-            quads: &[item_render::ItemQuad],
-            expected: &[Value],
-            label: &str,
-        ) {
-            assert_eq!(verts.len(), expected.len() * 4, "{label} vertex count");
-            assert_eq!(quads.len(), expected.len(), "{label} quad count");
-            let extract = |idx: usize| {
-                let vq = &verts[idx * 4..(idx + 1) * 4];
-                let q = &quads[idx];
-                let pos: [[u32; 3]; 4] = std::array::from_fn(|i| {
-                    let bits = vq[i].pos.map(f32::to_bits);
-                    assert_eq!(q.pos[i].to_array().map(f32::to_bits), bits);
-                    assert_eq!(q.uv[i].map(f32::to_bits), vq[i].uv.map(f32::to_bits));
-                    bits
+        crate::game::in_own_process(
+            "game::item_draw::tests::item_display_end_crystal_world_submit_uses_vanilla_glint_scale_and_atlas_uv_26_3",
+            || {
+                let witness_path = std::env::var_os("SUNRISE_ITEM_GLINT_WITNESS")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| {
+                        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                            .join("../../.local/witness/26.3/glint/witness.json")
+                    });
+                let witness_text = std::fs::read_to_string(&witness_path).unwrap_or_else(|e| {
+                    panic!(
+                        "failed to read item glint witness {} (generate with tools/test_glint_parity.py --record-only): {e}",
+                        witness_path.display()
+                    )
                 });
-                let uv0 = q.gui_glint_uv.unwrap().map(|p| p.map(f32::to_bits));
-                let glint_uv: [[u32; 2]; 4] =
-                    std::array::from_fn(|i| vq[i].glint_uv.map(f32::to_bits));
-                (pos, uv0, glint_uv)
-            };
-            // Front/back faces `[0..2]` match by index.
-            for i in 0..2 {
-                let (pos, uv0, glint_uv) = extract(i);
-                assert_eq!(
-                    pos,
-                    parse_pos(&expected[i]["pos_bits"]),
-                    "{label} q[{i}] pos"
-                );
-                assert_eq!(
-                    uv0,
-                    parse_quad(&expected[i]["uv0_bits"]),
-                    "{label} q[{i}] uv0"
-                );
-                assert_eq!(
-                    glint_uv,
-                    parse_quad(&expected[i]["glint_uv_t123456_bits"]),
-                    "{label} q[{i}] glint_uv"
-                );
-            }
-            // Side faces `[2..]` match 1-to-1 by `(pos_bits, uv0_bits)`; fail on dup/unmatched.
-            let mut witness_sides: HashMap<([[u32; 3]; 4], [[u32; 2]; 4]), &Value> =
-                HashMap::with_capacity(expected.len() - 2);
-            for w in &expected[2..] {
-                let key = (parse_pos(&w["pos_bits"]), parse_quad(&w["uv0_bits"]));
-                assert!(
-                    witness_sides.insert(key, w).is_none(),
-                    "{label} duplicate witness side key"
-                );
-            }
-            let mut seen: std::collections::HashSet<([[u32; 3]; 4], [[u32; 2]; 4])> =
-                std::collections::HashSet::with_capacity(quads.len() - 2);
-            for i in 2..quads.len() {
-                let (pos, uv0, glint_uv) = extract(i);
-                let key = (pos, uv0);
-                assert!(seen.insert(key), "{label} duplicate Sunrise side key");
-                let w = witness_sides
-                    .remove(&key)
-                    .unwrap_or_else(|| panic!("{label} unmatched Sunrise side key"));
-                assert_eq!(pos, parse_pos(&w["pos_bits"]), "{label} side pos");
-                assert_eq!(uv0, parse_quad(&w["uv0_bits"]), "{label} side uv0");
-                assert_eq!(
-                    glint_uv,
-                    parse_quad(&w["glint_uv_t123456_bits"]),
-                    "{label} side glint_uv"
-                );
-            }
-            assert!(
-                witness_sides.is_empty(),
-                "{label} {} unmatched witness side faces",
-                witness_sides.len()
-            );
-        }
-        super::super::native_entity_refs::tests::with_game_role(
-            root,
-            super::super::execution_role::ExecutionRole::Client,
-            |game| {
-                game.pack
-                    .item_renderer
-                    .prepare_glint_atlas(16384, (0, 2))
-                    .unwrap();
-                game.glint_frame = item_render::GlintFrame {
-                    millis: 123_456,
-                    speed: 0.5,
-                    alpha: 0.75,
-                    sprite: true,
-                };
-                let crystal = ItemStack::new("minecraft:end_crystal", 1);
-                // Exact `DisplayRenderer.ItemDisplayRenderer` pose for EID 83245 (`CENTER` billboard).
-                let mut eid_p = joml::Mat4::IDENTITY;
-                eid_p.rotate(joml::Quat::rotation_yxz(
-                    (-std::f64::consts::PI / 180.0) as f32 * -180.0,
-                    0.0,
-                    0.0,
-                ));
-                eid_p.translate(-0.945, 0.3885, -4.2);
-                eid_p.rotate(joml::Quat {
-                    x: 0.0,
-                    y: 1.0,
-                    z: 0.0,
-                    w: 0.0,
-                });
-                eid_p.scale(0.525, 0.525, 0.525);
-                eid_p.rotate_y(std::f32::consts::PI);
-                let eid_pose = eid_p.to_glam();
-                let eid_quads = witness["end_crystal_item_display"]["quads"]
-                    .as_array()
-                    .unwrap();
-
-                let state_gui = game.resolve_item(&crystal, DisplayContext::Gui, None, 83245);
-                let mut world_out = Vec::new();
-                game.submit_item_world(&state_gui, eid_pose, 0xF0F0, &mut world_out);
-                assert!(world_out.iter().all(|v| (v.layer & 0xFFFF) == 7));
-                let mut world_quads = Vec::new();
-                state_gui.submit(
-                    &game.pack.item_renderer,
-                    &game.gui.atlas.sprites,
-                    &game.item_host(),
-                    eid_pose,
-                    &mut world_quads,
-                );
-                assert_extruded_match(
-                    &world_out,
-                    &world_quads,
-                    eid_quads,
-                    "26.3 Game::submit_item_world end_crystal EID 83245",
-                );
-
-                let ground_quads_want = witness["contexts"]["ground"]["quads"].as_array().unwrap();
-                let state_ground = game.resolve_item(&crystal, DisplayContext::Ground, None, 83245);
-                let mut unlit_out = Vec::new();
-                game.submit_item_unlit(&state_ground, glam::Mat4::IDENTITY, 0xF0F0, &mut unlit_out);
-                let mut unlit_quads = Vec::new();
-                state_ground.submit(
-                    &game.pack.item_renderer,
-                    &game.gui.atlas.sprites,
-                    &game.item_host(),
-                    glam::Mat4::IDENTITY,
-                    &mut unlit_quads,
-                );
-                assert_extruded_match(
-                    &unlit_out,
-                    &unlit_quads,
-                    ground_quads_want,
-                    "26.3 Game::submit_item_unlit end_crystal ground",
-                );
-
-                // GUI draw_item_model must not lose millis precision via `/ 1000.0 * 1000.0`.
-                let mut batch = HudBatch::scratch([64, 64]);
-                game.draw_item_model(&mut batch, &crystal, 0.0, 0.0);
-                let want_front = parse_quad(&eid_quads[0]["glint_uv_t123456_bits"]);
-                let mut seen = [false; 4];
-                for v in batch.vertices.iter().filter(|v| v.uv[0] >= 2.0) {
-                    let corner = match v.pos {
-                        [0.0, 0.0] => 0,
-                        [0.0, 16.0] => 1,
-                        [16.0, 16.0] => 2,
-                        [16.0, 0.0] => 3,
-                        p => panic!("unexpected end_crystal GUI corner {p:?}"),
-                    };
-                    assert_eq!(
-                        v.glint_uv.map(f32::to_bits),
-                        want_front[corner],
-                        "26.3 Game::draw_item_model end_crystal GUI corner[{corner}]"
-                    );
-                    seen[corner] = true;
+                let witness: Value =
+                    serde_json::from_str(&witness_text).expect("valid 26.3 item_glint witness");
+                let root = std::env::var_os("SUNRISE_TEST_RESOURCES")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| {
+                        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                            .join("../../.local/sunrise-client/26.3")
+                    });
+                fn parse_pos(v: &Value) -> [[u32; 3]; 4] {
+                    let arr = v.as_array().unwrap();
+                    std::array::from_fn(|i| {
+                        let p = arr[i].as_array().unwrap();
+                        [
+                            p[0].as_u64().unwrap() as u32,
+                            p[1].as_u64().unwrap() as u32,
+                            p[2].as_u64().unwrap() as u32,
+                        ]
+                    })
                 }
-                assert!(seen.into_iter().all(|ok| ok));
+                fn parse_quad(v: &Value) -> [[u32; 2]; 4] {
+                    let arr = v.as_array().unwrap();
+                    std::array::from_fn(|i| {
+                        let p = arr[i].as_array().unwrap();
+                        [p[0].as_u64().unwrap() as u32, p[1].as_u64().unwrap() as u32]
+                    })
+                }
+                fn assert_extruded_match(
+                    verts: &[Vertex],
+                    quads: &[item_render::ItemQuad],
+                    expected: &[Value],
+                    label: &str,
+                ) {
+                    assert_eq!(verts.len(), expected.len() * 4, "{label} vertex count");
+                    assert_eq!(quads.len(), expected.len(), "{label} quad count");
+                    let extract = |idx: usize| {
+                        let vq = &verts[idx * 4..(idx + 1) * 4];
+                        let q = &quads[idx];
+                        let pos: [[u32; 3]; 4] = std::array::from_fn(|i| {
+                            let bits = vq[i].pos.map(f32::to_bits);
+                            assert_eq!(q.pos[i].to_array().map(f32::to_bits), bits);
+                            assert_eq!(q.uv[i].map(f32::to_bits), vq[i].uv.map(f32::to_bits));
+                            bits
+                        });
+                        let uv0 = q.gui_glint_uv.unwrap().map(|p| p.map(f32::to_bits));
+                        let glint_uv: [[u32; 2]; 4] =
+                            std::array::from_fn(|i| vq[i].glint_uv.map(f32::to_bits));
+                        (pos, uv0, glint_uv)
+                    };
+                    // Front/back faces `[0..2]` match by index.
+                    for i in 0..2 {
+                        let (pos, uv0, glint_uv) = extract(i);
+                        assert_eq!(
+                            pos,
+                            parse_pos(&expected[i]["pos_bits"]),
+                            "{label} q[{i}] pos"
+                        );
+                        assert_eq!(
+                            uv0,
+                            parse_quad(&expected[i]["uv0_bits"]),
+                            "{label} q[{i}] uv0"
+                        );
+                        assert_eq!(
+                            glint_uv,
+                            parse_quad(&expected[i]["glint_uv_t123456_bits"]),
+                            "{label} q[{i}] glint_uv"
+                        );
+                    }
+                    // Side faces `[2..]` match 1-to-1 by `(pos_bits, uv0_bits)`; fail on dup/unmatched.
+                    let mut witness_sides: HashMap<([[u32; 3]; 4], [[u32; 2]; 4]), &Value> =
+                        HashMap::with_capacity(expected.len() - 2);
+                    for w in &expected[2..] {
+                        let key = (parse_pos(&w["pos_bits"]), parse_quad(&w["uv0_bits"]));
+                        assert!(
+                            witness_sides.insert(key, w).is_none(),
+                            "{label} duplicate witness side key"
+                        );
+                    }
+                    let mut seen: std::collections::HashSet<([[u32; 3]; 4], [[u32; 2]; 4])> =
+                        std::collections::HashSet::with_capacity(quads.len() - 2);
+                    for i in 2..quads.len() {
+                        let (pos, uv0, glint_uv) = extract(i);
+                        let key = (pos, uv0);
+                        assert!(seen.insert(key), "{label} duplicate Sunrise side key");
+                        let w = witness_sides
+                            .remove(&key)
+                            .unwrap_or_else(|| panic!("{label} unmatched Sunrise side key"));
+                        assert_eq!(pos, parse_pos(&w["pos_bits"]), "{label} side pos");
+                        assert_eq!(uv0, parse_quad(&w["uv0_bits"]), "{label} side uv0");
+                        assert_eq!(
+                            glint_uv,
+                            parse_quad(&w["glint_uv_t123456_bits"]),
+                            "{label} side glint_uv"
+                        );
+                    }
+                    assert!(
+                        witness_sides.is_empty(),
+                        "{label} {} unmatched witness side faces",
+                        witness_sides.len()
+                    );
+                }
+                super::super::native_entity_refs::tests::with_game_role(
+                    root,
+                    super::super::execution_role::ExecutionRole::Client,
+                    |game| {
+                        game.pack
+                            .item_renderer
+                            .prepare_glint_atlas(16384, (0, 2))
+                            .unwrap();
+                        game.glint_frame = item_render::GlintFrame {
+                            millis: 123_456,
+                            speed: 0.5,
+                            alpha: 0.75,
+                            sprite: true,
+                        };
+                        let crystal = ItemStack::new("minecraft:end_crystal", 1);
+                        // Exact `DisplayRenderer.ItemDisplayRenderer` pose for EID 83245 (`CENTER` billboard).
+                        let mut eid_p = joml::Mat4::IDENTITY;
+                        eid_p.rotate(joml::Quat::rotation_yxz(
+                            (-std::f64::consts::PI / 180.0) as f32 * -180.0,
+                            0.0,
+                            0.0,
+                        ));
+                        eid_p.translate(-0.945, 0.3885, -4.2);
+                        eid_p.rotate(joml::Quat {
+                            x: 0.0,
+                            y: 1.0,
+                            z: 0.0,
+                            w: 0.0,
+                        });
+                        eid_p.scale(0.525, 0.525, 0.525);
+                        eid_p.rotate_y(std::f32::consts::PI);
+                        let eid_pose = eid_p.to_glam();
+                        let eid_quads = witness["end_crystal_item_display"]["quads"]
+                            .as_array()
+                            .unwrap();
 
-                // Enchanted shield in world submit must keep ENTITY_GLINT_TEXTURING (0.5).
-                let mut shield = ItemStack::new("minecraft:shield", 1);
-                shield.data_mut().set_other(
-                    "minecraft:enchantment_glint_override",
-                    Some(sunrise_core::nbt::Tag::Byte(1)),
-                );
-                let state_shield = game.resolve_item(&shield, DisplayContext::Ground, None, 0);
-                let mut shield_out = Vec::new();
-                game.submit_item_world(
-                    &state_shield,
-                    glam::Mat4::IDENTITY,
-                    0xF0F0,
-                    &mut shield_out,
-                );
-                let mut want_shield: Vec<[[u32; 2]; 4]> = witness["special_models"]["shield_plain"]
+                        let state_gui =
+                            game.resolve_item(&crystal, DisplayContext::Gui, None, 83245);
+                        let mut world_out = Vec::new();
+                        game.submit_item_world(&state_gui, eid_pose, 0xF0F0, &mut world_out);
+                        assert!(world_out.iter().all(|v| (v.layer & 0xFFFF) == 7));
+                        let mut world_quads = Vec::new();
+                        state_gui.submit(
+                            &game.pack.item_renderer,
+                            &game.gui.atlas.sprites,
+                            &game.item_host(),
+                            eid_pose,
+                            &mut world_quads,
+                        );
+                        assert_extruded_match(
+                            &world_out,
+                            &world_quads,
+                            eid_quads,
+                            "26.3 Game::submit_item_world end_crystal EID 83245",
+                        );
+
+                        let ground_quads_want =
+                            witness["contexts"]["ground"]["quads"].as_array().unwrap();
+                        let state_ground =
+                            game.resolve_item(&crystal, DisplayContext::Ground, None, 83245);
+                        let mut unlit_out = Vec::new();
+                        game.submit_item_unlit(
+                            &state_ground,
+                            glam::Mat4::IDENTITY,
+                            0xF0F0,
+                            &mut unlit_out,
+                        );
+                        let mut unlit_quads = Vec::new();
+                        state_ground.submit(
+                            &game.pack.item_renderer,
+                            &game.gui.atlas.sprites,
+                            &game.item_host(),
+                            glam::Mat4::IDENTITY,
+                            &mut unlit_quads,
+                        );
+                        assert_extruded_match(
+                            &unlit_out,
+                            &unlit_quads,
+                            ground_quads_want,
+                            "26.3 Game::submit_item_unlit end_crystal ground",
+                        );
+
+                        // GUI draw_item_model must not lose millis precision via `/ 1000.0 * 1000.0`.
+                        let mut batch = HudBatch::scratch([64, 64]);
+                        game.draw_item_model(&mut batch, &crystal, 0.0, 0.0);
+                        let want_front = parse_quad(&eid_quads[0]["glint_uv_t123456_bits"]);
+                        let mut seen = [false; 4];
+                        for v in batch.vertices.iter().filter(|v| v.uv[0] >= 2.0) {
+                            let corner = match v.pos {
+                                [0.0, 0.0] => 0,
+                                [0.0, 16.0] => 1,
+                                [16.0, 16.0] => 2,
+                                [16.0, 0.0] => 3,
+                                p => panic!("unexpected end_crystal GUI corner {p:?}"),
+                            };
+                            assert_eq!(
+                                v.glint_uv.map(f32::to_bits),
+                                want_front[corner],
+                                "26.3 Game::draw_item_model end_crystal GUI corner[{corner}]"
+                            );
+                            seen[corner] = true;
+                        }
+                        assert!(seen.into_iter().all(|ok| ok));
+
+                        // Enchanted shield in world submit must keep ENTITY_GLINT_TEXTURING (0.5).
+                        let mut shield = ItemStack::new("minecraft:shield", 1);
+                        shield.data_mut().set_other(
+                            "minecraft:enchantment_glint_override",
+                            Some(sunrise_core::nbt::Tag::Byte(1)),
+                        );
+                        let state_shield =
+                            game.resolve_item(&shield, DisplayContext::Ground, None, 0);
+                        let mut shield_out = Vec::new();
+                        game.submit_item_world(
+                            &state_shield,
+                            glam::Mat4::IDENTITY,
+                            0xF0F0,
+                            &mut shield_out,
+                        );
+                        let mut want_shield: Vec<[[u32; 2]; 4]> = witness["special_models"]["shield_plain"]
                     ["ground"]["models"][0]["quads"]
                     .as_array()
                     .unwrap()
                     .iter()
                     .map(|q| parse_quad(&q["glint_uv_t123456_bits"]))
                     .collect();
-                want_shield.sort();
-                let mut got_shield: Vec<[[u32; 2]; 4]> = shield_out
-                    .as_chunks::<4>()
-                    .0
-                    .iter()
-                    .map(|quad| std::array::from_fn(|i| quad[i].glint_uv.map(f32::to_bits)))
-                    .collect();
-                got_shield.sort();
-                assert_eq!(
-                    got_shield, want_shield,
-                    "26.3 Game::submit_item_world enchanted shield"
+                        want_shield.sort();
+                        let mut got_shield: Vec<[[u32; 2]; 4]> = shield_out
+                            .as_chunks::<4>()
+                            .0
+                            .iter()
+                            .map(|quad| std::array::from_fn(|i| quad[i].glint_uv.map(f32::to_bits)))
+                            .collect();
+                        got_shield.sort();
+                        assert_eq!(
+                            got_shield, want_shield,
+                            "26.3 Game::submit_item_world enchanted shield"
+                        );
+                    },
                 );
             },
         );

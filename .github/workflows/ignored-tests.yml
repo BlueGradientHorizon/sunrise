@@ -129,6 +129,11 @@ jobs:
         run: |
           reference=$(mktemp -d "$RUNNER_TEMP/fishing-reference.XXXXXX")
           python3 tools/test_fishing_rng_parity.py --prepare-reference "$reference" --env-file "$GITHUB_ENV"
+      - name: Generate the item glint tests' vanilla witness
+        if: steps.data.outputs.present != 'false' && (matrix.shard == 'sunrise-client-lib' || startsWith(matrix.shard, 'sunrise-client-lib#') || matrix.shard == 'sunrise-client' || startsWith(matrix.shard, 'sunrise-client#'))
+        run: |
+          python3 tools/ci/with_xvfb.py python3 tools/test_glint_parity.py --record-only
+          echo "SUNRISE_ITEM_GLINT_WITNESS=$PWD/.local/witness/26.3/glint/witness.json" >> "$GITHUB_ENV"
       - name: Run the ignored tests that need prepared data
         if: steps.data.outputs.present != 'false'
         env:

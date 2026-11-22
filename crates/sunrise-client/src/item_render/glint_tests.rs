@@ -1398,10 +1398,18 @@ fn gui_special_foil_projects_in_slot_and_oversized_target_pose_before_screen_pla
 }
 
 fn glint_witness_26_3() -> Value {
-    let path = std::env::var("SUNRISE_ITEM_GLINT_WITNESS")
-        .expect("SUNRISE_ITEM_GLINT_WITNESS must be set (run via tools/test_glint_parity.py)");
-    let text = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("failed to read item glint witness {path}: {e}"));
+    let path = std::env::var_os("SUNRISE_ITEM_GLINT_WITNESS")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../.local/witness/26.3/glint/witness.json")
+        });
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        panic!(
+            "failed to read item glint witness {} (generate with tools/test_glint_parity.py --record-only): {e}",
+            path.display()
+        )
+    });
     serde_json::from_str(&text).expect("valid 26.3 item_glint witness")
 }
 
@@ -1642,7 +1650,7 @@ fn eid_83245_pose() -> Mat4 {
 
 /// 26.3 parity: `Glint::uv` matches `TextureTransform.setupGlintTexturing` bit-for-bit.
 #[test]
-#[ignore = "run by tools/test_glint_parity.py"]
+#[ignore = "daily"]
 fn glint_uv_matches_vanilla_26_3_texture_transform_bits() {
     let witness = glint_witness_26_3();
     let transforms = witness["transforms"].as_array().unwrap();
@@ -1695,7 +1703,7 @@ fn glint_uv_matches_vanilla_26_3_texture_transform_bits() {
 /// 26.3 parity: `minecraft:end_crystal` submitted into `WorldSink` (including genpvp EID 83245
 /// and every `ItemDisplayContext`) uses `GLINT_TEXTURING` (8.0) over vanilla `items` atlas UVs.
 #[test]
-#[ignore = "run by tools/test_glint_parity.py"]
+#[ignore = "daily"]
 fn end_crystal_world_sink_uses_atlas_uv_and_item_glint_scale_26_3() {
     use sunrise_assets::item_model::NoEnv;
 
@@ -1794,7 +1802,7 @@ fn end_crystal_world_sink_uses_atlas_uv_and_item_glint_scale_26_3() {
 /// 26.3 parity: block-textured enchanted items (`minecraft:stone`) use the stitched
 /// `minecraft:blocks` (mip 4) atlas UVs with `GLINT_TEXTURING` (8.0) in both world and GUI.
 #[test]
-#[ignore = "run by tools/test_glint_parity.py"]
+#[ignore = "daily"]
 fn block_item_glint_uses_blocks_atlas_uv_26_3() {
     use sunrise_assets::item_model::NoEnv;
 
@@ -1921,7 +1929,7 @@ fn block_item_glint_uses_blocks_atlas_uv_26_3() {
 /// 26.3 parity: `Foil::Special` (`minecraft:compass`) projects sheeted decal `UV3` via
 /// `ItemFeatureRenderer.computeFoilDecalPose` and transforms it with `GLINT_TEXTURING` (8.0).
 #[test]
-#[ignore = "run by tools/test_glint_parity.py"]
+#[ignore = "daily"]
 fn compass_special_foil_uses_decal_uv_26_3() {
     use sunrise_assets::item_model::NoEnv;
 
@@ -2138,7 +2146,7 @@ fn compass_special_foil_uses_decal_uv_26_3() {
 /// `minecraft:shield` (plain & patterned) uses `ENTITY_GLINT_TEXTURING` (0.5) +
 /// `minecraft:shield_patterns` atlas UV in both `WorldSink` and GUI.
 #[test]
-#[ignore = "run by tools/test_glint_parity.py"]
+#[ignore = "daily"]
 fn special_model_trident_and_shield_glint_uses_entity_scale_26_3() {
     use sunrise_assets::item_model::NoEnv;
 
@@ -2478,7 +2486,7 @@ fn special_model_trident_and_shield_glint_uses_entity_scale_26_3() {
 /// 26.3 parity: `prepare_glint_atlas_with_mips` matches vanilla `SpriteLoader.stitch` bit-for-bit
 /// across `items` (none & aniso2), `blocks` (mip 4 & mip 0), and `shield_patterns`.
 #[test]
-#[ignore = "run by tools/test_glint_parity.py"]
+#[ignore = "daily"]
 fn glint_atlases_match_vanilla_26_3_mip_and_aniso() {
     let witness = glint_witness_26_3();
     let root = prepared_resources_26_3();
