@@ -100,12 +100,17 @@ pub struct StackedOutcome {
     pub handled: bool,
     pub policy: StackedEditPolicy,
     pub resume: StackedResume,
-    /// The cursor replacement to apply before resuming (if `Some`).
+    /// The global listener's or clicked Part's cursor replacement (if `Some`).
     pub carried: Option<Option<ItemStack>>,
+    /// The carried Part's own cursor replacement, before the clicked phase.
+    pub carried_part_cursor: Option<Option<ItemStack>>,
+    /// Whether the carried Part took from the clicked slot. This also identifies the phase
+    /// of a single `Take`, when the other Part left the clicked slot alone.
+    pub carried_part_took: bool,
     /// The clicked slot edit to apply before resuming (if `Some`).
     pub clicked: Option<StackedClickedEdit>,
-    /// Set by the click when the clicked slot's own rules refuse `clicked`: the click changed
-    /// nothing and its decision is undone.
+    /// Set when the slot rules refuse an edit or a suspended edit's inputs changed.
+    /// The click and its listener writes are then undone.
     pub refused: std::cell::Cell<bool>,
 }
 

@@ -3,7 +3,7 @@
 //! take is silent; and a failing listener undoes its writes with the take. The fixtures need
 //! prepared resources.
 use crate::game::native_guest_turn_tests::with_guests;
-use mod_api::item::menu::{ClickedStackResult, StackedOnOtherDirection};
+use mod_api::item::menu::{ClickedStackResult, StackResult, StackedOnOtherDirection};
 use mod_api::{
     BlockEntityPart, BlockPart, Hooks, HostBlockStates, HostTransaction, ITEMS, ItemCraftedEvent,
     ItemPlace, ItemResource, MenuPart, MenuSlotRulesEvent, MenuSlotTakeEvent, ModEntry, Mods,
@@ -47,6 +47,8 @@ type Heard = (u128, String, usize, (String, u32), Option<(String, u32)>);
 enum TakeScript {
     Hear,
     CheckLiveRemainder,
+    MoveStickToCursor,
+    RemoveBackingWithPartCursor,
     ChargeInputs,
     Reward,
     Panic,
@@ -197,7 +199,9 @@ impl BlockEntityPart for Pot {
                     })
                     .expect("live resident block entity");
             }
-            TakeScript::RemoveBacking | TakeScript::RemoveBackingDuringSwap => {
+            TakeScript::RemoveBacking
+            | TakeScript::RemoveBackingDuringSwap
+            | TakeScript::RemoveBackingWithPartCursor => {
                 let host = event.subject.host();
                 let level = host.level("minecraft:overworld").unwrap();
                 let air = mod_api::BlockState::of(
@@ -224,6 +228,16 @@ impl BlockEntityPart for Pot {
                 let dirt = place.resource(host).expect("hotbar 8 still holds dirt");
                 assert_eq!(place.extract(host, &tx, &dirt, 64), 64);
             }
+            TakeScript::MoveStickToCursor if heard_count == 1 => {
+                let host = event.subject.host();
+                let tx = host.transaction_current().expect("the take is tentative");
+                let stick = ItemResource::of(&api_item("minecraft:stick", 1));
+                let player = host.player(event.player).unwrap();
+                let cursor = player.container_menu(host).unwrap().cursor();
+                assert_eq!(place.extract(host, &tx, &stick, 1), 1);
+                assert_eq!(cursor.insert(host, &tx, &stick, 1), 1);
+                assert_eq!(cursor.amount(host), 2);
+            }
             TakeScript::ReplacePickAllCursor if heard_count == 1 => {
                 let host = event.subject.host();
                 let tx = host.transaction_current().expect("a take is tentative");
@@ -246,7 +260,9 @@ impl BlockEntityPart for Pot {
                 LINK_INSERTED.set(items.insert_at(host, &tx, 0, &ItemResource::of(event.taken), 1));
                 panic!("a linked write failed");
             }
-            TakeScript::RefillGrid | TakeScript::ReplacePickAllCursor => {}
+            TakeScript::RefillGrid
+            | TakeScript::ReplacePickAllCursor
+            | TakeScript::MoveStickToCursor => {}
         }
     }
 }
@@ -273,7 +289,18 @@ impl mod_api::ItemPart for TakeOne {
         event: &mut mod_api::ItemStackedOnOtherEvent<'_>,
     ) -> mod_api::Flow {
         event.result.clicked = ClickedStackResult::Take(1);
-        if event.event.direction == StackedOnOtherDirection::OtherStackedOnMe {
+        let clicked = event.event.direction == StackedOnOtherDirection::OtherStackedOnMe;
+        match (SCRIPT.get(), clicked) {
+            (TakeScript::RemoveBackingWithPartCursor, false)
+            | (TakeScript::MoveStickToCursor, true) => {
+                event.result.carried = StackResult::Set(Some(api_item("minecraft:stone", 1)));
+            }
+            (TakeScript::RemoveBackingWithPartCursor, true) => {
+                event.result.carried = StackResult::Set(Some(api_item("minecraft:stone", 2)));
+            }
+            _ => {}
+        }
+        if clicked {
             event.result.handled = true;
             mod_api::Flow::Cancel
         } else {
@@ -499,6 +526,57 @@ fn each_part_take_hears_its_live_remainder_before_the_next_take() {
                 assert_eq!(heard(), [took(0, 1, 3), took(0, 1, 2)]);
                 assert_eq!(in_pot(game, 0), 2);
                 assert_eq!(held(game, 0), (0, 1));
+            });
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_pending_part_cursor_write_does_not_overwrite_a_take_listeners_transfer() {
+    crate::game::in_own_process(
+        "game::slot_take_tests::a_pending_part_cursor_write_does_not_overwrite_a_take_listeners_transfer",
+        || {
+            let parts = TakeMod {
+                menu_slot_take: true,
+                item_parts_take: true,
+            };
+            with_pot_parts(pot_type(SLOTS, None), parts, |game| {
+                let stick = item("minecraft:stick", 1);
+                SCRIPT.set(TakeScript::MoveStickToCursor);
+                set(game, &[(0, stone(4))], &[(8, stick.clone())], stick.clone());
+                click(game, 0, 0, sunrise_client::lan::menu::input::PICKUP);
+                assert_eq!(heard(), [took(0, 1, 3)]);
+                assert_eq!(in_pot(game, 0), 4);
+                let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+                assert_eq!(guest.inventory[8], stick);
+                assert_eq!(guest.carried, stick);
+            });
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn closing_on_the_first_part_take_returns_only_its_owed_cursor() {
+    crate::game::in_own_process(
+        "game::slot_take_tests::closing_on_the_first_part_take_returns_only_its_owed_cursor",
+        || {
+            let parts = TakeMod {
+                menu_slot_take: true,
+                item_parts_take: true,
+            };
+            with_pot_parts(pot_type(SLOTS, None), parts, |game| {
+                SCRIPT.set(TakeScript::RemoveBackingWithPartCursor);
+                set(game, &[(0, stone(4))], &[], item("minecraft:stick", 1));
+                click(game, 0, 0, sunrise_client::lan::menu::input::PICKUP);
+                assert_eq!(heard(), [took(0, 1, 3)]);
+                assert!(game.world.block_entities.get(&POS).is_none());
+                let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+                assert!(guest.menu.is_none());
+                assert_eq!(guest.carried, None);
+                let returned: Vec<_> = guest.inventory.iter().flatten().cloned().collect();
+                assert_eq!(returned, [stone(1).unwrap()]);
             });
         },
     );

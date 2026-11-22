@@ -3654,7 +3654,7 @@ pub(crate) mod tests {
             resume: StackedResume::Done,
             carried: Some(Some(ItemStack::new("minecraft:stick", 2))),
             clicked: Some(StackedClickedEdit::Set(None)),
-            refused: std::cell::Cell::new(false),
+            ..Default::default()
         };
         let rules = OutcomeRules {
             items: Items::for_tests(Default::default()),
@@ -3687,7 +3687,7 @@ pub(crate) mod tests {
             resume: StackedResume::Done,
             carried: Some(Some(ItemStack::new("minecraft:stick", 5))),
             clicked: Some(StackedClickedEdit::Take(4)),
-            refused: std::cell::Cell::new(false),
+            ..Default::default()
         };
         let blocked_rules = OutcomeRules {
             items: Items::for_tests(Default::default()),
@@ -3705,7 +3705,7 @@ pub(crate) mod tests {
             resume: StackedResume::Done,
             carried: None,
             clicked: Some(StackedClickedEdit::Take(2)),
-            refused: std::cell::Cell::new(false),
+            ..Default::default()
         };
         let partial_rules = OutcomeRules {
             items: Items::for_tests(Default::default()),
@@ -3740,7 +3740,7 @@ pub(crate) mod tests {
             resume: StackedResume::Done,
             carried: Some(Some(ItemStack::new("minecraft:stick", 1))),
             clicked: Some(StackedClickedEdit::Set(None)),
-            refused: std::cell::Cell::new(false),
+            ..Default::default()
         };
         let clear_blocked = OutcomeRules {
             items: Items::for_tests(Default::default()),
@@ -3773,7 +3773,7 @@ pub(crate) mod tests {
                 "minecraft:snowball",
                 17,
             )))),
-            refused: std::cell::Cell::new(false),
+            ..Default::default()
         };
         let oversize_rules = OutcomeRules {
             items: Items::for_tests(Default::default()),
