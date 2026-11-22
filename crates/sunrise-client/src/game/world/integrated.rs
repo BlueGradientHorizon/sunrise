@@ -1136,22 +1136,26 @@ impl Game<'_> {
             // Commands.performCommand runs in the player's level.
             let (back, theirs) = (self.dim, super::Dim::from_id(&g.dimension));
             let entered = theirs == back || self.enter_level(theirs).is_ok();
-            if entered && let Some(swap) = self.enter_guest_in_dimension(conn, back) {
-                let command = command.strip_prefix('/').unwrap_or(command).to_owned();
-                let (lines, ran) = self.recording_command_outcome(|game| {
-                    game.as_console(|g| {
-                        g.chat_capture = Some(Vec::new());
-                        // A command a native mod registered goes to the mods
-                        // first, as the owner's own chat does (the console is
-                        // level 4, so every registered usage is allowed).
-                        if !g.perform_native_command(conn, 4, command.trim()) {
-                            g.run_command(&command);
-                        }
-                        g.chat_capture.take().unwrap_or_default()
+            if entered
+                && let Some((lines, ran)) = self.with_guest_swap(conn, back, |game| {
+                    let command = command.strip_prefix('/').unwrap_or(command).to_owned();
+                    game.recording_command_outcome(|game| {
+                        game.as_console(|g| {
+                            g.chat_capture = Some(Vec::new());
+                            // A command a native mod registered goes to the mods
+                            // first, as the owner's own chat does (the console is
+                            // level 4, so every registered usage is allowed).
+                            if g.perform_native_command(conn, 4, command.trim(), false)
+                                .is_none()
+                            {
+                                g.run_command(&command);
+                            }
+                            g.chat_capture.take().unwrap_or_default()
+                        })
                     })
-                });
+                })
+            {
                 outcome = ran;
-                self.leave_guest(swap);
                 if let Some(host) = self.lan.as_mut() {
                     host.hub.sync_all_effects();
                 }
@@ -1729,7 +1733,10 @@ pub(super) mod tests {
     #[ignore = "daily"]
     fn forced_disconnect_keeps_wire_cache_until_integrated_server_stops() {
         use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
-        use sunrise_client::{lan::data::SyncData, text::Text};
+        use sunrise_client::{
+            lan::data::{SyncData, WorldTags},
+            text::Text,
+        };
 
         if run_fresh_cases(
             "game::integrated::tests::forced_disconnect_keeps_wire_cache_until_integrated_server_stops",
@@ -1747,6 +1754,7 @@ pub(super) mod tests {
                     &game.pack_files(),
                     Some(sync.clone()),
                     game.adv.tree.clone(),
+                    WorldTags::new(game.res.shared_items(), &game.health_resources.damage),
                 );
                 let flags = Arc::new(Flags::default());
                 let stopping = flags.clone();

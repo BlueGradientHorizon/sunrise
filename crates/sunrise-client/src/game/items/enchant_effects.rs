@@ -1453,27 +1453,6 @@ impl Game<'_> {
             _ => false,
         }
     }
-    /// Whether a worn enchantment gives immunity to `#burn_from_stepping`
-    /// damage (frost walker's `minecraft:damage_immunity`).
-    pub(crate) fn wears_burn_from_stepping_immunity(&self) -> bool {
-        self.armor
-            .iter()
-            .zip(["head", "chest", "legs", "feet"])
-            .any(|(stack, slot)| {
-                stack
-                    .iter()
-                    .flat_map(ItemStack::enchantments)
-                    .any(|(id, _)| {
-                        self.stations().enchantments.get(id).is_some_and(|def| {
-                            def.effects.get("minecraft:damage_immunity").is_some()
-                                && def
-                                    .slots
-                                    .iter()
-                                    .any(|s| s == slot || s == "armor" || s == "any")
-                        })
-                    })
-            })
-    }
     /// Enchantment attribute modifiers of active equipment, including held Efficiency.
     /// Each piece's modifier id ends with its slot (`EnchantmentAttributeEffect.idForSlot`),
     /// so the same enchantment on two pieces stacks instead of replacing itself.

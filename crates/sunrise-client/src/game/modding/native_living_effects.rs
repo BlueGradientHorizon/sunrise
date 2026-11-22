@@ -73,7 +73,7 @@ impl Game<'_> {
     }
 
     /// Where a player's or a guest's effects are: the acting player's own
-    /// are the game's (swapped in by `enter_guest`; a player handle names
+    /// are the game's (swapped in by the entry of `guest_turn`; a player handle names
     /// the acting player, and a game without a hub keeps its single
     /// player's the same way), any other guest's are their hub record's.
     /// None for another kind.

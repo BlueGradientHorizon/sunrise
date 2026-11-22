@@ -45,7 +45,7 @@ pub(crate) struct Installed {
     pub(crate) fluids: OnceLock<sunrise_mod_runtime::registry_keys::Names>,
     pub(crate) resolved_items: OnceLock<sunrise_mod_runtime::registry_keys::Names>,
     pub(crate) resolved_game_events: OnceLock<sunrise_mod_runtime::registry_keys::Names>,
-    pub(crate) resolved_entity_types: OnceLock<sunrise_mod_runtime::registry_keys::Names>,
+    pub(crate) resolved_entity_types: OnceLock<sunrise_mod_runtime::registry_keys::EntityTypes>,
     /// Attribute suppliers from the accepted core tables, paired with this installation's keys.
     pub(crate) entity_type_defaults:
         std::sync::RwLock<Option<Arc<crate::entity::entity_type_defaults::Suppliers>>>,

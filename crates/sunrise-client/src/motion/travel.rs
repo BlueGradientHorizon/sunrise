@@ -193,7 +193,8 @@ impl MotionWorld<'_, '_, '_> {
                             self.tag_items,
                             self.block_registries,
                             self.damage_hooks,
-                        ),
+                        )
+                        .with_player_equipment(self.side.player_equipment()),
                         self.health,
                         rules,
                         id,

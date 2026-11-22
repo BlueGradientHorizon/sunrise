@@ -6,7 +6,7 @@
 //! entity directly. A part here names those writes as [`EntityWrite`] values on the
 //! same collector, and its level writes as [`InsideWrite`] requests, so the walk's
 //! order and the entity's own tick are kept.
-use crate::{BlockState, EffectKey};
+use crate::{BlockState, DamageTypeKey, EffectKey};
 
 /// Vanilla `InsideBlockEffectType`: what a block does to the entity inside it, beyond
 /// the writes it makes directly. The collector flushes them per step in this order.
@@ -59,9 +59,11 @@ pub enum EntityWrite {
     /// `makeStuckInBlock`: scale the entity's movement by these factors until it leaves.
     /// Resets its fall distance, as every stuck block does.
     StuckIn([f64; 3]),
-    /// Request `minecraft:generic` damage without a causing or direct entity.
-    /// The write applies to players, mobs, and dropped items; projectiles ignore it.
+    /// Hurt the contacted entity without a causing or direct entity. A missing type in
+    /// the current level does not apply damage; it never becomes generic damage.
     Hurt {
+        /// The type requested at registration (`Registrar::damage_type_key`).
+        damage_type: DamageTypeKey,
         /// The damage dealt.
         amount: f32,
     },
@@ -212,7 +214,10 @@ mod tests {
     fn steps_flush_in_vanilla_order() {
         let mut effects = InsideEffects::default();
         let stuck = EntityWrite::StuckIn([0.25, 0.05, 0.25]);
-        let fire = EntityWrite::Hurt { amount: 1.0 };
+        let fire = EntityWrite::Hurt {
+            damage_type: DamageTypeKey(0),
+            amount: 1.0,
+        };
         // Step 0: a berry bush (Freeze queued by powder snow elsewhere, and the
         // bush's stuck) then a fire block (FireIgnite with its hurt after it).
         effects.advance_step(0);

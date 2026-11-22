@@ -433,7 +433,6 @@ impl Game<'_> {
             }
             self.move_pushed_body(
                 lid.mover(),
-                lid.shulker(),
                 target,
                 body,
                 movement,
@@ -474,15 +473,7 @@ impl Game<'_> {
             }
             let no_physics = self.pushed_no_physics(target);
             if !self.lid_spares(lid, root, target, no_physics) {
-                self.move_pushed_body(
-                    lid.mover(),
-                    lid.shulker(),
-                    target,
-                    body,
-                    movement,
-                    no_physics,
-                    &mut None,
-                );
+                self.move_pushed_body(lid.mover(), target, body, movement, no_physics, &mut None);
             }
         }
     }
@@ -593,7 +584,9 @@ impl Game<'_> {
         sunrise_client::collisions::PowderSnowSubject<'_>,
     )> {
         match target {
-            MoveWho::Entity(EntityHandle::Mob(i)) => Some(self.mobs[i].support_collision()),
+            MoveWho::Entity(EntityHandle::Mob(i)) => {
+                Some(self.mobs[i].support_collision(Some(&self.items().entity_type_tags)))
+            }
             MoveWho::Entity(EntityHandle::ArmorStand(i)) => {
                 Some(self.armor_stands[i].support_collision())
             }
@@ -601,13 +594,12 @@ impl Game<'_> {
         }
     }
 
-    /// `Entity.move(mover, movement)` for one body: a lid's push (`shulker` is the shulker whose
-    /// lid it is, if one) or a mod's `move_by`. The collision scan stops it at the blocks, the
-    /// world border and the entities it collides with, it steps up and its ground flag follows.
+    /// `Entity.move(mover, movement)` for a lid's push or a mod's `move_by`.
+    /// The collision scan stops the body at the blocks, border and other bodies;
+    /// it steps up and its ground flag follows.
     fn move_pushed_body(
         &mut self,
         mover: MoverType,
-        shulker: Option<u32>,
         target: MoveWho,
         body: Body,
         movement: Vec3,
@@ -620,7 +612,7 @@ impl Game<'_> {
         }
         // Armor stands arm their gate in their own collided shove.
         if let MoveWho::Entity(EntityHandle::ArmorStand(i)) = target {
-            self.shoves_armor_stand(i, mover, shulker, movement, stand_grid);
+            self.shoves_armor_stand(i, mover, movement, stand_grid);
             return;
         }
         let Some(selected) = self.stable_push_target(target) else {
@@ -764,7 +756,7 @@ impl Game<'_> {
                 EntityHandle::ArmorStand(i) => Some(self.armor_stands[i].velocity),
                 _ => None,
             };
-            self.move_pushed_body(cause, None, target, body, movement, false, &mut None);
+            self.move_pushed_body(cause, target, body, movement, false, &mut None);
             if let Some(velocity) = stand
                 && let Some(MoveWho::Entity(EntityHandle::ArmorStand(i))) =
                     self.resolve_push_target(selected)
@@ -1696,6 +1688,7 @@ impl Game<'_> {
                 let _ = stand.update_retained_ground(
                     &self.world,
                     self.collision,
+                    &world_items!(self).entity_type_tags,
                     wanted.y < 0.0 && wanted.y != moved.y,
                     Some(moved),
                 );
@@ -1788,7 +1781,7 @@ impl Game<'_> {
             MoveWho::Guest(conn) => self.lan.as_mut().and_then(|host| {
                 host.hub.update_guest(conn, |g| {
                     // The body and the hub's copy of its position move together:
-                    // `leave_guest` writes the body back over the hub's.
+                    // the put-back at the end of `guest_turn` writes the body back over the hub's.
                     for (slot, delta) in g.position.iter_mut().zip(movement.components()) {
                         *slot += delta;
                     }

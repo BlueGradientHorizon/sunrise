@@ -433,8 +433,8 @@ fn item_slot_writes_save_but_menu_data_is_transient() {
 
 #[test]
 #[ignore = "daily"]
-fn a_nested_item_write_marks_the_level_written_not_the_level_committing() {
-    const NAME: &str = "game::block_entity_part_state_tests::a_nested_item_write_marks_the_level_written_not_the_level_committing";
+fn an_item_write_commits_in_its_own_level_despite_an_unrelated_transaction() {
+    const NAME: &str = "game::block_entity_part_state_tests::an_item_write_commits_in_its_own_level_despite_an_unrelated_transaction";
     with_state_mod(NAME, |game| {
         let chunk = (0, 0);
         let pos = (1, 64, 1);
@@ -448,8 +448,8 @@ fn a_nested_item_write_marks_the_level_written_not_the_level_committing() {
         game.enter_level(Dim::Overworld).unwrap();
         assert!(!game.world.modified.contains(&chunk));
 
-        let root = game.transaction_open();
-        // Like a command that opens and commits its own transaction in the Nether.
+        let overworld = game.transaction_open();
+        // Like `execute in`: the Nether has no open journal to join.
         game.enter_level(Dim::Nether).unwrap();
         let stone =
             mod_api::ItemStack::new(mod_api::__private::item_key("minecraft:stone").unwrap(), 1)
@@ -463,9 +463,13 @@ fn a_nested_item_write_marks_the_level_written_not_the_level_committing() {
             )),
             Ok(true)
         );
-        assert!(!game.world.modified.contains(&chunk), "not yet committed");
+        assert!(
+            game.world.modified.contains(&chunk),
+            "committed in the Nether"
+        );
         game.enter_level(Dim::Overworld).unwrap();
-        game.transaction_close(&root, true);
+        game.transaction_close(&overworld, false);
+        assert!(game.transactions.is_empty());
         assert!(!game.world.modified.contains(&chunk));
         assert!(
             game.levels

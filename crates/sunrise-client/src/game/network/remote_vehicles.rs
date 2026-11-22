@@ -14,7 +14,6 @@
 //! A minecart
 //! moves on the server with the rider's input, and the rider sits in it.
 use super::{Game, Keys, ray_box, remote::Remote};
-use crate::Result;
 use std::collections::HashMap;
 use sunrise_client::mobs::{Mob, equine, happy_ghast};
 use sunrise_client::{keybinds, text::Text};
@@ -517,20 +516,12 @@ impl Game<'_> {
         self.riding == Some(id) && self.remote.as_ref().is_none_or(|r| r.first_passenger)
     }
 
-    /// The local player's tick in its vehicle, in place of its own movement:
+    /// Tick the local player's vehicle before the player tick:
     /// false when it rides nothing.
-    pub(super) fn remote_ride(&mut self, keys: Keys, sprint_window: i32) -> Result<bool> {
+    pub(super) fn remote_ride(&mut self, keys: Keys) -> bool {
         let Some(id) = self.riding else {
-            return Ok(false);
+            return false;
         };
-        // LocalPlayer.aiStep runs its sprint decisions in a vehicle too: `canSprint` and
-        // this client's authority stand in for food (`isSprintingPossible`).
-        let (can_sprint, local) = self
-            .driven_mount()
-            .map_or((false, false), |m| (equine::can_sprint(m.species()), true));
-        if let Some(p) = self.player.as_mut() {
-            p.sprint_input_tick_riding(keys, sprint_window, can_sprint, local)?;
-        }
         // Settle an invisible seat riding a moving avatar before reading it.
         // The normal end-of-tick pass alone leaves the local rider a tick behind.
         self.position_riders();
@@ -543,7 +534,7 @@ impl Game<'_> {
             // Another animal moves on the server with the rider's input
             // (PlayerInput); the rider sits where `positionRider` puts it.
             self.position_rider();
-            return Ok(true);
+            return true;
         }
         // Generic entities are valid vehicles too (plugins use displays as seats).
         // Keep riding set so sendChanges sends rotation, never a walking position.
@@ -582,7 +573,7 @@ impl Game<'_> {
                     p.velocity = Vec3::ZERO;
                     p.fall_distance = 0.0;
                 }
-                return Ok(true);
+                return true;
             }
         }
         let seat = if let Some(c) = self.cushions.iter().find(|c| c.id == id) {
@@ -643,7 +634,7 @@ impl Game<'_> {
             // riding it. Nothing with the id is in the level any more (it
             // died, or the world it rode in was left), so the seat goes.
             self.riding = None;
-            return Ok(false);
+            return false;
         };
         if let Some(p) = self.player.as_mut() {
             // The tick a rider takes its seat is a teleport (`Entity.moveTo`,
@@ -661,7 +652,7 @@ impl Game<'_> {
             p.velocity = Vec3::ZERO;
             p.fall_distance = 0.0;
         }
-        Ok(true)
+        true
     }
 
     /// `LocalPlayer.tick` for a passenger: the boat it controls goes to the
@@ -906,6 +897,13 @@ impl Game<'_> {
         self.mobs.iter().find(|m| m.id == id && self.drives(m))
     }
 
+    /// `LocalPlayer.aiStep` decides sprint after the rider's base tick sampled fluids.
+    pub(super) fn remote_rider_sprint(&mut self, keys: Keys, window: i32) -> crate::Result<()> {
+        let mount = self.mobs.iter().position(|m| self.drives(m));
+        let can_sprint = mount.is_some_and(|i| equine::can_sprint(self.mobs[i].species()));
+        self.player_sprint_tick(keys, window, Some((can_sprint, mount.is_some())))
+    }
+
     /// `LivingEntity.travelRidden`, then `LocalPlayer.aiStep`, on the
     /// controlling client. The vehicle ticks before its passenger
     /// (`ClientLevel.tickNonPassenger`), so the mount moves (`tickRidden`,
@@ -921,6 +919,8 @@ impl Game<'_> {
         let (yaw, pitch) = (self.yaw, self.pitch);
         // The first ridden tick reads what the player's last walking tick applied.
         let walked = self.player.as_ref().map_or([0.0; 2], |p| p.applied_input);
+        // Camel.getRiddenSpeed reads the live controller flag before the rider ticks.
+        let sprint = self.player.as_ref().is_some_and(|p| p.sprinting);
         let m = &mut self.mobs[i];
         let last = m.rider.unwrap_or(equine::Rider {
             strafe: walked[0],
@@ -932,6 +932,7 @@ impl Game<'_> {
             yaw,
             pitch,
             steer,
+            sprint,
             client: false,
             ..last
         });
@@ -971,10 +972,6 @@ impl Game<'_> {
             self.send(riding_jump(id, self.mount.jump_scale));
         }
         let [strafe, forward] = sunrise_client::input::modify_input(keys.direction(), None, None);
-        // The rider's sprint state, not the key: Camel.getRiddenSpeed reads
-        // `controller.isSprinting()`, which keeps the double-tapped sprint
-        // after the key is let go (`shouldStopRunSprinting` decides the end).
-        let sprinting = self.player.as_ref().is_some_and(|p| p.sprinting);
         let m = &mut self.mobs[i];
         if jump > 0.0 && equine::is_equine(m.species()) {
             // `onPlayerJump`: the mount slides on the rider's keys and rears
@@ -990,7 +987,7 @@ impl Game<'_> {
             pitch,
             jump: if jump > 0.0 { jump } else { pending },
             steer,
-            sprint: sprinting,
+            sprint,
             jumping: keys.jump,
             sneak: keys.shift,
             client: false,
@@ -1044,7 +1041,11 @@ fn mount_move(m: &Mob, at: PosRot) -> S {
 }
 
 /// Avatar's VEHICLE attachment scales independently of the vehicle's seat.
-fn generic_player_seat(at: glam::DVec3, before: glam::DVec3, scale: f32) -> (Vec3, Vec3) {
+pub(super) fn generic_player_seat(
+    at: glam::DVec3,
+    before: glam::DVec3,
+    scale: f32,
+) -> (Vec3, Vec3) {
     let offset = 0.6 * f64::from(scale);
     (
         Vec3::new(at.x, at.y - offset, at.z),
@@ -1223,7 +1224,7 @@ mod tests {
             if controlled {
                 assert!(matches!(packets[0], S::MoveVehicle(_)), "{row}");
                 let before = game.mobs[0].position;
-                assert!(game.remote_ride(Keys::default(), 0).unwrap());
+                assert!(game.remote_ride(Keys::default()));
                 let m = &game.mobs[0];
                 assert_eq!(
                     f64::from(m.ai.zza),
@@ -1380,7 +1381,7 @@ mod tests {
             ..Keys::default()
         };
         let zza = |game: &mut Game, keys| {
-            assert!(game.remote_ride(keys, 0).unwrap());
+            assert!(game.remote_ride(keys));
             game.mobs[0].ai.zza
         };
         assert_eq!(zza(&mut game, forward), 0.0, "the press waits a tick");
@@ -1391,6 +1392,47 @@ mod tests {
             "the release waits a tick"
         );
         assert_eq!(zza(&mut game, Keys::default()), 0.0);
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_sprinting_rider_boards_a_camel_at_sprint_speed() {
+        crate::game::in_own_process(
+            "game::remote_vehicles::tests::a_sprinting_rider_boards_a_camel_at_sprint_speed",
+            || {
+                use sunrise_client::{items::ItemStack, mobs::camel, motion::PlayerMotion};
+                crate::game::native_entity_refs::tests::with_client_game(|game| {
+                    let (client, _server) = sunrise_protocol::connection::Pipe::pair();
+                    game.connect_local(client, "CamelRider").unwrap();
+                    let remote = game.remote.as_mut().unwrap();
+                    remote.joined = true;
+                    remote.entity_id = 42;
+                    game.world.game_time = 1_000;
+                    let at = Vec3::new(4.5, 80.0, 4.5);
+                    let mut player = PlayerMotion::new(game.motion, at).unwrap();
+                    player.entity_id = 42;
+                    player.applied_input = [0.0, 0.98];
+                    player.set_sprinting(true).unwrap();
+                    game.player = Some(player);
+                    let root = crate::game::native_entity_refs::tests::fixture_root();
+                    let types = MobTypes::load(&root).unwrap();
+                    let kind = std::sync::Arc::new(types.types["minecraft:camel"].clone());
+                    let mut mount = Mob::new(7, kind, at, 0.0);
+                    mount.set_saddle(Some(ItemStack::new("minecraft:saddle", 1)));
+                    camel::finish_load(&mut mount, game.world.game_time);
+                    assert!(!camel::refuse_to_move(&mount));
+                    assert_eq!(mount.extra.anim_ticks, 0);
+                    let expected = mount.movement_speed() as f32 + 0.1_f32;
+                    game.mobs.push(mount);
+                    game.apply_remote_passengers(7, &[42]);
+                    assert!(game.mobs[0].rider.is_none(), "before the first driven tick");
+                    assert!(game.remote_ride(Keys::default()));
+                    assert_eq!(game.mobs[0].ai.speed.to_bits(), expected.to_bits());
+                    assert_eq!(game.mobs[0].ai.zza, 0.98, "the last walking input");
+                    assert!(game.player.as_ref().unwrap().sprinting);
+                });
+            },
+        );
     }
 
     /// #2920: the client reports where it moved the mount, and a released
@@ -1490,7 +1532,7 @@ mod plugin_seat_tests {
         stand.marker = true;
         game.armor_stands.push(stand);
         game.riding = Some(42);
-        assert!(game.remote_ride(Keys::default(), 0).unwrap());
+        assert!(game.remote_ride(Keys::default()));
         let close = |actual: f64, expected: f64| {
             assert!((actual - expected).abs() < 1e-6, "{actual} != {expected}")
         };
@@ -1498,10 +1540,10 @@ mod plugin_seat_tests {
         close(game.player.as_ref().unwrap().position.y, 63.4);
         game.armor_stands[0].marker = false;
         game.armor_stands[0].small = true;
-        game.remote_ride(Keys::default(), 0).unwrap();
+        game.remote_ride(Keys::default());
         close(game.player.as_ref().unwrap().position.y, 64.3875);
         game.armor_stands[0].small = false;
-        game.remote_ride(Keys::default(), 0).unwrap();
+        game.remote_ride(Keys::default());
         close(game.player.as_ref().unwrap().position.y, 65.375);
         let kind = game.res.player_type().clone().unwrap();
         game.mobs
@@ -1511,7 +1553,7 @@ mod plugin_seat_tests {
         for at in [Vec3::new(5.0, 70.0, 6.0), Vec3::new(12.0, 72.0, -4.0)] {
             game.mobs[0].position = at;
             // No manual position_riders call: local ride must resolve the chain itself.
-            game.remote_ride(Keys::default(), 0).unwrap();
+            game.remote_ride(Keys::default());
             let p = game.player.as_ref().unwrap().position;
             close(p.x, at.x);
             close(p.z, at.z);
@@ -1520,11 +1562,11 @@ mod plugin_seat_tests {
         // Direct riding and a scaled avatar share the same attachment calculation.
         game.riding = Some(43);
         game.mobs[0].extra.model_scale = 1.5;
-        game.remote_ride(Keys::default(), 0).unwrap();
+        game.remote_ride(Keys::default());
         close(game.player.as_ref().unwrap().position.y, 74.1);
         game.mobs.clear();
         game.armor_stands.clear();
-        assert!(!game.remote_ride(Keys::default(), 0).unwrap());
+        assert!(!game.remote_ride(Keys::default()));
         assert_eq!(game.riding, None);
     }
 }

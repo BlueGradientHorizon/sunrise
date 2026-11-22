@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use crate::game::native_entity_refs::tests::{bind_local_player, with_game};
 use crate::game::{Game, GuestUse, Hit};
 use mod_api::{
@@ -254,7 +252,7 @@ fn item_parts_rewrite_or_refuse_context_and_control_survival_on_both_sides() {
                 .chunks
                 .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
             game.sync_tick_chunks();
-            game.set_mode_id(0);
+            game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
             let stone = registry.default_state("minecraft:stone").unwrap();
             game.world.set(4, 64, 4, stone).unwrap();
             game.world.set(4, 65, 4, stone).unwrap();

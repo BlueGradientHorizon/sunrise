@@ -68,16 +68,14 @@ pub trait ItemsHost {
     #[published(entity_type_default_attribute)]
     fn entity_type_default_attribute(&self, entity_type: &str, attribute: &str) -> Option<f64>;
     /// Side: both.
-    /// The stack an SNBT item compound stands for, read as `ItemStack.CODEC` reads a saved
-    /// item: `{id:"minecraft:diamond_sword",count:1,components:{"minecraft:damage":5}}`
-    /// (`count` 1 when missing, `stone` is `minecraft:stone`). This API refuses with None:
-    /// text that is no SNBT compound or has anything but whitespace after it, a `count`
-    /// outside 1 to 99 (the codec's range; it is not clamped to 1), air, and an item this
-    /// world does not have. It also refuses text over 2 MiB and nesting past 512 levels. Those
-    /// two are this API's own safety bound, the one place it differs from vanilla: vanilla's
-    /// SNBT parser has no size or depth limit (very deep text ends in a stack overflow), and
-    /// 2 MiB and 512 are binary NBT's limits, taken here so text a mod supplies cannot
-    /// overflow the parser.
+    /// Decodes a saved-item compound from SNBT, for example
+    /// `{id:"minecraft:diamond_sword",count:1,components:{"minecraft:damage":5}}`.
+    /// A missing `count` defaults to 1, unknown fields such as `Count` are ignored, and
+    /// `stone` means `minecraft:stone`. Returns `None` unless the input is one compound
+    /// with only whitespace around it. Air, unknown items and patches naming a transient
+    /// component are refused. A present `count` must be numeric and in 1 to 99 after
+    /// Java's `Number.intValue` conversion. The text parser also enforces binary NBT's
+    /// 2 MiB input and 512-level nesting bounds.
     fn item_from_snbt(&self, snbt: &str) -> Option<ItemStack>;
     /// Side: both. Read the creative catalog against this world's active holders and flags.
     /// On a cache miss, build it with explicit `permissions` and dispatch
@@ -168,11 +166,17 @@ pub trait ItemsServerHost {
 #[sunrise_mod_api_macros::host_area]
 pub trait ItemsClientHost {
     /// Side: client.
-    /// Creative mode only: gives the player `count` of `item`
-    /// (`minecraft:diamond`) as taking it from the creative inventory does
-    /// (`ServerboundSetCreativeModeSlot`): the selected slot first, then the
-    /// hotbar, then the inventory. The count is cut to one stack.
-    fn give(&mut self, item: ItemKey, count: u32) -> Result<(), String>;
+    /// Creative mode only: puts `stack`, components and all, into the local player's
+    /// inventory as `Inventory.add` does: onto matching stacks (the selected slot, the off
+    /// hand, the hotbar, then the main inventory), then into empty slots, up to the stack's
+    /// effective maximum (`minecraft:max_stack_size` included). Every slot it changed goes to
+    /// the server at once as `MultiPlayerGameMode.handleCreativeModeItemAdd` does
+    /// (`ServerboundSetCreativeModeSlotPacket`; the off hand is slot 45), even while a
+    /// container menu is open. `Ok(Some(remainder))` is what did not fit; nothing is dropped.
+    /// A [`CreativeGiveError`] gives nothing.
+    #[forward_api_inputs]
+    #[forward_api_output]
+    fn give_stack(&mut self, stack: &ItemStack) -> Result<Option<ItemStack>, CreativeGiveError>;
     /// Side: client.
     /// The creative search tab's final display order, for ranking stacks in inventory sorters.
     /// This requests the same catalog as the creative screen (using the player's permission and
@@ -180,7 +184,9 @@ pub trait ItemsClientHost {
     /// reload, a different build, or without a live catalog, this returns an empty list.
     fn creative_search_items(&mut self) -> Vec<ItemStack>;
     /// Side: client.
-    /// Registered enchantments, in registry order.
+    /// Registered enchantments in registry order, including selection `weight` and `anvil_cost`
+    /// (the base anvil fee per enchantment level). This and the other enchantment reads use the
+    /// table built from the server's synced entries when available, and the local table otherwise.
     fn enchantments(&self) -> Vec<EnchantmentInfo>;
     /// Side: client.
     /// Registered potions (`Registries.POTION`), in registry order, each by its registry id:
@@ -192,7 +198,8 @@ pub trait ItemsClientHost {
     /// `Enchantment.getMinCost(level)`: the enchanting power needed, or None for an unknown id.
     fn enchantment_min_cost(&self, id: &str, level: u32) -> Option<i32>;
     /// Side: client.
-    /// Whether enchantment `id` can go on `item` (`Enchantment.isSupportedItem`).
+    /// Whether `item` is in enchantment `id`'s `supported_items` (`Enchantment.isSupportedItem`).
+    /// Does not consult Item Part overrides.
     fn enchantment_supports(&self, id: &str, item: ItemKey) -> bool;
 }
 /// The handles' reads of the `items` area, implemented by the game and reached through [`Backend`].

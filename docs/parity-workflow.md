@@ -274,11 +274,11 @@ when named or explicitly selected with local `--all`. LAN writes `results.json`
 with the host mode and each result beside its screenshots and logs. A skipped
 case is recorded explicitly and does not count as passing coverage.
 
-`known_flaky` in `tools/parity_hosts.json` lists harnesses that fail now and then for a
-cause not fixed yet, each with its reason. One that fails runs once more from
-scratch, and a pass then counts. `parity.py` prints a `RETRIED` line for it
-in its local summary; the daily keeps retry details in the private runner logs. No other harness gets this retry. Fix the cause, then take
-the harness off the list.
+A harness that fails while reusing oracle results runs once more from scratch, and stops reusing
+them if that run passes; it counts as failed either way, and its first failure is its outcome.
+`parity.py` prints the fresh run's outcome on its own line and a `RETRIED` line with both, and the
+daily keeps both runs' logs in the private runner logs. No rerun turns a failure into a pass: a
+harness that fails now and then is a daily red, fixed at its cause.
 
 The game-binary fixture audit keeps these complementary direct rule tests:
 

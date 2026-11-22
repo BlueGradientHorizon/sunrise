@@ -374,9 +374,9 @@ impl Game<'_> {
                     vehicle,
                     rider,
                     vehicle.rider.is_some() || self.riding == Some(v),
-                    self.res
-                        .mob_data()
-                        .entity_has("minecraft:non_controlling_rider", &rider.kind.id),
+                    self.items()
+                        .entity_type_tags
+                        .contains("minecraft:non_controlling_rider", &rider.kind.id),
                 );
                 let takes_body = riders::takes_vehicle_body(vehicle, rider, controlling);
                 let vehicle_width = vehicle.width();

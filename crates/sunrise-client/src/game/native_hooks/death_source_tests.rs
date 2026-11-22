@@ -1,5 +1,4 @@
 //! Prepared-resource regressions through real projectile collision, mob AI and server death.
-#![cfg(test)]
 use crate::game::Game;
 use crate::game::api_values::TryIntoApi;
 use crate::game::native_entity_refs::tests::{bind_local_player, with_game};
@@ -779,8 +778,11 @@ fn mob_death_and_handle_preserve_namespaced_types() {
                         .name
                         .clone()
                 }));
-                mod_api::__private::resolve_entity_types(["vulture:vulture", "minecraft:sheep"])
-                    .unwrap();
+                mod_api::__private::resolve_entity_types(
+                    ["vulture:vulture", "minecraft:sheep"],
+                    |_| Some(true),
+                )
+                .unwrap();
                 let sheep = game.res.mob_types().get("minecraft:sheep").unwrap().clone();
                 for (index, id) in ["vulture:vulture", "sheep", "minecraft:sheep"]
                     .into_iter()

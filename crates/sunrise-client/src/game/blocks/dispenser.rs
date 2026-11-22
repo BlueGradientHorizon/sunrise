@@ -739,12 +739,9 @@ impl Game<'_> {
         // `Equippable.canBeEquippedBy`, then the item's parts (`canEquip`) with the stack converted
         // once, for the entity in front.
         let targets = self.targets_at(front);
-        let (tags, prepared) = (
-            &self.stations().enchantments.entity_tags,
-            self.equip_stack(stack),
-        );
+        let prepared = self.equip_stack(stack);
         let allows = |entity: u32, id: &str| {
-            let data = equippable.allows(id, tags);
+            let data = equippable.allows(id);
             self.can_equip(&prepared, equippable.slot, entity, id, data)
         };
         // LivingEntity.canEquipWithDispenser: alive, the slot usable, the

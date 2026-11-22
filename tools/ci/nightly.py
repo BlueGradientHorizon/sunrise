@@ -907,7 +907,7 @@ def parent_stage(sha: str, work: Path) -> str:
     the candidate's checkout applies, into its own target folder, with no inherited wrapper."""
     tree = work / "judge"
     unpack(sha, tree)
-    subprocess.run(["cargo", "build", "--locked", "--quiet", "-p", "sunrise-mod-api-gen", "--bin", "sunrise-stage",
+    subprocess.run(["cargo", "build", "--locked", "--quiet", "--bin", "sunrise-stage",
                     "--target-dir", str(work / "judge-target")], cwd=tree, env=isolated_env(), check=True)
     return str(work / "judge-target" / "debug" / "sunrise-stage")
 

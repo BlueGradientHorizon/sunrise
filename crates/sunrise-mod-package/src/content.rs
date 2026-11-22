@@ -14,8 +14,10 @@ use mod_vocab::{__private::DeclarationKind, DeclarationError};
 use serde::Deserialize;
 use std::{
     collections::{BTreeMap, BTreeSet},
-    io::Read,
+    fmt,
+    io::{self, Read},
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
 };
 pub use sunrise_core::arm_pose::ArmPose;
 
@@ -1094,20 +1096,33 @@ pub const MAX_SIGNED_DATA_SLOTS: u16 = (i16::MAX as u16) + 1;
 /// (`0..=65,535`, count `65,536`).
 pub const MAX_BLOCKLESS_DATA_SLOTS: usize = u16::MAX as usize + 1;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 enum Source {
     Dir(PathBuf),
-    Zip(PathBuf),
+    Zip {
+        path: PathBuf,
+        archive: Arc<Mutex<zip::ZipArchive<std::fs::File>>>,
+    },
     /// No files: content a native mod declares in code.
     Code,
 }
 
+impl fmt::Debug for Source {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Dir(path) => f.debug_tuple("Dir").field(path).finish(),
+            Self::Zip { path, .. } => f.debug_tuple("Zip").field(path).finish(),
+            Self::Code => f.write_str("Code"),
+        }
+    }
+}
+
 /// A mod's content: its files and declarations.
-#[derive(Debug)]
 pub struct Content {
     source: Source,
+    from_admission: bool,
     /// Every content file (`assets/...`, `data/...`), sorted.
-    pub files: Vec<String>,
+    pub files: Arc<[String]>,
     pub blocks: Vec<Block>,
     pub items: Vec<Item>,
     pub effects: Vec<MobEffect>,
@@ -1123,6 +1138,26 @@ pub struct Content {
     pub menu_types: Vec<MenuType>,
     /// The namespaces it owns: the mod id, then the manifest's `namespaces`.
     pub namespaces: Vec<String>,
+}
+
+impl fmt::Debug for Content {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // The release-line corpus records the declarations, not loader bookkeeping.
+        f.debug_struct("Content")
+            .field("source", &self.source)
+            .field("files", &self.files)
+            .field("blocks", &self.blocks)
+            .field("items", &self.items)
+            .field("effects", &self.effects)
+            .field("creative_tabs", &self.creative_tabs)
+            .field("fluids", &self.fluids)
+            .field("fluid_interactions", &self.fluid_interactions)
+            .field("entity_types", &self.entity_types)
+            .field("block_entity_types", &self.block_entity_types)
+            .field("menu_types", &self.menu_types)
+            .field("namespaces", &self.namespaces)
+            .finish()
+    }
 }
 
 macro_rules! declaration_kinds {
@@ -1167,38 +1202,192 @@ declaration_kinds! {
     Menu => "menu": MenuType,
 }
 
-/// Reads a mod's content files ([`Content::reader`]).
-pub enum FileReader<'a> {
-    Dir(&'a Path),
-    Zip(Box<zip::ZipArchive<std::fs::File>>),
+/// Where a package's content files are read from: its folder or its `.smod`.
+#[derive(Debug, Clone)]
+pub struct ContentSource {
+    source: Source,
+    files: Arc<[String]>,
 }
+
+impl ContentSource {
+    /// The package at `path` (a `.smod` or a mod folder), and every content file it holds
+    /// (`assets/...`, `data/...`), sorted: content loading's own walk and checks, each path
+    /// [`check_path`], at most [`MAX_FILE`] bytes per file, [`MAX_FILES`] files and [`MAX_TOTAL`]
+    /// bytes in all.
+    pub fn open(path: &Path) -> Result<Self, String> {
+        let (source, sized) = if path.is_dir() {
+            (Source::Dir(path.to_owned()), folder_files(path)?)
+        } else {
+            let mut zip = open_zip(path)?;
+            let mut out = Vec::new();
+            for i in 0..zip.len() {
+                let entry = zip.by_index_raw(i).map_err(|e| e.to_string())?;
+                let name = entry.name().map_err(|e| e.to_string())?.into_owned();
+                if (name.starts_with("assets/") || name.starts_with("data/")) && !entry.is_dir() {
+                    out.push((name, entry.size()));
+                }
+            }
+            (
+                Source::Zip {
+                    path: path.to_owned(),
+                    archive: Arc::new(Mutex::new(zip)),
+                },
+                out,
+            )
+        };
+        let mut files = Vec::with_capacity(sized.len());
+        let mut total = 0u64;
+        for (name, size) in sized {
+            check_path(&name)?;
+            if size > MAX_FILE {
+                return Err(format!("{name} is over {} MiB", MAX_FILE >> 20));
+            }
+            total += size;
+            files.push(name);
+        }
+        if files.len() > MAX_FILES {
+            return Err(format!("more than {MAX_FILES} content files"));
+        }
+        if total > MAX_TOTAL {
+            return Err(format!("content is over {} MiB", MAX_TOTAL >> 20));
+        }
+        files.sort();
+        files.dedup();
+        Ok(Self {
+            source,
+            files: files.into(),
+        })
+    }
+
+    /// The sorted content names captured when this source opened.
+    pub fn names(&self) -> Arc<[String]> {
+        self.files.clone()
+    }
+
+    /// Check the manifest's namespace fence before any registrant can see these files.
+    pub fn admit(self, manifest: &Manifest) -> Result<AdmittedContentSource, String> {
+        for name in self.files.iter() {
+            check_namespace(name, manifest)?;
+        }
+        Ok(AdmittedContentSource(self))
+    }
+
+    /// Whether the file list came from an opened archive rather than a loose folder.
+    pub fn is_archive(&self) -> bool {
+        matches!(self.source, Source::Zip { .. })
+    }
+
+    /// A reader of its files, which checks each path and size again as it reads.
+    pub fn reader(&self) -> FileReader<'_> {
+        self.source.reader()
+    }
+}
+
+/// A package's opened file index, already checked against its manifest's namespace fence.
+#[derive(Debug)]
+pub struct AdmittedContentSource(ContentSource);
+
+impl AdmittedContentSource {
+    pub fn source(&self) -> &ContentSource {
+        &self.0
+    }
+}
+
+/// A content file could not be read, with the loader's diagnostic.
+#[derive(Debug)]
+pub enum ReadError {
+    /// The folder or archive has no file at this name.
+    NotFound(String),
+    /// The path, size or read failed for some other reason.
+    Other(String),
+}
+
+impl ReadError {
+    fn from_io(name: &str, error: io::Error) -> Self {
+        let detail = format!("{name}: {error}");
+        if error.kind() == io::ErrorKind::NotFound {
+            Self::NotFound(detail)
+        } else {
+            Self::Other(detail)
+        }
+    }
+}
+
+impl std::fmt::Display for ReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotFound(reason) | Self::Other(reason) => f.write_str(reason),
+        }
+    }
+}
+
+impl std::error::Error for ReadError {}
+
+impl From<ReadError> for String {
+    fn from(error: ReadError) -> Self {
+        error.to_string()
+    }
+}
+
+/// Reads a mod's content files ([`Content::reader`]).
+pub struct FileReader<'a>(FileLocation<'a>);
+
+enum FileLocation<'a> {
+    Dir(&'a Path),
+    Zip(&'a Mutex<zip::ZipArchive<std::fs::File>>),
+}
+
 impl FileReader<'_> {
     /// One content file's bytes.
-    pub fn read(&mut self, name: &str) -> Result<Vec<u8>, String> {
-        check_path(name)?;
-        let reader: Box<dyn Read + '_> = match self {
-            Self::Dir(root) => {
-                Box::new(std::fs::File::open(root.join(name)).map_err(|e| format!("{name}: {e}"))?)
+    pub fn read(&self, name: &str) -> Result<Vec<u8>, ReadError> {
+        self.read_head(name, MAX_FILE + 1)
+    }
+
+    /// Read no more than `max` bytes, and keep the package's own full-file bound.
+    pub fn read_head(&self, name: &str, max: u64) -> Result<Vec<u8>, ReadError> {
+        check_path(name).map_err(ReadError::Other)?;
+        let read = |reader: &mut dyn Read| {
+            let mut out = Vec::new();
+            reader
+                .take(max.min(MAX_FILE + 1))
+                .read_to_end(&mut out)
+                .map_err(|error| ReadError::from_io(name, error))?;
+            if out.len() as u64 > MAX_FILE {
+                return Err(ReadError::Other(format!(
+                    "{name} is over {} MiB",
+                    MAX_FILE >> 20
+                )));
             }
-            Self::Zip(zip) => Box::new(zip.by_name(name).map_err(|e| format!("{name}: {e}"))?),
+            Ok(out)
         };
-        let mut out = Vec::new();
-        reader
-            .take(MAX_FILE + 1)
-            .read_to_end(&mut out)
-            .map_err(|e| format!("{name}: {e}"))?;
-        if out.len() as u64 > MAX_FILE {
-            return Err(format!("{name} is over {} MiB", MAX_FILE >> 20));
+        match self.0 {
+            FileLocation::Dir(root) => read(
+                &mut std::fs::File::open(root.join(name))
+                    .map_err(|error| ReadError::from_io(name, error))?,
+            ),
+            FileLocation::Zip(zip) => {
+                let mut archive = zip
+                    .lock()
+                    .map_err(|e| ReadError::Other(format!("{name}: {e}")))?;
+                let mut entry = archive.by_name(name).map_err(|e| {
+                    let detail = format!("{name}: {e}");
+                    if matches!(e, zip::result::ZipError::FileNotFound) {
+                        ReadError::NotFound(detail)
+                    } else {
+                        ReadError::Other(detail)
+                    }
+                })?;
+                read(&mut entry)
+            }
         }
-        Ok(out)
     }
     /// A content file's path on disk, checked as [`read`](Self::read) checks it (the name,
     /// the size), for a caller that copies it without reading it; `None` in an archive.
     pub fn path(&self, name: &str) -> Result<Option<std::path::PathBuf>, String> {
         check_path(name)?;
-        let root = match self {
-            Self::Dir(root) => root,
-            Self::Zip(_) => return Ok(None),
+        let root = match self.0 {
+            FileLocation::Dir(root) => root,
+            FileLocation::Zip(_) => return Ok(None),
         };
         let path = root.join(name);
         let len = std::fs::metadata(&path)
@@ -1230,7 +1419,7 @@ impl Content {
     /// `crafting_remainder` in one of its own namespaces; engine loading calls
     /// [`Content::read_declaring`] with the actual code-declared items.
     pub fn read(path: &Path, manifest: &Manifest) -> Result<Content, String> {
-        Self::read_inner(path, manifest, None)
+        Self::read_inner(&ContentSource::open(path)?, manifest, None, false)
     }
     /// [`Content::read`] for a mod whose native code (or serving host) also declares items
     /// (`native_items` / `blocks`): a file's `crafting_remainder` may name one of those `declared`
@@ -1240,48 +1429,28 @@ impl Content {
         manifest: &Manifest,
         declared: &[String],
     ) -> Result<Content, String> {
-        Self::read_inner(path, manifest, Some(declared))
+        Self::read_inner(&ContentSource::open(path)?, manifest, Some(declared), false)
     }
+
+    /// Read the declarations using the source already checked against this manifest at admission.
+    pub fn read_opened(
+        source: &AdmittedContentSource,
+        manifest: &Manifest,
+        declared: &[String],
+    ) -> Result<Content, String> {
+        Self::read_inner(source.source(), manifest, Some(declared), true)
+    }
+
     fn read_inner(
-        path: &Path,
+        source: &ContentSource,
         manifest: &Manifest,
         declared: Option<&[String]>,
+        from_admission: bool,
     ) -> Result<Content, String> {
-        let (source, sized) = if path.is_dir() {
-            (Source::Dir(path.to_owned()), folder_files(path)?)
-        } else {
-            let mut zip = open_zip(path)?;
-            let mut out = Vec::new();
-            for i in 0..zip.len() {
-                let entry = zip.by_index_raw(i).map_err(|e| e.to_string())?;
-                let name = entry.name().map_err(|e| e.to_string())?.into_owned();
-                if (name.starts_with("assets/") || name.starts_with("data/")) && !entry.is_dir() {
-                    out.push((name.to_owned(), entry.size()));
-                }
-            }
-            (Source::Zip(path.to_owned()), out)
-        };
-        let mut files = Vec::with_capacity(sized.len());
-        let mut total = 0u64;
-        for (name, size) in sized {
-            check_path(&name)?;
-            if size > MAX_FILE {
-                return Err(format!("{name} is over {} MiB", MAX_FILE >> 20));
-            }
-            total += size;
-            files.push(name);
-        }
-        if files.len() > MAX_FILES {
-            return Err(format!("more than {MAX_FILES} content files"));
-        }
-        if total > MAX_TOTAL {
-            return Err(format!("content is over {} MiB", MAX_TOTAL >> 20));
-        }
-        files.sort();
-        files.dedup();
         let mut content = Content {
-            source,
-            files,
+            source: source.source.clone(),
+            from_admission,
+            files: source.names(),
             blocks: Vec::new(),
             items: Vec::new(),
             effects: Vec::new(),
@@ -1302,7 +1471,8 @@ impl Content {
     pub fn declared(namespace: &str) -> Content {
         Content {
             source: Source::Code,
-            files: Vec::new(),
+            from_admission: false,
+            files: Arc::default(),
             blocks: Vec::new(),
             items: Vec::new(),
             effects: Vec::new(),
@@ -1463,7 +1633,7 @@ impl Content {
     pub fn source(&self) -> &Path {
         match &self.source {
             Source::Dir(path) => path,
-            Source::Zip(path) => path,
+            Source::Zip { path, .. } => path,
             Source::Code => Path::new(""),
         }
     }
@@ -1497,18 +1667,25 @@ impl Content {
         ))
     }
 
+    /// The fixed listing and reader captured at startup, if this content came from admission.
+    pub fn admitted_source(&self) -> Option<ContentSource> {
+        self.from_admission.then(|| ContentSource {
+            source: self.source.clone(),
+            files: self.files.clone(),
+        })
+    }
+
     /// One content file's bytes.
     pub fn file(&self, name: &str) -> Result<Vec<u8>, String> {
-        self.reader()?.read(name)
+        Ok(self.reader().read(name)?)
     }
 
-    /// A reader of its content files. A packaged mod's archive is opened
-    /// once for all of them (opening it reads its whole index).
-    pub fn reader(&self) -> Result<FileReader<'_>, String> {
-        reader_of(&self.source)
+    /// A reader of its content files, using the same archive from which the files were listed.
+    pub fn reader(&self) -> FileReader<'_> {
+        self.source.reader()
     }
 
-    /// Where content may go, and the declarations.
+    /// Read and validate declarations, enforcing the namespace fence if not checked at admission.
     fn check(&mut self, manifest: &Manifest, declared: Option<&[String]>) -> Result<(), String> {
         let id = manifest.id.as_str();
         let mut blocks = Vec::new();
@@ -1519,7 +1696,7 @@ impl Content {
         let mut interactions = Vec::new();
         let mut types = Vec::new();
         let mut menus = Vec::new();
-        for name in &self.files {
+        for name in self.files.iter() {
             let mut parts = name.splitn(3, '/');
             let (top, namespace, rest) = (
                 parts.next().unwrap_or(""),
@@ -1527,7 +1704,9 @@ impl Content {
                 parts.next().unwrap_or(""),
             );
             let owned = manifest.owned_namespaces().any(|owned| owned == namespace);
-            check_namespace(name, manifest)?;
+            if !self.from_admission {
+                check_namespace(name, manifest)?;
+            }
             let Some(decl) = (owned && top == "data")
                 .then(|| rest.strip_prefix("sunrise/"))
                 .flatten()
@@ -1559,10 +1738,7 @@ impl Content {
             };
             rows.push((format!("{namespace}:{path}"), name.clone()));
         }
-        // One reader for every declaration: opening a packaged mod reads its
-        // whole index, so a reader per file made loading a big mod quadratic.
-        let source = self.source.clone();
-        let mut reader = reader_of(&source)?;
+        let reader = self.source.reader();
         let mut ids = BTreeSet::new();
         for (block, name) in blocks {
             let file: BlockFile =
@@ -2285,12 +2461,14 @@ fn sign_wall_refusals<'a>(blocks: &'a [&'a Block]) -> impl Iterator<Item = (&'a 
     })
 }
 
-fn reader_of(source: &Source) -> Result<FileReader<'_>, String> {
-    Ok(match source {
-        Source::Dir(root) => FileReader::Dir(root),
-        Source::Zip(path) => FileReader::Zip(Box::new(open_zip(path)?)),
-        Source::Code => FileReader::Dir(Path::new("")),
-    })
+impl Source {
+    fn reader(&self) -> FileReader<'_> {
+        FileReader(match self {
+            Self::Dir(root) => FileLocation::Dir(root),
+            Self::Zip { archive, .. } => FileLocation::Zip(archive),
+            Self::Code => FileLocation::Dir(Path::new("")),
+        })
+    }
 }
 
 fn open_zip(path: &Path) -> Result<zip::ZipArchive<std::fs::File>, String> {
@@ -2375,11 +2553,11 @@ mod tests {
             .unwrap()
             .set_len(MAX_FILE + 1)
             .unwrap();
-        let mut reader = FileReader::Dir(&dir);
+        let reader = FileReader(FileLocation::Dir(&dir));
         let error = reader.path(name).unwrap_err();
         assert!(error.contains("is over"), "{error}");
         let error = reader.read(name).unwrap_err();
-        assert!(error.contains("is over"), "{error}");
+        assert!(error.to_string().contains("is over"), "{error}");
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -2462,6 +2640,75 @@ capabilities = ["registries"]
         let content = package.and_then(|p| Content::read(&path, &p.manifest));
         std::fs::remove_dir_all(&dir).unwrap();
         content
+    }
+
+    #[test]
+    fn a_folder_and_its_smod_list_and_read_the_same_content_files() {
+        let files: &[(&str, &[u8])] = &[
+            ("data/ruby/lumen/b.luau", b"return 2"),
+            ("assets/ruby/lang/en_us.json", b"{}"),
+            ("data/ruby/lumen/a.luau", b"return 1"),
+        ];
+        let dir = scratch("content-source");
+        let folder = dir.join("ruby");
+        for (name, bytes) in files {
+            let path = folder.join(name);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, bytes).unwrap();
+        }
+        std::fs::write(folder.join(crate::manifest::MANIFEST), MANIFEST_TEXT).unwrap();
+        let archive = dir.join("ruby.smod");
+        std::fs::write(
+            &archive,
+            Package::write_files(MANIFEST_TEXT, files).unwrap(),
+        )
+        .unwrap();
+        for path in [&folder, &archive] {
+            let source = ContentSource::open(path).unwrap();
+            assert_eq!(
+                source.names().as_ref(),
+                [
+                    "assets/ruby/lang/en_us.json",
+                    "data/ruby/lumen/a.luau",
+                    "data/ruby/lumen/b.luau"
+                ],
+                "{}",
+                path.display()
+            );
+            let reader = source.reader();
+            assert_eq!(reader.read("data/ruby/lumen/b.luau").unwrap(), b"return 2");
+            assert!(reader.read("data/ruby/lumen/../lumen/a.luau").is_err());
+            assert!(matches!(
+                reader.read("data/ruby/lumen/c.luau"),
+                Err(ReadError::NotFound(_))
+            ));
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn an_open_package_keeps_reading_the_archive_it_listed() {
+        let dir = scratch("content-archive-identity");
+        let path = dir.join("ruby.smod");
+        let replacement = dir.join("replacement.smod");
+        let name = "data/ruby/lumen/main.luau";
+        std::fs::write(
+            &path,
+            Package::write_files(MANIFEST_TEXT, &[(name, b"old")]).unwrap(),
+        )
+        .unwrap();
+        let source = ContentSource::open(&path).unwrap();
+        assert_eq!(source.names().as_ref(), [name]);
+        std::fs::write(
+            &replacement,
+            Package::write_files(MANIFEST_TEXT, &[(name, b"new")]).unwrap(),
+        )
+        .unwrap();
+        std::fs::rename(replacement, &path).unwrap();
+        assert_eq!(source.reader().read(name).unwrap(), b"old");
+        let current = ContentSource::open(&path).unwrap();
+        assert_eq!(current.reader().read(name).unwrap(), b"new");
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
@@ -3619,7 +3866,7 @@ capabilities = ["registries"]
         .unwrap();
         assert_eq!(content.server_only_refusal(&manifest), None);
         assert_eq!(
-            content.files,
+            content.files.as_ref(),
             ["assets/ruby/lang/en_us.json", "data/ruby/recipe/gem.json"]
         );
     }
@@ -3633,7 +3880,10 @@ capabilities = ["registries"]
         std::fs::write(block.join("ruby_block.json"), BLOCK).unwrap();
         let package = Package::read(&dir).unwrap();
         let content = Content::read(&dir, &package.manifest).unwrap();
-        assert_eq!(content.files, ["data/ruby/sunrise/block/ruby_block.json"]);
+        assert_eq!(
+            content.files.as_ref(),
+            ["data/ruby/sunrise/block/ruby_block.json"]
+        );
         assert_eq!(content.file(&content.files[0]).unwrap(), BLOCK);
         std::fs::remove_dir_all(&dir).unwrap();
     }

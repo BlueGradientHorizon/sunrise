@@ -34,6 +34,18 @@ fn rollback_pointee_is_copy(field_ty: &Type) -> bool {
     }
 }
 
+fn part_trait_and_table(kind: PartKind) -> (&'static str, &'static str) {
+    match kind {
+        PartKind::Block => ("BlockPart", "block"),
+        PartKind::BlockEntity => ("BlockEntityPart", "block_entity"),
+        PartKind::Item => ("ItemPart", "item"),
+        PartKind::Menu => ("MenuPart", "menu"),
+        PartKind::Effect => ("MobEffectPart", "effect"),
+        PartKind::Fluid => ("FluidPart", "fluid"),
+        PartKind::Entity => ("EntityPart", "entity"),
+    }
+}
+
 pub(super) fn is_render(hook: &Hook) -> bool {
     hook.target.starts_with("mod_render::render::")
 }
@@ -322,15 +334,7 @@ pub(super) fn emit<'a>(
             None => None,
             Some(scope) => {
                 let key = scope.key.as_str();
-                let (part_trait, table) = match scope.kind {
-                    PartKind::Block => ("BlockPart", "block"),
-                    PartKind::BlockEntity => ("BlockEntityPart", "block_entity"),
-                    PartKind::Item => ("ItemPart", "item"),
-                    PartKind::Menu => ("MenuPart", "menu"),
-                    PartKind::Effect => ("MobEffectPart", "effect"),
-                    PartKind::Fluid => ("FluidPart", "fluid"),
-                    PartKind::Entity => ("EntityPart", "entity"),
-                };
+                let (part_trait, table) = part_trait_and_table(scope.kind);
                 if is_render {
                     return Err(format!("render hook {name} cannot be scoped"));
                 }
@@ -1036,7 +1040,32 @@ pub(super) fn emit<'a>(
                 .entry(*part_trait)
                 .or_default()
                 .push_str(&method_source),
-            None => traits.push_str(&method_source),
+            None => {
+                traits.push_str(&method_source);
+                if let Some(part_kind) = hook.part {
+                    let (part_trait, _) = part_trait_and_table(part_kind);
+                    let mut part_method = String::new();
+                    for line in hook.doc.trim().lines() {
+                        part_method.push_str(&format!(
+                            "///{}{line}\n",
+                            if line.is_empty() { "" } else { " " }
+                        ));
+                    }
+                    part_method.push_str(&format!("/// Side: {side}.\n"));
+                    if let Some(out) = out {
+                        part_method.push_str(&format!(
+                            "///\n/// Return `Flow::Cancel` to take it: this sets `{out}`, and later parts are skipped.\n"
+                        ));
+                    }
+                    part_method.push_str(&format!(
+                        "fn {name}({trait_params}){result} {{ {unused} {default} }}\n"
+                    ));
+                    part_traits
+                        .entry(part_trait)
+                        .or_default()
+                        .push_str(&part_method);
+                }
+            }
         }
         let trait_name = scoped
             .as_ref()
@@ -1628,6 +1657,33 @@ pub(super) fn emit<'a>(
             dispatch.push_str(&format!(
                 "#[doc(hidden)] pub fn dispatch_{name}({dispatch_signature}) {{ {unpack}{early_return}\n{body} }}\n"
             ));
+            if let Some(part_kind) = hook.part {
+                if is_render {
+                    return Err(format!("render hook {name} cannot have a part"));
+                }
+                let (_, table) = part_trait_and_table(part_kind);
+                let part_key = fresh_name("part_key", &mut used);
+                let host_count = usize::from(host.is_some());
+                let part_dispatch_signature = dispatch_params[..host_count]
+                    .iter()
+                    .cloned()
+                    .chain(std::iter::once(format!("{part_key}: &str")))
+                    .chain(dispatch_params[host_count..].iter().cloned())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let part_run = run(
+                    &listener_id,
+                    "continue;",
+                    &format!("{part_item}.{name}({invoke})"),
+                );
+                let part_step = format!(
+                    "{snapshot_statement}if matches!({part_run}, Flow::Cancel) || {event}.cancelled {{ {event}.cancelled = true; {stack_after} break; }} {stack_after}"
+                );
+                let o = cancel_out.unwrap();
+                dispatch.push_str(&format!(
+                    "#[doc(hidden)] pub fn dispatch_{name}_part({part_dispatch_signature}) {{ {unpack}if *{o} || !super::has_part_hook(HookId::{hook_id}) {{ return; }} let {part_table} = super::parts(HookId::{hook_id}, \"{name}\"); let {part_list} = {part_table}.for_hook(HookId::{hook_id}).map_or(&[][..], |table| table.{table}(|| Some({part_key}))); if {part_list}.is_empty() {{ return; }} {build} for ({listener_id}, {part_item}) in super::entered_parts(HookId::{hook_id}, {part_list}, \"{name}\") {{ {part_step} }} *{o} = {event}.cancelled; {write_back} }}\n"
+                ));
+            }
         }
     }
     if !calls.is_empty() {
@@ -2977,6 +3033,7 @@ fn listened(_: generated::HookId) -> bool {{ true }}
 fn entered_with_id(_: generated::HookId, _: &str) -> impl Iterator<Item = (&'static str, &'static Gatherer)> {{ MODS.iter().map(|(id, m)| (*id, m)) }}
 mod runtime {{
     pub fn invoke<T>(_: super::generated::HookId, _: &str, _: &str, call: impl FnOnce() -> T) -> Option<T> {{ Some(call()) }}
+    pub fn discard_registration<T>(_: (super::generated::HookId, &'static str), _: Option<&'static str>, value: T) {{ drop(value); }}
 }}
 impl Gatherer {{ fn gather(&self, _: &mut dyn generated::ServerHost, event: &mut generated::GatherEvent<'_>) {{ assert!(event.entries.is_empty()); event.entries.extend(self.pushes); }} }}
 mod generated {{
@@ -3132,6 +3189,45 @@ fn main() {{
             dispatch(&compact, "is_ladder")
                 .contains("=super::parts(HookId::IsLadder,\"is_ladder\");")
         );
+    }
+
+    #[test]
+    fn part_cancel_hook_emits_global_and_part_dispatch_under_one_hook_id() {
+        let hook = Hook {
+            name: "stacked_part_test".into(),
+            contract: Contract::Cancel,
+            out: Some("canceled".into()),
+            part: Some(PartKind::Item),
+            call: vec![
+                ("value".into(), "u32".into()),
+                ("canceled".into(), "&mut bool".into()),
+            ],
+            dispatch: DispatchStyle::Flat,
+            ..Hook::sample(
+                "sunrise_client::game::native_hooks::stacked_part_test::Game<'_>::native_stacked_part_test",
+                Side::Server,
+            )
+        };
+        let emitted = emit(std::iter::once(&hook), &[], true).unwrap();
+        assert_eq!(emitted.hook_count, 1);
+        assert!(emitted.hook_ids.contains("StackedPartTest,"));
+        assert!(emitted.traits.contains("fn stacked_part_test("));
+        let item_part = emitted
+            .part_traits
+            .get("ItemPart")
+            .expect("part = \"item\" must emit an ItemPart method");
+        assert!(item_part.contains("fn stacked_part_test("));
+
+        let compact: String = emitted
+            .dispatch
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        assert!(compact.contains("pubfndispatch_stacked_part_test("));
+        assert!(compact.contains("pubfndispatch_stacked_part_test_part(host:&mutdynServerHost,part_key:&str,value:u32,canceled:&mutbool)"));
+        assert!(compact.contains("super::has_part_hook(HookId::StackedPartTest)"));
+        assert!(compact.contains("super::parts(HookId::StackedPartTest,\"stacked_part_test\")"));
+        assert!(compact.contains("table.item(||Some(part_key))"));
     }
 }
 fn contains_boundary(ty: &Type, names: &[&str]) -> bool {

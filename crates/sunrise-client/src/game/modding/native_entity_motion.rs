@@ -239,7 +239,7 @@ impl Game<'_> {
                     return Ok(false);
                 };
                 with_entity_mut!(self, handle, e => {
-                    e.update_retained_ground(&self.world, self.collision, on_ground, None)
+                    e.update_retained_ground(&self.world, self.collision, &world_items!(self).entity_type_tags, on_ground, None)
                         .map_err(|_| LevelWriteError::Unavailable)
                 })
             }
@@ -556,19 +556,43 @@ mod tests {
             let entity = game.entity(40).unwrap();
             // Only block 1 is under the box: it supports, not the block of the feet's own column.
             game.world.set(1, 64, 0, stone).unwrap();
-            let _ = game.mobs[0].update_retained_ground(&game.world, game.collision, true, None);
+            let _ = game.mobs[0].update_retained_ground(
+                &game.world,
+                game.collision,
+                &world_items!(game).entity_type_tags,
+                true,
+                None,
+            );
             assert_eq!(game.entity_on_block(entity), Some([1, 64, 0]));
             // Adding a nearer block doesn't change the support until the next check.
             game.world.set(0, 64, 0, stone).unwrap();
             assert_eq!(game.entity_on_block(entity), Some([1, 64, 0]));
-            let _ = game.mobs[0].update_retained_ground(&game.world, game.collision, true, None);
+            let _ = game.mobs[0].update_retained_ground(
+                &game.world,
+                game.collision,
+                &world_items!(game).entity_type_tags,
+                true,
+                None,
+            );
             assert_eq!(game.entity_on_block(entity), Some([0, 64, 0]));
             game.mobs[0].position = Vec3::new(1.1, 65.0, 0.5);
-            let _ = game.mobs[0].update_retained_ground(&game.world, game.collision, true, None);
+            let _ = game.mobs[0].update_retained_ground(
+                &game.world,
+                game.collision,
+                &world_items!(game).entity_type_tags,
+                true,
+                None,
+            );
             assert_eq!(game.entity_on_block(entity), Some([1, 64, 0]));
             // Off the ground there is no support: the cell under the feet.
             game.mobs[0].position = Vec3::new(0.9, 65.0, 0.5);
-            let _ = game.mobs[0].update_retained_ground(&game.world, game.collision, false, None);
+            let _ = game.mobs[0].update_retained_ground(
+                &game.world,
+                game.collision,
+                &world_items!(game).entity_type_tags,
+                false,
+                None,
+            );
             assert_eq!(game.entity_on_block(entity), Some([0, 64, 0]));
             let air = game
                 .pack
@@ -577,7 +601,13 @@ mod tests {
                 .default_state("minecraft:air")
                 .unwrap();
             game.world.set(0, 64, 0, air).unwrap();
-            let _ = game.mobs[0].update_retained_ground(&game.world, game.collision, true, None);
+            let _ = game.mobs[0].update_retained_ground(
+                &game.world,
+                game.collision,
+                &world_items!(game).entity_type_tags,
+                true,
+                None,
+            );
             assert_eq!(game.entity_on_block(entity), Some([1, 64, 0]));
 
             // Facing south (yaw 0) level, the eyes see a block two cells ahead.

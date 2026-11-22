@@ -8,7 +8,7 @@ use sunrise_client::{
     blocks::Fluid,
     first_person::Hand,
     hud::HudBatch,
-    items::ItemStack,
+    items::{EntityTypeTags, ItemStack},
     mobs::{Mob, MobEvent, Species, Who, equine},
     motion::{MotionWorld, PlayerMotion},
     pose::{Dimensions, Pose},
@@ -89,22 +89,10 @@ fn eating(species: Species, item: &str) -> Option<(f32, i32, u8, bool)> {
 }
 /// `EntityTypeTags.DISMOUNTS_UNDERWATER` (`Entity.dismountsUnderwater`): the mounts that throw their
 /// riders off when the rider's eyes are in water.
-pub(super) fn dismounts_underwater(species: Species) -> bool {
-    matches!(
-        species,
-        Species::Camel
-            | Species::Chicken
-            | Species::Donkey
-            | Species::HappyGhast
-            | Species::Horse
-            | Species::Llama
-            | Species::Mule
-            | Species::Pig
-            | Species::Ravager
-            | Species::Spider
-            | Species::Strider
-            | Species::TraderLlama
-            | Species::ZombieHorse
+fn dismounts_underwater(tags: &EntityTypeTags, mount: &Mob) -> bool {
+    tags.has_bit(
+        mount.kind.flags.entity_tag_slot,
+        EntityTypeTags::DISMOUNTS_UNDERWATER,
     )
 }
 
@@ -130,6 +118,26 @@ impl Game<'_> {
     pub(super) fn mount_index(&self) -> Option<usize> {
         let id = self.riding?;
         self.mobs.iter().position(|m| m.id == id)
+    }
+    /// `Hud.getPlayerVehicleWithHealth`: the living mob ridden by `Hud.getCameraPlayer`.
+    pub(in crate::game) fn camera_player_mount_index(&self) -> Option<usize> {
+        match self.camera_player()? {
+            super::remote_camera::CameraPlayer::Local => self.mount_index(),
+            super::remote_camera::CameraPlayer::Remote(id) => {
+                let mount_id = self
+                    .mobs
+                    .iter()
+                    .find(|m| m.id == id)
+                    .and_then(|m| m.extra.mount)?;
+                self.mobs.iter().position(|m| m.id == mount_id)
+            }
+        }
+    }
+    /// `Hud.extractVehicleHealth`: `(max_hearts, health)` of `camera_player_mount_index`, when positive.
+    pub(in crate::game) fn camera_player_vehicle_health(&self) -> Option<(i32, f32)> {
+        let mob = &self.mobs[self.camera_player_mount_index()?];
+        let hearts = sunrise_client::hud_layout::vehicle_max_hearts(mob.attrs.max_health);
+        (hearts > 0).then_some((hearts, mob.health))
     }
     /// `Entity.interact` / `Mob.canShearEquipment` / `Mob.attemptToShearEquipment`
     /// / `Mob.shearItem`: the saddle of a `#can_equip_saddle` mob comes off
@@ -585,11 +593,12 @@ impl Game<'_> {
         };
         // `Player.rideTick`: a sneaking rider gets off (`wantsToStopRiding`), and so does one on a
         // dead mount. `LivingEntity.baseTick`: so does a rider whose eyes are in water on a mount
-        // of the `dismounts_underwater` tag (a server's player too: `leave_guest` tells their
+        // of the `dismounts_underwater` tag (a server's player too: the put-back at the end of `guest_turn` tells their
         // client). When `entity_mount` keeps it on, the mount still reads this tick's input.
         let i = if keys.shift
             || !self.mobs[i].alive()
-            || (dismounts_underwater(self.mobs[i].species()) && self.rider_eyes_in_water())
+            || (dismounts_underwater(&self.items().entity_type_tags, &self.mobs[i])
+                && self.rider_eyes_in_water())
         {
             self.dismount_mount();
             let Some(i) = self.mount_index().filter(|&i| self.mobs[i].alive()) else {
@@ -646,6 +655,7 @@ impl Game<'_> {
     /// zombie on a chicken): with their eyes in water they get off it.
     pub(super) fn dismount_underwater_mob_riders(&mut self) {
         let blocked = self.mobs_below_off_level();
+        let tags = &self.items().entity_type_tags;
         let swimmers: Vec<u32> = self
             .mobs
             .iter()
@@ -653,7 +663,7 @@ impl Game<'_> {
             .filter_map(|m| {
                 let mount = m.extra.mount?;
                 let under = self.mobs.iter().find(|v| v.id == mount)?;
-                dismounts_underwater(under.species()).then_some(m.id)
+                dismounts_underwater(tags, under).then_some(m.id)
             })
             .collect();
         for rider in swimmers {
@@ -869,7 +879,7 @@ impl Game<'_> {
                     self.dismount_mount();
                 } else {
                     // ejectPassengers: a server's player gets off too
-                    // (leave_guest tells their client).
+                    // (the put-back at the end of `guest_turn` tells their client).
                     let rider = self.lan.as_ref().and_then(|h| {
                         h.hub
                             .guests
@@ -1457,32 +1467,6 @@ mod tests {
             assert_eq!(rod.damage, 0, "the rod starts whole");
             assert_eq!(rod.custom_name().as_deref(), Some("Old Nag"));
         });
-    }
-
-    #[test]
-    fn the_mounts_that_throw_a_swimmer_off_are_the_dismounts_underwater_tag() {
-        // data/minecraft/tags/entity_type/dismounts_underwater.json of 26.3.
-        for species in [
-            Species::Camel,
-            Species::Chicken,
-            Species::Donkey,
-            Species::HappyGhast,
-            Species::Horse,
-            Species::Llama,
-            Species::Mule,
-            Species::Pig,
-            Species::Ravager,
-            Species::Spider,
-            Species::Strider,
-            Species::TraderLlama,
-            Species::ZombieHorse,
-        ] {
-            assert!(dismounts_underwater(species), "{species:?}");
-        }
-        // Not in the tag: a skeleton horse swims with its rider, a camel husk is not the camel.
-        for species in [Species::SkeletonHorse, Species::CamelHusk, Species::Cow] {
-            assert!(!dismounts_underwater(species), "{species:?}");
-        }
     }
 
     /// A mob of the prepared resources' type `kind` (None without them).
@@ -2170,6 +2154,69 @@ mod tests {
 #[cfg(test)]
 mod off_level_tests {
     use super::*;
+
+    #[test]
+    #[ignore = "daily"]
+    fn underwater_dismount_uses_the_levels_current_mount_tag() {
+        crate::game::in_own_process(
+            "game::mounts::off_level_tests::underwater_dismount_uses_the_levels_current_mount_tag",
+            || {
+                crate::game::native_entity_refs::tests::with_game(|game| {
+                    let tags = &game.items().entity_type_tags;
+                    // Default membership from the 26.3 dismounts_underwater tag.
+                    for (kind, expected) in [
+                        ("minecraft:camel", true),
+                        ("minecraft:chicken", true),
+                        ("minecraft:donkey", true),
+                        ("minecraft:happy_ghast", true),
+                        ("minecraft:horse", true),
+                        ("minecraft:llama", true),
+                        ("minecraft:mule", true),
+                        ("minecraft:pig", true),
+                        ("minecraft:ravager", true),
+                        ("minecraft:spider", true),
+                        ("minecraft:strider", true),
+                        ("minecraft:trader_llama", true),
+                        ("minecraft:zombie_horse", true),
+                        ("minecraft:skeleton_horse", false),
+                        ("minecraft:camel_husk", false),
+                        ("minecraft:cow", false),
+                    ] {
+                        let mob_type = game.res.mob_types().get(kind).unwrap().clone();
+                        let mob = Mob::new(0, mob_type, Vec3::ZERO, 0.0);
+                        assert_eq!(dismounts_underwater(tags, &mob), expected, "{kind}");
+                    }
+
+                    for (id, kind, mount) in [
+                        (71, "minecraft:pig", None),
+                        (72, "minecraft:zombie", Some(71)),
+                        (73, "minecraft:cow", None),
+                        (74, "minecraft:zombie", Some(73)),
+                    ] {
+                        let kind = game.res.mob_types().get(kind).unwrap().clone();
+                        let mut mob = Mob::new(id, kind, Vec3::ZERO, 0.0);
+                        mob.extra.mount = mount;
+                        mob.fluids.eye_in_water = true;
+                        game.mobs.push(mob);
+                    }
+                    let mut items = game.items().clone();
+                    items.set_entity_type_tags(EntityTypeTags::from_ordered(
+                        [(
+                            "minecraft:dismounts_underwater".into(),
+                            vec!["minecraft:cow".into()],
+                        )]
+                        .into(),
+                        items.entity_type_tags.ids().clone(),
+                    ));
+                    game.server_items = Some(std::sync::Arc::new(items));
+
+                    game.dismount_underwater_mob_riders();
+                    assert_eq!(game.mob_object(72).unwrap().extra.mount, Some(71));
+                    assert_eq!(game.mob_object(74).unwrap().extra.mount, None);
+                });
+            },
+        );
+    }
 
     #[test]
     #[ignore = "daily"]

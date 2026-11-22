@@ -9,7 +9,7 @@
 use super::{Game, lan_actions::guest_within_entity_range};
 use sunrise_client::{
     items::ItemStack,
-    menu::{Kind, Menu},
+    menu::{Kind, Menu, QuickCraftDrag},
 };
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 
@@ -19,6 +19,8 @@ pub(super) struct GuestMount {
     pub(super) mob: u32,
     columns: usize,
     state: i32,
+    /// Persistent quick-craft (drag) state across rebuilt mount menus.
+    drag: QuickCraftDrag,
     /// The menu's slots the client was last sent.
     sent: Option<Vec<Option<ItemStack>>>,
 }
@@ -47,6 +49,7 @@ impl Game<'_> {
             mob,
             columns,
             state: 0,
+            drag: QuickCraftDrag::default(),
             sent: None,
         });
         self.lan_send_mount(conn);
@@ -116,12 +119,12 @@ impl Game<'_> {
         let Some(host) = self.lan.as_ref() else {
             return false;
         };
-        let Some((mob, columns)) = host
+        let Some((mob, columns, drag)) = host
             .play
             .get(&conn)
             .and_then(|pl| pl.mount_window.as_ref())
             .filter(|m| m.window == p.container)
-            .map(|m| (m.mob, m.columns))
+            .map(|m| (m.mob, m.columns, m.drag.clone()))
         else {
             return false;
         };
@@ -130,11 +133,24 @@ impl Game<'_> {
             && let Some(index) = self.mobs.iter().position(|m| m.id == mob)
         {
             let mut menu = self.mount_engine_menu(index, columns);
+            menu.set_quick_craft_state(drag);
             let click = super::lan_pickup::click_of(p);
-            self.guest_menu_op_decided(gi, &mut menu, Some(click), None, |menu, env| {
-                let _ = menu.click(env, click.0, click.1, click.2);
-            });
-            self.lan_mount_store(index, columns, &menu);
+            if self
+                .guest_menu_op_decided(gi, &mut menu, Some(click), None, |menu, env| {
+                    let _ = menu.click(env, click.0, click.1, click.2);
+                })
+                .is_some()
+            {
+                self.lan_mount_store(index, columns, &menu);
+                if let Some(gm) = self
+                    .lan
+                    .as_mut()
+                    .and_then(|host| host.play.get_mut(&conn))
+                    .and_then(|pl| pl.mount_window.as_mut())
+                {
+                    gm.drag = menu.quick_craft_state();
+                }
+            }
         }
         // The client is told what the server has, whatever it predicted.
         let Some(host) = self.lan.as_mut() else {

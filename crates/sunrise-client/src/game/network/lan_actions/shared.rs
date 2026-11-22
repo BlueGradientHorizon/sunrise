@@ -60,8 +60,6 @@ pub(super) struct GuestPlay {
     swings: u32,
     /// The guest's riding jump charge (`LocalPlayer.jumpRidingTicks`).
     mount: super::mounts::MountState,
-    /// The trading screen the guest has open.
-    pub(super) merchant: Option<super::lan_trading::GuestMerchant>,
     /// The mount inventory the guest has open (game/network/lan_mount_menu.rs).
     pub(super) mount_window: Option<super::lan_mount_menu::GuestMount>,
     /// The lectern the guest reads (game/network/lan_stations.rs).
@@ -154,111 +152,6 @@ pub(super) enum TurnRefused {
     Gone,
     /// The guest is already taking a turn: its record holds an outer player's state.
     Nested,
-}
-
-/// The game's own state while a guest's is swapped in (`enter_guest`), and
-/// the guest's records that live outside `Guest`.
-pub(super) struct GuestSwap {
-    attachments: sunrise_mod_runtime::attachments::ResidentAttachments,
-    conn: u32,
-    i: usize,
-    play: GuestPlay,
-    player: Option<PlayerMotion>,
-    player_save_projection: (Option<i32>, Option<bool>),
-    /// The guest's eye height and the game's.
-    eye: (f32, f32),
-    yaw: f32,
-    pitch: f32,
-    selected: usize,
-    mode: sunrise_client::command::args::GameMode,
-    creative: bool,
-    /// The previous game mode of the turn this one nests in: each player's
-    /// own (`ServerPlayerGameMode.previousGameModeForPlayer`).
-    previous_mode: Option<sunrise_client::command::args::GameMode>,
-    /// The abilities of the turn this one nests in.
-    abilities: Option<sunrise_client::lan::abilities::PlayerAbilities>,
-    /// The host's cached interaction ranges, restored after the guest turn.
-    entity_reach: f64,
-    block_reach: f64,
-    /// The host's command permission, swapped for the guest's for its turn.
-    permission: u8,
-    xp: Experience,
-    level_up_sound: sunrise_client::entities::LevelUpSound,
-    host_keys: sunrise_client::held::HeldKeys,
-    saved_mappings: sunrise_client::keymapping::VanillaMappings,
-    screen: Screen,
-    host_sign: Option<super::sign_edit::SignEditor>,
-    host_book: Option<super::books::BookScreen>,
-    host_command_block: Option<super::command_blocks::CommandBlockScreen>,
-    host_mount_menu: super::mount_menu::MountMenu,
-    craft_size: usize,
-    craft_table: Option<[i32; 3]>,
-    craft_grid: Vec<Option<ItemStack>>,
-    container: Option<(i32, i32, i32)>,
-    mining: Option<Mining>,
-    destroy_delay: u32,
-    using: Option<(usize, u32)>,
-    use_duration: i32,
-    use_start: super::using_item::UseStart,
-    use_delay: u32,
-    pub(super) shield_cooldown: u32,
-    /// The guest's item cooldowns (`Game::cooldowns` for its turn).
-    cooldowns: sunrise_client::cooldowns::Cooldowns,
-    /// The guest's `takeXpDelay` (`Game::xp_delay` for its turn).
-    xp_delay: u32,
-    attack_ticks: u32,
-    attack_item: Option<std::sync::Arc<str>>,
-    swing: sunrise_client::first_person::SwingState,
-    riding: Option<u32>,
-    host_station: Option<super::stations::Station>,
-    sleeping: Option<[i32; 3]>,
-    sleep_timer: u32,
-    spawn: Option<Vec3>,
-    respawn: (
-        Option<super::respawn_anchor::RespawnConfig>,
-        Option<[f64; 3]>,
-    ),
-    message: Option<(String, std::time::Instant)>,
-    host_ender: Option<(i32, i32, i32)>,
-    adv_loaded: bool,
-    last_inventory: u64,
-    levitation: Option<([f64; 3], u64)>,
-    marks: super::advancements::TravelMarks,
-    death_cause: Option<String>,
-    /// The guest's own damage record, in place while they act.
-    combat: super::combat::CombatTracker,
-    /// The guest whose turn this one nests in, if any.
-    acting: (
-        Option<u32>,
-        Option<String>,
-        Option<u128>,
-        Option<u8>,
-        Option<u32>,
-        Option<i32>,
-    ),
-    /// Whether the outer turn is a fake player.
-    acting_fake: bool,
-    /// That turn's other-player building boxes.
-    building_boxes: BuildingPlayers,
-    /// That turn's `known_movement`.
-    known_movement: Vec3,
-    /// The packets queued for that guest.
-    packets: Vec<play::Clientbound>,
-    /// The entity events queued for that guest.
-    entity_events: Vec<i8>,
-    /// The equipment breaks queued for that guest.
-    equipment_breaks: Vec<i8>,
-    /// The cooldown packets queued for that guest.
-    cooldown_events: Vec<(std::sync::Arc<str>, i32)>,
-    /// The player-source sounds queued for that guest.
-    player_sounds: Vec<(String, [f64; 3], f32, f32)>,
-    block_sounds: Vec<(String, [f64; 3], f32, f32)>,
-    /// The host's count of swings started, kept while the guest acts.
-    swings: u32,
-    /// How many projectiles there were: those added since are the guest's.
-    projectiles: usize,
-    /// The host's equipment modifiers.
-    modifiers: Vec<(String, String)>,
 }
 
 impl GuestPlay {

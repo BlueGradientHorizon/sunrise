@@ -1115,8 +1115,7 @@ impl Goal for ClimbOnTopOfPowderSnow {
         if !super::ai::in_powder_snow(m, cx.w)
             || !cx
                 .w
-                .data
-                .entity_has("minecraft:powder_snow_walkable_mobs", &m.kind.id)
+                .entity_tag_bit(&m.kind, crate::items::EntityTypeTags::POWDER_SNOW_WALKABLE)
         {
             return false;
         }

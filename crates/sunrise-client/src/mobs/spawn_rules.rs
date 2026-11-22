@@ -965,6 +965,7 @@ mod mod_spawn_rule_tests {
             random_ticks: false,
             block_entity: false,
             render_shape: RenderShape::Model,
+            spawn_terrain_particles: true,
             destroy_overlay: true,
             full_collision: full,
             friction: 0.6,

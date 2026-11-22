@@ -1092,12 +1092,9 @@ impl Game<'_> {
                     return;
                 };
                 let inverted = self
-                    .res
-                    .stations()
-                    .enchantments
-                    .entity_tags
-                    .get("minecraft:inverted_healing_and_harm")
-                    .is_some_and(|t| t.contains(&self.mobs[i].kind.id));
+                    .items()
+                    .entity_type_tags
+                    .contains("minecraft:inverted_healing_and_harm", &self.mobs[i].kind.id);
                 for (effect, duration, amp) in effects {
                     // A mod's `onEffectAdded` may have changed the mobs.
                     let Some(index) = self.mob_index.find(&self.mobs, id) else {
@@ -1185,7 +1182,8 @@ impl Game<'_> {
                             self,
                             self.combat.attack(),
                             no_push,
-                            None
+                            None,
+                            acting_equipment!(self)
                         ),
                         &self.health_resources,
                         rules,
@@ -1209,7 +1207,8 @@ impl Game<'_> {
                             self,
                             self.combat.attack(),
                             no_push,
-                            None
+                            None,
+                            acting_equipment!(self)
                         ),
                         &self.health_resources,
                         rules,
@@ -1454,7 +1453,7 @@ impl Game<'_> {
             Some(EffectApplicable::Deny) => false,
             // An unanswered hook, or a future variant, defers to the
             // vanilla tag check.
-            _ => mob_can_be_affected(&self.res.stations().enchantments.entity_tags, kind, effect),
+            _ => mob_can_be_affected(self.items().entity_type_tags.members(), kind, effect),
         }
     }
     pub(super) fn add_player_effect(&mut self, effect: EffectInstance) -> bool {

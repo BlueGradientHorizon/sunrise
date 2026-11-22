@@ -70,7 +70,13 @@ impl Game<'_> {
                         m.yaw += wrap_degrees(yaw - m.yaw);
                         m.head_pitch = (pitch % 360.0).clamp(-90.0, 90.0);
                     }
-                    let _ = m.update_retained_ground(&self.world, self.collision, on_ground, None);
+                    let _ = m.update_retained_ground(
+                        &self.world,
+                        self.collision,
+                        &world_items!(self).entity_type_tags,
+                        on_ground,
+                        None,
+                    );
                     return;
                 }
                 // A living entity: LivingEntity.createInterpolationHandler's
@@ -93,7 +99,13 @@ impl Game<'_> {
                 }
                 // ClientPacketListener sets onGround after moving or queuing the
                 // interpolation; the support probe uses the current bounds.
-                let _ = m.update_retained_ground(&self.world, self.collision, on_ground, None);
+                let _ = m.update_retained_ground(
+                    &self.world,
+                    self.collision,
+                    &world_items!(self).entity_type_tags,
+                    on_ground,
+                    None,
+                );
                 return;
             }
             // An armor stand is a living entity too: the same handler, over
@@ -115,7 +127,13 @@ impl Game<'_> {
                         at.yaw,
                     );
                 }
-                let _ = a.update_retained_ground(&self.world, self.collision, on_ground, None);
+                let _ = a.update_retained_ground(
+                    &self.world,
+                    self.collision,
+                    &world_items!(self).entity_type_tags,
+                    on_ground,
+                    None,
+                );
                 return;
             }
             // Interaction extends Entity and keeps its NO_OP interpolation
@@ -238,7 +256,7 @@ impl Game<'_> {
                         }
                     });
                 }
-            } else {
+            } else if !self.text_displays.contains_key(&id) {
                 // AbstractInterpolationHandler.interpolateTo: without a
                 // rotation, the one it was heading for.
                 let rotation = rotation.or_else(|| r.lerps.get(&id).and_then(|l| l.rotation));
@@ -253,7 +271,14 @@ impl Game<'_> {
             }
         }
         self.turn_remote_object(id, rotation.map(|(yaw, _)| yaw), on_ground);
-        self.move_remote_text_display(id, position, rotation);
+        match packet {
+            MovePacket::PositionSync => {
+                self.position_sync_remote_text_display(id, position, rotation);
+            }
+            MovePacket::Move | MovePacket::Teleport => {
+                self.move_remote_text_display_opt(id, path.is_some().then_some(position), rotation);
+            }
+        }
         self.turn_remote_projectile(id, rotation);
     }
     /// `handleMoveVehicle`'s `getInterpolation().cancel()` for the mount this

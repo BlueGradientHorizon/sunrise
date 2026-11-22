@@ -80,7 +80,7 @@ impl Game<'_> {
             .and_then(|data| data.debug_stick_property(&state.name));
         // `Player.isSecondaryUseActive` / `isShiftKeyDown`: the acting
         // player's sneak input. `keys` holds the host's, toggled sneak
-        // included; `enter_guest` fills it from the guest's sneak state.
+        // included; the entry of `guest_turn` fills it from the guest's sneak state.
         let backward = self.held_mapping(Action::Sneak);
 
         if cycle {

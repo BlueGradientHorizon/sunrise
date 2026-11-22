@@ -36,6 +36,8 @@ pub(super) struct OrderedTicks {
     /// entity lists can change between passes, so this only retains capacity;
     /// entries are rebuilt from the live lists every time.
     pending_buf: Vec<(JoinSeq, Pending)>,
+    /// Stand turns that belong after a shulker's turn, kept in join order.
+    pub(super) armor_stands: std::collections::VecDeque<JoinSeq>,
     /// The falling blocks (id, join) that ended a tick still falling with a part listening to
     /// `falling_tick`, delivered after the pass.
     pub(super) falling_ticked: Vec<(u32, JoinSeq)>,
@@ -87,6 +89,8 @@ impl Game<'_> {
     pub(super) fn begin_ordered_ticks(&mut self) {
         let _span = sunrise_client::spans::guard("ordered_ticks");
         let pending_buf = std::mem::take(&mut self.ordered.pending_buf);
+        let mut armor_stands = std::mem::take(&mut self.ordered.armor_stands);
+        armor_stands.clear();
         let mut falling_ticked = std::mem::take(&mut self.ordered.falling_ticked);
         falling_ticked.clear();
         let told = self.native_tick_told();
@@ -116,6 +120,7 @@ impl Game<'_> {
             suffix_min,
             lava_random: None,
             pending_buf,
+            armor_stands,
             falling_ticked,
             told,
         };
@@ -312,18 +317,28 @@ impl Game<'_> {
                         let writes = self.body_step_on(entity, footprint, &ground, &mut velocity);
                         for write in writes {
                             match write {
-                                mod_api::EntityWrite::Hurt { amount } => {
+                                mod_api::EntityWrite::Hurt {
+                                    damage_type,
+                                    amount,
+                                } => {
+                                    let Some(name) =
+                                        mod_api::__private::parts_installation::damage_type_name(
+                                            damage_type,
+                                        )
+                                    else {
+                                        continue;
+                                    };
+                                    let Some(kind) = self.health_resources.damage.id(name) else {
+                                        continue;
+                                    };
                                     let source = sunrise_client::health::HurtSource {
-                                        damage_type: "minecraft:generic",
+                                        damage_type: name,
                                         causing: 0,
                                         direct: 0,
                                         position: None,
                                     };
-                                    let vanilla = self.saved_refuses_damage(
-                                        orb_id,
-                                        source.damage_type,
-                                        false,
-                                    );
+                                    let vanilla = self
+                                        .resident_item_or_orb_immune(orb_id, entity.1, kind, false);
                                     let invulnerable = self.native_nonliving_invulnerable(
                                         orb_id, entity.1, source, vanilla,
                                     );

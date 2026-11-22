@@ -130,6 +130,7 @@ Game workspace (root `Cargo.toml`); `crates/sunrise-telemetry-server` is a separ
 | `sunrise-client-core` | The client lib's bottom layer: `text.rs`, `lang.rs`, `snbt.rs`, `nbt_path.rs`, `component.rs`, `scoreboard.rs`, `bossbar.rs`, `gamerules.rs`, `block_entity_nbt.rs`, registry/particle/sound tables. Re-exported under the old paths (`sunrise_client::text`...) |
 | `sunrise-client-input` | Key bindings and key names, toggle keys, mouse options, controller settings and glyphs, the clipboard, window options (`keybinds.rs`, `gamepad.rs`, `mouse.rs`, `window.rs`...). Re-exported under the old paths |
 | `sunrise-client-render` | The client's world data, rendering and screens (chunks, meshing, light, streaming, `gfx`, HUD, menus, settings): its modules (`ls crates/sunrise-client-render/src`), which sunrise-client re-exports under the same paths. Nothing in it reaches gameplay |
+| `sunrise-stage` | Prebuilt game staging, SDK surface export and comparison, and standalone mod source scans (`surface`, `surface-diff`, `uses`, `fits`) |
 | `sunrise-mod-runtime` | Engine-independent mod attachment storage, query index and generic registry slot tables; depends only on `sunrise-core` |
 | `sunrise-world` | Vanilla world data with no gameplay loop: NBT, regions, chunks, `datafix/`, `worldgen/`, `level/` (server-side block behaviour, ticks, redstone), entity physics, items, effects, food, damage |
 | `sunrise-core` | Simulation primitives: Java `Random`s, `jmath` (HotSpot-exact `Math`), positions, noise, density, paletted storage, `version.rs` (the pinned version) |

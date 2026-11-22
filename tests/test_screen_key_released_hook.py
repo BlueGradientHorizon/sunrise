@@ -23,7 +23,7 @@ class ScreenKeyReleasedHookTests(unittest.TestCase):
         key_codes = key_codes.replace("\npub(super) fn", "\n    pub(super) fn")
         gate = method(native_hook_sources(), "screen_key_released")
         mappings = "\n".join(method(play_input, name) for name in (
-            "mapped_key_event", "remove_device_key", "sync_device_key",
+            "mapped_key_event", "mapped_key_event_from", "remove_device_key", "sync_device_key",
         ))
         buttons = "\n".join(method(key_codes, name) for name in (
             "keyboard_button", "gameplay_has_keyboard", "container_key_clones",
@@ -56,7 +56,7 @@ mod keybinds {
     }
 }
 mod sunrise_client { pub(crate) use crate::keybinds; }
-enum Source { Keyboard }
+#[derive(Clone, Copy)] enum Source { Keyboard }
 struct Bindings;
 impl Bindings {
     fn translate_all(&self, _: i32) -> Vec<std::result::Result<i32, MouseButton>> {
@@ -89,8 +89,10 @@ impl Game {
         assert_eq!((*screen, name, modifiers), ("options", "key.keyboard.a", 5));
         self.calls.set(self.calls.get() + 1); *canceled = self.cancel;
     }
-    fn mapped_key(&mut self, key: i32, pressed: bool, repeat: bool, raw: i32, _: Source) -> Result<()> {
-        assert!(!pressed && !repeat && raw == 1); self.released.push(Binding::Key(key)); Ok(())
+    fn mapped_key_dispatch(&mut self, key: i32, pressed: bool, repeat: bool, raw: i32, source: Source, vanilla_queued: bool) -> Result<()> {
+        assert!(!pressed && !repeat && raw == 1 && matches!(source, Source::Keyboard) && vanilla_queued);
+        self.released.push(Binding::Key(key));
+        Ok(())
     }
     fn mouse_mapping(&mut self, button: MouseButton, pressed: bool, _: Source) -> Result<()> {
         assert!(!pressed); self.released.push(Binding::Mouse(button)); Ok(())

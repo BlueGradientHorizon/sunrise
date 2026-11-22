@@ -272,6 +272,38 @@ pub(super) mod tests {
         server
     }
 
+    /// Drive the server's side of a memory client login through to play, so a test can
+    /// read packets from the ordinary client sender.
+    pub(in crate::game) fn finish_login(
+        game: &mut Game<'_>,
+        server: &mut sunrise_protocol::connection::Connection,
+    ) {
+        use sunrise_protocol::packets::{Empty, configuration as cfg, login};
+        server.recv().unwrap(); // Intention.
+        server.recv().unwrap(); // Hello.
+        server
+            .send(
+                &login::Clientbound::LoginFinished(login::LoginFinished {
+                    profile: login::GameProfile {
+                        uuid: 42,
+                        name: "SessionReadTest".into(),
+                        properties: vec![],
+                    },
+                    session: 1,
+                })
+                .encode(),
+            )
+            .unwrap();
+        server.recv().unwrap(); // Login acknowledged.
+        server.recv().unwrap(); // Brand.
+        server.recv().unwrap(); // Client information.
+        server
+            .send(&cfg::Clientbound::FinishConfiguration(Empty).encode())
+            .unwrap();
+        game.acknowledge_test_configuration();
+        server.recv().unwrap(); // Finish configuration.
+    }
+
     #[test]
     #[ignore = "daily"]
     fn client_session_reads_follow_connection_language_and_frame_state() {

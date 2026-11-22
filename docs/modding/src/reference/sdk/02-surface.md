@@ -91,6 +91,7 @@ To run the CI report locally, set `SUNRISE_STAGE_TOOL` to the `sunrise-stage` bi
 compared revisions use different generators, pass `--build-base-tool`:
 
 ```sh
+cargo build --locked -p sunrise-stage
 SUNRISE_STAGE_TOOL=target/debug/sunrise-stage \
   python3 tools/ci/surface_report.py --trees BASE HEAD --build-base-tool
 ```

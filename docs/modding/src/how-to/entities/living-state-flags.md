@@ -58,6 +58,15 @@ the previous eye-in-water sample AND current water contact. The local client pla
 contact is false. It is deliberately not equivalent to checking `eye_fluid` now. Both reads return
 `None` for unsupported kinds or stale handles.
 
+On the server, `LivingRef::can_breathe_underwater(host)` reads whether the mob's type is currently in
+`minecraft:can_breathe_under_water`. It does not predict drowning: it ignores effects, species-specific
+breathing overrides and invulnerability.
+
+`EntityRef::is_swimming` reads the swimming flag, not the player's current pose.
+[Swimming eligibility](entity-hooks.md#swimming-eligibility) can change entry on
+both sides without changing either of the fluid reads above or the conditions
+for continuing a swim.
+
 `PlayerRef::trigger_consume_item(host, &stack)` is server-only and fires just
 `CriteriaTriggers.CONSUME_ITEM.trigger(serverPlayer, stack)`, the vanilla public call that NeoForge
 mods can also use. It uses the same advancement path as food and potions, with the supplied stack,

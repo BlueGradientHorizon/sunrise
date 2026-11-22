@@ -642,11 +642,27 @@ class DynaRoutingTests(unittest.TestCase):
             (tree / "tools" / "test_gameplay_parity.py").write_text(
                 "run(['cargo', 'test', '--locked', '-p', 'sunrise-gameplay', '--lib', 'w'])\n")
             env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
-                   "PARITY_LOG_DIR": temporary}
+                   "PARITY_LOG_DIR": temporary, "RUNNER_TEMP": temporary, "BUCKET": "1"}
             subprocess.run(["bash", "-e", "-c", script], cwd=tree, env=env, check=True)
             self.assertEqual(calls.read_text().splitlines(), ["test --locked --no-run -p sunrise-client --lib",
                                                              "test --locked --no-run -p sunrise-client-lib --lib",
                                                              "test --locked --no-run -p sunrise-gameplay --lib"])
+            # A share builds only for the harnesses its plan gives it (a shard named NAME#N), and nothing for none.
+            calls.unlink()
+            (Path(temporary, "plan")).mkdir()
+            Path(temporary, "plan", "bucket-1.json").write_text('["gameplay#2", "fast"]\n')
+            subprocess.run(["bash", "-e", "-c", script], cwd=tree, env=env, check=True)
+            self.assertEqual(calls.read_text().splitlines(), ["test --locked --no-run -p sunrise-gameplay --lib"])
+            calls.unlink()
+            Path(temporary, "plan", "bucket-1.json").write_text("[]\n")
+            subprocess.run(["bash", "-e", "-c", script], cwd=tree, env=env, check=True)
+            self.assertFalse(calls.exists())
+            # A plan it cannot read fails the step with a fixed annotation, not a silent empty build.
+            Path(temporary, "plan", "bucket-1.json").write_text("not json\n")
+            failed = subprocess.run(["bash", "-e", "-c", script], cwd=tree, env=env, capture_output=True, text=True)
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertEqual(failed.stdout, "::error::Could not read the game-probe plan for this parity share.\n")
+            self.assertFalse(calls.exists())
 
 class PersistentTargetTests(unittest.TestCase):
     def test_every_job_that_can_build_on_a_self_hosted_runner_keeps_the_source_snapshot_first(self):
@@ -698,6 +714,60 @@ class ParityWorkflowTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.env.update([line.split("=", 1) for line in (self.root / "env").read_text().splitlines()])
         self.assertEqual(Path(self.env["PARITY_LOG_DIR"]), self.slot)
+
+    def test_a_failed_probe_build_shows_its_error_headings_not_its_text(self):
+        step = self.steps["Show a failed probe build's compiler errors"]
+        self.assertEqual(self.steps["Build the daily harnesses' game probes"]["id"], "game-probes")
+        self.assertEqual(self.steps["Build parity probes"]["id"], "probes")
+        self.assertIn("steps.game-probes.outcome == 'failure'", step["if"])
+        self.initialise()
+        (self.slot / "game-probes.log").write_text(
+            "   Compiling sunrise-client-lib\nerror[E0425]: cannot find value `PRIVATE` in this scope\n"
+            "  --> crates/sunrise-client/src/lib.rs:1:1\nprivate source excerpt\n"
+            "error[E0609]: no field `PRIVATE`\n  --> crates/sunrise-client/src/untracked_generated_probe.rs:3:9\n"
+            "error: could not compile\n")
+        result = subprocess.run(["bash", "-e", "-c", step["run"]], cwd=ROOT, capture_output=True, text=True,
+                                env=dict(self.env, FAILED="game-probes"))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("game-probes failed:", result.stdout)
+        self.assertIn("compiler: error[E0425]: custom diagnostic payload withheld", result.stdout)
+        self.assertIn("compiler:   --> crates/sunrise-client/src/lib.rs:1:1", result.stdout)
+        self.assertIn("compiler:   --> location withheld (not a tracked Rust source)", result.stdout)
+        for private in ("PRIVATE", "private source excerpt", "Compiling", "untracked_generated_probe"):
+            self.assertNotIn(private, result.stdout)
+
+    def test_a_failed_shares_logs_are_kept_beyond_the_slot(self):
+        step = self.steps["Keep a failed share's logs beyond this slot"]
+        self.assertEqual(step["if"], "failure()")
+        self.initialise()
+        (self.slot / "parity.log").write_text("private mismatch")
+        keep = self.root / "keep"
+        self.env["DYNA_CI_KEEP"] = str(keep)
+        result = self.step("Keep a failed share's logs beyond this slot")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((keep / "parity-failed-logs/77-2-bucket-0/parity.log").read_text(), "private mismatch")
+        self.assertEqual([path.name for path in (keep / "parity-failed-logs").iterdir()], ["77-2-bucket-0"])
+        self.assertNotIn("private", result.stdout)
+
+    def test_every_share_prunes_expired_kept_logs_and_keeps_fresh_ones(self):
+        cleanup = self.steps["Delete this job's vanilla-derived scratch"]
+        self.assertEqual(cleanup["if"], "always()")
+        keep = self.root / "keep"
+        stale, fresh = keep / "parity-failed-logs/70-1-bucket-0", keep / "parity-failed-logs/77-2-bucket-0"
+        for path in (stale, fresh):
+            path.mkdir(parents=True)
+        os.utime(stale, (0, 0))
+        # A green share: nothing captured, the expired copy still goes.
+        result = subprocess.run(["bash", "-e", "-c", cleanup["run"]], cwd=self.root, capture_output=True, text=True,
+                                env=dict(self.env, DYNA_CI_KEEP=str(keep)))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(stale.exists())
+        self.assertTrue(fresh.exists())
+        # A host whose keep holds no captured logs is left as it is.
+        result = subprocess.run(["bash", "-e", "-c", cleanup["run"]], cwd=self.root, capture_output=True, text=True,
+                                env=dict(self.env, DYNA_CI_KEEP=str(self.root / "empty-keep")))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.root / "empty-keep").exists())
 
     def test_an_early_failure_cannot_report_a_previous_slots_result(self):
         # Both an older attempt and stale state in the current directory survive until the first workflow step.

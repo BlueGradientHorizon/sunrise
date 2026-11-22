@@ -12,8 +12,11 @@ fn next_biome_keys_session() -> u64 {
 impl Game<'_> {
     /// The server's data-pack enchantments, or the local world's registry.
     pub(super) fn item_enchantments(&self) -> &Arc<sunrise_client::enchant::Enchantments> {
-        match self.remote.as_ref().and_then(|r| r.enchantments.as_ref()) {
-            Some(e) => e,
+        match self.remote.as_ref() {
+            Some(remote) => remote
+                .enchantments
+                .as_ref()
+                .unwrap_or(&self.items().enchantments),
             None => &self.stations().enchantments,
         }
     }
@@ -292,7 +295,17 @@ impl Game<'_> {
             self.res.facts(),
             &overlay,
             self.res.item_defaults(),
+            if reload {
+                sunrise_client::items::LoadEntityTags::Reload(&self.items().entity_type_tags)
+            } else {
+                sunrise_client::items::LoadEntityTags::Frozen(
+                    self.res.items().entity_type_tags.ids(),
+                )
+            },
         )?;
+        if reload {
+            items.retain_unbound_tags(self.items());
+        }
         class_tags::install(&mut items, self.res.facts());
         // Tag files are read before their tags are bound, so the tag readers below keep the
         // context without tags: there `neoforge:tag_empty` is unsupported, never answered from a
@@ -336,11 +349,12 @@ impl Game<'_> {
         let providers = Providers::load_with(root, &overlay);
         // Visit independently readable registries before consuming any result.
         // One rejected winner must not hide the other entries' diagnostics.
-        let loot = sunrise_world::loot::LootData::load_with_damage(
+        let loot = sunrise_world::loot::LootData::load_with_bound_tags(
             root,
             &overlay,
             self.res.core.item_data.defaults(),
             &health.damage,
+            &items.ordered_tags(),
         );
         let advancements = Arc::new(sunrise_client::advancements::Tree::load_with(
             &root.join("data"),
@@ -449,7 +463,7 @@ impl Game<'_> {
         let pack_tags: HashMap<_, _> = WorldTables::PACK_TAG_REGISTRIES
             .into_iter()
             .chain(sunrise_client::neoforge_mob_maps::MAPS.map(|definition| definition.directory))
-            .filter(|directory| *directory != "item")
+            .filter(|directory| !matches!(*directory, "item" | "entity_type" | "damage_type"))
             .collect::<std::collections::BTreeSet<_>>()
             .into_iter()
             .filter_map(|registry| {
@@ -475,12 +489,10 @@ impl Game<'_> {
         }
         let builtin = neoforge_mob_maps::load(
             &overlay,
-            |directory| {
-                if directory == "item" {
-                    Some(&items.item_tags)
-                } else {
-                    pack_tags.get(directory)
-                }
+            |directory| match directory {
+                "item" => Some(&items.item_tags),
+                "entity_type" => Some(items.entity_type_tags.members()),
+                _ => pack_tags.get(directory),
             },
             |registry, id| match registry {
                 "minecraft:item" => items.items.contains_key(id),
@@ -651,6 +663,7 @@ impl Game<'_> {
             health,
             parts,
             wire,
+            wire_tags,
             datapack_registries,
         } = prepared;
         self.close_stonecutters_for_reload();
@@ -708,6 +721,7 @@ impl Game<'_> {
             &self.pack_files(),
             wire.clone(),
             advancements.clone(),
+            wire_tags,
         );
         if self.lan.is_some()
             && let Some(sync) = wire
@@ -746,10 +760,7 @@ impl Game<'_> {
 
 impl Game<'_> {
     pub(super) fn active_enchantment_definitions(&self) -> &sunrise_client::enchant::Enchantments {
-        match self.remote.as_ref().and_then(|r| r.enchantments.as_ref()) {
-            Some(e) => e,
-            None => &self.stations().enchantments,
-        }
+        self.item_enchantments()
     }
     /// Build and publish one server snapshot for this world load or reload.
     pub(super) fn load_server_loot(&mut self) {
@@ -765,11 +776,12 @@ impl Game<'_> {
         }
         self.server_items = None;
         let overlay = pack_files(&self.world_tables);
-        let loot = match sunrise_world::loot::LootData::load_with_damage(
+        let loot = match sunrise_world::loot::LootData::load_with_bound_tags(
             &self.options.resources,
             &overlay,
             self.res.item_defaults(),
             &self.health_resources.damage,
+            &self.items().ordered_tags(),
         ) {
             Ok(mut loot) => {
                 if !mod_api::__private::mods().is_empty() {
@@ -866,8 +878,9 @@ impl Game<'_> {
         } = self.stage_world_tables(stack, true, root)?;
         let items = tables
             .as_ref()
-            .map_or_else(|| self.res.items(), |tables| &tables.items);
-        let parts = self.prepare_parts(items)?;
+            .map_or_else(|| self.res.shared_items(), |tables| tables.items.clone());
+        let parts = self.prepare_parts(&items)?;
+        let wire_tags = sunrise_client::lan::data::WorldTags::new(items.clone(), &health.damage);
         let overlay = pack_files(&tables);
         let kept = self
             .lan
@@ -884,7 +897,7 @@ impl Game<'_> {
                     let sources = lan::sync::prepare_server_sources(
                         root,
                         &self.res.core.item_data,
-                        items,
+                        &items,
                         &overlay,
                     )?;
                     sources.check()?;
@@ -899,6 +912,7 @@ impl Game<'_> {
                     &kept,
                     &sources,
                     &advancements,
+                    &wire_tags,
                 )
                 .map_err(|error| format!("wire reload: {error}"))?,
             )
@@ -913,6 +927,7 @@ impl Game<'_> {
             health,
             parts,
             wire,
+            wire_tags,
             datapack_registries,
         })
     }

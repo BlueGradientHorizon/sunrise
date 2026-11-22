@@ -29,6 +29,7 @@ pub struct Backend {
     pub details: fn() -> Vec<(&'static str, String)>,
     pub registration_open: fn() -> bool,
     pub packages: fn() -> std::sync::Arc<[crate::PackageInfo]>,
+    pub visible_packages: fn() -> Option<crate::LoadedMods>,
     pub namespace_authority: fn() -> std::sync::Arc<crate::parts::NamespaceAuthority>,
     pub owns_namespace: fn(&str, &str) -> bool,
     pub registration_data: fn() -> Option<crate::__private::RegistrationData>,

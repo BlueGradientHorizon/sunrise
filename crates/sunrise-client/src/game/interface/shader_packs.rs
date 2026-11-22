@@ -1625,6 +1625,7 @@ mod player_status_tests {
                     seed: 0,
                     except: None,
                     entity: None,
+                    skip_hooks: false,
                 });
             game.spill.orbs.push((at, 1, 0));
             rain_on_the_player(game, true);

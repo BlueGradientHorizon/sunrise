@@ -44,7 +44,7 @@ impl Game<'_> {
         self.tick_remote_guardian_eyes(running);
         self.tick_hand();
         if running {
-            self.tick_particles();
+            self.tick_particle_sources();
         } else if self.clock.still() {
             self.settle_rain_fog();
         }
@@ -75,8 +75,16 @@ impl Game<'_> {
         let sent = self.tick_remote_own_player();
         if running {
             self.tick_remote_block_entities();
+            // Minecraft.tick: the particle engine ticks after Level.tickBlockEntities.
+            self.tick_particle_engine();
         }
-        if let Some(input) = sent? {
+        let input = sent?;
+        // Like the block-entity push above, collider displacement belongs in this tick's
+        // LocalPlayer.sendChanges, before the client closes the tick on the wire.
+        let start = sunrise_client_render::moving_colliders::Scope::placed();
+        self.carry_pass(&start);
+        self.observe_carry_age(&start);
+        if let Some(input) = input {
             self.remote_send_state(input);
         }
         Ok(())
@@ -128,8 +136,8 @@ impl Game<'_> {
     pub(in crate::game) fn tick_remote_entities(&mut self, running: bool) {
         use crate::game::native_ticks::{PLAYER, TickKind};
 
+        self.tick_text_displays(running);
         if running {
-            self.tick_text_displays();
             self.tick_remote_ominous_item_spawners();
         }
         // EntityTickEvent.Pre for the mobs and players this client ticks, once for the family
@@ -272,7 +280,7 @@ impl Game<'_> {
             let own = self
                 .player
                 .as_ref()
-                .filter(|p| !p.health.dead_or_dying() && !self.spectator())
+                .filter(|p| !p.health.dead_or_dying() && !p.spectator)
                 .map(|p| {
                     let feet = [p.position.x, p.position.y, p.position.z];
                     let eye = f64::from(p.dimensions.eye_height);
@@ -282,12 +290,7 @@ impl Game<'_> {
                 self.mobs
                     .iter()
                     .filter(move |m| m.alive() && r.level_players.contains_key(&(m.id as i32)))
-                    .filter(move |m| {
-                        let listed = r.level_players.get(&(m.id as i32));
-                        !listed
-                            .and_then(|uuid| r.tab_players.get(uuid))
-                            .is_some_and(|t| t.game_mode == SPECTATOR)
-                    })
+                    .filter(move |m| r.remote_player_info_game_mode(m.id as i32) != Some(SPECTATOR))
                     .map(|m| {
                         let feet = [m.position.x, m.position.y, m.position.z];
                         (
@@ -410,18 +413,18 @@ impl Game<'_> {
                     })
                 })
                 .flatten();
+            let spectator_player = player
+                && self
+                    .remote
+                    .as_ref()
+                    .is_some_and(|r| r.remote_player_info_game_mode(id as i32) == Some(SPECTATOR));
             let r = self.remote.as_mut().unwrap();
             let stepped = &mut r.stepped;
-            let players = &r.level_players;
-            let tab_players = &r.tab_players;
             let m = &mut self.mobs[i];
             let section_from = m.position;
             if player {
                 // AvatarRenderer.extractRenderState: isSpectator, from the player list.
-                m.extra.spectator = players
-                    .get(&(m.id as i32))
-                    .and_then(|uuid| tab_players.get(uuid))
-                    .is_some_and(|t| t.game_mode == SPECTATOR);
+                m.extra.spectator = spectator_player;
             }
             m.previous = m.position;
             // `Entity.deltaMovementOnPreviousTick`: the elytra's flight yaw
@@ -845,6 +848,16 @@ impl Game<'_> {
             }
         }
     }
+    /// `LocalPlayer.aiStep` (877-883): water vision reads the local body's `Entity.baseTick`
+    /// `isEyeInFluid(FluidTags.WATER)` sample and `this.isSpectator()`.
+    fn tick_local_water_vision(&mut self) {
+        let in_water = self
+            .player
+            .as_ref()
+            .is_some_and(|p| p.is_eye_in_fluid(sunrise_client::motion::WATER));
+        self.fog.tick(in_water, self.own_player_is_spectator());
+    }
+
     /// `LocalPlayer.tick`'s `Player.tick` work: input, riding, motion and
     /// sleep, and the input `sendChanges` sends for it (`None`: nothing ticked).
     pub(super) fn tick_local_player(
@@ -905,7 +918,7 @@ impl Game<'_> {
             .riding
             .filter(|_| self.screen != Screen::Dead)
             .and_then(|_| self.player.as_ref().map(|p| p.position));
-        let riding = self.screen != Screen::Dead && self.remote_ride(keys, sprint_window)?;
+        let riding = self.screen != Screen::Dead && self.remote_ride(keys);
         // LocalPlayer.isShiftKeyDown is the input's sneak, riding or not: the tick after a
         // dismount crouches (a passenger never does) on the sneak held to get off.
         if riding && let Some(p) = self.player.as_mut() {
@@ -927,6 +940,7 @@ impl Game<'_> {
             return Ok(None);
         };
         player.fluids.boat = boat;
+        player.is_passenger = riding;
         if !riding && !self.replay.playing() {
             self.previous_position = player.position;
         }
@@ -937,6 +951,7 @@ impl Game<'_> {
         );
         let was_flying = player.flying;
         self.sync_player_body();
+        self.sync_remote_player_game_mode();
         let sleeping = self.sleeping;
         if let Some(at) = sleeping.and_then(|head| self.sleeping_position(head))
             && let Some(player) = self.player.as_mut()
@@ -950,19 +965,48 @@ impl Game<'_> {
         }
         let walks = self.can_move_local_player();
         let section_scope = self.player_section_scope();
+        let swim_listener = self.has_swim_eligibility_listener();
+        // Release the field borrows for the read-only Game host, then resume the same body.
+        macro_rules! motion_world {
+            ($side:ident, $player:expr) => {
+                MotionWorld {
+                    side: &$side,
+                    entities: &entity_collisions,
+                    player: $player,
+                    scene: &mut self.world,
+                    assets: &self.pack.assets,
+                    collision_binding: self.collision,
+                    resources: self.motion,
+                    health: &self.health_resources,
+                    loop_context: &self.loop_context,
+                    damage_hooks: &self.damage_hooks,
+                    tag_items: None,
+                    block_registries: None,
+                }
+            };
+        }
         let Some(player) = self.player.as_mut() else {
             return Ok(None);
         };
+        let body = player.entity_id;
         let was_gliding = player.fall_flying;
         let dead = self.screen == Screen::Dead;
         // LivingEntity.isImmobile: a sleeper lies still, even if its bed's
         // shape is unavailable here; only the server decides when to wake.
         if sleeping.is_some() {
-            player.velocity = Vec3::ZERO;
-            player.pitch = 0.0;
+            // Entity.baseTick still samples fluids while sleeping, before LocalPlayer.aiStep.
+            let side = game_side!(self);
+            player.client_side = true;
+            motion_world!(side, player).fluid_base_tick()?;
+            if let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) {
+                player.velocity = Vec3::ZERO;
+                player.pitch = 0.0;
+            }
+            if !dead {
+                self.tick_local_water_vision();
+            }
         } else if walks {
             let side = game_side!(self);
-            let _sections = section_scope.map(|scope| scope.begin(&mut self.native_lifecycle));
             player.client_side = true;
             // LivingEntity.checkAutoSpinAttack: a Riptide spin that touches a
             // mob ends and bounces back; the server deals the hit.
@@ -975,21 +1019,35 @@ impl Game<'_> {
                         .map(|m| (m.id, m.bounds())),
                 );
             }
-            MotionWorld {
-                side: &side,
-                entities: &entity_collisions,
-                player,
-                scene: &mut self.world,
-                assets: &self.pack.assets,
-                collision_binding: self.collision,
-                resources: self.motion,
-                health: &self.health_resources,
-                loop_context: &self.loop_context,
-                damage_hooks: &self.damage_hooks,
-                tag_items: None,
-                block_registries: None,
+            let mut motion = motion_world!(side, &mut *player);
+            motion.begin_local_tick()?;
+            let decision = if swim_listener {
+                motion.swim_entry()
+            } else {
+                None
+            };
+            let answer = self.ask_swim_entry(decision);
+            let side = game_side!(self);
+            let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
+                return Ok(None);
+            };
+            let mut motion = motion_world!(side, player);
+            motion.finish_fluid_tick(answer)?;
+            let keys = motion.prepare_local_sprint(keys)?;
+            self.player_sprint_tick(keys, sprint_window, None)?;
+            if !self.player.as_ref().is_some_and(|p| p.entity_id == body) {
+                return Ok(None);
             }
-            .controlled_simulation_tick_with_sprint_window(keys, sprint_window)?;
+            // LocalPlayer.aiStep: water vision reads this tick's `Entity.baseTick`
+            // `isEyeInFluid(FluidTags.WATER)` sample and `this.isSpectator()`, before `super.aiStep()`.
+            self.tick_local_water_vision();
+            let side = game_side!(self);
+            let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
+                return Ok(None);
+            };
+            // Only travel writes positions; the fluid and sprint decisions precede this pass.
+            let _sections = section_scope.map(|scope| scope.begin(&mut self.native_lifecycle));
+            motion_world!(side, &mut *player).finish_local_tick(keys)?;
             // LocalPlayer.aiStep's makeJump adds a key press to this tick's input.
             packet_keys.jump |= player.was_auto_jump;
         } else {
@@ -999,42 +1057,58 @@ impl Game<'_> {
             player.health.advance_clock();
             let side = game_side!(self);
             player.client_side = true;
-            let mut motion = MotionWorld {
-                side: &side,
-                entities: &entity_collisions,
-                player: &mut *player,
-                scene: &mut self.world,
-                assets: &self.pack.assets,
-                collision_binding: self.collision,
-                resources: self.motion,
-                health: &self.health_resources,
-                loop_context: &self.loop_context,
-                damage_hooks: &self.damage_hooks,
-                tag_items: None,
-                block_registries: None,
-            };
+            let mut passenger = motion_world!(side, player);
             if riding && !dead {
-                let _sections = section_scope.map(|scope| scope.begin(&mut self.native_lifecycle));
                 // The rider moves from its old seat; the new one is its place after.
-                let seat = motion.player.position;
+                let seat = passenger.player.position;
                 if let Some(from) = old_seat {
-                    motion.player.position = from;
+                    passenger.player.position = from;
                 }
-                motion.rider_tick(keys.direction())?;
-                sunrise_world::entity_move::EntityMoveWorld::set_position(&mut motion, seat)?;
+                passenger.begin_fluid_tick()?;
+                let decision = if swim_listener {
+                    passenger.swim_entry()
+                } else {
+                    None
+                };
+                let answer = self.ask_swim_entry(decision);
+                let side = game_side!(self);
+                let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
+                    return Ok(None);
+                };
+                motion_world!(side, player).finish_rider_base_tick(answer);
+                self.remote_rider_sprint(keys, sprint_window)?;
+                if !self.player.as_ref().is_some_and(|p| p.entity_id == body) {
+                    return Ok(None);
+                }
+                self.tick_local_water_vision();
+                let side = game_side!(self);
+                let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
+                    return Ok(None);
+                };
+                let _sections = section_scope.map(|scope| scope.begin(&mut self.native_lifecycle));
+                let mut passenger = motion_world!(side, player);
+                passenger.finish_rider_tick(keys.direction())?;
+                sunrise_world::entity_move::EntityMoveWorld::set_position(&mut passenger, seat)?;
                 // LivingEntity.aiStep: a passenger freezes in powder snow too, and the
                 // frostbite overlay shows it (#8156).
-                motion.passenger_block_effects_tick()?;
+                passenger.passenger_block_effects_tick()?;
             } else {
                 // Entity.baseTick samples fluids even if movement is skipped by death.
-                motion.fluid_base_tick()?;
+                passenger.fluid_base_tick()?;
             }
         }
         // LivingEntity.baseTick reaches LocalPlayer.tickDeath after the fluid update.
         // The last sample is therefore the one taken on death tick 20.
         if dead {
             self.ui.death_time = self.ui.death_time.saturating_add(1);
+            // LivingEntity.tick runs LocalPlayer.aiStep only while `!this.isRemoved()`.
+            if !self.local_player_removed_by_death() {
+                self.tick_local_water_vision();
+            }
         }
+        let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
+            return Ok(None);
+        };
         // The server decides fire the window cannot predict (blaze fireballs,
         // fire aspect, lightning): Entity.isOnFire reads the synched flag, so
         // the predicted tick's countdown must not end it while it is set.
@@ -1162,6 +1236,9 @@ impl Game<'_> {
             self.remote_tick_using();
         }
         if flying != was_flying {
+            if let Some(r) = self.remote.as_mut() {
+                r.abilities.flying = flying;
+            }
             self.send(S::PlayerAbilities(play::PlayerAbilitiesRequest {
                 flags: if flying { 2 } else { 0 },
             }));
@@ -1283,13 +1360,8 @@ impl Game<'_> {
 impl Game<'_> {
     /// `Level.tickBlockEntities` on a client: the block entities' animations
     /// and client ticks, and the moving pistons' pushes.
-    pub(super) fn tick_remote_block_entities(&mut self) {
-        // The ticker list's spawners, trial spawners, vaults and mod block entities; the
-        // animated ones, beacons and potent sulfur still tick on their own passes after them.
+    pub(in crate::game) fn tick_remote_block_entities(&mut self) {
         self.tick_client_block_entities();
-        self.tick_block_entity_anims();
-        self.client_tick_beacons();
-        self.tick_remote_potent_sulfur();
         self.with_level(|b, level, ticks| {
             b.client_tick_block_entities(level, ticks);
         });

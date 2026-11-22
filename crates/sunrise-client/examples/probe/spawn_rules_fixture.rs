@@ -315,7 +315,7 @@ pub fn main() -> sunrise_client::Result<()> {
                 kind.height as f32,
             );
             let obstruction =
-                spawn_selection::spawn_obstruction(s, &level, bounds, Some(&[]), x0, y, z0);
+                spawn_selection::spawn_obstruction(s, &level, bounds, true, x0, y, z0);
             let _ = writeln!(out, "{name} {obstruction}");
             continue;
         }

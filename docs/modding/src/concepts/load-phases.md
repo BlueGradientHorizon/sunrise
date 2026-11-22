@@ -81,10 +81,14 @@ stitching, respectively. Atlas admission, duplicate handling and dispatch timing
 
 The context's `mods()`, `registry(name)` and `setting(mod_id, key)` borrow
 one view captured before the first of them runs, so every registration step sees the same values
-whatever the dispatch order: the loaded packages (`&LoadedMods`), the built-in registries as
+whatever the dispatch order: the enabled, admitted packages (`&LoadedMods`), the built-in registries as
 `registries.json` lists them (`Option<&[String]>`, without what mods declare during registration),
 and the settings on disk when the snapshot is captured (`Option<&str>`). An unknown registry,
 an unset key, or a context with no engine snapshot returns `None`.
+
+A native mod switched off at startup still registers, but its package is absent from the snapshot.
+`package_files(id)` lists and reads the admitted `assets/` and `data/` files for the packages in that view
+(see [Data files](../how-to/native-mods/03-data-files.md#another-packages-files)).
 
 `client_setup` runs once after initial assets are applied, with `&mut dyn ClientSetupContext` and
 `&mut ClientSetupEvent`. Afterward the window loads its Client and Common configs, before title,
@@ -143,7 +147,9 @@ reported without failing the whole reload; a cycle in the completed graph still 
 
 `DataLoadContext`, `LoopContext` and `WorldgenHost` lend frozen metadata for their resource
 generation. `registry(name)` returns `Option<&[String]>` in registry ID order,
-`setting(mod_id, key)` returns `Option<&str>`, and `mods()` returns `&LoadedMods` in dispatch order.
+`setting(mod_id, key)` returns `Option<&str>`, and `mods()` returns `&LoadedMods` in dispatch order:
+the packages enabled and admitted at startup. Reloading resources or switching code live does not
+change this snapshot.
 The getters do not read files. `None` means the registry or setting is unavailable, not that it is
 present and empty. Use the references within the callback; take an owned value only if it must
 outlive the context borrow. Use `DataLoadOrigin` to identify the load origin and `LoopSide` to identify

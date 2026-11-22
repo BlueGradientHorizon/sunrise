@@ -49,6 +49,9 @@ mod inside_walk_tests {
     static KILL_AFTER: AtomicUsize = AtomicUsize::new(usize::MAX);
     static PANIC_AFTER: AtomicUsize = AtomicUsize::new(usize::MAX);
     static ENABLED: AtomicBool = AtomicBool::new(false);
+    std::thread_local! {
+        static KILL_DAMAGE: std::cell::Cell<Option<mod_api::DamageTypeKey>> = const { std::cell::Cell::new(None) };
+    }
 
     fn in_contact_test_process(test: &str) -> bool {
         const CHILD: &str = "SUNRISE_TEST_MOB_CONTACT_CHILD";
@@ -91,7 +94,10 @@ mod inside_walk_tests {
         if seen > KILL_AFTER.load(Ordering::SeqCst) {
             staged.run_after(
                 mod_api::InsideEffect::Freeze,
-                mod_api::EntityWrite::Hurt { amount: 1000.0 },
+                mod_api::EntityWrite::Hurt {
+                    damage_type: KILL_DAMAGE.get().unwrap(),
+                    amount: 1000.0,
+                },
             );
         }
         staged.run_after(
@@ -215,10 +221,9 @@ mod inside_walk_tests {
         if !in_contact_test_process("a_killing_write_stops_the_mobs_flush") {
             return;
         }
-        reset(0, usize::MAX, true);
-        let ran = crate::mobs::world::with_built_test_world(
-            &[],
+        let ran = crate::mobs::world::with_built_contact_test_world(
             |world, registry| {
+                reset(0, usize::MAX, true);
                 world.chunks.insert(
                     (0, 0),
                     std::sync::Arc::new(crate::chunk::Chunk::empty(0, 0)),
@@ -229,7 +234,8 @@ mod inside_walk_tests {
                 }
                 install_walk_hooks();
             },
-            |w, types| {
+            |w, types, generic| {
+                KILL_DAMAGE.set(Some(generic));
                 let mut mob = mob_at_move(types);
                 let mut level = crate::health::TestLevel::new(0);
                 let mut events = Vec::new();
@@ -2110,10 +2116,9 @@ impl MobBlockWalk {
     }
 }
 
-/// A typed entity write an `entity_inside` part queued for a mob, applied in
-/// its own tick. `Hurt` uses the generic damage kind: the block's own hurts
-/// keep their named kinds in the walk's arms above. Generic contact damage
-/// has no attacker. The hurt's own teleport is settled before the write returns.
+/// Apply a contact Part's queued write in the mob's own tick. Hurt uses the
+/// level's registered type without an attacker and settles any resulting
+/// teleport before the next write.
 fn apply_entity_write(
     m: &mut Mob,
     w: &MobWorld,
@@ -2131,10 +2136,17 @@ fn apply_entity_write(
             m.fall_distance = 0.0;
             m.stuck_multiplier = triple(v);
         }
-        mod_api::EntityWrite::Hurt { amount } => {
-            m.damage(level, amount, Damage::of(DamageKind::Generic));
-            // The hurt's own teleport, inside it (#1697).
-            hurt_teleports(m, w, events);
+        mod_api::EntityWrite::Hurt {
+            damage_type,
+            amount,
+        } => {
+            if let Some(named) =
+                super::NamedDamage::from_contact_key(w.side.damage_types(), damage_type)
+            {
+                m.damage(level, amount, Damage::of(DamageKind::Named(named)));
+                // The hurt's own teleport, inside it (#1697).
+                hurt_teleports(m, w, events);
+            }
         }
         mod_api::EntityWrite::ResetFallDistance => m.fall_distance = 0.0,
         mod_api::EntityWrite::SetFireTicks(ticks) => m.fire_ticks = ticks,
@@ -2586,12 +2598,13 @@ fn extinguish_if_wet(m: &mut Mob, w: &MobWorld, was_on_fire: bool, events: &mut 
     }
 }
 
-/// `LivingEntity.canBreatheUnderWater`: the `can_breathe_under_water` tag, which
-/// `MobType.flags.breathes_water` holds, and the two overrides — a baby happy ghast
-/// and a sulfur cube with a block in its body breathe under water too.
-fn can_breathe_under_water(m: &Mob) -> bool {
-    m.kind.flags.breathes_water
-        || m.species() == Species::HappyGhast && m.is_baby()
+/// `LivingEntity.canBreatheUnderwater`: the live tag, plus the separate
+/// overrides for a baby happy ghast or a sulfur cube carrying a block.
+fn can_breathe_under_water(m: &Mob, w: &MobWorld<'_>) -> bool {
+    w.entity_tag_bit(
+        &m.kind,
+        crate::items::EntityTypeTags::CAN_BREATHE_UNDER_WATER,
+    ) || m.species() == Species::HappyGhast && m.is_baby()
         || m.species() == Species::SulfurCube && crate::mobs::sulfur_cube::has_body(m)
 }
 
@@ -2805,8 +2818,10 @@ fn continue_base_tick(
                     let water_breathing = m.has_effect("minecraft:water_breathing")
                         || m.has_effect("minecraft:conduit_power");
                     let nautilus = m.has_effect("minecraft:breath_of_the_nautilus");
-                    let drowns =
-                        submerged && !can_breathe_under_water(m) && !water_breathing && !nautilus;
+                    let drowns = submerged
+                        && !can_breathe_under_water(m, w)
+                        && !water_breathing
+                        && !nautilus;
                     let held = submerged && nautilus && !water_breathing;
                     let max = m.max_air_supply();
                     let vanilla = Breath {
@@ -2925,9 +2940,10 @@ fn continue_base_tick(
                 if m.alive() {
                     let roll = m.random.next_int_bound(1000).unwrap_or(999);
                     let t = m.ambient_timer;
-                    m.ambient_timer += 1;
+                    // `ambientSoundTime++` and `-getAmbientSoundInterval()`, in int arithmetic.
+                    m.ambient_timer = m.ambient_timer.wrapping_add(1);
                     if roll < t {
-                        m.ambient_timer = -m.ambient_interval();
+                        m.ambient_timer = m.ambient_interval().wrapping_neg();
                         super::entity_sounds::ambient(m, w, events);
                     }
                 }
@@ -3584,7 +3600,10 @@ fn apply_entity_pushes(
 /// `Mob.aiStep` -> `Mob.burnUndead`: mobs in `minecraft:burn_in_daylight`
 /// can burn in daylight even with `NoAI`.
 fn burn_undead(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
-    if m.kind.flags.burns_in_day && m.alive() && sun_burn_tick(m, w) {
+    if w.entity_tag_bit(&m.kind, crate::items::EntityTypeTags::BURN_IN_DAYLIGHT)
+        && m.alive()
+        && sun_burn_tick(m, w)
+    {
         if m.item_by_slot(m.sun_protection_slot()).is_some() {
             events.push(MobEvent::SunProtectionWear { mob: m.id });
         } else {
@@ -3594,7 +3613,7 @@ fn burn_undead(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
 }
 fn sun_burn_tick(m: &mut Mob, w: &MobWorld) -> bool {
     // Mob.isSunBurnTick: the monsters_burn attribute, not the sky darkness.
-    if !w.monsters_burn {
+    if m.extra.client_side || !w.monsters_burn {
         return false;
     }
     let (x, y, z) = (
@@ -4476,7 +4495,11 @@ pub fn eating_sound(
 pub fn eating_sound_is_bound(species: Species) -> bool {
     matches!(species, Species::Frog | Species::Goat | Species::Sniffer)
 }
+/// `LivingEntity.getSoundVolume`: a content type's declared `sounds.volume`, else its template's.
 pub fn sound_volume(m: &Mob) -> f32 {
+    if let Some(volume) = m.kind.sound_overrides.volume {
+        return volume;
+    }
     match m.species() {
         Species::Ghast => 5.0,
         Species::HappyGhast => super::happy_ghast::volume(m),
@@ -8044,7 +8067,7 @@ mod air_tests {
             }
         };
         let ran = crate::mobs::world::with_built_test_world(&[], build, |w, types| {
-            let drowned = |id: &str, baby: bool, body: Option<&str>| {
+            let drowned = |w: &MobWorld, id: &str, baby: bool, body: Option<&str>| {
                 let kind = std::sync::Arc::new(types.types[id].clone());
                 let mut m = Mob::new(1, kind, Vec3::new(2.5, 3.0, 2.5), 0.0);
                 if baby {
@@ -8059,21 +8082,38 @@ mod air_tests {
                 }
                 (start - m.health, m.air)
             };
-            // The tag itself, from the shipped data: the golems differ.
-            assert!(types.types["minecraft:copper_golem"].flags.breathes_water);
-            assert!(!types.types["minecraft:iron_golem"].flags.breathes_water);
-            assert_eq!(drowned("minecraft:guardian", false, None), (0.0, 300));
-            assert_eq!(drowned("minecraft:copper_golem", false, None), (0.0, 300));
-            // Not in the tag, and still no drowning damage: its decreaseAirSupply
-            // is the identity, so its air stays at 300 and it never refills.
-            assert_eq!(drowned("minecraft:iron_golem", false, None), (0.0, 300));
-            assert_eq!(drowned("minecraft:happy_ghast", false, None), (2.0, 0));
-            assert_eq!(drowned("minecraft:happy_ghast", true, None), (0.0, 300));
-            assert_eq!(drowned("minecraft:sulfur_cube", false, None), (2.0, 0));
+            assert_eq!(drowned(w, "minecraft:guardian", false, None), (0.0, 300));
             assert_eq!(
-                drowned("minecraft:sulfur_cube", false, Some("minecraft:stone")),
+                drowned(w, "minecraft:copper_golem", false, None),
                 (0.0, 300)
             );
+            // Not in the tag, and still no drowning damage: its decreaseAirSupply
+            // is the identity, so its air stays at 300 and it never refills.
+            assert_eq!(drowned(w, "minecraft:iron_golem", false, None), (0.0, 300));
+            assert_eq!(drowned(w, "minecraft:happy_ghast", false, None), (2.0, 0));
+            assert_eq!(drowned(w, "minecraft:happy_ghast", true, None), (0.0, 300));
+            assert_eq!(drowned(w, "minecraft:sulfur_cube", false, None), (2.0, 0));
+            assert_eq!(
+                drowned(w, "minecraft:sulfur_cube", false, Some("minecraft:stone")),
+                (0.0, 300)
+            );
+
+            // A replacement swaps which types breathe, without rebuilding their types.
+            let mut items = w.items.unwrap().clone();
+            items.set_entity_type_tags(crate::items::EntityTypeTags::from_ordered(
+                [(
+                    "minecraft:can_breathe_under_water".into(),
+                    vec!["minecraft:cow".into()],
+                )]
+                .into(),
+                items.entity_type_tags.ids().clone(),
+            ));
+            let w = MobWorld {
+                items: Some(&items),
+                ..w.clone()
+            };
+            assert_eq!(drowned(&w, "minecraft:guardian", false, None), (2.0, 0));
+            assert_eq!(drowned(&w, "minecraft:cow", false, None), (0.0, 300));
         });
         // Without the extracted vanilla data the world cannot be built.
         assert!(ran, "vanilla data is missing");
@@ -8256,114 +8296,119 @@ mod breathing_effect_tests {
     #[ignore = "daily"]
     fn breathing_effects_and_bubble_columns_preserve_mob_air() {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let ran = crate::mobs::world::with_resource_test_world(
-            &root,
-            &[],
-            true,
-            true,
-            |world, registry| {
-                world
-                    .chunks
-                    .insert((0, 0), Arc::new(crate::chunk::Chunk::empty(0, 0)));
-                for (x0, name) in [(6, "minecraft:water"), (10, "minecraft:bubble_column")] {
-                    let state = registry.default_state(name).unwrap();
-                    for x in x0..=x0 + 1 {
-                        for z in 2..=3 {
-                            for y in 63..=67 {
-                                world.set(x, y, z, state).unwrap();
-                            }
-                        }
-                    }
-                }
-                // Mixed columns distinguish the eye-block query from feet position.
-                for (x0, bubble_at_eye) in [(6, true), (10, false)] {
-                    for x in x0..=x0 + 1 {
-                        for z in 6..=7 {
-                            for y in 63..=67 {
-                                let bubble = (y >= 65) == bubble_at_eye;
-                                let name = if bubble {
-                                    "minecraft:bubble_column"
-                                } else {
-                                    "minecraft:water"
-                                };
-                                world
-                                    .set(x, y, z, registry.default_state(name).unwrap())
-                                    .unwrap();
-                            }
-                        }
-                    }
-                }
-            },
-            |world, types| {
-                let kind = Arc::new(types.types["minecraft:cow"].clone());
-                assert!(!kind.flags.needs_water && !kind.flags.breathes_water);
-                let mut rows = Vec::new();
-                let mut failures = Vec::new();
-                for (scene, x, z) in [
-                    (0, 2.5, 2.5),
-                    (1, 6.5, 2.5),
-                    (2, 10.5, 2.5),
-                    (3, 6.5, 6.5),
-                    (4, 10.5, 6.5),
-                ] {
-                    for mask in 0..8 {
-                        for air in [301, 300, 10, 0, -19, -20, -21] {
-                            let mut mob = Mob::new(1, kind.clone(), Vec3::new(x, 64.0, z), 0.0);
-                            mob.air = air;
-                            for (bit, effect) in [
-                                (1, "minecraft:water_breathing"),
-                                (2, "minecraft:conduit_power"),
-                                (4, "minecraft:breath_of_the_nautilus"),
-                            ] {
-                                if mask & bit != 0 {
-                                    mob.add_effect(effect, 100, 0);
+        let ran =
+            crate::mobs::world::with_resource_test_world(
+                &root,
+                &[],
+                true,
+                true,
+                |world, registry| {
+                    world
+                        .chunks
+                        .insert((0, 0), Arc::new(crate::chunk::Chunk::empty(0, 0)));
+                    for (x0, name) in [(6, "minecraft:water"), (10, "minecraft:bubble_column")] {
+                        let state = registry.default_state(name).unwrap();
+                        for x in x0..=x0 + 1 {
+                            for z in 2..=3 {
+                                for y in 63..=67 {
+                                    world.set(x, y, z, state).unwrap();
                                 }
                             }
-                            base_tick(
-                                &mut mob,
-                                world,
-                                &mut crate::health::TestLevel::new(0).level(),
-                                &mut Vec::new(),
-                            );
-                            assert_eq!(
-                                mob.fluids.eye_in_water,
-                                scene != 0,
-                                "invalid fixture immersion"
-                            );
-                            rows.push(format!(
-                                "{scene} {mask} {air} {} {:08x}",
-                                mob.air,
-                                mob.health.to_bits()
-                            ));
-                            // Selected independent goldens from the pinned Cow.baseTick
-                            // oracle. The parity harness compares all 280 air/health rows.
-                            let expected = match (scene, mask, air) {
-                                (1, 1, 10)
-                                | (1, 2, 10)
-                                | (1, 5, 10)
-                                | (2, 0, 10)
-                                | (2, 4, 10)
-                                | (0, 4, 10)
-                                | (3, 0, 10) => Some((14, 10.0)),
-                                (1, 4, 10) | (4, 4, 10) => Some((10, 10.0)),
-                                (4, 0, 10) => Some((9, 10.0)),
-                                (1, 0, -19) => Some((0, 8.0)),
-                                _ => None,
-                            };
-                            if let Some(expected) = expected
-                                && (mob.air, mob.health) != expected
-                            {
-                                failures.push((scene, mask, air, mob.air, mob.health));
+                        }
+                    }
+                    // Mixed columns distinguish the eye-block query from feet position.
+                    for (x0, bubble_at_eye) in [(6, true), (10, false)] {
+                        for x in x0..=x0 + 1 {
+                            for z in 6..=7 {
+                                for y in 63..=67 {
+                                    let bubble = (y >= 65) == bubble_at_eye;
+                                    let name = if bubble {
+                                        "minecraft:bubble_column"
+                                    } else {
+                                        "minecraft:water"
+                                    };
+                                    world
+                                        .set(x, y, z, registry.default_state(name).unwrap())
+                                        .unwrap();
+                                }
                             }
                         }
                     }
-                }
-                if let Some(path) = std::env::var_os("SUNRISE_MOB_BREATHING_OUTPUT") {
-                    std::fs::write(path, rows.join("\n") + "\n").unwrap();
-                }
-                assert!(failures.is_empty(), "mob air/health differs: {failures:?}");
-            },
-        );
+                },
+                |world, types| {
+                    let kind = Arc::new(types.types["minecraft:cow"].clone());
+                    assert!(!kind.flags.needs_water);
+                    assert!(!world.entity_tag_bit(
+                        &kind,
+                        crate::items::EntityTypeTags::CAN_BREATHE_UNDER_WATER
+                    ));
+                    let mut rows = Vec::new();
+                    let mut failures = Vec::new();
+                    for (scene, x, z) in [
+                        (0, 2.5, 2.5),
+                        (1, 6.5, 2.5),
+                        (2, 10.5, 2.5),
+                        (3, 6.5, 6.5),
+                        (4, 10.5, 6.5),
+                    ] {
+                        for mask in 0..8 {
+                            for air in [301, 300, 10, 0, -19, -20, -21] {
+                                let mut mob = Mob::new(1, kind.clone(), Vec3::new(x, 64.0, z), 0.0);
+                                mob.air = air;
+                                for (bit, effect) in [
+                                    (1, "minecraft:water_breathing"),
+                                    (2, "minecraft:conduit_power"),
+                                    (4, "minecraft:breath_of_the_nautilus"),
+                                ] {
+                                    if mask & bit != 0 {
+                                        mob.add_effect(effect, 100, 0);
+                                    }
+                                }
+                                base_tick(
+                                    &mut mob,
+                                    world,
+                                    &mut crate::health::TestLevel::new(0).level(),
+                                    &mut Vec::new(),
+                                );
+                                assert_eq!(
+                                    mob.fluids.eye_in_water,
+                                    scene != 0,
+                                    "invalid fixture immersion"
+                                );
+                                rows.push(format!(
+                                    "{scene} {mask} {air} {} {:08x}",
+                                    mob.air,
+                                    mob.health.to_bits()
+                                ));
+                                // Selected independent goldens from the pinned Cow.baseTick
+                                // oracle. The parity harness compares all 280 air/health rows.
+                                let expected = match (scene, mask, air) {
+                                    (1, 1, 10)
+                                    | (1, 2, 10)
+                                    | (1, 5, 10)
+                                    | (2, 0, 10)
+                                    | (2, 4, 10)
+                                    | (0, 4, 10)
+                                    | (3, 0, 10) => Some((14, 10.0)),
+                                    (1, 4, 10) | (4, 4, 10) => Some((10, 10.0)),
+                                    (4, 0, 10) => Some((9, 10.0)),
+                                    (1, 0, -19) => Some((0, 8.0)),
+                                    _ => None,
+                                };
+                                if let Some(expected) = expected
+                                    && (mob.air, mob.health) != expected
+                                {
+                                    failures.push((scene, mask, air, mob.air, mob.health));
+                                }
+                            }
+                        }
+                    }
+                    if let Some(path) = std::env::var_os("SUNRISE_MOB_BREATHING_OUTPUT") {
+                        std::fs::write(path, rows.join("\n") + "\n").unwrap();
+                    }
+                    assert!(failures.is_empty(), "mob air/health differs: {failures:?}");
+                },
+            );
         assert!(
             ran,
             "prepared resources must run the production breathing fixture"
@@ -8468,7 +8513,8 @@ mod nautilus_noai_air_tests {
         };
         let ran = crate::mobs::world::with_built_test_world(&[], build, |w, types| {
             let kind = Arc::new(types.types["minecraft:nautilus"].clone());
-            assert!(kind.flags.needs_water && kind.flags.breathes_water);
+            assert!(kind.flags.needs_water);
+            assert!(w.entity_tag_bit(&kind, crate::items::EntityTypeTags::CAN_BREATHE_UNDER_WATER));
             let mut mob = Mob::new(1, kind, Vec3::new(2.5, 3.0, 2.5), 0.0);
             mob.no_ai = no_ai;
             mob.no_gravity = true;

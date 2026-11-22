@@ -189,6 +189,21 @@ pub(crate) fn registration_data() -> Option<RegistrationData> {
     REGISTRATION_DATA.get().cloned()
 }
 
+pub(crate) fn visible_packages() -> Option<crate::LoadedMods> {
+    #[cfg(any(test, feature = "testing"))]
+    if let Some(packages) = TEST_REGISTRATION_DATA.with_borrow(|slot| {
+        slot.as_ref()
+            .and_then(RegistrationData::visible_mods)
+            .cloned()
+    }) {
+        return Some(packages);
+    }
+    REGISTRATION_DATA
+        .get()
+        .and_then(RegistrationData::visible_mods)
+        .cloned()
+}
+
 /// Records the registries and settings registration reads, once at startup, after the
 /// package inventory and before the first registration hook; a second call panics.
 pub fn install_registration_data(data: RegistrationData) {

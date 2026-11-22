@@ -1,8 +1,9 @@
-//! Stored player health and empty-equipment server damage for the resident scene.
+//! Stored player health and server damage for the resident scene.
 //! World/audio/network consumers are queued explicitly; full death and tick
 //! lifecycles (drops, respawn, effects) remain separate work.
 use crate::{
     Result,
+    items::ItemStack,
     motion::{MotionEvent, PlayerMotion},
 };
 pub use mod_api::entity::health::{HurtSource, ShieldBlock, Victim};
@@ -11,7 +12,7 @@ use sunrise_world::{
     attributes::live::LiveAttributes,
     block_landing::LandingDamage,
     combat_rules::ArmorWorld,
-    damage_immunity::{self, DamageRule, ImmunityTag, ImmunityWorld},
+    damage_immunity::{self, DamageRule, EntityImmunityWorld, ImmunityTag, ImmunityWorld},
     damage_reduction::Bypass,
     damage_source::{Catalog, DamageSource, DamageTypeId, Scaling},
     food::{Difficulty, FoodData},
@@ -266,6 +267,54 @@ impl<'a> HitEffects<'a> {
         ))
     }
 }
+/// Inputs to `Entity.isInvulnerableToBase` for a mob or a nonliving body.
+pub struct BodyImmunity<T> {
+    pub removed: bool,
+    pub invulnerable: bool,
+    pub creative_source: bool,
+    pub fire_immune: bool,
+    pub fall_immune: bool,
+    pub source_has_tag: T,
+}
+
+impl<T: FnMut(ImmunityTag) -> bool> BodyImmunity<T> {
+    pub fn vanilla(mut self) -> bool {
+        match damage_immunity::vanilla_base_immunity(&mut self) {
+            Ok(answer) => answer,
+            Err(never) => match never {},
+        }
+    }
+}
+
+impl<T: FnMut(ImmunityTag) -> bool> EntityImmunityWorld for BodyImmunity<T> {
+    type Error = std::convert::Infallible;
+
+    fn removed(&self) -> bool {
+        self.removed
+    }
+    fn permanently_invulnerable(&mut self) -> std::result::Result<bool, Self::Error> {
+        Ok(self.invulnerable)
+    }
+    fn temporarily_invulnerable(&mut self) -> std::result::Result<bool, Self::Error> {
+        Ok(false)
+    }
+    fn tag(&mut self, tag: ImmunityTag) -> std::result::Result<bool, Self::Error> {
+        Ok((self.source_has_tag)(tag))
+    }
+    fn creative_source(&mut self) -> std::result::Result<bool, Self::Error> {
+        Ok(self.creative_source)
+    }
+    fn fire_immune(&mut self) -> std::result::Result<bool, Self::Error> {
+        Ok(self.fire_immune)
+    }
+    fn fall_immune(&mut self) -> std::result::Result<bool, Self::Error> {
+        Ok(self.fall_immune)
+    }
+}
+
+/// The acting player's stacks borrowed in vanilla equipment slot order.
+pub type PlayerEquipment<'a> = [Option<&'a ItemStack>; sunrise_items::equipment::SLOT_NAMES.len()];
+
 /// The level a hit lands in, as damage code sees it: its blocks, its random
 /// (`Level.random`) and its own attachments, lent to the damage hooks as their level host.
 /// Built from the level's world, or, in the mob tick, which reads the world while mobs
@@ -285,6 +334,8 @@ pub struct DamageLevel<'a> {
     hooks: &'a DamageHooks,
     /// Who attacks in this hit and what they hold: the facts of the site that built the level.
     attack: &'a Attack,
+    /// Canonical UUIDs for attacks first constructed during a borrowed mob tick.
+    mob_uuids: Option<&'a std::collections::HashMap<u32, [i32; 4]>>,
     /// Whether this is a client's level, for a hook asked on both sides ([`Self::on_client`]).
     client_side: bool,
     /// Which entry of `LivingEntity.knockback` a push in progress came through, for
@@ -298,6 +349,7 @@ pub struct DamageLevel<'a> {
     /// What the hit's listeners may queue and draw ([`HitEffects`]); none for a level built
     /// outside a game's hit.
     effects: Option<HitEffects<'a>>,
+    player_equipment: PlayerEquipment<'a>,
 }
 impl<'a> DamageLevel<'a> {
     /// The level of `world`, whose blocks `registry` names.
@@ -329,11 +381,13 @@ impl<'a> DamageLevel<'a> {
             attachment_syncs,
             hooks,
             attack: &NO_ATTACK,
+            mob_uuids: None,
             client_side: false,
             knock_entry: mod_api::KnockbackEntry::Full,
             credit: Credit::Memory,
             players: None,
             effects: None,
+            player_equipment: [None; 8],
         }
     }
     /// The level of `world`, with the random and attachments `lent` took out of it.
@@ -357,12 +411,22 @@ impl<'a> DamageLevel<'a> {
             attachment_syncs: &mut lent.attachment_syncs,
             hooks,
             attack: &NO_ATTACK,
+            mob_uuids: None,
             client_side: false,
             knock_entry: mod_api::KnockbackEntry::Full,
             credit: Credit::Memory,
             players: None,
             effects: None,
+            player_equipment: [None; 8],
         }
+    }
+    /// Lend the UUID owner when mobs can start attacks inside this borrow.
+    pub fn with_mob_uuids(mut self, uuids: &'a std::collections::HashMap<u32, [i32; 4]>) -> Self {
+        self.mob_uuids = Some(uuids);
+        self
+    }
+    pub(crate) fn mob_uuid(&self, id: u32) -> Option<[i32; 4]> {
+        self.mob_uuids?.get(&id).copied()
     }
     /// The same level, for a shorter borrow.
     pub fn reborrow(&mut self) -> DamageLevel<'_> {
@@ -378,6 +442,7 @@ impl<'a> DamageLevel<'a> {
             attachment_syncs: self.attachment_syncs,
             hooks: self.hooks,
             attack: self.attack,
+            mob_uuids: self.mob_uuids,
             client_side: self.client_side,
             knock_entry: self.knock_entry,
             credit: self.credit.reborrow(),
@@ -386,6 +451,14 @@ impl<'a> DamageLevel<'a> {
                 .as_mut()
                 .map(|(resolver, memory)| (*resolver, &mut **memory as &mut dyn PlayerMemory)),
             effects: self.effects.as_mut().map(HitEffects::reborrow),
+            player_equipment: self.player_equipment,
+        }
+    }
+    /// Lend the stacks worn by this hit's player victim for enchantment immunity.
+    pub fn with_player_equipment(self, player_equipment: PlayerEquipment<'a>) -> Self {
+        Self {
+            player_equipment,
+            ..self
         }
     }
     /// The same level whose hit lends `effects`.
@@ -429,7 +502,20 @@ impl<'a> DamageLevel<'a> {
         }
     }
     /// Commit this accepted hit's responsibility at vanilla's pre-push memory point.
-    pub fn accepted_mob_hit(&mut self, mob: &mut crate::mobs::Mob) {
+    pub fn accepted_mob_hit(&mut self, mob: &mut crate::mobs::Mob, source: &crate::mobs::Damage) {
+        // The hit's own source, whatever the credit kind.
+        let uuid = match (&self.credit, source.attacker) {
+            _ if mob.species() != crate::mobs::Species::Villager => None,
+            (Credit::Loan(credit), _) => credit.hurt_by_uuid(source),
+            (_, Some(crate::mobs::Who::Player)) => self.attack.player_uuid,
+            (_, Some(crate::mobs::Who::Mob(id))) if self.attack.attacker == id as i32 => {
+                self.attack.attacker_uuid
+            }
+            _ => None,
+        };
+        if let Some(uuid) = uuid {
+            crate::mobs::villager::hurt_by(mob, source, uuid);
+        }
         if let Credit::Loan(credit) = &mut self.credit {
             credit.accepted_mob_hit(mob);
         }
@@ -511,7 +597,7 @@ impl<'a> DamageLevel<'a> {
         self.attack
     }
     /// The authoritative world's merged tag tables, if available.
-    pub fn tags(&self) -> Option<&crate::items::Items> {
+    pub fn tags(&self) -> Option<&'a crate::items::Items> {
         self.tags
     }
     /// The cached block parser context, if available.
@@ -868,6 +954,8 @@ pub struct Attack {
     pub projectile_weapon: Option<crate::items::ItemStack>,
     /// The verified causing player's UUID, when the attacker is a player.
     pub player_uuid: Option<[i32; 4]>,
+    /// The causing mob's UUID for `Villager.setLastHurtByMob`'s gossip.
+    pub attacker_uuid: Option<[i32; 4]>,
     /// What it holds, or none when it is not known (no native mod listens: the game only
     /// records it then).
     pub held: Held,
@@ -882,6 +970,7 @@ pub static NO_ATTACK: Attack = Attack {
     position: None,
     projectile_weapon: None,
     player_uuid: None,
+    attacker_uuid: None,
     held: [None, None],
 };
 /// Whether vanilla's factory for `damage_type` passes the projectile as
@@ -1990,7 +2079,7 @@ impl CombatEnvironment<Attributes> for Environment<'_> {
         *self.dead
     }
 }
-impl ImmunityWorld for Environment<'_> {
+impl EntityImmunityWorld for Environment<'_> {
     type Error = io::Error;
     fn removed(&self) -> bool {
         false
@@ -2011,10 +2100,43 @@ impl ImmunityWorld for Environment<'_> {
         Ok(self.fire_immune)
     }
     fn fall_immune(&mut self) -> io::Result<bool> {
-        Ok(false)
+        Ok(self.level.tags().is_some_and(|items| {
+            items
+                .enchantments
+                .entity_in_tag("minecraft:player", "minecraft:fall_damage_immune")
+        }))
     }
+    fn invulnerability_check(&mut self, vanilla: bool) -> io::Result<bool> {
+        Ok(self.observe_hit_invulnerability(vanilla))
+    }
+}
+impl ImmunityWorld for Environment<'_> {
     fn enchantment_immunity(&mut self) -> io::Result<bool> {
-        Ok(false)
+        let Some(items) = self.level.tags() else {
+            return Ok(false);
+        };
+        let equipment = self
+            .level
+            .player_equipment
+            .into_iter()
+            .map(|stack| stack.map_or(&[][..], ItemStack::enchantments))
+            .zip(sunrise_items::equipment::SLOT_NAMES);
+        let source = self
+            .level
+            .attack()
+            .player_source(&self.source.definition().name, self.causing);
+        let context = crate::enchant::EffectContext {
+            items: Some(items),
+            damage_type: Some(source.damage_type),
+            is_direct: source.causing == source.direct,
+            this: Some("minecraft:player"),
+            ..Default::default()
+        };
+        Ok(items.enchantments.is_damage_immune(
+            items.enchantments.damage_immunities(equipment),
+            &context,
+            self.level.random(),
+        ))
     }
     fn damage_rule(&mut self, rule: DamageRule) -> io::Result<bool> {
         Ok(match rule {
@@ -2032,9 +2154,6 @@ impl ImmunityWorld for Environment<'_> {
     }
     fn client_loaded(&mut self) -> io::Result<bool> {
         Ok(self.client_loaded)
-    }
-    fn invulnerability_check(&mut self, vanilla: bool) -> io::Result<bool> {
-        Ok(self.observe_hit_invulnerability(vanilla))
     }
 }
 impl HurtWorld for Environment<'_> {
@@ -2361,6 +2480,7 @@ mod tests {
             projectile: None,
             direct: None,
             player_uuid: None,
+            attacker_uuid: None,
             held: [Some(sword.clone()), None],
             ..Default::default()
         };
@@ -2380,6 +2500,7 @@ mod tests {
             projectile: Some(12),
             direct: None,
             player_uuid: None,
+            attacker_uuid: None,
             held: [None, None],
             ..Default::default()
         };

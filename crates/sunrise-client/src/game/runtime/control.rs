@@ -85,14 +85,50 @@ pub struct Flight {
     started: Instant,
     seconds: f64,
     /// Reply with every frame time too (`fly ... PITCH raw`).
-    raw: bool,
+    pub(super) raw: bool,
+    upload_queue_work: [usize; 2],
+    mesh_uploads: [u64; 2],
     reply: Sender<String>,
     /// The world's smoothed tick time each frame (the F3 server line): the
     /// server thread's when single player runs on one.
     tick_ms: Vec<f32>,
 }
 
+impl Flight {
+    pub(in crate::game) fn note_upload_queue_work(&mut self, work: [usize; 2]) {
+        self.upload_queue_work = work;
+    }
+
+    pub(in crate::game) fn note_mesh_uploads(&mut self, count: usize, vertex_bytes: u64) {
+        self.mesh_uploads[0] += count as u64;
+        self.mesh_uploads[1] += vertex_bytes;
+    }
+}
+
 impl Game<'_> {
+    pub(super) fn record_streaming_work(
+        &mut self,
+        rendered: bool,
+        block_entity_work: [u64; 2],
+        spans: &[sunrise_client::spans::Span],
+    ) {
+        if let Some(flight) = self.flight.as_mut().filter(|flight| flight.raw) {
+            let visited = self.world.block_entities.take_column_unload_entries();
+            let [sorted, merged] = std::mem::take(&mut flight.upload_queue_work);
+            let mesh_uploads = std::mem::take(&mut flight.mesh_uploads);
+            if rendered {
+                self.frame_stats.record_streaming_work(
+                    visited,
+                    sorted,
+                    merged,
+                    mesh_uploads,
+                    block_entity_work,
+                    spans,
+                );
+            }
+        }
+    }
+
     /// Move the camera along the running flight; reply when it ends.
     pub(super) fn advance_flight(&mut self) {
         let tick_ms = self
@@ -129,6 +165,7 @@ impl Game<'_> {
             summary["tick_ms_max"] = flight.tick_ms.iter().copied().fold(0.0, f32::max).into();
             if flight.raw {
                 self.add_raw_series(&mut summary);
+                self.frame_stats.add_flight_series(&mut summary);
             }
             let _ = flight.reply.send(summary.to_string());
         }
@@ -844,52 +881,61 @@ impl Game<'_> {
                     }
                     return ok();
                 }
-                let key = if typing && action != "up" {
-                    key
-                } else {
-                    match self.settings.keys.translate(key) {
-                        Some(Ok(k)) => k,
-                        Some(Err(button)) => {
-                            if self.screen == Screen::Playing
-                                && self.shared_default_acts(
-                                    button,
-                                    sunrise_client::keybinds::key_name(physical),
-                                )
-                            {
-                                if action != "up" {
-                                    self.mouse_mapping(button, true, Source::Agent)?;
-                                }
-                                // A repeat keeps the key held, as the window's.
-                                if action == "up" || action == "tap" {
-                                    self.mouse_mapping(button, false, Source::Agent)?;
-                                }
-                            }
-                            if action == "tap" {
-                                self.physical_keys.remove(&physical);
-                            }
-                            return ok();
+                if typing && action != "up" {
+                    match action {
+                        "down" => self.control_key_down(key, physical)?,
+                        // The system's auto-repeat while the key is held.
+                        "repeat" => {
+                            self.physical_keys.insert(physical);
+                            self.mapped_key(key, true, true, key, Source::Agent)?;
                         }
-                        None => return ok(),
+                        "tap" => {
+                            self.control_key_down(key, physical)?;
+                            self.control_key_up(key);
+                            self.physical_keys.remove(&physical);
+                            self.debug_key(
+                                physical,
+                                sunrise_client::debug_keys::KeyAction::Release,
+                            );
+                        }
+                        _ => unreachable!("checked above"),
                     }
-                };
-                match action {
-                    "down" => self.control_key_down(key, physical)?,
-                    "up" => {
-                        self.control_key_up(key);
-                        self.physical_keys.remove(&key);
+                } else {
+                    if action != "up" && self.screenshot_shortcut(physical, action == "repeat") {
+                        if action == "tap" {
+                            self.physical_keys.remove(&physical);
+                            self.debug_key(
+                                physical,
+                                sunrise_client::debug_keys::KeyAction::Release,
+                            );
+                        }
+                        return ok();
                     }
-                    // The system's auto-repeat while the key is held.
-                    "repeat" => {
-                        self.physical_keys.insert(physical);
-                        self.mapped_key(key, true, true, key, Source::Agent)?;
+                    match action {
+                        "down" => {
+                            self.mapped_key_event_from(physical, true, false, Source::Agent)?;
+                        }
+                        "up" => {
+                            self.mapped_key_event_from(physical, false, false, Source::Agent)?;
+                            self.release_control_keyboard_standin(physical);
+                        }
+                        // The system's auto-repeat while the key is held.
+                        "repeat" => {
+                            self.physical_keys.insert(physical);
+                            self.mapped_key_event_from(physical, true, true, Source::Agent)?;
+                        }
+                        "tap" => {
+                            self.mapped_key_event_from(physical, true, false, Source::Agent)?;
+                            self.mapped_key_event_from(physical, false, false, Source::Agent)?;
+                            self.release_control_keyboard_standin(physical);
+                            self.physical_keys.remove(&physical);
+                            self.debug_key(
+                                physical,
+                                sunrise_client::debug_keys::KeyAction::Release,
+                            );
+                        }
+                        _ => unreachable!("checked above"),
                     }
-                    "tap" => {
-                        self.control_key_down(key, physical)?;
-                        self.control_key_up(key);
-                        self.physical_keys.remove(&physical);
-                        self.debug_key(physical, sunrise_client::debug_keys::KeyAction::Release);
-                    }
-                    _ => unreachable!("checked above"),
                 }
                 ok()
             }
@@ -930,20 +976,21 @@ impl Game<'_> {
                 if matches!(action, "up" | "click") {
                     self.mod_mappings_button(button, false);
                 }
+                let input = sunrise_client::keybinds::mouse_name(button);
                 match action {
                     "down" => {
                         self.extras_mouse(button, true);
-                        self.mouse_mapping(button, true, Source::Agent)?
+                        self.mapped_mouse_event_from(button, &input, true, Source::Agent)?;
                     }
                     "up" => {
                         self.extras_mouse(button, false);
-                        self.mouse_mapping(button, false, Source::Agent)?
+                        self.mapped_mouse_event_from(button, &input, false, Source::Agent)?;
                     }
                     "click" => {
                         self.extras_mouse(button, true);
                         self.extras_mouse(button, false);
-                        self.mouse_mapping(button, true, Source::Agent)?;
-                        self.mouse_mapping(button, false, Source::Agent)?;
+                        self.mapped_mouse_event_from(button, &input, true, Source::Agent)?;
+                        self.mapped_mouse_event_from(button, &input, false, Source::Agent)?;
                     }
                     other => {
                         return Err(
@@ -1291,6 +1338,10 @@ impl Game<'_> {
                 }
                 let n = |i: usize| -> Result<f64> { Ok(arg(i)?.parse()?) };
                 let pitch = words.get(8).map_or(Ok(10.0), |p| p.parse::<f32>())?;
+                let raw = words.get(9) == Some(&"raw");
+                if raw {
+                    self.world.block_entities.take_column_unload_entries();
+                }
                 self.reset_frame_stats();
                 self.flight = Some(Flight {
                     from: Vec3::new(n(1)?, n(2)?, n(3)?),
@@ -1298,7 +1349,9 @@ impl Game<'_> {
                     pitch,
                     started: Instant::now(),
                     seconds: n(7)?.max(0.1),
-                    raw: words.get(9) == Some(&"raw"),
+                    raw,
+                    upload_queue_work: [0; 2],
+                    mesh_uploads: [0; 2],
                     reply: reply.clone(),
                     tick_ms: Vec::new(),
                 });
@@ -1447,6 +1500,24 @@ impl Game<'_> {
     fn control_key_up(&mut self, key: KeyCode) {
         self.release_device_key(&key, Source::Agent);
         self.release_device_key(&key, Source::Keyboard);
+    }
+
+    /// Release any untagged keyboard-standin holds on non-toggle keys bound to `physical`.
+    fn release_control_keyboard_standin(&mut self, physical: KeyCode) {
+        for key in self
+            .settings
+            .keys
+            .translate_all(physical)
+            .into_iter()
+            .flatten()
+        {
+            self.physical_keys.remove(&key);
+            if !matches!(key, KeyCode::ShiftLeft | KeyCode::ControlLeft)
+                && self.keys.held_by(&key, Source::Keyboard)
+            {
+                self.release_device_key(&key, Source::Keyboard);
+            }
+        }
     }
 
     fn screen_name(&self) -> &'static str {

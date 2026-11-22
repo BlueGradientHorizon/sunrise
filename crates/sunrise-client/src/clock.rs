@@ -511,6 +511,10 @@ impl FixedStep {
     pub fn rate(&self) -> f32 {
         self.manager.base.tickrate()
     }
+    /// `TickRateManager.millisecondsPerTick`: finite even for a NaN rate (it is from the nanoseconds).
+    pub fn millis_per_tick(&self) -> f32 {
+        self.manager.base.milliseconds_per_tick()
+    }
     pub fn set_rate(&mut self, rate: f32) {
         self.manager.set_tick_rate(rate);
     }

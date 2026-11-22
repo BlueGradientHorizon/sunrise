@@ -908,12 +908,15 @@ fn section_host_and_game_read_the_same_entity_type_defaults() {
         }
         // A new installation resolves its own keys and sees no old suppliers before publication.
         crate::game::api_values::install_parts(&[]).unwrap();
-        mod_api::__private::resolve_entity_types([
-            "minecraft:zombie",
-            "minecraft:skeleton",
-            "minecraft:item",
-            "ruby:titan",
-        ])
+        mod_api::__private::resolve_entity_types(
+            [
+                "minecraft:zombie",
+                "minecraft:skeleton",
+                "minecraft:item",
+                "ruby:titan",
+            ],
+            |_| None,
+        )
         .unwrap();
         assert_eq!(read(&*game, "minecraft:zombie", "max_health"), None);
         let modded = std::sync::Arc::new(

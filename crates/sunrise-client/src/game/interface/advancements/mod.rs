@@ -1,13 +1,13 @@
 //! The player's advancements in the game: criteria triggered from game
 //! events (`CriteriaTriggers`), awarding with rewards, the toast and the
 //! chat announcement, and `players/advancements/<uuid>.json`.
-use super::{Dim, Game};
+use super::{Dim, Game, chat::PLAYER_NAME, lan_actions::DisplacedPlayer, stats::Stats};
 mod icons;
 
 #[cfg(test)]
 #[path = "inventory_changed_tests.rs"]
 mod inventory_changed_tests;
-use mod_api::ProgressType;
+use mod_api::{GameMode, ProgressType};
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
@@ -17,8 +17,10 @@ use std::{
 use sunrise_client::actions::Action;
 use sunrise_client::{
     advancements::{self as adv, EntityView, Frame, ItemView, Progress, Tree},
+    effects::PlayerEffects,
     hud::{HudBatch, rgba},
     items::ItemStack,
+    motion::PlayerMotion,
     text::{self, Style, Text},
     toasts::Slide,
 };
@@ -160,6 +162,20 @@ impl AdvState {
         self.inventory_index = None;
     }
 }
+/// The live parts of a player's entity predicate view, wherever the turn keeps them.
+struct PlayerEntityState<'a> {
+    body: &'a PlayerMotion,
+    name: &'a str,
+    mode: GameMode,
+    input_sneak: bool,
+    main_hand: Option<&'a ItemStack>,
+    off_hand: Option<&'a ItemStack>,
+    armor: &'a [Option<ItemStack>; 4],
+    effects: &'a PlayerEffects,
+    riding: Option<u32>,
+    look: Option<(f32, f32)>,
+}
+
 /// The game's world for predicates.
 pub(in crate::game) struct View<'a, 'g>(pub(in crate::game) &'a Game<'g>);
 impl adv::World for View<'_, '_> {
@@ -255,17 +271,10 @@ impl adv::World for View<'_, '_> {
             pack_tags: self.0.world_tables.as_ref().map(|t| &t.pack_tags),
             items: self.0.items(),
             mob_data: self.0.res.mob_data(),
+            damage: &self.0.health_resources.damage,
             resources: &self.0.options.resources,
         };
-        tags.contains(registry, tag, id).unwrap_or_else(|| {
-            registry == "damage_type"
-                && self
-                    .0
-                    .health_resources
-                    .damage
-                    .id(id)
-                    .is_some_and(|source| self.0.health_resources.damage.in_tag(source, tag))
-        })
+        tags.contains(registry, tag, id)
     }
 }
 /// The tag tables a predicate's `#tag` reads, as borrows of the game's fields.
@@ -280,28 +289,29 @@ pub(in crate::game) struct TagSources<'a> {
     >,
     pub(in crate::game) items: &'a sunrise_client::items::Items,
     pub(in crate::game) mob_data: &'a sunrise_client::mobs::MobData,
+    pub(in crate::game) damage: &'a sunrise_world::damage_source::Catalog,
     pub(in crate::game) resources: &'a std::path::Path,
 }
 impl TagSources<'_> {
-    /// Whether `id` is in `#tag` of `registry`, `None` for a registry that
-    /// has no table here.
-    pub(in crate::game) fn contains(&self, registry: &str, tag: &str, id: &str) -> Option<bool> {
+    pub(in crate::game) fn contains(&self, registry: &str, tag: &str, id: &str) -> bool {
         // The world's packs' tags over the game's own, as the server's
         // registries bind them (`TagLoader.loadTagsForExistingRegistries`).
         if let Some(tags) = self.pack_tags.and_then(|t| t.get(registry)) {
-            return Some(tags.get(tag).is_some_and(|t| t.contains(id)));
+            return tags.get(tag).is_some_and(|t| t.contains(id));
         }
         match registry {
-            "item" => Some(self.items.item_in_tag(tag, id)),
-            "block" => Some(self.items.block_in_tag(tag, id)),
-            "entity_type" => Some(self.mob_data.entity_has(tag, id)),
-            "worldgen/biome" => Some(self.mob_data.biome_has(tag, id)),
-            "worldgen/structure" => Some(
-                vanilla_structure_tags(self.resources)
-                    .get(tag)
-                    .is_some_and(|t| t.contains(id)),
-            ),
-            _ => None,
+            "item" => self.items.item_in_tag(tag, id),
+            "block" => self.items.block_in_tag(tag, id),
+            "damage_type" => self
+                .damage
+                .id(id)
+                .is_some_and(|source| self.damage.in_tag(source, tag)),
+            "entity_type" => self.items.entity_type_tags.contains(tag, id),
+            "worldgen/biome" => self.mob_data.biome_has(tag, id),
+            "worldgen/structure" => vanilla_structure_tags(self.resources)
+                .get(tag)
+                .is_some_and(|t| t.contains(id)),
+            _ => false,
         }
     }
 }
@@ -654,38 +664,101 @@ impl Game<'_> {
         me.player_facts = self.player_facts(asked);
         me
     }
-    /// The player's level, statistics, advancements and recipes that
-    /// `asked` names, and its food, for `PlayerPredicate`; records not
-    /// loaded stay `None`.
+    /// `KilledTrigger` takes the actual killer, not the player borrowing the acting slot.
+    pub(super) fn displaced_player_entity_for(
+        &self,
+        frame: &DisplacedPlayer,
+        body: &PlayerMotion,
+        trigger: &str,
+    ) -> Option<EntityView> {
+        let record = self.lan.as_ref()?.hub.guest(frame.record_conn)?;
+        // Vehicle and sight queries below use the installed level's entities.
+        let here = frame.dimension == self.dim;
+        let mut view = self.player_entity_from(PlayerEntityState {
+            body,
+            name: frame.name.as_deref().unwrap_or(PLAYER_NAME),
+            mode: frame.mode,
+            input_sneak: frame.input_sneak,
+            main_hand: record
+                .inventory
+                .get(frame.selected)
+                .and_then(Option::as_ref),
+            off_hand: record.offhand.as_ref(),
+            armor: &record.armor,
+            effects: &record.effects,
+            riding: frame.riding.filter(|_| here),
+            look: (here && self.adv.tree.may_look(trigger)).then_some((frame.yaw, frame.pitch)),
+        });
+        view.player_facts = self.player_facts_from(
+            self.adv.tree.player_facts_asked(trigger),
+            body,
+            frame.experience.level,
+            &frame.stats,
+            frame.adv_loaded.then_some(&record.advancements),
+            &record.recipe_book.recipes,
+        );
+        Some(view)
+    }
     fn player_facts(&self, asked: adv::FactsAsked) -> adv::PlayerFacts {
         let Some(p) = self.player.as_ref() else {
             return adv::PlayerFacts::default();
         };
+        self.player_facts_from(
+            asked,
+            p,
+            self.experience.level,
+            &self.stats,
+            self.adv.loaded.then_some(&self.adv.progress),
+            &self.level.recipe_book.recipes,
+        )
+    }
+    /// Only copy the records named by `PlayerPredicate`; unloaded records stay absent.
+    fn player_facts_from(
+        &self,
+        asked: adv::FactsAsked,
+        body: &PlayerMotion,
+        level: i32,
+        stats: &Stats,
+        progress: Option<&Progress>,
+        recipes: &BTreeSet<String>,
+    ) -> adv::PlayerFacts {
         adv::PlayerFacts {
-            level: asked.level.then_some(self.experience.level),
-            // `ServerPlayer.getFoodData`, read by every player predicate:
-            // two numbers, so always filled.
-            food: Some((p.health.food.food, p.health.food.saturation)),
-            stats: (asked.stats && self.stats.loaded).then(|| self.stats.values.clone()),
-            advancements: (asked.advancements && self.adv.loaded)
-                .then(|| (self.adv.tree.clone(), self.adv.progress.clone())),
-            recipes: asked
-                .recipes
-                .then(|| self.level.recipe_book.recipes.clone()),
+            level: asked.level.then_some(level),
+            food: Some((body.health.food.food, body.health.food.saturation)),
+            stats: (asked.stats && stats.loaded).then(|| stats.values.clone()),
+            advancements: progress
+                .filter(|_| asked.advancements)
+                .map(|p| (self.adv.tree.clone(), p.clone())),
+            recipes: asked.recipes.then(|| recipes.clone()),
         }
     }
     /// The player as predicates see it, with what it looks at when `looking`.
     pub(super) fn player_entity_looking(&self, looking: bool) -> EntityView {
-        let Some(p) = self.player.as_ref() else {
+        let Some(body) = self.player.as_ref() else {
             return EntityView::default();
         };
+        self.player_entity_from(PlayerEntityState {
+            body,
+            name: self.acting_player_name(),
+            mode: self.mode,
+            input_sneak: self.held_mapping(Action::Sneak),
+            main_hand: self.held(),
+            off_hand: self.offhand.as_ref(),
+            armor: &self.armor,
+            effects: &self.potions.effects,
+            riding: self.riding,
+            look: looking.then_some((self.yaw, self.pitch)),
+        })
+    }
+    fn player_entity_from(&self, state: PlayerEntityState<'_>) -> EntityView {
+        let p = state.body;
         let mut eq: [Option<ItemView>; 7] = Default::default();
-        eq[0] = self.held().map(item_view);
-        eq[1] = self.offhand.as_ref().map(item_view);
-        for (i, a) in self.armor.iter().enumerate() {
+        eq[0] = state.main_hand.map(item_view);
+        eq[1] = state.off_hand.map(item_view);
+        for (i, a) in state.armor.iter().enumerate() {
             eq[2 + i] = a.as_ref().map(item_view);
         }
-        let vehicle = self.riding.and_then(|id| {
+        let vehicle = state.riding.and_then(|id| {
             self.mobs
                 .iter()
                 .find(|m| m.id == id)
@@ -703,15 +776,14 @@ impl Game<'_> {
             on_fire: p.is_on_fire(),
             sneaking: p.pose == sunrise_client::pose::Pose::Crouching,
             // Input.shift: the held key, as `BlockItem.place`'s sneaking reads it.
-            input_sneak: self.held_mapping(Action::Sneak),
+            input_sneak: state.input_sneak,
             sprinting: p.sprinting,
             swimming: p.pose == sunrise_client::pose::Pose::Swimming,
             flying: p.flying,
             on_ground: p.ground.on_ground,
             equipment: eq,
             vehicle,
-            effects: self
-                .potions
+            effects: state
                 .effects
                 .list
                 .iter()
@@ -720,13 +792,23 @@ impl Game<'_> {
                     (id.to_owned(), e.amplifier, e.duration)
                 })
                 .collect(),
-            gamemode: Some(self.mode.name().to_owned()),
-            team: self.player_team().map(|t| t.name.clone()),
+            gamemode: Some(state.mode.name().to_owned()),
+            team: self
+                .score
+                .board
+                .players_team(state.name)
+                .map(|t| t.name.clone()),
             // Vanilla looks for it inside PlayerPredicate.matches whatever the
             // trigger; skipped for a trigger whose criteria can't ask.
-            looking_at: looking
-                .then(|| self.looking_at_entity().map(Box::new))
-                .flatten(),
+            looking_at: state.look.and_then(|(yaw, pitch)| {
+                let eye = [
+                    p.position.x,
+                    p.position.y + f64::from(p.dimensions.eye_height),
+                    p.position.z,
+                ];
+                self.looking_at_entity(eye, super::view_vector(yaw, pitch))
+                    .map(Box::new)
+            }),
             ..Default::default()
         }
     }
@@ -1815,12 +1897,10 @@ impl Game<'_> {
     /// The entity a 100 block ray from the eyes meets first, if no block is
     /// in the way (`ProjectileUtil.getEntityHitResult` over every entity but
     /// the player that is not a spectator, then `hasLineOfSight`).
-    fn looking_at_entity(&self) -> Option<EntityView> {
+    fn looking_at_entity(&self, eye: [f64; 3], dir: [f64; 3]) -> Option<EntityView> {
         use super::commands::Target;
         use super::entity::{Entity as _, entity_lists_of, for_each_entity};
         use sunrise_core::geometry::Aabb;
-        let eye = self.eye_position()?;
-        let dir = super::view_vector(self.yaw, self.pitch);
         let mut best: Option<(Target, f64)> = None;
         let mut offer = |t: Option<Target>, b: Aabb| {
             if let Some(t) = t

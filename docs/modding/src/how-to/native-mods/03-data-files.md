@@ -126,3 +126,34 @@ Although the archive accepts `build.rs`, a native build refuses it unless you di
 
 A native `.smod` carries both source and content: the launcher compiles the source, and the game
 loads the package's `assets/` and `data/`. All packages take their identity from `sunrise-mod.toml`.
+
+## Another package's files
+
+A mod that turns other packages' files into what it registers (a script host whose script packages carry
+`data/<namespace>/lumen/*.luau`, a runtime that serves a content package) reads them during registration with
+`cx.package_files(id)`, NeoForge's `getModFileById(id).getFile().getContents()`. It works for any enabled
+package, your own included, and gives a handle you may keep and use from any thread:
+
+```rust
+fn scripts(cx: &mod_api::RegistrationContext) -> Result<Vec<Vec<u8>>, Box<dyn std::error::Error>> {
+    let files = cx.package_files("lumen_demo")?;
+    let mut scripts = Vec::new();
+    for path in files.list("data/lumen_demo/lumen/") {
+        scripts.push(files.read(path)?);
+    }
+    Ok(scripts)
+}
+```
+
+The file list is fixed when startup admits the package. Declaration and resource loading use that same list and reader.
+Reads use the archive opened at admission, or the current bytes of a listed file in a `--dev-mod` folder.
+`list(folder)` returns sorted paths under that folder, with or without a trailing slash (`""` lists every file).
+`read` returns `PackageReadError::NotFound` for an unlisted path, including `..` and absolute paths, or when a
+listed loose file has been removed.
+
+`package_files` returns `PackageFilesError::NotEnabled` if the package isn't in `cx.mods()`, `Unreadable` when
+the package's files can't be listed, and `Unavailable` outside a mod's registration. A native mod switched off
+at startup still registers, but its package is absent from both views. Admission checks file namespaces against the manifest.
+A content-only package that fails that check is not listed. A native package that fails it still registers,
+but its files are unreadable. Declaration checks that depend on registration results run later, during
+content loading.

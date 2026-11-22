@@ -485,16 +485,13 @@ jobs:
     if: ${{ always() && !cancelled() && needs.changes.result != 'skipped' && (needs.changes.result != 'success' || needs.changes.outputs.heavy == 'true') }}
     runs-on: ${{ needs.changes.outputs.rust_required == 'false' && (needs.changes.outputs.self_hosted == 'true' && needs.changes.outputs.trusted == 'true' && 'dyna-small' || 'ubuntu-latest') || needs.changes.outputs.self_hosted == 'true' && 'dyna-large' || !inputs.github-fallback && needs.changes.outputs.forced_github != 'true' && vars.SELF_HOSTED_CI == 'all' && needs.changes.outputs.trusted == 'true' && fromJSON('["self-hosted", "linux", "playsunrise-ci"]') || needs.changes.outputs.hosted_label || 'ubuntu-latest' }}
     timeout-minutes: ${{ needs.changes.outputs.self_hosted == 'true' && 50 || 45 }}
-    # Dyna's runner image now carries lavapipe, Mesa's software Vulkan driver, for ignored-tests' `gpu` tests.
-    # verify's tests were written to skip GPU work when no adapter exists, and one of them
-    # (gfx::frame_gen::optical_flow, horizon-rust/horizon#8627) fails on lavapipe, so verify hides the driver and runs
-    # exactly as before. ignored-tests is where the GPU tests run.
+    # GPU device tests belong in the daily on lavapipe, not in verify. Hide Vulkan and disallow GL so that
+    # a stray plain GPU test fails on every runner rather than running or silently skipping.
     env:
       VK_ICD_FILENAMES: /nonexistent/no-vulkan-in-verify.json
       VK_DRIVER_FILES: /nonexistent/no-vulkan-in-verify.json
-      # With Vulkan hidden, a runner with Mesa's GL software adapter (boat's image) would still run the GPU tests,
-      # on GL, and fail (#2841); Vulkan only leaves every runner with no adapter, so GPU tests skip here everywhere.
       WGPU_BACKEND: vulkan
+      SUNRISE_GPU_TESTS_REQUIRE_ADAPTER: '1'
       RUNNER_KIND: ${{ needs.changes.outputs.self_hosted == 'true' && 'dyna' || !inputs.github-fallback && needs.changes.outputs.forced_github != 'true' && vars.SELF_HOSTED_CI == 'all' && needs.changes.outputs.trusted == 'true' && 'other' || startsWith(needs.changes.outputs.hosted_label, 'boat') && 'boat' || 'github' }}
     steps:
       - name: Require successful check selection
@@ -662,7 +659,7 @@ jobs:
         if: ${{ !cancelled() && steps.setup.outcome == 'success' && (needs.changes.outputs.rust_required != 'false' && (github.event_name == 'pull_request' || inputs.pr != '')) }}
         run: |
           started=$SECONDS
-          cargo build $JOBS --locked --profile test -p sunrise-mod-api-gen --bin sunrise-stage --message-format=json-render-diagnostics > "$RUNNER_TEMP/stage-artifacts.jsonl"
+          cargo build $JOBS --locked --profile test -p sunrise-stage --bin sunrise-stage --message-format=json-render-diagnostics > "$RUNNER_TEMP/stage-artifacts.jsonl"
           echo "Stage generator build: $((SECONDS - started))s"
           python3 - <<'PY'
           import json
@@ -762,16 +759,12 @@ jobs:
     # finishes in 8 to 11 minutes, so eight CPUs only took a large slot from the gate's compiling jobs.
     runs-on: ${{ needs.changes.outputs.heavy == 'false' && 'ubuntu-latest' || needs.changes.outputs.rust_required == 'false' && (needs.changes.outputs.self_hosted == 'true' && needs.changes.outputs.trusted == 'true' && 'dyna-small' || 'ubuntu-latest') || needs.changes.outputs.trusted != 'true' && 'ubuntu-latest' || needs.changes.outputs.self_hosted == 'true' && 'dyna-medium' || !inputs.github-fallback && needs.changes.outputs.forced_github != 'true' && vars.SELF_HOSTED_CI == 'all' && needs.changes.outputs.trusted == 'true' && fromJSON('["self-hosted", "linux", "playsunrise-ci"]') || needs.changes.outputs.hosted_label || 'ubuntu-latest' }}
     timeout-minutes: ${{ needs.changes.outputs.self_hosted == 'true' && needs.changes.outputs.trusted == 'true' && 20 || 45 }}
-    # Dyna's runner image now carries lavapipe, Mesa's software Vulkan driver, for ignored-tests' `gpu` tests.
-    # verify's tests were written to skip GPU work when no adapter exists, and one of them
-    # (gfx::frame_gen::optical_flow, horizon-rust/horizon#8627) fails on lavapipe, so verify hides the driver and runs
-    # exactly as before. ignored-tests is where the GPU tests run.
+    # Use verify's hidden-GPU environment so a stray plain GPU test fails instead of silently skipping.
     env:
       VK_ICD_FILENAMES: /nonexistent/no-vulkan-in-verify.json
       VK_DRIVER_FILES: /nonexistent/no-vulkan-in-verify.json
-      # With Vulkan hidden, a runner with Mesa's GL software adapter (boat's image) would still run the GPU tests,
-      # on GL, and fail (#2841); Vulkan only leaves every runner with no adapter, so GPU tests skip here everywhere.
       WGPU_BACKEND: vulkan
+      SUNRISE_GPU_TESTS_REQUIRE_ADAPTER: '1'
       RUNNER_KIND: ${{ needs.changes.outputs.heavy == 'false' && 'github' || needs.changes.outputs.trusted != 'true' && 'github' || needs.changes.outputs.self_hosted == 'true' && 'dyna' || !inputs.github-fallback && needs.changes.outputs.forced_github != 'true' && vars.SELF_HOSTED_CI == 'all' && needs.changes.outputs.trusted == 'true' && 'other' || startsWith(needs.changes.outputs.hosted_label, 'boat') && 'boat' || 'github' }}
     steps:
       - name: Require successful check selection

@@ -5298,6 +5298,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "sunrise-stage"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "sunrise-mod-api-gen",
+ "sunrise-mod-package",
+ "sunrise-mod-source",
+ "sunrise-mod-surface",
+ "tempfile",
+]
+
+[[package]]
 name = "sunrise-system"
 version = "0.1.0"
 

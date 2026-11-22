@@ -257,7 +257,7 @@ impl Game<'_> {
             // the request; the common boat tick clears it once nobody rides.
             ejected = self.boats[i].eject_riders;
         }
-        // Getting out goes through leave_guest, which tells the client and
+        // Getting out goes through the put-back at the end of `guest_turn`, which tells the client and
         // teleports it (ServerPlayer.dismountTo).
         let seat = self.as_guest(conn, |game| {
             // A cushion does not move: the rider sits on it until it sneaks

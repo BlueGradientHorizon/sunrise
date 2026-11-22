@@ -1431,6 +1431,18 @@ impl TriState {
 /// }
 /// ```
 pub trait LevelHost {
+    /// Whether the exact, namespaced `id` is a living entity type (`LivingEntity`).
+    /// Includes living content types, players and armor stands, whether alive or not in a level.
+    /// Returns `None` before the registry is complete or when no classification exists for `id`.
+    /// This is a load-owned registry read, not an entity lookup. It allocates nothing and gives
+    /// the same answer on either side; no entity need be loaded.
+    #[sunrise_mod_api_macros::computed_in_mod]
+    fn entity_type_is_living(&self, id: &str) -> Option<bool> {
+        crate::content::registry_keys::resolved_entity_types()
+            .get()?
+            .is_living(id)
+    }
+
     /// The block-state facts service, as `host.block_states()` gives it on a game host: the
     /// same tables and the same answers, so a part can ask a neighbour's `weathering_age`
     /// inside `random_tick`. Read-only and allocation-free per read. A level view with no
@@ -1798,7 +1810,10 @@ pub trait LevelWriteHost: LevelTicksHost + LevelRandomHost {
     ) -> bool {
         unimplemented!("LevelWriteHost::set_block_property")
     }
-    /// Play a sound for nearby players through `play_sound`.
+    /// Play a sound for nearby players. Inside an open transaction in the active level, the
+    /// level-sound hook runs synchronously; only the resolved sound waits for the owning level's
+    /// outermost commit and draws its seed when published. An abort discards it. Outside a
+    /// transaction a queued sound draws its seed at the call, even if a later hook cancels it.
     fn play_sound(
         &mut self,
         _sound: &str,
@@ -1811,7 +1826,8 @@ pub trait LevelWriteHost: LevelTicksHost + LevelRandomHost {
     }
     /// `ServerLevel.sendParticles` through `native_send_particles`.
     /// Item particles require `options.item_stack`; invalid stacks return false, and so does an
-    /// item crumb whose colour has a component outside 0 to 1.
+    /// item crumb whose colour has a component outside 0 to 1. Inside an open transaction the
+    /// particles wait for the outermost commit and are discarded on abort.
     fn send_particles(
         &mut self,
         _options: &ParticleOptions,
@@ -1824,7 +1840,9 @@ pub trait LevelWriteHost: LevelTicksHost + LevelRandomHost {
         unimplemented!("LevelWriteHost::send_particles")
     }
     /// `LevelAccessor.levelEvent(null, id, pos, data)` through `native_level_event`: the event
-    /// is queued with the write's own events, in order, and plays when the write is done.
+    /// is queued with the write's own events, in order. Inside an open transaction it plays at the
+    /// outermost commit, in call order with the other deferred effects, and is discarded on abort;
+    /// otherwise it plays when the write is done.
     /// `LevelRef::level_event` takes the same `id` and `data`.
     fn level_event(&mut self, _id: i32, _pos: [i32; 3], _data: i32) -> bool {
         unimplemented!("LevelWriteHost::level_event")

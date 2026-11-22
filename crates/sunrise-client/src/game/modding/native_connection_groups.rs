@@ -396,6 +396,14 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn connection_group_transactions_abort_silently_and_commit_with_block_writes() {
+        // The fixture's resource load replaces the process's block namespace table.
+        if crate::game::native_entity_refs::tests::run_fresh_cases(
+            "game::native_connection_groups::tests::connection_group_transactions_abort_silently_and_commit_with_block_writes",
+            "SUNRISE_GROUP_TRANSACTIONS_CHILD",
+            &["run"],
+        ) {
+            return;
+        }
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.native_lifecycle.world_open_ready().unwrap();
@@ -658,10 +666,9 @@ mod tests {
             assert!(game.world.block_log.as_ref().unwrap().is_empty());
             assert!(game.world.connection_group_log.as_ref().unwrap().is_empty());
 
-            // Bulk `ServerHost::edit_blocks` inside `HostTransaction::transaction`: permanent
-            // replacement reconciles the open transaction's restore baseline and drops earlier
-            // deferred group writes so neither commit nor abort resurrects a group on the new
-            // block; writes after the bulk replacement still commit/abort against `None`.
+            // Bulk `ServerHost::edit_blocks` inside `HostTransaction::transaction` is journaled
+            // like `set_block`: a commit keeps the replacement and its cleared group, and an
+            // abort restores both the block and the group it replaced.
             let single_replace = |pos: [i32; 3], to: mod_api::BlockState| BlockEdit {
                 palette: vec![to],
                 filters: Vec::new(),
@@ -676,6 +683,15 @@ mod tests {
                 }],
             };
 
+            let reset_group_publication = |game: &mut Game<'_>| {
+                game.world.dirty_sections.clear();
+                game.world.connection_group_log.as_mut().unwrap().clear();
+            };
+            let assert_quiet = |game: &Game<'_>| {
+                assert!(game.world.dirty_sections.is_empty());
+                assert!(game.world.connection_group_log.as_ref().unwrap().is_empty());
+            };
+
             // Commit after set_connection_group + bulk replace.
             assert_eq!(
                 level.set_block(game, [8, 64, 8], stone, BlockUpdateFlags::NONE),
@@ -685,6 +701,7 @@ mod tests {
                 level.set_connection_group(game, [8, 64, 8], Some(1)),
                 Ok(true)
             );
+            reset_group_publication(game);
             let edit_commit = single_replace([8, 64, 8], glass);
             {
                 let host: &mut dyn ServerHost = game;
@@ -701,6 +718,10 @@ mod tests {
             }
             assert_eq!(level.block_state(game, [8, 64, 8]), Some(glass));
             assert_eq!(level.connection_group(game, [8, 64, 8]), Ok(None));
+            assert_eq!(
+                game.world.connection_group_log.as_ref().unwrap(),
+                &[(8, 64, 8)].into_iter().collect()
+            );
 
             // Abort after set_connection_group(Some) + bulk replace.
             assert_eq!(
@@ -711,6 +732,7 @@ mod tests {
                 level.set_connection_group(game, [9, 64, 9], Some(1)),
                 Ok(true)
             );
+            reset_group_publication(game);
             let edit_abort = single_replace([9, 64, 9], glass);
             {
                 let host: &mut dyn ServerHost = game;
@@ -724,8 +746,9 @@ mod tests {
                 });
                 assert_eq!(res, Err(()));
             }
-            assert_eq!(level.block_state(game, [9, 64, 9]), Some(glass));
-            assert_eq!(level.connection_group(game, [9, 64, 9]), Ok(None));
+            assert_eq!(level.block_state(game, [9, 64, 9]), Some(stone));
+            assert_eq!(level.connection_group(game, [9, 64, 9]), Ok(Some(1)));
+            assert_quiet(game);
 
             // Abort after tentative set_connection_group(None) + bulk replace.
             assert_eq!(
@@ -736,6 +759,7 @@ mod tests {
                 level.set_connection_group(game, [10, 64, 10], Some(1)),
                 Ok(true)
             );
+            reset_group_publication(game);
             let edit_tentative_none = single_replace([10, 64, 10], glass);
             {
                 let host: &mut dyn ServerHost = game;
@@ -752,11 +776,12 @@ mod tests {
                 });
                 assert_eq!(res, Err(()));
             }
-            assert_eq!(level.block_state(game, [10, 64, 10]), Some(glass));
-            assert_eq!(level.connection_group(game, [10, 64, 10]), Ok(None));
+            assert_eq!(level.block_state(game, [10, 64, 10]), Some(stone));
+            assert_eq!(level.connection_group(game, [10, 64, 10]), Ok(Some(1)));
+            assert_quiet(game);
 
-            // Writing a fresh group AFTER bulk replace in the same transaction commits or aborts
-            // cleanly against the reconciled `None` baseline.
+            // A fresh group written after the bulk replacement commits with it, or aborts with
+            // it back to the group the transaction started from.
             assert_eq!(
                 level.set_block(game, [11, 64, 11], stone, BlockUpdateFlags::NONE),
                 Ok(true)
@@ -765,6 +790,7 @@ mod tests {
                 level.set_connection_group(game, [11, 64, 11], Some(1)),
                 Ok(true)
             );
+            reset_group_publication(game);
             let edit_after_commit = single_replace([11, 64, 11], glass);
             {
                 let host: &mut dyn ServerHost = game;
@@ -787,6 +813,10 @@ mod tests {
             }
             assert_eq!(level.block_state(game, [11, 64, 11]), Some(glass));
             assert_eq!(level.connection_group(game, [11, 64, 11]), Ok(Some(3)));
+            assert_eq!(
+                game.world.connection_group_log.as_ref().unwrap(),
+                &[(11, 64, 11)].into_iter().collect()
+            );
 
             assert_eq!(
                 level.set_block(game, [12, 64, 12], stone, BlockUpdateFlags::NONE),
@@ -796,6 +826,7 @@ mod tests {
                 level.set_connection_group(game, [12, 64, 12], Some(1)),
                 Ok(true)
             );
+            reset_group_publication(game);
             let edit_after_abort = single_replace([12, 64, 12], glass);
             {
                 let host: &mut dyn ServerHost = game;
@@ -816,11 +847,12 @@ mod tests {
                 });
                 assert_eq!(res, Err(()));
             }
-            assert_eq!(level.block_state(game, [12, 64, 12]), Some(glass));
-            assert_eq!(level.connection_group(game, [12, 64, 12]), Ok(None));
+            assert_eq!(level.block_state(game, [12, 64, 12]), Some(stone));
+            assert_eq!(level.connection_group(game, [12, 64, 12]), Ok(Some(1)));
+            assert_quiet(game);
 
-            // A nested bulk round-trip still replaces the block twice. At edit time the
-            // inner transaction has hidden the group, but neither abort may revive it.
+            // A nested bulk round-trip replaces the block twice. Each abort restores the group
+            // its own transaction started from.
             let pos = [13, 64, 13];
             assert_eq!(
                 level.set_block(game, pos, stone, BlockUpdateFlags::NONE),
@@ -833,17 +865,20 @@ mod tests {
                 block: 1,
                 ..round_trip.runs[0]
             });
+            reset_group_publication(game);
             let outer = game.transaction_open();
             assert_eq!(level.set_connection_group(game, pos, Some(2)), Ok(true));
             let inner = game.transaction_open();
-            assert_eq!(level.set_connection_group(game, pos, None), Ok(true));
             let host: &mut dyn ServerHost = game;
             assert_eq!(host.edit_blocks("minecraft:overworld", &round_trip), Ok(2));
-            game.transaction_close(&inner, false);
             assert_eq!(level.connection_group(game, pos), Ok(None));
+            game.transaction_close(&inner, false);
+            assert_eq!(level.connection_group(game, pos), Ok(Some(2)));
+            assert_quiet(game);
             game.transaction_close(&outer, false);
             assert_eq!(level.block_state(game, pos), Some(stone));
-            assert_eq!(level.connection_group(game, pos), Ok(None));
+            assert_eq!(level.connection_group(game, pos), Ok(Some(1)));
+            assert_quiet(game);
 
             // Aborting the first ever tentative write must not opt the column into group sync.
             let untouched = [17, 64, 1];
@@ -886,6 +921,128 @@ mod tests {
             game.transaction_close(&outer, false);
             assert_eq!(level.connection_group(game, pos), Ok(Some(10)));
             assert_eq!(nether.connection_group(game, pos), Ok(Some(21)));
+
+            // A transaction opened in the other level owns its clear too. Its commit becomes
+            // final there, even though the enclosing Overworld transaction later aborts.
+            let outer = game.transaction_open();
+            assert_eq!(level.set_connection_group(game, pos, Some(11)), Ok(true));
+            assert_eq!(game.enter_command_level(Dim::Nether), Some(Dim::Overworld));
+            let inner = game.transaction_open();
+            let host: &mut dyn ServerHost = game;
+            assert_eq!(
+                host.edit_blocks("minecraft:the_nether", &single_replace(pos, stone)),
+                Ok(1)
+            );
+            game.transaction_close(&inner, true);
+            assert_eq!(nether.block_state(game, pos), Some(stone));
+            assert_eq!(nether.connection_group(game, pos), Ok(None));
+            assert_eq!(game.enter_command_level(Dim::Overworld), Some(Dim::Nether));
+            game.transaction_close(&outer, false);
+            assert_eq!(level.connection_group(game, pos), Ok(Some(10)));
+            assert_eq!(nether.connection_group(game, pos), Ok(None));
+        });
+    }
+
+    /// Records, at each `block_changed`, the block at [`BULK_CELL`].
+    struct SeesBulkCell(Arc<std::sync::Mutex<Vec<([i32; 3], Option<mod_api::BlockState>)>>>);
+
+    const BULK_CELL: [i32; 3] = [12, 64, 12];
+
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for SeesBulkCell {
+        fn block_changed(
+            &self,
+            level: &dyn mod_api::LevelHost,
+            event: &mut mod_api::BlockChangedEvent,
+        ) {
+            let pos = [event.pos.x, event.pos.y, event.pos.z];
+            self.0
+                .lock()
+                .unwrap()
+                .push((pos, level.block_state(BULK_CELL)));
+        }
+    }
+
+    /// A callback replayed at the root commit before a later bulk edit sees the bulk cell's
+    /// block as it stood before the edit, alongside the group restored with it.
+    #[test]
+    #[ignore = "daily"]
+    fn a_replayed_callback_sees_a_later_bulk_cell_before_its_edit() {
+        if crate::game::native_entity_refs::tests::run_fresh_cases(
+            "game::native_connection_groups::tests::a_replayed_callback_sees_a_later_bulk_cell_before_its_edit",
+            "SUNRISE_GROUP_REPLAY_CHILD",
+            &["run"],
+        ) {
+            return;
+        }
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "sees_bulk_cell",
+            Box::new(SeesBulkCell(seen.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                game.options.dedicated = Some(Vec::new());
+                game.native_lifecycle.world_open_ready().unwrap();
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                game.world.connection_group_log = Some(Default::default());
+                let level = game.level("minecraft:overworld").unwrap();
+                let stone = state(game, "minecraft:stone");
+                let glass = state(game, "minecraft:glass");
+                let ordinary = [2, 64, 2];
+                assert_eq!(
+                    level.set_block(game, BULK_CELL, stone, BlockUpdateFlags::NONE),
+                    Ok(true)
+                );
+                assert_eq!(
+                    level.set_connection_group(game, BULK_CELL, Some(5)),
+                    Ok(true)
+                );
+                let edit = BlockEdit {
+                    palette: vec![glass],
+                    filters: Vec::new(),
+                    runs: vec![BlockRun {
+                        x: BULK_CELL[0],
+                        z: BULK_CELL[2],
+                        y: BULK_CELL[1],
+                        height: 1,
+                        surface: None,
+                        block: 0,
+                        only: None,
+                    }],
+                };
+                seen.lock().unwrap().clear();
+                {
+                    let host: &mut dyn ServerHost = game;
+                    let res: Result<(), ()> = host.transaction(|host, _tx| {
+                        assert_eq!(
+                            level.set_block(
+                                host,
+                                ordinary,
+                                stone,
+                                BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS,
+                            ),
+                            Ok(true)
+                        );
+                        assert_eq!(host.edit_blocks("minecraft:overworld", &edit), Ok(1));
+                        Ok(())
+                    });
+                    assert_eq!(res, Ok(()));
+                }
+                let heard: Vec<_> = seen
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|(pos, _)| *pos == ordinary)
+                    .map(|&(_, bulk)| bulk)
+                    .collect();
+                assert_eq!(heard, [Some(stone)]);
+                assert_eq!(level.block_state(game, BULK_CELL), Some(glass));
+                assert_eq!(level.connection_group(game, BULK_CELL), Ok(None));
+            });
         });
     }
 

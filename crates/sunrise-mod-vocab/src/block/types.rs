@@ -375,8 +375,8 @@ impl StepOnEvent<'_> {
 
     /// Queue a write to the stepping entity, before inside-block effects.
     /// Returns false on the client. As with `entity_inside`, the body applies
-    /// the writes it supports, in request order. Boats and minecarts do not
-    /// take contact Part damage yet (#4177).
+    /// the writes it supports, in request order. Boats and minecarts (#4177),
+    /// armor stands and projectiles ignore contact hurt.
     pub fn write_entity(&mut self, write: EntityWrite) -> bool {
         if !self.writes.server {
             return false;

@@ -86,18 +86,23 @@ impl Game<'_> {
         // A column sent again while it is resident (a bulk edit): only what changed is lit and meshed again.
         let resident = self.world.chunks.contains_key(&(x, z));
         if resident {
+            // LevelChunk.replaceWithPacketData clears the old block entities. Pots keep
+            // their wobble outside the block entity store, so retire it here too.
+            self.be_anims
+                .pots
+                .retain(|[bx, _, bz], _| (*bx >> 4, *bz >> 4) != (x, z));
             sunrise_client::spans::time("replace_remote", || {
                 self.streaming.replace_remote(&mut self.world, chunk)
             });
-            self.world
-                .block_entities
-                .retain(|k, _| (k.0 >> 4, k.2 >> 4) != (x, z));
         } else {
             self.streaming.insert_remote(&mut self.world, chunk);
         }
-        self.world
-            .block_entities
-            .unload(|k| (k.0 >> 4, k.2 >> 4) == (x, z));
+        // Before any block entity joins: a state change before the first ticker pass (a campfire
+        // lit) must find which states tick, to join the list at that moment, not at its place.
+        self.ensure_client_ticking_states();
+        sunrise_client::spans::time("unload_block_entities", || {
+            self.world.block_entities.unload_column((x, z));
+        });
         self.load_block_entities((x, z), &p.chunk.block_entities);
         // After the column's block entities load: an attachment keeps its block entity if the
         // packet sent it again, and one left from a forgotten column goes.
@@ -125,6 +130,11 @@ impl Game<'_> {
         (x, z): (i32, i32),
         infos: &[sunrise_protocol::chunk::BlockEntityInfo],
     ) {
+        let _load = if infos.is_empty() {
+            None
+        } else {
+            sunrise_client::spans::raw_flight_guard("load_block_entities")
+        };
         for info in infos {
             let pos = (
                 x * 16 + i32::from(info.packed_xz as u8 >> 4),
