@@ -25,8 +25,6 @@ use sunrise_world::{
 };
 
 const CACHE: usize = 1024;
-/// Chunks a request keeps for decoration: enough batches to keep every thread busy.
-const REQUESTS: usize = 1024;
 /// Chunks a side a decoration batch emits. Each needs a two-chunk border of
 /// proto chunks, which the batch shares: 4 built four protos per chunk, 8
 /// builds 2.25, and the protos (noise, surface) are most of far decoration.
@@ -46,7 +44,7 @@ struct Requests {
 }
 impl Requests {
     /// `wanted` becomes `chunks` nearest `center` first, short of the
-    /// chunks built and the batches being built, `REQUESTS` at most.
+    /// chunks built and the batches being built.
     fn replace_wanted(&mut self, chunks: &[(i32, i32)], center: [i32; 2]) {
         let Self {
             wanted,
@@ -63,7 +61,6 @@ impl Requests {
         wanted
             .make_contiguous()
             .sort_unstable_by_key(|&key| (distance(key, center), key));
-        wanted.truncate(REQUESTS);
     }
 }
 struct Shared {
@@ -758,18 +755,6 @@ mod tests {
         // The player flew east: the request leaves the chunks behind out.
         builder.request(&[(40, 5), (25, 3), (17, 2), (20, 0), (30, 1)], [320, 0]);
         assert_eq!(wanted(), [(20, 0), (40, 5)]);
-        {
-            let mut requests = builder.shared.requests.lock().unwrap();
-            requests.current.clear();
-            requests.finished.clear();
-        }
-        // A request is cut to its nearest `REQUESTS`.
-        let far: Vec<_> = (0..REQUESTS as i32 + 10).rev().map(|x| (x, 0)).collect();
-        builder.request(&far, [0, 0]);
-        let kept = wanted();
-        assert_eq!(kept.len(), REQUESTS);
-        assert_eq!(kept.first(), Some(&(0, 0)));
-        assert!(kept.iter().all(|&(x, _)| x < REQUESTS as i32));
         // The view wants nothing: nothing is left to build.
         builder.request(&[], [0, 0]);
         assert!(wanted().is_empty());
