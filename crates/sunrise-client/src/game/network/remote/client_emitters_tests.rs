@@ -3,7 +3,7 @@ use crate::game::{
     native_entity_refs::tests::with_client_game, native_hotbar_slot::hotbar_slot_tests::logged_in,
 };
 use sunrise_client::particles::ParticleType::{self, Crit, EnchantedHit};
-use sunrise_core::random::LegacyRandom;
+use sunrise_core::random::{LegacyRandom, RandomSource};
 use sunrise_protocol::entity_data::{Value, serializer};
 
 fn with_isolated_client(name: &str, body: impl FnOnce()) {
@@ -197,7 +197,10 @@ fn hit_emitters_use_cloud_radius_and_the_live_thrown_potion() {
                 game.step_remote_thrown();
                 // Read the independently ticked projectile, not its packet position
                 // or the resolver under test. Gravity moves it even at zero motion.
-                let position = |game: &Game<'_>| game.potions.thrown_entities()[0].1.to_array();
+                let position = |game: &Game<'_>| {
+                    let at = game.potions.thrown_entities()[0].1;
+                    [at.x, at.y, at.z]
+                };
                 let first = position(game);
                 assert_ne!(first, potion_at);
                 animate(game, cloud, 1);

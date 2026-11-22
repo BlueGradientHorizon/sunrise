@@ -138,7 +138,7 @@ impl Game<'_> {
             | "minecraft:experience_bottle" => {
                 let (_, _, _, position, _) =
                     self.potions.thrown_tracked().find(|(id, ..)| *id == eid)?;
-                position.to_array()
+                [position.x, position.y, position.z]
             }
             "minecraft:fishing_bobber" => {
                 let hook = self.remote_hooks.iter().find(|hook| hook.id == eid)?;
