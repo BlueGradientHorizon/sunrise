@@ -479,7 +479,6 @@ pub struct Title {
     /// A Realm's checked address, once the Realms screen's join came back.
     connect_request: Option<String>,
     /// EditWorldScreen's and WorldOpenFlows' `SystemToast` and its slide.
-    toast: Option<crate::toasts::SystemToast>,
     pending_toast: Option<WorldToast>,
     icons: RefCell<std::collections::HashMap<PathBuf, (std::time::SystemTime, Option<Vec<u8>>)>>,
     splash: Option<String>,
@@ -945,7 +944,6 @@ impl Title {
             erase_check: Cell::new([0.0; 4]),
             open_request: None,
             connect_request: None,
-            toast: None,
             pending_toast: None,
             icons: RefCell::new(std::collections::HashMap::new()),
             splash: choose_splash(splashes, splash_index, (today.month(), today.day())),
@@ -1433,26 +1431,7 @@ impl Title {
         let (title, message) = self.pending_toast.take()?.text();
         Some(crate::toasts::SystemToast::new(title, Some(message)))
     }
-    /// Apply a toast accepted by the game's toast admission hook.
-    pub fn apply_toast(&mut self, toast: crate::toasts::SystemToast) {
-        self.toast = Some(toast);
-    }
-    /// `ToastManager.update` for the system toast: slides it in, keeps it
-    /// for 5 s times the notification display time, slides it out. The
-    /// sound of a new visibility (`Toast.Visibility`), if any.
-    pub fn update_toast(&mut self, multiplier: f32) -> Option<&'static str> {
-        let (sound, finished) = self.toast.as_mut()?.update(f64::from(multiplier));
-        if finished {
-            self.toast = None;
-        }
-        sound.map(|show| {
-            if show {
-                "minecraft:ui.toast.in"
-            } else {
-                "minecraft:ui.toast.out"
-            }
-        })
-    }
+
     /// The server list's narration of LAN worlds found since the last call
     /// (`JoinMultiplayerScreen.tick`'s `updateNetworkServers`).
     pub fn lan_found_narrations(&self, size: (f32, f32)) -> Vec<Text> {
@@ -1460,10 +1439,6 @@ impl Title {
             Mode::Multiplayer(screen) => screen.lan_found_narrations(size),
             _ => Vec::new(),
         }
-    }
-    /// Whether the system toast holds the `ToastManager`'s first slot.
-    pub fn has_toast(&self) -> bool {
-        self.toast.is_some()
     }
     /// The world a finished backup made before its upgrade opens next.
     /// The Realms screen's workers: a join that came back connects (`GetServerDetailsTask`

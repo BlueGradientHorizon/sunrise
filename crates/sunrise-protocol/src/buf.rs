@@ -465,6 +465,76 @@ impl Codec<Tag> for Nbt {
         w.nbt(v)
     }
 }
+/// Network NBT read with `NbtAccounter.unlimitedHeap()` limits.
+pub struct TrustedNbt;
+impl Codec<Tag> for TrustedNbt {
+    fn read(r: &mut Reader) -> Result<Tag> {
+        r.nbt_within(nbt::Limits::unlimited_heap())
+    }
+    fn write(v: &Tag, w: &mut Writer) {
+        Nbt::write(v, w)
+    }
+}
+/// `ByteBufCodecs.TRUSTED_COMPOUND_TAG`: unlimited-heap NBT with a required compound root.
+pub struct TrustedCompound;
+impl Codec<Tag> for TrustedCompound {
+    fn read(r: &mut Reader) -> Result<Tag> {
+        let tag = TrustedNbt::read(r)?;
+        if !matches!(tag, Tag::Compound(_)) {
+            nbt::discard_tag(tag);
+            return Err(Error::new("Expected non-null compound tag"));
+        }
+        Ok(tag)
+    }
+    fn write(v: &Tag, w: &mut Writer) {
+        TrustedNbt::write(v, w)
+    }
+}
+/// `ComponentSerialization.TRUSTED_STREAM_CODEC` and `TRUSTED_CONTEXT_FREE_STREAM_CODEC`:
+/// read unlimited-heap NBT, then decode it as a component.
+pub struct TrustedComponent;
+impl TrustedComponent {
+    /// Check a component already read as part of a synchronized registry entry.
+    pub(crate) fn validate_tag(tag: &Tag, r: &Reader) -> Result<()> {
+        if *tag == Tag::End {
+            return Err(Error::new("Expected non-null compound tag"));
+        }
+        sunrise_world::component_value::source::text_from_tag(tag, &|item| {
+            r.contains_registry_entry("minecraft:item", item)
+        })
+        .map_err(|e| Error::new(format!("Failed to decode: {e}")))?;
+        Ok(())
+    }
+}
+impl Codec<Tag> for TrustedComponent {
+    fn read(r: &mut Reader) -> Result<Tag> {
+        let tag = TrustedNbt::read(r)?;
+        Self::validate_tag(&tag, r)?;
+        Ok(tag)
+    }
+    fn write(v: &Tag, w: &mut Writer) {
+        TrustedNbt::write(v, w)
+    }
+}
+/// `Style.Serializer.TRUSTED_STREAM_CODEC`: unlimited-heap NBT decoded as a style map.
+pub struct TrustedStyle;
+impl Codec<Tag> for TrustedStyle {
+    fn read(r: &mut Reader) -> Result<Tag> {
+        let tag = TrustedNbt::read(r)?;
+        if let Err(error) =
+            sunrise_world::component_value::source::validate_text_style(&tag, &|item| {
+                r.contains_registry_entry("minecraft:item", item)
+            })
+        {
+            nbt::discard_tag(tag);
+            return Err(Error::new(format!("Failed to decode: {error}")));
+        }
+        Ok(tag)
+    }
+    fn write(v: &Tag, w: &mut Writer) {
+        TrustedNbt::write(v, w)
+    }
+}
 /// ByteBufCodecs.LONG_ARRAY.
 pub struct Longs;
 impl Codec<Vec<i64>> for Longs {
