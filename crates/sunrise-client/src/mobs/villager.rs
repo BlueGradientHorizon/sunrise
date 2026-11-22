@@ -338,6 +338,18 @@ pub const RAID_VICTORY: u8 = 3;
 /// The raid there was lost (still found by `getRaidAt` until it stops).
 pub const RAID_LOSS: u8 = 4;
 
+/// The owner of this hit publishes the response before another hit can land.
+#[derive(Clone, Copy, Debug)]
+pub struct PlayerHurt {
+    pub uuid: [i32; 4],
+    pub angry: bool,
+    pub trade_pitch: Option<f32>,
+}
+
+/// Sound requests kept with the accepted hit, not in the tick's mob outbox.
+#[derive(Clone, Copy, Debug)]
+pub struct HurtSound(pub &'static str, pub [f64; 3], pub f32, pub f32);
+
 /// Villager state beyond `Extra`'s scratch fields.
 #[derive(Clone, Debug, Default)]
 pub struct Ext {
@@ -349,6 +361,10 @@ pub struct Ext {
     pub raid_wave: bool,
     /// What the villager remembers of players (`gossips`).
     pub gossips: crate::gossip::Gossips,
+    pub pending_hurt_player: Option<PlayerHurt>,
+    /// `LivingEntity.hurtServer`'s damage broadcast for a full, unblocked hit.
+    pub pending_hurt_damage: Option<(super::Damage, Option<i32>)>,
+    pub pending_hurt_sounds: [Option<HurtSound>; 2],
     /// `Villager.lastTradedPlayer`: the most recent trader, consumed by the
     /// next customServerAiStep. This is runtime state, not saved gossip.
     pub last_traded_player: Option<[i32; 4]>,
@@ -365,8 +381,6 @@ pub struct Ext {
     pub sleeping_pos: Option<[i32; 3]>,
     /// `GOLEM_DETECTED_RECENTLY` expires at this game time.
     pub golem_until: i64,
-    /// The `last_hurt_by_time` of the player's hit already counted.
-    pub hurt_seen: i32,
     /// A zombie villager's cure under way.
     pub cure: Option<super::zombie_villager::Cure>,
     /// `CanContinueSleepingEvent.mayContinueSleeping`, set by the game before the tick
@@ -382,6 +396,28 @@ pub struct Ext {
 }
 pub fn ext(m: &Mob) -> Option<&Ext> {
     m.extra.villager.as_deref()
+}
+/// `Villager.setLastHurtByMob`: gossip names the accepted hit's causing entity.
+/// The anger and the hitting player's offers are delivered by the owning game.
+pub fn hurt_by(m: &mut Mob, source: &super::Damage, uuid: [i32; 4]) {
+    let Some(who) = source.attacker else { return };
+    if m.species() != Species::Villager || source.kind.no_anger() {
+        return;
+    }
+    let alive = m.alive();
+    let ext = ext_mut(m);
+    ext.gossips.add(
+        uuid,
+        crate::gossip::GossipType::MinorNegative,
+        crate::gossip::REPUTATION_CHANGE_PER_EVENT,
+    );
+    if who == super::Who::Player {
+        ext.pending_hurt_player = Some(PlayerHurt {
+            uuid,
+            angry: alive,
+            trade_pitch: None,
+        });
+    }
 }
 pub fn ext_mut(m: &mut Mob) -> &mut Ext {
     m.extra.villager.get_or_insert_with(Box::default)

@@ -1,4 +1,5 @@
-use mod_api::__private::game::RegistrationContextNew;
+use crate::game::native_entity_refs::tests::run_fresh_cases;
+use mod_api::__private::{game::RegistrationContextNew, reload::ReloadStageError};
 use mod_api::{
     ConditionError, Hooks, Identifier, LoadCondition, ModEntry, RegisterLoadConditionsEvent,
     RegistrationContext,
@@ -142,6 +143,13 @@ fn malformed_known_recipe_stops_dedicated_world_startup() {
 #[test]
 #[ignore = "daily"]
 fn load_conditions_recipe_reload_counts_and_failed_candidates_keep_old_recipes() {
+    if run_fresh_cases(
+        "game::load_conditions::tests::load_conditions_recipe_reload_counts_and_failed_candidates_keep_old_recipes",
+        "SUNRISE_LOAD_CONDITIONS_RELOAD_CHILD",
+        &["reload"],
+    ) {
+        return;
+    }
     let scratch = tempfile::tempdir().unwrap();
     let count = Arc::new(AtomicUsize::new(0));
     let mode = Arc::new(AtomicUsize::new(0));
@@ -249,15 +257,18 @@ fn load_conditions_recipe_reload_counts_and_failed_candidates_keep_old_recipes()
                     (3, "handler panicked"),
                     (6, "invalid result"),
                     (7, "ingredient kind testmod:unregistered"),
-                    (8, "invalid ingredients or required fields"),
+                    (8, "invalid ingredient: 42"),
                 ] {
                     mode.store(bad, Ordering::SeqCst);
-                    let error = format!(
-                        "{:?}",
-                        game.reload_datapacks(true, &game.level.enabled_features.clone())
-                            .err()
-                            .unwrap()
-                    );
+                    let error = game
+                        .reload_datapacks(true, &game.level.enabled_features.clone())
+                        .err()
+                        .unwrap();
+                    let error = match (bad, error) {
+                        (8, ReloadStageError::DataSource(message)) => message,
+                        (8, other) => panic!("expected a recipe data-source error, got {other:?}"),
+                        (_, other) => format!("{other:?}"),
+                    };
                     assert!(
                         error.contains("data/testmod/recipe/enabled.json"),
                         "{error}"

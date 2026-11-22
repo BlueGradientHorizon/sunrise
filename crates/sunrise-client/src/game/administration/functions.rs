@@ -1695,119 +1695,125 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn functions_name_mod_commands_from_the_first_world_open() {
-        use std::sync::{
-            Arc,
-            atomic::{AtomicBool, AtomicU32, Ordering},
-        };
-        struct Commands {
-            offered: Arc<AtomicBool>,
-            ran: Arc<AtomicU32>,
-        }
-        #[mod_api::__subscriptions]
-        impl mod_api::Hooks for Commands {
-            fn register_commands(
-                &self,
-                _: &mut dyn mod_api::ServerHost,
-                event: &mut mod_api::RegisterCommandsEvent<'_>,
-            ) {
-                if self.offered.load(Ordering::Relaxed) {
-                    let ran = self.ran.clone();
-                    event
-                        .commands
-                        .push(mod_api::Command::new("fnmod [n:integer]").executes(
-                            move |_, _, _| {
-                                ran.fetch_add(1, Ordering::Relaxed);
-                                Some(1)
-                            },
-                        ));
-                }
-            }
-        }
-        let offered = Arc::new(AtomicBool::new(true));
-        let ran = Arc::new(AtomicU32::new(0));
-        let mods = vec![mod_api::ModEntry::new(
-            "fnmod",
-            Box::new(Commands {
-                offered: offered.clone(),
-                ran: ran.clone(),
-            }),
-        )];
-        mod_platform::testing::with_mods(mods.into(), || {
-            crate::game::native_entity_refs::tests::with_game(|game| {
-                let scratch = tempfile::tempdir().unwrap();
-                let folder = "functions-name-mod-commands";
-                let world = scratch.path().join(folder);
-                let pack = world.join("datapacks/fnmod");
-                let functions = pack.join("data/fnmod/function");
-                std::fs::create_dir_all(&functions).unwrap();
-                let f = sunrise_core::version::DATA_PACK_FORMAT;
-                std::fs::write(
-                    pack.join("pack.mcmeta"),
-                    serde_json::json!({"pack":{
-                        "description":"Mod commands in functions", "pack_format":f.0,
-                        "min_format":[f.0,f.1], "max_format":[f.0,f.1]
-                    }})
-                    .to_string(),
-                )
-                .unwrap();
-                for (name, line) in [
-                    ("plain", "fnmod 1"),
-                    ("macro", "$fnmod $(n)"),
-                    ("unknown", "nosuchmodcommand"),
-                ] {
-                    std::fs::write(functions.join(format!("{name}.mcfunction")), line).unwrap();
-                }
-                let mut request = crate::game::world_loading::WorldRequest::new(
-                    folder,
-                    None,
-                    Some(3042),
-                    true,
-                    None,
-                    game.level.rule_registry.clone(),
-                )
-                .unwrap();
-                request.save_root = world;
-                game.load_world(request).unwrap();
-                let store = &game.fns.store;
-                assert!(
-                    store.functions.contains_key("fnmod:plain"),
-                    "{:?}",
-                    store.errors
-                );
-                assert!(
-                    store.functions.contains_key("fnmod:macro"),
-                    "{:?}",
-                    store.errors
-                );
-                assert!(!store.functions.contains_key("fnmod:unknown"));
-                let refusal = |game: &Game<'_>, id: &str| {
-                    game.fns
-                        .store
-                        .errors
-                        .iter()
-                        .find(|(f, _)| f == id)
-                        .map(|(_, e)| e.clone())
+        crate::game::in_own_process(
+            "game::functions::tests::functions_name_mod_commands_from_the_first_world_open",
+            || {
+                use std::sync::{
+                    Arc,
+                    atomic::{AtomicBool, AtomicU32, Ordering},
                 };
-                assert!(
-                    refusal(game, "fnmod:unknown")
-                        .unwrap()
-                        .starts_with("Invalid command \"nosuchmodcommand\": ")
-                );
-                game.ui.registries.permission = 4;
-                assert!(game.run_command("function fnmod:plain"));
-                assert!(game.run_command("function fnmod:macro {n:3}"));
-                assert_eq!(ran.load(Ordering::Relaxed), 2);
-                offered.store(false, Ordering::Relaxed);
-                let features = game.level.enabled_features.clone();
-                game.reload_datapacks(false, &features).unwrap();
-                assert!(!game.fns.store.functions.contains_key("fnmod:plain"));
-                assert!(
-                    refusal(game, "fnmod:plain")
-                        .unwrap()
-                        .starts_with("Invalid command \"fnmod 1\": ")
-                );
-            });
-        });
+                struct Commands {
+                    offered: Arc<AtomicBool>,
+                    ran: Arc<AtomicU32>,
+                }
+                #[mod_api::__subscriptions]
+                impl mod_api::Hooks for Commands {
+                    fn register_commands(
+                        &self,
+                        _: &mut dyn mod_api::ServerHost,
+                        event: &mut mod_api::RegisterCommandsEvent<'_>,
+                    ) {
+                        if self.offered.load(Ordering::Relaxed) {
+                            let ran = self.ran.clone();
+                            event.commands.push(
+                                mod_api::Command::new("fnmod [n:integer]").executes(
+                                    move |_, _, _| {
+                                        ran.fetch_add(1, Ordering::Relaxed);
+                                        Ok(1)
+                                    },
+                                ),
+                            );
+                        }
+                    }
+                }
+                let offered = Arc::new(AtomicBool::new(true));
+                let ran = Arc::new(AtomicU32::new(0));
+                let mods = vec![mod_api::ModEntry::new(
+                    "fnmod",
+                    Box::new(Commands {
+                        offered: offered.clone(),
+                        ran: ran.clone(),
+                    }),
+                )];
+                mod_platform::testing::with_mods(mods.into(), || {
+                    crate::game::native_entity_refs::tests::with_game(|game| {
+                        let scratch = tempfile::tempdir().unwrap();
+                        let folder = "functions-name-mod-commands";
+                        let world = scratch.path().join(folder);
+                        let pack = world.join("datapacks/fnmod");
+                        let functions = pack.join("data/fnmod/function");
+                        std::fs::create_dir_all(&functions).unwrap();
+                        let f = sunrise_core::version::DATA_PACK_FORMAT;
+                        std::fs::write(
+                            pack.join("pack.mcmeta"),
+                            serde_json::json!({"pack":{
+                                "description":"Mod commands in functions", "pack_format":f.0,
+                                "min_format":[f.0,f.1], "max_format":[f.0,f.1]
+                            }})
+                            .to_string(),
+                        )
+                        .unwrap();
+                        for (name, line) in [
+                            ("plain", "fnmod 1"),
+                            ("macro", "$fnmod $(n)"),
+                            ("unknown", "nosuchmodcommand"),
+                        ] {
+                            std::fs::write(functions.join(format!("{name}.mcfunction")), line)
+                                .unwrap();
+                        }
+                        let mut request = crate::game::world_loading::WorldRequest::new(
+                            folder,
+                            None,
+                            Some(3042),
+                            true,
+                            None,
+                            game.level.rule_registry.clone(),
+                        )
+                        .unwrap();
+                        request.save_root = world;
+                        game.load_world(request).unwrap();
+                        let store = &game.fns.store;
+                        assert!(
+                            store.functions.contains_key("fnmod:plain"),
+                            "{:?}",
+                            store.errors
+                        );
+                        assert!(
+                            store.functions.contains_key("fnmod:macro"),
+                            "{:?}",
+                            store.errors
+                        );
+                        assert!(!store.functions.contains_key("fnmod:unknown"));
+                        let refusal = |game: &Game<'_>, id: &str| {
+                            game.fns
+                                .store
+                                .errors
+                                .iter()
+                                .find(|(f, _)| f == id)
+                                .map(|(_, e)| e.clone())
+                        };
+                        assert!(
+                            refusal(game, "fnmod:unknown")
+                                .unwrap()
+                                .starts_with("Invalid command \"nosuchmodcommand\": ")
+                        );
+                        game.ui.registries.permission = 4;
+                        assert!(game.run_command("function fnmod:plain"));
+                        assert!(game.run_command("function fnmod:macro {n:3}"));
+                        assert_eq!(ran.load(Ordering::Relaxed), 2);
+                        offered.store(false, Ordering::Relaxed);
+                        let features = game.level.enabled_features.clone();
+                        game.reload_datapacks(false, &features).unwrap();
+                        assert!(!game.fns.store.functions.contains_key("fnmod:plain"));
+                        assert!(
+                            refusal(game, "fnmod:plain")
+                                .unwrap()
+                                .starts_with("Invalid command \"fnmod 1\": ")
+                        );
+                    });
+                });
+            },
+        );
     }
 
     #[test]

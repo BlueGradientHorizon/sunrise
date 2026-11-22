@@ -85,6 +85,8 @@ POLICY_PATH = "tools/ci/ignored-tests"  # as messages name it
 # The single list these files replaced: a file there again fails every reader, naming the folder.
 RETIRED = Path(__file__).with_name("ignored-tests-known-failures.txt")
 RESULT = re.compile(r"^test (\S+)(?: - should panic)? \.\.\. (ok|FAILED)$")
+# libtest's header over a failed test's captured output.
+CAPTURE = re.compile(r"^---- (\S+) stdout ----$")
 SUMMARY = re.compile(r"^test result: \S+\. (\d+) passed; (\d+) failed; (\d+) ignored; (\d+) measured;")
 # Cargo's line as a test executable starts: `Running unittests src/lib.rs (…)`, `Running tests/x.rs (…)`, or a
 # target whose source lives in another package's folder (`Running ../sunrise-client/tests/lan_bot.rs (…)`).
@@ -548,8 +550,10 @@ def assertion_source(path, line):
 def failure_diagnostics(output):
     """One record per failed result occurrence, including repeated names across targets.
 
-    Panic contexts use libtest's name model and the last panic for that name: the one the test failed on.
-    They cannot disambiguate identical names in different targets.
+    Panic contexts use libtest's name model. Within the first failed-test capture kept for a name (libtest's
+    `---- <name> stdout ----` block), its last panic wins: the one the test failed on, after any it caught. Across
+    targets the first kept context wins for every occurrence of the name, and so does the first panic of output
+    outside a failed test's capture (a fatal run's).
     Beside the classified reason, a record shows the statement that panicked and any part of the payload (a
     message, an operand) that occurs verbatim in the tracked source around it (public_text): the checkout's own text,
     never a computed or prepared value.
@@ -564,9 +568,10 @@ def failure_diagnostics(output):
     # rustc's own output does.
     compiler_codes = {}
     pending_codes = None
-    # Which captured-output block a line is in (a result line or a test's `---- … ----` header starts the next), and
-    # the block each kept context came from.
+    # Which captured-output block a line is in (a result line or libtest's capture header starts the next), the test
+    # whose failed-test capture it is (None outside one), and the block each kept context came from.
     block = 0
+    capture = None
     kept_block = {}
     # The tracked (path, line) of the current panic, and whether its `left:`/`right:` operand lines may follow.
     where = None
@@ -648,14 +653,16 @@ def failure_diagnostics(output):
         if found := RESULT.match(line):
             if found[2] == "FAILED":
                 failures.append(found[1])
-        if RESULT.match(line) or line.startswith("---- "):
+        header = CAPTURE.match(line)
+        if header or RESULT.match(line):
             block += 1
+            capture = header[1] if header else None
         if panic:
             context = []
             thread_name = panic[1]
-            if thread_name in contexts and kept_block[thread_name] == block:
+            if thread_name in contexts and kept_block[thread_name] == block and capture == thread_name:
                 # A test that catches a panic it raises on purpose (a listener's) fails on its last one: a later
-                # panic in the same captured output replaces the earlier.
+                # panic in the same failed-test capture replaces the earlier.
                 contexts[thread_name] = context
                 compiler_codes.pop(thread_name, None)
             elif thread_name not in contexts:

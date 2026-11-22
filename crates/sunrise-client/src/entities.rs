@@ -2426,19 +2426,12 @@ impl ArmorStand {
     /// axis that hits something loses its speed
     /// (`restituteMovementAfterCollisions`: a stand does not bounce, so the
     /// speed becomes `-speed * 0`).
-    ///
-    /// Ground and terrain support are updated during the move, independently of
-    /// tick order. `travels_after` affects only the stand's settled vertical
-    /// velocity: Sunrise ticks stands before mobs, so a downward shove after
-    /// a stand's travel leaves the gravity already applied by that travel when
-    /// vanilla would tick the stand after the shulker.
     pub fn shove(
         &mut self,
         scene: SceneCollisions,
         delta: Vec3,
         border: Option<&BorderGeometry>,
         entities: &[Aabb],
-        travels_after: bool,
         authoritative: bool,
         mover: sunrise_world::entity_move::MoverType,
         context: &sunrise_world::native_load_context::LoopContext,
@@ -2466,7 +2459,7 @@ impl ArmorStand {
             self.velocity.z = -self.velocity.z * 0.0;
         }
         let vertical = moved.y != delta.y;
-        if vertical && (delta.y > 0.0 || delta.y < 0.0 && !travels_after) {
+        if vertical && delta.y != 0.0 {
             self.velocity.y = -self.velocity.y * 0.0;
         }
         if authoritative || delta.y.abs() > 0.0 {
@@ -4545,7 +4538,6 @@ mod armor_stand_motion_tests {
                     delta,
                     None,
                     &[],
-                    false,
                     true,
                     sunrise_world::entity_move::MoverType::ShulkerBox,
                     crate::test_resources::server_loop_context(),

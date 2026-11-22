@@ -46,6 +46,19 @@ pub trait Tags {
     fn is_in_tag(&self, _item: ItemKey, _tag: TagKey) -> Option<bool> {
         unimplemented!("Tags::is_in_tag")
     }
+    /// The names of the tags that currently contain `item`, each once, in no specified order.
+    /// `None` means the item mapping or authoritative tag names are unavailable.
+    /// A known item with no tags returns an empty list. This does not resolve tag keys.
+    fn item_tags(&self, _item: ItemKey) -> Option<Vec<Identifier>> {
+        unimplemented!("Tags::item_tags")
+    }
+    /// Every currently bound item tag's name, including empty tags, each once in no specified order.
+    /// `None` means the authoritative tag names are unavailable.
+    /// A loaded item registry with no bound tags returns an empty list.
+    /// Call [`key`](Self::key) separately if you need a key for membership reads.
+    fn item_tag_names(&self) -> Option<Vec<Identifier>> {
+        unimplemented!("Tags::item_tag_names")
+    }
     /// Read the current item tag in vanilla's order, including unrequested vanilla items.
     fn items(&self, _tag: TagKey) -> TagMembers<ItemKey> {
         unimplemented!("Tags::items")
