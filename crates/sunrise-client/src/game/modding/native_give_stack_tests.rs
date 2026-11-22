@@ -1,7 +1,8 @@
 //! `player_give_stack` against a real LAN guest and `item_from_snbt` on the public host.
 
 use super::{
-    api_values::TryIntoApi, native_entity_refs::tests::with_game,
+    api_values::TryIntoApi,
+    native_entity_refs::tests::{run_fresh_cases, with_game},
     native_guest_turn_tests::with_guests,
 };
 use mod_api::{Host, ItemStack, PlayerDataRefusal, prelude::*};
@@ -18,6 +19,13 @@ fn api_item(game: &super::Game<'_>, snbt: &str) -> Option<ItemStack> {
 #[test]
 #[ignore = "daily"]
 fn an_snbt_item_goes_through_the_api_unchanged() {
+    if run_fresh_cases(
+        "game::native_give_stack_tests::an_snbt_item_goes_through_the_api_unchanged",
+        "SUNRISE_NATIVE_GIVE_STACK_CHILD",
+        &["roundtrip"],
+    ) {
+        return;
+    }
     with_guests(|game| {
         for snbt in [
             r#"{id:"minecraft:diamond_sword",count:1,components:{"minecraft:damage":5,"minecraft:enchantments":{"minecraft:sharpness":3},"minecraft:custom_name":"Blade","minecraft:lore":["one","two"],"minecraft:custom_data":{husksync:{v:1b}}}}"#,
@@ -42,6 +50,13 @@ fn an_snbt_item_goes_through_the_api_unchanged() {
 #[test]
 #[ignore = "daily"]
 fn item_from_snbt_refuses_what_is_not_one_item_compound() {
+    if run_fresh_cases(
+        "game::native_give_stack_tests::item_from_snbt_refuses_what_is_not_one_item_compound",
+        "SUNRISE_NATIVE_GIVE_STACK_CHILD",
+        &["snbt"],
+    ) {
+        return;
+    }
     with_guests(|game| {
         let host: &dyn Host = game;
         let count = |snbt: &str| host.item_from_snbt(snbt).map(|s| s.count());
@@ -50,6 +65,8 @@ fn item_from_snbt_refuses_what_is_not_one_item_compound() {
             Some(1),
             "stone is minecraft:stone"
         );
+        assert_eq!(count(r#"{id:"minecraft:stone",Count:3}"#), Some(1));
+        assert_eq!(count(r#"{id:"minecraft:stone",count:3,Count:9}"#), Some(3));
         assert_eq!(count(r#"{id:"minecraft:stone",count:99}"#), Some(99));
         assert_eq!(count(r#"{id:"minecraft:stone",count:1}"#), Some(1));
         assert_eq!(
@@ -115,6 +132,13 @@ fn item_from_snbt_refuses_what_is_not_one_item_compound() {
 #[test]
 #[ignore = "daily"]
 fn item_from_snbt_keeps_custom_data_larger_than_the_binary_quota() {
+    if run_fresh_cases(
+        "game::native_give_stack_tests::item_from_snbt_keeps_custom_data_larger_than_the_binary_quota",
+        "SUNRISE_NATIVE_GIVE_STACK_CHILD",
+        &["long-text"],
+    ) {
+        return;
+    }
     with_game(|game| {
         let payload = "x".repeat(2 * 1024 * 1024 + 1);
         let snbt = format!(
@@ -139,6 +163,13 @@ fn item_from_snbt_keeps_custom_data_larger_than_the_binary_quota() {
 #[test]
 #[ignore = "daily"]
 fn a_given_stack_fills_the_inventory_then_drops_for_its_player() {
+    if run_fresh_cases(
+        "game::native_give_stack_tests::a_given_stack_fills_the_inventory_then_drops_for_its_player",
+        "SUNRISE_NATIVE_GIVE_STACK_CHILD",
+        &["give"],
+    ) {
+        return;
+    }
     with_guests(|game| {
         let b = game.players().server_players()[1];
         let rock = r#"{id:"minecraft:stone",count:10,components:{"minecraft:custom_name":"Rock"}}"#;
@@ -179,8 +210,14 @@ fn a_given_stack_fills_the_inventory_then_drops_for_its_player() {
             .unwrap();
         assert_eq!(b.give_stack(game, named), Ok(None));
         let g = game.lan.as_ref().unwrap().hub.guest(13).unwrap();
-        assert_eq!(g.inventory[7], Some(engine));
-        assert_eq!(game.dropped.len(), before + 1);
+        assert_eq!(g.inventory[7].as_ref(), Some(&engine));
+        assert_eq!(game.dropped.len(), before + 2);
+        let fake = game.dropped.last().unwrap();
+        assert_eq!(
+            fake.stack,
+            sunrise_client::items::ItemStack { count: 1, ..engine }
+        );
+        assert_eq!((fake.pickup_delay, fake.age), (32767, 5999));
     });
 }
 
@@ -188,6 +225,13 @@ fn a_given_stack_fills_the_inventory_then_drops_for_its_player() {
 #[test]
 #[ignore = "daily"]
 fn a_dead_player_is_given_nothing() {
+    if run_fresh_cases(
+        "game::native_give_stack_tests::a_dead_player_is_given_nothing",
+        "SUNRISE_NATIVE_GIVE_STACK_CHILD",
+        &["dead"],
+    ) {
+        return;
+    }
     with_guests(|game| {
         let b = game.players().server_players()[1];
         let rock = api_item(game, r#"{id:"minecraft:stone",count:3}"#).unwrap();

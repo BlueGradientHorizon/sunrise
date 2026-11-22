@@ -10,8 +10,7 @@ use sunrise_items::item_nbt;
 
 impl Game<'_> {
     /// `GiveCommand.giveItem` for one stack: `Inventory.add`, the rest thrown for the player
-    /// alone to pick up, in the player's turn. For a player in another level the rest comes
-    /// back instead.
+    /// alone to pick up in their level, even when the hook is running in another one.
     pub(super) fn player_give_stack(
         &mut self,
         player: PlayerRef,

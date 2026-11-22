@@ -333,3 +333,24 @@ of vanilla's `HalfTransparentBlock` class (glass among them) or `LeavesBlock` cl
 template's class. A fluid with no overlay sprite, such as lava, draws its flowing sprite whatever the answer.
 
 With no part answering either method, nothing is asked, the tables are empty and fluids draw exactly as vanilla's.
+
+## Hit and destroy particles
+
+`add_hit_effects` and `add_destroy_effects` are client `BlockPart` methods, like NeoForge's
+`IClientBlockExtensions` methods of the same names. Return `Flow::Cancel` if your part handled
+these particles (including choosing to add none). `Flow::Continue` permits the usual effect.
+With no part answering, the block state's normal terrain-particle flag decides.
+
+A hit callback sees a non-air block with a visible render shape, after the optional mining sound.
+It gets the hit face, position and state. A destroy callback receives the non-air state that was
+destroyed, even when the position is already air or contains another block. An invisible block
+can still handle destruction. Both callbacks receive the client level's random; neither controls
+sounds.
+
+Use `event.level.add_breaking_particles(host, pos, state, face)` for a normal hit crumb from an
+explicit state and position, or `event.level.add_terrain_particle(host, state, source_pos, at,
+velocity)` for an individual piece of debris. The debris uses the supplied state's material and
+samples its tint at `source_pos`, which can differ from the spawn point. These helpers don't
+redispatch the hit or destroy Part or play a sound, but can ask block tint sources. Read the
+supplied state's outline with `event.level.block_shape` if you need to sample it. The hit helper
+uses the same random stream as `event.random`.

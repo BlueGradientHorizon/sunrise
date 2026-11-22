@@ -330,6 +330,13 @@ mod tests {
     }
 
     #[test]
+    fn persistent_count_checks_the_java_int_not_the_long() {
+        let (tag, _) = sunrise_core::nbt::parse_snbt(r#"{id:"stone",count:4294967301L}"#).unwrap();
+        assert_eq!(item_from_persistent_nbt(&tag).unwrap().count, 5);
+        assert_eq!(item_from_nbt(&tag).unwrap().count, 1);
+    }
+
+    #[test]
     fn nbt_count_defaults_to_one_outside_codec_range() {
         for item in ["minecraft:stone", "minecraft:diamond_sword"] {
             for (raw, expected) in [

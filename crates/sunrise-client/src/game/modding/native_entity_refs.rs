@@ -1016,7 +1016,7 @@ impl Game<'_> {
     }
     /// The supplied state's block-local outline or collision boxes at a level
     /// position with an empty context. The world is never modified. Returns None
-    /// on a client, for a stale handle or for a closed level. Unloaded neighbors
+    /// for a stale or unavailable level. Unloaded neighbors
     /// read as air; collision errors return no boxes, like `visit_block_collision`.
     pub(super) fn level_block_shape(
         &self,
@@ -1025,7 +1025,11 @@ impl Game<'_> {
         pos: [i32; 3],
         kind: BlockShapeKind,
     ) -> Option<Vec<[f64; 6]>> {
-        if !self.is_logical_server() || !self.level_handle_current(level) {
+        if !self.is_logical_server() {
+            return (self.native_client_level() == Some(level))
+                .then(|| self.state_shape_boxes(&self.world, &self.be_anims, state, pos, kind));
+        }
+        if !self.level_handle_current(level) {
             return None;
         }
         let (world, anims) = if self.dim.key() == level.dimension() {
@@ -1908,6 +1912,18 @@ pub(super) mod tests {
         role: super::super::execution_role::ExecutionRole,
         test: impl FnOnce(&mut super::Game<'_>),
     ) {
+        with_game_role_and_facts(root, role, None, test);
+    }
+
+    /// Configure the fixture's owned gameplay facts before constructing the game.
+    pub(in crate::game) fn with_game_role_and_facts(
+        root: std::path::PathBuf,
+        role: super::super::execution_role::ExecutionRole,
+        configure: Option<
+            fn(&sunrise_world::registry::BlockRegistry, &mut sunrise_client::blocks::BlockFacts),
+        >,
+        test: impl FnOnce(&mut super::Game<'_>),
+    ) {
         use super::super::{Audio, Game, Options, Progress, Settings, load_resources};
         use mod_api::Authority;
 
@@ -1932,7 +1948,7 @@ pub(super) mod tests {
         .unwrap();
         let saves = tempfile::tempdir().unwrap();
         let settings = Settings::default();
-        let loaded = load_resources(
+        let mut loaded = load_resources(
             sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
             Vec::new(),
             None,
@@ -1945,6 +1961,15 @@ pub(super) mod tests {
             &mut |_, _| unreachable!(),
         )
         .unwrap();
+        if let Some(configure) = configure {
+            configure(
+                loaded.pack.assets.registry,
+                &mut std::sync::Arc::get_mut(&mut loaded.resources)
+                    .unwrap()
+                    .core
+                    .facts,
+            );
+        }
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.execution_role = role;
