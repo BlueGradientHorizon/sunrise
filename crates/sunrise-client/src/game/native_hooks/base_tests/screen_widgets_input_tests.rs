@@ -29,6 +29,7 @@ enum Seen {
     DragPre(i32, [f32; 2], [f32; 2]),
     DragPost,
     ScreenWheelPre([f64; 2]),
+    ScreenWheelChild([f64; 2]),
     ScreenWheelPost([f64; 2]),
     GameWheel([f64; 2], [i32; 2], [bool; 3], [f32; 2], u32),
 }
@@ -58,6 +59,21 @@ impl ScreenWidget for Declining {
             .unwrap()
             .seen
             .push(Seen::Activation("decline"));
+        false
+    }
+
+    fn mouse_scrolled(
+        &mut self,
+        _: &mut dyn ClientHost,
+        _: [f32; 2],
+        scroll: [f64; 2],
+        _: u32,
+    ) -> bool {
+        self.0
+            .lock()
+            .unwrap()
+            .seen
+            .push(Seen::ScreenWheelChild(scroll));
         false
     }
 }
@@ -517,6 +533,7 @@ fn release_drag_and_wheel_cancellation_preserve_input_bookkeeping() {
         assert!(game.physical_buttons.is_empty() && game.physical_keys.is_empty());
         assert!(game.modifiers.is_empty() && game.drag_button.is_none());
         send(game, id, WindowEvent::Focused(true));
+        move_mouse(game, id, 24.0, 30.0);
 
         cancel(Cancel::ScreenWheel);
         send_scroll(game, id, 0.25, -0.75);
@@ -527,6 +544,7 @@ fn release_drag_and_wheel_cancellation_preserve_input_bookkeeping() {
             take(state),
             [
                 Seen::ScreenWheelPre([0.25, -0.75]),
+                Seen::ScreenWheelChild([0.25, -0.75]),
                 Seen::ScreenWheelPost([0.25, -0.75])
             ]
         );
