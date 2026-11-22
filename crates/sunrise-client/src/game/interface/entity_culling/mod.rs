@@ -224,6 +224,21 @@ impl Game<'_> {
 }
 
 impl Game<'_> {
+    /// `LevelRenderer.isSectionCompiledAndVisible(BlockPos)`: entities outside build height
+    /// always render; inside build height they wait for a compiled section past the fade gate.
+    pub(in crate::game) fn entity_section_visible(
+        &self,
+        position: glam::DVec3,
+        now: std::time::Instant,
+    ) -> bool {
+        let block = position.floor().as_ivec3().to_array();
+        if !self.world.shape.contains_y(block[1]) {
+            return true;
+        }
+        self.renderer.as_ref().is_none_or(|renderer| {
+            renderer.entity_section_visible(block, self.settings.chunk_fade as f32, now)
+        })
+    }
     /// EntityRenderer.shouldRender: the entity within `range` blocks of the
     /// camera, measured from its current `position`, and its culling box
     /// (`lo`..`hi`, interpolated, in world space) grown by 0.5 in the view.
@@ -357,7 +372,7 @@ mod precheck_envelope_tests {
             states: Vec::new(),
             placements: Default::default(),
             heightmaps: Default::default(),
-            animations: MobData::load_animations(&root),
+            animations: MobData::load_animations(&root).unwrap(),
             villager_hats: Default::default(),
             frame_models: Default::default(),
             cem: Default::default(),

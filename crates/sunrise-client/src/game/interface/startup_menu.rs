@@ -172,7 +172,10 @@ impl StartupMenu {
                 game.ui.options.resource_error.take().or(resource_error);
             game.set_screen(Screen::Options);
             game.options_from_title = true;
-            game.dragging = self.dragging;
+            if self.dragging {
+                game.physical_buttons.insert(MouseButton::Left);
+                game.track_drag_button(MouseButton::Left, true);
+            }
         }
         if let Some(focus) = self.key_focus.take() {
             game.key_focus_adopt(focus, self.key_slider_edit);
@@ -1568,11 +1571,16 @@ mod tests {
     use super::*;
 
     fn gui(root: &std::path::Path) -> UiResources {
-        UiResources {
-            atlas: HudAtlas::fonts(&sunrise_assets::resource_source::ResourceSource::directory(
+        let atlas = if root.exists() {
+            HudAtlas::fonts(&sunrise_assets::resource_source::ResourceSource::directory(
                 root.to_path_buf(),
             ))
-            .unwrap(),
+            .unwrap()
+        } else {
+            HudAtlas::boot()
+        };
+        UiResources {
+            atlas,
             panorama: Arc::new(sunrise_client::gfx::panorama::Faces::colour([
                 96, 110, 111, 255,
             ])),
