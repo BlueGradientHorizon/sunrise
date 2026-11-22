@@ -581,6 +581,22 @@ impl Game<'_> {
         }
     }
 
+    fn pushed_living_collision(
+        &self,
+        target: MoveWho,
+    ) -> Option<(
+        CollisionContext<'_>,
+        sunrise_client::collisions::PowderSnowSubject<'_>,
+    )> {
+        match target {
+            MoveWho::Entity(EntityHandle::Mob(i)) => Some(self.mobs[i].support_collision()),
+            MoveWho::Entity(EntityHandle::ArmorStand(i)) => {
+                Some(self.armor_stands[i].support_collision())
+            }
+            _ => None,
+        }
+    }
+
     /// `Entity.move(mover, movement)` for one body: a lid's push (`shulker` is the shulker whose
     /// lid it is, if one) or a mod's `move_by`. The collision scan stops it at the blocks, the
     /// world border and the entities it collides with, it steps up and its ground flag follows.
@@ -620,12 +636,13 @@ impl Game<'_> {
             return;
         }
         let entities = self.pushed_entity_colliders(target);
+        let collision = self.pushed_living_collision(target);
         let Ok(moved) = pushed_movement(
             &mut gate,
             SceneCollisions {
                 world: &self.world,
                 binding: self.collision,
-                subject: None,
+                subject: collision.map(|(_, subject)| subject),
             },
             self.border.geometry(),
             [body.position.x, body.position.z],
@@ -634,7 +651,7 @@ impl Game<'_> {
             // `Entity.move` steps and reads the ground flag.
             body.step_height,
             body.on_ground,
-            None,
+            collision.map(|(context, _)| context),
             &entities,
         ) else {
             return;
@@ -1322,12 +1339,15 @@ impl Game<'_> {
         };
         let entities = self.pushed_entity_colliders(target);
         with_piston_noclip(piston_direction, || {
+            let collision = tnt
+                .map(|(_, _, subject, context)| (context, subject))
+                .or_else(|| self.pushed_living_collision(target));
             let resolved = pushed_movement(
                 &mut gate,
                 SceneCollisions {
                     world: &self.world,
                     binding: self.collision,
-                    subject: tnt.as_ref().map(|t| t.2),
+                    subject: collision.map(|(_, subject)| subject),
                 },
                 self.border.geometry(),
                 at,
@@ -1335,7 +1355,7 @@ impl Game<'_> {
                 limited,
                 step_height,
                 on_ground,
-                tnt.as_ref().map(|t| t.3),
+                collision.map(|(context, _)| context),
                 &entities,
             )
             .unwrap_or(Vec3::ZERO);
@@ -2796,8 +2816,8 @@ mod h255_mob_piston_ground_tests {
 
 #[cfg(test)]
 mod lid_push_tests {
-    use super::Lid;
     use super::h255_mob_piston_ground_tests::with_game;
+    use super::{EntityHandle, Lid};
     use crate::game::Game;
     use sunrise_client::mobs::{MobEvent, Species};
     use sunrise_core::geometry::{Aabb, Vec3};
@@ -2828,6 +2848,94 @@ mod lid_push_tests {
             .iter()
             .find(|p| p.arrow.is_some());
         arrow.expect("the arrow").position.y
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn forced_living_moves_land_booted_bodies_on_powder_snow() {
+        use sunrise_core::position::BlockPos;
+        use sunrise_world::entity_move::MoverType;
+
+        crate::game::in_own_process(
+            "game::piston_push::lid_push_tests::forced_living_moves_land_booted_bodies_on_powder_snow",
+            || {
+                with_game(|game| {
+                    assert!(game.run_command("fill 8 200 8 15 200 8 powder_snow"));
+                    for (i, cause) in [MoverType::Piston, MoverType::ShulkerBox]
+                        .into_iter()
+                        .enumerate()
+                    {
+                        let x = 8 + 4 * i as i32;
+                        for (kind, x) in [("armor_stand", x), ("zombie", x + 2)] {
+                            assert!(game.run_command(&format!(
+                                r#"summon {kind} {x}.5 201.25 8.5 {{NoAI:1b,equipment:{{feet:{{id:"minecraft:leather_boots",count:1}}}}}}"#,
+                            )));
+                        }
+                        for (handle, x) in [
+                            (EntityHandle::ArmorStand(i), x),
+                            (EntityHandle::Mob(i), x + 2),
+                        ] {
+                            let moved =
+                                game.move_listed_entity(handle, cause, Vec3::new(0.0, -0.5, 0.0));
+                            assert_eq!(moved.y, -0.25, "{cause:?}");
+                            let ground = match handle {
+                                EntityHandle::ArmorStand(i) => &game.armor_stands[i].ground,
+                                EntityHandle::Mob(i) => &game.mobs[i].ground,
+                                _ => unreachable!(),
+                            };
+                            assert!(ground.on_ground);
+                            assert_eq!(ground.supporting_block, Some(BlockPos::new(x, 200, 8)));
+                        }
+                    }
+                });
+            },
+        );
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn shulker_push_updates_stand_support_in_both_join_orders() {
+        use sunrise_core::position::BlockPos;
+
+        crate::game::in_own_process(
+            "game::piston_push::lid_push_tests::shulker_push_updates_stand_support_in_both_join_orders",
+            || {
+                with_game(|game| {
+                    assert!(game.run_command("summon armor_stand 10.5 200.25 10.5"));
+                    let shulker = shulker(game);
+                    assert!(game.run_command("summon armor_stand 13.5 200.25 10.5"));
+                    let shulker_join = game.mobs.iter().find(|m| m.id == shulker).unwrap().join;
+                    assert!(game.armor_stands[0].join < shulker_join);
+                    assert!(game.armor_stands[1].join > shulker_join);
+                    let swept = area(9.0, 9.0, 15.0, 12.0);
+                    game.handle_mob_events(vec![MobEvent::LidPush {
+                        shulker,
+                        area: swept,
+                        delta: [0.0, -0.5, 0.0],
+                    }])
+                    .unwrap();
+                    for (stand, x) in game.armor_stands.iter().zip([10, 13]) {
+                        assert_eq!(stand.position.y, 200.0);
+                        assert!(stand.ground.on_ground);
+                        assert_eq!(
+                            stand.ground.supporting_block,
+                            Some(BlockPos::new(x, 199, 10))
+                        );
+                    }
+                    game.handle_mob_events(vec![MobEvent::LidPush {
+                        shulker,
+                        area: swept,
+                        delta: [0.25, 0.0, 0.0],
+                    }])
+                    .unwrap();
+                    for (stand, x) in game.armor_stands.iter().zip([10.75, 13.75]) {
+                        assert_eq!(stand.position.x, x);
+                        assert!(!stand.ground.on_ground);
+                        assert_eq!(stand.ground.supporting_block, None);
+                    }
+                });
+            },
+        );
     }
 
     /// `Shulker.onPeekAmountChange` moves every entity it meets with

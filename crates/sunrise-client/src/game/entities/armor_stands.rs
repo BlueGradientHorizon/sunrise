@@ -1057,7 +1057,7 @@ impl Game<'_> {
                 self.res.facts(),
                 self.collision,
             );
-            let mut scene = sunrise_client::collisions::SceneCollisions {
+            let scene = sunrise_client::collisions::SceneCollisions {
                 world,
                 binding: collision,
                 subject: None,
@@ -1065,8 +1065,9 @@ impl Game<'_> {
             let mut tops: Vec<BlockPos> = Vec::new();
             let side = game_side!(self);
             if let Some(step) = a.tick_move(
-                &mut scene,
+                &scene,
                 facts,
+                Some(&self.res.motion().blocks),
                 &self.res.motion().climbing,
                 in_water,
                 Some(self.border.geometry()),
@@ -1174,8 +1175,9 @@ impl Game<'_> {
     /// `Entity.move(mover, delta)` for armor stand `i` (a lid's push or a mod's move), one with physics (vanilla's
     /// `!noPhysics`: not a marker, not `NoGravity`), the stand's own `shove` by `delta`. Stands tick
     /// before mobs here, while vanilla ticks a stand that joined after the
-    /// pushing `shulker` (one placed on it) after the shulker: `shove` makes
-    /// up for the order. A shulker box's lid moves it after every entity's tick.
+    /// pushing `shulker` (one placed on it) after the shulker. Only the settled
+    /// vertical velocity depends on that order. A shulker box's lid moves it
+    /// after every entity's tick.
     /// `grid` holds the stands' obstacles, built once per lid at its first stand.
     pub(super) fn shoves_armor_stand(
         &mut self,
@@ -1205,6 +1207,7 @@ impl Game<'_> {
             Some(self.border.geometry()),
             &nearby,
             travels_after,
+            !self.options.execution_role.is_client() && self.remote.is_none(),
             mover,
             &self.loop_context,
         );

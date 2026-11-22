@@ -1801,11 +1801,18 @@ impl Mob {
         tail.finish(self, w, level, events);
         Ok(())
     }
+    /// `Entity.getBlockPosBelowThatAffectsMyMovement` for air travel and restitution.
+    fn movement_support_position(&self, w: &MobWorld) -> BlockPos {
+        crate::motion::block_support_at(
+            w.world,
+            Some(w.movement),
+            self.position,
+            self.ground.supporting_block,
+            sunrise_world::movement_support::MOVEMENT_SUPPORT_OFFSET,
+        )
+    }
     fn block_friction(&self, w: &MobWorld) -> f32 {
-        // Entity.getBlockPosBelowThatAffectsMyMovement: 0.500001 below.
-        let x = self.position.x.floor() as i32;
-        let z = self.position.z.floor() as i32;
-        let y = (self.position.y - 0.500_001).floor() as i32;
+        let BlockPos { x, y, z } = self.movement_support_position(w);
         self.friction_at(w, [x, y, z])
     }
     /// The friction of the block at `[x, y, z]` under the mob, as the block's parts answer
@@ -2461,28 +2468,8 @@ impl RestitutionWorld for MobRestitution<'_, '_, '_> {
     fn air_drag(&mut self) -> Result<f32, ()> {
         Ok(self.mob.air_drag())
     }
-    /// `Entity.getBlockPosBelowThatAffectsMyMovement`: `Entity.getOnPos(0.500001F)`,
-    /// which keeps the supporting fence gate's or wall's column. The offset is
-    /// over 0.5, so the fence case never applies.
     fn movement_support_position(&mut self) -> Result<BlockPos, ()> {
-        let position = self.mob.position;
-        let offset = f64::from(sunrise_world::movement_support::MOVEMENT_SUPPORT_OFFSET);
-        let Some(support) = self.mob.ground.supporting_block else {
-            return Ok(BlockPos::new(
-                position.x.floor() as i32,
-                (position.y - offset).floor() as i32,
-                position.z.floor() as i32,
-            ));
-        };
-        let state = self.world.world.block(support.x, support.y, support.z);
-        let keeps_column = self
-            .movement(state)
-            .is_ok_and(|b| b.wall || b.coefficients.fence_gate);
-        Ok(if keeps_column {
-            support
-        } else {
-            BlockPos::new(support.x, (position.y - offset).floor() as i32, support.z)
-        })
+        Ok(self.mob.movement_support_position(self.world))
     }
     /// `BlockLandingRegistry.bounce_on`'s only case is the shelf mushroom's
     /// bounce sound, which no path plays yet (`landing.rs` binds it for the
