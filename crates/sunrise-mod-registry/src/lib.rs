@@ -1229,16 +1229,18 @@ fn is_hex_str(s: &str, len: usize) -> bool {
     s.len() == len && s.chars().all(|c| c.is_ascii_hexdigit())
 }
 
-fn is_target_triple(s: &str) -> bool {
-    matches!(
-        s,
+/// The native-build targets this registry builds and serves: Sunrise's platforms. Both the request and its poll
+/// refuse any other target the same way.
+fn supported_target(target: &str) -> Result<(), Refusal> {
+    match target {
         "x86_64-unknown-linux-gnu"
-            | "x86_64-pc-windows-gnu"
-            | "x86_64-pc-windows-msvc"
-            | "aarch64-pc-windows-msvc"
-            | "aarch64-apple-darwin"
-            | "x86_64-apple-darwin"
-    )
+        | "x86_64-pc-windows-gnu"
+        | "x86_64-pc-windows-msvc"
+        | "aarch64-apple-darwin" => Ok(()),
+        _ => Err(bad(format!(
+            "{target:?} is not a target Sunrise builds native mods for"
+        ))),
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -1281,6 +1283,7 @@ async fn request_native_build(
         ));
     }
 
+    supported_target(&payload.target)?;
     if payload.mods.is_empty() {
         return Err(bad("a native build request needs at least one mod"));
     }
@@ -1444,12 +1447,7 @@ async fn get_native_build(
             query.base
         )));
     }
-    if !is_target_triple(&query.target) {
-        return Err(bad(format!(
-            "{:?} is not a valid target triple",
-            query.target
-        )));
-    }
+    supported_target(&query.target)?;
     if !is_hex_str(&query.key, 64) {
         return Err(bad(format!(
             "{:?} is not a request key (64 hex digits)",
@@ -1651,9 +1649,19 @@ mod tests {
         assert!(is_hex_str("0123456789abcdef0123456789abcdef01234567", 40));
         assert!(!is_hex_str("0123456789abcdef", 40));
         assert!(!is_hex_str("0123456789abcdef0123456789abcdef0123456g", 40));
-        assert!(is_target_triple("x86_64-unknown-linux-gnu"));
-        assert!(is_target_triple("x86_64-pc-windows-gnu"));
-        assert!(is_target_triple("aarch64-apple-darwin"));
-        assert!(!is_target_triple("riscv64gc-unknown-linux-gnu"));
+        for target in [
+            "x86_64-unknown-linux-gnu",
+            "x86_64-pc-windows-gnu",
+            "aarch64-apple-darwin",
+        ] {
+            assert!(supported_target(target).is_ok(), "{target}");
+        }
+        for target in [
+            "x86_64-apple-darwin",
+            "aarch64-pc-windows-msvc",
+            "riscv64gc-unknown-linux-gnu",
+        ] {
+            assert!(supported_target(target).is_err(), "{target}");
+        }
     }
 }
