@@ -11,7 +11,7 @@ use super::{Dim, Game, world_loading::ModStem};
 use mod_api::{LevelRef, RuntimeBiomeSource, RuntimeGenerator, RuntimeLevel, RuntimeLevelError};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{LazyLock, Mutex};
 use sunrise_client::{
     chunk::{ExtraLevel, LevelShape},
     vanillagen::{TerrainResources, shared_biome_source_data, shared_resource_data},
