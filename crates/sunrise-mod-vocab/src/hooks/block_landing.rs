@@ -23,7 +23,7 @@ pub trait Hooks {
         damage_multiplier: &mut f32,
         writes: &mut Vec<LandingWrite>,
     );
-    /// An entity bounced off a block state this part is attached to (`Block.bounceOn`), after falling `event.fall_distance` blocks. It fires only when the entity bounced, just before vanilla sets its movement. `event.movement` is the movement the bounce leaves it (`x`, `y`, `z`): change it to change what the entity keeps. It runs inside the entity's move, on the level random host: it reads blocks and draws the level's random in vanilla's order, but writes nothing. Runs on the server for players, mobs and other bodies that bounce in the base move.
+    /// An entity bounced off a block state this part is attached to (`Block.bounceOn`). `event.fall_distance` is the distance stored after fall handling, so a grounded boat can report zero. It fires only when the entity bounced, just before vanilla sets its movement. `event.movement` is the movement the bounce leaves it (`x`, `y`, `z`): change it to change what the entity keeps. It runs inside the entity's move, on the level random host: it reads blocks and draws the level's random in vanilla's order, but writes nothing. Runs on the server for players, mobs and other bodies that bounce in the base move.
     #[hook(
         side = "server",
         contract = "collect",
