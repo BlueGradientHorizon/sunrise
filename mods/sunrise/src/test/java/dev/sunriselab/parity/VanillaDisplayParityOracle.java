@@ -1,6 +1,7 @@
 package dev.sunriselab.parity;
 
 import com.google.gson.*;
+import com.mojang.authlib.GameProfile;
 import com.mojang.blaze3d.font.GlyphBitmap;
 import com.mojang.blaze3d.font.GlyphInfo;
 import com.mojang.blaze3d.platform.NativeImage;
@@ -15,6 +16,8 @@ import com.mojang.math.Quadrant;
 import com.mojang.math.Transformation;
 import com.mojang.renderpearl.api.pipeline.DepthStencilState;
 import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.util.UndashedUuid;
+import io.netty.buffer.Unpooled;
 import java.lang.reflect.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -26,7 +29,10 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
 import net.minecraft.client.OptionInstance;
 import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GlyphSource;
 import net.minecraft.client.gui.font.GlyphStitcher;
+import net.minecraft.client.gui.font.TextRenderable;
+import net.minecraft.client.gui.font.glyphs.BakedGlyph;
 import net.minecraft.client.gui.font.glyphs.BakedSheetGlyph;
 import net.minecraft.client.gui.font.glyphs.SpecialGlyphs;
 import net.minecraft.client.renderer.GameRenderer;
@@ -63,6 +69,7 @@ import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.client.renderer.texture.Stitcher;
 import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.client.resources.DefaultPlayerSkin;
 import net.minecraft.client.resources.model.ModelBaker;
 import net.minecraft.client.resources.model.cuboid.CuboidFace;
 import net.minecraft.client.resources.model.cuboid.FaceBakery;
@@ -70,17 +77,24 @@ import net.minecraft.client.resources.model.geometry.BakedQuad;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.RegistryAccess;
+import net.minecraft.core.UUIDUtil;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.TagParser;
+import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.ComponentSerialization;
+import net.minecraft.network.chat.FontDescription;
 import net.minecraft.network.chat.Style;
+import net.minecraft.network.chat.contents.objects.PlayerSprite;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.ResourceManager;
+import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.LightCoordsUtil;
 import net.minecraft.util.ProblemReporter;
+import net.minecraft.util.RandomSource;
 import net.minecraft.util.Util;
 import net.minecraft.world.attribute.EnvironmentAttributeProbe;
 import net.minecraft.world.entity.Display;
@@ -88,9 +102,11 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Interaction;
 import net.minecraft.world.entity.PositionPath;
+import net.minecraft.world.entity.player.PlayerSkin;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.ResolvableProfile;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.LightLayer;
@@ -303,7 +319,8 @@ public final class VanillaDisplayParityOracle {
         root.add("display_entity_features", recordDisplayEntityFeatures(level, font));
         root.add("teleport_duration_and_pos_rot_lerp", recordTeleportDurationAndPosRotLerp(level));
         root.add("section_compiled_and_visible_gate", recordSectionCompiledAndVisibleGate(level, font));
-        root.add("missing_glyph_quads", recordMissingGlyphQuads(font));
+        root.add("inline_player_head", recordInlinePlayerHead(level));
+        root.add("missing_glyph_quads", recordMissingGlyphQuads(level, font));
         root.add("block_display_83224", recordBlockDisplay83224(level));
 
         Path outPath = Path.of(args[0]);
@@ -1178,7 +1195,172 @@ public final class VanillaDisplayParityOracle {
         return new Matrix4f().set(a);
     }
 
-    static JsonObject recordMissingGlyphQuads(Font font) throws Exception {
+    static byte[] encodeComponentNetworkNbt(Component component) {
+        RegistryFriendlyByteBuf buf = new RegistryFriendlyByteBuf(Unpooled.buffer(), ParityData.access);
+        ComponentSerialization.TRUSTED_STREAM_CODEC.encode(buf, component);
+        byte[] bytes = new byte[buf.readableBytes()];
+        buf.readBytes(bytes);
+        buf.release();
+        return bytes;
+    }
+
+    static JsonObject recordInlinePlayerHead(StubClientLevel level) throws Exception {
+        JsonObject out = new JsonObject();
+        UUID id = UUIDUtil.uuidFromIntArray(new int[] {1, 2, 3, 4});
+        ResolvableProfile profile = ResolvableProfile.createResolved(new GameProfile(id, "DisplayHead"));
+        Component component = Component.empty().append(Component.object(new PlayerSprite(profile, true)));
+
+        byte[] nbtBytes = encodeComponentNetworkNbt(component);
+        out.addProperty("component_nbt_hex", HexFormat.of().formatHex(nbtBytes));
+        out.addProperty("component_snbt", ParityData.canon(
+            ComponentSerialization.CODEC.encodeStart(ParityData.ops, component).getOrThrow()));
+
+        RegistryFriendlyByteBuf readBuf = new RegistryFriendlyByteBuf(Unpooled.wrappedBuffer(nbtBytes), ParityData.access);
+        Component decoded = ComponentSerialization.TRUSTED_STREAM_CODEC.decode(readBuf);
+        readBuf.release();
+
+        var A_TEXT = accessor(Display.TextDisplay.class, "DATA_TEXT_ID");
+        Display.TextDisplay td = new Display.TextDisplay(entityType("minecraft:text_display"), level);
+        assign(td, dv(A_TEXT, decoded));
+        tickEntity(td);
+
+        List<FontDescription.PlayerSprite> sprites = new ArrayList<>();
+        td.textRenderState().text().visit((style, text) -> {
+            if (style.getFont() instanceof FontDescription.PlayerSprite ps) {
+                sprites.add(ps);
+            }
+            return Optional.empty();
+        }, Style.EMPTY);
+        if (sprites.size() != 1) {
+            throw new IllegalStateException("expected 1 PlayerSprite, got " + sprites.size());
+        }
+        FontDescription.PlayerSprite ps = sprites.get(0);
+        GameProfile resolved = ps.profile().resolveProfile(null).join();
+        PlayerSkin defaultSkin = DefaultPlayerSkin.get(resolved);
+        JsonObject resolvedJson = new JsonObject();
+        resolvedJson.addProperty("id_hex", UndashedUuid.toString(resolved.id()));
+        resolvedJson.addProperty("name", resolved.name());
+        resolvedJson.addProperty("hat", ps.hat());
+        resolvedJson.addProperty("default_skin", defaultSkin.body().id().getPath());
+        out.add("resolved_profile", resolvedJson);
+        return out;
+    }
+
+    static JsonObject recordTextDisplayMissingGlyphWorld(
+        StubClientLevel level,
+        Font missingFont,
+        double[] entPos,
+        float entYaw,
+        float entPitch,
+        double[] camPos,
+        float camYaw,
+        float camPitch,
+        byte billboard,
+        float[] translation,
+        float[] scale,
+        float[] leftRot,
+        float[] rightRot
+    ) throws Exception {
+        var A_BILLBOARD = accessor(Display.class, "DATA_BILLBOARD_RENDER_CONSTRAINTS_ID");
+        var A_TRANS = accessor(Display.class, "DATA_TRANSLATION_ID");
+        var A_SCALE = accessor(Display.class, "DATA_SCALE_ID");
+        var A_LEFT = accessor(Display.class, "DATA_LEFT_ROTATION_ID");
+        var A_RIGHT = accessor(Display.class, "DATA_RIGHT_ROTATION_ID");
+        var A_TEXT = accessor(Display.TextDisplay.class, "DATA_TEXT_ID");
+        var A_BG = accessor(Display.TextDisplay.class, "DATA_BACKGROUND_COLOR_ID");
+        var A_OPACITY = accessor(Display.TextDisplay.class, "DATA_TEXT_OPACITY_ID");
+        var A_FLAGS = accessor(Display.TextDisplay.class, "DATA_STYLE_FLAGS_ID");
+
+        Component component = Component.literal("\u2196").withStyle(Style.EMPTY.withBold(true));
+        byte[] nbtBytes = encodeComponentNetworkNbt(component);
+
+        Display.TextDisplay td = new Display.TextDisplay(entityType("minecraft:text_display"), level);
+        td.snapTo(entPos[0], entPos[1], entPos[2], entYaw, entPitch);
+        assign(td,
+            dv(A_BILLBOARD, billboard),
+            dv(A_TRANS, new Vector3f(translation[0], translation[1], translation[2])),
+            dv(A_SCALE, new Vector3f(scale[0], scale[1], scale[2])),
+            dv(A_LEFT, new Quaternionf(leftRot[0], leftRot[1], leftRot[2], leftRot[3])),
+            dv(A_RIGHT, new Quaternionf(rightRot[0], rightRot[1], rightRot[2], rightRot[3])),
+            dv(A_TEXT, component),
+            dv(A_BG, 0),
+            dv(A_OPACITY, (byte) -1),
+            dv(A_FLAGS, (byte) 1));
+        tickEntity(td);
+
+        DisplayRenderer.TextDisplayRenderer renderer = alloc(DisplayRenderer.TextDisplayRenderer.class);
+        set(renderer, DisplayRenderer.TextDisplayRenderer.class, "font", missingFont);
+        EntityRenderDispatcher dispatcher = alloc(EntityRenderDispatcher.class);
+        StubCamera camera = alloc(StubCamera.class);
+        set(camera, Camera.class, "position", new Vec3(camPos[0], camPos[1], camPos[2]));
+        set(camera, Camera.class, "yRot", camYaw);
+        set(camera, Camera.class, "xRot", camPitch);
+        dispatcher.camera = camera;
+        set(renderer, EntityRenderer.class, "entityRenderDispatcher", dispatcher);
+        set(renderer, DisplayRenderer.class, "entityRenderDispatcher", dispatcher);
+
+        TextDisplayEntityRenderState st = renderer.createRenderState();
+        renderer.extractRenderState(td, st, 1.0F);
+        st.lightCoords = 0x00F000F0;
+
+        PoseStack poseStack = new PoseStack();
+        poseStack.pushPose();
+        poseStack.translate(entPos[0] - camPos[0], entPos[1] - camPos[1], entPos[2] - camPos[2]);
+        List<Matrix4f> capturedPoses = new ArrayList<>();
+        RecordingVertexConsumer vc = new RecordingVertexConsumer();
+        SubmitNodeCollector collector = (SubmitNodeCollector) Proxy.newProxyInstance(
+            SubmitNodeCollector.class.getClassLoader(),
+            new Class<?>[] {SubmitNodeCollector.class},
+            (proxy, method, a) -> {
+                if (method.getName().equals("submitText")) {
+                    Matrix4f submitPose = new Matrix4f(((PoseStack) a[0]).last().pose());
+                    capturedPoses.add(submitPose);
+                    missingFont.prepareText(
+                        (FormattedCharSequence) a[3], (float) a[1], (float) a[2],
+                        (int) a[7], (boolean) a[4], false, (int) a[8]
+                    ).visit(new Font.GlyphVisitor() {
+                        @Override
+                        public void acceptRenderable(TextRenderable renderable) {
+                            renderable.render(submitPose, vc, (int) a[6], false);
+                        }
+                    });
+                }
+                return null;
+            });
+        renderer.submit(st, poseStack, collector, new CameraRenderState());
+        poseStack.popPose();
+        if (capturedPoses.size() != 1) {
+            throw new IllegalStateException("expected 1 submitText pose, got " + capturedPoses.size());
+        }
+
+        JsonObject c = new JsonObject();
+        c.addProperty("component_nbt_hex", HexFormat.of().formatHex(nbtBytes));
+        c.add("ent_pos_bits", dArr(entPos));
+        c.addProperty("ent_yaw_bits", fb(entYaw));
+        c.addProperty("ent_pitch_bits", fb(entPitch));
+        c.add("cam_pos_bits", dArr(camPos));
+        c.addProperty("cam_yaw_bits", fb(camYaw));
+        c.addProperty("cam_pitch_bits", fb(camPitch));
+        c.addProperty("billboard", billboard);
+        c.add("translation_bits", fArr(translation));
+        c.add("scale_bits", fArr(scale));
+        c.add("left_rotation_bits", fArr(leftRot));
+        c.add("right_rotation_bits", fArr(rightRot));
+        c.add("pose_bits", mat4Bits(capturedPoses.get(0)));
+        c.addProperty("quad_count", vc.vertices.size() / 4);
+        JsonArray quads = new JsonArray();
+        for (int q = 0; q < vc.vertices.size(); q += 4) {
+            JsonArray quad = new JsonArray();
+            for (int k = 0; k < 4; k++) {
+                quad.add(vc.vertices.get(q + k));
+            }
+            quads.add(quad);
+        }
+        c.add("quads", quads);
+        return c;
+    }
+
+    static JsonObject recordMissingGlyphQuads(StubClientLevel level, Font font) throws Exception {
         JsonObject out = new JsonObject();
         CapturingStitcher stitcher = alloc(CapturingStitcher.class);
         BakedSheetGlyph missing = SpecialGlyphs.MISSING.bake(stitcher);
@@ -1266,6 +1448,37 @@ public final class VanillaDisplayParityOracle {
             casesJson.add(gc.name(), c);
         }
         out.add("cases", casesJson);
+
+        Font missingFont = new Font(new Font.Provider() {
+            final GlyphSource source = new GlyphSource() {
+                @Override public BakedGlyph getGlyph(int codepoint) { return missing; }
+                @Override public BakedGlyph getRandomGlyph(RandomSource random, int width) { return missing; }
+            };
+            @Override public GlyphSource glyphs(FontDescription description) { return source; }
+            @Override public net.minecraft.client.gui.font.glyphs.EffectGlyph effect() { return missing; }
+        });
+        JsonObject displayWorld = new JsonObject();
+        displayWorld.add("origin_fixed", recordTextDisplayMissingGlyphWorld(
+            level, missingFont,
+            new double[] {0.0, 0.0, 0.0}, 0.0F, 0.0F,
+            new double[] {0.0, 0.0, 0.0}, 0.0F, 0.0F,
+            (byte) 0,
+            new float[] {0.0F, 0.0F, 0.0F},
+            new float[] {1.0F, 1.0F, 1.0F},
+            new float[] {0.0F, 0.0F, 0.0F, 1.0F},
+            new float[] {0.0F, 0.0F, 0.0F, 1.0F}
+        ));
+        displayWorld.add("angled_billboard_transformed", recordTextDisplayMissingGlyphWorld(
+            level, missingFont,
+            new double[] {0.5, 301.62, 0.5}, 15.0F, 25.0F,
+            new double[] {0.5, 301.620015, 0.5}, 37.5F, -12.0F,
+            (byte) 3,
+            new float[] {-1.395F, 0.3885F, -4.2F},
+            new float[] {0.525F, 0.525F, 0.525F},
+            new float[] {0.0F, 1.0F, 0.0F, 0.0F},
+            new float[] {0.0F, 0.0F, 0.0F, 1.0F}
+        ));
+        out.add("text_display_world", displayWorld);
         return out;
     }
 

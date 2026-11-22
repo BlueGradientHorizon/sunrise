@@ -47,6 +47,31 @@ fn hex_f32_arr<const N: usize>(v: &serde_json::Value) -> [f32; N] {
     std::array::from_fn(|i| hex_f32(&arr[i]))
 }
 
+fn hex_f64(v: &serde_json::Value) -> f64 {
+    f64::from_bits(hex_u64(v))
+}
+
+fn hex_f64_arr<const N: usize>(v: &serde_json::Value) -> [f64; N] {
+    let arr = v.as_array().unwrap();
+    std::array::from_fn(|i| hex_f64(&arr[i]))
+}
+
+fn decode_network_nbt_hex(v: &serde_json::Value) -> Tag {
+    let hex = v.as_str().unwrap();
+    assert_eq!(hex.len() % 2, 0);
+    let bytes: Vec<u8> = hex
+        .as_bytes()
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+        .collect();
+    let (tag, consumed) =
+        sunrise_core::nbt::read_network(&bytes, sunrise_core::nbt::Limits::network()).unwrap();
+    assert_eq!(consumed, bytes.len());
+    tag
+}
+
 fn looking_south_frustum(fov_deg: f32, aspect: f32) -> JoinedFrusta {
     let proj = Mat4::perspective_rh(fov_deg.to_radians(), aspect, 256.0, 0.05);
     let view = sunrise_client::camera::view_matrix(0.0, 0.0);
@@ -924,17 +949,16 @@ fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
 #[test]
 #[ignore = "run by tools/test_displays_parity.py"]
 fn text_display_resolves_inline_player_head_profiles_26_3() {
-    let _ = parity_witness();
-    let json_text = r#"{"text":"","extra":[{"object":"player","player":{"name":"DisplayHead","id":[1,2,3,4]}}]}"#;
-    let parsed_json: serde_json::Value = serde_json::from_str(json_text).unwrap();
-    let profile_json = &parsed_json["extra"][0]["player"];
-    let info = sunrise_client::skins::parse_profile(profile_json);
-    let id_key = format!("id:{:032x}", info.id);
+    let w = parity_witness();
+    let head = &w["inline_player_head"];
+    let tag = decode_network_nbt_hex(&head["component_nbt_hex"]);
+    let resolved = &head["resolved_profile"];
+    let id_key = format!("id:{}", resolved["id_hex"].as_str().unwrap());
     let name_key = format!(
         "name:{}",
-        profile_json["name"].as_str().unwrap().to_ascii_lowercase()
+        resolved["name"].as_str().unwrap().to_ascii_lowercase()
     );
-    let tag = sunrise_core::json_nbt::parse_json_tag(json_text).unwrap();
+    let want_skin = resolved["default_skin"].as_str().unwrap();
 
     with_client_game(|game| {
         game.view_frustum = None;
@@ -962,10 +986,19 @@ fn text_display_resolves_inline_player_head_profiles_26_3() {
         let cam = DVec3::new(0.5, 301.62, 0.5);
         let (mut normal, mut see_through) = (Vec::new(), Vec::new());
         game.text_display_geometry(cam, 1.0, &mut normal, &mut see_through);
-        assert!(
-            game.gui.atlas.object_skins.contains_key(&id_key)
-                && game.gui.atlas.object_skins.contains_key(&name_key),
-            "inline object:player profile must be forwarded to resolve_inline_profiles (keys: {id_key}, {name_key})"
+        assert_eq!(
+            game.gui.atlas.object_skins.get(&id_key).map(String::as_str),
+            Some(want_skin),
+            "inline object:player profile must resolve to vanilla default skin (key: {id_key})"
+        );
+        assert_eq!(
+            game.gui
+                .atlas
+                .object_skins
+                .get(&name_key)
+                .map(String::as_str),
+            Some(want_skin),
+            "inline object:player profile must resolve to vanilla default skin (key: {name_key})"
         );
     });
 }
@@ -1329,67 +1362,94 @@ fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
         game.settings.render_distance = 8;
         game.settings.entity_distance = 1.0;
 
-        // 1. Bold missing cursor \u2196 with shadow in a world TextDisplay emits 4 exact BakedSheetGlyph quads.
-        game.text_displays.clear();
-        assert!(
-            game.spawn_remote_object(83100, "minecraft:text_display", [0.0; 3], (0.0, 0.0), 0,)
-        );
-        let cursor_tag =
-            sunrise_core::json_nbt::parse_json_tag("{\"text\":\"\u{2196}\",\"bold\":true}")
-                .unwrap();
-        game.text_displays.get_mut(&83100).unwrap().metadata(&[
-            (23, 0, Value::Text(cursor_tag)),
-            (25, 1, Value::Int(0)),
-            (26, 0, Value::Byte(-1)),
-            (27, 0, Value::Byte(1)), // shadow
-        ]);
-        game.tick_text_displays();
-        let (mut normal, mut see_through) = (Vec::new(), Vec::new());
-        game.text_display_geometry(DVec3::ZERO, 1.0, &mut normal, &mut see_through);
-        let want_bold_shadow = w["missing_glyph_quads"]["cases"]["bold_shadow_world"]["quads"]
-            .as_array()
-            .unwrap();
-        assert_eq!(
-            normal.len(),
-            want_bold_shadow.len() * 4,
-            "bold+shadow missing glyph TextDisplay must emit {} quads, got {}",
-            want_bold_shadow.len(),
-            normal.len() / 4
-        );
-        let lines = sunrise_client::text_display::Lines::split(
-            &game.gui.atlas.font,
-            &game.text_displays[&83100].data.text,
-            200,
-        );
-        let lines_pose = lines.pose();
-        // CORNERS = [5, 2, 1, 0] puts world vertices in [bl, br, tr, tl] while BakedSheetGlyph
-        // emits [tl, bl, br, tr], so Sunrise vertex [(k + 3) % 4] matches vanilla corner k.
-        for (qi, (got_q, want_q)) in normal
-            .as_chunks::<4>()
-            .0
-            .iter()
-            .zip(want_bold_shadow)
-            .enumerate()
-        {
-            for (k, want_v) in want_q.as_array().unwrap().iter().enumerate() {
-                let gv = got_q[(k + 3) % 4];
-                let wp = lines_pose
-                    .transform_point3(Vec3::from_array(hex_f32_arr::<3>(&want_v["pos_bits"])))
-                    .to_array();
-                for axis in 0..3 {
-                    assert!(
-                        (gv.pos[axis] - wp[axis]).abs() <= 1e-5,
-                        "bold_shadow_world quad {qi} corner {k} axis {axis}: got {:?} vs vanilla {:?}",
-                        gv.pos[axis],
-                        wp[axis]
+        // 1. Bold missing cursor in world TextDisplays matches vanilla TextDisplayRenderer bit-for-bit.
+        for case_name in ["origin_fixed", "angled_billboard_transformed"] {
+            let case = &w["missing_glyph_quads"]["text_display_world"][case_name];
+            let ent_pos = hex_f64_arr::<3>(&case["ent_pos_bits"]);
+            let ent_yaw = hex_f32(&case["ent_yaw_bits"]);
+            let ent_pitch = hex_f32(&case["ent_pitch_bits"]);
+            let cam_pos = DVec3::from_array(hex_f64_arr::<3>(&case["cam_pos_bits"]));
+            let cam_yaw = hex_f32(&case["cam_yaw_bits"]);
+            let cam_pitch = hex_f32(&case["cam_pitch_bits"]);
+            let billboard = case["billboard"].as_i64().unwrap() as i8;
+            let cursor_tag = decode_network_nbt_hex(&case["component_nbt_hex"]);
+
+            game.posed_rotation = Some((cam_yaw, cam_pitch));
+            game.view.y_rot = cam_yaw;
+            game.view.x_rot = cam_pitch;
+            game.text_displays.clear();
+            assert!(game.spawn_remote_object(
+                83100,
+                "minecraft:text_display",
+                ent_pos,
+                (ent_yaw, ent_pitch),
+                0,
+            ));
+            game.text_displays.get_mut(&83100).unwrap().metadata(&[
+                (
+                    11,
+                    0,
+                    Value::Floats(hex_f32_arr::<3>(&case["translation_bits"]).to_vec()),
+                ),
+                (
+                    12,
+                    0,
+                    Value::Floats(hex_f32_arr::<3>(&case["scale_bits"]).to_vec()),
+                ),
+                (
+                    13,
+                    0,
+                    Value::Floats(hex_f32_arr::<4>(&case["left_rotation_bits"]).to_vec()),
+                ),
+                (
+                    14,
+                    0,
+                    Value::Floats(hex_f32_arr::<4>(&case["right_rotation_bits"]).to_vec()),
+                ),
+                (15, 0, Value::Byte(billboard)),
+                (23, 0, Value::Text(cursor_tag)),
+                (25, 1, Value::Int(0)),
+                (26, 0, Value::Byte(-1)),
+                (27, 0, Value::Byte(1)),
+            ]);
+            game.tick_text_displays();
+            let (mut normal, mut see_through) = (Vec::new(), Vec::new());
+            game.text_display_geometry(cam_pos, 1.0, &mut normal, &mut see_through);
+            let want_quads = case["quads"].as_array().unwrap();
+            assert_eq!(
+                normal.len(),
+                want_quads.len() * 4,
+                "{case_name}: bold+shadow missing glyph TextDisplay must emit {} quads, got {}",
+                want_quads.len(),
+                normal.len() / 4
+            );
+            // Sunrise vertex [(k + 3) % 4] matches BakedSheetGlyph corner k.
+            for (qi, (got_q, want_q)) in normal
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .zip(want_quads)
+                .enumerate()
+            {
+                for (k, want_v) in want_q.as_array().unwrap().iter().enumerate() {
+                    let gv = got_q[(k + 3) % 4];
+                    let wp = hex_u32_vec(&want_v["pos_bits"]);
+                    assert_eq!(
+                        gv.pos.map(f32::to_bits).to_vec(),
+                        wp,
+                        "{case_name} quad {qi} corner {k} pos bits: got {:08x?} vs vanilla {:08x?}",
+                        gv.pos.map(f32::to_bits),
+                        wp
                     );
+                    assert_eq!(gv.color, argb_to_abgr(&want_v["color_argb"]));
                 }
-                assert_eq!(gv.color, argb_to_abgr(&want_v["color_argb"]));
             }
         }
 
-        // 2. EID 83224 (minecraft:lime_concrete): exact 6-face vertex parity + opaque atlas padding,
-        // matching VanillaDisplayParityOracle.recordBlockDisplay83224's exact coordinates and transform.
+        // 2. EID 83224 (minecraft:lime_concrete): exact 6-face vertex parity + opaque atlas padding.
+        game.posed_rotation = Some((0.0, 0.0));
+        game.view.y_rot = 0.0;
+        game.view.x_rot = 0.0;
         let ent_pos = [
             f64::from_bits(0x3fe0_0000_0000_0000),
             f64::from_bits(0x4072_d9eb_851e_b852),
