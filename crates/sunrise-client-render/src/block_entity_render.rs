@@ -644,16 +644,29 @@ fn first_line(line: &Text, max_width: f32, advance: &dyn Fn(char, &Style) -> f32
     line.clone()
 }
 
-/// `AbstractSignRenderer.isOutlineVisible`: the camera within 16 blocks of
-/// the sign's centre.
-fn sign_text_near(pos: [i32; 3], camera: DVec3) -> bool {
-    DVec3::new(
-        f64::from(pos[0]) + 0.5,
-        f64::from(pos[1]) + 0.5,
-        f64::from(pos[2]) + 0.5,
-    )
-    .distance_squared(camera)
-        < 256.0
+/// Camera inputs for drawing glowing sign outlines, independent of the frame's view.
+#[derive(Clone, Copy, Debug, Default)]
+pub enum SignOutline {
+    #[default]
+    None,
+    FirstPersonScope,
+    /// The camera entity's current base position, not its visual eye or render position.
+    CameraEntity(DVec3),
+}
+
+impl SignOutline {
+    /// `AbstractSignRenderer.isOutlineVisible`: first-person scoping or a camera entity
+    /// strictly within 16 blocks of the sign's centre.
+    fn visible(self, pos: [i32; 3]) -> bool {
+        match self {
+            Self::None => false,
+            Self::FirstPersonScope => true,
+            Self::CameraEntity(position) => {
+                let center = DVec3::from_array(pos.map(|axis| f64::from(axis) + 0.5));
+                position.distance_squared(center) < 16.0 * 16.0
+            }
+        }
+    }
 }
 
 /// `AbstractSignRenderer.submitSignText`: four centred lines, glowing text
@@ -666,7 +679,7 @@ fn sign_text_calls(
     text: &SignText,
     m: Mat4,
     packed: u8,
-    near: bool,
+    draw_outline: bool,
 ) -> Vec<TextCall> {
     let line_height = data.line_height();
     let midpoint = (4.0 * line_height / 2.0).floor();
@@ -675,7 +688,7 @@ fn sign_text_calls(
         let c = text.text_color();
         (
             0xFF00_0000 | c,
-            if c == 0 || near { dark } else { 0 },
+            if c == 0 || draw_outline { dark } else { 0 },
             240 | 240 << 8,
             crate::mesher::LOW,
         )
@@ -1042,6 +1055,7 @@ pub struct SignInlineImages<'a> {
 /// Inputs from the game for one frame of block-entity rendering.
 pub struct Scene<'a> {
     pub camera: DVec3,
+    pub sign_outline: SignOutline,
     /// `Camera.rotation` (conduit eyes face the camera).
     pub orientation: Quat,
     /// Ticked block-entity state at a position.
@@ -1233,8 +1247,8 @@ struct SignTextEntry {
     state: u32,
     data: SignData,
     packed: u8,
-    /// Within the glowing text outline's distance (only kept for glowing text).
-    near: bool,
+    /// Whether camera state makes glowing text draw its outline.
+    draw_outline: bool,
     glyphs: u64,
     inline_images: Option<[u64; 3]>,
     /// Game time it was last drawn.
@@ -2542,7 +2556,8 @@ impl BlockEntityRenderer {
         let Some(data) = (scene.sign)(pos) else {
             return;
         };
-        let near = (data.front.glowing || data.back.glowing) && sign_text_near(pos, scene.camera);
+        let draw_outline =
+            (data.front.glowing || data.back.glowing) && scene.sign_outline.visible(pos);
         let Ok(mut cache) = self.sign_texts.lock() else {
             return;
         };
@@ -2560,8 +2575,8 @@ impl BlockEntityRenderer {
             std::collections::hash_map::Entry::Occupied(mut occupied) => {
                 let entry = occupied.get_mut();
                 let changed = entry.data != *data;
-                if (entry.state, entry.packed, entry.near, entry.glyphs)
-                    != (state, packed, near, glyphs)
+                if (entry.state, entry.packed, entry.draw_outline, entry.glyphs)
+                    != (state, packed, draw_outline, glyphs)
                     || entry.inline_images != inline_images
                     || changed
                     || entry.animated
@@ -2584,7 +2599,7 @@ impl BlockEntityRenderer {
                         entry.data.clone_from(data);
                     }
                     entry.packed = packed;
-                    entry.near = near;
+                    entry.draw_outline = draw_outline;
                     entry.glyphs = glyphs;
                     entry.inline_images = inline_images;
                 }
@@ -2608,7 +2623,7 @@ impl BlockEntityRenderer {
                     state,
                     data: data.clone(),
                     packed,
-                    near,
+                    draw_outline,
                     glyphs,
                     inline_images,
                     used: now,
@@ -2844,6 +2859,7 @@ impl BlockEntityRenderer {
                 let Some(data) = (scene.sign)(pos) else {
                     return;
                 };
+                let draw_outline = scene.sign_outline.visible(pos);
                 let s = Vec3::new(1.0, -1.0, 1.0);
                 for (front, text) in [(true, &data.front), (false, &data.back)] {
                     if text.is_empty() {
@@ -2873,8 +2889,7 @@ impl BlockEntityRenderer {
                         m *= Mat4::from_translation(Vec3::new(0.0, 1.0 / 3.0, 0.046_666_667))
                             * Mat4::from_scale(s * 0.010_416_667);
                     }
-                    let near = sign_text_near(pos, scene.camera);
-                    let calls = sign_text_calls(scene, data, text, m, packed, near);
+                    let calls = sign_text_calls(scene, data, text, m, packed, draw_outline);
                     match scene.texts {
                         Some(sink) => sink.borrow_mut().extend(calls),
                         None => calls.iter().for_each(|c| draw_text(scene, c, out)),
@@ -3836,6 +3851,7 @@ mod tests {
         let cache_lid = |_| cache_open.get();
         let mut scene = Scene {
             camera: DVec3::ZERO,
+            sign_outline: SignOutline::None,
             orientation: Quat::IDENTITY,
             anim: &|_| BlockAnim::default(),
             texts: None,
@@ -4232,6 +4248,7 @@ mod tests {
         };
         let scene = Scene {
             camera: DVec3::ZERO,
+            sign_outline: SignOutline::None,
             orientation: Quat::IDENTITY,
             anim: &|_| BlockAnim::default(),
             texts: None,
@@ -4310,6 +4327,7 @@ mod tests {
         };
         let scene = Scene {
             camera: DVec3::ZERO,
+            sign_outline: SignOutline::None,
             orientation: Quat::IDENTITY,
             anim: &|_| BlockAnim::default(),
             texts: None,
@@ -4450,6 +4468,7 @@ mod tests {
         };
         let scene = Scene {
             camera: DVec3::ZERO,
+            sign_outline: SignOutline::None,
             orientation: Quat::IDENTITY,
             anim: &|_| BlockAnim::default(),
             texts: None,
@@ -4689,6 +4708,7 @@ mod tests {
         );
         let mut scene = Scene {
             camera: DVec3::new(3.25, 70.5, -4.75),
+            sign_outline: SignOutline::CameraEntity(DVec3::new(3.25, 70.5, -4.75)),
             orientation: Quat::IDENTITY,
             anim: &|_| BlockAnim::default(),
             texts: None,
@@ -4746,6 +4766,7 @@ mod tests {
         scene.sign = &glowing_sign;
         check(&scene, pos, 0);
         scene.camera.z -= 20.0;
+        scene.sign_outline = SignOutline::CameraEntity(scene.camera);
         check(&scene, pos, 0);
         check(&scene, pos, 1);
         check(&scene, other, 1);
@@ -4938,6 +4959,7 @@ mod tests {
         let world = World::new(BlockStateId(0), 1);
         let scene = Scene {
             camera: DVec3::ZERO,
+            sign_outline: SignOutline::None,
             orientation: Quat::IDENTITY,
             anim: &|_| BlockAnim::default(),
             texts: None,
@@ -5036,6 +5058,7 @@ mod tests {
         let world = World::new(BlockStateId(0), 1);
         let scene = Scene {
             camera: DVec3::ZERO,
+            sign_outline: SignOutline::None,
             orientation: Quat::IDENTITY,
             anim: &|_| BlockAnim::default(),
             texts: None,
