@@ -246,8 +246,19 @@ fn registered_types_bind_once_and_preserve_both_evaluators_order_short_circuit_a
             // Enchantment equipment_drops requirement runs bound rule with zero decodes.
             let mut attacker = loot::LootEntity::new("minecraft:player");
             attacker.living = true;
-            let mut weapon = loot::LootStack::new("minecraft:stick", 1);
-            weapon.enchantments.push(("test:drop_bonus".into(), 1));
+            let weapon = loot::LootStack {
+                item: "minecraft:stick".into(),
+                count: 1,
+                damage: 0,
+                enchantments: vec![("test:drop_bonus".into(), 1)],
+                potion: None,
+                map: false,
+                exploration: None,
+                ominous_amplifier: None,
+                stew_effects: Vec::new(),
+                names: Vec::new(),
+                components: Vec::new(),
+            };
             attacker.equipment.push(("mainhand".into(), weapon));
             let params = loot::EntityLootParams {
                 this: loot::LootEntity::new("minecraft:zombie"),

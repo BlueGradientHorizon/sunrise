@@ -406,15 +406,17 @@ mod tests {
             context: &mut dyn LootTypeContext,
         ) -> Result<(), String> {
             assert_eq!(context.params().luck(), 1.5);
-            let view = stack.view();
-            assert_eq!(view.count(), -7);
-            let mut components = view.components();
-            assert_eq!(
-                components.next(),
-                Some(("test:array", Some(&Tag::ByteArray(vec![7]))))
-            );
-            assert_eq!(components.next(), Some(("test:byte", Some(&Tag::Byte(7)))));
-            assert_eq!(components.next(), None);
+            {
+                let view = stack.view();
+                assert_eq!(view.count(), -7);
+                let mut components = view.components();
+                assert_eq!(
+                    components.next(),
+                    Some(("test:array", Some(&Tag::ByteArray(vec![7]))))
+                );
+                assert_eq!(components.next(), Some(("test:byte", Some(&Tag::Byte(7)))));
+                assert_eq!(components.next(), None);
+            }
             stack.set_count(-12);
             stack.remove_component("test:array")?;
             stack.push_component("test:array", Tag::List(vec![Tag::Int(7)]))?;
