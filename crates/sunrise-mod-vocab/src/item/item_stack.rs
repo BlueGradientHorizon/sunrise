@@ -73,6 +73,8 @@ pub struct ItemStack {
 type StackMetadata = (ItemKey, NonZeroU32, Option<u32>);
 type StackProjector<'a> = dyn Fn(StackMetadata) -> Option<ItemStack> + 'a;
 type StackComponentReader<'a> = dyn Fn(&str) -> Option<Tag> + 'a;
+type LootStackProjector =
+    fn(&dyn crate::__private::LootStackAccess, StackMetadata) -> Option<ItemStack>;
 type SlotMetadata<'a> = dyn Fn(u32) -> Option<StackMetadata> + 'a;
 type SlotProjector<'a> = dyn Fn(u32, StackMetadata) -> Option<ItemStack> + 'a;
 
@@ -91,6 +93,10 @@ enum StackProjection<'a> {
     Resident(&'a StackProjector<'a>),
     ResidentComponents(&'a StackProjector<'a>, &'a StackComponentReader<'a>),
     Slot(u32, &'a SlotProjector<'a>),
+    Loot(
+        &'a dyn crate::__private::LootStackAccess,
+        LootStackProjector,
+    ),
     PreparedDrop(
         usize,
         &'a dyn crate::block::prepared_drops::PreparedBlockDropsAccess,
@@ -128,6 +134,19 @@ impl<'a> ItemStackView<'a> {
         Self {
             metadata,
             projection: StackProjection::ResidentComponents(project, read_override),
+        }
+    }
+
+    // hidden: the loot bridge lends the queried stack without materializing its patch.
+    #[doc(hidden)]
+    pub fn queried_loot(
+        metadata: StackMetadata,
+        source: &'a dyn crate::__private::LootStackAccess,
+        project: LootStackProjector,
+    ) -> Self {
+        Self {
+            metadata,
+            projection: StackProjection::Loot(source, project),
         }
     }
 
@@ -194,6 +213,7 @@ impl<'a> ItemStackView<'a> {
             StackProjection::Resident(project)
             | StackProjection::ResidentComponents(project, _) => project(self.metadata)?,
             StackProjection::Slot(slot, project) => project(slot, self.metadata)?,
+            StackProjection::Loot(source, project) => project(source, self.metadata)?,
             StackProjection::PreparedDrop(index, access) => {
                 access.project_stack(index, self.metadata)?
             }
