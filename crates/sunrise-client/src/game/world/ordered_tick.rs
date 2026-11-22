@@ -51,6 +51,7 @@ pub(super) enum Batch {
     ArmorStands,
     Boats,
     Carts,
+    Fishing,
     Tridents,
     Rockets,
     Items,
@@ -64,7 +65,7 @@ pub(super) enum Batch {
 }
 
 impl Batch {
-    const COUNT: usize = 9;
+    const COUNT: usize = 10;
 }
 
 #[derive(Clone, Copy)]
@@ -94,6 +95,7 @@ impl Game<'_> {
             first_join(&self.armor_stands),
             first_join(&self.boats),
             first_join(&self.carts),
+            self.hook.as_ref().map(Joined::join_seq),
             first_join(&self.tridents),
             first_join(&self.rockets),
             first_join(&self.dropped),

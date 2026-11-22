@@ -1,5 +1,4 @@
-//! Witness-driven parity tests for FishingHook hitting pickable non-mob entities, End crystals,
-//! dragon parts, and ItemEntities.
+//! Witness-driven parity tests for FishingHook hitting pickable targets and ItemEntities.
 use super::{Hook, State};
 use crate::game::Game;
 use serde::Deserialize;

@@ -1,10 +1,5 @@
 //! Single-source-of-truth pickable target query and non-mob projectile hit dispatch.
-use super::super::{
-    Game,
-    commands::Target,
-    entity::Entity as _,
-    minecarts::CartHit,
-};
+use super::super::{Game, commands::Target, entity::Entity as _, minecarts::CartHit};
 use sunrise_client::join_seq::ListStamp;
 use sunrise_client::mobs::{Species, Who};
 use sunrise_client::projectiles::{Projectile, ProjectileKind};
@@ -312,10 +307,7 @@ impl Game<'_> {
         let mut targets: Vec<(Who, Aabb)> = self
             .mobs
             .iter()
-            .filter(|m| {
-                m.can_be_hit_by_projectile()
-                    && (!skip_no_physics || !m.no_physics(None))
-            })
+            .filter(|m| m.can_be_hit_by_projectile() && (!skip_no_physics || !m.no_physics(None)))
             .map(|m| (Who::Mob(m.id), m.bounds()))
             .collect();
         if let Some(p) = self.player_view()
@@ -332,8 +324,42 @@ impl Game<'_> {
         targets
     }
 
+    /// `FishingHook.canHitEntity`: `Projectile.canHitEntity` plus alive `ItemEntity`.
+    pub(in crate::game) fn fishing_hook_targets(
+        &self,
+        owner_conn: Option<u32>,
+        own_vehicle: Option<u32>,
+    ) -> Vec<(u32, Aabb)> {
+        let mut targets: Vec<(u32, Aabb)> = self
+            .projectile_targets()
+            .into_iter()
+            .filter_map(|(who, bounds)| match who {
+                Who::Player => None,
+                Who::Mob(id) if id == 0 || Some(id) == own_vehicle => None,
+                Who::Mob(id) => Some((id, bounds)),
+            })
+            .collect();
+        targets.extend(
+            self.creatures
+                .hook_targets
+                .iter()
+                .filter(|t| t.conn != owner_conn)
+                .map(|t| (t.id, t.bounds)),
+        );
+        targets.extend(
+            self.dropped
+                .iter()
+                .filter(|i| i.health > 0)
+                .map(|i| (i.id, i.bounds())),
+        );
+        targets
+    }
+
     /// Resolve a projectile's causing target, creative flag, and entity id.
-    fn projectile_source_info(&self, info: &ProjectileHitInfo) -> (Option<Target>, bool, bool, i32) {
+    fn projectile_source_info(
+        &self,
+        info: &ProjectileHitInfo,
+    ) -> (Option<Target>, bool, bool, i32) {
         let causing_target = match info.owner {
             Some(Who::Player) => Some(info.guest.map_or(Target::Player, Target::Guest)),
             Some(Who::Mob(id)) => Some(Target::Mob(id)),
