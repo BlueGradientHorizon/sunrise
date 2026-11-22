@@ -1424,12 +1424,8 @@ fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
                 normal.len() / 4
             );
             // Sunrise vertex [(k + 3) % 4] matches BakedSheetGlyph corner k.
-            for (qi, (got_q, want_q)) in normal
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .zip(want_quads)
-                .enumerate()
+            for (qi, (got_q, want_q)) in
+                normal.as_chunks::<4>().0.iter().zip(want_quads).enumerate()
             {
                 for (k, want_v) in want_q.as_array().unwrap().iter().enumerate() {
                     let gv = got_q[(k + 3) % 4];
