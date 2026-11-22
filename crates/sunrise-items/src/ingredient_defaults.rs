@@ -186,7 +186,8 @@ mod tests {
 
     #[test]
     fn entity_reload_retains_unbound_tags_but_applies_bound_empty_tags() {
-        let root = tempfile::tempdir().unwrap();
+        let root = std::env::temp_dir().join(format!("sunrise-entity-tags-{}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
         let tag = "test:walkers";
         let cow = "minecraft:cow";
         let previous = Arc::new(EntityTypeTags::from_ordered(
@@ -196,7 +197,7 @@ mod tests {
         let reload = |bytes: &[u8]| {
             let files = [("tags/test:entity_type/walkers".into(), vec![bytes.to_vec()])];
             component_tables(
-                root.path(),
+                &root,
                 &PackOverlay::new(&files),
                 LoadEntityTags::Reload(&previous),
             )
@@ -208,5 +209,6 @@ mod tests {
             reload(br#"{"values":[]}"#).ordered().get(tag),
             Some(&Vec::new())
         );
+        std::fs::remove_dir(root).unwrap();
     }
 }
