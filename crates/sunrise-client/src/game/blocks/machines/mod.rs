@@ -402,13 +402,8 @@ impl Containers<'_> {
             });
         }
         let entity = self.world.block_entities.get(&pos)?;
-        // A mod's block entity is a container when its block says so. The one
-        // ticking now is out of the world (an empty id marks its place): what
-        // went into its place would be lost when it comes back.
-        if let BlockEntity::Mod(m) = entity {
-            if m.id().is_empty() {
-                return None;
-            }
+        // A mod's block entity is a container when its block says so.
+        if matches!(entity, BlockEntity::Mod(_)) {
             let container = Arc::clone(self.world.block_entities.mod_container(state.0)?);
             return Some(View {
                 parts: vec![(pos, container.slots)],
@@ -882,6 +877,14 @@ impl Game<'_> {
             let at = BlockPos::new(pos.0, pos.1, pos.2);
             self.native_contents_changed(level, at, self.world.block(pos.0, pos.1, pos.2), None);
         }
+        self.container_changed_without_hook(pos);
+    }
+
+    /// `BlockEntity.setChanged` updates without dispatching `contents_changed` again.
+    pub(super) fn container_changed_without_hook(&mut self, pos: Pos) {
+        if pos.1 == super::minecarts::CART_KEY_Y {
+            return;
+        }
         self.chiseled_bookshelf_synced(pos);
         if matches!(
             self.world.block_entities.get(&pos),
@@ -935,6 +938,23 @@ impl Game<'_> {
         if !c.can_place(view, slot, &stack, PlacementQuery::Offer(attempt)) {
             return (Some(stack), MoveIn::Skipped);
         }
+        // Capability operations use the same saved slot as hoppers, but may first
+        // access a pot that still has loot. Discovery never reaches this write path.
+        if view.kind == Kind::Pot && matches!(insertion, Insertion::Capability) {
+            let pos = view.parts[0].0;
+            let at = [pos.0, pos.1, pos.2];
+            if spill::saved_entity(&self.world, at)
+                .is_some_and(|tag| tag.get("LootTable").is_some())
+            {
+                self.journal_saved_pot(pos);
+                self.journal_block_loot_random();
+                if let Some(tag) = self.pot_tag(at) {
+                    spill::put_saved_entity(&mut self.world, at, tag);
+                    self.after_commit(super::transactions::After::Changed(pos));
+                }
+            }
+        }
+        let c = self.containers();
         let (from_hopper, count) = match insertion {
             Insertion::Automation(from_hopper) => (from_hopper, stack.count),
             Insertion::Pull | Insertion::Capability => {
@@ -1020,15 +1040,11 @@ impl Game<'_> {
         }
         if success && let Some((mut tag, item)) = pot {
             let pos = view.parts[0].0;
-            if let Tag::Compound(map) = &mut tag {
-                if let Some(item) = item {
-                    map.insert("item".into(), save::item_to_nbt(&item, self.res.items()));
-                } else {
-                    map.remove(&"item".into());
-                }
-            }
+            Self::set_pot_slot(self.res.items(), &mut tag, item);
             spill::put_saved_entity(&mut self.world, [pos.0, pos.1, pos.2], tag);
-            self.mark_block_entity_updated(pos);
+            if !matches!(insertion, Insertion::Capability) {
+                self.mark_block_entity_updated(pos);
+            }
         }
         // tryMoveInItem's setItem on an empty slot: AbstractFurnaceBlockEntity.setItem restarts
         // the cooking for a new input (a merge only grows the stack, and keeps it).
@@ -1136,18 +1152,21 @@ impl Game<'_> {
     }
     /// Write a pot's saved item slot, keeping the tag's other metadata.
     fn pot_store(&mut self, pos: Pos, tag: &mut Tag, item: Option<ItemStack>) {
+        Self::set_pot_slot(self.res.items(), tag, item);
+        spill::put_saved_entity(&mut self.world, [pos.0, pos.1, pos.2], tag.clone());
+        self.mark_block_entity_updated(pos);
+    }
+    fn set_pot_slot(items: &sunrise_client::items::Items, tag: &mut Tag, item: Option<ItemStack>) {
         if let Tag::Compound(map) = tag {
             match item {
                 Some(item) => {
-                    map.insert("item".into(), save::item_to_nbt(&item, self.res.items()));
+                    map.insert("item".into(), save::item_to_nbt(&item, items));
                 }
                 None => {
                     map.remove(&"item".into());
                 }
             }
         }
-        spill::put_saved_entity(&mut self.world, [pos.0, pos.1, pos.2], tag.clone());
-        self.mark_block_entity_updated(pos);
     }
     /// Undo `take_one` after a failed move.
     fn put_back(&mut self, view: &View, slot: usize, one: ItemStack) {

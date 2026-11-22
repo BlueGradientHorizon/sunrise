@@ -437,7 +437,7 @@ mod tests {
         e.set_block_state_source(|| Some(Arc::new(Vec::<mod_api::BlockState>::new())));
         e.providers.insert(
             shade.key(),
-            mod_api::__private::bind_particle_provider(Arc::new(Stay)),
+            mod_api::__private::bind_particle_provider(shade.key(), Arc::new(Stay)),
         );
         let typed = ParticleOptions::typed(shade.options(()).typed().unwrap().clone()).unwrap();
         pack.reload(&mut e);
@@ -495,7 +495,7 @@ mod tests {
         e.set_block_state_source(|| Some(Arc::new(Vec::<mod_api::BlockState>::new())));
         e.providers.insert(
             shade.key(),
-            mod_api::__private::bind_particle_provider(Arc::new(Stay)),
+            mod_api::__private::bind_particle_provider(shade.key(), Arc::new(Stay)),
         );
         let typed = ParticleOptions::typed(shade.options(()).typed().unwrap().clone()).unwrap();
         pack.reload(&mut e);

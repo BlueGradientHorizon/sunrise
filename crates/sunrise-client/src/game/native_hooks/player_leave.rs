@@ -11,14 +11,14 @@ impl Game<'_> {
             return;
         }
         // A held player was recorded as joined at its login: it leaves too.
-        if self.is_dedicated_server() && (guest.placed || guest.held) {
+        if self.is_dedicated_server() && (guest.joined() || guest.held) {
             crate::game::dedicated::events::record(
                 "leave",
                 &guest.name,
                 guest.uuid,
                 serde_json::json!({ "reason": guest.left_reason }),
             );
-            if guest.held && !guest.placed {
+            if guest.held && !guest.joined() {
                 // Never announced, so no "left the game" either.
                 crate::game::dedicated::log(
                     "INFO",
@@ -33,13 +33,13 @@ impl Game<'_> {
             // A player moved to another server without `announce` was not
             // announced as leaving, so the line is not logged either; a held
             // player was never announced at all.
-            if guest.placed && !guest.quiet_leave {
+            if guest.joined() && !guest.quiet_leave {
                 crate::game::dedicated::log(
                     "INFO",
                     &format!("System chat: {} left the game", guest.name),
                 );
             }
-        } else if self.player.is_some() && guest.placed && !guest.quiet_leave {
+        } else if self.player.is_some() && guest.joined() && !guest.quiet_leave {
             // ServerGamePacketListenerImpl.removePlayerFromWorld.
             let who = self.player_text(&guest.name, guest.uuid);
             self.system_message(
@@ -47,7 +47,7 @@ impl Game<'_> {
                     .with_color(sunrise_client::text::YELLOW),
             );
         }
-        if guest.placed
+        if guest.joined()
             && self
                 .lan
                 .as_ref()

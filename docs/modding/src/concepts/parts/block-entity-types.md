@@ -71,6 +71,8 @@ attachment compound keeps entries it does not know on save), and is read again i
 `pre_remove_side_effects` runs on the authoritative server while the block entity and its
 attachments are still readable, before removal's neighbor effects. The level host permits
 reads and random draws, not world writes. Flag 256 skips the call and its outputs.
+Contract version 4 includes removal when a menu callback removes the backing block.
+Do not drop those contents manually in the button callback.
 
 The engine applies the answers after the level write, in this order:
 
@@ -84,7 +86,7 @@ The engine applies the answers after the level write, in this order:
 Each list accepts at most 1024 entries; positions must be finite. Invalid list sizes or
 positions refuse the outputs. Stack writes use the usual checked item boundary. The same
 fields go to the Part. A part that answers nothing consumes no random draws.
-Version 2 uses optional drops to represent empty slots; wrap a filled slot in `Some`.
+The optional drops represent empty slots; wrap a filled slot in `Some`.
 
 ## Part state
 
@@ -104,8 +106,7 @@ impl BlockEntityPartState for Press {
 }
 r.block_entity_part_with_state(&press, Press)?;
 
-// In BlockEntityPart::block_entity_tick, return the view before borrowing the Host.
-// If an earlier Part replaced the subject, the view is unavailable:
+// In its tick (or a menu hook), get the live handle from the view, then edit through the Host:
 let Some(entity) = event.subject.with_view(|view| view.handle()) else {
     return;
 };
@@ -165,7 +166,9 @@ During unload or a removed block's loot roll, the entity
 may no longer be readable through the host; the event still carries its payload, identity and its
 position and level (`event.pos`, `event.level`), so a mod that keeps live state per dimension and
 position can look it up and write it into `event.tag`.
-`block_drops` and `player_destroyed_block` read the stored data, not the loot copy.
+`block_drops` and `player_destroyed_block` read the original entity's stored data, not the loot copy.
+`block_drops` supplies a resident `block_entity` handle while the original is still in the level,
+or lends `block_entity_data` if the original was removed or stored only in the chunk.
 Changing output does not mark a chunk dirty: mark the entity changed when the live state changes.
 
 `block_entity_on_load` is the separate once-per-instance attachment notice. It runs after the entity
@@ -181,12 +184,13 @@ load or an unchanged result.
 
 Implement `BlockEntityPart::block_entity_load_additional` to refresh mod-owned state after the server
 applies a saved payload, including `/data merge` and `/data modify`, cloning, structure and item
-placement, falling-block landing, and chunk load. `event.tag` is the applied mod payload,
-`event.pos` and `event.level` name the instance, and the read-only level host already sees the
-updated instance. On a slotless holder, `event.tag` and `BlockEntityRef::data` include any saved
-`Items` field in its original list order, even if its entries look like inventory rows.
-`block_entity_on_load` follows when that instance is new; it also fires for a fresh placement
-that had no saved data.
+placement, falling-block landing, and chunk load. `event.tag` is the applied mod payload, and
+`event.subject` is a `BlockEntityLevelReadScope<'_>`: `with_view` lends a read-only
+`BlockEntityReadView` carrying the instance's handle, position, level, block state and updated data,
+and `host()` borrows the read-only `LevelHost`. On a slotless holder, `event.tag` and
+`BlockEntityRef::data` include any saved `Items` field in its original list order, even if its entries
+look like inventory rows. `block_entity_on_load` follows when that
+instance is new; it also fires for a fresh placement that had no saved data.
 
 Direct Mod API `merge_data` and `replace_data` writes and transaction restores do not fire the
 notice. Client sync instead uses `block_entity_data_received`.

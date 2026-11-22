@@ -164,7 +164,7 @@ impl Game<'_> {
             if g.lan.is_none() {
                 return Err("command harness: no hub".into());
             }
-            g.start_server_trip(conn, plan.dim, Some(plan), false);
+            g.start_server_trip(conn, plan.dim, Some(plan));
             Ok(())
         })
     }

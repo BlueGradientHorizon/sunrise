@@ -87,9 +87,8 @@ pub(super) struct GuestPlay {
     /// `Entity.portalProcess` and `portalCooldown` (game/world/server_travel.rs).
     pub(super) portal: sunrise_client::nether_portal::PortalState,
     /// `ServerPlayer.wonGame`: the End poem is showing, the player waits for
-    /// its client's PERFORM_RESPAWN (`respawn_requested`).
+    /// its client's PERFORM_RESPAWN.
     pub(super) won_game: bool,
-    pub(super) respawn_requested: bool,
     /// `Player.takeXpDelay`: ticks until the next orb can be taken.
     pub(super) xp_delay: u32,
     /// This player entity's age and level-up sound cooldown.
@@ -418,14 +417,6 @@ fn stop_dig(play: &GuestPlay, pos: [i32; 3], air: bool, ticks: u64, per_tick: f3
     }
 }
 
-/// What `copyRespawnPosition` sets at respawn time, when it is decided here:
-/// nothing to decide for a point with a block (`has_config`, copied once the
-/// block is found); otherwise the Overworld forced point's block (`spawn`,
-/// stored at its bottom centre), or none.
-fn copied_respawn_point(has_config: bool, spawn: Option<[f64; 3]>) -> Option<Option<[i32; 3]>> {
-    (!has_config).then(|| spawn.map(|s| s.map(|c| c.floor() as i32)))
-}
-
 /// ServerPlayer.swingAndResetAttackStrength resets only when a use starts a swing.
 fn reset_use_attack_strength(ticker: &mut u32, before: u32, after: u32) {
     if before != after {
@@ -435,7 +426,7 @@ fn reset_use_attack_strength(ticker: &mut u32, before: u32, after: u32) {
 
 #[cfg(test)]
 mod tests {
-    use super::{copied_respawn_point, eye_columns, reset_use_attack_strength};
+    use super::{eye_columns, reset_use_attack_strength};
     use crate::game::api_values::TryIntoApi;
     use sunrise_client::pose::Pose;
 
@@ -1171,7 +1162,10 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn block_parts_pick_and_use_on_the_server_and_for_a_guest() {
-        use super::super::{lan::LanSettings, native_entity_refs::tests::with_game};
+        use super::super::{
+            lan::LanSettings,
+            native_entity_refs::tests::{run_fresh_cases, with_game},
+        };
         use mod_api::InteractionResult as Answer;
         use mod_api::{
             self, BlockPart, CloneItemStackEvent, Hooks, Host, ItemPart, ItemStack, Registrar,
@@ -1187,15 +1181,28 @@ mod tests {
         };
         use sunrise_protocol::packets::{configuration::ClientInformation, play};
 
-        struct Picker(Arc<Mutex<Vec<bool>>>);
+        if run_fresh_cases(
+            "game::lan_actions::tests::block_parts_pick_and_use_on_the_server_and_for_a_guest",
+            "SUNRISE_PICK_PARTS_CHILD",
+            &["players"],
+        ) {
+            return;
+        }
+        type Picks = Arc<Mutex<Vec<(u32, u128, bool)>>>;
+        struct Picker(Picks);
         #[mod_api::sunrise_part]
         impl BlockPart for Picker {
             fn clone_item_stack(
                 &self,
-                _: &dyn Host,
+                host: &dyn Host,
                 event: &mut CloneItemStackEvent<'_>,
             ) -> Option<ItemStack> {
-                self.0.lock().unwrap().push(event.include_data);
+                assert!(event.player.food(host).is_some());
+                self.0.lock().unwrap().push((
+                    event.player.entity().id(),
+                    event.player.uuid(),
+                    event.include_data,
+                ));
                 event.include_data.then(|| {
                     mod_api::ItemStack::new(
                         mod_api::__private::item_key("minecraft:diamond").unwrap(),
@@ -1269,7 +1276,7 @@ mod tests {
             }
         }
         struct Mod {
-            picks: Arc<Mutex<Vec<bool>>>,
+            picks: Picks,
             user: User,
         }
         #[mod_api::__subscriptions]
@@ -1362,26 +1369,34 @@ mod tests {
                 };
                 game.lan_host(settings, net, config).unwrap();
                 let (tx, _rx) = std::sync::mpsc::channel();
-                let mut guest = Guest::new(
-                    Joined {
-                        conn: 12,
-                        uuid: 12,
-                        name: "guest12".into(),
-                        properties: Vec::new(),
-                        info: ClientInformation::new(8),
-                        brand: String::new(),
-                        sender: PlayerSender::new(tx, Arc::new(AtomicUsize::new(0))),
-                        latency: Arc::new(AtomicI32::new(0)),
-                        address: "127.0.0.1:1".parse().unwrap(),
-                        expected: false,
-                    },
-                    12,
-                    [0.5, 64.0, 2.0],
-                    10,
-                );
-                guest.placed = true;
-                guest.game_mode = 1;
-                game.lan.as_mut().unwrap().hub.guests.push(guest);
+                let make_guest = |conn, uuid, entity_id| {
+                    let mut guest = Guest::new(
+                        Joined {
+                            conn,
+                            uuid,
+                            name: format!("guest{conn}"),
+                            properties: Vec::new(),
+                            info: ClientInformation::new(8),
+                            brand: String::new(),
+                            sender: PlayerSender::new(tx.clone(), Arc::new(AtomicUsize::new(0))),
+                            latency: Arc::new(AtomicI32::new(0)),
+                            address: "127.0.0.1:1".parse().unwrap(),
+                            expected: false,
+                        },
+                        entity_id,
+                        [0.5, 64.0, 2.0],
+                        10,
+                    );
+                    guest.placed = true;
+                    guest.game_mode = 1;
+                    guest
+                };
+                game.lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .push(make_guest(12, 12, 12));
 
                 // BlockState.useItemOn replaces the template. Only TryWithEmptyHand
                 // reaches useWithoutItem, which toggles this lever on the main hand.
@@ -1800,7 +1815,28 @@ mod tests {
                     &*guest.inventory[guest.selected].as_ref().unwrap().item,
                     "minecraft:wheat_seeds"
                 );
-                assert_eq!(*seen.lock().unwrap(), [true, false]);
+                game.lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .push(make_guest(13, 1300, 130));
+                game.lan_guest_packet(
+                    13,
+                    play::Serverbound::PickItemFromBlock(play::PickItemFromBlock {
+                        pos: [0, 64, 0],
+                        include_data: false,
+                    }),
+                );
+                let second = &game.lan.as_ref().unwrap().hub.guests[1];
+                assert_eq!(
+                    &*second.inventory[second.selected].as_ref().unwrap().item,
+                    "minecraft:stone"
+                );
+                assert_eq!(
+                    *seen.lock().unwrap(),
+                    [(12, 12, true), (12, 12, false), (130, 1300, false)]
+                );
 
                 // addBlockDataToItem runs on the part's item: a chest picked with
                 // its data gives the part's diamond carrying the chest's contents.
@@ -1827,7 +1863,13 @@ mod tests {
                     panic!("the chest's data is on the diamond");
                 };
                 assert!(components.contains_key(&"minecraft:container".into()));
-                assert_eq!(*seen.lock().unwrap(), [true, false, true]);
+                let expected = [
+                    (12, 12, true),
+                    (12, 12, false),
+                    (130, 1300, false),
+                    (12, 12, true),
+                ];
+                assert_eq!(*seen.lock().unwrap(), expected);
 
                 let hive = game
                     .pack
@@ -1848,7 +1890,7 @@ mod tests {
                         .iter()
                         .any(|item| &*item.stack.item == "minecraft:beehive")
                 );
-                assert_eq!(*seen.lock().unwrap(), [true, false, true]);
+                assert_eq!(*seen.lock().unwrap(), expected);
             })
         });
     }
@@ -2010,18 +2052,6 @@ mod tests {
             game.lan_acting_fake = false;
             assert_eq!(game.sleep_counts(), real);
         });
-    }
-
-    /// `copyRespawnPosition` copies an Overworld forced point, not none; a
-    /// point with a block is left to its block check.
-    #[test]
-    fn respawn_copies_the_forced_point() {
-        assert_eq!(
-            copied_respawn_point(false, Some([12.5, 64.0, -3.5])),
-            Some(Some([12, 64, -4]))
-        );
-        assert_eq!(copied_respawn_point(false, None), Some(None));
-        assert_eq!(copied_respawn_point(true, Some([0.5, 64.0, 0.5])), None);
     }
 
     /// #4124: a STOP is measured from the START that named its block (`destroyPos`) — an abort, or
