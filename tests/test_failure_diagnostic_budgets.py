@@ -95,7 +95,7 @@ class Budgets(unittest.TestCase):
     def test_a_test_that_catches_its_own_panic_is_shown_by_the_panic_it_failed_on(self):
         source = ['panic!("a listener fails");', '', 'assert_eq!(posts, 0, "aborted pass fired post callbacks");']
         with patch.object(ci, 'tracked_rust_paths', return_value={'crates/example.rs'}), \
-                patch.object(ci, 'source_lines', return_value=source):
+                patch.object(ci, 'source_lines', return_value=source), patch.dict(ci._panic_locations, clear=True):
             log = self.render(
                 "thread 'guarded' panicked at crates/example.rs:1:1:\na listener fails\n"
                 "thread 'guarded' panicked at crates/example.rs:3:1:\n"
@@ -106,6 +106,20 @@ class Budgets(unittest.TestCase):
         self.assertIn('message: aborted pass fired post callbacks', log)
         self.assertNotIn('crates/example.rs:1:1', log)
         self.assertNotIn('a listener fails', log)
+
+    def test_a_repeated_name_that_panics_twice_later_keeps_the_first_targets_context(self):
+        source = ['assert!(first);', 'panic!("a listener fails");', 'assert!(second);']
+        with patch.object(ci, 'tracked_rust_paths', return_value={'crates/example.rs'}), \
+                patch.object(ci, 'source_lines', return_value=source), patch.dict(ci._panic_locations, clear=True):
+            log = self.render(
+                "---- same stdout ----\nthread 'same' panicked at crates/example.rs:1:1:\nassertion failed: first\n"
+                "test same ... FAILED\n"
+                "---- same stdout ----\nthread 'same' panicked at crates/example.rs:2:1:\na listener fails\n"
+                "thread 'same' panicked at crates/example.rs:3:1:\nassertion failed: second\n"
+                "test same ... FAILED\n"
+            )
+        self.assertEqual(log.count('panicked at crates/example.rs:1:1'), 2)
+        self.assertNotIn('crates/example.rs:3:1', log)
 
     def test_a_shown_panic_message_allows_bounded_rustc_codes_not_diagnostic_text(self):
         with patch.object(ci, 'tracked_rust_paths', return_value={'crates/example.rs'}), \
