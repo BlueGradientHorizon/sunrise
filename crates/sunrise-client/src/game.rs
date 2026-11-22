@@ -6,7 +6,8 @@ use key_codes::{
     follow_named_keymap, gameplay_has_keyboard, glfw_button, glfw_modifiers, keyboard_button,
 };
 use loading_screen::{
-    App, Loading, leave_fullscreen_after, missing_resources, run_event_loop, unclean_start_recovery,
+    App, Loading, leave_fullscreen_after, preflight_resources, run_event_loop,
+    unclean_start_recovery,
 };
 use motion_ids::{motion_at, motion_block_entity};
 #[cfg(test)]
@@ -13511,6 +13512,7 @@ impl<'a> Game<'a> {
                 ),
                 None,
                 pack.render.model_library.as_deref().ok(),
+                !options.execution_role.is_dedicated_server(),
             )
         })?;
         let world = if options.execution_role.is_logical_server() {
@@ -13528,11 +13530,15 @@ impl<'a> Game<'a> {
         let slow_frame_ms = options
             .spikes
             .unwrap_or(sunrise_client::client_perf::SLOW_FRAME_MS);
-        let mut particles = sunrise_client::particles::ParticleEngine::new(
-            &pack.source,
-            &gui.atlas.sprites,
-            &gui.atlas.translucent,
-        );
+        let mut particles = if options.execution_role.is_dedicated_server() {
+            sunrise_client::particles::ParticleEngine::without_sprites()
+        } else {
+            sunrise_client::particles::ParticleEngine::new(
+                &pack.source,
+                &gui.atlas.sprites,
+                &gui.atlas.translucent,
+            )
+        };
         particles.set_block_state_source(Game::particle_block_states);
         let resource_source = pack.source.clone();
         let (pack, gui) = if let Some(initial) = initial {
@@ -14294,17 +14300,28 @@ pub(crate) fn run_with(
     sunrise_world::datafix::set_resources(
         &std::path::absolute(&vanilla_root).unwrap_or_else(|_| vanilla_root.clone()),
     );
-    if let Some(error) = missing_resources(&vanilla_root, sunrise_hooks::engine::get_the_game()) {
-        // The game build started by hand (the release's zip), not by the
-        // launcher: a window says where to get it. Scripts and servers get
-        // the error.
-        if !options.offscreen && !synchronous_startup(&options) {
-            log::error!("Sunrise: {error}");
-            let settings = Settings::load(&Game::options_path());
-            return no_resources::show(&vanilla_root, &settings);
+    let preparation = match preflight_resources(
+        &vanilla_root,
+        sunrise_hooks::engine::get_the_game(),
+        options.execution_role.is_dedicated_server(),
+    ) {
+        Ok(profile) => profile,
+        Err(error) => {
+            // Keep the introductory GUI for an installation with no manifest.
+            // A present but unusable preparation needs the exact re-prepare error.
+            if !options.offscreen
+                && !synchronous_startup(&options)
+                && !vanilla_root
+                    .join(sunrise_core::prepared_profile::MANIFEST)
+                    .is_file()
+            {
+                log::error!("Sunrise: {error}");
+                let settings = Settings::load(&Game::options_path());
+                return no_resources::show(&vanilla_root, &settings);
+            }
+            return Err(error.into());
         }
-        return Err(error.into());
-    }
+    };
     let mut early_settings = Settings::load(&Game::options_path());
     options
         .mods
@@ -14405,7 +14422,12 @@ pub(crate) fn run_with(
     }
     let roots = if options.execution_role.is_dedicated_server() {
         // Dedicated startup sees enabled mod assets but no client's resource packs.
-        mods::content_root(&vanilla_root, &options.mods)?.into()
+        let base = mods::content_root(&vanilla_root, &options.mods)?;
+        match preparation {
+            sunrise_core::prepared_profile::Profile::Full => base,
+            sunrise_core::prepared_profile::Profile::Server => base.with_server_profile(),
+        }
+        .into()
     } else {
         packs::startup_root(
             &vanilla_root,
@@ -14429,7 +14451,9 @@ pub(crate) fn run_with(
     )?;
     let gui = loaded.gui.ok_or("missing menu bundle")?;
     options.resources = loaded.root.clone();
-    let audio = if !options.execution_role.is_client() || options.headless {
+    let audio = if options.execution_role.is_dedicated_server() {
+        Audio::for_server()
+    } else if !options.execution_role.is_client() || options.headless {
         Audio::silent(&loaded.pack.source)
     } else {
         Audio::with_device(&loaded.pack.source, &early_settings.sound_device)
