@@ -513,11 +513,7 @@ fn validate_trusted_component(tag: &Tag, r: &Reader) -> Result<()> {
 
 /// `ComponentSerialization.TRUSTED_STREAM_CODEC`: unlimited-heap NBT tag validated by `ComponentSerialization.CODEC`.
 fn read_trusted_component(r: &mut Reader) -> Result<Tag> {
-    let tag = r.nbt_within(sunrise_core::nbt::Limits {
-        max_bytes: usize::MAX,
-        max_nodes: usize::MAX,
-        max_depth: 512,
-    })?;
+    let tag = r.nbt_within(nbt::Limits::unlimited_heap())?;
     validate_trusted_component(&tag, r)?;
     Ok(tag)
 }
