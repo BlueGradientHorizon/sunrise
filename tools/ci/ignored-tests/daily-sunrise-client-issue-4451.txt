@@ -652,7 +652,7 @@ sunrise-client game::fishing::fishing_catch_tests::fishing_catch_invalid_drops_k
 sunrise-client game::fishing::fishing_catch_tests::fishing_catch_noop_listener_preserves_randomness lib daily resources
 sunrise-client game::fishing::fishing_catch_tests::fishing_catch_replaces_rolled_stack lib daily resources
 sunrise-client game::fishing::fishing_medium_tests::a_client_keeps_only_the_surface_and_draws_the_bobber_floating lib daily resources
-sunrise-client game::fishing::fishing_medium_tests::a_mods_medium_floats_the_bobber_and_its_catch_rolls_the_checked_table lib daily resources
+sunrise-client game::fishing::fishing_medium_tests::a_mods_medium_floats_the_bobber_and_its_catch_rolls_the_checked_table lib daily child-process
 sunrise-client game::fishing::fishing_medium_tests::the_first_mod_in_order_to_answer_wins lib daily resources
 sunrise-client game::fishing::fishing_medium_tests::with_no_listener_the_bobber_falls lib daily resources
 sunrise-client game::fishing::incoming_block_hit_tests::a_bobber_powers_a_target_block_and_counts_the_hit lib daily resources
