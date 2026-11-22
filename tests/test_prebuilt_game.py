@@ -667,6 +667,8 @@ class AllocatorSelectionTests(unittest.TestCase):
              patch.object(prebuilt_game, "rustc_host", return_value="fixture-host"), \
              patch.object(prebuilt_game, "run", side_effect=capture), \
              patch.dict(prebuilt_game.os.environ, {"CARGO_ENCODED_RUSTFLAGS": "-Cprefer-dynamic=no",
+                                                   # An inherited unit count must not reach the SDK game.
+                                                   "CARGO_PROFILE_RELEASE_CODEGEN_UNITS": "16",
                                                    "CARGO_TARGET_DIR": target}):
             # Its own target folder: the build takes that folder's lock, never the checkout's.
             with self.assertRaises(Captured):
