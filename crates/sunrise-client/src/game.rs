@@ -3561,6 +3561,7 @@ struct Game<'a> {
     /// so they too first tick on the next tick.
     contact_drops: std::ops::Range<u32>,
     particles: sunrise_client::particles::ParticleEngine,
+    explicit_particle_quads: sunrise_client::particles::ParticleQuads,
     /// `ItemPickupParticle`s: taken items, orbs and arrows flying to their collector.
     pickups: pickups::Pickups,
     /// Sign text being edited (`SignEditScreen`).
@@ -8697,6 +8698,10 @@ impl Game<'_> {
         camera: glam::DVec3,
         alpha: f64,
         fov_degrees: f32,
+        providers: Option<(
+            &sunrise_client::particles::ParticleCullView,
+            &mut sunrise_client::particles::ParticleQuads,
+        )>,
         out: &mut Vec<Vertex>,
     ) {
         self.apply_mod_particle_clear();
@@ -8717,11 +8722,16 @@ impl Game<'_> {
         self.mark_stage(out.len(), "PARTICLES");
         let world = &self.world;
         let particle_mode = self.settings.sunrise.particle_culling;
+        let mut providers = providers;
         if particle_mode == sunrise_client::graphics::ParticleCullingMode::Off {
-            self.particles.render(
+            self.particles.render_world(
                 camera,
                 self.particle_rotation(),
                 alpha as f32,
+                providers
+                    .as_mut()
+                    .map(|(view, quads)| (*view, &mut **quads)),
+                None,
                 &|b| world.light(b[0], b[1], b[2]),
                 out,
             );
@@ -8737,14 +8747,18 @@ impl Game<'_> {
             });
             {
                 let mut particle_culling = self.particle_occlusion_context(camera);
-                self.particles.render_culled(
+                self.particles.render_world(
                     camera,
                     self.particle_rotation(),
                     alpha as f32,
-                    pixel_focal_length,
-                    true,
-                    frustum.as_ref(),
-                    &mut |min, max| particle_culling.hidden(min, max),
+                    providers
+                        .as_mut()
+                        .map(|(view, quads)| (*view, &mut **quads)),
+                    Some(sunrise_client::particles::ParticleWorldCull {
+                        pixel_focal_length,
+                        frustum: frustum.as_ref(),
+                        occluded: &mut |min, max| particle_culling.hidden(min, max),
+                    }),
                     &|b| world.light(b[0], b[1], b[2]),
                     out,
                 );
@@ -8769,6 +8783,9 @@ impl Game<'_> {
         if self.mod_clear_particles.get() {
             self.apply_mod_particle_clear();
             out.truncate(first);
+            if let Some((_, quads)) = providers {
+                quads.clear();
+            }
             {
                 let mut frame = self.skin_frame.borrow_mut();
                 frame.truncate(skin);
@@ -11339,11 +11356,30 @@ impl Game<'_> {
         // Fog hooks may clear particles too. They must run before the final clear
         // boundary, not while constructing Frame after geometry has been extracted.
         let fog = self.frame_fog(camera, &sky, biome, water_fog);
+        let mut explicit_particle_quads = std::mem::take(&mut self.explicit_particle_quads);
+        explicit_particle_quads.clear();
         if !title {
             // The renderer decides on the packs' GPU particle shaders before the quads are
             // built, and takes the records of the types it draws after.
             self.polytone_gpu_decide(camera);
-            self.client_particle_geometry(camera, alpha, fov_degrees, &mut entities);
+            let cull = self.particles.has_provider_particles().then(|| {
+                sunrise_client::particles::ParticleCullView::new(
+                    camera,
+                    [yaw, pitch],
+                    size,
+                    self.settings.fov,
+                    fov_degrees,
+                    depth_far,
+                )
+            });
+            self.client_particle_geometry(
+                camera,
+                alpha,
+                fov_degrees,
+                cull.as_ref()
+                    .map(|cull| (cull, &mut explicit_particle_quads)),
+                &mut entities,
+            );
             self.polytone_gpu_particles(camera, alpha);
         }
         let mut world_geometry = self.world_geometry.take().expect("view storage");
@@ -11458,6 +11494,7 @@ impl Game<'_> {
                 height: sky.cloud_height,
             }),
             entities: &entities,
+            explicit_particles: Some(&explicit_particle_quads),
             static_block_entities: &static_block_entities,
             visible_static_block_entity_sections: &visible_static_block_entity_sections,
             static_block_entity_stats,
@@ -11569,6 +11606,7 @@ impl Game<'_> {
         self.frame_drawn = matches!(result, Ok(true));
         // Restore storage even when rendering fails (for example, a lost surface).
         self.entity_vertices = entities;
+        self.explicit_particle_quads = explicit_particle_quads;
         self.world_geometry = Some(world_geometry);
         *self.entity_spans.get_mut() = entity_spans;
         *self.entity_motion.get_mut() = entity_motion;
@@ -13525,6 +13563,7 @@ impl<'a> Game<'a> {
             ticked_entities_through: u32::MAX,
             contact_drops: 0..0,
             particles,
+            explicit_particle_quads: Default::default(),
             pickups: Default::default(),
             sign_edit: None,
             book: None,
