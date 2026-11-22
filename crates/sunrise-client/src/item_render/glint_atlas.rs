@@ -70,12 +70,11 @@ fn collect_entries(root: &ResourceSource, atlas_id: &str) -> Vec<Entry> {
                     "{}.mcmeta",
                     atlas_sources::texture_resource(texture, "textures")
                 );
-                let metadata = root
-                    .read_to_string(&path)
-                    .ok()
-                    .map(|text| serde_json::from_str::<serde_json::Value>(&text))
-                    .transpose()
-                    .ok()?;
+                let metadata = match root.read(&path) {
+                    Ok(bytes) => Some(crate::packs::first_json::<serde_json::Value>(&bytes).ok()?),
+                    Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
+                    Err(_) => return None,
+                };
                 if let Some(metadata) = &metadata {
                     metadata.as_object()?;
                     if let Some(texture) = metadata.get("texture") {
