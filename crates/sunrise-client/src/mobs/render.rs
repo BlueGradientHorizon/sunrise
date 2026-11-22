@@ -1457,8 +1457,8 @@ pub fn compile_part(
 }
 /// Whether a native mod draws the part `part` of the model layer `layer`
 /// (`minecraft:player#main`) itself, in its replacement of [`compile_part`]. A model with a
-/// part taken is drawn on the CPU, where [`compile_part`] runs; the mob's other models stay on
-/// the GPU where the draw order allows it.
+/// part taken is drawn on the CPU, where [`compile_part`] runs. The mob's other eligible models
+/// stay on the GPU, in the same draw order.
 ///
 /// The answer must be fixed per (layer, part) for the whole session: it is asked once per
 /// model, the first time the GPU path sees it, and kept. What changes per entity or per frame

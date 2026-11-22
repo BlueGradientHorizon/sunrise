@@ -3,7 +3,7 @@
 fn client_draw() {
     use std::sync::Arc;
     use sunrise_client::gfx::entity_skin::SkinFrame;
-    use sunrise_client::mobs::{Mob, MobData, MobTypes, Part, render, skin};
+    use sunrise_client::mobs::{Mob, MobData, MobTypes, Part, Polygon, render, skin};
     use sunrise_core::geometry::Vec3;
 
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_FNR_LOWER_DRAW").unwrap());
@@ -30,24 +30,33 @@ fn client_draw() {
         .enumerate()
         .map(|(i, name)| {
             let x = i as f32;
-            let [a, b, c, d] = corners.map(|[px, py, pz]| [px, py, pz, (x + pz) / 16.0, py / 16.0]);
-            (
-                name.to_owned(),
-                serde_json::json!({
-                    "pose": [x, 2.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
-                    "polygons": [[a, b, c, d]],
-                    "normals": [[1, 0, 0]],
-                }),
-            )
+            Part {
+                name: name.into(),
+                pose: [x, 2.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+                polygons: vec![Polygon {
+                    normal: [1.0, 0.0, 0.0],
+                    vertices: corners.map(|[px, py, pz]| [px, py, pz, (x + pz) / 16.0, py / 16.0]),
+                    cull_back: false,
+                }],
+                children: Vec::new(),
+                layer: None,
+            }
         })
-        .collect::<serde_json::Map<_, _>>();
-    let tree = serde_json::json!({ "children": children });
+        .collect();
     // This is a zombie either way, not the inherently CPU-only player draw. Its synthetic
     // model has identical parts in both cases; only the layer name the installed rows see differs.
-    kind.model = Arc::new(Part::parse_layer("minecraft:zombie#main", &tree));
+    let mut model = Part {
+        name: "root".into(),
+        pose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        polygons: Vec::new(),
+        children,
+        layer: Some("minecraft:zombie#main".into()),
+    };
+    kind.model = Arc::new(model.clone());
     let mut control = Mob::new(1, Arc::new(kind.clone()), Vec3::ZERO, 0.0);
     control.hurt_time = 4;
-    kind.model = Arc::new(Part::parse_layer("minecraft:player#main", &tree));
+    model.layer = Some("minecraft:player#main".into());
+    kind.model = Arc::new(model);
     let mut selected = Mob::new(1, Arc::new(kind), Vec3::ZERO, 0.0);
     selected.hurt_time = control.hurt_time;
     let data = MobData {

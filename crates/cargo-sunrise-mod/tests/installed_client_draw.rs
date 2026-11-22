@@ -47,7 +47,7 @@ fn installed_lower_bends_and_routes_a_client_model() {
     assert!(
         Command::new("cp")
             .arg("-R")
-            .arg(source.join("tools/ci/fn-replace-check/lower"))
+            .arg(repo.join("tools/ci/fn-replace-check/lower"))
             .arg(&project)
             .status()
             .unwrap()
@@ -65,7 +65,7 @@ fn installed_lower_bends_and_routes_a_client_model() {
         r#"
 [[native.mixin]]
 id = "client_draw"
-target = "sunrise_client::game::native_hooks::bounce_restitution::install_block_contact_hooks"
+target = "sunrise_client::game::loading_screen::missing_resources"
 kind = "HEAD"
 helper = "src/mixins/client_draw.rs"
 "#,
