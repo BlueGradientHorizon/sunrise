@@ -290,7 +290,7 @@ impl TagSources<'_> {
                 .damage
                 .id(id)
                 .is_some_and(|source| self.damage.in_tag(source, tag)),
-            "entity_type" => self.mob_data.entity_has(tag, id),
+            "entity_type" => self.items.entity_type_tags.contains(tag, id),
             "worldgen/biome" => self.mob_data.biome_has(tag, id),
             "worldgen/structure" => vanilla_structure_tags(self.resources)
                 .get(tag)
