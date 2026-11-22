@@ -5,7 +5,8 @@ pub trait Hooks {
     /// (`ScreenEvent.MouseButtonPressed.Post`). The matching Pre must not have cancelled.
     /// `screen`, `button`, `modifiers` and `double_click` are the press Pre values, even if
     /// the press closed or replaced that screen. Every listener sees `was_click_handled`,
-    /// the original answer from the mounted widget or screen handler.
+    /// the receiving handler's original answer. A hit on the first child counts as handled
+    /// even when that child declines and does not take focus.
     ///
     /// Listeners share `result`: `TriState::Default` keeps that answer, `TriState::True` forces
     /// handled and `TriState::False` forces unhandled. The final answer controls double-click
@@ -19,7 +20,7 @@ pub trait Hooks {
         event_per_listener = true,
         neoforge = "ScreenEvent.MouseButtonPressed.Post",
         cancellable = false,
-        version = 2
+        version = 3
     )]
     fn screen_mouse_button_pressed_post(
         screen: &ScreenView<'_>,
@@ -33,7 +34,8 @@ pub trait Hooks {
     /// (`ScreenEvent.MouseButtonReleased.Post`). The matching Pre must not have cancelled.
     /// `screen`, `button` and `modifiers` come from the release's Pre, not the earlier press
     /// or a screen the release opened. Every listener sees `was_release_handled`, the original
-    /// answer from the mounted widget or screen handler.
+    /// answer from the receiving handler. Completing quick-craft is not itself a handled
+    /// release: the child still answers. An early swallowed container release is handled.
     ///
     /// Listeners share `result`: `TriState::Default` keeps that answer, `TriState::True` forces
     /// handled and `TriState::False` forces unhandled. An unhandled release can reach gameplay
@@ -47,7 +49,7 @@ pub trait Hooks {
         event_per_listener = true,
         neoforge = "ScreenEvent.MouseButtonReleased.Post",
         cancellable = false,
-        version = 2
+        version = 3
     )]
     fn screen_mouse_button_released_post(
         screen: &ScreenView<'_>,
@@ -99,7 +101,7 @@ pub trait Hooks {
         receiver = "read",
         dispatch = "flat",
         side = "client",
-        version = 2,
+        version = 3,
         contract = "cancel",
         out = "canceled",
         neoforge = "ScreenEvent.KeyPressed.Post",
