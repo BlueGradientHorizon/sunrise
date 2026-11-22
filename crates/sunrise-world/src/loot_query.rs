@@ -12,6 +12,7 @@ pub(super) fn roll_facts<'a>(
         entity: entity.map(|e| e.this),
         damage: entity.and_then(|e| e.damage),
         player: entity.and_then(|e| e.player),
+        interacting_entity: None,
         tool: query
             .tool
             .as_ref()

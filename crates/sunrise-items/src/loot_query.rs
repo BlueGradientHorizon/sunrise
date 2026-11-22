@@ -1,5 +1,6 @@
 use super::*;
-use sunrise_world::loot::LootToolAccess;
+use crate::loot_candidate::LootCandidate;
+use sunrise_world::loot::{LootListAccess, LootStackAccess, LootToolAccess};
 
 impl LootToolAccess for ItemStack {
     fn item_id(&self) -> &str {
@@ -55,53 +56,66 @@ impl<R: RandomSource> LootContext<'_, R> {
         table: &Value,
         random: &mut R,
     ) -> Vec<ItemStack> {
-        let raw = self.evaluate(table, random);
+        let raw = self.evaluate_candidates(table, random);
         self.complete_root(id, raw, random, None)
     }
     pub(super) fn complete_root(
         &self,
         id: Option<&str>,
-        raw: Vec<ItemStack>,
+        raw: Vec<LootCandidate>,
         random: &mut R,
         dynamic: Option<&[ItemStack]>,
     ) -> Vec<ItemStack> {
-        let stacks = self.items.split_loot_stacks(raw);
+        let stacks = self.items.split_loot_candidates(raw);
         self.query.finish(id);
         let generation = &self.items.global_modifiers;
         if generation.is_empty() && dynamic.is_none() {
-            return stacks;
+            return stacks
+                .into_iter()
+                .map(|candidate| candidate.into_item_stack(self.items))
+                .collect();
         }
         let dynamic = dynamic.unwrap_or(&[]);
-        let stacks = self.expand_dynamic(stacks, dynamic, true);
+        let mut generated = self.expand_dynamic(stacks, dynamic, true);
         if generation.is_empty() {
-            return stacks;
+            return generated
+                .into_iter()
+                .map(|candidate| candidate.into_item_stack(self.items))
+                .collect();
         }
-        let mut generated = stacks.iter().map(loot_of).collect();
         let mut scope = ModifierScope {
             context: self,
             random,
             dynamic,
         };
         generation.apply(&mut scope, &mut generated);
-        generated.iter().map(ItemStack::from_loot).collect()
+        generated
+            .into_iter()
+            .map(|candidate| candidate.into_item_stack(self.items))
+            .collect()
     }
     fn expand_dynamic(
         &self,
-        stacks: Vec<ItemStack>,
+        stacks: Vec<LootCandidate>,
         dynamic: &[ItemStack],
         split: bool,
-    ) -> Vec<ItemStack> {
-        if !stacks.iter().any(|stack| stack.item.starts_with(DYNAMIC)) {
+    ) -> Vec<LootCandidate> {
+        if !stacks.iter().any(LootCandidate::is_dynamic_marker) {
             return stacks;
         }
         stacks
             .into_iter()
             .flat_map(|stack| {
-                if stack.item.starts_with(DYNAMIC) {
+                if stack.is_dynamic_marker() {
+                    let dynamic = dynamic
+                        .iter()
+                        .cloned()
+                        .map(LootCandidate::from_stack)
+                        .collect();
                     if split {
-                        self.items.split_loot_stacks(dynamic.to_vec())
+                        self.items.split_loot_candidates(dynamic)
                     } else {
-                        dynamic.to_vec()
+                        dynamic
                     }
                 } else {
                     vec![stack]
@@ -117,6 +131,7 @@ impl<R: RandomSource> LootContext<'_, R> {
             entity: self.target.map(|(entity, _)| entity),
             damage: None,
             player: None,
+            interacting_entity: self.interacting_entity.map(|(entity, _)| entity),
             block: (!self.block.is_empty()).then_some(self.block),
             tool: self.held.map(|tool| tool as &dyn LootToolAccess),
             luck: 0.0,
@@ -130,46 +145,16 @@ impl ItemStack {
     /// Convert loot facts using the same component write path as native loot functions.
     /// Caller consumption: signed empty counts become zero without removing their list position.
     pub fn from_loot(value: &sunrise_world::loot::LootStack) -> Self {
-        let mut stack = Self {
-            item: Arc::from(value.item.as_str()),
-            count: 1,
-            damage: 0,
-            extra: None,
-        };
-        let before = loot_of(&stack);
-        apply_loot(&before, value, &mut stack, |_, _| None);
-        stack
+        LootCandidate::from_loot_stack(value)
     }
 }
 
 impl Items {
     /// `LootTable.createStackSplitter`, also used after resolving dynamic drops.
-    pub(super) fn split_loot_stacks(&self, stacks: Vec<ItemStack>) -> Vec<ItemStack> {
-        // Stack limits are at least one: singles and empty positions need no lookup.
-        if !stacks.iter().any(|stack| {
-            stack.count > 1
-                && !stack.item.starts_with(DYNAMIC)
-                && stack.count > crate::bundle::max_stack(self, stack)
-        }) {
-            return stacks;
-        }
+    pub(super) fn split_loot_candidates(&self, stacks: Vec<LootCandidate>) -> Vec<LootCandidate> {
         let mut out = Vec::with_capacity(stacks.len());
         for stack in stacks {
-            // A dynamic marker is not an item. Its supplied stacks are split
-            // when block_drops resolves it, never the marker's own count.
-            if stack.count <= 1 || stack.item.starts_with(DYNAMIC) {
-                out.push(stack);
-                continue;
-            }
-            let max = crate::bundle::max_stack(self, &stack);
-            let mut count = stack.count;
-            while count > max {
-                let mut part = stack.clone();
-                part.count = max;
-                out.push(part);
-                count -= max;
-            }
-            out.push(ItemStack { count, ..stack });
+            stack.split_into(self, &mut out);
         }
         out
     }
@@ -215,13 +200,16 @@ impl Items {
     /// for a right click on `state` (its `match_block` conditions see the
     /// state), from the table's random sequence when it has one.
     /// `interacting` is `INTERACTING_ENTITY`, the player or mob that clicked;
+    /// `held` is `TOOL`, the item used to interact (if any);
     /// `location` reads the world around `ORIGIN`, the block's centre.
+    #[allow(clippy::too_many_arguments)]
     pub fn interact_loot(
         &self,
         id: &str,
         registry: &BlockRegistry,
         state: BlockStateId,
         interacting: Option<crate::items::EntityTarget<'_>>,
+        held: Option<&ItemStack>,
         location: Option<&dyn Fn(&Value) -> Option<bool>>,
         random: &mut impl RandomSource,
         sequences: &mut crate::random_sequences::RandomSequences,
@@ -240,6 +228,7 @@ impl Items {
                         &block.name,
                         &block.properties,
                         interacting,
+                        held,
                         location,
                         random,
                     )
@@ -250,6 +239,7 @@ impl Items {
                     &block.name,
                     &block.properties,
                     interacting,
+                    held,
                     location,
                     random,
                 ),
@@ -274,7 +264,7 @@ struct ModifierScope<'s, 'a, R> {
     dynamic: &'s [ItemStack],
 }
 impl<R: RandomSource> ModifierScope<'_, '_, R> {
-    fn eval_raw(&mut self, id: &str) -> std::result::Result<Vec<ItemStack>, String> {
+    fn eval_raw(&mut self, id: &str) -> std::result::Result<Vec<LootCandidate>, String> {
         let context = self.context;
         let table = context
             .items
@@ -305,7 +295,7 @@ impl<R: RandomSource> ModifierScope<'_, '_, R> {
             location: context.location,
             keep_empty: true,
         }
-        .evaluate(table, self.random);
+        .evaluate_candidates(table, self.random);
         Ok(context.expand_dynamic(raw, self.dynamic, false))
     }
 }
@@ -346,21 +336,26 @@ impl<R: RandomSource> sunrise_world::loot::global_modifiers::ModifierRoll
     fn roll_raw(
         &mut self,
         id: &str,
-        visit: &mut dyn FnMut(&sunrise_world::loot::LootStack),
+        visit: &mut dyn FnMut(&dyn LootStackAccess),
     ) -> std::result::Result<(), String> {
-        for stack in self.eval_raw(id)? {
-            let raw = loot_of(&stack);
-            visit(&raw);
+        for candidate in self.eval_raw(id)? {
+            visit(&candidate);
         }
         Ok(())
     }
     fn append_raw(
         &mut self,
         id: &str,
-        generated: &mut Vec<sunrise_world::loot::LootStack>,
+        generated: &mut dyn LootListAccess,
     ) -> std::result::Result<(), String> {
         let raw = self.eval_raw(id)?;
-        generated.extend(raw.iter().map(loot_of));
+        if let Some(vec) = generated.as_any_mut().downcast_mut::<Vec<LootCandidate>>() {
+            vec.extend(raw);
+        } else {
+            for candidate in raw {
+                candidate.push_into_list(generated);
+            }
+        }
         Ok(())
     }
 }

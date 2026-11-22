@@ -45,6 +45,7 @@ ids = [
     "method:LootModifierContext::append_raw",
     # Borrowed loot parameter views, stack editors, and live generated list
     "type:LootParamsView",
+    "handle:LootParamsView::interacting_entity",
     "type:LootToolView",
     "type:LootEntityView",
     "type:LootDamageView",
@@ -69,6 +70,7 @@ why = """
 Vanilla 26.3 (`net.minecraft.world.level.storage.loot.LootContext`, `LootParams`,
 `LootItemFunction`, `LootItemCondition`, `LootItemConditionalFunction`,
 `LootContextUser.getReferencedContextParams`, `LootTable.getRandomItems`,
+`Block.dropFromBlockInteractLootTable`, `LootContextParamSets.BLOCK_INTERACT`,
 `NbtAccounter.MAX_STACK_DEPTH`) and NeoForge (`IGlobalLootModifier`,
 `CanItemPerformAbility`, `IItemExtension.canPerformAction`) decode custom loot
 functions and conditions once when data loads into bound rule objects, lend
@@ -114,10 +116,10 @@ migrate = """
    - Replace field reads on `LootContext`, `LootTool`, `LootEntity`,
      `LootDamage`, `LootPlace` and `LootLevel` with the corresponding getter
      methods on `LootParamsView` and its child views (`params.entity()`,
-     `params.last_damage_player()`, `params.damage()`, `params.tool()`,
-     `params.block()`, `params.biome()`, `params.origin()`,
-     `params.block_entity()`, `params.level()`, `params.luck()`,
-     `params.queried_table_id()`, `params.queried_stack()`).
+     `params.last_damage_player()`, `params.interacting_entity()`,
+     `params.damage()`, `params.tool()`, `params.block()`, `params.biome()`,
+     `params.origin()`, `params.block_entity()`, `params.level()`,
+     `params.luck()`, `params.queried_table_id()`, `params.queried_stack()`).
    - Release any borrow from `context.params()` before calling `context.random()`,
      and use `context.random()` directly (the removed `seed` field had no seed).
    - `LootStack`, `ExplorationMap`, `LootModifierError` and `LootModifierSettings`

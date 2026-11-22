@@ -124,8 +124,11 @@ impl<'a> PackOverlay<'a> {
     }
 }
 
-/// Engine reader for the tool's existing identity and enchantments.
-pub use mod_api::__private::LootToolAccess;
+/// Engine readers and editors for live loot parameters, candidates and output lists.
+pub use mod_api::__private::{
+    LootListAccess, LootStackAccess, LootStackEditAccess, LootToolAccess,
+};
+pub use mod_api::{ExplorationMap as ApiExplorationMap, LootExplorationView};
 
 /// Parameters borrowed from either evaluator for the duration of a loot operation.
 /// Randomness is lent separately from these immutable inputs.
@@ -141,6 +144,8 @@ pub struct LootContext<'a> {
     pub damage: Option<&'a LootDamage>,
     /// `LAST_DAMAGE_PLAYER`, when supplied.
     pub player: Option<&'a LootEntity>,
+    /// `INTERACTING_ENTITY`, when supplied.
+    pub interacting_entity: Option<&'a LootEntity>,
     /// `TOOL`, when supplied.
     pub tool: Option<&'a dyn LootToolAccess>,
     /// Block identifier for a block or block-interaction roll.

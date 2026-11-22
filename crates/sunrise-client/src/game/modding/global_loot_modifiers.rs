@@ -142,7 +142,7 @@ impl ModifierApply for Adapter {
     fn apply(
         &self,
         roll: &mut dyn ModifierRoll,
-        generated: &mut Vec<loot::LootStack>,
+        generated: &mut dyn loot::LootListAccess,
     ) -> Result<(), String> {
         let mut context = RollAdapter { roll };
         let mut list = super::api_values::loot_values::loot_list(generated);
@@ -177,14 +177,7 @@ impl mod_api::LootModifierContext for RollAdapter<'_> {
         table: &Identifier,
         generated: &mut mod_api::LootList<'_>,
     ) -> Result<(), LootModifierError> {
-        let target = generated
-            .downcast_mut::<Vec<loot::LootStack>>()
-            .ok_or_else(|| {
-                LootModifierError::new(
-                    "append_raw",
-                    "target list is not backed by the active loot evaluator",
-                )
-            })?;
+        let target = generated.access_mut();
         mod_api::__private::game::CallbackOwner::call_engine(|| {
             self.roll.append_raw(&table.to_string(), target)
         })

@@ -165,8 +165,8 @@ the table functions. `LootStack` and `ExplorationMap` are in-process owned snaps
 `Wire`). The items evaluator consumes stacks into its ordinary item representation and has
 no structure-search capability.
 
-`params.entity()`, `damage()`, `last_damage_player()`, `tool()`, `block()` and
-`biome()` return only parameters the caller supplied. The place reads are
+`params.entity()`, `damage()`, `last_damage_player()`, `interacting_entity()`,
+`tool()`, `block()` and `biome()` return only parameters the caller supplied. The place reads are
 `origin()`, `block_entity()` and `level()`; the level view lends dimension, elapsed
 game time, day time and weather. `luck()` is the value applied to the roll. For
 example, `params.entity().and_then(|entity| entity.equipment("mainhand"))`

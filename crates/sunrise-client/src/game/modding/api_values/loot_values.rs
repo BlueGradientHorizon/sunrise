@@ -19,6 +19,9 @@ pub(crate) fn loot_params(facts: engine::LootContext<'_>) -> mod_api::LootParams
             }),
             entity: facts.entity.map(|entity| entity as &dyn LootEntityAccess),
             last_damage_player: facts.player.map(|entity| entity as &dyn LootEntityAccess),
+            interacting_entity: facts
+                .interacting_entity
+                .map(|entity| entity as &dyn LootEntityAccess),
             damage: facts.damage.map(|damage| damage as &dyn LootDamageAccess),
             tool: facts.tool,
             block: facts.block,
@@ -42,12 +45,14 @@ fn encode_loot_name(
 }
 
 /// Borrow one raw loot candidate without converting it to an owned API stack.
-pub(crate) fn loot_stack_view(stack: &engine::LootStack) -> mod_api::LootStackView<'_> {
+pub(crate) fn loot_stack_view(stack: &dyn engine::LootStackAccess) -> mod_api::LootStackView<'_> {
     mod_api::LootStackView::new(stack, sunrise_client_lib::api_text::captured_text)
 }
 
 /// Borrow the evaluator's live candidate for one function invocation.
-pub(crate) fn loot_stack_editor(stack: &mut engine::LootStack) -> mod_api::LootStackEditor<'_> {
+pub(crate) fn loot_stack_editor(
+    stack: &mut dyn engine::LootStackEditAccess,
+) -> mod_api::LootStackEditor<'_> {
     mod_api::LootStackEditor::new(
         stack,
         sunrise_client_lib::api_text::captured_text,
@@ -56,7 +61,7 @@ pub(crate) fn loot_stack_editor(stack: &mut engine::LootStack) -> mod_api::LootS
 }
 
 /// Borrow the evaluator's live generated loot list for one global modifier invocation.
-pub(crate) fn loot_list(stacks: &mut Vec<engine::LootStack>) -> mod_api::LootList<'_> {
+pub(crate) fn loot_list(stacks: &mut dyn engine::LootListAccess) -> mod_api::LootList<'_> {
     mod_api::LootList::new(
         stacks,
         sunrise_client_lib::api_text::captured_text,
@@ -314,6 +319,10 @@ mod tests {
             );
             assert!(level.raining() && !level.thundering());
             assert!(params.block_entity().is_none());
+            assert_eq!(
+                params.interacting_entity().map(|entity| entity.kind()),
+                Some("minecraft:player")
+            );
             assert!(params.tool().is_none());
             assert!(params.block().is_none());
             Ok(true)
@@ -329,6 +338,7 @@ mod tests {
         let mut equipment = stack();
         equipment.components[1].1 = None;
         victim.equipment.push(("mainhand".into(), equipment));
+        let actor = engine::LootEntity::new("minecraft:player");
         let damage = engine::LootDamage {
             kind: "minecraft:arrow".into(),
             source: Some(engine::LootEntity::new("minecraft:skeleton")),
@@ -349,6 +359,7 @@ mod tests {
             let place = engine::current_native_loot_place().unwrap();
             let facts = engine::LootContext {
                 entity: Some(&victim),
+                interacting_entity: Some(&actor),
                 damage: Some(&damage),
                 place: Some(&place),
                 ..Default::default()

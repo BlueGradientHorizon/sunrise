@@ -42,7 +42,7 @@ impl BoundFunction for RefusingFunction {
         _: &loot::LootContext<'_>,
         _: &mut dyn RollRandom,
         _: &dyn loot::LootTags,
-        _: &mut LootStack,
+        _: &mut dyn loot::LootStackEditAccess,
     ) -> Result<(), String> {
         Err("mod test: function refused".into())
     }
@@ -119,6 +119,7 @@ fn ordinary_callback_refusals_report_each_call_with_type_location_and_reason() {
         entity: None,
         damage: None,
         player: None,
+        interacting_entity: None,
         tool: None,
         block: None,
         luck: 0.0,

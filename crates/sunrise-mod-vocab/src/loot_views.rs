@@ -16,6 +16,7 @@ pub struct LootParamsParts<'a> {
     pub queried_stack: Option<QueriedStack<'a>>,
     pub entity: Option<&'a dyn LootEntityAccess>,
     pub last_damage_player: Option<&'a dyn LootEntityAccess>,
+    pub interacting_entity: Option<&'a dyn LootEntityAccess>,
     pub damage: Option<&'a dyn LootDamageAccess>,
     pub tool: Option<&'a dyn LootToolAccess>,
     pub block: Option<&'a str>,
@@ -72,6 +73,11 @@ impl<'a> LootParamsView<'a> {
     /// The player named by `LAST_DAMAGE_PLAYER`.
     pub fn last_damage_player(&self) -> Option<LootEntityView<'a>> {
         Some(LootEntityView(self.0.last_damage_player?, self.1))
+    }
+
+    /// The entity named by `INTERACTING_ENTITY` in a block-interaction roll.
+    pub fn interacting_entity(&self) -> Option<LootEntityView<'a>> {
+        Some(LootEntityView(self.0.interacting_entity?, self.1))
     }
 
     /// The damage source supplied to this roll.
@@ -934,6 +940,12 @@ impl<'a> LootList<'a> {
     #[doc(hidden)]
     pub fn downcast_mut<T: 'static>(&mut self) -> Option<&mut T> {
         self.list.as_any_mut().downcast_mut::<T>()
+    }
+
+    // hidden: lends the evaluator's backing list directly to `ModifierRoll::append_raw`.
+    #[doc(hidden)]
+    pub fn access_mut(&mut self) -> &mut dyn LootListAccess {
+        self.list
     }
 
     /// Number of loot candidates currently in the list.

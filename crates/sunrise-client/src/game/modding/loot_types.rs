@@ -86,7 +86,7 @@ impl BoundFunction for BoundFunctionAdapter {
         ctx: &loot::LootContext<'_>,
         random: &mut dyn RollRandom,
         tags: &dyn loot::LootTags,
-        stack: &mut loot::LootStack,
+        stack: &mut dyn loot::LootStackEditAccess,
     ) -> Result<(), String> {
         let mut editor = loot_stack_editor(stack);
         let mut context = Context {

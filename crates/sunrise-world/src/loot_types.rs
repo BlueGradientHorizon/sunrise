@@ -1,5 +1,5 @@
 //! Load-time codec binding and direct rule dispatch, shared by both loot evaluators.
-use crate::loot::{LootContext, LootStack, LootTags};
+use crate::loot::{LootContext, LootStack, LootStackEditAccess, LootTags};
 use serde_json::Value;
 #[cfg(test)]
 #[path = "loot_types/argument_tests.rs"]
@@ -72,7 +72,7 @@ pub trait BoundFunction: Send + Sync {
         ctx: &LootContext<'_>,
         random: &mut dyn RollRandom,
         tags: &dyn LootTags,
-        stack: &mut LootStack,
+        stack: &mut dyn LootStackEditAccess,
     ) -> Result<(), String>;
 }
 
@@ -269,7 +269,7 @@ impl BoundEntry<dyn BoundFunction> {
         ctx: &LootContext<'_>,
         random: &mut dyn RollRandom,
         tags: &dyn LootTags,
-        stack: &mut LootStack,
+        stack: &mut dyn LootStackEditAccess,
     ) {
         if let Err(reason) = self.rule.apply(ctx, random, tags, stack) {
             log::warn!(
