@@ -113,6 +113,11 @@ fn setup_remote_overworld(game: &mut Game<'_>, player_id: i32, player_pos: [f64;
     server
 }
 
+fn fixture_entity_uuid(id: i32) -> u128 {
+    // The wire ID can be negative; the independent fixture UUID only needs to be unique.
+    u128::from(id.cast_unsigned()) + 1000
+}
+
 fn add_entity_with_data(
     game: &mut Game<'_>,
     id: i32,
@@ -122,7 +127,7 @@ fn add_entity_with_data(
     pitch: f32,
     data: i32,
 ) {
-    let uuid = id as u128 + 1000;
+    let uuid = fixture_entity_uuid(id);
     let kind_id = entity_type_id(game, kind);
     let y = pack_degrees(yaw);
     let p = pack_degrees(pitch);
@@ -340,7 +345,7 @@ fn replay_witness_case(game: &mut Game<'_>, tc: &Value) -> Pipe {
         for (id_str, mode_val) in modes {
             let id: i32 = id_str.parse().unwrap();
             let mode = mode_val.as_i64().unwrap() as i32;
-            let uuid = id as u128 + 1000;
+            let uuid = fixture_entity_uuid(id);
             game.handle_packet(C::PlayerInfoUpdate(play::PlayerInfoUpdate {
                 actions: 1 | 4,
                 entries: vec![play::PlayerInfo {
