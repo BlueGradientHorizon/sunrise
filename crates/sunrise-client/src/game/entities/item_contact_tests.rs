@@ -956,7 +956,7 @@ fn step_on_can_hurt_only_living_bodies_on_the_same_block() {
                     let mut pig =
                         sunrise_client::mobs::Mob::new(77, kind, Vec3::new(4.5, 64.0, 4.5), 0.0);
                     pig.no_ai = true;
-                    pig.on_ground = true;
+                    pig.ground.on_ground = true;
                     let pig_health = pig.health;
                     game.mobs.push(pig);
                     game.spawn_item(
