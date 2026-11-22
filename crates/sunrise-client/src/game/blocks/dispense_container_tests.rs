@@ -2,7 +2,10 @@
 //! that returns it fills and empties a bucket-like container (its empty and full forms
 //! different items), picks up before it places, sends the remainder into the dispenser or out
 //! of its front, and dispenses an unchanged container where nothing moves.
-use crate::game::{Dim, Game, api_values::test_snapshot, dispense_fixture, transactions::After};
+use crate::game::{
+    Dim, Game, api_values::test_snapshot, dispense_fixture,
+    native_entity_refs::tests::run_fresh_cases, transactions::After,
+};
 use mod_api::{prelude::ItemsServerHost, *};
 use std::sync::{Arc, Mutex};
 use sunrise_client::{chunk::Chunk, items::ItemStack};
@@ -265,6 +268,14 @@ impl ResourceHandler<FluidResource> for MultiStepJug {
     }
 }
 
+fn spawn_dispenser_case(test: &str) -> bool {
+    run_fresh_cases(
+        &format!("game::dispense_container_tests::{test}"),
+        "SUNRISE_DISPENSE_CONTAINER_CASE",
+        &["dispenser"],
+    )
+}
+
 /// A dedicated server with a chunk at the origin, a stone floor, an empty dispenser facing east
 /// and the containers' parts installed.
 fn with_dispenser(test: impl FnOnce(&mut Game<'_>, LevelRef)) {
@@ -352,6 +363,10 @@ fn item(stack: &Option<ItemStack>) -> Option<(String, u32)> {
 #[test]
 #[ignore = "daily"]
 fn a_bucket_like_container_fills_from_a_source_and_empties_into_the_air() {
+    if spawn_dispenser_case("a_bucket_like_container_fills_from_a_source_and_empties_into_the_air")
+    {
+        return;
+    }
     with_dispenser(|game, _| {
         set_front(game, "minecraft:water");
         let filled = dispense(game, ItemStack::new("minecraft:bucket", 1));
@@ -367,6 +382,11 @@ fn a_bucket_like_container_fills_from_a_source_and_empties_into_the_air() {
 #[test]
 #[ignore = "daily"]
 fn a_stack_of_three_in_a_full_dispenser_drops_the_new_container_out_of_the_front() {
+    if spawn_dispenser_case(
+        "a_stack_of_three_in_a_full_dispenser_drops_the_new_container_out_of_the_front",
+    ) {
+        return;
+    }
     with_dispenser(|game, _| {
         let pos = (DISPENSER[0], DISPENSER[1], DISPENSER[2]);
         for cell in game.world.block_entities.get_mut(&pos).unwrap().slots_mut() {
@@ -393,6 +413,11 @@ fn a_stack_of_three_in_a_full_dispenser_drops_the_new_container_out_of_the_front
 #[test]
 #[ignore = "daily"]
 fn a_failed_transfer_dispenses_one_unchanged_container_and_changes_nothing() {
+    if spawn_dispenser_case(
+        "a_failed_transfer_dispenses_one_unchanged_container_and_changes_nothing",
+    ) {
+        return;
+    }
     with_dispenser(|game, _| {
         set_front(game, "minecraft:stone");
         dispense_fixture::start_recording();
@@ -412,6 +437,9 @@ fn a_failed_transfer_dispenses_one_unchanged_container_and_changes_nothing() {
 #[test]
 #[ignore = "daily"]
 fn oversized_dispenser_stacks_keep_their_count_until_the_slot_write() {
+    if spawn_dispenser_case("oversized_dispenser_stacks_keep_their_count_until_the_slot_write") {
+        return;
+    }
     with_dispenser(|game, _| {
         let stack = ItemStack::new("minecraft:bucket", 20);
         game.world
@@ -447,6 +475,11 @@ fn oversized_dispenser_stacks_keep_their_count_until_the_slot_write() {
 #[test]
 #[ignore = "daily"]
 fn removed_max_stack_size_limits_dispenser_placement_and_scratch_insertion() {
+    if spawn_dispenser_case(
+        "removed_max_stack_size_limits_dispenser_placement_and_scratch_insertion",
+    ) {
+        return;
+    }
     with_dispenser(|game, _| {
         game.world
             .block_entities
@@ -485,6 +518,9 @@ fn removed_max_stack_size_limits_dispenser_placement_and_scratch_insertion() {
 #[test]
 #[ignore = "daily"]
 fn oversized_failed_transfer_runs_the_helpers_default_dispense() {
+    if spawn_dispenser_case("oversized_failed_transfer_runs_the_helpers_default_dispense") {
+        return;
+    }
     with_dispenser(|game, _| {
         set_front(game, "minecraft:stone");
         dispense_fixture::start_recording();
@@ -506,6 +542,9 @@ fn oversized_failed_transfer_runs_the_helpers_default_dispense() {
 #[test]
 #[ignore = "daily"]
 fn dispenser_remainder_merges_without_contents_changed() {
+    if spawn_dispenser_case("dispenser_remainder_merges_without_contents_changed") {
+        return;
+    }
     with_dispenser_notices(Notices::default(), |game, _, notices| {
         let notices = &notices.contents;
         game.world
@@ -551,6 +590,9 @@ fn dispenser_remainder_merges_without_contents_changed() {
 #[test]
 #[ignore = "daily"]
 fn nested_dispense_settles_in_the_command_source_level() {
+    if spawn_dispenser_case("nested_dispense_settles_in_the_command_source_level") {
+        return;
+    }
     with_dispenser_notices(Notices::default(), |game, _, notices| {
         let notices = &notices.contents;
         let marker = ItemStack::new("minecraft:stick", 10);
@@ -676,6 +718,11 @@ fn nested_dispense_settles_in_the_command_source_level() {
 #[test]
 #[ignore = "daily"]
 fn nested_dispense_container_publishes_fluid_changes_only_in_the_source_level() {
+    if spawn_dispenser_case(
+        "nested_dispense_container_publishes_fluid_changes_only_in_the_source_level",
+    ) {
+        return;
+    }
     with_dispenser_notices(Notices::default(), |game, _, notices| {
         let overworld = game.server_source();
         let mut nether = overworld;
@@ -809,6 +856,11 @@ fn nested_dispense_container_publishes_fluid_changes_only_in_the_source_level() 
 #[test]
 #[ignore = "daily"]
 fn a_transaction_in_the_fluid_pickup_listener_does_not_delay_later_attachment_removal() {
+    if spawn_dispenser_case(
+        "a_transaction_in_the_fluid_pickup_listener_does_not_delay_later_attachment_removal",
+    ) {
+        return;
+    }
     use sunrise_mod_runtime::attachments::{AttachmentType, Holder};
 
     static VALUE: AttachmentType<i32> = AttachmentType {
@@ -881,6 +933,11 @@ fn a_transaction_in_the_fluid_pickup_listener_does_not_delay_later_attachment_re
 #[test]
 #[ignore = "daily"]
 fn a_container_that_could_give_picks_up_first_and_its_event_comes_before_the_click() {
+    if spawn_dispenser_case(
+        "a_container_that_could_give_picks_up_first_and_its_event_comes_before_the_click",
+    ) {
+        return;
+    }
     with_dispenser(|game, _| {
         crate::game::native_item_places::tests::open_to_lan(game);
         set_front(game, "minecraft:water");
@@ -967,6 +1024,9 @@ fn a_container_that_could_give_picks_up_first_and_its_event_comes_before_the_cli
 #[test]
 #[ignore = "daily"]
 fn a_stack_of_custom_containers_gives_their_handler_one_at_a_time() {
+    if spawn_dispenser_case("a_stack_of_custom_containers_gives_their_handler_one_at_a_time") {
+        return;
+    }
     with_dispenser(|game, _| {
         set_front(game, "minecraft:water");
         let left = dispense(game, ItemStack::new("minecraft:glass_bottle", 3));
@@ -992,6 +1052,11 @@ fn a_stack_of_custom_containers_gives_their_handler_one_at_a_time() {
 #[test]
 #[ignore = "daily"]
 fn dispense_container_preserves_first_slot_caps_one_by_one_insert_and_rolls_back_in_enclosing_tx() {
+    if spawn_dispenser_case(
+        "dispense_container_preserves_first_slot_caps_one_by_one_insert_and_rolls_back_in_enclosing_tx",
+    ) {
+        return;
+    }
     with_dispenser(|game, _| {
         let pos = (DISPENSER[0], DISPENSER[1], DISPENSER[2]);
 
