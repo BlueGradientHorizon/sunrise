@@ -312,6 +312,7 @@ fn with_owned_layout(
     )]
     .into();
     mod_platform::testing::with_mods(mods.clone(), || {
+        mod_api::__private::install_content_owners([], [], [], [(MOD_MENU, "listen")]);
         api_values::install_parts(&mods).unwrap();
         let _callbacks = sunrise_client::native_client_hooks::scoped_menu_validity_hooks(
             api_values::menu_still_valid,
