@@ -150,7 +150,6 @@ pub(in crate::game) struct GuestMenuEffects {
 
 pub(in crate::game) struct FurnaceMenuEffects {
     uuid: u128,
-    entity_id: i32,
     pos: (i32, i32, i32),
     at: [f64; 3],
     award_recipes: bool,
@@ -328,10 +327,28 @@ impl Game<'_> {
         Some(result)
     }
 
+    pub(in crate::game) fn dispatch_item_smelted(
+        &mut self,
+        player: mod_api::PlayerRef,
+        smelted: &[(ItemStack, u32)],
+    ) {
+        for (stack, amount_removed) in smelted {
+            let Ok(metadata) = crate::game::api_values::stack_read_metadata(stack) else {
+                continue;
+            };
+            let project = |metadata| crate::game::api_values::project_stack(stack, metadata).ok();
+            let stack = mod_api::ItemStackView::resident(metadata, &project);
+            self.native_item_smelted(mod_api::__private::ItemSmeltedCall {
+                player,
+                stack,
+                amount_removed: *amount_removed,
+            });
+        }
+    }
+
     pub(super) fn publish_furnace_menu_effects(&mut self, effects: FurnaceMenuEffects) {
         let FurnaceMenuEffects {
             uuid,
-            entity_id,
             pos,
             at,
             award_recipes,
@@ -342,25 +359,9 @@ impl Game<'_> {
         }
         if !smelted.is_empty()
             && mod_api::__private::listened(mod_api::HookId::ItemSmelted)
-            && let Ok(entity_id) = u32::try_from(entity_id)
+            && let Some(player) = self.player(uuid)
         {
-            let player = mod_api::__private::game::player_ref(
-                mod_api::EntityRef::new(self.native_lifecycle.epoch(), entity_id),
-                uuid,
-            );
-            for (stack, amount_removed) in &smelted {
-                let Ok(metadata) = crate::game::api_values::stack_read_metadata(stack) else {
-                    continue;
-                };
-                let project =
-                    |metadata| crate::game::api_values::project_stack(stack, metadata).ok();
-                let stack = mod_api::ItemStackView::resident(metadata, &project);
-                self.native_item_smelted(mod_api::__private::ItemSmeltedCall {
-                    player,
-                    stack,
-                    amount_removed: *amount_removed,
-                });
-            }
+            self.dispatch_item_smelted(player, &smelted);
         }
     }
 
@@ -771,7 +772,6 @@ impl Game<'_> {
             {
                 let effects = FurnaceMenuEffects {
                     uuid: guest.uuid,
-                    entity_id: guest.entity_id,
                     pos,
                     at: guest.position,
                     award_recipes,

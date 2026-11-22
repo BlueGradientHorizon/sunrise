@@ -435,6 +435,7 @@ impl Game<'_> {
         menu.set_registry_id(menu_id);
         menu.set_block_pos(self.container.map(|(x, y, z)| [x, y, z]));
         menu.brewed_potion_hook = !mod_api::__private::mods().is_empty();
+        menu.item_smelted_hook = mod_api::__private::listened(mod_api::HookId::ItemSmelted);
         if matches!(kind, Kind::Mount(_)) {
             menu.mount = self.mount_menu_entity();
         }
@@ -647,6 +648,7 @@ impl Game<'_> {
         let brewed_potion_takes = std::mem::take(&mut menu.brewed_potion_takes);
         let equipped = std::mem::take(&mut menu.equipped);
         let item_crafted = std::mem::take(&mut menu.item_crafted);
+        let item_smelted = std::mem::take(&mut menu.item_smelted);
         for (_, stack, _) in &item_crafted {
             if !predicting {
                 self.award_stat("crafted", &stack.item, stack.count as i32);
@@ -771,6 +773,16 @@ impl Game<'_> {
         self.apply_equipment();
         if let Some(maps) = level_maps {
             self.register_made_maps(maps);
+        }
+        if !item_smelted.is_empty()
+            && mod_api::__private::listened(mod_api::HookId::ItemSmelted)
+            && let Some(player) = if predicting {
+                self.local_player()
+            } else {
+                self.player(self.native_acting_id())
+            }
+        {
+            self.dispatch_item_smelted(player, &item_smelted);
         }
         true
     }

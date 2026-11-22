@@ -2119,18 +2119,18 @@ impl Menu {
 
     /// `FurnaceResultSlot.checkTakeAchievements`: on the server side, always
     /// records that the furnace must award used recipes and pop experience
-    /// (`AbstractFurnaceBlockEntity.awardUsedRecipesAndPopExperience`), and
-    /// when `removeCount != 0` and a mod listens, keeps the non-empty stack
-    /// and `removeCount` for `ItemSmeltedEvent` (matching NeoForge's
-    /// `FurnaceResultSlot.java.patch`); `removeCount` starts again.
+    /// (`AbstractFurnaceBlockEntity.awardUsedRecipesAndPopExperience`); on
+    /// both logical sides, when `removeCount != 0` and a mod listens, keeps
+    /// the non-empty stack and `removeCount` for `ItemSmeltedEvent` (matching
+    /// NeoForge's `FurnaceResultSlot.java.patch`); `removeCount` starts again.
     fn furnace_take(&mut self, env: &Env, carried: &ItemStack) {
         self.touch();
         let removed = std::mem::take(&mut self.state.output_removed);
         if env.loop_context.side() == LoopSide::Server {
             self.state.furnace_awarded = true;
-            if self.state.item_smelted_hook && removed != 0 && carried.count > 0 {
-                self.state.item_smelted.push((carried.clone(), removed));
-            }
+        }
+        if self.state.item_smelted_hook && removed != 0 && carried.count > 0 {
+            self.state.item_smelted.push((carried.clone(), removed));
         }
     }
 
@@ -3518,11 +3518,11 @@ pub(crate) mod tests {
     /// `FurnaceResultSlot.checkTakeAchievements` (vanilla + NeoForge
     /// `FurnaceResultSlot.java.patch`): on the server side, every take marks
     /// `furnace_awarded` (including hotbar swap where `removeCount == 0` and
-    /// when no mod listens), while `item_smelted` only records nonzero
-    /// `removeCount` with a non-empty stack when a mod listens (so shift-click
-    /// fires once from `onQuickCraft`, never a second time with 0 from
-    /// `onTake`, and hotbar swap awards XP without firing `item_smelted`).
-    /// Client-side prediction records neither.
+    /// when no mod listens); on both logical sides, `item_smelted` records
+    /// nonzero `removeCount` with a non-empty stack when a mod listens (so
+    /// shift-click fires once from `onQuickCraft`, never a second time with 0
+    /// from `onTake`, and hotbar swap never fires `item_smelted`). Client-side
+    /// prediction never marks `furnace_awarded`.
     #[test]
     fn a_furnace_take_keeps_what_check_take_achievements_passes() {
         bare_env(|env| {
@@ -3591,13 +3591,37 @@ pub(crate) mod tests {
             assert!(menu.item_smelted.is_empty());
         });
 
-        // Client-side prediction records neither award nor event.
+        // Client-side prediction records nonzero takes for item_smelted, never furnace_awarded.
         bare_env_in(
             &crate::test_resources::loop_context(LoopSide::Client),
             |env| {
-                let mut menu = Menu::new(Kind::Furnace("smelting"));
-                menu.item_smelted_hook = true;
-                menu.set_slot(env, 2, stack("iron_ingot", 64));
+                let furnace = |hook: bool| {
+                    let mut menu = Menu::new(Kind::Furnace("smelting"));
+                    menu.item_smelted_hook = hook;
+                    menu.set_slot(env, 2, stack("iron_ingot", 64));
+                    menu
+                };
+
+                let mut menu = furnace(true);
+                menu.click(env, 2, 0, Input::Pickup).unwrap();
+                assert!(!menu.furnace_awarded);
+                assert_eq!(menu.item_smelted, [(stack("iron_ingot", 64).unwrap(), 64)]);
+
+                let mut menu = furnace(true);
+                for s in 3..39 {
+                    menu.set_slot(env, s, stack("dirt", 64));
+                }
+                menu.set_slot(env, 3, stack("iron_ingot", 62));
+                menu.click(env, 2, 0, Input::QuickMove).unwrap();
+                assert!(!menu.furnace_awarded);
+                assert_eq!(menu.item_smelted, [(stack("iron_ingot", 64).unwrap(), 2)]);
+
+                let mut menu = furnace(true);
+                menu.click(env, 2, 0, Input::Swap).unwrap();
+                assert!(!menu.furnace_awarded);
+                assert!(menu.item_smelted.is_empty());
+
+                let mut menu = furnace(false);
                 menu.click(env, 2, 0, Input::Pickup).unwrap();
                 assert!(!menu.furnace_awarded);
                 assert!(menu.item_smelted.is_empty());
