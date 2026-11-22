@@ -34,8 +34,8 @@ pub enum ReadError {
     /// A `#[path]` or `include!` in `file` brings in source from outside the folder, or from a
     /// place the scan cannot know.
     Escapes { file: String, target: String },
-    /// A `#[path]` or `include!` in `file` brings in a file of the folder the scan does not read:
-    /// not a `.rs` file, under the root `target/` or a hidden folder, or missing.
+    /// A `#[path]` or `include!` in `file` names a file of the folder that is not in the scanned
+    /// Rust set: not a `.rs` file the scan selects, or missing.
     NotScanned { file: String, target: String },
     /// The mod's library root (`[lib].path` in its `Cargo.toml`, or `src/lib.rs`) is one of the
     /// files the scan was told to leave out, so the root's own uses would go unread.
