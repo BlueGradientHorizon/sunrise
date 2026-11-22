@@ -4,7 +4,7 @@ How a change gets from a pull request to players: the checks a pull request pass
 automatic releases that follow. Releases are automatic and frequent so the latest Sunrise is always playable.
 Since 2026-10-28 Sunrise ships the **Nightly** instead of `vX.Y.Z` releases (Ludovic's decision; the Team proposed
 it): the batch train builds a Nightly, it is published once its smoke test passed and no `release-blocker` is open,
-and launchers and Nightly servers update to it ([Nightly only](#nightly-only)). Stable releases (`26.3-<semver>`) are
+and launchers and Nightly servers update to it ([The Nightly and stable releases](#the-nightly-and-stable-releases)). Stable releases (`26.3-<semver>`) are
 cut from a Nightly, and a server installed on one updates within its line ([Release branches](#release-branches)).
 
 ## Pull request checks
@@ -222,7 +222,7 @@ commits) since the commit the published Nightly was built on:
 - The daily calls the release train only from its green summary. A by-hand Sunrise dispatch selects main's head or
   an explicit base on main with its dyna-checks main-push gate green.
 
-### Nightly only
+### The Nightly and stable releases
 
 Ludovic decided on 2026-10-28 that Sunrise ships the Nightly instead of `vX.Y.Z` game releases; stable releases
 (`26.3-<semver>`, [Release branches](#release-branches)) have joined it since. No `vX.Y.Z` game release is made any
@@ -331,7 +331,8 @@ silent (no ping and Discord's @silent flag). Launcher releases post without a pi
 Before 2026-10-28 game releases were `vX.Y.Z` (numbering: [versioning.md](versioning.md)), each published by this
 workflow as the release and GitHub's *latest*. From 2026-10-23 there was one channel (the Alpha pre-releases and the
 daily promotion at 20:00 UTC ended: `promote.yml` and `tools/release_channels.py` are gone), and from 2026-10-27 the
-Nightly was opt-in beside it. Since 2026-10-28 the one channel is the Nightly ([Nightly only](#nightly-only)).
+Nightly was opt-in beside it. Since 2026-10-28 the Nightly replaces it, and stable releases are cut from a Nightly
+([The Nightly and stable releases](#the-nightly-and-stable-releases)).
 
 ### Signed checksums
 
@@ -386,7 +387,8 @@ them with a clear message, and players download the launcher again from the webs
 
 The server install scripts (`packaging/server/install.sh` and `install.ps1`) check a release with
 `sunrise-verify`, the same `verify` the launcher runs, built as one binary per platform with the keys from
-`release-keys.txt` built in (static on Linux and Windows; the macOS build links only the system's libraries). It is published as its own release, `verifier@X.Y.Z` (a prerelease, never "latest"),
+`release-keys.txt` built in (on Linux a static musl binary, on Windows one with the C runtime linked in statically;
+the macOS build links the system's libraries). It is published as its own release, `verifier@X.Y.Z` (a prerelease, never "latest"),
 by `.github/workflows/verifier.yml`, with SHA256SUMS and a build-provenance attestation. The binaries are not
 signed: the trust anchor is the SHA-256 of each one, pinned in a marked block in both scripts on main.
 
@@ -963,8 +965,9 @@ comment on any issue or pull request (`.github/workflows/nightly-command.yml`, `
   release either: `game-build.yml`'s `trusted` input is true only for `release.yml`. An untrusted build's legs
   run on fresh Blacksmith (or GitHub) machines, and its Rust cache has its own key and is never saved. A trusted build doesn't use the machine's
   shared sccache, which pull requests' jobs write (`SUNRISE_NO_SCCACHE`, `tools/ci/runner-env.sh`).
-- **Players.** Every launcher and `sunrise-server update` install the `nightly` pre-release
-  ([Nightly only](#nightly-only)). It is never GitHub's latest: the last `vX.Y.Z` stays that, for launchers,
+- **Players.** Every launcher, and `sunrise-server update` on a Nightly server, install the `nightly` pre-release
+  ([The Nightly and stable releases](#the-nightly-and-stable-releases)); a stable server updates within its line. It
+  is never GitHub's latest: the last `vX.Y.Z` stays that, for launchers,
   servers and `install.sh` from before the switch.
 
 ```sh
