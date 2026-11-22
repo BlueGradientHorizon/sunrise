@@ -758,9 +758,8 @@ struct WorldTables {
     reload_sources: Option<Arc<sunrise_client::crafting::ResolvedSources>>,
     /// The values of the data map types native mods registered (`native_data_map_types`).
     data_maps: native_data_maps::DataMaps,
-    /// The entity type, biome, structure and damage type tags with the packs'
-    /// over the game's own, by registry (`TagLoader.loadTagsForExistingRegistries`):
-    /// what the predicates' `#tag`s of those registries read.
+    /// Pack tags used by advancement predicates and built-in data maps
+    /// (`TagLoader.loadTagsForExistingRegistries`). Damage tags live in the catalog.
     pack_tags: HashMap<&'static str, HashMap<String, HashSet<String>>>,
 }
 
@@ -774,12 +773,8 @@ use condition_reload_state::PreparedWorldReload;
 
 impl WorldTables {
     /// The registries [`WorldTables::pack_tags`] holds.
-    const PACK_TAG_REGISTRIES: [&'static str; 4] = [
-        "entity_type",
-        "worldgen/biome",
-        "worldgen/structure",
-        "damage_type",
-    ];
+    const PACK_TAG_REGISTRIES: [&'static str; 3] =
+        ["entity_type", "worldgen/biome", "worldgen/structure"];
 }
 
 /// The equipment slot of `armor[index]`: head, chest, legs, feet.
@@ -3238,6 +3233,7 @@ impl Game<'_> {
                     pack_tags: self.world_tables.as_ref().map(|t| &t.pack_tags),
                     items: world_items!(self),
                     mob_data: self.res.mob_data(),
+                    damage: &self.health_resources.damage,
                     resources: &self.options.resources,
                 },
             },

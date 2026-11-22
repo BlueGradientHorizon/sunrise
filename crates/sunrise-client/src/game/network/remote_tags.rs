@@ -421,8 +421,16 @@ mod tests {
             ("item", ["minecraft:potion", "minecraft:stick"]),
             ("block", ["minecraft:stone", "minecraft:dirt"]),
             ("fluid", ["minecraft:water", "minecraft:lava"]),
-            ("damage_type", ["minecraft:stalagmite", "minecraft:fall"]),
+            ("damage_type", ["tag_reload:impact", "minecraft:fall"]),
         ];
+        write(
+            &pack.join("data/tag_reload/damage_type/impact.json"),
+            br#"{"message_id":"impact","scaling":"never","exhaustion":0.0}"#,
+        );
+        write(
+            &pack.join("data/tag_reload/advancement/damage_probe.json"),
+            br##"{"criteria":{"probe":{"trigger":"minecraft:entity_hurt_player","conditions":{"damage":{"type":{"tags":[{"id":"#tag_reload:probe","expected":true}]}}}}}}"##,
+        );
         for (registry, values) in members {
             let json = serde_json::json!({ "values": values });
             write_tag(registry, "tag_reload:probe", json.to_string().as_bytes());
@@ -516,6 +524,21 @@ mod tests {
                     .unwrap();
                 let keep = if expect_empty { 0 } else { 2 };
                 check_host(game, keep);
+                let entry = game
+                    .registry_entry("minecraft:damage_type", "tag_reload:impact")
+                    .unwrap();
+                assert_eq!(
+                    game.registry_entry_in_tag(&entry, "tag_reload:probe"),
+                    Some(!expect_empty)
+                );
+                game.trigger_entity_hurt_player(&sunrise_client::advancements::DamageView {
+                    kind: "tag_reload:impact".into(),
+                    ..Default::default()
+                });
+                assert_eq!(
+                    game.adv.progress.revoke("tag_reload:damage_probe", "probe"),
+                    !expect_empty
+                );
                 let loot = game.server_loot.get().unwrap();
                 for (registry, values) in members {
                     let expected: Vec<_> = values[..keep].iter().map(|id| id.to_string()).collect();
