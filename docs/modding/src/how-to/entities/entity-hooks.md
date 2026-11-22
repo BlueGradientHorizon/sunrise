@@ -42,7 +42,7 @@ and stored guests. Waking that same player again inside the callback does not
 emit a second notice.
 
 See the [generated API reference](../../reference/api.md) and the hook's
-[caller notes](../../reference/hook-notes.md#player-bed-leave-callers).
+caller notes.
 
 ## Physical movement decisions
 
