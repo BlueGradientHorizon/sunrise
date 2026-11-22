@@ -127,14 +127,16 @@ ordinary item use; see the linked example for registration and typed component r
 ## A stack's names and lore
 
 On either side, `stack.custom_name(host)` and `stack.item_name(host)` return the effective
-name components as `Option<Text>`, and `stack.lore(host)` returns the lore lines as `Vec<Text>`
-(empty if absent). A read takes the patch first, otherwise the item's prototype. An explicit
-removal hides the default; an invalid present value returns a `TextFormError`.
+name components as `Result<Option<Text>, TextFormError>`. `stack.lore(host)` returns
+`Result<Vec<Text>, TextFormError>`, with an empty vector if absent. A read takes the patch
+first, otherwise the item's prototype. An explicit removal hides the default; an invalid
+present value returns a `TextFormError`.
 
 On an owned stack, use `set_custom_name(host, Some(&name))`, `set_item_name(host, Some(&name))`,
 and `set_lore(host, &lines)`. To append lore, read `let mut lines = stack.lore(host)?`, push a
 `Text`, and write the slice back. Pass `None` for a name or `&[]` for lore to remove the component,
-including a prototype default. If a text cannot be encoded or lore exceeds vanilla's 256 lines
+including a prototype default. Writing the prototype value removes any override or explicit
+removal. If a text cannot be encoded or lore exceeds vanilla's 256 lines
 (`ItemLore.MAX_LINES`), the write leaves the stack unchanged. None of these methods add style:
 vanilla's styled hover name defaults to italics for a custom name unless the component overrides
 it, but not for `item_name`.

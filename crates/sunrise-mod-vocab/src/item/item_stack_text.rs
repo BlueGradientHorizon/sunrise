@@ -112,11 +112,39 @@ impl ItemStack {
     }
 
     fn write_text_component(&mut self, host: &dyn Host, id: &str, value: Option<Tag>) {
-        if let Some(value) = value {
-            self.put_component_value(id, value);
-        } else {
+        let default = host.item_default_component(self.item(), id);
+        match value {
+            Some(value) => {
+                // PatchedDataComponentMap.set compares component values, not the tag
+                // forms they were read from (e.g. a string vs a literal compound).
+                let inherits = default
+                    .as_ref()
+                    .is_some_and(|default| match (&value, default) {
+                        (Tag::List(lines), Tag::List(defaults)) if id == LORE => {
+                            lines.len() == defaults.len()
+                                && lines
+                                    .iter()
+                                    .zip(defaults)
+                                    .all(|(a, b)| same_text_value(host, a, b))
+                        }
+                        (_, _) if id == LORE => false,
+                        _ => same_text_value(host, &value, default),
+                    });
+                if inherits {
+                    self.remove_component_value(id, false);
+                } else {
+                    self.put_component_value(id, value);
+                }
+            }
             // PatchedDataComponentMap.remove records a removal only for prototype entries.
-            self.remove_component_value(id, host.item_default_component(self.item(), id).is_some());
+            None => self.remove_component_value(id, default.is_some()),
         }
+    }
+}
+
+fn same_text_value(host: &dyn Host, a: &Tag, b: &Tag) -> bool {
+    match (host.text_from_nbt(a), host.text_from_nbt(b)) {
+        (Ok(Some(a)), Ok(Some(b))) => sunrise_core::nbt::with_tree_stack(|| a == b),
+        _ => false,
     }
 }
