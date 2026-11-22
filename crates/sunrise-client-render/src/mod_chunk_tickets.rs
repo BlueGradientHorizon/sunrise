@@ -208,7 +208,7 @@ mod tests {
             assert_eq!(v.block_tickets(), &expected_block);
             v.publish_removals();
         }
-        assert_eq!(rows, [plain.clone()]);
+        assert_eq!(rows.as_slice(), std::slice::from_ref(&plain));
 
         rows.push(spawning.clone());
         {
