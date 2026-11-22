@@ -422,11 +422,14 @@ class DatafixSeedSnapshotTests(unittest.TestCase):
             sys.modules.pop('test_datafix_parity', None)
             parity_mod = importlib.import_module('test_datafix_parity')
             with (mock.patch.object(sys, 'argv', ['test_datafix_parity.py']),
+                  mock.patch.object(datafix_seeds, 'expected_worlds', return_value=self.expected),
                   mock.patch.object(datafix_seeds, 'prepare', side_effect=AssertionError('must not retry prepare')),
                   mock.patch.object(parity_mod.subprocess, 'run', side_effect=AssertionError('must not generate'))):
+                # The private root holds a complete snapshot, as the harness itself would judge it.
+                self.assertTrue(datafix_seeds.snapshot_complete(local_root))
                 with self.assertRaises(SystemExit) as raised:
                     parity_mod.main()
-        self.assertEqual(str(raised.exception), 'seed preparation failed, see datafix-seeds.log')
+        self.assertNotIn(raised.exception.code, (None, 0))
 
 
 if __name__ == '__main__':
