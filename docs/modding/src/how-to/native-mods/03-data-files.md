@@ -90,8 +90,9 @@ participate in resource reloads.
 
 A native package holds the manifest, an optional `icon.png`, the root `Cargo.toml`, `Cargo.lock` and `build.rs`,
 the `.rs` and `.toml` files under `src/`, `assets/` and `data/`, a `runtime/` folder listed in `[runtime]`, root text
-files (`README*`, `LICENSE*`, `LICENCE*`, `COPYING*`, `NOTICE*`), and the `uses.json` table `cargo sunrise-mod build`
-writes. Source and resource size limits are checked separately.
+files (`README*`, `LICENSE*`, `LICENCE*`, `COPYING*`, `NOTICE*`), and a `uses.json` table. `cargo sunrise-mod build`
+generates that table and adds it to the package; a `uses.json` in the folder is not packed. Source and resource size
+limits are checked separately.
 
 Packing a project folder takes only these files. Any other file in it (a `module.toml`, `tools/generate.rs`,
 `.cargo/config.toml`, `rust-toolchain.toml`) is left out unread, and the native build, which works on the packed
