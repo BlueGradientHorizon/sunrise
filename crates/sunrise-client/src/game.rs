@@ -4269,6 +4269,8 @@ struct Game<'a> {
     save_after_guest_turn: bool,
     /// Guests whose records are displaced by nested player swaps, outer first.
     lan_guest_swaps: Vec<u32>,
+    /// Bodies and their statistics displaced by guest turns, outer first.
+    lan_displaced_players: Vec<lan_actions::DisplacedPlayer>,
     /// Connections whose turn a panic interrupted this tick: the turn helpers record the
     /// player before re-raising, the end-of-turn path records it before its callbacks run and
     /// clears it after a clean put-back. Cleared at the start of every server tick; the crash
@@ -12060,16 +12062,18 @@ impl Game<'_> {
         {
             return true;
         }
-        if let Some(saving) = &mut self.pending_save {
+        if self.pending_save.is_some() {
             match event {
                 WindowEvent::CloseRequested => {
-                    if self.settings.quit_shortcuts
+                    if (self.settings.quit_shortcuts
                         || !sunrise_client::input::is_quit_shortcut_down(
                             self.modifiers,
                             &self.physical_keys,
-                        )
+                        ))
+                        && let Err(error) = self.begin_closing_save(true)
                     {
-                        saving.quit = true;
+                        self.error = Some(error);
+                        event_loop.exit();
                     }
                 }
                 WindowEvent::Focused(focused) => {
@@ -14097,6 +14101,7 @@ impl<'a> Game<'a> {
             lan_building_boxes: Default::default(),
             save_after_guest_turn: false,
             lan_guest_swaps: Vec::new(),
+            lan_displaced_players: Vec::new(),
             interrupted_turns: Vec::new(),
             crash_save: Default::default(),
             lan_ender_menus: Vec::new(),
