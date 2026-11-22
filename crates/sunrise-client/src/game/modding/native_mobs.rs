@@ -1,6 +1,6 @@
 //! Mob and player equipment-change dispatch and server mob actions.
+use super::Game;
 use super::api_values::{StackReadMetadata, project_stack, stack_read_metadata};
-use super::{Game, commands::Target};
 use mod_api::{EquipmentSlot, HookId, ItemStackView, LivingRef, WorldEpoch};
 use sunrise_client::items::ItemStack;
 use sunrise_client::lan::guest::Guest;
@@ -120,23 +120,4 @@ pub(super) fn spawnable(pos: [f64; 3]) -> bool {
         && (-30_000_000.0..30_000_000.0).contains(&pos[0])
         && (-30_000_000.0..30_000_000.0).contains(&pos[2])
         && (-20_000_000.0..20_000_000.0).contains(&pos[1].floor())
-}
-
-impl Game<'_> {
-    /// Kills mob `id` as `/kill` does: it falls and drops its loot. False for
-    /// no such living mob or another dimension.
-    pub(super) fn kill_mob(&mut self, dimension: &str, id: u32) -> bool {
-        if self.remote.is_some()
-            || dimension != self.dim.id()
-            || !self
-                .mobs
-                .iter()
-                .find(|m| m.id == id && !m.removed)
-                .is_some_and(|m| m.alive())
-        {
-            return false;
-        }
-        self.kill_target(Target::Mob(id));
-        true
-    }
 }

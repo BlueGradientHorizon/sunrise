@@ -1,21 +1,6 @@
 use super::*;
 
 impl Game<'_> {
-    pub(in crate::game) fn native_block_collision_in(
-        &self,
-        world: &sunrise_client::world::World,
-        pos: [i32; 3],
-    ) -> Vec<[f64; 6]> {
-        self.block_collision_shape_in(world, pos)
-            .boxes()
-            .iter()
-            .map(|bounds| {
-                let min = bounds.min_position();
-                let max = bounds.max_position();
-                [min.x, min.y, min.z, max.x, max.y, max.z]
-            })
-            .collect()
-    }
     /// The areas the game itself draws beside the open screen's window: the
     /// container build's, or the frame's own arithmetic with no build yet.
     pub(super) fn screen_own_exclusion(&self, batch: &HudBatch) -> Vec<[f32; 4]> {
