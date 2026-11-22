@@ -373,7 +373,7 @@ impl Game<'_> {
     fn pad_guide_target(&mut self, spectator: bool) -> (Target, Option<super::super::Hit>, bool) {
         let attack = self.pick_entity_hit();
         let object = self
-            .remote_object_hit(false)
+            .remote_object_hit()
             .filter(|hit| self.before_block(hit.distance))
             .filter(|hit| self.mob_hit().is_none_or(|(_, d, _)| hit.distance < d));
         let mob = self

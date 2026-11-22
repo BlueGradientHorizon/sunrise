@@ -570,6 +570,7 @@ impl Game<'_> {
         self.item_frames.clear();
         self.paintings.clear();
         self.orbs.clear();
+        self.pick_section_clear();
     }
 
     pub(super) fn remove_remote_object(&mut self, id: u32) {
@@ -595,6 +596,7 @@ impl Game<'_> {
         self.item_frames.retain(|f| f.id != id);
         self.paintings.retain(|p| p.id != id);
         self.bolts.retain(|b| b.id != id);
+        self.pick_section_remove(id);
     }
 }
 
