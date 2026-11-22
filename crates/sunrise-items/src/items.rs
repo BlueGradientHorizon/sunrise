@@ -2862,16 +2862,20 @@ impl<R: RandomSource> LootContext<'_, R> {
     ) {
         let list = match m {
             Value::Array(a) => a.as_slice(),
-            Value::Object(_) => std::slice::from_ref(m),
-            Value::String(id) => {
-                if let Some(modifier) = self.items.loot_modifiers.get(id) {
-                    self.modifiers(modifier, stack, random);
-                }
-                return;
-            }
-            _ => return,
+            value => std::slice::from_ref(value),
         };
         for f in list {
+            match f {
+                // SequenceFunction composes each holder, including named modifiers.
+                Value::String(id) => {
+                    if let Some(modifier) = self.items.loot_modifiers.get(id) {
+                        self.modifiers(modifier, stack, random);
+                    }
+                    continue;
+                }
+                Value::Object(_) => {}
+                _ => continue,
+            }
             if self
                 .items
                 .loot_bindings
