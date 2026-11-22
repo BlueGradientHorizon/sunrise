@@ -735,7 +735,7 @@ fn invalid_scratch_stack_and_unavailable_host_refuse_without_running_closure() {
     assert!(host.scratch_kept_frame_counts().is_empty());
 
     // `dispense_container` treats scratch validation failures as unhandled (`None`) rather
-    // than falling through to `dispense_default`, aborting its outer transaction cleanly.
+    // than falling through to `dispense_default`, without opening a transaction.
     for (invalid, _) in &cases {
         let event = crate::DispenseItemEvent {
             dimension: "minecraft:overworld",
@@ -748,7 +748,7 @@ fn invalid_scratch_stack_and_unavailable_host_refuse_without_running_closure() {
             None
         );
     }
-    assert_eq!(host.journal.closed(), &[(1, false); 3]);
+    assert!(host.journal.closed().is_empty());
     assert_eq!(host.scratch_live_count(), 0);
     assert!(host.scratch_kept_frame_counts().is_empty());
 
