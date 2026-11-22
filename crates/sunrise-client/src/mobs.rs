@@ -4476,20 +4476,30 @@ impl Mob {
             if !dead {
                 self.ambient_timer = -self.ambient_interval();
             }
-            if !sound.is_empty() {
+            let at = self.position.components();
+            let voice = if sound.is_empty() {
+                None
+            } else {
                 let pitch = self.voice_pitch();
-                if !self.silent {
-                    let at = [self.position.x, self.position.y, self.position.z];
-                    self.outbox
-                        .push(MobEvent::Sound(sound, at, ai::sound_volume(self), pitch));
-                }
-            }
+                (!self.silent)
+                    .then(|| villager::HurtSound(sound, at, ai::sound_volume(self), pitch))
+            };
             // playSecondaryHurtSound: a thorns hit sounds where the mob
             // stands, silent or not.
-            if source.kind == DamageKind::Thorns {
-                let at = [self.position.x, self.position.y, self.position.z];
-                self.outbox
-                    .push(MobEvent::Sound("enchant.thorns.hit", at, 1.0, 1.0));
+            let thorns = (source.kind == DamageKind::Thorns).then_some(villager::HurtSound(
+                "enchant.thorns.hit",
+                at,
+                1.0,
+                1.0,
+            ));
+            if self.species() == Species::Villager {
+                villager::ext_mut(self).pending_hurt_sounds = [voice, thorns];
+            } else {
+                for villager::HurtSound(name, at, volume, pitch) in
+                    [voice, thorns].into_iter().flatten()
+                {
+                    self.outbox.push(MobEvent::Sound(name, at, volume, pitch));
+                }
             }
         }
         // IronGolem.hurtServer: a new crack level plays the damage sound.

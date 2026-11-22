@@ -6,7 +6,7 @@ use sunrise_client::{
     gossip::{self, GossipType},
     items::ItemStack,
     merchant::TradeFeedback,
-    mobs::{Mob, Species, spawning, villager, villager_brain},
+    mobs::{Mob, Species, entity_sounds::full_id, spawning, villager, villager_brain},
 };
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 
@@ -487,8 +487,9 @@ impl Game<'_> {
         };
         Some(sunrise_client::lan::playerdata::uuid_ints(uuid))
     }
-    /// Complete `Villager.setLastHurtByMob` in the owner of the accepted hit.
-    /// `onReputationEventFrom` refreshes the hitting player's offers before event 13.
+    /// Complete this hit before another hit can publish its effects. In
+    /// `LivingEntity.hurtServer`, reputation and anger precede the damage
+    /// broadcast, then `playHurtSound` and `playSecondaryHurtSound`.
     pub(super) fn settle_villager_hurt(&mut self, index: usize) {
         let Some(mob) = self.mobs.get_mut(index) else {
             return;
@@ -500,6 +501,7 @@ impl Game<'_> {
             ext.pending_hurt_player.take(),
             ext.pending_hurt_damage.take(),
         );
+        let sounds = std::mem::take(&mut ext.pending_hurt_sounds);
         let (id, at) = (mob.id, mob.position.components());
         if let Some(player) = player {
             self.villager_prices_changed(
@@ -520,6 +522,12 @@ impl Game<'_> {
             let direct = cause.filter(|_| super::combat::melee(source.kind));
             let kind = super::creatures::source_damage_type(source);
             host.hub.damage_event(id as i32, kind, cause, direct, at);
+        }
+        for villager::HurtSound(name, at, volume, pitch) in sounds.into_iter().flatten() {
+            let name = full_id(name);
+            self.play_immediate_level_sound(super::level_sounds::LevelSound::new(
+                &name, at, volume, pitch,
+            ));
         }
     }
     /// `Villager.tellWitnessesThatIWasMurdered`: the villagers that saw a

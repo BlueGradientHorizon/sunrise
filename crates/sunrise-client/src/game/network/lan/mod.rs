@@ -6134,6 +6134,13 @@ mod merchant_packet_tests {
                             assert_eq!(packet.pitch.to_bits(), pitch.to_bits());
                             actual.push("no".to_owned());
                         }
+                        Clientbound::Sound(packet)
+                            if packet.sound.1.as_ref().is_some_and(|(name, _)| {
+                                name == "minecraft:entity.villager.hurt"
+                            }) =>
+                        {
+                            actual.push("sound".to_owned());
+                        }
                         Clientbound::ContainerSetSlot(packet)
                             if packet.container == merchant_window =>
                         {
@@ -6233,15 +6240,11 @@ mod merchant_packet_tests {
                         })
                     })
                     .unwrap()
-                    .split(',')
-                    // Ordinary hurt audio has a separate packet path; the trade voice is in this order.
-                    .filter(|event| *event != "sound")
-                    .collect::<Vec<_>>()
-                    .join(","),
+                    .to_owned(),
                 None if buyer_first => {
-                    "no,offer:9,entity:13,damage,entity:13,result:empty".to_owned()
+                    "no,offer:9,entity:13,damage,sound,entity:13,result:empty".to_owned()
                 }
-                None => "entity:13,damage,offer:9,entity:13,result:empty".to_owned(),
+                None => "entity:13,damage,sound,offer:9,entity:13,result:empty".to_owned(),
             };
             assert_eq!(actual.join(","), expected);
         });

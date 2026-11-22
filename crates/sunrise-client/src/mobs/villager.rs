@@ -346,6 +346,10 @@ pub struct PlayerHurt {
     pub trade_pitch: Option<f32>,
 }
 
+/// Sound requests kept with the accepted hit, not in the tick's mob outbox.
+#[derive(Clone, Copy, Debug)]
+pub struct HurtSound(pub &'static str, pub [f64; 3], pub f32, pub f32);
+
 /// Villager state beyond `Extra`'s scratch fields.
 #[derive(Clone, Debug, Default)]
 pub struct Ext {
@@ -360,6 +364,7 @@ pub struct Ext {
     pub pending_hurt_player: Option<PlayerHurt>,
     /// `LivingEntity.hurtServer`'s damage broadcast for a full, unblocked hit.
     pub pending_hurt_damage: Option<(super::Damage, Option<i32>)>,
+    pub pending_hurt_sounds: [Option<HurtSound>; 2],
     /// `Villager.lastTradedPlayer`: the most recent trader, consumed by the
     /// next customServerAiStep. This is runtime state, not saved gossip.
     pub last_traded_player: Option<[i32; 4]>,
