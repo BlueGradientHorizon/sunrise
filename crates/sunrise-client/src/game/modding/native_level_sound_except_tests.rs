@@ -2320,7 +2320,7 @@ fn cross_level_sound_listener_player_attachment_writes_rollback_to_original_and_
                 ) {
                     r.register_attachment_type(
                         mod_api::AttachmentDescriptor::new("cross_level_sound_test:mark", || 0i32)
-                            .copy_on_death(true),
+                            .copy_on_death(),
                     )
                     .unwrap();
                 }

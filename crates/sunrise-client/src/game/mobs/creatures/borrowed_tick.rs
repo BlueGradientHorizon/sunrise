@@ -1364,10 +1364,9 @@ impl Game<'_> {
         if m.species() == Species::SulfurCube && sunrise_client::mobs::sulfur_cube::has_body(m) {
             return false;
         }
-        if self
-            .res
-            .mob_data()
-            .entity_has("minecraft:freeze_immune_entity_types", &m.kind.id)
+        if world_items!(self)
+            .entity_type_tags
+            .contains("minecraft:freeze_immune_entity_types", &m.kind.id)
         {
             return false;
         }

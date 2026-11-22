@@ -1353,7 +1353,7 @@ impl Game<'_> {
                 if let Some(name) =
                     mod_api::__private::parts_installation::damage_type_name(damage_type)
                 {
-                    self.hurt_moving_item(item, name, amount);
+                    self.hurt_lent_item_entity(item, amount, name, None, None, None);
                 }
             }
             mod_api::EntityWrite::ResetFallDistance => item.fall_distance = 0.0,
