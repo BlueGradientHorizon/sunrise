@@ -1557,11 +1557,19 @@ impl EditBox {
         }
     }
     pub fn reset_blink(&mut self) {
-        self.focused_at = Instant::now();
+        self.reset_blink_at(Instant::now());
+    }
+    /// Start the visible phase at the supplied instant.
+    pub fn reset_blink_at(&mut self, now: Instant) {
+        self.focused_at = now;
     }
     /// The caret is showing (`EditBox`'s blink, on for 300 ms of every 600).
     pub fn cursor_visible(&self) -> bool {
-        self.focused && (self.focused_at.elapsed().as_millis() / 300).is_multiple_of(2)
+        self.cursor_visible_at(Instant::now())
+    }
+    fn cursor_visible_at(&self, now: Instant) -> bool {
+        self.focused
+            && (now.saturating_duration_since(self.focused_at).as_millis() / 300).is_multiple_of(2)
     }
     /// After the core moved the cursor once: scroll to it and restart the blink, as
     /// `EditBox.moveCursorTo` does.
@@ -1726,7 +1734,17 @@ impl EditBox {
     }
     /// Draw the field; `format` styles the visible text (command colouring).
     pub fn draw(&mut self, batch: &mut HudBatch, atlas: &HudAtlas, format: Option<&Text>) {
-        self.draw_with_skin(batch, atlas, format, None);
+        self.draw_at(batch, atlas, format, Instant::now());
+    }
+    /// Draw the field with the blink phase sampled at this frame's instant.
+    pub fn draw_at(
+        &mut self,
+        batch: &mut HudBatch,
+        atlas: &HudAtlas,
+        format: Option<&Text>,
+        now: Instant,
+    ) {
+        self.draw_skinned_caret(batch, atlas, format, self.cursor_visible_at(now), None);
     }
     /// Draw with a custom nine-slice background and the field's own caret blink.
     pub fn draw_with_skin(

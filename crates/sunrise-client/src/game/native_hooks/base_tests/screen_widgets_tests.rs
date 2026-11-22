@@ -936,6 +936,7 @@ fn mounted_widgets_draw_as_the_games_own() {
         return;
     }
     use crate::game::screen_widgets::MountedWidgetKind;
+    use std::time::{Duration, Instant};
     const LONG: &str = "a long name that does not fit in sixty pixels";
     struct StockWidgets;
     #[mod_api::__subscriptions]
@@ -961,14 +962,16 @@ fn mounted_widgets_draw_as_the_games_own() {
             with_client_game(|game| {
                 game.set_screen(Screen::Paused);
                 game.cursor = (11.0, 11.0);
+                let focus_time = Instant::now();
                 game.with_mounted_widget(1, |_, entry| {
                     let MountedWidgetKind::TextField { edit_box, .. } = &mut entry.kind else {
                         panic!("expected the initialized text field")
                     };
-                    edit_box.reset_blink();
+                    edit_box.reset_blink_at(focus_time);
                 });
+                let visible_at = focus_time + Duration::from_millis(299);
                 let mut ours = HudBatch::scratch([320, 240]);
-                game.draw_mounted_screen_widgets(&mut ours);
+                game.draw_mounted_screen_widgets_at(&mut ours, visible_at);
                 let mut stock = HudBatch::scratch([320, 240]);
                 sunrise_client::ui::button(
                     &mut stock,
@@ -992,8 +995,8 @@ fn mounted_widgets_draw_as_the_games_own() {
                 stock_field.max_length = 64;
                 stock_field.set_value(LONG);
                 stock_field.focused = true;
-                stock_field.reset_blink();
-                stock_field.draw(&mut stock, &game.gui.atlas, None);
+                stock_field.reset_blink_at(focus_time);
+                stock_field.draw_at(&mut stock, &game.gui.atlas, None, visible_at);
                 assert_eq!(
                     bytemuck::cast_slice::<_, u8>(&ours.vertices),
                     bytemuck::cast_slice::<_, u8>(&stock.vertices)
@@ -1042,6 +1045,15 @@ fn mounted_widgets_draw_as_the_games_own() {
                 assert_eq!(
                     shadow_origins,
                     EXPECTED_FOREGROUND_ORIGINS.map(|[x, y]| [x + 1.0, y + 1.0])
+                );
+
+                let mut hidden = HudBatch::scratch([320, 240]);
+                let hidden_at = focus_time + Duration::from_millis(300);
+                game.draw_mounted_screen_widgets_at(&mut hidden, hidden_at);
+                // The final glyph and its shadow disappear at the phase boundary.
+                assert_eq!(
+                    hidden.vertices.iter().filter(|v| v.text == 1).count() + 12,
+                    ours.vertices.iter().filter(|v| v.text == 1).count(),
                 );
 
                 assert!(game.mounted_widget_mouse_clicked([16.0, 50.0], 0, 0, false));
