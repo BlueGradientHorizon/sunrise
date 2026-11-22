@@ -744,7 +744,7 @@ impl Game<'_> {
             .hub
             .holder_guest(
                 sunrise_client::lan::playerdata::ints_uuid(uuid),
-                self.dim.key(),
+                self.dim.id(),
             )
             .filter(|guest| host.hub.here(guest))
         else {
