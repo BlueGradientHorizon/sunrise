@@ -10,6 +10,7 @@ use std::{
     process::{Child, Stdio},
     time::Duration,
 };
+use sunrise_core::prepared_profile::{Manifest, Profile};
 
 /// Checks that the game program starts at all: `--help` loads no game files, so it fails only when the
 /// system can't load the program, as on a Linux without the ALSA and udev libraries the full game links
@@ -73,47 +74,39 @@ const PREPARED_FILES: [&str; 4] = [
 /// Folders of the client's own assets the engine loads fonts and textures from at start.
 const PREPARED_DIRS: [&str; 2] = ["assets/minecraft/font", "assets/minecraft/textures"];
 
-/// Checks a prepared folder before the engine starts on it, so a half-copied or stale folder is named
-/// instead of surfacing as the engine's `os error 2` at every restart. Checks what the manifest
-/// (`sunrise-resources.json`, written last by `sunrise-prepare`) records: the derived files are there and
-/// match the hashes it holds, and the asset folders the engine loads from aren't empty.
-pub fn check_prepared(resources: &Path) -> Result<(), String> {
-    let manifest = std::fs::read_to_string(resources.join("sunrise-resources.json"))
-        .map_err(|e| format!("sunrise-resources.json: {e}"))
-        .and_then(|text| {
-            serde_json::from_str::<serde_json::Value>(&text)
-                .map_err(|e| format!("sunrise-resources.json is not valid JSON ({e})"))
-        });
-    let mut problems = Vec::new();
+/// Check the same profile/version contract as `sunrise-prepare --check` before launch or import.
+pub fn check_prepared(resources: &Path) -> Result<Profile, String> {
+    let manifest = Manifest::read(resources).map_err(|problem| format!(
+        "the prepared game files in {} are incomplete or damaged:\n  {problem}\nPrepare a server profile with `{}`.",
+        resources.display(), Profile::Server.repair(resources),
+    ))?;
+    check_prepared_manifest(resources, &manifest)
+}
+
+pub fn check_prepared_manifest(resources: &Path, manifest: &Manifest) -> Result<Profile, String> {
+    let profile = manifest.profile();
+    let mut problems = manifest.version_problems(resources, sunrise_server_launch::GAME_VERSION);
     for name in PREPARED_FILES {
         if !resources.join(name).is_file() {
             problems.push(format!("{name} is missing"));
         }
     }
-    match &manifest {
-        Ok(manifest) => {
-            for (name, key) in [
-                ("facts.json", "facts_sha256"),
-                ("block-tags.json", "block_tags_sha256"),
-            ] {
-                let Some(expected) = manifest.get(key).and_then(|v| v.as_str()) else {
-                    continue;
-                };
-                if let Ok(actual) = sha256_file(&resources.join(name))
-                    && !actual.eq_ignore_ascii_case(expected)
-                {
-                    problems.push(format!(
-                        "{name} is not the file the preparation wrote (checksum differs)"
-                    ));
-                }
-            }
+    for (name, expected) in [
+        ("facts.json", manifest.facts_sha256.as_deref()),
+        ("block-tags.json", manifest.block_tags_sha256.as_deref()),
+    ] {
+        if let Some(expected) = expected
+            && let Ok(actual) = sha256_file(&resources.join(name))
+            && !actual.eq_ignore_ascii_case(expected)
+        {
+            problems.push(format!(
+                "{name} is not the file the preparation wrote (checksum differs)"
+            ));
         }
-        Err(e) => problems.push(e.clone()),
     }
-    let server_profile = manifest
-        .as_ref()
-        .is_ok_and(|manifest| manifest["profile"] == "server");
-    if !server_profile {
+    if profile == Profile::Server {
+        problems.extend(manifest.server_inventory_problems(resources));
+    } else {
         for dir in PREPARED_DIRS {
             let empty = std::fs::read_dir(resources.join(dir))
                 .map_or(true, |mut entries| entries.next().is_none());
@@ -123,18 +116,14 @@ pub fn check_prepared(resources: &Path) -> Result<(), String> {
         }
     }
     if problems.is_empty() {
-        return Ok(());
+        return Ok(profile);
     }
-    let command = if server_profile {
-        "sunrise-prepare --server"
-    } else {
-        "sunrise-prepare --prepare --server-jar PATH"
-    };
     Err(format!(
-        "the prepared game files in {} are incomplete or damaged:\n  {}\nPrepare them again with \
-         `{command}`, or copy the whole prepared folder to the server again.",
+        "the prepared game files in {} are incomplete, stale or damaged:\n  {}\nPrepare them again with \
+         `{}`, or copy the whole prepared folder to the server again.",
         resources.display(),
-        problems.join("\n  ")
+        problems.join("\n  "),
+        profile.repair(resources),
     ))
 }
 
@@ -424,17 +413,40 @@ mod tests {
             std::fs::write(root.join(file), file).unwrap();
         }
         let manifest = serde_json::json!({
+            "schema": sunrise_core::prepared_profile::SCHEMA,
+            "minecraft": sunrise_server_launch::GAME_VERSION,
             "facts_sha256": sha256_file(&root.join("facts.json")).unwrap(),
             "block_tags_sha256": sha256_file(&root.join("block-tags.json")).unwrap(),
         });
         std::fs::write(root.join("sunrise-resources.json"), manifest.to_string()).unwrap();
+        stamp(&root, Profile::Full.output_version());
         root
+    }
+
+    fn stamp(root: &Path, version: u32) {
+        std::fs::write(
+            root.join(sunrise_core::prepared_profile::STAMP),
+            format!("{{\"output_version\":{version}}}"),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn a_stale_full_folder_is_refused_before_launch() {
+        let root = prepared_folder("stale");
+        stamp(&root, 7);
+        let error = check_prepared(&root).unwrap_err();
+        assert!(
+            error.contains("output version 7") && error.contains(&Profile::Full.repair(&root)),
+            "{error}"
+        );
+        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
     fn a_complete_prepared_folder_passes() {
         let root = prepared_folder("complete");
-        assert_eq!(check_prepared(&root), Ok(()));
+        assert_eq!(check_prepared(&root), Ok(Profile::Full));
         std::fs::remove_dir_all(&root).unwrap();
     }
 
@@ -451,13 +463,23 @@ mod tests {
         let mut manifest: serde_json::Value =
             serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         manifest["profile"] = "server".into();
+        manifest["server_files"] = serde_json::json!(["mob-data.json"]);
         std::fs::write(&path, manifest.to_string()).unwrap();
-        assert_eq!(check_prepared(&root), Ok(()));
-        std::fs::remove_file(root.join("commands.json")).unwrap();
         assert!(
             check_prepared(&root)
                 .unwrap_err()
-                .contains("commands.json is missing")
+                .contains("output version")
+        );
+        stamp(&root, Profile::Server.output_version());
+        std::fs::write(root.join("mob-data.json"), "{}").unwrap();
+        assert_eq!(check_prepared(&root), Ok(Profile::Server));
+        std::fs::remove_file(root.join("mob-data.json")).unwrap();
+        std::fs::remove_file(root.join("commands.json")).unwrap();
+        let error = check_prepared(&root).unwrap_err();
+        assert!(
+            error.contains("commands.json is missing")
+                && error.contains("mob-data.json is missing or empty"),
+            "{error}"
         );
         std::fs::remove_dir_all(&root).unwrap();
     }

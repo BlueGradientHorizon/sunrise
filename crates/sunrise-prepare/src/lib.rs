@@ -54,7 +54,7 @@ const SERVER_SIDE: usize = 0;
 const CLIENT_SIDE: usize = 1;
 
 /// The manifest's `schema`: the prepared files' layout, which the launcher compares.
-pub const SCHEMA: i64 = 7;
+pub use sunrise_core::prepared_profile::SCHEMA;
 
 /// What this preparer makes. The launcher copies a prepared version's resources to a newly installed
 /// version whose preparer has the same number (and the same pinned jars), so a release that changes
@@ -67,6 +67,13 @@ pub const OUTPUT_VERSION: u32 = 8;
 
 /// Independent output pin for the dedicated server profile.
 pub const SERVER_OUTPUT_VERSION: u32 = 1;
+
+// The checked literals above remain readable by older launchers and output-history tooling.
+const _: () = {
+    use sunrise_core::prepared_profile::Profile;
+    assert!(OUTPUT_VERSION == Profile::Full.output_version());
+    assert!(SERVER_OUTPUT_VERSION == Profile::Server.output_version());
+};
 
 pub struct Options {
     /// The version folder (a release folder, or a checkout): research-lock.json, the exporters'

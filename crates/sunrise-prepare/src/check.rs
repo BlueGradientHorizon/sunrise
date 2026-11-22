@@ -4,13 +4,12 @@
 //! stamp out of the output's digest, so it never asks for a new `OUTPUT_VERSION`.
 
 use crate::pyjson::Value;
-use crate::{
-    artifacts::Lock, read_json, write_json, OUTPUT_VERSION, SCHEMA, SERVER_OUTPUT_VERSION,
-};
+use crate::{artifacts::Lock, write_json};
 use std::path::Path;
+use sunrise_core::prepared_profile::{Manifest, Profile, MANIFEST};
 
 /// The file beside `sunrise-resources.json` naming the preparer's `OUTPUT_VERSION`.
-pub const STAMP: &str = "sunrise-prepare.json";
+pub use sunrise_core::prepared_profile::STAMP;
 
 pub(crate) fn write_stamp_for(resources: &Path, version: u32) -> Result<(), String> {
     write_json(
@@ -35,91 +34,49 @@ pub(crate) fn remove_stamp(resources: &Path) -> Result<(), String> {
 /// What the resources at `resources` lack for `root`'s pinned version, each with what to run;
 /// empty when they are complete and current. Err when `root` has no readable research-lock.json.
 pub fn check(root: &Path, resources: &Path) -> Result<Vec<String>, String> {
-    check_profile(root, resources, false)
+    check_profile(root, resources, Profile::Full)
 }
 
 /// Check the dedicated profile, without requiring any client extras.
 pub fn check_server(root: &Path, resources: &Path) -> Result<Vec<String>, String> {
-    check_profile(root, resources, true)
+    check_profile(root, resources, Profile::Server)
 }
 
-fn check_profile(root: &Path, resources: &Path, server: bool) -> Result<Vec<String>, String> {
+fn check_profile(root: &Path, resources: &Path, profile: Profile) -> Result<Vec<String>, String> {
     let lock = Lock::read(root)?;
-    let command = if server {
+    let command = if profile == Profile::Server {
         "sunrise-prepare --server"
     } else {
         "sunrise-prepare --prepare"
     };
-    let manifest_path = resources.join("sunrise-resources.json");
-    if !manifest_path.is_file() {
+    if !resources.join(MANIFEST).is_file() {
         return Ok(vec![format!(
             "{} is not prepared: {command}",
             resources.display()
         )]);
     }
-    let mut lacking = Vec::new();
-    let manifest = read_json(&manifest_path)?;
-    let is_server = manifest.get("profile").and_then(Value::as_str) == Some("server");
-    if server != is_server {
+    let manifest = Manifest::read(resources)?;
+    if manifest.profile() != profile {
         return Ok(vec![format!(
             "{} has the wrong preparation profile: {command}",
             resources.display()
         )]);
     }
-    let int = |value: Option<&Value>| value.and_then(Value::as_i64);
-    if int(manifest.get("schema")) != Some(SCHEMA) {
-        lacking.push(format!(
-            "an older layout (schema {}, this preparer writes {SCHEMA}): {command}",
-            int(manifest.get("schema")).map_or("none".into(), |s| s.to_string())
-        ));
-    }
-    let minecraft = manifest.get("minecraft").and_then(Value::as_str);
-    if minecraft != Some(lock.version.as_str()) {
-        lacking.push(format!(
-            "prepared for Minecraft {}, this preparer pins {}: {command}",
-            minecraft.unwrap_or("unknown"),
-            lock.version
-        ));
-    }
-    let stamp = read_json(&resources.join(STAMP)).ok();
-    let made_by = int(stamp.as_ref().and_then(|s| s.get("output_version")));
-    let version = if server {
-        SERVER_OUTPUT_VERSION
-    } else {
-        OUTPUT_VERSION
-    };
-    if made_by != Some(i64::from(version)) {
-        lacking.push(format!(
-            "made by output version {}, this preparer makes {version}: {command}",
-            made_by.map_or("unknown".into(), |v| v.to_string())
-        ));
-    }
-    if server {
-        if manifest.get("server_sha1").and_then(Value::as_str) != Some(lock.pin("server_sha1")?) {
+    let mut lacking: Vec<_> = manifest
+        .version_problems(resources, &lock.version)
+        .into_iter()
+        .map(|problem| format!("{problem}: {command}"))
+        .collect();
+    if profile == Profile::Server {
+        if manifest.server_sha1.as_deref() != Some(lock.pin("server_sha1")?) {
             lacking.push(format!("server.jar is not the pinned one: {command}"));
         }
-        let files = manifest
-            .get("server_files")
-            .and_then(Value::as_array)
-            .filter(|files| !files.is_empty());
-        if let Some(files) = files {
-            for file in files {
-                let name = file
-                    .as_str()
-                    .ok_or("The server profile lists a non-string resource name")?;
-                let relative = crate::artifacts::safe_relative(name)
-                    .filter(|_| sunrise_core::prepared_files::server_resource(name))
-                    .ok_or_else(|| format!("Invalid resource in server profile: {name}"))?;
-                let available = resources.join(relative).metadata().is_ok_and(|meta| {
-                    meta.is_file() && (meta.len() != 0 || name == "data/.mcassetsroot")
-                });
-                if !available {
-                    lacking.push(format!("{name} is missing or empty: {command}"));
-                }
-            }
-        } else {
-            lacking.push(format!("no server resource inventory: {command}"));
-        }
+        lacking.extend(
+            manifest
+                .server_inventory_problems(resources)
+                .into_iter()
+                .map(|problem| format!("{problem}: {command}")),
+        );
     } else {
         for (command, what) in missing_extras(resources) {
             lacking.push(format!("{what} missing: sunrise-prepare {command}"));
@@ -245,6 +202,7 @@ fn lacks_sounds(resources: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{OUTPUT_VERSION, SCHEMA, SERVER_OUTPUT_VERSION};
     use std::fs;
 
     fn folder(name: &str) -> std::path::PathBuf {
