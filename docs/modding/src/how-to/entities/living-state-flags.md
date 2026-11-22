@@ -63,6 +63,11 @@ deepest first, with water before lava on a tie. No contacts is a successful empt
 A retired handle returns `EntityReadError::Stale`; a parked or otherwise unreadable body
 returns `EntityReadError::Unavailable` without calling the visitor.
 
+`EntityRef::is_swimming` reads the swimming flag, not the player's current pose.
+[Swimming eligibility](entity-hooks.md#swimming-eligibility) can change entry on
+both sides without changing either of the fluid reads above or the conditions
+for continuing a swim.
+
 `PlayerRef::trigger_consume_item(host, &stack)` is server-only and fires just
 `CriteriaTriggers.CONSUME_ITEM.trigger(serverPlayer, stack)`, the vanilla public call that NeoForge
 mods can also use. It uses the same advancement path as food and potions, with the supplied stack,

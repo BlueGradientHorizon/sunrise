@@ -1812,7 +1812,10 @@ pub(super) mod tests {
     #[ignore = "daily"]
     fn forced_disconnect_keeps_wire_cache_until_integrated_server_stops() {
         use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
-        use sunrise_client::{lan::data::SyncData, text::Text};
+        use sunrise_client::{
+            lan::data::{SyncData, WorldTags},
+            text::Text,
+        };
 
         if run_fresh_cases(
             "game::integrated::tests::forced_disconnect_keeps_wire_cache_until_integrated_server_stops",
@@ -1830,6 +1833,7 @@ pub(super) mod tests {
                     &game.pack_files(),
                     Some(sync.clone()),
                     game.adv.tree.clone(),
+                    WorldTags::new(game.res.shared_items(), &game.health_resources.damage),
                 );
                 let flags = Arc::new(Flags::default());
                 let stopping = flags.clone();

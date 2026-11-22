@@ -74,7 +74,7 @@ original entity's saved tag or lock. The replacement keeps its own items and
 saved data, including a lock set on its new handle, even if the position returns
 to the state the first write requested. On abort, the journal restores the
 original entity and undoes those edits. `LevelRef::edit_blocks` also restores the
-original blocks, block entities and connection groups on abort; it publishes whole chunks
+original blocks, block entities and connection groups on abort; it publishes whole chunks with their resulting connection groups
 on commit without drops or neighbor updates. When the edited level has no open
 transaction, it commits immediately even if a different level has a transaction open. If both kinds of write touch one position,
 they replay in call order; a later bulk edit cannot substitute its new block

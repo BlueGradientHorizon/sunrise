@@ -125,7 +125,7 @@ pub mod ladder;
 pub mod surface;
 mod travel;
 pub use fluids::{
-    BubbleColumn, FluidResources, FluidTags, LAVA, PlayerFluids, RiddenBoat, WATER,
+    BubbleColumn, FluidResources, FluidTags, LAVA, PlayerFluids, RiddenBoat, SwimEntry, WATER,
     bubble_column_at, bubble_column_push, bubble_column_push_over, bubble_column_surfaces,
 };
 pub(crate) use surface::ModBlockFactors;
@@ -543,8 +543,6 @@ pub struct PlayerMotion {
     pub leather_boots: bool,
     /// An armor piece in `#freeze_immune_wearables` (`LivingEntity.canFreeze`).
     pub freeze_immune: bool,
-    /// A worn enchantment's `damage_immunity` to `#burn_from_stepping` (frost walker).
-    pub burn_from_stepping_immune: bool,
     /// `Entity.oldPosition`: where this tick started.
     pub old_position: Vec3,
     /// The server's copy of a player another client moves (a LAN guest), while
@@ -932,7 +930,7 @@ impl PlayerMotion {
         };
         self.run_sprint_tick(keys, conditions, sprint_window)
     }
-    fn sprint_conditions(&self) -> crate::sprint::Conditions {
+    pub fn sprint_conditions(&self) -> crate::sprint::Conditions {
         crate::sprint::Conditions {
             sprinting: self.sprinting,
             mobility_restricted: self.mobility_restricted,
@@ -962,7 +960,7 @@ impl PlayerMotion {
         // The sprint setter edits attributes and flags, independent of local
         // keyboard history. Retain the input prefix even if that setter fails.
         let mut state = self.sprint_input;
-        let result = state.tick(keys, conditions, sprint_window.clamp(0, 10), |value| {
+        let result = state.tick(keys, conditions, sprint_window, |value| {
             self.set_sprinting(value)
         });
         self.sprint_input = state;
@@ -1317,24 +1315,14 @@ impl MotionWorld<'_, '_, '_> {
                 self.tag_items,
                 self.block_registries,
                 self.damage_hooks,
-            ),
+            )
+            .with_player_equipment(self.side.player_equipment()),
             self.health,
             rules,
         )
     }
     pub fn controlled_simulation_tick(&mut self, keys: crate::sprint::Keys) -> Result<()> {
-        self.controlled_simulation_tick_with_sprint_window(keys, 7)
-    }
-    /// Local simulation with the configured double-tap sprint window.
-    #[sunrise_mod_api_macros::replaceable]
-    pub fn controlled_simulation_tick_with_sprint_window(
-        &mut self,
-        keys: crate::sprint::Keys,
-        sprint_window: i32,
-    ) -> Result<()> {
-        self.local_tick(keys, |player, keys| {
-            player.sprint_input_tick_with_window(keys, sprint_window)
-        })
+        self.local_tick(keys, |player, keys| player.sprint_input_tick(keys))
     }
     /// A client's tick played again: the client's own keys, and the sprinting it said it had
     /// (its ServerboundPlayerCommandPacket comes before the tick's move). It tells the mods nothing
@@ -1359,11 +1347,22 @@ impl MotionWorld<'_, '_, '_> {
         keys: crate::sprint::Keys,
         sprint: impl FnOnce(&mut PlayerMotion, crate::sprint::Keys) -> Result<()>,
     ) -> Result<()> {
-        // The base tick (fluids, swimming) precedes LocalPlayer.aiStep.
+        self.begin_local_tick()?;
+        self.finish_fluid_tick(None)?;
+        let keys = self.prepare_local_sprint(keys)?;
+        sprint(self.player, keys)?;
+        self.finish_local_tick_body(keys)
+    }
+    /// The base tick starts before any `LocalPlayer.aiStep` work.
+    pub fn begin_local_tick(&mut self) -> Result<()> {
         self.player.health.advance_clock();
-        self.fluid_base_tick()?;
+        self.begin_fluid_tick()
+    }
+    pub fn prepare_local_sprint(
+        &mut self,
+        mut keys: crate::sprint::Keys,
+    ) -> Result<crate::sprint::Keys> {
         self.update_local_crouching()?;
-        let mut keys = keys;
         // LocalPlayer.aiStep: a pending auto-jump presses jump for this tick
         // (input.makeJump) and keeps the jump from toggling flight.
         self.player.was_auto_jump = self.player.auto_jump_time > 0;
@@ -1371,7 +1370,14 @@ impl MotionWorld<'_, '_, '_> {
             self.player.auto_jump_time -= 1;
             keys.jump = true;
         }
-        sprint(self.player, keys)?;
+        Ok(keys)
+    }
+    /// Finish the live client tick with the fluid and sprint decisions already applied.
+    #[sunrise_mod_api_macros::replaceable]
+    pub fn finish_local_tick(&mut self, keys: crate::sprint::Keys) -> Result<()> {
+        self.finish_local_tick_body(keys)
+    }
+    fn finish_local_tick_body(&mut self, keys: crate::sprint::Keys) -> Result<()> {
         self.player.shift_key_down = keys.shift;
         let direction = keys.direction();
         self.player.move_vector = direction;
@@ -1543,7 +1549,8 @@ impl MotionWorld<'_, '_, '_> {
                 self.tag_items,
                 self.block_registries,
                 self.damage_hooks,
-            ),
+            )
+            .with_player_equipment(self.side.player_equipment()),
             self.health,
             rules,
             id,
@@ -1802,8 +1809,16 @@ impl MotionWorld<'_, '_, '_> {
             mod_api::EntityWrite::StuckIn(v) => {
                 self.make_stuck_in_block(triple(v));
             }
-            mod_api::EntityWrite::Hurt { amount } => {
-                self.environment_hurt("minecraft:generic", amount)?;
+            mod_api::EntityWrite::Hurt {
+                damage_type,
+                amount,
+            } => {
+                if let Some(kind) =
+                    mod_api::__private::parts_installation::damage_type_name(damage_type)
+                        .and_then(|name| self.health.damage.id(name))
+                {
+                    self.environment_hurt_type(kind, amount)?;
+                }
             }
             mod_api::EntityWrite::ResetFallDistance => self.player.fall_distance = 0.0,
             mod_api::EntityWrite::SetFireTicks(ticks) => self.player.fire_ticks = ticks,
@@ -1966,7 +1981,8 @@ impl MotionWorld<'_, '_, '_> {
                     self.tag_items,
                     self.block_registries,
                     self.damage_hooks,
-                ),
+                )
+                .with_player_equipment(self.side.player_equipment()),
                 self.health,
                 rules,
                 id,
@@ -5964,6 +5980,29 @@ mod tests {
             w.player.swimming,
             "spectator flight is applied later in aiStep"
         );
+
+        w.player.swimming = false;
+        w.player.is_passenger = true;
+        w.begin_fluid_tick().unwrap();
+        let passenger = w.swim_entry().expect("ask before excluding a passenger");
+        w.finish_fluid_tick(Some((passenger, true))).unwrap();
+        assert!(!w.player.swimming);
+
+        w.player.is_passenger = false;
+        w.begin_fluid_tick().unwrap();
+        let at = w.swim_entry().unwrap();
+        w.player.position.x += 1.0;
+        w.finish_fluid_tick(Some((at, true))).unwrap();
+        assert!(
+            !w.player.swimming,
+            "a stale entry is not applied or queried again"
+        );
+
+        w.player.flying = true;
+        assert!(w.swim_entry().is_none());
+        w.player.flying = false;
+        w.player.swimming = true;
+        assert!(w.swim_entry().is_none());
     }
 
     #[test]

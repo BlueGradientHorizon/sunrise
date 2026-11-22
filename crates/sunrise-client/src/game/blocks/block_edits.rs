@@ -40,10 +40,6 @@ impl Game<'_> {
         };
         let tags = [&self.res.items().block_tags, &world_items.block_tags];
         let facts = self.res.facts();
-        let behaviours = self.res.behaviours();
-        let journaled_groups = self
-            .transactions
-            .journaled_connection_group_positions(self.dim);
         let watched = std::mem::take(&mut self.world.watched);
         let matches = |f: usize, s| filters[f].matches(registry, tags, BlockStateId(s));
         let track = |s| {
@@ -57,13 +53,14 @@ impl Game<'_> {
         let (out, publication) = if let Some(frame) = self.transactions.level_frame(self.dim) {
             let (out, publication) = self.world.stage_edit_runs(
                 &runs,
-                &journaled_groups,
                 matches,
                 track,
-                |pos, old, new| {
+                |pos, old, new, clears_group, old_group| {
                     frame.keep_bulk_block(pos, old);
+                    if old_group.is_some() {
+                        frame.keep_connection_group(pos, old_group);
+                    }
                     let to = BlockStateId(new);
-                    let clears_group = !behaviours.keeps_block_entity(BlockStateId(old), to);
                     steps
                         .entry(pos)
                         .and_modify(|step| {
@@ -79,27 +76,9 @@ impl Game<'_> {
             );
             (out, Some(publication))
         } else {
-            (
-                self.world
-                    .edit_runs(&runs, &journaled_groups, matches, track),
-                None,
-            )
+            (self.world.edit_runs(&runs, matches, track), None)
         };
         self.world.watched = watched;
-        if let Some(frame) = self.transactions.level_frame(self.dim) {
-            for (&(x, y, z), step) in &steps {
-                if step.clear_connection_group
-                    && let Some(old) = self.world.connection_group(x, y, z)
-                {
-                    frame.keep_bulk_group((x, y, z), old);
-                    self.world.set_connection_group_stored(x, y, z, None);
-                }
-            }
-        }
-        if !out.group_clears.is_empty() {
-            self.transactions
-                .reconcile_bulk_connection_group_clears(self.dim, &out.group_clears);
-        }
         // The block entities the new blocks bring, as `native_set_block` makes them (a mod block's own,
         // included), in the order `replace_block_entities` takes them: the positions needing a fresh entity.
         let resources = Arc::clone(&self.res);
@@ -872,7 +851,6 @@ mod tests {
                 state: 1,
                 only: None,
             }],
-            &FxHashSet::default(),
             |_, _| true,
             |s| s == 2,
         );
@@ -911,7 +889,6 @@ mod tests {
                 state: 1,
                 only: None,
             }],
-            &FxHashSet::default(),
             |_, _| true,
             |s| s == 3,
         );
@@ -939,7 +916,6 @@ mod tests {
                 state: 3,
                 only: None,
             }],
-            &FxHashSet::default(),
             |_, _| true,
             |s| s == 3,
         );
@@ -984,7 +960,6 @@ mod tests {
                 state: 4,
                 only: None,
             }],
-            &FxHashSet::default(),
             |_, _| true,
             |_| true,
         );
@@ -1009,7 +984,6 @@ mod tests {
                 state: 4,
                 only: None,
             }],
-            &FxHashSet::default(),
             |_, _| true,
             |_| true,
         );

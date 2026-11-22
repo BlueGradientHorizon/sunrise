@@ -320,18 +320,28 @@ impl Game<'_> {
                         let writes = self.body_step_on(entity, footprint, &ground, &mut velocity);
                         for write in writes {
                             match write {
-                                mod_api::EntityWrite::Hurt { amount } => {
+                                mod_api::EntityWrite::Hurt {
+                                    damage_type,
+                                    amount,
+                                } => {
+                                    let Some(name) =
+                                        mod_api::__private::parts_installation::damage_type_name(
+                                            damage_type,
+                                        )
+                                    else {
+                                        continue;
+                                    };
+                                    let Some(kind) = self.health_resources.damage.id(name) else {
+                                        continue;
+                                    };
                                     let source = sunrise_client::health::HurtSource {
-                                        damage_type: "minecraft:generic",
+                                        damage_type: name,
                                         causing: 0,
                                         direct: 0,
                                         position: None,
                                     };
-                                    let vanilla = self.saved_refuses_damage(
-                                        orb_id,
-                                        source.damage_type,
-                                        false,
-                                    );
+                                    let vanilla = self
+                                        .resident_item_or_orb_immune(orb_id, entity.1, kind, false);
                                     let invulnerable = self.native_nonliving_invulnerable(
                                         orb_id, entity.1, source, vanilla,
                                     );

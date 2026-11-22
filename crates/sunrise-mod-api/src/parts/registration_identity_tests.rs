@@ -182,7 +182,10 @@ mod ordered_key_tests {
     #[test]
     fn built_in_registry_order_lists_vanilla_first_and_mods_after_them() {
         crate::__private::part_tests::install_parts_fixture(&[]).unwrap();
-        super::resolve_entity_types(["minecraft:pig", "minecraft:zombie", "test:probe"]).unwrap();
+        super::resolve_entity_types(["minecraft:pig", "minecraft:zombie", "test:probe"], |_| {
+            None
+        })
+        .unwrap();
         // The registry's own order, not sorted: `pig` registers before `zombie`.
         let ordered: Vec<_> = super::entity_type_keys()
             .into_iter()
@@ -204,7 +207,10 @@ mod ordered_key_tests {
             mod_vocab::__private::parts_installation::validate_entity_type_key(u32::MAX).is_err()
         );
         // A second load of the same registry keeps every key and the order.
-        super::resolve_entity_types(["minecraft:pig", "minecraft:zombie", "test:probe"]).unwrap();
+        super::resolve_entity_types(["minecraft:pig", "minecraft:zombie", "test:probe"], |_| {
+            None
+        })
+        .unwrap();
         assert_eq!(super::entity_type_keys(), super::entity_type_keys());
         assert_eq!(
             super::entity_type_key_id(first).as_deref(),

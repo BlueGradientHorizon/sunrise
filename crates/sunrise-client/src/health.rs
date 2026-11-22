@@ -1,8 +1,9 @@
-//! Stored player health and empty-equipment server damage for the resident scene.
+//! Stored player health and server damage for the resident scene.
 //! World/audio/network consumers are queued explicitly; full death and tick
 //! lifecycles (drops, respawn, effects) remain separate work.
 use crate::{
     Result,
+    items::ItemStack,
     motion::{MotionEvent, PlayerMotion},
 };
 pub use mod_api::entity::health::{HurtSource, ShieldBlock, Victim};
@@ -11,7 +12,7 @@ use sunrise_world::{
     attributes::live::LiveAttributes,
     block_landing::LandingDamage,
     combat_rules::ArmorWorld,
-    damage_immunity::{self, DamageRule, ImmunityTag, ImmunityWorld},
+    damage_immunity::{self, DamageRule, EntityImmunityWorld, ImmunityTag, ImmunityWorld},
     damage_reduction::Bypass,
     damage_source::{Catalog, DamageSource, DamageTypeId, Scaling},
     food::{Difficulty, FoodData},
@@ -266,6 +267,54 @@ impl<'a> HitEffects<'a> {
         ))
     }
 }
+/// Inputs to `Entity.isInvulnerableToBase` for a mob or a nonliving body.
+pub struct BodyImmunity<T> {
+    pub removed: bool,
+    pub invulnerable: bool,
+    pub creative_source: bool,
+    pub fire_immune: bool,
+    pub fall_immune: bool,
+    pub source_has_tag: T,
+}
+
+impl<T: FnMut(ImmunityTag) -> bool> BodyImmunity<T> {
+    pub fn vanilla(mut self) -> bool {
+        match damage_immunity::vanilla_base_immunity(&mut self) {
+            Ok(answer) => answer,
+            Err(never) => match never {},
+        }
+    }
+}
+
+impl<T: FnMut(ImmunityTag) -> bool> EntityImmunityWorld for BodyImmunity<T> {
+    type Error = std::convert::Infallible;
+
+    fn removed(&self) -> bool {
+        self.removed
+    }
+    fn permanently_invulnerable(&mut self) -> std::result::Result<bool, Self::Error> {
+        Ok(self.invulnerable)
+    }
+    fn temporarily_invulnerable(&mut self) -> std::result::Result<bool, Self::Error> {
+        Ok(false)
+    }
+    fn tag(&mut self, tag: ImmunityTag) -> std::result::Result<bool, Self::Error> {
+        Ok((self.source_has_tag)(tag))
+    }
+    fn creative_source(&mut self) -> std::result::Result<bool, Self::Error> {
+        Ok(self.creative_source)
+    }
+    fn fire_immune(&mut self) -> std::result::Result<bool, Self::Error> {
+        Ok(self.fire_immune)
+    }
+    fn fall_immune(&mut self) -> std::result::Result<bool, Self::Error> {
+        Ok(self.fall_immune)
+    }
+}
+
+/// The acting player's stacks borrowed in vanilla equipment slot order.
+pub type PlayerEquipment<'a> = [Option<&'a ItemStack>; sunrise_items::equipment::SLOT_NAMES.len()];
+
 /// The level a hit lands in, as damage code sees it: its blocks, its random
 /// (`Level.random`) and its own attachments, lent to the damage hooks as their level host.
 /// Built from the level's world, or, in the mob tick, which reads the world while mobs
@@ -295,6 +344,7 @@ pub struct DamageLevel<'a> {
     /// What the hit's listeners may queue and draw ([`HitEffects`]); none for a level built
     /// outside a game's hit.
     effects: Option<HitEffects<'a>>,
+    player_equipment: PlayerEquipment<'a>,
 }
 impl<'a> DamageLevel<'a> {
     /// The level of `world`, whose blocks `registry` names.
@@ -330,6 +380,7 @@ impl<'a> DamageLevel<'a> {
             credit: Credit::Memory,
             players: None,
             effects: None,
+            player_equipment: [None; 8],
         }
     }
     /// The level of `world`, with the random and attachments `lent` took out of it.
@@ -357,6 +408,7 @@ impl<'a> DamageLevel<'a> {
             credit: Credit::Memory,
             players: None,
             effects: None,
+            player_equipment: [None; 8],
         }
     }
     /// The same level, for a shorter borrow.
@@ -380,6 +432,14 @@ impl<'a> DamageLevel<'a> {
                 .as_mut()
                 .map(|(resolver, memory)| (*resolver, &mut **memory as &mut dyn PlayerMemory)),
             effects: self.effects.as_mut().map(HitEffects::reborrow),
+            player_equipment: self.player_equipment,
+        }
+    }
+    /// Lend the stacks worn by this hit's player victim for enchantment immunity.
+    pub fn with_player_equipment(self, player_equipment: PlayerEquipment<'a>) -> Self {
+        Self {
+            player_equipment,
+            ..self
         }
     }
     /// The same level whose hit lends `effects`.
@@ -496,7 +556,7 @@ impl<'a> DamageLevel<'a> {
         self.attack
     }
     /// The authoritative world's merged tag tables, if available.
-    pub fn tags(&self) -> Option<&crate::items::Items> {
+    pub fn tags(&self) -> Option<&'a crate::items::Items> {
         self.tags
     }
     /// The cached block parser context, if available.
@@ -1980,7 +2040,7 @@ impl CombatEnvironment<Attributes> for Environment<'_> {
         *self.dead
     }
 }
-impl ImmunityWorld for Environment<'_> {
+impl EntityImmunityWorld for Environment<'_> {
     type Error = io::Error;
     fn removed(&self) -> bool {
         false
@@ -2001,10 +2061,43 @@ impl ImmunityWorld for Environment<'_> {
         Ok(self.fire_immune)
     }
     fn fall_immune(&mut self) -> io::Result<bool> {
-        Ok(false)
+        Ok(self.level.tags().is_some_and(|items| {
+            items
+                .enchantments
+                .entity_in_tag("minecraft:player", "minecraft:fall_damage_immune")
+        }))
     }
+    fn invulnerability_check(&mut self, vanilla: bool) -> io::Result<bool> {
+        Ok(self.observe_hit_invulnerability(vanilla))
+    }
+}
+impl ImmunityWorld for Environment<'_> {
     fn enchantment_immunity(&mut self) -> io::Result<bool> {
-        Ok(false)
+        let Some(items) = self.level.tags() else {
+            return Ok(false);
+        };
+        let equipment = self
+            .level
+            .player_equipment
+            .into_iter()
+            .map(|stack| stack.map_or(&[][..], ItemStack::enchantments))
+            .zip(sunrise_items::equipment::SLOT_NAMES);
+        let source = self
+            .level
+            .attack()
+            .player_source(&self.source.definition().name, self.causing);
+        let context = crate::enchant::EffectContext {
+            items: Some(items),
+            damage_type: Some(source.damage_type),
+            is_direct: source.causing == source.direct,
+            this: Some("minecraft:player"),
+            ..Default::default()
+        };
+        Ok(items.enchantments.is_damage_immune(
+            items.enchantments.damage_immunities(equipment),
+            &context,
+            self.level.random(),
+        ))
     }
     fn damage_rule(&mut self, rule: DamageRule) -> io::Result<bool> {
         Ok(match rule {
@@ -2022,9 +2115,6 @@ impl ImmunityWorld for Environment<'_> {
     }
     fn client_loaded(&mut self) -> io::Result<bool> {
         Ok(self.client_loaded)
-    }
-    fn invulnerability_check(&mut self, vanilla: bool) -> io::Result<bool> {
-        Ok(self.observe_hit_invulnerability(vanilla))
     }
 }
 impl HurtWorld for Environment<'_> {

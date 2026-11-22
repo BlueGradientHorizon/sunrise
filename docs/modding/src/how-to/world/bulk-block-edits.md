@@ -22,7 +22,7 @@ Before any mutation, the game resolves palette states and filter names and check
 run indices; a refusal returns `BlockEditError` with nothing changed. `BlockRun.only` can refer to any existing filter at that index. NBT
 is not representable. Unloaded chunks and out-of-height portions of runs are skipped.
 Edits preserve strict block-entity behavior, drop no contents from replaced block
-entities, notify no neighbors and send whole changed chunks.
+entities, notify no neighbors and send whole changed chunks with their resulting connection groups.
 Inside a transaction in the edited level, the new states and entities are visible immediately.
 Abort restores the original states, resident block entities and connection groups; only the
 outermost commit in that level publishes the changed chunks. Without an open transaction in

@@ -3202,6 +3202,8 @@ mod boat_push_order_tests;
 mod item_use_tick_tests;
 #[cfg(test)]
 mod movement_input_tests;
+#[cfg(test)]
+mod swim_start_tests;
 /// `Entity.baseTick`'s fluid update for a mob this window only displays (`fluids`, sampled before
 /// the tick), with the splash it draws, and the block it stands on.
 pub(super) fn client_fluid_step(
