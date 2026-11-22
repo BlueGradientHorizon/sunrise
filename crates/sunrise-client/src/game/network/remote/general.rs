@@ -687,9 +687,9 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn riding_reads_follow_the_server_passenger_lists() {
-        use crate::game::native_entity_refs::tests::collect_entity_visit;
-        use crate::game::native_entity_refs::tests::run_fresh_cases;
-        use mod_api::{ClientHost, EntityRef, WorldEpoch};
+        use crate::game::native_entity_refs::tests::{collect_entity_visit, run_fresh_cases};
+        use mod_api::{ClientHost, EntityReadError, EntityRef, WorldEpoch};
+        use std::ops::ControlFlow;
 
         if run_fresh_cases(
             "game::remote::general::tests::riding_reads_follow_the_server_passenger_lists",
@@ -778,8 +778,8 @@ mod tests {
                 game.handle_packet(set(9, vec![99])).unwrap();
                 let host: &dyn ClientHost = game;
                 assert_eq!(
-                    collect_entity_visit(|visit| vehicle.visit_passengers(host, visit)),
-                    Ok(vec![])
+                    vehicle.visit_passengers(host, &mut |_| panic!("empty seat list visited")),
+                    Ok(ControlFlow::Continue(()))
                 );
                 assert_eq!(vehicle.is_vehicle(host), Some(false));
 
@@ -792,6 +792,20 @@ mod tests {
                     collect_entity_visit(|visit| vehicle.visit_passengers(host, visit)),
                     Ok(vec![row, me])
                 );
+                let mut visited = None;
+                assert_eq!(
+                    vehicle.visit_passengers(host, &mut |rider| {
+                        assert!(visited.replace(rider).is_none());
+                        ControlFlow::Break(())
+                    }),
+                    Ok(ControlFlow::Break(()))
+                );
+                assert_eq!(visited, Some(row));
+                assert_eq!(
+                    vehicle
+                        .visit_indirect_passengers(host, &mut |_| panic!("client walked the tree")),
+                    Err(EntityReadError::Unavailable)
+                );
                 assert_eq!(vehicle.is_vehicle(host), Some(true));
                 assert_eq!(row.vehicle(host), Some(vehicle));
                 assert_eq!(me.vehicle(host), Some(vehicle));
@@ -799,12 +813,12 @@ mod tests {
                 assert_eq!(cloud.root_vehicle(host), Some(vehicle));
                 assert_eq!(unknown.vehicle(host), None);
                 assert_eq!(
-                    collect_entity_visit(|visit| unknown.visit_passengers(host, visit)),
-                    Err(mod_api::EntityReadError::Stale)
+                    unknown.visit_passengers(host, &mut |_| panic!("untracked vehicle visited")),
+                    Err(EntityReadError::Stale)
                 );
                 assert_eq!(
-                    collect_entity_visit(|visit| stale.visit_passengers(host, visit)),
-                    Err(mod_api::EntityReadError::Stale)
+                    stale.visit_passengers(host, &mut |_| panic!("stale vehicle visited")),
+                    Err(EntityReadError::Stale)
                 );
                 assert_eq!(stale.is_vehicle(host), None);
 

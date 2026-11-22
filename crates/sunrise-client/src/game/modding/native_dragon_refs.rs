@@ -140,7 +140,8 @@ mod tests {
     use super::super::Dim;
     use super::super::native_entity_refs::tests::{collect_entity_visit, with_game};
     use super::*;
-    use mod_api::{MobRef, WorldEpoch};
+    use mod_api::{EntityReadError, MobRef, WorldEpoch};
+    use std::ops::ControlFlow;
     use sunrise_client::{entities::ArmorStand, mobs::Mob};
     use sunrise_core::geometry::Vec3;
     use sunrise_core::nbt::Tag;
@@ -487,6 +488,22 @@ mod tests {
             place_parts(game);
             assert_parts_are_the_dragons_own(game, entity);
             let parts = collect_entity_visit(|visit| entity.visit_parts(game, visit)).unwrap();
+            let mut visited = None;
+            assert_eq!(
+                entity.visit_parts(game, &mut |part| {
+                    assert!(visited.replace(part).is_none());
+                    ControlFlow::Break(())
+                }),
+                Ok(ControlFlow::Break(()))
+            );
+            assert_eq!(visited, Some(parts[0]));
+            // If one part is temporarily out of the readable view, do not visit an earlier part.
+            game.held_out.push(parts[7].id());
+            assert_eq!(
+                entity.visit_parts(game, &mut |_| panic!("partial dragon was visited")),
+                Err(EntityReadError::Unavailable)
+            );
+            assert_eq!(game.held_out.pop(), Some(parts[7].id()));
             // Only the eight ids after the dragon's are its parts.
             assert!(game.entity(entity.id() - 1).is_none());
             assert!(game.entity(entity.id() + 9).is_none());

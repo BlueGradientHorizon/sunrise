@@ -609,8 +609,12 @@ impl mobs::part_goals::GoalHost for Game<'_> {
         self.merchant_read_lent(mob, |_, xp, level| (xp, level))
     }
 
-    fn visit_player_passenger_seats(&self, vehicle: u32, visit: &mut dyn FnMut(i64, u32) -> bool) {
-        self.any_player_passenger_seat(vehicle, visit);
+    fn visit_player_passenger_seats(
+        &self,
+        vehicle: u32,
+        visit: &mut dyn FnMut(i64, u32) -> bool,
+    ) -> bool {
+        self.any_player_passenger_seat(vehicle, visit)
     }
 
     fn next_passenger_seat(&self, vehicle: u32, after: Option<u32>) -> Option<u32> {
@@ -618,7 +622,7 @@ impl mobs::part_goals::GoalHost for Game<'_> {
     }
 
     fn passenger_vehicle(&self, rider: u32) -> Option<u32> {
-        self.vehicle_of_any(rider)
+        self.seated_passenger_vehicle(rider)
     }
 
     fn mob_dismount_location(

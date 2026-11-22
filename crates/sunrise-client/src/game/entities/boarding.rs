@@ -4,7 +4,7 @@
 //! vehicle's interaction checks. Mobs keep theirs in `extra.boarding_cooldown`
 //! (`boat_passengers::BOARDING_COOLDOWN`).
 use super::Game;
-use sunrise_client::mobs::Mob;
+use sunrise_client::{lan::guest::Guest, mobs::Mob};
 
 /// Find the next seat in boarding order, breaking equal places by source encounter order.
 /// A tree walk can recover its cursor from a rider id after returning from that rider's children.
@@ -14,7 +14,7 @@ pub(super) fn next_boarded_rider(
 ) -> Option<u32> {
     let mut after_key = None;
     if let Some(after) = after {
-        let mut ordinal = 0;
+        let mut ordinal = 0usize;
         seats(&mut |place, rider| {
             if rider == after {
                 after_key = Some((place, ordinal));
@@ -25,7 +25,7 @@ pub(super) fn next_boarded_rider(
         });
         after_key?;
     }
-    let mut ordinal = 0;
+    let mut ordinal = 0usize;
     let mut next = None;
     seats(&mut |place, rider| {
         let key = (place, ordinal);
@@ -154,12 +154,7 @@ impl Game<'_> {
     ) -> bool {
         let acting = self.lan_acting.filter(|_| self.player.is_some());
         let mut acting_listed = false;
-        for g in self
-            .lan
-            .iter()
-            .flat_map(|h| h.hub.guests.iter())
-            .filter(|g| g.placed && g.dimension == self.dim.id())
-        {
+        for g in self.placed_seat_guests() {
             let rides = if acting == Some(g.conn) {
                 acting_listed = true;
                 self.riding
@@ -177,6 +172,28 @@ impl Game<'_> {
                 && self.riding == Some(vehicle)
                 && matches(place, me)
         })
+    }
+
+    fn placed_seat_guests(&self) -> impl Iterator<Item = &Guest> {
+        self.lan
+            .iter()
+            .flat_map(|h| h.hub.guests.iter())
+            .filter(move |g| g.placed && g.dimension == self.dim.id())
+    }
+
+    /// The parent behind a boarded seat. A displaced player's handle can be hidden during a
+    /// nested guest turn, but the player's seat still has a parent in the hub.
+    pub(super) fn seated_passenger_vehicle(&self, rider: u32) -> Option<u32> {
+        if self.player.is_some() && self.riding_player().is_some_and(|(id, _)| id == rider) {
+            return self.riding;
+        }
+        if let Some(guest) = self
+            .placed_seat_guests()
+            .find(|g| g.entity_id as u32 == rider)
+        {
+            return guest.vehicle;
+        }
+        self.vehicle_of_any(rider)
     }
 
     /// The first actual rider, or the rider directly after `after`, even off-level.

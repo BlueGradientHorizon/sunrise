@@ -55,6 +55,7 @@ fn scoped_host_reads_live_other_mob_before_stale_snapshot() {
 #[test]
 #[ignore = "daily"]
 fn scoped_host_resolves_other_real_players_from_the_game() {
+    use crate::game::native_entity_refs::tests::collect_entity_visit;
     use std::sync::{
         Arc,
         atomic::{AtomicI32, AtomicUsize},
@@ -84,6 +85,10 @@ fn scoped_host_resolves_other_real_players_from_the_game() {
                 10,
             );
             guest.placed = true;
+            if id == 13 {
+                guest.vehicle = Some(9002);
+                guest.vehicle_order = 0;
+            }
             game.lan.as_mut().unwrap().hub.guests.push(guest);
         }
         let kind = game
@@ -92,9 +97,19 @@ fn scoped_host_resolves_other_real_players_from_the_game() {
             .get("minecraft:zombie")
             .unwrap()
             .clone();
-        let mut actor = Mob::new(9001, kind, Vec3::ZERO, 0.0);
+        let mut actor = Mob::new(9001, kind.clone(), Vec3::ZERO, 0.0);
+        actor.extra.mount = Some(9002);
+        actor.extra.vehicle_order = 0;
+        let vehicle = Mob::new(9002, kind.clone(), Vec3::ZERO, 0.0);
+        let live = OneMob(&vehicle);
+        // The player's child remains in Game, so backtracking must cross from Game
+        // to the player and then the loaned vehicle before visiting the actor.
+        let mut carried = Mob::new(9003, kind, Vec3::ZERO, 0.0);
+        carried.extra.mount = Some(13);
+        game.mobs.push(carried);
         let mut world = game.mob_world_base(&[]);
         world.goal_host = Some(game);
+        world.live_mobs = Some(&live);
         // Deliberately select only one guest: the other remains a real live
         // player and must resolve through the underlying game host.
         world.player_identity = Some(([0, 0, 0, 12], 12));
@@ -112,6 +127,36 @@ fn scoped_host_resolves_other_real_players_from_the_game() {
             player.entity().position(game)
         );
         assert!(context.lookup_player(999).is_none());
+
+        let vehicle = EntityRef::new(player.entity().epoch(), 9002);
+        let active = EntityRef::new(vehicle.epoch(), 9001);
+        let carried = EntityRef::new(vehicle.epoch(), 9003);
+        assert_eq!(
+            collect_entity_visit(|visit| vehicle.visit_passengers(&context, visit)),
+            Ok(vec![player.entity(), active]),
+            "player seats precede loaned mobs at equal boarding places"
+        );
+        assert_eq!(
+            collect_entity_visit(|visit| vehicle.visit_indirect_passengers(&context, visit)),
+            Ok(vec![player.entity(), carried, active]),
+            "a player lends Game's riders before the loaned vehicle's next seat"
+        );
+
+        // A temporarily hidden player still owns its seat and the link back to the root.
+        game.held_out.push(player.entity().id());
+        let mut world = game.mob_world_base(&[]);
+        world.goal_host = Some(game);
+        world.live_mobs = Some(&live);
+        let context = GoalCx {
+            m: &mut actor,
+            w: &world,
+            host: game,
+        };
+        assert_eq!(
+            collect_entity_visit(|visit| vehicle.visit_indirect_passengers(&context, visit)),
+            Ok(vec![carried, active])
+        );
+        assert_eq!(game.held_out.pop(), Some(player.entity().id()));
     });
 }
 

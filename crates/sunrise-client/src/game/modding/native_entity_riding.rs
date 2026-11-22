@@ -241,7 +241,7 @@ impl Game<'_> {
         Ok(visit_passenger_tree(
             entity.id(),
             |vehicle, after| self.next_passenger_seat(vehicle, after),
-            |rider| self.vehicle_of_any(rider),
+            |rider| self.seated_passenger_vehicle(rider),
             |rider| {
                 self.entity(rider)
                     .map_or(ControlFlow::Continue(()), &mut *visit)
@@ -890,9 +890,13 @@ mod tests {
     use super::super::{Game, commands::Target};
     use crate::game::native_entity_refs::tests::collect_entity_visit;
     use mod_api::{
-        self, EntityMountEvent, EntityRef, EntityUnleashEvent, Flow, Hooks, LivingRef, ServerHost,
+        self, EntityMountEvent, EntityReadError, EntityRef, EntityUnleashEvent, Flow, Hooks,
+        LivingRef, ServerHost,
     };
-    use std::sync::{Arc, Mutex};
+    use std::{
+        ops::ControlFlow,
+        sync::{Arc, Mutex},
+    };
     use sunrise_client::chunk::Chunk;
     use sunrise_client::mobs::Mob;
     use sunrise_core::geometry::Vec3;
@@ -1351,8 +1355,8 @@ mod tests {
                 Ok(vec![top])
             );
             assert_eq!(
-                collect_entity_visit(|visit| top.visit_indirect_passengers(game, visit)),
-                Ok(Vec::new())
+                top.visit_indirect_passengers(game, &mut |_| panic!("empty tree visited")),
+                Ok(ControlFlow::Continue(()))
             );
 
             assert_eq!(top.is_passenger_of_same_vehicle(game, second), Some(true));
@@ -1361,8 +1365,8 @@ mod tests {
             assert_eq!(apart.is_passenger_of_same_vehicle(game, apart), Some(true));
             assert_eq!(top.is_passenger_of_same_vehicle(game, stale(camel)), None);
             assert_eq!(
-                collect_entity_visit(|visit| stale(camel).visit_indirect_passengers(game, visit)),
-                Err(mod_api::EntityReadError::Stale)
+                stale(camel).visit_indirect_passengers(game, &mut |_| panic!("stale tree visited")),
+                Err(EntityReadError::Stale)
             );
             assert_eq!(stale(camel).controlling_passenger(game), None);
             // Dying is not removal: a dead first passenger still owns its place.
@@ -1402,6 +1406,15 @@ mod tests {
                 collect_entity_visit(|visit| camel.visit_indirect_passengers(game, visit)),
                 Ok(vec![top, second])
             );
+            let mut visited = None;
+            assert_eq!(
+                camel.visit_indirect_passengers(game, &mut |rider| {
+                    assert!(visited.replace(rider).is_none());
+                    ControlFlow::Break(())
+                }),
+                Ok(ControlFlow::Break(()))
+            );
+            assert_eq!(visited, Some(top));
             assert_eq!(
                 first.is_passenger(game),
                 None,
@@ -1474,8 +1487,10 @@ mod tests {
             assert_eq!(
                 collect_entity_visit(|visit| root.visit_indirect_passengers(game, visit))
                     .unwrap()
-                    .len(),
-                70
+                    .into_iter()
+                    .map(|rider| rider.id())
+                    .collect::<Vec<_>>(),
+                (201..=270).collect::<Vec<_>>()
             );
         });
     }

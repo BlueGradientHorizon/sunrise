@@ -62,10 +62,14 @@ impl GoalCx<'_, '_> {
     fn passenger_loan(
         &self,
         entity: EntityRef,
-    ) -> Result<(&dyn GoalHost, &dyn LiveMobs), EntityReadError> {
+    ) -> Result<(&Mob, &dyn GoalHost, &dyn LiveMobs), EntityReadError> {
         let host = self.w.goal_host.ok_or(EntityReadError::Unavailable)?;
-        self.live_entity_for_read(entity)?;
-        Ok((host, self.w.live_mobs.ok_or(EntityReadError::Unavailable)?))
+        let vehicle = self.live_entity_for_read(entity)?;
+        Ok((
+            vehicle,
+            host,
+            self.w.live_mobs.ok_or(EntityReadError::Unavailable)?,
+        ))
     }
 
     fn next_scoped_rider(
@@ -79,11 +83,10 @@ impl GoalCx<'_, '_> {
             return host.next_passenger_seat(vehicle, after);
         }
         next_boarded_rider(after, |visit| {
+            if host.visit_player_passenger_seats(vehicle, &mut *visit) {
+                return;
+            }
             let mut found = false;
-            host.visit_player_passenger_seats(vehicle, &mut |place, id| {
-                found = visit(place, id);
-                found
-            });
             let mut seat = |mob: &Mob| {
                 if !found && mob.extra.mount == Some(vehicle) && !mob.removed && mob.alive() {
                     found = visit(mob.extra.vehicle_order, mob.id);
@@ -94,20 +97,30 @@ impl GoalCx<'_, '_> {
         })
     }
 
+    fn scoped_passengers<'a>(
+        &'a self,
+        vehicle: u32,
+        host: &'a dyn GoalHost,
+        live: &'a dyn LiveMobs,
+    ) -> impl Iterator<Item = EntityRef> + 'a {
+        let mut after = None;
+        std::iter::from_fn(move || {
+            let id = self.next_scoped_rider(host, live, vehicle, after)?;
+            after = Some(id);
+            Some(id)
+        })
+        .filter_map(move |id| self.lookup_entity(id))
+    }
+
     pub(super) fn r_entity_visit_passengers(
         &self,
         entity: EntityRef,
         visit: &mut dyn FnMut(EntityRef) -> ControlFlow<()>,
     ) -> Result<ControlFlow<()>, EntityReadError> {
-        let (host, live) = self.passenger_loan(entity)?;
-        let mut after = None;
-        Ok(std::iter::from_fn(|| {
-            let id = self.next_scoped_rider(host, live, entity.id(), after)?;
-            after = Some(id);
-            Some(id)
-        })
-        .filter_map(|id| self.lookup_entity(id))
-        .try_for_each(visit))
+        let (vehicle, host, live) = self.passenger_loan(entity)?;
+        Ok(self
+            .scoped_passengers(vehicle.id, host, live)
+            .try_for_each(visit))
     }
 
     pub(super) fn r_entity_is_vehicle(&self, entity: EntityRef) -> Option<bool> {
@@ -121,9 +134,9 @@ impl GoalCx<'_, '_> {
         entity: EntityRef,
         visit: &mut dyn FnMut(EntityRef) -> ControlFlow<()>,
     ) -> Result<ControlFlow<()>, EntityReadError> {
-        let (host, live) = self.passenger_loan(entity)?;
+        let (vehicle, host, live) = self.passenger_loan(entity)?;
         Ok(visit_passenger_tree(
-            entity.id(),
+            vehicle.id,
             |vehicle, after| self.next_scoped_rider(host, live, vehicle, after),
             |rider| {
                 if rider == self.m.id {
@@ -142,15 +155,8 @@ impl GoalCx<'_, '_> {
     }
 
     pub(super) fn r_entity_controlling_passenger(&self, entity: EntityRef) -> Option<LivingRef> {
-        let vehicle = self.entity_mob(entity)?;
-        let mut first = None;
-        let _ = self
-            .r_entity_visit_passengers(entity, &mut |rider| {
-                first = Some(rider);
-                ControlFlow::Break(())
-            })
-            .ok()?;
-        let first = first?;
+        let (vehicle, host, live) = self.passenger_loan(entity).ok()?;
+        let first = self.scoped_passengers(vehicle.id, host, live).next()?;
         if let Some(rider) = self.entity_mob(first) {
             let tagged = self
                 .w
@@ -163,9 +169,7 @@ impl GoalCx<'_, '_> {
         if self.host.mob(first).is_some() || self.host.living(first).is_none() {
             return None;
         }
-        self.w
-            .goal_host?
-            .mob_player_controls(vehicle, first.id())
+        host.mob_player_controls(vehicle, first.id())
             .then(|| LivingRef::new(first))
     }
 }
