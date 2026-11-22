@@ -412,7 +412,7 @@ impl Game<'_> {
             ),
         };
         let reach = attack_reach(range, self.own_player_is_creative());
-        let camera = self.remote_camera_id();
+        let camera = self.live_remote_camera_id();
         // AttackRange uses getManyEntityHitResult, which does not exclude
         // entities sharing the camera's root vehicle.
         let boxes = (self.mobs.iter().enumerate())
@@ -932,6 +932,7 @@ impl Game<'_> {
             self.painting_hit().map(|h| h.1),
             self.frame_hit().map(|h| h.1),
             self.dragon_hit().map(|h| h.1),
+            self.interaction_hit().map(|h| h.1),
         ];
         let nearest = cart
             .into_iter()
@@ -947,7 +948,7 @@ impl Game<'_> {
             .is_some_and(|hit| self.block_interactable_for_spectator(&hit))
     }
     /// `BlockBehaviour.showAsInteractableInSpectatorMode`: a block with a menu, or a portal.
-    fn block_interactable_for_spectator(&self, hit: &super::Hit) -> bool {
+    pub(in crate::game) fn block_interactable_for_spectator(&self, hit: &super::Hit) -> bool {
         let block = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
         matches!(
             &*self.res.facts().get(block).name,

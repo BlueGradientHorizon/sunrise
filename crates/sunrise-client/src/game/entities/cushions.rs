@@ -726,6 +726,9 @@ impl Game<'_> {
         };
         let sprites = &self.gui.atlas.sprites;
         for c in &self.cushions {
+            if self.hides_as_camera(c.id) {
+                continue;
+            }
             let a = aabb(c.bounds());
             let (lo, hi) = (a.min_position(), a.max_position());
             let (lo, hi) = (

@@ -49,6 +49,8 @@ impl Game<'_> {
         {
             include(id);
         }
+        // Retain removed camera entity snapshot until SetCamera replaces it (vanilla 26.3).
+        self.detach_camera_if_matching(|cam_id| removed.contains(&(cam_id as u32)));
         // Snapshot before removing passenger keys: a removed passenger can
         // precede its vehicle, whose other seat state still needs clearing.
         for &id in ids {
@@ -69,6 +71,7 @@ impl Game<'_> {
             if let Some(r) = self.remote.as_mut() {
                 r.glowing.remove(&id);
                 r.entities.remove(&id);
+                r.synced_attributes.remove(&id);
                 r.passenger_vehicles.remove(&(id as u32));
                 r.lerps.remove(&id);
                 r.cart_lerps.remove(&id);
@@ -89,18 +92,8 @@ impl Game<'_> {
         self.dropped.retain(|d| keep(d.id));
         self.falling.retain(|f| keep(f.id));
         self.tnts.retain(|t| keep(t.id));
-        let mut camera_removed = false;
         if let Some(r) = self.remote.as_mut() {
             r.passenger_vehicles.retain(|_, seat| keep(seat.vehicle));
-            if r.camera.is_some_and(|id| removed.contains(&(id as u32))) {
-                r.camera = None;
-                camera_removed = true;
-            }
-        }
-        if camera_removed {
-            // Minecraft.setCameraEntity returns to the local player when the
-            // spectated entity leaves, including clearing its post chain.
-            self.check_entity_post_effect(true);
         }
     }
 }

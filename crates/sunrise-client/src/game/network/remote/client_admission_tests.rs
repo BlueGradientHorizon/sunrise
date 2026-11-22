@@ -74,6 +74,8 @@ fn add_player_requires_info_before_replacing_a_tracked_entity() {
                 game,
                 add_entity(game, id, 124, "minecraft:minecart", cart_at),
             );
+            deliver(game, C::SetCamera(play::SetCamera { camera_id: id }));
+            assert_eq!(game.live_remote_camera_id(), Some(id as u32));
             let cart = game
                 .carts
                 .iter()
@@ -93,6 +95,7 @@ fn add_player_requires_info_before_replacing_a_tracked_entity() {
                 true,
             );
             deliver(game, player.clone());
+            assert_eq!(game.live_remote_camera_id(), Some(id as u32));
             assert!(!sound.state().removed);
             assert_eq!(
                 game.remote.as_ref().unwrap().tracked(id),
@@ -129,6 +132,8 @@ fn add_player_requires_info_before_replacing_a_tracked_entity() {
             assert_eq!(remote.tracked(id), Some(("minecraft:player", player_at)));
             assert!(sound.state().removed);
             assert_eq!(remote.level_player(id), Some((uuid, Some("Unlisted"))));
+            assert_eq!(game.live_remote_camera_id(), None);
+            assert_eq!(game.remote_camera_id(), Some(id as u32));
             assert!(game.carts.iter().all(|cart| cart.id != id as u32));
 
             deliver(

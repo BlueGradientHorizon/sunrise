@@ -730,6 +730,206 @@
   {
     "package": "sunrise-client-render",
     "target": "lib",
+    "test": "gfx::view::tests::cull_frustum_matches_26_3_witness_with_zoom_widen_and_bob",
+    "path": "crates/sunrise-client-render/src/gfx/view.rs",
+    "reason": "run by tools/test_camera_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera parity witness into .local and runs this test against it through SUNRISE_CAMERA_PARITY_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::interactions::tests::interaction_negative_height_bounds_invert_downward_26_3",
+    "path": "crates/sunrise-client/src/game/items/interactions.rs",
+    "reason": "run by tools/test_camera_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera parity witness into .local and runs this test against it through SUNRISE_CAMERA_PARITY_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::interactions::tests::interaction_unsynced_default_sync_and_pose_sync_seat_height_26_3",
+    "path": "crates/sunrise-client/src/game/items/interactions.rs",
+    "reason": "run by tools/test_camera_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera parity witness into .local and runs this test against it through SUNRISE_CAMERA_PARITY_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::remote::tests::camera_death_tests::a_spectated_dying_living_entity_squeezes_the_fov_26_3",
+    "path": "crates/sunrise-client/src/game/network/remote/camera_death_tests.rs",
+    "reason": "run by tools/test_camera_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera death FOV witness into .local and runs this test against it through SUNRISE_CAMERA_DEATH_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::remote::tests::camera_draw_tests::local_player_and_camera_entity_draw_like_the_real_client",
+    "path": "crates/sunrise-client/src/game/network/remote/camera_draw_tests.rs",
+    "reason": "run by tools/test_camera_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera draw witness into .local and runs this test against it through SUNRISE_CAMERA_DRAW_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::remote::tests::camera_parity_red_tests::any_tracked_entity_resolves_as_camera_26_3",
+    "path": "crates/sunrise-client/src/game/network/remote/camera_parity_red_tests.rs",
+    "reason": "run by tools/test_camera_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera parity witness into .local and runs this test against it through SUNRISE_CAMERA_PARITY_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::remote::tests::camera_parity_red_tests::block_outline_requires_player_camera_26_3",
+    "path": "crates/sunrise-client/src/game/network/remote/camera_parity_red_tests.rs",
+    "reason": "run by tools/test_camera_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera parity witness into .local and runs this test against it through SUNRISE_CAMERA_PARITY_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::remote::tests::camera_parity_red_tests::camera_consumers_bob_fog_dark_disc_and_vignette_26_3",
+    "path": "crates/sunrise-client/src/game/network/remote/camera_parity_red_tests.rs",
+    "reason": "run by tools/test_camera_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera parity witness into .local and runs this test against it through SUNRISE_CAMERA_PARITY_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::remote::tests::camera_parity_red_tests::camera_consumers_streaming_particles_debug_and_spectator_crosshair_26_3",
+    "path": "crates/sunrise-client/src/game/network/remote/camera_parity_red_tests.rs",
+    "reason": "run by tools/test_camera_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera parity witness into .local and runs this test against it through SUNRISE_CAMERA_PARITY_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::remote::tests::camera_parity_red_tests::camera_entity_excluded_from_pick_for_all_pickable_kinds_26_3",
+    "path": "crates/sunrise-client/src/game/network/remote/camera_parity_red_tests.rs",
+    "reason": "run by tools/test_camera_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera parity witness into .local and runs this test against it through SUNRISE_CAMERA_PARITY_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::remote::tests::camera_parity_red_tests::camera_entity_hidden_in_first_person_for_all_kinds_and_local_player_hidden_26_3",
+    "path": "crates/sunrise-client/src/game/network/remote/camera_parity_red_tests.rs",
+    "reason": "run by tools/test_camera_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera parity witness into .local and runs this test against it through SUNRISE_CAMERA_PARITY_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::remote::tests::camera_parity_red_tests::camera_player_fov_modifier_and_death_isolation_26_3",
+    "path": "crates/sunrise-client/src/game/network/remote/camera_parity_red_tests.rs",
+    "reason": "run by tools/test_camera_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera parity witness into .local and runs this test against it through SUNRISE_CAMERA_PARITY_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::remote::tests::camera_parity_red_tests::culling_near_plane_uses_max_of_fov_and_option_fov_26_3",
+    "path": "crates/sunrise-client/src/game/network/remote/camera_parity_red_tests.rs",
+    "reason": "run by tools/test_camera_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera parity witness into .local and runs this test against it through SUNRISE_CAMERA_PARITY_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::remote::tests::camera_parity_red_tests::frozen_camera_partial_tick_matches_26_3_witness",
+    "path": "crates/sunrise-client/src/game/network/remote/camera_parity_red_tests.rs",
+    "reason": "run by tools/test_camera_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera parity witness into .local and runs this test against it through SUNRISE_CAMERA_PARITY_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::remote::tests::camera_parity_red_tests::interaction_camera_eye_rotation_move_and_teleport_26_3",
+    "path": "crates/sunrise-client/src/game/network/remote/camera_parity_red_tests.rs",
+    "reason": "run by tools/test_camera_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera parity witness into .local and runs this test against it through SUNRISE_CAMERA_PARITY_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::remote::tests::camera_parity_red_tests::particle_camera_before_first_frame_and_after_reset_26_3",
+    "path": "crates/sunrise-client/src/game/network/remote/camera_parity_red_tests.rs",
+    "reason": "run by tools/test_camera_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera parity witness into .local and runs this test against it through SUNRISE_CAMERA_PARITY_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::remote::tests::camera_parity_red_tests::removing_camera_entity_keeps_detached_camera_26_3",
+    "path": "crates/sunrise-client/src/game/network/remote/camera_parity_red_tests.rs",
+    "reason": "run by tools/test_camera_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera parity witness into .local and runs this test against it through SUNRISE_CAMERA_PARITY_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::remote::tests::camera_parity_red_tests::sleeping_spectated_living_entity_bed_view_and_visibility_26_3",
+    "path": "crates/sunrise-client/src/game/network/remote/camera_parity_red_tests.rs",
+    "reason": "run by tools/test_camera_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera parity witness into .local and runs this test against it through SUNRISE_CAMERA_PARITY_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::remote::tests::camera_parity_red_tests::review_followup_camera_parity_26_3",
+    "path": "crates/sunrise-client/src/game/network/remote/camera_parity_red_tests.rs",
+    "reason": "run by tools/test_camera_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera parity witness into .local and runs this test against it through SUNRISE_CAMERA_PARITY_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::remote::tests::camera_parity_red_tests::spectated_rider_mount_attributes_26_3",
+    "path": "crates/sunrise-client/src/game/network/remote/camera_parity_red_tests.rs",
+    "reason": "run by tools/test_camera_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera parity witness into .local and runs this test against it through SUNRISE_CAMERA_PARITY_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::remote::tests::client_camera_tests::a_named_mob_the_server_camera_is_attached_to_shows_no_name_tag",
+    "path": "crates/sunrise-client/src/game/network/remote/client_camera_tests.rs",
+    "reason": "run by tools/test_camera_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera name-tag witness into .local and runs this test against it through SUNRISE_NAME_TAG_CAMERA_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::remote::tests::client_hud_camera_tests::hud_bars_follow_the_camera_player_like_26_3",
+    "path": "crates/sunrise-client/src/game/network/remote/client_hud_camera_tests.rs",
+    "reason": "run by tools/test_camera_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 HUD camera witness into .local and runs this test against it through SUNRISE_HUD_CAMERA_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::remote::tests::set_camera_kinds_tests::set_camera_follows_the_real_26_3_clients_camera_for_every_entity_kind",
+    "path": "crates/sunrise-client/src/game/network/remote/set_camera_kinds_tests.rs",
+    "reason": "run by tools/test_camera_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 SetCamera entity-kind witness into .local and runs this test against it through SUNRISE_SET_CAMERA_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::remote_camera::camera_mount_tests::a_spectated_rider_backs_off_by_its_living_vehicles_camera_distance",
+    "path": "crates/sunrise-client/src/game/network/tests/camera_mount_tests.rs",
+    "reason": "run by tools/test_camera_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera mount witness into .local and runs this test against it through SUNRISE_CAMERA_MOUNT_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::remote_camera::camera_tests::a_spectated_sleeping_villager_shows_the_bed_view",
+    "path": "crates/sunrise-client/src/game/network/tests/remote_camera_tests.rs",
+    "reason": "run by tools/test_camera_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 sleeping camera witness into .local and runs this test against it through SUNRISE_REMOTE_CAMERA_SLEEPING_DIR, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client-render",
+    "target": "lib",
     "test": "gfx::entity_batch::tests::classic_polygon_offset_text_quads_sort_far_to_near_like_vanilla_26_3",
     "path": "crates/sunrise-client-render/src/gfx/entity_batch.rs",
     "reason": "run by tools/test_displays_parity.py",
