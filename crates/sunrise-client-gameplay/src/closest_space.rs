@@ -1,8 +1,6 @@
 //! `LocalPlayer.moveTowardsClosestSpace`: the push out of a wall the player's body is in.
 use sunrise_client::{
-    collisions::{SceneCollisions, overlaps_moving_colliders},
-    motion::PlayerMotion,
-    world::World,
+    collisions::SceneCollisions, motion::PlayerMotion, moving_colliders::overlaps, world::World,
 };
 use sunrise_core::geometry::{Aabb, Axis, ShapeOp, Vec3, VoxelShape};
 use sunrise_core::position::BlockPos;
@@ -39,7 +37,7 @@ pub fn closest_space_nudge(
             Vec3::new(f64::from(x) + 1.0e-7, lo, f64::from(z) + 1.0e-7),
             Vec3::new(f64::from(x + 1) - 1.0e-7, hi, f64::from(z + 1) - 1.0e-7),
         );
-        if overlaps_moving_colliders(EntityIdentity(u64::from(p.entity_id as u32)), area) {
+        if overlaps(EntityIdentity(u64::from(p.entity_id as u32)), area) {
             return true;
         }
         let Ok(area_shape) = VoxelShape::from_box(area) else {
