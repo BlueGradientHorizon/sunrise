@@ -777,6 +777,24 @@ mod tests {
                 2,
                 "repeated submissions in one view draw explicitly"
             );
+            let empty = game.create_group(model, 0).unwrap();
+            let culled = game.create_group(model, 1).unwrap();
+            culled.write(game, 0, &[far]).unwrap();
+            draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
+            game.prepared_model_draws.borrow_mut().clear();
+            for _ in 0..=16_384 {
+                context(game, &mut draw).draw_instance_group(empty).unwrap();
+                context(game, &mut draw)
+                    .draw_instance_group(culled)
+                    .unwrap();
+            }
+            assert_eq!(draw.usage().instances_used, 0);
+            assert!(game.prepared_model_draws.borrow().is_empty());
+            context(game, &mut draw).draw_instance_group(group).unwrap();
+            assert_eq!(draw.usage().instances_used, 1);
+            assert_eq!(expected, render(game));
+            empty.destroy(game).unwrap();
+            culled.destroy(game).unwrap();
             draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
             game.prepared_model_draws.borrow_mut().clear();
             context(game, &mut draw).draw_instance_group(group).unwrap();

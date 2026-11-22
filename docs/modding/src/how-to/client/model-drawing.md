@@ -276,9 +276,9 @@ draw.terrain_model(self.belt, options)?;
 
 Each mod may reserve 65,536 copies across all its groups; a zero-capacity group
 reserves one slot. Destroying a group releases that reservation immediately. A view
-accepts 16,384 visible copies shared across transient batches, groups and listeners,
-and at most 16,384 group submissions. Culled copies do not consume the visible-copy
-budget. Refusal is atomic: no prefix of a refused submission draws.
+accepts 16,384 visible copies shared across transient batches, groups and listeners.
+Culled copies do not consume the visible-copy budget. Refusal is atomic: no prefix of
+a refused submission draws.
 
 Groups cache converted records on the CPU. Unchanged groups avoid pose, normal and
 tint conversion, but cull and stage visible copies each frame. Every visible

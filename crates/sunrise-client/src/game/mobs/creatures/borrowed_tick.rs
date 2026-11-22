@@ -541,7 +541,13 @@ impl Game<'_> {
                         section_writer: None,
                         ..base
                     };
-                    w.section_writer = live_section_observer.clone();
+                    w.section_writer = live_section_observer.as_ref().map(|observer| {
+                        let epoch = observer.borrow().epoch();
+                        let residency = self.entity_residency(mod_api::EntityRef::new(epoch, m.id));
+                        observer.borrow_mut().set_residency(m.id, residency);
+                        std::rc::Rc::clone(observer)
+                            as crate::mobs::living::section_writes::Observer
+                    });
                     w.controlling_player_movement = controlling_player_movement;
                     let credit_expiring = if resuming {
                         resume_credit_expiring
