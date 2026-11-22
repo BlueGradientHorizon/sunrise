@@ -9,13 +9,14 @@ from command_exec_corpus import cmd, setup
 FUNCTIONS = {
     'parity:clear_night_vision': '''effect give @s minecraft:night_vision 30
 attribute @s minecraft:max_health base set 16.5
-execute unless data entity @s {Health:20.0f} run return fail
+execute unless data entity @s {Health:20.0f} run return 2
 effect clear @s minecraft:night_vision
 execute unless data entity @s {Health:16.5f} run return fail
 return 1
 ''',
     'parity:update_night_vision': '''effect give @s minecraft:night_vision 30
 attribute @s minecraft:max_health base set 12.5
+execute unless data entity @s {Health:16.5f} run return 2
 effect give @s minecraft:night_vision 60
 execute unless data entity @s {Health:12.5f} run return fail
 return 1

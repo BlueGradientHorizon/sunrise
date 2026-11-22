@@ -19,6 +19,7 @@ effect clear @s minecraft:invisibility
 SCRIPT = [
     ('watcher', [], ['chat on', 'join Alice']),
     ('loaded', [], ['join Bob']),
+    ('positioned', [], ['cmd Bob tp @s 6.5 -60 0.5']),
     ('promotion-input', [], ['send-cmd Alice execute as Bob if data entity @s '
                             + SAVED + ',hidden_effect:{duration:-1}}] unless data entity @s ' + HIDE
                             + ' run tellraw Alice {"text":"promotion-input-confirmed"}']),
@@ -67,6 +68,8 @@ def main():
         lines = locator.run_side(label, server, client, build, world, script=SCRIPT,
                                  step_ticks={'saved-promotion': 200})
         assert not any(' error ' in line or 'disconnected' in line for line in lines), label
+        assert any(line.startswith('Alice step=positioned ') and ' Bob ' in line
+                   and line.split()[2] in ('track', 'update') for line in lines), label
         assert any('promotion-input-confirmed' in line for line in lines), label
         return recording(lines), any('promotion-output-confirmed' in line for line in lines)
 
