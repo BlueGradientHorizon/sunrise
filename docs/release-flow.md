@@ -815,8 +815,8 @@ a warning. A grant names its commit in full; a blank one is no grant. The commit
 first, as for every Nightly. The gate
 still holds, and an exception never changes the rule (owner, 2026-11-17). A complete published
 `sdk-<sha>` is verified and carried when available; without it, notes say native mods cannot be built for this
-build and no `sdk.json` is signed or published. Linux and Windows x64 are required. macOS is optional: a failed
-archive is omitted from signed checksums and publication with a warning, and the notes name it.
+build and no `sdk.json` is signed or published. Linux, Windows x64 and Apple-chip macOS are all required: a build
+missing any of them is neither signed nor published.
 
 The upstream Nightly selection machinery below describes Sunrise's picked-PR channel, not Sunrise's selection.
 

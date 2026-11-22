@@ -118,11 +118,8 @@ jobs:
   build:
     if: inputs.part == 'game'
     name: build ${{ matrix.name }}
-    # On sunrise-org/sunrise the macOS leg is optional (ce823dbddd): a failed one still lets the run sign and publish
-    # without its archive, and the release notes name it. continue-on-error covers a failure only: a leg that times
-    # out or is cancelled ends `cancelled`, and so does this job's result. The legs job below decides from the legs
-    # that finished, so callers wait on it instead.
-    continue-on-error: ${{ github.repository == 'sunrise-org/sunrise' && matrix.mac == true }}
+    # Every leg is required: the three platforms Sunrise ships, the SDK's. The legs job below decides from each
+    # leg's marker, so callers wait on it instead.
     strategy:
       fail-fast: false
       matrix:
@@ -424,21 +421,13 @@ jobs:
           path: legs
       - name: Every required leg built
         id: decide
-        env:
-          REPOSITORY: ${{ github.repository }}
         run: |
-          # macOS is optional on sunrise-org/sunrise (build's continue-on-error).
-          required=(linux windows)
-          [[ "$REPOSITORY" == sunrise-org/sunrise ]] || required+=(macos)
           missing=()
-          for leg in "${required[@]}"; do [[ -d "legs/leg-$leg" ]] || missing+=("$leg"); done
-          for leg in linux windows macos; do
-            [[ -d "legs/leg-$leg" ]] || echo "::warning::build $leg did not finish"
-          done
+          for leg in linux windows macos; do [[ -d "legs/leg-$leg" ]] || missing+=("$leg"); done
           if (( ${#missing[@]} )); then echo "::error::required legs did not build: ${missing[*]}"; exit 1; fi
           echo complete=true >> "$GITHUB_OUTPUT"
-      # The caller reads this artifact, not a workflow output: a reusable workflow that ends failed or cancelled (an
-      # optional leg that failed, timed out or got no runner) passes back no outputs at all.
+      # The caller reads this artifact, not a workflow output: a reusable workflow that ends failed or cancelled (a
+      # leg that failed, timed out or got no runner) passes back no outputs at all.
       - name: The build is complete
         if: steps.decide.outputs.complete == 'true'
         run: echo complete > "$RUNNER_TEMP/build-complete"

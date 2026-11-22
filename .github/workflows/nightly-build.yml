@@ -351,7 +351,7 @@ jobs:
       trusted: false  # it can hold unreviewed pull requests: their own cache key, never saved
 
   # Whether every required leg built, from the `build-complete` marker game-build.yml's legs job uploads. build's
-  # result is `failure` or `cancelled` whenever an optional leg failed, timed out or got no runner, and a reusable
+  # result is `failure` or `cancelled` whenever a leg failed, timed out or got no runner, and a reusable
   # workflow that ends that way passes back no outputs, so this is an ordinary job's output instead.
   complete:
     needs: build
@@ -403,15 +403,9 @@ jobs:
           SIGN_FOR: ${{ inputs.kind == 'stable' && needs.pick.outputs.tag || inputs.kind }}
           ALSO_FOR: ${{ inputs.kind == 'stable' && needs.pick.outputs.tag || format('{0}-{1}-{2}', inputs.kind, needs.pick.outputs.date, needs.pick.outputs.short) }}
         run: |
-          # macOS's build may fail on sunrise-org/sunrise without holding the build (game-build.yml): then it is left out.
-          macos=()
-          if [[ -f dist/sunrise-macos-arm64.zip ]]; then macos=(dist/sunrise-macos-arm64.zip)
-          elif [[ "$GITHUB_REPOSITORY" == sunrise-org/sunrise ]]; then
-            echo "::warning::dist/sunrise-macos-arm64.zip is missing: SHA256SUMS goes out without it"
-          else echo "::error::Required archive dist/sunrise-macos-arm64.zip is missing"; exit 1; fi
           sdk=(); if [[ -f dist/sdk.json ]]; then sdk=(dist/sdk.json); fi
           bash tools/ci/sign_release.sh "$SIGN_FOR" dist/sunrise-linux-x86_64.tar.gz dist/sunrise-windows-x64.zip \
-            ${sdk[@]+"${sdk[@]}"} ${macos[@]+"${macos[@]}"} dist/sunrise-server-linux-x86_64.tar.gz \
+            ${sdk[@]+"${sdk[@]}"} dist/sunrise-macos-arm64.zip dist/sunrise-server-linux-x86_64.tar.gz \
             dist/sunrise-source.tar.gz dist/sunrise-release.json
       - uses: actions/upload-artifact@v7
         with:
@@ -499,19 +493,12 @@ jobs:
           # A pre-release, never GitHub's latest: the latest stays the last vX.Y.Z, which launchers and servers from
           # before the Nightly-only switch keep (they don't read Nightlies).
           python3 tools/ci/nightly.py require-sdk "$SHA"
-          # The optional macOS build when it finished (the sign job left it out otherwise), and named in the notes
-          # players read when it did not.
-          macos=()
-          if [[ -f dist/sunrise-macos-arm64.zip ]]; then macos=(dist/sunrise-macos-arm64.zip)
-          else
-            printf '\n## Not in this Nightly\n\nThis build failed or did not finish, so this Nightly has no archive for it:\n\n'
-            printf -- '- macOS on Apple silicon (`sunrise-macos-arm64.zip`)\n'
-          fi >> dist/nightly-notes.md
           gh release create nightly --prerelease --latest=false --target "$SHA" \
             --title "Nightly $DATE · ${SHA:0:7}" --notes-file dist/nightly-notes.md \
             "dist/sunrise-linux-x86_64.tar.gz#Game files the launcher installs (Nightly): Linux (sunrise-linux-x86_64.tar.gz)" \
             "dist/sunrise-windows-x64.zip#Game files the launcher installs (Nightly): Windows (sunrise-windows-x64.zip)" \
-            ${sdk[@]+"${sdk[@]}"} ${macos[@]+"${macos[@]}"} \
+            ${sdk[@]+"${sdk[@]}"} \
+            "dist/sunrise-macos-arm64.zip#Game files the launcher installs (Nightly): macOS on Apple silicon (sunrise-macos-arm64.zip)" \
             "dist/sunrise-server-linux-x86_64.tar.gz#Nightly dedicated server for Linux (sunrise-server-linux-x86_64.tar.gz)" \
             "dist/sunrise-source.tar.gz#Source of this Nightly, commit ${SHA:0:7} (sunrise-source.tar.gz; kept for good as the tag $SOURCE_TAG)" \
             "dist/sunrise-release.json#What this build is, for launchers (sunrise-release.json)" \
@@ -531,17 +518,7 @@ jobs:
           python3 tools/ci/nightly.py require-sdk "$SHA"
           # The title is what launchers parse (strictly) into the version SHA256SUMS.v2.sig is signed for: the tag.
           [[ "${SHA:0:7}" == "$SHORT" && "$TAG" == "dev-$DATE-$SHORT" ]] || { echo "::error::the build's commit isn't the one signed"; exit 1; }
-          # Archive presence records what was actually built, not an unsupported platform promise.
-          printf '\n## Platform build results\n\n' >> dist/nightly-notes.md
-          for archive in sunrise-linux-x86_64.tar.gz sunrise-server-linux-x86_64.tar.gz sunrise-windows-x64.zip \
-              sunrise-macos-arm64.zip; do
-            if [[ -f "dist/$archive" ]]; then
-              printf -- '- Built: `%s`.\n' "$archive"
-            else
-              printf -- '- Failed or unavailable; not published: `%s`.\n' "$archive"
-            fi
-          done >> dist/nightly-notes.md
-          # Exactly the files SHA256SUMS lists (the sign job left out a missing optional archive), and the signatures.
+          # Exactly the files SHA256SUMS lists, and the signatures.
           files=(); while read -r _ name; do files+=("dist/${name#\*}"); done < dist/SHA256SUMS
           # A pre-release, never GitHub's latest, under its own tag: no launcher lists or updates to it.
           gh release create "$TAG" --prerelease --latest=false --target "$SHA" \

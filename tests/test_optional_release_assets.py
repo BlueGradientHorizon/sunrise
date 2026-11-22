@@ -1,4 +1,4 @@
-"""Execute release shell steps with optional archives present and absent."""
+"""Execute release shell steps with every archive present, and with one missing."""
 
 import base64
 import hashlib
@@ -13,11 +13,9 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 REQUIRED = {
-    "sunrise-linux-x86_64.tar.gz", "sunrise-windows-x64.zip", "sunrise-server-linux-x86_64.tar.gz",
-    "sunrise-source.tar.gz", "sunrise-release.json",
+    "sunrise-linux-x86_64.tar.gz", "sunrise-windows-x64.zip", "sunrise-macos-arm64.zip",
+    "sunrise-server-linux-x86_64.tar.gz", "sunrise-source.tar.gz", "sunrise-release.json",
 }
-# Optional on sunrise-org/sunrise (game-build.yml's continue-on-error), required elsewhere.
-MACOS = "sunrise-macos-arm64.zip"
 # The bash on PATH, as in test_pr_ready: Windows' CreateProcess looks in System32 before PATH, so a bare "bash"
 # there is WSL's, which gets none of the steps' env and none of the host's paths.
 BASH = shutil.which("bash")
@@ -37,13 +35,14 @@ def run_step(containing):
 @unittest.skipUnless(POSIX_BASH and shutil.which("openssl") and shutil.which("sha256sum"),
                      "release shell checks require a bash that is not WSL's, OpenSSL and sha256sum")
 class OptionalReleaseAssetsTests(unittest.TestCase):
-    def test_sign_and_publish_with_each_optional_archive_combination(self):
-        for repository, macos in product(("sunrise-org/sunrise", "horizon-rust/horizon"), (False, True)):
-            with self.subTest(repository=repository, macos=macos), tempfile.TemporaryDirectory() as folder:
+    def test_sign_and_publish_need_every_platform(self):
+        for repository, missing in product(("sunrise-org/sunrise", "horizon-rust/horizon"),
+                                           (None, "sunrise-macos-arm64.zip")):
+            with self.subTest(repository=repository, missing=missing), tempfile.TemporaryDirectory() as folder:
                 root = Path(folder)
                 dist = root / "dist"
                 dist.mkdir()
-                present = REQUIRED | ({MACOS} if macos else set())
+                present = REQUIRED - {missing}
                 # The fork's Nightly carries its SDK's index in its signed sums; upstream's has no SDK.
                 if repository == "sunrise-org/sunrise":
                     present |= {"sdk.json"}
@@ -59,9 +58,8 @@ class OptionalReleaseAssetsTests(unittest.TestCase):
                            RELEASE_SIGNING_KEY="", RELEASE_SIGNING_KEY_NEXT="")
                 signed = subprocess.run([BASH, "-e", "-c", run_step('sign_release.sh "$SIGN_FOR"')],
                                         cwd=root, env=env, text=True, capture_output=True)
-                if repository != "sunrise-org/sunrise" and not macos:
+                if missing:
                     self.assertNotEqual(signed.returncode, 0)
-                    self.assertIn(f"Required archive dist/{MACOS} is missing", signed.stdout)
                     continue
                 self.assertEqual(signed.returncode, 0, signed.stderr)
                 # Windows' sha256sum defaults to binary mode, marked by a * before each name.
@@ -92,9 +90,6 @@ gh() {
                 files = {Path(name).name for name in (root / "published").read_text().splitlines()}
                 self.assertEqual(files, present | {"SHA256SUMS", "SHA256SUMS.sig", "SHA256SUMS.v2.sig", "smoke-test.json",
                                                    "nightly-notes.md"})
-                if not macos:
-                    self.assertIn(f"::warning::dist/{MACOS} is missing", signed.stdout)
-                    self.assertIn(f"## Not in this Nightly", (dist / "nightly-notes.md").read_text())
 
     def test_a_stable_release_has_a_nightlys_assets_both_signed_for_its_tag(self):
         # A launcher checks a stable release as signed_digest does: SHA256SUMS signed for "horizon release <tag>".
@@ -102,7 +97,7 @@ gh() {
             root = Path(folder)
             dist = root / "dist"
             dist.mkdir()
-            present = REQUIRED | {MACOS, "sdk.json"}
+            present = REQUIRED | {"sdk.json"}
             for name in present:
                 (dist / name).write_text(name)
             (root / "tools/ci").mkdir(parents=True)
@@ -161,7 +156,7 @@ gh() {
             root = Path(folder)
             dist = root / "dist"
             dist.mkdir()
-            present = REQUIRED | {MACOS}
+            present = REQUIRED
             for name in present:
                 (dist / name).write_text(name)
             (root / "tools/ci").mkdir(parents=True)

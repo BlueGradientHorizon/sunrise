@@ -92,33 +92,21 @@ console.log(JSON.stringify(eval(expression)));
                 timeout = game["build"]["timeout-minutes"][3:-2]
                 self.assertEqual(evaluate(timeout, row, trusted, repository), expected)
 
-    @unittest.skipUnless(shutil.which("node"), "Node evaluates GitHub's JavaScript-style expressions")
-    def test_a_missing_leg_holds_the_build_only_when_it_is_required(self):
+    def test_any_missing_leg_holds_the_build(self):
         workflow_jobs = dict(jobs(GAME.read_text()))
-        optional = re.search(r"^\s*continue-on-error:\s*\$\{\{(.*?)\}\}", workflow_jobs["build"], re.M).group(1)
         decide = workflow_jobs["legs"].split("        run: |\n", 1)[1].split("\n      # ", 1)[0].split("\n      - ", 1)[0]
         decide = textwrap.dedent(decide)
-        script = """const s = JSON.parse(require('fs').readFileSync(0, 'utf8'));
-const matrix = s.matrix, inputs = s.inputs, github = s.github;
-console.log(JSON.stringify(Boolean(eval(s.expression))));
-"""
-        legs = {"linux": {}, "windows": {}, "macos": {"mac": True}}
-        for repository in ["sunrise-org/sunrise", "horizon-rust/horizon"]:
-            for absent in [None, *legs]:
-                if absent is None:
-                    expected = True
-                else:
-                    state = {"expression": optional, "matrix": {"name": absent, **legs[absent]}, "inputs": {}, "github": {"repository": repository}}
-                    expected = json.loads(subprocess.run(["node", "-e", script], input=json.dumps(state), text=True, capture_output=True, check=True).stdout)
-                with self.subTest(repository=repository, absent=absent), tempfile.TemporaryDirectory() as folder:
-                    for leg in legs:
-                        if leg != absent:
-                            os.makedirs(f"{folder}/legs/leg-{leg}")
-                    output = Path(folder, "output")
-                    ran = subprocess.run(["bash", "-c", decide], cwd=folder, capture_output=True, text=True,
-                                         env={**os.environ, "REPOSITORY": repository, "GITHUB_OUTPUT": str(output)})
-                    self.assertEqual(ran.returncode == 0, expected, ran.stdout)
-                    self.assertEqual(output.exists() and output.read_text() == "complete=true\n", expected)
+        legs = ("linux", "windows", "macos")
+        for absent in [None, *legs]:
+            with self.subTest(absent=absent), tempfile.TemporaryDirectory() as folder:
+                for leg in legs:
+                    if leg != absent:
+                        os.makedirs(f"{folder}/legs/leg-{leg}")
+                output = Path(folder, "output")
+                ran = subprocess.run(["bash", "-c", decide], cwd=folder, capture_output=True, text=True,
+                                     env={**os.environ, "GITHUB_OUTPUT": str(output)})
+                self.assertEqual(ran.returncode == 0, absent is None, ran.stdout)
+                self.assertEqual(output.exists() and output.read_text() == "complete=true\n", absent is None)
 
     def test_build_timings_are_a_report_and_never_a_signed_or_released_asset(self):
         game = yaml.safe_load(GAME.read_text())

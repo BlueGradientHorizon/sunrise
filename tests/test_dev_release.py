@@ -93,20 +93,12 @@ class NightlyBuildDevTests(unittest.TestCase):
         self.assertIn('--tag "$version"', verify)
         self.assertEqual(self.workflow["on"]["workflow_dispatch"]["inputs"]["kind"]["default"], "nightly")
 
-    def test_the_mac_leg_is_optional_only_on_sunrise(self):
+    def test_every_platform_leg_is_required(self):
         game = load("game-build.yml")
         build = game["jobs"]["build"]
-        expression = build["continue-on-error"].removeprefix("${{").removesuffix("}}").strip()
         self.assertNotIn("kind", game["on"]["workflow_call"]["inputs"])
         self.assertEqual({row["name"] for row in build["strategy"]["matrix"]["include"]}, {"linux", "windows", "macos"})
-        for repo in ("sunrise-org/sunrise", "example/test"):
-            optional = set()
-            for row in build["strategy"]["matrix"]["include"]:
-                condition = (expression.replace("github.repository", repr(repo))
-                             .replace("matrix.mac", str(row.get("mac") == "true")).replace("true", "True"))
-                if eval(condition.replace("||", "or").replace("&&", "and"), {"__builtins__": {}}):
-                    optional.add(row["name"])
-            self.assertEqual(optional, {"macos"} if repo == "sunrise-org/sunrise" else set())
+        self.assertNotIn("continue-on-error", build)
         self.assertEqual(game["jobs"]["linux-smoke"]["needs"], "legs")
         # A reusable workflow that ends failed or cancelled (an optional leg) passes back no outputs: signing and
         # publishing follow the legs job's build-complete marker, read by an ordinary job.
@@ -122,7 +114,7 @@ class NightlyBuildDevTests(unittest.TestCase):
             self.assertIn("needs.complete.outputs.complete == 'true'", self.workflow["jobs"][job]["if"])
 
     @unittest.skipIf(os.name == "nt", "executes the POSIX signing step")
-    def test_missing_mac_is_signed_only_on_sunrise_and_dev_notes_name_missing_assets(self):
+    def test_a_build_without_its_mac_archive_is_never_signed(self):
         sign = self.workflow["jobs"]["sign"]["steps"][2]["run"]
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
@@ -133,17 +125,15 @@ class NightlyBuildDevTests(unittest.TestCase):
             for name in ("sunrise-linux-x86_64.tar.gz", "sunrise-windows-x64.zip",
                          "sunrise-server-linux-x86_64.tar.gz", "sunrise-source.tar.gz", "sunrise-release.json"):
                 (root / "dist" / name).touch()
-            for repository, code in (("sunrise-org/sunrise", 0), ("example/test", 1)):
+            for repository in ("sunrise-org/sunrise", "example/test"):
                 result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", sign], cwd=root,
                                         env=dict(os.environ, KIND="dev", GITHUB_REPOSITORY=repository),
                                         capture_output=True, text=True)
-                self.assertEqual(result.returncode, code, result.stdout + result.stderr)
-            published = self.steps["Publish as the dev-<date>-<short> pre-release"]["run"]
-            notes = published[published.index("# Archive presence"):].split("# Exactly the files", 1)[0]
-            subprocess.run(["bash", "-e", "-o", "pipefail", "-c", notes], cwd=root, check=True)
-            body = (root / "dist/nightly-notes.md").read_text()
-            self.assertIn("Built: `sunrise-windows-x64.zip`", body)
-            self.assertIn("Failed or unavailable; not published: `sunrise-macos-arm64.zip`", body)
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+            (root / "dist/sunrise-macos-arm64.zip").touch()
+            subprocess.run(["bash", "-e", "-o", "pipefail", "-c", sign], cwd=root, check=True,
+                           env=dict(os.environ, KIND="dev", GITHUB_REPOSITORY="sunrise-org/sunrise"))
+            self.assertIn("dist/sunrise-macos-arm64.zip", (root / "signed").read_text().split())
 
     def test_dev_builds_never_replace_a_waiting_nightly(self):
         group = self.workflow["concurrency"]["group"]
