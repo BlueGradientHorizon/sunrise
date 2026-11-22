@@ -557,8 +557,7 @@ impl Game<'_> {
         for (mob, target) in reinforcements {
             self.call_reinforcements(mob, target);
         }
-        // Warden.hurtServer's anger and target update, refused hit or not, before return.
-        self.settle_warden_hurt(id);
+        self.settle_mob_hurt(id);
         // Enderman.hurtServer's teleport, refused hit or not, before the command returns.
         if let Err(e) = self.settle_hurt_teleports() {
             log::warn!("Sunrise: /damage: enderman teleport: {e}");

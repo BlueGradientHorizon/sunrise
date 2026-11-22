@@ -33,6 +33,7 @@ SUNRISE_CLIENT = [
     "docs/parity/block-entity-client-ticks.jsonl", "docs/parity/random-chance-seeded.jsonl",
     "packaging/executable_link.rs", "packaging/windows/exe.rs",
     "research-lock.json", "tests/fixture_support/item_resource_properties.rs", "tests/fixtures",
+    "tools/witness/26.3/mob_loaded_health.tsv",
 ]
 # The generator scans these to write the mod API and the host boundary: its own sources, the vocabulary, the
 # engine crates holding hook targets and their manifests.
@@ -89,7 +90,9 @@ READERS = {
     "sunrise-prepare": [
         "crates/sunrise-client/src/game/runtime/launch_api.rs", "mods/sunrise/src/test/java", "research-lock.json",
     ],
-    "sunrise-release-sign": ["tools/ci/sign_native_build.sh", "tools/ci/sign_release.sh"],
+    "sunrise-release-sign": [
+        "tests/install_ps1_signature.ps1", "tools/ci/sign_native_build.sh", "tools/ci/sign_release.sh",
+    ],
     "sunrise-server": [
         "crates/sunrise-theme/fonts", "crates/sunrise-theme/icons", "docs/api/server-reference.md",
         "packaging/executable_link.rs",

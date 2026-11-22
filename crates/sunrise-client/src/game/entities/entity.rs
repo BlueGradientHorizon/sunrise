@@ -26,6 +26,7 @@ use sunrise_client::projectiles::{Projectile, ProjectileKind};
 use sunrise_core::geometry::{Aabb, Direction, Vec3};
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
+use sunrise_core::random::RandomSource as _;
 use sunrise_world::{level::data::PushReaction, move_gate::MoveGate, piston_push};
 
 /// Assign a stored owner's delayed id at its existing allocation point.
@@ -95,7 +96,7 @@ pub(super) trait Entity: EntityRules {
     /// name yet. Required, so a new kind states which.
     fn selector_target(&self) -> Option<Target>;
     /// The entity type id a native mod's join hook names (`minecraft:oak_boat`).
-    fn native_type(&self) -> Cow<'static, str>;
+    fn native_type(&self) -> Cow<'_, str>;
     /// Saves entity `index` of this kind into its chunk's entity list: the
     /// chunk and the NBT when it lies in `keys` and is saved with its chunk.
     /// Required, so a new kind states how it saves.
@@ -118,7 +119,16 @@ pub(super) trait Entity: EntityRules {
     ) -> Result<(), Tag>;
 
     fn on_ground(&self) -> bool {
-        false
+        self.ground_state().is_some_and(|g| g.on_ground)
+    }
+    fn body_fall_distance(&self) -> f64 {
+        0.0
+    }
+    fn ground_state(&self) -> Option<&sunrise_world::ground_support::GroundState> {
+        None
+    }
+    fn ground_state_mut(&mut self) -> Option<&mut sunrise_world::ground_support::GroundState> {
+        None
     }
     /// `Entity.maxUpStep`.
     fn get_step_height(&self) -> f32 {
@@ -200,8 +210,9 @@ pub(super) trait Entity: EntityRules {
         *v = Vec3::new(v.x + push.x, v.y + push.y, v.z + push.z);
     }
     /// `Entity.isSupportedBy`.
-    fn is_supported_by(&self, _pos: BlockPos) -> bool {
-        false
+    fn is_supported_by(&self, pos: BlockPos) -> bool {
+        self.ground_state()
+            .is_some_and(|g| g.supporting_block == Some(pos))
     }
     /// `Entity.getEyeY`, where `updateFluidHeightAndDoFluidPushing` reads the
     /// eye's fluid; the top of the box unless a kind sets it.
@@ -730,6 +741,21 @@ mod render_bounds_tests {
     }
 }
 
+/// The common retained support owned by bodies that use `BodyMotion`.
+macro_rules! stored_ground {
+    () => {
+        fn body_fall_distance(&self) -> f64 {
+            self.fall_distance
+        }
+        fn ground_state(&self) -> Option<&sunrise_world::ground_support::GroundState> {
+            Some(&self.ground)
+        }
+        fn ground_state_mut(&mut self) -> Option<&mut sunrise_world::ground_support::GroundState> {
+            Some(&mut self.ground)
+        }
+    };
+}
+
 /// The fields every kind stores under the same names.
 macro_rules! stored_motion {
     () => {
@@ -752,6 +778,86 @@ macro_rules! stored_motion {
             &mut self.velocity
         }
     };
+}
+
+impl Game<'_> {
+    /// `Block.fallOn` effects for bodies whose `causeFallDamage` does nothing.
+    pub(super) fn nonliving_fall_on(
+        &mut self,
+        id: u32,
+        feet: Vec3,
+        contact: sunrise_client::motion::BodyContact,
+    ) {
+        // FarmlandBlock draws the level's float before checking LivingEntity.
+        match &*self.res.facts().get(contact.state).name {
+            "minecraft:farmland" => {
+                self.world.random.next_float();
+            }
+            "minecraft:honey_block" => {
+                let at = [feet.x, feet.y, feet.z];
+                if !self.entity_silent(id) {
+                    self.audio
+                        .play("minecraft:block.honey_block.slide", Some(at), 1.0, 1.0);
+                }
+                self.lan_entity_event(id as i32, 54, at);
+            }
+            _ => {}
+        }
+    }
+
+    /// Finish a body bounce before the caller changes the live entity's delta movement.
+    pub(super) fn finish_body_restitution(
+        &mut self,
+        (id, kind): (u32, &str),
+        feet: Vec3,
+        response: sunrise_client::motion::BodyRestitution,
+    ) -> Vec3 {
+        let Some(bounce) = response.bounce else {
+            return response.velocity;
+        };
+        // ShelfMushroomBlock calls ClientLevel.playSound with a null player, and
+        // ClientLevel.gameEvent does nothing. The authoritative level sends both.
+        if self.options.execution_role.is_client() || self.remote.is_some() {
+            return response.velocity;
+        }
+        if !matches!(kind, "minecraft:item" | "minecraft:tnt")
+            && self.motion.landing.has_shelf_bounce(bounce.state)
+        {
+            let pos = bounce.position;
+            self.audio.play(
+                "minecraft:block.shelf_mushroom.bounce",
+                Some([
+                    f64::from(pos.x) + 0.5,
+                    f64::from(pos.y) + 0.5,
+                    f64::from(pos.z) + 0.5,
+                ]),
+                1.0,
+                1.0,
+            );
+        }
+        let movement = sunrise_client::block_contact::bounce(
+            &mut sunrise_client::health::DamageLevel::of(
+                &mut self.world,
+                self.pack.assets.registry,
+                Some(world_items!(self)),
+                Some(&self.pack.block_registries),
+                &self.damage_hooks,
+            )
+            .no_push(),
+            sunrise_client::block_contact::Contact {
+                entity: id as i32,
+                kind,
+                state: bounce.state,
+                position: bounce.position,
+            },
+            bounce.fall_distance,
+            response.velocity,
+        );
+        let context = self.entity_event_context(id, None);
+        self.post_game_event("minecraft:bounce", [feet.x, feet.y, feet.z], context);
+        self.persist.sync_body_position.insert(id);
+        movement
+    }
 }
 
 /// One `ItemEntity.tick`, with the fluid push and the bubble column decided by
@@ -954,6 +1060,20 @@ impl Game<'_> {
         sunrise_client::block_contact::inside_written(state, at, writes);
     }
 
+    pub(super) fn body_motion<'a>(
+        &'a self,
+        side: &'a dyn sunrise_client::motion::SideLevel,
+    ) -> sunrise_client::motion::BodyMotion<'a> {
+        sunrise_client::motion::BodyMotion {
+            world: &self.world,
+            collision: self.collision,
+            facts: self.res.facts(),
+            blocks: Some(&self.res.motion().blocks),
+            context: &self.loop_context,
+            side: Some(side),
+        }
+    }
+
     pub(super) fn tick_item_with_block_contacts(
         &mut self,
         item: &mut ItemEntity,
@@ -987,6 +1107,10 @@ impl Game<'_> {
         });
         if !client && let Some((on, distance)) = step.landed() {
             self.item_fall_on(item.id, on, distance);
+        }
+        if let Some(response) = item.move_restitution(self.body_motion(&game_side!(self)), step) {
+            item.velocity =
+                self.finish_body_restitution((item.id, "minecraft:item"), item.position, response);
         }
         if !client {
             // `Entity.applyEffectsFromBlocks`' checkInsideBlocks, at the batch.
@@ -1844,7 +1968,7 @@ impl Entity for Mob {
         self.previous_yaw = self.yaw;
         self.previous_head_pitch = self.head_pitch;
     }
-    fn native_type(&self) -> Cow<'static, str> {
+    fn native_type(&self) -> Cow<'_, str> {
         super::native_hooks::mob_kind(self).into()
     }
     fn save_nbt(
@@ -1948,6 +2072,7 @@ impl Entity for Mob {
 }
 
 impl Entity for ItemEntity {
+    stored_ground!();
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
     }
@@ -1959,9 +2084,6 @@ impl Entity for ItemEntity {
         *position = position.add_vector(movement);
     }
 
-    fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
     fn rotation(&self) -> [f32; 2] {
         self.rotation
     }
@@ -1974,7 +2096,7 @@ impl Entity for ItemEntity {
     fn fluid_eye_y(&self) -> f64 {
         ItemEntity::fluid_eye_y(self)
     }
-    fn native_type(&self) -> Cow<'static, str> {
+    fn native_type(&self) -> Cow<'_, str> {
         "minecraft:item".into()
     }
     fn save_nbt(
@@ -2024,18 +2146,13 @@ impl Entity for ItemEntity {
     fn bounds(&self) -> Aabb {
         ItemEntity::bounds(self)
     }
-    fn on_ground(&self) -> bool {
-        self.on_ground
-    }
-    fn set_piston_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
     fn piston_slime_bounce(&mut self, movement: Direction) {
         ItemEntity::piston_slime_bounce(self, movement);
     }
 }
 
 impl Entity for ExperienceOrb {
+    stored_ground!();
     fn reset_fall_distance(&mut self) {
         // An orb keeps no fall distance here.
     }
@@ -2047,9 +2164,6 @@ impl Entity for ExperienceOrb {
         *position = position.add_vector(movement);
     }
 
-    fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
     fn rotation(&self) -> [f32; 2] {
         self.rotation
     }
@@ -2062,7 +2176,7 @@ impl Entity for ExperienceOrb {
     fn ticks_after_projectiles(&self) -> bool {
         true
     }
-    fn native_type(&self) -> Cow<'static, str> {
+    fn native_type(&self) -> Cow<'_, str> {
         "minecraft:experience_orb".into()
     }
     fn save_nbt(
@@ -2102,19 +2216,15 @@ impl Entity for ExperienceOrb {
     fn bounds(&self) -> Aabb {
         ExperienceOrb::bounds(self)
     }
-    fn on_ground(&self) -> bool {
-        self.on_ground
-    }
-    fn set_piston_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
     fn piston_slime_bounce(&mut self, movement: Direction) {
         self.velocity = piston_push::bounce_velocity(movement, self.velocity);
-        self.on_ground = false;
+        self.ground.on_ground = false;
+        self.ground.clear_support();
     }
 }
 
 impl Entity for Boat {
+    stored_ground!();
     fn reset_fall_distance(&mut self) {
         // A boat keeps no fall distance here.
     }
@@ -2126,12 +2236,6 @@ impl Entity for Boat {
         *position = position.add_vector(movement);
     }
 
-    fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
-    fn set_piston_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
     fn rotation(&self) -> [f32; 2] {
         [self.yaw, self.pitch]
     }
@@ -2142,8 +2246,8 @@ impl Entity for Boat {
         self.yaw = yaw;
         self.pitch = pitch.clamp(-90.0, 90.0);
     }
-    fn native_type(&self) -> Cow<'static, str> {
-        self.entity_type().into()
+    fn native_type(&self) -> Cow<'_, str> {
+        self.entity_type_name().into()
     }
     fn save_nbt(
         game: &mut Game<'_>,
@@ -2204,12 +2308,10 @@ impl Entity for Boat {
     fn bounds(&self) -> Aabb {
         Boat::bounds(self)
     }
-    fn on_ground(&self) -> bool {
-        self.on_ground
-    }
 }
 
 impl Entity for Minecart {
+    stored_ground!();
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
     }
@@ -2221,12 +2323,6 @@ impl Entity for Minecart {
         *position = position.add_vector(movement);
     }
 
-    fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
-    fn set_piston_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
     fn rotation(&self) -> [f32; 2] {
         [self.yaw, self.pitch]
     }
@@ -2237,7 +2333,7 @@ impl Entity for Minecart {
         self.yaw = yaw;
         self.pitch = pitch.clamp(-90.0, 90.0);
     }
-    fn native_type(&self) -> Cow<'static, str> {
+    fn native_type(&self) -> Cow<'_, str> {
         self.kind.id().into()
     }
     fn save_nbt(
@@ -2294,9 +2390,6 @@ impl Entity for Minecart {
     fn bounds(&self) -> Aabb {
         Minecart::bounds(self)
     }
-    fn on_ground(&self) -> bool {
-        self.on_ground
-    }
     /// `tick_blocks` sweeps minecarts along with the players.
     fn sweeps_blocks_inside(&self) -> bool {
         false
@@ -2347,7 +2440,7 @@ impl Entity for ArmorStand {
     fn fluid_eye_y(&self) -> f64 {
         ArmorStand::fluid_eye_y(self)
     }
-    fn native_type(&self) -> Cow<'static, str> {
+    fn native_type(&self) -> Cow<'_, str> {
         super::armor_stands::TYPE_ID.into()
     }
     fn save_nbt(
@@ -2466,6 +2559,7 @@ impl Entity for ArmorStand {
 }
 
 impl Entity for PrimedTnt {
+    stored_ground!();
     fn reset_fall_distance(&mut self) {
         // Primed TNT keeps no fall distance here.
     }
@@ -2477,9 +2571,6 @@ impl Entity for PrimedTnt {
         *position = position.add_vector(movement);
     }
 
-    fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
     fn rotation(&self) -> [f32; 2] {
         self.rotation
     }
@@ -2495,7 +2586,7 @@ impl Entity for PrimedTnt {
     fn waits_for_spawn_packet(&self) -> bool {
         true
     }
-    fn native_type(&self) -> Cow<'static, str> {
+    fn native_type(&self) -> Cow<'_, str> {
         "minecraft:tnt".into()
     }
     fn save_nbt(
@@ -2542,21 +2633,17 @@ impl Entity for PrimedTnt {
     fn bounds(&self) -> Aabb {
         PrimedTnt::bounds(self)
     }
-    fn on_ground(&self) -> bool {
-        self.on_ground
-    }
-    fn set_piston_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
     fn piston_slime_bounce(&mut self, movement: Direction) {
         self.velocity = piston_push::bounce_velocity(movement, self.velocity);
         // Leave the ground so the next tick does not apply the on-ground
         // Y * -0.5 friction that cancels the launch.
-        self.on_ground = false;
+        self.ground.on_ground = false;
+        self.ground.clear_support();
     }
 }
 
 impl Entity for FallingBlock {
+    stored_ground!();
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
     }
@@ -2576,23 +2663,13 @@ impl Entity for FallingBlock {
         let pitch = if pitch.is_nan() { previous[1] } else { pitch };
         self.rotation = [yaw, pitch.clamp(-90.0, 90.0)];
     }
-    fn on_ground(&self) -> bool {
-        self.on_ground
-    }
-    /// `Entity.move(MoverType.PISTON)` ends in `setOnGroundWithMovement`.
-    fn set_piston_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
-    fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
     fn ticks_after_projectiles(&self) -> bool {
         true
     }
     fn waits_for_spawn_packet(&self) -> bool {
         true
     }
-    fn native_type(&self) -> Cow<'static, str> {
+    fn native_type(&self) -> Cow<'_, str> {
         "minecraft:falling_block".into()
     }
     fn save_nbt(
@@ -2633,6 +2710,7 @@ impl Entity for FallingBlock {
 }
 
 impl Entity for Projectile {
+    stored_ground!();
     fn reset_fall_distance(&mut self) {
         if let Some(arrow) = self.arrow.as_deref_mut() {
             arrow.fall_distance = 0.0;
@@ -2667,7 +2745,7 @@ impl Entity for Projectile {
     fn set_on_ground(&mut self, on_ground: bool) {
         self.on_ground = on_ground;
     }
-    fn native_type(&self) -> Cow<'static, str> {
+    fn native_type(&self) -> Cow<'_, str> {
         self.entity_type().into()
     }
     fn save_nbt(
@@ -2810,6 +2888,7 @@ impl Entity for Projectile {
 }
 
 impl Entity for Rocket {
+    stored_ground!();
     fn reset_fall_distance(&mut self) {
         // A firework rocket keeps no fall distance here.
     }
@@ -2829,17 +2908,7 @@ impl Entity for Rocket {
         let pitch = if pitch.is_nan() { previous[1] } else { pitch };
         self.rotation = [yaw, pitch.clamp(-90.0, 90.0)];
     }
-    fn on_ground(&self) -> bool {
-        self.on_ground
-    }
-    /// `Entity.move(MoverType.PISTON)` ends in `setOnGroundWithMovement`.
-    fn set_piston_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
-    fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
-    fn native_type(&self) -> Cow<'static, str> {
+    fn native_type(&self) -> Cow<'_, str> {
         "minecraft:firework_rocket".into()
     }
     fn save_nbt(
@@ -2896,6 +2965,7 @@ impl Entity for Rocket {
 }
 
 impl Entity for ThrownTrident {
+    stored_ground!();
     fn reset_fall_distance(&mut self) {
         // A thrown trident keeps no fall distance here.
     }
@@ -2913,16 +2983,16 @@ impl Entity for ThrownTrident {
         self.pitch = pitch.clamp(-90.0, 90.0);
     }
     fn on_ground(&self) -> bool {
-        self.on_ground
+        self.ground.on_ground
     }
     /// `Entity.move(MoverType.PISTON)` ends in `setOnGroundWithMovement`.
     fn set_piston_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
+        self.ground.on_ground = on_ground;
     }
     fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
+        self.ground.on_ground = on_ground;
     }
-    fn native_type(&self) -> Cow<'static, str> {
+    fn native_type(&self) -> Cow<'_, str> {
         "minecraft:trident".into()
     }
     fn save_nbt(
@@ -3383,7 +3453,7 @@ mod set_rotation_tests {
             velocity: sunrise_core::geometry::Vec3::ZERO,
             value: 1,
             age: 0,
-            on_ground: false,
+            ground: Default::default(),
             count: 1,
             ticks: 0,
             health: 5,
