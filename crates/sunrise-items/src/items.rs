@@ -89,6 +89,7 @@ pub enum ConsumeEffect {
     Native {
         kind: String,
         data: Arc<sunrise_core::nbt::Tag>,
+        registered: Option<sunrise_world::component_value::consume_effects::Admitted>,
     },
 }
 
@@ -121,6 +122,7 @@ pub fn parse_consumable(
                         Some(ConsumeEffect::Native {
                             kind: kind.to_owned(),
                             data: Arc::new(data),
+                            registered: None,
                         })
                     });
                 }
@@ -196,9 +198,87 @@ pub fn parse_consume_effect(effect: &serde_json::Value) -> Option<ConsumeEffect>
         k if !k.starts_with("minecraft:") => Some(ConsumeEffect::Native {
             kind: k.to_owned(),
             data: Arc::new(sunrise_core::json_nbt::json_to_tag(effect).ok()?),
+            registered: None,
         }),
         _ => None,
     }
+}
+
+/// Admit custom effects from saved NBT, or install effects already decoded by
+/// the connection's Wire codecs. Only the built-in gameplay projection uses JSON.
+pub(crate) fn stack_effects(
+    raw: &mut sunrise_core::nbt::Tag,
+    key: &str,
+    received: Option<&[sunrise_world::component_value::consume_effects::Admitted]>,
+    mut refused: Option<&mut bool>,
+) -> std::result::Result<Vec<ConsumeEffect>, String> {
+    use sunrise_core::nbt::Tag;
+    use sunrise_world::component_value::consume_effects::admit;
+
+    let Tag::Compound(_) = raw else {
+        return Err("expected effect component map".into());
+    };
+    let list = match raw.get_mut(key) {
+        None => return Ok(Vec::new()),
+        Some(Tag::List(list)) => list,
+        Some(Tag::ByteArray(a)) if a.is_empty() => return Ok(Vec::new()),
+        Some(Tag::IntArray(a)) if a.is_empty() => return Ok(Vec::new()),
+        Some(Tag::LongArray(a)) if a.is_empty() => return Ok(Vec::new()),
+        _ => return Err("expected consume effect list".into()),
+    };
+    let mut effects = Vec::with_capacity(list.len());
+    for entry in list {
+        let kind = entry.get("type").and_then(|t| match t {
+            Tag::String(name) => Some(name.to_string_lossy()),
+            _ => None,
+        });
+        if let Some(kind) = kind.filter(|kind| {
+            kind.split_once(':')
+                .is_some_and(|(ns, _)| !ns.is_empty() && ns != "minecraft")
+        }) {
+            let Tag::Compound(fields) = entry else {
+                return Err("expected consume effect map".into());
+            };
+            let registered = match received {
+                Some(received) => received
+                    .iter()
+                    .find(|effect| effect.saved.as_ref() == entry)
+                    .cloned(),
+                None => match admit(&kind, fields) {
+                    Ok(effect) => effect,
+                    Err(error) => {
+                        // The registered codec already reported the error. Preserve this
+                        // saved entry, but don't let it run or discard its siblings.
+                        let Some(refused) = refused.as_deref_mut() else {
+                            return Err(error);
+                        };
+                        *refused = true;
+                        continue;
+                    }
+                },
+            };
+            let data = if let Some(effect) = &registered {
+                *entry = (*effect.saved).clone();
+                effect.saved.clone()
+            } else {
+                // Unregistered gameplay-only effects retain their existing JSON projection.
+                let json = sunrise_client_core::scoreboard::tag_to_json(entry);
+                let data = sunrise_core::json_nbt::json_to_tag(&json)
+                    .map_err(|error| error.to_string())?;
+                Arc::new(data)
+            };
+            effects.push(ConsumeEffect::Native {
+                kind,
+                data,
+                registered,
+            });
+        } else if let Some(effect) =
+            parse_consume_effect(&sunrise_client_core::scoreboard::tag_to_json(entry))
+        {
+            effects.push(effect);
+        }
+    }
+    Ok(effects)
 }
 
 #[derive(Clone, Debug)]
@@ -226,8 +306,6 @@ pub struct ItemInfo {
     pub death_protection: Option<Vec<ConsumeEffect>>,
     /// Kinetic pose timing decoded once from the shared item prototype.
     pub kinetic_timing: Option<crate::kinetic_weapon::UseTiming>,
-    /// `use_remainder`: what a finished use leaves (`UseRemainder`).
-    pub use_remainder: Option<String>,
     /// `use_cooldown`: the cooldown a use starts (`UseCooldown`).
     pub use_cooldown: Option<crate::cooldowns::UseCooldown>,
     pub model: String,
@@ -580,6 +658,75 @@ pub fn block_tag_state_names(facts: &BlockFacts) -> Arc<[Arc<str>]> {
         .collect()
 }
 
+type StewEffects = Arc<[(Arc<str>, i32)]>;
+
+#[derive(Default, serde::Deserialize)]
+struct BlockBindings {
+    #[serde(default)]
+    items: HashMap<String, BlockItemBinding>,
+    #[serde(default)]
+    blocks: Vec<BlockBinding>,
+}
+
+#[derive(serde::Deserialize)]
+struct BlockItemBinding {
+    #[serde(default)]
+    class: Vec<String>,
+    #[serde(default)]
+    fields: BlockItemFields,
+}
+
+#[derive(Default, serde::Deserialize)]
+struct BlockItemFields {
+    block: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct BlockBinding {
+    name: String,
+    suspicious_stew_effects: Option<Vec<sunrise_mod_package::content::StewEffect>>,
+}
+
+impl BlockBindings {
+    fn load(root: &Path) -> Result<Self> {
+        match fs::read(root.join("block-behaviours.json")) {
+            Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    fn item_blocks(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.items.iter().filter_map(|(item, binding)| {
+            let block = binding.fields.block.as_deref()?;
+            binding
+                .class
+                .iter()
+                .any(|name| name == "BlockItem")
+                .then_some((item.as_str(), block))
+        })
+    }
+
+    fn stew_effects_by_item(&self) -> HashMap<String, StewEffects> {
+        let mut holders: HashMap<&str, StewEffects> = crate::flowers::FLOWER_STEW_EFFECTS
+            .iter()
+            .map(|&(block, id, ticks)| (block, Arc::from([(Arc::from(id), ticks)])))
+            .collect();
+        holders.extend(self.blocks.iter().filter_map(|block| {
+            let effects = block
+                .suspicious_stew_effects
+                .as_ref()?
+                .iter()
+                .map(|effect| (Arc::from(effect.id.as_str()), effect.duration))
+                .collect();
+            Some((block.name.as_str(), effects))
+        }));
+        self.item_blocks()
+            .filter_map(|(item, block)| Some((item.to_owned(), holders.get(block)?.clone())))
+            .collect()
+    }
+}
+
 /// An empty catalog is useful for synthetic worlds without registered items;
 /// normal worlds load their catalog from the resource snapshot.
 #[derive(Clone, Default)]
@@ -587,6 +734,8 @@ pub struct Items {
     pub items: HashMap<Arc<str>, ItemInfo>,
     /// Shared Block.getItem snapshot, including blocks sharing another block's item.
     pub block_items: Arc<HashMap<String, String>>,
+    // The item -> its BlockItem block -> effect holder lookup, resolved once at load.
+    suspicious_stew_effects: Arc<HashMap<String, StewEffects>>,
     /// Registry snapshot used to validate ingredient component payloads.
     pub component_registry: Arc<sunrise_client_core::registries::Registries>,
     /// Loaded component prototypes for concrete ingredient predicates.
@@ -942,35 +1091,9 @@ impl Items {
         }
         // Block.getItem is not an inverse of BlockItem.getBlock: several items
         // may place the same block. Read their normal compiled bindings too.
-        #[derive(Default, serde::Deserialize)]
-        struct Bindings {
-            #[serde(default)]
-            items: HashMap<String, Binding>,
-        }
-        #[derive(serde::Deserialize)]
-        struct Binding {
-            #[serde(default)]
-            class: Vec<String>,
-            #[serde(default)]
-            fields: Fields,
-        }
-        #[derive(Default, serde::Deserialize)]
-        struct Fields {
-            block: Option<String>,
-        }
-        let bindings = match fs::read(root.join("block-behaviours.json")) {
-            Ok(bytes) => serde_json::from_slice::<Bindings>(&bytes)?,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Bindings::default(),
-            Err(error) => return Err(error.into()),
-        };
-        for (item, binding) in &bindings.items {
-            if binding.class.iter().any(|name| name == "BlockItem")
-                && let Some(state) = binding
-                    .fields
-                    .block
-                    .as_deref()
-                    .and_then(|block| registry.default_state(block))
-            {
+        let bindings = BlockBindings::load(root)?;
+        for (item, block) in bindings.item_blocks() {
+            if let Some(state) = registry.default_state(block) {
                 block_for_item.entry(item).or_insert(state);
             }
         }
@@ -978,6 +1101,7 @@ impl Items {
         let mut items = Self::load_with(
             root,
             &block_for_item,
+            &bindings,
             overlay,
             defaults,
             entity_tags,
@@ -1013,33 +1137,33 @@ impl Items {
         items.rebuild_block_tag_flags(block_tag_state_names(facts));
         Ok(items)
     }
+    /// `SuspiciousEffectHolder.tryGet`: the effects supplied by the block this item places.
+    pub fn suspicious_stew_effects(&self, item: &str) -> Option<&[(Arc<str>, i32)]> {
+        self.suspicious_stew_effects.get(item).map(AsRef::as_ref)
+    }
+
     /// Every item's defaults, tags and block-to-item identities, without
     /// placement state ids (for headless tools that never place blocks).
     pub fn catalog(root: &Path, overlay: &PackOverlay, defaults: &ItemDefaults) -> Result<Self> {
-        let mut items =
-            Self::catalog_items(root, overlay, defaults, LoadEntityTags::Prepared, |items| {
-                items.load_resource_registries(root, overlay, defaults)
-            })?;
+        let mut items = Self::catalog_items(root, overlay, defaults, |items| {
+            items.load_resource_registries(root, overlay, defaults)
+        })?;
+        items.load_table_loot(root, overlay, defaults)?;
         ingredient_defaults::load_component_damage_registry(root, overlay, &mut items)?;
         Ok(items)
     }
-    /// Build the wire recipe catalog against the owning world's already
-    /// bound registries and tags, including damage definitions frozen at open.
-    pub fn catalog_with_world_registries(
+    /// Build the item catalog for recipe sync against the world's loaded damage
+    /// registry. The world loads loot separately; loading it here would reopen
+    /// damage definitions instead of respecting the frozen registry on reload.
+    pub fn catalog_with_damage_registry(
         root: &Path,
         overlay: &PackOverlay,
         defaults: &ItemDefaults,
         damage: sunrise_client_core::registries::RegistryIds,
-        entity_type_tags: &Arc<EntityTypeTags>,
         load_registries: impl FnOnce(&mut Self) -> Result<()>,
     ) -> Result<Self> {
-        let mut items = Self::catalog_items(
-            root,
-            overlay,
-            defaults,
-            LoadEntityTags::Bound(entity_type_tags),
-            load_registries,
-        )?;
+        let mut items = Self::catalog_items(root, overlay, defaults, load_registries)?;
+        items.component_defaults = ingredient_defaults::component_defaults(defaults)?;
         Arc::make_mut(&mut items.component_registry)
             .by_registry
             .insert("minecraft:damage_type".into(), damage);
@@ -1049,27 +1173,28 @@ impl Items {
         root: &Path,
         overlay: &PackOverlay,
         defaults: &ItemDefaults,
-        entity_tags: LoadEntityTags<'_>,
         load_registries: impl FnOnce(&mut Self) -> Result<()>,
     ) -> Result<Self> {
         let block_items = ingredient_defaults::block_items(root)?;
+        let bindings = BlockBindings::load(root)?;
         let mut items = Self::load_with(
             root,
             &HashMap::new(),
+            &bindings,
             overlay,
             defaults,
-            entity_tags,
+            LoadEntityTags::Prepared,
             |id| block_items.contains_key(id),
         )?;
         load_registries(&mut items)?;
         items.block_items = Arc::new(block_items);
-        items.load_table_loot(root, overlay, defaults)?;
         Ok(items)
     }
 
     fn load_with(
         root: &Path,
         block_for_item: &HashMap<&str, BlockStateId>,
+        bindings: &BlockBindings,
         overlay: &PackOverlay,
         defaults: &ItemDefaults,
         entity_tags: LoadEntityTags<'_>,
@@ -1151,6 +1276,15 @@ impl Items {
                 extra,
             };
             let villager_food = component_prototype.villager_food(None);
+            let consumable = component_prototype.consumable(None).cloned();
+            let death_protection = component_prototype
+                .death_protection(None)
+                .map(<[_]>::to_vec);
+            if (c.get("minecraft:consumable").is_some() && consumable.is_none())
+                || (c.get("minecraft:death_protection").is_some() && death_protection.is_none())
+            {
+                return Err(format!("{name}: invalid consume effect component").into());
+            }
             items.insert(
                 id.clone(),
                 ItemInfo {
@@ -1176,20 +1310,8 @@ impl Items {
                     kinetic_timing: c
                         .get("minecraft:kinetic_weapon")
                         .and_then(crate::kinetic_weapon::UseTiming::from_json),
-                    // Consumable.CODEC's defaults.
-                    death_protection: c
-                        .get("minecraft:death_protection")
-                        .map(parse_death_effects)
-                        .transpose()
-                        .map_err(|e| format!("{name}: {e}"))?,
-                    consumable: c
-                        .get("minecraft:consumable")
-                        .map(parse_consumable)
-                        .transpose()
-                        .map_err(|e| format!("{name}: {e}"))?,
-                    use_remainder: c["minecraft:use_remainder"]["id"]
-                        .as_str()
-                        .map(str::to_owned),
+                    death_protection,
+                    consumable,
                     use_cooldown: c
                         .get("minecraft:use_cooldown")
                         .and_then(crate::cooldowns::UseCooldown::from_json),
@@ -1315,6 +1437,7 @@ impl Items {
         let mut table = Self {
             items,
             block_items: Default::default(),
+            suspicious_stew_effects: Arc::new(bindings.stew_effects_by_item()),
             component_registry,
             entity_type_tags,
             mob_visibility,
@@ -3477,7 +3600,7 @@ mod consume_effect_tests {
         // A mod's own kind: Native with its JSON.
         let native =
             parse_consume_effect(&v(r#"{"type":"mymod:energy_boost","amount":42}"#)).unwrap();
-        assert!(matches!(&native, ConsumeEffect::Native { kind, data }
+        assert!(matches!(&native, ConsumeEffect::Native { kind, data, .. }
             if kind == "mymod:energy_boost" && data.get("amount") == Some(&sunrise_core::nbt::Tag::Byte(42))));
         // A bare vanilla name and its namespaced form are the same kind.
         let bare = parse_consume_effect(&v(

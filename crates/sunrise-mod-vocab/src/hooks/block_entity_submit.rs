@@ -19,11 +19,21 @@ pub trait Hooks {
     /// by the scene, the draw is full bright, and `pos` is scene-local, not a
     /// position to look up in the client level.
     #[hook(
+        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_block_entity_submit",
+        receiver = "read",
+        dispatch = "flat",
         side = "client",
+        version = 2,
         contract = "listen",
         scope = "block_entity",
         key = "block",
         neoforge = "EntityRenderersEvent.RegisterRenderers"
     )]
-    fn block_entity_submit();
+    fn block_entity_submit(
+        pos: [i32; 3],
+        block: &str,
+        state: BlockState,
+        entity: &ModBlockEntity,
+        draw: &mut dyn BlockEntityDrawContext,
+    );
 }

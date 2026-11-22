@@ -39,7 +39,7 @@ version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d122413f284cf2d62fb1b7db97e02edb8cda96d769b16e443a4f6195e35662b0"
 dependencies = [
- "crypto-common",
+ "crypto-common 0.1.7",
  "generic-array",
 ]
 
@@ -340,6 +340,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "block-buffer"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2f6c7dbe95a6ed67ad9f18e57daf93a2f034c524b99fd2b76d18fdfeb6660aa"
+dependencies = [
+ "hybrid-array",
+]
+
+[[package]]
 name = "block-padding"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -498,25 +507,39 @@ name = "cargo-sunrise-mod"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "cap-fs-ext",
+ "cap-std",
+ "chrono",
  "dunce",
+ "getrandom 0.4.3",
  "libc",
+ "lzma-rust2",
+ "minisign",
+ "minisign-verify",
  "ring",
+ "rpassword",
  "rustc-demangle",
+ "same-file",
  "serde",
  "serde_json",
- "sha2",
+ "sha2 0.10.9",
  "sunrise-addresses",
+ "sunrise-mod-api-gen",
  "sunrise-mod-package",
  "sunrise-mod-source",
  "sunrise-mod-surface",
  "sunrise-native-build",
  "sunrise-port-pack",
+ "sunrise-proxy",
  "sunrise-release-sign",
  "sunrise-shader-api",
+ "tar",
  "tempfile",
  "toml",
  "toml_edit",
  "ureq",
+ "windows-sys 0.61.2",
+ "zeroize",
  "zip",
 ]
 
@@ -612,7 +635,7 @@ version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "773f3b9af64447d2ce9850330c473515014aa235e6a783b02db81ff39e4a3dad"
 dependencies = [
- "crypto-common",
+ "crypto-common 0.1.7",
  "inout",
  "zeroize",
 ]
@@ -632,7 +655,7 @@ version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7b77c319abfd5219629c45c34c89ba945ed3c5e49fcde9d16b6c3885f118a730"
 dependencies = [
- "const-oid",
+ "const-oid 0.9.6",
  "der",
  "spki",
  "x509-cert",
@@ -688,6 +711,12 @@ name = "const-oid"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
+
+[[package]]
+name = "const-oid"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be95d4a884358a21a199689323c29e9256b4a1b315e22f183d155422041d3a9a"
 
 [[package]]
 name = "core-foundation"
@@ -799,7 +828,7 @@ version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e75b2483e97a5a7da73ac68a05b629f9c53cff58d8ed1c77866079e18b00dba5"
 dependencies = [
- "digest",
+ "digest 0.10.7",
  "spin",
 ]
 
@@ -864,6 +893,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "crypto-common"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce6e4c961d6cd6c9a86db418387425e8bdeaf05b3c8bc1411e6dca4c252f1453"
+dependencies = [
+ "hybrid-array",
+]
+
+[[package]]
+name = "ct-codecs"
+version = "1.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8fd9f3db6f2cfef61c10613071955154ffdc9e515daebff26de4b54e35038fdd"
+
+[[package]]
 name = "cty"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -919,7 +963,7 @@ version = "0.7.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e7c1832837b905bbfb5101e07cc24c8deddf52f93225eee6ead5f4d63d53ddcb"
 dependencies = [
- "const-oid",
+ "const-oid 0.9.6",
  "der_derive",
  "flagset",
  "pem-rfc7468",
@@ -983,9 +1027,20 @@ version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
 dependencies = [
- "block-buffer",
- "crypto-common",
+ "block-buffer 0.10.4",
+ "crypto-common 0.1.7",
  "subtle",
+]
+
+[[package]]
+name = "digest"
+version = "0.11.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1dd6dbb5841937940781866fa1281a1ff7bd3bf827091440879f9994983d5c2"
+dependencies = [
+ "block-buffer 0.12.1",
+ "const-oid 0.10.3",
+ "crypto-common 0.2.2",
 ]
 
 [[package]]
@@ -1548,7 +1603,16 @@ version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
 dependencies = [
- "digest",
+ "digest 0.10.7",
+]
+
+[[package]]
+name = "hybrid-array"
+version = "0.4.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "27f864f10dfb56725ce5ce5472bc52252c8f93a4ab86327122cebf62c5f59a17"
+dependencies = [
+ "typenum",
 ]
 
 [[package]]
@@ -2122,6 +2186,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ecbdfe44b1bd960b68170b417450a628c43f7cf56bb3c5317e61cb230ee7f226"
 
 [[package]]
+name = "lzma-rust2"
+version = "0.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef1d73c59a56771343712b22ea5615092c612c16ba291c0979e3105dfeec4890"
+dependencies = [
+ "sha2 0.11.1",
+]
+
+[[package]]
 name = "mach2"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2143,7 +2216,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d89e7ee0cfbedfc4da3340218492196241d89eefb6dab27de5df917a6d2e78cf"
 dependencies = [
  "cfg-if",
- "digest",
+ "digest 0.10.7",
 ]
 
 [[package]]
@@ -2197,6 +2270,18 @@ name = "minimal-lexical"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
+
+[[package]]
+name = "minisign"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3062dbbf4d8f57899e2252804f7512a4fd89c8211c58fa6c786d38794a0c809d"
+dependencies = [
+ "ct-codecs",
+ "getrandom 0.4.3",
+ "rpassword",
+ "scrypt",
+]
 
 [[package]]
 name = "minisign-verify"
@@ -2298,7 +2383,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha1",
- "sha2",
+ "sha2 0.10.9",
  "thiserror 2.0.21",
  "uuid",
 ]
@@ -2543,6 +2628,18 @@ dependencies = [
  "objc2-core-audio",
  "objc2-core-audio-types",
  "objc2-core-foundation",
+ "objc2-foundation 0.3.2",
+]
+
+[[package]]
+name = "objc2-av-foundation"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "478ae33fcac9df0a18db8302387c666b8ef08a3e2d62b510ca4fc278a384b6c0"
+dependencies = [
+ "bitflags 2.13.2",
+ "block2 0.6.2",
+ "objc2 0.6.5",
  "objc2-foundation 0.3.2",
 ]
 
@@ -2919,7 +3016,7 @@ dependencies = [
  "rand 0.10.3",
  "rc2",
  "sha1",
- "sha2",
+ "sha2 0.10.9",
  "thiserror 2.0.21",
  "x509-parser",
 ]
@@ -2953,7 +3050,7 @@ version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8ed6a7761f76e3b9f92dfb0a60a6a6477c61024b775147ff0973a02653abaf2"
 dependencies = [
- "digest",
+ "digest 0.10.7",
  "hmac",
 ]
 
@@ -3064,9 +3161,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "695b3df3d3cc1015f12d70235e35b6b79befc5fa7a9b95b951eab1dd07c9efc2"
 dependencies = [
  "cms",
- "const-oid",
+ "const-oid 0.9.6",
  "der",
- "digest",
+ "digest 0.10.7",
  "spki",
  "x509-cert",
  "zeroize",
@@ -3083,7 +3180,7 @@ dependencies = [
  "der",
  "pbkdf2",
  "scrypt",
- "sha2",
+ "sha2 0.10.9",
  "spki",
 ]
 
@@ -3650,6 +3747,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "rpassword"
+version = "7.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fa2c5d9304b618df61ff17f3d3485c6e1854a3d94902a49abbb8d43dfbe0464"
+dependencies = [
+ "libc",
+ "rtoolbox",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "rtoolbox"
+version = "0.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a1efe12a1469752d0e6ff5ebec0b6ef4924cc5c4c71046b0ec730040535819d"
+dependencies = [
+ "libc",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "rusqlite"
 version = "0.41.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3857,7 +3975,7 @@ checksum = "0516a385866c09368f0b5bcd1caff3366aace790fcd46e2bb032697bb172fd1f"
 dependencies = [
  "pbkdf2",
  "salsa20",
- "sha2",
+ "sha2 0.10.9",
 ]
 
 [[package]]
@@ -3943,7 +4061,7 @@ checksum = "a978451301f4db1d02937a4ab3ccce137717b81826e79b7d49ffe3244a13c3b8"
 dependencies = [
  "cfg-if",
  "cpufeatures 0.2.17",
- "digest",
+ "digest 0.10.7",
 ]
 
 [[package]]
@@ -3954,7 +4072,18 @@ checksum = "a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283"
 dependencies = [
  "cfg-if",
  "cpufeatures 0.2.17",
- "digest",
+ "digest 0.10.7",
+]
+
+[[package]]
+name = "sha2"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "47d7069beb7d6ac7b9acd1039986e73443f24234f41074da099d6f994ac9ad19"
+dependencies = [
+ "cfg-if",
+ "cpufeatures 0.3.1",
+ "digest 0.11.3",
 ]
 
 [[package]]
@@ -4092,7 +4221,7 @@ dependencies = [
  "curve25519-dalek",
  "hkdf",
  "rand_core 0.6.4",
- "sha2",
+ "sha2 0.10.9",
 ]
 
 [[package]]
@@ -4176,6 +4305,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "sunrise-audio-input"
+version = "0.1.0"
+dependencies = [
+ "alsa",
+ "alsa-sys",
+ "block2 0.6.2",
+ "libc",
+ "objc2 0.6.5",
+ "objc2-av-foundation",
+ "objc2-core-audio",
+]
+
+[[package]]
 name = "sunrise-bench"
 version = "0.1.0"
 dependencies = [
@@ -4196,6 +4338,7 @@ name = "sunrise-bots"
 version = "0.1.0"
 dependencies = [
  "serde_json",
+ "sunrise-core",
  "sunrise-protocol",
 ]
 
@@ -4209,8 +4352,8 @@ dependencies = [
  "cap-std",
  "chrono",
  "cipher",
- "crypto-common",
- "digest",
+ "crypto-common 0.1.7",
+ "digest 0.10.7",
  "flate2",
  "fnv",
  "fs4",
@@ -4226,7 +4369,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha1",
- "sha2",
+ "sha2 0.10.9",
  "socket2 0.6.5",
  "sunrise-assets",
  "sunrise-bench",
@@ -4239,9 +4382,7 @@ dependencies = [
  "sunrise-core",
  "sunrise-dualsense",
  "sunrise-friends",
- "sunrise-game-discovery",
  "sunrise-gameplay",
- "sunrise-guest-stack",
  "sunrise-hooks",
  "sunrise-items",
  "sunrise-java-properties",
@@ -4269,7 +4410,6 @@ dependencies = [
  "ureq",
  "wgpu",
  "winit",
- "winresource",
  "zip",
 ]
 
@@ -4281,6 +4421,7 @@ dependencies = [
  "serde_json",
  "sunrise-assets",
  "sunrise-core",
+ "sunrise-mod-vocab",
  "sunrise-world",
 ]
 
@@ -4338,7 +4479,8 @@ dependencies = [
  "serde",
  "serde_json",
  "sha1",
- "sha2",
+ "sha2 0.10.9",
+ "stacker",
  "sunrise-assets",
  "sunrise-bench",
  "sunrise-client-core",
@@ -4348,8 +4490,6 @@ dependencies = [
  "sunrise-command",
  "sunrise-core",
  "sunrise-dualsense",
- "sunrise-game-discovery",
- "sunrise-guest-stack",
  "sunrise-hooks",
  "sunrise-items",
  "sunrise-java-properties",
@@ -4384,6 +4524,7 @@ name = "sunrise-client-render"
 version = "0.1.0"
 dependencies = [
  "ab_glyph",
+ "alsa",
  "base64 0.22.1",
  "bytemuck",
  "chrono",
@@ -4392,26 +4533,28 @@ dependencies = [
  "glam",
  "half",
  "image-webp",
+ "libc",
  "log",
  "lz4_flex",
  "miniz_oxide 0.8.9",
  "naga",
  "png",
  "pollster",
+ "pp-rs",
  "rustix 1.1.5",
  "serde",
  "serde_json",
  "sha1",
- "sha2",
+ "sha2 0.10.9",
  "smallvec",
  "sunrise-assets",
+ "sunrise-audio-input",
  "sunrise-border",
  "sunrise-client-core",
  "sunrise-client-input",
  "sunrise-command",
  "sunrise-connected",
  "sunrise-core",
- "sunrise-guest-stack",
  "sunrise-hdr",
  "sunrise-hooks",
  "sunrise-items",
@@ -4428,6 +4571,7 @@ dependencies = [
  "sunrise-polytone",
  "sunrise-protocol",
  "sunrise-render-core",
+ "sunrise-render-shaderpack",
  "sunrise-shader-api",
  "sunrise-shaders",
  "sunrise-system",
@@ -4451,6 +4595,7 @@ dependencies = [
  "sunrise-client-core",
  "sunrise-core",
  "sunrise-items",
+ "sunrise-mod-vocab",
  "sunrise-protocol",
  "sunrise-world",
 ]
@@ -4511,7 +4656,7 @@ dependencies = [
  "if-addrs",
  "serde",
  "serde_json",
- "sha2",
+ "sha2 0.10.9",
  "socket2 0.6.5",
  "spake2",
  "sunrise-addresses",
@@ -4555,18 +4700,12 @@ dependencies = [
  "sunrise-client-lib",
  "sunrise-core",
  "sunrise-items",
+ "sunrise-mod-api",
  "sunrise-mod-runtime",
  "sunrise-mod-vocab",
  "sunrise-protocol",
  "sunrise-threads",
  "sunrise-world",
-]
-
-[[package]]
-name = "sunrise-guest-stack"
-version = "0.1.0"
-dependencies = [
- "libc",
 ]
 
 [[package]]
@@ -4658,7 +4797,7 @@ dependencies = [
  "quote",
  "serde",
  "serde_json",
- "sha2",
+ "sha2 0.10.9",
  "sunrise-game-discovery",
  "sunrise-mod-source",
  "sunrise-mod-surface",
@@ -4723,9 +4862,8 @@ dependencies = [
  "object",
  "serde",
  "serde_json",
- "sha2",
+ "sha2 0.10.9",
  "sunrise-client",
- "sunrise-guest-stack",
  "sunrise-hooks",
  "sunrise-mod-api",
  "sunrise-mod-package",
@@ -4736,12 +4874,14 @@ dependencies = [
 name = "sunrise-mod-package"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "cap-fs-ext",
  "cap-std",
  "getrandom 0.4.3",
  "libc",
  "log",
  "minisign-verify",
+ "object",
  "os_pipe",
  "png",
  "rustix 1.1.5",
@@ -4749,15 +4889,17 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
- "sha2",
+ "sha2 0.10.9",
  "socket2 0.6.5",
  "subtle",
  "sunrise-assets",
  "sunrise-core",
- "sunrise-mod-api-macros",
+ "sunrise-game-discovery",
+ "sunrise-mod-source",
  "sunrise-mod-surface",
  "sunrise-mod-vocab",
  "sunrise-shader-api",
+ "syn 2.0.119",
  "tar",
  "tempfile",
  "toml",
@@ -4805,7 +4947,7 @@ dependencies = [
  "proc-macro2",
  "serde",
  "serde_json",
- "sha2",
+ "sha2 0.10.9",
  "syn 2.0.119",
 ]
 
@@ -4856,7 +4998,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
- "sha2",
+ "sha2 0.10.9",
  "sunrise-addresses",
  "sunrise-mod-package",
  "sunrise-mod-vocab",
@@ -4949,7 +5091,6 @@ version = "0.1.0"
 dependencies = [
  "sunrise-bench",
  "sunrise-core",
- "sunrise-guest-stack",
  "sunrise-hooks",
  "sunrise-java-properties",
  "sunrise-mod-api-gen",
@@ -4975,10 +5116,11 @@ dependencies = [
  "serde",
  "serde_json",
  "sha1",
- "sha2",
+ "sha2 0.10.9",
  "sunrise-mod-api",
  "sunrise-mod-api-gen",
  "sunrise-mod-package",
+ "sunrise-proxy",
  "toml",
  "ureq",
  "url",
@@ -4992,7 +5134,7 @@ dependencies = [
  "libc",
  "regex",
  "sha1",
- "sha2",
+ "sha2 0.10.9",
  "sunrise-core",
  "zip",
 ]
@@ -5008,12 +5150,20 @@ dependencies = [
  "log",
  "serde_json",
  "sha1",
- "sha2",
+ "sha2 0.10.9",
  "socket2 0.5.10",
  "sunrise-core",
  "sunrise-mod-runtime",
  "sunrise-threads",
  "sunrise-world",
+]
+
+[[package]]
+name = "sunrise-proxy"
+version = "0.1.0"
+dependencies = [
+ "ureq",
+ "url",
 ]
 
 [[package]]
@@ -5044,7 +5194,26 @@ dependencies = [
 name = "sunrise-render-core"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "glam",
+]
+
+[[package]]
+name = "sunrise-render-shaderpack"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam",
+ "half",
+ "log",
+ "naga",
+ "pollster",
+ "serde_json",
+ "smallvec",
+ "sunrise-core",
+ "sunrise-render-core",
+ "sunrise-shaders",
+ "wgpu",
 ]
 
 [[package]]
@@ -5064,9 +5233,10 @@ dependencies = [
  "serde",
  "serde_json",
  "sha1",
- "sha2",
+ "sha2 0.10.9",
  "sunrise-mcp",
  "sunrise-platform",
+ "sunrise-proxy",
  "sunrise-release-sign",
  "sunrise-server-launch",
  "toml",
@@ -5111,7 +5281,7 @@ dependencies = [
  "png",
  "serde",
  "serde_json",
- "sha2",
+ "sha2 0.10.9",
  "toml",
  "zip",
 ]
@@ -5160,7 +5330,6 @@ dependencies = [
  "mimalloc",
  "object",
  "rustc-demangle",
- "sunrise-guest-stack",
  "windows-sys 0.61.2",
 ]
 
@@ -5179,11 +5348,12 @@ dependencies = [
  "rustix 1.1.5",
  "serde",
  "serde_json",
- "sha2",
+ "sha2 0.10.9",
  "sunrise-assets",
  "sunrise-core",
  "sunrise-deflate",
  "sunrise-mod-api-macros",
+ "sunrise-mod-vocab",
  "sunrise-threads",
  "xxhash-rust",
 ]
@@ -5639,7 +5809,7 @@ version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc1de2c688dc15305988b563c3854064043356019f97a4b46276fe734c4f07ea"
 dependencies = [
- "crypto-common",
+ "crypto-common 0.1.7",
  "subtle",
 ]
 
@@ -6619,7 +6789,7 @@ version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1301e935010a701ae5f8655edc0ad17c44bad3ac5ce8c39185f75453b720ae94"
 dependencies = [
- "const-oid",
+ "const-oid 0.9.6",
  "der",
  "spki",
 ]

@@ -12,9 +12,7 @@ pub use jar::{
     JarConflict, JarInputsError, JarRef, JarRequirement, MissingJar, collect_jar_requirements,
     missing_jars,
 };
-pub use runtime_files::{
-    MAX_RUNTIME_FILE, MAX_RUNTIME_FILES, MAX_RUNTIME_TOTAL, RUNTIME_DIR, RuntimeData, RuntimeTable,
-};
+pub use runtime_files::{RUNTIME_DIR, RuntimeData, RuntimeTable};
 
 use mod_surface::uses::USES_FILE;
 use serde::{Deserialize, Serialize};
@@ -145,6 +143,10 @@ pub struct Manifest {
     /// that are on may share one (`content::clash`).
     #[serde(default)]
     pub namespaces: Vec<String>,
+    /// Native runtime mod that serves code-side parts and registrations for
+    /// this content package's namespaces; refused on `[native]` packages.
+    #[serde(default)]
+    pub served_by: Option<String>,
     /// Other native mods whose hooks must be available before this one.
     #[serde(default)]
     pub dependencies: std::collections::BTreeMap<String, Dependency>,
@@ -292,6 +294,9 @@ pub struct Native {
     /// SDK names (see [`Native::mixins_or`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mixins: Option<String>,
+    /// Whether this native mod opts in to serving content packages that name it in `served_by`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub serves_content: bool,
     /// Source-level edits of game functions, native only: the one form that compiles game code.
     #[serde(default)]
     pub mixin: Vec<mixin::Mixin>,
@@ -519,6 +524,38 @@ impl Manifest {
                 m.id
             ));
         }
+        if let Some(host) = &m.served_by {
+            if m.native.is_some() {
+                return Err(format!(
+                    "{MANIFEST}: a [native] mod cannot declare served_by"
+                ));
+            }
+            if RESERVED_NAMESPACES.contains(&host.as_str()) {
+                return Err(format!(
+                    "{MANIFEST}: served_by {host:?} is a reserved namespace, not a mod id"
+                ));
+            }
+            if RESERVED_IDS.contains(&host.as_str()) {
+                return Err(format!(
+                    "{MANIFEST}: served_by {host:?} is a page of the mod site, not a mod id"
+                ));
+            }
+            if reserved_mod_id(host) {
+                return Err(format!(
+                    "{MANIFEST}: served_by {host:?} is a reserved Windows device name"
+                ));
+            }
+            if !valid_mod_id(host) {
+                return Err(format!(
+                    "{MANIFEST}: served_by {host:?} is not [a-z0-9_]{{1,64}}"
+                ));
+            }
+            if host == &m.id {
+                return Err(format!(
+                    "{MANIFEST}: served_by cannot name this package's own id {host:?}"
+                ));
+            }
+        }
         let rules = m.incompatible.iter().chain(&m.discouraged);
         for id in m
             .dependencies
@@ -739,41 +776,69 @@ impl Manifest {
     /// kind and the id: every client must have that content.
     pub fn server_only_declaration<'a>(
         &self,
-        mut declared: impl Iterator<Item = (&'a str, &'a str)>,
+        declared: impl Iterator<Item = (&'a str, &'a str)>,
     ) -> Option<String> {
-        if self.side != Side::Server {
-            return None;
-        }
-        let (kind, id) = declared.find(|(_, id)| {
+        self.server_only_declaration_for(&[self], declared)
+            .map(|refusal| refusal.to_string())
+    }
+    /// Refuses any client-required declaration in `declared` when either `self` or the package
+    /// in `suppliers` supplying the declaration's namespace is `side = "server"`.
+    pub fn server_only_declaration_for<'a>(
+        &self,
+        suppliers: &[&Manifest],
+        mut declared: impl Iterator<Item = (&'a str, &'a str)>,
+    ) -> Option<ServerOnlyDeclaration> {
+        let (supplier, kind, id) = declared.find_map(|(kind, id)| {
             let ns = id.split_once(':').map_or("", |(ns, _)| ns);
-            self.owned_namespaces().any(|owned| owned == ns)
-        })?;
-        Some(format!(
-            "{}: a side = \"server\" mod declares the {kind} {id}, which every client must have; \
-             declare side = \"both\"",
-            self.id
-        ))
-    }
-}
-
-/// Folders of a mod's project that are never part of its package: Git's, Cargo's build output
-/// and the pinned SDK the mod tool fetches into `.sunrise/`.
-pub const NOT_PACKAGED: [&str; 3] = [".git", "target", ".sunrise"];
-
-/// A source file that belongs to the flat Cargo project, not its resource packs.
-pub fn source_file(name: &str) -> bool {
-    if name.split('/').any(|part| NOT_PACKAGED.contains(&part)) {
-        return false;
-    }
-    name == "Cargo.toml"
-        || name == "Cargo.lock"
-        || name == "build.rs"
-        || (name.starts_with("src/") && (name.ends_with(".rs") || name.ends_with(".toml")))
-        || (!name.contains('/')
-            && ["README", "LICENSE", "LICENCE", "COPYING", "NOTICE"]
+            let supplier = suppliers
                 .iter()
-                .any(|prefix| name.starts_with(prefix)))
+                .copied()
+                .find(|m| m.owned_namespaces().any(|owned| owned == ns))?;
+            (self.side == Side::Server || supplier.side == Side::Server)
+                .then_some((supplier, kind, id))
+        })?;
+        Some(ServerOnlyDeclaration {
+            declarer: self.id.clone(),
+            supplier: supplier.id.clone(),
+            kind: kind.to_owned(),
+            id: id.to_owned(),
+        })
+    }
 }
+
+/// Refusal when code declares client-required content for a `side = "server"` declarer or
+/// served namespace supplier.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ServerOnlyDeclaration {
+    pub declarer: String,
+    pub supplier: String,
+    pub kind: String,
+    pub id: String,
+}
+
+impl std::fmt::Display for ServerOnlyDeclaration {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.declarer == self.supplier {
+            write!(
+                f,
+                "{}: a side = \"server\" mod declares the {} {}, which every client must have; \
+                 declare side = \"both\"",
+                self.declarer, self.kind, self.id
+            )
+        } else {
+            write!(
+                f,
+                "{}: declares the {} {} in side = \"server\" package {}'s namespace, which every \
+                 client must have; declare side = \"both\"",
+                self.declarer, self.kind, self.id, self.supplier
+            )
+        }
+    }
+}
+
+impl std::error::Error for ServerOnlyDeclaration {}
+
+pub use mod_source::package::{NOT_PACKAGED, source_file};
 
 pub(crate) fn plain_path(name: &str) -> bool {
     !name.starts_with('/')
@@ -1019,9 +1084,9 @@ impl Package {
         let Some(table) = &self.manifest.runtime else {
             return Ok(None);
         };
-        let mut files = std::collections::BTreeMap::new();
-        let folder = path.is_dir();
-        let mut zip = if folder {
+        let mut files = Vec::new();
+        let runtime_dir = path.is_dir().then(|| path.join(RUNTIME_DIR));
+        let mut zip = if runtime_dir.is_some() {
             None
         } else {
             let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
@@ -1030,29 +1095,29 @@ impl Package {
         for (name, _) in table.files() {
             let entry = format!("{RUNTIME_DIR}/{name}");
             let mut bytes = Vec::new();
-            // At most one byte past the cap, so an oversized file is refused unread.
-            let read = if folder {
-                std::fs::File::open(path.join(&entry))
+            let path = runtime_dir.as_ref().map(|dir| dir.join(name));
+            let read = if let Some(path) = &path {
+                std::fs::File::open(path)
                     .map_err(|e| format!("{entry}: {e}"))?
-                    .take(MAX_RUNTIME_FILE + 1)
                     .read_to_end(&mut bytes)
             } else {
                 zip.as_mut()
                     .expect("an archive")
                     .by_name(&entry)
                     .map_err(|e| format!("{entry}: {e}"))?
-                    .take(MAX_RUNTIME_FILE + 1)
                     .read_to_end(&mut bytes)
             };
             read.map_err(|e| format!("{entry}: {e}"))?;
             table.check(name, &bytes)?;
-            files.insert(name.to_owned(), std::sync::Arc::from(bytes));
+            files.push((
+                name.to_owned(),
+                runtime_files::RuntimeFile {
+                    bytes: bytes.into_boxed_slice(),
+                    path,
+                },
+            ));
         }
-        Ok(Some(RuntimeData::new(
-            files,
-            table.digest(),
-            folder.then(|| path.to_owned()),
-        )))
+        Ok(Some(RuntimeData::new(files, table.digest())))
     }
 
     fn from_parts(
@@ -1067,15 +1132,17 @@ impl Package {
         }
         Ok(Package { manifest, icon })
     }
-    /// Select and validate a flat project's source and resource files deterministically.
+    /// Select and validate a flat project's source and resource files deterministically. Any
+    /// other file in the folder (a `module.toml`, `tools/generate.rs`, `.cargo/config.toml`,
+    /// `rust-toolchain.toml`) is left out, and no folder but `src/` is read for source.
     pub fn directory_files(
         &self,
         root: &Path,
     ) -> Result<std::collections::BTreeMap<String, Vec<u8>>, String> {
         let content = crate::Content::read(root, &self.manifest)?;
         let mut files = std::collections::BTreeMap::new();
-        let mut reader = content.reader()?;
-        for name in &content.files {
+        let reader = content.reader();
+        for name in content.files.iter() {
             files.insert(name.clone(), reader.read(name)?);
         }
         if let Some(icon) = &self.icon {
@@ -1083,59 +1150,25 @@ impl Package {
         }
         if let Some(runtime) = self.read_runtime(root)? {
             for name in runtime.names() {
-                files.insert(
-                    format!("{RUNTIME_DIR}/{name}"),
-                    runtime.file(name).expect("a listed file").to_vec(),
-                );
+                let (bytes, _) = runtime.file(name).expect("a listed file");
+                files.insert(format!("{RUNTIME_DIR}/{name}"), bytes.to_vec());
             }
         }
         if self.is_native() {
-            fn walk(
-                root: &Path,
-                dir: &Path,
-                files: &mut std::collections::BTreeMap<String, Vec<u8>>,
-                source_bytes: &mut u64,
-                source_count: &mut usize,
-            ) -> Result<(), String> {
-                for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
-                    let entry = entry.map_err(|e| e.to_string())?;
-                    let path = entry.path();
-                    let relative = path.strip_prefix(root).map_err(|e| e.to_string())?;
-                    let name = relative
-                        .to_str()
-                        .ok_or("non-UTF-8 package path")?
-                        .replace('\\', "/");
-                    let kind = entry.file_type().map_err(|e| e.to_string())?;
-                    if kind.is_dir() {
-                        if entry
-                            .file_name()
-                            .to_str()
-                            .is_some_and(|name| NOT_PACKAGED.contains(&name))
-                            || matches!(name.as_str(), "assets" | "data" | RUNTIME_DIR)
-                        {
-                            continue;
-                        }
-                        walk(root, &path, files, source_bytes, source_count)?;
-                    } else if source_file(&name) {
-                        check_folder_file(root, &name)?;
-                        let size = entry.metadata().map_err(|e| e.to_string())?.len();
-                        *source_bytes = source_bytes
-                            .checked_add(size)
-                            .ok_or("native package too large")?;
-                        *source_count += 1;
-                        if *source_bytes > MAX_SOURCE_BYTES || *source_count > MAX_SOURCE_FILES {
-                            return Err("native package exceeds its entry or size limit".into());
-                        }
-                        files.insert(name, std::fs::read(path).map_err(|e| e.to_string())?);
-                    } else if name.ends_with(".rs") || (name.ends_with(".toml") && name != MANIFEST)
-                    {
-                        return Err(format!("unexpected package path: {name}"));
-                    }
+            let (mut source_bytes, mut source_count) = (0u64, 0usize);
+            for name in mod_source::package::source_files(root).map_err(|e| e.to_string())? {
+                check_folder_file(root, &name)?;
+                let path = root.join(&name);
+                let size = std::fs::metadata(&path).map_err(|e| e.to_string())?.len();
+                source_bytes = source_bytes
+                    .checked_add(size)
+                    .ok_or("native package too large")?;
+                source_count += 1;
+                if source_bytes > MAX_SOURCE_BYTES || source_count > MAX_SOURCE_FILES {
+                    return Err("native package exceeds its entry or size limit".into());
                 }
-                Ok(())
+                files.insert(name, std::fs::read(path).map_err(|e| e.to_string())?);
             }
-            let (mut source_bytes, mut source_count) = (0, 0);
-            walk(root, root, &mut files, &mut source_bytes, &mut source_count)?
         }
         files.insert(
             MANIFEST.to_owned(),
@@ -1201,6 +1234,9 @@ impl Package {
         let options = zip::write::SimpleFileOptions::default();
         let err = |e: zip::result::ZipError| e.to_string();
         let mut put = |name: &str, bytes: &[u8]| -> Result<(), String> {
+            if minisign_secret_key(bytes) {
+                return Err(format!("{name}: a Minisign private key cannot be packaged"));
+            }
             zip.start_file(name, options).map_err(err)?;
             zip.write_all(bytes).map_err(|e| e.to_string())
         };
@@ -1235,6 +1271,38 @@ impl Package {
         Self::read_zip(&mut archive)?;
         Ok(bytes)
     }
+}
+
+/// Recognize a Minisign secret-key record by its framing, without decrypting or copying the secret.
+/// The 158-byte payload starts with Ed25519, a scrypt or empty KDF, and a BLAKE2b checksum tag.
+fn minisign_secret_key(bytes: &[u8]) -> bool {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    const KEY_BYTES: usize = 158;
+    let header = |bytes: &[u8]| matches!(bytes, b"EdScB2" | b"Ed\0\0B2");
+    if bytes.len() >= KEY_BYTES && header(&bytes[..6]) {
+        return true;
+    }
+    // The text format has an arbitrary comment line, then the base64 payload. The comment
+    // is not authentication: a renamed file or a different comment still carries the key.
+    let Some(line) = bytes.splitn(3, |&byte| byte == b'\n').nth(1) else {
+        return false;
+    };
+    let line = line.strip_suffix(b"\r").unwrap_or(line);
+    if line.len() < KEY_BYTES.div_ceil(3) * 4 || !line.len().is_multiple_of(4) {
+        return false;
+    }
+    let mut prefix = [0; 6];
+    if STANDARD.decode_slice(&line[..8], &mut prefix).is_err() || !header(&prefix) {
+        return false;
+    }
+    let encoded = line
+        .strip_suffix(b"==")
+        .or_else(|| line.strip_suffix(b"="))
+        .unwrap_or(line);
+    encoded.len() * 3 / 4 >= KEY_BYTES
+        && encoded[8..]
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'/'))
 }
 
 /// A content entry that cannot be safely loaded as data.
@@ -1366,6 +1434,77 @@ mod runtime_files_tests;
 
 #[cfg(test)]
 mod tests {
+    /// A project folder packs its source set and leaves every other file out, so the archive
+    /// reads back as a valid package.
+    #[test]
+    fn a_native_project_folder_packs_its_source_set_and_leaves_other_files_out() {
+        let folder = tempfile::tempdir().unwrap();
+        let write = |name: &str, text: &str| {
+            let path = folder.path().join(name);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        write(
+            MANIFEST,
+            &format!(
+                "id='butterflies'\nname='Butterflies'\nversion='0.1.0'\napi='0.2'\n\
+                 capabilities=['registries']\n[native]\ngame='26.3'\nsunrise='{}'\nmixins='{}'\n",
+                "a".repeat(40),
+                "b".repeat(40)
+            ),
+        );
+        write(
+            "Cargo.toml",
+            "[package]\nname='butterflies'\nversion='0.1.0'\n",
+        );
+        write("src/lib.rs", "pub fn hooks() {}");
+        write("module.toml", "[module]\nname='butterflies'\n");
+        write("sources/wings.toml", "colour='blue'\n");
+        write("tools/generate.rs", "fn main() {}");
+        write(
+            ".cargo/config.toml",
+            "[source.crates-io]\nreplace-with='local'\n",
+        );
+        write("rust-toolchain.toml", "[toolchain]\nchannel='nightly'\n");
+        // A folder beside the crate is never read, so a name packing could not encode is no bar.
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStrExt;
+            let junk = folder.path().join("node_modules");
+            std::fs::create_dir_all(&junk).unwrap();
+            std::fs::write(junk.join(std::ffi::OsStr::from_bytes(b"\xff.rs")), "").unwrap();
+            std::fs::write(
+                folder
+                    .path()
+                    .join(std::ffi::OsStr::from_bytes(b"\xff.toml")),
+                "",
+            )
+            .unwrap();
+            // On Unix a `\` is part of a file name, never a separator.
+            std::fs::write(folder.path().join("src").join("a\\b.rs"), "").unwrap();
+            std::fs::write(
+                folder
+                    .path()
+                    .join("src")
+                    .join(std::ffi::OsStr::from_bytes(b"\xff.rs")),
+                "",
+            )
+            .unwrap();
+        }
+
+        let bytes = Package::pack_directory(folder.path()).unwrap();
+        let archive = folder.path().join("butterflies.smod");
+        std::fs::write(&archive, &bytes).unwrap();
+        let mut names: Vec<_> = zip::ZipArchive::new(std::io::Cursor::new(&bytes))
+            .unwrap()
+            .file_names()
+            .map(|name| name.unwrap().into_owned())
+            .collect();
+        names.sort();
+        assert_eq!(names, ["Cargo.toml", "src/lib.rs", MANIFEST]);
+        assert!(Package::read(&archive).unwrap().is_native());
+    }
+
     /// A short version with a pre-release or build part is padded before it, not after it.
     #[test]
     fn a_short_version_with_a_pre_release_is_padded_in_its_core() {
@@ -1926,6 +2065,108 @@ capabilities = ["registries"]
         assert!(with("\"a\", \"a\"").unwrap_err().contains("twice"));
         assert!(with("\"Kaisyn\"").unwrap_err().contains("is not"));
         assert!(with("\"\"").unwrap_err().contains("is not"));
+    }
+
+    #[test]
+    fn checks_served_by_and_native_serves_content() {
+        let default = Manifest::parse(EXAMPLE).unwrap();
+        assert_eq!(default.served_by, None);
+
+        let served = Manifest::parse(&format!("{EXAMPLE}served_by = \"horizon_java\"\n")).unwrap();
+        assert_eq!(served.served_by.as_deref(), Some("horizon_java"));
+
+        let native_header = format!(
+            "[native]\ngame = \"26.3\"\nsunrise = \"{}\"\n",
+            "a".repeat(40)
+        );
+        let native_default = Manifest::parse(&format!("{EXAMPLE}{native_header}")).unwrap();
+        assert!(!native_default.native.as_ref().unwrap().serves_content);
+        assert!(
+            !toml::to_string(native_default.native.as_ref().unwrap())
+                .unwrap()
+                .contains("serves_content")
+        );
+
+        let native_host =
+            Manifest::parse(&format!("{EXAMPLE}{native_header}serves_content = true\n")).unwrap();
+        assert!(native_host.native.as_ref().unwrap().serves_content);
+
+        let native_served_by = Manifest::parse(&format!(
+            "{EXAMPLE}served_by = \"horizon_java\"\n{native_header}"
+        ))
+        .unwrap_err();
+        assert!(native_served_by.contains("served_by"), "{native_served_by}");
+
+        let self_ref = Manifest::parse(&format!("{EXAMPLE}served_by = \"ruby\"\n")).unwrap_err();
+        assert!(
+            self_ref.contains("served_by") && self_ref.contains("ruby"),
+            "{self_ref}"
+        );
+
+        for invalid_id in RESERVED_NAMESPACES
+            .into_iter()
+            .chain(["account", "index", "con", "com1", "", "Bad_Id", "has-dash"])
+        {
+            let err =
+                Manifest::parse(&format!("{EXAMPLE}served_by = \"{invalid_id}\"\n")).unwrap_err();
+            assert!(err.contains("served_by"), "{invalid_id}: {err}");
+            if !invalid_id.is_empty() {
+                assert!(err.contains(invalid_id), "{invalid_id}: {err}");
+            }
+        }
+
+        let server_host = Manifest::parse(&format!("{EXAMPLE}side = \"server\"\n")).unwrap();
+        let both_host = Manifest::parse(&format!("{EXAMPLE}side = \"both\"\n")).unwrap();
+        let server_runes = Manifest::parse(
+            "id = \"runes\"\nname = \"Runes\"\nversion = \"1.0.0\"\napi = \"0.2\"\n\
+             side = \"server\"\nserved_by = \"ruby\"\ncapabilities = [\"registries\"]\n",
+        )
+        .unwrap();
+        let both_runes = Manifest::parse(
+            "id = \"runes\"\nname = \"Runes\"\nversion = \"1.0.0\"\napi = \"0.2\"\n\
+             side = \"both\"\nserved_by = \"ruby\"\ncapabilities = [\"registries\"]\n",
+        )
+        .unwrap();
+        assert_eq!(
+            server_host.server_only_declaration_for(
+                &[&server_host, &server_runes],
+                [("block", "minecraft:stone"), ("block", "runes:altar")].into_iter(),
+            ),
+            Some(ServerOnlyDeclaration {
+                declarer: "ruby".into(),
+                supplier: "runes".into(),
+                kind: "block".into(),
+                id: "runes:altar".into(),
+            })
+        );
+        // A side = "both" host declaring client-required content in a side = "server" served
+        // package's namespace must also be refused, while its own or side = "both" namespaces pass.
+        assert_eq!(
+            both_host.server_only_declaration_for(
+                &[&both_host, &server_runes],
+                [("block", "ruby:gear"), ("block", "runes:altar")].into_iter(),
+            ),
+            Some(ServerOnlyDeclaration {
+                declarer: "ruby".into(),
+                supplier: "runes".into(),
+                kind: "block".into(),
+                id: "runes:altar".into(),
+            })
+        );
+        assert_eq!(
+            both_host.server_only_declaration_for(
+                &[&both_host, &both_runes],
+                [("block", "ruby:gear"), ("block", "runes:altar")].into_iter(),
+            ),
+            None
+        );
+        assert_eq!(
+            server_host.server_only_declaration_for(
+                &[&server_host, &server_runes],
+                [("block", "other:altar")].into_iter(),
+            ),
+            None
+        );
     }
 
     #[test]

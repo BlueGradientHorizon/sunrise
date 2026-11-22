@@ -854,15 +854,17 @@ impl Dragon {
         if damage > 0.0 {
             let hurting = sunrise_client::health::Hurting::Dragon(self.id as i32, source);
             let block = sunrise_client::health::no_block(damage);
-            let blocked = level
-                .shield_block(hurting, damage, block)
-                .map_or(0.0, |b| b.blocked_damage);
+            let blocked = level.shield_block(hurting, damage, block).map_or(0.0, |b| {
+                container.record_shield_damage(b.shield_damage.max(0) as f32);
+                b.blocked_damage
+            });
             damage -= blocked;
             container.record_block(blocked);
         }
         if !damage.is_finite() {
             damage = f32::MAX;
         }
+        container.record_new_damage(damage);
         // LivingEntity.hurtServer: within the cooldown only what exceeds the last hit.
         let window = self.invulnerable > 10;
         container.record_should_cause_side_effects(!window);
@@ -870,28 +872,31 @@ impl Dragon {
             if damage <= self.last_hurt {
                 return Hurt::Landed { full: false };
             }
+            container.record_post_attack_invulnerability_ticks(self.invulnerable);
             container.reduce(
                 Reduction::Invulnerability,
                 damage,
                 self.last_hurt,
                 damage - self.last_hurt,
-                true,
             )
         } else {
             damage
         };
-        if window {
-            container.set_post_attack_invulnerability_ticks(self.invulnerable);
-        }
-        // LivingEntity.actuallyHurt: the dragon wears no armor and takes no effects, so
-        // nothing reduces the hit before Pre.
+        // LivingEntity.actuallyHurt: the dragon wears no armor and takes no effects.
+        // NeoForge still subtracts the armor-stage answer from the live container amount before Pre.
+        let before_armor = container.new_damage();
+        dealt = container.reduce(Reduction::Armor, before_armor, before_armor - dealt, dealt);
         let hurting = sunrise_client::health::Hurting::Dragon(self.id as i32, source);
-        container.enter_pre(dealt);
+        container.record_new_damage(dealt);
         level.damage_pre(hurting, &mut container);
         dealt = container.capture_inflicted();
-        self.health -= dealt;
-        container.record_health_damage(dealt);
-        self.last_hurt = damage + container.pre_change();
+        // LivingEntity.actuallyHurt: absorption runs after Pre even with 0.0 absorption hearts.
+        let (remaining, _, _) = container.absorb(dealt, 0.0);
+        if remaining != 0.0 {
+            self.health -= remaining;
+            container.record_health_damage(remaining);
+        }
+        self.last_hurt = damage;
         self.invulnerable = container.post_attack_invulnerability_ticks();
         if !window {
             self.hurt_time = 10;
@@ -1538,7 +1543,14 @@ impl Game<'_> {
                 Vec3::new(x + 1.0, y + 2.0, z + 1.0),
             ));
             self.combat.explosion_direct = Some(c.id);
-            let _ = self.server_explode(at, 6.0, interaction, false);
+            let _ = self.server_explode_from(
+                at,
+                6.0,
+                interaction,
+                false,
+                super::explosion::ExplosionSource::default()
+                    .with_damage_direct(c.id, sunrise_client::health::DirectEntity::Other),
+            );
             self.combat.explosion_direct = None;
             self.combat.explosion_in_water = false;
             self.fight.blast_by = None;
@@ -2998,8 +3010,9 @@ impl Game<'_> {
             // part's list in turn, so Thorns' level and dragon draws follow it.
             for part in 0..4 {
                 for (index, &allowed) in allowed.iter().enumerate() {
+                    let id = self.mobs[index].id;
                     let plan = self.prepare_knockback_credit(
-                        self.mobs[index].id as i32,
+                        id as i32,
                         Some(Who::Mob(frame.dragon_id)),
                         self.combat.attack(),
                     );
@@ -3016,7 +3029,7 @@ impl Game<'_> {
                         allowed,
                         part,
                     ) {
-                        let id = self.mobs[index].id;
+                        self.finish_mob_damage_at(index);
                         self.mob_post_attack(
                             id,
                             Some(sunrise_client::mobs::Who::Mob(frame.dragon_id)),
@@ -3314,6 +3327,7 @@ impl Game<'_> {
             }
             p.health.sync_velocity |= marked;
         }
+        self.finish_guest_damage();
         if !sitting
             && !hurt_lately
             && let Some(id) = self.dragon.as_ref().map(|d| d.id)
@@ -3518,16 +3532,24 @@ impl Breath {
         self.age < self.potion.as_ref().map_or(20, |p| p.settings.wait_time)
     }
 }
+#[cfg(test)]
+impl Dragon {
+    pub(super) fn set_render_test_crystal(&mut self, crystal: Option<usize>) {
+        self.nearest_crystal = crystal;
+    }
+}
+
 impl Game<'_> {
-    /// `EnderDragonRenderer` and `EnderDragonModel.setupAnim`.
+    /// `EnderDragonRenderer.submit` and `EnderDragonModel.setupAnim`, from the real dragon's slot.
     pub(super) fn dragon_geometry(
         &self,
+        d: &Dragon,
         camera: glam::DVec3,
         alpha: f64,
         out: &mut Vec<Vertex>,
         additive: &mut Vec<Vertex>,
     ) {
-        let (Some(d), Some(model)) = (self.dragon.as_ref(), self.dragon_model.as_ref()) else {
+        let Some(model) = self.dragon_model.as_ref() else {
             return;
         };
         let a = alpha as f32;
@@ -3672,6 +3694,8 @@ impl Game<'_> {
             (0xFFFF_FFFF, u32::from(d.hurt_time > 0))
         };
         let first = out.len();
+        self.mark_entity(first, "minecraft:ender_dragon");
+        self.mark_motion(first, 0);
         sunrise_client::mobs::render::draw(model, base, &poses, skin, color, light, overlay, out);
         if let Some(mask) = mask {
             dissolve_mask(&mut out[first..], skin, mask);
@@ -3689,8 +3713,10 @@ impl Game<'_> {
             let full = sunrise_client::mobs::render::FULL_BRIGHT;
             sunrise_client::mobs::render::draw(model, base, &poses, glow, color, full, 0, out);
         }
+        #[cfg(test)]
+        super::native_render_pair_tests::witness_body(d.id, first, out.len());
         // RenderTypes.eyes: the glowing eyes, added on top.
-        let mut eye_quads = Vec::new();
+        let first_eye = additive.len();
         sunrise_client::mobs::render::draw(
             model,
             base,
@@ -3699,17 +3725,16 @@ impl Game<'_> {
             0xFFFF_FFFF,
             240 | 240 << 8,
             0,
-            &mut eye_quads,
+            additive,
         );
         // `RenderTypes.eyes` has an `OitPipelineSet`: improved transparency
         // moves the tagged quads into its stages (the HDR tier is the eyes'
         // shine, `mobs::render::EYES_TIER`).
-        for v in &mut eye_quads {
+        for v in &mut additive[first_eye..] {
             v.layer = 2
                 | sunrise_client::gfx::OIT_ENTITY
                 | u32::from(sunrise_client::mesher::BRIGHT) << 16;
         }
-        additive.extend(eye_quads);
         if death > 0.0 {
             let rays = additive.len();
             self.dragon_rays(rays_base, death / 200.0, additive);
@@ -3747,6 +3772,8 @@ impl Game<'_> {
         else {
             return;
         };
+        // Like the other layer-6 beams, this is a separate pack material from its body.
+        self.mark_stage(out.len(), "NONE");
         let q = |v: f32| (v * 65535.0).round().clamp(0.0, 65535.0) as u32;
         let wrap_light = q(s.v0) | q(s.v1 - s.v0) << 16;
         let (dx, dy, dz) = (delta.x as f32, delta.y as f32, delta.z as f32);
@@ -4142,7 +4169,7 @@ impl Game<'_> {
             spectator: false,
             watching: false,
             hidden: None,
-            general: false,
+            general: None,
         })
     }
 }
@@ -4657,7 +4684,11 @@ impl Game<'_> {
                     false,
                     super::explosion::ExplosionSource::default()
                         .with_silence(self.entity_silent(c.id))
-                        .with_entity(c.id, "minecraft:end_crystal"),
+                        .with_entity(
+                            c.id,
+                            "minecraft:end_crystal",
+                            sunrise_client::health::DirectEntity::Other,
+                        ),
                 );
             }
         }
@@ -6034,8 +6065,7 @@ mod tests {
             .collect()
     }
     /// Sets the native damage hook of these tests: it records the dragon
-    /// hits of entities 9001 to 9005, cancels 9001's, doubles 9002's, makes
-    /// 9003's -5 and 9004's NaN. The other tests' dragons are entity 0.
+    /// hits of entities 9001 to 9005, cancels 9001's and doubles 9002's.
     fn hooks() -> sunrise_client::health::DamageHooks {
         use sunrise_client::health::{DamageContainer, DamageHooks, DamageLevel, Hurting, Victim};
         fn hook(
@@ -6050,11 +6080,8 @@ mod tests {
             let amount = container.new_damage();
             let hit = (s.damage_type.to_owned(), s.causing, s.direct, amount);
             SEEN.lock().unwrap().push((entity, hit));
-            match entity {
-                9002 => container.set_new_damage(amount * 2.0),
-                9003 => container.set_new_damage(-5.0),
-                9004 => container.set_new_damage(f32::NAN),
-                _ => {}
+            if entity == 9002 {
+                container.record_new_damage(amount * 2.0);
             }
             entity == 9001
         }
@@ -6236,21 +6263,112 @@ mod tests {
         );
         assert_eq!(d.hurt(level, 3, 0.001, HIT, false), Hurt::Refused);
         assert!(seen(9005).is_empty());
-        // LivingEntity.hurtServer: a negative amount hurts by 0, a NaN by
-        // Float.MAX_VALUE (the killing blow: the dying flight).
-        let mut d = dragon_as(9003);
+    }
+
+    #[test]
+    fn dragon_records_shield_damage_and_runs_armor_and_absorption_modifiers() {
+        use std::sync::Mutex;
+        use sunrise_client::health::{
+            DamageContainer, DamageHooks, DamageLevel, Hurting, Reduction, ShieldBlock, Victim,
+        };
+        static ARMOR_SEEN: Mutex<Vec<f32>> = Mutex::new(Vec::new());
+        static ABSORPTION_SEEN: Mutex<Vec<f32>> = Mutex::new(Vec::new());
+        static POST_SEEN: Mutex<Vec<(f32, f32, f32, f32, f32, f32)>> = Mutex::new(Vec::new());
+        fn on_shield(
+            _: DamageLevel<'_>,
+            hurting: Hurting<'_>,
+            _: f32,
+            _: bool,
+            block: &mut ShieldBlock,
+        ) {
+            if matches!(hurting, Hurting::Dragon(9201 | 9202, _)) {
+                block.blocked = true;
+                block.blocked_damage = 2.0;
+                block.shield_damage = 5;
+            }
+        }
+        fn on_incoming(
+            _: DamageLevel<'_>,
+            hurting: Hurting<'_>,
+            _: Victim,
+            container: &mut DamageContainer,
+        ) -> bool {
+            if matches!(hurting, Hurting::Dragon(9201 | 9202, _)) {
+                container.add_reduction_modifier(
+                    Reduction::Armor,
+                    Box::new(|_, taken| {
+                        ARMOR_SEEN.lock().unwrap().push(taken);
+                        1.0
+                    }),
+                );
+            }
+            false
+        }
+        fn on_pre(_: DamageLevel<'_>, hurting: Hurting<'_>, container: &mut DamageContainer) {
+            let absorb_to = match hurting {
+                Hurting::Dragon(9201, _) => 3.0,
+                Hurting::Dragon(9202, _) => 10.0,
+                _ => return,
+            };
+            container.add_reduction_modifier(
+                Reduction::Absorption,
+                Box::new(move |_, taken| {
+                    ABSORPTION_SEEN.lock().unwrap().push(taken);
+                    absorb_to
+                }),
+            );
+        }
+        fn on_post(_: DamageLevel<'_>, hurting: Hurting<'_>, container: &DamageContainer) {
+            if matches!(hurting, Hurting::Dragon(9201 | 9202, _)) {
+                POST_SEEN.lock().unwrap().push((
+                    container.blocked(),
+                    container.shield_damage(),
+                    container.reduction(Reduction::Armor),
+                    container.reduction(Reduction::Absorption),
+                    container.inflicted(),
+                    container.health_damage(),
+                ));
+            }
+        }
+        ARMOR_SEEN.lock().unwrap().clear();
+        ABSORPTION_SEEN.lock().unwrap().clear();
+        POST_SEEN.lock().unwrap().clear();
+        let hooks = DamageHooks {
+            incoming: Some(on_incoming),
+            pre: Some(on_pre),
+            post: Some(on_post),
+            shield: Some(on_shield),
+            ..DamageHooks::NONE
+        };
+        let mut test_level = sunrise_client::health::TestLevel::with_hooks(0, hooks);
+        let level = &mut test_level.level();
+
+        // Hit 1: 10.0 - 2.0 shield = 8.0, Armor modifier takes 1.0 -> 7.0 inflicted,
+        // Pre Absorption modifier receives 0.0 and takes 3.0 -> 4.0 health damage.
+        let mut d1 = dragon_as(9201);
         assert_eq!(
-            d.hurt(level, 0, 9.0, HIT, false),
+            d1.hurt(level, 0, 10.0, HIT, false),
             Hurt::Landed { full: true }
         );
-        assert_eq!(d.health, MAX_HEALTH);
-        let mut d = dragon_as(9004);
+        assert_eq!(d1.health, MAX_HEALTH - 4.0);
+
+        // Hit 2: Pre Absorption modifier absorbs all 7.0 -> 0.0 health damage.
+        let mut d2 = dragon_as(9202);
         assert_eq!(
-            d.hurt(level, 0, 9.0, HIT, false),
+            d2.hurt(level, 0, 10.0, HIT, false),
             Hurt::Landed { full: true }
         );
-        assert_eq!(d.health, 1.0);
-        assert!(matches!(d.phase, Phase::Dying { .. }));
+        assert_eq!(d2.health, MAX_HEALTH);
+
+        assert_eq!(*ARMOR_SEEN.lock().unwrap(), [0.0, 0.0]);
+        assert_eq!(*ABSORPTION_SEEN.lock().unwrap(), [0.0, 0.0]);
+        assert_eq!(
+            *POST_SEEN.lock().unwrap(),
+            [
+                (2.0, 5.0, 1.0, 3.0, 7.0, 4.0),
+                (2.0, 5.0, 1.0, 10.0, 7.0, 0.0),
+            ]
+        );
     }
 
     #[test]

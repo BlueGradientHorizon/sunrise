@@ -61,6 +61,7 @@ pub(super) enum OffLevel {
 
 /// Formerly resident vehicles kept solely by surviving passenger edges.
 pub(super) enum RemovedVehicle {
+    Mob { position: Vec3, kind: String },
     Boat(super::boats::Boat),
     Cart(super::minecarts::Minecart),
 }
@@ -68,6 +69,7 @@ pub(super) enum RemovedVehicle {
 impl RemovedVehicle {
     pub(super) fn position(&self) -> Vec3 {
         match self {
+            Self::Mob { position, .. } => *position,
             Self::Boat(boat) => boat.position,
             Self::Cart(cart) => cart.position,
         }
@@ -75,6 +77,7 @@ impl RemovedVehicle {
 
     pub(super) fn retire_attachment_registration(&self) {
         match self {
+            Self::Mob { .. } => {}
             Self::Boat(boat) => {
                 boat.attachment_lifetime.retire();
             }
@@ -86,6 +89,7 @@ impl RemovedVehicle {
 
     pub(super) fn kind(&self) -> String {
         match self {
+            Self::Mob { kind, .. } => kind.clone(),
             Self::Boat(boat) => boat.entity_type(),
             Self::Cart(cart) => cart.kind.id().into(),
         }
@@ -193,7 +197,7 @@ pub struct EntityMemory {
     /// Full rejected passenger objects, not resident entities or frozen NBT copies.
     /// Kept with the level while any live object graph still refers to them.
     pub(super) off_level: HashMap<u32, OffLevel>,
-    /// Removed boat/cart objects are never part of level residency.
+    /// Formerly resident vehicles kept for vetoed dismounts, never for ticking.
     pub(super) removed_vehicles: HashMap<u32, RemovedVehicle>,
     /// Destruction callbacks already consumed for geometry retained after removal.
     score_destroyed: HashSet<u32>,
@@ -201,8 +205,12 @@ pub struct EntityMemory {
     pub(super) mount_notifications: HashSet<(u32, u32, bool)>,
     /// Deferred native removals already notified their passenger edges.
     pub(super) notified_vehicle_removals: HashSet<u32>,
+    /// Pre-removal effects in progress. The vehicle still resolves during these effects.
+    pub(super) preparing_vehicle_removals: HashSet<super::commands::Target>,
     /// Vehicle destruction is logically visible before its passenger callbacks.
     pub(super) destroying_vehicles: HashSet<super::commands::Target>,
+    /// Bodies that set `Entity.syncPosition` this tick, cleared after tracking.
+    pub(super) sync_body_position: HashSet<u32>,
     /// Synched entity-data entries dirtied by forced writes since the last sync.
     pub(super) forced_meta: HashMap<u32, [u64; 4]>,
     /// `Entity.noPhysics` a native mod wrote for a kind whose own struct keeps
@@ -1028,6 +1036,8 @@ impl Game<'_> {
             if let Some(state) = transferred {
                 self.adopt_transferred_entity_state(a.id, state);
             }
+            // Entity.<init>: its own random's first draws, saved UUID or not.
+            let uuid = with_constructor_uuid(uuid);
             let id = a.id;
             self.remember(id, uuid, tag);
             self.bind_saved_entity_attachments(id, &mut a.attachment_lifetime);
@@ -1434,12 +1444,43 @@ impl Game<'_> {
     /// The compound of an entity Sunrise does not simulate, with its current
     /// position, rotation and UUID.
     pub(super) fn other_to_nbt(&self, o: &super::commands::OtherEntity, uuid: [i32; 4]) -> Tag {
+        self.other_tag(o, uuid, true)
+    }
+
+    pub(super) fn other_tag(
+        &self,
+        o: &super::commands::OtherEntity,
+        uuid: [i32; 4],
+        include_id: bool,
+    ) -> Tag {
         let mut tag = self
             .persist
             .raw
             .get(&o.id)
             .cloned()
             .unwrap_or_else(|| Tag::Compound(Default::default()));
+        let marker = matches!(o.kind.as_str(), "minecraft:marker" | "marker");
+        if marker || o.interaction.is_some() {
+            if !marker {
+                write_static_entity_fields(&mut tag);
+            }
+            let base = entity_nbt::Base {
+                id: &o.kind,
+                uuid,
+                position: o.position,
+                motion: entity_nbt::motion(&tag),
+                rotation: [o.yaw, o.pitch],
+                on_ground: entity_nbt::flag(&tag, "OnGround"),
+                fall_distance: sunrise_client::save::float(tag.get("fall_distance")).unwrap_or(0.0),
+            };
+            let mut out = entity_nbt::EntityTagWriter::from_saved(tag);
+            base.write(&mut out, include_id);
+            // Marker.addAdditionalSaveData is empty.
+            if let Some(state) = &o.interaction {
+                state.write(&mut out);
+            }
+            return out.finish();
+        }
         if let Tag::Compound(c) = &mut tag {
             // Display.addAdditionalSaveData omits the transient start delay.
             if matches!(
@@ -1448,7 +1489,11 @@ impl Game<'_> {
             ) {
                 c.remove(&"start_interpolation".into());
             }
-            c.insert("id".into(), Tag::String(o.kind.as_str().into()));
+            if include_id {
+                c.insert("id".into(), Tag::String(o.kind.as_str().into()));
+            } else {
+                c.remove(&"id".into());
+            }
             c.insert(
                 "Pos".into(),
                 Tag::List(
@@ -1476,11 +1521,6 @@ impl Game<'_> {
         if display {
             self.write_display_nbt(o, &mut tag);
         }
-        if let Some(state) = &o.interaction
-            && let Tag::Compound(fields) = &mut tag
-        {
-            state.write(fields);
-        }
         if let Some(eye) = o.eye
             && let Tag::Compound(c) = &mut tag
         {
@@ -1492,14 +1532,9 @@ impl Game<'_> {
             );
             c.entry("Fire".into()).or_insert(Tag::Short(0));
         }
-        // Marker, LeashFenceKnotEntity and EyeOfEnder still use
-        // Entity.saveWithoutId's common fields, which their own saves leave out.
-        if o.eye.is_some()
-            || matches!(
-                o.kind.as_str(),
-                "minecraft:marker" | "marker" | "minecraft:leash_knot"
-            )
-        {
+        // LeashFenceKnotEntity and EyeOfEnder still use the common fields
+        // of Entity.saveWithoutId, which their own saves leave out.
+        if o.eye.is_some() || o.kind == "minecraft:leash_knot" {
             entity_nbt::fill_common_defaults(&mut tag);
         }
         with_raw(tag, None) // Entity.saveWithoutId's flags, as booleans.
@@ -1735,6 +1770,17 @@ impl Game<'_> {
     /// A mob's entity tag with the mobs riding it under `Passengers`.
     pub(super) fn mob_tree_nbt(&mut self, i: usize) -> Tag {
         self.mob_object_tree_nbt(MobObject::Resident(i), false)
+    }
+
+    pub(super) fn mob_tree_tag_without_id(&mut self, i: usize) -> Tag {
+        let id = self.mobs[i].id;
+        let mut tag = self.mob_object_tag(MobObject::Resident(i), false);
+        self.put_passengers(&mut tag, id);
+        tag
+    }
+    /// A hive stores just its entering bee, not its riding tree.
+    pub(super) fn mob_own_nbt(&mut self, i: usize) -> Tag {
+        self.mob_object_nbt(MobObject::Resident(i))
     }
     /// Forget an entity that left the world (its UUID and loaded compound).
     pub(super) fn forget_entity(&mut self, id: u32) {
@@ -2454,7 +2500,7 @@ impl Game<'_> {
             f.drop_item,
             f.damage,
             f.fall_distance,
-            f.on_ground,
+            f.ground.on_ground,
             f.rotation,
             uuid,
         );
@@ -2571,6 +2617,10 @@ impl Game<'_> {
 impl sunrise_client::mobs::WhoLookup for Game<'_> {
     fn who_by_uuid(&self, uuid: [i32; 4]) -> Option<Who> {
         Game::who_by_uuid(self, uuid)
+    }
+
+    fn mob_uuid(&self, id: u32) -> Option<[i32; 4]> {
+        self.persist.uuids.get(&id).copied()
     }
 }
 

@@ -18,8 +18,9 @@ impl TagKey {
 }
 
 /// The result of reading one registry tag from the current authoritative snapshot.
+// no wire: this native lookup result carries process-local registry keys.
 #[derive(Clone, Debug, PartialEq, Eq)]
-// exhaustive: the lookup can only find a tag, miss it, or be unavailable.
+#[non_exhaustive]
 pub enum TagMembers<K> {
     /// No tag by this name bound, including a definition with an unresolved required entry.
     Missing,
@@ -38,44 +39,24 @@ pub trait Tags {
     /// Resolve a validated name once. The name need not currently have members;
     /// retain its key across reloads. None if the runtime cannot allocate a name slot.
     fn key(&self, _id: &Identifier) -> Option<TagKey> {
-        crate::world::phase::unprovided(
-            "Tags::key",
-            "tags_key",
-            crate::world::phase::LoadAccess::Metadata,
-        )
+        unimplemented!("Tags::key")
     }
     /// Whether `item` is in the current item tag. An unknown tag is false;
     /// unavailable authoritative tags or item mappings answer None.
     fn is_in_tag(&self, _item: ItemKey, _tag: TagKey) -> Option<bool> {
-        crate::world::phase::unprovided(
-            "Tags::is_in_tag",
-            "tags_is_in_tag",
-            crate::world::phase::LoadAccess::Metadata,
-        )
+        unimplemented!("Tags::is_in_tag")
     }
     /// Read the current item tag in vanilla's order, including unrequested vanilla items.
     fn items(&self, _tag: TagKey) -> TagMembers<ItemKey> {
-        crate::world::phase::unprovided(
-            "Tags::items",
-            "tags_items",
-            crate::world::phase::LoadAccess::Metadata,
-        )
+        unimplemented!("Tags::items")
     }
     /// Read the current fluid tag in vanilla's order.
     fn fluids(&self, _tag: TagKey) -> TagMembers<FluidKey> {
-        crate::world::phase::unprovided(
-            "Tags::fluids",
-            "tags_fluids",
-            crate::world::phase::LoadAccess::Metadata,
-        )
+        unimplemented!("Tags::fluids")
     }
     /// Read the current block tag in vanilla's order, including unrequested vanilla blocks.
     fn blocks(&self, _tag: TagKey) -> TagMembers<BlockKey> {
-        crate::world::phase::unprovided(
-            "Tags::blocks",
-            "tags_blocks",
-            crate::world::phase::LoadAccess::Metadata,
-        )
+        unimplemented!("Tags::blocks")
     }
 }
 

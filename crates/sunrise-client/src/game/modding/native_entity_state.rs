@@ -6,7 +6,7 @@
 //! and `None` for the rest, as for a stale handle. Secondary use also reads
 //! the local client's live semantic sneak state; fire and underwater reads also
 //! use the client's own cached state.
-//! Ticks lived (`Entity.tickCount`) are read for mobs, items, orbs and minecarts.
+//! Ticks lived (`Entity.tickCount`) are read for players, mobs, items, orbs and minecarts.
 use super::{Game, commands::Target};
 use mod_api::EntityRef;
 use sunrise_client::mobs::{Mob, Species, sync};
@@ -83,7 +83,7 @@ impl Game<'_> {
     pub(super) fn entity_is_shift_key_down(&self, entity: EntityRef) -> Option<bool> {
         if !self.is_logical_server() {
             return Some(match self.native_client_entity_target(entity)? {
-                Target::Player => self.keys.held(sunrise_client::actions::Action::Sneak),
+                Target::Player => self.held_mapping(sunrise_client::actions::Action::Sneak),
                 _ => false,
             });
         }
@@ -347,7 +347,7 @@ impl Game<'_> {
     /// kinds its portal walk carries (zero when it keeps no state for one).
     pub(super) fn entity_portal_cooldown(&self, entity: EntityRef) -> Option<i32> {
         let id = match self.native_entity_target(entity)? {
-            // The acting guest's state is in place for its turn (`enter_guest`).
+            // The acting guest's state is in place for its turn (the entry of `guest_turn`).
             Target::Player => return Some(self.portals.player.cooldown),
             Target::Guest(conn) => {
                 let play = self.lan.as_ref()?.play.get(&conn);
@@ -618,10 +618,20 @@ impl Game<'_> {
             _ => None,
         }
     }
-    /// Ticks the entity has lived (`Entity.tickCount`): mobs, item entities,
-    /// experience orbs and minecarts. Wraps as vanilla's `int` does.
+    /// Ticks the entity has lived (`Entity.tickCount`): players, mobs, item
+    /// entities, experience orbs and minecarts. Wraps as vanilla's `int` does.
     pub(super) fn entity_tick_count(&self, entity: EntityRef) -> Option<i32> {
         Some(match self.native_entity_target(entity)? {
+            Target::Player => self.player.as_ref()?.health.tick_count,
+            Target::Guest(conn) => {
+                let guest = self.command_guest(conn)?;
+                guest
+                    .motion
+                    .as_deref()
+                    .map(|motion| motion.health.tick_count)
+                    .or(guest.carried_tick_count)
+                    .unwrap_or(0)
+            }
             Target::Mob(id) => self.mobs.iter().find(|m| m.id == id)?.age as i32,
             Target::Item(id) => self.dropped.iter().find(|i| i.id == id)?.ticks as i32,
             Target::Orb(id) => self.orbs.iter().find(|o| o.id == id)?.ticks as i32,
@@ -922,13 +932,36 @@ mod tests {
     #[ignore = "daily"]
     fn tick_count_reads_supported_entities_and_refuses_others() {
         use super::super::minecarts::{CartKind, Minecart};
+        use super::super::native_entity_refs::tests::bind_local_player;
+        use super::super::native_guest_turn_tests::with_guests;
         use mod_api::WorldEpoch;
         use sunrise_client::entities::ExperienceOrb;
         use sunrise_client::items::ItemStack;
+        use sunrise_client::motion::PlayerMotion;
         use sunrise_core::geometry::Vec3;
 
-        with_player(|game, player| {
-            assert_eq!(player.tick_count(game), None);
+        with_guests(|game| {
+            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+            bind_local_player(game, 20, 123);
+            let player = game.entity(20).unwrap();
+            game.player.as_mut().unwrap().health.tick_count = i32::MAX;
+            game.player.as_mut().unwrap().health.advance_entity_clock();
+            assert_eq!(player.tick_count(game), Some(i32::MIN));
+
+            let acting_guest = game.entity(12).unwrap();
+            let parked_guest = game.entity(13).unwrap();
+            assert_eq!(parked_guest.tick_count(game), Some(0));
+            game.as_guest(13, |game| {
+                game.player.as_mut().unwrap().health.tick_count = 314;
+            })
+            .unwrap();
+            assert_eq!(parked_guest.tick_count(game), Some(314));
+
+            game.as_guest(12, |game| {
+                game.player.as_mut().unwrap().health.tick_count = 2718;
+                assert_eq!(acting_guest.tick_count(game), Some(2718));
+            })
+            .unwrap();
 
             let kind = game
                 .res
@@ -969,7 +1002,7 @@ mod tests {
                 velocity: Vec3::ZERO,
                 value: 7,
                 age: 600,
-                on_ground: true,
+                ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
                 count: 1,
                 fire_ticks: 0,
                 ticks: 21,
@@ -1065,7 +1098,7 @@ mod tests {
                 velocity: Vec3::ZERO,
                 value: 1,
                 age: 0,
-                on_ground: false,
+                ground: Default::default(),
                 count: 1,
                 fire_ticks: 0,
                 ticks: 0,
@@ -1125,7 +1158,7 @@ mod tests {
             game.next_entity += 1;
             let falling = game.next_entity;
             game.falling.push(FallingBlock {
-                on_ground: false,
+                ground: Default::default(),
                 fire_ticks: 0,
                 sync_velocity: false,
                 attachment_lifetime: Default::default(),
@@ -1306,7 +1339,7 @@ mod tests {
             game.next_entity += 1;
             let id = game.next_entity;
             game.falling.push(FallingBlock {
-                on_ground: false,
+                ground: Default::default(),
                 fire_ticks: 0,
                 sync_velocity: false,
                 attachment_lifetime: Default::default(),
@@ -1665,10 +1698,10 @@ mod tests {
             let local = game.local_player().unwrap();
             let entity = game.entity(7).unwrap();
             assert_eq!(local.entity(), entity);
-            game.keys.insert(KeyCode::ShiftLeft);
+            game.insert_device_key(KeyCode::ShiftLeft);
             assert!(!game.player.as_ref().unwrap().shift_key_down);
             assert_eq!(entity.is_shift_key_down(game), Some(true));
-            game.keys.clear();
+            game.remove_device_key(&KeyCode::ShiftLeft);
             game.player.as_mut().unwrap().shift_key_down = true;
             assert_eq!(
                 entity.is_shift_key_down(game),
@@ -1682,7 +1715,7 @@ mod tests {
             assert_eq!(entity.is_shift_key_down(game), None);
         });
         with_player(|game, player| {
-            game.keys.clear();
+            game.clear_device_keys();
             game.player.as_mut().unwrap().shift_key_down = true;
             assert_eq!(
                 player.is_shift_key_down(game),

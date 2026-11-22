@@ -32,7 +32,7 @@ use std::{
 
 /// CPU copies of the meshes uploaded since capturing was turned on.
 #[derive(Default)]
-pub(super) struct Copies {
+pub(crate) struct Copies {
     sections: FxHashMap<SectionKey, SectionMesh>,
     tiles: FxHashMap<TileKey, SectionMesh>,
 }
@@ -263,6 +263,8 @@ pub struct FrameInputs {
     pub night_vision: f32,
     pub block_flicker: f32,
     pub boss_darken: f32,
+    /// What each quad of `celestial.bin` is (`Frame::celestial_bodies`).
+    pub celestial_bodies: Vec<super::CelestialBody>,
 }
 
 /// `scene.json`.
@@ -481,6 +483,7 @@ impl Renderer {
                 night_vision: frame.night_vision,
                 block_flicker: frame.block_flicker,
                 boss_darken: frame.boss_darken,
+                celestial_bodies: frame.celestial_bodies.to_vec(),
             },
             sections,
             tiles,
@@ -564,6 +567,7 @@ impl Scene {
             glint_ticks: f.glint_ticks,
             nether_lighting: f.nether_lighting,
             entities: &[],
+            explicit_particles: None,
             static_block_entities: &[],
             visible_static_block_entity_sections: &[],
             static_block_entity_stats: Default::default(),
@@ -582,6 +586,7 @@ impl Scene {
             world_primitives: Default::default(),
             shadow_only: &[],
             celestial: &self.celestial,
+            celestial_bodies: &f.celestial_bodies,
             stars: f
                 .stars
                 .map(|(rotation, brightness)| (Mat4::from_cols_array(&rotation), brightness)),

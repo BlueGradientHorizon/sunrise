@@ -461,6 +461,7 @@ impl Game<'_> {
             rgba(0x10, 0x10, 0x10, 0xC0),
             rgba(0x10, 0x10, 0x10, 0xD0),
         );
+        self.draw_deferred_subtitles(batch);
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
         let title = Text::translate("advMode.setCommand", &[]);
         let tw = atlas.font.width_text(&title);
@@ -557,9 +558,9 @@ impl Game<'_> {
         s.command.server_suggestions(&m, &c, id, range, list);
         self.command_block_screen = Some(s);
     }
-    pub(super) fn command_block_click(&mut self) {
+    pub(super) fn command_block_click(&mut self) -> bool {
         let Some(mut s) = self.command_block_screen.take() else {
-            return;
+            return false;
         };
         // CommandSuggestions.mouseClicked first, then the command box.
         {
@@ -569,9 +570,10 @@ impl Game<'_> {
                 registries: &self.ui.registries,
             };
             let (x, y) = (f64::from(self.cursor.0), f64::from(self.cursor.1));
-            if s.command.click(&m, &c, x, y) {
+            let double_click = s.command.live_double_click(x, y);
+            if s.command.click(&m, &c, x, y, double_click) {
                 self.command_block_screen = Some(s);
-                return;
+                return true;
             }
         }
         let size = self
@@ -607,15 +609,16 @@ impl Game<'_> {
             Some(Button::Done) => {
                 self.set_command_block(&s);
                 self.close_command_block();
-                return;
+                return true;
             }
             Some(Button::Cancel) => {
                 self.close_command_block();
-                return;
+                return true;
             }
             None => {}
         }
         self.command_block_screen = Some(s);
+        hit.is_some()
     }
     /// `AbstractCommandBlockEditScreen.keyPressed`: the suggestions first,
     /// then Enter is Done, Escape cancels, the rest edits the command.

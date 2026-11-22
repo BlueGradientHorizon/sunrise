@@ -366,6 +366,9 @@ pub struct Projectile {
     pub arrow: Option<Box<crate::arrows::ArrowState>>,
     /// `AbstractHurtingProjectile.accelerationPower`.
     pub acceleration: f64,
+    /// `Entity.onGround` and retained support. Flight sets position directly;
+    /// only an explicit ground write or a base move (such as a piston push) updates these.
+    pub ground: sunrise_world::ground_support::GroundState,
     /// `Entity.needsSync`: a server tells its clients about the change this
     /// tick instead of at the next update interval.
     pub needs_sync: bool,
@@ -386,9 +389,6 @@ pub struct Projectile {
     pub touching_water: bool,
     /// `Entity.noGravity` (`NoGravity` in its save): `getGravity` is 0.
     pub no_gravity: bool,
-    /// `Entity.onGround` (`OnGround` in its save). A projectile moves by
-    /// `setPos`, never `Entity.move`, so it keeps what it was loaded with.
-    pub on_ground: bool,
     /// `Entity.remainingFireTicks`: a thrown projectile that flew through a
     /// fire block burns for 160 ticks, with the flame drawn over it.
     pub fire_ticks: i32,
@@ -687,13 +687,13 @@ impl Projectile {
             lava_marked: false,
             bonus: Default::default(),
             acceleration,
+            ground: Default::default(),
             needs_sync: false,
             sync_velocity: false,
             no_deflect_ticks,
             bubble_surfaces: Vec::new(),
             touching_water: false,
             no_gravity: false,
-            on_ground: false,
             fire_ticks: 0,
             // Entity.random: seeded unpredictably, the position stands in.
             random: OwnRandom(random),

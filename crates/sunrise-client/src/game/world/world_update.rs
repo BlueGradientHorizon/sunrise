@@ -159,6 +159,12 @@ impl Game<'_> {
             return;
         }
         let areas = self.streaming.extra.len();
+        let dim = self.dim;
+        self.streaming.extra.extend(
+            self.server_trips
+                .iter()
+                .flat_map(|trip| trip.spawn_destination_areas(dim)),
+        );
         let waiting = std::mem::take(&mut self.spawn_wait);
         self.streaming
             .extra
@@ -183,6 +189,8 @@ impl Game<'_> {
         let (uploads, unloaded) = sunrise_client::spans::time("streaming", || {
             self.streaming.complete_commit(&mut self.world, commit)
         });
+        // Sections chosen to mesh wait for the mods' `section_visibility` (none without a mod).
+        self.prepare_section_visibility();
         self.streaming.extra.truncate(areas);
         // The viewed levels' meshing, queued after the player's level's (nothing while no view
         // names one).
@@ -196,24 +204,18 @@ impl Game<'_> {
         }
         let dirty: Vec<_> = unloaded
             .iter()
-            .filter(|c| self.world.modified.contains(&(c.x, c.z)))
+            .filter(|c| self.world.modified.remove(&(c.x, c.z)))
             .cloned()
             .collect();
         let modified = sunrise_client::spans::time("with_entities", || self.with_entities(&dirty));
         self.native_full_chunk_snapshots(&modified);
-        if !modified.is_empty() {
-            match sunrise_client::spans::time("save_chunks", || {
+        if !modified.is_empty()
+            && let Err(e) = sunrise_client::spans::time("save_chunks", || {
                 self.save
                     .save_later(&modified, self.pack.assets.registry, world_biomes!(self))
-            }) {
-                // The writer's pending snapshots now hold the dirty data until sync.
-                Ok(_) => {
-                    for chunk in &dirty {
-                        self.world.modified.remove(&(chunk.x, chunk.z));
-                    }
-                }
-                Err(e) => log::warn!("Sunrise: failed to save unloaded chunks: {e}"),
-            }
+            })
+        {
+            log::warn!("Sunrise: failed to save unloaded chunks: {e}");
         }
         sunrise_client::spans::time("spawn_fresh_chunks", || self.spawn_fresh_chunks());
         self.ask_loaded_light_emission();
@@ -227,7 +229,7 @@ impl Game<'_> {
         }
         if let Some(lod) = &mut self.lod {
             self.lod_observe
-                .extend(uploads.iter().map(|(key, _)| (key.0, key.2)));
+                .extend(uploads.iter().map(|upload| (upload.key.0, upload.key.2)));
             for chunk in &unloaded {
                 self.lod_observe.remove(&(chunk.x, chunk.z));
             }
@@ -302,8 +304,10 @@ impl Game<'_> {
             if !budgeted && self.pending_uploads.is_empty() && uploads.len() <= AUTO_UPLOADS_AT_ONCE
             {
                 sunrise_client::spans::time("upload", || {
-                    for (key, mesh) in &uploads {
-                        renderer.upload(*key, mesh);
+                    for upload in &uploads {
+                        if self.streaming.can_publish_mesh(&self.world, upload) {
+                            renderer.upload(upload.key, &upload.mesh);
+                        }
                     }
                 });
                 self.streaming.free(uploads);
@@ -314,14 +318,18 @@ impl Game<'_> {
                 // chunks no longer loaded are dropped.
                 let pending = &mut self.pending_uploads;
                 let fresh: sunrise_client::fast_hash::FxHashSet<(i32, i32, i32)> =
-                    uploads.iter().map(|(k, _)| *k).collect();
-                let chunks = &self.world.chunks;
-                let loaded = |k: &(i32, i32, i32)| chunks.contains_key(&(k.0, k.2));
+                    uploads.iter().map(|upload| upload.key).collect();
+                let current = |upload: &sunrise_client::streaming::MeshUpload| {
+                    self.world
+                        .chunks
+                        .contains_key(&(upload.key.0, upload.key.2))
+                        && self.streaming.can_publish_mesh(&self.world, upload)
+                };
                 let mut spent: Vec<_> = pending
-                    .extract_if(.., |(k, _)| fresh.contains(k) || !loaded(k))
+                    .extract_if(.., |upload| fresh.contains(&upload.key) || !current(upload))
                     .collect();
                 for upload in uploads {
-                    if loaded(&upload.0) {
+                    if current(&upload) {
                         pending.push(upload);
                     } else {
                         spent.push(upload);
@@ -337,7 +345,7 @@ impl Game<'_> {
                 let far = |k: &(i32, i32, i32)| {
                     (k.0 - centre.0).pow(2) + (k.1 - cam_y).pow(2) + (k.2 - centre.1).pow(2)
                 };
-                pending.sort_unstable_by_key(|(k, _)| std::cmp::Reverse(far(k)));
+                pending.sort_unstable_by_key(|upload| std::cmp::Reverse(far(&upload.key)));
                 let (limit, budget) = if budgeted {
                     (
                         g.chunk_updates as usize,
@@ -354,7 +362,8 @@ impl Game<'_> {
                 let auto = (!budgeted).then(|| self.upload_pace.budget(pending.len(), arriving));
                 let started = Instant::now();
                 let upload_span = sunrise_client::spans::guard("upload_queue");
-                while let Some((_, mesh)) = pending.last() {
+                while let Some(upload) = pending.last() {
+                    let mesh = &upload.mesh;
                     if auto.is_some_and(|time| count > 0 && started.elapsed() >= time) {
                         break;
                     }
@@ -366,9 +375,9 @@ impl Game<'_> {
                     {
                         break;
                     }
-                    let (key, mesh) = pending.pop().expect("checked above");
-                    renderer.upload(key, &mesh);
-                    spent.push((key, mesh));
+                    let upload = pending.pop().expect("checked above");
+                    renderer.upload(upload.key, &upload.mesh);
+                    spent.push(upload);
                     count += 1;
                     bytes += size;
                 }

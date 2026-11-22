@@ -2079,7 +2079,7 @@ fn can_sniff(m: &Mob) -> bool {
         && !is_panicking(m)
         && !m.fluids.in_water
         && m.extra.in_love <= 0
-        && m.on_ground
+        && m.ground.on_ground
         && !m.extra.passenger
         && m.extra.leash.is_none()
 }
@@ -2097,7 +2097,7 @@ fn can_dig(m: &mut Mob, w: &MobWorld) -> bool {
         || is_tempted(m)
         || m.is_baby()
         || m.fluids.in_water
-        || !m.on_ground
+        || !m.ground.on_ground
         || m.extra.passenger
     {
         return false;
@@ -2731,7 +2731,7 @@ fn axolotl_action(m: &mut Mob, cx: &mut Bx, action: AxolotlAction, until: &mut i
             true
         }
         StayWater => m.fluids.in_water,
-        StayGround => m.on_ground,
+        StayGround => m.ground.on_ground,
     }
 }
 /// `TadpoleAi`: the core activity (panic 2.0, the look and move sinks, the temptation

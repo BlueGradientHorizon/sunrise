@@ -136,6 +136,8 @@ jobs:
           # tools/parity.py keeps pass records beside .local/minecraft, which is the read-only cache and holds
           # other trees' passes: this run's records start empty, on the slot.
           echo "PARITY_SHARED=$DYNA_CI_BUILD/parity-out/shared" >> "$GITHUB_ENV"
+          # The checkout's .local symlink escapes the default datafix root check. Name the job's own private root.
+          echo "SUNRISE_DATAFIX_ROOT=$DYNA_CI_BUILD/parity-out/datafix" >> "$GITHUB_ENV"
           SUNRISE_DYNA_CACHE=true SUNRISE_PREPARED_CACHE="$DYNA_CI_BUILD/vanilla" SUNRISE_SHARED_SOURCE=/cache/sunrise-local \
             bash tools/ci/vanilla-data.sh > "$PARITY_LOG_DIR/setup.log" 2>&1
       # The game opens a window even with --offscreen, and the runner has no display: a virtual X display for every
@@ -167,13 +169,16 @@ jobs:
           if grep -Eq "[\"']sunrise-game[\"'], [\"']--bin[\"'], [\"']sunrise-client[\"']" "${scripts[@]}"; then
             cargo build --profile fast -p sunrise-game --bin sunrise-client
           fi
-          # The client lib tests harnesses run (`cargo test -p <package> --lib`, the dev profile as parity.py sets it),
-          # one at a time and before any oracle starts: one rustc of up to 12 GiB each, which a 16 GiB runner
-          # killed beside the harnesses (signal 9: mount_control and damage_catalog on main, 2026-11-16).
-          for package in sunrise-client-lib sunrise-client; do
-            if grep -Eq "[\"']test[\"'], ([\"']--locked[\"'], )?[\"']-p[\"'], [\"']$package[\"'], [\"']--lib[\"']" "${scripts[@]}"; then
-              cargo test --locked --no-run -p "$package" --lib
-            fi
+          # Every package's lib tests a harness runs as `cargo test -p <package> --lib` (default features, the dev
+          # profile as parity.py sets it), one at a time and before any oracle starts; a harness's own feature set
+          # or profile still compiles in its run. One rustc of up to 12 GiB each, which a 16 GiB runner killed
+          # beside the harnesses (signal 9: mount_control and damage_catalog on main, 2026-11-16). A package left
+          # to the harness compiles inside the harness's own time limit (dragon_contacts gives cargo 240 s, and
+          # its tests moved to sunrise-gameplay in 7127d19eae).
+          packages=$({ grep -ohE "[\"']test[\"'], ([\"']--locked[\"'], )?[\"']-p[\"'], [\"'][a-z0-9_-]+[\"'], [\"']--lib[\"']" "${scripts[@]}" || true; } |
+            sed -E "s/.*[\"']-p[\"'], [\"']([a-z0-9_-]+)[\"'].*/\1/" | sort -u)
+          for package in $packages; do
+            cargo test --locked --no-run -p "$package" --lib
           done
       - name: Build parity probes
         run: |
@@ -189,9 +194,25 @@ jobs:
           cargo build --release -p sunrise-core --example biome_zoom_fixture
           cargo build --release -p sunrise-world --bin sunrise-world --example world_probe
           cargo build --release -p sunrise-world --example world_probe
+      # Keep complete legacy datafix seed inputs in $DYNA_CI_KEEP/datafix-seeds/<key> so each share
+      # copies immutable inputs instead of regenerating every legacy server inside the harness timeout.
+      # Failure is passed via steps.datafix-seeds.outcome so other harnesses in this share still run
+      # and report, while datafix fails immediately without retrying generation.
+      - name: Prepare datafix seed worlds from keep
+        id: datafix-seeds
+        continue-on-error: true
+        run: |
+          [ -n "${DYNA_CI_KEEP:-}" ] || exit 0
+          plan="$RUNNER_TEMP/plan/bucket-${BUCKET:-0}.json"
+          if [ -f "$plan" ] && ! grep -Eq '"datafix(#|")' "$plan"; then
+            exit 0
+          fi
+          export SUNRISE_DATAFIX_SEED_KEEP="$DYNA_CI_KEEP/datafix-seeds"
+          python3 tools/datafix_seeds.py > "$PARITY_LOG_DIR/datafix-seeds.log" 2>&1
       - name: Run every automatic harness
         env:
           PARITY_HOSTS: ''
+          SUNRISE_DATAFIX_SEEDS_OUTCOME: ${{ steps.datafix-seeds.outcome }}
         run: |
           # The runner writes retry reasons to the step summary as well as stdout; keep both private.
           export GITHUB_STEP_SUMMARY="$RUNNER_TEMP/parity-private-summary"
@@ -204,7 +225,10 @@ jobs:
           fi
           # The repository's keep on this CI host outlives the slot: oracle runs on byte-identical inputs replay
           # from it (tools/parity_shim.py). Without it every oracle runs, as before.
-          if [ -n "${DYNA_CI_KEEP:-}" ]; then export PARITY_ORACLE_KEEP="$DYNA_CI_KEEP/oracles"; fi
+          if [ -n "${DYNA_CI_KEEP:-}" ]; then
+            export PARITY_ORACLE_KEEP="$DYNA_CI_KEEP/oracles"
+            export SUNRISE_DATAFIX_SEED_KEEP="$DYNA_CI_KEEP/datafix-seeds"
+          fi
           status=0
           python3 tools/parity.py "${args[@]}" --selection-file "$PARITY_LOG_DIR/selection.json" \
             > "$log" 2>&1 || status=$?

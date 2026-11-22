@@ -1,6 +1,7 @@
 //! Java Edition NBT with lossless UTF-16 strings and 26.3 mixed-list wrappers.
 use crate::{
     java_hash_map::{IntoIter, Iter, JavaHashMap, JavaKey},
+    modified_utf8,
     random::java_string_hash,
 };
 use std::{
@@ -39,14 +40,7 @@ impl JavaString {
     }
     /// Encoded byte length for Java's `DataOutput.writeUTF`, including each surrogate separately.
     pub fn modified_utf8_len(&self) -> usize {
-        self.0
-            .iter()
-            .map(|&unit| match unit {
-                1..=127 => 1,
-                0..=2047 => 2,
-                _ => 3,
-            })
-            .sum()
+        modified_utf8::encoded_len(&self.0)
     }
 }
 
@@ -375,6 +369,19 @@ impl Tag {
     }
 }
 
+/// Decode an NBT number as `NbtOps.getNumberValue` followed by Java's `Number.intValue`.
+pub fn numeric_int(value: &Tag) -> Option<i32> {
+    Some(match value {
+        Tag::Byte(n) => i32::from(*n),
+        Tag::Short(n) => i32::from(*n),
+        Tag::Int(n) => *n,
+        Tag::Long(n) => *n as i32,
+        Tag::Float(n) => f32::from_bits(*n) as i32,
+        Tag::Double(n) => f64::from_bits(*n) as i32,
+        _ => return None,
+    })
+}
+
 /// Stack-safe Rust ownership clone, preserving compound bucket and tree history.
 pub fn clone_tag(root: &Tag) -> Tag {
     clone_tree(root, false)
@@ -455,7 +462,11 @@ fn clone_tree(root: &Tag, java_copy: bool) -> Tag {
 
 /// Release a boundary-owned tag without recursive list/compound drops.
 pub fn discard_tag(root: Tag) {
-    let mut pending = vec![root];
+    let mut pending: Vec<_> = match root {
+        Tag::List(values) => values,
+        Tag::Compound(values) => values.into_values().collect(),
+        _ => return,
+    };
     while let Some(tag) = pending.pop() {
         match tag {
             Tag::List(values) => pending.extend(values),
@@ -603,6 +614,144 @@ impl std::error::Error for Error {}
 /// [`read_named_streaming`]).
 type Visit<'s> = &'s mut dyn FnMut(&mut ListElements<'_, '_, '_>) -> Result<(), Error>;
 
+mod packed;
+#[doc(hidden)]
+pub use packed::{pack_network, unpack_network};
+
+/// Outputs of the same decoder. The tape retains compound entries in insertion
+/// order; the tree output inserts them immediately and also supports disk quotas.
+trait DecodeOutput {
+    type Value;
+    type List;
+    type Map;
+    type Key;
+
+    fn scalar(&mut self, offset: usize, wire: &[u8], value: Tag) -> Self::Value;
+    fn array(&mut self, kind: ArrayKind, offset: usize, bytes: &[u8]) -> Self::Value;
+    fn list(&mut self, offset: usize, len: usize) -> Self::List;
+    fn push(&mut self, list: &mut Self::List, value: Self::Value);
+    fn end_list(&mut self, list: Self::List) -> Self::Value;
+    fn compound(&mut self) -> Self::Map;
+    fn contains(&self, map: &Self::Map, key: &JavaString) -> bool;
+    fn key(&mut self, offset: usize, wire: &[u8], key: JavaString) -> Self::Key;
+    fn insert(&mut self, map: &mut Self::Map, key: Self::Key, value: Self::Value) -> bool;
+    fn end_compound(&mut self, map: Self::Map) -> Self::Value;
+}
+
+#[derive(Clone, Copy)]
+enum ArrayKind {
+    Byte,
+    Int,
+    Long,
+}
+
+impl ArrayKind {
+    fn width(self) -> usize {
+        match self {
+            Self::Byte => 1,
+            Self::Int => 4,
+            Self::Long => 8,
+        }
+    }
+
+    fn tag(self, bytes: &[u8], native: bool) -> Tag {
+        match self {
+            Self::Byte => Tag::ByteArray(bytes.to_vec()),
+            Self::Int => Tag::IntArray(
+                bytes
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|&word| {
+                        if native {
+                            i32::from_ne_bytes(word)
+                        } else {
+                            i32::from_be_bytes(word)
+                        }
+                    })
+                    .collect(),
+            ),
+            Self::Long => Tag::LongArray(
+                bytes
+                    .as_chunks::<8>()
+                    .0
+                    .iter()
+                    .map(|&word| {
+                        if native {
+                            i64::from_ne_bytes(word)
+                        } else {
+                            i64::from_be_bytes(word)
+                        }
+                    })
+                    .collect(),
+            ),
+        }
+    }
+}
+
+struct Tree;
+
+impl DecodeOutput for Tree {
+    type Value = Tag;
+    type List = Vec<Tag>;
+    type Map = Compound;
+    type Key = JavaString;
+
+    fn scalar(&mut self, _: usize, _: &[u8], value: Tag) -> Tag {
+        match value {
+            Tag::Float(bits) => float_tag(bits),
+            Tag::Double(bits) => double_tag(bits),
+            value => value,
+        }
+    }
+    fn array(&mut self, kind: ArrayKind, _: usize, bytes: &[u8]) -> Tag {
+        kind.tag(bytes, false)
+    }
+    fn list(&mut self, _: usize, len: usize) -> Vec<Tag> {
+        Vec::with_capacity(len)
+    }
+    fn push(&mut self, list: &mut Vec<Tag>, value: Tag) {
+        list.push(unwrap_list_element(value));
+    }
+    fn end_list(&mut self, list: Vec<Tag>) -> Tag {
+        Tag::List(list)
+    }
+    fn compound(&mut self) -> Compound {
+        Compound::new()
+    }
+    fn contains(&self, map: &Compound, key: &JavaString) -> bool {
+        map.contains_key(key)
+    }
+    fn key(&mut self, _: usize, _: &[u8], key: JavaString) -> JavaString {
+        key
+    }
+    fn insert(&mut self, map: &mut Compound, key: JavaString, value: Tag) -> bool {
+        map.insert(key, value).is_none()
+    }
+    fn end_compound(&mut self, map: Compound) -> Tag {
+        Tag::Compound(map)
+    }
+}
+
+fn float_tag(bits: u32) -> Tag {
+    Tag::Float(if f32::from_bits(bits) == 0.0 { 0 } else { bits })
+}
+
+fn double_tag(bits: u64) -> Tag {
+    Tag::Double(if f64::from_bits(bits) == 0.0 { 0 } else { bits })
+}
+
+/// ListTag.addAndUnwrap checks the final map after any duplicate keys.
+fn unwrap_list_element(mut value: Tag) -> Tag {
+    if let Tag::Compound(map) = &mut value
+        && map.len() == 1
+        && let Some(inner) = map.remove(&JavaString::default())
+    {
+        return inner;
+    }
+    value
+}
+
 struct Reader<'a, 's> {
     bytes: &'a [u8],
     offset: usize,
@@ -722,96 +871,99 @@ impl<'a> Reader<'a, '_> {
         Ok((element_id, len))
     }
     fn payload(&mut self, id: u8, depth: usize) -> Result<Tag, Error> {
+        self.decode(id, depth, &mut Tree)
+    }
+    fn decode<O: DecodeOutput>(
+        &mut self,
+        id: u8,
+        depth: usize,
+        output: &mut O,
+    ) -> Result<O::Value, Error> {
         self.entry(id, depth)?;
         match id {
-            9 => self.list_payload(depth),
-            10 => self.compound_payload(depth),
-            _ => self.scalar_payload(id),
+            9 => self.list_payload(depth, output),
+            10 => self.compound_payload(depth, output),
+            7 => self.array_payload(ArrayKind::Byte, output),
+            11 => self.array_payload(ArrayKind::Int, output),
+            12 => self.array_payload(ArrayKind::Long, output),
+            _ => self.scalar_payload(id, output),
         }
     }
     // Scalar temporaries must not occupy every recursive container frame.
-    fn scalar_payload(&mut self, id: u8) -> Result<Tag, Error> {
-        Ok(match id {
+    fn scalar_payload<O: DecodeOutput>(
+        &mut self,
+        id: u8,
+        output: &mut O,
+    ) -> Result<O::Value, Error> {
+        let offset = self.offset;
+        let tag = match id {
             0 => Tag::End,
             1 => Tag::Byte(self.byte()? as i8),
             2 => Tag::Short(i16::from_be_bytes(self.number()?)),
             3 => Tag::Int(i32::from_be_bytes(self.number()?)),
             4 => Tag::Long(i64::from_be_bytes(self.number()?)),
-            5 => {
-                let bits = u32::from_be_bytes(self.number()?);
-                Tag::Float(if f32::from_bits(bits) == 0.0 { 0 } else { bits })
-            }
-            6 => {
-                let bits = u64::from_be_bytes(self.number()?);
-                Tag::Double(if f64::from_bits(bits) == 0.0 { 0 } else { bits })
-            }
-            7 => {
-                let len = self.count(1)?;
-                self.charge(len as u64)?;
-                Tag::ByteArray(self.take(len)?.to_vec())
-            }
+            5 => Tag::Float(u32::from_be_bytes(self.number()?)),
+            6 => Tag::Double(u64::from_be_bytes(self.number()?)),
             8 => {
                 let value = self.string()?;
                 self.charge(2 * value.0.len() as u64)?;
                 Tag::String(value)
             }
-
-            11 => {
-                let len = self.count(4)?;
-                self.charge(4 * len as u64)?;
-                let mut values = Vec::with_capacity(len);
-                for _ in 0..len {
-                    values.push(i32::from_be_bytes(self.number()?));
-                }
-                Tag::IntArray(values)
-            }
-            12 => {
-                let len = self.count(8)?;
-                self.charge(8 * len as u64)?;
-                let mut values = Vec::with_capacity(len);
-                for _ in 0..len {
-                    values.push(i64::from_be_bytes(self.number()?));
-                }
-                Tag::LongArray(values)
-            }
             _ => return Err(self.error("unknown tag type")),
-        })
+        };
+        Ok(output.scalar(offset, &self.bytes[offset..self.offset], tag))
     }
-    fn list_payload(&mut self, depth: usize) -> Result<Tag, Error> {
+    fn array_payload<O: DecodeOutput>(
+        &mut self,
+        kind: ArrayKind,
+        output: &mut O,
+    ) -> Result<O::Value, Error> {
+        let width = kind.width();
+        let bytes = self.count(width)? * width;
+        self.charge(bytes as u64)?;
+        let offset = self.offset;
+        Ok(output.array(kind, offset, self.take(bytes)?))
+    }
+    fn list_payload<O: DecodeOutput>(
+        &mut self,
+        depth: usize,
+        output: &mut O,
+    ) -> Result<O::Value, Error> {
         let (element_id, len) = self.list_header()?;
         self.charge(4 * len as u64)?;
-        let mut values = Vec::with_capacity(len);
+        let mut values = output.list(self.offset - 4, len);
         for _ in 0..len {
-            let mut value = self.payload(element_id, depth + 1)?;
-            if let Tag::Compound(map) = &mut value
-                && map.len() == 1
-                && map.contains_key(&JavaString::default())
-            {
-                value = map.remove(&JavaString::default()).unwrap();
-            }
-            values.push(value);
+            let value = self.decode(element_id, depth + 1, output)?;
+            output.push(&mut values, value);
         }
-        Ok(Tag::List(values))
+        Ok(output.end_list(values))
     }
-    fn compound_payload(&mut self, depth: usize) -> Result<Tag, Error> {
+    fn compound_payload<O: DecodeOutput>(
+        &mut self,
+        depth: usize,
+        output: &mut O,
+    ) -> Result<O::Value, Error> {
         let paths = std::mem::take(&mut self.entering);
         let parent = self.holds_bounded(paths, depth);
-        let mut map = Compound::new();
+        let mut map = output.compound();
         loop {
             let id = self.byte()?;
             if id == 0 {
                 break;
             }
+            let offset = self.offset;
             let name = self.string()?;
+            let wire = &self.bytes[offset..self.offset];
             self.charge(28 + 2 * name.0.len() as u64)?;
-            if self.strict && map.contains_key(&name) {
+            if self.strict && output.contains(&map, &name) {
                 return Err(self.error("duplicate key"));
             }
-            let value = if id == 9 && depth <= 1 && self.streams(&name) {
-                self.stream_list(depth + 1)?
+            let (key, value) = if id == 9 && depth <= 1 && self.streams(&name) {
+                let value = self.stream_list(depth + 1)?;
+                (output.key(offset, wire, name), output.scalar(0, &[], value))
             } else if parent && !self.strict && self.bounds(&name) {
                 match self.bounded_payload(id, depth + 1)? {
-                    Some(value) => value,
+                    Some(value) => (output.key(offset, wire, name), output.scalar(0, &[], value)),
                     None => continue,
                 }
             } else {
@@ -820,14 +972,15 @@ impl<'a> Reader<'a, '_> {
                 } else {
                     0
                 };
-                self.payload(id, depth + 1)?
+                let key = output.key(offset, wire, name);
+                (key, self.decode(id, depth + 1, output)?)
             };
             // Java maps retain the last duplicate key and charge new entries only.
-            if map.insert(name, value).is_none() {
+            if output.insert(&mut map, key, value) {
                 self.charge(36)?;
             }
         }
-        Ok(Tag::Compound(map))
+        Ok(output.end_compound(map))
     }
     fn bounds(&self, name: &JavaString) -> bool {
         self.bounded.is_some_and(|b| is_key(name, b.key))
@@ -1002,14 +1155,8 @@ impl ListElements<'_, '_, '_> {
             return Ok(None);
         }
         self.left -= 1;
-        let mut value = self.reader.payload(self.element_id, self.depth)?;
-        if let Tag::Compound(map) = &mut value
-            && map.len() == 1
-            && map.contains_key(&JavaString::default())
-        {
-            value = map.remove(&JavaString::default()).unwrap();
-        }
-        Ok(Some(value))
+        let value = self.reader.payload(self.element_id, self.depth)?;
+        Ok(Some(unwrap_list_element(value)))
     }
     /// An error at the current position in the input.
     pub fn error(&self, reason: &'static str) -> Error {
@@ -1021,39 +1168,9 @@ fn is_key(name: &JavaString, key: &str) -> bool {
     name.0.iter().copied().eq(key.encode_utf16())
 }
 
-/// `DataInput.readUTF`'s decoding, accepting its overlong sequences; `None`
-/// for bytes that aren't modified UTF-8.
+/// `DataInput.readUTF`'s decoding; `None` for bytes that aren't modified UTF-8.
 fn modified_utf8(bytes: &[u8]) -> Option<JavaString> {
-    if bytes.is_ascii() {
-        return Some(JavaString(bytes.iter().map(|&b| u16::from(b)).collect()));
-    }
-    let len = bytes.len();
-    let mut units = Vec::with_capacity(len);
-    let mut i = 0;
-    while i < bytes.len() {
-        let b = bytes[i];
-        let (unit, size) = match b {
-            0..=127 => (u16::from(b), 1),
-            192..=223 if i + 1 < len && bytes[i + 1] & 0xc0 == 0x80 => {
-                ((u16::from(b & 31) << 6) | u16::from(bytes[i + 1] & 63), 2)
-            }
-            224..=239
-                if i + 2 < len && bytes[i + 1] & 0xc0 == 0x80 && bytes[i + 2] & 0xc0 == 0x80 =>
-            {
-                (
-                    (u16::from(b & 15) << 12)
-                        | (u16::from(bytes[i + 1] & 63) << 6)
-                        | u16::from(bytes[i + 2] & 63),
-                    3,
-                )
-            }
-            _ => return None,
-        };
-        // Match DataInput.readUTF, including accepted overlong sequences.
-        units.push(unit);
-        i += size;
-    }
-    Some(JavaString(units))
+    modified_utf8::decode(bytes).map(JavaString)
 }
 
 /// Read a file root (type, modified-UTF name, payload), returning bytes consumed.
@@ -1168,7 +1285,11 @@ pub fn read_named_streaming(
 
 /// Read a network root (type and payload, without the file name field).
 pub fn read_network(bytes: &[u8], limits: Limits) -> Result<(Tag, usize), Error> {
-    let mut reader = Reader {
+    read_network_with_reader(&mut network_reader(bytes, limits), &mut Tree)
+}
+
+fn network_reader(bytes: &[u8], limits: Limits) -> Reader<'_, 'static> {
+    Reader {
         bytes,
         offset: 0,
         limits,
@@ -1179,17 +1300,19 @@ pub fn read_network(bytes: &[u8], limits: Limits) -> Result<(Tag, usize), Error>
         strict: false,
         entering: 0,
         rejected: 0,
-    };
-    read_network_with_reader(&mut reader)
+    }
 }
 
-fn read_network_with_reader(reader: &mut Reader<'_, '_>) -> Result<(Tag, usize), Error> {
+fn read_network_with_reader<O: DecodeOutput>(
+    reader: &mut Reader<'_, '_>,
+    output: &mut O,
+) -> Result<(O::Value, usize), Error> {
     let id = reader.byte()?;
     // NbtIo.readAnyTag returns End directly without loading its payload.
     let tag = if id == 0 {
-        Tag::End
+        output.scalar(1, &[], Tag::End)
     } else {
-        reader.payload(id, 0)?
+        reader.decode(id, 0, output)?
     };
     Ok((tag, reader.offset))
 }
@@ -1225,31 +1348,23 @@ impl Writer {
         self.put(&len.to_be_bytes())
     }
     fn string(&mut self, string: &JavaString) -> Result<(), Error> {
-        let Ok(len) = u16::try_from(string.modified_utf8_len()) else {
+        let len = modified_utf8::encoded_len(&string.0);
+        let Ok(prefix) = u16::try_from(len) else {
             if self.empty_long_strings {
                 return self.put(&0u16.to_be_bytes());
             }
             return Err(self.error("modified UTF-8 exceeds 65535 bytes"));
         };
-        self.put(&len.to_be_bytes())?;
-        // One byte per unit (most strings): written at once while they fit.
-        if usize::from(len) == string.0.len()
-            && usize::from(len) <= self.limits.max_bytes.saturating_sub(self.bytes.len())
-        {
-            self.bytes.extend(string.0.iter().map(|&c| c as u8));
-            return Ok(());
+        self.put(&prefix.to_be_bytes())?;
+        let room = self.limits.max_bytes.saturating_sub(self.bytes.len());
+        if len > room {
+            // Where writing one unit at a time stops: at the first unit that doesn't fit.
+            return Err(Error {
+                offset: self.bytes.len() + modified_utf8::fitting_len(&string.0, room),
+                reason: "byte limit exceeded",
+            });
         }
-        for &c in &string.0 {
-            match c {
-                1..=127 => self.put(&[c as u8])?,
-                0..=2047 => self.put(&[0xc0 | (c >> 6) as u8, 0x80 | (c & 63) as u8])?,
-                _ => self.put(&[
-                    0xe0 | (c >> 12) as u8,
-                    0x80 | ((c >> 6) & 63) as u8,
-                    0x80 | (c & 63) as u8,
-                ])?,
-            }
-        }
+        modified_utf8::encode(&string.0, len, &mut self.bytes);
         Ok(())
     }
     fn payload(&mut self, tag: &Tag, depth: usize) -> Result<(), Error> {
@@ -1518,7 +1633,7 @@ impl Tag {
             entering: 0,
             rejected: 0,
         };
-        read_network_with_reader(&mut reader)
+        read_network_with_reader(&mut reader, &mut Tree)
     }
 }
 

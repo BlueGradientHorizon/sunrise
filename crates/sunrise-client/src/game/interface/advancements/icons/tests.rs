@@ -110,7 +110,6 @@ fn advancement_icons_reach_local_and_remote_ui_surfaces() {
                 &fixture(),
                 &sunrise_world::loot::PackOverlay::NONE,
                 Default::default(),
-                Default::default(),
             );
             let mut visible = Vec::new();
             let mut progress = Progress::default();

@@ -3,12 +3,14 @@
 //! client sends back in container clicks (HashedStack).
 use crate::{
     Result,
-    buf::{Codec, Reader, Writer, pack_block_pos, unpack_block_pos},
+    buf::{Codec, Reader, pack_block_pos, unpack_block_pos},
 };
 use std::sync::Arc;
 use sunrise_core::nbt::Tag;
+use sunrise_core::vanilla_bytes::Writer;
 
 #[doc(hidden)]
+pub mod consume_effects;
 pub mod custom;
 mod hash;
 pub mod persistent;
@@ -799,14 +801,28 @@ impl WirePatch {
     /// The components and removals a patch in this form holds, read as
     /// [`DelimitedSlot`] does.
     pub fn decode(patch: &[u8]) -> Result<(Vec<(i32, Component)>, Vec<i32>)> {
-        let mut r = Reader::new(patch);
+        Self::decode_reader(Reader::new(patch))
+    }
+
+    pub fn decode_reader(r: Reader<'_>) -> Result<(Vec<(i32, Component)>, Vec<i32>)> {
+        Self::select(r, |_| true)
+    }
+
+    /// Read selected components of a patch whose values were already framed.
+    pub fn select(
+        mut r: Reader<'_>,
+        include: impl Fn(i32) -> bool,
+    ) -> Result<(Vec<(i32, Component)>, Vec<i32>)> {
         let positive = r.count(65536)?;
         let negative = r.count(65536)?;
         let mut added = Vec::with_capacity(positive.min(64));
         for _ in 0..positive {
             let kind = r.varint()?;
             let len = r.count(r.remaining())?;
-            let mut value = Reader::new(r.bytes(len)?);
+            let mut value = r.subreader(len)?;
+            if !include(kind) {
+                continue;
+            }
             let (component, _) = read_added(kind, &mut value)?;
             if value.remaining() != 0 {
                 return Err(crate::Error::new("trailing retained component data"));
@@ -928,7 +944,7 @@ fn read_stack(r: &mut Reader, delimited: bool) -> Result<Option<Stack>> {
         let kind = r.varint()?;
         let (component, value) = if delimited {
             let len = r.count(r.remaining())?;
-            let mut component_reader = Reader::new(r.bytes(len)?);
+            let mut component_reader = r.subreader(len)?;
             let read = read_added(kind, &mut component_reader)?;
             if custom::contains(kind) && component_reader.remaining() != 0 {
                 return Err(crate::Error::new("trailing custom component data"));
@@ -1066,12 +1082,26 @@ impl Codec<Option<Hashed>> for HashedSlot {
         }
         let item = r.varint()?;
         let count = r.varint()?;
+        // HashedPatchMap.STREAM_CODEC reads a map (last value wins) and a set.
         let n = r.count(256)?;
-        let added = (0..n)
-            .map(|_| Ok((r.varint()?, r.i32()?)))
-            .collect::<Result<_>>()?;
+        let mut added = Vec::with_capacity(n);
+        for _ in 0..n {
+            let id = r.varint()?;
+            let hash = r.i32()?;
+            if let Some((_, previous)) = added.iter_mut().find(|(key, _)| *key == id) {
+                *previous = hash;
+            } else {
+                added.push((id, hash));
+            }
+        }
         let n = r.count(256)?;
-        let removed = (0..n).map(|_| r.varint()).collect::<Result<_>>()?;
+        let mut removed = Vec::with_capacity(n);
+        for _ in 0..n {
+            let id = r.varint()?;
+            if !removed.contains(&id) {
+                removed.push(id);
+            }
+        }
         Ok(Some(Hashed {
             item,
             count,
@@ -1333,6 +1363,50 @@ impl crate::retained::OwnedHeap for HashedSlot {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hashed_slot_decodes_a_map_and_a_set() {
+        let packet = [
+            1, 20, 4, 3, // present, item id, count, three added entries
+            5, 0, 0, 0, 17, // 5 -> 17 (overwritten)
+            6, 0, 0, 0, 99, // 6 -> 99
+            5, 255, 255, 255, 255, // 5 -> -1
+            3, 9, 10, 9, // three removal entries, two unique
+        ];
+        let mut reader = Reader::new(&packet);
+        assert_eq!(
+            HashedSlot::read(&mut reader).unwrap(),
+            Some(Hashed {
+                item: 20,
+                count: 4,
+                added: vec![(5, -1), (6, 99)],
+                removed: vec![9, 10],
+            })
+        );
+        assert_eq!(reader.remaining(), 0);
+    }
+
+    #[test]
+    fn hashed_slot_rejects_over_limit_wire_counts_even_with_duplicate_keys() {
+        let mut added = Writer::new();
+        added.bytes(&[1, 20, 4]); // present, item, count
+        added.varint(257);
+        for _ in 0..257 {
+            added.varint(5);
+            added.i32(17);
+        }
+        added.varint(0);
+        assert!(HashedSlot::read(&mut Reader::new(&added.data)).is_err());
+
+        let mut removed = Writer::new();
+        removed.bytes(&[1, 20, 4]);
+        removed.varint(0);
+        removed.varint(257);
+        for _ in 0..257 {
+            removed.varint(9);
+        }
+        assert!(HashedSlot::read(&mut Reader::new(&removed.data)).is_err());
+    }
     use crate::text::literal;
 
     fn round<T: PartialEq + std::fmt::Debug, C: Codec<T>>(v: T) {

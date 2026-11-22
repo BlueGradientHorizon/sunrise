@@ -15,8 +15,8 @@ use std::{cell::RefCell, collections::HashMap};
 use sunrise_client::{
     advancements::Advancement,
     items::ItemStack,
-    lan::conn::transaction_packets::{Packets, Scope},
-    menu::{Input, Menu, RuleAnswers, StackedOutcome, StoredRules},
+    lan::conn::transaction_packets::Scope,
+    menu::{Input, Menu, StackedOutcome},
     merchant::Event,
 };
 use sunrise_protocol::packets::play;
@@ -107,7 +107,6 @@ impl Journal {
 }
 
 pub(in crate::game) enum Effect {
-    Packets(Packets),
     Orb([f64; 3], u32),
     Drops(u32, Vec<sunrise_client::items::ItemStack>),
     Reward(u128, Advancement),
@@ -123,7 +122,7 @@ impl Game<'_> {
             (2, 4) => Input::Throw,
             _ => return self.lan_merchant_click_plain(conn, p),
         };
-        if self.merchant_click_in_progress(conn) {
+        if self.menu_click_in_progress(conn) {
             return true;
         }
         if !mod_api::__private::listened(mod_api::HookId::TradeWithVillager) {
@@ -175,10 +174,12 @@ impl Game<'_> {
         }
         // The coordinator contains listener unwinds; this guard also closes the click if a
         // lower menu rule panics during planning or a provisional guest turn unwinds.
+        let failures = mod_api::runtime::isolated_failures();
         let accepted = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             self.run_merchant_take(conn, p, input, identity, route)
         }))
-        .unwrap_or(false);
+        .unwrap_or(false)
+            && mod_api::runtime::isolated_failures() == failures;
         if Scope::refused() {
             log::warn!(
                 "trade_with_villager: merchant packet batch exceeded its retained-byte budget"
@@ -188,10 +189,12 @@ impl Game<'_> {
         true
     }
 
-    pub(super) fn merchant_click_in_progress(&self, conn: u32) -> bool {
+    /// Screen replacement cannot publish while a transaction owns a click. The older
+    /// merchant guard protects its own guest; a scoped mod click can reach any guest's menu.
+    pub(super) fn menu_click_in_progress(&self, conn: u32) -> bool {
         self.transactions
             .iter()
-            .any(|level| level.trades.active == Some(conn))
+            .any(|level| level.menu_click_active.is_some() || level.trades.active == Some(conn))
     }
 
     fn run_merchant_take(
@@ -205,9 +208,7 @@ impl Game<'_> {
         let mob = identity.target.id();
         let button = i32::from(p.button);
         let mut stacked = None::<StackedOutcome>;
-        let mut rules = None;
         if input == Input::Pickup && Self::stacked_listened() {
-            let answers = RuleAnswers::default();
             let mut seen = None;
             self.lan_merchant_op_with(
                 conn,
@@ -240,27 +241,11 @@ impl Game<'_> {
                             && guest.carried == same.carried)
                             .then(|| same.clone())
                     },
-                    |game, answer| {
-                        if !game.lan_merchant_op_with(
-                            conn,
-                            Some(p.container),
-                            false,
-                            MerchantRun::Probe,
-                            |menu, env| {
-                                super::stacked_on_other::plan_click(
-                                    menu, env, 2, button, &answers, answer,
-                                );
-                            },
-                        ) {
-                            answer.refused.set(true);
-                        }
-                    },
                     |_, answer| stacked = answer.cloned(),
                 ) == Pickup::Refused
                 {
                     return false;
                 }
-                rules = Some(answers);
             }
         }
 
@@ -294,10 +279,9 @@ impl Game<'_> {
             if input == Input::Throw && button != 0 && previous.is_none() {
                 throw_amount = gm.slots[2].as_ref().map_or(0, |stack| stack.count);
             }
-            let stored = rules.as_ref().map(StoredRules);
-            let run = stored.as_ref().map_or(MerchantRun::Plain, |stored| {
-                MerchantRun::Decided(stored, stacked.as_ref())
-            });
+            let run = stacked
+                .as_ref()
+                .map_or(MerchantRun::Plain, |s| MerchantRun::Decided(Some(s)));
             let mut moved = None;
             let map_id = self.peek_map_id();
             let Some((menu, made)) = self.read_merchant_menu(conn, gm, run, |menu, env| {
@@ -306,6 +290,12 @@ impl Game<'_> {
             }) else {
                 return false;
             };
+            if stacked.as_ref().is_some_and(|s| s.refused.get()) {
+                log::warn!(
+                    "item_stacked_on_other: the slot refused the replacement; nothing changed"
+                );
+                return false;
+            }
             if !made.is_empty() {
                 reads.map_id = Some(map_id);
             }
@@ -630,10 +620,8 @@ impl Game<'_> {
     }
     pub(in crate::game) fn commit_merchant_effect(&mut self, effect: Effect) {
         match effect {
-            Effect::Packets(packets) => packets.publish(),
             Effect::Notice(uuid, name, mob) => {
-                // A completed trade cannot be undone, and its captured success packets
-                // still have to reach the client even if the notification fails.
+                // A completed trade cannot be undone if the notification fails.
                 if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     self.native_player_trade(uuid, &name, mob);
                 }))

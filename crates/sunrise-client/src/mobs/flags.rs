@@ -1,4 +1,4 @@
-/// Per-type behaviour switches derived from vanilla classes.
+/// Per-type behaviour switches.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Flags {
     /// WaterAnimal / fish: not affected by fluid physics (swims with its own control).
@@ -15,6 +15,8 @@ pub struct Flags {
     /// LivingEntity.omnidirectionalAirMover (bees and parrots).
     pub omnidirectional: bool,
     pub fire_immune: bool,
+    /// Cleared by default, like `EntityType.Builder` before `notInPeaceful`.
+    pub not_in_peaceful: bool,
     pub undead: bool,
     pub breathes_water: bool,
     /// Drowns out of water (fish, squid, dolphins after their air runs out).

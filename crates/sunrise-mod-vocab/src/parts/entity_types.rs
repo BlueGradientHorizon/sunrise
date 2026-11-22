@@ -74,7 +74,10 @@ pub struct GeneralEntityTypeDeclaration {
     pub summonable: bool,
     /// Whether the client can target the row for use and attack (`Entity.isPickable`).
     pub pickable: bool,
+    /// How instances respond to a piston. The vanilla default is `PushPull`.
+    pub piston_push_reaction: crate::PushReaction,
     /// Tracking distance in chunks, stored directly like vanilla's signed integer.
+    /// Zero keeps instances in server simulation without pairing them to clients.
     pub tracking_chunks: i32,
     /// Update interval in ticks, stored directly like vanilla's signed integer.
     /// `i32::MAX` is vanilla's no-update-interval value.
@@ -100,6 +103,7 @@ impl Default for GeneralEntityTypeDeclaration {
             save_policy: GeneralSavePolicy::Save,
             summonable: true,
             pickable: false,
+            piston_push_reaction: crate::PushReaction::PushPull,
             tracking_chunks: 5,
             update_interval: 3,
             payload_version: 1,
@@ -118,8 +122,8 @@ pub enum GeneralEntityRegistrationError {
     /// is still in its registration phase, before any world or connection
     /// opens.
     Frozen,
-    /// Only both-side packages may declare entity types, which the network
-    /// names.
+    /// Only both-side packages (and both-side served namespace suppliers) may declare entity
+    /// types, which the network names.
     WrongSide,
     /// The type's id is malformed, empty or in a namespace the declaring mod
     /// does not own (a vanilla type's included).
@@ -141,24 +145,30 @@ pub fn general_entity_type_declarations() -> &'static [GeneralEntityTypeDeclarat
 /// namespaced types, filled before worlds or connections open.
 pub trait GeneralTypesRegistrar {
     /// Declare a general entity type of the mod's own (vanilla's
-    /// `EntityType` builder, NeoForge's `RegisterEvent`): `path` in the mod's
-    /// namespace (`robot` of `mymod` is `mymod:robot`), its category, its
+    /// `EntityType` builder, NeoForge's `RegisterEvent`): give its `path`, category,
     /// finite `width` and `height` in blocks, its passenger attachment, its save and
     /// summon policy, whether it is pickable, its signed integer tracking distance and
     /// update interval, its payload schema version and the loaded mods it requires.
+    /// A `tracking_chunks` value of zero keeps instances in server simulation
+    /// without pairing them to clients.
     ///
     /// Pass `false` for vanilla's plain `Entity.isPickable` default. Pass `true`
     /// to let the player's crosshair target the declared box for use and attack.
     /// This does not make the box solid or give it a middle-click item.
+    /// `piston_push_reaction` defaults to vanilla's `PushPull` when omitted (`None`).
     ///
     /// `passenger_attachment` is the finite `[x, y, z]` passenger point in vehicle-local
     /// blocks, rotated with the vehicle's yaw. `None` uses `[0.0, height, 0.0]`.
     ///
-    /// An id outside the mod's manifest-owned namespaces, a malformed id, a
-    /// duplicate of this mod's or another's, a non-finite dimension or attachment, a required
-    /// feature naming no loaded mod, or a declaration after the registry froze (the
-    /// registration phase has ended) refuses, naming the mod, without
-    /// panicking. Invalid input is refused, never clamped.
+    /// A bare `path` uses the calling mod's ID as its namespace (`robot` of `mymod` is
+    /// `mymod:robot`). An explicit ID may use a namespace owned by the caller's manifest or by
+    /// a content package it serves via `served_by`. Both the declaring mod and the namespace
+    /// supplier must be `side = "both"`.
+    ///
+    /// An ID outside these namespaces, a malformed ID, a duplicate of this mod's or another's,
+    /// a non-finite dimension or attachment, a required feature naming no loaded mod, or a
+    /// declaration after the registry froze (the registration phase has ended) refuses, naming
+    /// the mod, without panicking. Invalid input is refused, never clamped.
     fn declare_general_entity(
         &mut self,
         path: &str,
@@ -169,6 +179,7 @@ pub trait GeneralTypesRegistrar {
         save_policy: GeneralSavePolicy,
         summonable: bool,
         pickable: bool,
+        piston_push_reaction: Option<crate::PushReaction>,
         tracking_chunks: i32,
         update_interval: i32,
         payload_version: u16,

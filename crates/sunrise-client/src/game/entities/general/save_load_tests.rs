@@ -30,6 +30,7 @@ impl mod_api::Hooks for Declare {
                 },
                 true,
                 false,
+                save.then_some(mod_api::PushReaction::IgnoreEntity),
                 8,
                 3,
                 1,
@@ -47,10 +48,15 @@ impl mod_api::Hooks for Declare {
 /// scope entered before the platform installs its instrumentation writes a
 /// fallback nobody reads, and the declaration then refuses as frozen.
 fn with_types(test: impl FnOnce(&mut Game<'_>)) {
+    with_types_and(None, test);
+}
+
+fn with_types_and(observer: Option<mod_api::ModEntry>, test: impl FnOnce(&mut Game<'_>)) {
     mod_platform::__private::initialize().expect("test registration requires the mod API runtime");
-    let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
-    let mods: mod_api::Mods = vec![mod_api::ModEntry::new("mymod", Box::new(Declare))].into();
-    mod_platform::testing::with_mods(mods, || with_game(test));
+    let _phase = mod_platform::__private::RegistrationGuard::open();
+    let mut mods = vec![mod_api::ModEntry::new("mymod", Box::new(Declare))];
+    mods.extend(observer);
+    mod_platform::testing::with_mods(mods.into(), || with_game(test));
 }
 
 /// One record's save tag, the format `to_tag` writes.
@@ -73,6 +79,79 @@ fn record_tag(type_key: &str, uuid: [i32; 4], payload: &[u8], riders: Vec<Tag>) 
         map.insert(format::PASSENGERS.into(), Tag::List(riders));
     }
     tag
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_piston_ignored_general_row_moves_for_a_shulker_lid() {
+    use crate::game::piston_push::Lid;
+    use sunrise_client::{chunk::Chunk, entities::ArmorStand, mobs::Mob};
+    use sunrise_core::{
+        geometry::{Aabb, Direction},
+        position::BlockPos,
+    };
+    use sunrise_world::level::pistons::MovingPiston;
+
+    with_types(|game| {
+        game.world
+            .chunks
+            .insert((0, 0), std::sync::Arc::new(Chunk::empty(0, 0)));
+        let root = record_tag("mymod:robot", [1, 2, 3, 4], b"", Vec::new());
+        game.load_listed("mymod:robot", None, None, root).unwrap();
+        let row = &game.resident_entities.general.rows[0];
+        let (id, before) = (row.id, row.position);
+        let stand = id + 1;
+        let shulker = id + 2;
+        game.armor_stands.push(ArmorStand::new(stand, before, 0.0));
+        let kind = game
+            .res
+            .mob_types()
+            .get("minecraft:shulker")
+            .unwrap()
+            .clone();
+        game.mobs
+            .push(Mob::new(shulker, kind, Vec3::new(8.0, 64.0, 8.0), 0.0));
+        assert_eq!(
+            game.entity(id).unwrap().piston_push_reaction(game),
+            Ok(Some(mod_api::PushReaction::IgnoreEntity))
+        );
+
+        game.push_piston_entities(vec![(
+            BlockPos::new(0, 64, 0),
+            MovingPiston {
+                moved_state: game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:stone")
+                    .unwrap(),
+                direction: Direction::East,
+                extending: true,
+                source: false,
+                progress: 0.0,
+                progress_o: 0.0,
+                last_ticked: 0,
+                death_ticks: 0,
+                id: 1,
+            },
+            0.5,
+        )]);
+        assert_eq!(game.resident_entities.general.rows[0].position, before);
+        assert!(
+            game.armor_stands[0].position.x > before.x,
+            "the piston reaches the control"
+        );
+
+        let sweep = Aabb::new(Vec3::new(0.0, 64.0, 0.0), Vec3::new(1.0, 65.0, 1.0));
+        let movement = Vec3::new(0.0, 0.25, 0.0);
+        game.lid_push(Lid::Box, sweep, movement);
+        assert_eq!(game.resident_entities.general.rows[0].position, before);
+        game.lid_push(Lid::Shulker(shulker), sweep, movement);
+        assert_eq!(
+            game.resident_entities.general.rows[0].position,
+            before.add_vector(movement)
+        );
+    });
 }
 
 /// The saved rows of one chunk, through the same walk the save uses.
@@ -134,6 +213,72 @@ fn general_tree_loads_joins_and_saves_one_record() {
 
 #[test]
 #[ignore = "daily"]
+fn minecart_keeps_its_general_passenger_after_the_rider_tick() {
+    with_types(|game| {
+        let cart_uuid = [1, 2, 3, 4];
+        let rider_uuid = [2, 3, 4, 5];
+        let cart = Tag::Compound(
+            [
+                ("id".into(), Tag::String("minecraft:minecart".into())),
+                ("UUID".into(), Tag::IntArray(cart_uuid.to_vec())),
+                (
+                    "Pos".into(),
+                    Tag::List(
+                        [0.5_f64, 64.0, 0.5]
+                            .map(|n| Tag::Double(n.to_bits()))
+                            .to_vec(),
+                    ),
+                ),
+            ]
+            .into(),
+        );
+        game.load_listed("minecraft:minecart", Some(cart_uuid), None, cart)
+            .unwrap();
+        game.load_listed(
+            "mymod:robot",
+            None,
+            None,
+            record_tag("mymod:robot", rider_uuid, b"rider", Vec::new()),
+        )
+        .unwrap();
+        let cart_id = game.carts[0].id;
+        let rider_id = game.resident_entities.general.rows[0].id;
+        let cart = game.entity(cart_id).unwrap();
+        let rider = game.entity(rider_id).unwrap();
+        assert_eq!(game.entity_start_riding(rider, cart, false), Ok(()));
+        assert_eq!(game.entity_passengers(cart), Some(vec![rider]));
+
+        // Keep the chunk loaded but outside simulation range so the pass refreshes
+        // the adjacency without rider movement invalidating it again.
+        use sunrise_client::ticket_levels::{Sources, ViewedTicket};
+        game.tickets.update(Some(Sources {
+            viewed: vec![ViewedTicket {
+                center: (0, 0),
+                radius: 0,
+                ticking: false,
+            }],
+            ..Default::default()
+        }));
+        game.begin_ordered_ticks();
+        game.tick_general().unwrap();
+        assert_eq!(game.entity_passengers(cart), Some(vec![rider]));
+        assert_eq!(game.entity_is_vehicle(cart), Some(true));
+        assert_eq!(game.boarding_order(cart_id, u32::MAX, false), 1);
+        let saved = saved_chunk(game, (0, 0));
+        assert_eq!(saved.len(), 1);
+        let Some(Tag::List(passengers)) = saved[0].get("Passengers") else {
+            panic!("minecart saved without its passenger");
+        };
+        assert_eq!(passengers.len(), 1);
+        assert_eq!(
+            sunrise_client::entity_nbt::uuid(&passengers[0]),
+            Some(rider_uuid)
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn mixed_passengers_sit_and_unload_with_their_actual_root() {
     use crate::game::commands::Target;
     use mod_api::StartRidingRefusal;
@@ -187,7 +332,6 @@ fn mixed_passengers_sit_and_unload_with_their_actual_root() {
             )
             .unwrap();
         let [root_ref, pig_ref, leaf_ref] = [root, pig, leaf].map(|id| game.entity(id).unwrap());
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         assert_eq!(game.entity_start_riding(pig_ref, root_ref, false), Ok(()));
         assert_eq!(game.entity_start_riding(leaf_ref, pig_ref, false), Ok(()));
         assert_eq!(
@@ -594,7 +738,6 @@ fn a_same_level_teleport_places_the_general_tree_and_unseats_a_separately_moved_
             game.entity(rows[0].id).unwrap(),
             game.entity(rows[1].id).unwrap(),
         );
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
 
         let to = [10.5, 64.0, 0.5];
         assert!(root.teleport_to(game, to, Some([90.0, 30.0])));
@@ -643,7 +786,6 @@ fn a_general_riders_motion_follows_the_commands_delta_flags() {
             ],
             3,
         );
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         let velocity = Vec3::new(0.25, -0.5, 0.75);
         fn rider<'a>(game: &'a mut Game<'_>, id: u32) -> &'a mut GeneralRow {
             game.resident_entities.general.row_mut(id).unwrap()
@@ -684,7 +826,6 @@ fn a_nested_general_tree_takes_each_riders_transition_from_its_vehicle() {
             ],
             4,
         );
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         game.teleport_to_in_level(
             Target::General(ids[0]),
             [25.442, 20.88, 4.214],
@@ -738,7 +879,6 @@ fn a_guest_riding_a_teleported_general_vehicle_is_carried_with_its_turn() {
             g.position = [0.5, 64.5, 0.25];
             g.yaw = 30.0;
         });
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         game.teleport_to_in_level(
             Target::General(ids[0]),
             [10.0, 70.0, -4.0],
@@ -756,7 +896,7 @@ fn a_guest_riding_a_teleported_general_vehicle_is_carried_with_its_turn() {
 /// `with_types` for a fixture that also hosts guests 12 and 13.
 fn with_types_and_guests(test: impl FnOnce(&mut Game<'_>)) {
     mod_platform::__private::initialize().expect("test registration requires the mod API runtime");
-    let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+    let _phase = mod_platform::__private::RegistrationGuard::open();
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("mymod", Box::new(Declare))].into();
     mod_platform::testing::with_mods(mods, || {
         crate::game::native_guest_turn_tests::with_guests(test)
@@ -806,7 +946,6 @@ fn a_seated_guest_hears_the_general_vehicles_real_pose_and_its_own_teleport_once
         let (root, rx) = seat_guest_on_general_root(game);
         let _ = guest_teleport_packets(&rx);
         let before = game.lan.as_ref().unwrap().hub.guest(13).unwrap().position;
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         game.teleport_to_in_level(
             Target::General(root),
             [10.0, 70.0, -4.0],
@@ -838,7 +977,6 @@ fn a_seated_guest_that_runs_the_teleport_is_published_once() {
     with_types_and_guests(|game| {
         let (root, rx) = seat_guest_on_general_root(game);
         let _ = guest_teleport_packets(&rx);
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         game.as_guest(13, |game| {
             game.teleport_to_in_level(
                 Target::General(root),
@@ -865,7 +1003,6 @@ fn a_deep_general_chain_teleports_without_a_stack_frame_per_rider() {
             .map(|n| ([0.0, 64.0 + n as f64 * 0.5, 0.0], [0.0, 0.0]))
             .collect();
         let ids = general_chain(game, &poses, 5);
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         game.teleport_to_in_level(
             Target::General(ids[0]),
             [8.0, 64.0, 8.0],
@@ -892,7 +1029,6 @@ fn killing_or_removing_a_general_row_keeps_its_passengers_in_the_level() {
                 game.entity(rows[start].id).unwrap(),
                 game.entity(rows[start + 1].id).unwrap(),
             );
-            let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
 
             if by_command {
                 game.kill_target(Target::General(root.id()));
@@ -910,6 +1046,186 @@ fn killing_or_removing_a_general_row_keeps_its_passengers_in_the_level() {
     });
 }
 
+struct ObserveDismounts(std::sync::Arc<std::sync::Mutex<Vec<(u32, String)>>>);
+
+#[mod_api::__subscriptions]
+impl mod_api::Hooks for ObserveDismounts {
+    fn entity_mount(
+        &self,
+        _: &mut dyn mod_api::ServerHost,
+        event: &mut mod_api::EntityMountEvent<'_>,
+    ) -> mod_api::Flow {
+        if !event.mounting {
+            self.0
+                .lock()
+                .unwrap()
+                .push((event.entity, event.vehicle_kind.to_owned()));
+        }
+        mod_api::Flow::Continue
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn removing_a_vehicle_dismounts_general_and_mob_passengers_immediately_in_order() {
+    use crate::game::minecarts::{CartHit, CartKind, Minecart};
+    use sunrise_client::mobs::Mob;
+
+    let dismounts = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let observer =
+        mod_api::ModEntry::new("dismounts", Box::new(ObserveDismounts(dismounts.clone())));
+    with_types_and(Some(observer), |game| {
+        let at = Vec3::new(0.5, 64.0, 0.5);
+        game.options.dedicated = Some(Vec::new());
+        game.build_registries();
+        let mut outcomes = Vec::new();
+        for (case, vehicle) in [
+            "cart damage",
+            "cart kill",
+            "boat damage",
+            "stand damage",
+            "mob death",
+            "mob death with only a mob rider",
+        ]
+        .into_iter()
+        .zip(71..)
+        {
+            match case {
+                "boat damage" => game.boats.push(crate::game::boats::Boat::new(
+                    vehicle,
+                    "oak".into(),
+                    at,
+                    0.0,
+                )),
+                "stand damage" => game
+                    .armor_stands
+                    .push(sunrise_client::entities::ArmorStand::new(vehicle, at, 0.0)),
+                "mob death" | "mob death with only a mob rider" => {
+                    let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+                    game.mobs.push(Mob::new(vehicle, kind, at, 0.0));
+                }
+                _ => game
+                    .carts
+                    .push(Minecart::new(vehicle, CartKind::Rideable, at)),
+            }
+            let rider_id = if case == "mob death with only a mob rider" {
+                // The occupancy check runs with both the vehicle and its only
+                // rider in the mob tick's lent list, not in Game::mobs.
+                let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+                game.mobs.push(Mob::new(91, kind, at, 0.0));
+                91
+            } else {
+                game.load_listed(
+                    "mymod:robot",
+                    None,
+                    None,
+                    record_tag("mymod:robot", [vehicle as i32, 0, 0, 0], b"", Vec::new()),
+                )
+                .unwrap();
+                game.resident_entities.general.rows.last().unwrap().id
+            };
+            let rider = game.entity(rider_id).unwrap();
+            let vehicle_ref = game.entity(vehicle).unwrap();
+            game.entity_start_riding(rider, vehicle_ref, true).unwrap();
+            let mut expected = vec![rider_id];
+            if case == "boat damage" {
+                let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+                let pig = 90;
+                game.mobs.push(Mob::new(pig, kind, at, 0.0));
+                game.entity_start_riding(game.entity(pig).unwrap(), vehicle_ref, true)
+                    .unwrap();
+                expected.push(pig);
+            }
+            // A previous general tick has made the passenger index current.
+            // No tick is allowed between removal and checking the rider links.
+            game.tick_general().unwrap();
+            match case {
+                "cart damage" => {
+                    assert!(game.hurt_cart_result(0, 5.0, false, false, CartHit::default()))
+                }
+                "cart kill" => {
+                    assert!(game.as_console(|g| g.run_command("kill @e[type=minecraft:minecart]")))
+                }
+                "boat damage" => assert!(game.hurt_boat(0, 5.0, false)),
+                "stand damage" => {
+                    assert!(game.break_armor_stand_by_anything(0, "minecraft:in_fire", 0))
+                }
+                "mob death" | "mob death with only a mob rider" => {
+                    game.world.chunks.insert(
+                        (0, 0),
+                        std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                    );
+                    let index = game.mobs.iter().position(|mob| mob.id == vehicle).unwrap();
+                    game.mobs.update(index, |mob| {
+                        mob.health = 0.0;
+                        mob.death_time = 19;
+                    });
+                    game.died.insert(vehicle);
+                    game.tick_creature_entities().unwrap();
+                }
+                _ => unreachable!(),
+            }
+            assert!(game.entity(vehicle).is_none(), "{case} removed the vehicle");
+            let still_riding: Vec<_> = expected
+                .iter()
+                .copied()
+                .filter(|&id| game.entity_is_passenger(game.entity(id).unwrap()) != Some(false))
+                .collect();
+            let actual: Vec<_> = dismounts
+                .lock()
+                .unwrap()
+                .drain(..)
+                .map(|(id, _)| id)
+                .collect();
+            outcomes.push((case, still_riding, actual, expected));
+        }
+        // Primed TNT is not a typed start_riding target, but the real NBT
+        // loader admits its passengers. Fuse expiry must let them go too.
+        assert!(game.ui.rules.set(
+            "tnt_explodes",
+            sunrise_client::gamerules::Value::Bool(false),
+        ));
+        game.load_tnt(
+            Tag::Compound(
+                [
+                    ("id".into(), Tag::String("minecraft:tnt".into())),
+                    (
+                        "Pos".into(),
+                        Tag::List(at.components().map(|n| Tag::Double(n.to_bits())).into()),
+                    ),
+                    ("fuse".into(), Tag::Short(1)),
+                    (
+                        "Passengers".into(),
+                        Tag::List(vec![record_tag(
+                            "mymod:robot",
+                            [99, 0, 0, 0],
+                            b"",
+                            Vec::new(),
+                        )]),
+                    ),
+                ]
+                .into(),
+            ),
+            None,
+        );
+        let tnt = game.tnts[0].id;
+        let rider = game.resident_entities.general.rows.last().unwrap().id;
+        assert_eq!(game.general_row(rider).unwrap().mount, Some(tnt));
+        game.tick_one_tnt(0, &[]).unwrap();
+        assert!(game.tnts.is_empty());
+        assert_eq!(game.general_row(rider).unwrap().mount, None);
+        let actual = std::mem::take(&mut *dismounts.lock().unwrap());
+        assert_eq!(actual, [(rider, "minecraft:tnt".into())]);
+        for (case, still_riding, notifications, expected) in outcomes {
+            assert_eq!(
+                (still_riding, notifications),
+                (Vec::new(), expected),
+                "{case}"
+            );
+        }
+    });
+}
+
 #[test]
 #[ignore = "daily"]
 fn a_general_entity_turns_in_place_without_dismounting() {
@@ -922,7 +1238,6 @@ fn a_general_entity_turns_in_place_without_dismounting() {
             game.entity(rows[0].id).unwrap(),
             game.entity(rows[1].id).unwrap(),
         );
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
 
         assert!(rider.set_rotation(game, 90.0, 30.0));
         assert_eq!(rider.rotation(game), Some([90.0, 30.0]));
@@ -947,10 +1262,15 @@ fn a_general_row_has_its_declared_kind_and_is_selectable_by_type() {
             game.entity(rows[1].id).unwrap(),
         );
         game.build_registries();
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
 
-        assert_eq!(robot.kind(game).unwrap().id(game), "mymod:robot");
-        assert_eq!(ghost.kind(game).unwrap().id(game), "mymod:ghost");
+        assert_eq!(
+            robot.kind(game).unwrap().id(game).as_deref(),
+            Some("mymod:robot")
+        );
+        assert_eq!(
+            ghost.kind(game).unwrap().id(game).as_deref(),
+            Some("mymod:ghost")
+        );
         assert!(game.as_console(|game| game.run_command("kill @e[type=mymod:robot]")));
         assert_eq!(robot.position(game), None);
         assert_eq!(ghost.position(game), Some([0.5, 64.0, 0.5]));
@@ -972,7 +1292,6 @@ fn a_volume_selector_finds_a_general_rows_box_without_its_origin() {
         game.build_registries();
         // The 0.8-wide row is centered at x=0.5. The selector starts at x=0.75,
         // so the edge of the box enters its volume but the position does not.
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         assert!(game.as_console(|game| {
             game.run_command("kill @e[type=mymod:robot,x=0.75,y=64,z=0,dx=0,dy=0,dz=0]")
         }));
@@ -999,8 +1318,6 @@ fn general_tree_travels_to_another_dimension_with_its_riders() {
         let rows = &game.resident_entities.general.rows;
         let (old_root, old_rider, old_join) = (rows[0].id, rows[1].id, rows[0].join);
         {
-            use mod_api::__private::{ModPhase, PhaseOwner};
-            let _world = PhaseOwner::scope(ModPhase::World);
             assert_eq!(
                 game.entity(old_root).unwrap().set_persistent(game, false),
                 Ok(true)
@@ -1209,5 +1526,113 @@ fn no_save_rider_is_omitted_from_saved_tree() {
             saved[0].get(format::UUID),
             Some(&Tag::IntArray(vec![1, 2, 3, 4]))
         );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_general_rider_keeps_minecart_drag_and_pickup_occupied() {
+    use crate::game::minecarts::{CartKind, Minecart};
+    use sunrise_client::{chunk::Chunk, mobs::Mob};
+    with_types(|game| {
+        let at = Vec3::new(8.5, 64.0, 8.5);
+        let cart_id = 5000;
+        let pig_id = 5001;
+        game.world.chunks.insert((0, 0), Chunk::empty(0, 0).into());
+        let registry = game.pack.assets.registry;
+        let stone = registry.default_state("minecraft:stone").unwrap();
+        let rail = registry.default_state("minecraft:powered_rail").unwrap();
+        game.world.set(8, 63, 8, stone).unwrap();
+        game.world.set(8, 64, 8, rail).unwrap();
+        let mut cart = Minecart::new(cart_id, CartKind::Rideable, at);
+        cart.velocity = Vec3::new(0.0, 0.0, 0.25);
+        game.carts.push(cart);
+        game.load_listed(
+            "mymod:robot",
+            None,
+            None,
+            record_tag("mymod:robot", [2, 3, 4, 5], b"rider", Vec::new()),
+        )
+        .unwrap();
+        let rider = game
+            .entity(game.resident_entities.general.rows[0].id)
+            .unwrap();
+        let cart = game.entity(cart_id).unwrap();
+        assert_eq!(game.entity_start_riding(rider, cart, false), Ok(()));
+        // Exercise the maintained index, not the scan while it is stale after mounting.
+        game.tick_general().unwrap();
+        assert_eq!(cart.is_vehicle(game), Some(true));
+        assert_eq!(cart.passengers(game), Some(vec![rider]));
+        let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+        // The pig touches the moving cart, but the coincident starting positions
+        // mean it applies no initial push to the cart.
+        game.mobs.push(Mob::new(pig_id, pig, at, 0.0));
+        game.tickets.update(None);
+        game.tick_carts();
+        // The unpowered rail halves the speed. The occupied cart moves at
+        // three quarters of that speed, then uses 0.997 rather than 0.96 drag.
+        assert_eq!(game.carts[0].position.z, at.z + 0.25 * 0.5 * 0.75);
+        assert_eq!(game.carts[0].velocity.z, 0.25 * 0.5 * 0.997);
+        assert_eq!(game.mob_object(pig_id).unwrap().extra.mount, None);
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_general_rider_fills_a_chest_boat_and_keeps_it_from_being_pushed() {
+    use crate::game::boats::Boat;
+    use sunrise_client::mobs::Mob;
+
+    with_types(|game| {
+        let at = Vec3::new(8.5, 64.0, 8.5);
+        let (full, empty, pig) = (5000, 5001, 5002);
+        game.boats
+            .push(Boat::new(full, "oak".into(), at, 0.0).with_chest());
+        game.boats.push(Boat::new(
+            empty,
+            "oak".into(),
+            at.add_vector(Vec3::new(1.0, 0.0, 0.0)),
+            0.0,
+        ));
+        game.load_listed(
+            "mymod:robot",
+            None,
+            None,
+            record_tag("mymod:robot", [2, 3, 4, 5], b"rider", Vec::new()),
+        )
+        .unwrap();
+        let rider = game
+            .entity(game.resident_entities.general.rows[0].id)
+            .unwrap();
+        let boat = game.entity(full).unwrap();
+        game.entity_start_riding(rider, boat, false).unwrap();
+        game.tick_general().unwrap();
+        assert_eq!(boat.is_vehicle(game), Some(true));
+        assert_eq!(boat.passengers(game), Some(vec![rider]));
+
+        let pig_type = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+        game.mobs.push(Mob::new(
+            pig,
+            pig_type,
+            at.add_vector(Vec3::new(8.0, 0.0, 0.0)),
+            0.0,
+        ));
+        let pig = game.entity(pig).unwrap();
+        for force in [false, true] {
+            assert_eq!(
+                game.entity_start_riding(pig, boat, force),
+                Err(mod_api::StartRidingRefusal::Full),
+            );
+        }
+
+        // Each boat sees the other. The empty one gets the impulse in both
+        // directions of the contact; the boat with the general rider gets none.
+        let pushed = Vec3::new(f64::from(0.05_f32), 0.0, 0.0);
+        for i in [0, 1] {
+            game.boats.update(1, |boat| boat.velocity = Vec3::ZERO);
+            game.boat_contacts(i);
+            assert_eq!(game.boats[0].velocity, Vec3::ZERO);
+            assert_eq!(game.boats[1].velocity, pushed);
+        }
     });
 }

@@ -117,7 +117,12 @@ impl Renderer {
             // The calibration draw's wait is the one that can find a loss here; the acquired
             // surface texture goes back undrawn and unpresented (`render` leaves recovery to
             // its caller).
-            t.begin(&self.device, &self.queue, &self.device_lost)?;
+            t.begin(
+                &self.device,
+                &self.queue,
+                &self.device_lost,
+                super::in_flight::poll_live,
+            )?;
         }
         if self.animated_textures {
             self.hud.animate(
@@ -1442,7 +1447,8 @@ impl Renderer {
         // A pack's core/clouds, decided before either mesh is prepared: its faces, or none and
         // the native mesh in this same frame.
         let pack_clouds = core_clouds::CloudsFrame {
-            pack_shader: self.core_clouds.is_some(),
+            pack_shader: self.core_clouds.as_ref().is_some_and(|c| c.classic()),
+            pack_oit_shader: (self.core_clouds.as_ref()).is_some_and(|c| c.improved_transparency()),
             clouds: frame.clouds.is_some(),
             native_clouds,
             improved_transparency: oit_on,
@@ -1486,7 +1492,7 @@ impl Renderer {
         let native_input = frame
             .clouds
             .as_ref()
-            .filter(|_| native_clouds && pack_cloud_quads.is_none());
+            .filter(|_| core_clouds::native_mesh(native_clouds, pack_cloud_quads));
         let cloud_quads = if let Some(input) = native_input {
             let (rebuilt, uniform) =
                 crate::spans::time("clouds", || self.cloud_mesh.prepare(input));
@@ -1803,6 +1809,26 @@ impl Renderer {
                 bytemuck::cast_slice(&frame.celestial[..celestial_vertices]),
             );
         }
+        let particle_limit = self.device.limits().max_buffer_size;
+        let (opaque, translucent) = frame
+            .explicit_particles
+            .map_or((&[][..], &[][..]), |quads| {
+                (quads.opaque.as_slice(), quads.translucent.as_slice())
+            });
+        let opaque_draw = self.explicit_opaque_particles.prepare(
+            &self.device,
+            &mut self.uploads,
+            &mut encoder,
+            opaque,
+            particle_limit,
+        );
+        let translucent_draw = self.explicit_translucent_particles.prepare(
+            &self.device,
+            &mut self.uploads,
+            &mut encoder,
+            translucent,
+            particle_limit,
+        );
         let max_quads =
             (world_quads + additive_quads + hand_quads + see_through_quads + shadow_only_quads)
                 .max(cloud_quads)
@@ -1814,7 +1840,9 @@ impl Renderer {
                 })
                 .max(weather_quads)
                 .max(frame.glowing.len() as u32 / 4)
-                .max(outlined / 4);
+                .max(outlined / 4)
+                .max(opaque_draw)
+                .max(translucent_draw);
         if max_quads > self.index_quads {
             self.index_quads = max_quads.next_power_of_two();
             self.indices = Self::quad_indices(&self.device, self.index_quads);
@@ -2062,6 +2090,14 @@ impl Renderer {
                 .as_ref()
                 .and_then(|p| p.1.as_ref())
                 .is_some_and(|p| p.has_celestial());
+        // The pack's `sky`, `stars`, `sun` and `moon`: the parts no pack program draws are the
+        // game's, which leaves the same ones out.
+        let sky_switches = self
+            .pack_post
+            .as_ref()
+            .and_then(|p| p.1.as_ref())
+            .map(|p| p.sky_switches())
+            .unwrap_or_default();
         let pack_draws_water = pack_draws_terrain
             && self
                 .pack_post
@@ -2133,8 +2169,20 @@ impl Renderer {
                     &self.queue,
                     size,
                     &views.primary().projection,
-                    [water_mask_quads > 0, cloud_quads > 0],
+                    [
+                        water_mask_quads > 0,
+                        cloud_quads > 0 || pack_cloud_quads.is_some_and(|q| q > 0),
+                    ],
                 );
+            // A pack's clouds sample the targets just made.
+            if let (Some(core), Some(samples)) = (
+                self.core_clouds
+                    .as_mut()
+                    .filter(|_| pack_cloud_quads.is_some()),
+                self.oit.as_ref().and_then(|o| o.cloud_samples()),
+            ) {
+                core.bind_oit(&self.device, &samples);
+            }
         }
         let pack_sky_clear = pack_draws_sky
             .then(|| self.pack_post.as_ref().and_then(|p| p.1.as_ref()))
@@ -2181,7 +2229,12 @@ impl Renderer {
                 self.light_revision,
             );
             if let Some(t) = &mut native.timing {
-                t.begin(&self.device, &self.queue, &self.device_lost)?;
+                t.begin(
+                    &self.device,
+                    &self.queue,
+                    &self.device_lost,
+                    super::in_flight::poll_live,
+                )?;
                 native_sky_pass =
                     native.sky.is_some() && t.recording() && sky_visible && frame.skybox;
             }
@@ -2401,6 +2454,7 @@ impl Renderer {
                 native_sky_pass,
                 celestial_vertices,
                 pack_draws_celestial,
+                sky_switches,
                 hdr_gain,
             );
             // The next stage of the mods' primitives to draw (`RenderLevelStage`): a stage this
@@ -2799,6 +2853,17 @@ impl Renderer {
                 pass.set_bind_group(0, &self.group, &[]);
                 pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
             }
+            if self.explicit_opaque_particles.any() {
+                pass.stage(self.own_timing.as_mut(), "opaque provider particles");
+                pass.set_pipeline(&self.particle_pipelines.opaque);
+                pass.set_bind_group(0, &self.entity_group, &[]);
+                self.explicit_opaque_particles.draw(&mut pass);
+                if light_marks(self.output.frame.format, self.hdr.is_some()) {
+                    pass.set_pipeline(&self.particle_pipelines.mark);
+                    self.explicit_opaque_particles.draw(&mut pass);
+                }
+                pass.set_bind_group(0, &self.group, &[]);
+            }
             if text_quads > 0 && !oit_on {
                 pass.stage(self.own_timing.as_mut(), "entity text");
                 pass.set_pipeline(&self.text_polygon_offset_pipeline);
@@ -3057,18 +3122,14 @@ impl Renderer {
                             0..1,
                         );
                     };
-                    let clouds =
-                        |pass: &mut wgpu::RenderPass<'_>, pipeline: &wgpu::RenderPipeline| {
-                            pass.set_pipeline(pipeline);
-                            pass.set_bind_group(0, &self.entity_group, &[]);
-                            pass.set_bind_group(1, &self.cloud_group, &[]);
-                            pass.set_index_buffer(
-                                self.indices.slice(..),
-                                wgpu::IndexFormat::Uint32,
-                            );
-                            pass.set_vertex_buffer(0, self.cloud_buffer.slice(..));
-                            pass.draw_indexed(0..cloud_quads * 6, 0, 0..1);
-                        };
+                    let clouds = |pass: &mut wgpu::RenderPass<'_>, stage: oit::Stage| {
+                        pass.set_pipeline(oit.clouds(stage));
+                        pass.set_bind_group(0, &self.entity_group, &[]);
+                        pass.set_bind_group(1, &self.cloud_group, &[]);
+                        pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                        pass.set_vertex_buffer(0, self.cloud_buffer.slice(..));
+                        pass.draw_indexed(0..cloud_quads * 6, 0, 0..1);
+                    };
                     // "Features, World Border, Weather": what follows the opaque
                     // world in the classic pass, one stage at a time.
                     let features = |pass: &mut wgpu::RenderPass<'_>, stage: oit::Stage| {
@@ -3127,6 +3188,11 @@ impl Renderer {
                             translucent_particle_quads,
                             base_quads - translucent_item_quads - translucent_particle_quads,
                         );
+                        if self.explicit_translucent_particles.any() {
+                            pass.set_pipeline(&f.entity[s]);
+                            self.explicit_translucent_particles.draw(pass);
+                            pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
+                        }
                         quads(
                             pass,
                             &f.entity[s],
@@ -3155,9 +3221,23 @@ impl Renderer {
                             }
                         }
                     };
+                    // A pack's `OIT_CLOUDS` in their place.
+                    let pack_clouds = (self.core_clouds.as_ref())
+                        .zip(frame.clouds.as_ref())
+                        .filter(|_| pack_cloud_quads.is_some_and(|q| q > 0));
+                    let indices = &self.indices;
+                    let pack_clouds = pack_clouds.map(|(core, input)| {
+                        move |pass: &mut wgpu::RenderPass<'_>, stage: oit::Stage| {
+                            core.draw_oit(pass, stage, !input.fast, indices);
+                        }
+                    });
                     let extras = oit::Extras {
                         water_mask: (water_mask_quads > 0).then_some(&mask as _),
-                        clouds: (cloud_quads > 0).then_some(&clouds as _),
+                        clouds: core_clouds::oit_clouds::<
+                            dyn Fn(&mut wgpu::RenderPass<'_>, oit::Stage),
+                        >(
+                            pack_clouds.as_ref().map(|p| p as _), &clouds, cloud_quads
+                        ),
                         features: Some(&features),
                     };
                     // The draw closure below borrows all of `self`, so the timer is taken out.
@@ -3230,6 +3310,10 @@ impl Renderer {
                             if quads > 0 {
                                 pass.draw_indexed(0..quads * 6, (first * 4) as i32, 0..1);
                             }
+                        }
+                        if self.explicit_translucent_particles.any() {
+                            pass.set_pipeline(&self.particle_pipelines.mark);
+                            self.explicit_translucent_particles.draw(&mut pass);
                         }
                         if !frame.lightning.bolts.is_empty() {
                             pass.set_pipeline(&self.hdr_mark_lightning_pipeline);
@@ -3322,6 +3406,18 @@ impl Renderer {
                 }
                 pass.set_bind_group(0, &self.group, &[]);
             }
+            if self.explicit_translucent_particles.any() && !oit_on {
+                pass.stage(self.own_timing.as_mut(), "translucent provider particles");
+                pass.set_pipeline(&self.particle_pipelines.translucent);
+                pass.set_bind_group(0, &self.entity_group, &[]);
+                pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                self.explicit_translucent_particles.draw(&mut pass);
+                if light_marks(self.output.frame.format, self.hdr.is_some()) {
+                    pass.set_pipeline(&self.particle_pipelines.mark);
+                    self.explicit_translucent_particles.draw(&mut pass);
+                }
+                pass.set_bind_group(0, &self.group, &[]);
+            }
             // Native world text is an ordinary depth-tested overlay, after
             // particles (also after the OIT composite) and before the hand.
             // Its own geometry is independent of block-entity lifetime.
@@ -3363,15 +3459,17 @@ impl Renderer {
                     0..1,
                 );
             }
+            // Under Improved Transparency a pack's clouds drew in its stages.
             if let (Some(core), Some(input)) = (&self.core_clouds, frame.clouds.as_ref())
-                && pack_cloud_quads.is_some_and(|quads| quads > 0)
-                && !pack_draws_clouds
+                && pack_cloud_quads.is_some_and(|quads| {
+                    core_clouds::classic_pass_draws(quads, pack_draws_clouds, oit_on)
+                })
             {
                 pass.stage(self.own_timing.as_mut(), "clouds");
                 core.draw(&mut pass, !input.fast, &self.indices);
                 pass.set_bind_group(0, &self.group, &[]);
             }
-            if cloud_quads > 0 && !pack_draws_clouds && !oit_on {
+            if core_clouds::classic_pass_draws(cloud_quads, pack_draws_clouds, oit_on) {
                 pass.stage(self.own_timing.as_mut(), "clouds");
                 pass.set_pipeline(&self.cloud_pipeline);
                 pass.set_bind_group(0, &self.entity_group, &[]);

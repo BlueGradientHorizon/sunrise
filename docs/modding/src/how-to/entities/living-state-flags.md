@@ -85,6 +85,12 @@ falling block and an ender pearl by name: each keeps its cooldown in a store of 
 states, the falling block's saved field, an End gateway traveller) that this write does not own, so a write can only
 reach them once that kind has its own owner decision.
 
+On the server, `EntityRef::tick_count(host)` reads the signed 32-bit `Entity.tickCount` for a player, mob, item entity, experience
+orb or minecart. A local player and the guest whose turn is running read their active `PlayerMotion`; a guest outside
+its turn reads the motion kept in the guest record, or its carried count while a teleport is between bodies. A newly
+admitted player with no body has count 0. The value wraps like Java's `int`, and a stale handle or another entity
+kind returns `None`.
+
 `MobRef::can_use_portal` reads the existing server portal decision for a mob in the current level, including mounts and player riders. It takes `&dyn Host`: `Some(false)` means the mob is ineligible, while `None` means a client, stale or unavailable handle, parked mob, or the separately modelled dragon. It does not load a level.
 
 `EntityRef::leash_holder` takes `&dyn Host` and reads the live lead of a mob or boat. `LeashHolder::Unleashed`
@@ -202,3 +208,20 @@ riding relationships are unlinked even when a listener cancels. Each mob keeps i
 resident or off-level classification, and descendant state remains frozen.
 Cancellation can prevent ejection while the vehicle remains live, including
 underwater or activator ejection.
+
+## A type's default attributes
+
+`host.entity_type_default_attribute(entity_type, attribute)` reads what a new entity of a type has, with no entity
+spawned and before any modifier: `DefaultAttributes.getSupplier(type).getValue(attribute)`, the supplier's base inside
+the attribute's range. It works for vanilla's types and mods' registered ones (a mod type's declared row, with the
+attributes other mods added to it), on both sides. The Host and typed reload and client setup contexts read the same
+published catalog without unwinding. Registration and config contexts do not expose the read.
+
+```rust,ignore
+// The Zombie's 20 health and 2 armor, for a screen that lists a mob's stats.
+let health = host.entity_type_default_attribute("minecraft:zombie", "minecraft:max_health");
+let armor = host.entity_type_default_attribute("minecraft:zombie", "minecraft:armor");
+```
+
+`None` means the catalog has not been published yet, the type is not registered or has no attribute supplier
+(such as `minecraft:item`), or the supplier has no entry for that attribute. Names are read as `Identifier.parse` reads them: `zombie` and `:zombie` are `minecraft:zombie`.

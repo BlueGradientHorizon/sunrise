@@ -251,9 +251,11 @@ impl Game<'_> {
             self.debug_charts.log_bandwidth(bytes);
             self.debug_charts.log_packets([sent, received]);
         }
+        r.session
+            .drain_debug_pings(|delay| self.debug_charts.ping.log(delay));
         if shown {
             use sunrise_protocol::packets::status::Ping;
-            let time = self.debug_millis();
+            let time = sunrise_client::net::ping_millis();
             self.send(Serverbound::PingRequest(Ping { time }));
         }
     }
@@ -314,9 +316,11 @@ impl Game<'_> {
     /// Whether this client's debug overlay passes the draw gate this frame.
     pub(in crate::game) fn debug_overlay_visible(&self) -> bool {
         let screen_open = self.title.is_some() || self.screen != Screen::Playing;
-        self.debug_entries
-            .any_enabled(self.debug, self.reduced_debug_info())
-            && (!self.ui.hide_gui || screen_open)
+        self.debug_entries.any_enabled(
+            &self.registered_debug_entries,
+            self.debug,
+            self.reduced_debug_info(),
+        ) && (!self.ui.hide_gui || screen_open)
     }
 
     /// `DebugScreenOverlay.extractRenderState`: the enabled entries' lines
@@ -650,8 +654,12 @@ impl Game<'_> {
     }
     /// `DebugScreenEntryList.isCurrentlyEnabled` for an entry's path.
     pub(super) fn debug_entry(&self, path: &str) -> bool {
-        self.debug_entries
-            .enabled(path, self.debug, self.reduced_debug_info())
+        self.debug_entries.enabled(
+            &self.registered_debug_entries,
+            path,
+            self.debug,
+            self.reduced_debug_info(),
+        )
     }
     /// The `3d_crosshair` entry.
     pub(super) fn debug_crosshair(&self) -> bool {

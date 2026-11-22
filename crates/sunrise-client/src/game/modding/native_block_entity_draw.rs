@@ -1,4 +1,3 @@
-// game-module-visibility: pub
 //! Mod block entities drawn on the client: `native_block_entity_submit`
 //! (vanilla's `BlockEntityRenderer.submit`) gets a [`BlockEntityDraw`], whose
 //! pose stack (`PoseStack`) places what the helpers here add to the entity
@@ -23,7 +22,7 @@ use sunrise_client::{
     hud::Rect,
     items::ItemStack,
     mesher::Vertex,
-    mobs::model_layers,
+    mobs::{ModelNormals, model_layers},
     text::Text,
 };
 use sunrise_world::registry::BlockStateId;
@@ -300,8 +299,8 @@ pub struct BlockEntityDraw {
     partial: f32,
     /// The level's game time, for animations.
     game_time: i64,
-    /// The client's animation clock, in ticks with the partial tick (`spin`):
-    /// the ticks its level ran (`TextureManager.tick`'s count), never set back.
+    /// The client's mod animation clock for `spin`: whole level-running ticks plus a separate
+    /// animation phase.
     animation: f64,
     /// The light the helpers draw with: the block's own
     /// (`LevelRenderer.getLightCoords`), 16 times sky light in bits 0..8 and
@@ -310,10 +309,12 @@ pub struct BlockEntityDraw {
     /// The block drawn, for `native_draw_item`'s owner.
     block: [i32; 3],
     pose: Mat4,
+    /// First-person arm normals follow the listener's pose operations separately.
+    normal_pose: Option<ModelNormals>,
     /// World entity draws track the local translation separately from their camera-relative
     /// render pose. The affine pose's basis is the same in both spaces.
     local_light_translation: Option<DVec3>,
-    parent_poses: Vec<(Mat4, Option<DVec3>)>,
+    parent_poses: Vec<(Mat4, Option<ModelNormals>, Option<DVec3>)>,
     lights: (Vec3, Vec3),
     vertices: Vec<Vertex>,
     kept: bool,
@@ -551,6 +552,7 @@ impl BlockEntityDraw {
             light,
             block,
             pose,
+            normal_pose: None,
             local_light_translation: None,
             parent_poses: Vec::new(),
             lights,
@@ -691,15 +693,22 @@ impl BlockEntityDraw {
         self.local_light_translation = Some(DVec3::ZERO);
     }
 
+    /// Track normals from the rigid first-person view transform through listener draws.
+    pub(super) fn track_normal_pose(mut self) -> Self {
+        self.normal_pose = Some(ModelNormals::from_rotation(self.pose));
+        self
+    }
+
     /// `PoseStack.pushPose`: `pop` comes back to the pose as it is now.
     fn push(&mut self) {
         self.parent_poses
-            .push((self.pose, self.local_light_translation));
+            .push((self.pose, self.normal_pose, self.local_light_translation));
     }
     /// `PoseStack.popPose`; the block's own pose is never popped.
     fn pop(&mut self) {
-        if let Some((pose, light_translation)) = self.parent_poses.pop() {
+        if let Some((pose, normals, light_translation)) = self.parent_poses.pop() {
             self.pose = pose;
+            self.normal_pose = normals;
             self.local_light_translation = light_translation;
         }
     }
@@ -713,15 +722,19 @@ impl BlockEntityDraw {
     fn rotate_about(&mut self, axis: [f32; 3], degrees: f32, pivot: [f32; 3]) {
         let axis = Vec3::from_array(axis).normalize_or(Vec3::Y);
         let pivot = Vec3::from_array(pivot);
-        self.apply(
-            Mat4::from_translation(pivot)
-                * Mat4::from_quat(Quat::from_axis_angle(axis, degrees.to_radians()))
-                * Mat4::from_translation(-pivot),
-        );
+        let rotation = Mat4::from_quat(Quat::from_axis_angle(axis, degrees.to_radians()));
+        self.apply(Mat4::from_translation(pivot) * rotation * Mat4::from_translation(-pivot));
+        if let Some(normal) = &mut self.normal_pose {
+            normal.rotate(glam::Mat3::from_mat4(rotation));
+        }
     }
     /// Scales what is drawn next by `by` about the pose's origin.
     fn scale(&mut self, by: [f32; 3]) {
-        self.apply(Mat4::from_scale(Vec3::from_array(by)));
+        let scale = Vec3::from_array(by);
+        self.apply(Mat4::from_scale(scale));
+        if let Some(normal) = &mut self.normal_pose {
+            normal.scale(scale);
+        }
     }
     /// Keeps what this call drew: the block is drawn the same again, with
     /// neither `native_block_entity_submit` nor
@@ -815,6 +828,9 @@ impl BlockEntityDraw {
     }
     pub(super) fn pose(&self) -> Mat4 {
         self.pose
+    }
+    pub(super) fn normal_pose(&self) -> Option<ModelNormals> {
+        self.normal_pose
     }
     pub(super) fn vertices_mut(&mut self) -> &mut Vec<Vertex> {
         &mut self.vertices
@@ -1117,21 +1133,16 @@ impl KeptGeometry {
 }
 
 impl Game<'_> {
+    /// The client's mod animation clock: level-running texture ticks plus a phase that holds
+    /// across pauses and freezes. Server time updates never change it.
+    pub(super) fn animation_time(&self) -> f64 {
+        self.texture_ticks as f64 + self.clock.animation_phase()
+    }
     /// The mod block entities within view distance of `camera` whose block's
     /// template has none, which the mesher's block entity lists (made from
     /// the template) leave out: where they are and their block's state, for
     /// `mod_block_entity_geometry`. From the per-chunk list of
     /// `BlockEntities::mods_near`, not a scan of every block entity.
-    /// The client's animation clock, in ticks: the ticks its level has run
-    /// (`texture_ticks`, `TextureManager.tick`'s count) and the level's partial
-    /// tick (`Clock::fraction`, held while frozen), never the camera's, which
-    /// runs on in a frozen level and would turn parts back as it wraps.
-    /// Pausing and `/tick freeze` hold it and `SetTime` never sets it back, so a
-    /// `spin` part turns smoothly whatever the server's clock does; each client
-    /// counts from its own start.
-    pub(super) fn animation_time(&self) -> f64 {
-        self.texture_ticks as f64 + self.clock.fraction()
-    }
     pub(super) fn untemplated_mod_block_entities(&self, camera: DVec3) -> Vec<([i32; 3], u32)> {
         self.world
             .block_entities
@@ -1177,6 +1188,7 @@ impl Game<'_> {
             light: 0,
             block: [0; 3],
             pose: Mat4::IDENTITY,
+            normal_pose: None,
             local_light_translation: None,
             parent_poses: Vec::new(),
             lights: diffuse_lights(self.nether_lighting()),
@@ -1364,8 +1376,8 @@ impl Game<'_> {
     pub(super) fn native_draw_game_time(&self, draw: &BlockEntityDraw) -> i64 {
         draw.game_time
     }
-    /// The frame on this client's animation clock, in ticks with the partial tick
-    /// (`Game::animation_time`): what turns `spin` parts.
+    /// The frame on this client's animation clock: whole level ticks plus the animation phase,
+    /// held through a tick freeze and carried on without a jump. This is what turns `spin` parts.
     pub(super) fn native_draw_animation_time(&self, draw: &BlockEntityDraw) -> f64 {
         draw.animation
     }
@@ -1831,6 +1843,7 @@ mod tests {
             light: 0xF0F0,
             block: [0; 3],
             pose: Mat4::from_translation(Vec3::new(10.0, 0.0, 0.0)),
+            normal_pose: None,
             local_light_translation: None,
             parent_poses: Vec::new(),
             lights: diffuse_lights(false),
@@ -2382,13 +2395,7 @@ mod tests {
         super::super::native_entity_refs::tests::with_client_game(|game| {
             let id = Identifier::parse("minecraft:block/grass_block").unwrap();
             let model = game.render_assets().model(&id).unwrap();
-            for phase in [
-                mod_api::__private::ModPhase::Setup,
-                mod_api::__private::ModPhase::Reloading,
-            ] {
-                let _scope = mod_api::__private::PhaseOwner::scope(phase);
-                assert_eq!(game.render_assets().model(&id), Ok(model));
-            }
+            assert_eq!(game.render_assets().model(&id), Ok(model));
             assert_eq!(
                 game.render_assets()
                     .model(&Identifier::parse("mymod:block/absent").unwrap()),
@@ -2918,10 +2925,15 @@ mod tests {
                 game,
                 surface: &mut surface,
             };
-            assert_eq!(drawn.text_width(&mod_api::Text::literal("A")), Ok(6.0));
-            assert_eq!(drawn.text_width(&plain), Ok(12.0));
+            assert_eq!(drawn.text_width(&mod_api::Text::literal("A")), 6.0);
+            assert_eq!(drawn.text_width(&plain), 12.0);
             // Font.width: bold adds a pixel a glyph.
-            assert_eq!(drawn.text_width(&bold), Ok(7.0));
+            assert_eq!(drawn.text_width(&bold), 7.0);
+            let mut deep = mod_api::Text::literal("A");
+            for _ in 0..mod_api::text::MAX_TEXT_DEPTH {
+                deep = mod_api::Text::literal("").append(deep);
+            }
+            assert_eq!(drawn.text_width(&deep), 6.0);
             assert_eq!(
                 drawn.text(&plain, [0.0, 0.0], 0xFF0000, false, None),
                 Ok(12.0)
@@ -3008,7 +3020,7 @@ mod tests {
                 surface: &mut surface,
             };
             let text = mod_api::Text::literal("XX");
-            assert_eq!(drawn.text_width(&text), Ok(5.0));
+            assert_eq!(drawn.text_width(&text), 5.0);
             assert_eq!(drawn.text(&text, [0.0; 2], 0xFFFFFF, false, None), Ok(5.0));
             assert_eq!(
                 drawn.text(&text, [0.0; 2], 0xFFFFFF, true, Some(0)),
@@ -3025,38 +3037,46 @@ mod tests {
         super::super::native_entity_refs::tests::with_client_game(|game| {
             game.clock = sunrise_client::clock::FixedStep::client();
             game.texture_ticks = 0;
-            game.clock.advance(Duration::from_millis(75), 50.0);
-            game.tick_frame_visuals(true);
+            // Run just the fixture's visual work, then the real frame's phase sampling.
+            let frame = |game: &mut Game<'_>, ms, target, pause| {
+                let steps = game.clock.advance(Duration::from_millis(ms), target);
+                if !game.clock.paused() {
+                    for _ in 0..steps {
+                        let running = game.clock.world_runs();
+                        game.tick_frame_visuals(running);
+                    }
+                }
+                game.client_tick_steps(0, None).unwrap();
+                game.clock.end_frame(pause);
+            };
+            frame(game, 75, 50.0, true);
             assert_eq!(game.animation_time(), 1.5);
-            game.clock.end_frame(true);
-            game.clock.advance(Duration::from_millis(50), 50.0);
+            frame(game, 25, 50.0, false);
             assert_eq!(game.animation_time(), 1.5);
-            game.clock.end_frame(false);
             game.clock.set_frozen(true);
-            // Freeze requests become the frame's running decision at the
-            // tick boundary, before end_frame snapshots it for interpolation.
-            assert!(!game.clock.world_runs());
-            game.clock.end_frame(false);
-            assert_eq!(game.animation_time(), 2.0);
-            game.clock.advance(Duration::from_millis(25), 50.0);
-            let running = game.clock.world_runs();
-            game.tick_frame_visuals(running);
-            assert_eq!(game.texture_ticks, 1);
-            assert_eq!(game.animation_time(), 2.0);
-            assert_eq!(game.clock.camera_fraction(), 0.0);
+            frame(game, 25, 50.0, false);
+            assert_eq!(game.animation_time(), 1.5);
+            game.world.game_time = 40;
             game.handle_packet(play::Clientbound::SetTime(play::SetTime {
                 game_time: 0,
                 clocks: vec![],
             }))
             .unwrap();
-            assert_eq!(game.animation_time(), 2.0);
-            game.clock.set_frozen(false);
-            assert!(game.clock.world_runs());
-            game.clock.end_frame(false);
-            game.clock.advance(Duration::from_millis(75), 50.0);
-            let running = game.clock.world_runs();
-            game.tick_frame_visuals(running);
+            assert_eq!(game.world.game_time, 0);
+            assert_eq!(game.animation_time(), 1.5);
+
+            assert!(game.clock.start_step(1));
+            frame(game, 50, 50.0, false);
             assert_eq!(game.animation_time(), 2.5);
+
+            game.clock.set_frozen(false);
+            frame(game, 50, 50.0, false);
+            assert_eq!(game.texture_ticks, 3);
+            assert_eq!(game.animation_time(), 2.5);
+            frame(game, 25, 100.0, false);
+            assert_eq!(game.animation_time(), 2.75);
+            frame(game, 75, 100.0, false);
+            assert_eq!(game.animation_time(), 3.5);
         });
     }
 
@@ -3224,18 +3244,21 @@ mod tests {
                 _: &mod_api::RegistrationContext,
                 event: &mut mod_api::RegisterLayerDefinitionsEvent<'_>,
             ) {
-                let mut mesh = MeshDefinition::new();
-                let root = mesh.root();
-                mesh.add_or_replace_child(
-                    root,
-                    "body",
-                    CubeListBuilder::create().add_box_faces([0.0; 3], [16.0; 3], &[Face::South]),
-                    PartPose::offset(16.0, 0.0, 0.0),
-                );
-                event.layers.push((
-                    "golem_mod:golem#main".into(),
-                    LayerDefinition::create(mesh, 64, 64),
-                ));
+                event.register("golem_mod:golem#main", || {
+                    let mut mesh = MeshDefinition::new();
+                    let root = mesh.root();
+                    mesh.add_or_replace_child(
+                        root,
+                        "body",
+                        CubeListBuilder::create().add_box_faces(
+                            [0.0; 3],
+                            [16.0; 3],
+                            &[Face::South],
+                        ),
+                        PartPose::offset(16.0, 0.0, 0.0),
+                    );
+                    LayerDefinition::create(mesh, 64, 64)
+                });
             }
         }
         let drawn = |game: &Game<'_>| {
@@ -3257,8 +3280,9 @@ mod tests {
             crate::game::native_entity_refs::tests::with_client_game(|game| {
                 crate::game::mods::register_layer_definitions(
                     crate::game::execution_role::ExecutionRole::Client,
-                    std::path::Path::new("."),
-                );
+                    &game.vanilla_root(),
+                )
+                .unwrap();
                 assert_eq!(drawn(game), face);
                 assert!(game.bake_layer("golem_mod:other#main").is_none());
                 assert!(game.bake_layer("minecraft:zombie#main").is_some());

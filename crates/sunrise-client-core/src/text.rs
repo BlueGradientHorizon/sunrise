@@ -113,6 +113,9 @@ pub struct Style {
     pub font: Option<String>,
     /// Content metadata for a single U+FFFC object span; never inherited.
     pub inline_object: Option<InlineObject>,
+    /// Optional index into an in-process caller's style table for lossless
+    /// round-tripping of opaque API click/hover/metadata payloads across layout.
+    pub opaque_style_id: Option<usize>,
 }
 /// A style's `font` field: an identifier (`alt` is `minecraft:alt`).
 pub fn font_id(v: &Value) -> Option<String> {
@@ -150,6 +153,7 @@ impl Style {
         if self.font.is_none() {
             self.font.clone_from(&base.font);
         }
+        self.opaque_style_id = self.opaque_style_id.or(base.opaque_style_id);
     }
     pub fn is_bold(&self) -> bool {
         self.bold == Some(true)
@@ -439,6 +443,28 @@ impl Text {
         };
         t.source = Some(Value::Object(c).into());
         t
+    }
+    /// Render an argument-free translation, sharing its retained component with
+    /// the previous value when the key is unchanged. The rendered spans still
+    /// use the current language.
+    pub fn translate_reusing(key: &str, previous: Option<&Self>) -> Self {
+        let Some(source) = previous
+            .and_then(|text| text.source.as_ref())
+            .filter(|source| {
+                source
+                    .as_object()
+                    .filter(|component| component.len() == 1)
+                    .and_then(|component| component.get("translate"))
+                    .and_then(Value::as_str)
+                    == Some(key)
+            })
+        else {
+            return Self::translate(key, &[]);
+        };
+        let mut text = format_translatable(key, None, &[]);
+        text.source = Some(source.clone());
+        text.origins = local_origins();
+        text
     }
     /// Component.translatableWithFallback(key, fallback, args): `translate`, with `fallback` as
     /// the template when the language has no `key`.

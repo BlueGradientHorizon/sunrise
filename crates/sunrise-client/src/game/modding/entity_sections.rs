@@ -200,8 +200,21 @@ struct LiveSectionHost(Option<SectionWriter>);
 
 mod_api::impl_host_areas!(LiveSectionHost);
 mod_api::impl_server_host_areas!(LiveSectionHost);
-mod_api::impl_client_host_areas!(LiveSectionHost, except(menus));
-mod_api::impl_backend_areas!(LiveSectionHost, except(entity_position, entity_physics));
+mod_api::impl_client_host_areas!(LiveSectionHost, except(client_render, menus, services));
+mod_api::impl_backend_areas!(
+    LiveSectionHost,
+    partial(entity_position, entity_on_ground, entity_velocity)
+);
+
+impl mod_api::prelude::ClientRenderClientHost for LiveSectionHost {
+    fn biome_tint(
+        &self,
+        _: [i32; 3],
+        _: mod_api::ColorResolver,
+    ) -> Result<u32, mod_api::LevelReadError> {
+        Err(mod_api::LevelReadError::Unavailable)
+    }
+}
 
 impl mod_api::prelude::MenusClientHost for LiveSectionHost {
     fn local_player(&self) -> Option<mod_api::PlayerRef> {
@@ -209,7 +222,15 @@ impl mod_api::prelude::MenusClientHost for LiveSectionHost {
     }
 }
 
-impl mod_api::prelude::EntityPositionBackend for LiveSectionHost {
+impl mod_api::prelude::ServicesClientHost for LiveSectionHost {
+    fn client_executor(&self) -> Option<mod_api::ClientExecutor> {
+        None
+    }
+}
+
+// The generated read backend forwards these snapshots and answers the
+// standard no-backend result for reads that would need the borrowed world.
+impl LiveSectionHost {
     fn entity_position(&self, entity: EntityRef) -> Option<[f64; 3]> {
         let writer = self.0.filter(|writer| writer.entity == entity)?;
         Some(writer.position)
@@ -219,9 +240,7 @@ impl mod_api::prelude::EntityPositionBackend for LiveSectionHost {
         let player = self.0.filter(|writer| writer.entity == entity)?.player?;
         Some(player.on_ground)
     }
-}
 
-impl mod_api::prelude::EntityPhysicsBackend for LiveSectionHost {
     fn entity_velocity(&self, entity: EntityRef) -> Option<[f64; 3]> {
         let player = self.0.filter(|writer| writer.entity == entity)?.player?;
         Some(player.velocity)
@@ -333,31 +352,6 @@ impl Game<'_> {
                 .entity_sections
                 .moved(scope, id, from, to);
             self.tell_entity_sections();
-        }
-    }
-
-    /// A server player's moves this tick (`moves`: each one's delta, in order), which left it at
-    /// `end`: each is one `setPos`, so a move out of a section and one back are two crossings.
-    pub(super) fn entity_section_walked(
-        &mut self,
-        id: u32,
-        end: [f64; 3],
-        moves: impl Iterator<Item = [f64; 3]> + Clone,
-    ) {
-        let scope = self.entity_section_scope();
-        let mut from = moves
-            .clone()
-            .fold(end, |p, d| [p[0] - d[0], p[1] - d[1], p[2] - d[2]]);
-        for d in moves {
-            let to = [from[0] + d[0], from[1] + d[1], from[2] + d[2]];
-            self.entity_section_entered(id, from, to);
-            if let Some(scope) = scope {
-                self.native_lifecycle
-                    .entity_sections
-                    .moved(scope, id, Some(from), to);
-                self.tell_entity_sections();
-            }
-            from = to;
         }
     }
 

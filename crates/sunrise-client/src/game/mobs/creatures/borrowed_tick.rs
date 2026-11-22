@@ -1,5 +1,6 @@
 //! Resumable borrowed mob-tick region; the caller owns final restoration.
 use super::*;
+
 /// Route each player event to the player selected when it was emitted.
 /// Untagged events retain the previous per-tick guest binding.
 fn route_player_events(
@@ -159,18 +160,20 @@ impl Game<'_> {
         let mut cursor = 0;
         // Sounds the tick's hits queued, appended to the level's queue once the level is dropped.
         let mut hit_sounds: Vec<super::NativeSound> = Vec::new();
-        use sunrise_client::mobs::ai::Pause;
+        use sunrise_client::mobs::{
+            ai::Pause,
+            player_selection::{PlayerSelection, TickPlayer},
+        };
         let mut resume = None;
-        // Trample is uncommon. Keep its payload here rather than making every
-        // mob's tick result and resume marker large enough to carry it.
-        let mut trample = None;
+        // Keep the suspended move out of the ordinary tick's result.
+        let mut movement = None;
+        let mut resume_entity = None;
         let mut resume_air_answer = None;
-        let mut resume_selection = None;
+        let mut resume_selection: Option<PlayerSelection> = None;
         // An invalid removed vehicle is retried once at this rider's own
         // eligible entity tick, never from the later global positioning pass.
         let mut retried_rider = None;
         let mut resume_from = 0;
-        let mut resume_credit_expiring = false;
         let mut resume_sampled = None;
         let mut resume_guest = None;
         // The slot of the mob whose own Pre was just told (a type a mod named): it resumes there
@@ -179,19 +182,23 @@ impl Game<'_> {
         // Whether a mob still in the lifted list has left the pass (`keep` false) since the list
         // was last given back: a told-alone yield then takes it out before the call.
         let mut gone_rows = false;
+        let mut resume_brain = None;
+        // These belong to the finished mob, not the victim its event may hurt.
+        // Keep them until the mob's event tail finishes, then file its section
+        // writes and issue its Post while the rows are back in the owner.
+        let mut tell_post: Option<(u32, std::sync::Arc<sunrise_client::mobs::MobType>)> = None;
+        let mut section_yield = false;
         loop {
             let mut pause = None;
+            let mut sting = None;
+            let mut brain_from = 0;
             let mut air_answer = None;
             let mut retry_rider = None;
+            let mut removing_vehicle = None;
             // A mob told alone hears its Pre right before its tick and its Post right after:
             // stop there, restore the list, tell it while the live rows are readable, and resume.
             let mut tell_pre: Option<(u32, std::sync::Arc<sunrise_client::mobs::MobType>, usize)> =
                 None;
-            let mut tell_post: Option<(u32, std::sync::Arc<sunrise_client::mobs::MobType>)> = None;
-            // A mob's list is lifted while its world view is borrowed.  Once a
-            // position write was captured, stop after this mob, restore the
-            // list, and tell its writes while the live row is readable.
-            let mut section_yield = false;
             {
                 let ticking = self.entity_ticking_area();
                 let listed = self.entity_tick_listed_area();
@@ -216,6 +223,10 @@ impl Game<'_> {
                     Some(&self.pack.block_registries),
                     &self.damage_hooks,
                 )
+                .with_player_resolver(
+                    crate::game::entity::player_resolver!(self),
+                    &mut player_credit,
+                )
                 .with_effects(crate::game::entity::hit_effects_of!(
                     self,
                     None,
@@ -224,7 +235,24 @@ impl Game<'_> {
                 let path_changes = sunrise_client::mobs::collision_changes(&base, &path_writes);
                 laps.lap("creature_prepare");
                 let mut cached_difficulty: Option<((i32, i32), spawning::LocalDifficulty)> = None;
-                while cursor < original_len {
+                if let Some((from, sections, post)) = resume_brain.take() {
+                    brain_from = from;
+                    section_yield = sections;
+                    tell_post = post;
+                    sting = sunrise_client::mobs::apply_brain_events_until_hurt(
+                        &mut mobs,
+                        &mut level,
+                        &mut events,
+                        from,
+                        &base.teams,
+                        true,
+                    );
+                }
+                while sting.is_none()
+                    && !section_yield
+                    && tell_post.is_none()
+                    && cursor < original_len
+                {
                     let slot = cursor;
                     let i = match &positions {
                         None => slot,
@@ -236,7 +264,7 @@ impl Game<'_> {
                                 // tick view must answer a removed handle with nothing.
                                 snapshot[slot].removed = true;
                                 resume = None;
-                                trample = None;
+                                movement = None;
                                 resume_selection = None;
                                 resume_sampled = None;
                                 cursor += 1;
@@ -250,10 +278,11 @@ impl Game<'_> {
                     // Its checks ran before its Pre was told: they don't run again.
                     let resuming = resume.is_some();
                     let checked = resuming || told_at == Some(slot);
-                    if blocked.contains(&m.id) {
+                    if blocked.contains(&m.id) || resuming && resume_entity != Some((m.id, m.join))
+                    {
                         cursor += 1;
                         resume = None;
-                        trample = None;
+                        movement = None;
                         resume_selection = None;
                         resume_sampled = None;
                         continue;
@@ -295,6 +324,14 @@ impl Game<'_> {
                         keep[slot] = !m.hostile() || m.persistent;
                         gone_rows |= !keep[slot];
                         cursor += 1;
+                        let id = m.id;
+                        if !keep[slot]
+                            && (m.extra.mount.is_some()
+                                || self.has_seated_passengers_with_lent_mobs(id, &mobs))
+                        {
+                            removing_vehicle = Some(id);
+                            break;
+                        }
                         continue;
                     }
                     // ServerLevel.tick walks the entity tick list, which holds only the
@@ -386,6 +423,14 @@ impl Game<'_> {
                         keep[slot] = kept;
                         gone_rows |= !kept;
                         cursor += 1;
+                        let id = m.id;
+                        if !kept
+                            && (m.extra.mount.is_some()
+                                || self.has_seated_passengers_with_lent_mobs(id, &mobs))
+                        {
+                            removing_vehicle = Some(id);
+                            break;
+                        }
                         continue;
                     }
                     let controlling_player_movement = sunrise_client::mobs::equine::controlled(m)
@@ -445,6 +490,7 @@ impl Game<'_> {
                             &mut m.extra.equipment,
                         );
                     }
+                    let was_removed = m.removed;
                     let from = if resuming { resume_from } else { events.len() };
                     // The guest's view is lent to the mob for its tick, not copied:
                     // the tick only reads it (`&MobWorld`), and it goes back to the
@@ -464,13 +510,33 @@ impl Game<'_> {
                         Some(conn) => self.guest_identity(conn),
                     };
                     // A listener can redirect to any real player in this level. Keep
-                    // immutable views for this tick so changing selection never
-                    // invalidates a view a goal already borrowed. No allocation is
-                    // made when nobody listens for target changes.
+                    // immutable views during the borrow so changing selection
+                    // never invalidates a view a goal already holds. No allocation
+                    // is made when nobody listens for target changes.
                     let selection = if resuming {
-                        resume_selection.take()
+                        let mut selection = resume_selection.take();
+                        if matches!(resume, Some(Pause::AfterDamage(_)))
+                            && let Some(selection) = &mut selection
+                        {
+                            selection.refresh_views(|player| {
+                                let (view, identity) = if player.connection == seen_guest {
+                                    (active_player.as_ref(), active_identity)
+                                } else if let Some(conn) = player.connection {
+                                    (
+                                        guests.iter().find(|g| g.0 == conn).map(|g| &g.1),
+                                        self.guest_identity(conn),
+                                    )
+                                } else {
+                                    (base.player.as_ref(), base.player_identity)
+                                };
+                                view.filter(|_| {
+                                    identity.is_some_and(|(_, id)| id == player.entity_id)
+                                })
+                                .cloned()
+                            });
+                        }
+                        selection
                     } else if mod_api::__private::listened(mod_api::HookId::LivingChangeTarget) {
-                        use sunrise_client::mobs::player_selection::{PlayerSelection, TickPlayer};
                         let mut players = Vec::new();
                         if let (Some(view), Some((_, entity_id))) =
                             (&active_player, active_identity)
@@ -525,11 +591,6 @@ impl Game<'_> {
                     };
                     w.section_writer = live_section_observer.clone();
                     w.controlling_player_movement = controlling_player_movement;
-                    let credit_expiring = if resuming {
-                        resume_credit_expiring
-                    } else {
-                        m.ai.last_hurt_by_player == 1
-                    };
                     ticked.insert(m.id);
                     // `sunrise-report`'s cost by mob type (tick_profile.rs).
                     let sampled = if resuming {
@@ -551,17 +612,30 @@ impl Game<'_> {
                                 known_speed,
                                 resume_air_answer.take(),
                                 &mut events,
-                                &mut trample,
+                                &mut movement,
                             )
                         }
-                        Some(Pause::Trample) => sunrise_client::mobs::riders::resume_after_trample(
-                            &mut mobs,
-                            i,
-                            &w,
-                            &mut level,
-                            &mut trample,
-                            &mut events,
-                        ),
+                        Some(Pause::AfterDamage(damage)) => {
+                            sunrise_client::mobs::riders::resume_after_damage(
+                                &mut mobs,
+                                i,
+                                &w,
+                                &mut level,
+                                damage,
+                                &mut events,
+                                &mut movement,
+                            )
+                        }
+                        Some(Pause::Trample(_) | Pause::FallToPassengers(_)) => {
+                            sunrise_client::mobs::riders::resume_movement(
+                                &mut mobs,
+                                i,
+                                &w,
+                                &mut level,
+                                &mut movement,
+                                &mut events,
+                            )
+                        }
                         Some(Pause::Consumption { was_on_fire, .. }) => {
                             sunrise_client::mobs::riders::resume_after_consumption(
                                 &mut mobs,
@@ -570,7 +644,7 @@ impl Game<'_> {
                                 &mut level,
                                 was_on_fire,
                                 &mut events,
-                                &mut trample,
+                                &mut movement,
                             )
                         }
                         None => sunrise_client::mobs::riders::tick_until_consumption(
@@ -579,7 +653,7 @@ impl Game<'_> {
                             &w,
                             &mut level,
                             &mut events,
-                            &mut trample,
+                            &mut movement,
                         ),
                     };
                     let progress =
@@ -611,7 +685,10 @@ impl Game<'_> {
                             }
                         };
                     let kept = match progress {
-                        sunrise_client::mobs::ai::TickProgress::Complete(kept) => kept,
+                        sunrise_client::mobs::ai::TickProgress::Complete(kept) => {
+                            movement = None;
+                            kept
+                        }
                         sunrise_client::mobs::ai::TickProgress::Paused(paused) => {
                             // Return every player loan before ending the world borrow.
                             if seen_guest.is_none() {
@@ -622,10 +699,10 @@ impl Game<'_> {
                                 guests[k].1 = player;
                             }
                             resume_from = from;
-                            resume_credit_expiring = credit_expiring;
                             resume_sampled = sampled;
                             resume_guest = seen_guest;
                             resume_selection = selection;
+                            resume_entity = Some((mobs[i].id, mobs[i].join));
                             pause = Some(paused);
                             sunrise_threads::work::clear_work();
                             break;
@@ -687,9 +764,6 @@ impl Game<'_> {
                         }
                     }
                     m.despawn = mod_api::Despawn::default();
-                    if credit_expiring && m.ai.last_hurt_by_player == 0 {
-                        player_credit.remove(&m.id);
-                    }
                     if seen_guest.is_none() {
                         base.player = w.player;
                     } else if let Some(k) = lent {
@@ -747,21 +821,40 @@ impl Game<'_> {
                     snapshot[slot].alive &= kept;
                     snapshot[slot].removed |= !kept;
                     grid.update(slot, snapshot[slot].bounds);
-                    sunrise_client::mobs::apply_brain_events(
+                    let id = m.id;
+                    brain_from = from;
+                    sting = sunrise_client::mobs::apply_brain_events_until_hurt(
                         &mut mobs,
                         &mut level,
                         &mut events,
                         from,
+                        &base.teams,
+                        true,
                     );
                     cursor += 1;
-                    if section_yield || tell_post.is_some() {
+                    if !kept
+                        && !was_removed
+                        && (mobs[i].extra.mount.is_some()
+                            || self.has_seated_passengers_with_lent_mobs(id, &mobs))
+                    {
+                        removing_vehicle = Some(id);
+                        break;
+                    }
+                    if sting.is_some() || section_yield || tell_post.is_some() {
                         break;
                     }
                 }
             }
             self.creatures.lan_sounds.append(&mut hit_sounds);
+            if sting.is_some() {
+                resume_brain = Some((brain_from, section_yield, tell_post.take()));
+                section_yield = false;
+            }
+            let stinging = sting.is_some();
             if pause.is_none()
+                && !stinging
                 && retry_rider.is_none()
+                && removing_vehicle.is_none()
                 && !section_yield
                 && tell_pre.is_none()
                 && tell_post.is_none()
@@ -776,7 +869,7 @@ impl Game<'_> {
             // can read or replace another actor's velocity. A section-only
             // or a told-alone yield must not change the normal end-of-pass
             // push ordering.
-            if pause.is_some() || retry_rider.is_some() {
+            if pause.is_some() || stinging || retry_rider.is_some() || removing_vehicle.is_some() {
                 for m in &mut mobs {
                     sunrise_client::mobs::apply_mob_pushes(m, &mut pushes);
                 }
@@ -786,15 +879,22 @@ impl Game<'_> {
             // any) and is taken again as it is, so the loop's views of it (snapshot, grid,
             // index, places) stay valid unless the call wrote a mob or added one. The list's
             // write stamp says whether it did: any mutable access moves it.
-            let told_only = pause.is_none() && retry_rider.is_none() && !section_yield;
+            let told_only = pause.is_none()
+                && !stinging
+                && retry_rider.is_none()
+                && removing_vehicle.is_none()
+                && !section_yield;
             let same_rows = told_only && !gone_rows;
             if !same_rows {
                 mobs.retain(|m| {
-                    index
-                        .get(&m.id)
-                        .and_then(|&slot| keep.get(slot as usize))
-                        .copied()
-                        .unwrap_or(true)
+                    // Give the departing vehicle back for its pre-removal effects
+                    // and for marking it removed before the dismount hooks.
+                    removing_vehicle == Some(m.id)
+                        || index
+                            .get(&m.id)
+                            .and_then(|&slot| keep.get(slot as usize))
+                            .copied()
+                            .unwrap_or(true)
                 });
                 gone_rows = false;
             }
@@ -809,11 +909,17 @@ impl Game<'_> {
             if let Some(host) = self.lan.as_mut() {
                 std::mem::swap(&mut host.mob_players, &mut bindings);
             }
-            // The lift is a position write made by the owning game, not by
-            // the borrowed mob. Give it the live section table as well.
-            let trampling = matches!(pause, Some(Pause::Trample));
-            let trample_sections = section_table.as_ref().filter(|_| trampling);
-            if let Some(sections) = trample_sections {
+            // Lifts and hurt listeners can write positions from the owning game.
+            let trampling = matches!(pause, Some(Pause::Trample(_)));
+            let live_sections = section_table.as_ref().filter(|_| {
+                trampling
+                    || stinging
+                    || matches!(
+                        pause,
+                        Some(Pause::AfterDamage(_) | Pause::FallToPassengers(_))
+                    )
+            });
+            if let Some(sections) = live_sections {
                 std::mem::swap(
                     &mut self.native_lifecycle.entity_sections,
                     &mut sections.borrow_mut(),
@@ -826,9 +932,42 @@ impl Game<'_> {
                         &mut section_moves,
                     );
                 }
-                if let Some(id) = retry_rider {
+                if let Some(sting) = sting {
+                    let before_hurt = events.drain(brain_from..sting.at).collect();
+                    let _ = self.handle_mob_events(before_hurt);
+                    if let Some(i) = self.mob_index.find(&self.mobs, sting.target)
+                        && sting.same_target(&self.mobs[i])
+                    {
+                        self.finish_mob_damage_at(i);
+                        self.settle_creaking_hurt(sting.target);
+                    }
+                    if self
+                        .mob_object(sting.fish)
+                        .is_some_and(|mob| sting.same_fish(mob))
+                    {
+                        let victim = self
+                            .mob_index
+                            .find(&self.mobs, sting.target)
+                            .map(|i| &mut self.mobs[i]);
+                        let mut aftermath = sting.poison(victim);
+                        if let Some(sound) = self
+                            .mob_object(sting.fish)
+                            .and_then(|fish| sting.sound(fish))
+                        {
+                            aftermath.push(sound);
+                        }
+                        let _ = self.handle_mob_events(aftermath);
+                    } else {
+                        events.truncate(brain_from);
+                        resume_brain = None;
+                    }
+                } else if let Some(id) = retry_rider {
                     self.dismount_mob(id);
-                } else if let Some(paused) = pause.as_ref() {
+                } else if let Some((paused, (id, join))) = pause.as_ref().zip(resume_entity)
+                    && let Some(i) = self.mob_index.find(&self.mobs, id)
+                    && self.mobs[i].join == join
+                    && !self.mobs[i].removed
+                {
                     match paused {
                         Pause::Consumption { decision, .. } => {
                             self.apply_fox_consumption(decision);
@@ -836,13 +975,49 @@ impl Game<'_> {
                         Pause::Breathing { air, .. } => {
                             air_answer = self.ask_mob_breath(air);
                         }
-                        Pause::Trample => {
-                            let trample = trample.as_ref().expect("the trample pause was stored");
-                            self.trample_farmland(trample.mob, false, trample.decision());
+                        Pause::AfterDamage(_) => {
+                            if sunrise_client::mobs::creaking::has_pending_hurt(&self.mobs[i]) {
+                                // The earlier emissions (e.g. drowning bubbles) precede this hurt.
+                                let before_hurt = events.split_off(resume_from);
+                                let _ = self.handle_mob_events(before_hurt);
+                            }
+                            if let Some(i) = self.mob_index.find(&self.mobs, id)
+                                && self.mobs[i].join == join
+                                && !self.mobs[i].removed
+                            {
+                                self.finish_mob_damage_at(i);
+                                self.settle_creaking_hurt(id);
+                            }
+                        }
+                        Pause::Trample(trample) => {
+                            self.trample_farmland(id, false, *trample);
+                        }
+                        Pause::FallToPassengers(fall) => {
+                            self.fall_to_passengers(id, fall.distance, fall.modifier);
                         }
                     }
                 }
-                if let Some((id, kind)) = &tell_post {
+                if let Some(id) = removing_vehicle {
+                    // LivingEntity.tickDeath broadcasts event 60 before remove;
+                    // cube splitting and the killed effects also precede setRemoved.
+                    let animation = gone.pop_if(|death| death.0 == id);
+                    let animate = |game: &mut Self| {
+                        if let Some((_, at, width, height, split)) = animation {
+                            game.finish_mob_death_animation(id, at, width, height, split);
+                        }
+                    };
+                    let killed_effects = corpses.pop_if(|mob| mob.id == id).is_some();
+                    if self.mob_object(id).is_some_and(|mob| mob.removed) {
+                        animate(self);
+                        self.finish_mob_removal(id);
+                    } else {
+                        self.remove_mob_after(id, killed_effects, animate);
+                    }
+                    if let Some(index) = self.mobs.iter().position(|mob| mob.id == id) {
+                        self.mobs.remove(index);
+                    }
+                }
+                if !stinging && let Some((id, kind)) = &tell_post {
                     self.native_tick_post_one(round, *id, &kind.id);
                 }
                 // Let through, it checks its sleep as a mob told with its family does.
@@ -856,7 +1031,7 @@ impl Game<'_> {
                 }
             }))
             .err();
-            if let Some(sections) = trample_sections {
+            if let Some(sections) = live_sections {
                 std::mem::swap(
                     &mut self.native_lifecycle.entity_sections,
                     &mut sections.borrow_mut(),
@@ -866,7 +1041,9 @@ impl Game<'_> {
             if tell_pre.is_some() {
                 told_at = Some(cursor);
             }
-            if retry_rider.is_some() {
+            tell_post = None;
+            section_yield = false;
+            if retry_rider.is_some() || removing_vehicle.is_some() {
                 blocked = std::borrow::Cow::Owned(self.mobs_below_off_level());
             }
             mobs = self.mobs.lift();
@@ -896,7 +1073,7 @@ impl Game<'_> {
             spare = guests.first().map(|g| g.1.clone());
             // A trample can lift other mobs without changing their slots. Rebuild
             // their views before the rest of this pass can read their old bounds.
-            if !unchanged || trampling {
+            if !unchanged || trampling || pause.is_some() || stinging {
                 let current: sunrise_client::fast_hash::FxHashMap<u32, usize> =
                     mobs.iter().enumerate().map(|(i, m)| (m.id, i)).collect();
                 for (slot, s) in snapshot.iter_mut().enumerate() {
@@ -941,27 +1118,6 @@ impl Game<'_> {
         }
         laps.lap("creature_loop");
         if dispatch_panic.is_none() {
-            if !self.persist.off_level.is_empty() {
-                let mounted: std::collections::HashSet<_> = mobs
-                    .iter()
-                    .chain(self.mob_objects())
-                    .filter_map(|passenger| passenger.extra.mount)
-                    .collect();
-                for mob in &mobs {
-                    let kept = index
-                        .get(&mob.id)
-                        .and_then(|&slot| keep.get(slot as usize))
-                        .copied()
-                        .unwrap_or(true);
-                    if !kept && mounted.contains(&mob.id) {
-                        let mut removed = mob.clone();
-                        removed.removed = true;
-                        self.persist
-                            .off_level
-                            .insert(mob.id, crate::game::persist::OffLevel::Mob(removed));
-                    }
-                }
-            }
             if positions.is_none() {
                 let mut flags = keep.into_iter();
                 mobs.retain(|_| flags.next().unwrap_or(true));

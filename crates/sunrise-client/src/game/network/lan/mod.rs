@@ -17,7 +17,7 @@ use super::{
     native_living_effects::{active_effect, mob_effect},
     shield::OFFHAND_SLOT,
 };
-use crate::game::api_values::{TryIntoApi, TryIntoEngine};
+use crate::game::api_values::TryIntoApi;
 use event_timings::{EventTimings, UseDetail, describe_burst, event_kind, note_event};
 use std::{collections::HashMap, sync::Arc, time::Instant};
 use sunrise_client::{
@@ -1209,6 +1209,7 @@ impl Game<'_> {
         let mut sync = sync::sync_data(
             &self.options.resources,
             &self.res.core.item_data,
+            self.items(),
             &self.pack_files(),
         )?;
         let features = self.enabled_feature_ids().to_vec();
@@ -1230,6 +1231,7 @@ impl Game<'_> {
                 sync::server_sources(
                     &self.options.resources,
                     &self.res.core.item_data,
+                    self.items(),
                     &self.pack_files(),
                 )?
                 .as_ref(),
@@ -1276,6 +1278,7 @@ impl Game<'_> {
             .then(|| sunrise_client::lod_net::Service::new(net.lod_distance, biome_names.clone()));
         let lan = super::lan_configuration_tasks::start(sync.clone(), net)?;
         let mut hub = Hub::new(lan, sync, encoder, config, self.loop_context.clone());
+        hub.dispatch_move_effects = true;
         self.bind_guest_residency(&mut hub);
         self.passages.record_on(&mut hub);
         hub.rule_registry = self.level.rule_registry.clone();
@@ -1284,6 +1287,7 @@ impl Game<'_> {
         hub.debug_world = self.world_debug;
         let port = hub.lan.port;
         self.world.block_log = Some(Vec::new());
+        self.world.connection_group_log = Some(Default::default());
         self.world.light_log = Some(Default::default());
         self.lan = Some(LanHost {
             players_told_left: false,
@@ -1352,6 +1356,7 @@ impl Game<'_> {
         // Give the network threads a moment to flush the disconnect packets.
         std::thread::sleep(std::time::Duration::from_millis(100));
         self.world.block_log = None;
+        self.world.connection_group_log = None;
         self.world.light_log = None;
         self.audio.capture = None;
         self.bound_sounds.clear();
@@ -1374,10 +1379,9 @@ impl Game<'_> {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
-        // Every open menu closes first, in its guest's level
-        // (`ServerPlayer.disconnect` -> `doCloseContainer`), so the cursor,
-        // the trade and the inputs are back in the file that is saved. An interrupted
-        // guest's file is not written, so its menu is left alone.
+        // Remove the open menu and window 0 in the guest's own level before
+        // saving, so held stacks and inputs return to their inventory or drop
+        // there if full. An interrupted guest's file is not written.
         let back = self.dim;
         let open: Vec<(u32, super::Dim)> = host
             .hub
@@ -1392,7 +1396,7 @@ impl Game<'_> {
             .collect();
         for (conn, dim) in open {
             if self.enter_level(dim).is_ok() {
-                self.guest_close_all(conn);
+                self.guest_close_menus_for_save(conn);
             }
         }
         if let Err(e) = self.enter_level(back) {
@@ -1427,7 +1431,7 @@ impl Game<'_> {
             return;
         }
         // A proxy released this record to another server, which now owns saving it.
-        if guest.placed && !guest.released && !self.crash_save.excludes(guest.conn) {
+        if guest.joined() && !guest.released && !self.crash_save.excludes(guest.conn) {
             let _ = self.finish_player_autosaves(true);
             if self
                 .lan
@@ -1593,7 +1597,7 @@ impl Game<'_> {
     /// live record, independently of the dirty entries sent to their client.
     pub(super) fn save_connected_guest_statistics(&self, host: &LanHost) {
         for guest in &host.hub.guests {
-            if !guest.placed || guest.released || self.crash_save.excludes(guest.conn) {
+            if !guest.joined() || guest.released || self.crash_save.excludes(guest.conn) {
                 continue;
             }
             let Some(uuid) = self.records_uuid(host, guest.uuid) else {
@@ -1870,7 +1874,7 @@ impl Game<'_> {
             let place = super::lan_idle::Place {
                 position: [m.position.x, m.position.y, m.position.z],
                 rotation: (m.yaw, m.head_pitch, m.head_yaw),
-                on_ground: m.on_ground,
+                on_ground: m.ground.on_ground,
                 velocity: [m.velocity.x, m.velocity.y, m.velocity.z],
             };
             let kind = m.kind.id.as_str();
@@ -1904,7 +1908,7 @@ impl Game<'_> {
             let place = super::lan_idle::Place {
                 position: [d.position.x, d.position.y, d.position.z],
                 rotation: (0.0, 0.0, 0.0),
-                on_ground: d.on_ground,
+                on_ground: d.ground.on_ground,
                 velocity: [d.velocity.x, d.velocity.y, d.velocity.z],
             };
             let bare = idle
@@ -1929,7 +1933,7 @@ impl Game<'_> {
             e.precise = false;
             e.needs_sync = d.needs_sync;
             e.vertical_collision = d.vertical_collision;
-            e.horizontal_collision = d.horizontal_collision;
+            e.horizontal_collision = d.ground.horizontal_collision;
             // Entity.DATA_SHARED_FLAGS_ID: glowing 0x40 (the Glowing tag).
             if self.tracked_entity_glowing(d.id) {
                 e.meta.push((0, serializer::BYTE, Value::Byte(0x40)));
@@ -1940,7 +1944,7 @@ impl Game<'_> {
             let e = out.add(o.id as i32, entity_uuid(o.id), "minecraft:experience_orb");
             e.position = [o.position.x, o.position.y, o.position.z];
             e.idle = idle_at(o.position);
-            e.on_ground = o.on_ground;
+            e.on_ground = o.ground.on_ground;
             e.velocity = [o.velocity.x, o.velocity.y, o.velocity.z];
             // ExperienceOrb.DATA_VALUE.
             e.meta.push((8, serializer::INT, Value::Int(o.value)));
@@ -2124,8 +2128,11 @@ impl Game<'_> {
                         let converted: std::result::Result<_, mod_api::text::TextFormError> =
                             (|| {
                                 Ok((
-                                    api_text.try_into_engine(&())?,
-                                    replies.try_into_engine(&())?,
+                                    sunrise_client_lib::api_text::to_serialized_engine(&api_text)?,
+                                    replies
+                                        .iter()
+                                        .map(sunrise_client_lib::api_text::to_serialized_engine)
+                                        .collect::<std::result::Result<Vec<_>, _>>()?,
                                 ))
                             })();
                         match converted {
@@ -2215,6 +2222,10 @@ impl Game<'_> {
                     }
                     self.lan_guest_joined(conn, entities, spawn);
                     let host = self.lan.as_ref()?;
+                    super::cauldron_prediction::publish_registrations(
+                        &super::cauldron_interactions::snapshot(),
+                        host.hub.guest(conn),
+                    );
                     if self.is_dedicated_server()
                         && let Some(g) = host.hub.guest(conn)
                     {
@@ -2224,7 +2235,7 @@ impl Game<'_> {
                             "join",
                             &g.name,
                             g.uuid,
-                            serde_json::json!({ "address": g.address.ip().to_string() }),
+                            serde_json::json!({ "address": g.ip_address() }),
                         );
                         let [x, y, z] = g.position;
                         super::dedicated::log(
@@ -2232,7 +2243,7 @@ impl Game<'_> {
                             &format!(
                                 "{}[/{}] logged in with entity id {} at ({}, {}, {})",
                                 g.name,
-                                g.address,
+                                g.address(),
                                 g.entity_id,
                                 sunrise_core::java_number::double_to_string(x),
                                 sunrise_core::java_number::double_to_string(y),
@@ -2315,7 +2326,7 @@ impl Game<'_> {
                         }
                     }
                     self.lan_crafting_left(&mut guest);
-                    if guest.placed {
+                    if guest.joined() {
                         self.award_leave_game(guest.conn, guest.uuid, &guest.name);
                     }
                     // PlayerList.remove: the vehicle it alone rides goes too.
@@ -2416,8 +2427,8 @@ impl Game<'_> {
                         self.run_guest_commands();
                     }
                 }
-                HostEvent::Jump { conn, from, yaw } => {
-                    self.guest_jump(conn, from, yaw);
+                HostEvent::AcceptedMove(conn, movement) => {
+                    self.guest_accepted_move(conn, movement);
                 }
             }
         }
@@ -2542,8 +2553,8 @@ impl Game<'_> {
     /// first updated in this tick's pass (`Entities::synced`).
     /// `ServerChunkCache.tick`'s broadcast, where ServerLevel.tick runs it:
     /// after the scheduled and random ticks, before the block events, so the
-    /// players get the blocks as they are then. The block log's length after
-    /// it: what the tick writes from there on goes out with the next tick's.
+    /// players get the blocks as they are then. What the tick writes from
+    /// there on goes out with the next tick's.
     pub(super) fn lan_broadcast_changes(&mut self) -> Option<usize> {
         if let Some(host) = self.lan.as_mut() {
             host.hub.broadcast_changes(&mut self.world);
@@ -2610,7 +2621,7 @@ impl Game<'_> {
     /// tick. The counter prevents taking or draining an entity's state twice.
     pub(super) fn lan_pair_joined(&mut self, host: &mut LanHost) {
         if let Some(next) = host.states_next_entity
-            && host.hub.guests.iter().any(|g| host.hub.here(g))
+            && host.hub.guests.iter().any(|g| host.hub.watches(g))
         {
             self.lan_assign_ids();
             if self.next_entity != next {
@@ -2618,7 +2629,8 @@ impl Game<'_> {
                 self.lan_entities(&mut states, false, next, None);
                 self.lan_hook_states(&mut states);
                 self.lan_entity_uuids(&mut states);
-                host.hub.note_joined(states.as_slice());
+                host.hub
+                    .note_joined(states.as_slice(), Some(&*self.entity_attachments));
             }
             host.states_next_entity = Some(self.next_entity);
         }
@@ -2680,6 +2692,11 @@ impl Game<'_> {
             };
             let ridden: Vec<u32> = host.hub.guests.iter().filter_map(|g| g.vehicle).collect();
             self.find_ridden_vehicle_portals(&ridden);
+        }
+        // LevelChunk.registerAllBlockEntitiesAfterLevelLoad publishes saved data before
+        // the first send, not on the first entity tick (which may be frozen or later).
+        if self.is_logical_server() {
+            self.fire_pending_block_entity_loads();
         }
         // A guest's mount fired its `started_riding` with that guest alone in
         // place (the hub held by its action): now every player on the vehicle
@@ -2860,9 +2877,13 @@ impl Game<'_> {
                 let mut events = Vec::new();
                 events.extend(sunrise_client::spans::time("lan_tick_level", || {
                     if defer_connections {
-                        host.hub.tick_level_before_connections(&mut ctx)
+                        host.hub.tick_level_before_connections(
+                            &mut ctx,
+                            Some(&*self.entity_attachments),
+                        )
                     } else {
-                        host.hub.tick_level(&mut ctx)
+                        host.hub
+                            .tick_level(&mut ctx, Some(&*self.entity_attachments))
                     }
                 }));
                 (events, pass.last && !defer_connections)
@@ -3123,6 +3144,8 @@ impl Game<'_> {
         };
         host.hub.place_new_player(conn, &mut ctx);
         self.bind_player_attachments(conn, false);
+        self.lan_register_player_waypoint(conn);
+        self.lan_update_waypoints();
         if elsewhere && let Err(e) = self.enter_level(back) {
             log::error!("could not reopen {}: {e}", back.id());
         }
@@ -3639,7 +3662,8 @@ mod tests {
 
     impl LanHost {
         /// Install an already configured fixture hub without touching the process-wide sync cache.
-        pub(in crate::game) fn for_test(hub: Hub) -> Self {
+        pub(in crate::game) fn for_test(mut hub: Hub) -> Self {
+            hub.dispatch_move_effects = true;
             Self {
                 settings: LanSettings {
                     port: hub.lan.port,
@@ -3865,12 +3889,16 @@ mod tests {
             .join("../../.local/sunrise-client")
             .join(sunrise_core::VANILLA_VERSION);
         let item_data = sync_test_items(&root);
+        let items =
+            sunrise_client::items::Items::catalog(&root, &PackOverlay::NONE, item_data.defaults())
+                .unwrap();
         let preloaded = Arc::new(
             SyncData::load(
                 &root,
                 &PackOverlay::NONE,
                 item_data.defaults(),
-                &super::sync::server_sources(&root, &item_data, &PackOverlay::NONE).unwrap(),
+                &super::sync::server_sources(&root, &item_data, &items, &PackOverlay::NONE)
+                    .unwrap(),
             )
             .unwrap(),
         );
@@ -3888,13 +3916,21 @@ mod tests {
         // A missing root makes an accidental second disk read fail, rather
         // than merely comparing equal snapshots loaded twice.
         let absent = root.join("no-such-resources");
-        initialize_world_sync_data(&mut cache, &absent, &PackOverlay::NONE, &damage, &item_data)
-            .unwrap();
-        let opened = cached_sync_data(&mut cache, &absent, &PackOverlay::NONE, &item_data).unwrap();
+        initialize_world_sync_data(
+            &mut cache,
+            &absent,
+            &PackOverlay::NONE,
+            &damage,
+            &item_data,
+            &items,
+        )
+        .unwrap();
+        let opened =
+            cached_sync_data(&mut cache, &absent, &PackOverlay::NONE, &item_data, &items).unwrap();
         assert!(Arc::ptr_eq(&preloaded, &opened));
         assert!(Arc::ptr_eq(
             &opened,
-            &cached_sync_data(&mut cache, &absent, &PackOverlay::NONE, &item_data).unwrap()
+            &cached_sync_data(&mut cache, &absent, &PackOverlay::NONE, &item_data, &items).unwrap()
         ));
     }
 
@@ -3914,12 +3950,17 @@ mod tests {
             .join("../../.local/sunrise-client")
             .join(sunrise_core::VANILLA_VERSION);
         let item_data = sync_test_items(&root);
+        let items = Arc::new(
+            sunrise_client::items::Items::catalog(&root, &PackOverlay::NONE, item_data.defaults())
+                .unwrap(),
+        );
         let preloaded = Arc::new(
             SyncData::load(
                 &root,
                 &PackOverlay::NONE,
                 item_data.defaults(),
-                &super::sync::server_sources(&root, &item_data, &PackOverlay::NONE).unwrap(),
+                &super::sync::server_sources(&root, &item_data, &items, &PackOverlay::NONE)
+                    .unwrap(),
             )
             .unwrap(),
         );
@@ -3938,6 +3979,7 @@ mod tests {
             let barrier = barrier.clone();
             let root = root.clone();
             let item_data = item_data.clone();
+            let items = items.clone();
             std::thread::spawn(move || {
                 barrier.wait();
                 for _ in 0..32 {
@@ -3946,6 +3988,7 @@ mod tests {
                         &root,
                         &PackOverlay::NONE,
                         &item_data,
+                        &items,
                     )
                     .unwrap();
                 }
@@ -3964,10 +4007,17 @@ mod tests {
             &overlay,
             &damage,
             &item_data,
+            &items,
         )
         .unwrap();
-        let opened =
-            cached_sync_data(&mut cache.lock().unwrap(), &root, &overlay, &item_data).unwrap();
+        let opened = cached_sync_data(
+            &mut cache.lock().unwrap(),
+            &root,
+            &overlay,
+            &item_data,
+            &items,
+        )
+        .unwrap();
         worker.join().unwrap();
         assert!(!Arc::ptr_eq(&preloaded, &opened));
         let id = opened
@@ -3978,6 +4028,7 @@ mod tests {
             &root,
             &PackOverlay::NONE,
             &item_data,
+            &items,
         )
         .unwrap();
         assert!(
@@ -4006,13 +4057,17 @@ mod tests {
             .join("../../.local/sunrise-client")
             .join(sunrise_core::VANILLA_VERSION);
         let item_data = sync_test_items(&root);
+        let items =
+            sunrise_client::items::Items::catalog(&root, &PackOverlay::NONE, item_data.defaults())
+                .unwrap();
         let damage = Catalog::load(&root, &PackOverlay::NONE).unwrap();
         let preloaded = Arc::new(
             SyncData::load(
                 &root,
                 &PackOverlay::NONE,
                 item_data.defaults(),
-                &super::sync::server_sources(&root, &item_data, &PackOverlay::NONE).unwrap(),
+                &super::sync::server_sources(&root, &item_data, &items, &PackOverlay::NONE)
+                    .unwrap(),
             )
             .unwrap(),
         );
@@ -4035,6 +4090,7 @@ mod tests {
                 &PackOverlay::new(&files),
                 &damage,
                 &item_data,
+                &items,
             )
             .unwrap();
             assert!(cache.data.is_none(), "{key} must not eagerly load SyncData");
@@ -4047,6 +4103,7 @@ mod tests {
             &PackOverlay::NONE,
             &damage,
             &item_data,
+            &items,
         )
         .unwrap();
         assert!(
@@ -4067,6 +4124,9 @@ mod tests {
             .join("../../.local/sunrise-client")
             .join(sunrise_core::VANILLA_VERSION);
         let item_data = sync_test_items(&root);
+        let items =
+            sunrise_client::items::Items::catalog(&root, &PackOverlay::NONE, item_data.defaults())
+                .unwrap();
         let damage = Catalog::load(&root, &PackOverlay::NONE).unwrap();
         let initial = vec![(
             "dialog/demo:before".into(),
@@ -4086,10 +4146,11 @@ mod tests {
             packed_registries: Some(std::sync::Arc::new(packed)),
             ..SyncCache::default()
         };
-        initialize_world_sync_data(&mut cache, &root, &initial, &damage, &item_data).unwrap();
+        initialize_world_sync_data(&mut cache, &root, &initial, &damage, &item_data, &items)
+            .unwrap();
         assert!(cache.data.is_none());
         // A late vanilla helper cannot install its overlay over this world.
-        cached_sync_data(&mut cache, &root, &PackOverlay::NONE, &item_data).unwrap();
+        cached_sync_data(&mut cache, &root, &PackOverlay::NONE, &item_data, &items).unwrap();
         assert!(cache.data.is_none());
         let changed = vec![
             (
@@ -4115,7 +4176,7 @@ mod tests {
         let overlay = PackOverlay::new(&changed);
         assert!(prepare_sync_reload(&mut cache, &overlay).is_none());
         let health = damage.reload_tags(&root, &overlay).unwrap();
-        let wire = cached_sync_data(&mut cache, &root, &overlay, &item_data).unwrap();
+        let wire = cached_sync_data(&mut cache, &root, &overlay, &item_data, &items).unwrap();
         assert!(wire.id("minecraft:damage_type", "demo:too_late").is_none());
         assert!(health.id("demo:too_late").is_none());
         assert!(wire.id("minecraft:dialog", "demo:before").is_some());
@@ -4154,9 +4215,10 @@ mod tests {
         // The next world's initial load can register the previously-late type.
         let next = Catalog::load(&root, &overlay).unwrap();
         let mut next_cache = SyncCache::default();
-        initialize_world_sync_data(&mut next_cache, &root, &overlay, &next, &item_data).unwrap();
+        initialize_world_sync_data(&mut next_cache, &root, &overlay, &next, &item_data, &items)
+            .unwrap();
         assert!(
-            cached_sync_data(&mut next_cache, &root, &overlay, &item_data)
+            cached_sync_data(&mut next_cache, &root, &overlay, &item_data, &items)
                 .unwrap()
                 .id("minecraft:damage_type", "demo:too_late")
                 .is_some()
@@ -4219,6 +4281,12 @@ mod tests {
             .expect("prepared test resources require registries.json");
         std::fs::copy(report, root.join("registries.json")).unwrap();
         let item_data = sync_test_items(&prepared);
+        let items = sunrise_client::items::Items::catalog(
+            &prepared,
+            &PackOverlay::NONE,
+            item_data.defaults(),
+        )
+        .unwrap();
         let damage = Catalog::load(&prepared, &PackOverlay::NONE).unwrap();
         let files = vec![(
             "recipe/demo:unrelated".into(),
@@ -4231,17 +4299,20 @@ mod tests {
             &PackOverlay::new(&files),
             &damage,
             &item_data,
+            &items,
         )
         .unwrap();
         assert!(cache.data.is_none());
         assert!(prepare_sync_reload(&mut cache, &PackOverlay::NONE).is_none());
-        let opened = cached_sync_data(&mut cache, &root, &PackOverlay::NONE, &item_data).unwrap();
+        let opened =
+            cached_sync_data(&mut cache, &root, &PackOverlay::NONE, &item_data, &items).unwrap();
         assert!(opened.content_identity.is_some());
         // Changing the root invalidates the cache. Instead remove the private
         // fixture's files: an accidental reload at the same root must now fail.
         std::fs::remove_dir_all(&root).unwrap();
         assert!(sunrise_protocol::registry::Builtin::find(&root).is_none());
-        let reused = cached_sync_data(&mut cache, &root, &PackOverlay::NONE, &item_data).unwrap();
+        let reused =
+            cached_sync_data(&mut cache, &root, &PackOverlay::NONE, &item_data, &items).unwrap();
         assert!(Arc::ptr_eq(&opened, &reused));
     }
 
@@ -4762,17 +4833,21 @@ mod tests {
                 event: &mut EffectParticleModificationEvent<'_>,
             ) {
                 let id = event.entity.id();
-                let name = event.effect.id.id(host).to_string();
+                let name = event
+                    .effect
+                    .id
+                    .id(host)
+                    .expect("active effect is registered");
                 assert_eq!(event.visible, event.effect.visible);
                 ASKED.lock().unwrap().push((
                     id,
-                    name.clone(),
+                    name.to_owned(),
                     event.effect.amplifier,
                     event.original_particle.try_into_engine(&()).unwrap(),
                     event.particle.try_into_engine(&()).unwrap(),
                     event.visible,
                 ));
-                match name.as_str() {
+                match name {
                     "minecraft:speed" if id == ZOMBIE as u32 => {
                         *event.particle = Some(
                             ParticleOptions::simple(ParticleType::Flame)
@@ -4802,7 +4877,7 @@ mod tests {
                 host: &dyn Host,
                 event: &mut EffectParticleModificationEvent<'_>,
             ) {
-                if event.effect.id.id(host) == "minecraft:trial_omen" {
+                if event.effect.id.id(host) == Some("minecraft:trial_omen") {
                     assert_eq!(
                         *event.particle,
                         Some(
@@ -4888,6 +4963,7 @@ mod tests {
             let builtin = super::sync::sync_data(
                 &game.options.resources,
                 &game.res.core.item_data,
+                game.items(),
                 &game.pack_files(),
             )
             .unwrap()

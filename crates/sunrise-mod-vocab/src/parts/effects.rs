@@ -19,7 +19,8 @@ pub(crate) fn resolved_effects() -> &'static OnceLock<sunrise_mod_runtime::regis
 pub trait EffectsRegistrar {
     /// Request an effect by canonical registry id. All mods' declarations are checked at load.
     fn effect_key(&mut self, id: &str) -> crate::EffectKey;
-    /// Attach tick behaviour to an effect declared by this package or an active dependency.
+    /// Attach tick behaviour to an effect declared by this package, by a content package it
+    /// serves (`served_by`), or by an active dependency.
     /// An absent package with an active optional dependency row skips its Parts; other unknown
     /// effects refuse loading.
     fn attach_mob_effect_part(
@@ -31,7 +32,15 @@ pub trait EffectsRegistrar {
 }
 
 /// A refused effect Part registration.
-#[derive(Clone, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
+///
+/// This is a process-local registration error, not a `Wire` type.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::MobEffectPartError>();
+/// ```
+// no wire: local mob-effect Part registration error.
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum MobEffectPartError {
     /// Vanilla effects keep vanilla tick behaviour.
@@ -54,8 +63,10 @@ pub enum MobEffectPartError {
 }
 
 impl dyn crate::Registrar + '_ {
-    /// Attach a Part to an effect declared by this package or an active dependency.
-    /// The declaring package's effect Parts run first. Other Parts execute in
+    /// Attach a Part to an effect declared by this package, by a content package it serves
+    /// (`served_by`), or by an active dependency.
+    /// The owning package's effect Parts (or, for a `served_by` content package, its serving
+    /// native host's) run first. Other Parts execute in
     /// dispatch order, then registration order. Each Part keeps its own cadence.
     /// Vanilla effects refuse immediately.
     pub fn mob_effect_part<P: MobEffectPart>(
@@ -132,38 +143,64 @@ pub fn dispatch_mob_effect_tick<'a>(
     else {
         return;
     };
-    let mut due = crate::entered_parts(attached, "mob_effect_tick").filter(|part| {
+    let mut due = crate::entered_parts(
+        HookId::ShouldApplyEffectTickThisTick,
+        attached,
+        "should_apply_effect_tick_this_tick",
+    )
+    .filter(|&(mod_id, part)| {
         let mut should = crate::ShouldApplyEffectTickThisTickEvent {
             effect,
             tick_count,
             amplifier,
             apply: false,
         };
-        part.should_apply_effect_tick_this_tick(host, &mut should);
-        should.apply
+        crate::runtime::invoke(
+            HookId::ShouldApplyEffectTickThisTick,
+            "should_apply_effect_tick_this_tick",
+            mod_id,
+            || {
+                part.should_apply_effect_tick_this_tick(host, &mut should);
+                should.apply
+            },
+        )
+        .unwrap_or_default()
     });
     let Some(first) = due.next() else {
         return;
     };
     let call = make_call(effect, amplifier);
-    for part in std::iter::once(first).chain(due) {
-        let mut event = crate::ApplyEffectTickEvent {
-            effect: call.effect,
-            dimension: call.dimension,
-            entity: call.entity,
-            amplifier: call.amplifier,
-            holder: call.holder,
-            health: call.health,
-            max_health: call.max_health,
-            food: call.food,
-            active_effects: call.active_effects,
-            changes: &mut *call.changes,
-            keep: *call.keep,
-        };
-        part.apply_effect_tick(host, &mut event);
-        *call.keep = event.keep;
-        if !*call.keep {
-            break;
+    for (mod_id, part) in std::iter::once(first).chain(due) {
+        if crate::runtime::poisoned(HookId::ApplyEffectTick, mod_id) {
+            continue;
+        }
+        let changes_len = call.changes.len();
+        match crate::runtime::invoke(HookId::ApplyEffectTick, "apply_effect_tick", mod_id, || {
+            let mut event = crate::ApplyEffectTickEvent {
+                effect: call.effect,
+                dimension: call.dimension,
+                entity: call.entity,
+                amplifier: call.amplifier,
+                holder: call.holder,
+                health: call.health,
+                max_health: call.max_health,
+                food: call.food,
+                active_effects: call.active_effects,
+                changes: &mut *call.changes,
+                keep: *call.keep,
+            };
+            part.apply_effect_tick(host, &mut event);
+            event.keep
+        }) {
+            Some(keep) => {
+                *call.keep = keep;
+                if !*call.keep {
+                    break;
+                }
+            }
+            None => {
+                call.changes.truncate(changes_len);
+            }
         }
     }
 }

@@ -109,7 +109,6 @@ pub(super) fn block_items(root: &Path) -> Result<HashMap<String, String>> {
 pub(crate) enum LoadEntityTags<'a> {
     Prepared,
     Frozen(&'a Arc<[String]>),
-    Bound(&'a Arc<EntityTypeTags>),
 }
 
 /// The entity membership and registry metadata used by ingredient component codecs.
@@ -150,7 +149,6 @@ pub(crate) fn component_tables(
             Arc::new(EntityTypeTags::load(root, overlay, ids)?)
         }
         LoadEntityTags::Frozen(ids) => Arc::new(EntityTypeTags::load(root, overlay, ids.clone())?),
-        LoadEntityTags::Bound(tags) => tags.clone(),
     };
     let entities = registry
         .by_registry

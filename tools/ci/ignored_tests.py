@@ -106,8 +106,11 @@ LEG = re.compile(r"^(?P<package>[^#]+)#(?P<number>\d+)of(?P<count>\d+)$")
 LISTED = re.compile(r"^(\S+): test$")
 # A daily row's TARGET: the library, or one binary or integration test (cargo's --bin NAME, --test NAME).
 DAILY_TARGET = re.compile(r"^(?:lib|(?:bin|test):[\w-]+)$")
-# Why a test is a daily test (CONTRIBUTING.md "CI tiers"): slower than 2 s, or what it needs.
-DAILY_REASONS = ("slow", "game-boot", "resources", "child-process", "network", "windows")
+# Why a test is a daily test (CONTRIBUTING.md "CI tiers"): slower than 2 s, or what it needs. `stable-line` is a check
+# `verify` runs too, repeated in the daily because a stable release needs a green daily of its commit to hold it.
+DAILY_REASONS = ("slow", "game-boot", "resources", "child-process", "network", "windows", "own-sdk", "stable-line")
+# A test that needs the daily head's SDK in book-quickstart.yml, not a previous Nightly.
+OWN_SDK_REASON = "own-sdk"
 # A daily reason for a test whose target compiles only on Windows (`#![cfg(windows)]`): no Linux shard or `daily-rows`
 # leg selects or expects it, and the Windows job of windows-runtime-leases.yml runs it (--windows-rows).
 WINDOWS_REASON = "windows"
@@ -272,13 +275,13 @@ def known_failures():
 
 def daily_rows():
     """The rows marked `daily` that the shards run: tests moved out of verify that the daily run must run and pass.
-    A Windows-only test runs in the Windows job rather than a Linux shard."""
+    Windows-only and own-SDK tests run in their respective jobs rather than a Linux shard."""
     return [row for row in listed_entries() if row.mark == "daily" and not kept_out(row)]
 
 
 def kept_out(row):
-    """Whether no Linux shard or `daily-rows` leg runs this daily row: another job does (`windows`)."""
-    return row.reason == WINDOWS_REASON
+    """Whether this daily row runs in another job, not a Linux shard or the daily-rows leg."""
+    return row.reason in {WINDOWS_REASON, OWN_SDK_REASON}
 
 
 def windows_rows():
@@ -642,9 +645,7 @@ def failure_diagnostics(output):
             path = location[1] if location else ""
             if any(ord(char) < 32 or 127 <= ord(char) <= 159 for char in path):
                 path = ""
-            # game-discovery emits canonical absolute #[path] declarations. Only
-            # this checkout's exact resolved prefix is authoritative; never guess
-            # another checkout's prefix or search for a matching path suffix.
+            # An absolute path counts only under this checkout's exact prefix, never a guessed one.
             path = path.replace(os.sep, "/")
             prefix = ROOT.as_posix() + "/"
             if path.startswith(prefix):
@@ -726,6 +727,18 @@ def failure_diagnostics(output):
 
 
 RUNNING_LONG = re.compile(r"^test (\S+) has been running for over 60 seconds$")
+# A hung test held its leg until the job's own time limit cancelled the job, and a cancelled job names no test
+# (the client halves in daily 44814607973). Each test run stops at this limit instead: GNU timeout ends the run's
+# whole process group, the test executable included, and returns TIMED_OUT, so the run is red with the tests still
+# running named (libtest's 60 s notices) and the job's later legs still run. The longest leg that finished ran
+# 1,424 s (daily 44781526923).
+TEST_RUN_LIMIT = 45 * 60
+TIMED_OUT = 124
+
+
+def time_limit():
+    """The prefix that stops a test run at TEST_RUN_LIMIT; none without GNU timeout (Windows' `timeout` only waits)."""
+    return ["timeout", f"{TEST_RUN_LIMIT}s"] if os.name == "posix" and shutil.which("timeout") else []
 CRASH_NAMES = 20
 # The job's cgroup (v2): the whole job's memory, compilation and file cache included, as the data-leg lines print it.
 CGROUP = Path("/sys/fs/cgroup")
@@ -900,11 +913,15 @@ def run_binaries(package, executables, arguments, env):
     for target, executable in executables.items():
         output.append(f"     Running {executable} ({executable})")
         crate = package if target == "lib" else target.split(":", 1)[1]
-        done = subprocess.run([executable, *arguments], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-                              errors="replace", env=dict(env, CARGO_CRATE_NAME=crate.replace("-", "_")), cwd=folder)
+        done = subprocess.run([*time_limit(), executable, *arguments], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              text=True, errors="replace", env=dict(env, CARGO_CRATE_NAME=crate.replace("-", "_")),
+                              cwd=folder)
         output.append(done.stdout)
-        if done.returncode:
-            status = 101
+        if done.returncode == TIMED_OUT:
+            # The executables after it still run; the run as a whole reads as stopped at the limit.
+            status = TIMED_OUT
+        elif done.returncode:
+            status = status or 101
             ended = (f"signal: {-done.returncode}, {signal.Signals(-done.returncode).name}"
                      if done.returncode < 0 and -done.returncode in signal.valid_signals()
                      else f"exit status: {done.returncode}")
@@ -931,7 +948,7 @@ def run(package, skip, number=None, count=None, only=None, binaries=None):
         for key in ("SUNRISE_LAUNCHER_TRASH", "SUNRISE_LAUNCHER_CLIPBOARD", "SUNRISE_LAUNCHER_DESKTOP"):
             homes[key] = Path(scratch) / key.lower()
         env = lab.game_env(**homes)
-        # A fixture holds a server Game by value, which the server thread gets a guest stack for: not libtest's 2 MiB.
+        # Some fixtures hold a server Game by value on a libtest thread and need more than its default stack.
         env["RUST_MIN_STACK"] = str(TEST_THREAD_STACK)
         if package == "sunrise-client-lib":
             # Worldgen must meet its real-time deadlines without disabling test assertions.
@@ -1000,7 +1017,7 @@ def run(package, skip, number=None, count=None, only=None, binaries=None):
             process = run_binaries(package, {target: binaries[target] for target in only[0]}, selection, env)
         else:
             process = subprocess.run(
-                [*command, "--", *selection],
+                [*time_limit(), *command, "--", *selection],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace", env=env,
                 cwd=ROOT / workspace,
             )
@@ -1088,6 +1105,12 @@ def run(package, skip, number=None, count=None, only=None, binaries=None):
                 if status != "ignored":
                     results[name] = results.get(name, True) and status == "ok"
     finish_target()
+    if process.returncode == TIMED_OUT:
+        ended_by = f"the {TEST_RUN_LIMIT} s limit"
+        stop("tests still running at the time limit (a hung test)")
+        still = ", ".join(_stopped["still_running"]) or "none named (each started under 60 s before the limit)"
+        print(f"{package}: stopped after {TEST_RUN_LIMIT} s; still running past 60 s: {still}")
+        return None
     if crashed:
         print(f"{package}: a test process crashed (cargo exit {process.returncode})")
         crash_report(package, process.stdout, expected, results)
@@ -1197,7 +1220,7 @@ def main(shards, report=None):
                 if listed == package and in_leg(test, number, count) and not os.environ.get(variable):
                     print(f"{package} {safe_identity(test)}: refused, needs {variable}; run by the parity harness")
                     skip.append(test)
-            # The daily rows another job runs (`windows`) never run here.
+            # The daily rows another job runs never run here.
             skip += [row.test for row in listed_entries() if row.mark == "daily" and kept_out(row)
                      and row.package == package and in_leg(row.test, number, count)]
             if package == "sunrise-client" and count == 2:

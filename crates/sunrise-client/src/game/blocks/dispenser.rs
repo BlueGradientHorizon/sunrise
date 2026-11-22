@@ -531,12 +531,7 @@ impl Game<'_> {
             }
             return Ok((self.default_execute(pos, facing, stack), CLICK));
         }
-        // DispenserBlock.getDefaultDispenseMethod: an egg without ENTITY_DATA drops as an item.
-        if stack.item.ends_with("_spawn_egg")
-            && stack
-                .data()
-                .is_none_or(|data| data.other("!minecraft:entity_data").is_none())
-        {
+        if stack.item.ends_with("_spawn_egg") {
             return self.dispense_spawn_egg(pos, facing, stack);
         }
         Ok((self.default_execute(pos, facing, stack), CLICK))
@@ -740,35 +735,10 @@ impl Game<'_> {
         // `Equippable.canBeEquippedBy`, then the item's parts (`canEquip`) with the stack converted
         // once, for the entity in front.
         let targets = self.targets_at(front);
-        let observed = mod_api::__private::item_listens(mod_api::HookId::CanEquip, &stack.item);
-        let mut source_slot = observed.then(|| Some(stack.clone()));
-        let mut source = source_slot.as_mut().map(|slot| {
-            sunrise_client::mobs::equip::EquipDecision::new(stack as *const _ as usize as u64, slot)
-        });
-        let entities = if observed {
-            targets
-                .iter()
-                .filter_map(|target| match target {
-                    Target::Player => Some(self.own_entity_id() as u32),
-                    Target::Guest(conn) => self
-                        .lan
-                        .as_ref()?
-                        .hub
-                        .guest(*conn)
-                        .map(|guest| guest.entity_id as u32),
-                    Target::Stand(i) => Some(self.armor_stands[*i].id),
-                    Target::Mob(i) => Some(self.mobs[*i].id),
-                })
-                .collect::<Vec<_>>()
-        } else {
-            Vec::new()
-        };
-        let input = source.as_deref().map_or(&*stack, |source| source);
         let (tags, prepared) = (
             &self.stations().enchantments.entity_tags,
-            self.equip_stack(input, &entities),
+            self.equip_stack(stack),
         );
-        let stamp = source.as_ref().and_then(|source| source.stamp());
         let allows = |entity: u32, id: &str| {
             let data = equippable.allows(id, tags);
             self.can_equip(&prepared, equippable.slot, entity, id, data)
@@ -815,28 +785,7 @@ impl Game<'_> {
         let Some(target) = target else {
             return false;
         };
-        let entity = match target {
-            Target::Player => Some(self.own_entity_id() as u32),
-            Target::Guest(conn) => self
-                .lan
-                .as_ref()
-                .and_then(|lan| lan.hub.guest(conn))
-                .map(|guest| guest.entity_id as u32),
-            Target::Stand(i) => Some(self.armor_stands[i].id),
-            Target::Mob(i) => Some(self.mobs[i].id),
-        };
-        if !entity.is_some_and(|id| self.equip_can_apply(&prepared, id)) {
-            return false;
-        }
-        if let Some(source) = source.as_mut() {
-            if !stamp.is_some_and(|stamp| source.matches(stamp)) {
-                return false;
-            }
-            *source.count_mut().expect("live dispenser source") -= 1;
-            stack.count = source.count;
-        } else {
-            stack.count -= 1;
-        }
+        stack.count -= 1;
         // setItemSlot: onEquipItem plays the equip sound and the equip event.
         let (at, sound) = match target {
             Target::Guest(conn) => {
@@ -970,9 +919,16 @@ impl Game<'_> {
         facing: Direction,
         stack: ItemStack,
     ) -> Result<Dispensed> {
-        let (kind, _) = sunrise_client::block_entity_item::spawn_egg_on_spawner(&stack, false);
+        let items = self.res.shared_items();
+        let Some(data) = sunrise_client::block_entity_item::item_entity_data(&stack, &items) else {
+            // Without effective ENTITY_DATA, DispenserBlock selects the ordinary drop.
+            return Ok((self.default_execute(pos, facing, stack), CLICK));
+        };
+        if !self.spawn_egg_allowed(&data.kind) {
+            return Ok((Some(stack), CLICK));
+        }
         let front = offset(pos, facing);
-        let Some(id) = self.spawn_mob_at(&kind, front, facing != Direction::Up) else {
+        let Some(id) = self.spawn_mob_at(&data.kind, front, facing != Direction::Up) else {
             return Ok((Some(stack), CLICK));
         };
         // EntityType.create: `finalizeSpawn` first, the egg's components after.
@@ -986,7 +942,7 @@ impl Game<'_> {
         // EntityType.updateCustomEntityTag: a configured egg
         // (`/give @s pig_spawn_egg[minecraft:entity_data={…}]`) spawns the mob
         // it describes from a dispenser too, not only from a player's hand.
-        self.apply_spawn_egg_entity_data(id, &stack);
+        self.apply_spawn_egg_entity_data(id, &data);
         self.mob_ambient(id)?;
         // SpawnEggItemBehavior: the entity was placed by the dispenser.
         self.post_block_game_event("minecraft:entity_place", [pos.0, pos.1, pos.2], None, None);
@@ -1858,11 +1814,8 @@ impl Game<'_> {
                 LevelSound::new(name, [at.x, at.y, at.z], 1.0, 1.0).in_source(SoundSource::Blocks)
             };
             match m.species() {
-                // A refused part shears nothing: no shear event, and the dispenser does not succeed.
                 _ if let Some((part, _)) = part => {
-                    if self.part_shear(i, part, None, &shears).is_err() {
-                        continue;
-                    }
+                    self.part_shear(i, part, None, &shears);
                 }
                 Species::SulfurCube if sulfur_cube::has_body(m) => {
                     // SulfurCube.shear: the swallowed block comes out at the
@@ -2213,6 +2166,84 @@ mod tests {
     use super::*;
     use sunrise_client::mobs::Mob;
 
+    #[test]
+    #[ignore = "daily"]
+    fn a_dispenser_keeps_the_egg_if_its_type_cannot_spawn_in_peaceful() {
+        use crate::game::{commands::peaceful_tests, execution_role::ExecutionRole};
+
+        peaceful_tests::with_types(ExecutionRole::IntegratedServer, |game| {
+            let egg = peaceful_tests::trader_egg();
+            let dispense = |game: &mut Game<'_>| {
+                game.dispense_spawn_egg((4, 64, 4), Direction::Up, egg.clone())
+                    .unwrap()
+                    .0
+            };
+            assert_eq!(dispense(game).unwrap().count, 1);
+            assert!(game.mobs.is_empty());
+            game.set_difficulty_forced(2);
+            assert!(dispense(game).is_none());
+            assert_eq!(game.mobs.len(), 1);
+            assert_eq!(game.mobs[0].kind.id, peaceful_tests::TRADER);
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_dispenser_drops_an_egg_without_prototype_entity_data() {
+        use crate::game::native_entity_refs::tests::{fixture_root, with_game_at};
+        use std::{fs, path::Path};
+
+        fn link_fixture_source(source: &Path, target: &Path) {
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(source, target).unwrap();
+            #[cfg(not(unix))]
+            if source.is_dir() {
+                fs::create_dir(target).unwrap();
+                for entry in fs::read_dir(source).unwrap() {
+                    let entry = entry.unwrap();
+                    link_fixture_source(&entry.path(), &target.join(entry.file_name()));
+                }
+            } else if fs::hard_link(source, target).is_err() {
+                fs::copy(source, target).unwrap();
+            }
+        }
+
+        let source = fixture_root().canonicalize().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        for entry in fs::read_dir(&source).unwrap() {
+            let entry = entry.unwrap();
+            if entry.file_name() != "items.json" {
+                link_fixture_source(&entry.path(), &root.path().join(entry.file_name()));
+            }
+        }
+        let egg = "minecraft:cow_spawn_egg";
+        let mut items: serde_json::Value =
+            serde_json::from_slice(&fs::read(source.join("items.json")).unwrap()).unwrap();
+        assert!(
+            items[egg]
+                .as_object_mut()
+                .unwrap()
+                .remove("minecraft:entity_data")
+                .is_some()
+        );
+        fs::write(
+            root.path().join("items.json"),
+            serde_json::to_vec(&items).unwrap(),
+        )
+        .unwrap();
+
+        with_game_at(root.path().to_owned(), |game| {
+            let stack = ItemStack::new(egg, 1);
+            let (left, event) = game
+                .dispense_default_method((4, 64, 4), Direction::Up, stack.clone())
+                .unwrap();
+            assert_eq!((left, event), (None, CLICK));
+            assert!(game.mobs.is_empty());
+            assert_eq!(game.dropped.len(), 1);
+            assert_eq!(game.dropped[0].stack, stack);
+        });
+    }
+
     /// What a dispense probe part heard: which part, and the dispenser it was for.
     #[derive(Clone, Default)]
     struct Heard(std::sync::Arc<std::sync::Mutex<Vec<(&'static str, [i32; 3], u32)>>>);
@@ -2499,12 +2530,11 @@ mod tests {
                 assert_eq!((done, worn, stand), (false, None, false));
                 assert_eq!(fits.asked().len(), 2);
                 // A missing entity is refused, and the part never hears of it.
-                let prepared = game.equip_stack(&helmet, &[]);
+                let prepared = game.equip_stack(&helmet);
                 assert!(!game.can_equip(&prepared, "head", 9_999, "minecraft:zombie", true));
                 assert!(fits.asked().is_empty());
                 // With no part to ask, the component's answer stands for any entity.
-                let chestplate =
-                    game.equip_stack(&ItemStack::new("minecraft:iron_chestplate", 1), &[]);
+                let chestplate = game.equip_stack(&ItemStack::new("minecraft:iron_chestplate", 1));
                 assert!(game.can_equip(&chestplate, "chest", 9_999, "minecraft:zombie", true));
             });
         });

@@ -9,7 +9,7 @@ use super::{
 };
 use crate::join_seq::JoinList;
 use sunrise_core::geometry::{Aabb, Vec3};
-use sunrise_core::nbt::{Compound, Tag};
+use sunrise_core::nbt::Tag;
 
 /// The goal flags a controlling passenger takes from its vehicle.
 const CONTROLLED: u8 = MOVE | JUMP | LOOK;
@@ -602,10 +602,10 @@ pub fn tick_until_consumption(
     w: &MobWorld,
     level: &mut super::DamageLevel<'_>,
     events: &mut Vec<super::MobEvent>,
-    trample: &mut Option<super::ai::MobTrample>,
+    movement: &mut Option<super::ai::MobMovement>,
 ) -> super::ai::TickProgress {
     tick_with(mobs, index, w, level, events, |m, w, level, events| {
-        m.tick_until_consumption(w, level, events, trample)
+        m.tick_until_consumption(w, level, events, movement)
     })
 }
 
@@ -617,11 +617,11 @@ pub fn resume_after_consumption(
     level: &mut super::DamageLevel<'_>,
     was_on_fire: bool,
     events: &mut Vec<super::MobEvent>,
-    trample: &mut Option<super::ai::MobTrample>,
+    movement: &mut Option<super::ai::MobMovement>,
 ) -> super::ai::TickProgress {
     tick_with(mobs, index, w, level, events, |m, w, level, events| {
         let progress =
-            super::ai::resume_after_consumption(m, w, level, was_on_fire, events, Some(trample));
+            super::ai::resume_after_consumption(m, w, level, was_on_fire, events, Some(movement));
         if matches!(progress, super::ai::TickProgress::Complete(_)) {
             super::neutral_anger::after_tick(m, w.game_time);
         }
@@ -639,7 +639,7 @@ pub fn resume_after_breathing(
     known_speed: sunrise_core::geometry::Vec3,
     breath: Option<crate::breathing::Breath>,
     events: &mut Vec<super::MobEvent>,
-    trample: &mut Option<super::ai::MobTrample>,
+    movement: &mut Option<super::ai::MobMovement>,
 ) -> super::ai::TickProgress {
     tick_with(mobs, index, w, level, events, |m, w, level, events| {
         let progress = super::ai::resume_after_breathing(
@@ -650,7 +650,7 @@ pub fn resume_after_breathing(
             air,
             known_speed,
             breath,
-            Some(trample),
+            Some(movement),
         );
         if matches!(progress, super::ai::TickProgress::Complete(_)) {
             super::neutral_anger::after_tick(m, w.game_time);
@@ -659,17 +659,36 @@ pub fn resume_after_breathing(
     })
 }
 
-/// Resume after the level applied (or refused) the paused landing.
-pub fn resume_after_trample(
+/// Resume the tick with its current navigation owner after settling a hit.
+pub fn resume_after_damage(
     mobs: &mut JoinList<Mob>,
     index: usize,
     w: &MobWorld,
     level: &mut super::DamageLevel<'_>,
-    trample: &mut Option<super::ai::MobTrample>,
+    resume: super::ai::DamageResume,
+    events: &mut Vec<super::MobEvent>,
+    movement: &mut Option<super::ai::MobMovement>,
+) -> super::ai::TickProgress {
+    tick_with(mobs, index, w, level, events, |m, w, level, events| {
+        let progress = super::ai::resume_after_damage(m, w, level, events, resume, Some(movement));
+        if matches!(progress, super::ai::TickProgress::Complete(_)) {
+            super::neutral_anger::after_tick(m, w.game_time);
+        }
+        progress
+    })
+}
+
+/// Resume after the level applied (or refused) the paused landing.
+pub fn resume_movement(
+    mobs: &mut JoinList<Mob>,
+    index: usize,
+    w: &MobWorld,
+    level: &mut super::DamageLevel<'_>,
+    movement: &mut Option<super::ai::MobMovement>,
     events: &mut Vec<super::MobEvent>,
 ) -> super::ai::TickProgress {
     tick_with(mobs, index, w, level, events, |m, w, level, events| {
-        let progress = super::ai::resume_after_trample(m, w, level, trample, events);
+        let progress = super::ai::resume_movement(m, w, level, movement, events);
         if matches!(progress, super::ai::TickProgress::Complete(_)) {
             super::neutral_anger::after_tick(m, w.game_time);
         }
@@ -703,7 +722,10 @@ fn tick_with<R>(
             owner = vehicle;
         }
     }
-    if !mod_api::__private::listened(mod_api::HookId::LivingChangeTarget) {
+    // The fast path has no live mob list, so resumed Creaking cramming would drop every pinned peer.
+    if mobs[index].species() != Species::Creaking
+        && !mod_api::__private::listened(mod_api::HookId::LivingChangeTarget)
+    {
         if owner == index {
             return step(&mut mobs[index], w, level, events);
         }
@@ -745,7 +767,7 @@ pub fn keeps_alive(m: &Mob) -> bool {
 }
 
 /// `IsChickenJockey`, `SkeletonTrap` and `SkeletonTrapTime`.
-pub fn write_nbt(m: &Mob, map: &mut Compound) {
+pub fn write_nbt(m: &Mob, map: &mut crate::entity_nbt::EntityTagWriter) {
     match m.species() {
         Species::Chicken => {
             map.insert(
@@ -822,7 +844,7 @@ mod tests {
         kind.id = "minecraft:zombie".into();
         let mut rider = Mob::new(72, Arc::new(kind), Vec3::new(2.0, 80.0, 0.5), 0.0);
         rider.extra.mount = Some(71);
-        rider.on_ground = true;
+        rider.ground.on_ground = true;
         rider.ai.nav.speed_modifier = 3.75;
         rider.ai.nav.target_pos = Some([1, 2, 3]);
         rider.ai.goals.clear();

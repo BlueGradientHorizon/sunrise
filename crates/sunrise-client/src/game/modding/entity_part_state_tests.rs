@@ -72,6 +72,7 @@ impl Hooks for StateMod {
             mod_api::GeneralSavePolicy::Save,
             true,
             false,
+            None,
             8,
             3,
             1,
@@ -99,7 +100,6 @@ fn with_state_mod(name: &str, test: impl FnOnce(&mut Game<'_>)) {
     }
     with_mod(StateMod { refused: None }, |game| {
         // Registration is over once the game is built: the test runs in the world's phase.
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         game.options.dedicated = Some(Vec::new());
         game.native_level_opened(Dim::Overworld);
         game.world
@@ -115,7 +115,7 @@ fn with_state_mod(name: &str, test: impl FnOnce(&mut Game<'_>)) {
 /// is only declared while that phase is current.
 fn with_mod(state_mod: StateMod, test: impl FnOnce(&mut Game<'_>)) {
     mod_platform::__private::initialize().expect("test registration requires the mod API runtime");
-    let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+    let _phase = mod_platform::__private::RegistrationGuard::open();
     let mods: mod_api::Mods =
         vec![mod_api::ModEntry::new("part_state", Box::new(state_mod))].into();
     mod_platform::testing::with_mods(mods, || {

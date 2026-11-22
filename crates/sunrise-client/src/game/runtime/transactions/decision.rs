@@ -509,7 +509,11 @@ pub(in crate::game) fn run<H: ActionHost, T: ActionTarget<H>>(
             return outcome;
         }
         guard.host.dispatched();
+        let failures = mod_api::runtime::isolated_failures();
         let reply = fire(guard.host);
+        if mod_api::runtime::isolated_failures() != failures {
+            return Outcome::ListenerFailed;
+        }
         apply(guard.host, token, reply)
     }))
     .unwrap_or(Outcome::ListenerFailed);

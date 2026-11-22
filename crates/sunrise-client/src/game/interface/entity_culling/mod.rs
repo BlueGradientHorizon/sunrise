@@ -7,9 +7,9 @@ use super::{
 };
 use sunrise_client::graphics::EntityCullingMode;
 use sunrise_client::voxel_occlusion::Culler as OcclusionCuller;
+pub use sunrise_client_gameplay::entity_occlusion::{EntityCullDecision, at};
 pub(super) use sunrise_client_gameplay::entity_occlusion::{
-    EntityCullDecision, EntityOcclusion, at, cull_box, default_range, entity_view_scale,
-    orb_in_view,
+    EntityOcclusion, cull_box, default_range, entity_view_scale, orb_in_view,
 };
 use sunrise_client_gameplay::occlusion_culling::QuerySource;
 use sunrise_core::geometry::{Aabb, Vec3};
@@ -335,6 +335,7 @@ mod precheck_envelope_tests {
             heightmaps: Default::default(),
             animations: MobData::load_animations(&root),
             villager_hats: Default::default(),
+            frame_models: Default::default(),
             cem: Default::default(),
             random_textures: Default::default(),
             emissive: Default::default(),
@@ -343,6 +344,7 @@ mod precheck_envelope_tests {
             pois: Default::default(),
             species_placements: Default::default(),
             mod_spawns: Default::default(),
+            vanilla_spawn_placements: None,
         };
         let camera = glam::DVec3::new(3.0, 62.0, -4.0);
         let mut checked = 0;

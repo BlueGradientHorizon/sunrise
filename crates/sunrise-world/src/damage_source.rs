@@ -39,7 +39,7 @@ pub struct Definition {
     pub effects: String,
     pub death_message_type: String,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Catalog {
     definitions: Vec<Definition>,
     ids: BTreeMap<String, DamageTypeId>,
@@ -127,6 +127,7 @@ impl Catalog {
                 .collect(),
         })
     }
+    #[inline]
     pub fn id(&self, name: &str) -> Option<DamageTypeId> {
         self.ids.get(name).copied()
     }

@@ -6,7 +6,7 @@ use super::{
     Game,
     creatures::{Finalized, SpawnReason},
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use sunrise_client::{
     Result,
     containers::BlockEntity,
@@ -39,8 +39,6 @@ pub(super) enum Planned {
 /// What the spawner code keeps between ticks.
 #[derive(Default)]
 pub(super) struct SpawnerState {
-    /// Every entity type id (`EntityType.byString`), read once.
-    entity_types: Option<HashSet<String>>,
     /// The mob shown in each spawner and the id it was made for
     /// (`getOrCreateDisplayEntity`).
     displays: HashMap<Pos, (String, Mob)>,
@@ -49,35 +47,14 @@ pub(super) struct SpawnerState {
 impl Game<'_> {
     /// `EntityType.byString`: the type is in the registry.
     pub(super) fn entity_type_exists(&self, id: &str) -> bool {
-        self.spawners
-            .entity_types
-            .as_ref()
-            .is_some_and(|t| t.contains(id))
+        self.res
+            .rest
+            .get()
+            .is_some_and(|rest| rest.spawner_types.contains_key(id))
     }
     /// Whether `entity_type_exists` has a registry to answer from.
     pub(super) fn entity_types_loaded(&self) -> bool {
-        self.spawners
-            .entity_types
-            .as_ref()
-            .is_some_and(|t| !t.is_empty())
-    }
-    pub(super) fn load_entity_types(&mut self) {
-        if self.spawners.entity_types.is_some() {
-            return;
-        }
-        let path = self.options.resources.join("entity-types.json");
-        let types = std::fs::read(path)
-            .ok()
-            .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
-            .and_then(|v| {
-                v.as_object().map(|o| {
-                    o.keys()
-                        .map(|k| sunrise_client::command::args::normalize(k))
-                        .collect()
-                })
-            })
-            .unwrap_or_default();
-        self.spawners.entity_types = Some(types);
+        self.res.rest.get().is_some()
     }
     /// The server tick of the spawner at `key`. Its client tick comes after
     /// every block entity's (`client_tick_spawners`).
@@ -501,7 +478,7 @@ impl Game<'_> {
         self.res.mob_types().contains_key(&id).then_some(id)
     }
     /// `SpawnEggItem.useOn` on a spawner: the egg sets its mob, and an op's
-    /// egg its entity `data` too (`block_entity_item::spawn_egg_on_spawner`).
+    /// egg its effective entity `data` too.
     /// None when the clicked block has no spawner.
     pub(super) fn use_spawn_egg_on_spawner(
         &mut self,
@@ -648,6 +625,7 @@ impl Game<'_> {
                 * glam::Mat4::from_scale(glam::Vec3::splat(scale));
             let light = self.world.light(key.0, key.1, key.2);
             let packed = (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8);
+            self.mark_entity(out.len(), &mob.kind.id);
             if mob.species() == sunrise_client::mobs::Species::SulfurCube {
                 self.sulfur_cube_body_geometry(
                     mob,

@@ -874,6 +874,7 @@ mod tests {
             animations: MobData::load_animations(&root),
             biome_tags: Default::default(),
             villager_hats: Default::default(),
+            frame_models: Default::default(),
             cem: Default::default(),
             random_textures: Default::default(),
             emissive: Default::default(),
@@ -881,6 +882,7 @@ mod tests {
             pois: Default::default(),
             species_placements: Default::default(),
             mod_spawns: Default::default(),
+            vanilla_spawn_placements: None,
             resolved: Default::default(),
         };
         // Every texture its own rect, so a swapped texture shows.
@@ -937,8 +939,7 @@ mod tests {
                         &atlas,
                         0x50a0,
                         &data,
-                        Default::default(),
-                        None,
+                        &mut render::FrameDraw::default(),
                         &mut gpu,
                         &mut skin,
                     );

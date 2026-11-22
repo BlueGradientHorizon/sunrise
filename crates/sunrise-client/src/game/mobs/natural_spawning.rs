@@ -10,7 +10,7 @@ use sunrise_client::{
     blocks::BlockFacts,
     collisions::{SceneCollisions, no_collision_empty},
     mobs::{
-        Mob, MobWorld, Species,
+        Mob, MobType, MobWorld, Species,
         data::{self, MobData},
         seen_grid::SeenGrid,
         spawn_rules::{Reason, SpawnLevel},
@@ -603,12 +603,13 @@ impl sunrise_client::mobs::finalize::FinalizeLevel for PassLevel<'_, '_, '_> {
     }
     fn create(&mut self, kind: &str, _: sunrise_client::mobs::spawn_rules::Reason) -> Option<Mob> {
         use sunrise_world::food::Difficulty;
+        let t = self.l.game.res.mob_types().get(kind)?;
         if self.l.game.world.health_rules.difficulty == Difficulty::Peaceful
-            && !sunrise_client::mobs::finalize::allowed_in_peaceful(kind)
+            && !t.allowed_in_peaceful()
         {
             return None;
         }
-        let t = self.l.game.res.mob_types().get(kind)?.clone();
+        let t = t.clone();
         Some(Mob::new(
             self.l.provisional_id(),
             t,
@@ -621,9 +622,16 @@ impl sunrise_client::mobs::finalize::FinalizeLevel for PassLevel<'_, '_, '_> {
     }
 }
 impl SpawnLevel for GameLevel<'_, '_> {
-    fn placement_check(&self, entity: &str, reason: Reason, at: [i32; 3], vanilla: bool) -> bool {
+    fn placement_check(
+        &self,
+        entity: &str,
+        reason: Reason,
+        at: [i32; 3],
+        default_result: bool,
+        random: &mut dyn mod_api::RandomSource,
+    ) -> bool {
         if !mod_api::__private::listened(mod_api::HookId::MobSpawnPlacementCheck) {
-            return vanilla;
+            return default_result;
         }
         let mut result = SpawnCheck::Default;
         self.game.native_mob_spawn_placement_check(
@@ -632,16 +640,17 @@ impl SpawnLevel for GameLevel<'_, '_> {
                 kind: entity,
                 reason,
                 pos: BlockPos::new(at[0], at[1], at[2]),
-                default_result: vanilla,
+                default_result,
                 level: self.level_ref(),
                 spawner: self.spawner,
+                random,
                 result: &mut result,
             },
         );
         match result {
             SpawnCheck::Succeed => true,
             SpawnCheck::Fail => false,
-            _ => vanilla,
+            _ => default_result,
         }
     }
     fn within_world_border(&self, x: i32, z: i32) -> bool {
@@ -796,14 +805,8 @@ impl NaturalLevel for GameLevel<'_, '_> {
     fn has_ceiling(&self) -> bool {
         self.w.world.shape.has_ceiling
     }
-    fn mob_type(&self, entity: &str) -> Option<(Species, f32, f32, Category)> {
-        let t = self.game.res.mob_types().get(entity)?;
-        Some((
-            t.species,
-            t.width as f32,
-            t.height as f32,
-            Category::from_name(&t.category),
-        ))
+    fn mob_type(&self, entity: &str) -> Option<&MobType> {
+        self.game.res.mob_types().get(entity).map(|t| t.as_ref())
     }
     // The `natural_mob_spawns` attribute reads the zoomed biome
     // (fullResolutionBiomes), the spawn probability the noise cell.
@@ -942,8 +945,8 @@ impl sunrise_client::mobs::spawner::SpawnerLevel for GameLevel<'_, '_> {
             .rules
             .bool_at(sunrise_client::gamerules::vanilla::SPAWNER_BLOCKS_WORK)
     }
-    fn entity_exists(&self, id: &str) -> bool {
-        self.game.res.mob_types().contains_key(id) || self.game.entity_type_exists(id)
+    fn spawner_type(&self, id: &str) -> Option<sunrise_client::mobs::spawner::SpawnerTypeFacts> {
+        self.game.res.rest().spawner_types.get(id).copied()
     }
     fn count_entities(&self, id: &str, bounds: Aabb) -> usize {
         let mobs = self
@@ -1090,6 +1093,9 @@ impl<'a> Game<'a> {
             }))
     }
     fn local_level_player(&self) -> Option<LevelPlayer> {
+        if !self.local_player_in_level() {
+            return None;
+        }
         self.player_view().map(|p| LevelPlayer {
             uuid: sunrise_client::lan::playerdata::ints_uuid(p.uuid),
             position: p.position,
@@ -1107,11 +1113,18 @@ impl<'a> Game<'a> {
         &'s self,
         dimension: &'s str,
     ) -> impl Iterator<Item = u128> + 's {
-        let local = (dimension == self.dim.id() && self.player.is_some() && !self.lan_acting_fake)
+        let local = (dimension == self.dim.id() && self.local_player_in_level())
             .then(|| sunrise_client::lan::playerdata::ints_uuid(self.acting_uuid()));
         local
             .into_iter()
             .chain(self.guests_placed_in(dimension).map(|g| g.uuid))
+    }
+    fn local_player_in_level(&self) -> bool {
+        self.player.is_some()
+            && !self.lan_acting_fake
+            && self
+                .lan_acting
+                .is_none_or(|conn| self.command_guest(conn).is_some_and(|g| g.placed))
     }
     /// The guests in the level in place, past the acting one: `player_view`
     /// already reads that guest's live body, and its record lags behind it.
@@ -1379,7 +1392,7 @@ impl<'a> Game<'a> {
             self.load_mob(Tag::Compound(nbt), None);
         }
     }
-    fn generation_creatures<Q: RandomSource + 'static>(
+    fn generation_creatures<Q: RandomSource + Clone + 'static>(
         &self,
         cx: i32,
         cz: i32,
@@ -1886,8 +1899,7 @@ mod tests {
             let level = game.natural_level();
             let placement = |random: &mut LegacyRandom| {
                 let ok = sunrise_client::mobs::spawn_rules::check_spawn_rules(
-                    "minecraft:sulfur_cube",
-                    Species::SulfurCube,
+                    level.mob_type("minecraft:sulfur_cube").unwrap().into(),
                     &level,
                     Reason::Natural,
                     random,

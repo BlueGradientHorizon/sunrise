@@ -161,7 +161,12 @@ impl Game<'_> {
                     break 'tick;
                 }
                 if merging && !no_physics {
-                    self.item_landing_event(item.id, item.previous, item.position, item.on_ground);
+                    self.item_landing_event(
+                        item.id,
+                        item.previous,
+                        item.position,
+                        item.ground.on_ground,
+                    );
                     self.entity_powder_snow_particles(
                         item.previous,
                         item.position,
@@ -422,9 +427,6 @@ impl Game<'_> {
     /// `ExperienceOrb.awardWithDirection`: `award` whose fresh orbs start
     /// `roughly` that way (`new ExperienceOrb(level, pos, roughly, value)`).
     pub(super) fn spawn_orbs_toward(&mut self, at: [f64; 3], roughly: [f64; 3], mut value: u32) {
-        if value > 0 {
-            self.journal_level_random();
-        }
         while value > 0 {
             let v = ExperienceOrb::split(value);
             value -= v;
@@ -644,7 +646,7 @@ impl Game<'_> {
             // `getExperienceValue` sizes: 1 to 2477.
             value: value as i32,
             age: 0,
-            on_ground: false,
+            ground: Default::default(),
             count: 1,
             ticks: 0,
             health: 5,
@@ -845,18 +847,13 @@ impl Game<'_> {
 
     /// Block.popResource
     pub(super) fn pop_resource(&mut self, pos: [i32; 3], stack: ItemStack) {
-        // Block.popResource: Mth.nextDouble offsets from the level random; the
-        // motion is `new ItemEntity(..)`'s own, from the item's random.
-        let p = spill::pop_position(&mut self.world.random, pos);
-        // Block.popResource draws its offsets before the private overload checks the gamerule.
-        if !self
+        let block_drops = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::BLOCK_DROPS)
-        {
-            return;
+            .bool_at(sunrise_client::gamerules::vanilla::BLOCK_DROPS);
+        if let Some(at) = spill::admitted_pop_position(&mut self.world.random, pos, block_drops) {
+            self.spawn_item_own(stack, at, 10);
         }
-        self.spawn_item_own(stack, p, 10);
     }
 
     /// `Containers.dropItemStack`: a crafting remainder leaves from inside the
