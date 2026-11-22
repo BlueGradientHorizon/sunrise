@@ -650,8 +650,7 @@ impl Game<'_> {
                     batch.text_styled_with_font(
                         &self.gui.atlas,
                         text,
-                        x as f32,
-                        local_y as f32,
+                        [x as f32, local_y as f32],
                         *color,
                         true,
                         chosen_font_str,

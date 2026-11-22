@@ -2367,7 +2367,7 @@ impl Game<'_> {
             (tw, 8.0),
         );
         self.tooltip_box(batch, Some(stack), px, py, tw, 8.0);
-        batch.text_styled_with_font(atlas, &lines[0].0, px, py, lines[0].1, true, default_font);
+        batch.text_styled_with_font(atlas, &lines[0].0, [px, py], lines[0].1, true, default_font);
     }
     /// `ClientBundleTooltip.extractImage`: the slots, the count past them and
     /// the progress bar.
@@ -2416,8 +2416,7 @@ impl Game<'_> {
             batch.text_styled_with_font(
                 atlas,
                 &label,
-                at[0] + 12.0 - (w / 2.0).floor(),
-                at[1] + 10.0,
+                [at[0] + 12.0 - (w / 2.0).floor(), at[1] + 10.0],
                 u32::MAX,
                 true,
                 default_font,
@@ -2436,8 +2435,7 @@ impl Game<'_> {
                 batch.text_styled_with_font(
                     atlas,
                     &line,
-                    at[0],
-                    ty,
+                    [at[0], ty],
                     0xFFAA_AAAA,
                     false,
                     default_font,
@@ -2477,8 +2475,7 @@ impl Game<'_> {
             batch.text_styled_with_font(
                 atlas,
                 &label,
-                bx + 48.0 - (w / 2.0).floor(),
-                by + 3.0,
+                [bx + 48.0 - (w / 2.0).floor(), by + 3.0],
                 u32::MAX,
                 true,
                 default_font,

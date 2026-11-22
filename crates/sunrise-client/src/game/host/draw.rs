@@ -171,8 +171,7 @@ impl DrawContext for GameDrawContext<'_, '_> {
         Ok(self.surface.text_styled_with_font(
             &self.game.gui.atlas,
             &text,
-            at[0],
-            at[1],
+            at,
             crate::hud::rgba(r, g, b, a),
             shadow,
             name,

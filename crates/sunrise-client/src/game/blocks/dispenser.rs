@@ -409,8 +409,11 @@ impl Game<'_> {
         stack: ItemStack,
     ) -> Option<ItemStack> {
         let left = self.default_execute(pos, facing, stack);
-        self.dispenser_event(CLICK, pos, 0);
-        self.dispenser_event(2000, pos, data_value(facing));
+        self.after_commit(super::transactions::After::DispenserFeedback {
+            pos,
+            facing,
+            event: CLICK,
+        });
         left
     }
     /// `DefaultDispenseItemBehavior.addToInventoryOrDispense`: inserts `remainder` into the
@@ -655,8 +658,7 @@ impl Game<'_> {
         if event == FAIL {
             self.native_block_failed_dispense(self.dim.id(), [pos.0, pos.1, pos.2], &item);
         }
-        self.dispenser_event(event, pos, 0);
-        self.dispenser_event(2000, pos, data_value(facing));
+        self.after_commit(super::transactions::After::DispenserFeedback { pos, facing, event });
         Ok(ControlFlow::Continue(left))
     }
     /// `DispenserBlock.getDefaultDispenseMethod`: equipment, spawn eggs, or a drop.

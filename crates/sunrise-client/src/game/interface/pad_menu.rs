@@ -2380,12 +2380,28 @@ impl Game<'_> {
         }
         let inventory = self.observed_overlay_now().is_none()
             && matches!(self.screen, Screen::Inventory | Screen::Creative);
+        let pause_removed: Vec<[f32; 4]> =
+            if self.observed_overlay_now().is_none() && self.screen == Screen::Paused {
+                self.pause_init_children()
+                    .into_iter()
+                    .filter(|(action, _, _)| self.pause_child_removed(*action))
+                    .map(|(_, rect, _)| rect)
+                    .collect()
+            } else {
+                Vec::new()
+            };
         let (cx, cy) = self.cursor;
         key_focus::keyboard_targets(key_focus::drawn_targets(), inventory)
             .into_iter()
             .find(|t| {
                 let [x, y, w, h] = t.rect;
-                cx >= x && cy >= y && cx < x + w && cy < y + h
+                cx >= x
+                    && cy >= y
+                    && cx < x + w
+                    && cy < y + h
+                    && !pause_removed
+                        .iter()
+                        .any(|r| r.iter().zip(t.rect).all(|(a, b)| (a - b).abs() < 0.5))
             })
     }
 

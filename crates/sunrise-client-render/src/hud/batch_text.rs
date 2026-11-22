@@ -1,5 +1,14 @@
 use super::*;
 
+#[derive(Clone, Copy)]
+struct StyledTextOptions<'a> {
+    color: u32,
+    shadow: bool,
+    world: bool,
+    outline: Option<(u32, [f32; 2])>,
+    default_font: &'a str,
+}
+
 impl HudBatch {
     pub fn text_width(atlas: &HudAtlas, text: &str) -> f32 {
         atlas.font.width(text)
@@ -35,28 +44,38 @@ impl HudBatch {
         self.styled_text(
             atlas,
             text,
-            x,
-            y,
-            color,
-            shadow,
-            false,
-            None,
-            crate::font::DEFAULT,
+            [x, y],
+            StyledTextOptions {
+                color,
+                shadow,
+                world: false,
+                outline: None,
+                default_font: crate::font::DEFAULT,
+            },
         )
     }
     /// `text_styled` using `default_font` for spans without an explicit style font.
-    #[allow(clippy::too_many_arguments)]
     pub fn text_styled_with_font(
         &mut self,
         atlas: &HudAtlas,
         text: &crate::text::Text,
-        x: f32,
-        y: f32,
+        position: [f32; 2],
         color: u32,
         shadow: bool,
         default_font: &str,
     ) -> f32 {
-        self.styled_text(atlas, text, x, y, color, shadow, false, None, default_font)
+        self.styled_text(
+            atlas,
+            text,
+            position,
+            StyledTextOptions {
+                color,
+                shadow,
+                world: false,
+                outline: None,
+                default_font,
+            },
+        )
     }
     /// `text_styled` for text drawn in the world (`TextRenderable.render`
     /// with `flat` false): each quad's `depth` is its z in text units, the
@@ -75,13 +94,14 @@ impl HudBatch {
         self.styled_text(
             atlas,
             text,
-            x,
-            y,
-            color,
-            shadow,
-            true,
-            None,
-            crate::font::DEFAULT,
+            [x, y],
+            StyledTextOptions {
+                color,
+                shadow,
+                world: true,
+                outline: None,
+                default_font: crate::font::DEFAULT,
+            },
         )
     }
     /// `Font.drawInBatch8xOutline`: eight glyph offsets in the outline color,
@@ -103,13 +123,14 @@ impl HudBatch {
                     self.styled_text(
                         atlas,
                         text,
-                        x,
-                        y,
-                        color,
-                        false,
-                        true,
-                        Some((outline, [dx as f32, dy as f32])),
-                        crate::font::DEFAULT,
+                        [x, y],
+                        StyledTextOptions {
+                            color,
+                            shadow: false,
+                            world: true,
+                            outline: Some((outline, [dx as f32, dy as f32])),
+                            default_font: crate::font::DEFAULT,
+                        },
                     );
                 }
             }
@@ -119,29 +140,30 @@ impl HudBatch {
             self.styled_text(
                 atlas,
                 text,
-                x,
-                y,
-                color,
-                false,
-                true,
-                None,
-                crate::font::DEFAULT,
+                [x, y],
+                StyledTextOptions {
+                    color,
+                    shadow: false,
+                    world: true,
+                    outline: None,
+                    default_font: crate::font::DEFAULT,
+                },
             ),
             front,
         )
     }
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn styled_text(
+    fn styled_text(
         &mut self,
         atlas: &HudAtlas,
         text: &crate::text::Text,
-        x: f32,
-        y: f32,
-        color: u32,
-        shadow: bool,
-        world: bool,
-        outline: Option<(u32, [f32; 2])>,
-        default_font: &str,
+        [x, y]: [f32; 2],
+        StyledTextOptions {
+            color,
+            shadow,
+            world,
+            outline,
+            default_font,
+        }: StyledTextOptions<'_>,
     ) -> f32 {
         // StringDecomposer.iterateFormatted inside Font.drawInternal:
         // `§` codes inside a span restyle what follows and are not drawn.
