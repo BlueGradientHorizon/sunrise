@@ -394,13 +394,20 @@ mod tests {
         };
         use sunrise_world::{level::classes::is_generated_tag, loot::LootTags};
 
+        const FIXTURE: &str = "SUNRISE_TAG_RELOAD_FIXTURE";
         if run_fresh_cases(
             "game::remote_tags::tests::reload_publishes_retained_and_bound_empty_tags_to_loot_and_clients",
-            "SUNRISE_TAG_RELOAD_FIXTURE",
-            &["tags"],
+            FIXTURE,
+            &["tags", "packed-damage"],
         ) {
             return;
         }
+        let packed_damage = std::env::var(FIXTURE).unwrap() == "packed-damage";
+        let damage_type = if packed_damage {
+            "tag_reload:impact"
+        } else {
+            "minecraft:stalagmite"
+        };
         let save = tempfile::tempdir().unwrap();
         let pack = save.path().join("datapacks/test");
         let write = |path: &Path, bytes: &[u8]| {
@@ -426,12 +433,14 @@ mod tests {
             ("item", ["minecraft:potion", "minecraft:stick"]),
             ("block", ["minecraft:stone", "minecraft:dirt"]),
             ("fluid", ["minecraft:water", "minecraft:lava"]),
-            ("damage_type", ["tag_reload:impact", "minecraft:fall"]),
+            ("damage_type", [damage_type, "minecraft:fall"]),
         ];
-        write(
-            &pack.join("data/tag_reload/damage_type/impact.json"),
-            br#"{"message_id":"impact","scaling":"never","exhaustion":0.0}"#,
-        );
+        if packed_damage {
+            write(
+                &pack.join("data/tag_reload/damage_type/impact.json"),
+                br#"{"message_id":"impact","scaling":"never","exhaustion":0.0}"#,
+            );
+        }
         write(
             &pack.join("data/tag_reload/advancement/damage_probe.json"),
             br##"{"criteria":{"probe":{"trigger":"minecraft:entity_hurt_player","conditions":{"damage":{"type":{"tags":[{"id":"#tag_reload:probe","expected":true}]}}}}}}"##,
@@ -506,8 +515,9 @@ mod tests {
             for tag in game.health_resources.damage.tags() {
                 write_tag("damage_type", tag, rejected);
             }
-            // No client has joined; both the first tag packet and a later play reload must agree.
-            assert!(sync::cached_reload_sync().is_none());
+            // Definitions force an eager wire load; a tag-only world still exercises
+            // reload before the first wire snapshot. Neither case has a joined client.
+            assert_eq!(sync::cached_reload_sync().is_some(), packed_damage);
             for expect_empty in [false, true] {
                 if expect_empty {
                     // These recipes name item tags that this stage deliberately removes.
@@ -534,14 +544,14 @@ mod tests {
                 let keep = if expect_empty { 0 } else { 2 };
                 check_host(game, keep);
                 let entry = game
-                    .registry_entry("minecraft:damage_type", "tag_reload:impact")
+                    .registry_entry("minecraft:damage_type", damage_type)
                     .unwrap();
                 assert_eq!(
                     game.registry_entry_in_tag(&entry, "tag_reload:probe"),
                     Some(!expect_empty)
                 );
                 game.trigger_entity_hurt_player(&sunrise_client::advancements::DamageView {
-                    kind: "tag_reload:impact".into(),
+                    kind: damage_type.into(),
                     ..Default::default()
                 });
                 assert_eq!(
