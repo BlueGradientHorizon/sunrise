@@ -759,16 +759,12 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_pick_takes_the_quads_in_view_on_every_backend() {
-        let mut tested = false;
         for (adapter, name) in crate::gfx::test_gpu::each_adapter() {
-            let (device, queue) =
-                match pollster::block_on(adapter.request_device(&Default::default())) {
-                    Ok(device) => device,
-                    Err(e) => {
-                        eprintln!("no device on {name}: {e}");
-                        continue;
-                    }
-                };
+            let Some((device, queue)) =
+                crate::gfx::test_gpu::optional_device_with(&adapter, &Default::default())
+            else {
+                continue;
+            };
             eprintln!("displacement pick on {} ({name})", adapter.get_info().name);
             let normals = normals(&device, &queue);
             let mut displacement =
@@ -804,10 +800,6 @@ mod tests {
                     "shadow at {at:?} on {name}"
                 );
             }
-            tested = true;
-        }
-        if !tested {
-            eprintln!("no GPU: skipped");
         }
     }
 
@@ -865,16 +857,12 @@ mod tests {
         );
         let base = |slot: u32| packed::PACKED_BASE + 4 * slot;
         let expected: Vec<TerrainVertex> = [&a, &b, &c].into_iter().flatten().copied().collect();
-        let mut tested = false;
         for (adapter, name) in crate::gfx::test_gpu::each_adapter() {
-            let (device, queue) =
-                match pollster::block_on(adapter.request_device(&Default::default())) {
-                    Ok(device) => device,
-                    Err(e) => {
-                        eprintln!("no device on {name}: {e}");
-                        continue;
-                    }
-                };
+            let Some((device, queue)) =
+                crate::gfx::test_gpu::optional_device_with(&adapter, &Default::default())
+            else {
+                continue;
+            };
             eprintln!("displacement quads on {} ({name})", adapter.get_info().name);
             let page = |words: &[[u32; 6]]| {
                 use wgpu::util::DeviceExt;
@@ -913,10 +901,6 @@ mod tests {
                     "vertex {i} on {name}"
                 );
             }
-            tested = true;
-        }
-        if !tested {
-            eprintln!("no GPU: skipped");
         }
     }
 

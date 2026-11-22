@@ -919,14 +919,16 @@ fn material_gpu() -> Option<(wgpu::Device, wgpu::Queue)> {
     if adapter.limits().max_sampled_textures_per_shader_stage < 19 {
         return None;
     }
-    pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        required_limits: wgpu::Limits {
-            max_sampled_textures_per_shader_stage: 19,
+    crate::gfx::test_gpu::optional_device_with(
+        &adapter,
+        &wgpu::DeviceDescriptor {
+            required_limits: wgpu::Limits {
+                max_sampled_textures_per_shader_stage: 19,
+                ..Default::default()
+            },
             ..Default::default()
         },
-        ..Default::default()
-    }))
-    .ok()
+    )
 }
 
 #[test]
