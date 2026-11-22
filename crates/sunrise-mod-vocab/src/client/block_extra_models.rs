@@ -9,10 +9,10 @@
 pub enum BlockExtraModelsError {
     /// The client holds no column at the position, or the position is outside the level's height.
     NotLoaded,
-    /// A handle is stale or not a resolved standalone model.
+    /// A handle is stale or is not a registered standalone model.
     Model(crate::ModelError),
     /// Called outside the client's running game (the World phase): in a resource reload
-    /// (`client_resources_reloaded`), setup or config loading. Native and wasm mods both get it.
+    /// (`client_resources_reloaded`), setup or config loading.
     Unavailable,
 }
 

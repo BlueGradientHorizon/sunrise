@@ -181,8 +181,8 @@ pub(super) const QUAD_MAX_BYTES: usize = QUAD_BYTES + size_of::<TerrainSource>()
 /// Draws `cells`' extra models into `out`, after the block geometry of the whole section, in
 /// cell order and then list order. A face is drawn only while the section's budget still holds
 /// [`FACE_QUADS`] more quads of [`QUAD_MAX_BYTES`], whatever it expands to; at the first face
-/// that could pass it, it and every extra model after it are dropped. The block geometry is
-/// always kept, and the same section and lists always keep the same models. A face a mod's own
+/// that cannot fit, drawing stops, so the last model may be partially drawn. The block geometry
+/// is always kept. A face a mod's own
 /// tint source colours takes its colour from `attached`, prepared before the mesh was scheduled:
 /// no mod code runs here.
 #[allow(clippy::too_many_arguments)]

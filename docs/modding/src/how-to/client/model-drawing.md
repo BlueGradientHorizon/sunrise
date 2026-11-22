@@ -244,20 +244,21 @@ host.set_block_extra_models(pos, &parts)?;
   own faces are. On air they draw nothing.
 - A list replaces the position's last one; an empty list clears it. The section is meshed again
   only when the list changes, so set it when the data changes, not each frame.
-- At most `BLOCK_EXTRA_MODELS_MAX` (64) models a position. `BlockExtraModelsError` names each
-  refusal: `NotLoaded` (no client column there, or outside the level's height), `TooMany`,
-  `Model` for a stale or unknown handle, and `Unavailable` outside the World phase (see below).
-  A refused call changes nothing.
-- A section's extra models share its quad and byte limits with its blocks. The blocks' own
-  geometry is always drawn; past the limits, the section's remaining extra models (in block
-  order, then list order) are not.
-- The list is the client's own, never saved or sent. It is cleared when the block state at
-  `pos` changes, when its column unloads (a column the server sends again comes without it) and
-  when the player's level changes. Set it again from the block entity's data or the mod's own
-  client map, on `client_block_changed`, `client_chunk_load` or a payload. It needs no block
-  entity.
-- The mesher reads the lists on its workers and never calls mod code. A handle a resource reload
-  made stale draws nothing until you set the lists again from the new handles.
+- Native client mods can set the list in the World phase. `NotLoaded` means the position is
+  outside a resident column or the level height; `Model` means the handle is stale or is not a
+  registered standalone model; `Unavailable` means the call is outside the World phase. A
+  refused call changes nothing.
+- After the block geometry, extra faces are drawn in block and list order. Drawing stops before
+  the next face whose worst-case expansion cannot fit the section's upload budget, so the last
+  model may be partially drawn.
+- The list is the client's own, never saved or sent. A resend of a resident column preserves
+  attachments at unchanged cells; unloading the column clears them. A block state or level
+  change also clears the affected lists. Set the list again from block entity data or the mod's
+  own client map, on `client_block_changed`, `client_chunk_load` or a payload. No block entity
+  is required.
+- Mod tint providers are asked before the mesh is scheduled, not by the attachment pass on the
+  worker. A provider that panics supplies white. A handle a resource reload made stale draws
+  nothing until you set the lists again from the new handles.
 
 The setter is World-only. `client_resources_reloaded` runs in Reloading, where it answers
 `Unavailable`. Resolve the new handles there, then set the lists again from the next
