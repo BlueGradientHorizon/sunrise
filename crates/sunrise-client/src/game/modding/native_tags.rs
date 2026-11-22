@@ -1,6 +1,7 @@
 //! One membership implementation for full-game and in-write tag services.
 use mod_api::{Identifier, ItemKey, TagKey, TagMembers};
 use sunrise_items::items::{Items, TagRegistry};
+use sunrise_world::loot::LootTags;
 
 pub(super) fn is_in_tag(items: Option<&Items>, item: ItemKey, tag: TagKey) -> Option<bool> {
     let items = items.filter(|items| items.tags_loaded(TagRegistry::Item))?;
@@ -14,28 +15,14 @@ pub(super) fn is_in_tag(items: Option<&Items>, item: ItemKey, tag: TagKey) -> Op
         )
     })
 }
-pub(super) fn item_tags(items: Option<&Items>, item: ItemKey) -> Option<Vec<TagKey>> {
-    let items = items.filter(|items| items.tags_loaded(TagRegistry::Item))?;
+pub(super) fn item_tags(tags: &dyn LootTags, item: ItemKey) -> Option<Vec<Identifier>> {
     let item = mod_api::__private::item_key_id(item)?;
-    tag_keys(
-        items
-            .item_tags
-            .iter()
-            .filter(|(_, members)| members.contains(item))
-            .map(|(name, _)| name.as_str()),
-    )
+    tags.item_tag_names()?
+        .matching(|name| tags.contains("item", name, item))
 }
 
-pub(super) fn item_tag_keys(items: Option<&Items>) -> Option<Vec<TagKey>> {
-    let items = items.filter(|items| items.tags_loaded(TagRegistry::Item))?;
-    tag_keys(items.item_tags.keys().map(String::as_str))
-}
-
-/// Intern only names that a mod actually reads, reusing retained keys across generations.
-pub(super) fn tag_keys<'a>(names: impl Iterator<Item = &'a str>) -> Option<Vec<TagKey>> {
-    names
-        .map(|name| mod_api::__private::tag_key(&Identifier::parse(name).ok()?))
-        .collect()
+pub(super) fn item_tag_names(tags: &dyn LootTags) -> Option<Vec<Identifier>> {
+    tags.item_tag_names()?.matching(|_| true)
 }
 
 pub(super) fn snapshot_members<K>(
@@ -86,13 +73,15 @@ macro_rules! impl_tags {
                 let $this = self;
                 $crate::game::native_tags::is_in_tag($items, item, tag)
             }
-            fn item_tags(&self, item: mod_api::ItemKey) -> Option<Vec<mod_api::TagKey>> {
+            fn item_tags(&self, item: mod_api::ItemKey) -> Option<Vec<mod_api::Identifier>> {
                 let $this = self;
-                $crate::game::native_tags::item_tags($items, item)
+                let items: Option<&sunrise_items::items::Items> = $items;
+                $crate::game::native_tags::item_tags(items?, item)
             }
-            fn item_tag_keys(&self) -> Option<Vec<mod_api::TagKey>> {
+            fn item_tag_names(&self) -> Option<Vec<mod_api::Identifier>> {
                 let $this = self;
-                $crate::game::native_tags::item_tag_keys($items)
+                let items: Option<&sunrise_items::items::Items> = $items;
+                $crate::game::native_tags::item_tag_names(items?)
             }
             fn items(&self, tag: mod_api::TagKey) -> mod_api::TagMembers<mod_api::ItemKey> {
                 let $this = self;

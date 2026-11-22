@@ -181,7 +181,7 @@ impl engine::LootTags for Tags {
     fn members(&self, _: &str, _: &str) -> Option<Vec<String>> {
         None
     }
-    fn item_tag_entries(&self) -> Option<&std::collections::HashMap<String, Vec<String>>> {
+    fn item_tag_names(&self) -> Option<&engine::ItemTagNames> {
         None
     }
 }

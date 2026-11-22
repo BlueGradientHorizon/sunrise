@@ -246,19 +246,22 @@ mod tests {
                 let stick = context
                     .item_key(&Identifier::parse("minecraft:stick").unwrap())
                     .unwrap();
-                let scoped = |keys: Option<Vec<mod_api::TagKey>>| {
-                    let mut keys: Vec<_> = keys
+                let scoped = |names: Option<Vec<Identifier>>| {
+                    let mut names: Vec<_> = names
                         .unwrap()
                         .into_iter()
-                        .filter(|key| key.id().namespace() == "item_tag_listing")
+                        .filter(|id| id.namespace() == "item_tag_listing")
                         .collect();
-                    keys.sort_unstable_by_key(|key| key.id());
-                    keys
+                    names.sort_unstable();
+                    names
                 };
                 let reloaded = seen.len() % 2 == 1;
                 let current = if reloaded { new } else { old };
-                assert_eq!(scoped(tags.item_tags(stick)), [always, current]);
-                assert_eq!(scoped(tags.item_tag_keys()), [always, empty, current]);
+                assert_eq!(scoped(tags.item_tags(stick)), [always.id(), current.id()]);
+                assert_eq!(
+                    scoped(tags.item_tag_names()),
+                    [always.id(), empty.id(), current.id()]
+                );
                 assert_eq!(tags.is_in_tag(stick, old), Some(!reloaded));
                 assert_eq!(tags.is_in_tag(stick, new), Some(reloaded));
                 assert_eq!(tags.items(empty), TagMembers::Members(vec![]));
@@ -335,7 +338,7 @@ mod tests {
                 game.handle_packet(login()).unwrap();
                 let stick = mod_api::__private::item_key("minecraft:stick").unwrap();
                 assert_eq!(game.item_tags(stick), None);
-                assert_eq!(game.item_tag_keys(), None);
+                assert_eq!(game.item_tag_names(), None);
                 for packet in packets {
                     game.handle_packet(C::UpdateTags(packet)).unwrap();
                 }
