@@ -491,7 +491,11 @@ impl OrientedCollider {
                         self.frame.to_world(local.min),
                         self.frame.to_world(local.max),
                     );
-                    if !bounds.intersects(sweep) {
+                    if Axis::ALL.into_iter().any(|axis| {
+                        delta.component(axis) == 0.0
+                            && (bounds.min(axis) >= mover.max(axis)
+                                || bounds.max(axis) <= mover.min(axis))
+                    }) {
                         continue;
                     }
                 }
@@ -905,6 +909,23 @@ mod tests {
             assert_eq!(push(1.0_f64.next_down()), 0.75);
             assert_eq!(push(1.0), 0.0);
         }
+    }
+
+    #[test]
+    fn a_translating_face_keeps_one_ulp_of_forward_overlap() {
+        let boxes = Arc::new(ColliderBoxes::new(vec![b(
+            [-1.0, 0.0, 0.0],
+            [2.0_f64.powi(-55), 1.0, 1.0],
+        )]));
+        let origin = Vec3::new(-1.0, 0.0, 0.0);
+        let delta = Vec3::new(0.5, 0.0, 0.0);
+        let start = OrientedCollider::new(Frame::translation(origin), boxes.clone());
+        let end = OrientedCollider::new(Frame::translation(origin.add_vector(delta)), boxes);
+        let push = |x| {
+            start.translation_push_fraction(&end, b([x, 0.0, 0.0], [x + 0.25, 1.0, 1.0]), delta)
+        };
+        assert_eq!(push((-0.5_f64).next_down()), 2.0_f64.powi(-52));
+        assert_eq!(push(-0.5), 0.0);
     }
 
     /// A box turned 45 degrees about y shows a corner to a mover coming along x: the mover
