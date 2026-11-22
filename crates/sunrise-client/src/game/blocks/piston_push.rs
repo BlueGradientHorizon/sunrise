@@ -615,15 +615,18 @@ impl Game<'_> {
             return;
         }
         let movement = gate.delta();
+        let lid_move = matches!(mover, MoverType::ShulkerBox | MoverType::Shulker);
         // `Entity.move` with `noPhysics`: `setPos` the whole way.
         if no_physics {
             self.apply_push(&mut gate, target, movement);
             if let Some(target) = self.resolve_push_target(selected) {
+                if lid_move && let MoveWho::Entity(EntityHandle::Boat(i)) = target {
+                    self.record_boat_lid_movement(i, movement);
+                }
                 self.release_after_block_move(target);
             }
             return;
         }
-        let lid_move = matches!(mover, MoverType::ShulkerBox | MoverType::Shulker);
         let entities = match target {
             MoveWho::Entity(EntityHandle::Boat(i)) if lid_move => {
                 // Entity.collide selects entities once from the sweep. EntityGetter
@@ -658,9 +661,9 @@ impl Game<'_> {
         ) else {
             return;
         };
-        if moved.length_squared() > 1.0e-7
-            || movement.length_squared() - moved.length_squared() < 1.0e-7
-        {
+        let placed = moved.length_squared() > 1.0e-7
+            || movement.length_squared() - moved.length_squared() < 1.0e-7;
+        if placed {
             if lid_move && let MoveWho::Entity(EntityHandle::Boat(i)) = target {
                 let boat = &self.boats[i];
                 let fall = self.vehicle_fall_reset(boat.fall_distance, body.position, moved);
@@ -671,6 +674,12 @@ impl Game<'_> {
         let Some(target) = self.resolve_push_target(selected) else {
             return;
         };
+        if lid_move
+            && placed
+            && let MoveWho::Entity(EntityHandle::Boat(i)) = target
+        {
+            self.record_boat_lid_movement(i, moved);
+        }
         self.set_pushed_on_ground(target, movement, moved, None);
         if lid_move && let MoveWho::Entity(EntityHandle::Boat(i)) = target {
             let boat = &self.boats[i];
