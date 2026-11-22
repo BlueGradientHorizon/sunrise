@@ -8,7 +8,7 @@ use super::{
 };
 use sunrise_client::{
     items::ItemStack,
-    menu::{Env, Input, Kind, Menu},
+    menu::{Env, Input, Kind, Menu, QuickCraftDrag},
     merchant,
 };
 use sunrise_protocol::packets::play::{self, Clientbound as C};
@@ -20,6 +20,8 @@ pub(super) struct GuestMerchant {
     state: i32,
     /// The payment slots and the result.
     pub(super) slots: [Option<ItemStack>; 3],
+    /// Persistent quick-craft (drag) state across rebuilt merchant menus.
+    pub(super) drag: QuickCraftDrag,
     pub(super) merchant: Box<MerchantState>,
     /// The offers the client was last sent.
     sent: Vec<merchant::MerchantOffer>,
@@ -48,15 +50,12 @@ pub(super) fn opaque_villager(
         && professions.state_index(profession).is_none()
 }
 
-/// How a merchant menu op runs: ordinary, a read-only probe on a copy, or a pickup with
-/// frozen slot rules and a stacked answer.
+/// How a merchant menu op runs: ordinary, a read-only probe on a copy, or a pickup with a
+/// stacked answer.
 pub(super) enum MerchantRun<'a> {
     Plain,
     Probe,
-    Decided(
-        &'a dyn sunrise_client::menu::SlotRules,
-        Option<&'a sunrise_client::menu::StackedOutcome>,
-    ),
+    Decided(Option<&'a sunrise_client::menu::StackedOutcome>),
 }
 
 impl Game<'_> {
@@ -130,6 +129,7 @@ impl Game<'_> {
             window,
             state: 0,
             slots: [None, None, None],
+            drag: QuickCraftDrag::default(),
             merchant: Box::new(state),
             sent: Vec::new(),
             sent_level: 0,
@@ -291,10 +291,14 @@ impl Game<'_> {
             return false;
         }
         let probe = matches!(run, MerchantRun::Probe);
+        let refused = match &run {
+            MerchantRun::Decided(Some(stacked)) => Some(&stacked.refused),
+            _ => None,
+        };
         let Some((mut menu, made)) = self.read_merchant_menu(conn, gm, run, op) else {
             return false;
         };
-        if probe {
+        if probe || refused.is_some_and(std::cell::Cell::get) {
             return true;
         }
         self.journal_guest_merchant(conn);
@@ -309,6 +313,7 @@ impl Game<'_> {
             menu.slot(1).cloned(),
             menu.slot(2).cloned(),
         ];
+        gm.drag = menu.quick_craft_state();
         if let Some(host) = self.lan.as_mut() {
             host.hub.guests.update(gi, |g| {
                 for i in 0..36 {
@@ -429,6 +434,9 @@ impl Game<'_> {
         for i in 0..36 {
             menu.set_player_item(i, g.inventory[i].clone());
         }
+        for (i, stack) in g.armor.iter().enumerate() {
+            menu.set_player_item(39 - i, stack.clone());
+        }
         menu.set_player_item(40, g.offhand.clone());
         menu.selected = g.selected;
         menu.creative = g.creative();
@@ -437,9 +445,9 @@ impl Game<'_> {
             menu.set_slot(&env, i, s.clone());
         }
         menu.merchant = Some(session);
+        menu.set_quick_craft_state(gm.drag.clone());
         let env = match &run {
-            MerchantRun::Decided(rules, stacked) => Env {
-                slot_rules: Some(*rules),
+            MerchantRun::Decided(stacked) => Env {
                 stacked: *stacked,
                 ..env
             },
@@ -495,11 +503,10 @@ impl Game<'_> {
         let op = move |menu: &mut Menu, env: &Env| {
             let _ = menu.click(env, slot, button, input);
         };
-        if !Self::stacked_listened() || input != Input::Pickup {
+        if !Self::stacked_listened() || !matches!(input, Input::Pickup | Input::QuickCraft) {
             return self.lan_merchant_op(conn, Some(p.container), false, op);
         }
         // Freeze what the click finds as the guest's trade state makes it, without a write.
-        let answers = sunrise_client::menu::RuleAnswers::default();
         let mut found = None;
         self.lan_merchant_op_with(
             conn,
@@ -510,7 +517,7 @@ impl Game<'_> {
                 found = menu.stacked_click(env, slot, button, input);
             },
         );
-        let Some(frozen) = found else {
+        let Some(frozen) = found.filter(Self::stacked_listens_for) else {
             return self.lan_merchant_op(conn, Some(p.container), false, op);
         };
         let route = match self.lan.as_mut() {
@@ -521,7 +528,12 @@ impl Game<'_> {
             .lan
             .as_ref()
             .and_then(|host| host.hub.guests.iter().position(|g| g.conn == conn));
-        let (carried, same) = (frozen.carried.clone(), frozen.clone());
+        let (carried, same, resolved_slot, primary) = (
+            frozen.carried.clone(),
+            frozen.clone(),
+            frozen.slot,
+            frozen.primary,
+        );
         let mut handled = true;
         let pickup = self.stacked_pickup(
             route,
@@ -530,29 +542,32 @@ impl Game<'_> {
                 let now = game.lan.as_ref()?.hub.guests.get(gi?)?.carried.clone();
                 (now == carried).then(|| same.clone())
             },
-            |game, answer| {
-                if !game.lan_merchant_op_with(
+            |game, carried, clicked| {
+                let mut took = false;
+                let _ = game.lan_merchant_op_with(
                     conn,
                     Some(p.container),
                     false,
                     MerchantRun::Probe,
                     |menu, env| {
-                        super::stacked_on_other::plan_click(
-                            menu, env, slot, button, &answers, answer,
+                        took = menu.probe_carried_vanilla_override(
+                            env,
+                            resolved_slot,
+                            primary,
+                            carried,
+                            clicked,
                         );
                     },
-                ) {
-                    answer.refused.set(true);
-                }
+                );
+                took
             },
             |game, answer| {
                 game.journal_guest_click(conn);
-                let rules = sunrise_client::menu::StoredRules(&answers);
                 handled = game.lan_merchant_op_with(
                     conn,
                     Some(p.container),
                     false,
-                    MerchantRun::Decided(&rules, answer),
+                    MerchantRun::Decided(answer),
                     op,
                 );
             },
@@ -591,7 +606,18 @@ impl Game<'_> {
     /// The guest closed the trading window (or it is closed for them):
     /// MerchantMenu.removed, then the villager gets its state back.
     pub(super) fn lan_merchant_closed(&mut self, conn: u32, window: Option<i32>) -> bool {
-        if !self.lan_merchant_op(conn, window, false, |menu, env| menu.merchant_close(env)) {
+        self.lan_merchant_removed(conn, window, super::lan_crafting::MenuRemoval::Live)
+    }
+
+    pub(super) fn lan_merchant_removed(
+        &mut self,
+        conn: u32,
+        window: Option<i32>,
+        removal: super::lan_crafting::MenuRemoval,
+    ) -> bool {
+        if !self.lan_merchant_op(conn, window, false, |menu, env| {
+            menu.merchant_removed(env, removal != super::lan_crafting::MenuRemoval::Live);
+        }) {
             return false;
         }
         let Some(host) = self.lan.as_mut() else {
@@ -920,6 +946,7 @@ mod tests {
             window: 3,
             state: 0,
             slots: [None, None, None],
+            drag: QuickCraftDrag::default(),
             merchant: Box::new(MerchantState {
                 session: Box::new(session),
                 scroll: 0,

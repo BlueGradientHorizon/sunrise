@@ -13,7 +13,7 @@ use std::{
     path::Path,
     sync::Arc,
 };
-use sunrise_core::random::RandomSource;
+use sunrise_core::{nbt::Tag, random::RandomSource};
 use sunrise_world::loot::number::int_value;
 use sunrise_world::registry::{BlockRegistry, BlockStateId};
 use sunrise_world::{
@@ -86,6 +86,7 @@ pub enum ConsumeEffect {
     Native {
         kind: String,
         data: Arc<sunrise_core::nbt::Tag>,
+        registered: Option<sunrise_world::component_value::consume_effects::Admitted>,
     },
 }
 
@@ -118,10 +119,13 @@ pub fn parse_consumable(
                         Some(ConsumeEffect::Native {
                             kind: kind.to_owned(),
                             data: Arc::new(data),
+                            registered: None,
                         })
                     });
                 }
-                Ok(parse_consume_effect(effect))
+                Ok(sunrise_core::json_nbt::json_to_tag(effect)
+                    .ok()
+                    .and_then(|tag| parse_consume_effect(&tag)))
             })
             .collect::<std::result::Result<Vec<_>, _>>()?
             .into_iter()
@@ -135,67 +139,142 @@ pub fn parse_consumable(
 /// `minecraft:apply_effects`. A
 /// namespaced kind outside `minecraft:` is the mod's own, kept whole for
 /// the hook. An unknown `minecraft:` kind and a missing type are dropped.
-pub fn parse_consume_effect(effect: &serde_json::Value) -> Option<ConsumeEffect> {
-    let kind = effect.get("type")?.as_str()?;
-    // `Identifier.bySeparator`: no namespace, or an empty one (`:clear_all_effects`), is minecraft's.
-    let kind = match kind.split_once(':') {
-        Some(("", path)) => format!("minecraft:{path}"),
-        Some(_) => kind.to_owned(),
-        None => format!("minecraft:{kind}"),
+pub fn parse_consume_effect(effect: &Tag) -> Option<ConsumeEffect> {
+    use crate::{item_data::component_bool, properties::component_float};
+
+    let Tag::String(kind) = effect.get("type")? else {
+        return None;
     };
-    match kind.as_str() {
-        "minecraft:apply_effects" => {
-            let probability = effect
-                .get("probability")
-                .and_then(|p| p.as_f64())
-                .map_or(1.0, |p| p as f32);
-            let mut specs = Vec::new();
-            if let Some(list) = effect.get("effects").and_then(|l| l.as_array()) {
-                specs.extend(list.iter().filter_map(consume_effect_spec));
-            }
-            Some(ConsumeEffect::ApplyEffects {
-                effects: specs,
-                probability,
-            })
+    let kind = kind.to_string_lossy();
+    // `Identifier.bySeparator`: no namespace, or an empty one (`:clear_all_effects`), is minecraft's.
+    let builtin = match kind.split_once(':') {
+        Some(("minecraft" | "", path)) => path,
+        None => &kind,
+        Some(_) => {
+            return Some(ConsumeEffect::Native {
+                kind,
+                data: Arc::new(sunrise_core::nbt::clone_tag(effect)),
+                registered: None,
+            });
         }
-        "minecraft:clear_all_effects" => Some(ConsumeEffect::ClearAllEffects),
-        "minecraft:remove_effects" => {
-            let mut targets = Vec::new();
-            if let Some(eff) = effect.get("effects") {
-                if let Some(s) = eff.as_str() {
-                    targets.push(s.to_string());
-                } else if let Some(arr) = eff.as_array() {
-                    for item in arr {
-                        if let Some(s) = item.as_str() {
-                            targets.push(s.to_string());
-                        }
-                    }
-                }
-            }
-            Some(ConsumeEffect::RemoveEffects(targets))
-        }
-        "minecraft:teleport_randomly" => Some(ConsumeEffect::TeleportRandomly(
+    };
+    match builtin {
+        "apply_effects" => Some(ConsumeEffect::ApplyEffects {
+            effects: match effect.get("effects") {
+                Some(Tag::List(list)) => list.iter().filter_map(consume_effect_spec).collect(),
+                _ => Vec::new(),
+            },
+            // `ApplyStatusEffectsConsumeEffect.CODEC`: floatRange(0, 1).
+            probability: match effect.get("probability") {
+                Some(value) => component_float(value).filter(|p| (0.0..=1.0).contains(p))?,
+                None => 1.0,
+            },
+        }),
+        "clear_all_effects" => Some(ConsumeEffect::ClearAllEffects),
+        "remove_effects" => Some(ConsumeEffect::RemoveEffects(match effect.get("effects") {
+            Some(Tag::String(id)) => vec![id.to_string_lossy()],
+            Some(Tag::List(ids)) => ids
+                .iter()
+                .filter_map(|id| match id {
+                    Tag::String(id) => Some(id.to_string_lossy()),
+                    _ => None,
+                })
+                .collect(),
+            _ => Vec::new(),
+        })),
+        "teleport_randomly" => Some(ConsumeEffect::TeleportRandomly(
             sunrise_world::teleport_consume::TeleportConsume {
-                diameter: effect
-                    .get("diameter")
-                    .and_then(serde_json::Value::as_f64)
-                    .map_or(16.0, |d| d as f32),
+                // `TeleportRandomlyConsumeEffect.CODEC`: ExtraCodecs.POSITIVE_FLOAT.
+                diameter: match effect.get("diameter") {
+                    Some(value) => component_float(value).filter(|d| *d > 0.0 && d.is_finite())?,
+                    None => 16.0,
+                },
                 directional_particles: effect
                     .get("directional_particles")
-                    .and_then(serde_json::Value::as_bool)
+                    .and_then(component_bool)
                     .unwrap_or(true),
             },
         )),
-        "minecraft:play_sound" => effect
-            .get("sound")
-            .and_then(|s| s.as_str())
-            .map(|s| ConsumeEffect::PlaySound(s.to_string())),
-        k if !k.starts_with("minecraft:") => Some(ConsumeEffect::Native {
-            kind: k.to_owned(),
-            data: Arc::new(sunrise_core::json_nbt::json_to_tag(effect).ok()?),
-        }),
+        "play_sound" => match effect.get("sound") {
+            Some(Tag::String(id)) => Some(ConsumeEffect::PlaySound(id.to_string_lossy())),
+            _ => None,
+        },
         _ => None,
     }
+}
+
+/// Admit custom effects from saved NBT, or install effects already decoded by
+/// the connection's Wire codecs. Decode built-ins directly from their tagged fields.
+pub(crate) fn stack_effects(
+    raw: &mut sunrise_core::nbt::Tag,
+    key: &str,
+    received: Option<&[sunrise_world::component_value::consume_effects::Admitted]>,
+    mut refused: Option<&mut bool>,
+) -> std::result::Result<Vec<ConsumeEffect>, String> {
+    use sunrise_world::component_value::consume_effects::admit;
+
+    let Tag::Compound(_) = raw else {
+        return Err("expected effect component map".into());
+    };
+    let list = match raw.get_mut(key) {
+        None => return Ok(Vec::new()),
+        Some(Tag::List(list)) => list,
+        Some(Tag::ByteArray(a)) if a.is_empty() => return Ok(Vec::new()),
+        Some(Tag::IntArray(a)) if a.is_empty() => return Ok(Vec::new()),
+        Some(Tag::LongArray(a)) if a.is_empty() => return Ok(Vec::new()),
+        _ => return Err("expected consume effect list".into()),
+    };
+    let mut effects = Vec::with_capacity(list.len());
+    for entry in list {
+        let kind = entry.get("type").and_then(|t| match t {
+            Tag::String(name) => Some(name.to_string_lossy()),
+            _ => None,
+        });
+        if let Some(kind) = kind.filter(|kind| {
+            kind.split_once(':')
+                .is_some_and(|(ns, _)| !ns.is_empty() && ns != "minecraft")
+        }) {
+            let Tag::Compound(fields) = entry else {
+                return Err("expected consume effect map".into());
+            };
+            let registered = match received {
+                Some(received) => received
+                    .iter()
+                    .find(|effect| effect.saved.as_ref() == entry)
+                    .cloned(),
+                None => match admit(&kind, fields) {
+                    Ok(effect) => effect,
+                    Err(error) => {
+                        // The registered codec already reported the error. Preserve this
+                        // saved entry, but don't let it run or discard its siblings.
+                        let Some(refused) = refused.as_deref_mut() else {
+                            return Err(error);
+                        };
+                        *refused = true;
+                        continue;
+                    }
+                },
+            };
+            let data = if let Some(effect) = &registered {
+                *entry = (*effect.saved).clone();
+                effect.saved.clone()
+            } else {
+                // Unregistered gameplay-only effects retain their existing JSON projection.
+                let json = sunrise_client_core::scoreboard::tag_to_json(entry);
+                let data = sunrise_core::json_nbt::json_to_tag(&json)
+                    .map_err(|error| error.to_string())?;
+                Arc::new(data)
+            };
+            effects.push(ConsumeEffect::Native {
+                kind,
+                data,
+                registered,
+            });
+        } else if let Some(effect) = parse_consume_effect(entry) {
+            effects.push(effect);
+        }
+    }
+    Ok(effects)
 }
 
 #[derive(Clone, Debug)]
@@ -223,8 +302,6 @@ pub struct ItemInfo {
     pub death_protection: Option<Vec<ConsumeEffect>>,
     /// Kinetic pose timing decoded once from the shared item prototype.
     pub kinetic_timing: Option<crate::kinetic_weapon::UseTiming>,
-    /// `use_remainder`: what a finished use leaves (`UseRemainder`).
-    pub use_remainder: Option<String>,
     /// `use_cooldown`: the cooldown a use starts (`UseCooldown`).
     pub use_cooldown: Option<crate::cooldowns::UseCooldown>,
     pub model: String,
@@ -297,6 +374,27 @@ pub struct ItemInfo {
     /// None for vanilla's items.
     pub template: Option<Arc<str>>,
 }
+/// Vanilla 26.3 `BundleItem` item ids (`Items.BUNDLE` and all 16 `Items.DYED_BUNDLE`).
+pub const VANILLA_BUNDLE_ITEMS: [&str; 17] = [
+    "minecraft:bundle",
+    "minecraft:black_bundle",
+    "minecraft:blue_bundle",
+    "minecraft:brown_bundle",
+    "minecraft:cyan_bundle",
+    "minecraft:gray_bundle",
+    "minecraft:green_bundle",
+    "minecraft:light_blue_bundle",
+    "minecraft:light_gray_bundle",
+    "minecraft:lime_bundle",
+    "minecraft:magenta_bundle",
+    "minecraft:orange_bundle",
+    "minecraft:pink_bundle",
+    "minecraft:purple_bundle",
+    "minecraft:red_bundle",
+    "minecraft:white_bundle",
+    "minecraft:yellow_bundle",
+];
+
 impl ItemInfo {
     /// Whether this item is the vanilla item `vanilla`, or a content mod's item
     /// copied from it: what vanilla's `instanceof` on the item's class asks
@@ -304,6 +402,16 @@ impl ItemInfo {
     /// `new FishingRodItem(...)` would).
     pub fn is(&self, vanilla: &str) -> bool {
         &*self.id == vanilla || self.template.as_deref() == Some(vanilla)
+    }
+
+    /// Whether this item has vanilla's `BundleItem` class: `minecraft:bundle`, any of the 16 dyed
+    /// bundles, or a content mod's item copied from one via `template` (`ItemInfo::is`).
+    ///
+    /// Unlike [`ItemInfo::bundle`], which checks only for a default `minecraft:bundle_contents`
+    /// component, this matches vanilla 26.3's item-class dispatch for
+    /// `BundleItem.overrideStackedOnOther` / `BundleItem.overrideOtherStackedOnMe`.
+    pub fn is_bundle_item(&self) -> bool {
+        VANILLA_BUNDLE_ITEMS.iter().any(|&v| self.is(v))
     }
 }
 /// `Item.Properties.craftRemainder` (not a data component, so not in the
@@ -1165,6 +1273,15 @@ impl Items {
                 extra,
             };
             let villager_food = component_prototype.villager_food(None);
+            let consumable = component_prototype.consumable(None).cloned();
+            let death_protection = component_prototype
+                .death_protection(None)
+                .map(<[_]>::to_vec);
+            if (c.get("minecraft:consumable").is_some() && consumable.is_none())
+                || (c.get("minecraft:death_protection").is_some() && death_protection.is_none())
+            {
+                return Err(format!("{name}: invalid consume effect component").into());
+            }
             items.insert(
                 id.clone(),
                 ItemInfo {
@@ -1190,20 +1307,8 @@ impl Items {
                     kinetic_timing: c
                         .get("minecraft:kinetic_weapon")
                         .and_then(crate::kinetic_weapon::UseTiming::from_json),
-                    // Consumable.CODEC's defaults.
-                    death_protection: c
-                        .get("minecraft:death_protection")
-                        .map(parse_death_effects)
-                        .transpose()
-                        .map_err(|e| format!("{name}: {e}"))?,
-                    consumable: c
-                        .get("minecraft:consumable")
-                        .map(parse_consumable)
-                        .transpose()
-                        .map_err(|e| format!("{name}: {e}"))?,
-                    use_remainder: c["minecraft:use_remainder"]["id"]
-                        .as_str()
-                        .map(str::to_owned),
+                    death_protection,
+                    consumable,
                     use_cooldown: c
                         .get("minecraft:use_cooldown")
                         .and_then(crate::cooldowns::UseCooldown::from_json),
@@ -1461,6 +1566,39 @@ impl Items {
         );
         table
     }
+    /// `TagLoader.loadPendingTags`: no successfully built tags means no update
+    /// for that registry. A built tag with no members still replaces the map.
+    pub fn retain_unbound_tags(&mut self, previous: &Self) {
+        use sunrise_world::level::classes::is_generated_tag;
+        if self.block_tag_order.is_empty() {
+            self.set_tags(
+                TagRegistry::Block,
+                previous
+                    .block_tag_order
+                    .iter()
+                    // These are installed from the current block facts, not the pack stack.
+                    .filter(|(tag, _)| !is_generated_tag(tag))
+                    .map(|(tag, members)| (tag.clone(), members.clone()))
+                    .collect(),
+            );
+        }
+        if self.item_tag_order.is_empty() {
+            self.set_tags(TagRegistry::Item, previous.item_tag_order.clone());
+        }
+        if self.fluid_tag_order.is_empty() {
+            self.set_tags(TagRegistry::Fluid, previous.fluid_tag_order.clone());
+        }
+    }
+
+    /// Ordered bindings for data loaders, keyed by the vanilla registry directory.
+    pub fn ordered_tags(&self) -> [(&'static str, &sunrise_world::loot::RegistryTags); 3] {
+        [
+            ("block", &self.block_tag_order),
+            ("item", &self.item_tag_order),
+            ("fluid", &self.fluid_tag_order),
+        ]
+    }
+
     /// Replace one registry's tags with `tags`, each tag's members in order.
     pub fn set_tags(&mut self, registry: TagRegistry, tags: HashMap<String, Vec<String>>) {
         let (sets, order) = match registry {
@@ -3385,15 +3523,29 @@ mod death_effects_tests {
     }
 }
 
-fn consume_effect_spec(e: &Value) -> Option<ConsumeEffectSpec> {
-    let flag = |key: &str, default: bool| e.get(key).and_then(|v| v.as_bool()).unwrap_or(default);
+fn consume_effect_spec(e: &Tag) -> Option<ConsumeEffectSpec> {
+    let Tag::String(id) = e.get("id")? else {
+        return None;
+    };
+    let flag = |key, default| {
+        e.get(key)
+            .and_then(crate::item_data::component_bool)
+            .unwrap_or(default)
+    };
+    let number = |key| {
+        e.get(key)
+            .and_then(crate::properties::component_int)
+            .unwrap_or(0)
+    };
+    let show_particles = flag("show_particles", true);
     Some(ConsumeEffectSpec {
-        id: e.get("id")?.as_str()?.to_string(),
-        duration: e.get("duration").and_then(|d| d.as_i64()).unwrap_or(0) as i32,
-        amplifier: e.get("amplifier").and_then(|a| a.as_i64()).unwrap_or(0) as i32,
+        id: id.to_string_lossy(),
+        duration: number("duration"),
+        // `MobEffectInstance.Details.MAP_CODEC` reads `ExtraCodecs.UNSIGNED_BYTE`.
+        amplifier: i32::from(number("amplifier") as u8),
         ambient: flag("ambient", false),
-        show_particles: flag("show_particles", true),
-        show_icon: flag("show_icon", flag("show_particles", true)),
+        show_particles,
+        show_icon: flag("show_icon", show_particles),
     })
 }
 
@@ -3453,18 +3605,37 @@ mod consume_effect_tests {
     use super::*;
 
     #[test]
-    fn effects_keep_their_ambient_and_particle_flags() {
-        let quiet =
-            serde_json::json!({"id": "minecraft:haste", "duration": 3600, "show_particles": false});
+    fn effect_details_decode_byte_numbers_and_boolean_defaults() {
+        let quiet = Tag::compound([
+            ("id", Tag::String("minecraft:haste".into())),
+            ("duration", Tag::Byte(100)),
+            ("amplifier", Tag::Byte(-56)),
+            ("show_particles", Tag::Byte(0)),
+        ]);
         let s = consume_effect_spec(&quiet).unwrap();
         assert_eq!(
             (s.id.as_str(), s.duration, s.amplifier),
-            ("minecraft:haste", 3600, 0)
+            ("minecraft:haste", 100, 200)
         );
-        assert!(!s.ambient && !s.show_particles);
-        let plain =
-            consume_effect_spec(&serde_json::json!({"id": "minecraft:regeneration"})).unwrap();
-        assert!(!plain.ambient && plain.show_particles);
+        assert!(!s.ambient && !s.show_particles && !s.show_icon);
+        let plain = Tag::compound([("id", Tag::String("minecraft:regeneration".into()))]);
+        let plain = consume_effect_spec(&plain).unwrap();
+        assert!(!plain.ambient && plain.show_particles && plain.show_icon);
+    }
+
+    #[test]
+    fn saved_consume_effects_reject_out_of_range_parameters() {
+        for (kind, field, invalid) in [
+            ("apply_effects", "probability", 1.5_f32),
+            ("teleport_randomly", "diameter", 0.0),
+            ("teleport_randomly", "diameter", f32::NAN),
+        ] {
+            let tag = Tag::compound([
+                ("type", Tag::String(kind.into())),
+                (field, Tag::Float(invalid.to_bits())),
+            ]);
+            assert!(parse_consume_effect(&tag).is_none());
+        }
     }
 
     #[test]
@@ -3486,11 +3657,11 @@ mod consume_effect_tests {
 
     #[test]
     fn a_mods_own_consume_effect_kind_is_kept() {
-        let v = |s: &str| serde_json::from_str::<serde_json::Value>(s).unwrap();
-        // A mod's own kind: Native with its JSON.
+        let v = |s: &str| sunrise_core::json_nbt::parse_json_tag(s).unwrap();
+        // A mod's own kind: Native with its saved payload.
         let native =
             parse_consume_effect(&v(r#"{"type":"mymod:energy_boost","amount":42}"#)).unwrap();
-        assert!(matches!(&native, ConsumeEffect::Native { kind, data }
+        assert!(matches!(&native, ConsumeEffect::Native { kind, data, .. }
             if kind == "mymod:energy_boost" && data.get("amount") == Some(&sunrise_core::nbt::Tag::Byte(42))));
         // A bare vanilla name and its namespaced form are the same kind.
         let bare = parse_consume_effect(&v(
@@ -5566,6 +5737,49 @@ mod tests {
         assert!(modded.items["minecraft:fishing_rod"].is("minecraft:fishing_rod"));
         assert!(!modded.items["minecraft:stick"].is("minecraft:fishing_rod"));
         assert_eq!(modded.items["minecraft:fishing_rod"].template, None);
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// `ItemInfo::is_bundle_item` checks vanilla's `BundleItem` class (including templated content
+    /// items), not merely carrying a default `minecraft:bundle_contents` component.
+    #[test]
+    fn is_bundle_item_checks_bundle_item_class_not_bundle_contents_default() {
+        let root =
+            std::env::temp_dir().join(format!("sunrise-bundle-item-class-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("data/minecraft/loot_table")).unwrap();
+        let items = r#"{
+            "minecraft:bundle": {"minecraft:bundle_contents": []},
+            "minecraft:red_bundle": {"minecraft:bundle_contents": []},
+            "minecraft:stick": {},
+            "ruby:pouch": {"minecraft:bundle_contents": []},
+            "ruby:dyed_pouch": {"minecraft:bundle_contents": []}
+        }"#;
+        fs::write(root.join("items.json"), items).unwrap();
+        fs::write(
+            root.join(MOD_ITEM_TEMPLATES),
+            r#"{"ruby:dyed_pouch": "minecraft:red_bundle"}"#,
+        )
+        .unwrap();
+        let defaults = sunrise_world::item_defaults::read(&root).unwrap();
+        let catalog = Items::catalog(&root, &PackOverlay::NONE, &defaults).unwrap();
+        assert!(catalog.items["minecraft:bundle"].is_bundle_item());
+        assert!(catalog.items["minecraft:red_bundle"].is_bundle_item());
+        assert!(catalog.items["ruby:dyed_pouch"].is_bundle_item());
+        assert!(catalog.items["ruby:pouch"].bundle);
+        assert!(
+            !catalog.items["ruby:pouch"].is_bundle_item(),
+            "a default bundle_contents component alone does not make an item a BundleItem"
+        );
+        assert!(!catalog.items["minecraft:stick"].is_bundle_item());
+        if let Some(prepared) = prepared_items() {
+            for id in VANILLA_BUNDLE_ITEMS {
+                assert!(
+                    prepared.get(id).is_some_and(ItemInfo::is_bundle_item),
+                    "prepared catalog must recognize vanilla BundleItem {id}"
+                );
+            }
+        }
         fs::remove_dir_all(&root).unwrap();
     }
 }

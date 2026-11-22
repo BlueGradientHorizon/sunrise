@@ -41,9 +41,15 @@ pub struct PartRegistrar {
     pub(crate) biome_modifiers: Vec<BiomeModifierDeclaration>,
     pub(crate) biome_regions: Vec<BiomeRegionDeclaration>,
     pub(crate) datapack_registries: Vec<crate::DatapackRegistryDeclaration>,
+    pub(crate) consume_effects: Vec<RegisteredConsumeEffect>,
+    pub(crate) menu_screen_factories: HashMap<String, MenuScreenRegistration>,
     pub(crate) menu_recipe_books: HashMap<String, MenuBookDeclaration>,
-    /// Loading warnings, by owning mod id, in registration order.
-    pub(crate) warnings: Vec<(String, crate::LoadingMessage)>,
+    /// Loading warnings for each owning mod, in registration order.
+    pub(crate) warnings: Vec<(&'static str, Vec<crate::LoadingMessage>)>,
+    /// Refusal reasons recorded for the mod currently running `Hooks::register`.
+    pub(crate) current_refusals: Vec<String>,
+    /// Loading warnings recorded for the mod currently running `Hooks::register`.
+    pub(crate) current_warnings: Vec<crate::LoadingMessage>,
     pub(crate) recipe_book_types: HashMap<String, String>,
     pub(crate) recipe_book_fields: HashMap<String, (String, String)>,
     pub(crate) recipe_book_filters: HashMap<String, crate::RecipeBookFilterLook>,
@@ -51,7 +57,9 @@ pub struct PartRegistrar {
     pub(crate) game_rules: Vec<crate::GameRuleDecl>,
     pub(crate) attachment_uses: Vec<(String, String, String)>,
     pub(crate) attachment_types: HashMap<String, HashMap<String, bool>>,
+    pub(crate) attachment_owners: HashMap<String, HashMap<String, &'static str>>,
     pub(crate) custom_stats: Vec<String>,
+    pub(crate) custom_stat_owners: Vec<&'static str>,
     /// The entity types each named to `entity_tick_each`, in order: `None` for every type.
     pub(crate) entity_tick_each: Vec<Option<String>>,
     pub(crate) mod_id: &'static str,
@@ -96,11 +104,15 @@ impl PartRegistrar {
     pub(crate) fn new(mod_id: &'static str) -> Self {
         let _ = crate::__private::initialize();
         Self {
+            menu_screen_factories: HashMap::new(),
             menu_recipe_books: HashMap::new(),
             warnings: Vec::new(),
+            current_refusals: Vec::new(),
+            current_warnings: Vec::new(),
             biome_modifiers: Vec::new(),
             biome_regions: Vec::new(),
             datapack_registries: Vec::new(),
+            consume_effects: Vec::new(),
             recipe_book_types: HashMap::new(),
             recipe_book_fields: HashMap::new(),
             recipe_book_filters: HashMap::new(),
@@ -108,7 +120,9 @@ impl PartRegistrar {
             game_rules: Vec::new(),
             attachment_uses: Vec::new(),
             attachment_types: HashMap::new(),
+            attachment_owners: HashMap::new(),
             custom_stats: Vec::new(),
+            custom_stat_owners: Vec::new(),
             entity_tick_each: Vec::new(),
             mod_id,
             mod_index: 0,
@@ -232,28 +246,44 @@ pub(crate) fn register_all(
         }
     }
     let _active = ActiveRegistration::enter();
-    // `register` runs in the registration phase and nowhere else: a declaration of a frozen registry
-    // (a general entity type) is refused after it. Production enters it already; a test thread's
-    // default phase is World.
-    let _phase = crate::__private::PhaseOwner::scope(crate::__private::ModPhase::Registration);
+    // `register` runs with startup registration open: a declaration of a frozen registry
+    // (a general entity type) is refused once it closes.
+    let _registration = crate::__private::RegistrationGuard::open();
     let _scope = RestoreKeys(REGISTERING_KEYS.replace(Some(registrar.registry_keys.clone())));
+    let context =
+        <RegistrationContext as mod_vocab::__private::game::RegistrationContextNew>::new();
     for (index, hooks) in mod_vocab::__private::entered_registration(mods, "register").enumerate() {
         registrar.mod_id = mod_vocab::__private::parts_installation::mod_entry_id(&mods[index]);
         registrar.mod_index = index;
-        let context = crate::RegistrationContext::new();
+        registrar.current_warnings.clear();
+        let first_refusal = registrar.refused.len();
         let rollback = registrar.registration_checkpoint();
-        hooks.register(&mut registrar, &context);
-        registrar.warnings.extend(
-            mod_vocab::__private::take_registration_warnings(&context)
-                .into_iter()
-                .map(|warning| (registrar.mod_id.to_owned(), warning)),
-        );
-        if let Some(reason) = mod_vocab::__private::take_registration_refusal(&context) {
+        let cx = mod_vocab::__private::game::bind_registration_context(&context, registrar.mod_id);
+        let completed = mod_vocab::__private::invoke_registration(registrar.mod_id, || {
+            hooks.register(&mut registrar, &cx);
+        });
+        let refusals = std::mem::take(&mut registrar.current_refusals);
+        if !completed {
+            // Report the failed batch's ordinary refusals without turning the contained
+            // panic into a fatal admission error for all the other registrations.
+            for reason in registrar.refused[first_refusal..].iter().chain(&refusals) {
+                log::warn!("mod {} hook register refused: {reason}", registrar.mod_id);
+            }
             rollback(&mut registrar);
-            registrar.refused.push(format!(
-                "mod {} refused registration: {reason}",
-                mod_vocab::__private::parts_installation::mod_entry_id(&mods[index])
-            ));
+            continue;
+        }
+        let warnings = std::mem::take(&mut registrar.current_warnings);
+        if !warnings.is_empty() {
+            registrar.warnings.push((registrar.mod_id, warnings));
+        }
+        if !refusals.is_empty() {
+            rollback(&mut registrar);
+            for reason in refusals {
+                registrar.refused.push(format!(
+                    "mod {} refused registration: {reason}",
+                    registrar.mod_id
+                ));
+            }
         }
     }
     registrar.expand_block_entity_parts();
@@ -279,12 +309,14 @@ pub(crate) fn install_registrar(
     if let Err(errors) = &slots {
         registrar.refused.extend(errors.iter().cloned());
     }
-    for (id, warning) in &registrar.warnings {
-        log::warn!(
-            "mod {id} loading warning: {} {:?}",
-            warning.key(),
-            warning.args()
-        );
+    for (id, warnings) in &registrar.warnings {
+        for warning in warnings {
+            log::warn!(
+                "mod {id} loading warning: {} {:?}",
+                warning.key(),
+                warning.args()
+            );
+        }
     }
     registrar.validate_recipe_types();
     registrar.skip_absent_effect_parts();
@@ -303,6 +335,8 @@ pub(crate) fn install_registrar(
             regions
         },
         datapack_registries: registrar.datapack_registries,
+        consume_effects: registrar.consume_effects,
+        menu_screen_factories: registrar.menu_screen_factories,
         menu_recipe_books: registrar.menu_recipe_books,
         recipe_book_types: registrar.recipe_book_types,
         recipe_book_fields: registrar.recipe_book_fields,
@@ -311,7 +345,9 @@ pub(crate) fn install_registrar(
         game_rules: registrar.game_rules,
         game_rule_categories: registrar.game_rule_categories,
         attachment_types: registrar.attachment_types,
+        attachment_owners: registrar.attachment_owners,
         custom_stats: registrar.custom_stats,
+        custom_stat_owners: registrar.custom_stat_owners,
         entity_tick_each: mod_vocab::__private::EntityTickEach::of(&registrar.entity_tick_each),
         keys: registrar.parts,
         tags: registrar.tags,

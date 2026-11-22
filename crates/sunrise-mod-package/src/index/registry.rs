@@ -21,6 +21,7 @@ use std::path::{Component, Path, PathBuf};
 
 pub mod builds;
 mod collections;
+mod requirements;
 pub use collections::{COLLECTIONS, CollectionEntry, review_collections};
 
 /// The folder of entries in the registry repository.
@@ -222,7 +223,11 @@ impl Entry {
                 "a stable source must use the full SemVer version from its manifest".into(),
             );
         }
-        let name = format!("{}-{}.smod", self.id, version.version);
+        let extension = self
+            .kind
+            .extension()
+            .ok_or_else(|| format!("a {} has no stable source file", self.kind.name()))?;
+        let name = format!("{}-{}.{extension}", self.id, version.version);
         let invalid = || {
             format!("file for a stable source must be a GitHub release asset URL ending in /{name}")
         };
@@ -1309,6 +1314,8 @@ fn owned_by(owners: &[String], author: &str) -> bool {
 pub struct Review {
     /// Changes the registry refuses whoever reviews them.
     pub errors: Vec<String>,
+    /// Findings that do not block the registry review.
+    pub warnings: Vec<String>,
     /// What reviewers should look at: new projects, new owners or keys, a
     /// change by someone who isn't an owner.
     pub notes: Vec<String>,

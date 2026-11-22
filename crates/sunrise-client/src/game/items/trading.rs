@@ -487,7 +487,7 @@ impl Game<'_> {
         self.station = Some(s);
         self.set_screen(super::Screen::Inventory);
         self.capture(false);
-        self.right = false;
+        self.set_mapping_held("key.use", false);
     }
     /// The trading mob's random before a menu click (it ticks meanwhile).
     pub(super) fn merchant_sync_in(&self, session: &mut merchant::Session, mob: Option<u32>) {

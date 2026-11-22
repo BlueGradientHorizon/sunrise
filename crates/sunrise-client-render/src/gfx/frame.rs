@@ -193,6 +193,8 @@ pub struct Frame<'a> {
     pub nether_lighting: bool,
     /// Camera-relative entity geometry textured from the shared atlas.
     pub entities: &'a [Vertex],
+    /// Explicit world particle-atlas geometry, drawn outside the combined entity buffer.
+    pub explicit_particles: Option<&'a crate::particles::ParticleQuads>,
     /// Per-section cacheable block-entity models. Positions are section-local.
     pub static_block_entities: &'a [StaticSectionSnapshot],
     /// Sections currently intersecting the coarse camera frustum.

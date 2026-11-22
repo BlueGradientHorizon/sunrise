@@ -3,9 +3,7 @@
 //! `hurtServer` (take the item out, then break the frame) and
 //! `ItemFrameRenderer` (the frame model and the item at a 45 degree step).
 use super::{Game, Hit, InteractTarget};
-use sunrise_assets::{
-    bake::bake_model, item_model::OwnerState, model::CuboidModel, resolve::ModelLibrary,
-};
+use sunrise_assets::{bake::bake_model, item_model::OwnerState, resolve::ModelLibrary};
 use sunrise_client::{entities::ItemFrame, items::ItemStack, mesher::Vertex};
 use sunrise_core::{
     geometry::{Aabb, Vec3},
@@ -16,43 +14,18 @@ use sunrise_core::{
 pub(super) type FrameModel = Vec<([[f32; 3]; 4], [[f32; 2]; 4], String)>;
 
 /// Item-frame variants prepared together for one resource generation.
-pub(super) fn bake_frames(
-    source: &sunrise_assets::resource_source::ResourceSource,
-) -> [FrameModel; 4] {
+pub(super) fn bake_frames(library: Option<&ModelLibrary>) -> [FrameModel; 4] {
     [
         "item_frame",
         "glow_item_frame",
         "item_frame_map",
         "glow_item_frame_map",
     ]
-    .map(|name| bake_frame(source, name))
+    .map(|name| library.map_or_else(Vec::new, |library| bake_frame(library, name)))
 }
 
 /// Bake `block/<name>` (item_frame / glow_item_frame) from the resources.
-pub(super) fn bake_frame(
-    root: &sunrise_assets::resource_source::ResourceSource,
-    name: &str,
-) -> FrameModel {
-    let mut models = std::collections::BTreeMap::new();
-    let mut pending = vec![format!("minecraft:block/{name}")];
-    while let Some(model) = pending.pop() {
-        let Some((ns, path)) = model.split_once(':') else {
-            continue;
-        };
-        let Ok(text) = root.read_to_string(&format!("assets/{ns}/models/{path}.json")) else {
-            continue;
-        };
-        let Ok(m) = CuboidModel::from_json(&text) else {
-            continue;
-        };
-        if let Some(parent) = &m.parent {
-            pending.push(parent.clone());
-        }
-        models.insert(model, m);
-    }
-    let Ok(library) = ModelLibrary::new(models) else {
-        return Vec::new();
-    };
+fn bake_frame(library: &ModelLibrary, name: &str) -> FrameModel {
     let Ok(resolved) = library.resolve(&format!("minecraft:block/{name}")) else {
         return Vec::new();
     };
@@ -1047,7 +1020,10 @@ mod source_tests {
         let source = ResourceSource::indexed(std::collections::BTreeMap::from([
             ("assets/minecraft/models/block/item_frame.json".into(), Resource::bytes(br##"{"textures":{"x":"example:block/frame"},"elements":[{"from":[0,0,0],"to":[16,16,16],"faces":{"north":{"texture":"#x"}}}]}"##.to_vec())),
         ]));
-        let model = super::bake_frame(&source, "item_frame");
+        let library = sunrise_client::model_library::ParsedModels::load(&source)
+            .into_item_library()
+            .unwrap();
+        let [model, ..] = super::bake_frames(Some(&library));
         assert_eq!(model.len(), 1);
         assert_eq!(model[0].2, "example:block/frame");
     }

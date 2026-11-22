@@ -180,6 +180,7 @@ pub struct Biomes {
     exhausted: Arc<std::sync::atomic::AtomicBool>,
 }
 /// The grass, foliage and dry foliage colormaps.
+#[derive(Default)]
 struct Colormaps {
     grass: Vec<u32>,
     foliage: Vec<u32>,
@@ -346,6 +347,17 @@ impl Biomes {
             foliage: colormap(root.source(), "foliage")?,
             dry: colormap(root.source(), "dry_foliage")?,
         };
+        Self::load_with_colormaps(root, maps)
+    }
+    /// Loads biome definitions for a logical server without opening the client
+    /// `textures/colormap/{grass,foliage,dry_foliage}.png` textures (`GrassColorReloadListener`,
+    /// `FoliageColorReloadListener`, `DryFoliageColorReloadListener` are client-only in vanilla).
+    /// Server-side biome JSON data (water colour, climate, spawns, features and attributes) is
+    /// loaded identically to [`Self::load`].
+    pub fn load_for_server(root: &ResourceRoot) -> Result<Self> {
+        Self::load_with_colormaps(root, Colormaps::default())
+    }
+    fn load_with_colormaps(root: &ResourceRoot, maps: Colormaps) -> Result<Self> {
         let mut list = Vec::new();
         let mut files_by_name = BTreeMap::new();
         // The folder's own files (not its subfolders'), by file name: through `json_folder`,
@@ -1328,5 +1340,56 @@ mod exhaustion_tests {
         assert_eq!(biomes.ensure_saveable(), Err(BiomeIdExhausted));
         assert!(BiomeIdExhausted.to_string().contains("65536"));
         assert_eq!(biomes.saved_name(65535), "missing:last");
+    }
+}
+
+#[cfg(test)]
+mod server_load_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    struct TempDir(std::path::PathBuf);
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn load_for_server_succeeds_without_colormaps_and_preserves_json_data() {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "sunrise-biomes-server-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let biome_dir = dir.join("data/minecraft/worldgen/biome");
+        std::fs::create_dir_all(&biome_dir).unwrap();
+        let _guard = TempDir(dir.clone());
+        std::fs::write(
+            biome_dir.join("plains.json"),
+            r#"{"temperature": 0.8, "downfall": 0.4, "has_precipitation": true, "effects": {"water_color": 4159204}}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            biome_dir.join("swamp.json"),
+            r#"{"temperature": 0.8, "downfall": 0.9, "has_precipitation": true, "effects": {"water_color": 6388580, "foliage_color": 6975545}}"#,
+        )
+        .unwrap();
+
+        let root = ResourceRoot::directory(dir);
+        assert!(
+            Biomes::load(&root).is_err(),
+            "client biome load still requires colormap textures"
+        );
+        let server = Biomes::load_for_server(&root).unwrap();
+        assert_eq!(server.get(server.id("minecraft:plains")).water, 0x3F_76E4);
+        assert_eq!(server.get(server.id("minecraft:swamp")).water, 0x61_7B64);
+        assert_eq!(
+            server.get(server.id("minecraft:swamp")).foliage,
+            0x6A_7039,
+            "JSON foliage_color override is still read"
+        );
+        assert_eq!(server.effects("minecraft:plains").unwrap().water, 0x3F_76E4);
     }
 }

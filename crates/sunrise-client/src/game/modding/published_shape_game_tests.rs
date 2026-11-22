@@ -291,7 +291,7 @@ fn pathfinding_stands_on_the_published_collision_top() {
             assert_eq!(finder.static_floor(2, 65, 2), 64.5);
             drop(finder);
             // `MoveControl.tick`: standing on the published top, walking on, it doesn't jump.
-            zombie.on_ground = true;
+            zombie.ground.on_ground = true;
             zombie.ai.mov.wanted = [5.5, 64.5, 2.5];
             zombie.ai.mov.speed_modifier = 1.0;
             zombie.ai.mov.operation = sunrise_client::mobs::control::Operation::MoveTo;
