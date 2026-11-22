@@ -591,7 +591,7 @@ impl Game<'_> {
             .flat_map(|host| host.hub.guests.simulation_iter().map(move |g| (host, g)))
             .filter(|(host, g)| {
                 // The acting guest's mode is live in `Game` during its turn; the hub
-                // hears of a change only in `leave_guest`.
+                // hears of a change only in the put-back at the end of `guest_turn`.
                 let spectator = if self.lan_acting_uuid == Some(g.uuid) {
                     self.spectator()
                 } else {
