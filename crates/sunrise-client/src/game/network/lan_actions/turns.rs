@@ -115,22 +115,29 @@ impl Game<'_> {
         self.lan.as_ref()?.hub.guests.connection_index(conn)
     }
 
-    /// Runs `f` with guest `gi`'s own inventory, equipment and cursor in its hub record. In
-    /// its own turn the game holds them and the record holds the outer player's, so a packet
-    /// built from the record would show that player's stacks. Only the LAN host and the item
-    /// table are available to `f`: game callbacks must run after the acting player is restored.
+    /// Run `f` with the player's own inventory in their hub record. The live
+    /// actor's inventory is in `Game`; a suspended actor's is in the next turn's
+    /// guest record. Only LAN and the item table are lent to `f`, so game
+    /// callbacks run after the normal ownership is restored.
     pub(in crate::game) fn with_own_record<R>(
         &mut self,
         gi: usize,
         f: impl FnOnce(&mut LanHost, &sunrise_client::items::Items) -> Option<R>,
     ) -> Option<R> {
-        let own = self
-            .lan
-            .as_ref()
-            .is_some_and(|host| self.lan_acting == Some(host.hub.guests[gi].conn));
-        let swap = |game: &mut Self| {
-            if let Some(host) = game.lan.as_mut() {
-                host.hub.guests.update(gi, |g| {
+        let host = self.lan.as_ref()?;
+        let conn = host.hub.guests[gi].conn;
+        let swap = match self.lan_guest_swaps.iter().position(|&c| c == conn) {
+            Some(loan) => match self.lan_guest_swaps.get(loan + 1) {
+                Some(&inner) => Some(Some(host.hub.guests.connection_index(inner)?)),
+                None => Some(None),
+            },
+            None => None,
+        };
+        let swap_inventory = |game: &mut Self| {
+            let host = game.lan.as_mut().expect("the guest turn owns the LAN host");
+            match swap {
+                Some(Some(inner)) => host.hub.guests.swap_loaned_inventory(gi, inner),
+                Some(None) => host.hub.guests.update(gi, |g| {
                     // The fields `guest_turn` swaps.
                     std::mem::swap(&mut game.inventory, &mut g.inventory);
                     std::mem::swap(&mut game.armor, &mut g.armor);
@@ -138,16 +145,13 @@ impl Game<'_> {
                     std::mem::swap(&mut game.offhand, &mut g.offhand);
                     std::mem::swap(&mut game.equipment, &mut g.equipment);
                     std::mem::swap(&mut game.carried, &mut g.carried);
-                });
+                }),
+                None => {}
             }
         };
-        if own {
-            swap(self);
-        }
+        swap_inventory(self);
         let result = f(self.lan.as_mut()?, world_items!(self));
-        if own {
-            swap(self);
-        }
+        swap_inventory(self);
         result
     }
 
