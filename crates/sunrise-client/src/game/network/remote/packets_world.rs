@@ -79,11 +79,11 @@ impl Game<'_> {
     /// `C::InitializeBorder`: its arms of `apply_packet`, guard and order kept.
     pub(super) fn apply_initialize_border_packet(&mut self, p: play::InitializeBorder) {
         let b = &mut self.border;
-        b.set_center([p.center_x, p.center_z]);
+        let _ = b.set_center([p.center_x, p.center_z]);
         if p.lerp_time > 0 {
-            b.lerp_between(p.old_size, p.new_size, p.lerp_time);
+            let _ = b.lerp_between(p.old_size, p.new_size, p.lerp_time);
         } else {
-            b.set_size(p.new_size);
+            let _ = b.set_size(p.new_size);
         }
         b.set_absolute_max_size(p.absolute_max_size);
         b.warning_distance = p.warning_blocks;
@@ -92,7 +92,8 @@ impl Game<'_> {
 
     /// `C::SetBorderLerpSize`: its arms of `apply_packet`, guard and order kept.
     pub(super) fn apply_set_border_lerp_size_packet(&mut self, p: play::SetBorderLerpSize) {
-        self.border
+        let _ = self
+            .border
             .lerp_between(p.old_size, p.new_size, p.lerp_time);
     }
 

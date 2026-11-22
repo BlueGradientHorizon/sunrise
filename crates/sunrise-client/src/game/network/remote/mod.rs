@@ -1218,9 +1218,13 @@ impl Game<'_> {
             C::PlayerInfoRemove(p) => self.apply_player_info_remove_packet(p),
             C::TabList(p) => self.apply_tab_list_packet(p),
             C::InitializeBorder(p) => self.apply_initialize_border_packet(p),
-            C::SetBorderCenter(p) => self.border.set_center([p.x, p.z]),
+            C::SetBorderCenter(p) => {
+                let _ = self.border.set_center([p.x, p.z]);
+            }
             C::SetBorderLerpSize(p) => self.apply_set_border_lerp_size_packet(p),
-            C::SetBorderSize(p) => self.border.set_size(p.size),
+            C::SetBorderSize(p) => {
+                let _ = self.border.set_size(p.size);
+            }
             C::SetBorderWarningDelay(p) => self.border.warning_time = p.delay,
             C::SetBorderWarningDistance(p) => self.border.warning_distance = p.blocks,
             C::SetObjective(p) => self.remote_objective(p),

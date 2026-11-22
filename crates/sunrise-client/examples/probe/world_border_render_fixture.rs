@@ -40,8 +40,8 @@ pub fn main() -> Result<()> {
         border.warning_distance = c["warningBlocks"].as_i64().unwrap_or(0) as i32;
         border.warning_time = c["warningTime"].as_i64().unwrap_or(0) as i32;
         border.set_absolute_max_size(c["absoluteMaxSize"].as_i64().unwrap_or(0) as i32);
-        border.set_center([f(&c["centerX"]), f(&c["centerZ"])]);
-        border.set_size(f(&c["size"]));
+        border.set_center([f(&c["centerX"]), f(&c["centerZ"])])?;
+        border.set_size(f(&c["size"]))?;
         let mut renderer = BorderRenderer::default();
         let mut state = BorderRenderState::default();
         let mut frames = Vec::new();
@@ -52,9 +52,9 @@ pub fn main() -> Result<()> {
                     f(&op["from"]),
                     f(&op["to"]),
                     op["ticks"].as_i64().unwrap_or(0),
-                ),
-                "size" => border.set_size(f(&op["size"])),
-                "center" => border.set_center([f(&op["x"]), f(&op["z"])]),
+                )?,
+                "size" => border.set_size(f(&op["size"]))?,
+                "center" => border.set_center([f(&op["x"]), f(&op["z"])])?,
                 "warning" => {
                     border.warning_distance = op["blocks"].as_i64().unwrap_or(0) as i32;
                     border.warning_time = op["time"].as_i64().unwrap_or(0) as i32;

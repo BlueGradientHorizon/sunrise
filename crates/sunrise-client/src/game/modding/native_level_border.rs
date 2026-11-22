@@ -29,7 +29,7 @@ impl Game<'_> {
         if self.border.center() == center {
             return true;
         }
-        self.border.set_center(center);
+        let _ = self.border.set_center(center);
         self.native_world_border_center_changed();
         true
     }
@@ -53,7 +53,7 @@ impl Game<'_> {
         if ticks == 0 && self.border.remaining_ticks() == 0 && self.border.size() == size {
             return true;
         }
-        self.border.lerp_to(size, ticks);
+        let _ = self.border.lerp_to(size, ticks);
         self.native_world_border_bounds_changed();
         true
     }

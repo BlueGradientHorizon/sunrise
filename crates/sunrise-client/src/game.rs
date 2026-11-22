@@ -2291,6 +2291,8 @@ mod wither;
 #[cfg(test)]
 #[path = "game/mobs/wither_star_tests.rs"]
 mod wither_star_tests;
+#[path = "game/world/world_border.rs"]
+mod world_border;
 #[path = "game/world/world_entry.rs"]
 mod world_entry;
 #[cfg(test)]

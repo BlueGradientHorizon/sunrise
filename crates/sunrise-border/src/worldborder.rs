@@ -2,8 +2,8 @@
 //! `sunrise_core::geometry::border` (static or moving, with the previous size
 //! for partial ticks) plus the damage and warning settings, and how strongly
 //! the warning vignette shows.
-use sunrise_core::geometry::border::BorderGeometry;
 pub use sunrise_core::geometry::border::BorderStatus;
+use sunrise_core::geometry::border::{BorderError, BorderGeometry};
 
 /// `WorldBorder.MAX_SIZE` (the float 5.999997E7 as a double).
 pub const MAX_SIZE: f64 = 59_999_968.0;
@@ -89,9 +89,9 @@ impl WorldBorder {
     pub fn center(&self) -> [f64; 2] {
         self.geometry.center()
     }
-    /// `setCenter` (non-finite centres are ignored).
-    pub fn set_center(&mut self, center: [f64; 2]) {
-        let _ = self.geometry.set_center(center);
+    /// `setCenter` (rejects non-finite centres).
+    pub fn set_center(&mut self, center: [f64; 2]) -> Result<(), BorderError> {
+        self.geometry.set_center(center)
     }
     pub fn absolute_max_size(&self) -> i32 {
         self.geometry.absolute_max()
@@ -120,20 +120,20 @@ impl WorldBorder {
     pub fn status(&self) -> BorderStatus {
         self.geometry.status()
     }
-    pub fn set_size(&mut self, size: f64) {
-        let _ = self.geometry.set_size(size.clamp(1.0, MAX_SIZE));
+    pub fn set_size(&mut self, size: f64) -> Result<(), BorderError> {
+        self.geometry.set_size(size.clamp(1.0, MAX_SIZE))
     }
     /// `lerpSizeBetween(from, to, ticks)` (what the server and the border
     /// packets do).
-    pub fn lerp_between(&mut self, from: f64, to: f64, ticks: i64) {
-        let _ = self.geometry.lerp_size_between(from, to, ticks);
+    pub fn lerp_between(&mut self, from: f64, to: f64, ticks: i64) -> Result<(), BorderError> {
+        self.geometry.lerp_size_between(from, to, ticks)
     }
     /// A size change from the current size (`/worldborder set|add` with a time).
-    pub fn lerp_to(&mut self, to: f64, ticks: i64) {
+    pub fn lerp_to(&mut self, to: f64, ticks: i64) -> Result<(), BorderError> {
         if ticks <= 0 {
-            self.set_size(to);
+            self.set_size(to)
         } else {
-            self.lerp_between(self.size(), to.clamp(1.0, MAX_SIZE), ticks);
+            self.lerp_between(self.size(), to.clamp(1.0, MAX_SIZE), ticks)
         }
     }
     /// `tick`.
@@ -209,13 +209,13 @@ impl WorldBorder {
             warning_time: i("warning_time", 300),
             ..Self::default()
         };
-        b.set_center([d("center_x", 0.0), d("center_z", 0.0)]);
-        b.set_size(size);
+        let _ = b.set_center([d("center_x", 0.0), d("center_z", 0.0)]);
+        let _ = b.set_size(size);
         if let Some(Tag::Long(t)) = tag.get("lerp_time")
             && *t > 0
         {
             let to = d("lerp_target", size);
-            b.lerp_between(size, to.clamp(1.0, MAX_SIZE), *t);
+            let _ = b.lerp_between(size, to.clamp(1.0, MAX_SIZE), *t);
         }
         b
     }
@@ -245,11 +245,11 @@ mod tests {
     #[test]
     fn lerp_and_distance() {
         let mut b = WorldBorder::default();
-        b.set_size(100.0);
+        b.set_size(100.0).unwrap();
         assert_eq!(b.distance(0.0, 0.0), 50.0);
         assert_eq!(b.distance(60.0, 0.0), -10.0);
         assert!(b.contains(49.9, -49.9) && !b.contains(50.0, 0.0));
-        b.lerp_to(200.0, 10);
+        b.lerp_to(200.0, 10).unwrap();
         assert_eq!(b.size(), 100.0);
         assert_eq!(b.status(), BorderStatus::Growing);
         for _ in 0..5 {
@@ -265,18 +265,18 @@ mod tests {
         }
         assert_eq!((b.size(), b.remaining_ticks()), (200.0, 0));
         // An instant change and clamping a body inside.
-        b.lerp_to(10.0, 0);
+        b.lerp_to(10.0, 0).unwrap();
         assert_eq!(b.size(), 10.0);
         assert_eq!(b.status(), BorderStatus::Stationary);
         assert_eq!(b.clamp(100.0, -100.0, 0.3), [4.7, -4.7]);
-        b.set_center([10.0, 0.0]);
+        b.set_center([10.0, 0.0]).unwrap();
         assert_eq!(b.bounds(), [5.0, -5.0, 15.0, 5.0]);
     }
     #[test]
     fn saved_form_round_trips() {
         let mut b = WorldBorder::default();
-        b.set_size(500.0);
-        b.set_center([3.5, -7.0]);
+        b.set_size(500.0).unwrap();
+        b.set_center([3.5, -7.0]).unwrap();
         b.damage_per_block = 1.5;
         b.warning_distance = 9;
         let back = WorldBorder::unpack(&b.pack());

@@ -109,13 +109,13 @@ mod tests {
         let mut b = WorldBorder::default();
         let mut sent = Sent::of(&b);
         assert!(sent.changes(&b).is_empty());
-        b.set_center([4.0, -2.0]);
-        b.set_size(10.0);
+        b.set_center([4.0, -2.0]).unwrap();
+        b.set_size(10.0).unwrap();
         b.warning_time = 30;
         assert_eq!(kinds(&sent.changes(&b)), ["center", "size", "delay"]);
         sent = Sent::of(&b);
         // A change over 3 ticks: sent once, then each client runs it.
-        b.lerp_to(20.0, 3);
+        b.lerp_to(20.0, 3).unwrap();
         assert_eq!(kinds(&sent.changes(&b)), ["lerp"]);
         for _ in 0..4 {
             sent = Sent::of(&b);
