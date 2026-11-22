@@ -6,6 +6,9 @@ pub use evaluation::{ConditionContext, Evaluation};
 use serde_json::Value;
 use std::{collections::HashMap, fs, path::Path, sync::Arc};
 
+pub(crate) const NUMBER_PROVIDER_KINDS: [&str; 2] =
+    ["context_int_provider", "context_float_provider"];
+
 /// Evaluator for `context_int_provider` / `context_float_provider` values.
 #[derive(Clone)]
 pub struct Providers(Arc<Definitions>);
@@ -67,10 +70,10 @@ impl Providers {
         overlay: &sunrise_world::loot::PackOverlay<'_>,
     ) -> Result<Self, String> {
         let mut providers = Definitions::load(root);
-        for (kind, table) in [
-            ("context_int_provider", &mut providers.ints),
-            ("context_float_provider", &mut providers.floats),
-        ] {
+        for (kind, table) in NUMBER_PROVIDER_KINDS
+            .into_iter()
+            .zip([&mut providers.ints, &mut providers.floats])
+        {
             for (id, files) in overlay.kind(kind) {
                 let value = serde_json::from_slice(sunrise_world::loot::PackOverlay::top(files))
                     .map_err(|error| format!("{kind} {id}: {error}"))?;
