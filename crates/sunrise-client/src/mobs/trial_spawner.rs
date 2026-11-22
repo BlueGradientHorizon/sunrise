@@ -199,13 +199,20 @@ pub fn load_registry(root: &Path) {
                     ) else {
                         continue;
                     };
+                    let id = rel
+                        .iter()
+                        .map(|part| part.to_string_lossy())
+                        .collect::<Vec<_>>()
+                        .join("/");
+                    if !sunrise_world::json_folder::valid_resource_path(&ns, &id) {
+                        continue;
+                    }
                     let config = std::fs::read(&path)
                         .ok()
                         .and_then(|b| serde_json::from_slice(&b).ok())
                         .and_then(|v| TrialConfig::decode(&crate::scoreboard::json_to_tag(&v)));
                     match config {
                         Some(c) => {
-                            let id = rel.to_string_lossy().replace('\\', "/");
                             out.insert(format!("{ns}:{id}"), c);
                         }
                         None => log::warn!("Sunrise: bad trial spawner config {}", path.display()),

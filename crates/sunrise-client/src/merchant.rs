@@ -370,6 +370,7 @@ fn walk(dir: &Path) -> BTreeMap<String, Value> {
     folder
         .files
         .iter()
+        .filter(|file| sunrise_world::json_folder::valid_resource_path("minecraft", &file.name))
         .filter_map(|file| {
             let value = serde_json::from_slice(file.bytes().unwrap_or_default()).ok()?;
             Some((format!("minecraft:{}", file.name), value))

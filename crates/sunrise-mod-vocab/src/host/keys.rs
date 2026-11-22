@@ -32,8 +32,8 @@ pub trait KeysHost {
     #[access(WorldOnly)]
     fn registry_entry(&self, registry: &str, id: &str) -> Option<RegistryEntry>;
     /// Side: both.
-    /// Visit the canonical entry IDs in the current side's registry. Local tables with no
-    /// protocol order list unique IDs lexically; protocol tables retain their numeric order.
+    /// Visit the canonical entry IDs in the current side's registry, in the table's existing
+    /// order: numeric IDs for protocol tables, lexical order for name-keyed local tables.
     /// IDs are borrowed for each call; use [`Identifier::parse`] if you need to retain a typed ID.
     /// Return `ControlFlow::Break(())` to stop, or `ControlFlow::Continue(())` to keep visiting.
     /// Returns `Ok(Continue(()))` on completion, including for an empty registry, or

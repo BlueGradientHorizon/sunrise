@@ -14,7 +14,8 @@ fn load_dir(dir: &Path, namespace: &str, out: &mut BTreeMap<String, Value>) {
         return;
     };
     for file in &folder.files {
-        if let Ok(bytes) = file.bytes()
+        if sunrise_world::json_folder::valid_resource_path(namespace, &file.name)
+            && let Ok(bytes) = file.bytes()
             && let Ok(value) = serde_json::from_slice(bytes)
         {
             out.insert(format!("{namespace}:{}", file.name), value);
@@ -200,6 +201,7 @@ mod tests {
         std::fs::create_dir_all(&folder).unwrap();
         std::fs::write(folder.join("value.json"), "17").unwrap();
         std::fs::write(folder.join("invalid.json"), "{").unwrap();
+        std::fs::write(folder.join("Invalid_Name.json"), "19").unwrap();
         let providers = Providers::load(&root);
         let table = providers
             .registry("minecraft:context_int_provider")
@@ -207,6 +209,7 @@ mod tests {
         assert_eq!(table.len(), 1);
         assert_eq!(table.get("example:sub/value"), Some(&json!(17)));
         assert!(!table.contains_key("example:sub/invalid"));
+        assert_eq!(providers.int_value(&json!("example:sub/Invalid_Name")), 0);
         assert_eq!(providers.int_value(&json!("example:sub/value")), 17);
         assert!(providers.registry("example:unknown").is_none());
         std::fs::remove_dir_all(root).unwrap();

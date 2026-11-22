@@ -519,7 +519,17 @@ fn generic_client_entries_use_only_builtin_synced_and_negotiated_tables() {
                         tags: vec![],
                     }],
                 });
-                game.remote.as_mut().unwrap().registries = Arc::new(replacement);
+                let remote_state = game.remote.as_mut().unwrap();
+                remote_state.registries = Arc::new(replacement);
+                Arc::make_mut(&mut remote_state.builtin).registries.insert(
+                    "test:sparse".into(),
+                    sunrise_protocol::registry::Ids::from_names(vec![
+                        String::new(),
+                        "test:z".into(),
+                        String::new(),
+                        "test:a".into(),
+                    ]),
+                );
                 let host = host(game);
                 assert_eq!(
                     host.visit_registry_entries("test:empty", &mut |_| panic!(
@@ -527,15 +537,17 @@ fn generic_client_entries_use_only_builtin_synced_and_negotiated_tables() {
                     )),
                     Ok(ControlFlow::Continue(()))
                 );
-                let mut names = Vec::new();
-                assert_eq!(
-                    host.visit_registry_entries("test:protocol_order", &mut |id| {
-                        names.push(id.to_owned());
-                        ControlFlow::Continue(())
-                    }),
-                    Ok(ControlFlow::Continue(()))
-                );
-                assert_eq!(names, ["test:z", "test:a"]);
+                for registry in ["test:protocol_order", "test:sparse"] {
+                    let mut names = Vec::new();
+                    assert_eq!(
+                        host.visit_registry_entries(registry, &mut |id| {
+                            names.push(id.to_owned());
+                            ControlFlow::Continue(())
+                        }),
+                        Ok(ControlFlow::Continue(()))
+                    );
+                    assert_eq!(names, ["test:z", "test:a"]);
+                }
                 {
                     let _phase =
                         mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Setup);

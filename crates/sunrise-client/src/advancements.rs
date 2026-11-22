@@ -231,7 +231,9 @@ impl Tree {
             };
             let ns = ns.file_name().to_string_lossy().into_owned();
             for file in &folder.files {
-                if let Ok(v) = serde_json::from_slice::<Value>(file.bytes().unwrap_or_default()) {
+                if sunrise_world::json_folder::valid_resource_path(&ns, &file.name)
+                    && let Ok(v) = serde_json::from_slice::<Value>(file.bytes().unwrap_or_default())
+                {
                     json.insert(format!("{ns}:{}", file.name), v);
                 }
             }
