@@ -1561,6 +1561,23 @@ fn receive_play(
                 continue;
             }
         };
+        // Standalone handleDebugSample runs on the reader. Refuse its logger fault
+        // before capture, but keep the fault in member order if packing a bundle.
+        let oversized_sample = match &packet {
+            play::Clientbound::DebugSample(p) if p.sample.len() > play::DEBUG_SAMPLE_DIMENSIONS => {
+                Some(p.sample.len())
+            }
+            _ => None,
+        };
+        if let Some(size) = oversized_sample
+            && !bundle.assembling()
+        {
+            let error = sunrise_protocol::Error::new(format!(
+                "debug sample of {size} values, at most {}",
+                play::DEBUG_SAMPLE_DIMENSIONS
+            ));
+            return Err(Reason::plain(connection_lost(error, lang)));
+        }
         if let Some(rec) = recorder.lock().unwrap().as_ref()
             && rec.is_active()
         {
@@ -1613,17 +1630,6 @@ fn receive_play(
             continue;
         }
         match packet {
-            // Vanilla runs standalone handleDebugSample on the receive thread, so a
-            // logger fault follows Connection.exceptionCaught. Bundled samples reach
-            // this same check in the actual logger, after the earlier members run.
-            play::Clientbound::DebugSample(p) if p.sample.len() > play::DEBUG_SAMPLE_DIMENSIONS => {
-                let error = sunrise_protocol::Error::new(format!(
-                    "debug sample of {} values, at most {}",
-                    p.sample.len(),
-                    play::DEBUG_SAMPLE_DIMENSIONS
-                ));
-                return Err(Reason::plain(connection_lost(error, lang)));
-            }
             play::Clientbound::KeepAlive(k) => io.handle(PlayIoAction::KeepAlive(k)),
             // Outside a bundle, these two handlers run on the receive thread.
             play::Clientbound::ChunkBatchStart(_) => io.handle(PlayIoAction::ChunkBatchStart),
@@ -3707,6 +3713,7 @@ mod tests {
             serial: next_serial(),
         };
         let (configuring, cookies) = (session.configuring.clone(), session.cookies.clone());
+        let recorder = session.recorder.clone();
         let thread = std::thread::spawn(move || {
             let result = receive_play(
                 &mut reader,
@@ -3718,7 +3725,7 @@ mod tests {
                 &cookies,
                 &Arc::default(),
                 &data,
-                &Arc::new(Mutex::new(None)),
+                &recorder,
                 &crate::raw_payloads::Transport::empty(),
                 &Arc::default(),
                 &Arc::default(),
@@ -3738,6 +3745,19 @@ mod tests {
         for (sample, kind) in [(vec![0; 4], 1), (vec![0; 5], play::DEBUG_SAMPLE_TICK_TIME)] {
             let (root, mut server, session, reader) =
                 bundle_pipe("malformed-debug-sample", 1 << 20);
+            let recorder = TestRecorder::default();
+            *session.recorder.lock().unwrap() = Some(Box::new(recorder.clone()));
+            let valid = play::Clientbound::DebugSample(play::DebugSample {
+                sample: vec![1],
+                kind: play::DEBUG_SAMPLE_TICK_TIME,
+            });
+            server.send(&valid.encode()).unwrap();
+            let (event, _credit) = session
+                .events
+                .recv_timeout_owned(Duration::from_secs(5))
+                .unwrap()
+                .into_parts();
+            assert!(matches!(event, Event::Packet(packet) if *packet == valid));
             server
                 .send(&play::Clientbound::DebugSample(play::DebugSample { sample, kind }).encode())
                 .unwrap();
@@ -3745,6 +3765,7 @@ mod tests {
             drop(server);
             reader.join().unwrap();
             std::fs::remove_dir_all(root).unwrap();
+            assert_eq!(recorder.decoded(), [valid]);
             let (event, _credit) = result.unwrap().into_parts();
             assert!(matches!(
                 event,
