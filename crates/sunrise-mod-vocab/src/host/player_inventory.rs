@@ -93,15 +93,16 @@ pub trait PlayerInventoryBackendMut {
     /// Side: server.
     /// Gives `stack` as `/give` does, components and all: `Inventory.add` fills matching
     /// stacks, then empty slots (the selected one first); what does not fit is thrown from
-    /// the player's eyes with no pickup delay and only they may pick it up; a stack that went
-    /// in whole plays the pickup sound. Refuses, with nothing given, with `Stale`, `Client`,
+    /// the player's eyes with no pickup delay and only they may pick it up. A stack that fits
+    /// instead spawns the short-lived, non-pickable `/give` visual and plays the pickup sound.
+    /// Refuses, with nothing given, with `Stale`, `Client`,
     /// `Dead` or `Stack`, as `player_set_inventory_slot` does.
-    /// For a player in another level than the hook's, what fits goes into their inventory at
-    /// once and nothing lands in the world: what does not fit comes back as `Ok(Some(rest))`
-    /// and no sound plays, so drop it from a hook in the player's own level if you want it
-    /// dropped. Otherwise `Ok(None)`.
+    /// This happens in the player's own level, even when the hook runs in another one.
+    /// `Ok(None)` means every item was accepted. The ordinary entity-join hook can still
+    /// cancel the overflow drop. If the player's level is unavailable, returns the overflow
+    /// as `Ok(Some(rest))` rather than throwing it elsewhere.
     /// An open transaction journals this write; an abort restores the previous value.
-    /// Overflow drops and pickup sounds wait for the outermost commit.
+    /// Overflow drops, the pickup visual and the sound wait for the outermost commit.
     fn player_give_stack(
         &mut self,
         player: PlayerRef,

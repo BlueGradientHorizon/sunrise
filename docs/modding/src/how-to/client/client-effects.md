@@ -32,8 +32,10 @@ Use `Hooks::item_tooltip` for NeoForge's global `ItemTooltipEvent` moment: it
 receives every item's finished tooltip, including the parts' earlier lines,
 component lines and advanced information. No attached part is needed for a
 global listener, so this is also how a mod edits vanilla or other mods' tooltips.
-The global event supplies the stack, display settings, player IDs, and the
-request's `advanced` and `creative` flags.
+The global event lends `stack: ItemStackView<'_>` (call `project()` to copy
+components), `display: &TooltipDisplay<'_>`, and live `lines: TooltipLines<'_>`
+validated per edit with `TextFormError` (one invalid edit leaves all other lines
+intact), alongside player IDs and the request's `advanced` and `creative` flags.
 
 ## Drawing a second world camera
 

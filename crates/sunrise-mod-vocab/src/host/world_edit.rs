@@ -9,8 +9,9 @@ pub trait WorldEditServerHost {
     /// (the one being ticked, as for `native_set_block`), with what `fill ... strict` does for block entities (a
     /// block replaced by another loses its block entity, and a new block gets the one `native_set_block` would
     /// give it, a mod block's included); no neighbour is told and the replaced block entity's contents do not
-    /// drop. Inside a transaction in this level, the new blocks and entities are visible at once; abort restores
-    /// both. The changed chunks go to the players whole, only after the level's outermost commit.
+    /// drop. Inside a transaction in this level, the new blocks and entities are visible at once; abort quietly
+    /// restores both, with the connection group each replaced block had. The changed chunks go to the players
+    /// whole, with their resulting connection groups, only after the level's outermost commit.
     /// At positions also written with `LevelRef::set_block`, strict and ordinary edits commit in
     /// call order; the strict edit never spills a container or requests neighbor updates.
     /// Runs in chunks not loaded, and the parts of runs outside the column, are left out. The blocks changed, or
@@ -70,11 +71,13 @@ pub trait WorldEditServerHost {
     ) -> Result<Vec<Option<TerrainColumn>>, String>;
     /// Side: server.
     /// For a server mod: `below` blocks under and `above` blocks from each column's height by `heightmap`, as a
-    /// palette of complete `BlockState` values and indexes, with biome tints (air outside the column and in columns
-    /// not loaded). The tints are the biome's at the column's top, not blended over the biome blend radius as the
-    /// game draws them: near a biome border they can differ from what players see. `Err` says why nothing was
-    /// read: another dimension or a client of a server, `below + above` of 0 or more than the level's height, or
-    /// a read of more than 1,048,576 blocks (`MAX_READ`; it runs on the server tick, so read big areas in pieces).
+    /// palette of complete `BlockState` values and indexes, with each column's server-side biome JSON water
+    /// colour (`water_colors`, `0xRRGGBB`; `0` where not loaded; air outside the column and in columns not
+    /// loaded). Colormap-derived grass and foliage tints are client-side only: read blended tints on the client
+    /// with [`BlockAndTintGetter::block_tint`] in block tint callbacks or `ClientHost::biome_tint` in other
+    /// client hooks. `Err` says why nothing was read: another dimension or a
+    /// client of a server, `below + above` of 0 or more than the level's height, or a read of more than 1,048,576
+    /// blocks (`MAX_READ`; it runs on the server tick, so read big areas in pieces).
     fn read_columns(
         &self,
         dimension: &str,

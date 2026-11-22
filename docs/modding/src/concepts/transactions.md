@@ -73,9 +73,9 @@ block entity. A replacement installed by the listener does not inherit the
 original entity's saved tag or lock. The replacement keeps its own items and
 saved data, including a lock set on its new handle, even if the position returns
 to the state the first write requested. On abort, the journal restores the
-original entity and undoes those edits. `host.edit_blocks` also restores the
-original blocks and block entities on abort; it publishes whole chunks on commit
-without drops or neighbor updates. If both kinds of write touch one position,
+original entity and undoes those edits. `host.edit_blocks` also quietly restores the
+original blocks, block entities and connection groups on abort; it publishes whole
+chunks with their resulting connection groups on commit, without drops or neighbor updates. If both kinds of write touch one position,
 they replay in call order; a later bulk edit cannot substitute its new block
 entity for the ordinary removal's old one. `LevelRef::destroy_block` returns
 `Ok(None)` while a transaction is open, before running loot, experience or break
@@ -89,10 +89,10 @@ tick does not open a transaction for you. Use `event.subject.transaction` to mak
 a subject edit and a dropped-item write atomic:
 
 ```rust,ignore
-use mod_api::{BlockEntityTickScope, ItemEntityRef, ItemStack};
+use mod_api::{BlockEntityScope, ItemEntityRef, ItemStack};
 
 fn update(
-    tick: &mut BlockEntityTickScope<'_>,
+    tick: &mut BlockEntityScope<'_>,
     item: ItemEntityRef,
     replacement: ItemStack,
     progress: i32,
@@ -199,7 +199,6 @@ The player `set_inventory_slot`, `set_ender_chest_slot`, `give_stack` and
 the old values; equipment effects and given-stack overflow wait for root commit.
 
 These writes reach a player in another level than the hook's: their inventory and data
-change at once, wherever they are. What would land in the world at them does not happen
-there: `give_stack` returns what did not fit instead of dropping it (drop it from a hook in
-the player's own level if you want), `drop_stack` returns the stack, `destroy_block` breaks
-nothing, and no pickup or equip sound plays.
+change at once, wherever they are. `give_stack`'s overflow drops, pickup visuals and sounds
+go to the player's own level at root commit. `drop_stack` still returns the stack, `destroy_block`
+breaks nothing, and no equip sound plays when the player's level is not in place.

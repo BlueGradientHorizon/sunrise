@@ -31,7 +31,7 @@ impl Game<'_> {
         world_block_entity(world, level, pos)
     }
 
-    /// `block_entity`, also for a block entity temporarily detached for a menu operation:
+    /// `block_entity`, also for a block entity temporarily taken out by an engine operation:
     /// its generation stays in place while it is out.
     pub(super) fn block_entity_identity(
         &self,
@@ -191,7 +191,10 @@ impl Game<'_> {
     }
 
     /// A loaded block entity of the server level in place, when a write may change it.
-    fn native_block_entity_write_key(&self, entity: BlockEntityRef) -> Option<(i32, i32, i32)> {
+    pub(super) fn native_block_entity_write_key(
+        &self,
+        entity: BlockEntityRef,
+    ) -> Option<(i32, i32, i32)> {
         if !self.level_in_place(entity.fields().level) {
             return None;
         }
@@ -588,7 +591,7 @@ impl Game<'_> {
             .flat_map(|host| host.hub.guests.simulation_iter().map(move |g| (host, g)))
             .filter(|(host, g)| {
                 // The acting guest's mode is live in `Game` during its turn; the hub
-                // hears of a change only in `leave_guest`.
+                // hears of a change only in the put-back at the end of `guest_turn`.
                 let spectator = if self.lan_acting_uuid == Some(g.uuid) {
                     self.spectator()
                 } else {
@@ -761,11 +764,15 @@ pub(super) fn save_without_metadata(
     block: &str,
     items: &crate::items::Items,
 ) -> Option<Compound> {
-    let mut data = save_with_metadata(world, pos, entity, block, items)?;
+    save_with_metadata(world, pos, entity, block, items).map(block_entity_payload)
+}
+
+/// The saved block entity's payload, with its world identity and position removed.
+pub(super) fn block_entity_payload(mut data: Compound) -> Compound {
     for key in ["id", "x", "y", "z"] {
         data.remove(&key.into());
     }
-    Some(data)
+    data
 }
 
 /// Whether the block entity keeps a `CustomName` (`Nameable`): its saved form does.
@@ -846,7 +853,7 @@ pub(super) fn part_snapshot(
 }
 
 /// The handle of the loaded block entity at `pos`, without loading a chunk or taking one
-/// that is out of the world for its own tick.
+/// temporarily absent from the resident table.
 pub(super) fn world_block_entity(
     world: &World,
     level: LevelRef,
@@ -895,10 +902,7 @@ fn loaded_block_entity(world: &World, [x, y, z]: [i32; 3]) -> Option<&BlockEntit
     if !world.loaded(x, z) || !world.shape.contains_y(y) {
         return None;
     }
-    world
-        .block_entities
-        .get(&(x, y, z))
-        .filter(|entity| !save::block_entity_placeholder(entity))
+    world.block_entities.get(&(x, y, z))
 }
 
 #[cfg(test)]
@@ -1131,10 +1135,13 @@ mod tests {
             loaded_block_entity(&world, pos),
             Some(BlockEntity::DaylightDetector)
         ));
-        world
-            .block_entities
-            .insert(key, BlockEntity::Mod(Box::default()));
+        let (lease, detached) = world.block_entities.take(&key).unwrap();
         assert!(loaded_block_entity(&world, pos).is_none());
+        assert!(world.block_entities.put(lease, detached));
+        assert!(matches!(
+            loaded_block_entity(&world, pos),
+            Some(BlockEntity::DaylightDetector)
+        ));
         let outside_pos = [-1, world.shape.max_y(), 0];
         world
             .block_entities

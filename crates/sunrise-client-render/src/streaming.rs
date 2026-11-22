@@ -1551,10 +1551,20 @@ impl Streaming {
         }
         // After the blocks: the write of a block with a block entity made a
         // default one, which the generated one replaces.
+        let load = if writes.block_entities.is_empty() {
+            None
+        } else {
+            crate::spans::raw_flight_guard("load_block_entities")
+        };
+        let mut inserted = 0;
         for (pos, entity) in writes.block_entities {
             if world.chunks.contains_key(&(pos.0 >> 4, pos.2 >> 4)) {
                 world.block_entities.insert(pos, entity);
+                inserted += usize::from(load.is_some());
             }
+        }
+        if load.is_some() {
+            crate::spans::note_block_entity_loads(inserted);
         }
     }
     /// Saved proto chunks come back; those now out of range are dropped by
@@ -3029,7 +3039,30 @@ impl Streaming {
         if !self.set_forced(x, z, true) {
             return false;
         }
-        while !world.chunks.is_ticking_ready((x, z)) {
+        self.wait_for_column(world, |world| world.chunks.is_ticking_ready((x, z)));
+        true
+    }
+
+    /// `Level.getChunk` for a block read: obtain the full column, without leaving a
+    /// forced chunk ticket behind or waiting for the column to become entity-ticking.
+    pub fn load_full_column(&mut self, world: &mut World, chunk: (i32, i32)) -> bool {
+        if world.chunks.contains_key(&chunk) {
+            return true;
+        }
+        if self.paused || self.remote || self.shared.aborted.load(Ordering::Relaxed) {
+            return false;
+        }
+        self.extra.push((chunk, 0));
+        let loaded = self.wait_for_column(world, |world| world.chunks.contains_key(&chunk));
+        self.extra.pop();
+        loaded
+    }
+
+    fn wait_for_column(&mut self, world: &mut World, ready: impl Fn(&World) -> bool) -> bool {
+        while !ready(world) {
+            if self.shared.aborted.load(Ordering::Relaxed) {
+                return false;
+            }
             // Pump the existing generation queue. Keep unloads for the
             // normal owner update, which saves entities and notifies mods.
             let mut plan = self.plan_update(world);
@@ -3038,7 +3071,7 @@ impl Streaming {
             let (meshes, unloaded) = self.finish_update(world, plan);
             debug_assert!(unloaded.is_empty());
             self.free(meshes);
-            if !world.chunks.is_ticking_ready((x, z)) {
+            if !ready(world) {
                 self.wait(std::time::Duration::from_millis(5));
             }
         }

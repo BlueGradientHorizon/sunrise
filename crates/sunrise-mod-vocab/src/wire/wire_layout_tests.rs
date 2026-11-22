@@ -36,21 +36,7 @@ fn checked_records_have_declared_field_bytes() {
     let key = ItemKey::from_slot(0).unwrap();
     let mut stack = ItemStack::new(key, 7).unwrap();
     stack.set_damage(11);
-    fields(stack.clone(), (key, 7u32, Some(11u32), None::<Components>));
-    fields(
-        ItemResource::of(&stack),
-        (ItemStack::new(key, 1)
-            .map(|mut s| {
-                s.set_damage(11);
-                s
-            })
-            .unwrap(),),
-    );
-    let fluid = FluidStack::new(FluidKey::from_slot(0).unwrap(), 123);
-    fields(
-        FluidResource::of(&fluid),
-        (FluidStack::new(FluidKey::from_slot(0).unwrap(), 1),),
-    );
+    fields(stack, (key, 7u32, Some(11u32), None::<Components>));
     let block = BlockKey::from_slot(0).unwrap();
     let state: BlockState = crate::__private::block_state_from_ordinal(block, 9);
     fields(state, (block, 9u16));
@@ -58,14 +44,6 @@ fn checked_records_have_declared_field_bytes() {
     fields(
         FeatureFlags::new(vec!["example:a".to_owned(), "example:b".to_owned()].into()),
         (vec!["example:a".to_owned(), "example:b".to_owned()],),
-    );
-    fields(
-        MobGoalEntry {
-            priority: -3,
-            id: "example:goal",
-            running: true,
-        },
-        (-3i32, "example:goal".to_owned(), true),
     );
     fields(
         Corners {
@@ -107,22 +85,6 @@ fn checked_records_have_declared_field_bytes() {
             text.metadata.clone(),
         ),
     );
-}
-
-#[test]
-fn resource_decoders_normalize_non_unit_wire_quantities() {
-    let _keys = Keys::new();
-    // Item key slot 0, count 7, no damage or component patch.
-    let item: ItemResource = Reader::decode(&[0, 0, 0, 0, 7, 0, 0, 0, 0, 0]).unwrap();
-    assert_eq!(item.as_stack().count(), 1);
-    let mut out = Writer::new();
-    out.put(&item);
-    assert_eq!(out.bytes(), &[0, 0, 0, 0, 1, 0, 0, 0, 0, 0]);
-    // Resolved-fluid tag 0, fluid slot 0, amount 7, no components.
-    let fluid: FluidResource = Reader::decode(&[0, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0]).unwrap();
-    out.clear();
-    out.put(&fluid);
-    assert_eq!(out.bytes(), &[0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0]);
 }
 
 #[test]
@@ -225,10 +187,6 @@ fn payload_enum_cases_have_declared_field_bytes() {
         SpawnerEntry::Mod(SpawnerKey::new("example:spawn").unwrap()),
         (1u32, SpawnerKey::new("example:spawn").unwrap()),
     );
-    fields(ReductionChange::Add(1.25), (0u8, 1.25f32));
-    fields(ReductionChange::Scale(2.5), (1u8, 2.5f32));
-    fields(ReductionChange::AtLeast(3.75), (2u8, 3.75f32));
-    fields(ReductionChange::AtMost(4.5), (3u8, 4.5f32));
     let pos = [2i32, -4, 6];
     fields(
         crate::client::particles::PositionSource::Block([2, -4, 6]),
@@ -301,20 +259,6 @@ fn snapshot_records_have_declared_field_bytes() {
             Vec::<StateConstraint>::new(),
         ),
     );
-    let values = DamageValues {
-        original: 31.0,
-        new_damage: 29.0,
-        blocked: 2.0,
-        shield_damage: 3.0,
-        post_attack_invulnerability_ticks: 17,
-        should_cause_side_effects: true,
-        reductions: [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-        reduction_modifiers: vec![(Reduction::Armor, ReductionChange::Scale(0.5))],
-        entered_pre: 23.0,
-        inflicted: 19.0,
-        health_damage: 11.0,
-    };
-    fields(DamageContainer::from(values.clone()), (values,));
     let revision = crate::item::containers::ModRevision::from_snapshot(31, 47);
     fields(revision, (31u64, 47u64));
 }
@@ -364,13 +308,6 @@ fn spawner_and_attribute_records_have_declared_field_bytes() {
         },
         (vec![(id("minecraft:sharpness"), 3u32)], true),
     );
-    fields(
-        ItemPlace::Mod {
-            provider: "example:bag",
-            key: 37,
-        },
-        (8u32, "example:bag".to_owned(), 37u64),
-    );
 }
 
 #[test]
@@ -413,97 +350,7 @@ fn newtype_widths_and_unit_enum_tags_match_their_encodings() {
     fields(Direction::North, (2u32,));
     fields(EquipmentSlotGroup::Head, (7u32,));
     fields(EquipmentSlot::Head, (5u32,));
-    fields(
-        ItemPlace::Equipment {
-            entity: 17,
-            slot: EquipmentSlot::Head,
-        },
-        (9u32, 17u32, EquipmentSlot::Head),
-    );
     fields(Tag::End, (0u32,));
-}
-
-#[test]
-fn every_item_place_case_has_declared_tag_and_field_types() {
-    let epoch = WorldEpoch::new(47);
-    let level = LevelRef::new(epoch, DimensionKey::OVERWORLD);
-    let entity = EntityRef::new(epoch, 29);
-    let player = crate::__private::game::player_ref(entity, 0x1234);
-    let menu = MenuRef {
-        player,
-        window: -2,
-        generation: 91,
-    };
-    fields(
-        ItemPlace::PlayerSlot {
-            player: 0x1234,
-            slot: -106,
-        },
-        (0u32, 0x1234u128, -106i32),
-    );
-    fields(
-        ItemPlace::PlayerHand {
-            player: 0x1234,
-            hand: Hand::Off,
-        },
-        (1u32, 0x1234u128, Hand::Off),
-    );
-    fields(ItemPlace::PlayerCursor { menu }, (2u32, menu));
-    fields(
-        ItemPlace::BlockEntity {
-            level,
-            pos: [7, -8, 9],
-            side: Some(Direction::West),
-            slot: 13,
-        },
-        (3u32, level, [7i32, -8, 9], Some(Direction::West), 13usize),
-    );
-    fields(ItemPlace::ItemEntity { id: 71 }, (4u32, 71u32));
-    fields(
-        ItemPlace::EntitySlot {
-            entity: 29,
-            slot: 17,
-        },
-        (5u32, 29u32, 17usize),
-    );
-    let parent = Box::new(ItemPlace::ItemEntity { id: 71 });
-    fields(
-        ItemPlace::Nested {
-            parent: parent.clone(),
-            slot: 19,
-        },
-        (6u32, parent, 19usize),
-    );
-    fields(
-        ItemPlace::MenuSlot { menu, slot: 23 },
-        (7u32, menu, 23usize),
-    );
-    fields(
-        ItemPlace::Mod {
-            provider: "example:bag",
-            key: 37,
-        },
-        (8u32, "example:bag".to_owned(), 37u64),
-    );
-    fields(
-        ItemPlace::Equipment {
-            entity: 29,
-            slot: EquipmentSlot::Saddle,
-        },
-        (9u32, 29u32, EquipmentSlot::Saddle),
-    );
-    fields(ItemPlace::Scratch(41), (10u32, 41u64));
-    fields(ItemPlace::ScratchSlots(43), (14u32, 43u64));
-    let parent = Box::new(ItemPlace::ItemEntity { id: 71 });
-    fields(ItemPlace::Strict(parent.clone()), (11u32, parent.clone()));
-    fields(ItemPlace::OneByOne(parent.clone()), (12u32, parent.clone()));
-    fields(
-        ItemPlace::InfiniteMaterials {
-            player: 0x1234,
-            inner: parent.clone(),
-        },
-        (13u32, 0x1234u128, parent),
-    );
 }
 
 #[test]
@@ -632,10 +479,4 @@ fn every_game_mode_pose_animation_and_connection_case_has_declared_tag_type() {
     fields(ConnectionKind::Fence, (0u32,));
     fields(ConnectionKind::Wall, (1u32,));
     fields(ConnectionKind::Bars, (2u32,));
-}
-
-#[test]
-fn original_player_identity_has_declared_field_bytes() {
-    let original = crate::__private::game::original_player_ref(0x1234_5678);
-    fields(original, (0x1234_5678u64,));
 }

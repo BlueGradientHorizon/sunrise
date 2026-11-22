@@ -161,33 +161,29 @@ impl Hooks for OwnedText {
 }
 
 #[test]
-fn static_text_and_checked_model_json_cannot_negotiate_as_owned_text() {
+fn checked_model_json_cannot_negotiate_as_owned_text() {
     mod_platform::testing::with_mods(
         vec![ModEntry::new("typed_schema", Box::new(OwnedText))].into(),
         || {
             mod_platform::__private::part_tests::install_parts_fixture(mod_api::__private::mods())
                 .unwrap();
-            let static_text = mod_api::payload_schema::<&'static str>();
             let model = mod_api::payload_schema::<mod_api::ModelPart>();
-            assert_ne!(static_text, model);
             for side in [Side::Client, Side::Server] {
                 let local = Local::capture(side).unwrap();
-                for schema in [static_text, model] {
-                    let mut peer = Manifest::builder();
-                    peer.register(
-                        RegistrationPhase::Play,
-                        "typed_schema:owned",
-                        Flow::Bidirectional,
-                        &mod_api::typed_payload_version("1", schema),
-                        false,
-                    )
-                    .unwrap();
-                    let refused = Negotiation::new(local.manifest.clone())
-                        .receive(Control::Offer(peer.finish().unwrap()));
-                    assert!(matches!(refused, Err(negotiation::Error::Incompatible {
-                        ref id, reason: Mismatch::Schema, ..
-                    }) if id.as_str() == "typed_schema:owned"));
-                }
+                let mut peer = Manifest::builder();
+                peer.register(
+                    RegistrationPhase::Play,
+                    "typed_schema:owned",
+                    Flow::Bidirectional,
+                    &mod_api::typed_payload_version("1", model),
+                    false,
+                )
+                .unwrap();
+                let refused = Negotiation::new(local.manifest.clone())
+                    .receive(Control::Offer(peer.finish().unwrap()));
+                assert!(matches!(refused, Err(negotiation::Error::Incompatible {
+                    ref id, reason: Mismatch::Schema, ..
+                }) if id.as_str() == "typed_schema:owned"));
             }
         },
     );

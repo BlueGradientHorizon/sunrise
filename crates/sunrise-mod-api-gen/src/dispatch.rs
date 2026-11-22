@@ -34,6 +34,18 @@ fn rollback_pointee_is_copy(field_ty: &Type) -> bool {
     }
 }
 
+fn part_trait_and_table(kind: PartKind) -> (&'static str, &'static str) {
+    match kind {
+        PartKind::Block => ("BlockPart", "block"),
+        PartKind::BlockEntity => ("BlockEntityPart", "block_entity"),
+        PartKind::Item => ("ItemPart", "item"),
+        PartKind::Menu => ("MenuPart", "menu"),
+        PartKind::Effect => ("MobEffectPart", "effect"),
+        PartKind::Fluid => ("FluidPart", "fluid"),
+        PartKind::Entity => ("EntityPart", "entity"),
+    }
+}
+
 pub(super) fn is_render(hook: &Hook) -> bool {
     hook.target.starts_with("mod_render::render::")
 }
@@ -94,6 +106,8 @@ pub(super) fn emit<'a>(
         };
         let ticks = hook.engine_ticks;
         let inert_signal = hook.engine_inert;
+        // Only a quick-move Part's panic can refuse its unanswered click.
+        let panic_signal = name == "menu_quick_move";
         let is_level = host_param::is_level(hook);
         if (ticks && !is_level) || ((ticks || inert_signal) && !in_game) {
             return Err(format!(
@@ -320,15 +334,7 @@ pub(super) fn emit<'a>(
             None => None,
             Some(scope) => {
                 let key = scope.key.as_str();
-                let (part_trait, table) = match scope.kind {
-                    PartKind::Block => ("BlockPart", "block"),
-                    PartKind::BlockEntity => ("BlockEntityPart", "block_entity"),
-                    PartKind::Item => ("ItemPart", "item"),
-                    PartKind::Menu => ("MenuPart", "menu"),
-                    PartKind::Effect => ("MobEffectPart", "effect"),
-                    PartKind::Fluid => ("FluidPart", "fluid"),
-                    PartKind::Entity => ("EntityPart", "entity"),
-                };
+                let (part_trait, table) = part_trait_and_table(scope.kind);
                 if is_render {
                     return Err(format!("render hook {name} cannot be scoped"));
                 }
@@ -383,8 +389,19 @@ pub(super) fn emit<'a>(
                         )
                     }
                     // An entity's type id need not be its block's: its own table.
-                    "& ModBlockEntity" | "& mut ModBlockEntity" => {
+                    "& ModBlockEntity" => {
                         format!("block_entity_kind(|| Some({key}.id()))")
+                    }
+                    "BlockEntityClientScope < '_ >" | "BlockEntityClientReadScope < '_ >"
+                        if table == "block_entity" =>
+                    {
+                        format!("block_entity_kind(|| {key}.route_kind())")
+                    }
+                    "EntityClientScope < '_ >" if table == "entity" => {
+                        format!("entity(|| {key}.route_kind())")
+                    }
+                    "ItemEntityServerScope < '_ >" if table == "item" => {
+                        format!("item(|| Some({key}.route_item()))")
                     }
                     other => return Err(format!("key {key} of {name} has type {other}")),
                 };
@@ -522,6 +539,11 @@ pub(super) fn emit<'a>(
             }
             syn::visit_mut::VisitMut::visit_type_mut(&mut OwnedLootContext, &mut owned_ty);
             let ty = &owned_ty;
+            let block_entity_scope = matches!(
+                ty,
+                Type::Path(path)
+                    if path.path.segments.last().is_some_and(|part| part.ident == "BlockEntityScope")
+            );
             if answered_return {
                 struct MutableBorrow(bool);
                 impl<'ast> syn::visit::Visit<'ast> for MutableBorrow {
@@ -554,15 +576,14 @@ pub(super) fn emit<'a>(
                 .filter(|(field, _, _)| field.as_str() == name.as_str())
             {
                 dispatch_params.push(format!("mut {stage}: {signature}"));
+            } else if block_entity_scope {
+                dispatch_params.push(format!("mut {name}: {}", ty.to_token_stream()));
             } else {
                 dispatch_params.push(format!("{name}: {}", ty.to_token_stream()));
             }
             if collect_cancel && name == "cancel" {
                 continue;
             }
-            let ty_tokens = ty.to_token_stream().to_string();
-            let mutable_entity = ty_tokens == "& mut ModBlockEntity";
-            let optional_mutable_entity = ty_tokens == "Option < & mut ModBlockEntity >";
             // An answered collect hook's mods each push plain entries into their own batch;
             // dispatch, not the mod, names the mod on each.
             let batch_entry =
@@ -572,21 +593,15 @@ pub(super) fn emit<'a>(
                         _ => None,
                     })
                     .flatten();
-            let field_ty = if mutable_entity {
-                syn::parse_quote!(ModBlockEntityView<'_>)
-            } else if optional_mutable_entity {
-                syn::parse_quote!(Option<ModBlockEntityView<'_>>)
-            } else if let Some(entry) = batch_entry {
+            let field_ty = if let Some(entry) = batch_entry {
                 syn::parse_quote!(&mut Vec<#entry>)
             } else {
                 ty.clone()
             };
             let (field, scalar) = lifetimes.field(&field_ty);
             if hook.output_validator.is_some()
-                && (mutable_entity
-                    || optional_mutable_entity
-                    || matches!(&field_ty, Type::Reference(reference)
-                        if reference.mutability.is_some() && !rollback_pointee_is_copy(&field_ty)))
+                && matches!(&field_ty, Type::Reference(reference)
+                    if reference.mutability.is_some() && !rollback_pointee_is_copy(&field_ty))
             {
                 return Err(format!(
                     "{}: output_validator requires Copy outputs; mutable argument {name} \
@@ -635,10 +650,8 @@ pub(super) fn emit<'a>(
             if scalar {
                 inits.push(format!("{name}: *{name}"));
                 write_back.push_str(&format!("*{name} = {event}.{name};"));
-            } else if mutable_entity {
-                inits.push(format!("{name}: ModBlockEntityView::new({name})"));
-            } else if optional_mutable_entity {
-                inits.push(format!("{name}: {name}.map(ModBlockEntityView::new)"));
+            } else if block_entity_scope {
+                inits.push(format!("{name}: {name}.reborrow()"));
             } else if batch_entry.is_some() {
                 inits.push(format!("{name}: &mut {batch}"));
             } else if (hook.event_per_listener || staged_draw)
@@ -690,6 +703,9 @@ pub(super) fn emit<'a>(
         }
         if inert_signal {
             dispatch_params.push("inert: &mut bool".into());
+        }
+        if panic_signal {
+            dispatch_params.push("panicked: &mut bool".into());
         }
         let (generics, elided) = match (lifetimes.a, lifetimes.b) {
             (_, true) => ("<'a, 'b>", "<'_, '_>"),
@@ -903,6 +919,10 @@ pub(super) fn emit<'a>(
                 parameter("inert", "&mut bool");
                 passed.push("inert".to_owned());
             }
+            if panic_signal {
+                parameter("panicked", "&mut bool");
+                passed.push("panicked".to_owned());
+            }
             if name == "add_pack_finders" {
                 parameter("allow", "impl FnMut(&str) -> bool");
             }
@@ -938,6 +958,9 @@ pub(super) fn emit<'a>(
                     .find(|argument| argument.as_str() == field.as_str())
             {
                 *argument = format!("|listen| {field}.register_listener(listen)");
+            }
+            if panic_signal {
+                forwarded.push("panicked".into());
             }
             if name == "add_pack_finders" {
                 forwarded.push("|_| true".into());
@@ -1017,7 +1040,32 @@ pub(super) fn emit<'a>(
                 .entry(*part_trait)
                 .or_default()
                 .push_str(&method_source),
-            None => traits.push_str(&method_source),
+            None => {
+                traits.push_str(&method_source);
+                if let Some(part_kind) = hook.part {
+                    let (part_trait, _) = part_trait_and_table(part_kind);
+                    let mut part_method = String::new();
+                    for line in hook.doc.trim().lines() {
+                        part_method.push_str(&format!(
+                            "///{}{line}\n",
+                            if line.is_empty() { "" } else { " " }
+                        ));
+                    }
+                    part_method.push_str(&format!("/// Side: {side}.\n"));
+                    if let Some(out) = out {
+                        part_method.push_str(&format!(
+                            "///\n/// Return `Flow::Cancel` to take it: this sets `{out}`, and later parts are skipped.\n"
+                        ));
+                    }
+                    part_method.push_str(&format!(
+                        "fn {name}({trait_params}){result} {{ {unused} {default} }}\n"
+                    ));
+                    part_traits
+                        .entry(part_trait)
+                        .or_default()
+                        .push_str(&part_method);
+                }
+            }
         }
         let trait_name = scoped
             .as_ref()
@@ -1190,6 +1238,11 @@ pub(super) fn emit<'a>(
             .iter()
             .map(|(output, _)| format!("*{event}.{output} = __previous_{output}.clone(); "))
             .collect::<String>();
+        let report_panic = if panic_signal {
+            "*panicked = true; "
+        } else {
+            ""
+        };
         let run_with = |mod_id_expr: &str,
                         on_abort: &str,
                         extra_restore: &str,
@@ -1211,6 +1264,7 @@ pub(super) fn emit<'a>(
                 && discard_batch.is_empty()
                 && stack_restore.is_empty()
                 && extra_restore.is_empty()
+                && report_panic.is_empty()
             {
                 match on_abort {
                     "false" => return format!("{invocation}.unwrap_or_default()"),
@@ -1219,7 +1273,7 @@ pub(super) fn emit<'a>(
                 }
             }
             format!(
-                "match {invocation} {{ Some(answer) => answer, None => {{ {restore_statement}{discard_batch}{stack_restore}{extra_restore}{on_abort} }} }}"
+                "match {invocation} {{ Some(answer) => answer, None => {{ {report_panic}{restore_statement}{discard_batch}{stack_restore}{extra_restore}{on_abort} }} }}"
             )
         };
         let run = |mod_id_expr: &str, on_abort: &str, expression: &str| {
@@ -1227,7 +1281,19 @@ pub(super) fn emit<'a>(
         };
         let listener_call = |callee: &str| {
             let expression = format!("{callee}.{name}({invoke})");
-            if matches!(
+            if panic_signal {
+                // Quick move chains the healthy Parts' proposals. Abort only the failing
+                // Part's storage writes before the shared panic boundary restores its outputs.
+                format!(
+                    "{event}.subject.transaction(|subject, _| -> Result<_, core::convert::Infallible> {{\
+                         Ok({callee}.{name}(&mut {event_type} {{\
+                             kind: {event}.kind, subject: subject.reborrow(),\
+                             container_slots: {event}.container_slots, slot: {event}.slot,\
+                             stack: &mut *{event}.stack,\
+                         }}))\
+                     }}).unwrap_or_else(|never| match never {{}})"
+                )
+            } else if matches!(
                 name,
                 "contents_changed" | "farmland_trample" | "register_configuration_tasks"
             ) {
@@ -1591,6 +1657,33 @@ pub(super) fn emit<'a>(
             dispatch.push_str(&format!(
                 "#[doc(hidden)] pub fn dispatch_{name}({dispatch_signature}) {{ {unpack}{early_return}\n{body} }}\n"
             ));
+            if let Some(part_kind) = hook.part {
+                if is_render {
+                    return Err(format!("render hook {name} cannot have a part"));
+                }
+                let (_, table) = part_trait_and_table(part_kind);
+                let part_key = fresh_name("part_key", &mut used);
+                let host_count = usize::from(host.is_some());
+                let part_dispatch_signature = dispatch_params[..host_count]
+                    .iter()
+                    .cloned()
+                    .chain(std::iter::once(format!("{part_key}: &str")))
+                    .chain(dispatch_params[host_count..].iter().cloned())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let part_run = run(
+                    &listener_id,
+                    "continue;",
+                    &format!("{part_item}.{name}({invoke})"),
+                );
+                let part_step = format!(
+                    "{snapshot_statement}if matches!({part_run}, Flow::Cancel) || {event}.cancelled {{ {event}.cancelled = true; {stack_after} break; }} {stack_after}"
+                );
+                let o = cancel_out.unwrap();
+                dispatch.push_str(&format!(
+                    "#[doc(hidden)] pub fn dispatch_{name}_part({part_dispatch_signature}) {{ {unpack}if *{o} || !super::has_part_hook(HookId::{hook_id}) {{ return; }} let {part_table} = super::parts(HookId::{hook_id}, \"{name}\"); let {part_list} = {part_table}.for_hook(HookId::{hook_id}).map_or(&[][..], |table| table.{table}(|| Some({part_key}))); if {part_list}.is_empty() {{ return; }} {build} for ({listener_id}, {part_item}) in super::entered_parts(HookId::{hook_id}, {part_list}, \"{name}\") {{ {part_step} }} *{o} = {event}.cancelled; {write_back} }}\n"
+                ));
+            }
         }
     }
     if !calls.is_empty() {
@@ -2940,6 +3033,7 @@ fn listened(_: generated::HookId) -> bool {{ true }}
 fn entered_with_id(_: generated::HookId, _: &str) -> impl Iterator<Item = (&'static str, &'static Gatherer)> {{ MODS.iter().map(|(id, m)| (*id, m)) }}
 mod runtime {{
     pub fn invoke<T>(_: super::generated::HookId, _: &str, _: &str, call: impl FnOnce() -> T) -> Option<T> {{ Some(call()) }}
+    pub fn discard_registration<T>(_: (super::generated::HookId, &'static str), _: Option<&'static str>, value: T) {{ drop(value); }}
 }}
 impl Gatherer {{ fn gather(&self, _: &mut dyn generated::ServerHost, event: &mut generated::GatherEvent<'_>) {{ assert!(event.entries.is_empty()); event.entries.extend(self.pushes); }} }}
 mod generated {{
@@ -3095,6 +3189,45 @@ fn main() {{
             dispatch(&compact, "is_ladder")
                 .contains("=super::parts(HookId::IsLadder,\"is_ladder\");")
         );
+    }
+
+    #[test]
+    fn part_cancel_hook_emits_global_and_part_dispatch_under_one_hook_id() {
+        let hook = Hook {
+            name: "stacked_part_test".into(),
+            contract: Contract::Cancel,
+            out: Some("canceled".into()),
+            part: Some(PartKind::Item),
+            call: vec![
+                ("value".into(), "u32".into()),
+                ("canceled".into(), "&mut bool".into()),
+            ],
+            dispatch: DispatchStyle::Flat,
+            ..Hook::sample(
+                "sunrise_client::game::native_hooks::stacked_part_test::Game<'_>::native_stacked_part_test",
+                Side::Server,
+            )
+        };
+        let emitted = emit(std::iter::once(&hook), &[], true).unwrap();
+        assert_eq!(emitted.hook_count, 1);
+        assert!(emitted.hook_ids.contains("StackedPartTest,"));
+        assert!(emitted.traits.contains("fn stacked_part_test("));
+        let item_part = emitted
+            .part_traits
+            .get("ItemPart")
+            .expect("part = \"item\" must emit an ItemPart method");
+        assert!(item_part.contains("fn stacked_part_test("));
+
+        let compact: String = emitted
+            .dispatch
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        assert!(compact.contains("pubfndispatch_stacked_part_test("));
+        assert!(compact.contains("pubfndispatch_stacked_part_test_part(host:&mutdynServerHost,part_key:&str,value:u32,canceled:&mutbool)"));
+        assert!(compact.contains("super::has_part_hook(HookId::StackedPartTest)"));
+        assert!(compact.contains("super::parts(HookId::StackedPartTest,\"stacked_part_test\")"));
+        assert!(compact.contains("table.item(||Some(part_key))"));
     }
 }
 fn contains_boundary(ty: &Type, names: &[&str]) -> bool {
