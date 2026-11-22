@@ -4,7 +4,8 @@ use crate::game::{
 };
 
 fn with_isolated_client(name: &str, body: impl FnOnce(&mut Game<'_>)) {
-    let test = format!("{}::{name}", module_path!());
+    let (_, module) = module_path!().split_once("::").unwrap();
+    let test = format!("{module}::{name}");
     crate::game::in_own_process(&test, || with_client_game(body));
 }
 
