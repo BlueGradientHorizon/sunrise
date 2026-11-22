@@ -243,11 +243,11 @@ impl SizedFluidIngredient {
 /// cauldron has no content and no answer.
 pub const FLUIDS: CapabilityKey<dyn ResourceHandler<FluidResource>> = CapabilityKey {
     name: "sunrise:fluids",
-    default: Some(|host, at| {
+    default: Some(crate::BlockCapabilityDefault::Server(|host, at| {
         crate::backend_of(host)
             .and_then(|backend| backend.fluid_tank_count(at))
             .map(|_| Box::new(GameFluids(at)) as Box<dyn ResourceHandler<FluidResource>>)
-    }),
+    })),
     handler: PhantomData,
 };
 
