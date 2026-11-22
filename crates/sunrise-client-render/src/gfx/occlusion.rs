@@ -607,7 +607,6 @@ pub struct Reach<'a> {
     pub bits: &'a [u32],
 }
 
-#[cfg(test)]
 impl Reach<'_> {
     /// gpu_culling.wgsl's `reached`, statement for statement: what `Graph::contains` answers.
     pub fn contains(&self, key: SectionKey) -> bool {
@@ -1082,13 +1081,29 @@ impl Occlusion {
             self.generation = next_generation();
         }
     }
-    /// Wait for the running search: tests, and A/B timing of the old
-    /// blocking search.
-    #[cfg(test)]
+    /// Camera's 0-based section key for this graph's vertical layout.
+    pub(super) fn section_of(&self, camera: DVec3) -> SectionKey {
+        self.columns.section_of(camera)
+    }
+    /// Wait for the running search: tests, parity probe, and A/B timing.
     pub(super) fn settle(&mut self, camera: DVec3, radius: i32, smart_cull: bool) {
         self.update(camera, radius, smart_cull);
         self.collect(true);
         self.propagate_changes(camera, smart_cull);
+    }
+    /// Runs only partial propagation from `camera` as if a full search were still in flight.
+    pub(super) fn propagate_partial_in_flight(
+        &mut self,
+        camera: DVec3,
+        radius: i32,
+        smart_cull: bool,
+    ) {
+        let prev = self.running;
+        if self.running.is_none() {
+            self.running = Some((self.columns.section_of(camera), radius, smart_cull));
+        }
+        self.update(camera, radius, smart_cull);
+        self.running = prev;
     }
 }
 
@@ -2250,7 +2265,3 @@ mod tests {
         assert!(o.contains((0, 13, 0)));
     }
 }
-
-#[cfg(test)]
-#[path = "occlusion_visibility_tests.rs"]
-mod visibility_tests;

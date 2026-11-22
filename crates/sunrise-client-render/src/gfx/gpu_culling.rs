@@ -197,7 +197,7 @@ const RUN_WORDS: u64 = 1 + 2 * RUNS as u64 + 2;
 /// `rounded_box` for bounds past what a box's codes hold, or not finite: no
 /// frustum plane rejects it, so it is drawn wherever its column is within the
 /// render distance.
-const UNBOUNDED: u32 = 1 << 31;
+pub(super) const UNBOUNDED: u32 = 1 << 31;
 /// What a box's ends, -8 to 23 blocks from its section's origin, add to make
 /// their 5-bit codes.
 const CODE_OFFSET: i32 = 8;
@@ -245,13 +245,13 @@ impl Update {
 /// `gpu_culling.wgsl`'s `Params`.
 #[repr(C)]
 #[derive(Clone, Copy, Default, bytemuck::Pod, bytemuck::Zeroable)]
-struct Params {
+pub(super) struct Params {
     /// Ids the pass tests, and the `Update`s `apply` writes.
     ids: u32,
     updates: u32,
     /// Arena pages the counts and regions cover (at least one), and where the
     /// regions start in `tables`, in words.
-    pages: u32,
+    pub(super) pages: u32,
     regions: u32,
     /// Bits 3j, 3j + 1 and 3j + 2: frustum plane j's x, y and z are at least 0.
     signs: u32,
@@ -467,7 +467,7 @@ fn step<'a>(
 /// walk keeps, and every box of a column the walk finds entirely inside the
 /// frustum, as each box reaches its cell (`rounded_box`). A plane that is not
 /// finite rejects nothing, as in `intersects`: its terms are 0, its w 1.
-fn tables(input: &FrameInputs<'_>, words: &mut Vec<u32>) -> Option<Params> {
+pub(super) fn tables(input: &FrameInputs<'_>, words: &mut Vec<u32>) -> Option<Params> {
     words.clear();
     // Before the origins: an infinite camera's column would take
     // `resident::origin` past i32.
@@ -593,6 +593,73 @@ fn tables(input: &FrameInputs<'_>, words: &mut Vec<u32>) -> Option<Params> {
         eyes,
         ..Default::default()
     })
+}
+
+/// `gpu_culling.wgsl`'s `near`, on the CPU.
+fn near(params: &Params, x: i32, z: i32) -> bool {
+    let r = params.near;
+    let gap = |d: i32| d.wrapping_abs().wrapping_sub(1).max(0);
+    let gx = gap(x.wrapping_sub(params.cam_x));
+    let gz = gap(z.wrapping_sub(params.cam_z));
+    if gx >= r || gz >= r {
+        return false;
+    }
+    gx.wrapping_mul(gx).wrapping_add(gz.wrapping_mul(gz)) < r.wrapping_mul(r)
+}
+
+/// `gpu_culling.wgsl`'s `in_frustum`, on the CPU and in its order: the box
+/// `b` of the section in cell `c` of the tables.
+fn in_frustum(params: &Params, words: &[u32], c: [u32; 3], b: u32) -> bool {
+    if (b & UNBOUNDED) != 0 {
+        return true;
+    }
+    let [nx, ny, nz, _] = params.cells;
+    let n = nx + ny + nz;
+    let term = |at: u32| words[at as usize] as i32;
+    (0..6u32).all(|j| {
+        let s = params.signs >> (3 * j);
+        // The box's code at the corner the plane looks at, along `axis`.
+        let code = |axis: u32| {
+            let high = ((s >> axis) & 1) != 0;
+            (b >> (5 * axis + if high { 15 } else { 0 })) & 31
+        };
+        let w = params.w[j as usize / 4][j as usize % 4];
+        let (origin_terms, code_terms) = (n + j * n, 7 * n + 96 * j);
+        let sum = w
+            .wrapping_add(term(origin_terms + c[0]))
+            .wrapping_add(term(origin_terms + nx + c[1]))
+            .wrapping_add(term(origin_terms + nx + ny + c[2]))
+            .wrapping_add(term(code_terms + code(0)))
+            .wrapping_add(term(code_terms + 32 + code(1)))
+            .wrapping_add(term(code_terms + 64 + code(2)));
+        sum >= 0
+    })
+}
+
+/// `gpu_culling.wgsl`'s `cull` on the CPU, the reference the pass is held
+/// to, but for cave culling's graph (its `reached` is `Reach::contains`):
+/// whether it draws `record` with the parameters and tables `tables` makes
+/// (and the pages `prepare` gives them).
+pub(super) fn keeps(params: &Params, words: &[u32], record: &Record) -> bool {
+    let (key, a) = (record.key, record.a);
+    if key[3] < 0 || a[1] == 0 || (a[3] & FADING) != 0 || !near(params, key[0], key[2]) {
+        return false;
+    }
+    let c: [u32; 3] = std::array::from_fn(|i| key[i].wrapping_sub(params.first[i]) as u32);
+    if (key[3] as u32) >= params.pages || !(0..3).all(|i| c[i] < params.cells[i]) {
+        return false;
+    }
+    if (params.flags & TREE) != 0 {
+        let col = (c[2] * params.cells[0] + c[0]) as usize;
+        let state = (words[params.tree as usize + (col >> 4)] >> ((col & 15) * 2)) & 3;
+        if state == 0 {
+            return false;
+        }
+        if state == 2 {
+            return true;
+        }
+    }
+    in_frustum(params, words, c, a[2])
 }
 
 /// Whether GPU culling is offered: where the device draws a count the GPU wrote
@@ -1730,73 +1797,6 @@ mod tests {
     /// Where a section's solid quads are: key, arena page, first vertex, quads,
     /// its box, and whether it fades (`FADING`).
     type Placed = (SectionKey, u32, u64, u32, u32, bool);
-
-    /// `gpu_culling.wgsl`'s `near`, on the CPU.
-    fn near(params: &Params, x: i32, z: i32) -> bool {
-        let r = params.near;
-        let gap = |d: i32| d.wrapping_abs().wrapping_sub(1).max(0);
-        let gx = gap(x.wrapping_sub(params.cam_x));
-        let gz = gap(z.wrapping_sub(params.cam_z));
-        if gx >= r || gz >= r {
-            return false;
-        }
-        gx.wrapping_mul(gx).wrapping_add(gz.wrapping_mul(gz)) < r.wrapping_mul(r)
-    }
-
-    /// `gpu_culling.wgsl`'s `in_frustum`, on the CPU and in its order: the box
-    /// `b` of the section in cell `c` of the tables.
-    fn in_frustum(params: &Params, words: &[u32], c: [u32; 3], b: u32) -> bool {
-        if (b & UNBOUNDED) != 0 {
-            return true;
-        }
-        let [nx, ny, nz, _] = params.cells;
-        let n = nx + ny + nz;
-        let term = |at: u32| words[at as usize] as i32;
-        (0..6u32).all(|j| {
-            let s = params.signs >> (3 * j);
-            // The box's code at the corner the plane looks at, along `axis`.
-            let code = |axis: u32| {
-                let high = ((s >> axis) & 1) != 0;
-                (b >> (5 * axis + if high { 15 } else { 0 })) & 31
-            };
-            let w = params.w[j as usize / 4][j as usize % 4];
-            let (origin_terms, code_terms) = (n + j * n, 7 * n + 96 * j);
-            let sum = w
-                .wrapping_add(term(origin_terms + c[0]))
-                .wrapping_add(term(origin_terms + nx + c[1]))
-                .wrapping_add(term(origin_terms + nx + ny + c[2]))
-                .wrapping_add(term(code_terms + code(0)))
-                .wrapping_add(term(code_terms + 32 + code(1)))
-                .wrapping_add(term(code_terms + 64 + code(2)));
-            sum >= 0
-        })
-    }
-
-    /// `gpu_culling.wgsl`'s `cull` on the CPU, the reference the pass is held
-    /// to, but for cave culling's graph (its `reached` is `Reach::contains`):
-    /// whether it draws `record` with the parameters and tables `tables` makes
-    /// (and the pages `prepare` gives them).
-    pub(super) fn keeps(params: &Params, words: &[u32], record: &Record) -> bool {
-        let (key, a) = (record.key, record.a);
-        if key[3] < 0 || a[1] == 0 || (a[3] & FADING) != 0 || !near(params, key[0], key[2]) {
-            return false;
-        }
-        let c: [u32; 3] = std::array::from_fn(|i| key[i].wrapping_sub(params.first[i]) as u32);
-        if (key[3] as u32) >= params.pages || !(0..3).all(|i| c[i] < params.cells[i]) {
-            return false;
-        }
-        if (params.flags & TREE) != 0 {
-            let col = (c[2] * params.cells[0] + c[0]) as usize;
-            let state = (words[params.tree as usize + (col >> 4)] >> ((col & 15) * 2)) & 3;
-            if state == 0 {
-                return false;
-            }
-            if state == 2 {
-                return true;
-            }
-        }
-        in_frustum(params, words, c, a[2])
-    }
 
     /// A frame of the overworld's 24 sections, cave culling off, every solid
     /// quad drawn.
@@ -3693,7 +3693,3 @@ struct Quad {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "gpu_culling_visibility_tests.rs"]
-mod visibility_tests;

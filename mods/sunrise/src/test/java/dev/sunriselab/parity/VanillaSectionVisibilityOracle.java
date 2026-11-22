@@ -141,6 +141,14 @@ public final class VanillaSectionVisibilityOracle {
 
         Minecraft minecraft = (Minecraft) allocate(Minecraft.class);
         set(Minecraft.class, minecraft, "gameThread", Thread.currentThread());
+        Object levelRenderer = allocate(net.minecraft.client.renderer.LevelRenderer.class);
+        set(
+            net.minecraft.client.renderer.LevelRenderer.class,
+            levelRenderer,
+            "transientBlockRemovalQueue",
+            new java.util.concurrent.LinkedBlockingQueue<>()
+        );
+        set(Minecraft.class, minecraft, "levelRenderer", levelRenderer);
         set(Minecraft.class, null, "instance", minecraft);
 
         SectionRenderDispatcher dispatcher = (SectionRenderDispatcher) allocate(SectionRenderDispatcher.class);
@@ -149,6 +157,12 @@ public final class VanillaSectionVisibilityOracle {
 
         Method getRenderSection = ViewArea.class.getDeclaredMethod("getRenderSection", long.class);
         getRenderSection.setAccessible(true);
+        Method runPartialUpdate = SectionOcclusionGraph.class.getDeclaredMethod(
+            "runPartialUpdate",
+            CameraRenderState.class,
+            it.unimi.dsi.fastutil.longs.LongSet.class
+        );
+        runPartialUpdate.setAccessible(true);
 
         JsonObject spec = JsonParser.parseString(Files.readString(Path.of(args[0]), StandardCharsets.UTF_8)).getAsJsonObject();
         JsonArray outCases = new JsonArray();
@@ -197,12 +211,21 @@ public final class VanillaSectionVisibilityOracle {
             int camCx = camSec.x();
             int camCz = camSec.z();
 
+            Set<Long> excludedChunks = new HashSet<>();
+            if (c.has("excluded_loaded_chunks")) {
+                for (JsonElement e : c.getAsJsonArray("excluded_loaded_chunks")) {
+                    JsonArray pair = e.getAsJsonArray();
+                    excludedChunks.add(ChunkPos.pack(pair.get(0).getAsInt(), pair.get(1).getAsInt()));
+                }
+            }
+
             Set<Long> loadedSet = new HashSet<>();
             if (c.has("loaded_chunk_range")) {
                 JsonArray r = c.getAsJsonArray("loaded_chunk_range");
                 for (int cx = r.get(0).getAsInt(); cx <= r.get(1).getAsInt(); cx++) {
                     for (int cz = r.get(2).getAsInt(); cz <= r.get(3).getAsInt(); cz++) {
                         long chunk = ChunkPos.pack(cx, cz);
+                        if (excludedChunks.contains(chunk)) continue;
                         loadedSet.add(chunk);
                         loading.addedLoadedChunks.add(chunk);
                     }
@@ -211,6 +234,7 @@ public final class VanillaSectionVisibilityOracle {
                 for (int cx = camCx - rd - 1; cx <= camCx + rd + 1; cx++) {
                     for (int cz = camCz - rd - 1; cz <= camCz + rd + 1; cz++) {
                         long chunk = ChunkPos.pack(cx, cz);
+                        if (excludedChunks.contains(chunk)) continue;
                         loadedSet.add(chunk);
                         loading.addedLoadedChunks.add(chunk);
                     }
@@ -334,8 +358,69 @@ public final class VanillaSectionVisibilityOracle {
             if (c.has("non_empty_world_sy")) {
                 out.add("non_empty_world_sy", c.get("non_empty_world_sy"));
             }
+            if (c.has("excluded_loaded_chunks")) {
+                out.add("excluded_loaded_chunks", c.get("excluded_loaded_chunks"));
+            }
+            if (c.has("loaded_chunk_range")) {
+                out.add("loaded_chunk_range", c.get("loaded_chunk_range"));
+            }
             if (c.has("frustum")) {
                 out.add("frustum", c.get("frustum"));
+            }
+            if (c.has("partial_step")) {
+                JsonObject ps = c.getAsJsonObject("partial_step");
+                double nextCamX = camX;
+                double nextCamY = camY;
+                double nextCamZ = camZ;
+                if (ps.has("camera")) {
+                    JsonArray pa = ps.getAsJsonArray("camera");
+                    nextCamX = pa.get(0).getAsDouble();
+                    nextCamY = pa.get(1).getAsDouble();
+                    nextCamZ = pa.get(2).getAsDouble();
+                    Vec3 nextCamPos = new Vec3(nextCamX, nextCamY, nextCamZ);
+                    SectionPos nextCamSec = SectionPos.of(nextCamPos);
+                    viewArea.repositionCamera(nextCamSec);
+                    camState.pos = nextCamPos;
+                    camState.blockPos = BlockPos.containing(nextCamPos);
+                    camState.cullFrustum = makeFrustum(nextCamX, nextCamY, nextCamZ, 0.0F, 0.0F, 70.0F, 1280.0F / 800.0F, far);
+                }
+                LongOpenHashSet loadedExpected = new LongOpenHashSet();
+                LongOpenHashSet graphLoaded = (LongOpenHashSet) get(SectionOcclusionGraph.class, graph, "loadedChunks");
+                if (ps.has("add_loaded_chunks")) {
+                    for (JsonElement e : ps.getAsJsonArray("add_loaded_chunks")) {
+                        JsonArray pair = e.getAsJsonArray();
+                        long chunk = ChunkPos.pack(pair.get(0).getAsInt(), pair.get(1).getAsInt());
+                        graphLoaded.add(chunk);
+                        loadedExpected.add(chunk);
+                    }
+                }
+                if (ps.has("vis_overrides")) {
+                    for (JsonElement e : ps.getAsJsonArray("vis_overrides")) {
+                        JsonObject o = e.getAsJsonObject();
+                        JsonArray s = o.getAsJsonArray("section");
+                        long node = SectionPos.asLong(s.get(0).getAsInt(), s.get(1).getAsInt(), s.get(2).getAsInt());
+                        SectionRenderDispatcher.RenderSection rs =
+                            (SectionRenderDispatcher.RenderSection) getRenderSection.invoke(viewArea, node);
+                        if (rs != null) {
+                            rs.sectionMesh.set(makeMesh(o.get("mask").getAsLong()));
+                            graph.schedulePropagationFrom(rs);
+                        }
+                    }
+                }
+                runPartialUpdate.invoke(graph, camState, loadedExpected);
+                Set<Long> afterOctree = new HashSet<>();
+                for (float[] dir : sixDirs) {
+                    Frustum f = makeFrustum(nextCamX, nextCamY, nextCamZ, dir[0], dir[1], 95.0F, 1.0F, bigFar);
+                    List<SectionRenderDispatcher.RenderSection> vis = new ArrayList<>();
+                    List<SectionRenderDispatcher.RenderSection> nearby = new ArrayList<>();
+                    graph.addSectionsInFrustum(f, vis, nearby);
+                    for (SectionRenderDispatcher.RenderSection rs : vis) {
+                        afterOctree.add(rs.getSectionNode());
+                    }
+                }
+                out.add("partial_step", ps);
+                out.addProperty("after_partial_octree_all_count", afterOctree.size());
+                out.add("after_partial_octree_all_sections", sectionNodesToJson(afterOctree));
             }
 
             outCases.add(out);

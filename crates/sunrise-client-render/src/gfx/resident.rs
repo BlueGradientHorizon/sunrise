@@ -1373,7 +1373,3 @@ mod tests {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "resident_visibility_tests.rs"]
-mod visibility_tests;

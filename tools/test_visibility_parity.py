@@ -3,7 +3,7 @@
 
 Compiles and runs VanillaSectionVisibilityOracle against the pinned 26.3 client jar on JDK 25,
 writing the witness and meta.json into .local/witness/<version>/visibility/, then runs the
-6 Rust tests in sunrise-client-render against it via SUNRISE_SECTION_VISIBILITY_WITNESS."""
+Rust client_probe visibility_fixture against it."""
 import argparse
 import json
 import os
@@ -18,15 +18,7 @@ except ImportError:
 
 ORACLE = 'VanillaSectionVisibilityOracle'
 GENPVP_NON_EMPTY_SY = [0, 1, 2, 3, 8, 9, 10, 11]
-
-TESTS = [
-    'gfx::culling_control::tests::occlusion_radius_matches_vanilla_26_3_view_distance',
-    'gfx::gpu_culling::visibility_tests::gpu_culling_tables_and_keeps_enforce_vanilla_26_3_vertical_clamp',
-    'gfx::occlusion::visibility_tests::occlusion_reaches_exact_vanilla_26_3_sections_across_heights_and_radii',
-    'gfx::occlusion::visibility_tests::occlusion_visible_for_camera_is_unknown_outside_vanilla_vertical_band',
-    'gfx::resident::visibility_tests::resident_walk_enforces_vanilla_26_3_vertical_clamp_without_cave_culling',
-    'gfx::view_sections::tests::a_view_respects_vanilla_26_3_vertical_render_distance',
-]
+ALL_VISIBLE = (1 << 36) - 1
 
 
 def build_cases():
@@ -200,6 +192,78 @@ def build_cases():
                 if not (x == 2 and z == 0)
             ],
         },
+        # 23-24: Outside-height Octree branch culling on single-direction frusta (above and below build height).
+        {
+            'name': 'outside_height_octree_above_rd2_square70',
+            'min_y': -64, 'sections': 24, 'render_distance': 2,
+            'camera': [0.0, 400.0, 0.0], 'smart_cull': True,
+            'frustum': {'yaw': 0.0, 'pitch': 90.0, 'fov': 70.0, 'aspect': 1.0},
+        },
+        {
+            'name': 'outside_height_octree_below_rd2_square35',
+            'min_y': -64, 'sections': 24, 'render_distance': 2,
+            'camera': [0.0, -160.0, 0.0], 'smart_cull': True,
+            'frustum': {'yaw': 0.0, 'pitch': -90.0, 'fov': 35.0, 'aspect': 1.0},
+        },
+        # 25-26: Face-closed barrier with smart_cull on vs off (bounded graph still clamps when off).
+        {
+            'name': 'barrier_wall_smart_cull_on',
+            'min_y': -64, 'sections': 24, 'render_distance': 2,
+            'camera': [8.5, 104.5, 8.5], 'smart_cull': True,
+            'vis_overrides': [
+                {'section': [1, 6, 0], 'mask': 0},
+                {'section': [-1, 6, 0], 'mask': 0},
+                {'section': [0, 7, 0], 'mask': 0},
+                {'section': [0, 5, 0], 'mask': 0},
+                {'section': [0, 6, 1], 'mask': 0},
+                {'section': [0, 6, -1], 'mask': 0},
+            ],
+        },
+        {
+            'name': 'barrier_wall_smart_cull_off',
+            'min_y': -64, 'sections': 24, 'render_distance': 2,
+            'camera': [8.5, 104.5, 8.5], 'smart_cull': False,
+            'vis_overrides': [
+                {'section': [1, 6, 0], 'mask': 0},
+                {'section': [-1, 6, 0], 'mask': 0},
+                {'section': [0, 7, 0], 'mask': 0},
+                {'section': [0, 5, 0], 'mask': 0},
+                {'section': [0, 6, 1], 'mask': 0},
+                {'section': [0, 6, -1], 'mask': 0},
+            ],
+        },
+        # 27-28: Unloaded chunk stripe at X=1 blocks propagation into loaded X=2, then resumes on load.
+        {
+            'name': 'unloaded_stripe_smart_cull_on',
+            'min_y': -64, 'sections': 24, 'render_distance': 2,
+            'camera': [8.5, 104.5, 8.5], 'smart_cull': True,
+            'excluded_loaded_chunks': [[1, z] for z in range(-3, 4)],
+            'partial_step': {'add_loaded_chunks': [[1, 0]]},
+        },
+        {
+            'name': 'unloaded_stripe_smart_cull_off',
+            'min_y': -64, 'sections': 24, 'render_distance': 2,
+            'camera': [8.5, 104.5, 8.5], 'smart_cull': False,
+            'excluded_loaded_chunks': [[1, z] for z in range(-3, 4)],
+            'partial_step': {'add_loaded_chunks': [[1, 0]]},
+        },
+        # 29: Partial propagation uses the current eye across a shifted vertical band before a full update.
+        {
+            'name': 'partial_update_crosses_shifted_vertical_band',
+            'min_y': -64, 'sections': 24, 'render_distance': 2,
+            'camera': [8.5, 104.5, 8.5], 'smart_cull': True,
+            'vis_overrides': [{'section': [0, 8, 0], 'mask': 0}],
+            'partial_step': {
+                'camera': [8.5, 120.5, 8.5],
+                'vis_overrides': [{'section': [0, 8, 0], 'mask': ALL_VISIBLE}],
+            },
+        },
+        # 30: Taller 32-section world layout with visible rows above default 24 sections and rejected (4, sy, 4) corner.
+        {
+            'name': 'vertical_clamp_tall_layout_32_rd4',
+            'min_y': -64, 'sections': 32, 'render_distance': 4,
+            'camera': [8.5, 360.5, 8.5], 'smart_cull': True,
+        },
     ]
     return {'cases': cases}
 
@@ -254,26 +318,10 @@ def run_logged(command, build, name, cwd=lab.ROOT, env=None):
     return path
 
 
-def build_test_binary(build, package, target_name, env):
-    compiled = run_logged(
-        ['cargo', 'test', '--locked', '-p', package, '--lib', '--no-run', '--message-format=json'],
-        build, f'compile-{package}', env=env,
-    )
-    binaries = []
-    for line in compiled.read_text(encoding='utf-8').splitlines():
-        if not line.startswith('{'):
-            continue
-        row = json.loads(line)
-        if (row.get('reason') == 'compiler-artifact' and row.get('executable')
-                and row.get('target', {}).get('name') == target_name and row.get('profile', {}).get('test')):
-            binaries.append(Path(row['executable']))
-    assert len(binaries) == 1, f'expected one {target_name} test binary, found {binaries}'
-    return binaries[0]
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--record-only', action='store_true')
+    parser.add_argument('--profile', default='fast', help='Cargo build profile')
     args = parser.parse_args()
     lock, jars, _ = base.verify_artifacts()
     libraries = baking.client_libraries()
@@ -283,12 +331,15 @@ def main():
     if args.record_only:
         print(f'wrote {witness} ({witness.stat().st_size} bytes)')
         return
-    env = dict(os.environ, SUNRISE_SECTION_VISIBILITY_WITNESS=str(witness.resolve()))
-    binary = build_test_binary(build, 'sunrise-client-render', 'sunrise_client_render', env)
-    log = run_logged([binary, '--ignored', '--exact', *TESTS], build, 'render-tests', env=env)
-    expected = f'{len(TESTS)} passed; 0 failed'
-    assert expected in log.read_text(encoding='utf-8'), f'expected "{expected}" in {log}'
-    print(f'Section visibility parity passed ({len(TESTS)} tests against {witness})')
+    log = run_logged(
+        [
+            'cargo', 'run', '--quiet', '--locked', '--profile', args.profile,
+            '-p', 'sunrise-client-lib', '--example', 'client_probe', '--',
+            'visibility_fixture', witness.resolve(),
+        ],
+        build, 'visibility-probe',
+    )
+    print(log.read_text(encoding='utf-8').strip())
 
 
 if __name__ == '__main__':

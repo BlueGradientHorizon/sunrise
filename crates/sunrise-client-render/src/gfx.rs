@@ -229,6 +229,8 @@ mod oit_features;
 pub(crate) mod output;
 mod output_apply;
 mod pack_entities;
+#[doc(hidden)]
+pub mod visibility_probe;
 // The pack's programs' inputs and helpers, from `sunrise-render-shaderpack`: the client's frame
 // only tells them what a `Frame` and the game's own values are.
 pub use sunrise_render_shaderpack::{

@@ -742,53 +742,5 @@
     "path": "crates/sunrise-client/src/mobs/finalize_load_tests.rs",
     "reason": "run by tools/test_mob_attribute_nbt_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_mob_attribute_nbt_parity.py records the vanilla 26.3 loaded-health witness into .local and runs this test against it through SUNRISE_MOB_LOADED_HEALTH_WITNESS, so no recorded vanilla data is committed."
-  },
-  {
-    "package": "sunrise-client-render",
-    "target": "lib",
-    "test": "gfx::culling_control::tests::occlusion_radius_matches_vanilla_26_3_view_distance",
-    "path": "crates/sunrise-client-render/src/gfx/culling_control.rs",
-    "reason": "run by tools/test_visibility_parity.py",
-    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_visibility_parity.py records the vanilla 26.3 section visibility witness into .local and runs this test against it through SUNRISE_SECTION_VISIBILITY_WITNESS, so no recorded vanilla data is committed."
-  },
-  {
-    "package": "sunrise-client-render",
-    "target": "lib",
-    "test": "gfx::gpu_culling::visibility_tests::gpu_culling_tables_and_keeps_enforce_vanilla_26_3_vertical_clamp",
-    "path": "crates/sunrise-client-render/src/gfx/gpu_culling_visibility_tests.rs",
-    "reason": "run by tools/test_visibility_parity.py",
-    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_visibility_parity.py records the vanilla 26.3 section visibility witness into .local and runs this test against it through SUNRISE_SECTION_VISIBILITY_WITNESS, so no recorded vanilla data is committed."
-  },
-  {
-    "package": "sunrise-client-render",
-    "target": "lib",
-    "test": "gfx::occlusion::visibility_tests::occlusion_reaches_exact_vanilla_26_3_sections_across_heights_and_radii",
-    "path": "crates/sunrise-client-render/src/gfx/occlusion_visibility_tests.rs",
-    "reason": "run by tools/test_visibility_parity.py",
-    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_visibility_parity.py records the vanilla 26.3 section visibility witness into .local and runs this test against it through SUNRISE_SECTION_VISIBILITY_WITNESS, so no recorded vanilla data is committed."
-  },
-  {
-    "package": "sunrise-client-render",
-    "target": "lib",
-    "test": "gfx::occlusion::visibility_tests::occlusion_visible_for_camera_is_unknown_outside_vanilla_vertical_band",
-    "path": "crates/sunrise-client-render/src/gfx/occlusion_visibility_tests.rs",
-    "reason": "run by tools/test_visibility_parity.py",
-    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_visibility_parity.py records the vanilla 26.3 section visibility witness into .local and runs this test against it through SUNRISE_SECTION_VISIBILITY_WITNESS, so no recorded vanilla data is committed."
-  },
-  {
-    "package": "sunrise-client-render",
-    "target": "lib",
-    "test": "gfx::resident::visibility_tests::resident_walk_enforces_vanilla_26_3_vertical_clamp_without_cave_culling",
-    "path": "crates/sunrise-client-render/src/gfx/resident_visibility_tests.rs",
-    "reason": "run by tools/test_visibility_parity.py",
-    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_visibility_parity.py records the vanilla 26.3 section visibility witness into .local and runs this test against it through SUNRISE_SECTION_VISIBILITY_WITNESS, so no recorded vanilla data is committed."
-  },
-  {
-    "package": "sunrise-client-render",
-    "target": "lib",
-    "test": "gfx::view_sections::tests::a_view_respects_vanilla_26_3_vertical_render_distance",
-    "path": "crates/sunrise-client-render/src/gfx/view_sections.rs",
-    "reason": "run by tools/test_visibility_parity.py",
-    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_visibility_parity.py records the vanilla 26.3 section visibility witness into .local and runs this test against it through SUNRISE_SECTION_VISIBILITY_WITNESS, so no recorded vanilla data is committed."
   }
 ]
