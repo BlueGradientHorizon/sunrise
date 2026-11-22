@@ -158,6 +158,41 @@ fn biome_blend_wraps_signed_block_coordinates() {
     }
 }
 
+#[test]
+fn a_client_tint_query_blends_grass_and_foliage_across_a_biome_edge() {
+    let biomes = Biomes::from_jsons(&[
+        (
+            "minecraft:plains",
+            serde_json::json!({"effects": {"grass_color": 0x123060, "foliage_color": 0x903000}}),
+        ),
+        (
+            "minecraft:desert",
+            serde_json::json!({"effects": {"grass_color": 0x4A600C, "foliage_color": 0x3209FF}}),
+        ),
+    ]);
+    let west = filled(0, 0, biomes.id("minecraft:plains"));
+    let east = filled(1, 0, biomes.id("minecraft:desert"));
+    let region = [[None; 3], [None, Some(&west), Some(&east)], [None; 3]];
+    let zoom = BiomeZoom::new(42);
+    let mut mesher_tints = Tints::new(&region, &biomes, zoom, 1, [0, 0, 64]);
+
+    // With this seed, vanilla's BiomeManager selects six west and three east samples
+    // at [15, 64, 8]. Each channel is divided by nine, truncating the remainder.
+    for (resolver, expected) in [
+        (mod_api::ColorResolver::Grass, 0xFF24_4044),
+        (mod_api::ColorResolver::Foliage, 0xFF70_2355),
+    ] {
+        assert_eq!(
+            biome_tint([15, 64, 8], resolver, &region, &biomes, zoom, 1),
+            expected
+        );
+        assert_eq!(
+            0xFF00_0000 | mesher_tints.get(Resolver::from(resolver), 15, 0, 8),
+            expected
+        );
+    }
+}
+
 /// A pack root holding `files` (path, bytes), for colormap tests.
 fn pack(files: &[(&str, Vec<u8>)]) -> std::path::PathBuf {
     static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);

@@ -950,8 +950,6 @@ mod mob_looting;
 mod mob_sounds;
 #[path = "game/modding/mod_api_host.rs"]
 mod mod_api_host;
-#[path = "game/modding/mod_block_entity_lost_contents.rs"]
-mod mod_block_entity_lost_contents;
 #[path = "game/interface/mod_browser.rs"]
 mod mod_browser;
 #[path = "game/modding/mod_container_openers.rs"]
@@ -1022,6 +1020,8 @@ mod native_block_entity_transform;
 #[cfg(test)]
 #[path = "game/modding/native_block_entity_transform_tests.rs"]
 mod native_block_entity_transform_tests;
+#[path = "game/modding/native_block_extra_models.rs"]
+mod native_block_extra_models;
 #[path = "game/modding/native_block_sounds.rs"]
 pub(crate) mod native_block_sounds;
 #[path = "game/modding/native_block_sprites.rs"]
@@ -2587,7 +2587,10 @@ enum FallStep {
 /// item's own (`Item.use`). Running both for either would use the item twice.
 #[derive(Clone, Copy)]
 enum GuestUse {
-    OnBlock(Hand),
+    OnBlock {
+        hand: Hand,
+        block_fell_through: bool,
+    },
     Item(Hand),
     /// `handleInteract`: `Player.interactOn` with the hand, nothing else (the
     /// client sends UseItem itself when the entity passed), on the entity the
@@ -2595,6 +2598,14 @@ enum GuestUse {
     /// `packet.entityId()` once and range checks it, so the click never picks
     /// an entity again from the view.
     Entity(Hand, InteractTarget),
+}
+impl GuestUse {
+    fn on_block(hand: Hand) -> Self {
+        Self::OnBlock {
+            hand,
+            block_fell_through: false,
+        }
+    }
 }
 /// The entity an interact packet names and where its client clicked it (the
 /// packet's location, measured from the entity's position): what
@@ -2989,6 +3000,7 @@ struct WorldTables {
     items: Arc<Items>,
     /// Registry definitions stay frozen at world open, even when tags reload.
     packed_registries: Arc<sunrise_client::lan::data::PackRegistryDefinitions>,
+    providers: Providers,
     loot: Arc<sunrise_world::loot::LootData>,
     loot_modifier_manager: Arc<mod_api::GlobalLootModifierManager>,
     recipes: Recipes,
@@ -3340,6 +3352,8 @@ struct Game<'a> {
     rejected_keys: HashSet<KeyCode>,
     physical_buttons: HashSet<MouseButton>,
     drag_button: Option<MouseButton>,
+    screen_activation: u64,
+    last_screen_press: Option<native_hooks::ScreenPress>,
     /// Control + left click as a right click (macOS).
     right_click_emulation: sunrise_client_input::mouse::RightClickEmulation,
     cursor: (f32, f32),
@@ -3558,6 +3572,7 @@ struct Game<'a> {
     /// so they too first tick on the next tick.
     contact_drops: std::ops::Range<u32>,
     particles: sunrise_client::particles::ParticleEngine,
+    explicit_particle_quads: sunrise_client::particles::ParticleQuads,
     /// `ItemPickupParticle`s: taken items, orbs and arrows flying to their collector.
     pickups: pickups::Pickups,
     /// Sign text being edited (`SignEditScreen`).
@@ -6616,6 +6631,7 @@ impl Game<'_> {
         let live = (!self.creative)
             .then(|| self.live_block_entity(key, &facts.name))
             .flatten();
+        let mut saved_data = None;
         // Mod data is encoded only if the removed block goes on to roll loot.
         let mod_source = match &live {
             Some((BlockEntity::Mod(_), _)) => Some((
@@ -6638,6 +6654,13 @@ impl Game<'_> {
                     && let Some(tag) = spill::saved_entity(&self.world, pos)
                 {
                     self.pending.record_saved(pos, &tag);
+                    // Pots and other saved-only entities have no resident object, but
+                    // this is still the original entity the break is about to remove.
+                    if self.native_authoritative()
+                        && mod_api::__private::listened(mod_api::HookId::BlockDrops)
+                    {
+                        saved_data = spill::packed_block_entity_payload(tag);
+                    }
                 }
                 None
             }
@@ -6685,9 +6708,13 @@ impl Game<'_> {
                 // Block.dropResources: the item entities, then spawnAfterBreak's
                 // experience, with the mods' say between the two.
                 let breaker = Some(self.native_acting_id());
+                let block_entity_data = live
+                    .as_ref()
+                    .and_then(|(_, data)| data.as_ref())
+                    .or(saved_data.as_ref());
                 let dropped = self.player_block_dropped(
                     (pos, state),
-                    (breaker, held.as_ref(), live),
+                    (breaker, held.as_ref(), block_entity_data),
                     (stacks, exp_to_drop),
                 );
                 let canceled = dropped.canceled;
@@ -7146,7 +7173,7 @@ impl Game<'_> {
             && self.player.is_none()
         {
             let mut batch = HudBatch::new(size, self.settings.gui_scale_inputs());
-            self.draw_pack_toasts(&mut batch, true, self.ui.hide_gui);
+            self.draw_pack_toasts(&mut batch, true, false);
             batch
         } else {
             self.hud_layers(size)
@@ -7165,6 +7192,7 @@ impl Game<'_> {
         // Gui.extractRenderState: the debug overlay comes after the screen
         // and the toasts, so it is over everything, menus included.
         self.draw_debug_overlay(&mut batch, size);
+        self.draw_deferred_subtitles(&mut batch);
         // The layers crates registered to draw over everything (`sunrise_hooks::hud`).
         sunrise_client::extras_hud::draw_top_layers(
             sunrise_hooks::hud::engine::all(),
@@ -7186,6 +7214,7 @@ impl Game<'_> {
         use sunrise_client::gui_layers::VanillaGuiLayer;
 
         self.input_hud_begin();
+        self.subtitles.deferred.set(false);
         let mut batch = HudBatch::new(size, self.settings.gui_scale_inputs());
         batch.glint_colour = self.pvp_glint_texel();
         // GlobalSettingsUniform's GameTime, for a resource pack's text shader.
@@ -7207,24 +7236,15 @@ impl Game<'_> {
             // screen, after its own drawing.
             self.publish_screen_regions(&batch, None);
             self.draw_screen_with_post_hook(&mut batch);
-            self.draw_pack_toasts(&mut batch, true, self.ui.hide_gui);
+            self.draw_pack_toasts(&mut batch, true, false);
             return batch;
         }
-        if self.screen == Screen::Options {
-            if self.title.is_none() {
-                self.flush_skin_slots();
-                self.update_remote_skins();
-            }
+        if self.screen == Screen::Options && self.title.is_some() {
             let drawn = self.draw_screen_with_pre_hook(&mut batch);
-            if drawn {
-                self.draw_options(&mut batch);
-            } else {
-                self.ui.options.discard_draw();
-            }
+            self.draw_options(&mut batch, drawn);
             self.publish_screen_regions(&batch, None);
             self.draw_screen_with_post_hook(&mut batch);
-            self.draw_controller_notice(&mut batch);
-            self.draw_pack_toasts(&mut batch, true, self.ui.hide_gui);
+            self.draw_pack_toasts(&mut batch, true, false);
             return batch;
         }
         self.settle_title_toasts();
@@ -7285,6 +7305,7 @@ impl Game<'_> {
                     self.settings.file.bool("hideServerAddress"),
                     &mut |phase, batch| self.draw_screen_phase(batch, phase),
                 );
+                self.draw_preset_editor(&mut batch);
             }
             // ScreenEvent.Render.Post over the title's own screens: a mod draws
             // over them here (a pack browser over Create New World, say), and the
@@ -7314,50 +7335,66 @@ impl Game<'_> {
         let (wi, hi) = (w as i32, h as i32);
         let mut gui_canceled = false;
         let replaying = self.replay.playing();
-        // RenderGuiEvent.Pre can veto the status slots even when F1 hides their vanilla paint.
-        if !replaying || !self.ui.hide_gui {
+        if !replaying {
             self.native_render_gui_pre(&mut gui_canceled);
         }
-        // The veto covers status slots even under F1, but not mandatory diagnostics.
-        let dispatch_status = !gui_canceled && !replaying;
-        let show_hud = dispatch_status && !self.ui.hide_gui;
-        // Hud.extractRenderState asks `Screen.isInGameUi` twice: such a screen
-        // defers the subtitles over itself, and keeps them while F1 hides the
-        // rest of the HUD.
+        // F1 hides vanilla drawing; RenderGuiEvent.Pre instead cancels the layer walk.
+        let hide_hud = self.ui.hide_gui || replaying;
+        let show_hud = !hide_hud && !gui_canceled;
+        // A screen that keeps the in-game UI defers subtitles to its background,
+        // even under F1. With no screen, Gui draws them after the debug overlay.
+        let book_or_sign = self.book.is_some() || self.sign_edit.is_some();
         let subtitles = subtitles(
             show_hud,
-            in_game_ui(self.screen, self.book.is_some() || self.sign_edit.is_some()),
+            if self.server_packs.prompt.is_some() {
+                Some(false)
+            } else if self.screen != Screen::Playing || book_or_sign {
+                Some(in_game_ui(self.screen, book_or_sign))
+            } else {
+                None
+            },
         );
-        // The mods' layers (`register_gui_layers`) draw among vanilla's while the HUD shows.
-        self.hud_layer_next = show_hud.then_some(0);
+        let dispatch_hud = !gui_canceled && !replaying;
+        self.hud_layer_next = dispatch_hud.then_some(0);
         self.ui.room = self.hud_room(w, h, show_hud);
         let mut guide_from = 0;
-        if show_hud {
-            self.draw_spyglass(&mut batch);
-            guide_from = batch.vertices.len();
-            // Hud.extractCrosshair / extractItemHotbar / extractPlayerHealth /
-            // extractVehicleHealth and the experience bar, laid out by hud_layout.
+        if dispatch_hud {
+            if show_hud {
+                self.draw_spyglass(&mut batch);
+                guide_from = batch.vertices.len();
+            }
             // Combat feel Legacy hides the attack indicator unless the player keeps it.
-            let indicator = if self.pvp_hides_attack_indicator() {
-                0
-            } else {
+            let indicator = if show_hud && !self.pvp_hides_attack_indicator() {
                 self.settings.attack_indicator
+            } else {
+                0
             };
-            let delay = sunrise_client::attack_strength::delay(self.main_hand_attack_speed());
-            let strength = self.hand_strength.scale(0.0, self.main_hand_attack_speed());
-            // The 3D crosshair (F3) takes the 2D one's place.
-            // Hud.extractCrosshair: a spectator only sees it over something to open.
-            if self.camera_type.is_first_person()
-                && (!spectator || self.spectator_crosshair())
-                && !self.debug_crosshair()
-                && !self.overlay_holds_view()
-            {
-                let attack = (indicator == 1).then_some(strength);
-                let full = attack.is_some_and(|a| {
-                    hud_layout::full_attack_indicator(a, delay, self.crosshair_living())
-                });
-                let draws = hud_layout::crosshair(wi, hi, attack, full);
-                self.gui_layer(VanillaGuiLayer::Crosshair, &mut batch, &mut |g, batch| {
+            let attack = (indicator == 1 || indicator == 2).then(|| {
+                let speed = self.main_hand_attack_speed();
+                (
+                    self.hand_strength.scale(0.0, speed),
+                    sunrise_client::attack_strength::delay(speed),
+                )
+            });
+            self.gui_layer(VanillaGuiLayer::Crosshair, &mut batch, &mut |g, batch| {
+                // F3's 3D crosshair takes the 2D one's place. A spectator only sees it over
+                // something to open (`Hud.extractCrosshair`). These guards only gate vanilla paint.
+                if show_hud
+                    && g.camera_type.is_first_person()
+                    && (!spectator || g.spectator_crosshair())
+                    && !g.debug_crosshair()
+                    && !g.overlay_holds_view()
+                {
+                    let crosshair_attack = attack.filter(|_| indicator == 1);
+                    let full = crosshair_attack.is_some_and(|(strength, delay)| {
+                        hud_layout::full_attack_indicator(strength, delay, g.crosshair_living())
+                    });
+                    let draws = hud_layout::crosshair(
+                        wi,
+                        hi,
+                        crosshair_attack.map(|(strength, _)| strength),
+                        full,
+                    );
                     // The custom crosshair takes the sprite's place (the first draw); the
                     // attack indicator stays.
                     if g.custom_crosshair() {
@@ -7366,9 +7403,12 @@ impl Game<'_> {
                     } else {
                         hud_layout::paint(batch, &g.gui.atlas, &draws);
                     }
-                });
-            }
+                }
+            });
             self.gui_layer(VanillaGuiLayer::Hotbar, &mut batch, &mut |g, batch| {
+                if !show_hud {
+                    return;
+                }
                 if spectator {
                     g.draw_spectator_hotbar(batch);
                 } else {
@@ -7383,7 +7423,9 @@ impl Game<'_> {
                                 .map(|_| (f32::from(g.hotbar_pop[i]) - partial).max(0.0))
                         }),
                         offhand_pop: (f32::from(g.hotbar_pop[9]) - partial).max(0.0),
-                        attack: (indicator == 2).then_some(strength),
+                        attack: attack
+                            .filter(|_| indicator == 2)
+                            .map(|(strength, _)| strength),
                     };
                     let draws = hud_layout::hotbar(wi, hi, &inputs);
                     // `extractSlot` for each item, in order, on the path `gui_paint` takes.
@@ -7393,17 +7435,28 @@ impl Game<'_> {
             });
             self.gui_layer(VanillaGuiLayer::Effects, &mut batch, &mut |g, batch| {
                 // The PvP & HUD effects widget takes the icons' place.
-                if !g.pvp_effects_shown() {
+                if show_hud && !g.pvp_effects_shown() {
                     g.draw_effect_icons(batch);
                 }
             });
-            // Hud: the action bar and titles draw over the hotbar (nextStratum).
             self.gui_layer(VanillaGuiLayer::BossOverlay, &mut batch, &mut |g, batch| {
-                g.draw_boss_bars(batch);
+                if show_hud {
+                    g.draw_boss_bars(batch);
+                }
             });
-            self.draw_extras(&mut batch);
-        }
-        if dispatch_status {
+            let mut corners = sunrise_client::extras_hud::Corners::new(
+                w,
+                h,
+                if show_hud {
+                    self.effect_rows_height()
+                } else {
+                    0.0
+                },
+            );
+            if show_hud {
+                self.draw_extras(&mut batch, &mut corners);
+            }
+
             // NeoForge's Hud.registerVanillaLayers: each status row owns its own extraction.
             // The installed vanilla bodies share the column heights and a scratch draw list.
             let mut status_heights = hud_layout::StatusBarHeights::default();
@@ -7538,24 +7591,24 @@ impl Game<'_> {
                     g.audio.capture = capture;
                 }
             });
-        }
-        if show_hud {
-            // Hud.nextContextualInfoState: the jump bar, the experience bar or
-            // the locator bar above the hotbar.
-            let has_experience = !self.creative && !spectator;
-            let contextual = sunrise_client::locator_bar::ContextualBar::next(
-                self.waypoints.has_waypoints(),
-                !spectator && self.jumpable_mount(),
-                self.mount_jumping(),
-                has_experience,
-                self.experience_recent(),
-            );
+
             use sunrise_client::locator_bar::ContextualBar;
             // After the health rows (Hud.extractHotbarAndDecorations): jump, locator or XP bar.
             self.gui_layer(
                 VanillaGuiLayer::ContextualInfoBar,
                 &mut batch,
                 &mut |g, batch| {
+                    if !show_hud {
+                        return;
+                    }
+                    let has_experience = !g.creative && !spectator;
+                    let contextual = ContextualBar::next(
+                        g.waypoints.has_waypoints(),
+                        !spectator && g.jumpable_mount(),
+                        g.mount_jumping(),
+                        has_experience,
+                        g.experience_recent(),
+                    );
                     if contextual == ContextualBar::JumpableVehicle {
                         g.draw_jump_bar(batch, wi, hi);
                     }
@@ -7593,87 +7646,80 @@ impl Game<'_> {
                     }
                 },
             );
-            if !spectator {
-                self.gui_layer(
-                    VanillaGuiLayer::SelectedItemName,
-                    &mut batch,
-                    &mut |g, batch| {
+            self.gui_layer(
+                VanillaGuiLayer::SelectedItemName,
+                &mut batch,
+                &mut |g, batch| {
+                    if show_hud && !spectator {
                         g.draw_selected_name(batch, !g.creative);
-                    },
-                );
-            }
-        }
-        // Hud.extractSleepOverlay: over all health/food bars, under titles and chat.
-        let draws = hud_overlays::sleep_overlay(wi, hi, self.sleep_timer as i32);
-        self.gui_layer(
-            VanillaGuiLayer::SleepOverlay,
-            &mut batch,
-            &mut |g, batch| {
-                hud_layout::paint(batch, &g.gui.atlas, &draws);
-            },
-        );
-        if show_hud {
+                    }
+                },
+            );
+            // Hud.extractSleepOverlay draws even under F1.
+            self.gui_layer(
+                VanillaGuiLayer::SleepOverlay,
+                &mut batch,
+                &mut |g, batch| {
+                    let draws = hud_overlays::sleep_overlay(wi, hi, g.sleep_timer as i32);
+                    hud_layout::paint(batch, &g.gui.atlas, &draws);
+                },
+            );
             self.gui_layer(
                 VanillaGuiLayer::OverlayMessage,
                 &mut batch,
                 &mut |g, batch| {
-                    g.draw_overlay_message(batch);
+                    if show_hud {
+                        g.draw_overlay_message(batch);
+                    }
                 },
             );
             self.gui_layer(VanillaGuiLayer::Title, &mut batch, &mut |g, batch| {
-                g.draw_title(batch);
+                if show_hud {
+                    g.draw_title(batch);
+                }
             });
             self.gui_layer(
                 VanillaGuiLayer::ScoreboardSidebar,
                 &mut batch,
                 &mut |g, batch| {
-                    g.draw_scoreboard(batch);
+                    if show_hud {
+                        g.draw_scoreboard(batch);
+                    }
                 },
             );
-            if subtitles != Subtitles::Hidden {
-                self.gui_layer(
-                    VanillaGuiLayer::SubtitleOverlay,
-                    &mut batch,
-                    &mut |g, batch| {
-                        g.draw_subtitles(batch);
-                    },
-                );
-            }
-        } else if subtitles == Subtitles::Deferred {
-            // F1 hid the HUD, but an in-game screen still shows the subtitles.
             self.gui_layer(
                 VanillaGuiLayer::SubtitleOverlay,
                 &mut batch,
-                &mut |g, batch| {
-                    g.draw_subtitles(batch);
+                &mut |g, batch| match subtitles {
+                    Subtitles::Hidden => {}
+                    Subtitles::Now => g.draw_subtitles(batch),
+                    Subtitles::Deferred => g.subtitles.deferred.set(true),
                 },
             );
-        }
-        let atlas = &self.gui.atlas;
-        if show_hud
-            && let Some((text, at)) = &self.message
-            && at.elapsed() < Duration::from_secs(3)
-        {
-            let tw = HudBatch::text_width(atlas, text);
-            batch.text(atlas, text, (w - tw) / 2.0, h - 59.0, u32::MAX, true);
-        }
-        // The chat screen draws the focused chat itself; F1 hides the rest.
-        if self.screen == Screen::Chat {
-            // The mod layers under the chat stay under the focused chat.
-            self.draw_mod_gui_layers(Some(VanillaGuiLayer::Chat), &mut batch);
-        } else if show_hud {
-            if !self.overlay_holds_view() {
-                self.gui_layer(VanillaGuiLayer::Chat, &mut batch, &mut |g, batch| {
-                    g.draw_chat(batch)
-                });
+            let atlas = &self.gui.atlas;
+            if show_hud
+                && let Some((text, at)) = &self.message
+                && at.elapsed() < Duration::from_secs(3)
+            {
+                let tw = HudBatch::text_width(atlas, text);
+                batch.text(atlas, text, (w - tw) / 2.0, h - 59.0, u32::MAX, true);
             }
-            self.gui_layer(VanillaGuiLayer::TabList, &mut batch, &mut |g, batch| {
-                g.draw_tab_list(batch);
+            self.gui_layer(VanillaGuiLayer::Chat, &mut batch, &mut |g, batch| {
+                // The chat screen has its own paint site for focused chat.
+                if show_hud && g.screen != Screen::Chat && !g.overlay_holds_view() {
+                    g.draw_chat(batch);
+                }
             });
+            self.gui_layer(VanillaGuiLayer::TabList, &mut batch, &mut |g, batch| {
+                // Options polls world skins separately, even if the HUD is hidden.
+                if show_hud && !matches!(g.screen, Screen::Chat | Screen::Options) {
+                    g.draw_tab_list(batch);
+                }
+            });
+            self.draw_mod_gui_layers(None, &mut batch);
+            self.hud_layer_next = None;
+            self.native_render_gui_post(&mut batch, &mut corners);
         }
-        // The mod layers above the last vanilla layer drawn.
-        self.draw_mod_gui_layers(None, &mut batch);
-        self.hud_layer_next = None;
         // Screen.extractBlurredBackground blurs the world and HUD, while the
         // screen's background, widgets, toasts and debug overlay stay sharp.
         batch.blur_at = batch.vertices.len() as u32;
@@ -7684,9 +7730,14 @@ impl Game<'_> {
         } else {
             self.screen
         };
+        if screen == Screen::Options {
+            self.flush_skin_slots();
+            self.update_remote_skins();
+        }
         let drawn = self.draw_screen_with_pre_hook(&mut batch);
         let mut region_screen = None;
         match screen {
+            Screen::Options => self.draw_options(&mut batch, drawn),
             _ if !drawn => {}
             Screen::Paused if self.pause_menu => self.draw_pause_menu(&mut batch),
             // PauseScreen(false): only its title, at the top.
@@ -7743,7 +7794,7 @@ impl Game<'_> {
                 self.draw_pad_menu_guide(&mut batch, from);
             }
             Screen::Chat => self.draw_chat_screen(&mut batch),
-            Screen::Playing | Screen::Options | Screen::Win => {}
+            Screen::Playing | Screen::Win => {}
         }
         // ScreenEvent.Render.Post: the open screen has drawn itself and its
         // tooltips, so a native mod draws over it here. Never `Playing`: the
@@ -8693,6 +8744,10 @@ impl Game<'_> {
         camera: glam::DVec3,
         alpha: f64,
         fov_degrees: f32,
+        providers: Option<(
+            &sunrise_client::particles::ParticleCullView,
+            &mut sunrise_client::particles::ParticleQuads,
+        )>,
         out: &mut Vec<Vertex>,
     ) {
         self.apply_mod_particle_clear();
@@ -8713,11 +8768,16 @@ impl Game<'_> {
         self.mark_stage(out.len(), "PARTICLES");
         let world = &self.world;
         let particle_mode = self.settings.sunrise.particle_culling;
+        let mut providers = providers;
         if particle_mode == sunrise_client::graphics::ParticleCullingMode::Off {
-            self.particles.render(
+            self.particles.render_world(
                 camera,
                 self.particle_rotation(),
                 alpha as f32,
+                providers
+                    .as_mut()
+                    .map(|(view, quads)| (*view, &mut **quads)),
+                None,
                 &|b| world.light(b[0], b[1], b[2]),
                 out,
             );
@@ -8733,14 +8793,18 @@ impl Game<'_> {
             });
             {
                 let mut particle_culling = self.particle_occlusion_context(camera);
-                self.particles.render_culled(
+                self.particles.render_world(
                     camera,
                     self.particle_rotation(),
                     alpha as f32,
-                    pixel_focal_length,
-                    true,
-                    frustum.as_ref(),
-                    &mut |min, max| particle_culling.hidden(min, max),
+                    providers
+                        .as_mut()
+                        .map(|(view, quads)| (*view, &mut **quads)),
+                    Some(sunrise_client::particles::ParticleWorldCull {
+                        pixel_focal_length,
+                        frustum: frustum.as_ref(),
+                        occluded: &mut |min, max| particle_culling.hidden(min, max),
+                    }),
                     &|b| world.light(b[0], b[1], b[2]),
                     out,
                 );
@@ -8765,6 +8829,9 @@ impl Game<'_> {
         if self.mod_clear_particles.get() {
             self.apply_mod_particle_clear();
             out.truncate(first);
+            if let Some((_, quads)) = providers {
+                quads.clear();
+            }
             {
                 let mut frame = self.skin_frame.borrow_mut();
                 frame.truncate(skin);
@@ -9630,7 +9697,7 @@ impl Game<'_> {
         };
         // BucketItem has no useOn: a guest's UseItemOn leaves it to UseItem.
         let bucket = sunrise_client::items::bucket_contents(&stack.item);
-        if matches!(self.guest_use, Some(GuestUse::OnBlock(_)))
+        if matches!(self.guest_use, Some(GuestUse::OnBlock { .. }))
             && (item == "bucket" || bucket.is_some())
         {
             return Ok(UseResult::Pass);
@@ -10027,7 +10094,7 @@ impl Game<'_> {
         let (screenshot, screenshot_result) = (old.screenshot.take(), old.screenshot_result.take());
         let display = old.display_reading();
         drop(old);
-        let mut renderer = build_renderer(
+        let (mut renderer, clouds) = build_renderer(
             window,
             self.options.offscreen,
             &self.pack,
@@ -10045,6 +10112,7 @@ impl Game<'_> {
                 self.settings.file.int("maxAnisotropyBit"),
             ),
         )?;
+        clouds?;
         (renderer.screenshot, renderer.screenshot_result) = (screenshot, screenshot_result);
         self.adopt_renderer(renderer);
         log::info!("Sunrise: graphics device recovered; rebuilding world meshes");
@@ -11334,11 +11402,30 @@ impl Game<'_> {
         // Fog hooks may clear particles too. They must run before the final clear
         // boundary, not while constructing Frame after geometry has been extracted.
         let fog = self.frame_fog(camera, &sky, biome, water_fog);
+        let mut explicit_particle_quads = std::mem::take(&mut self.explicit_particle_quads);
+        explicit_particle_quads.clear();
         if !title {
             // The renderer decides on the packs' GPU particle shaders before the quads are
             // built, and takes the records of the types it draws after.
             self.polytone_gpu_decide(camera);
-            self.client_particle_geometry(camera, alpha, fov_degrees, &mut entities);
+            let cull = self.particles.has_provider_particles().then(|| {
+                sunrise_client::particles::ParticleCullView::new(
+                    camera,
+                    [yaw, pitch],
+                    size,
+                    self.settings.fov,
+                    fov_degrees,
+                    depth_far,
+                )
+            });
+            self.client_particle_geometry(
+                camera,
+                alpha,
+                fov_degrees,
+                cull.as_ref()
+                    .map(|cull| (cull, &mut explicit_particle_quads)),
+                &mut entities,
+            );
             self.polytone_gpu_particles(camera, alpha);
         }
         let mut world_geometry = self.world_geometry.take().expect("view storage");
@@ -11453,6 +11540,7 @@ impl Game<'_> {
                 height: sky.cloud_height,
             }),
             entities: &entities,
+            explicit_particles: Some(&explicit_particle_quads),
             static_block_entities: &static_block_entities,
             visible_static_block_entity_sections: &visible_static_block_entity_sections,
             static_block_entity_stats,
@@ -11564,6 +11652,7 @@ impl Game<'_> {
         self.frame_drawn = matches!(result, Ok(true));
         // Restore storage even when rendering fails (for example, a lost surface).
         self.entity_vertices = entities;
+        self.explicit_particle_quads = explicit_particle_quads;
         self.world_geometry = Some(world_geometry);
         *self.entity_spans.get_mut() = entity_spans;
         *self.entity_motion.get_mut() = entity_motion;
@@ -11589,6 +11678,15 @@ impl Game<'_> {
 /// `computeNextAutosaveInterval`'s arithmetic: `Math.max(100, (int)(rate * 300.0F))`.
 fn autosave_interval(rate: f32) -> i64 {
     i64::from((rate * 300.0) as i32).max(100)
+}
+
+/// The parts of a window key used by IME and preset editor dispatch. The original winit
+/// event carries platform data for the rest of the window's input handling.
+struct WindowKeyInput<'a> {
+    physical: PhysicalKey,
+    state: ElementState,
+    repeat: bool,
+    text: Option<&'a str>,
 }
 
 /// winit's events for a window's game, with any loop: a headless client (#4951) has no
@@ -11648,92 +11746,44 @@ impl Game<'_> {
         }
     }
 
-    /// One window event, in the order vanilla's `KeyboardHandler` and `MouseHandler` see it.
-    ///
-    /// A controller doesn't come through here in play: `pad_action` goes straight to the mappings
-    /// (`mapped_key`, `mouse_mapping`). So a key handled below before `mapped_key_event` (a window
-    /// shortcut, a special case) never reaches a controller. If a player could want it on one, give
-    /// it a handler both can call and a `gamepad::Route` (screenshot and fullscreen do this). A
-    /// screen's own raw keys, text and mods' key hooks stay raw on purpose.
-    fn handle_window_event_inner(
+    /// Dispatch a window key through IME, the window's shortcuts and overlays, then any bound
+    /// preset editor. `true` means no further screen or gameplay handling is needed.
+    fn dispatch_window_key(
         &mut self,
         event_loop: &dyn EventLoopCtl,
-        mut event: WindowEvent,
-        cursor_sample: Option<sunrise_client::window::PointerSample>,
-    ) {
-        if matches!(
-            event,
-            WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. }
-        ) {
-            self.window_pointer_space.take();
-        }
-        let pressed = match &event {
-            WindowEvent::KeyboardInput { event, .. } => {
-                event.state == ElementState::Pressed && !event.repeat
-            }
-            WindowEvent::MouseInput { state, .. } => *state == ElementState::Pressed,
-            _ => false,
-        };
-        if pressed && !self.pad.menu.synthetic {
+        input: WindowKeyInput<'_>,
+        before_screen: impl FnOnce(&mut Self) -> bool,
+    ) -> bool {
+        let pressed = input.state == ElementState::Pressed;
+        if pressed && !input.repeat && !self.pad.menu.synthetic {
             self.pad_radial_cancel();
         }
-        if let WindowEvent::Focused(false) = &event {
-            self.modifiers = winit::keyboard::ModifiersState::empty();
-            self.physical_keys.clear();
-            self.physical_buttons.clear();
-            self.drag_button = None;
-            self.container_buttons.clear();
-        }
-        if let WindowEvent::ModifiersChanged(m) = &event {
-            self.update_modifiers(m.state());
-        }
-        if let WindowEvent::Focused(false) = &event {
-            self.update_modifiers(winit::keyboard::ModifiersState::empty());
-            self.debug_keys.reset();
-        }
-        // Pack drops on the resource-pack and Create New World screens.
-        if let WindowEvent::DroppedFile(path) = &event {
-            self.drop_pack_file(path);
-        }
-        if let WindowEvent::KeyboardInput {
-            event: key_event, ..
-        } = &event
-            && let PhysicalKey::Code(key) = key_event.physical_key
-        {
-            if key_event.state == ElementState::Pressed {
+        if let PhysicalKey::Code(key) = input.physical {
+            if pressed {
                 // Only a press that finds no field focused can open one.
-                let text = key_event
+                let text = input
                     .text
-                    .as_deref()
-                    .filter(|_| !self.text_field_focused());
+                    .filter(|_| self.preset_editor_title().is_none() && !self.text_field_focused());
                 self.held_key_text.pressed(key, text);
             } else {
                 self.held_key_text.released(key);
             }
         }
-        // GLFW never hands a field the keys an input method consumes: while a
-        // composition is open, and the Enter or Escape that ends it (winit on
-        // Windows still sends that one right after `Ime::Commit`).
-        if let WindowEvent::KeyboardInput {
-            event: key_event, ..
-        } = &event
-            && key_event.state == ElementState::Pressed
-            && self.text_field_focused()
-            && sunrise_client::preedit::should_suppress_key()
-        {
-            return;
+        // The input method consumes composing keys before screen dispatch (including the Enter
+        // or Escape that Windows may send just after `Ime::Commit`).
+        if pressed && self.ime_suppresses_key() {
+            return true;
         }
-        // A character that comes with no key (Windows' Alt codes, `Alt` + digits on the numeric
-        // keypad: a `WM_CHAR` after the Alt is released) reaches winit as a key event with no
-        // physical key. GLFW's char callback types it in the focused text field (`charTyped`),
-        // and every screen's key handler here would drop it for want of a key code.
-        if let WindowEvent::KeyboardInput {
-            event: key_event, ..
-        } = &event
-            && key_event.state == ElementState::Pressed
-            && matches!(key_event.physical_key, PhysicalKey::Unidentified(_))
-            && let Some(text) = key_event.text.as_deref()
+        // Windows' Alt codes can supply text without a physical key. Dispatch it like
+        // KeyboardHandler.charTyped, rather than dropping it in a screen's key handler.
+        if pressed
+            && matches!(input.physical, PhysicalKey::Unidentified(_))
+            && let Some(text) = input.text
         {
+            if self.preset_editor_title().is_some() {
+                self.screen_chars_typed(Some(text));
+                return true;
+            }
             let text: String = text.chars().filter(|c| !c.is_control()).collect();
             if !text.is_empty() && self.text_field_focused() && self.types_text() {
                 self.screen_text_each(&text, |game, c| {
@@ -11741,11 +11791,71 @@ impl Game<'_> {
                     let _ = game.type_chars_into_screen(c);
                 });
             }
-            return;
+            return true;
+        }
+        if before_screen(self) {
+            return true;
+        }
+        if pressed
+            && let PhysicalKey::Code(key) = input.physical
+            && self.preset_editor_title().is_some()
+        {
+            let result = self.preset_editor_key_pressed(event_loop, key, input.repeat);
+            self.screen_chars_typed(input.text);
+            if let Err(error) = result {
+                self.error = Some(error);
+                event_loop.exit();
+            }
+            return true;
+        }
+        false
+    }
+
+    /// Window bookkeeping, shortcuts and overlays before dispatching to the screen. Returns
+    /// `true` when an early handler consumed the event.
+    fn prepare_window_event(
+        &mut self,
+        event_loop: &dyn EventLoopCtl,
+        event: &WindowEvent,
+        cursor_sample: Option<sunrise_client::window::PointerSample>,
+    ) -> bool {
+        if matches!(
+            event,
+            WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. }
+        ) {
+            self.window_pointer_space.take();
+        }
+        if matches!(
+            event,
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                ..
+            }
+        ) && !self.pad.menu.synthetic
+        {
+            self.pad_radial_cancel();
+        }
+        if let WindowEvent::Focused(false) = event {
+            self.modifiers = winit::keyboard::ModifiersState::empty();
+            self.physical_keys.clear();
+            self.physical_buttons.clear();
+            self.drag_button = None;
+            self.container_buttons.clear();
+        }
+        if let WindowEvent::ModifiersChanged(m) = event {
+            self.update_modifiers(m.state());
+        }
+        if let WindowEvent::Focused(false) = event {
+            self.update_modifiers(winit::keyboard::ModifiersState::empty());
+            self.debug_keys.reset();
+        }
+        // Pack drops on the resource-pack and Create New World screens.
+        if let WindowEvent::DroppedFile(path) = event {
+            self.drop_pack_file(path);
         }
         // Fullscreen is a window shortcut, before screens consume keyboard input.
         // Not Alt or Super on their own: leaving the window isn't playing with the keyboard.
-        if let WindowEvent::KeyboardInput { event, .. } = &event
+        if let WindowEvent::KeyboardInput { event, .. } = event
             && event.state == ElementState::Pressed
             && !event.repeat
             && !matches!(
@@ -11757,7 +11867,7 @@ impl Game<'_> {
         {
             self.pad.keyboard_took_over = true;
         }
-        if let WindowEvent::KeyboardInput { event, .. } = &event
+        if let WindowEvent::KeyboardInput { event, .. } = event
             && event.state == ElementState::Pressed
             && let PhysicalKey::Code(key) = event.physical_key
             && sunrise_client::keybinds::key_name(key)
@@ -11768,24 +11878,24 @@ impl Game<'_> {
             if !event.repeat {
                 self.toggle_fullscreen();
             }
-            return;
+            return true;
         }
         // A screenshot is a window shortcut too: vanilla takes it before a
         // screen or a text box consumes the key (`handleGlobalKeyPress`), so
         // it works with chat, a sign or a book open.
-        if let WindowEvent::KeyboardInput { event, .. } = &event
+        if let WindowEvent::KeyboardInput { event, .. } = event
             && event.state == ElementState::Pressed
             && let PhysicalKey::Code(key) = event.physical_key
         {
             self.last_input = Instant::now();
             if self.screenshot_shortcut(key, event.repeat) {
-                return;
+                return true;
             }
         }
         // KeyboardHandler.keyPress: the debug keys come before the game's.
         if let WindowEvent::KeyboardInput {
             event: key_event, ..
-        } = &event
+        } = event
             && let PhysicalKey::Code(key) = key_event.physical_key
         {
             use sunrise_client::debug_keys::KeyAction;
@@ -11795,12 +11905,12 @@ impl Game<'_> {
                 (_, true) => KeyAction::Repeat,
             };
             if self.debug_key(key, action) {
-                return;
+                return true;
             }
         }
         // KeyboardHandler.keyPress: the narrator hotkey, on every screen and
         // in game, before the screen takes the key.
-        if let WindowEvent::KeyboardInput { event, .. } = &event {
+        if let WindowEvent::KeyboardInput { event, .. } = event {
             self.narrator_hotkey(event);
         }
         if matches!(
@@ -11823,11 +11933,11 @@ impl Game<'_> {
             self.refresh_window_cursor();
         }
         // The real mouse takes the pointer back from the keyboard's focus.
-        self.key_focus_mouse(event_loop, &event, cursor_sample);
+        self.key_focus_mouse(event_loop, event, cursor_sample);
         // The screen's narration hears of the input before the screen takes
         // it; the pointer events the keyboard's focus sends aren't the mouse.
         if !self.key_focus_quiet() {
-            narrator::narrate_input(&mut self.narration, &event, self.cursor);
+            narrator::narrate_input(&mut self.narration, event, self.cursor);
         }
         // FileFixerProgressScreen: Cancel is the only way out (`shouldCloseOnEsc`
         // is false), so it takes the pointer and Escape does nothing.
@@ -11835,7 +11945,7 @@ impl Game<'_> {
             && starting.handle.upgrade().is_file_fixing()
         {
             let upgrade = starting.handle.upgrade();
-            match &event {
+            match event {
                 WindowEvent::CursorMoved { .. } => {
                     if let (Some(projection), Some(sample)) =
                         (self.renderer_pointer_projection(), cursor_sample)
@@ -11857,61 +11967,57 @@ impl Game<'_> {
                 }
                 _ => {}
             }
-            if matches!(&event, WindowEvent::KeyboardInput { .. }) {
-                return;
+            if matches!(event, WindowEvent::KeyboardInput { .. }) {
+                return true;
             }
         }
         if self.pending_entry.is_some()
-            && matches!(&event, WindowEvent::KeyboardInput { event, .. }
+            && matches!(event, WindowEvent::KeyboardInput { event, .. }
                 if event.state == ElementState::Pressed
                     && event.physical_key == PhysicalKey::Code(KeyCode::Escape))
         {
             self.pending_entry = None;
             self.perf.cancel_world_opening();
-            return;
+            return true;
         }
         if (self.pending_entry.is_some() || self.integrated_starting.is_some())
             && !matches!(
-                &event,
+                event,
                 WindowEvent::CloseRequested
                     | WindowEvent::Resized(_)
                     | WindowEvent::RedrawRequested
             )
         {
-            return;
+            return true;
         }
         // The pack reload's overlay takes no input until it has faded out
         // (`LoadingOverlay`): `spawn_pack_reload` released what was held.
         if self.reload_overlay.is_some()
             && !matches!(
-                &event,
+                event,
                 WindowEvent::CloseRequested
                     | WindowEvent::Focused(_)
                     | WindowEvent::Resized(_)
                     | WindowEvent::RedrawRequested
             )
         {
-            return;
+            return true;
         }
-        if self.pending_save.is_some() {
+        if let Some(saving) = &mut self.pending_save {
             match event {
                 WindowEvent::CloseRequested => {
-                    if !self.settings.quit_shortcuts
-                        && sunrise_client::input::is_quit_shortcut_down(
+                    if self.settings.quit_shortcuts
+                        || !sunrise_client::input::is_quit_shortcut_down(
                             self.modifiers,
                             &self.physical_keys,
                         )
                     {
-                        return;
-                    }
-                    if let Err(error) = self.begin_closing_save(true) {
-                        self.error = Some(error);
-                        event_loop.exit();
+                        saving.quit = true;
                     }
                 }
                 WindowEvent::Focused(focused) => {
-                    self.focused = focused;
-                    if !focused {
+                    self.focused = *focused;
+                    if !*focused {
                         self.capture(false);
                     }
                 }
@@ -11928,7 +12034,262 @@ impl Game<'_> {
                 }
                 _ => {}
             }
-            return;
+            return true;
+        }
+        false
+    }
+
+    /// Dispatch the button to the top screen, not to the gameplay mappings underneath it.
+    fn route_screen_button(
+        &mut self,
+        button: MouseButton,
+        code: i32,
+        pressed: bool,
+        double_click: bool,
+    ) -> Result<bool> {
+        let left = button == MouseButton::Left;
+        let left_press = pressed && left;
+        if self.command_prompt.is_some() {
+            return Ok(left_press && self.command_prompt_click());
+        }
+        if self.link_prompt.is_some() {
+            return Ok(left_press && self.link_prompt_click());
+        }
+        if self.code_of_conduct.is_some() {
+            return Ok(left_press && self.code_of_conduct_click()?);
+        }
+        if self.server_packs.prompt.is_some() {
+            return Ok(left_press && self.pack_prompt_click()?);
+        }
+        if self.dialog_open() {
+            return if !left {
+                Ok(false)
+            } else if pressed {
+                self.dialog_click()
+            } else {
+                Ok(self.dialog_release())
+            };
+        }
+        // ConnectScreen's Cancel, under the prompts and dialogs above.
+        if self.remote_loading() {
+            return Ok(left_press && self.connect_screen_click()?);
+        }
+        if self.screen == Screen::Win {
+            return Ok(false);
+        }
+        if self.screen == Screen::Options {
+            return if self.options_waiting_for_key() && pressed {
+                self.options_bind_mouse(button)?;
+                Ok(true)
+            } else if matches!(button, MouseButton::Left | MouseButton::Right) {
+                self.options_mouse(pressed, !left)
+            } else {
+                Ok(false)
+            };
+        }
+        if self.title_input_active() {
+            if !pressed {
+                return Ok(left
+                    && self.title.as_mut().is_some_and(|title| {
+                        let released = title.release();
+                        title.release_field() || released
+                    }));
+            }
+            if !matches!(button, MouseButton::Left | MouseButton::Middle) {
+                return Ok(self.preset_editor_mouse_clicked(code, double_click));
+            }
+            let size = self
+                .renderer
+                .as_ref()
+                .map_or([1, 1], |r| [r.config.width, r.config.height]);
+            let b = HudBatch::new(size, self.settings.gui_scale_inputs());
+            if button == MouseButton::Middle {
+                // The world list takes any button; middle selects without joining.
+                return Ok(self.preset_editor_mouse_clicked(code, double_click)
+                    || self.title.as_mut().is_some_and(|title| {
+                        title.select_world_at(self.cursor.0, self.cursor.1, (b.width, b.height))
+                    }));
+            }
+            let atlas = &self.gui.atlas;
+            let shift = self.has_shift_down();
+            let (action, sound, widget) =
+                self.title
+                    .as_mut()
+                    .map_or((Action::None, false, false), |title| {
+                        let (action, sound, widget) = title.click_with_outcome(
+                            self.cursor.0,
+                            self.cursor.1,
+                            (b.width, b.height),
+                        );
+                        let field =
+                            title.press_field(atlas, self.cursor, (b.width, b.height), shift);
+                        let (rule_sound, rules) =
+                            title.press_rules_with_outcome(atlas, self.cursor, (b.width, b.height));
+                        (action, sound || rule_sound, widget || field || rules)
+                    });
+            // Done/Cancel are the bound editor's normal widgets. They take the click even
+            // when the actual mode change is deferred to `settle_title_mode`.
+            let handled = widget || self.preset_editor_mouse_clicked(code, double_click);
+            self.save_title_options();
+            if sound {
+                self.audio.play_button_click();
+            }
+            self.title_action(action)?;
+            self.reopen_data_packs()?;
+            return Ok(handled);
+        }
+        if self.book.is_some() || self.sign_edit.is_some() {
+            if !left_press {
+                return Ok(false);
+            }
+            let size = self
+                .renderer
+                .as_ref()
+                .map_or([1, 1], |r| [r.config.width, r.config.height]);
+            return Ok(if self.book.is_some() {
+                self.book_click(size)
+            } else {
+                self.sign_edit_click(size)
+            });
+        }
+        if self.studio_mouse_input(pressed, button) {
+            return Ok(true);
+        }
+        if matches!(self.screen, Screen::Inventory | Screen::Creative)
+            && let Some(key) = self
+                .settings
+                .keys
+                .container_mouse_key(button, self.creative)
+        {
+            if pressed && self.carried.is_none() {
+                self.inventory_hotkey(key);
+            }
+            // Neither edge of a bound button is an ordinary slot click.
+            return Ok(true);
+        }
+        if pressed
+            && (self.sort_mouse_press(button)
+                || self.hud_editor_key_press(&sunrise_client::keybinds::mouse_name(button)))
+        {
+            return Ok(true);
+        }
+        // AbstractContainerScreen.mouseClicked (also Creative's fallback) handles
+        // every press, even when no widget or slot accepts it. Releases answer separately.
+        Ok(match self.screen {
+            Screen::Inventory | Screen::Creative
+                if !matches!(button, MouseButton::Left | MouseButton::Right) =>
+            {
+                if self.settings.keys.get("key.pickItem")
+                    != sunrise_client::keybinds::mouse_name(button)
+                {
+                    return Ok(pressed);
+                }
+                let handled = if pressed {
+                    self.inventory_pick_press();
+                    true
+                } else {
+                    self.inventory_pick_release()
+                };
+                if let Some(key) = self.container {
+                    self.container_changed(key);
+                }
+                handled
+            }
+            Screen::Inventory if pressed => {
+                self.inventory_press(!left);
+                if let Some(key) = self.container {
+                    self.container_changed(key);
+                }
+                true
+            }
+            Screen::Inventory => {
+                self.inventory_mouse_release(!left)
+                    | self.station_release()
+                    | self.recipe_book_release()
+            }
+            Screen::Chat if left_press => self.chat_click(),
+            Screen::Creative if pressed => {
+                self.click_creative(!left);
+                true
+            }
+            Screen::Creative => {
+                let released = left && self.creative_screen.release();
+                self.inventory_mouse_release(!left) || released
+            }
+            Screen::Paused if left_press && self.pause_menu => self.pause_click()?,
+            Screen::WorldOptions if left_press => self.world_options_click(),
+            Screen::ServerLinks if left_press => self.server_links_click()?,
+            Screen::DebugOptions if left_press => self.debug_options_click(),
+            Screen::DebugOptions if left => self.debug_options_release(),
+            Screen::HudEditor
+                if pressed && matches!(button, MouseButton::Left | MouseButton::Right) =>
+            {
+                self.hud_editor_press(!left)
+            }
+            Screen::HudEditor if left => self.hud_editor_release(),
+            Screen::ConfirmLink if left_press => self.confirm_link_click(),
+            Screen::DialogWarning if left_press => self.dialog_warning_click()?,
+            Screen::WorldOptions if left => self.world_options_release(),
+            Screen::Friends if left_press => self.friends_screen_click(),
+            Screen::Social if left_press => self.social_click(),
+            Screen::CommandBlock if left_press => self.command_block_click(),
+            Screen::BlockEditor if left_press => self.block_editor_click(),
+            Screen::BlockEditor if left => self.block_editor_release(),
+            Screen::Dead if left_press => self.death_click()?,
+            Screen::Advancements if left => {
+                let size = self
+                    .renderer
+                    .as_ref()
+                    .map_or([1, 1], |r| [r.config.width, r.config.height]);
+                self.advancements_mouse(pressed, size)
+            }
+            Screen::Stats if left_press => {
+                let size = self
+                    .renderer
+                    .as_ref()
+                    .map_or([1, 1], |r| [r.config.width, r.config.height]);
+                self.stats_click(size)
+            }
+            Screen::Stats if left => self.stats_release(),
+            Screen::GameModeSwitcher if !pressed => self.switcher_release(button),
+            _ => false,
+        })
+    }
+
+    /// One window event, in the order vanilla's `KeyboardHandler` and `MouseHandler` see it.
+    ///
+    /// A controller doesn't come through here in play: `pad_action` goes straight to the mappings
+    /// (`mapped_key`, `mouse_mapping`). So a key handled below before `mapped_key_event` (a window
+    /// shortcut, a special case) never reaches a controller. If a player could want it on one, give
+    /// it a handler both can call and a `gamepad::Route` (screenshot and fullscreen do this). A
+    /// screen's own raw keys, text and mods' key hooks stay raw on purpose.
+    /// `mouse_press_millis` is the monotonic timestamp of a physical press, absent for synthetic
+    /// inputs and all other events.
+    /// Returns true when button routing already settled the title before its Post.
+    fn handle_window_event_inner(
+        &mut self,
+        event_loop: &dyn EventLoopCtl,
+        mut event: WindowEvent,
+        cursor_sample: Option<sunrise_client::window::PointerSample>,
+        mouse_press_millis: Option<u64>,
+    ) -> bool {
+        let before_screen =
+            |game: &mut Self| game.prepare_window_event(event_loop, &event, cursor_sample);
+        let handled = match &event {
+            WindowEvent::KeyboardInput { event: key, .. } => self.dispatch_window_key(
+                event_loop,
+                WindowKeyInput {
+                    physical: key.physical_key,
+                    state: key.state,
+                    repeat: key.repeat,
+                    text: key.text.as_deref(),
+                },
+                before_screen,
+            ),
+            _ => before_screen(self),
+        };
+        if handled {
+            return false;
         }
         // ScreenEvent.KeyPressed.Pre: the open screen hears of the key before
         // it acts on it, and a cancelled press goes no further — no focus
@@ -11995,7 +12356,7 @@ impl Game<'_> {
                         let _ = self.type_chars_into_screen(&text);
                     }
                 }
-                return;
+                return false;
             }
         }
         // Screen.keyPressed: Tab, the arrows and Enter move and press the
@@ -12010,12 +12371,10 @@ impl Game<'_> {
             // The keyboard's focus took the key; its characters are a separate
             // callback and still come (`KeyboardHandler.charTyped`).
             self.screen_chars_typed(typed.as_deref());
-            return;
+            return false;
         }
-        // The Post a mouse input owes once the screen's arms below have handled
-        // it (`ScreenEvent.MouseButtonPressed.Post` and its siblings): set where
-        // the Pre lets the input through, fired after the arms ran.
         let mut mouse_post: Option<native_hooks::ScreenMousePost> = None;
+        let mut title_settled = false;
         let result: Result<()> = (|| {
             if let WindowEvent::MouseInput { state, button, .. } = &event
                 && !self.pad_synthetic_input()
@@ -12041,53 +12400,6 @@ impl Game<'_> {
                 let events = self.ui.options.key_released(&mut self.settings, key);
                 self.handle_option_events(events)?;
             }
-            // ScreenEvent.MouseButtonPressed.Pre / MouseButtonReleased.Pre:
-            // the open screen hears of the press before anything reads it, and
-            // a cancelled one goes no further — no hotbar key, no slot, no
-            // button, no sort, no drag. First in the event, so none of the
-            // arms below (which hold the container hotkey and the sort and
-            // header buttons too) see it. A click the pad or the keyboard's
-            // focus made up is not the mouse: it fires nothing.
-            // Set by the outer handler at the physical button-up (`container_owned_up`).
-            let owned_release = matches!(&event, WindowEvent::MouseInput { .. })
-                && std::mem::take(&mut self.container_owned_up);
-            if let WindowEvent::MouseInput { state, button, .. } = &event
-                && !self.pad_synthetic_input()
-                && let Some(screen) = self.screen_view_now()
-            {
-                let (pressed, winit_button) = (*state == ElementState::Pressed, *button);
-                let (button, modifiers) = (glfw_button(*button), glfw_modifiers(self.modifiers));
-                let mut canceled = false;
-                if *state == ElementState::Pressed {
-                    self.native_screen_mouse_button_pressed_pre(
-                        &screen,
-                        button,
-                        modifiers,
-                        &mut canceled,
-                    );
-                } else {
-                    self.native_screen_mouse_button_released_pre(
-                        &screen,
-                        button,
-                        modifiers,
-                        &mut canceled,
-                    );
-                }
-                if canceled {
-                    return Ok(());
-                }
-                if self.container_mouse(winit_button, pressed, owned_release) {
-                    return Ok(());
-                }
-                mouse_post = Some(native_hooks::ScreenMousePost::Button {
-                    button,
-                    pressed: *state == ElementState::Pressed,
-                });
-            }
-            if owned_release {
-                return Ok(());
-            }
-            self.key_focus_mouse_press(&event);
             match event {
                 WindowEvent::CloseRequested => {
                     if !self.settings.quit_shortcuts
@@ -12356,280 +12668,120 @@ impl Game<'_> {
                         self.advancements_scroll(scaled(raw_x) as f32, d);
                     }
                 }
-                WindowEvent::MouseInput { state, button, .. } if self.command_prompt.is_some() => {
-                    if state == ElementState::Pressed && button == MouseButton::Left {
-                        self.command_prompt_click();
-                    }
-                }
-                WindowEvent::MouseInput { state, button, .. } if self.link_prompt.is_some() => {
-                    if state == ElementState::Pressed && button == MouseButton::Left {
-                        self.link_prompt_click();
-                    }
-                }
-                WindowEvent::MouseInput { state, button, .. } if self.code_of_conduct.is_some() => {
-                    if state == ElementState::Pressed && button == MouseButton::Left {
-                        self.code_of_conduct_click()?;
-                    }
-                }
-                WindowEvent::MouseInput { state, button, .. }
-                    if self.server_packs.prompt.is_some() =>
-                {
-                    if state == ElementState::Pressed && button == MouseButton::Left {
-                        self.pack_prompt_click()?;
-                    }
-                }
-                WindowEvent::MouseInput { state, button, .. } if self.dialog_open() => {
-                    if button == MouseButton::Left {
-                        if state == ElementState::Pressed {
-                            self.dialog_click()?;
-                        } else {
-                            self.dialog_release();
-                        }
-                    }
-                }
-                // ConnectScreen's Cancel, under the prompts and dialogs above.
-                WindowEvent::MouseInput { state, button, .. } if self.remote_loading() => {
-                    if state == ElementState::Pressed && button == MouseButton::Left {
-                        self.connect_screen_click()?;
-                    }
-                }
-                WindowEvent::MouseInput { .. } if self.screen == Screen::Win => {}
-                WindowEvent::MouseInput { state, button, .. } if self.screen == Screen::Options => {
-                    if self.options_waiting_for_key() && state == ElementState::Pressed {
-                        self.options_bind_mouse(button)?;
-                    } else if matches!(button, MouseButton::Left | MouseButton::Right) {
-                        self.options_mouse(
-                            state == ElementState::Pressed,
-                            button == MouseButton::Right,
-                        )?;
-                    }
-                }
-                WindowEvent::MouseInput {
-                    state: ElementState::Released,
-                    button: MouseButton::Left,
-                    ..
-                } if self.title_input_active() && self.screen != Screen::Options => {
-                    if let Some(title) = &mut self.title {
-                        title.release();
-                        title.release_field();
-                    }
-                }
-                WindowEvent::MouseInput {
-                    state,
-                    button: MouseButton::Left,
-                    ..
-                } if self.title_input_active() && state == ElementState::Pressed => {
-                    let size = self
-                        .renderer
-                        .as_ref()
-                        .map(|r| [r.config.width, r.config.height])
-                        .unwrap_or([1, 1]);
-                    let b = HudBatch::new(size, self.settings.gui_scale_inputs());
-                    let atlas = &self.gui.atlas;
-                    let shift = self.has_shift_down();
-                    let (action, sound) = self.title.as_mut().map_or((Action::None, false), |t| {
-                        let clicked = t.click(self.cursor.0, self.cursor.1, (b.width, b.height));
-                        t.press_field(atlas, self.cursor, (b.width, b.height), shift);
-                        let rules = t.press_rules(atlas, self.cursor, (b.width, b.height));
-                        (clicked.0, clicked.1 || rules)
-                    });
-                    self.save_title_options();
-                    if sound {
-                        self.audio.play_button_click();
-                    }
-                    self.title_action(action)?;
-                    self.reopen_data_packs()?;
-                }
-                // AbstractSelectionList.mouseClicked: the world list takes a
-                // click of any button, so the middle one selects its row
-                // without joining (only the left click's play icon or its
-                // click on the selected row does that).
-                WindowEvent::MouseInput {
-                    state: ElementState::Pressed,
-                    button: MouseButton::Middle,
-                    ..
-                } if self.title_input_active() && self.screen != Screen::Options => {
-                    let size = self
-                        .renderer
-                        .as_ref()
-                        .map(|r| [r.config.width, r.config.height])
-                        .unwrap_or([1, 1]);
-                    let b = HudBatch::new(size, self.settings.gui_scale_inputs());
-                    if let Some(title) = self.title.as_mut() {
-                        title.select_world_at(self.cursor.0, self.cursor.1, (b.width, b.height));
-                    }
-                }
-                WindowEvent::MouseInput { .. } if self.title_input_active() => {}
-                WindowEvent::MouseInput { state, button, .. } if self.book.is_some() => {
-                    if state == ElementState::Pressed && button == MouseButton::Left {
-                        let size = self
-                            .renderer
-                            .as_ref()
-                            .map(|r| [r.config.width, r.config.height])
-                            .unwrap_or([1, 1]);
-                        self.book_click(size);
-                    }
-                }
-                WindowEvent::MouseInput { state, button, .. } if self.sign_edit.is_some() => {
-                    if state == ElementState::Pressed && button == MouseButton::Left {
-                        let size = self
-                            .renderer
-                            .as_ref()
-                            .map(|r| [r.config.width, r.config.height])
-                            .unwrap_or([1, 1]);
-                        self.sign_edit_click(size);
-                    }
-                }
-                WindowEvent::MouseInput { state, button, .. } => {
+                event @ WindowEvent::MouseInput { state, button, .. } => {
                     let pressed = state == ElementState::Pressed;
-                    if self.studio_mouse_input(pressed, button) {
-                        return Ok(());
-                    }
-                    if matches!(self.screen, Screen::Inventory | Screen::Creative)
-                        && let Some(key) = self
-                            .settings
-                            .keys
-                            .container_mouse_key(button, self.creative)
+                    let code = glfw_button(button);
+                    // Set by the outer handler at physical button-up.
+                    let owned_release = std::mem::take(&mut self.container_owned_up);
+                    let had_screen = self.mod_mappings_screen_open() || self.remote_loading();
+                    let mut container_handled = owned_release;
+                    let mut button_post = None;
+                    let mut screen_press = None;
+                    let mut double_click = false;
+                    // A controller or a click made by keyboard focus does not fire screen hooks.
+                    if !self.pad_synthetic_input()
+                        && let Some(screen) = self.screen_view_now()
                     {
-                        if pressed && self.carried.is_none() {
-                            self.inventory_hotkey(key);
-                        }
-                        // Neither edge of a bound button is an ordinary slot click.
-                        return Ok(());
-                    }
-                    if pressed
-                        && (self.sort_mouse_press(button)
-                            || self.hud_editor_key_press(&sunrise_client::keybinds::mouse_name(
-                                button,
-                            )))
-                    {
-                        return Ok(());
-                    }
-                    match self.screen {
-                        Screen::Playing => {
-                            if pressed && !self.captured {
-                                self.capture(true);
-                                return Ok(());
-                            }
-                            let input = sunrise_client::keybinds::mouse_name(button);
-                            if self.key_mapping_canceled(Some(input.as_str()), pressed) {
-                                self.physical_buttons.remove(&button);
-                                return Ok(());
-                            }
-                            self.extras_mouse(button, pressed);
-                            self.mapped_mouse_event(button, &input, pressed)?;
-                        }
-                        Screen::Inventory | Screen::Creative
-                            if !matches!(button, MouseButton::Left | MouseButton::Right) =>
-                        {
-                            // AbstractContainerScreen: another button clicks
-                            // a slot only as the pick block key (its hotbar
-                            // keys were handled above).
-                            if self.settings.keys.get("key.pickItem")
-                                == sunrise_client::keybinds::mouse_name(button)
-                            {
-                                if pressed {
-                                    self.inventory_pick_press();
+                        if let Some(millis) = mouse_press_millis {
+                            let press = native_hooks::ScreenPress {
+                                activation: self.screen_activation,
+                                screen: self.screen,
+                                title_mode: if self.screen == Screen::Playing {
+                                    self.title
+                                        .as_ref()
+                                        .map(sunrise_client::title::Title::mode_activation)
                                 } else {
-                                    self.inventory_pick_release();
-                                }
-                                if let Some(key) = self.container {
-                                    self.container_changed(key);
-                                }
+                                    None
+                                },
+                                button: code,
+                                millis,
+                            };
+                            double_click = press.is_double_click(self.last_screen_press);
+                            screen_press = Some(press);
+                        }
+                        let modifiers = glfw_modifiers(self.modifiers);
+                        let mut canceled = false;
+                        let hook = if pressed {
+                            self.native_screen_mouse_button_pressed_pre(
+                                &screen,
+                                code,
+                                modifiers,
+                                double_click,
+                                &mut canceled,
+                            );
+                            mod_api::HookId::ScreenMouseButtonPressedPost
+                        } else {
+                            self.native_screen_mouse_button_released_pre(
+                                &screen,
+                                code,
+                                modifiers,
+                                &mut canceled,
+                            );
+                            mod_api::HookId::ScreenMouseButtonReleasedPost
+                        };
+                        if canceled {
+                            // NeoForge treats a cancelled Pre as handled without running Post.
+                            if let Some(press) = screen_press {
+                                self.last_screen_press = Some(press);
                             }
+                            return Ok(());
                         }
-                        Screen::Inventory if pressed => {
-                            self.inventory_press(button == MouseButton::Right);
-                            if let Some(key) = self.container {
-                                self.container_changed(key);
-                            }
+                        if mod_api::__private::listened(hook) {
+                            button_post = Some(native_hooks::ScreenButtonPost {
+                                screen: self.observe_view(screen),
+                                button: code,
+                                pressed,
+                                modifiers,
+                                double_click,
+                            });
                         }
-                        Screen::Inventory => {
-                            self.inventory_mouse_release(button == MouseButton::Right);
-                            self.station_release();
-                            self.recipe_book_release();
-                        }
-                        Screen::Chat if pressed && button == MouseButton::Left => self.chat_click(),
-                        Screen::Creative if pressed => {
-                            self.click_creative(button == MouseButton::Right);
-                        }
-                        Screen::Creative => {
-                            if button == MouseButton::Left {
-                                self.creative_screen.release();
-                            }
-                            self.inventory_mouse_release(button == MouseButton::Right);
-                        }
-                        Screen::Paused
-                            if pressed && button == MouseButton::Left && self.pause_menu =>
-                        {
-                            self.pause_click()?
-                        }
-                        Screen::WorldOptions if pressed && button == MouseButton::Left => {
-                            self.world_options_click()
-                        }
-                        Screen::ServerLinks if pressed && button == MouseButton::Left => {
-                            self.server_links_click()?
-                        }
-                        Screen::DebugOptions if pressed && button == MouseButton::Left => {
-                            self.debug_options_click()
-                        }
-                        Screen::DebugOptions if button == MouseButton::Left => {
-                            self.debug_options_release()
-                        }
-                        Screen::HudEditor
-                            if pressed
-                                && matches!(button, MouseButton::Left | MouseButton::Right) =>
-                        {
-                            self.hud_editor_press(button == MouseButton::Right)
-                        }
-                        Screen::HudEditor if button == MouseButton::Left => {
-                            self.hud_editor_release()
-                        }
-                        Screen::ConfirmLink if pressed && button == MouseButton::Left => {
-                            self.confirm_link_click()
-                        }
-                        Screen::DialogWarning if pressed && button == MouseButton::Left => {
-                            self.dialog_warning_click()?
-                        }
-                        Screen::WorldOptions if button == MouseButton::Left => {
-                            self.world_options_release()
-                        }
-                        Screen::Friends if pressed && button == MouseButton::Left => {
-                            self.friends_screen_click()
-                        }
-                        Screen::Social if pressed && button == MouseButton::Left => {
-                            self.social_click()
-                        }
-                        Screen::CommandBlock if pressed && button == MouseButton::Left => {
-                            self.command_block_click()
-                        }
-                        Screen::BlockEditor if pressed && button == MouseButton::Left => {
-                            self.block_editor_click()
-                        }
-                        Screen::BlockEditor if button == MouseButton::Left => {
-                            self.block_editor_release()
-                        }
-                        Screen::Dead if pressed && button == MouseButton::Left => {
-                            self.death_click()?
-                        }
-                        Screen::Advancements if button == MouseButton::Left => {
-                            let size = self
-                                .renderer
-                                .as_ref()
-                                .map_or([1, 1], |r| [r.config.width, r.config.height]);
-                            self.advancements_mouse(pressed, size);
-                        }
-                        Screen::Stats if pressed && button == MouseButton::Left => {
-                            let size = self
-                                .renderer
-                                .as_ref()
-                                .map_or([1, 1], |r| [r.config.width, r.config.height]);
-                            self.stats_click(size);
-                        }
-                        Screen::Stats if button == MouseButton::Left => self.stats_release(),
-                        Screen::GameModeSwitcher if !pressed => self.switcher_release(button),
-                        _ => {}
+                        container_handled = self.container_mouse(button, pressed, owned_release);
                     }
+                    if !container_handled {
+                        self.key_focus_mouse_press(&event);
+                    }
+                    let mut handled = container_handled
+                        || self.route_screen_button(button, code, pressed, double_click)?;
+                    if had_screen {
+                        self.settle_title_mode();
+                        title_settled = true;
+                    }
+                    if let Some(post) = button_post {
+                        handled = self.screen_button_post(&post, handled);
+                    }
+                    if handled && let Some(press) = screen_press {
+                        self.last_screen_press = Some(press);
+                    }
+                    // MouseHandler.onButton: only an unhandled edge goes through to the
+                    // gameplay mappings, and only once the settled state has no screen.
+                    if handled
+                        || self.mod_mappings_screen_open()
+                        || self.remote_loading()
+                        || self.reload_overlay.is_some()
+                        || self.pending_entry.is_some()
+                        || self.integrated_starting.is_some()
+                        || self.pending_save.is_some()
+                    {
+                        return Ok(());
+                    }
+                    if pressed && !self.pad_synthetic_input() {
+                        self.mod_mappings_button(button, true);
+                    }
+                    // A click that merely closed a screen is not a new click into the world.
+                    if pressed && !self.captured && !had_screen {
+                        self.capture(true);
+                        return Ok(());
+                    }
+                    let input = sunrise_client::keybinds::mouse_name(button);
+                    if self.key_mapping_canceled(Some(input.as_str()), pressed) {
+                        self.physical_buttons.remove(&button);
+                        return Ok(());
+                    }
+                    self.extras_mouse(button, pressed);
+                    if pressed && self.settings.keys.get("key.smoothCamera") == input {
+                        self.smooth_camera_action();
+                    }
+                    self.mapped_mouse_event(button, &input, pressed)?;
                 }
                 // ConfirmScreen.keyPressed: Escape answers no, once its delay is over.
                 WindowEvent::KeyboardInput { event, .. }
@@ -13196,6 +13348,7 @@ impl Game<'_> {
             self.error = Some(e);
             event_loop.exit();
         }
+        title_settled
     }
 }
 /// misc/forcefield.png for the world border wall (square, power of two).
@@ -13257,6 +13410,7 @@ impl<'a> Game<'a> {
                     pack.source.clone(),
                 ),
                 None,
+                pack.render.model_library.as_deref().ok(),
             )
         })?;
         let world = if options.execution_role.is_logical_server() {
@@ -13279,11 +13433,7 @@ impl<'a> Game<'a> {
             &gui.atlas.sprites,
             &gui.atlas.translucent,
         );
-        particles.set_block_state_source(|| {
-            api_values::block_state::current()
-                .ok()
-                .map(|states| -> sunrise_client::particles::BlockStates { states })
-        });
+        particles.set_block_state_source(Game::particle_block_states);
         let resource_source = pack.source.clone();
         let (pack, gui) = if let Some(initial) = initial {
             let mut unpublished = pack.clone();
@@ -13406,6 +13556,8 @@ impl<'a> Game<'a> {
             rejected_keys: HashSet::new(),
             physical_buttons: HashSet::new(),
             drag_button: None,
+            screen_activation: 0,
+            last_screen_press: None,
             right_click_emulation: Default::default(),
             cursor: (0.0, 0.0),
             window_cursor: None,
@@ -13524,6 +13676,7 @@ impl<'a> Game<'a> {
             ticked_entities_through: u32::MAX,
             contact_drops: 0..0,
             particles,
+            explicit_particle_quads: Default::default(),
             pickups: Default::default(),
             sign_edit: None,
             book: None,

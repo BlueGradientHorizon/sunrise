@@ -168,10 +168,10 @@ impl Game<'_> {
             l.start_row = l.row_for(l.scroll);
         }
     }
-    pub(super) fn loom_release(&mut self) {
-        if let Some(s) = self.station.as_mut() {
-            s.loom.scrolling = false;
-        }
+    pub(super) fn loom_release(&mut self) -> bool {
+        self.station
+            .as_mut()
+            .is_some_and(|s| std::mem::take(&mut s.loom.scrolling))
     }
     /// `LoomScreen.mouseScrolled`.
     pub(super) fn loom_scroll(&mut self, d: f32) {

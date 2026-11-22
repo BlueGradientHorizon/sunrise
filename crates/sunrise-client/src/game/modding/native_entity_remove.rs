@@ -212,14 +212,25 @@ impl Game<'_> {
         let pending = std::mem::take(&mut self.persist.removals);
         let mut already_marked = Vec::new();
         for &target in &pending {
-            if matches!(target, Target::Boat(_) | Target::Cart(_))
-                && !self.persist.destroying_vehicles.insert(target)
-            {
-                already_marked.push(target);
+            match target {
+                // Discard already announced the leave. Remove these owning rows
+                // before any callback in the sweep can resolve them again.
+                Target::Projectile(id) => self.remove_projectile(id),
+                Target::Trident(id) => {
+                    self.tridents.retain(|t| t.id != id);
+                    self.forget_entity(id);
+                }
+                Target::Boat(_) | Target::Cart(_)
+                    if !self.persist.destroying_vehicles.insert(target) =>
+                {
+                    already_marked.push(target);
+                }
+                _ => {}
             }
         }
         for t in pending {
             match t {
+                Target::Projectile(_) | Target::Trident(_) => {}
                 Target::Crystal(id) => self.crystals.retain(|c| c.id != id),
                 Target::Dragon(id) => {
                     if self.dragon.as_ref().is_some_and(|d| d.id == id) {

@@ -94,6 +94,8 @@ pub(super) fn emit<'a>(
         };
         let ticks = hook.engine_ticks;
         let inert_signal = hook.engine_inert;
+        // Only a quick-move Part's panic can refuse its unanswered click.
+        let panic_signal = name == "menu_quick_move";
         let is_level = host_param::is_level(hook);
         if (ticks && !is_level) || ((ticks || inert_signal) && !in_game) {
             return Err(format!(
@@ -278,7 +280,10 @@ pub(super) fn emit<'a>(
             && (hook.context.is_some()
                 || host.as_ref().is_some_and(|(_, host)| {
                     host.ty.starts_with("&mut ")
-                        || matches!(host.ty.as_str(), "HostSide" | "LevelSide")
+                        || matches!(
+                            host.ty.as_str(),
+                            "HostSide" | "LevelSide" | "LevelRandomSide"
+                        )
                 }))
         {
             return Err(format!(
@@ -380,8 +385,19 @@ pub(super) fn emit<'a>(
                         )
                     }
                     // An entity's type id need not be its block's: its own table.
-                    "& ModBlockEntity" | "& mut ModBlockEntity" => {
+                    "& ModBlockEntity" => {
                         format!("block_entity_kind(|| Some({key}.id()))")
+                    }
+                    "BlockEntityClientScope < '_ >" | "BlockEntityClientReadScope < '_ >"
+                        if table == "block_entity" =>
+                    {
+                        format!("block_entity_kind(|| {key}.route_kind())")
+                    }
+                    "EntityClientScope < '_ >" if table == "entity" => {
+                        format!("entity(|| {key}.route_kind())")
+                    }
+                    "ItemEntityServerScope < '_ >" if table == "item" => {
+                        format!("item(|| Some({key}.route_item()))")
                     }
                     other => return Err(format!("key {key} of {name} has type {other}")),
                 };
@@ -448,7 +464,10 @@ pub(super) fn emit<'a>(
         let mut call_args = Vec::new();
         if let Some((name, param)) = &host {
             trait_params.push(format!("{name}: {}", param.ty));
-            let by_side = param.ty == "HostSide" || param.ty == "LevelSide";
+            let by_side = matches!(
+                param.ty.as_str(),
+                "HostSide" | "LevelSide" | "LevelRandomSide"
+            );
             if let Some((_, stage, signature)) = staged.as_ref().filter(|_| staged_host) {
                 dispatch_params.push(format!("mut {stage}: {signature}"));
             } else {
@@ -516,6 +535,11 @@ pub(super) fn emit<'a>(
             }
             syn::visit_mut::VisitMut::visit_type_mut(&mut OwnedLootContext, &mut owned_ty);
             let ty = &owned_ty;
+            let block_entity_scope = matches!(
+                ty,
+                Type::Path(path)
+                    if path.path.segments.last().is_some_and(|part| part.ident == "BlockEntityScope")
+            );
             if answered_return {
                 struct MutableBorrow(bool);
                 impl<'ast> syn::visit::Visit<'ast> for MutableBorrow {
@@ -548,15 +572,14 @@ pub(super) fn emit<'a>(
                 .filter(|(field, _, _)| field.as_str() == name.as_str())
             {
                 dispatch_params.push(format!("mut {stage}: {signature}"));
+            } else if block_entity_scope {
+                dispatch_params.push(format!("mut {name}: {}", ty.to_token_stream()));
             } else {
                 dispatch_params.push(format!("{name}: {}", ty.to_token_stream()));
             }
             if collect_cancel && name == "cancel" {
                 continue;
             }
-            let ty_tokens = ty.to_token_stream().to_string();
-            let mutable_entity = ty_tokens == "& mut ModBlockEntity";
-            let optional_mutable_entity = ty_tokens == "Option < & mut ModBlockEntity >";
             // An answered collect hook's mods each push plain entries into their own batch;
             // dispatch, not the mod, names the mod on each.
             let batch_entry =
@@ -566,21 +589,15 @@ pub(super) fn emit<'a>(
                         _ => None,
                     })
                     .flatten();
-            let field_ty = if mutable_entity {
-                syn::parse_quote!(ModBlockEntityView<'_>)
-            } else if optional_mutable_entity {
-                syn::parse_quote!(Option<ModBlockEntityView<'_>>)
-            } else if let Some(entry) = batch_entry {
+            let field_ty = if let Some(entry) = batch_entry {
                 syn::parse_quote!(&mut Vec<#entry>)
             } else {
                 ty.clone()
             };
             let (field, scalar) = lifetimes.field(&field_ty);
             if hook.output_validator.is_some()
-                && (mutable_entity
-                    || optional_mutable_entity
-                    || matches!(&field_ty, Type::Reference(reference)
-                        if reference.mutability.is_some() && !rollback_pointee_is_copy(&field_ty)))
+                && matches!(&field_ty, Type::Reference(reference)
+                    if reference.mutability.is_some() && !rollback_pointee_is_copy(&field_ty))
             {
                 return Err(format!(
                     "{}: output_validator requires Copy outputs; mutable argument {name} \
@@ -613,6 +630,7 @@ pub(super) fn emit<'a>(
                     || matches!(
                         (event_type.as_str(), name.as_str()),
                         ("ApplyEffectTickEvent", "changes")
+                            | ("StepOnEvent", "writes")
                             | ("ExtractBlockScreenEffectEvent", "renderer")
                             | ("RegisterDebugRenderersEvent", "entries")
                     ) =>
@@ -628,10 +646,8 @@ pub(super) fn emit<'a>(
             if scalar {
                 inits.push(format!("{name}: *{name}"));
                 write_back.push_str(&format!("*{name} = {event}.{name};"));
-            } else if mutable_entity {
-                inits.push(format!("{name}: ModBlockEntityView::new({name})"));
-            } else if optional_mutable_entity {
-                inits.push(format!("{name}: {name}.map(ModBlockEntityView::new)"));
+            } else if block_entity_scope {
+                inits.push(format!("{name}: {name}.reborrow()"));
             } else if batch_entry.is_some() {
                 inits.push(format!("{name}: &mut {batch}"));
             } else if (hook.event_per_listener || staged_draw)
@@ -683,6 +699,9 @@ pub(super) fn emit<'a>(
         }
         if inert_signal {
             dispatch_params.push("inert: &mut bool".into());
+        }
+        if panic_signal {
+            dispatch_params.push("panicked: &mut bool".into());
         }
         let (generics, elided) = match (lifetimes.a, lifetimes.b) {
             (_, true) => ("<'a, 'b>", "<'_, '_>"),
@@ -896,6 +915,10 @@ pub(super) fn emit<'a>(
                 parameter("inert", "&mut bool");
                 passed.push("inert".to_owned());
             }
+            if panic_signal {
+                parameter("panicked", "&mut bool");
+                passed.push("panicked".to_owned());
+            }
             if name == "add_pack_finders" {
                 parameter("allow", "impl FnMut(&str) -> bool");
             }
@@ -932,6 +955,9 @@ pub(super) fn emit<'a>(
             {
                 *argument = format!("|listen| {field}.register_listener(listen)");
             }
+            if panic_signal {
+                forwarded.push("panicked".into());
+            }
             if name == "add_pack_finders" {
                 forwarded.push("|_| true".into());
             }
@@ -948,6 +974,12 @@ pub(super) fn emit<'a>(
             && host
                 .as_ref()
                 .is_some_and(|(_, param)| param.ty == "&mut dyn LevelWriteHost");
+        let scoped_random_collect = contract == Contract::Collect
+            && scoped.is_some()
+            && !observer_routed
+            && host
+                .as_ref()
+                .is_some_and(|(_, param)| param.ty == "LevelRandomSide");
         let filtered_subscribers = name == "add_pack_finders";
         let allow_subscriber = fresh_name("allow", &mut used);
         let invoke_part = fresh_name("invoke_part", &mut used);
@@ -1177,6 +1209,11 @@ pub(super) fn emit<'a>(
             .iter()
             .map(|(output, _)| format!("*{event}.{output} = __previous_{output}.clone(); "))
             .collect::<String>();
+        let report_panic = if panic_signal {
+            "*panicked = true; "
+        } else {
+            ""
+        };
         let run_with = |mod_id_expr: &str,
                         on_abort: &str,
                         extra_restore: &str,
@@ -1198,6 +1235,7 @@ pub(super) fn emit<'a>(
                 && discard_batch.is_empty()
                 && stack_restore.is_empty()
                 && extra_restore.is_empty()
+                && report_panic.is_empty()
             {
                 match on_abort {
                     "false" => return format!("{invocation}.unwrap_or_default()"),
@@ -1206,7 +1244,7 @@ pub(super) fn emit<'a>(
                 }
             }
             format!(
-                "match {invocation} {{ Some(answer) => answer, None => {{ {restore_statement}{discard_batch}{stack_restore}{extra_restore}{on_abort} }} }}"
+                "match {invocation} {{ Some(answer) => answer, None => {{ {report_panic}{restore_statement}{discard_batch}{stack_restore}{extra_restore}{on_abort} }} }}"
             )
         };
         let run = |mod_id_expr: &str, on_abort: &str, expression: &str| {
@@ -1214,7 +1252,19 @@ pub(super) fn emit<'a>(
         };
         let listener_call = |callee: &str| {
             let expression = format!("{callee}.{name}({invoke})");
-            if matches!(
+            if panic_signal {
+                // Quick move chains the healthy Parts' proposals. Abort only the failing
+                // Part's storage writes before the shared panic boundary restores its outputs.
+                format!(
+                    "{event}.subject.transaction(|subject, _| -> Result<_, core::convert::Infallible> {{\
+                         Ok({callee}.{name}(&mut {event_type} {{\
+                             kind: {event}.kind, subject: subject.reborrow(),\
+                             container_slots: {event}.container_slots, slot: {event}.slot,\
+                             stack: &mut *{event}.stack,\
+                         }}))\
+                     }}).unwrap_or_else(|never| match never {{}})"
+                )
+            } else if matches!(
                 name,
                 "contents_changed" | "farmland_trample" | "register_configuration_tasks"
             ) {
@@ -1263,7 +1313,16 @@ pub(super) fn emit<'a>(
             } else {
                 run(mod_id_expr, on_abort, &format!("{callee}.{name}({invoke})"))
             };
-            let plain_call = run(mod_id_expr, on_abort, &listener_call(callee));
+            let plain_call = if scoped_random_collect {
+                let level = &call_args[0];
+                run(
+                    mod_id_expr,
+                    on_abort,
+                    &format!("{invoke_part}({callee}, {level}, &mut {event})"),
+                )
+            } else {
+                run(mod_id_expr, on_abort, &listener_call(callee))
+            };
             let invocation = match contract {
                 Contract::Cancel => format!(
                     "if matches!({plain_call}, Flow::Cancel) {{ *{o} = true; {exit}; }}",
@@ -1541,6 +1600,11 @@ pub(super) fn emit<'a>(
             dispatch.push_str(&format!(
                 "#[doc(hidden)] pub fn dispatch_{name}({dispatch_signature}) {{ dispatch_{name}_with({args}, |part, event| part.{name}(&mut *{host}, event)); }}\n\
                  #[doc(hidden)] pub fn dispatch_{name}_with({params}, mut {invoke_part}: impl FnMut(&dyn {part_trait}, &mut {event_type}{elided}){result}) {{ {unpack}{early_return}\n{body} }}\n"
+            ));
+        } else if scoped_random_collect {
+            let (part_trait, _) = scoped.as_ref().unwrap();
+            dispatch.push_str(&format!(
+                "#[doc(hidden)] pub fn dispatch_{name}({dispatch_signature}, mut {invoke_part}: impl FnMut(&dyn {part_trait}, LevelRandomSide<'_>, &mut {event_type}{elided})) {{ {unpack}{early_return}\n{body} }}\n"
             ));
         } else if filtered_subscribers {
             let wrapper_params = dispatch_params

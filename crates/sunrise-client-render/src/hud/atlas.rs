@@ -66,8 +66,9 @@ pub struct HudAtlas {
     /// Its Polytone expression uniforms (`shader_modifiers`), resolved when it loaded: the
     /// blocks its stages read, with their programs.
     pub lightmap_expressions: Vec<crate::polytone_post::ExpressionUniform>,
-    /// The packs' `core/clouds`, when a pack replaces either stage.
-    pub clouds_shader: Option<std::sync::Arc<crate::core_shader::CoreProgram>>,
+    /// The packs' `core/clouds`, when a pack replaces either stage: outside and under Improved
+    /// Transparency.
+    pub clouds_shader: Option<std::sync::Arc<crate::clouds::pack::Programs>>,
     /// The packs' Polytone screen sprite modifiers.
     pub sprite_modifiers: std::sync::Arc<sprite_modifiers::SpriteModifiers>,
     /// The packs' OptiFine random entity textures, whose variants this atlas packs.
@@ -413,7 +414,7 @@ impl HudAtlas {
         let mut atlas = Self::pack(root, defaults, WALKED_TEXTURE_FOLDERS, true, pool)?;
         atlas.dynamic_texture_pool =
             dynamic_textures::Pool::take(&mut atlas.sprites, atlas.width, atlas.height);
-        pack_text::load_shaders(&mut atlas, root, game);
+        pack_text::load_shaders(&mut atlas, root, game)?;
         atlas.sprite_modifiers = std::sync::Arc::new(sprite_modifiers::SpriteModifiers::read(
             root,
             atlas.gui.keys(),
@@ -424,7 +425,7 @@ impl HudAtlas {
     /// [`Self::build_over_with_dynamic_textures`] loads them, for tests of the pipelines.
     #[cfg(test)]
     pub(crate) fn load_pack_shaders(&mut self, root: &ResourceSource, game: &ResourceSource) {
-        pack_text::load_shaders(self, root, game);
+        pack_text::load_shaders(self, root, game).expect("the packs' required shaders");
     }
     /// Empty slots written at run time: map textures (game/blocks/maps/mod.rs),
     /// client mods' dynamic textures (only with `pool`), downloaded skins, world

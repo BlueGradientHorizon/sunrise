@@ -216,13 +216,12 @@ arrow on the top turns east without UV locking and retains its world orientation
 Quads are appended in call order, retaining each part's positions, materials and quad
 metadata in one model. The particle is the first available part particle, and model-level
 ambient occlusion is enabled only if every appended part enables it. Declare all the model
-files the callback may append. Dependencies, including their parents and loader references,
-load through the normal model library; they are not automatically registered as results.
-A failed `append_dependency` returns `Err` without changing the assembly; propagate it
-with `?` to discard the model, or handle it and return `Ok(())` to publish the valid
-appends. A missing dependency or `Err` return discards the model for that load and logs
-the registering mod, and the baker runs again on later resource reloads; only a panic
-disables the callback for the session (matching NeoForge `StandaloneModelLoader`).
+files the callback may append. Dependencies load through the normal model library; they are
+not automatically registered as results. As with blockstate and item models, a missing or rejected
+parent uses the missing model at that link, and the child's own geometry still wins. This also
+applies to files registered with `register_model`.
+An undeclared append, a missing or rejected declared file, a bake error or a refused callback
+discards the whole model and logs the registering mod. Ignoring an append error still discards it.
 
 Result IDs and plain file IDs require a nonempty namespace and path, which need not equal
 the registering mod's ID. A successfully baked plain file wins over any baker for that ID;
@@ -295,6 +294,59 @@ draw.terrain_model(self.belt, options)?;
   `TerrainModelError::Refused` and nothing is drawn. That covers an unknown render type, a
   missing sprite, a pose that flattens the model, a ratio out of range, and a shift
   whose numbers aren't finite, whose sprites are unknown or whose source sprite no face uses.
+
+## Extra models in a block's mesh
+
+A block whose look depends on data a block state can't hold (a cable showing each side's
+channel count) gives the chunk mesher extra models to draw as part of it. On the client,
+`host.set_block_extra_models(pos, &models)` sets the resolved standalone models drawn at `pos`:
+
+```rust,ignore
+let parts = [self.core, self.side_counts[count]];
+host.set_block_extra_models(pos, &parts)?;
+```
+
+- The models are drawn after the block's own, unturned from its lower north-west corner (with its
+  offset), in its light and tints. Each quad keeps its render layer (solid, cut out,
+  translucent). A face with a cull direction is hidden by the neighbour there, as the block's
+  own faces are. On air they draw nothing.
+- A list replaces the position's last one; an empty list clears it. The section is meshed again
+  only when the list changes, so set it when the data changes, not each frame.
+- Native client mods set the list through the live client Host. `NotLoaded` means the position
+  is outside a resident column or the level height; `Model` means the handle is stale or is not a
+  registered standalone model. A refused call changes nothing.
+- After the block geometry, extra faces are drawn in block and list order. Drawing stops before
+  the next face whose worst-case expansion cannot fit the section's upload budget, so the last
+  model may be partially drawn.
+- The list is the client's own, never saved or sent. A resend of a resident column preserves
+  attachments at unchanged cells; unloading the column clears them. A block state or level
+  change also clears the affected lists. Set the list again from block entity data or the mod's
+  own client map, on `client_block_changed`, `client_chunk_load` or a payload. No block entity
+  is required.
+- Mod tint providers are asked before the mesh is scheduled, not by the attachment pass on the
+  worker. A provider that panics supplies white. A handle a resource reload made stale draws
+  nothing until you set the lists again from the new handles.
+
+The reload and setup contexts do not expose this setter. Resolve new handles in
+`client_resources_reloaded`, then set the lists again from a live client callback such as
+`client_tick_pre`:
+
+```rust,ignore
+fn client_resources_reloaded(&self, context: &dyn ClientReloadHost, _: &mut ClientResourcesReloadedEvent) {
+    let mut parts = self.parts.lock().unwrap();
+    parts.core = context.render_assets().model(&self.core_id).ok();
+    parts.reapply = true;
+}
+
+fn client_tick_pre(&self, host: &mut dyn ClientHost, _: &mut ClientTickPreEvent) {
+    let mut parts = self.parts.lock().unwrap();
+    if std::mem::take(&mut parts.reapply) {
+        for (&pos, cable) in &self.cables.lock().unwrap() {
+            let _ = host.set_block_extra_models(pos, &parts.models_for(cable));
+        }
+    }
+}
+```
 
 ## Persistent groups
 
@@ -488,6 +540,7 @@ that cannot be represented by a rectangle; use another drawing route rather than
 substituting an upright texture.
 
 Multiply tinted faces by `block_tint_color(state, face.tint_index, pos)` at their world
-position. Untinted faces return `None`. Water faces use tint index 0 and the world's
-water colour, including resource-pack water colormaps; other water indices return
-`None`. This differs from `fluid_box`, whose colour comes from its fluid stack.
+position. Untinted faces return `None`. Both block and fluid faces use the mesher's current
+biome colours, including updates from `refresh_biome_colors`. Water faces use tint index 0
+and honour resource-pack water colormaps; other water indices return `None`. This differs
+from `fluid_box`, whose colour comes from its fluid stack.

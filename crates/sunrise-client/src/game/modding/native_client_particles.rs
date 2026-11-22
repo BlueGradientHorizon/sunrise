@@ -32,6 +32,13 @@ fn finite_options(options: &ParticleOptions) -> bool {
 }
 
 impl Game<'_> {
+    pub(in crate::game) fn particle_block_states() -> Option<sunrise_client::particles::BlockStates>
+    {
+        super::api_values::block_state::current()
+            .ok()
+            .map(|states| -> sunrise_client::particles::BlockStates { states })
+    }
+
     /// `ClientLevel.addParticle`: request one particle in this client's loaded world.
     /// Options and provider input slots pass through unchanged, including encoded
     /// color or size values in `velocity`. Normal distance, settings and population
@@ -54,7 +61,10 @@ impl Game<'_> {
         }
         // The limiter's roll draws the level random: inside a part's `animate_tick`, the one
         // the part holds as `event.random`.
-        self.with_lent_level_random(|game| game.particles.add(options, at, velocity));
+        self.with_lent_level_random(|game| {
+            game.particles
+                .add_with_world(Some(&game.world), options, at, velocity, false, false);
+        });
         true
     }
     pub(super) fn level_add_breaking_particles(

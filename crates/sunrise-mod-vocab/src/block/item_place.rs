@@ -19,7 +19,15 @@ use crate::{
 use std::{fmt::Debug, marker::PhantomData, num::NonZeroU32};
 
 /// Where a stack lives.
-// no wire: preserves stable explicit variant tags (Equipment is 9) and interns Mod.provider into a bounded static string.
+///
+/// This is a local item address: encode your own `Wire` schema or an [`ItemStack`] at
+/// serialization or network boundaries.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::ItemPlace>();
+/// ```
+// no wire: process-local item address carrying handles, scratch slot IDs and static provider names.
 #[non_exhaustive]
 #[derive(Debug, PartialEq, Eq)]
 pub enum ItemPlace {
@@ -280,7 +288,15 @@ impl Drop for ItemPlace {
 }
 
 /// Why [`ItemPlace::edit`] could not update a stack's components.
-#[derive(Clone, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
+///
+/// This is a local refusal returned by [`ItemPlace::edit`], not a `Wire` type.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::ItemPlaceEditError>();
+/// ```
+// no wire: local refusal returned by ItemPlace::edit.
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ItemPlaceEditError {
     /// The place is empty or cannot be reached.
@@ -610,8 +626,10 @@ impl ItemPlace {
         self.moved(host, tx, resource, amount, true)
     }
 
-    /// Takes up to `amount` of `resource` from here, in transaction `tx`: how much came
-    /// (`ItemAccess.extract`). A creative player's hand gives without losing any.
+    /// Takes up to `amount` from here, in transaction `tx`, when the item and components
+    /// match `resource` (`ItemAccess.extract`). In places the game handles directly, an
+    /// override equal to the item's default does not change the match, and the resource
+    /// need not be valid for insertion. A creative player's hand gives without losing any.
     pub fn extract(
         &self,
         host: &mut dyn ServerHost,
@@ -1051,16 +1069,16 @@ impl ItemPlace {
         let mut game = None;
         let table = host.capability_providers();
         let provided = table.provided(crate::ProvidedBy::Item, key.name);
+        let mut index = 0;
         crate::answered(
             crate::ask_providers(
                 host,
-                |index| {
+                || {
                     provided
-                        .then(|| table.item_provider(key.name, item, index))
+                        .then(|| table.item_provider(key.name, item, &mut index))
                         .flatten()
                 },
-                crate::ItemProviderOf::get::<T>,
-                |provider, host| provider.provide(host, self),
+                |provider, host| provider.get::<T>()?.provide(host, self),
                 |host| {
                     game = match &key.default {
                         Some(ItemCapabilityDefault::Item(default)) => default(host, self, item),
