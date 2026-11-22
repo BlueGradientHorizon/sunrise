@@ -21,12 +21,11 @@ pub trait Hooks {
     #[hook(
         dispatch = "api_carrier",
         side = "both",
-        version = 2,
+        version = 3,
         contract = "cancel",
         out = "cancel",
         neoforge = "PlayLevelSoundEvent.AtPosition",
-        cancellable = true,
-        version = 2
+        cancellable = true
     )]
     fn play_level_sound_at_position(
         level: LevelRef,
@@ -58,12 +57,11 @@ pub trait Hooks {
     #[hook(
         dispatch = "api_carrier",
         side = "both",
-        version = 2,
+        version = 3,
         contract = "cancel",
         out = "cancel",
         neoforge = "PlayLevelSoundEvent.AtEntity",
-        cancellable = true,
-        version = 2
+        cancellable = true
     )]
     fn play_level_sound_at_entity(
         entity: EntityRef,
