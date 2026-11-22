@@ -69,6 +69,7 @@ ids = [
     "handle:AttachmentKey::get",
     "handle:AttachmentKey::has",
     "handle:AttachmentKey::get_existing",
+    "handle:AttachmentKey::with_decoded",
     "handle:AttachmentKey::set",
     "handle:AttachmentKey::remove",
     "handle:AttachmentKey::sync_data",
@@ -132,7 +133,7 @@ migrate = '''
   Chain `.serialize(codec)`, `.sync(sync_codec)` (independent of `.serialize`; `AttachmentCodec` is `Copy`), and `.copy_on_death()` (requires `.serialize`) as needed.
 - To read or write another package's attachment, declare a dependency on its owner and call `if let Ok(key) = r.attachment_key::<T>("ns:name") { ... }` during `Hooks::register` (returning `AttachmentError::Undeclared` if missing or `AttachmentError::TypeMismatch` if the Rust type differs).
 - Store the issued `AttachmentKey<T>` on your mod, hook listener, renderer, or Part (cloning is cheap) and pass `&key` to `key.{get,has,get_existing,set,remove,sync_data}(host, holder)` (or `*_in(level, holder)` on `LevelRandomHost`), `host.query(&key)`, `host.query_mut(&key)`, `AttachmentBatch::query(&key)`, `EntityRenderAttachments::get(&key)`, `ChunkDiskData::{get,set,remove}(&key, ...)`, `event.original.{attachment,existing_attachment,has_attachment,remove_attachment,set_attachment,with_decoded_attachment}(&key, ...)`, `AttachedStacks::{new,single}(&key, ...)`, `AttachedEnergy::new(&key, ...)`, `read_state`, `edit_part_state`, and `PartStateDeclaration::of`.
-- `AttachmentType::with_decoded` was removed: read a single holder as an owned value with `key.get_existing(host, holder)` (or `key.get_existing_in(level, holder)`), or borrow values without cloning through `host.query(&key)` rows.
+- Replace `AttachmentType::with_decoded` with `key.with_decoded(host, holder, read)` to borrow an already-decoded value without loading or inserting it. Use `key.get_existing(host, holder)` to decode an existing raw value, or borrow query rows through `host.query(&key)`.
 - `PartStateDeclaration` is no longer `Copy`: clone it or rebuild it with `PartStateDeclaration::of(&key)` instead of copying by value.
 - On `BlockEntityPartState` and `EntityPartState`, replace `const DATA: &'static AttachmentType<Self::Data>` with `fn state_key(&self) -> &AttachmentKey<Self::Data>` and call `self.state(...)`, `self.state_existing(...)`, `self.state_in(...)`, `self.state_existing_in(...)`, and `self.edit_state(...)` on `&self`. Replace matches on `PartStateRefusal::Incompatible { .. }` with `PartStateRefusal::StaleKey`.
 - Handle `AttachmentError::StaleKey` if a key or retained `AttachmentRowMut` can outlive a registration reinstall. `EntityRenderAttachments::get` also refuses captures from another installation, even with a current key, and returns `AttachmentError::InvalidSyncPolicy` for unsynced keys. Take a fresh capture/key instead of carrying render data across a reinstall.
