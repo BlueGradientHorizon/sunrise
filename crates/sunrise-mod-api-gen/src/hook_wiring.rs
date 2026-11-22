@@ -1040,12 +1040,13 @@ mod tests {
                 "sunrise-mod-vocab/src/runtime.rs",
                 &format!(
                     "
-                fn invoke(call: impl FnOnce()) {{ contain(call); }}
+                pub(crate) fn invoke(call: impl FnOnce()) {{ contain(call); }}
                 fn contain(call: impl FnOnce()) {{ {fence} }}
             "
                 ),
             );
-            assert_eq!(check(root.path(), &hooks).is_ok(), expected, "{fence}");
+            let result = check(root.path(), &hooks);
+            assert_eq!(result.is_ok(), expected, "{fence}: {result:?}");
         }
     }
 
