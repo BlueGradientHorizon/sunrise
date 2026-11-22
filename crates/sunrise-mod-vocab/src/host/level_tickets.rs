@@ -49,8 +49,8 @@ pub trait LevelTicketsBackendMut {
     /// is also attributed to that mod for cleanup on disable; level unload invalidates all
     /// tickets in the level. Never saved: re-add in `level_load` or the block entity's load
     /// listener. Reads/writes reach parked server levels.
-    /// None on clients, for stale/unavailable levels, empty or reversed bounds, or a box
-    /// spanning more than 65,536 x/z chunks. Does not load chunks.
+    /// None on clients, for stale/unavailable levels, or for empty or reversed bounds.
+    /// Queries test indexed tiles without loading chunks or calling mod predicates.
     #[access(WorldOnly)]
     fn level_add_water_ticket(
         &mut self,

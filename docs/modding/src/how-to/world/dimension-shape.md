@@ -227,7 +227,7 @@ On the server, `level.add_water_ticket(host, min, max)` returns an `Option<Water
 for a sprinkler's watered area. Bounds are integer and half-open on **all three axes**:
 `min` is included, `max` is excluded. For 5×1×5 farmland beginning at `[4, 64, 4]`,
 use `[4, 64, 4]` and `[9, 65, 9]`; `[8, 64, 8]` is inside, `[9, 64, 4]` is outside.
-Empty or reversed boxes and boxes covering more than 65,536 x/z chunks are refused.
+Empty or reversed boxes are refused; any nonempty box is accepted without a column cap.
 
 Keep the handle, then call `ticket.remove(host)` when the sprinkler stops or breaks.
 Removal returns whether that ticket was removed; overlapping tickets remain independent.
@@ -236,7 +236,8 @@ caller. `level.has_water_ticket(host, pos)` tests whether any ticket covers a bl
 calls reach active or parked server levels without loading chunks; unavailable/stale
 handles and clients answer `false` (adding answers `None`).
 
-Tickets are chunk-indexed, in memory only, and never force chunks to load. They are removed
+Tickets are indexed by enclosing x/z chunk tile in memory only, never force chunks to load,
+and queries test matching tiles without calling mod predicates. They are removed
 on explicit removal or level unload; when added during an enabled mod call, the ticket is
 also attributed to that mod and cleared if that mod is disabled (re-enabling does not
 restore it). A reopened world starts empty: re-add from `level_load` or a block entity's

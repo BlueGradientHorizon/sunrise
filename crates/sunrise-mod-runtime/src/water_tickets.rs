@@ -1,6 +1,6 @@
-//! Session-only, chunk-indexed watered areas. Mod switches eagerly release attributed boxes.
+//! Session-only, spatially indexed watered areas. Mod switches eagerly release attributed boxes.
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     sync::{
         Arc, Mutex, Weak,
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -10,26 +10,35 @@ use std::{
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 static LEVELS: Mutex<Vec<Weak<Shared>>> = Mutex::new(Vec::new());
 
-/// Maximum columns indexed by one ticket, bounding a synchronous mod call's memory and work.
-pub const MAX_CHUNKS: u64 = 65_536;
-
 /// Opaque, non-reused identity for one watered-area ticket, issued only by [`WaterTickets::add`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct WaterTicketId(u64);
+
+#[derive(Clone, Copy)]
+struct TileKey {
+    depth: u8,
+    coords: [u32; 2],
+}
 
 struct Ticket {
     owner: Option<&'static str>,
     min: [i32; 3],
     max: [i32; 3],
+    tile: TileKey,
 }
 #[derive(Default)]
 struct Index {
     tickets: HashMap<WaterTicketId, Ticket>,
-    chunks: HashMap<[i32; 2], Vec<WaterTicketId>>,
+    depths: BTreeMap<u8, HashMap<[u32; 2], Vec<WaterTicketId>>>,
 }
 struct Shared {
     nonempty: AtomicBool,
     index: Mutex<Index>,
+}
+
+/// Bias a signed chunk coordinate (`block >> 4`, in `-2^27..2^27`) into `0..2^28`.
+fn biased_chunk(block: i32) -> u32 {
+    ((block >> 4) as u32).wrapping_add(1u32 << 27)
 }
 
 /// A level's transient watered areas. Empty levels allocate nothing and queries only test the
@@ -41,7 +50,7 @@ pub struct WaterTickets {
 
 impl WaterTickets {
     /// Add a half-open integer box (`min <= pos < max`) and issue its opaque [`WaterTicketId`].
-    /// Empty/reversed boxes and boxes spanning more than [`MAX_CHUNKS`] columns are refused.
+    /// Empty or reversed boxes are refused.
     /// `owner` is evaluated under the lock shared with owner-disable cleanup to capture optional
     /// cleanup attribution (`Some(id)` for an enabled installed mod, `None` otherwise); it never
     /// denies admission.
@@ -54,13 +63,15 @@ impl WaterTickets {
         if (0..3).any(|axis| min[axis] >= max[axis]) {
             return None;
         }
-        let from = [min[0] >> 4, min[2] >> 4];
-        let to = [(max[0] - 1) >> 4, (max[2] - 1) >> 4];
-        let columns = (i64::from(to[0]) - i64::from(from[0]) + 1) as u64
-            * (i64::from(to[1]) - i64::from(from[1]) + 1) as u64;
-        if columns > MAX_CHUNKS {
-            return None;
-        }
+        let min_x = biased_chunk(min[0]);
+        let max_x = biased_chunk(max[0] - 1);
+        let min_z = biased_chunk(min[2]);
+        let max_z = biased_chunk(max[2] - 1);
+        let depth = (u32::BITS - ((min_x ^ max_x) | (min_z ^ max_z)).leading_zeros()) as u8;
+        let tile = TileKey {
+            depth,
+            coords: [min_x >> depth, min_z >> depth],
+        };
         // Serialize optional cleanup attribution with owner-disable cleanup so a concurrent
         // disable cannot leave an attributed ticket behind without removing it.
         let mut levels = LEVELS.lock().unwrap();
@@ -79,12 +90,22 @@ impl WaterTickets {
             shared
         });
         let mut index = shared.index.lock().unwrap();
-        index.tickets.insert(id, Ticket { owner, min, max });
-        for x in from[0]..=to[0] {
-            for z in from[1]..=to[1] {
-                index.chunks.entry([x, z]).or_default().push(id);
-            }
-        }
+        index.tickets.insert(
+            id,
+            Ticket {
+                owner,
+                min,
+                max,
+                tile,
+            },
+        );
+        index
+            .depths
+            .entry(tile.depth)
+            .or_default()
+            .entry(tile.coords)
+            .or_default()
+            .push(id);
         shared.nonempty.store(true, Ordering::Release);
         Some(id)
     }
@@ -98,14 +119,15 @@ impl WaterTickets {
         let Some(ticket) = index.tickets.remove(&id) else {
             return false;
         };
-        for x in (ticket.min[0] >> 4)..=((ticket.max[0] - 1) >> 4) {
-            for z in (ticket.min[2] >> 4)..=((ticket.max[2] - 1) >> 4) {
-                if let Some(ids) = index.chunks.get_mut(&[x, z]) {
-                    ids.retain(|other| *other != id);
-                    if ids.is_empty() {
-                        index.chunks.remove(&[x, z]);
-                    }
+        if let Some(tiles) = index.depths.get_mut(&ticket.tile.depth) {
+            if let Some(ids) = tiles.get_mut(&ticket.tile.coords) {
+                ids.retain(|other| *other != id);
+                if ids.is_empty() {
+                    tiles.remove(&ticket.tile.coords);
                 }
+            }
+            if tiles.is_empty() {
+                index.depths.remove(&ticket.tile.depth);
             }
         }
         shared
@@ -114,7 +136,8 @@ impl WaterTickets {
         true
     }
 
-    /// Test only the position's indexed column, without allocating or invoking a mod callback.
+    /// Test only the position's tile buckets at populated depths, without allocating or invoking a
+    /// mod callback.
     pub fn contains(&self, pos: [i32; 3]) -> bool {
         let Some(shared) = &self.shared else {
             return false;
@@ -122,16 +145,17 @@ impl WaterTickets {
         if !shared.nonempty.load(Ordering::Acquire) {
             return false;
         }
+        let px = biased_chunk(pos[0]);
+        let pz = biased_chunk(pos[2]);
         let index = shared.index.lock().unwrap();
-        index
-            .chunks
-            .get(&[pos[0] >> 4, pos[2] >> 4])
-            .is_some_and(|ids| {
+        index.depths.iter().any(|(&depth, tiles)| {
+            tiles.get(&[px >> depth, pz >> depth]).is_some_and(|ids| {
                 ids.iter().any(|id| {
                     let ticket = &index.tickets[id];
                     (0..3).all(|axis| ticket.min[axis] <= pos[axis] && pos[axis] < ticket.max[axis])
                 })
             })
+        })
     }
 
     /// Closing a level invalidates all its handles, even if the same level object is reused.
@@ -150,11 +174,14 @@ pub fn remove_owner(owner: &str) {
             return false;
         };
         let mut index = shared.index.lock().unwrap();
-        let Index { tickets, chunks } = &mut *index;
+        let Index { tickets, depths } = &mut *index;
         tickets.retain(|_, ticket| ticket.owner != Some(owner));
-        chunks.retain(|_, ids| {
-            ids.retain(|id| tickets.contains_key(id));
-            !ids.is_empty()
+        depths.retain(|_, tiles| {
+            tiles.retain(|_, ids| {
+                ids.retain(|id| tickets.contains_key(id));
+                !ids.is_empty()
+            });
+            !tiles.is_empty()
         });
         shared
             .nonempty
@@ -255,43 +282,82 @@ mod tests {
     }
 
     #[test]
-    fn a_box_of_exactly_the_column_limit_is_accepted_and_one_column_over_is_refused() {
-        // 256 x 256 chunk columns, 4096 x 4096 blocks: exactly MAX_CHUNKS.
+    fn wide_boxes_index_past_the_old_threshold_and_preserve_overlapping_narrow_tickets() {
         let mut level = WaterTickets::default();
-        assert_eq!(MAX_CHUNKS, 256 * 256);
-        let id = level.add([0, 64, 0], [4096, 65, 4096], || Some("limit"));
-        assert!(id.is_some());
-        assert!(level.contains([4095, 64, 4095]));
+        // 257 x 256 chunk columns: past the old 65,536-column threshold.
+        let past_old_cap = level
+            .add([0, 64, 0], [4097, 65, 4096], || Some("wide"))
+            .unwrap();
+        assert!(level.contains([0, 64, 0]));
+        assert!(level.contains([4096, 64, 4095]));
+        assert!(!level.contains([4097, 64, 4095]));
+        assert!(!level.contains([4096, 64, 4096]));
+        assert!(!level.contains([-1, 64, 0]));
+
+        let narrow = level
+            .add([10, 64, 10], [15, 65, 15], || Some("sprinkler"))
+            .unwrap();
+        let near_full = level
+            .add([i32::MIN, 64, i32::MIN], [i32::MAX, 65, i32::MAX], || {
+                Some("wide")
+            })
+            .unwrap();
+        for pos in [
+            [i32::MIN, 64, i32::MIN],
+            [-1_000_000, 64, -17],
+            [12, 64, 12],
+            [1_000_000, 64, 500_000],
+            [i32::MAX - 1, 64, i32::MAX - 1],
+        ] {
+            assert!(level.contains(pos), "{pos:?}");
+        }
+        for pos in [[i32::MAX, 64, 0], [0, 64, i32::MAX], [0, 63, 0], [0, 65, 0]] {
+            assert!(!level.contains(pos), "{pos:?}");
+        }
+
+        assert!(level.remove(near_full));
+        assert!(!level.remove(near_full));
+        assert!(!level.contains([-1_000_000, 64, -17]));
+        assert!(!level.contains([i32::MAX - 1, 64, i32::MAX - 1]));
+        assert!(level.contains([4096, 64, 4095]));
+        assert!(level.contains([12, 64, 12]));
+
+        assert!(level.remove(past_old_cap));
         assert!(!level.contains([4096, 64, 4095]));
-        // One block further east is a 257th column of chunks: 257 x 256 columns.
-        let mut over = WaterTickets::default();
-        assert!(
-            over.add([0, 64, 0], [4097, 65, 4096], || Some("limit"))
-                .is_none()
-        );
-        assert!(over.shared.is_none());
+        assert!(!level.contains([0, 64, 0]));
+        assert!(level.contains([10, 64, 10]));
+        assert!(level.contains([14, 64, 14]));
+        assert!(!level.contains([15, 64, 10]));
+        assert!(!level.contains([10, 64, 15]));
+        {
+            let index = level.shared.as_ref().unwrap().index.lock().unwrap();
+            assert_eq!(index.depths.len(), 1);
+            assert!(index.depths.contains_key(&0));
+        }
+
+        assert!(level.remove(narrow));
+        assert!(!level.contains([12, 64, 12]));
+        let shared = level.shared.as_ref().unwrap();
+        assert!(!shared.nonempty.load(Ordering::Acquire));
+        assert!(shared.index.lock().unwrap().depths.is_empty());
     }
 
     #[test]
     fn invalid_boxes_do_not_create_an_index() {
         let mut level = WaterTickets::default();
-        assert!(
-            level
-                .add([0, 64, 0], [0, 65, 5], || Some("invalid"))
-                .is_none()
-        );
-        assert!(
-            level
-                .add([5, 64, 0], [0, 65, 5], || Some("invalid"))
-                .is_none()
-        );
-        assert!(
-            level
-                .add([i32::MIN, 0, i32::MIN], [i32::MAX, 1, i32::MAX], || Some(
-                    "invalid"
-                ),)
-                .is_none()
-        );
+        for (min, max) in [
+            ([0, 64, 0], [0, 65, 5]),
+            ([5, 64, 0], [0, 65, 5]),
+            ([0, 64, 0], [5, 64, 5]),
+            ([0, 64, 5], [5, 65, 0]),
+            ([i32::MIN, 0, 0], [i32::MIN, 1, 1]),
+            ([0, 0, 0], [i32::MIN, 1, 1]),
+        ] {
+            assert!(
+                level.add(min, max, || Some("invalid")).is_none(),
+                "{min:?}..{max:?}"
+            );
+        }
         assert!(level.shared.is_none());
     }
 }
