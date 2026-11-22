@@ -325,8 +325,16 @@ class ConcurrentClaimTests(unittest.TestCase):
 
         with self.assertRaisesRegex(cc.Refused, "at the same moment"):
             do("/claim", Racing())
-        text, api = do("/claim", Fake(held=[held(n) for n in range(10, 19)]))  # the recount sees 9 + this one: kept
+        class Tenth(Fake):
+            """9 held at the first count; the recount sees those and this claim, exactly the limit: kept."""
+            counts = iter([[held(n) for n in range(10, 19)], [held(n) for n in range(10, 19)] + [held(5)]])
+
+            def held_issues(self, login):
+                return next(self.counts)
+
+        text, api = do("/claim", Tenth())
         self.assertIsNone(text)
+        self.assertNotIn(("unassign", 5, "newcomer"), api.calls)
 
 
     def test_a_failed_recount_undoes_the_claim(self):
@@ -489,11 +497,10 @@ class WorkflowTests(unittest.TestCase):
     def test_the_command_gets_what_exempts_the_repositorys_own_people_from_the_limit(self):
         # Without them the script reads every commenter as association NONE with no exempt logins, and refuses an org
         # member's sixth claim (#4463, 2026-11-22).
-        from test_ci_concurrency import yaml
-        jobs = yaml.load((ROOT / ".github/workflows/fork-claim.yml").read_text(), Loader=yaml.BaseLoader)["jobs"]
-        step = next(step for step in jobs["command"]["steps"] if step.get("name") == "Run the command")
-        self.assertEqual(step["env"]["AUTHOR_ASSOCIATION"], "${{ github.event.comment.author_association }}")
-        self.assertEqual(step["env"]["CLAIM_LIMIT_EXEMPT"], "${{ vars.CLAIM_LIMIT_EXEMPT }}")
+        text = (ROOT / ".github/workflows/fork-claim.yml").read_text()
+        step = text.split("      - name: Run the command\n", 1)[1].split("\n      - ", 1)[0]
+        self.assertIn("          AUTHOR_ASSOCIATION: ${{ github.event.comment.author_association }}\n", step)
+        self.assertIn("          CLAIM_LIMIT_EXEMPT: ${{ vars.CLAIM_LIMIT_EXEMPT }}\n", step)
 
 
 if __name__ == "__main__":
