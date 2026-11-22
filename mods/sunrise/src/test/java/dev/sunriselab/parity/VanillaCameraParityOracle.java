@@ -1176,6 +1176,7 @@ public final class VanillaCameraParityOracle {
             entBlock.add(interaction.blockPosition().getY());
             entBlock.add(interaction.blockPosition().getZ());
             streamObj.add("camera_chunk", camChunk);
+            streamObj.addProperty("camera_block_y", cam.blockPosition().getY());
             streamObj.addProperty("entity_block_y", interaction.blockPosition().getY());
             streamObj.add("entity_block_pos", entBlock);
             streamObj.add("camera_pos_bits", vec3Bits(cam.position()));
@@ -1327,6 +1328,8 @@ public final class VanillaCameraParityOracle {
             { -11.5, 4.7, 15.3, -10.5, 5.7, 16.3 },
             // Offset ~22 deg from angled forward: outside 10 deg spyglass, inside 70 deg optionFov.
             { -18.0, 4.7, 12.0, -17.0, 5.7, 13.0 },
+            // Full 16x16x16 section (2, 2, 1) with minY=-64: inside unposed 70 deg, outside 30 deg and bobbed 70 deg.
+            { 32.0, -32.0, 16.0, 48.0, -16.0, 32.0 },
         };
 
         record Case(String name, float fov, int optionFov, float yaw, float pitch, float depthFar) {}
@@ -2134,6 +2137,276 @@ public final class VanillaCameraParityOracle {
         return out;
     }
 
+    static JsonObject recordReviewFollowupCases() throws Exception {
+        var out = new JsonObject();
+        var align = method(Camera.class, "alignWithEntity", float.class);
+
+        // Finding 1: live ExperienceOrb 3-tick correction + EnderDragon living camera state.
+        {
+            var lvl = newLevel();
+            var player = newPlayer(lvl, 1, 0.5, 64.0, 0.5);
+            minecraft.player = player;
+            minecraft.level = lvl;
+            options.setCameraType(CameraType.FIRST_PERSON);
+            var orb = (ExperienceOrb) spawnViaPacket(lvl, "minecraft:experience_orb", 401, 10.0, 64.0, 10.0, 0.0F, 0.0F, 0.0F);
+            orb.setNoGravity(true);
+            orb.moveOrInterpolateTo(new Vec3(13.0, 64.0, 10.0), 0.0F, 0.0F);
+            var cam = newCamera(lvl);
+            cam.setEntity(orb);
+            for (int i = 0; i < 40; i++) cam.tick();
+            orb.setOldPosAndRot();
+            orb.getInterpolation().interpolate();
+            align.invoke(cam, 0.5F);
+            var orbObj = new JsonObject();
+            orbObj.add("step1_old_pos_bits", vec3Bits(orb.oldPosition()));
+            orbObj.add("step1_pos_bits", vec3Bits(orb.position()));
+            orbObj.add("step1_cam_half_bits", vec3Bits(cam.position()));
+            out.add("orb_correction", orbObj);
+
+            var dragon = (net.minecraft.world.entity.boss.enderdragon.EnderDragon) spawnViaPacket(
+                lvl, "minecraft:ender_dragon", 402, 10.0, 80.0, -5.0, 45.0F, 0.0F, 45.0F);
+            cam.setEntity(dragon);
+            for (int i = 0; i < 40; i++) cam.tick();
+            align.invoke(cam, 1.0F);
+            var state = new CameraRenderState();
+            cam.extractRenderState(state, new FixedDelta(1.0F, 1.0F, 1.0F));
+            var dragonObj = new JsonObject();
+            dragonObj.addProperty("is_living", state.entityRenderState.isLiving);
+            dragonObj.addProperty("eye_height_bits", fb(dragon.getEyeHeight()));
+            dragonObj.add("camera_pos_bits", vec3Bits(cam.position()));
+            out.add("ender_dragon", dragonObj);
+        }
+
+        // Finding 3: Minecraft.setCameraEntity applies post effect even when already in third person.
+        {
+            var lvl = newLevel();
+            var player = newPlayer(lvl, 1, 0.5, 64.0, 0.5);
+            var creeper = spawnViaPacket(lvl, "minecraft:creeper", 403, 5.0, 64.0, 5.0, 0.0F, 0.0F, 0.0F);
+            minecraft.player = player;
+            minecraft.level = lvl;
+            options.setCameraType(CameraType.THIRD_PERSON_BACK);
+            var renderer = make(GameRenderer.class);
+            field(GameRenderer.class, "mainCamera").set(renderer, newCamera(lvl));
+            field(GameRenderer.class, "minecraft").set(renderer, minecraft);
+            field(Minecraft.class, "gameRenderer").set(minecraft, renderer);
+            minecraft.setCameraEntity(creeper);
+            var postEffect = renderer.spectatedEntityPostEffect();
+            var postObj = new JsonObject();
+            postObj.addProperty("third_person_creeper_post_effect", postEffect == null ? null : postEffect.toString());
+            out.add("third_person_post_effect", postObj);
+        }
+
+        // Finding 4: GameRenderer.shouldRenderBlockOutline with spectator/interactable and remote player.
+        {
+            var lvl = newLevel();
+            var player = newPlayer(lvl, 1, 0.5, 64.0, 0.5);
+            var remote = newRemotePlayer(lvl, 2, 2.0, 64.0, 2.0, 0.0F, 0.0F, 0.0F);
+            lvl.blocks.put(new BlockPos(0, 64, 2), Blocks.CRAFTING_TABLE.defaultBlockState());
+            lvl.blocks.put(new BlockPos(0, 64, 3), Blocks.STONE.defaultBlockState());
+            minecraft.player = player;
+            minecraft.level = lvl;
+            var gm = make(StubGameMode.class);
+            gm.mode = GameType.SPECTATOR;
+            field(Minecraft.class, "gameMode").set(minecraft, gm);
+            GameType.SPECTATOR.updatePlayerAbilities(player.getAbilities());
+            var hud = make(Hud.class);
+            field(Hud.class, "minecraft").set(hud, minecraft);
+            var gui = make(Gui.class);
+            field(Gui.class, "hud").set(gui, hud);
+            field(Minecraft.class, "gui").set(minecraft, gui);
+            field(Hud.class, "isHidden").setBoolean(hud, false);
+            var cam = newCamera(lvl);
+            var renderer = make(GameRenderer.class);
+            field(GameRenderer.class, "mainCamera").set(renderer, cam);
+            field(GameRenderer.class, "minecraft").set(renderer, minecraft);
+            field(GameRenderer.class, "renderBlockOutline").setBoolean(renderer, true);
+            field(Minecraft.class, "gameRenderer").set(minecraft, renderer);
+            var shouldOutline = method(GameRenderer.class, "shouldRenderBlockOutline");
+
+            var outlineObj = new JsonObject();
+            cam.setEntity(player);
+            minecraft.hitResult = new net.minecraft.world.phys.BlockHitResult(new Vec3(0.5, 64.5, 2.0), Direction.NORTH, new BlockPos(0, 64, 2), false);
+            outlineObj.addProperty("spectator_self_crafting_table", (boolean) shouldOutline.invoke(renderer));
+            minecraft.hitResult = new net.minecraft.world.phys.BlockHitResult(new Vec3(0.5, 64.5, 3.0), Direction.NORTH, new BlockPos(0, 64, 3), false);
+            outlineObj.addProperty("spectator_self_stone", (boolean) shouldOutline.invoke(renderer));
+            cam.setEntity(remote);
+            outlineObj.addProperty("spectator_watching_remote_player_stone", (boolean) shouldOutline.invoke(renderer));
+            out.add("block_outline_matrix", outlineObj);
+        }
+
+        // Finding 6: EnderDragon.recreateFromPacket uses wrapping 32-bit signed int addition (id + i + 1).
+        {
+            var lvl = newLevel();
+            var dragonMax = (net.minecraft.world.entity.boss.enderdragon.EnderDragon) spawnViaPacket(
+                lvl, "minecraft:ender_dragon", Integer.MAX_VALUE, 0.0, 80.0, 0.0, 0.0F, 0.0F, 0.0F);
+            var idsMax = new JsonArray();
+            for (var part : dragonMax.getSubEntities()) idsMax.add(part.getId());
+            var dragonNeg = (net.minecraft.world.entity.boss.enderdragon.EnderDragon) spawnViaPacket(
+                lvl, "minecraft:ender_dragon", -10, 0.0, 80.0, 0.0, 0.0F, 0.0F, 0.0F);
+            var idsNeg = new JsonArray();
+            for (var part : dragonNeg.getSubEntities()) idsNeg.add(part.getId());
+            var dragonIdsObj = new JsonObject();
+            dragonIdsObj.add("part_ids_for_max_i32", idsMax);
+            dragonIdsObj.add("part_ids_for_neg_ten", idsNeg);
+            out.add("dragon_part_wrapping", dragonIdsObj);
+        }
+
+        // Finding 7: Removing moving camera retains xo/yo/zo mid-tick and Hud.getCameraPlayer on detached player.
+        {
+            var lvl = newLevel();
+            var player = newPlayer(lvl, 1, 0.5, 64.0, 0.5);
+            var remote = newRemotePlayer(lvl, 407, 0.0, 64.0, 0.0, 0.0F, 0.0F, 0.0F);
+            remote.setOldPosAndRot();
+            remote.setPos(2.0, 64.0, 0.0);
+            minecraft.player = player;
+            minecraft.level = lvl;
+            options.setCameraType(CameraType.FIRST_PERSON);
+            var cam = newCamera(lvl);
+            cam.setEntity(remote);
+            var renderer = make(GameRenderer.class);
+            field(GameRenderer.class, "mainCamera").set(renderer, cam);
+            field(GameRenderer.class, "minecraft").set(renderer, minecraft);
+            field(Minecraft.class, "gameRenderer").set(minecraft, renderer);
+            remote.setRemoved(Entity.RemovalReason.DISCARDED);
+            for (int i = 0; i < 40; i++) cam.tick();
+            align.invoke(cam, 0.5F);
+            var hud = make(Hud.class);
+            field(Hud.class, "minecraft").set(hud, minecraft);
+            var getCamPlayer = method(Hud.class, "getCameraPlayer");
+            var detachObj = new JsonObject();
+            detachObj.add("mid_tick_cam_pos_bits", vec3Bits(cam.position()));
+            detachObj.addProperty("detached_player_still_camera_player", getCamPlayer.invoke(hud) == remote);
+            out.add("detached_mid_tick", detachObj);
+        }
+
+        // Finding 9: Relative +65 teleport from (old=0, cur=1) sets old=65, cur=66 and applies delta.
+        {
+            var lvl = newLevel();
+            var inter = (Interaction) spawnViaPacket(lvl, "minecraft:interaction", 409, 0.0, 64.0, 0.0, 0.0F, 0.0F, 0.0F);
+            inter.setOldPosAndRot();
+            inter.setPos(1.0, 64.0, 0.0);
+            var setValues = method(ClientPacketListener.class, "setValuesFromPositionPacket",
+                PositionMoveRotation.class, Set.class, Entity.class, boolean.class);
+            var change = new PositionMoveRotation(new Vec3(65.0, 0.0, 0.0), new Vec3(0.5, 0.0, 0.0), 0.0F, 0.0F);
+            setValues.invoke(null, change, Set.of(Relative.X, Relative.Y, Relative.Z, Relative.Y_ROT, Relative.X_ROT), inter, true);
+            var tpObj = new JsonObject();
+            tpObj.add("old_pos_bits", vec3Bits(inter.oldPosition()));
+            tpObj.add("cur_pos_bits", vec3Bits(inter.position()));
+            tpObj.add("delta_bits", vec3Bits(inter.getDeltaMovement()));
+            out.add("relative_teleport_old_pose", tpObj);
+        }
+
+        // Finding 10: ArmorStand pitch history preserved across tick/interpolation.
+        {
+            var lvl = newLevel();
+            var stand = spawnViaPacket(lvl, "minecraft:armor_stand", 410, 5.0, 64.0, 5.0, 0.0F, 0.0F, 0.0F);
+            stand.setOldPosAndRot();
+            stand.setXRot(30.0F);
+            var cam = newCamera(lvl);
+            cam.setEntity(stand);
+            for (int i = 0; i < 40; i++) cam.tick();
+            align.invoke(cam, 0.5F);
+            var standObj = new JsonObject();
+            standObj.addProperty("xRotO_bits", fb(stand.xRotO));
+            standObj.addProperty("xRot_bits", fb(stand.getXRot()));
+            standObj.addProperty("cam_half_xRot_bits", fb(cam.xRot()));
+            out.add("armor_stand_pitch", standObj);
+        }
+
+        // Finding 11: 18-deep passenger chain keeps root unfrozen when level is frozen.
+        {
+            var lvl = newLevel();
+            Entity prev = spawnViaPacket(lvl, "minecraft:interaction", 420, 0.0, 64.0, 0.0, 0.0F, 0.0F, 0.0F);
+            Entity root = prev;
+            for (int k = 1; k <= 17; k++) {
+                Entity next = spawnViaPacket(lvl, "minecraft:interaction", 420 + k, 0.0, 64.0, 0.0, 0.0F, 0.0F, 0.0F);
+                next.startRiding(prev, true, false);
+                prev = next;
+            }
+            var rider = newRemotePlayer(lvl, 440, 0.0, 64.0, 0.0, 0.0F, 0.0F, 0.0F);
+            rider.startRiding(prev, true, false);
+            var trm = new TickRateManager();
+            trm.setFrozen(true);
+            var chainObj = new JsonObject();
+            chainObj.addProperty("player_passengers", root.countPlayerPassengers());
+            chainObj.addProperty("root_frozen", trm.isEntityFrozen(root));
+            out.add("deep_passenger_chain_18", chainObj);
+        }
+
+        // Finding 12: Watched living entity blindness blocks sky; watched player carries mob effects.
+        {
+            var lvl = newLevel();
+            var creeper = (LivingEntity) spawnViaPacket(lvl, "minecraft:creeper", 450, 5.0, 64.0, 5.0, 0.0F, 0.0F, 0.0F);
+            creeper.forceAddEffect(new MobEffectInstance(MobEffects.BLINDNESS, 200, 0), null);
+            var cam = newCamera(lvl);
+            cam.setEntity(creeper);
+            for (int i = 0; i < 40; i++) cam.tick();
+            align.invoke(cam, 1.0F);
+            var state = new CameraRenderState();
+            cam.extractRenderState(state, new FixedDelta(1.0F, 1.0F, 1.0F));
+            var fxObj = new JsonObject();
+            fxObj.addProperty("creeper_blindness_blocks_sky", state.entityRenderState.doesMobEffectBlockSky);
+            out.add("watched_living_effects", fxObj);
+        }
+
+        // Finding 13: Watched player animateHurt stores hurtDir; baseTick decrements damageCooldownTime.
+        {
+            var lvl = newLevel();
+            var rp = newRemotePlayer(lvl, 451, 5.0, 64.0, 5.0, 0.0F, 0.0F, 0.0F);
+            rp.animateHurt(123.5F);
+            rp.damageCooldownTime = 20;
+            rp.baseTick();
+            var hurtObj = new JsonObject();
+            hurtObj.addProperty("hurt_dir_bits", fb(rp.getHurtDir()));
+            hurtObj.addProperty("cooldown_after_base_tick", rp.damageCooldownTime);
+            out.add("watched_player_hurt", hurtObj);
+        }
+
+        // Finding 14: Max-health updates clamp only at refreshDirtyAttributes, not on attribute receipt.
+        {
+            var lvl = newLevel();
+            var m1 = (LivingEntity) spawnViaPacket(lvl, "minecraft:pig", 452, 0.0, 64.0, 0.0, 0.0F, 0.0F, 0.0F);
+            m1.getAttribute(Attributes.MAX_HEALTH).setBaseValue(20.0);
+            m1.setHealth(20.0F);
+            m1.getAttribute(Attributes.MAX_HEALTH).setBaseValue(10.0);
+            m1.getAttribute(Attributes.MAX_HEALTH).setBaseValue(20.0);
+            var refresh = method(LivingEntity.class, "refreshDirtyAttributes");
+            refresh.invoke(m1);
+
+            var m2 = (LivingEntity) spawnViaPacket(lvl, "minecraft:pig", 453, 0.0, 64.0, 0.0, 0.0F, 0.0F, 0.0F);
+            m2.getAttribute(Attributes.MAX_HEALTH).setBaseValue(20.0);
+            m2.setHealth(20.0F);
+            m2.getAttribute(Attributes.MAX_HEALTH).setBaseValue(10.0);
+            refresh.invoke(m2);
+            m2.getAttribute(Attributes.MAX_HEALTH).setBaseValue(20.0);
+            refresh.invoke(m2);
+
+            var mhObj = new JsonObject();
+            mhObj.addProperty("same_tick_health_bits", fb(m1.getHealth()));
+            mhObj.addProperty("across_tick_health_bits", fb(m2.getHealth()));
+            out.add("max_health_clamp", mhObj);
+        }
+
+        // Finding 15: Sleeping metadata moves a living mob from off-bed onto the bed via setPosToBed.
+        {
+            var lvl = newLevel();
+            var bedPos = new BlockPos(7, 64, 5);
+            lvl.blocks.put(bedPos, BuiltInRegistries.BLOCK.getValue(Identifier.parse("minecraft:red_bed"))
+                .defaultBlockState()
+                .setValue(BedBlock.FACING, Direction.SOUTH)
+                .setValue(BedBlock.PART, BedPart.HEAD));
+            var creeper = (LivingEntity) spawnViaPacket(lvl, "minecraft:creeper", 454, 5.5, 64.0, 5.5, 0.0F, 0.0F, 0.0F);
+            creeper.getEntityData().assignValues(List.of(
+                SynchedEntityData.DataValue.create(sleepingPosAccessor(), Optional.of(bedPos))
+            ));
+            var sleepObj = new JsonObject();
+            sleepObj.add("mob_pos_after_sleep_bits", vec3Bits(creeper.position()));
+            out.add("sleeping_mob_set_pos_to_bed", sleepObj);
+        }
+
+        return out;
+    }
+
     public static void main(String[] args) throws Exception {
         ParityData.init();
         var u = Class.forName("sun.misc.Unsafe");
@@ -2165,6 +2438,7 @@ public final class VanillaCameraParityOracle {
         root.add("camera_visibility_all_kinds", recordCameraVisibilityAllKinds());
         root.add("spectated_rider_mount_attributes", recordSpectatedRiderMountAttributes());
         root.add("particle_camera_before_first_frame", recordParticleCameraBeforeFirstFrame());
+        root.add("review_followup", recordReviewFollowupCases());
 
         var gson = new GsonBuilder().setPrettyPrinting().serializeNulls().create();
         Files.writeString(Path.of(args[0]), gson.toJson(root) + "\n", StandardCharsets.UTF_8);
