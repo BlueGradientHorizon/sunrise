@@ -164,6 +164,19 @@ fn client_toasts_share_the_draw_list_and_admit_replacements_before_updating() {
                     assert_eq!(shown.request.toast.slide.origin, Some(old_origin));
                     assert_eq!(shown.request.toast.slide.portion, 1.0);
                     assert_eq!(shown.request.toast.display_time(), 2500.0);
+
+                    game.add_toast(ModToast::new(Text::literal("Queued at disconnect")))
+                        .unwrap();
+                    draw(game);
+                    assert_eq!(game.toast_manager.queued.len(), 1);
+                    game.add_toast(ModToast::new(Text::literal("Pending at disconnect")))
+                        .unwrap();
+                    assert_eq!(game.toast_manager.pending_mod.borrow().len(), 1);
+                    game.hud_disconnected();
+                    draw(game);
+                    assert!(game.toast_manager.visible.is_empty());
+                    assert!(game.toast_manager.queued.is_empty());
+                    assert_eq!(seen.lock().unwrap().last().unwrap(), "Queued at disconnect");
                 });
             });
         },
