@@ -5666,6 +5666,35 @@ mod startup_registration_tests {
         PipelineBlend, PipelineKind, RegisterLayerDefinitionsEvent, RegisterRenderPipelinesEvent,
         RenderPipeline, WorldDepth,
     };
+    use std::sync::OnceLock;
+
+    fn register_layer_definitions_into(
+        role: ExecutionRole,
+        vanilla_root: &std::path::Path,
+        slot: &OnceLock<HashMap<String, LayerDefinition>>,
+    ) -> sunrise_client::Result<()> {
+        if !role.is_client() {
+            return Ok(());
+        }
+        let mut suppliers = Vec::new();
+        Game::native_register_layer_definitions(&RegistrationContext::new(), &mut suppliers);
+        sunrise_client::mobs::model_layers::register_into(suppliers, vanilla_root, slot)?;
+        Ok(())
+    }
+
+    fn register_render_pipelines_into(
+        role: ExecutionRole,
+        vanilla_root: &Path,
+        slot: &OnceLock<Vec<RenderPipeline>>,
+    ) -> sunrise_client::Result<()> {
+        if !role.is_client() {
+            return Ok(());
+        }
+        let mut pipelines = Vec::new();
+        Game::native_register_render_pipelines(&RegistrationContext::new(), &mut pipelines);
+        sunrise_client_render::mod_pipelines::register_into(pipelines, vanilla_root, slot)?;
+        Ok(())
+    }
 
     #[test]
     fn startup_register_layer_definitions_fails_closed_before_publishing() {
@@ -5699,6 +5728,7 @@ mod startup_registration_tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let calls = Arc::new(Mutex::new(Vec::new()));
+        let slot = OnceLock::new();
 
         mod_platform::testing::with_mods(
             vec![ModEntry::new(
@@ -5708,24 +5738,30 @@ mod startup_registration_tests {
             .into(),
             || {
                 // Missing, invalid, non-object, and empty entity-models.json fail closed.
-                assert!(register_layer_definitions(ExecutionRole::Client, &dir).is_err());
+                assert!(
+                    register_layer_definitions_into(ExecutionRole::Client, &dir, &slot).is_err()
+                );
                 std::fs::write(dir.join("entity-models.json"), "not json").unwrap();
-                assert!(register_layer_definitions(ExecutionRole::Client, &dir).is_err());
+                assert!(
+                    register_layer_definitions_into(ExecutionRole::Client, &dir, &slot).is_err()
+                );
                 std::fs::write(dir.join("entity-models.json"), "[]").unwrap();
-                assert!(register_layer_definitions(ExecutionRole::Client, &dir).is_err());
+                assert!(
+                    register_layer_definitions_into(ExecutionRole::Client, &dir, &slot).is_err()
+                );
                 std::fs::write(dir.join("entity-models.json"), "{}").unwrap();
-                assert!(register_layer_definitions(ExecutionRole::Client, &dir).is_err());
+                assert!(
+                    register_layer_definitions_into(ExecutionRole::Client, &dir, &slot).is_err()
+                );
                 std::fs::write(dir.join("entity-models.json"), r#"{"invalid": {}}"#).unwrap();
-                let err = register_layer_definitions(ExecutionRole::Client, &dir).unwrap_err();
+                let err = register_layer_definitions_into(ExecutionRole::Client, &dir, &slot)
+                    .unwrap_err();
                 assert!(
                     err.to_string()
                         .contains("invalid vanilla model layer entry")
                 );
                 assert!(calls.lock().unwrap().is_empty());
-                assert!(
-                    sunrise_client::mobs::model_layers::registered("alpha:golem#outer:armor")
-                        .is_none()
-                );
+                assert!(slot.get().is_none());
             },
         );
 
@@ -5743,13 +5779,15 @@ mod startup_registration_tests {
             )]
             .into(),
             || {
-                let err = register_layer_definitions(ExecutionRole::Client, &dir).unwrap_err();
+                let err = register_layer_definitions_into(ExecutionRole::Client, &dir, &slot)
+                    .unwrap_err();
                 assert!(
                     err.to_string()
                         .contains("collides with an existing vanilla model layer"),
                     "{err}"
                 );
                 assert!(calls.lock().unwrap().is_empty());
+                assert!(slot.get().is_none());
             },
         );
 
@@ -5767,10 +5805,12 @@ mod startup_registration_tests {
             ]
             .into(),
             || {
-                register_layer_definitions(ExecutionRole::Client, &dir).unwrap();
+                register_layer_definitions_into(ExecutionRole::Client, &dir, &slot).unwrap();
                 assert_eq!(*calls.lock().unwrap(), [8]);
                 assert_eq!(
-                    sunrise_client::mobs::model_layers::registered("alpha:golem#outer:armor")
+                    slot.get()
+                        .unwrap()
+                        .get("alpha:golem#outer:armor")
                         .unwrap()
                         .bake_root()
                         .get_child("head")
@@ -5816,6 +5856,7 @@ mod startup_registration_tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let table = dir.join("render-pipelines.json");
+        let slot = OnceLock::new();
         mod_platform::testing::with_mods(
             vec![ModEntry::new(
                 "example",
@@ -5823,12 +5864,14 @@ mod startup_registration_tests {
             )]
             .into(),
             || {
-                let err = register_render_pipelines(ExecutionRole::Client, &dir).unwrap_err();
+                let err =
+                    register_render_pipelines_into(ExecutionRole::Client, &dir, &slot).unwrap_err();
                 assert!(err.to_string().contains("could not read"));
                 std::fs::write(&table, r#"{"required":["INVALID"],"optional":[]}"#).unwrap();
-                let err = register_render_pipelines(ExecutionRole::Client, &dir).unwrap_err();
+                let err =
+                    register_render_pipelines_into(ExecutionRole::Client, &dir, &slot).unwrap_err();
                 assert!(err.to_string().contains("invalid pipeline ID table"));
-                assert!(sunrise_client_render::mod_pipelines::registered().is_empty());
+                assert!(slot.get().is_none());
             },
         );
         std::fs::write(
@@ -5846,9 +5889,10 @@ mod startup_registration_tests {
             mod_platform::testing::with_mods(
                 vec![ModEntry::new("bad", Box::new(PipeMod(colliding)))].into(),
                 || {
-                    let err = register_render_pipelines(ExecutionRole::Client, &dir).unwrap_err();
+                    let err = register_render_pipelines_into(ExecutionRole::Client, &dir, &slot)
+                        .unwrap_err();
                     assert!(err.to_string().contains("collides with vanilla"));
-                    assert!(sunrise_client_render::mod_pipelines::registered().is_empty());
+                    assert!(slot.get().is_none());
                 },
             );
         }
@@ -5861,13 +5905,14 @@ mod startup_registration_tests {
             ]
             .into(),
             || {
-                let err = register_render_pipelines(ExecutionRole::Client, &dir).unwrap_err();
+                let err =
+                    register_render_pipelines_into(ExecutionRole::Client, &dir, &slot).unwrap_err();
                 assert!(
                     err.to_string()
                         .contains("collides with earlier required registration"),
                     "{err}"
                 );
-                assert!(sunrise_client_render::mod_pipelines::registered().is_empty());
+                assert!(slot.get().is_none());
             },
         );
 
@@ -5891,8 +5936,8 @@ mod startup_registration_tests {
             ]
             .into(),
             || {
-                register_render_pipelines(ExecutionRole::Client, &dir).unwrap();
-                let published = sunrise_client_render::mod_pipelines::registered();
+                register_render_pipelines_into(ExecutionRole::Client, &dir, &slot).unwrap();
+                let published = slot.get().unwrap();
                 assert_eq!(published.len(), 4);
                 assert_eq!(published[0].kind(), PipelineKind::Required);
                 assert_eq!(published[2].kind(), PipelineKind::Optional);

@@ -1913,7 +1913,7 @@ mod tests {
 
                         // GUI draw_item_model must not lose millis precision via `/ 1000.0 * 1000.0`.
                         let mut batch = HudBatch::scratch([64, 64]);
-                        game.draw_item_model(&mut batch, &crystal, 0.0, 0.0);
+                        game.draw_item_model(&mut batch, &crystal, 0.0, 0.0, 0);
                         let want_front = parse_quad(&eid_quads[0]["glint_uv_t123456_bits"]);
                         let mut seen = [false; 4];
                         for v in batch.vertices.iter().filter(|v| v.uv[0] >= 2.0) {

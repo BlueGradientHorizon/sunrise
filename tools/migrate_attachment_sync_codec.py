@@ -70,8 +70,8 @@ def main() -> int:
     root = pathlib.Path(".")
     paths = sorted(
         list(root.glob("crates/**/*.rs"))
-        + list(root.glob("docs/**/*.rs"))
-        + list(root.glob("docs/**/*.md"))
+        + list(root.glob("docs/modding/**/*.rs"))
+        + list(root.glob("docs/modding/**/*.md"))
     )
     changed_files = 0
     total_sites = 0

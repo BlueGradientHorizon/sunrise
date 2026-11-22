@@ -282,7 +282,7 @@ mod tests {
             ids_and_kinds(&pipelines),
             [
                 ("other:glow".to_owned(), PipelineKind::Required),
-                ("mine:glow".to_owned(), PipelineKind::Required),
+                ("minecraft:glow".to_owned(), PipelineKind::Required),
                 ("other:beam".to_owned(), PipelineKind::Required),
                 ("minecraft:custom_beam".to_owned(), PipelineKind::Required),
             ]

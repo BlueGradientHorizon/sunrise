@@ -988,12 +988,15 @@ mod tests {
         ))
         .unwrap();
         let notes = migrate_notes(&[note]);
-        for handle in [
-            "handle:LevelRef::datapack_entries",
-            "handle:LevelRef::datapack_handle",
-            "handle:LevelRef::datapack_read",
+        for changed in [
+            "hook:world_lifecycle",
+            "hook:client_level_load",
+            "hook:client_level_unload",
         ] {
-            assert!(notes.contains_key(handle), "missing migration for {handle}");
+            assert!(
+                notes.contains_key(changed),
+                "missing migration for {changed}"
+            );
         }
         let pinned = |name: &str, build: &str| PinnedSdk {
             name: name.into(),

@@ -1,4 +1,4 @@
-ids = ["hook:render_level_stage", "type:RenderLevelStage.AfterSky"]
+ids = ["hook:render_level_stage"]
 why = """
 `AfterSky` now follows the logical pass admitted by vanilla 26.3 `LevelRenderer.addSkyPass`,
 where NeoForge posts `RenderLevelStageEvent.AfterSky` immediately after the sky work. Only

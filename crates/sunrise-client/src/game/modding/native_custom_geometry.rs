@@ -2357,7 +2357,10 @@ mod tests {
             let mut draw = WorldGeometry::default();
             for (expected_requests, expected_lines) in [
                 (&[0..1, 1..2][..], &[10.0, 20.0, 30.0, 40.0, 50.0, 60.0][..]),
-                (&[1..2][..], &[10.0, 20.0, 30.0, 40.0, 60.0][..]),
+                (
+                    std::slice::from_ref(&(1..2)),
+                    &[10.0, 20.0, 30.0, 40.0, 60.0][..],
+                ),
             ] {
                 // Refresh with fresh callback objects: enablement belongs to the callback
                 // identity and the mod for the session, not to this list's current boxed closure.

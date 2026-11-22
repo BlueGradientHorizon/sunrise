@@ -15,10 +15,8 @@ ids = [
     "type:HookId.WorldLifecycle",
     "hook:server_about_to_start",
     "hook:server_starting",
-    "hook:server_started",
     "hook:server_stopping",
     "hook:server_stopped",
-    "hook:level_load",
     "hook:level_save",
     "hook:level_unload",
     "hook:level_tick_pre",
@@ -29,10 +27,6 @@ ids = [
     "hook:client_level_load",
     "hook:client_level_unload",
     "hook:player_save_to_file",
-    "method:Levels::list_levels",
-    "method:EntitiesHost::level",
-    "handle:LevelRef::datapack_entries",
-    "handle:LevelRef::datapack_read",
 ]
 why = "Follow vanilla 26.3's MinecraftServer.runServer, stopServer, createLevels, setInitialSpawn, saveEverything and saveAllChunks, PrepareSpawnTask.start, DedicatedServer.initServer and IntegratedServer.initServer. createLevels walks WorldDimensions.bake's completed MappedRegistry.entrySet after opening the Overworld; tickChildren, saveAllChunks and stopServer use the resulting getAllLevels order, and NeoForge posts LevelTickEvent.Pre and Post in that walk. IntegratedServer.initServer saves with the single-player profile before PlayerList holds a player. ClientPacketListener.handleConfigurationStart clears the old level before switching listeners, and ClientConfigurationPacketListenerImpl.handleConfigurationFinished hands off the next configuration's registries. ClientLevel gets its own configuration's registry access in the constructor; NeoForge posts Load there and Unload before Minecraft.setLevel, clearClientLevel or disconnect discards the old level. NeoForge posts its server lifecycle events, LevelEvent.Load/Save/Unload and CreateSpawnPosition at the corresponding server sites; ServerLifecycleHooks.handleServerStopped posts Stopped before unloading synced configs. Keeping a second world_lifecycle callback and separate failure phases would duplicate those events and expose a failure phase NeoForge does not have. A port bind failure now returns an initialization error after Stopped without opening the world. Mod panics are handled by the shared listener boundary so they cannot be mistaken for save or level-close failures. The server discards the listener's writes only to the extent the existing Host transaction journal covers them."
 migrate = """

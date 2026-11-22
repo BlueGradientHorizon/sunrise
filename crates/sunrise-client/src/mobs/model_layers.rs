@@ -42,6 +42,16 @@ pub fn register(
     layers: Vec<Answered<LayerDefinitionRegistration>>,
     vanilla_root: &Path,
 ) -> crate::Result<()> {
+    register_into(layers, vanilla_root, &REGISTERED)
+}
+
+/// Validate, realize, and publish model layer definitions into a caller-supplied slot (used by
+/// `register` for the process table and by tests with a scoped table).
+pub fn register_into(
+    layers: Vec<Answered<LayerDefinitionRegistration>>,
+    vanilla_root: &Path,
+    slot: &OnceLock<HashMap<String, LayerDefinition>>,
+) -> crate::Result<()> {
     let doc = super::EntityModelDocument::load(vanilla_root).map_err(|error| {
         format!("register_layer_definitions: failed to load vanilla entity-models.json: {error}")
     })?;
@@ -82,7 +92,7 @@ pub fn register(
             order.push(id);
         }
     }
-    if REGISTERED.get().is_some() {
+    if slot.get().is_some() {
         log::warn!("model layers were registered already; these are left out");
         return Ok(());
     }
@@ -93,7 +103,7 @@ pub fn register(
             definitions.insert(id.to_owned(), definition);
         }
     }
-    if REGISTERED.set(definitions).is_err() {
+    if slot.set(definitions).is_err() {
         log::warn!("model layers were registered already; these are left out");
     }
     Ok(())
@@ -159,15 +169,17 @@ mod tests {
 
         let dir = scratch_dir("freeze");
         let calls = Arc::new(Mutex::new(Vec::new()));
+        let slot = OnceLock::new();
+        let registered = |id: &str| slot.get().and_then(|map| map.get(id));
 
         // Missing, invalid, non-object, and empty entity-models.json fail closed before publishing.
-        assert!(register(Vec::new(), &dir).is_err());
+        assert!(register_into(Vec::new(), &dir, &slot).is_err());
         std::fs::write(dir.join("entity-models.json"), "not json").unwrap();
-        assert!(register(Vec::new(), &dir).is_err());
+        assert!(register_into(Vec::new(), &dir, &slot).is_err());
         std::fs::write(dir.join("entity-models.json"), "[]").unwrap();
-        assert!(register(Vec::new(), &dir).is_err());
+        assert!(register_into(Vec::new(), &dir, &slot).is_err());
         std::fs::write(dir.join("entity-models.json"), "{}").unwrap();
-        assert!(register(Vec::new(), &dir).is_err());
+        assert!(register_into(Vec::new(), &dir, &slot).is_err());
 
         std::fs::write(
             dir.join("entity-models.json"),
@@ -191,7 +203,7 @@ mod tests {
                     &RegistrationContext::new(),
                     &mut suppliers,
                 );
-                let err = register(suppliers, &dir).unwrap_err();
+                let err = register_into(suppliers, &dir, &slot).unwrap_err();
                 assert!(
                     err.to_string()
                         .contains("collides with an existing vanilla model layer"),
@@ -215,7 +227,7 @@ mod tests {
                     &RegistrationContext::new(),
                     &mut suppliers,
                 );
-                assert!(register(suppliers, &dir).is_err());
+                assert!(register_into(suppliers, &dir, &slot).is_err());
                 assert!(calls.lock().unwrap().is_empty());
             },
         );
@@ -251,7 +263,7 @@ mod tests {
                     &mut suppliers,
                 );
                 assert!(calls.lock().unwrap().is_empty());
-                register(suppliers, &dir).unwrap();
+                register_into(suppliers, &dir, &slot).unwrap();
                 assert_eq!(*calls.lock().unwrap(), [-1, 3, 9, 7, 12]);
                 assert_eq!(
                     take_hook_panics(),
@@ -300,7 +312,7 @@ mod tests {
                     &RegistrationContext::new(),
                     &mut late,
                 );
-                register(late, &dir).unwrap();
+                register_into(late, &dir, &slot).unwrap();
                 assert_eq!(*calls.lock().unwrap(), [-1, 3, 9, 7, 12]);
                 assert!(take_hook_panics().is_empty());
             },

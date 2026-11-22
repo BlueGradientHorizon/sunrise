@@ -29,6 +29,16 @@ struct VanillaPipelines {
 /// left them: each `(id, kind)` at most once and never colliding with vanilla's same-kind table.
 /// A pipeline's place in the list is its slot.
 pub fn register(pipelines: Vec<RenderPipeline>, vanilla_root: &Path) -> Result<(), String> {
+    register_into(pipelines, vanilla_root, &REGISTERED)
+}
+
+/// Validate and publish render pipeline registrations into a caller-supplied slot (used by
+/// `register` for the process table and by tests with a scoped table).
+pub fn register_into(
+    pipelines: Vec<RenderPipeline>,
+    vanilla_root: &Path,
+    slot: &OnceLock<Vec<RenderPipeline>>,
+) -> Result<(), String> {
     if pipelines.is_empty() {
         return Ok(());
     }
@@ -81,7 +91,7 @@ pub fn register(pipelines: Vec<RenderPipeline>, vanilla_root: &Path) -> Result<(
             ));
         }
     }
-    REGISTERED.set(pipelines).map_err(|_| {
+    slot.set(pipelines).map_err(|_| {
         "register_render_pipelines: pipeline registrations were already published".to_owned()
     })
 }

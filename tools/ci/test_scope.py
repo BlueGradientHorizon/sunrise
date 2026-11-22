@@ -47,7 +47,8 @@ MOD_API_GEN = [
 READERS = {
     "cargo-sunrise-mod": [
         "Cargo.lock", "crates/sunrise-mod-api", "crates/sunrise-mod-package/src/sdk/fixture.tar.xz",
-        "crates/sunrise-mod-package/tests/index", "docs/modding/src/how-to/native-mods.md", "tools/ci/rust-version",
+        "crates/sunrise-mod-package/tests/index", "crates/sunrise-mod-vocab/changes/debt-re-wl-re-wl.toml",
+        "docs/modding/src/how-to/native-mods.md", "tools/ci/rust-version",
         # The installed-client daily builds and installs the fn-replace-check `lower` fixture.
         "tools/ci/fn-replace-check/lower",
     ],

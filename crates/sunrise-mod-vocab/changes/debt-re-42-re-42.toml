@@ -2,7 +2,6 @@ ids = [
     "hook:entity_inside",
     "hook:entity_inside.effects",
     "hook:entity_inside.writes",
-    "method:BlockPart::entity_inside",
     "type:EntityInsideEvent.effects",
     "type:EntityInsideEvent.writes",
     "type:InsideEffects",

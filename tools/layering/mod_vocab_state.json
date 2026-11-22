@@ -54,11 +54,6 @@
     "category": "immutable cache",
     "reason": "Empty or set-once resolved registry lookup returned when no installed Parts inventory supplies one."
   },
-  "content/crash.rs::ATTACHMENT_PANIC_NOTICES": {
-    "type": "std::sync::Mutex<Option<Vec<AttachmentPanicNotice>>>",
-    "category": "crash owner",
-    "reason": "Delivers already-contained attachment callback panics to the local window from sync and chunk workers. Headless servers do not collect notices."
-  },
   "content/crash.rs::CURRENT_CRASH_OWNER": {
     "type": "Cell<CrashOwner>",
     "category": "crash owner",

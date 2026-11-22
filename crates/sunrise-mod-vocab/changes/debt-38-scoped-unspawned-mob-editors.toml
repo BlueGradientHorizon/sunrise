@@ -1,8 +1,6 @@
 ids = [
-    "hook:baby_entity_spawn",
     "hook:baby_entity_spawn.edits",
     "hook:baby_entity_spawn.child",
-    "hook:mob_split",
     "hook:mob_split.edits",
     "hook:mob_split.children",
     "hook:finalize_spawn",
@@ -55,10 +53,6 @@ ids = [
     "type:PendingChildEditor",
     "type:BabyEntitySpawnChild",
     "type:MobSplitChildren",
-    "method:UnspawnedMob::set_baby",
-    "method:PendingChildEditor::set_baby",
-    "method:BabyEntitySpawnChild::construct",
-    "method:BabyEntitySpawnChild::replace",
 ]
 why = """\
 Replace lease IDs, the slot arena, per-listener expiry, parent-staleness aborts and count/depth caps with scoped Rust borrows and owned `UnspawnedMob` values. Detached children carry unpublished state and discard it on drop without rolling back other Host writes. `UnspawnedMobError` and `PendingMobSpec` no longer implement `Wire`.

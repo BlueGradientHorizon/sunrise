@@ -3552,7 +3552,6 @@ impl Renderer {
                         &mut extras,
                         own_timing.as_mut(),
                     );
-                    drop(extras);
                     drop(features);
                     self.world_primitives = Some(wp);
                     self.own_timing = own_timing;
