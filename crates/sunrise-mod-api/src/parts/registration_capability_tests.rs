@@ -248,4 +248,42 @@ mod tests {
             },
         );
     }
+
+    #[test]
+    fn block_container_refuses_slot_count_outside_java_int_range() {
+        let mut registrar = super::super::PartRegistrar::new("overflow");
+        let rejected = (&mut registrar as &mut dyn Registrar).block_key("overflow:too_many");
+        (&mut registrar as &mut dyn Registrar).block_container(
+            &rejected,
+            crate::ModContainer {
+                slots: (i32::MAX as usize) + 1,
+                ..Default::default()
+            },
+        );
+        assert_eq!(registrar.refused.len(), 1);
+        assert!(
+            !registrar
+                .parts
+                .default_block_containers
+                .contains_key("overflow:too_many")
+        );
+        assert!(
+            !(&mut registrar as &mut dyn Registrar)
+                .is_block_capability_registered(&ITEMS, &rejected)
+        );
+
+        let accepted = (&mut registrar as &mut dyn Registrar).block_key("overflow:max_int");
+        (&mut registrar as &mut dyn Registrar).block_container(
+            &accepted,
+            crate::ModContainer {
+                slots: i32::MAX as usize,
+                ..Default::default()
+            },
+        );
+        assert_eq!(registrar.refused.len(), 1);
+        assert!(
+            (&mut registrar as &mut dyn Registrar)
+                .is_block_capability_registered(&ITEMS, &accepted)
+        );
+    }
 }

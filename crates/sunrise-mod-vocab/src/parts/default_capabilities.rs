@@ -38,7 +38,9 @@ impl dyn Registrar + '_ {
 pub trait DefaultCapabilitiesRegistrar {
     /// Declare this mod block's item slots and optional menu. Vanilla blocks must use
     /// `block_capability` instead of replacing the game's block entity ownership.
-    /// The normal game table builder validates slots and faces; a provider with no slots is registered.
+    /// `container.slots` must fit in a nonnegative `i32` (matching NeoForge `ResourceHandler.size`
+    /// and `getResource(int)`); larger counts are refused at registration. The normal game table
+    /// builder validates faces; a provider with no slots is registered.
     fn block_container(&mut self, block: &crate::BlockKey, container: crate::ModContainer);
     /// Declare this block's fluid tanks, validated by the normal game table builder.
     fn block_fluids(&mut self, block: &crate::BlockKey, fluids: crate::ModFluidTanks);

@@ -10,6 +10,7 @@ ids = [
     "method:EntitiesRegistrar::provide_entity_capability",
     "method:CapabilityRegistrationRegistrar::entity_capability_registered",
     "method:CapabilityRegistrationRegistrar::item_capability_registered",
+    "method:DefaultCapabilitiesRegistrar::block_container",
 ]
 why = """
 Built-in and mod-defined capability keys now both bind typed native callbacks instead of carrying
@@ -21,6 +22,12 @@ registration and name both mods. Capability names and raw item/entity target IDs
 rules in vanilla 26.3's Identifier.isValidNamespace and Identifier.isValidPath, with the required
 explicit namespace. Lookup precedence and the vanilla container path (HopperBlockEntity.getBlockContainer)
 are unchanged.
+Stock mod block containers (`block_container`) validate that their declared slot count fits in a
+nonnegative 32-bit integer, matching NeoForge's `ResourceHandler.size` and `getResource(int)` (Java
+`int`), while vanilla containers keep `ContainerHelper.saveAllItems`/`loadAllItems` and
+`ItemStackWithSlot.CODEC`'s unsigned-byte slot encoding and mod-only saved `Items` rows encode
+extended indices (`>= 256`) in NBT `Int` `Slot` fields without wrapping, following NeoForge's
+`ItemStacksResourceHandler`/`StacksResourceHandler.serialize`.
 """
 migrate = """
 Do not construct or match BlockProviderOf, ItemProviderOf, EntityProviderOf or OwnProvider.
@@ -43,4 +50,6 @@ provide_*_capability method with NativeCapabilityProvider and may pass it throug
 Implementations of CapabilityRegistrationRegistrar change the receiver on item_capability_registered
 and entity_capability_registered from &self to &mut self. Calls using the typed
 is_item_capability_registered and is_entity_capability_registered helpers are unchanged.
+Keep `ModContainer::slots` passed to `r.block_container(&block, container)` within `0..=i32::MAX`;
+larger counts are refused at registration instead of silently narrowed.
 """

@@ -36,6 +36,15 @@ impl PartRegistrar {
 
 impl DefaultCapabilitiesRegistrar for PartRegistrar {
     fn block_container(&mut self, block: &crate::BlockKey, container: crate::ModContainer) {
+        if i32::try_from(container.slots).is_err() {
+            self.refused.push(format!(
+                "mod {} declared a block container with {} slots, exceeding i32::MAX ({})",
+                self.mod_id,
+                container.slots,
+                i32::MAX
+            ));
+            return;
+        }
         self.default_block(block, container, |parts| {
             &mut parts.default_block_containers
         });
