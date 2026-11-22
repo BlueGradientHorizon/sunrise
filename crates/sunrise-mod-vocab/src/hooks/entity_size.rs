@@ -16,9 +16,10 @@ pub trait Hooks {
     /// what you need of it.
     ///
     /// Every entity asks, of every kind, on whichever side runs that refresh: the server for its
-    /// own entities, and a client for its copies of the server's, when one is added and when a
-    /// synched value (its pose) or attribute (`minecraft:scale`) the server sends changes its
-    /// vanilla size (vanilla's `Entity.onSyncedDataUpdated`). Each side asks for its own copy and
+    /// own entities, and a client for its copies of the server's: when one is added, when the
+    /// server sends a new pose (even one with the same size), and when `minecraft:scale` or
+    /// another synched value the server sends changes its vanilla size (vanilla's
+    /// `Entity.onSyncedDataUpdated`). Each side asks for its own copy and
     /// keeps its own answer: answer from the event, the same way on both, so that the server's
     /// box and the client's agree. A mob is asked on the server before and after its tick. A
     /// player is asked in two steps: before the player's motion, for the candidate poses its fit
