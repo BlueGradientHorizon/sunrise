@@ -335,6 +335,11 @@ impl Game<'_> {
             self.teleport_driven_vehicle(position, rotation, delta, p.on_ground);
             return Ok(());
         }
+        if self.text_displays.contains_key(&p.id) {
+            self.teleport_remote_text_display(p.id, p.position, p.yaw, p.pitch, p.relatives);
+            self.entity_section_moved_id(p.id as u32);
+            return Ok(());
+        }
         let base = self
             .remote
             .as_ref()

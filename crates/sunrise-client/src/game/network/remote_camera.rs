@@ -192,6 +192,7 @@ pub(super) struct CameraEntities<'a> {
     pub boats: &'a [super::boats::Boat],
     pub frames: &'a [ItemFrame],
     pub tnts: &'a [super::tnt::PrimedTnt],
+    pub displays: &'a indexmap::IndexMap<i32, super::text_displays::RemoteTextDisplay>,
     pub interactions: &'a std::collections::HashMap<i32, super::interactions::RemoteInteraction>,
     pub tracked: Option<&'a std::collections::HashMap<i32, super::remote::Tracked>>,
 }
@@ -204,6 +205,7 @@ impl CameraEntities<'_> {
             || self.boats.iter().any(|b| b.id == id)
             || self.frames.iter().any(|f| f.id == id)
             || self.tnts.iter().any(|t| t.id == id)
+            || self.displays.contains_key(&(id as i32))
             || self.interactions.contains_key(&(id as i32))
             || self
                 .tracked
@@ -226,6 +228,9 @@ impl CameraEntities<'_> {
         }
         if let Some(t) = self.tnts.iter().find(|t| t.id == id) {
             return Some(tnt_camera_entity(t));
+        }
+        if let Some(d) = self.displays.get(&(id as i32)) {
+            return Some(d.camera_entity());
         }
         if let Some(i) = self.interactions.get(&(id as i32)) {
             return Some(interaction_camera_entity(i));
@@ -335,6 +340,7 @@ impl Game<'_> {
             boats: &self.boats,
             frames: &self.item_frames,
             tnts: &self.tnts,
+            displays: &self.text_displays,
             interactions: &self.interactions,
             tracked: self.remote.as_ref().map(|r| &r.entities),
         }

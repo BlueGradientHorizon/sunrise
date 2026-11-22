@@ -89,8 +89,10 @@ impl Game {
         assert_eq!((*screen, name, modifiers), ("options", "key.keyboard.a", 5));
         self.calls.set(self.calls.get() + 1); *canceled = self.cancel;
     }
-    fn mapped_key_dispatch(&mut self, key: i32, pressed: bool, repeat: bool, raw: i32, _: Source, _: bool) -> Result<()> {
-        assert!(!pressed && !repeat && raw == 1); self.released.push(Binding::Key(key)); Ok(())
+    fn mapped_key_dispatch(&mut self, key: i32, pressed: bool, repeat: bool, raw: i32, source: Source, vanilla_queued: bool) -> Result<()> {
+        assert!(!pressed && !repeat && raw == 1 && matches!(source, Source::Keyboard) && vanilla_queued);
+        self.released.push(Binding::Key(key));
+        Ok(())
     }
     fn mouse_mapping(&mut self, button: MouseButton, pressed: bool, _: Source) -> Result<()> {
         assert!(!pressed); self.released.push(Binding::Mouse(button)); Ok(())
