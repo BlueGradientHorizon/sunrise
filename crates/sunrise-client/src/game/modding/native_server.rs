@@ -88,6 +88,16 @@ fn usage_nodes(
         let Some((name, kind)) = inner.and_then(|w| w.split_once(':')) else {
             return Err(format!("`{usage}`: `{word}` is not `<name:kind>`"));
         };
+        if client
+            && matches!(
+                kind,
+                "player" | "players" | "entity" | "entities" | "dimension"
+            )
+        {
+            return Err(format!(
+                "`{usage}`: `{kind}` is a server-only argument kind and cannot be used in a client command"
+            ));
+        }
         if optional_seen && !optional {
             return Err(format!("`{usage}`: `{word}` follows an optional argument"));
         }
@@ -169,8 +179,8 @@ pub(super) fn command_tree(
     command_tree_for(commands, vanilla, custom, false, None)
 }
 
-/// Build the client's local tree and its executor slots. Argument types with a server
-/// suggestion provider remain unavailable to client commands.
+/// Build the client's local tree and its executor slots. Server handle kinds and argument
+/// types with a server suggestion provider are unavailable to client commands.
 pub(super) fn client_command_tree(
     commands: &[mod_api::Command],
     custom: &CommandArguments,
@@ -4293,13 +4303,18 @@ mod tests {
                     hub.refresh_permissions();
                     hub.update_guest(12, |g| g.sender = PlayerSender::new(sent, Arc::default()));
                     game.send_player_command_tree(12);
-                    assert!(game.run_guest_command(GuestCommand {
-                        conn: 12,
-                        command: "deop @s".into(),
-                        permission: 4,
-                        integrated: false,
-                        quiet: false,
-                    }));
+                    // GameProfileArgument only accepts player-only selectors; bare @s can
+                    // select any source entity.
+                    let (ok, feedback) = game
+                        .run_guest_command_told(GuestCommand {
+                            conn: 12,
+                            command: "deop @s[type=minecraft:player]".into(),
+                            permission: 4,
+                            integrated: false,
+                            quiet: false,
+                        })
+                        .expect("the command source is online");
+                    assert!(ok, "{feedback:?}");
                     assert_eq!(*reads.lock().unwrap(), [(Some(4), true), (Some(0), false)]);
                     let delivered: Vec<_> = command_delivery_packets(&received).collect();
                     let [
@@ -5349,21 +5364,26 @@ mod tests {
     }
 
     #[test]
-    fn client_command_tree_admits_builtin_argument_kinds_and_binds_slots() {
+    fn client_command_tree_refuses_server_only_handle_kinds_and_binds_slots() {
         let arguments = command_arguments();
-        let selectors = [
+        let server_only = [
             mod_api::Command::new("c_player <target:player>"),
             mod_api::Command::new("c_players <targets:players>"),
             mod_api::Command::new("c_entity <target:entity>"),
             mod_api::Command::new("c_entities <targets:entities>"),
             mod_api::Command::new("c_dim <dim:dimension>"),
         ];
-        let (selector_tree, _, problems) = client_command_tree(&selectors, &arguments, None);
-        assert!(problems.is_empty(), "{problems:?}");
+        let (refused_tree, _, refused_problems) =
+            client_command_tree(&server_only, &arguments, None);
+        assert_eq!(
+            refused_problems.len(),
+            server_only.len(),
+            "{refused_problems:?}"
+        );
         for root in ["c_player", "c_players", "c_entity", "c_entities", "c_dim"] {
             assert!(
-                selector_tree["children"].get(root).is_some(),
-                "{root} uses the same vanilla argument parser on the client"
+                refused_tree["children"].get(root).is_none(),
+                "{root} should be refused on the client"
             );
         }
 

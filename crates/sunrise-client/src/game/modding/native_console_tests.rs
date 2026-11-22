@@ -396,11 +396,20 @@ fn native_console_delivers_delayed_game_test_summary_and_closes() {
                     Ok(CommandFeedback::System(text))
                         if translation_key(text) == Some("commands.test.summary.optional_failed")
                 ));
-                assert!(matches!(
-                    &delayed[3],
-                    Ok(CommandFeedback::Success(text))
-                        if translation_key(text) == Some("test.run.coordinates")
-                ));
+                let Ok(CommandFeedback::Success(coordinates)) = &delayed[3] else {
+                    panic!("expected a successful coordinates link: {:?}", delayed[3]);
+                };
+                let TextContent::Translatable { key, arguments, .. } = &coordinates.content else {
+                    panic!("expected bracketed coordinates: {coordinates:?}");
+                };
+                assert_eq!(key, "chat.square_brackets");
+                let [coordinates_arg] = arguments.as_slice() else {
+                    panic!("expected one component inside the brackets: {coordinates:?}");
+                };
+                assert_eq!(
+                    translation_key(coordinates_arg),
+                    Some("test.run.coordinates")
+                );
                 assert!(
                     matches!(receive.try_recv(), Err(TryRecvError::Disconnected)),
                     "the channel closes once the runner finishes and flushes its summary"

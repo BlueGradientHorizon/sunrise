@@ -374,7 +374,10 @@ fn oversized_provider_entries_drop_individually_and_large_regular_replies_sort_b
     register_dispatcher(&mut dispatcher, &tree, MOD_COMMAND, &arguments);
     game.ui.dispatcher.0 = Arc::new(dispatcher);
     game.lan.as_mut().unwrap().hub.set_mod_commands(0, tree);
-    last_tree(&rx);
+    game.send_player_command_tree(2);
+    let packet = last_tree(&rx);
+    assert_eq!(children(&packet, "mixed"), ["value"]);
+    assert_eq!(children(&packet, "probe"), ["value"]);
 
     assert_eq!(
         suggestions(&mut game, &rx, "mixed "),
