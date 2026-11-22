@@ -238,6 +238,15 @@ impl UiResources {
     }
 }
 
+pub(super) struct PackParts {
+    pub(super) assets: Arc<Assets>,
+    pub(super) render: Arc<RenderAssets>,
+    pub(super) tables: Arc<MeshTables>,
+    pub(super) item_renderer: sunrise_client::item_render::ItemRenderer,
+    pub(super) biomes: Arc<Biomes>,
+    pub(super) light: Arc<LightTables>,
+}
+
 impl PackResources {
     /// Everything a pack overlay at `root` provides, over `assets` and `render`
     /// loaded from it.
@@ -271,12 +280,14 @@ impl PackResources {
         )?;
         Self::assemble(
             root,
-            assets,
-            render,
-            tables,
-            item_renderer,
-            biomes,
-            light,
+            PackParts {
+                assets,
+                render,
+                tables,
+                item_renderer,
+                biomes,
+                light,
+            },
             true,
         )
     }
@@ -300,17 +311,19 @@ impl PackResources {
     /// The pack tables over their parts, which `load_resources` builds on
     /// separate workers. A cloud texture vanilla refuses fails it, as it fails vanilla's reload
     /// (`sunrise_client::clouds::load`).
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn assemble(
         root: &sunrise_assets::resource_source::ResourceRoot,
-        assets: Arc<Assets>,
-        render: Arc<RenderAssets>,
-        tables: Arc<MeshTables>,
-        item_renderer: sunrise_client::item_render::ItemRenderer,
-        biomes: Arc<Biomes>,
-        light: Arc<LightTables>,
+        parts: PackParts,
         draws: bool,
     ) -> Result<Self> {
+        let PackParts {
+            assets,
+            render,
+            tables,
+            item_renderer,
+            biomes,
+            light,
+        } = parts;
         let water_overlay_state = assets
             .registry
             .default_state("minecraft:water")

@@ -1,7 +1,7 @@
 //! The startup's resource load: the stages the loading screen shows, the
 //! scoped threads each step runs on, and the core, gameplay and pack tables
 //! read from the prepared resources.
-use super::*;
+use super::{resource_tables::PackParts, *};
 
 #[cfg(test)]
 #[path = "incoming_tests/resource_load_scope.rs"]
@@ -686,17 +686,7 @@ pub(super) fn load_resources_for_mods(
     } else {
         client_reload::collect_texture_atlases()
     };
-    let manifest = vanilla_root.join("sunrise-resources.json");
-    let server_profile = manifest.is_file()
-        && sunrise_world::json_file::read::<serde_json::Value>(&manifest)?["profile"] == "server";
-    let stage = |root| {
-        let root = client_reload::stage_texture_atlases(root, &texture_atlases);
-        if server_profile {
-            root.with_server_profile()
-        } else {
-            root
-        }
-    };
+    let stage = |root| client_reload::stage_texture_atlases(root, &texture_atlases);
     let mut resolved = stage(resolved);
     let threads = settings.sunrise.worker_threads();
     // One pool of workers for every level's streaming, the client's and the
@@ -874,12 +864,14 @@ pub(super) fn load_resources_for_mods(
     let pack_step = startup::step("pack.assemble");
     let mut pack = PackResources::assemble(
         &resolved,
-        assets.clone(),
-        render,
-        tables,
-        item_renderer,
-        biomes.clone(),
-        Arc::new(light),
+        PackParts {
+            assets: assets.clone(),
+            render,
+            tables,
+            item_renderer,
+            biomes: biomes.clone(),
+            light: Arc::new(light),
+        },
         !role.is_dedicated_server(),
     )?;
     pack.additional_data = additional_data.into();
