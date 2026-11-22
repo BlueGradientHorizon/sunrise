@@ -760,6 +760,8 @@ pub(super) fn emit<'a>(
             "// no wire: this event borrows the append-only staging vector.\n"
         } else if staged.is_some() && !staged_host {
             "// no wire: this event borrows the current listener's staging surface.\n"
+        } else if !surfaces.is_empty() {
+            "// no wire: this event borrows live callback surfaces.\n"
         } else {
             ""
         };
