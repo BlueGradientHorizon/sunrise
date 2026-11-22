@@ -1605,6 +1605,7 @@ pub fn render_with(
 #[derive(Default)]
 pub struct FrameDraw<'a> {
     prepared: Option<(FrameBody<'a>, FrameModelPose)>,
+    pre_vertices_start: Option<u32>,
     /// Whether the post hooks or mod layers need the final model.
     pub capture_model: bool,
     model: Option<FrameModelPose>,
@@ -1641,6 +1642,11 @@ impl<'a> FrameDraw<'a> {
             },
         ));
         Some(model)
+    }
+
+    /// Keep this draw's Pre geometry ahead of its posed body and layers.
+    pub fn mark_pre_vertices(&mut self, start: usize) {
+        self.pre_vertices_start = Some(start as u32);
     }
 
     /// Borrow the captured body model for layer and Post callbacks.
@@ -2171,6 +2177,7 @@ fn render_visible(
         }
     };
     let texture = body.texture(atlas);
+    let pre_vertices_start = frame.pre_vertices_start.take();
     for (i, base) in bases.into_iter().enumerate() {
         if i != 0 {
             // Each illusioner mirror runs vanilla setup and CEM from bind pose, with the same
@@ -2190,6 +2197,7 @@ fn render_visible(
             &body,
             texture,
             &mut poses,
+            pre_vertices_start.unwrap_or(out.len() as u32),
             out,
             skin.as_deref_mut(),
         );
@@ -2220,6 +2228,7 @@ fn render_selected(
     body: &FrameBody<'_>,
     texture: &str,
     poses: &mut Poses,
+    mut cpu_cut: u32,
     out: &mut Vec<Vertex>,
     mut skin: Option<&mut super::skin::Skin>,
 ) {
@@ -2319,7 +2328,6 @@ fn render_selected(
     }) {
         skin = None;
     }
-    let mut cpu_cut = out.len() as u32;
     let draw_body = |poses: &mut Poses, out: &mut Vec<Vertex>, skin: &mut Option<_>| {
         poses.apply_frame_visibility(true);
         // A player or mannequin whose skin has no atlas sprite (an evicted or
@@ -2369,7 +2377,20 @@ fn render_selected(
     // The translucent shell writes depth: draw the opaque core before it.
     let shell_last = m.species() == Species::SulfurCube;
     if !shell_last {
+        let start = out.len() as u32;
+        let first_job = skin
+            .as_deref()
+            .filter(|_| cpu_cut < start)
+            .map(|skin| skin.frame.jobs.len());
         draw_body(poses, out, &mut skin);
+        // NeoForge's RenderLivingEvent.Pre submits before the body. If the body
+        // stays on the CPU, that prefix travels with it before the next GPU layer.
+        if let (Some(skin), Some(first)) = (skin.as_deref_mut(), first_job)
+            && let Some(job) = skin.frame.jobs.get(first)
+        {
+            skin.frame.insert_cpu_before(job.dst, cpu_cut..start);
+            cpu_cut = start;
+        }
     }
     // The worn armour's layers (and their emissive overlays, full bright).
     if !extra.is_empty() {
@@ -5059,7 +5080,7 @@ mod compile_part_tests {
         assert_eq!(skin.route(&std::sync::Arc::new(zombie)), Route::Gpu);
     }
 
-    /// The ordinary pass submits body before layer even when either draw is taken.
+    /// The ordinary pass submits Pre, body and layer in order even when a draw is taken.
     /// Placement is decided once per model and kept across frames.
     #[test]
     fn a_taken_model_leaves_the_gpu_and_the_mobs_other_models_keep_their_order() {
@@ -5106,9 +5127,9 @@ mod compile_part_tests {
         // The outer layer's sprite apart from the body's, so the two draws differ.
         let atlas = |texture: &str| {
             Some(if texture.contains("outer") {
-                [0.5, 0.0, 1.0, 0.5]
+                [0.5, 0.0, 0.75, 0.5]
             } else {
-                [0.0, 0.0, 0.5, 0.5]
+                [0.0, 0.0, 0.25, 0.5]
             })
         };
         // The whole mob on the CPU: the body's 20 vertices, then the outer layer's 20.
@@ -5127,8 +5148,21 @@ mod compile_part_tests {
         assert_eq!(cpu.len(), 40);
         let (body, layer) = cpu.split_at(20);
         assert_ne!(bytes(body), bytes(layer), "two draws apart");
-        // Which draw a vertex belongs to, by its sprite: the body's or the layer's.
-        let drawn_by = |u: f32| if u < 0.5 { "body" } else { "layer" };
+        // Simulate a Pre listener submitting an ordinary quad before either model, as the
+        // game marks the callback's output on the prepared frame draw.
+        let pre = body.first_chunk::<4>().unwrap().map(|v| Vertex {
+            uv: [v.uv[0] * 0.5 + 0.875, v.uv[1]],
+            ..v
+        });
+        let drawn_by = |u: f32| {
+            if u >= 0.875 {
+                "pre"
+            } else if u < 0.5 {
+                "body"
+            } else {
+                "layer"
+            }
+        };
         for (takes, cpu, lanes, asked) in [
             (none as fn(&str, &str) -> bool, &[][..], ["GPU", "GPU"], 12),
             (body_arm, body, ["CPU", "GPU"], 11),
@@ -5138,9 +5172,15 @@ mod compile_part_tests {
             let mut models = super::super::skin::SkinModels::default();
             models.takes = Some(takes);
             let mut frame = crate::gfx::entity_skin::SkinFrame::default();
-            for _ in 0..2 {
+            for prefix in [&[][..], &pre[..]] {
                 frame.clear_draws();
+                let mut frame_draw = FrameDraw::new(false);
                 let mut out = Vec::new();
+                if !prefix.is_empty() {
+                    assert!(frame_draw.prepare(&m, &data).is_some());
+                    out.extend_from_slice(prefix);
+                    frame_draw.mark_pre_vertices(0);
+                }
                 let mut skin = super::super::skin::Skin::new(&mut models, &mut frame);
                 render_skinned(
                     &m,
@@ -5149,17 +5189,18 @@ mod compile_part_tests {
                     &atlas,
                     0xf0f0,
                     &data,
-                    &mut FrameDraw::new(false),
+                    &mut frame_draw,
                     &mut out,
                     &mut skin,
                 );
-                assert_eq!(bytes(&out), bytes(cpu));
+                assert_eq!(bytes(&out[..prefix.len()]), bytes(prefix));
+                assert_eq!(bytes(&out[prefix.len()..]), bytes(cpu));
                 // Both models use ordinary quads; the entity batch leaves this CPU stream as-is.
                 // Use the production upload and skin job destinations. The ordinary pass's
                 // indices visit these buffer positions in order.
                 let mut order = crate::gfx::entity_skin::OrdinaryOrder::default();
                 order.prepare(&out, Some(&frame), false);
-                let mut submitted = [("", ""); 40];
+                let mut submitted = vec![("", ""); prefix.len() + 40];
                 for (dst, range) in order.cpu_uploads(out.len() as u32) {
                     let src = &out[range.start as usize..range.end as usize];
                     for (slot, vertex) in submitted[dst as usize..].iter_mut().zip(src) {
@@ -5170,8 +5211,10 @@ mod compile_part_tests {
                     submitted[job.dst as usize..(job.dst + job.count) as usize]
                         .fill(("GPU", drawn_by(job.rect[0])));
                 }
-                assert_eq!(submitted[..20], [(lanes[0], "body"); 20]);
-                assert_eq!(submitted[20..], [(lanes[1], "layer"); 20]);
+                let (pre, models) = submitted.split_at(prefix.len());
+                assert!(pre.iter().all(|draw| *draw == ("CPU", "pre")));
+                assert_eq!(models[..20], [(lanes[0], "body"); 20]);
+                assert_eq!(models[20..], [(lanes[1], "layer"); 20]);
             }
             // Each model's parts asked once, on its first frame (a taken part ends its walk).
             assert_eq!(ASKED.with(std::cell::Cell::get), asked);
