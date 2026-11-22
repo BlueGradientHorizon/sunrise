@@ -427,9 +427,6 @@ impl Game<'_> {
     /// `ExperienceOrb.awardWithDirection`: `award` whose fresh orbs start
     /// `roughly` that way (`new ExperienceOrb(level, pos, roughly, value)`).
     pub(super) fn spawn_orbs_toward(&mut self, at: [f64; 3], roughly: [f64; 3], mut value: u32) {
-        if value > 0 {
-            self.journal_level_random();
-        }
         while value > 0 {
             let v = ExperienceOrb::split(value);
             value -= v;
@@ -850,18 +847,13 @@ impl Game<'_> {
 
     /// Block.popResource
     pub(super) fn pop_resource(&mut self, pos: [i32; 3], stack: ItemStack) {
-        // Block.popResource: Mth.nextDouble offsets from the level random; the
-        // motion is `new ItemEntity(..)`'s own, from the item's random.
-        let p = spill::pop_position(&mut self.world.random, pos);
-        // Block.popResource draws its offsets before the private overload checks the gamerule.
-        if !self
+        let block_drops = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::BLOCK_DROPS)
-        {
-            return;
+            .bool_at(sunrise_client::gamerules::vanilla::BLOCK_DROPS);
+        if let Some(at) = spill::admitted_pop_position(&mut self.world.random, pos, block_drops) {
+            self.spawn_item_own(stack, at, 10);
         }
-        self.spawn_item_own(stack, p, 10);
     }
 
     /// `Containers.dropItemStack`: a crafting remainder leaves from inside the
@@ -950,23 +942,7 @@ impl Game<'_> {
         randomly: bool,
         thrown_from_hand: bool,
     ) -> Option<u32> {
-        // `Player.drop` draws the spread from the player's own random. A throw with no player
-        // in place (a `/give` remainder whose target this game doesn't hold) keeps a fresh one
-        // rather than losing the item.
-        let v = match self.player.as_mut() {
-            Some(player) => sunrise_client::entities::drop_motion(
-                &mut player.random,
-                self.yaw,
-                self.pitch,
-                randomly,
-            ),
-            None => sunrise_client::entities::drop_motion(
-                &mut random_source::entity(),
-                self.yaw,
-                self.pitch,
-                randomly,
-            ),
-        };
+        let v = self.player_drop_motion(randomly);
         let at = [eye[0], eye[1] - f64::from(0.3f32), eye[2]];
         let uuid = thrown_from_hand.then(|| self.acting_player_uuid());
         // Only `drop(.., false)` tosses ask `item_toss`: a death's scatter (`randomly`) does not.
@@ -979,6 +955,24 @@ impl Game<'_> {
         let item = self.dropped.iter_mut().rev().find(|d| d.id == id)?;
         item.thrower = uuid;
         Some(item.id)
+    }
+
+    /// `LivingEntity.createItemStackToDrop` draws the spread from the player's own random.
+    pub(super) fn player_drop_motion(&mut self, randomly: bool) -> [f64; 3] {
+        match self.player.as_mut() {
+            Some(player) => sunrise_client::entities::drop_motion(
+                &mut player.random,
+                self.yaw,
+                self.pitch,
+                randomly,
+            ),
+            None => sunrise_client::entities::drop_motion(
+                &mut random_source::entity(),
+                self.yaw,
+                self.pitch,
+                randomly,
+            ),
+        }
     }
 
     /// `FurnaceResultSlot.checkTakeAchievements`: the player took from the output of the

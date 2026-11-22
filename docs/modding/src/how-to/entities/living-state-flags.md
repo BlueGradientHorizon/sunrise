@@ -58,6 +58,15 @@ the previous eye-in-water sample AND current water contact. The local client pla
 contact is false. It is deliberately not equivalent to checking `eye_fluid` now. Both reads return
 `None` for unsupported kinds or stale handles.
 
+On the server, `LivingRef::can_breathe_underwater(host)` reads whether the mob's type is currently in
+`minecraft:can_breathe_under_water`. It does not predict drowning: it ignores effects, species-specific
+breathing overrides and invulnerability.
+
+`EntityRef::is_swimming` reads the swimming flag, not the player's current pose.
+[Swimming eligibility](entity-hooks.md#swimming-eligibility) can change entry on
+both sides without changing either of the fluid reads above or the conditions
+for continuing a swim.
+
 `PlayerRef::trigger_consume_item(host, &stack)` is server-only and fires just
 `CriteriaTriggers.CONSUME_ITEM.trigger(serverPlayer, stack)`, the vanilla public call that NeoForge
 mods can also use. It uses the same advancement path as food and potions, with the supplied stack,
@@ -208,3 +217,20 @@ riding relationships are unlinked even when a listener cancels. Each mob keeps i
 resident or off-level classification, and descendant state remains frozen.
 Cancellation can prevent ejection while the vehicle remains live, including
 underwater or activator ejection.
+
+## A type's default attributes
+
+`host.entity_type_default_attribute(entity_type, attribute)` reads what a new entity of a type has, with no entity
+spawned and before any modifier: `DefaultAttributes.getSupplier(type).getValue(attribute)`, the supplier's base inside
+the attribute's range. It works for vanilla's types and mods' registered ones (a mod type's declared row, with the
+attributes other mods added to it), on both sides. The Host and typed reload and client setup contexts read the same
+published catalog without unwinding. Registration and config contexts do not expose the read.
+
+```rust,ignore
+// The Zombie's 20 health and 2 armor, for a screen that lists a mob's stats.
+let health = host.entity_type_default_attribute("minecraft:zombie", "minecraft:max_health");
+let armor = host.entity_type_default_attribute("minecraft:zombie", "minecraft:armor");
+```
+
+`None` means the catalog has not been published yet, the type is not registered or has no attribute supplier
+(such as `minecraft:item`), or the supplier has no entry for that attribute. Names are read as `Identifier.parse` reads them: `zombie` and `:zombie` are `minecraft:zombie`.

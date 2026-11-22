@@ -15,6 +15,7 @@ use super::{
 };
 use crate::health::DamageLevel;
 use std::f32::consts::PI;
+use std::ops::ControlFlow;
 use sunrise_core::geometry::trig::Mth;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 
@@ -214,7 +215,7 @@ pub(super) fn travel(
     input: Vec3,
     events: &mut Vec<MobEvent>,
     pause: bool,
-) -> Result<(), super::living::TravelPause> {
+) -> ControlFlow<super::living::TravelPause> {
     m.move_relative(0.1, input);
     m.travel_move(w, level, events, pause, |m, _, _, _| {
         m.velocity = m.velocity.scale(0.9);
@@ -262,14 +263,14 @@ pub fn ai_step(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
     client_tick(m);
     if in_water {
         m.air = 300;
-    } else if m.on_ground {
+    } else if m.ground.on_ground {
         let r = &mut m.random;
         let (x, z) = (r.next_float() * 2.0 - 1.0, r.next_float() * 2.0 - 1.0);
         m.velocity = m
             .velocity
             .add_vector(Vec3::new(f64::from(x) * 0.4, 0.5, f64::from(z) * 0.4));
         m.yaw = m.random.next_float() * 360.0;
-        m.on_ground = false;
+        m.ground.on_ground = false;
         if !m.silent {
             let flop = if is_elder(m) {
                 "entity.elder_guardian.flop"
@@ -617,7 +618,7 @@ mod tests {
                 0.0,
             );
             register(&mut mob);
-            mob.on_ground = true;
+            mob.ground.on_ground = true;
             mob.fluids.in_water = false;
             mob.silent = silent;
             let mut events = Vec::new();
@@ -643,7 +644,10 @@ mod tests {
                 let Some((mob, events)) = flop(kind, silent) else {
                     return;
                 };
-                assert!(!mob.on_ground && mob.velocity.y > 0.0, "{kind} flops");
+                assert!(
+                    !mob.ground.on_ground && mob.velocity.y > 0.0,
+                    "{kind} flops"
+                );
                 let sounds: Vec<_> = events
                     .iter()
                     .filter_map(|e| match e {

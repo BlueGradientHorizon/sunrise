@@ -173,7 +173,8 @@ impl Game<'_> {
             && let Some(after) = snapshot(&catalog, m)
             && let Some(changes) = before.diff(&after)
         {
-            self.transactions.journal_modifier_changes(id, changes);
+            let dim = self.dim;
+            self.transactions.journal_modifier_changes(dim, id, changes);
         }
     }
 }
@@ -400,14 +401,16 @@ impl Game<'_> {
             if let (Some(before), Some(after)) = (before.as_ref(), after_write.as_ref())
                 && let Some(changes) = before.diff(after)
             {
-                self.transactions.journal_modifier_changes(id, changes);
+                let dim = self.dim;
+                self.transactions.journal_modifier_changes(dim, id, changes);
             }
             if done && let Some(modifier) = explicit {
                 // The explicit write persists through abort. Earlier entries
                 // for that row must not undo it; the subsequent refresh,
                 // however, is journaled against the newly written value.
+                let dim = self.dim;
                 self.transactions
-                    .keep_explicit_modifier_write(id, name, &modifier);
+                    .keep_explicit_modifier_write(dim, id, name, &modifier);
             }
             self.collect_mob_equipment_attributes(id, after_write);
         }

@@ -16,7 +16,12 @@ pub trait LevelEffectsBackendMut {
     /// nothing. A `minecraft:` event must be registered; a mod's goes by name
     /// and is heard where its resources define it. True means queued, not
     /// heard.
-    #[access(WorldOnly)]
+    /// The request joins the innermost open transaction in the level active at the call. The
+    /// `play_level_sound_at_position` hook runs synchronously; only the resolved sound waits for
+    /// the owning level's outermost commit, in journal order, and is discarded on abort. Delivery
+    /// uses the level named by the request, even if parked. Outside a transaction, a queued sound
+    /// draws its seed at the call even if a later hook cancels it. Inside one, it draws a seed only
+    /// when the resolved sound is published.
     fn level_play_sound(
         &mut self,
         level: LevelRef,
@@ -34,8 +39,12 @@ pub trait LevelEffectsBackendMut {
     /// count sends one particle moving along `spread`). Block particle types
     /// need `state`; item particles need `options.item_stack` (validated against
     /// the item registry and stack limits). Trail and vibration remain unsupported.
+    /// A custom particle uses its registered stream codec and is sent only to Sunrise
+    /// clients. The receiving factory reads the same decoded value for every spawn.
     /// True means queued, not drawn.
-    #[access(WorldOnly)]
+    /// The request joins the innermost open transaction in the level active at the call, and waits
+    /// for that level's outermost commit in journal order. An abort discards it. Delivery uses the
+    /// level named by the request, even if parked.
     fn level_send_particles(
         &mut self,
         level: LevelRef,
@@ -53,14 +62,16 @@ pub trait LevelEffectsBackendMut {
     /// block with state id `data`). No player is left out, the acting one
     /// included. False for an event that carries a block state (2001, 2014,
     /// 3008) when `data` isn't one.
-    #[access(WorldOnly)]
+    /// Inside an open transaction, delivery waits for the outermost commit for the owning level
+    /// (the level active at the call), in journal order, and is discarded on abort.
     fn level_level_event(&mut self, level: LevelRef, id: i32, pos: [i32; 3], data: i32) -> bool;
     /// Side: server.
     /// Plays the break effect of `state` at `pos`: the particles and the sound of a block of
     /// that state breaking, for the players near it (`Level.levelEvent(2001, pos,
     /// Block.getId(state))`). Nothing is written: the block at `pos` stays. False off the level
     /// in place, for a stale handle and on a client.
-    #[access(WorldOnly)]
+    /// Inside an open transaction, follows the same commit/rollback deferral as
+    /// [`level_level_event`](Self::level_level_event).
     fn level_block_break_effect(
         &mut self,
         level: LevelRef,
@@ -82,7 +93,9 @@ pub trait LevelEffectsBackendMut {
     /// the players of this level near `pos` get it. False for the same events
     /// and data `level_event` refuses, a parked level, a stale handle or a
     /// client.
-    #[access(WorldOnly)]
+    /// Inside an open transaction, delivery waits for the outermost commit for the owning level
+    /// (the level active at the call). It checks `global_sound_events` at commit, publishes in
+    /// journal order and is discarded on abort.
     fn level_global_level_event(
         &mut self,
         level: LevelRef,
@@ -93,10 +106,10 @@ pub trait LevelEffectsBackendMut {
     /// Side: server.
     /// Sends game event `event` (`minecraft:block_change`...) from `at`, as
     /// `Level.gameEvent(event, at, context)` does: sculk sensors, shriekers,
-    /// wardens and allays receive the optional source and affected state.
+    /// wardens and allays receive the optional source and affected state. An accepted game event
+    /// is posted at the call, even in a transaction; it is not a deferred presentation effect.
     /// Returns false without emitting for an unknown event, invalid position,
     /// stale or foreign source, unregistered state, client or inactive level.
-    #[access(WorldOnly)]
     fn level_game_event(
         &mut self,
         level: LevelRef,
@@ -122,7 +135,6 @@ pub trait LevelEffectsBackendMut {
     /// vanilla: a big blast costs the blocks its rays find, and one of 0 or
     /// below finds none. Refused, with nothing exploded and no hook told, as
     /// [`ExplodeError`] says.
-    #[access(WorldOnly)]
     fn level_explode(
         &mut self,
         level: LevelRef,
@@ -149,7 +161,6 @@ pub trait LevelEffectsBackendMut {
     /// asked with that `ExplosionStart`. `Unavailable` for a stale level or `source`, a chunk
     /// that isn't loaded (it is never loaded) or a state the game doesn't know; None only from a
     /// host without a game. The level does not change.
-    #[access(WorldOnly)]
     fn level_explosion_resistance(
         &mut self,
         level: LevelRef,
@@ -168,7 +179,6 @@ pub trait LevelEffectsBackendMut {
     /// Refused, with nothing read, for an inverted area or more than
     /// `ResistanceCells::MAX` (262,144) cells: it runs on the server tick, so read big areas in
     /// pieces.
-    #[access(WorldOnly)]
     fn level_explosion_resistances(
         &mut self,
         level: LevelRef,
@@ -200,7 +210,6 @@ pub trait LevelEffectsBackendMut {
     /// when their turn came. `Err`, with nothing changed, for more than 65,536 positions
     /// (`ExplosionDestroyError::MAX_POSITIONS`), a stale level or `source`, or a centre or
     /// radius that isn't finite or a negative radius.
-    #[access(WorldOnly)]
     fn level_explosion_destroy_blocks(
         &mut self,
         level: LevelRef,
@@ -211,4 +220,37 @@ pub trait LevelEffectsBackendMut {
         fire: bool,
         interaction: ExplosionInteraction,
     ) -> Result<u32, ExplosionDestroyError>;
+}
+/// The handles' client writes of the `level_effects` area, reached through [`ClientBackendMut`].
+// hidden: mods call the handle, not the game-side implementation.
+#[doc(hidden)]
+#[sunrise_mod_api_macros::host_area]
+pub trait LevelEffectsClientBackendMut {
+    /// Side: client.
+    /// Queues the ordinary hit crumb on `face` for the supplied state at `pos`
+    /// (`ClientLevel.addBreakingParticles`). Uses the level random and the state's outline.
+    /// Does not play a sound or redispatch the hit Part. Tint sources can still be asked.
+    /// `Ok(false)` means no sprite or outline. Returns an error for an unavailable level or
+    /// an unknown state. The engine still controls group admission.
+    fn level_add_breaking_particles(
+        &mut self,
+        level: LevelRef,
+        pos: [i32; 3],
+        state: BlockState,
+        face: Direction,
+    ) -> Result<bool, LevelWriteError>;
+    /// Side: client.
+    /// Queues one `TerrainParticle` with the given world position and velocity. The sprite
+    /// comes from the supplied state; `source_pos` is where its tint is sampled.
+    /// Does not play a sound or redispatch the destroy Part. Tint sources can still be asked.
+    /// `Ok(false)` means non-finite input or no sprite. Returns an error for an unavailable
+    /// level or an unknown state. The engine still controls group admission.
+    fn level_add_terrain_particle(
+        &mut self,
+        level: LevelRef,
+        state: BlockState,
+        source_pos: [i32; 3],
+        at: [f64; 3],
+        velocity: [f64; 3],
+    ) -> Result<bool, LevelWriteError>;
 }

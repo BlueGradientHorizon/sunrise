@@ -560,7 +560,7 @@ impl Game<'_> {
                 "on_ground": p.ground.on_ground,
                 "flying": p.flying,
                 "fall_flying": p.fall_flying,
-                "sneaking": self.keys.held(Action::Sneak),
+                "sneaking": self.held_mapping(Action::Sneak),
                 "sprinting": p.sprinting,
                 "fov_modifier": self.view.fov_modifier,
                 "health": p.health.health(),
@@ -685,8 +685,8 @@ impl Game<'_> {
                 "biome": buffet.biome(),
                 "query": buffet.query(),
             }),
-            Mode::CreatePreset { editor, .. } => json!({
-                "mode": "world-preset-editor", "preset": editor.preset, "editor": editor.screen,
+            Mode::CreatePreset { session, .. } => json!({
+                "mode": "world-preset-editor", "preset": session.preset,
             }),
             Mode::Edit {
                 world,
@@ -1011,7 +1011,7 @@ impl Game<'_> {
         if !a.has("sneak") {
             return None;
         }
-        self.keys.press(KeyCode::ShiftLeft, Source::Agent);
+        self.press_device_key(KeyCode::ShiftLeft, Source::Agent);
         Some(SneakClick {
             click_tick: Some(self.ticks + 2),
             aim,
@@ -1038,12 +1038,12 @@ impl Game<'_> {
     }
     fn release_agent_keys(&mut self) {
         for k in MOVE_KEYS {
-            self.keys.release(&k, Source::Agent);
+            self.release_device_key(&k, Source::Agent);
         }
-        if self.left {
+        if self.mapped_key_down("key.attack") {
             let _ = self.agent_mouse(MouseButton::Left, false);
         }
-        if self.right {
+        if self.mapped_key_down("key.use") {
             let _ = self.agent_mouse(MouseButton::Right, false);
         }
     }
@@ -1276,7 +1276,7 @@ impl Game<'_> {
                     keys.push(KeyCode::Space);
                 }
                 for &k in &keys {
-                    self.keys.press(k, Source::Agent);
+                    self.press_device_key(k, Source::Agent);
                 }
                 let from = self.player.as_ref().map_or(Vec3::ZERO, |p| p.position);
                 let until = Instant::now() + Duration::from_secs_f64(seconds);
@@ -1289,7 +1289,7 @@ impl Game<'_> {
             }
             "jump" => {
                 self.require_playing_screen()?;
-                self.keys.press(KeyCode::Space, Source::Agent);
+                self.press_device_key(KeyCode::Space, Source::Agent);
                 let from_y = self.player.as_ref().map_or(0.0, |p| p.position.y);
                 let release_tick = self.ticks + 3;
                 self.start_task(
@@ -1625,7 +1625,7 @@ impl Game<'_> {
             }
             "open-inventory" => {
                 self.require_playing_screen()?;
-                self.key_pressed(KeyCode::KeyE, KeyCode::KeyE)?;
+                self.open_inventory();
                 ok(json!({ "ok": true, "screen": self.screen_label() }))
             }
             "click-button" => {
@@ -1736,6 +1736,7 @@ impl Game<'_> {
                         break;
                     }
                 }
+                let editing_preset = self.preset_editor_title().is_some();
                 let title = self.title.as_mut().ok_or("no title screen")?;
                 if let Some(field) = &field {
                     match &mut title.mode {
@@ -1767,6 +1768,12 @@ impl Game<'_> {
                             );
                         }
                     }
+                }
+                if editing_preset {
+                    if text != "\\b" {
+                        self.screen_chars_typed(Some(text));
+                    }
+                    return ok(json!({ "ok": true, "menu": self.title_value() }));
                 }
                 if replace {
                     for _ in 0..64 {
@@ -2083,7 +2090,7 @@ impl Game<'_> {
                     return Some(json!({ "error": why, "position": self.position() }));
                 }
                 for &k in keys.iter() {
-                    self.keys.press(k, Source::Agent);
+                    self.press_device_key(k, Source::Agent);
                 }
                 if Instant::now() < *until && !timed_out {
                     return None;
@@ -2110,7 +2117,7 @@ impl Game<'_> {
                 from_y,
             } => {
                 if self.ticks >= *release_tick || timed_out {
-                    self.keys.release(&KeyCode::Space, Source::Agent);
+                    self.release_device_key(&KeyCode::Space, Source::Agent);
                     let on_ground = self.player.as_ref().is_some_and(|p| p.ground.on_ground);
                     if on_ground || timed_out {
                         return Some(
@@ -2202,7 +2209,7 @@ impl Game<'_> {
                     return None;
                 }
                 if sneak.is_some() {
-                    self.keys.release(&KeyCode::ShiftLeft, Source::Agent);
+                    self.release_device_key(&KeyCode::ShiftLeft, Source::Agent);
                 }
                 let after = pos.map(|p| self.block_json(p));
                 let used = delta(inventory, &self.inventory_counts());
@@ -2378,9 +2385,9 @@ impl Game<'_> {
         if d[0].abs() + d[1].abs() > 1e-3 {
             self.yaw = (-d[0]).atan2(d[1]).to_degrees() as f32;
         }
-        self.keys.press(KeyCode::KeyW, Source::Agent);
+        self.press_device_key(KeyCode::KeyW, Source::Agent);
         if g.sprint {
-            self.keys.press(KeyCode::ControlLeft, Source::Agent);
+            self.press_device_key(KeyCode::ControlLeft, Source::Agent);
         }
         // Step up onto the next block, or out of water.
         let in_water = {
@@ -2395,9 +2402,9 @@ impl Game<'_> {
             g.jump_until = self.ticks + 4;
         }
         if self.ticks < g.jump_until || in_water {
-            self.keys.press(KeyCode::Space, Source::Agent);
+            self.press_device_key(KeyCode::Space, Source::Agent);
         } else {
-            self.keys.release(&KeyCode::Space, Source::Agent);
+            self.release_device_key(&KeyCode::Space, Source::Agent);
         }
         None
     }
@@ -2452,7 +2459,7 @@ impl Game<'_> {
                     let _ = self.agent_mouse(MouseButton::Left, false);
                     return Some(json!({ "error": e.to_string(), "pos": b.pos }));
                 }
-                if !self.left {
+                if !self.mapped_key_down("key.attack") {
                     let _ = self.agent_mouse(MouseButton::Left, true);
                 }
                 return None;

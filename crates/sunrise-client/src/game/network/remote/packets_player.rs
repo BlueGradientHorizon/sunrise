@@ -11,13 +11,15 @@ impl Game<'_> {
         self.install_remote_tags();
         self.refresh_render_visibility();
         self.test_highlights.clear();
+        // handleLogin: `debugSubscriber.clear()`.
+        self.debug_charts.clear_subscriptions();
         self.forget_synced_recipes();
         self.level.hardcore = p.hardcore;
         // handleLogin: startWaitingForNewLevel with Reason.OTHER, which
         // replaces ServerReconfigScreen.
         if let Some(r) = self.remote.as_mut() {
             r.reconfiguring = None;
-            r.attachments.clear();
+            r.clear_attachments();
             r.viewed.clear();
             // A new ClientPacketListener owns a fresh clock manager.
             r.clocks.clear();
@@ -33,8 +35,13 @@ impl Game<'_> {
         if let Some(player) = self.player.as_mut() {
             player.entity_id = p.player_id;
         }
+        self.native_net
+            .holds
+            .borrow_mut()
+            .clear_cauldron_continuations();
         if let Some(r) = self.remote.as_mut() {
             r.carried.set(Some(0));
+            r.pending_cauldrons.get_mut().clear();
             // handleLogin makes a new ClientLevel: its predictions count from 0.
             r.sequence = 0;
             r.own_invisible = false;
@@ -66,7 +73,7 @@ impl Game<'_> {
         // handleLogin: startWaitingForNewLevel(.., Reason.OTHER).
         self.enter_remote_dimension(
             &p.spawn,
-            false,
+            RemoteDimensionEntry::Login,
             sunrise_client::level_loading::Reason::Other,
         );
         // No ClientInformation here: the configuration phase sent it,
@@ -80,6 +87,7 @@ impl Game<'_> {
 
     /// `C::Respawn`: its arms of `apply_packet`, guard and order kept.
     pub(super) fn apply_respawn_packet(&mut self, p: play::Respawn) {
+        self.reset_client_item_use();
         // The new LocalPlayer copies reduced debug info through its setter.
         self.debug_entries.invalidate();
         let old_player = self.remote.as_ref().map(|r| (r.entity_id, r.profile));
@@ -99,7 +107,6 @@ impl Game<'_> {
                 .retain(|holder, _| matches!(holder, Holder::Player(_)));
         }
         self.using = None;
-        self.end_mod_use();
         // After a death (no KEEP_ENTITY_DATA) the new LocalPlayer
         // rides nothing: the server pairs a vehicle again with its
         // passengers. A dimension change keeps the vehicle it travels in.
@@ -145,13 +152,23 @@ impl Game<'_> {
         }
         // handleRespawn makes a new ClientLevel for another dimension
         // key (a proxy's server switch too): its predictions count from 0.
-        if let Some(r) = self.remote.as_mut()
-            && r.level != p.spawn.dimension
-        {
-            r.sequence = 0;
+        self.native_net
+            .holds
+            .borrow_mut()
+            .clear_cauldron_continuations();
+        if let Some(r) = self.remote.as_mut() {
+            r.pending_cauldrons.get_mut().clear();
+            if r.level != p.spawn.dimension {
+                r.sequence = 0;
+            }
         }
         self.portals.respawn_attributes.respawn(p.keep & 1 != 0);
-        self.enter_respawn_level(&p, reason);
+        let entry = if died {
+            RemoteDimensionEntry::DeathRespawn
+        } else {
+            RemoteDimensionEntry::Respawn
+        };
+        self.enter_respawn_level(&p, entry, reason);
         // handleRespawn adds the new LocalPlayer after what the kept
         // level holds; a new level holds nothing yet.
         let before: std::collections::HashSet<u32> = self
@@ -199,6 +216,9 @@ impl Game<'_> {
             pl.health.flash_health_change(p.health);
         }
         self.apply_remote_health();
+        if p.health <= 0.0 {
+            self.reset_client_item_use();
+        }
         // The death screen opens (or the respawn is asked for) with the
         // death packet when the rule hides it.
         let shown = self.remote.as_ref().is_none_or(|r| r.show_death_screen);
@@ -519,6 +539,9 @@ impl Game<'_> {
         if let Some(r) = self.remote.as_mut() {
             r.death_message = Some(message);
         }
+        if me {
+            self.reset_client_item_use();
+        }
         // ClientPacketListener.handlePlayerCombatKill: the death
         // screen, whatever health was last sent, or `respawn()` at
         // once when it is hidden.
@@ -713,7 +736,9 @@ impl Game<'_> {
             self.remote_station_data(usize::try_from(p.id).unwrap_or(usize::MAX), p.value);
             return Ok(());
         }
-        if self.native_screen_data(p.container, usize::from(p.id as u16), i32::from(p.value)) {
+        if usize::try_from(p.id)
+            .is_ok_and(|index| self.native_screen_data(p.container, index, i32::from(p.value)))
+        {
             return Ok(());
         }
         let v = i32::from(p.value);

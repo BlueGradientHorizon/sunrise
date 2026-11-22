@@ -3290,6 +3290,7 @@ mod tests {
 
     /// Detail times both phases and the uploads and leaves counts and draws as an untimed frame's.
     #[test]
+    #[ignore = "daily"]
     fn detail_times_both_phases_and_leaves_the_draws_alone() {
         let _gpu = crate::gfx::test_gpu::lock();
         on_each_device(|device, queue| {
@@ -3400,6 +3401,7 @@ mod tests {
     /// buffer the device lost after its mapping goes `FAILED`, never copied into
     /// or unmapped again (as `timing::GpuTimer`'s), so the statistics stop.
     #[test]
+    #[ignore = "daily"]
     fn the_statistics_come_back_with_their_frame() {
         let _gpu = crate::gfx::test_gpu::lock();
         use super::super::submit::{AfterSubmit, Job};
@@ -3473,6 +3475,7 @@ mod tests {
     /// its origin's bits to a pixel of its own; a quad turned away leaves its
     /// pixel clear.
     #[test]
+    #[ignore = "daily"]
     fn the_count_draws_draw_each_kept_section_with_its_origin() {
         let _gpu = crate::gfx::test_gpu::lock();
         on_each_device(draws_land);

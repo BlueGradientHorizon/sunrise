@@ -13,8 +13,7 @@ use wgpu::util::DeviceExt;
 #[ignore = "daily"]
 fn ftransform_applies_the_model_view_matrix_before_the_projection() {
     let _gpu = crate::test_gpu::lock();
-    let instance = crate::test_gpu::instance();
-    let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
+    let Some(adapter) = crate::test_gpu::adapter() else {
         return;
     };
     let (device, queue) = pollster::block_on(adapter.request_device(&Default::default())).unwrap();

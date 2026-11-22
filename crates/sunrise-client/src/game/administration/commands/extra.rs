@@ -284,7 +284,7 @@ impl Game<'_> {
             self.set_camera(None);
             return;
         }
-        let sneaking = self.keys.held(Action::Sneak) && self.screen == super::Screen::Playing;
+        let sneaking = self.held_mapping(Action::Sneak) && self.screen == super::Screen::Playing;
         match self.target_position(t) {
             Some(p) if !sneaking => {
                 let rot = self.target_rotation(t);

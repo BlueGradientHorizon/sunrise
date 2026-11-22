@@ -831,3 +831,122 @@ fn an_entity_moved_into_another_level_is_told_once_at_its_next_crossing() {
         })
     });
 }
+
+/// #3944: the entity-type default read is metadata every host answers from the published
+/// suppliers. The section host, which has no game behind it, answers (None for an unknown type)
+/// and never unwinds, whether or not a catalog has been published.
+#[test]
+fn section_host_reads_entity_type_defaults_without_unwinding() {
+    let host = LiveSectionHost(None);
+    let read = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        (
+            mod_api::prelude::ItemsHost::entity_type_default_attribute(
+                &host,
+                "minecraft:zombie",
+                "minecraft:max_health",
+            ),
+            mod_api::prelude::ItemsHost::entity_type_default_attribute(
+                &host,
+                "ruby:no_such_type",
+                "minecraft:max_health",
+            ),
+        )
+    }));
+    assert!(
+        matches!(read, Ok((None | Some(_), None))),
+        "the section host unwound: {read:?}"
+    );
+}
+
+/// #3944 on a running game: the section host, game host and reload context answer from the
+/// same published suppliers. Vanilla's Zombie has 20 health, 3 attack damage and 2 armor.
+/// A mod-owned type with a 5000 health base answers 1024, while its spawn base stays 5000.
+/// An attribute a mod adds to a type (a Skeleton's luck) answers too. No read answers for
+/// `minecraft:item` (no supplier) or a type no one registered.
+#[test]
+#[ignore = "daily"]
+fn section_host_and_game_read_the_same_entity_type_defaults() {
+    if crate::game::native_entity_refs::tests::run_fresh_cases(
+        "game::entity_sections::tests::section_host_and_game_read_the_same_entity_type_defaults",
+        "SUNRISE_ENTITY_TYPE_DEFAULTS_CHILD",
+        &["host"],
+    ) {
+        return;
+    }
+    with_game(|game| {
+        let host = LiveSectionHost(None);
+        let read = |game: &crate::game::Game<'_>, entity_type: &str, attribute: &str| {
+            let scoped = mod_api::prelude::ItemsHost::entity_type_default_attribute(
+                &host,
+                entity_type,
+                attribute,
+            );
+            let live = mod_api::prelude::ItemsHost::entity_type_default_attribute(
+                game,
+                entity_type,
+                attribute,
+            );
+            let reload =
+                mod_api::ReloadContext::entity_type_default_attribute(game, entity_type, attribute);
+            assert_eq!(live, scoped, "{entity_type} {attribute}");
+            assert_eq!(reload, scoped, "{entity_type} {attribute}");
+            scoped
+        };
+        for (entity_type, attribute, expected) in [
+            ("minecraft:zombie", "minecraft:max_health", Some(20.0)),
+            ("zombie", "attack_damage", Some(3.0)),
+            (":zombie", ":armor", Some(2.0)),
+            ("minecraft:item", "minecraft:max_health", None),
+            ("ruby:no_such_type", "minecraft:max_health", None),
+            ("minecraft:zombie", "minecraft:no_such", None),
+        ] {
+            assert_eq!(
+                read(&*game, entity_type, attribute),
+                expected,
+                "{entity_type} {attribute}"
+            );
+        }
+        // A new installation resolves its own keys and sees no old suppliers before publication.
+        crate::game::api_values::install_parts(&[]).unwrap();
+        mod_api::__private::resolve_entity_types(
+            [
+                "minecraft:zombie",
+                "minecraft:skeleton",
+                "minecraft:item",
+                "ruby:titan",
+            ],
+            |_| None,
+        )
+        .unwrap();
+        assert_eq!(read(&*game, "minecraft:zombie", "max_health"), None);
+        let modded = std::sync::Arc::new(
+            game.motion
+                .attributes
+                .with_entity_row(
+                    "ruby:titan",
+                    "minecraft:zombie",
+                    &[("minecraft:max_health".into(), 5000.0)],
+                )
+                .unwrap()
+                .with_entity_additions(
+                    "minecraft:skeleton",
+                    &[("minecraft:luck".into(), Some(1.5))],
+                )
+                .unwrap(),
+        );
+        crate::game::resource_load::publish_entity_type_defaults(&modded);
+        assert_eq!(read(&*game, "ruby:titan", "max_health"), Some(1024.0));
+        let health = modded.id("minecraft:max_health").unwrap();
+        assert_eq!(
+            modded
+                .create("ruby:titan")
+                .unwrap()
+                .base_value(health)
+                .unwrap(),
+            5000.0,
+            "the spawn base stays the declared one"
+        );
+        assert_eq!(read(&*game, "minecraft:skeleton", "luck"), Some(1.5));
+        assert_eq!(read(&*game, "minecraft:zombie", "max_health"), Some(20.0));
+    });
+}
