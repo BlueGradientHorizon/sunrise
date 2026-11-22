@@ -378,6 +378,24 @@ pub struct EntityLootParams {
     /// fishing hook's owner.
     pub attacker: Option<LootEntity>,
 }
+impl EntityLootParams {
+    /// The ENTITY parameters of `LivingEntity.dropFromLootTable`. The last damage player
+    /// supplies luck; the attacking and direct entities come from the damage source.
+    pub fn death(
+        this: LootEntity,
+        damage: Option<LootDamage>,
+        credit: Option<(LootEntity, f32)>,
+    ) -> Self {
+        let (player, luck) = credit.map_or((None, 0.0), |(player, luck)| (Some(player), luck));
+        Self {
+            this,
+            damage,
+            player,
+            luck,
+            attacker: None,
+        }
+    }
+}
 /// The most a table's read of an enchantment level counts as. A mod can answer
 /// any level, and what it answers drives loops: a stack of that size splits one
 /// stack at a time, and a binomial bonus draws once a level. `ItemEnchantments`
