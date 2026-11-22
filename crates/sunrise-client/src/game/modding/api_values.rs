@@ -2690,6 +2690,21 @@ pub(in crate::game) fn placement_source_into_engine(
     }
 }
 
+/// A directional placement question vanilla throws on, as `LevelRef::state_for_placement`
+/// refuses it.
+pub(in crate::game) fn placement_refusal_into_api(
+    refusal: sunrise_world::level::DirectionalRefusal,
+) -> mod_api::PlacementStateError {
+    match refusal {
+        sunrise_world::level::DirectionalRefusal::NoVerticalLook => {
+            mod_api::PlacementStateError::NoVerticalLook
+        }
+        sunrise_world::level::DirectionalRefusal::ReplacingClickedCycle => {
+            mod_api::PlacementStateError::ReplacingClickedCycle
+        }
+    }
+}
+
 impl TryIntoApi for sunrise_world::level::PlacementContext {
     type Api = mod_api::PlacementContext;
     type Error = StackReadError;

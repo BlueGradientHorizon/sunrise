@@ -634,6 +634,11 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
                             Some(error) if outer_type(error, "LevelReadError") => format!(
                                 "{call}.try_into_api().unwrap_or(Err(mod_api::LevelReadError::Unavailable))"
                             ),
+                            // The placement-state read refuses an unrepresentable state as
+                            // other level reads do.
+                            Some(error) if outer_type(error, "PlacementStateError") => format!(
+                                "{call}.try_into_api().unwrap_or(Err(mod_api::PlacementStateError::Unavailable))"
+                            ),
                             Some(error) if outer_type(error, "GameRuleReadError") => format!(
                                 "{call}.try_into_api().expect(\"game rule values convert infallibly\")"
                             ),

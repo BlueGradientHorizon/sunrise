@@ -1568,8 +1568,11 @@ impl Game<'_> {
             .is_air(self.block_at((front.0, front.1 - 1, front.2)));
         let ctx =
             Self::shulker_box_place_context(front, facing, below_empty, stack.item.to_string());
-        // DirectionalPlaceContext places at the front block or nowhere.
-        if !self.with_level(|b, level, ticks| b.directional_can_place(level, ticks, &ctx)) {
+        // DirectionalPlaceContext places at the front block or nowhere. A shulker box is
+        // neither a slab nor snow, so `canPlace` always has an answer here.
+        if self.with_level(|b, level, ticks| b.directional_can_place(level, ticks, &ctx))
+            != Ok(true)
+        {
             return Ok((Some(stack), FAIL));
         }
         if self.place_item_block(&ctx, false, &stack)?.is_none() {

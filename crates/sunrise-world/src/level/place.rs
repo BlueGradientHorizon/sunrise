@@ -4,7 +4,7 @@
 use super::{
     Behaviours, LevelAccess, LevelEvent, Sim, Ticks,
     classes::{Class, Interface},
-    data::ItemKind,
+    data::{ItemBinding, ItemKind},
     query::{axis_of, clockwise, counter_clockwise, is_horizontal},
     states::BlockId,
     update::{HORIZONTAL, above, below, rel},
@@ -36,6 +36,24 @@ pub enum PlacementSource {
         /// The direction passed to `DirectionalPlaceContext`.
         direction: Direction,
     },
+}
+
+/// A question a `DirectionalPlaceContext` has no answer to: vanilla throws instead of
+/// returning a state, `null` or a boolean, so the question is refused rather than answered.
+/// Only a directional source can hit these; a player's `BlockPlaceContext` answers both.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DirectionalRefusal {
+    /// The block's `getStateForPlacement` reads `getNearestLookingVerticalDirection`.
+    /// `DirectionalPlaceContext` doesn't override it, so `BlockPlaceContext`'s
+    /// `Direction.getFacingAxis(getPlayer(), Y)` reads the pitch of a null player and
+    /// throws a `NullPointerException`. `SpeleothemBlock` (pointed dripstone, sulfur
+    /// spikes) is the only vanilla reader.
+    NoVerticalLook,
+    /// The clicked block's `canBeReplaced` reads `replacingClickedOnBlock`, which a
+    /// `DirectionalPlaceContext` answers with `canPlace()`: that same `canBeReplaced` of
+    /// the same block, so vanilla recurses until the stack overflows. In vanilla this is a
+    /// `SlabBlock` or `SnowLayerBlock` clicked with its own item.
+    ReplacingClickedCycle,
 }
 
 /// A block-item placement action (`UseOnContext` / `DirectionalPlaceContext` inputs).
@@ -130,7 +148,11 @@ pub struct PlacementContext {
     /// registry name: `minecraft:oak_stairs`.
     pub item: String,
     /// Whether the clicked block is replaceable (`replacingClickedOnBlock`),
-    /// i.e. whether the block goes into the clicked position.
+    /// i.e. whether the block goes into the clicked position. A player's
+    /// `BlockPlaceContext` stores the value it was built with; a
+    /// `DirectionalPlaceContext` works it out from the level on every call
+    /// (`canPlace()`), so the engine sets it from the clicked block with
+    /// `Sim::settle_replacing_clicked` before anything reads it.
     pub replace_clicked: bool,
 }
 
@@ -309,11 +331,14 @@ impl PlacementContext {
             PlacementSource::Directional { .. } => Direction::Down,
         }
     }
-    /// `BlockPlaceContext.getNearestLookingVerticalDirection`.
-    fn nearest_looking_vertical(&self) -> Direction {
+    /// `BlockPlaceContext.getNearestLookingVerticalDirection`: `Direction.getFacingAxis(player, Y)`.
+    /// `None` for a directional source: `DirectionalPlaceContext` doesn't override it and has no
+    /// player, so vanilla throws (`DirectionalRefusal::NoVerticalLook`).
+    fn nearest_looking_vertical(&self) -> Option<Direction> {
         match self.source {
-            PlacementSource::Player { pitch, .. } if pitch < 0.0 => Direction::Up,
-            PlacementSource::Player { .. } | PlacementSource::Directional { .. } => Direction::Down,
+            PlacementSource::Player { pitch, .. } if pitch < 0.0 => Some(Direction::Up),
+            PlacementSource::Player { .. } => Some(Direction::Down),
+            PlacementSource::Directional { .. } => None,
         }
     }
     fn click_y(&self) -> f64 {
@@ -330,8 +355,48 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
     fn item_is(&self, ctx: &PlacementContext, block: BlockId) -> bool {
         !ctx.item.is_empty() && *self.b.block_data(block).item == *ctx.item
     }
-    /// `BlockState.canBeReplaced(BlockPlaceContext)`.
+    /// `BlockState.canBeReplaced(BlockPlaceContext)`, reading `replacingClickedOnBlock`
+    /// from the context as it stands.
     pub(crate) fn can_be_replaced(&self, state: BlockStateId, ctx: &PlacementContext) -> bool {
+        self.replaceable(state, ctx, Some(ctx.replace_clicked)) == Some(true)
+    }
+
+    /// `DirectionalPlaceContext.canPlace()`, which is also its `replacingClickedOnBlock()`:
+    /// whether the block at the clicked position (`getHitResult().getBlockPos()`) can be
+    /// replaced in this context. Vanilla asks the level on every call and stores nothing,
+    /// so `ctx.replace_clicked` is not read. `Err(ReplacingClickedCycle)` when that block's
+    /// own rule asks `replacingClickedOnBlock`, which is this same question again.
+    pub(crate) fn directional_can_place(
+        &self,
+        ctx: &PlacementContext,
+    ) -> Result<bool, DirectionalRefusal> {
+        self.replaceable(self.state(ctx.hit_pos), ctx, None)
+            .ok_or(DirectionalRefusal::ReplacingClickedCycle)
+    }
+
+    /// Give a directional context the `replace_clicked` its `replacingClickedOnBlock()` would
+    /// return here (`directional_can_place`). A player's `BlockPlaceContext` stores the value
+    /// it was built with, so a player context is left as it is.
+    pub(crate) fn settle_replacing_clicked(
+        &self,
+        ctx: &mut PlacementContext,
+    ) -> Result<(), DirectionalRefusal> {
+        if let PlacementSource::Directional { .. } = ctx.source {
+            ctx.replace_clicked = self.directional_can_place(ctx)?;
+        }
+        Ok(())
+    }
+
+    /// `BlockState.canBeReplaced(BlockPlaceContext)` with `replacing` as the context's
+    /// `replacingClickedOnBlock()`. `None` means that answer is the one being worked out
+    /// (`directional_can_place`): a rule that reads it returns `None`, as vanilla never
+    /// returns from it.
+    fn replaceable(
+        &self,
+        state: BlockStateId,
+        ctx: &PlacementContext,
+        replacing: Option<bool>,
+    ) -> Option<bool> {
         let b = self.b;
         let p = b.props;
         let block = b.block(state);
@@ -340,7 +405,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
             b.is_replaceable(state) && (ctx.item.is_empty() || !sim.item_is(ctx, block))
         };
         for class in &data.chain {
-            return match class {
+            return Some(match class {
                 Class::Candle => {
                     (!ctx.is_sneaking()
                         && self.item_is(ctx, block)
@@ -387,7 +452,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                     let kind = b.table.text(state, p.kind);
                     if kind == "double" || !self.item_is(ctx, block) {
                         false
-                    } else if ctx.replace_clicked {
+                    } else if replacing? {
                         let above = ctx.hit.y - f64::from(ctx.hit_pos.y) > 0.5;
                         if kind == "bottom" {
                             ctx.face == Direction::Up || (above && is_horizontal(ctx.face))
@@ -402,7 +467,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                     let layers = b.table.int(state, p.layers);
                     if !self.item_is(ctx, block) || layers >= 8 {
                         layers == 1
-                    } else if ctx.replace_clicked {
+                    } else if replacing? {
                         ctx.face == Direction::Up
                     } else {
                         true
@@ -417,9 +482,9 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                     }
                 }
                 _ => continue,
-            };
+            });
         }
-        default(self)
+        Some(default(self))
     }
 
     fn fluid_is_water_source(&self, pos: BlockPos) -> bool {
@@ -431,12 +496,15 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
 
     /// `Block.getStateForPlacement(context)` for `block`, after the level's
     /// hook (`LevelAccess::before_state_for_placement`), which a mod block
-    /// answers for itself.
+    /// answers for itself. `Ok(None)` is vanilla's `null`. `Err` when the
+    /// block's own rule has no answer for the context, where vanilla throws
+    /// (`DirectionalRefusal::NoVerticalLook`); a part's answer replaces the
+    /// rule, so it is never refused.
     pub(crate) fn state_for_placement(
         &mut self,
         block: BlockId,
         ctx: &PlacementContext,
-    ) -> Option<BlockStateId> {
+    ) -> Result<Option<BlockStateId>, DirectionalRefusal> {
         let default = self.b.default_of(block);
         let fluid = self.fluid_at(ctx.pos);
         let mut answer = None;
@@ -446,22 +514,29 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
             // The candidate need not belong to the item-bound block. An ID outside
             // the state table falls back to vanilla before it can be looked up.
             Some(Some(new)) if (new.0 as usize) < self.b.table.state_count() => {
-                return Some(new);
+                return Ok(Some(new));
             }
             // Vanilla's `null` return: the block goes nowhere.
-            Some(None) => return None,
+            Some(None) => return Ok(None),
             _ => {}
         }
-        let placed = self.placement_at(block, 0, ctx)?;
-        if self.b.block_data(block).declared_waterlogged {
-            Some(self.b.table.set_bool(
+        // A rule with no answer notes why in `placement_refusal` and returns no state.
+        let placed = self.placement_at(block, 0, ctx);
+        if let Some(refusal) = self.placement_refusal.take() {
+            return Err(refusal);
+        }
+        let Some(placed) = placed else {
+            return Ok(None);
+        };
+        Ok(Some(if self.b.block_data(block).declared_waterlogged {
+            self.b.table.set_bool(
                 placed,
                 self.b.props.waterlogged,
                 fluid.kind() == crate::fluid::FluidKind::Water,
-            ))
+            )
         } else {
-            Some(placed)
-        }
+            placed
+        }))
     }
 
     fn placement_at(
@@ -1309,7 +1384,13 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                 Some(table.set_bool(default, p.snowy, snowy))
             }
             Class::Speleothem => {
-                let default_tip = ctx.nearest_looking_vertical().opposite();
+                // Read before anything else, as `SpeleothemBlock.getStateForPlacement` does:
+                // with no player to look, vanilla throws whatever the supports are.
+                let Some(look) = ctx.nearest_looking_vertical() else {
+                    self.placement_refusal = Some(DirectionalRefusal::NoVerticalLook);
+                    return Some(None);
+                };
+                let default_tip = look.opposite();
                 let tip = if self.is_valid_speleothem_placement(block, pos, default_tip) {
                     default_tip
                 } else if self.is_valid_speleothem_placement(block, pos, default_tip.opposite()) {
@@ -1736,6 +1817,80 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         b.air()
     }
 
+    /// The `BlockPlaceContext` / `DirectionalPlaceContext` constructors for `input`: where
+    /// the block goes and whether the clicked block is replaced. A player's context seeds
+    /// `replaceClicked` with `true`, stores what the clicked block's `canBeReplaced` answers,
+    /// and places beside a block it can't replace. A directional context always places at
+    /// the clicked block and answers `replacingClickedOnBlock` from it
+    /// (`settle_replacing_clicked`).
+    fn resolve_context(
+        &self,
+        input: &PlaceContext,
+    ) -> Result<PlacementContext, DirectionalRefusal> {
+        let mut ctx = PlacementContext {
+            pos: input.clicked_pos,
+            hit_pos: input.clicked_pos,
+            face: input.face,
+            hit: input.hit,
+            inside: input.inside,
+            source: input.source,
+            item: input.item.clone(),
+            replace_clicked: true,
+        };
+        match ctx.source {
+            PlacementSource::Player { .. } => {
+                ctx.replace_clicked = self.can_be_replaced(self.state(input.clicked_pos), &ctx);
+                if !ctx.replace_clicked {
+                    ctx.pos = rel(input.clicked_pos, input.face);
+                }
+            }
+            PlacementSource::Directional { .. } => self.settle_replacing_clicked(&mut ctx)?,
+        }
+        Ok(ctx)
+    }
+
+    /// The item's `getPlacementState`: its block's `getStateForPlacement`, or for a
+    /// `StandingAndWallBlockItem` the first of the wall and standing candidates, in
+    /// `getNearestLookingDirections` order, that survives. `Err` when a candidate's rule
+    /// throws (`state_for_placement`).
+    fn placement_state(
+        &mut self,
+        binding: &ItemBinding,
+        ctx: &PlacementContext,
+    ) -> Result<Option<BlockStateId>, DirectionalRefusal> {
+        let b = self.b;
+        if !matches!(
+            binding.kind,
+            ItemKind::StandingAndWall | ItemKind::HangingSign
+        ) {
+            return self.state_for_placement(binding.block, ctx);
+        }
+        let wall = match binding.wall_block {
+            Some(wall) => self.state_for_placement(wall, ctx)?,
+            None => None,
+        };
+        let attachment = binding.attachment.unwrap_or(Direction::Down);
+        for direction in ctx.nearest_looking_directions() {
+            if direction == attachment.opposite() {
+                continue;
+            }
+            let candidate = if direction == attachment {
+                self.state_for_placement(binding.block, ctx)?
+            } else {
+                wall
+            };
+            if let Some(candidate) = candidate {
+                let hanging_ok = binding.kind != ItemKind::HangingSign
+                    || !b.instance_of(candidate, Class::WallHangingSign)
+                    || self.wall_hanging_sign_can_place(candidate, ctx.pos);
+                if hanging_ok && self.can_survive(candidate, ctx.pos) {
+                    return Ok(Some(candidate));
+                }
+            }
+        }
+        Ok(None)
+    }
+
     /// `BlockItem.place` (and its subclasses' overrides).
     /// `BlockPlaceContext` resolution, `updatePlacementContext` and the item's
     /// `getPlacementState` (survival and obstruction checks included).
@@ -1747,23 +1902,16 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
     ) -> Option<ResolvedPlacement> {
         let b = self.b;
         let binding = b.item_binding(&input.item).cloned()?;
-        let mut ctx = PlacementContext {
-            pos: input.clicked_pos,
-            hit_pos: input.clicked_pos,
-            face: input.face,
-            hit: input.hit,
-            inside: input.inside,
-            source: input.source,
-            item: input.item.clone(),
-            replace_clicked: true,
-        };
-        ctx.replace_clicked = self.can_be_replaced(self.state(input.clicked_pos), &ctx);
-        if !ctx.replace_clicked && !matches!(ctx.source, PlacementSource::Directional { .. }) {
-            ctx.pos = rel(input.clicked_pos, input.face);
-        }
+        let mut ctx = self.resolve_context(input).ok()?;
         let rewritten = match rewrite(self.level, &ctx) {
             Some(Some(replacement)) => {
                 ctx = replacement;
+                // A part's directional context is a `DirectionalPlaceContext`: its
+                // `replacingClickedOnBlock()` comes from the level, not from the part.
+                if let Err(refusal) = self.settle_replacing_clicked(&mut ctx) {
+                    log::warn!("placement_context: refused {}: {refusal:?}", input.item);
+                    return None;
+                }
                 true
             }
             Some(None) => return None,
@@ -1805,36 +1953,17 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
             binding.kind,
             ItemKind::StandingAndWall | ItemKind::HangingSign
         );
-        let primary = match binding.kind {
-            ItemKind::StandingAndWall | ItemKind::HangingSign => {
-                let wall = binding
-                    .wall_block
-                    .and_then(|wall| self.state_for_placement(wall, &ctx));
-                let attachment = binding.attachment.unwrap_or(Direction::Down);
-                let mut chosen = None;
-                for direction in ctx.nearest_looking_directions() {
-                    if direction == attachment.opposite() {
-                        continue;
-                    }
-                    let candidate = if direction == attachment {
-                        self.state_for_placement(binding.block, &ctx)
-                    } else {
-                        wall
-                    };
-                    if let Some(candidate) = candidate {
-                        let hanging_ok = binding.kind != ItemKind::HangingSign
-                            || !b.instance_of(candidate, Class::WallHangingSign)
-                            || self.wall_hanging_sign_can_place(candidate, ctx.pos);
-                        if hanging_ok && self.can_survive(candidate, ctx.pos) {
-                            chosen = Some(candidate);
-                            break;
-                        }
-                    }
+        let primary = match self.placement_state(&binding, &ctx) {
+            Ok(primary) => primary?,
+            // Vanilla throws, so the item is not used. Only a part's rewrite can bring a
+            // directional context to a rule that throws: a dispenser places shulker boxes.
+            Err(refusal) => {
+                if rewritten {
+                    log::warn!("placement_context: refused {}: {refusal:?}", input.item);
                 }
-                chosen
+                return None;
             }
-            _ => self.state_for_placement(binding.block, &ctx),
-        }?;
+        };
         if !input.can_use_game_master_blocks && b.data(primary).implements(Interface::GameMaster) {
             return None;
         }
@@ -2105,24 +2234,16 @@ impl Behaviours {
     }
     /// `DirectionalPlaceContext.canPlace`: whether the block at the clicked
     /// position can be replaced by the item (a dispenser places only there).
+    /// `Err(ReplacingClickedCycle)` where vanilla never returns: the clicked
+    /// block's rule asks `replacingClickedOnBlock`, which is this question.
     pub fn directional_can_place<L: LevelAccess + ?Sized>(
         &self,
         level: &mut L,
         ticks: &mut Ticks,
         ctx: &PlaceContext,
-    ) -> bool {
+    ) -> Result<bool, DirectionalRefusal> {
         let sim = self.sim(level, ticks);
-        let inner = PlacementContext {
-            pos: ctx.clicked_pos,
-            hit_pos: ctx.clicked_pos,
-            face: ctx.face,
-            hit: ctx.hit,
-            inside: ctx.inside,
-            source: ctx.source,
-            item: ctx.item.clone(),
-            replace_clicked: true,
-        };
-        sim.can_be_replaced(sim.state(ctx.clicked_pos), &inner)
+        sim.resolve_context(ctx).map(|ctx| ctx.replace_clicked)
     }
     /// What `BlockItem.place` would place for `ctx`, without writing anything
     /// (None when vanilla's placement fails).
@@ -2136,30 +2257,18 @@ impl Behaviours {
             .map(|(_, preview)| preview)
     }
     /// `getStateForPlacement` of `block` for `ctx` without placing anything
-    /// (`None` when vanilla refuses the placement). The position is resolved
-    /// as `BlockPlaceContext` (or `DirectionalPlaceContext`) does.
+    /// (`Ok(None)` when vanilla refuses the placement). The position is resolved
+    /// as `BlockPlaceContext` (or `DirectionalPlaceContext`) does. `Err` where
+    /// vanilla throws for a directional context (`DirectionalRefusal`).
     pub fn state_for_placement<L: LevelAccess + ?Sized>(
         &self,
         level: &mut L,
         ticks: &mut Ticks,
         block: BlockId,
         input: &PlaceContext,
-    ) -> Option<BlockStateId> {
+    ) -> Result<Option<BlockStateId>, DirectionalRefusal> {
         let mut sim = self.sim(level, ticks);
-        let mut ctx = PlacementContext {
-            pos: input.clicked_pos,
-            hit_pos: input.clicked_pos,
-            face: input.face,
-            hit: input.hit,
-            inside: input.inside,
-            source: input.source,
-            item: input.item.clone(),
-            replace_clicked: true,
-        };
-        ctx.replace_clicked = sim.can_be_replaced(sim.state(input.clicked_pos), &ctx);
-        if !ctx.replace_clicked && !matches!(ctx.source, PlacementSource::Directional { .. }) {
-            ctx.pos = rel(input.clicked_pos, input.face);
-        }
+        let ctx = sim.resolve_context(input)?;
         sim.state_for_placement(block, &ctx)
     }
 }
@@ -2228,6 +2337,17 @@ mod placed_against_tests {
         assert_eq!(player_south.horizontal_direction(), Direction::South);
         assert_eq!(player_south.rotation(), 0.0);
         assert_eq!(player_south.nearest_looking_direction(), Direction::South);
+        // `Direction.getFacingAxis(player, Y)`: up only for a negative pitch.
+        assert_eq!(
+            player_south.nearest_looking_vertical(),
+            Some(Direction::Down)
+        );
+        let player_up = make(PlacementSource::Player {
+            yaw: 0.0,
+            pitch: -10.0,
+            sneaking: false,
+        });
+        assert_eq!(player_up.nearest_looking_vertical(), Some(Direction::Up));
 
         let expected: [(Direction, Direction, f32, [Direction; 6]); 6] = [
             (
@@ -2321,6 +2441,8 @@ mod placed_against_tests {
                 "{direction:?}"
             );
             assert_eq!(ctx.nearest_looking_directions(), ordered, "{direction:?}");
+            // Not overridden: `getFacingAxis(null, Y)` throws, so there is no answer.
+            assert_eq!(ctx.nearest_looking_vertical(), None, "{direction:?}");
         }
     }
 
@@ -2340,6 +2462,5 @@ mod placed_against_tests {
             }
         );
         assert!(ctx.item.is_empty());
-        assert!(ctx.replace_clicked);
     }
 }

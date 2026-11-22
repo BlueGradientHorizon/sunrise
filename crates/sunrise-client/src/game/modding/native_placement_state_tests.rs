@@ -4,8 +4,8 @@ use super::{
     native_entity_refs::tests::{run_fresh_cases, with_game_at},
 };
 use mod_api::{
-    Block, BlockPart, BlockState, BlocksEvent, FenceGateInWallEvent, Hooks, LevelReadError,
-    LevelRef, LevelSide, ModEntry, Mods, PlacementContext, PlacementSource, Registrar,
+    Block, BlockPart, BlockState, BlocksEvent, FenceGateInWallEvent, Hooks, LevelRef, LevelSide,
+    ModEntry, Mods, PlacementContext, PlacementSource, PlacementStateError, Registrar,
     RegistrationContext, StateForPlacementEvent, WorldEpoch,
 };
 use std::sync::Arc;
@@ -275,7 +275,7 @@ fn placement_refusals_are_typed() {
         for invalid in [stale, closed] {
             assert_eq!(
                 invalid.state_for_placement(game, stone, &context),
-                Err(LevelReadError::Stale)
+                Err(PlacementStateError::Stale)
             );
         }
         let unknown = mod_api::__private::parts_installation::block_key(u32::MAX);
@@ -382,7 +382,7 @@ fn another_blocks_state_is_returned_only_from_the_level_in_play() {
             );
             assert_eq!(
                 level.state_for_placement(game, mod_block, &context),
-                Err(LevelReadError::Unavailable)
+                Err(PlacementStateError::Unavailable)
             );
             assert_eq!(game.dim, Dim::Nether, "the query never swaps the level in");
 
@@ -405,6 +405,101 @@ fn another_blocks_state_is_returned_only_from_the_level_in_play() {
                 Ok(Some(_))
             ));
             assert_eq!(nether.state_for_placement(game, log, &above_top), Ok(None));
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn directional_queries_read_the_clicked_block_and_refuse_what_vanilla_throws_on() {
+    with_game(
+        "directional_queries_read_the_clicked_block_and_refuse_what_vanilla_throws_on",
+        |game| {
+            use super::api_values::TryIntoEngine;
+            let level = game.level(game.dim.id()).unwrap();
+            let registry = game.pack.assets.registry;
+            let air = registry.default_state("minecraft:air").unwrap();
+            let stone = registry.default_state("minecraft:stone").unwrap();
+            let props = |state: BlockState, keys: [&str; 2]| {
+                let state = registry.state(state.try_into_engine(&()).unwrap()).unwrap();
+                keys.map(|key| state.properties[key].clone())
+            };
+
+            // `DirectionalPlaceContext.replacingClickedOnBlock()` is `canPlace()`, asked of the
+            // clicked block, not the `true` that `PlacementContext::directional` writes. Into
+            // stone the trapdoor hangs on the clicked face, on the click's half; into air it
+            // faces away from the direction, on the top half.
+            let trapdoor = game.block_key("minecraft:oak_trapdoor").unwrap();
+            let east = PlacementContext::directional(
+                POS,
+                Direction::East,
+                Direction::East,
+                mod_api::__private::item_key("minecraft:oak_trapdoor"),
+            );
+            game.world.set(POS.x, POS.y, POS.z, stone).unwrap();
+            let into_stone = level
+                .state_for_placement(game, trapdoor, &east)
+                .unwrap()
+                .unwrap();
+            assert_eq!(props(into_stone, ["facing", "half"]), ["east", "bottom"]);
+            game.world.set(POS.x, POS.y, POS.z, air).unwrap();
+            let mut claims_kept = east.clone();
+            claims_kept.replace_clicked = false;
+            for context in [&east, &claims_kept] {
+                let into_air = level
+                    .state_for_placement(game, trapdoor, context)
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(props(into_air, ["facing", "half"]), ["west", "top"]);
+            }
+
+            // Pointed dripstone reads the placer's vertical look, which a directional context
+            // has no player for: refused for every direction, though both supports stand. A
+            // player's pitch still picks the tip.
+            let dripstone = game.block_key("minecraft:pointed_dripstone").unwrap();
+            let item = mod_api::__private::item_key("minecraft:pointed_dripstone");
+            game.world.set(POS.x, POS.y + 1, POS.z, stone).unwrap();
+            game.world.set(POS.x, POS.y - 1, POS.z, stone).unwrap();
+            for direction in Direction::ALL {
+                let context = PlacementContext::directional(POS, direction, Direction::Up, item);
+                assert_eq!(
+                    level.state_for_placement(game, dripstone, &context),
+                    Err(PlacementStateError::NoVerticalLook),
+                    "{direction:?}"
+                );
+            }
+            let mut player = PlacementContext::new(POS, Direction::Up, item);
+            for (pitch, tip) in [(0.0, "up"), (-30.0, "down")] {
+                player.source = PlacementSource::Player {
+                    yaw: 0.0,
+                    pitch,
+                    sneaking: false,
+                };
+                let state = level
+                    .state_for_placement(game, dripstone, &player)
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(
+                    props(state, ["vertical_direction", "thickness"]),
+                    [tip, "tip"]
+                );
+            }
+
+            // A slab clicked with its own item asks `replacingClickedOnBlock` from its own
+            // `canBeReplaced`, which for a directional context is that question again.
+            let slab = game.block_key("minecraft:oak_slab").unwrap();
+            let bottom = registry.default_state("minecraft:oak_slab").unwrap();
+            game.world.set(POS.x, POS.y, POS.z, bottom).unwrap();
+            let into_slab = PlacementContext::directional(
+                POS,
+                Direction::Down,
+                Direction::Up,
+                mod_api::__private::item_key("minecraft:oak_slab"),
+            );
+            assert_eq!(
+                level.state_for_placement(game, slab, &into_slab),
+                Err(PlacementStateError::ReplacingClickedCycle)
+            );
         },
     );
 }

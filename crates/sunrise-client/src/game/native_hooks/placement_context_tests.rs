@@ -86,6 +86,26 @@ impl ItemPart for Invalid {
         Some(Some(context))
     }
 }
+/// Rewrites the placement into a dispenser-like `DirectionalPlaceContext` at the same cell,
+/// along and clicking East, and claims the clicked block is not replaced.
+struct Directional;
+#[mod_api::sunrise_part]
+impl ItemPart for Directional {
+    fn placement_context(
+        &self,
+        _: LevelSide<'_>,
+        event: &mut PlacementContextEvent<'_>,
+    ) -> Option<Option<mod_api::PlacementContext>> {
+        let mut context = mod_api::PlacementContext::directional(
+            event.context.pos,
+            Direction::East,
+            Direction::East,
+            event.context.item,
+        );
+        context.replace_clicked = false;
+        Some(Some(context))
+    }
+}
 enum Survival {
     Skip,
     RequireWhen(Arc<AtomicBool>),
@@ -121,6 +141,14 @@ impl Hooks for Parts {
         r.item_part(torch, Survival::Skip);
         let scaffolding = r.item_key("minecraft:scaffolding");
         r.item_part(scaffolding, Survival::RequireWhen(self.0.clone()));
+        for item in [
+            "minecraft:oak_trapdoor",
+            "minecraft:pointed_dripstone",
+            "minecraft:oak_slab",
+        ] {
+            let key = r.item_key(item);
+            r.item_part(key, Directional);
+        }
     }
 }
 
@@ -210,6 +238,77 @@ fn item_parts_rewrite_or_refuse_context_and_control_survival_on_both_sides() {
                     b.set_block(level, ticks, BlockPos::new(4, 62, 4), air, 3);
                 });
             }
+
+            // A part's directional rewrite is a `DirectionalPlaceContext`: its
+            // `replacingClickedOnBlock()` comes from the clicked block, not the `false` the part
+            // wrote, and a question vanilla throws on refuses the placement.
+            let stone = registry.default_state("minecraft:stone").unwrap();
+            let slab = registry.default_state("minecraft:oak_slab").unwrap();
+            game.with_level(|b, level, ticks| {
+                level.native_authoritative = true;
+                level.client_side = false;
+                let at = BlockPos::new(4, 64, 4);
+                let context = |item: &str| PlaceContext {
+                    clicked_pos: at,
+                    face: Direction::Up,
+                    hit: Vec3::new(4.5, 64.0, 4.5),
+                    inside: false,
+                    source: EnginePlacementSource::Player {
+                        yaw: 0.0,
+                        pitch: 0.0,
+                        sneaking: false,
+                    },
+                    item: item.into(),
+                    can_use_game_master_blocks: false,
+                };
+                let rewritten =
+                    |level: &mut crate::game::GameLevel<'_>, ticks: &mut _, item: &str| {
+                        let stack = ItemStack::new(item, 1);
+                        b.decide_placement(
+                            level,
+                            ticks,
+                            &context(item),
+                            |s| (s, s),
+                            |level, context| level.rewrite_placement_context(&stack, context, None),
+                        )
+                        .map(|(_, preview)| preview)
+                    };
+                let trapdoor = rewritten(level, ticks, "minecraft:oak_trapdoor")
+                    .expect("the clicked air is replaced");
+                assert_eq!(trapdoor.pos, at);
+                let trapdoor = registry.state(trapdoor.state).unwrap();
+                assert_eq!(trapdoor.properties["facing"], "west");
+                assert_eq!(trapdoor.properties["half"], "top");
+
+                b.set_block(level, ticks, BlockPos::new(4, 65, 4), stone, 3);
+                b.set_block(level, ticks, BlockPos::new(4, 63, 4), stone, 3);
+                assert!(
+                    rewritten(level, ticks, "minecraft:pointed_dripstone").is_none(),
+                    "no vertical look"
+                );
+                let tip = b
+                    .placement_preview(level, ticks, &context("minecraft:pointed_dripstone"))
+                    .expect("a player's placement is unchanged");
+                assert_eq!(
+                    registry.state(tip.state).unwrap().properties["vertical_direction"],
+                    "up"
+                );
+
+                b.set_block(level, ticks, at, slab, 3);
+                assert!(
+                    rewritten(level, ticks, "minecraft:oak_slab").is_none(),
+                    "the slab's canBeReplaced asks the question it answers"
+                );
+                assert!(
+                    b.placement_preview(level, ticks, &context("minecraft:oak_slab"))
+                        .is_some(),
+                    "a player doubles the slab"
+                );
+                let air = registry.default_state("minecraft:air").unwrap();
+                for y in 63..=65 {
+                    b.set_block(level, ticks, BlockPos::new(4, y, 4), air, 3);
+                }
+            });
 
             // Click the end of a scaffold extending six blocks from support.
             // Its horizontal walk reaches distance seven, where only vanilla's

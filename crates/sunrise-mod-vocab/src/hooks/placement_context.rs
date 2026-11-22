@@ -16,7 +16,11 @@ pub trait Hooks {
     /// With no answer, vanilla checks the original destination before its own
     /// rewrite. A part's rewritten destination must be loaded, in bounds, and
     /// replaceable with the supplied context. Non-finite click or player view
-    /// values are refused. Survival and obstruction still apply at the final position.
+    /// values are refused. A rewritten directional context's `replace_clicked` is
+    /// read from the block at `hit_pos`, not from the answer, and a directional
+    /// question vanilla throws on (`PlacementStateError::NoVerticalLook` or
+    /// `ReplacingClickedCycle`) refuses the placement. Survival and obstruction
+    /// still apply at the final position.
     #[hook(
         receiver = "read",
         dispatch = "flat",

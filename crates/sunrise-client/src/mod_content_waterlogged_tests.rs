@@ -226,6 +226,7 @@ fn declared_waterlogged_blocks_keep_their_class_and_gain_liquid_defaults() {
                 b.block(stone),
                 &context("wet:stone"),
             )
+            .unwrap()
             .unwrap();
         assert!(is_waterlogged(wet));
         assert_eq!(b.fluid(wet), FluidState::WATER);
@@ -239,6 +240,7 @@ fn declared_waterlogged_blocks_keep_their_class_and_gain_liquid_defaults() {
                 b.block(stone),
                 &context("wet:stone"),
             )
+            .unwrap()
             .unwrap();
         assert!(
             !is_waterlogged(flowing),
@@ -252,6 +254,7 @@ fn declared_waterlogged_blocks_keep_their_class_and_gain_liquid_defaults() {
                 b.block(stone),
                 &context("wet:stone"),
             )
+            .unwrap()
             .unwrap();
         assert!(!is_waterlogged(dry));
         assert_eq!(b.fluid(dry).kind(), FluidKind::Empty);
@@ -264,7 +267,7 @@ fn declared_waterlogged_blocks_keep_their_class_and_gain_liquid_defaults() {
                 b.block(stone),
                 &context("wet:stone")
             ),
-            Some(dry),
+            Ok(Some(dry)),
             "Part answer overrides the water default"
         );
         level.placement_answer = None;

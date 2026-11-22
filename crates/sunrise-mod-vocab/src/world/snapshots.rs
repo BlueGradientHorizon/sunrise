@@ -45,7 +45,12 @@ pub struct PlacementContext {
     pub source: PlacementSource,
     /// The resolved item in the placing hand; `None` for an empty hand.
     pub item: Option<ItemKey>,
-    /// Whether the clicked block itself is replaced.
+    /// Whether the clicked block itself is replaced (`replacingClickedOnBlock`). A player's
+    /// `BlockPlaceContext` keeps the value it was built with, so a player context is read as
+    /// written. A `DirectionalPlaceContext` answers it from the level every time it is asked
+    /// (`canPlace()`: whether the block at `hit_pos` can be replaced in this context), so for
+    /// `PlacementSource::Directional` the game works it out from the clicked block and never
+    /// reads the value written here. Contexts the game hands to a hook carry its answer.
     pub replace_clicked: bool,
 }
 
@@ -71,6 +76,8 @@ impl PlacementContext {
 
     /// A non-player directional placement at `pos` along `direction`, with a click on `face`
     /// and an optional item (`DirectionalPlaceContext`), targeting the bottom center of `pos`.
+    /// It places at the clicked block itself, so `hit_pos` is `pos`. `replace_clicked` is
+    /// `true` here, but the game answers it from the block at `pos` (see the field).
     pub fn directional(
         pos: BlockPos,
         direction: Direction,
@@ -91,6 +98,46 @@ impl PlacementContext {
             item,
             replace_clicked: true,
         }
+    }
+}
+
+/// Why `LevelRef::state_for_placement` gave no state. Vanilla's `null` is `Ok(None)`, not an
+/// error: these are reads that can't be made, and questions vanilla's
+/// `DirectionalPlaceContext` throws on instead of answering.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+#[derive(sunrise_mod_api_macros::Wire)]
+pub enum PlacementStateError {
+    /// The handle's level is gone or has been reopened.
+    Stale,
+    /// The level is parked, the host or load phase can't answer, or the state isn't one the
+    /// API can represent.
+    Unavailable,
+    /// A `PlacementSource::Directional` query for a block whose placement rule reads
+    /// `getNearestLookingVerticalDirection`. That reads the player's pitch, and a
+    /// `DirectionalPlaceContext` has no player and doesn't override it, so vanilla throws.
+    /// In vanilla that is `SpeleothemBlock` (pointed dripstone and sulfur spikes), and so a
+    /// block built on either as its template when no Part answers for it.
+    NoVerticalLook,
+    /// A `PlacementSource::Directional` query whose clicked block's `canBeReplaced` reads
+    /// `replacingClickedOnBlock`. A `DirectionalPlaceContext` answers that with `canPlace()`,
+    /// which is the same `canBeReplaced` of the same block, so vanilla never returns. In
+    /// vanilla that is a slab or a snow layer clicked holding its own item.
+    ReplacingClickedCycle,
+}
+
+impl From<crate::LevelReadError> for PlacementStateError {
+    fn from(error: crate::LevelReadError) -> Self {
+        match error {
+            crate::LevelReadError::Stale => Self::Stale,
+            crate::LevelReadError::Unavailable => Self::Unavailable,
+        }
+    }
+}
+
+impl crate::NoBackend for PlacementStateError {
+    fn no_backend() -> Self {
+        Self::Unavailable
     }
 }
 

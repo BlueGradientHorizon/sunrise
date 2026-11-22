@@ -1,7 +1,7 @@
 //! Placement-state reads, placement writes and the `Block.setPlacedBy` step.
 use super::{Game, api_values::block_state::block_listens, native_server::PlayerRead};
 use mod_api::{
-    BlockKey, BlockUpdateFlags, HookId, LevelReadError, LevelRef, LevelWriteError, PlayerRef,
+    BlockKey, BlockUpdateFlags, HookId, LevelRef, LevelWriteError, PlacementStateError, PlayerRef,
     PlayerWorldRefusal as Refusal,
 };
 use sunrise_client::{containers::BlockEntity, items::ItemStack};
@@ -91,10 +91,10 @@ impl Game<'_> {
         level: LevelRef,
         block: BlockKey,
         context: &mod_api::PlacementContext,
-    ) -> Result<Option<BlockStateId>, LevelReadError> {
+    ) -> Result<Option<BlockStateId>, PlacementStateError> {
         let world = self.native_level_world_result(level)?;
         if level.dimension() != self.dim.key() {
-            return Err(LevelReadError::Unavailable);
+            return Err(PlacementStateError::Unavailable);
         }
         let BlockPos { x, y, z } = context.pos;
         let Some(source) = super::api_values::placement_source_into_engine(context.source) else {
@@ -119,7 +119,7 @@ impl Game<'_> {
             }
             None => "",
         };
-        Ok(self.preview_state_for_placement(
+        self.preview_state_for_placement(
             block,
             &PlacementContext {
                 pos: context.pos,
@@ -131,7 +131,8 @@ impl Game<'_> {
                 item: item.to_owned(),
                 replace_clicked: context.replace_clicked,
             },
-        ))
+        )
+        .map_err(super::api_values::placement_refusal_into_api)
     }
 
     /// A chosen state written as a placement writes it, then `Block.setPlacedBy`, with no

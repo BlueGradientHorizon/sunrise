@@ -4207,6 +4207,158 @@ fn update_shape_hook_can_answer_for_the_block() {
     ));
 }
 
+/// A directional placement (`DirectionalPlaceContext`) answers `replacingClickedOnBlock` from the
+/// clicked block whatever the context claims, and refuses the questions vanilla throws on: a
+/// speleothem's vertical look, and a slab or snow layer clicked with its own item.
+#[test]
+#[ignore = "daily"]
+fn a_directional_placement_reads_the_clicked_block_and_refuses_what_vanilla_throws_on() {
+    let mut w = World::new(fixture().expect("prepared resources"));
+    let b = w.b();
+    let at = BlockPos::new(0, 64, 0);
+    let air = w.id("air", &[]);
+    let stone = w.id("stone", &[]);
+    let prop = |w: &World, state: BlockStateId, key: &str| {
+        w.f.registry.state(state).unwrap().properties[key].clone()
+    };
+    // What `PlacementContext::directional` builds for a mod: it claims the clicked block is
+    // replaced, which only the level can say.
+    let directional = |direction, face, item: &str| PlacementContext {
+        pos: at,
+        hit_pos: at,
+        face,
+        hit: Vec3::new(0.5, 64.0, 0.5),
+        inside: false,
+        source: PlacementSource::Directional { direction },
+        item: item.into(),
+        replace_clicked: true,
+    };
+    let placing = |direction, face, item: &str| PlaceContext {
+        clicked_pos: at,
+        face,
+        hit: Vec3::new(0.5, 64.0, 0.5),
+        inside: false,
+        source: PlacementSource::Directional { direction },
+        item: item.into(),
+        can_use_game_master_blocks: false,
+    };
+
+    // `TrapDoorBlock.getStateForPlacement`: into stone, which can't be replaced, the trapdoor
+    // takes the clicked face and the click's half; into air, which is replaced, it faces
+    // away from the horizontal direction, on the half opposite the clicked face.
+    let trapdoor = b.block(w.id("oak_trapdoor", &[]));
+    let east = directional(Direction::East, Direction::East, "minecraft:oak_trapdoor");
+    w.put(at, stone);
+    let into_stone = b
+        .state_for_resolved_placement(&mut w.level, &w.ticks, trapdoor, &east)
+        .unwrap()
+        .unwrap();
+    assert_eq!(prop(&w, into_stone, "facing"), "east");
+    assert_eq!(prop(&w, into_stone, "half"), "bottom");
+    let place_east = placing(Direction::East, Direction::East, "minecraft:oak_trapdoor");
+    assert_eq!(
+        b.state_for_placement(&mut w.level, &mut w.ticks, trapdoor, &place_east),
+        Ok(Some(into_stone)),
+        "the read and the dispenser's own resolution agree"
+    );
+    assert_eq!(
+        b.directional_can_place(&mut w.level, &mut w.ticks, &place_east),
+        Ok(false)
+    );
+    w.put(at, air);
+    let mut claims_kept = east.clone();
+    claims_kept.replace_clicked = false;
+    for ctx in [&east, &claims_kept] {
+        let into_air = b
+            .state_for_resolved_placement(&mut w.level, &w.ticks, trapdoor, ctx)
+            .unwrap()
+            .unwrap();
+        assert_eq!(prop(&w, into_air, "facing"), "west");
+        assert_eq!(prop(&w, into_air, "half"), "top");
+    }
+    assert_eq!(
+        b.directional_can_place(&mut w.level, &mut w.ticks, &place_east),
+        Ok(true)
+    );
+
+    // `SpeleothemBlock.getStateForPlacement` reads the vertical look first, which a
+    // directional context has no player for, whatever the supports: refused, and not placed.
+    let dripstone = b.block(w.id("pointed_dripstone", &[]));
+    w.put(at.offset(0, 1, 0), stone);
+    w.put(at.offset(0, -1, 0), stone);
+    for direction in Direction::ALL {
+        let ctx = directional(direction, Direction::Up, "minecraft:pointed_dripstone");
+        assert_eq!(
+            b.state_for_resolved_placement(&mut w.level, &w.ticks, dripstone, &ctx),
+            Err(DirectionalRefusal::NoVerticalLook),
+            "{direction:?}"
+        );
+        let place = placing(direction, Direction::Up, "minecraft:pointed_dripstone");
+        assert_eq!(
+            b.place_block(&mut w.level, &mut w.ticks, &place),
+            PlaceOutcome::Failed,
+            "{direction:?}"
+        );
+        assert_eq!(w.get(at), air, "{direction:?}");
+    }
+    // A player with both supports: level or looking down puts the tip up, looking up down.
+    for (pitch, tip) in [(0.0, "up"), (30.0, "up"), (-30.0, "down")] {
+        let ctx = PlacementContext {
+            source: PlacementSource::Player {
+                yaw: 0.0,
+                pitch,
+                sneaking: false,
+            },
+            ..directional(
+                Direction::Down,
+                Direction::Up,
+                "minecraft:pointed_dripstone",
+            )
+        };
+        let state = b
+            .state_for_resolved_placement(&mut w.level, &w.ticks, dripstone, &ctx)
+            .unwrap()
+            .unwrap();
+        assert_eq!(prop(&w, state, "vertical_direction"), tip, "{pitch}");
+        assert_eq!(prop(&w, state, "thickness"), "tip", "{pitch}");
+    }
+
+    // `SlabBlock` and `SnowLayerBlock.canBeReplaced` ask `replacingClickedOnBlock` when they
+    // are clicked with their own item, and a directional context's answer is that same
+    // `canBeReplaced`: refused. Another item never asks, so it gets its answer.
+    for (block, props, item) in [
+        ("oak_slab", &[("type", "bottom")][..], "minecraft:oak_slab"),
+        ("snow", &[("layers", "1")][..], "minecraft:snow"),
+    ] {
+        let state = w.id(block, props);
+        w.put(at, state);
+        let ctx = directional(Direction::Down, Direction::Up, item);
+        assert_eq!(
+            b.state_for_resolved_placement(&mut w.level, &w.ticks, b.block(state), &ctx),
+            Err(DirectionalRefusal::ReplacingClickedCycle),
+            "{block}"
+        );
+        let place = placing(Direction::Down, Direction::Up, item);
+        assert_eq!(
+            b.directional_can_place(&mut w.level, &mut w.ticks, &place),
+            Err(DirectionalRefusal::ReplacingClickedCycle),
+            "{block}"
+        );
+        assert_eq!(
+            b.place_block(&mut w.level, &mut w.ticks, &place),
+            PlaceOutcome::Failed,
+            "{block}"
+        );
+        assert_eq!(w.get(at), state, "{block}");
+        let shulker = placing(Direction::Down, Direction::Up, "minecraft:shulker_box");
+        assert_eq!(
+            b.directional_can_place(&mut w.level, &mut w.ticks, &shulker),
+            Ok(block == "snow"),
+            "one snow layer is replaceable by anything else"
+        );
+    }
+}
+
 #[test]
 #[ignore = "daily"]
 fn the_level_chooses_the_state_a_block_is_placed_in() {
@@ -4362,7 +4514,7 @@ fn the_level_chooses_the_state_a_block_is_placed_in() {
     // The hook's state, not the one vanilla's furnace placement computes.
     assert_eq!(
         b.state_for_placement(&mut level, &mut ticks, furnace_block, &ctx),
-        Some(facing("east"))
+        Ok(Some(facing("east")))
     );
     // It was asked with the block it decides for, where the block would go
     // (above the stone), the block clicked, the face clicked, the item in
@@ -4397,7 +4549,7 @@ fn the_level_chooses_the_state_a_block_is_placed_in() {
     };
     assert_eq!(
         b.state_for_placement(&mut level, &mut ticks, furnace_block, &ctx),
-        Some(facing("east"))
+        Ok(Some(facing("east")))
     );
     let (_, pos, _, _, _, source, replace_clicked, fluid) = asked(&level);
     assert_eq!(pos, BlockPos::new(0, 1, 0));
@@ -4416,14 +4568,14 @@ fn the_level_chooses_the_state_a_block_is_placed_in() {
     level.answer = Some(None);
     assert_eq!(
         b.state_for_placement(&mut level, &mut ticks, furnace_block, &ctx),
-        None
+        Ok(None)
     );
     // Without an answer the block's own `getStateForPlacement` runs: a furnace
     // placed with yaw 0 faces north, which is its default state.
     level.answer = None;
     assert_eq!(
         b.state_for_placement(&mut level, &mut ticks, furnace_block, &ctx),
-        Some(furnace)
+        Ok(Some(furnace))
     );
     // And a block the hook does not answer for is unaffected.
     let stairs = b.block(f.registry.default_state("minecraft:oak_stairs").unwrap());
@@ -4450,7 +4602,10 @@ fn the_level_chooses_the_state_a_block_is_placed_in() {
         item: "minecraft:furnace".into(),
         can_use_game_master_blocks: false,
     };
-    assert!(b.directional_can_place(&mut level, &mut ticks, &dispenser));
+    assert_eq!(
+        b.directional_can_place(&mut level, &mut ticks, &dispenser),
+        Ok(true)
+    );
     let outcome = b.place_block(&mut level, &mut ticks, &dispenser);
     assert_eq!(
         outcome,
@@ -4488,18 +4643,19 @@ fn the_level_chooses_the_state_a_block_is_placed_in() {
     };
     assert_eq!(
         b.state_for_placement(&mut level, &mut ticks, furnace_block, &vertical_dispenser),
-        Some(facing("south"))
+        Ok(Some(facing("south")))
     );
     let observer = b.block(f.registry.default_state("minecraft:observer").unwrap());
     let observer_state = b
         .state_for_placement(&mut level, &mut ticks, observer, &vertical_dispenser)
+        .unwrap()
         .unwrap();
     assert_eq!(b.facing(observer_state), Direction::Down);
     // A made-up id is not trusted: the fallback remains vanilla's state.
     level.answer = Some(Some(BlockStateId(u32::MAX)));
     assert_eq!(
         b.state_for_placement(&mut level, &mut ticks, furnace_block, &ctx),
-        Some(furnace)
+        Ok(Some(furnace))
     );
     // The resolved candidate can belong to another block. Place that block,
     // including its companion and sound, even though the item is a furnace.

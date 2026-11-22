@@ -66,6 +66,7 @@ fn a_gate_asks_its_neighbours_parts_for_wall_height() {
                         level.native_authoritative = authoritative;
                         let placed = b
                             .state_for_placement(level, ticks, b.table.block(gate), &context)
+                            .unwrap()
                             .unwrap();
                         assert_eq!(
                             registry.state(placed).unwrap().properties["in_wall"],
