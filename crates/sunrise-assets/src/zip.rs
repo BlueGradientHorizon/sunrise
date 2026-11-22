@@ -369,11 +369,16 @@ fn find_end(data: &[u8]) -> Option<usize> {
 /// or empty.
 fn normalize_end(data: &mut [u8]) {
     let Some(end) = find_end(data) else { return };
-    // A Zip64 archive (more than 65535 entries, as CraftEngine's packs are) has its Zip64 record and
-    // locator between the directory and the END record, and its END length leaves them out, so the recount
-    // below starts inside the directory. Its Zip64 record holds the real counts: leave the record as it is,
-    // checked before any recount, since entry comments are free bytes that can fake a directory header.
-    if end >= 20 && data[end - 20..end - 16] == [0x50, 0x4b, 0x06, 0x07] {
+    // The Zip64 record and locator sit between the directory and END, so `END - cenlen`
+    // can land inside the directory. Keep the END markers the archive reader needs to find
+    // the real counts. Match `zip`'s `may_be_zip64`: a ZIP32 entry comment can mimic the
+    // locator signature, but it doesn't put a Zip64 marker in the END record.
+    if end >= 20
+        && data[end - 20..end - 16] == *b"PK\x06\x07"
+        && (u16_at(data, end + 10) == u16::MAX
+            || u32_at(data, end + 12) == u32::MAX
+            || u32_at(data, end + 16) == u32::MAX)
+    {
         return;
     }
     // The directory's real position and length, as Java derives them; the
@@ -444,12 +449,25 @@ mod tests {
     }
     #[test]
     fn a_file_is_opened_past_end_counts_java_ignores() {
-        let mut bytes = archive();
+        use std::io::Write as _;
+        let body = b"hello hello hello hello";
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        writer
+            .start_file("pack.mcmeta", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        writer.write_all(b"{\"pack\":{}}").unwrap();
+        let commented = zip::write::FullFileOptions::default()
+            .compression_method(CompressionMethod::Deflated)
+            .with_file_comment("PK\u{0006}\u{0007}zip32-entry-note");
+        writer.start_file("a/b.txt", commented).unwrap();
+        writer.write_all(body).unwrap();
+        let mut bytes = writer.finish().unwrap().into_inner();
         let end = bytes.len() - END_HEADER;
+        assert_eq!(&bytes[end - 20..end - 16], b"PK\x06\x07");
         bytes[end + 4..end + 6].fill(0xFF);
         bytes[end + 8..end + 12].fill(0);
         let zip = opened("end-counts", &bytes).unwrap();
-        assert_eq!(zip.read("a/b.txt").unwrap(), b"hello hello hello hello");
+        assert_eq!(zip.read("a/b.txt").unwrap(), body);
     }
     /// A pack of more entries than the ZIP32 record counts (CraftEngine's, with its many generated
     /// files) opens as an archive of its entries, not an empty one: `pack.mcmeta` is read.
