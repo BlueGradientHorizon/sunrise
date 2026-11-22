@@ -1,0 +1,2 @@
+# Daily GPU tests for sunrise-client-render (moved out of verify: require a GPU adapter).
+sunrise-client-render gfx::gpu_culling::tests::the_gpu_draws_what_the_integer_test_keeps lib daily gpu

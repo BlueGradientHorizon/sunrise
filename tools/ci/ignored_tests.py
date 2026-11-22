@@ -26,7 +26,8 @@ the runner has a Vulkan driver (an ICD file), and must pass there.
 
 A row marked `daily` (`PACKAGE TEST TARGET daily REASON`, in `daily-<package>.txt`) is a test moved out of
 `verify` into the daily run with `#[ignore = "daily"]` (tools/ci/move_to_daily.py): not a known failure, it must
-pass, and its row must name a test that still runs. A package's shard runs the daily rows of the targets it
+pass, and its row must name a test that still runs. Daily shards and `daily-rows` require an adapter for GPU
+fixtures, including rows with reason `gpu`. A package's shard runs the daily rows of the targets it
 already runs (its library; every target for the packages in INTEGRATION_TESTS); the shard `daily-rows`
 (tools/ci/ignored_shards.py) runs every other daily row: the root workspace's tests are built once with verify's command
 (WORKSPACE_TEST_BUILD) and each package's test executables then run with `--ignored --exact TEST...`; a package that
@@ -108,7 +109,7 @@ LISTED = re.compile(r"^(\S+): test$")
 DAILY_TARGET = re.compile(r"^(?:lib|(?:bin|test):[\w-]+)$")
 # Why a test is a daily test (CONTRIBUTING.md "CI tiers"): slower than 2 s, or what it needs. `stable-line` is a check
 # `verify` runs too, repeated in the daily because a stable release needs a green daily of its commit to hold it.
-DAILY_REASONS = ("slow", "game-boot", "resources", "child-process", "network", "windows", "own-sdk", "stable-line")
+DAILY_REASONS = ("slow", "game-boot", "resources", "child-process", "network", "gpu", "windows", "own-sdk", "stable-line")
 # A test that needs the daily head's SDK in book-quickstart.yml, not a previous Nightly.
 OWN_SDK_REASON = "own-sdk"
 # A daily reason for a test whose target compiles only on Windows (`#![cfg(windows)]`): no Linux shard or `daily-rows`
@@ -1015,6 +1016,7 @@ def run(package, skip, number=None, count=None, only=None, binaries=None):
         threads = min(8 if client_half else 4, int(os.environ.get("CI_CPUS", "8")))
         selection = ["--ignored", "--exact", f"--test-threads={threads}", *only[1]] if only else \
             ["--include-ignored", "--exact", f"--test-threads={threads}", *skips]
+        env["SUNRISE_GPU_TESTS_REQUIRE_ADAPTER"] = "1"
         if binaries:
             process = run_binaries(package, {target: binaries[target] for target in only[0]}, selection, env)
         else:

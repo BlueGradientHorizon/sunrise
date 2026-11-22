@@ -2873,11 +2873,13 @@ mod tests {
             return None;
         }
         eprintln!("GPU culling on {} ({name})", adapter.get_info().name);
-        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-            required_features: needed | timing,
-            ..Default::default()
-        }))
-        .ok()
+        crate::gfx::test_gpu::optional_device_with(
+            adapter,
+            &wgpu::DeviceDescriptor {
+                required_features: needed | timing,
+                ..Default::default()
+            },
+        )
     }
 
     /// `test` on each device here that draws counts with first instances
@@ -2891,7 +2893,7 @@ mod tests {
             }
         }
         if !tested {
-            eprintln!("no GPU with indirect count draws: skipped");
+            crate::gfx::test_gpu::missing_adapter("no GPU with indirect count draws");
         }
     }
 
@@ -2938,6 +2940,7 @@ mod tests {
     /// (`FADING`, sent as updates or with the whole table): the pass leaves
     /// them to the CPU.
     #[test]
+    #[ignore = "daily"]
     fn the_gpu_draws_what_the_integer_test_keeps() {
         let _gpu = crate::gfx::test_gpu::lock();
         on_each_device(draws_match);

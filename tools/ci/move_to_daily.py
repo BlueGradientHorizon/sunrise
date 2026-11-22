@@ -7,7 +7,9 @@
 
 LIST.tsv has one test per line, tab-separated: `PACKAGE TARGET TEST SOURCE REASON`. TARGET is the cargo target the
 test is in (`lib`, `bin:NAME` or `test:NAME`, as the daily run selects it), TEST its libtest path, SOURCE the
-`file:line` of its `fn`, REASON why it is a daily test (`slow`, `game-boot`, ...). `#` starts a comment line.
+`file:line` of its `fn`, REASON why it is a daily test (`slow`, `game-boot`, `gpu` for a test that needs an
+adapter, ...). `#` starts a comment line. For GPU tests, build an apply list from the tests that fail with
+Vulkan hidden and `SUNRISE_GPU_TESTS_REQUIRE_ADAPTER=1`, not from their timings.
 
 `select` reads a measurement of verify's tests (tab-separated with a header: package, target_kind, target, test,
 source, max_seconds, ...; each test timed in-process by libtest's --report-time) and prints the tests that move:
