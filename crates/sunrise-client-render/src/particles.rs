@@ -1047,7 +1047,17 @@ impl<'a> ParticleLevel<'a> {
     }
 }
 
+/// The two `ClientLevel.doAddParticle` flags for level-scoped engine spawns.
+#[derive(Clone, Copy, Default)]
+pub struct ParticleSpawnFlags {
+    /// Bypass the distance and particle settings checks.
+    pub override_limiter: bool,
+    /// Give some particles a chance to spawn even at the minimal setting.
+    pub always_show: bool,
+}
+
 /// Factory inputs borrowed only for synchronous construction, not kept in the queue.
+#[derive(Clone, Copy)]
 struct SpawnScope<'a, 'l> {
     level: Option<&'a ParticleLevel<'l>>,
     mod_options: Option<&'a mod_api::ParticleOptions>,
@@ -1600,17 +1610,16 @@ impl ParticleEngine {
         override_limiter: bool,
         always_show: bool,
     ) {
-        let c = self.camera;
-        let d2 = (p[0] - c[0]).powi(2) + (p[1] - c[1]).powi(2) + (p[2] - c[2]).powi(2);
-        if let Some(requested) = &mut self.requested {
-            requested.push((options.clone(), p, v));
-            REQUESTED.set(REQUESTED.get() + 1);
-            return;
-        }
-        let minimal = self.calculate_particle_level(always_show) == 2;
-        if override_limiter || options.ty.override_limiter() || (d2 <= 1024.0 && !minimal) {
-            self.create(options, p, v);
-        }
+        self.add_scoped(
+            options,
+            p,
+            v,
+            ParticleSpawnFlags {
+                override_limiter,
+                always_show,
+            },
+            SpawnScope::BARE,
+        );
     }
     /// `NoxiousGasCloudParticle.spawnNoxiousGasParticle`: the gas, as an
     /// always visible particle (`ClientLevel.addAlwaysVisibleParticle`).
@@ -1719,7 +1728,8 @@ impl ParticleEngine {
     ) {
         self.tracking_emitter_for(options, target, body, 3);
     }
-    /// `createTrackingEmitter(entity, type, lifetime)`.
+    /// `createTrackingEmitter(entity, type, lifetime)`: the first burst uses vanilla options
+    /// and runs immediately; later bursts borrow the ticking level.
     pub fn tracking_emitter_for(
         &mut self,
         options: ParticleOptions,
@@ -1727,7 +1737,7 @@ impl ParticleEngine {
         body: TrackingBody,
         life: u32,
     ) {
-        self.emit(&options, body);
+        self.emit(&options, body, SpawnScope::BARE);
         if life > 1 {
             self.emitters.push(TrackingEmitter {
                 options,
@@ -1753,7 +1763,7 @@ impl ParticleEngine {
     }
     /// `TrackingEmitter.tick`: the spawn attempts use the tracked entity's
     /// current feet and dimensions.
-    fn emit(&mut self, options: &ParticleOptions, body: TrackingBody) {
+    fn emit(&mut self, options: &ParticleOptions, body: TrackingBody, scope: SpawnScope<'_, '_>) {
         let TrackingBody {
             feet,
             width,
@@ -1770,7 +1780,13 @@ impl ParticleEngine {
                     feet[1] + height * (0.5 + ya / 4.0),
                     feet[2] + width * (za / 4.0),
                 ];
-                self.add(options, p, [xa, ya + 0.2, za]);
+                self.add_scoped(
+                    options,
+                    p,
+                    [xa, ya + 0.2, za],
+                    ParticleSpawnFlags::default(),
+                    scope,
+                );
             }
         }
     }
@@ -3555,6 +3571,10 @@ impl ParticleEngine {
         }
         self.tick_starters();
         self.tick_explosions(level);
+        let scope = SpawnScope {
+            level: Some(level),
+            ..SpawnScope::BARE
+        };
         let mut emitters = std::mem::take(&mut self.emitters);
         emitters.retain_mut(|emitter| {
             if let Some(target) = emitter.target {
@@ -3563,7 +3583,7 @@ impl ParticleEngine {
                     None => emitter.target = None,
                 }
             }
-            self.emit(&emitter.options, emitter.body);
+            self.emit(&emitter.options, emitter.body, scope);
             emitter.remaining -= 1;
             emitter.remaining > 0
         });
@@ -3584,7 +3604,13 @@ impl ParticleEngine {
             self.groups[handle].particles = particles;
         }
         for (options, pos, velocity) in self.spawned_in_tick.take().unwrap_or_default() {
-            self.add(&options, pos, velocity);
+            self.add_scoped(
+                &options,
+                pos,
+                velocity,
+                ParticleSpawnFlags::default(),
+                scope,
+            );
         }
         for pending in std::mem::take(&mut self.pending) {
             match pending {
@@ -6246,7 +6272,7 @@ mod tests {
         assert_eq!(engine.tracked_explosions.len(), 2);
 
         // In pure air, total particles spawned must be capped at 512.
-        engine.tick_explosions_with(&|_| true);
+        engine.tick_explosions_with(&|_| true, SpawnScope::BARE);
         assert_eq!(engine.pending.len(), 512);
         assert!(engine.tracked_explosions.is_empty());
     }
@@ -6260,7 +6286,7 @@ mod tests {
         engine.track_explosion([0.0, 64.0, 0.0], 4.0, 100, &ExplosionParticle::defaults());
 
         // When no blocks are air, zero debris particles are emitted.
-        engine.tick_explosions_with(&|_| false);
+        engine.tick_explosions_with(&|_| false, SpawnScope::BARE);
         assert_eq!(engine.pending.len(), 0);
         assert!(engine.tracked_explosions.is_empty());
     }

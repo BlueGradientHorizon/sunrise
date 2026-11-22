@@ -1,7 +1,9 @@
 //! An explosion's particles on the client: the one at its centre
 //! (`ClientPacketListener.handleExplosion`) and the debris its block particles
 //! throw up over the next tick (`ClientExplosionTracker`).
-use super::{ParticleEngine, ParticleLevel, ParticleOptions, ParticleType};
+use super::{
+    ParticleEngine, ParticleLevel, ParticleOptions, ParticleSpawnFlags, ParticleType, SpawnScope,
+};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 
 /// One entry of an explosion's weighted block-particle list
@@ -79,9 +81,19 @@ impl ParticleEngine {
     /// `ClientExplosionTracker.tick`: throws up to 512 debris particles across all
     /// explosions tracked in this tick, weighted by each explosion's block count.
     pub(super) fn tick_explosions(&mut self, level: &ParticleLevel) {
-        self.tick_explosions_with(&|b| level.facts.is_air(level.world.block(b[0], b[1], b[2])));
+        self.tick_explosions_with(
+            &|b| level.facts.is_air(level.world.block(b[0], b[1], b[2])),
+            SpawnScope {
+                level: Some(level),
+                ..SpawnScope::BARE
+            },
+        );
     }
-    pub(super) fn tick_explosions_with(&mut self, is_air: &dyn Fn([i32; 3]) -> bool) {
+    pub(super) fn tick_explosions_with(
+        &mut self,
+        is_air: &dyn Fn([i32; 3]) -> bool,
+        scope: SpawnScope<'_, '_>,
+    ) {
         if self.tracked_explosions.is_empty() {
             return;
         }
@@ -155,10 +167,12 @@ impl ParticleEngine {
                 explosion.center[2] + local[2] * scaling,
             ];
             let speed = f64::from(speed * particle.speed);
-            self.add(
+            self.add_scoped(
                 &particle.options,
                 p,
                 [d.x * speed, d.y * speed, d.z * speed],
+                ParticleSpawnFlags::default(),
+                scope,
             );
         }
     }
@@ -186,7 +200,7 @@ mod tests {
             })
             .collect();
         engine.track_explosion([0.0; 3], 4.0, 100, &particles);
-        engine.tick_explosions_with(&|_| true);
+        engine.tick_explosions_with(&|_| true, SpawnScope::BARE);
         engine.pending.len()
     }
 

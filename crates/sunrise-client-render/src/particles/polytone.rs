@@ -6,8 +6,8 @@
 #[cfg(test)]
 use super::ModSet;
 use super::{
-    Behaviour, Fluid, Particle, ParticleEngine, ParticleLevel, ParticleOptions, ParticleType,
-    ParticleUpdate, PendingParticle, Sprite,
+    Behaviour, Fluid, Particle, ParticleEngine, ParticleLevel, ParticleOptions, ParticleSpawnFlags,
+    ParticleType, ParticleUpdate, PendingParticle, Sprite,
 };
 use crate::environment::Frame;
 use serde_json::Value as Json;
@@ -1660,7 +1660,14 @@ impl ParticleEngine {
         drop(ctx);
         drop(frame);
         for (options, position, velocity) in out {
-            self.add(&options, position, velocity);
+            self.add_with_level(
+                &options,
+                position,
+                velocity,
+                ParticleSpawnFlags::default(),
+                level,
+                None,
+            );
         }
     }
 
@@ -1711,7 +1718,14 @@ impl ParticleEngine {
         drop(ctx);
         drop(frame);
         for (options, position, velocity) in out {
-            self.add(&options, position, velocity);
+            self.add_with_level(
+                &options,
+                position,
+                velocity,
+                ParticleSpawnFlags::default(),
+                level,
+                None,
+            );
         }
         self.sounds.extend(sounds);
     }
