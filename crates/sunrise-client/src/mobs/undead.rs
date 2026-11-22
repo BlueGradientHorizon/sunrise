@@ -250,7 +250,7 @@ pub fn drowned_move_control(m: &mut Mob, w: &super::MobWorld) {
             m.velocity.z + s * zd * 0.005,
         );
     } else {
-        if !m.on_ground {
+        if !m.ground.on_ground {
             m.velocity = Vec3::new(m.velocity.x, m.velocity.y - 0.008, m.velocity.z);
         }
         let speed = m.movement_speed();
@@ -265,7 +265,7 @@ pub(super) fn drowned_travel(
     input: Vec3,
     events: &mut Vec<MobEvent>,
     pause: bool,
-) -> Result<(), super::living::TravelTrample> {
+) -> Result<(), super::living::TravelPause> {
     m.move_relative(0.01, input);
     m.travel_move(w, level, events, pause, |m, _, _, _| {
         m.velocity = Vec3::new(m.velocity.x * 0.9, m.velocity.y * 0.9, m.velocity.z * 0.9);

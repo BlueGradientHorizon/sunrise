@@ -75,7 +75,7 @@ impl Game<'_> {
         self.open_container_slots = Some((key, self.open_container_size()));
         self.set_screen(super::Screen::Inventory);
         self.capture(false);
-        self.right = false;
+        self.set_mapping_held("key.use", false);
     }
     /// The custom name of the open container, or its default title
     /// (a double chest is named by whichever half has a name).
@@ -233,17 +233,46 @@ impl Game<'_> {
             );
         paired.then_some((other, own.kind == "right"))
     }
-    /// The open or close sound of a container block (`ChestBlockEntity.playSound`,
-    /// `BarrelBlockEntity.playSound`, `ShulkerBoxBlockEntity.startOpen`): volume
-    /// 0.5 and pitch 0.9 to 1.0. A double chest sounds once from the middle of
-    /// both halves, a barrel from the face it opens on.
-    pub(super) fn container_sound(&mut self, sound: &str, key: (i32, i32, i32), name: &str) {
+    /// `ChestBlockEntity.playSound`: resolve the sound for the first or last opener.
+    /// A double chest sounds from the middle of both halves, a barrel from its
+    /// opening face (`BarrelBlockEntity.playSound`), and other containers from
+    /// the block center. Resolve this before notifying game-event listeners.
+    pub(super) fn resolve_container_sound(
+        &self,
+        key: (i32, i32, i32),
+        name: &str,
+        open: bool,
+    ) -> Option<(&'static str, [f64; 3])> {
+        let chest = is_chest_block(name);
+        let sound = if is_shulker_box(name) {
+            if open {
+                "minecraft:block.shulker_box.open"
+            } else {
+                "minecraft:block.shulker_box.close"
+            }
+        } else if name == "minecraft:ender_chest" {
+            if open {
+                "minecraft:block.ender_chest.open"
+            } else {
+                "minecraft:block.ender_chest.close"
+            }
+        } else if chest {
+            sunrise_client::mobs::transport_items::chest_hinge_sound(name, open)
+        } else if name == "minecraft:barrel" {
+            if open {
+                "minecraft:block.barrel.open"
+            } else {
+                "minecraft:block.barrel.close"
+            }
+        } else {
+            return None;
+        };
         let mut at = [
             f64::from(key.0) + 0.5,
             f64::from(key.1) + 0.5,
             f64::from(key.2) + 0.5,
         ];
-        if let Some((other, _)) = self.chest_partner(key) {
+        if chest && let Some((other, _)) = self.chest_partner(key) {
             at[0] = f64::from(key.0 + other.0) / 2.0 + 0.5;
             at[2] = f64::from(key.2 + other.2) / 2.0 + 0.5;
         } else if name == "minecraft:barrel"
@@ -264,6 +293,10 @@ impl Game<'_> {
             };
             at = [at[0] + dx, at[1] + dy, at[2] + dz];
         }
+        Some((sound, at))
+    }
+
+    pub(super) fn play_container_sound(&mut self, sound: &str, at: [f64; 3]) {
         let pitch = self.world.random.next_float() * 0.1 + 0.9;
         // A server's `playSound(null, …)`: every player around, the opener too.
         // `Audio::play` captures the sound while the world is open to the
@@ -271,40 +304,14 @@ impl Game<'_> {
         // so nothing is queued separately (a second queue played it twice).
         self.audio.play(sound, Some(at), 0.5, pitch);
     }
-    /// The open or close sound of the container block at `key`, if it has one.
-    /// Callers play it only when the opener count crosses zero
+    /// Play the current block's sound when its opener count crosses zero
     /// (`ContainerOpenersCounter.onOpen` / `onClose`).
     pub(super) fn container_edge_sound(&mut self, key: (i32, i32, i32), open: bool) {
-        let name = self
-            .res
-            .facts()
-            .get(self.world.block(key.0, key.1, key.2))
-            .name
-            .clone();
-        let sound = if is_shulker_box(&name) {
-            if open {
-                "minecraft:block.shulker_box.open"
-            } else {
-                "minecraft:block.shulker_box.close"
-            }
-        } else if &*name == "minecraft:ender_chest" {
-            if open {
-                "minecraft:block.ender_chest.open"
-            } else {
-                "minecraft:block.ender_chest.close"
-            }
-        } else if name.contains("chest") {
-            sunrise_client::mobs::transport_items::chest_hinge_sound(&name, open)
-        } else if &*name == "minecraft:barrel" {
-            if open {
-                "minecraft:block.barrel.open"
-            } else {
-                "minecraft:block.barrel.close"
-            }
-        } else {
-            return;
-        };
-        self.container_sound(sound, key, &name);
+        let state = self.world.block(key.0, key.1, key.2);
+        let name = &self.res.facts().get(state).name;
+        if let Some((sound, at)) = self.resolve_container_sound(key, name, open) {
+            self.play_container_sound(sound, at);
+        }
     }
     /// The other half of a double chest at `key`, for neighbour updates.
     pub(super) fn chest_other_half(&self, key: (i32, i32, i32)) -> Option<(i32, i32, i32)> {

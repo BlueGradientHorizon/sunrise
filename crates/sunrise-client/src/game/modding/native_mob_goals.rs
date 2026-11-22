@@ -219,7 +219,7 @@ impl Game<'_> {
             } else {
                 mobs[index].ai.goals = selector;
             }
-            mobs::apply_brain_events(&mut mobs, &mut level, &mut events, 0);
+            mobs::apply_brain_events(&mut mobs, &mut level, &mut events, 0, &w.teams);
             removed
         };
         drop(w);
@@ -466,7 +466,7 @@ mod tests {
     fn mob_in_game(game: &mut super::super::Game<'_>, kind: &str, id: u32) -> MobRef {
         let t = game.res.mob_types().get(kind).unwrap().clone();
         let mut m = Mob::new(id, t, Vec3::new(3.5, 65.0, 3.5), 0.0);
-        m.on_ground = true;
+        m.ground.on_ground = true;
         game.mobs.push(m);
         let entity = game.entity(id).unwrap();
         game.mob(entity).unwrap()

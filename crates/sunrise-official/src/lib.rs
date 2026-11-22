@@ -145,6 +145,7 @@ pub fn register() {
     let late = late.chain(std::iter::once(lang::register(LANG)));
     #[cfg(feature = "sunrise-extras")]
     let late = late.chain(std::iter::once(lang::register(sunrise_reconnect::LANG)));
+    let late = late.chain(std::iter::once(lang::register(sunrise_discord::LANG)));
     let late = late.chain(PAGES.iter().copied().map(pages::register));
     for result in late.chain(LAYERS.iter().copied().map(hud::register)) {
         if let Err(e) = result {

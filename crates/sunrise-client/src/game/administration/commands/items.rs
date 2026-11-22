@@ -96,14 +96,6 @@ fn matches_name(pattern: &str, name: &str) -> bool {
 }
 
 impl Game<'_> {
-    /// The item's default `minecraft:rarity` ("common" when it has none).
-    pub(in crate::game) fn item_rarity(&self, item: &str) -> String {
-        self.items()
-            .enchantments
-            .props
-            .get(item)
-            .map_or_else(|| "common".into(), |props| props.rarity.clone())
-    }
     fn owner_of(&mut self, ctx: &Context, prefix: &str, many: bool) -> R<Vec<Owner>> {
         let kind = ctx
             .literals
@@ -2535,8 +2527,9 @@ mod builtin_component_delivery_tests {
     };
     use sunrise_core::nbt::Tag;
     use sunrise_core::position::ChunkPos;
+    use sunrise_core::vanilla_bytes::Writer;
     use sunrise_protocol::{
-        buf::{Codec, Reader, Writer},
+        buf::{Codec, Reader},
         item::{Slot, component},
         packets::{configuration::ClientInformation, play},
     };

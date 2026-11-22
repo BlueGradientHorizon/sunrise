@@ -35,6 +35,12 @@ pub struct Outcome {
     pub group_clears: FxHashSet<(i32, i32, i32)>,
 }
 
+/// Changed sections waiting for one whole-chunk publication, after transaction commit.
+#[derive(Default)]
+pub struct BulkPublication {
+    chunks: Vec<((i32, i32), Vec<bool>)>,
+}
+
 /// Per state answers, worked out once each.
 struct Memo(Vec<u8>);
 impl Memo {
@@ -71,10 +77,36 @@ impl World {
         &mut self,
         runs: &[Run],
         journaled_groups: &FxHashSet<(i32, i32, i32)>,
+        matches: impl FnMut(u16, u32) -> bool,
+        tracked: impl FnMut(u32) -> bool,
+    ) -> Outcome {
+        self.write_runs::<false>(runs, journaled_groups, matches, tracked, |_, _, _| {})
+            .0
+    }
+
+    /// The same bulk storage write without publishing; `keep` records each transition
+    /// in the caller's transaction.
+    pub fn stage_edit_runs(
+        &mut self,
+        runs: &[Run],
+        journaled_groups: &FxHashSet<(i32, i32, i32)>,
+        matches: impl FnMut(u16, u32) -> bool,
+        tracked: impl FnMut(u32) -> bool,
+        keep: impl FnMut((i32, i32, i32), u32, u32),
+    ) -> (Outcome, BulkPublication) {
+        self.write_runs::<true>(runs, journaled_groups, matches, tracked, keep)
+    }
+
+    fn write_runs<const STAGED: bool>(
+        &mut self,
+        runs: &[Run],
+        journaled_groups: &FxHashSet<(i32, i32, i32)>,
         mut matches: impl FnMut(u16, u32) -> bool,
         mut tracked: impl FnMut(u32) -> bool,
-    ) -> Outcome {
+        mut keep: impl FnMut((i32, i32, i32), u32, u32),
+    ) -> (Outcome, BulkPublication) {
         let mut out = Outcome::default();
+        let mut publication = BulkPublication::default();
         // the runs of each chunk, in order, and the chunks in the order they were first named
         let mut by_chunk: FxHashMap<(i32, i32), Vec<u32>> = FxHashMap::default();
         let mut order = Vec::new();
@@ -137,6 +169,9 @@ impl World {
                                 continue;
                             }
                         }
+                        if STAGED {
+                            keep((r.x, yy, r.z), old, r.state);
+                        }
                         vals[at] = r.state;
                         changed[s] = true;
                         any += 1;
@@ -179,32 +214,47 @@ impl World {
                     out.group_clears.insert(pos);
                 }
             }
-            self.revision = self.revision.wrapping_add(1);
-            self.modified.insert(key);
-            if self.block_log.is_some() {
-                self.bulk_log.insert(key);
+            if STAGED {
+                publication.chunks.push((key, changed.clone()));
+            } else {
+                self.publish_bulk_chunk(key, &changed);
             }
-            // remeshed once (with the neighbours whose faces and light it touches), lit again whole
-            for (s, _) in changed.iter().enumerate().filter(|c| *c.1) {
-                for ds in -1..=1 {
-                    let sy = s as i32 + ds;
-                    if !(0..sections as i32).contains(&sy) {
-                        continue;
-                    }
-                    for dz in -1..=1 {
-                        for dx in -1..=1 {
-                            self.dirty_sections.insert((key.0 + dx, sy, key.1 + dz));
-                        }
-                    }
+        }
+        (out, publication)
+    }
+
+    pub fn publish_bulk(&mut self, publication: BulkPublication) {
+        for (key, changed) in publication.chunks {
+            self.publish_bulk_chunk(key, &changed);
+        }
+    }
+
+    fn publish_bulk_chunk(&mut self, key: (i32, i32), changed: &[bool]) {
+        let sections = changed.len();
+        self.revision = self.revision.wrapping_add(1);
+        self.modified.insert(key);
+        if self.block_log.is_some() {
+            self.bulk_log.insert(key);
+        }
+        // remeshed once (with the neighbours whose faces and light it touches), lit again whole
+        for (s, _) in changed.iter().enumerate().filter(|c| *c.1) {
+            for ds in -1..=1 {
+                let sy = s as i32 + ds;
+                if !(0..sections as i32).contains(&sy) {
+                    continue;
                 }
-            }
-            for dz in -1..=1 {
-                for dx in -1..=1 {
-                    self.dirty_light.insert((key.0 + dx, key.1 + dz));
+                for dz in -1..=1 {
+                    for dx in -1..=1 {
+                        self.dirty_sections.insert((key.0 + dx, sy, key.1 + dz));
+                    }
                 }
             }
         }
-        out
+        for dz in -1..=1 {
+            for dx in -1..=1 {
+                self.dirty_light.insert((key.0 + dx, key.1 + dz));
+            }
+        }
     }
 }
 

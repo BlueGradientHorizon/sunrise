@@ -11,13 +11,4 @@ pub enum BlockExtraModelsError {
     NotLoaded,
     /// A handle is stale or is not a registered standalone model.
     Model(crate::ModelError),
-    /// Called outside the client's running game (the World phase): in a resource reload
-    /// (`client_resources_reloaded`), setup or config loading.
-    Unavailable,
-}
-
-impl crate::AccessRefusal for BlockExtraModelsError {
-    fn unavailable() -> Self {
-        Self::Unavailable
-    }
 }

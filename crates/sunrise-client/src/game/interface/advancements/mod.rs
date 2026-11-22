@@ -696,7 +696,7 @@ impl Game<'_> {
             on_fire: p.is_on_fire(),
             sneaking: p.pose == sunrise_client::pose::Pose::Crouching,
             // Input.shift: the held key, as `BlockItem.place`'s sneaking reads it.
-            input_sneak: self.keys.held(Action::Sneak),
+            input_sneak: self.held_mapping(Action::Sneak),
             sprinting: p.sprinting,
             swimming: p.pose == sunrise_client::pose::Pose::Swimming,
             flying: p.flying,
@@ -739,7 +739,7 @@ impl Game<'_> {
         EntityView {
             kind: b.entity_type(),
             position: [b.position.x, b.position.y, b.position.z],
-            on_ground: b.on_ground,
+            on_ground: b.ground.on_ground,
             passengers: self
                 .mobs
                 .iter()
@@ -755,7 +755,7 @@ impl Game<'_> {
         EntityView {
             kind: "minecraft:item".into(),
             position: [e.position.x, e.position.y, e.position.z],
-            on_ground: e.on_ground,
+            on_ground: e.ground.on_ground,
             on_fire: e.fire_ticks > 0,
             ..Default::default()
         }
@@ -835,7 +835,7 @@ impl Game<'_> {
             position: [m.position.x, m.position.y, m.position.z],
             on_fire: m.fire_ticks > 0 && !m.mod_fire_immune,
             baby: m.is_baby(),
-            on_ground: m.on_ground,
+            on_ground: m.ground.on_ground,
             equipment,
             // LivingEntity.getActiveEffectsMap supplies the active predicate instances.
             effects: m
@@ -1631,7 +1631,20 @@ impl Game<'_> {
     /// `DistanceTrigger`: the player's `player` condition, `start_position`
     /// at `start`, and the `distance` from `start` to the player.
     pub(super) fn trigger_distance(&mut self, name: &str, start: [f64; 3]) {
-        let me = self.player_entity_for(name);
+        self.trigger_distance_at(name, start, None);
+    }
+
+    /// Complete a distance trigger at the position recorded by its call site.
+    pub(in crate::game) fn trigger_distance_at(
+        &mut self,
+        name: &str,
+        start: [f64; 3],
+        end: Option<[f64; 3]>,
+    ) {
+        let mut me = self.player_entity_for(name);
+        if let Some(end) = end {
+            me.position = end;
+        }
         self.trigger(name, move |c, w| {
             let pctx = adv::Entities {
                 this: Some(&me),

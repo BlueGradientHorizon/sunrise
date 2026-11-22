@@ -25,41 +25,28 @@ impl Game<'_> {
 
 #[cfg(test)]
 mod tests {
-    use mod_api::__private::{ModPhase, PhaseOwner};
     use mod_api::BlockExtraModelsError;
     use mod_api::prelude::ClientRenderClientHost;
 
-    /// Through the host trait a native mod calls: outside the World phase (a resource reload's
-    /// `client_resources_reloaded`, setup, config loading) the setter answers `Unavailable`
-    /// instead of panicking; in the World phase it reaches the client's columns.
+    /// The live Host refuses an unloaded position and only accepts registered standalone models.
     #[test]
     #[ignore = "daily"]
-    fn outside_the_world_phase_the_setter_is_unavailable() {
+    fn host_sets_only_loaded_cells_with_registered_standalone_models() {
         use super::super::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 
         if run_fresh_cases(
-            "game::native_block_extra_models::tests::outside_the_world_phase_the_setter_is_unavailable",
+            "game::native_block_extra_models::tests::host_sets_only_loaded_cells_with_registered_standalone_models",
             "SUNRISE_TEST_BLOCK_EXTRA_MODELS_CASE",
-            &["phase"],
+            &["host"],
         ) {
             return;
         }
         let _standalone =
             sunrise_client::models::standalone_fixture(vec!["minecraft:block/gold_block".into()]);
         with_client_game(|game| {
-            for phase in [ModPhase::Reloading, ModPhase::Setup, ModPhase::Config] {
-                let _phase = PhaseOwner::scope(phase);
-                assert_eq!(
-                    ClientRenderClientHost::set_block_extra_models(game, [0, 64, 0], &[]),
-                    Err(BlockExtraModelsError::Unavailable),
-                    "{phase:?}"
-                );
-            }
-            let _phase = PhaseOwner::scope(ModPhase::World);
             assert_eq!(
                 ClientRenderClientHost::set_block_extra_models(game, [0, 9999, 0], &[]),
                 Err(BlockExtraModelsError::NotLoaded),
-                "the World phase reaches the columns"
             );
 
             let render = &game.pack.render;

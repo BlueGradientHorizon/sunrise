@@ -83,7 +83,7 @@ fn powder_snow_move_landing() {
         let mut events = Vec::new();
         for _ in 0..40 {
             mob.travel(w, &mut test_level.level(), Vec3::ZERO, &mut events);
-            if mob.on_ground {
+            if mob.ground.on_ground {
                 assert_eq!(mob.position.y, 64.0 + f64::from(0.9f32));
                 return;
             }

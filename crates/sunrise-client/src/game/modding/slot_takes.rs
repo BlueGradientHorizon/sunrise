@@ -76,25 +76,22 @@ impl Game<'_> {
             return true;
         };
         let revision = api.revision();
-        let heard = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            mod_api::run_transaction(self, |game, _| {
-                game.native_menu_slot_take(&mut api, player, menu, *slot, &taken, left.as_ref());
-                finish_block_entity_writeback(
-                    entity,
-                    &api,
-                    revision,
-                    game.items(),
-                    "menu_slot_take",
-                    Ok(()),
-                )
-            })
-        }));
-        match heard {
-            Ok(result) => result.is_ok(),
-            Err(_) => {
-                log::error!("menu_slot_take: a listener failed for {menu}; the take is undone");
-                false
+        let failures = mod_api::runtime::isolated_failures();
+        mod_api::run_transaction(self, |game, _| {
+            game.native_menu_slot_take(&mut api, player, menu, *slot, &taken, left.as_ref());
+            if mod_api::runtime::isolated_failures() != failures {
+                return Err(());
             }
-        }
+            finish_block_entity_writeback(
+                entity,
+                &api,
+                revision,
+                game.items(),
+                "menu_slot_take",
+                Ok(()),
+            )
+            .map_err(|_| ())
+        })
+        .is_ok()
     }
 }

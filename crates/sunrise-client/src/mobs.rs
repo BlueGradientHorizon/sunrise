@@ -129,7 +129,7 @@ mod world;
 pub use world::{TargetInfo, single_player_pos, visual_clip};
 pub mod zombie_villager;
 /// A mob's stored active effect with its registry index resolved once at creation.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct StoredEffect {
     pub id: &'static str,
     pub duration: i32,
@@ -137,6 +137,17 @@ pub struct StoredEffect {
     pub registry_index: Option<usize>,
     /// `MobEffectInstance.showIcon`, kept apart from the particle flag: the saved `show_icon`.
     pub show_icon: bool,
+    // Assigned only while an effect pass is suspended. Zero belongs to a new instance.
+    pass_slot: usize,
+}
+impl PartialEq for StoredEffect {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+            && self.duration == other.duration
+            && self.amplifier == other.amplifier
+            && self.registry_index == other.registry_index
+            && self.show_icon == other.show_icon
+    }
 }
 impl StoredEffect {
     /// `new MobEffectInstance(effect, duration, amplifier)`: its icon shows.
@@ -147,6 +158,7 @@ impl StoredEffect {
             amplifier,
             registry_index: sunrise_client_core::potions::effect(id).map(|def| def.index),
             show_icon: true,
+            pass_slot: 0,
         }
     }
     /// Copy a registered instance after an update or hidden-effect promotion, without resolving again.
@@ -157,7 +169,15 @@ impl StoredEffect {
             amplifier: instance.amplifier,
             registry_index: instance.registry_index,
             show_icon: instance.show_icon,
+            pass_slot: 0,
         }
+    }
+
+    fn update_from_instance(&mut self, instance: &crate::effects::EffectInstance) {
+        *self = Self {
+            pass_slot: self.pass_slot,
+            ..Self::from_instance(self.id, instance)
+        };
     }
 }
 
@@ -178,8 +198,7 @@ use sunrise_world::block_collision::BlockCollisionRegistry;
 use sunrise_world::native_load_context::LoopContext;
 
 mod model;
-use model::ModelNormals;
-pub use model::{Part, Polygon};
+pub use model::{ModelNormals, Part, Polygon};
 
 /// Kept for callers of the earlier simple AI; species now select behaviour.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1255,6 +1274,9 @@ pub struct Extra {
     pub vector: [f64; 3],
     /// Active status effects: (effect id, ticks left, amplifier).
     pub effects: Vec<StoredEffect>,
+    // Structural edits invalidate LivingEntity.tickEffects even if a callback
+    // subsequently undoes them before returning.
+    effects_revision: u64,
     /// Hidden effect instances behind an active effect, keyed by effect id.
     pub effect_chains: Vec<crate::effects::EffectInstance>,
     /// The effects above given with `hideParticles`: no swirls for them.
@@ -1568,8 +1590,7 @@ pub struct Mob {
     /// Entity.xRot
     pub head_pitch: f32,
     pub previous_head_pitch: f32,
-    pub on_ground: bool,
-    pub horizontal_collision: bool,
+    pub ground: sunrise_world::ground_support::GroundState,
     pub vertical_collision_below: bool,
     /// `Entity.needsSync`: knocked back, pushed or jumped since its server
     /// last sent it, so the next update goes out at once.
@@ -1636,9 +1657,6 @@ pub struct Mob {
     /// (`Entity.saveWithoutId` omits it) and no mob tick rewrites it except a
     /// vex, which sets it only for the length of its own tick.
     pub no_physics: bool,
-    /// `Entity.mainSupportingBlockPos`: the block it stood on after its last
-    /// move.
-    pub supporting: Option<[i32; 3]>,
     /// The block under the mob's feet by name (`minecraft:grass_block`), kept for the
     /// packs' random-model rules (`rule_index`); `None` without rules or off the ground.
     pub standing_on: Option<String>,
@@ -2042,6 +2060,12 @@ pub enum MobEvent {
         target: Who,
         velocity: [f64; 3],
     },
+    /// A selected peer across a host callback; a later occupant of the id does not receive it.
+    PushJoined {
+        id: u32,
+        join: crate::join_seq::JoinSeq,
+        velocity: [f64; 3],
+    },
     /// `SonicBoom`: 10 damage to the target, then a push along `direction`
     /// (the unit vector from the warden's chest to the target's eyes) only
     /// if the hit landed, less the target's knockback resistance.
@@ -2142,15 +2166,11 @@ pub enum MobEvent {
         amount: f32,
         source: Damage,
     },
-    /// `Pufferfish.touch` on a mob (`Pufferfish.aiStep`): the hit, then, only
-    /// when `hurtServer` let it land, the fish's `entity.puffer_fish.sting`
-    /// and the poison it gives (`poison_ticks`, `60 * getPuffState()`).
+    /// A selected `Pufferfish.aiStep` candidate, before its own `touch`.
     PufferfishSting {
         mob: u32,
         target: u32,
-        amount: f32,
-        source: Damage,
-        poison_ticks: i32,
+        target_join: Option<crate::join_seq::JoinSeq>,
     },
     /// `LivingEntity.stabAttack`'s `target.stopRiding()`: a spear knocks the
     /// target off its mount.
@@ -2624,12 +2644,6 @@ pub enum MobEvent {
         at: [f64; 3],
         radius: f64,
     },
-    /// A creaking bound to the heart at `home` was hurt (`creakingHurt` when a player did it).
-    CreakingHurt {
-        home: [i32; 3],
-        by_player: bool,
-        id: u32,
-    },
     /// `Creaking.tearDown`: crumbling particles around the creaking.
     CreakingTearDown {
         center: [f64; 3],
@@ -2954,15 +2968,24 @@ pub fn take_mob_pushes(events: &mut Vec<MobEvent>, from: usize, pending: &mut Pe
     // in place would shift the rest every time.
     let mut kept = from;
     for i in from..events.len() {
-        if let MobEvent::Push {
-            target: Who::Mob(id),
-            velocity,
-        } = events[i]
-        {
-            pending.push(id, Vec3::new(velocity[0], velocity[1], velocity[2]));
-        } else {
-            events.swap(kept, i);
-            kept += 1;
+        match events[i] {
+            MobEvent::Push {
+                target: Who::Mob(id),
+                velocity,
+            } => {
+                pending.push(id, Vec3::new(velocity[0], velocity[1], velocity[2]));
+            }
+            MobEvent::PushJoined { id, join, velocity } => {
+                pending.push_with_join(
+                    id,
+                    Some(join),
+                    Vec3::new(velocity[0], velocity[1], velocity[2]),
+                );
+            }
+            _ => {
+                events.swap(kept, i);
+                kept += 1;
+            }
         }
     }
     events.truncate(kept);
@@ -2972,18 +2995,21 @@ pub fn take_mob_pushes(events: &mut Vec<MobEvent>, from: usize, pending: &mut Pe
 /// per mob, as scanning the whole list for each mob grows with its square.
 #[derive(Clone, Default)]
 pub struct PendingPushes {
-    list: Vec<(u32, Vec3)>,
-    by_mob: crate::fast_hash::FxHashMap<u32, Vec<Vec3>>,
+    list: Vec<(u32, PushImpulse)>,
+    by_mob: crate::fast_hash::FxHashMap<u32, Vec<PushImpulse>>,
 }
+
+type PushImpulse = (Option<crate::join_seq::JoinSeq>, Vec3);
+
 impl PendingPushes {
     /// `other`'s pushes after these, each mob's in their order.
     pub fn append(&mut self, other: PendingPushes) {
-        for (id, v) in other.list {
-            self.push(id, v);
+        for (id, (join, v)) in other.list {
+            self.push_with_join(id, join, v);
         }
         for (id, list) in other.by_mob {
-            for v in list {
-                self.push(id, v);
+            for (join, v) in list {
+                self.push_with_join(id, join, v);
             }
         }
     }
@@ -2993,15 +3019,19 @@ impl PendingPushes {
         self.list.is_empty() && self.by_mob.is_empty()
     }
     pub fn push(&mut self, id: u32, v: Vec3) {
+        self.push_with_join(id, None, v);
+    }
+
+    fn push_with_join(&mut self, id: u32, join: Option<crate::join_seq::JoinSeq>, v: Vec3) {
         if self.by_mob.is_empty() && self.list.len() < Self::LIST_MAX {
-            self.list.push((id, v));
+            self.list.push((id, (join, v)));
             return;
         }
         // Older pushes first, so each mob's stay in order.
-        for (id, v) in self.list.drain(..) {
-            self.by_mob.entry(id).or_default().push(v);
+        for (id, impulse) in self.list.drain(..) {
+            self.by_mob.entry(id).or_default().push(impulse);
         }
-        self.by_mob.entry(id).or_default().push(v);
+        self.by_mob.entry(id).or_default().push((join, v));
     }
 }
 #[cfg(test)]
@@ -3012,13 +3042,13 @@ mod pending_push_tests {
     /// Each mob's pushes, in the order they apply.
     fn per_mob(p: &PendingPushes) -> std::collections::BTreeMap<u32, Vec<[f64; 3]>> {
         let mut out = std::collections::BTreeMap::<u32, Vec<[f64; 3]>>::new();
-        for (id, v) in &p.list {
+        for (id, (_, v)) in &p.list {
             out.entry(*id).or_default().push([v.x, v.y, v.z]);
         }
         for (id, list) in &p.by_mob {
             out.entry(*id)
                 .or_default()
-                .extend(list.iter().map(|v| [v.x, v.y, v.z]));
+                .extend(list.iter().map(|(_, v)| [v.x, v.y, v.z]));
         }
         out
     }
@@ -3082,7 +3112,58 @@ pub fn apply_brain_events(
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
     from: usize,
+    teams: &Teams<'_>,
 ) {
+    apply_brain_events_until_hurt(mobs, level, events, from, teams, false);
+}
+
+/// The part of `Pufferfish.touch` after `hurtServer` returns successfully.
+/// The borrowed pass gives the owning game the victim before applying this.
+pub struct PufferfishReaction {
+    pub target: u32,
+    pub fish: u32,
+    pub at: usize,
+    target_join: crate::join_seq::JoinSeq,
+    fish_join: crate::join_seq::JoinSeq,
+    poison_ticks: i32,
+}
+
+impl PufferfishReaction {
+    pub fn same_target(&self, mob: &Mob) -> bool {
+        mob.id == self.target && mob.join == self.target_join && !mob.removed
+    }
+
+    pub fn same_fish(&self, mob: &Mob) -> bool {
+        mob.id == self.fish && mob.join == self.fish_join && !mob.removed
+    }
+
+    pub fn poison(&self, target: Option<&mut Mob>) -> Vec<MobEvent> {
+        if let Some(target) = target.filter(|m| self.same_target(m)) {
+            target.add_effect("minecraft:poison", self.poison_ticks, 0);
+            std::mem::take(&mut target.outbox)
+        } else {
+            Vec::new()
+        }
+    }
+
+    pub fn sound(&self, fish: &Mob) -> Option<MobEvent> {
+        (self.same_fish(fish) && !fish.silent).then_some(MobEvent::Sound(
+            "entity.puffer_fish.sting",
+            [fish.position.x, fish.position.y, fish.position.z],
+            1.0,
+            1.0,
+        ))
+    }
+}
+
+pub fn apply_brain_events_until_hurt(
+    mobs: &mut crate::join_seq::JoinList<Mob>,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    from: usize,
+    teams: &Teams<'_>,
+    can_pause: bool,
+) -> Option<PufferfishReaction> {
     let mut i = from;
     while i < events.len() {
         match events[i] {
@@ -3131,74 +3212,99 @@ pub fn apply_brain_events(
                 }
                 i += 1;
             }
-            // Pufferfish.touch: the poison and playSound sit inside the
-            // hurtServer branch, so only a hit that landed poisons and stings.
-            // In vanilla, this runs in Pufferfish.aiStep during the fish's tick,
-            // so mobs ticking later in the same level tick tick their effects.
+            // Pufferfish.aiStep calls touch once per selected, still-living mob.
+            // Each touch reads teams and puff state now, not when the fish selected its list.
             MobEvent::PufferfishSting {
                 mob,
                 target,
-                amount,
-                mut source,
-                poison_ticks,
+                target_join,
             } => {
-                let mut sound = None;
-                let mut raised = Vec::new();
-                let fish = mobs.iter().find(|m| m.id == mob);
-                if source.attacker_species.is_none() {
-                    source.attacker_species = fish.map(Mob::species);
+                events.remove(i);
+                let Some(fish) = mobs.iter().find(|m| m.id == mob && !m.removed) else {
+                    continue;
+                };
+                if !crate::scoreboard::teams_allow_damage(
+                    teams.of(Who::Mob(mob)),
+                    teams.of(Who::Mob(target)),
+                ) {
+                    continue;
                 }
+                let fish_join = fish.join;
+                let size = fish.extra.size;
+                let pos = [fish.position.x, fish.position.y, fish.position.z];
+                let source = Damage::mob(mob, pos).with_species(fish.species());
                 let held = if crate::native_client_hooks::has_mods() {
-                    fish.and_then(|m| m.extra.main_hand_stack()).cloned()
+                    fish.extra.main_hand_stack().cloned()
                 } else {
                     None
                 };
                 let attack = crate::health::Attack {
                     attacker: mob as i32,
-                    // Pufferfish.touch uses DamageSources.sting: the fish, no projectile.
-                    projectile: None,
-                    direct: None,
                     held: [held, None],
-                    player_uuid: None,
                     ..Default::default()
                 };
-                let (aim, fish_pos, fish_silent) = fish
-                    .map(|m| {
-                        (
-                            Aim {
-                                eye: [m.position.x, m.eye_y(), m.position.z],
-                                look: m.look_angle(),
-                                feet: [m.position.x, m.position.y, m.position.z],
-                            },
-                            [m.position.x, m.position.y, m.position.z],
-                            m.silent,
-                        )
-                    })
-                    .map(|(aim, pos, silent)| (Some(aim), Some(pos), silent))
-                    .unwrap_or((None, None, true));
+                let aim = Aim {
+                    eye: [pos[0], fish.eye_y(), pos[2]],
+                    look: fish.look_angle(),
+                    feet: pos,
+                };
                 let mut hit_level = level.reborrow().attacked_by(&attack);
-                if let Some(t) = mobs.iter_mut().find(|m| m.id == target)
-                    && t.damage_aimed(&mut hit_level, amount, source, aim)
+                if let Some(t) = mobs.iter_mut().find(|m| {
+                    m.id == target
+                        && m.alive()
+                        && !m.removed
+                        && target_join.is_none_or(|join| m.join == join)
+                }) && t.damage_aimed(&mut hit_level, 1.0 + size as f32, source, Some(aim))
                 {
-                    t.add_effect("minecraft:poison", poison_ticks, 0);
-                    raised = std::mem::take(&mut t.outbox);
-                    if !fish_silent && let Some(at) = fish_pos {
-                        sound = Some(MobEvent::Sound("entity.puffer_fish.sting", at, 1.0, 1.0));
+                    let tail = PufferfishReaction {
+                        target,
+                        fish: mob,
+                        at: i,
+                        target_join: t.join,
+                        fish_join,
+                        poison_ticks: 60 * size,
+                    };
+                    if can_pause && creaking::has_pending_hurt(t) {
+                        let mut position = 0;
+                        // The rest of this candidate list belongs to the same objects
+                        // even if the host removes one or inserts a new occupant of its id.
+                        events.retain_mut(|event| {
+                            let pending = position >= i;
+                            position += 1;
+                            if pending
+                                && let MobEvent::PufferfishSting {
+                                    mob: fish,
+                                    target,
+                                    target_join,
+                                } = event
+                                && *fish == mob
+                                && target_join.is_none()
+                            {
+                                *target_join = mobs
+                                    .iter()
+                                    .find(|m| m.id == *target && !m.removed)
+                                    .map(|m| m.join);
+                                return target_join.is_some();
+                            }
+                            true
+                        });
+                        return Some(tail);
                     }
-                }
-                events.remove(i);
-                if let Some(s) = sound {
-                    events.insert(i, s);
-                    i += 1;
-                }
-                for e in raised {
-                    events.insert(i, e);
-                    i += 1;
+                    let poison = tail.poison(Some(t));
+                    let sound = mobs
+                        .iter()
+                        .find(|m| m.id == mob)
+                        .and_then(|fish| tail.sound(fish));
+                    for e in poison.into_iter().chain(sound) {
+                        events.insert(i, e);
+                        i += 1;
+                    }
                 }
             }
             _ => i += 1,
         }
     }
+    None
 }
 /// The player as mobs see it.
 #[derive(Clone, Debug)]
@@ -3424,18 +3530,23 @@ pub struct MobWorld<'a> {
     pub border: Option<&'a sunrise_core::geometry::border::BorderGeometry>,
     pub section_writer: Option<living::section_writes::Observer>,
 }
-/// `MobEffectInstance.tickServer` for a content mod's effect: its
-/// `shouldApplyEffectTickThisTick` and `applyEffectTick`, which the game's
-/// native mods answer. False removes the effect.
+/// A resolved write from a registered mob effect's tick.
+#[derive(Debug)]
+pub enum MobEffectChange {
+    Heal(f32),
+    Hurt(DamageKind, f32),
+}
+
+/// Decide a content mod effect's tick once; apply its writes in order in the
+/// borrowed tick. A false answer removes the effect after applying its writes.
 pub trait ModEffectTicks {
     fn tick_mod_effect(
         &self,
-        level: &mut DamageLevel<'_>,
         effect: usize,
-        mob: &mut Mob,
+        mob: &Mob,
         tick_count: i32,
         amplifier: i32,
-    ) -> bool;
+    ) -> (bool, Vec<MobEffectChange>);
     /// `MobEffectEvent.Expired`: `mob`'s `effect` (`amplifier` from 0)
     /// counted down to nothing. A mod that cancels refuses the expiry: the
     /// effect stays at no ticks and asks again next tick.
@@ -3555,6 +3666,8 @@ impl MobWorld<'_> {
 /// and the mob layer reaches it through `MobWorld`.
 pub trait WhoLookup {
     fn who_by_uuid(&self, uuid: [i32; 4]) -> Option<Who>;
+    /// The identity of a particular live mob, including the one lent out for this tick.
+    fn mob_uuid(&self, id: u32) -> Option<[i32; 4]>;
 }
 /// `Entity.getTeam` of the player and of the mobs on a team.
 #[derive(Clone, Debug, Default)]
@@ -3675,8 +3788,7 @@ impl Mob {
             previous_head_yaw: yaw,
             head_pitch: 0.0,
             previous_head_pitch: 0.0,
-            on_ground: false,
-            horizontal_collision: false,
+            ground: Default::default(),
             vertical_collision_below: false,
             needs_sync: false,
             sync_position: false,
@@ -3708,7 +3820,6 @@ impl Mob {
             first_tick: true,
             no_gravity: false,
             no_physics: false,
-            supporting: None,
             standing_on: None,
             no_ai: false,
             silent: false,
@@ -4474,7 +4585,7 @@ impl Mob {
         w: &MobWorld,
         level: &mut DamageLevel<'_>,
         events: &mut Vec<MobEvent>,
-        trample: &mut Option<ai::MobTrample>,
+        trample: &mut Option<ai::MobContinuation>,
     ) -> ai::TickProgress {
         self.prepare_tick();
         neutral_anger::tick_until_consumption(self, w, level, events, trample)
@@ -4586,6 +4697,7 @@ impl Mob {
         }
         let changed = self.extra.effects.len() != before;
         if changed {
+            self.extra.effects_revision += 1;
             let effects = &self.extra.effects;
             self.extra
                 .effect_chains
@@ -4605,7 +4717,11 @@ impl Mob {
     /// modifier (the saved `attributes` hold one the effect was given with).
     pub fn load_effect(&mut self, effect: StoredEffect) {
         self.extra.effects.retain(|e| e.id != effect.id);
-        self.extra.effects.push(effect);
+        self.extra.effects_revision += 1;
+        self.extra.effects.push(StoredEffect {
+            pass_slot: 0,
+            ..effect
+        });
         self.effects_dirty = true;
     }
     /// `LivingEntity.addEffect` of a `MobEffectInstance` with its flags: the effect as
@@ -4665,8 +4781,9 @@ impl Mob {
             self.extra.effect_chains.push(*hidden);
         }
         if let Some(i) = index {
-            self.extra.effects[i] = StoredEffect::from_instance(effect, &active);
+            self.extra.effects[i].update_from_instance(&active);
         } else {
+            self.extra.effects_revision += 1;
             self.extra
                 .effects
                 .push(StoredEffect::from_instance(effect, &active));
@@ -5064,27 +5181,41 @@ pub fn render_model(
     overlay: u32,
     out: &mut Vec<Vertex>,
 ) {
-    visit(
+    render_model_filtered(
         part,
-        base,
-        ModelNormals::new(base),
-        pose_for,
+        (base, ModelNormals::new(base)),
+        &|p| Some(pose_for(p)),
         uv,
         light,
         overlay,
         out,
     );
+}
+
+/// Draw a posed model, skipping a part and its descendants when its pose is `None`.
+pub fn render_model_filtered(
+    part: &Part,
+    base: (glam::Mat4, ModelNormals),
+    pose_for: &impl Fn(&Part) -> Option<[f32; 9]>,
+    uv: [f32; 4],
+    light: u32,
+    overlay: u32,
+    out: &mut Vec<Vertex>,
+) {
+    visit(part, base.0, base.1, pose_for, uv, light, overlay, out);
     fn visit(
         part: &Part,
         parent: glam::Mat4,
         normals: ModelNormals,
-        pose_for: &dyn Fn(&Part) -> [f32; 9],
+        pose_for: &impl Fn(&Part) -> Option<[f32; 9]>,
         uv: [f32; 4],
         light: u32,
         overlay: u32,
         out: &mut Vec<Vertex>,
     ) {
-        let p = pose_for(part);
+        let Some(p) = pose_for(part) else {
+            return;
+        };
         let m = parent
             * glam::Mat4::from_translation(glam::Vec3::new(p[0], p[1], p[2]) / 16.0)
             * glam::Mat4::from_quat(glam::Quat::from_euler(
@@ -5223,7 +5354,7 @@ impl Mob {
     /// (`elytraAnimationState`) and the swim amount (`updateSwimAmount`).
     pub fn tick_avatar_pose(&mut self, in_water: bool) {
         let (p, v) = (self.previous, self.velocity);
-        let on_ground_alive = self.on_ground && self.alive();
+        let on_ground_alive = self.ground.on_ground && self.alive();
         let e = &mut self.extra;
         e.fall_fly_ticks = if e.fall_flying {
             e.fall_fly_ticks + 1
@@ -7683,9 +7814,11 @@ mod projectile_damage;
 
 pub fn apply_mob_pushes(m: &mut Mob, pending: &mut PendingPushes) {
     // Entity.push(x, y, z) sets needsSync.
-    let mut add = |v: Vec3| {
-        m.velocity = Vec3::new(m.velocity.x + v.x, m.velocity.y + v.y, m.velocity.z + v.z);
-        m.needs_sync = true;
+    let mut add = |(join, v): PushImpulse| {
+        if join.is_none_or(|join| join == m.join && !m.removed) {
+            m.velocity = Vec3::new(m.velocity.x + v.x, m.velocity.y + v.y, m.velocity.z + v.z);
+            m.needs_sync = true;
+        }
     };
     if !pending.list.is_empty() {
         pending.list.retain(|(id, v)| {

@@ -7,6 +7,10 @@ launcher. All of them run the same code (`crates/sunrise-native-build`). Every S
 signed `sdk.json` gets a tool made from that build's own source.
 Use that SDK's tool for the JSON commands: its horizon-mixins revision and patch match the SDK by construction.
 
+Native mod authors keep the same code and `sunrise-mod.toml`. On Windows the SDK sets the main-thread stack
+reservation when it links the fixed game executable, not when it links native mod libraries. If your tooling
+inspects the SDK's `sunrise-prebuilt.json` identity, stop reading `link_args`: that field has no replacement.
+
 The caller does what needs a player or their game: it checks that native code is allowed, fetches and verifies the
 SDK's slices, installs the pinned Rust, chooses the mods and which of them a build leaves out, and installs what the
 tool built. The tool compiles, and nothing else.
@@ -108,7 +112,8 @@ A `change` is `"removed"`, `"changed"`, `{"lost-impl": trait}`, `{"fields": {gai
 `{"not-buildable": {at}}`, `{"path": path}` or `{"route": {from, owner}}`. On a mod's own build, an indexed
 mixin refusal appears in `refusal`. When checking its fit on another build, the result remains
 `does-not-fit`: the misfit's `id` is display text with the full target, error code and reason, and its
-`change` is `"changed"`.
+`change` is `"changed"`. A known change to a declared game function is also `does-not-fit` with `change: "changed"`;
+its `id` names the full function path and says `body changed` or `declaration changed`.
 
 ## `native-discover` and `native-lock`
 
@@ -124,7 +129,8 @@ source and caches), `toolchain` (as for `native-build`) and `mods` (the mod's fo
 
 `native-lock` reads the pinned game's `Cargo.lock`, kept as `game-lock/<commit>.lock` in `work` and downloaded from
 that commit of the game's repository the first time; with no network, put the file there. It creates `work` when it
-is missing.
+is missing. A shared crates.io package keeps the game's version on the same semver line. If a direct or transitive
+requirement excludes that version, `native-lock` refuses without replacing the mod's `Cargo.lock`.
 
 `native-discover` checks the mod against the pinned game's source with the deprecation lint forced on the mod alone;
 it runs the tool itself as Cargo's rustc wrapper for that.
