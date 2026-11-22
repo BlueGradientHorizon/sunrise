@@ -333,6 +333,9 @@ pub(super) struct Remote {
     pub attachments: HashMap<Holder, ResidentAttachments>,
     /// The colliders the server sent, by entity id (`sunrise:collider_sync`).
     pub colliders: HashMap<u32, sunrise_client::colliders::ColliderState>,
+    /// The colliders at the last client tick, before any packets handled between ticks.
+    pub(super) collider_shove_start:
+        Option<(Dim, sunrise_client_render::moving_colliders::Prepared)>,
     /// How old the copy of the collider carrying the player is (`sunrise:carry_age`).
     pub carry_age: sunrise_client::colliders::CarryAge,
     /// The server samples far terrain for us, this far at most (`lod_net`).
@@ -3192,6 +3195,8 @@ mod boat_push_order_tests;
 mod item_use_tick_tests;
 #[cfg(test)]
 mod movement_input_tests;
+#[cfg(test)]
+mod swim_start_tests;
 /// `Entity.baseTick`'s fluid update for a mob this window only displays (`fluids`, sampled before
 /// the tick), with the splash it draws, and the block it stands on.
 pub(super) fn client_fluid_step(

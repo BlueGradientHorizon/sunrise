@@ -1203,7 +1203,7 @@ impl Game<'_> {
             return false;
         }
         // The connection to tell: a parked guest's, or the acting guest's, whose state is in
-        // place for their turn (`leave_guest` stores the slot back but sends nothing). The host
+        // place for their turn (the put-back at the end of `guest_turn` stores the slot back but sends nothing). The host
         // has none.
         let conn = match self.player_handle_read(player) {
             Some(PlayerRead::Guest(guest)) => Some(guest.conn),

@@ -23,6 +23,7 @@ pub mod powder_snow;
 mod test_log;
 #[cfg(test)]
 mod test_resources;
+pub use sunrise_client_render::moving_colliders;
 pub use sunrise_client_render::{
     assets, atlas_sources, audio, auth, autotune, ban_notice, bidi, biome, block_edit,
     block_entities, block_entity_anim, block_entity_render, block_sprites, block_states, bluemap,
