@@ -5914,6 +5914,7 @@ mod merchant_packet_tests {
     fn merchant_take_keeps_packet_snapshot_until_price_refresh() {
         use std::sync::{Arc, atomic::AtomicI32, mpsc};
         use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest};
+        use sunrise_protocol::packets::play;
 
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.world_root = std::env::temp_dir()

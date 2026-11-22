@@ -3139,7 +3139,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn aborted_staged_menu_opens_never_wrap_onto_or_access_the_live_window() {
-        use mod_api::{MenuSlotBackRefusal, PlayerContainerOpenEvent};
+        use mod_api::{MenuItemsRefusal, MenuSlotBackRefusal, PlayerContainerOpenEvent};
         use std::sync::Mutex;
 
         struct Opened(Arc<Mutex<Vec<Option<i32>>>>);
