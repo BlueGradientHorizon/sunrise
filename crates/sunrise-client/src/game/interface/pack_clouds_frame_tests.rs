@@ -96,8 +96,8 @@ fn samples(frame: &(Vec<u8>, usize)) -> [[u8; 4]; 3] {
 }
 
 /// With Improved Transparency off and on, one session:
-/// - a pack without `core/clouds` loads no pack clouds, and the native clouds draw (the frame
-///   differs from the clouds-off one, and a cloud's pixel is exact);
+/// - a pack without `core/clouds` loads no pack clouds, and the native clouds change a known
+///   cloud pixel from the same scene with clouds off;
 /// - once a reload hands the renderer the pack's clouds, they cover the frame in the program's
 ///   colour for that path, fancy and fast; with the clouds off nothing of them is drawn (the
 ///   frame is the clouds-off one, to the byte);
@@ -137,11 +137,13 @@ fn a_packs_clouds_draw_with_and_without_improved_transparency() {
         let before = drawn_frame(game);
         game.settings.clouds = "false".into();
         let off = drawn_frame(game);
-        // The native clouds are in the frame: a pixel of the cell north-west of the one above,
-        // its bottom face (`clouds.fsh`'s 0.7 of `CloudColor`, alpha 0.8 faded by the cloud fog)
-        // over the sky.
-        assert!(before.0 != off.0, "the native clouds are in the frame");
-        assert_eq!(pixel(&before, 30, 85), [166, 178, 198, 255]);
+        // This pixel is under the north-west cell's bottom face. Compare it with the same
+        // scene with clouds off: the fogged blend's byte from another adapter is not a reference.
+        assert_ne!(
+            pixel(&before, 30, 85),
+            pixel(&off, 30, 85),
+            "the native clouds cover this pixel"
+        );
 
         let loaded = crate::game::UiResources::load(&pack(&CLOUDS), std::path::Path::new(""))
             .unwrap()
