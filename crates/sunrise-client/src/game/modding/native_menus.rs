@@ -135,7 +135,7 @@ impl Game<'_> {
     }
 
     /// Returns the vanilla window id (`1..=100`) and generation when installed. A transaction
-    /// or the current close stages the request with a negative identity and generation zero,
+    /// or an older publication stages the request with a negative identity and generation zero,
     /// without changing the current menu or allocating a wire id.
     fn request_native_menu_open(&mut self, conn: u32, open: NativeMenuOpen) -> Option<(i32, u64)> {
         if self.menu_open_waits(conn) {
@@ -167,7 +167,7 @@ impl Game<'_> {
         if !guest.placed || !guest.participates_online() {
             return None;
         }
-        if open.content.is_some() && (guest.dead || guest.disconnect_pending) {
+        if guest.disconnect_pending || (open.content.is_some() && guest.dead) {
             return None;
         }
         if self.menu_click_in_progress(conn) {
@@ -186,6 +186,9 @@ impl Game<'_> {
             let gi = game.guest_index(conn)?;
             // The first contents show the player's own inventory and cursor, in their turn too.
             let opened = game.with_own_record(gi, |lan, _, _| {
+                if lan.hub.guests[gi].disconnect_pending {
+                    return None;
+                }
                 let window = lan.hub.open_menu_window_at(
                     conn,
                     &menu,

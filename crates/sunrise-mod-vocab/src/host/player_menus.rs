@@ -45,8 +45,8 @@ pub trait PlayerMenusBackendMut {
     /// old window are ignored. Update an open menu's contents through its slots or
     /// [`MenuRef::set_items`], not by opening it again. In a transaction or during a close,
     /// the returned handle names only a staged request and cannot read or change any live menu.
-    /// The wire id is allocated when the menu installs, at outermost commit or after the close.
-    /// Get the live handle in `player_container_open` or with
+    /// The wire id is allocated when the menu installs, at outermost commit or after the close
+    /// and earlier requests. Get the live handle in `player_container_open` or with
     /// `PlayerRef::container_menu`. An abort keeps the current menu and window counter. Errors:
     /// `ClickInProgress` (an active speculative quick move or trade refuses the open),
     /// `PlayerUnavailable`, `Title`, `TitleNotEncodable`, or `Stack`.
@@ -89,7 +89,9 @@ pub trait PlayerMenusBackendMut {
     /// block changes have replayed, the veto runs in the player's level outside the transaction.
     /// The next vanilla window id (`1..=100`) is allocated when the open installs. Get the live
     /// handle with `PlayerRef::container_menu`; an abort keeps the old menu.
-    /// An open requested during menu removal also returns a staged handle and waits for Close.
+    /// An open requested during menu removal also returns a staged handle and waits for Close and
+    /// earlier requests for that player. Transfer items into the live menu from
+    /// `player_container_open`, after installation.
     #[serialize_text]
     fn player_open_mod_menu(
         &mut self,

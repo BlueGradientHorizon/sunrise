@@ -316,7 +316,8 @@ window. It cannot read or change any live menu. `container_opened` and installat
 block changes have replayed at outermost commit. The veto runs in the player's level outside
 the transaction. Obtain the live handle after commit from `player.container_menu(host)` or in
 `player_container_open`; an abort leaves the old menu and its window counter untouched.
-An open requested during menu removal also returns a staged handle and waits for the close.
+An open requested during menu removal also returns a staged handle and waits for the close
+and any earlier requests for that player. Initialize the installed menu in `player_container_open`.
 
 For a slotless status screen, declare `data/mymod/sunrise/menu/status.json` as
 `{ "slots": 0, "player_inventory": false, "data_slots": 2 }`. Register a screen factory
