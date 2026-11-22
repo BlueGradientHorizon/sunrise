@@ -198,6 +198,9 @@ pub struct ItemEntity {
     /// `fallOn` on landing ([`ItemStep::landed`]), then reset.
     pub fall_distance: f64,
     pub age: i32,
+    /// NeoForge `ItemEntity.lifespan`: maximum age in ticks before expiry
+    /// (default [`Self::LIFETIME`], 6000).
+    pub lifespan: i32,
     /// Signed NBT counter; widened to retain the legacy internal u32::MAX sentinel.
     pub pickup_delay: i64,
     pub bob_offset: f32,
@@ -439,6 +442,12 @@ impl ItemEntity {
     pub const WIDTH: f64 = 0.25;
     /// `EntityTypes.ITEM` declares a float eye height, widened by `Entity.getEyeY`.
     pub const EYE_HEIGHT: f64 = 0.2125_f32 as f64;
+    /// Vanilla `ItemEntity.LIFETIME`: default dropped-item lifespan in ticks.
+    pub const LIFETIME: i32 = 6000;
+    /// NeoForge `ItemEntity.tick` lifespan cap (`Short.MAX_VALUE - 1`),
+    /// preventing `age` (stored as a short) from wrapping into an accidental
+    /// infinite lifespan.
+    pub const MAX_LIFESPAN: i32 = i16::MAX as i32 - 1;
     /// `Entity.getLightProbePosition(partialTick)` for a dropped item: the eye
     /// position (`getEyePosition`) over the position drawn this frame
     /// (`getPosition(partialTick)`), not this tick's own.
@@ -603,7 +612,7 @@ impl ItemEntity {
         if self.age != i16::MIN as i32 {
             self.age = self.age.wrapping_add(1);
         }
-        self.age < 6000 && self.position.y >= f64::from(world.shape.min_y - 64)
+        self.age < self.lifespan && self.position.y >= f64::from(world.shape.min_y - 64)
     }
     /// `Entity.makeStuckInBlock` as `WebBlock.entityInside` and
     /// `PowderSnowBlock.entityInside` call it for an item (which, unlike a
@@ -2643,6 +2652,7 @@ mod fire_environment_tests {
             ground: Default::default(),
             vertical_collision: false,
             age: 0,
+            lifespan: ItemEntity::LIFETIME,
             pickup_delay: 0,
             bob_offset: 0.0,
             ticks: 0,
@@ -2836,6 +2846,7 @@ mod destroyed_bundle_environment_tests {
             ground: Default::default(),
             vertical_collision: false,
             age: 0,
+            lifespan: ItemEntity::LIFETIME,
             pickup_delay: 0,
             bob_offset: 0.0,
             ticks: 0,
@@ -3049,6 +3060,7 @@ mod merge_tests {
             ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
             vertical_collision: false,
             age,
+            lifespan: ItemEntity::LIFETIME,
             pickup_delay: 0,
             bob_offset: 0.0,
             ticks: age.max(0) as u32,
@@ -3581,6 +3593,7 @@ mod honey_slide_tests {
             ground: Default::default(),
             vertical_collision: false,
             age: 10,
+            lifespan: ItemEntity::LIFETIME,
             pickup_delay: 0,
             bob_offset: 0.0,
             ticks: 10,
@@ -3684,6 +3697,7 @@ mod slime_bounce_tests {
             ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
             vertical_collision: false,
             age: 10,
+            lifespan: ItemEntity::LIFETIME,
             pickup_delay: 0,
             bob_offset: 0.0,
             ticks: 10,
@@ -4591,6 +4605,7 @@ mod item_destroyed_tests {
             ground: Default::default(),
             vertical_collision: false,
             age: 0,
+            lifespan: ItemEntity::LIFETIME,
             pickup_delay: 0,
             bob_offset: 0.0,
             ticks: 0,
@@ -4863,6 +4878,7 @@ mod dropped_item_light_tests {
             ground: Default::default(),
             vertical_collision: false,
             age: 0,
+            lifespan: ItemEntity::LIFETIME,
             pickup_delay: 0,
             bob_offset: 0.0,
             ticks: 0,
