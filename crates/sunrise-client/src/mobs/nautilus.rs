@@ -173,7 +173,7 @@ pub(super) fn travel(
     input: Vec3,
     events: &mut Vec<MobEvent>,
     pause: bool,
-) -> Result<(), super::living::TravelTrample> {
+) -> Result<(), super::living::TravelPause> {
     let speed = m.ai.speed;
     m.move_relative(speed, input);
     m.travel_move(w, level, events, pause, |m, _, _, _| {

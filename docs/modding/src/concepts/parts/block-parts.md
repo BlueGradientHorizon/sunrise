@@ -165,6 +165,7 @@ impacts or a piston's direct slime launch.
 When the collision actually bounces, the server runs `BlockPart::bounce_on` before it posts
 `BOUNCE` and commits the returned movement. This is a separate callback, with the captured effect
 state and vanilla's movement-affecting position (which can differ from the legacy position).
+`event.fall_distance` is the distance stored after fall handling, so a body that has just landed can report zero.
 
 `BlockPart::fall_on` runs at vanilla's landing moment on a read-only level random host.
 Hook version 2 exposes writable `event.distance` and `event.damage_multiplier`, not calculated

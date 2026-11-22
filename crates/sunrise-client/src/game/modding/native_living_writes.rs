@@ -1008,6 +1008,9 @@ mod tests {
             for conn in [12, 13] {
                 host.hub.update_guest(conn, |g| g.ticks = 5).unwrap();
             }
+            for conn in [12, 13] {
+                game.lan_register_player_waypoint(conn);
+            }
             let waypoints = |sent: &[C]| -> Vec<(i32, String, Option<i32>)> {
                 sent.iter()
                     .filter_map(|p| match p {

@@ -3,7 +3,7 @@ use super::*;
 
 /// Cursor of one vanilla moveItemStackTo pass. A station can run createResult
 /// between destinations without restarting the pass or re-checking its route.
-pub(super) struct MovePass {
+pub struct MovePass {
     start: usize,
     end: usize,
     backwards: bool,

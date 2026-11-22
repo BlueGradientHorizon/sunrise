@@ -974,22 +974,31 @@ impl mod_api::Hooks for FillListener {
 fn container_fill_listener_contract() {
     with_game(|g| {
         g.options.dedicated = Some(Vec::new());
-        let open_from_same_state = |g: &mut Game<'_>, seed| {
-            // Closing a previous chest menu consumes level RNG for its sound pitch.
-            // Start each comparison without an open menu and with the same RNG.
-            g.guest_close_menus_and_tell(12);
-            place(g, POS, TABLE, seed);
-            *g.world.random = LegacyRandom::new(123);
-            open(g, POS, 0.0);
-            (
-                g.world.block_entities[&POS].slots().to_vec(),
-                g.world.random.state(),
-            )
-        };
-        let baseline = open_from_same_state(g, 37);
+        place(g, POS, TABLE, 37);
+        let initial_random = g.world.random.clone();
+        open(g, POS, 0.0);
+        let baseline = g.world.block_entities[&POS].slots().to_vec();
+        let baseline_random = g.world.random.state();
+
+        // ServerPlayer.openMenu closes the old menu before constructing its replacement.
+        // ChestBlockEntity.playSound draws a pitch for the last close and the first open.
+        place(g, POS, TABLE, 37);
+        let mut reopened_random = g.world.random.clone();
+        reopened_random.next_float();
+        reopened_random.next_float();
+        open(g, POS, 0.0);
+        assert_eq!(g.world.random.state(), reopened_random.state());
+        g.guest_close_all(12);
+
+        place(g, POS, TABLE, 37);
+        g.world.random = initial_random;
         mod_platform::testing::with_mods(
             vec![mod_api::ModEntry::new("empty", Box::new(EmptyFillMod))].into(),
-            || assert_eq!(open_from_same_state(g, 37), baseline),
+            || {
+                open(g, POS, 0.0);
+                assert_eq!(g.world.block_entities[&POS].slots(), baseline);
+                assert_eq!(g.world.random.state(), baseline_random);
+            },
         );
         let seen = Arc::new(Mutex::new(Vec::new()));
         let mods = |mode| {
@@ -1002,10 +1011,20 @@ fn container_fill_listener_contract() {
             )]
             .into()
         };
-        // A subscribed observer must preserve both the seedless roll and RNG state.
-        let seedless = open_from_same_state(g, 0);
+        // Compare the seedless roll from the same closed menu and RNG state too.
+        g.guest_close_all(12);
+        place(g, POS, TABLE, 0);
+        *g.world.random = LegacyRandom::new(123);
+        open(g, POS, 0.0);
+        let seedless_slots = g.world.block_entities[&POS].slots().to_vec();
+        let seedless_random = g.world.random.state();
+        g.guest_close_all(12);
+        place(g, POS, TABLE, 0);
+        *g.world.random = LegacyRandom::new(123);
         mod_platform::testing::with_mods(mods(0), || {
-            assert_eq!(open_from_same_state(g, 0), seedless);
+            open(g, POS, 0.0);
+            assert_eq!(g.world.block_entities[&POS].slots(), seedless_slots);
+            assert_eq!(g.world.random.state(), seedless_random);
         });
         seen.lock().unwrap().clear();
         mod_platform::testing::with_mods(mods(3), || {

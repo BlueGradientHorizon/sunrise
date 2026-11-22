@@ -608,10 +608,10 @@ def _build_locked(out: Path, server: bool, target_dir: Path) -> None:
     packages = ["-p", GAME, "-p", OFFICIAL] if official else ["-p", GAME]
     # Encoded flags take precedence over RUSTFLAGS in Cargo.
     environment = {key: value for key, value in os.environ.items() if key != "CARGO_ENCODED_RUSTFLAGS"}
-    # The SDK game builds with 16 codegen units, not the release profile's 1: on Linux its final step took 270 s
-    # instead of 422 s with no measurable change in the dedicated server's tick (1.670 against 1.677 ms). The
-    # player release keeps the profile's single unit and ThinLTO.
-    environment["CARGO_PROFILE_RELEASE_CODEGEN_UNITS"] = "16"
+    # The SDK game is the game players run with native mods: it keeps the release profile's single codegen unit,
+    # whatever the environment says. Against 16 units, the bare dedicated server ran 8.6% fewer instructions per
+    # tick and its mean tick fell measurably; the cost is the build's final step (422 s against 270 s on Linux).
+    environment["CARGO_PROFILE_RELEASE_CODEGEN_UNITS"] = "1"
     messages = run(
         ["cargo", "build", "--locked", *packages, "--lib",
          "--target", host, "--profile", PROFILE, "--message-format", "json-render-diagnostics", *features],

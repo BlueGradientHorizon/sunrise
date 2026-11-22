@@ -245,9 +245,9 @@ fn seat_passengers(entities: &mut HashMap<i32, Tracked>, vehicle: u32, passenger
 /// `LinearInterpolationHandler`'s target: a position and rotation (yRot,
 /// xRot) reached in `steps` ticks.
 pub(super) struct Lerp {
-    target: [f64; 3],
+    pub(super) target: [f64; 3],
     rotation: Option<(f32, f32)>,
-    steps: u32,
+    pub(super) steps: u32,
 }
 
 /// `SteppedInterpolationHandler.doInterpolate`'s `setPos` and `setRot` on a
