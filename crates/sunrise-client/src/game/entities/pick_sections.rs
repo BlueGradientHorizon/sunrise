@@ -85,6 +85,10 @@ struct PickFingerprint {
 }
 
 impl PickFingerprint {
+    fn same_level(self, other: Self) -> bool {
+        self.epoch == other.epoch && self.dim == other.dim && self.is_remote == other.is_remote
+    }
+
     fn of(game: &Game<'_>) -> Self {
         Self {
             epoch: game.native_lifecycle.epoch(),
@@ -212,9 +216,11 @@ impl PickSectionStorage {
     }
 
     fn note_fingerprint(&mut self, game: &Game<'_>) {
-        if self.initialized {
-            self.fingerprint = PickFingerprint::of(game);
+        let fp = PickFingerprint::of(game);
+        if !self.fingerprint.same_level(fp) {
+            self.clear();
         }
+        self.fingerprint = fp;
     }
 
     /// Reconciles only when the world context or container counts changed outside incremental hooks.
@@ -223,13 +229,10 @@ impl PickSectionStorage {
         if self.initialized && self.fingerprint == fp {
             return;
         }
-        if !self.initialized
-            || self.fingerprint.epoch != fp.epoch
-            || self.fingerprint.dim != fp.dim
-            || self.fingerprint.is_remote != fp.is_remote
-        {
-            self.sections.clear();
-            self.by_id.clear();
+        // TransientEntitySectionManager.Callback.onMove already moved entities into
+        // section-entry order, even if the client has not queried the level yet.
+        if !self.fingerprint.same_level(fp) {
+            self.clear();
         } else {
             self.scratch_removed.clear();
             for (&id, &(kind, _)) in &self.by_id {
@@ -446,8 +449,8 @@ impl Game<'_> {
     pub(in crate::game) fn pick_section_sync_id(&mut self, id: u32) {
         if let Some((kind, pos)) = self.locate_pick_member(id) {
             let mut storage = self.client_pick.sections.borrow_mut();
-            storage.place(PickMember { kind, id }, pos);
             storage.note_fingerprint(self);
+            storage.place(PickMember { kind, id }, pos);
         }
     }
 
@@ -471,8 +474,8 @@ impl Game<'_> {
     /// Removes entity `id` from section storage immediately on discard/removal.
     pub(in crate::game) fn pick_section_remove(&mut self, id: u32) {
         let mut storage = self.client_pick.sections.borrow_mut();
-        storage.remove(id);
         storage.note_fingerprint(self);
+        storage.remove(id);
     }
 
     /// Clears section storage when changing or resetting a level.
