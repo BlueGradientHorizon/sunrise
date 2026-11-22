@@ -531,6 +531,70 @@ fn the_stamp_follows_a_mod_files_contents_not_its_folder_or_time() {
     );
 }
 
+#[test]
+fn an_admitted_archive_keys_resource_caches_by_bytes_not_entry_metadata() {
+    use sunrise_mod_package::content::ContentSource;
+
+    const FILE: &str = "data/testmod/custom/value.bin";
+    // Equal length and CRC-32, but different bytes.
+    const FIRST: &[u8] = b"\xba\x42\xc6\x9b\xb4\x3d\x52\xdd";
+    const SECOND: &[u8] = b"\x63\xd6\x35\x1a\x43\xda\x3a\xd9";
+    let dir = tempfile::tempdir().unwrap();
+    let base = resources(dir.path());
+    let cache = dir.path().join("cache");
+    let jars = dir.path().join("jars");
+    let path = dir.path().join("testmod.smod");
+    let manifest_text = manifest("testmod", "");
+    let manifest = sunrise_mod_package::Manifest::parse(&manifest_text).unwrap();
+    let archive = |payload| {
+        let bytes =
+            sunrise_mod_package::Package::write_files(&manifest_text, &[(FILE, payload)]).unwrap();
+        {
+            let mut zip = zip::ZipArchive::new(std::io::Cursor::new(&bytes)).unwrap();
+            let entry = zip.by_name(FILE).unwrap();
+            assert_eq!((entry.crc32(), entry.size()), (0x5eab_a44f, 8));
+        }
+        bytes
+    };
+    let admit = || {
+        let source = ContentSource::open(&path)
+            .unwrap()
+            .admit(&manifest)
+            .unwrap();
+        [ContentMod {
+            id: "testmod".into(),
+            content: Content::read_opened(&source, &manifest, &[]).unwrap(),
+            jars: Vec::new(),
+        }]
+    };
+    let build = |mods: &[ContentMod]| resource_root_fixture(&base, &jars, mods, &cache).unwrap();
+    let fingerprint = |root, mods: &[ContentMod]| {
+        resolved_resources(&base, root, &jars, mods, cache.clone())
+            .unwrap()
+            .mod_layers()[0]
+            .fingerprint_under("data", &["custom"])
+            .unwrap()
+    };
+    fs::write(&path, archive(FIRST)).unwrap();
+    let first = admit();
+    let original_root = build(&first);
+    let original_fingerprint = fingerprint(original_root.clone(), &first);
+
+    let replacement = dir.path().join("replacement.smod");
+    fs::write(&replacement, archive(SECOND)).unwrap();
+    fs::rename(replacement, &path).unwrap();
+    assert_eq!(build(&first), original_root);
+    assert_eq!(
+        fingerprint(original_root.clone(), &first),
+        original_fingerprint
+    );
+
+    let second = admit();
+    let new_root = build(&second);
+    assert_ne!(new_root, original_root);
+    assert_ne!(fingerprint(new_root, &second), original_fingerprint);
+}
+
 /// Each game folder reaches the one set of prepared resources through its own link
 /// (`.local/sunrise-client/26.3`), and keeps its own copy of the mods.
 #[cfg(unix)]

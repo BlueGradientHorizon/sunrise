@@ -784,6 +784,10 @@ pub struct RegistrationData {
     block_entity_coverage: Option<fn(&str, &str) -> bool>,
     /// Each package's checked runtime files, by mod ID.
     runtime_files: Arc<std::collections::BTreeMap<String, Arc<dyn crate::RuntimeFileSource>>>,
+    /// Each enabled package's content files, by mod ID.
+    package_files: Arc<std::collections::BTreeMap<String, Arc<dyn crate::PackageFileSource>>>,
+    /// Registration exposes only the enabled and admitted rows, not all installed code.
+    visible_mods: Option<LoadedMods>,
 }
 
 impl RegistrationData {
@@ -801,6 +805,8 @@ impl RegistrationData {
             capability_coverage: None,
             block_entity_coverage: None,
             runtime_files: Default::default(),
+            package_files: Default::default(),
+            visible_mods: None,
             registries: registries
                 .into_iter()
                 .map(|(name, ids)| (name, ids.into()))
@@ -828,6 +834,33 @@ impl RegistrationData {
     }
     pub(crate) fn runtime_source(&self, mod_id: &str) -> Option<Arc<dyn crate::RuntimeFileSource>> {
         self.runtime_files.get(mod_id).cloned()
+    }
+    /// Bind each enabled package's content files, by mod ID: what
+    /// [`RegistrationContext::package_files`] serves.
+    pub fn with_package_files(
+        mut self,
+        files: std::collections::BTreeMap<String, Arc<dyn crate::PackageFileSource>>,
+    ) -> Self {
+        let installed = LoadedMods::new();
+        self.visible_mods = Some(LoadedMods {
+            entries: installed
+                .iter()
+                .filter(|p| files.contains_key(p.id()))
+                .cloned()
+                .collect(),
+            authority: installed.authority,
+        });
+        self.package_files = Arc::new(files);
+        self
+    }
+    pub(crate) fn package_source(&self, mod_id: &str) -> Option<Arc<dyn crate::PackageFileSource>> {
+        self.package_files.get(mod_id).cloned()
+    }
+    /// The startup-enabled snapshot shared by the mod-facing phase contexts.
+    // hidden: backend access to the snapshot; mods use their context's `mods()`.
+    #[doc(hidden)]
+    pub fn visible_mods(&self) -> Option<&LoadedMods> {
+        self.visible_mods.as_ref()
     }
     /// Bind the game's pure type-coverage projection. It reads no world or runtime position.
     pub fn with_capability_coverage(
@@ -904,6 +937,12 @@ impl LoadedMods {
         Self { entries, authority }
     }
 
+    fn enabled_at_startup() -> Self {
+        crate::dispatch_scope::backend()
+            .and_then(|backend| (backend.visible_packages)())
+            .unwrap_or_else(Self::new)
+    }
+
     /// Package IDs in dispatch order.
     pub fn ids(&self) -> impl Iterator<Item = &str> {
         self.entries.iter().map(PackageInfo::id)
@@ -928,7 +967,7 @@ impl LoadedMods {
 /// captured once before the first of them runs, so an answer never depends on
 /// dispatch order or on which hook asks:
 ///
-/// - [`mods`](Self::mods): the loaded packages.
+/// - [`mods`](Self::mods): the enabled, admitted packages at startup.
 /// - [`registry`](Self::registry): the built-in registries, as `registries.json` lists them.
 ///   Entries that mods declare during registration are not in it; a mod already has its own
 ///   declarations on its event or registrar.
@@ -1020,9 +1059,13 @@ impl RegistrationContext {
         Some(self.data.as_ref()?.instance_dir())
     }
 
-    /// The loaded-mod view, independent of this phase's event or registrar.
+    /// Packages enabled and admitted at startup, independent of the event or registrar.
+    /// Native code switched off at startup still registers but does not appear here.
     pub fn mods(&self) -> &LoadedMods {
-        &self.mods
+        self.data
+            .as_ref()
+            .and_then(|data| data.visible_mods.as_ref())
+            .unwrap_or(&self.mods)
     }
 
     /// Borrows a built-in registry's names in ID order, or returns `None` if the registry
@@ -1114,7 +1157,7 @@ impl<'a> OwningLoad<'a> {
         Self {
             source,
             origin,
-            mods: LoadedMods::new(),
+            mods: LoadedMods::enabled_at_startup(),
         }
     }
 }
@@ -1236,7 +1279,7 @@ impl<'a> OwningLoop<'a> {
             source,
             item_tags,
             side,
-            mods: LoadedMods::new(),
+            mods: LoadedMods::enabled_at_startup(),
         }
     }
 }
@@ -1341,7 +1384,7 @@ impl<'a> OwningWorldgen<'a> {
         Self {
             source,
             state_with_property,
-            mods: LoadedMods::new(),
+            mods: LoadedMods::enabled_at_startup(),
         }
     }
 }

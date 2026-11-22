@@ -111,7 +111,8 @@ impl Host for OwningChunkDisk<'_> {}
 crate::impl_host_areas!(OwningChunkDisk<'_>, except(levels, config));
 impl prelude::LevelsHost for OwningChunkDisk<'_> {
     fn is_loaded(&self, id: &str) -> bool {
-        self.resources.mods().get(id).is_some()
+        // Installed membership, as `LevelsHost` promises, not the startup-enabled `mods()` view.
+        crate::__private::loaded_mods().get(id).is_some()
     }
     fn chunk(&self, _: LevelRef, _: [i32; 2]) -> Option<ChunkRef> {
         None

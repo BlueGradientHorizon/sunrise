@@ -76,7 +76,13 @@ impl Game<'_> {
         if running {
             self.tick_remote_block_entities();
         }
-        if let Some(input) = sent? {
+        let input = sent?;
+        // Like the block-entity push above, collider displacement belongs in this tick's
+        // LocalPlayer.sendChanges, before the client closes the tick on the wire.
+        let start = sunrise_client_render::moving_colliders::Scope::placed();
+        self.carry_pass(&start);
+        self.observe_carry_age(&start);
+        if let Some(input) = input {
             self.remote_send_state(input);
         }
         Ok(())
