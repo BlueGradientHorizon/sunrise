@@ -4355,6 +4355,8 @@ struct Game<'a> {
     /// A dedicated server's operator, whitelist and ban lists, for `/op`,
     /// `/ban` and friends (`DedicatedPlayerList`).
     server_lists: Option<std::sync::Arc<std::sync::Mutex<dedicated::Lists>>>,
+    /// `Services.nameToIdCache`: the server thread's usercache.json.
+    user_cache: Option<sunrise_client::server::user_cache::UserCache>,
     /// State of `/spectate`, `/posteffect`, `/debug`, `/waypoint` and friends.
     cmds: commands::extra::CommandExtras,
     /// The retained server reload listeners of the last successful reload.
@@ -14154,6 +14156,7 @@ impl<'a> Game<'a> {
             console_broadcast: None,
             rcon_source: false,
             server_lists: None,
+            user_cache: None,
             world_tables: None,
             server_loot: Default::default(),
             server_items: None,
