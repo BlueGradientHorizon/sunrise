@@ -158,7 +158,6 @@ static WARNED_TABLES: std::sync::Mutex<Vec<(&'static str, String)>> =
 /// guest they are (none: the host) and their box.
 pub(super) struct HookTarget {
     pub(in crate::game) id: u32,
-    pub(in crate::game) conn: Option<u32>,
     pub(in crate::game) bounds: Aabb,
 }
 const SIZE: f64 = 0.25;
@@ -687,7 +686,7 @@ impl Game<'_> {
                         self.entity_kind_for_who(sunrise_client::mobs::Who::Mob(id))
                     }?;
                     Some(sunrise_client::advancements::EntityView {
-                        kind: kind.into(),
+                        kind,
                         position: [hook.position.x, hook.position.y, hook.position.z],
                         ..Default::default()
                     })
@@ -1538,7 +1537,6 @@ impl Game<'_> {
             if host.hub.here(g) && g.loaded && !g.dead && !g.spectator() {
                 targets.push(HookTarget {
                     id: g.entity_id as u32,
-                    conn: Some(g.conn),
                     bounds: guest_bounds(g),
                 });
             }

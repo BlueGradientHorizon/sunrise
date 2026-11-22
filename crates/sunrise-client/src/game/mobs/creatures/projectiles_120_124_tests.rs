@@ -25,7 +25,6 @@ struct Witness {
 struct GameEventSnap {
     id: String,
     pos_bits: [String; 3],
-    source: Option<String>,
 }
 
 #[derive(Deserialize)]
