@@ -307,6 +307,9 @@ impl Game<'_> {
             },
             SpawnTask::Load(prepared) => {
                 if spawn_area_full(&self.world, prepared.chunk(), PLAYER_SPAWN_RADIUS) {
+                    // Hand off the pending load range to a fresh Ready ticket.
+                    self.tickets
+                        .add_spawn(prepared.chunk(), SpawnTicketKind::Player);
                     SpawnTask::Ready(prepared)
                 } else {
                     SpawnTask::Load(prepared)
