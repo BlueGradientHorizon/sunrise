@@ -1067,7 +1067,8 @@ fn mix(mixer: &mut Mixer, data: &mut [f32], channels: usize, rate: u32) {
                 .min_by(|a, b| length_sq(away(a.0)).total_cmp(&length_sq(away(b.0))))
                 .map(|camera| (camera.0, camera.1))
         };
-        let (listener, (forward, up, right)) = camera.unwrap_or(([0.0; 3], basis(0.0, 0.0)));
+        let (listener, (forward, up, right)) =
+            camera.unwrap_or_else(|| ([0.0; 3], ListenerOrientation::default().basis()));
         let d = if c.relative { at } else { away(listener) };
         let d_sqr = length_sq(d);
 
@@ -2893,7 +2894,7 @@ mod tests {
             ] {
                 let mut mixer = Mixer {
                     listener,
-                    listener_pitch,
+                    listener_orientation: camera_orientation(0.0, listener_pitch, 0.0),
                     ..Mixer::default()
                 };
                 mixer
