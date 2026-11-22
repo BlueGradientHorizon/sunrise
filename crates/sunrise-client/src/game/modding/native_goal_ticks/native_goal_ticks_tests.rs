@@ -4,7 +4,7 @@
 //!
 //! The `zombie` fixture is shared with the behavior tests (#824).
 use super::super::creatures;
-use super::super::native_entity_refs::tests::with_game;
+use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
 use mod_api::{
     EntityPart, EntityRef, Goal, GoalContext, GoalFlags, GoalRegistrar, Hooks, LivingRef, ModEntry,
     Registrar, RegistrationContext,
@@ -1284,6 +1284,13 @@ fn leap_trace(mod_goal: bool) -> Vec<[u64; 7]> {
 #[test]
 #[ignore = "daily"]
 fn a_mod_leap_goal_flies_and_lands_as_the_engine_leap_does() {
+    if run_fresh_cases(
+        "game::native_goal_ticks::tests::a_mod_leap_goal_flies_and_lands_as_the_engine_leap_does",
+        "SUNRISE_GOAL_DELTA_MOVEMENT_CHILD",
+        &["valid"],
+    ) {
+        return;
+    }
     let journal = Journal::default();
     let entry = || ModEntry::new("leaps", Box::new(LeapMod(journal.clone())));
     mod_platform::__private::install(vec![entry()].into());
