@@ -1057,6 +1057,8 @@ class SmokeStartTests(unittest.TestCase):
                     else:
                         with self.assertRaisesRegex(SystemExit, refusal):
                             prebuilt_game.start(out)
+                role = run.call_args.args[0][3:]
+                self.assertEqual(role, ["--headless"] if side == "client" else ["--dedicated", "--nogui"])
                 environment = run.call_args.kwargs["env"]
                 for key in ("SUNRISE_HOME", "SUNRISE_LAUNCHER_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME"):
                     self.assertTrue(Path(environment[key]).is_relative_to(root))
