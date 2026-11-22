@@ -1584,6 +1584,9 @@ impl Game<'_> {
         snapshot.clear();
         self.creatures.seen_buf = snapshot;
         self.creatures.ticked = ticked;
+        // A work step's restock lands on the screen now, before any callback of
+        // this tick can edit the offers (those edits are then the last write).
+        self.villager_restock_steps(&mut events);
         // Completed brain actions are never fed back into the producer pass.
         if !events.is_empty() || !guest_events.is_empty() {
             pending.batches.push_back(MobOutputBatch {
@@ -3695,13 +3698,8 @@ impl Game<'_> {
                     child,
                 } => self.villager_birth(parent, partner, child),
                 MobEvent::WorkAtComposter { mob, pos } => self.villager_work_at_composter(mob, pos),
-                MobEvent::VillagerRestockStep {
-                    mob,
-                    step,
-                    reputation,
-                    hero,
-                    pitch,
-                } => self.villager_offers_open(mob, step, (reputation, hero), pitch),
+                // Applied by `villager_restock_steps` right after the mob pass.
+                MobEvent::VillagerRestockStep { .. } => {}
                 MobEvent::GolemCheck { mob, needed } => self.villager_golem_check(mob, needed),
                 MobEvent::Firework { at, color, flight } => {
                     self.villager_firework(at, color, flight)

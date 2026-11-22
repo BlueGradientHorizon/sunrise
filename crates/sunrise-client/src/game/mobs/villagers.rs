@@ -5,7 +5,7 @@ use super::Game;
 use sunrise_client::{
     gossip::{self, GossipType},
     items::ItemStack,
-    mobs::{Mob, Species, spawning, villager, villager_brain},
+    mobs::{Mob, MobEvent, Species, spawning, villager, villager_brain},
 };
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 
@@ -630,11 +630,31 @@ impl Game<'_> {
             }
         }
     }
-    /// `Villager.restock` / `shouldRestock` with a trading player, after the
-    /// brain's work step: the live offers on the screen take the step (an edit
-    /// made since stays), priced for the player as the work step saw them;
-    /// `updateSellItem` then picks the result and the yes/no voice.
-    pub(super) fn villager_offers_open(
+    /// The restock steps the brain's work steps took this pass, applied in order
+    /// to the trading screens (`events` keeps the rest).
+    pub(in crate::game) fn villager_restock_steps(&mut self, events: &mut Vec<MobEvent>) {
+        let (steps, rest) = std::mem::take(events)
+            .into_iter()
+            .partition::<Vec<_>, _>(|e| matches!(e, MobEvent::VillagerRestockStep { .. }));
+        *events = rest;
+        for e in steps {
+            if let MobEvent::VillagerRestockStep {
+                mob,
+                step,
+                reputation,
+                hero,
+                pitch,
+            } = e
+            {
+                self.villager_offers_open(mob, step, (reputation, hero), pitch);
+            }
+        }
+    }
+    /// `Villager.restock` / `shouldRestock` with a trading player, at the
+    /// brain's work step: the live offers on the screen take the step, priced
+    /// for the player as the work step saw them; `updateSellItem` then picks
+    /// the result and the yes/no voice. Later edits are the last write.
+    fn villager_offers_open(
         &mut self,
         id: u32,
         step: sunrise_client::merchant::RestockStep,
