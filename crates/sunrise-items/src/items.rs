@@ -3478,8 +3478,13 @@ mod bucket_use_tests {
 /// tests: the block registry and facts as the client's `Assets::load` reads them.
 #[cfg(test)]
 pub(crate) fn prepared_items() -> Option<Items> {
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../.local/sunrise-client/26.3");
+    let root = std::env::var_os("SUNRISE_TEST_RESOURCES")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../.local/sunrise-client")
+                .join(sunrise_core::VANILLA_VERSION)
+        });
     if !root.join("items.json").exists() {
         return None;
     }

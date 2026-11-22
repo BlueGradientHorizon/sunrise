@@ -1628,9 +1628,13 @@ mod tests {
     #[ignore = "daily"]
     fn datapack_damage_registry_reload_keeps_wire_ids_and_reloads_tags_before_future_join() {
         use sunrise_world::loot::PackOverlay;
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../.local/sunrise-client")
-            .join(sunrise_core::VANILLA_VERSION);
+        let root = std::env::var_os("SUNRISE_TEST_RESOURCES")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../.local/sunrise-client")
+                    .join(sunrise_core::VANILLA_VERSION)
+            });
         let files = vec![
             ("damage_type/demo:heat".into(), vec![br#"{"message_id":"heat","scaling":"never","exhaustion":0.1,"effects":"burning"}"#.to_vec()]),
             ("damage_type/demo:infinite".into(), vec![br#"{"message_id":"infinite","scaling":"never","exhaustion":1e400}"#.to_vec()]),

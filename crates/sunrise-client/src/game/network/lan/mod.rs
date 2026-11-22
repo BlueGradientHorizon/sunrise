@@ -4196,11 +4196,15 @@ mod tests {
         use super::sync::{
             SyncCache, cached_sync_data, initialize_world_sync_data, prepare_sync_reload,
         };
-        use std::path::Path;
+        use std::path::{Path, PathBuf};
         use sunrise_world::{damage_source::Catalog, loot::PackOverlay};
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../.local/sunrise-client")
-            .join(sunrise_core::VANILLA_VERSION);
+        let root = std::env::var_os("SUNRISE_TEST_RESOURCES")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../.local/sunrise-client")
+                    .join(sunrise_core::VANILLA_VERSION)
+            });
         let item_data = sync_test_items(&root);
         let items =
             sunrise_client::items::Items::catalog(&root, &PackOverlay::NONE, item_data.defaults())
