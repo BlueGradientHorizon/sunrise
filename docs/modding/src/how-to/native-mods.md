@@ -9,6 +9,12 @@ Native code runs with the player's rights, outside any sandbox. The first instal
 launcher builds native mods only on an install that allows native code (`--trust-native-code`, revocable in
 **Settings > Storage**).
 
+If your mod calls another mod's Rust library, put the requirement in `sunrise-mod.toml`. In the add-on's folder,
+use `cargo sunrise-mod check --with ../library` for a local copy, then use the same flag with `build` or `run`.
+Without `--with`, the tool looks for required libraries in the Sunrise mod registry. Use `--with` to
+include optional libraries. The built `.smod` contains only your add-on; see
+[dependencies between mods](../concepts/dependencies.md) for the wiring and version rules.
+
 The pages in this section follow a mod from its source to a player's game and a server:
 
 <!-- section-pages -->
@@ -38,6 +44,12 @@ the accepted killing source and its captured weapon stack. Cancellation keeps th
 health a listener leaves, suppresses loot, experience and death messages, and does
 not heal the body. An unhealed cancelled body is removed at tick 20 without loot
 or another death dispatch.
+
+`LivingRef::kill_credit` can still resolve a mob's remembered player after the
+lethal hit while the mob remains in the level. As in `LivingEntity.baseTick`,
+the player reference survives the tick that decrements its timer to zero and
+expires on the next tick. Death loot and experience still use the positive timer
+to determine whether a player hit the mob recently.
 
 ### Custom statistics
 

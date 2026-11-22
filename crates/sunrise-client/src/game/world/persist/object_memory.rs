@@ -247,6 +247,7 @@ impl Game<'_> {
                 join: Default::default(),
                 id: self.next_entity,
                 state,
+                blocks_building: false,
                 // DATA_START_POS is not persisted by vanilla.
                 start_pos: sunrise_core::position::BlockPos::default(),
                 position,
@@ -507,14 +508,28 @@ impl Game<'_> {
         let riders = self.take_passengers(&mut tag);
         // The mob's own random makes its UUID, kept unless the tag has one.
         let (own, fresh) = sunrise_client::mobs::living_random();
-        let uuid = Some(uuid.unwrap_or(fresh));
-        let mut m = entity_nbt::mob_from_nbt_with_random(
+        let uuid = uuid.unwrap_or(fresh);
+        let mob = entity_nbt::mob_from_nbt_with_random(
             &tag,
             self.res.mob_types(),
             self.next_entity,
             Some(self.pack.assets.registry),
             own,
         )?;
+        let id = self.install_loaded_mob((mob, uuid), tag, mount, transferred, finalize, None);
+        self.load_passengers(id, riders);
+        Some(id)
+    }
+
+    pub(super) fn install_loaded_mob(
+        &mut self,
+        (mut m, uuid): (Mob, [i32; 4]),
+        tag: Tag,
+        mount: Option<u32>,
+        transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
+        finalize: bool,
+        admitted: Option<bool>,
+    ) -> u32 {
         self.resolve_loaded_profession(&mut m);
         if sunrise_client::mobs::camel::is_camel(m.species()) {
             sunrise_client::mobs::camel::finish_load(&mut m, self.world.game_time);
@@ -564,11 +579,9 @@ impl Game<'_> {
         }
         sunrise_client::mobs::armor::prepare(&m, &self.motion.attributes);
         let id = m.id;
-        // PersistentEntitySectionManager.addEntityUuid refuses residency, not
-        // the already-constructed object or its passenger links. Descendants
-        // are still considered individually in preorder.
-        let refused = self.uuid_admission_refused(uuid);
-
+        // Refuse residency, not the already-constructed object or its links.
+        // A spawner tree has already run this decision in preorder.
+        let resident = admitted.unwrap_or_else(|| !self.uuid_admission_refused(Some(uuid)));
         if let Some(mut state) = transferred {
             state.restore_mob(&mut m);
             self.adopt_transferred_entity_state(id, state);
@@ -576,18 +589,17 @@ impl Game<'_> {
             // A saved dying body has already passed die; loading only resumes tickDeath.
             self.died.insert(id);
         }
-        self.remember(id, uuid, tag);
-        if refused {
-            self.persist.off_level.insert(id, OffLevel::Mob(m));
-        } else {
+        self.remember(id, Some(uuid), tag);
+        if resident {
             self.bind_saved_entity_attachments(id, &mut m.attachment_lifetime);
             self.mobs.push(m);
+            if restore_target {
+                self.native_restore_loaded_target(id, anger_uuid);
+            }
+        } else {
+            self.persist.off_level.insert(id, OffLevel::Mob(m));
         }
-        if !refused && restore_target {
-            self.native_restore_loaded_target(id, anger_uuid);
-        }
-        self.load_passengers(id, riders);
-        Some(id)
+        id
     }
 
     /// The supported records under an entity's `Passengers`, taken out of it; the

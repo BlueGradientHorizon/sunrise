@@ -8,6 +8,9 @@ pub(super) use sunrise_gameplay::entity_uuids::EntityUuids;
 mod loaded_pass;
 #[path = "persist/object_memory.rs"]
 mod object_memory;
+#[path = "persist/spawn_tree.rs"]
+mod spawn_tree;
+pub(super) use spawn_tree::SpawnTree;
 #[path = "persist/unload_sweep.rs"]
 mod unload_sweep;
 
@@ -1791,10 +1794,11 @@ impl Game<'_> {
     pub(super) fn mob_own_nbt(&mut self, i: usize) -> Tag {
         self.mob_object_nbt(MobObject::Resident(i))
     }
-    /// Forget an entity that left the world (its UUID and loaded compound).
+    /// Forget the records of an entity that left the world.
     pub(super) fn forget_entity(&mut self, id: u32) {
         self.persist.transient.remove(&id);
         self.persist.uuids.remove(&id);
+        self.last_hurt_by_player.remove(&id);
         self.persist.score_destroyed.remove(&id);
         self.forget_entity_initialization(mod_api::Holder::Entity(id));
         self.entity_attachments.remove(&id);

@@ -123,7 +123,7 @@ pub fn install(
             return plan;
         }
     }
-    let catalog = Catalog::new(index, game, side, native_fits, &present);
+    let catalog = Catalog::new(index, game, side, &native_fits, &present);
     let installed_choices: Selected<'_> = present
         .keys()
         .filter_map(|&id| Some((id, catalog.mods.get(id)?.iter().find(|c| c.installed)?)))
@@ -211,6 +211,115 @@ pub fn install(
     plan
 }
 
+/// A local copy takes the place of every indexed version of this id. An archive has a hash;
+/// a source directory has only its manifest identity.
+pub struct LocalMod<'a> {
+    pub manifest: &'a crate::Manifest,
+    pub sha256: Option<&'a str>,
+}
+
+/// The install planner's solution for one unpublished project. Its own manifest and explicit
+/// local copies are fixed candidates, with their real dependency edges rather than the unknown
+/// edges of unindexed installed artifacts. The result excludes the project itself.
+pub struct ManifestPlan<'a> {
+    pub local: Vec<String>,
+    pub registry: Vec<(&'a Project, &'a Version)>,
+}
+
+/// Plan a project's dependencies with the same version, side, cycle and takedown rules as
+/// [`install`]. Optional edges never add an indexed library; an explicit local library for
+/// such an edge is checked against the declaration just like a required library.
+pub fn for_manifest<'a>(
+    index: &'a Index,
+    manifest: &crate::Manifest,
+    locals: &[LocalMod<'_>],
+    game: &str,
+    side: Side,
+    native_fits: impl Fn(&Project, &Version) -> bool,
+) -> Result<ManifestPlan<'a>, String> {
+    let mut fixed = BTreeMap::new();
+    for (m, hash) in std::iter::once((manifest, None))
+        .chain(locals.iter().map(|local| (local.manifest, local.sha256)))
+    {
+        if fixed
+            .insert(
+                m.id.as_str(),
+                (
+                    m,
+                    hash,
+                    m.version.to_string(),
+                    super::manifest_dependencies(m),
+                ),
+            )
+            .is_some()
+        {
+            return Err(format!("duplicate mod id {} in local sources", m.id));
+        }
+    }
+    let mut catalog = Catalog::new(index, game, side, &native_fits, &Present::new());
+    for (&id, (m, hash, version, rows)) in &fixed {
+        let (suggested, required) = rows
+            .iter()
+            .filter(|dep| dep.applies(side))
+            .map(|row| Range {
+                parsed: Ok(m.dependencies[&row.id].details().version),
+                row,
+            })
+            .partition(|range| range.row.optional);
+        catalog.mods.insert(
+            id,
+            vec![Candidate {
+                version,
+                installed: false,
+                unindexed: false,
+                number: Some(m.version.clone()),
+                fit: if id != manifest.id && index.revoked(id, hash.unwrap_or_default()).is_some() {
+                    Fit::Revoked
+                } else if m.native.as_ref().is_some_and(|native| native.game != game) {
+                    Fit::WrongGame
+                } else {
+                    Fit::Yes
+                },
+                native: None,
+                required,
+                optional: suggested,
+            }],
+        );
+    }
+    // Explicit optional libraries count as present whether their declaration came from disk
+    // or the registry. A mismatch is a conflict, not a reason to omit the library.
+    for candidate in catalog.mods.values_mut().flatten() {
+        candidate
+            .required
+            .extend(candidate.optional.extract_if(.., |range| {
+                fixed.contains_key(range.row.id.as_str()) && range.row.id != manifest.id
+            }));
+    }
+    let roots = Roots::from([(manifest.id.as_str(), Vec::new())]);
+    let selected = catalog.solve(&roots, &Selected::new())?;
+    let mut plan = ManifestPlan {
+        local: Vec::new(),
+        registry: Vec::new(),
+    };
+    for (id, candidate) in selected {
+        if id == manifest.id {
+            continue;
+        }
+        if fixed.contains_key(id) {
+            plan.local.push(id.to_owned());
+        } else {
+            let project = index.project(id).expect("selected indexed project");
+            let version = project
+                .versions
+                .iter()
+                .find(|v| v.version == candidate.version)
+                .expect("selected indexed version");
+            plan.registry.push((project, version));
+        }
+    }
+    Ok(plan)
+}
+
 /// List installed mods that directly or transitively require `id`, from the indexed metadata
 /// for matching installed artifacts. An optional or out-of-side dependency is not a blocker.
 pub fn removal_dependents(
@@ -262,7 +371,6 @@ enum Fit {
     Revoked,
     WrongGame,
     Unsupported(String),
-    WrongSunrise,
 }
 
 struct Range<'a> {
@@ -276,13 +384,21 @@ struct Candidate<'a> {
     unindexed: bool,
     number: Option<semver::Version>,
     fit: Fit,
+    native: Option<NativeFit<'a>>,
     required: Vec<Range<'a>>,
     optional: Vec<Range<'a>>,
+}
+
+struct NativeFit<'a> {
+    project: &'a Project,
+    version: &'a Version,
+    fits: std::cell::OnceCell<bool>,
 }
 
 struct Catalog<'a> {
     game: &'a str,
     mods: BTreeMap<&'a str, Vec<Candidate<'a>>>,
+    native_fits: &'a dyn Fn(&Project, &Version) -> bool,
 }
 
 type Roots<'a> = BTreeMap<&'a str, Vec<&'a str>>;
@@ -410,7 +526,7 @@ impl<'a> Catalog<'a> {
         index: &'a Index,
         game: &'a str,
         side: Side,
-        native_fits: impl Fn(&Project, &Version) -> bool,
+        native_fits: &'a dyn Fn(&Project, &Version) -> bool,
         present: &Present<'a>,
     ) -> Self {
         let mut mods: BTreeMap<_, Vec<_>> = index
@@ -443,11 +559,14 @@ impl<'a> Catalog<'a> {
                                 Fit::WrongGame
                             } else if let Some(reason) = v.capabilities.unsupported() {
                                 Fit::Unsupported(reason)
-                            } else if p.kind == Kind::NativeMod && !native_fits(p, v) {
-                                Fit::WrongSunrise
                             } else {
                                 Fit::Yes
                             },
+                            native: (p.kind == Kind::NativeMod).then(|| NativeFit {
+                                project: p,
+                                version: v,
+                                fits: std::cell::OnceCell::new(),
+                            }),
                             required,
                             optional,
                         }
@@ -475,12 +594,25 @@ impl<'a> Catalog<'a> {
                     } else {
                         Fit::Yes
                     },
+                    native: None,
                     required: Vec::new(),
                     optional: Vec::new(),
                 });
             }
         }
-        Self { game, mods }
+        Self {
+            game,
+            mods,
+            native_fits,
+        }
+    }
+
+    fn fits(&self, candidate: &Candidate<'_>) -> bool {
+        candidate.native.as_ref().is_none_or(|native| {
+            *native
+                .fits
+                .get_or_init(|| (self.native_fits)(native.project, native.version))
+        })
     }
 
     fn choices(&self, id: &str, need: &Need<'_>) -> Result<Vec<&Candidate<'a>>, String> {
@@ -548,14 +680,7 @@ impl<'a> Catalog<'a> {
         {
             return Err(format!("{} {}: {reason}", describe(), first.version));
         }
-        let fits: Vec<_> = supported.filter(|c| c.fit == Fit::Yes).collect();
-        if fits.is_empty() {
-            return Err(format!(
-                "{}: no matching native version fits this Sunrise build",
-                describe()
-            ));
-        }
-        Ok(fits)
+        Ok(supported.collect())
     }
 
     fn solve_independent<'s>(
@@ -824,7 +949,17 @@ impl<'a> Catalog<'a> {
                     if let Some(at) = choices.iter().position(|c| c.installed) {
                         choices[..=at].rotate_right(1);
                     }
-                    return Ok(Some((id, choices.into_iter())));
+                    let mut choices = choices.into_iter();
+                    let first =
+                        choices
+                            .find(|candidate| self.fits(candidate))
+                            .ok_or_else(|| {
+                                format!(
+                                    "{id} ({}): no matching native version fits this Sunrise build",
+                                    needs[id].describe()
+                                )
+                            })?;
+                    return Ok(Some((id, first, choices)));
                 }
                 let nodes: Vec<_> = selected.keys().copied().collect();
                 let edges: Vec<_> = selected
@@ -847,13 +982,17 @@ impl<'a> Catalog<'a> {
             })();
             match step {
                 Ok(None) => return Ok(selected),
-                Ok(Some(frame)) => stack.push(frame),
+                Ok(Some((id, first, remaining))) => {
+                    selected.insert(id, first);
+                    stack.push((id, remaining));
+                    continue;
+                }
                 Err(reason) => {
                     failure.get_or_insert(reason);
                 }
             }
             while let Some((id, choices)) = stack.last_mut() {
-                if let Some(next) = choices.next() {
+                if let Some(next) = choices.find(|candidate| self.fits(candidate)) {
                     selected.insert(*id, next);
                     break;
                 }
@@ -896,7 +1035,7 @@ pub fn uninstallable_versions(index: &Index, include: impl Fn(&Version) -> bool)
         let present = Present::new();
         let installed = Selected::new();
         for (side, label) in [(Side::Client, "client"), (Side::Server, "dedicated server")] {
-            let catalog = Catalog::new(index, game, side, |_, _| true, &present);
+            let catalog = Catalog::new(index, game, side, &|_, _| true, &present);
             for &(id, version) in &versions {
                 let roots = Roots::from([(id, vec![version])]);
                 if let Err(reason) = catalog.solve(&roots, &installed) {
