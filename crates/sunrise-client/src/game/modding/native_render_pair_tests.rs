@@ -1,7 +1,8 @@
 //! The render hook pair around a living entity (#3681): `render_living_pre` and
 //! `render_living_post`, wrapped for a player by `render_player_pre` and `render_player_post`. A
-//! canceled Pre skips the model, layers and later passes. Canceling only Living Pre still calls
-//! Player Post without a model. Culled entities are not asked; the hooks run in draw queue order.
+//! canceled Pre skips the model, layers and the later name tag and leash passes, but not its
+//! flames and shadow. Canceling only Living Pre still calls Player Post without a model. Culled
+//! entities are not asked; the hooks run in draw queue order.
 use super::Game;
 use mod_api::{
     BlockEntityDrawContext, Hooks, RenderLivingPostEvent, RenderLivingPreEvent,
@@ -509,9 +510,8 @@ fn a_canceled_living_pre_skips_the_model_and_the_post_hook() {
             canceled.len()
         );
         assert_eq!(markers(&canceled), 4);
-        // The frame's later passes (name tag, shadow, flames, leash) leave it out.
+        // The frame's later name tag and leash passes leave it out.
         assert!(game.render_canceled(91));
-        assert_eq!(game.drawn_mobs().count(), 0);
     });
 }
 
@@ -533,6 +533,167 @@ fn a_canceled_entity_draws_no_name_tag() {
         assert!(tag(game) > 0, "a named zombie's tag");
         heard.lock().unwrap().cancel_living.push(91);
         assert_eq!(tag(game), 0, "none once its pre hook cancels");
+    });
+}
+
+/// A stone floor under the origin, so a standing entity has something to cast a shadow on.
+fn place_stone_floor(game: &mut Game<'_>) {
+    game.world
+        .chunks
+        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+    let stone = game
+        .pack
+        .assets
+        .registry
+        .default_state("minecraft:stone")
+        .unwrap();
+    game.world.set(0, 63, 0, stone).unwrap();
+}
+
+/// Vertices of one whole entity frame (`entity_geometry`).
+fn entity_frame(game: &mut Game<'_>) -> usize {
+    let (out, ..) = game.entity_geometry(CAMERA, 1.0, None, Vec::new(), &mut Vec::new());
+    out.len()
+}
+
+/// The vertices of one whole entity frame with a zombie standing on stone, burning when
+/// `burning`, with entity shadows on when `shadows`.
+fn zombie_frame(game: &mut Game<'_>, burning: bool, shadows: bool) -> usize {
+    let mut zombie = mob(game, "minecraft:zombie", 91, 0.0);
+    zombie.fire_ticks = if burning { 100 } else { 0 };
+    game.mobs.clear();
+    game.mobs.push(zombie);
+    game.settings.entity_shadows = shadows;
+    entity_frame(game)
+}
+
+/// The fire yaw the entity pass uses for billboards.
+fn fire_yaw(game: &Game<'_>) -> f32 {
+    if game.camera_type == sunrise_client::camera::CameraType::ThirdPersonFront {
+        game.yaw + 180.0
+    } else {
+        game.yaw
+    }
+}
+
+/// Vertices `fire_render::flames` would add for a box of `width`×`height` at `feet`, with this
+/// frame's fire yaw, sprites and light — not through `entity_geometry`.
+fn flame_vertices(game: &Game<'_>, feet: [f64; 3], width: f32, height: f32) -> usize {
+    let mut out = Vec::new();
+    sunrise_client::fire_render::flames(
+        feet,
+        width,
+        height,
+        CAMERA,
+        fire_yaw(game),
+        &game.gui.atlas.sprites,
+        game.world.light(
+            feet[0].floor() as i32,
+            feet[1].floor() as i32,
+            feet[2].floor() as i32,
+        ),
+        &mut out,
+    );
+    out.len()
+}
+
+/// Vertices `shadows::shadow` would add for one caster — not through `entity_geometry`.
+fn shadow_vertices(game: &Game<'_>, pos: glam::DVec3, radius: f32, strength: f32) -> usize {
+    let Some(sprite) = game.gui.atlas.sprites.get("misc/shadow").copied() else {
+        return 0;
+    };
+    let mut out = Vec::new();
+    sunrise_client::shadows::shadow(
+        &game.world,
+        game.res.facts(),
+        &|state| {
+            game.res
+                .collision()
+                .cached_shapes()
+                .cached_shape(state)
+                .ok()
+                .flatten()
+                .and_then(|shape| shape.bounds())
+        },
+        sprite,
+        CAMERA,
+        pos,
+        radius,
+        strength,
+        game.dimension_type().ambient_light,
+        game.sky_darken(),
+        &mut out,
+    );
+    out.len()
+}
+
+/// Independent flame and shadow vertex counts for a zombie at the test stand.
+fn zombie_flame_and_shadow(game: &Game<'_>) -> (usize, usize) {
+    let zombie = mob(game, "minecraft:zombie", 91, 0.0);
+    let at = zombie.previous.lerp(zombie.position, 1.0);
+    let (radius, strength) = (
+        sunrise_client::shadows::mob_shadow_radius(&zombie),
+        sunrise_client::shadows::shadow_params(&zombie.kind.id).1,
+    );
+    (
+        flame_vertices(game, [at.x, at.y, at.z], zombie.width(), zombie.height()),
+        shadow_vertices(game, glam::DVec3::new(at.x, at.y, at.z), radius, strength),
+    )
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_canceled_pre_keeps_the_flames_and_the_shadow() {
+    let heard: Arc<Mutex<Heard>> = Arc::default();
+    with_pair(&heard, |game| {
+        place_stone_floor(game);
+        let (flames, shadow) = zombie_flame_and_shadow(game);
+        assert!(flames > 0 && shadow > 0, "{flames} {shadow}");
+        let plain = zombie_frame(game, false, false);
+        assert_eq!(zombie_frame(game, true, false) - plain, flames);
+        assert_eq!(zombie_frame(game, false, true) - plain, shadow);
+        heard.lock().unwrap().cancel_living.push(91);
+        let plain = zombie_frame(game, false, false);
+        assert_eq!(zombie_frame(game, true, false) - plain, flames);
+        assert_eq!(zombie_frame(game, false, true) - plain, shadow);
+        assert!(game.render_canceled(91));
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_canceled_pre_keeps_the_local_players_flames() {
+    let heard: Arc<Mutex<Heard>> = Arc::default();
+    with_pair(&heard, |game| {
+        place_stone_floor(game);
+        admit_own_player(game, false);
+        game.settings.entity_shadows = false;
+        let expected = {
+            let p = game.player.as_ref().unwrap();
+            let feet = game
+                .previous_position
+                .lerp(p.position, game.clock.camera_fraction());
+            flame_vertices(
+                game,
+                [feet.x, feet.y, feet.z],
+                p.dimensions.width,
+                p.dimensions.height,
+            )
+        };
+        assert!(expected > 0, "{expected}");
+        let added = |game: &mut Game<'_>| {
+            game.player.as_mut().unwrap().fire_ticks = 0;
+            let plain = entity_frame(game);
+            game.player.as_mut().unwrap().fire_ticks = 100;
+            entity_frame(game) - plain
+        };
+        assert_eq!(added(game), expected);
+        heard.lock().unwrap().cancel_living.push(4321);
+        assert_eq!(added(game), expected);
+        assert!(game.own_render_canceled());
+        heard.lock().unwrap().cancel_player.push(true);
+        assert_eq!(added(game), expected);
+        assert!(game.own_render_canceled());
     });
 }
 

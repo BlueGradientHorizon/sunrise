@@ -27,7 +27,7 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn sky_darken(&self) -> i32 {
+    pub(in crate::game) fn sky_darken(&self) -> i32 {
         if self.dim == Dim::Nether {
             return 11;
         }
