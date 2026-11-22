@@ -41,6 +41,9 @@ const PLAYER: [i32; 4] = [0x5355_4e52, 0x4953_4500, 0, 1];
 #[test]
 #[ignore = "daily"]
 fn client_ticks_match_the_vanilla_cases() {
+    if run_in_child("client_ticks_match_the_vanilla_cases") {
+        return;
+    }
     let harness = std::env::var("SUNRISE_CLIENT_TICK_CASES")
         .ok()
         .zip(std::env::var("SUNRISE_CLIENT_TICK_OUT").ok());
@@ -93,10 +96,17 @@ fn client_ticks_match_the_vanilla_cases() {
     });
 }
 
-/// A client of a server with the block entity types of `TYPES`, for `test`. Resource loading
-/// publishes the block namespaces process-wide: they are put back when it returns.
+/// Resource loading publishes registries process-wide. Keep them in the test's own process.
+fn run_in_child(test: &str) -> bool {
+    crate::game::native_entity_refs::tests::run_fresh_cases(
+        &format!("game::spawner_client_tick_tests::{test}"),
+        "SUNRISE_CLIENT_TICK_CHILD",
+        &["remote"],
+    )
+}
+
+/// A client of a server with the block entity types of `TYPES`, for `test`.
 fn with_remote_game(test: impl FnOnce(&mut Game<'_>)) {
-    let _published = crate::game::game_tests::tests::published();
     crate::game::native_entity_refs::tests::with_client_game(|game| {
         game.settings.render_distance = 32;
         let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
@@ -666,6 +676,9 @@ fn x_of(event: &serde_json::Value) -> f64 {
 #[test]
 #[ignore = "daily"]
 fn a_campfire_lit_before_the_first_ticker_pass_ticks_behind_the_spawner() {
+    if run_in_child("a_campfire_lit_before_the_first_ticker_pass_ticks_behind_the_spawner") {
+        return;
+    }
     with_remote_game(|game| {
         let campfire = campfire_json([1, 64, 1], false);
         let case = case_of(
@@ -704,6 +717,9 @@ fn a_campfire_lit_before_the_first_ticker_pass_ticks_behind_the_spawner() {
 #[test]
 #[ignore = "daily"]
 fn a_geyser_counts_its_eruption_from_the_tick_it_joined_the_level() {
+    if run_in_child("a_geyser_counts_its_eruption_from_the_tick_it_joined_the_level") {
+        return;
+    }
     with_remote_game(|game| {
         let sulfur = serde_json::json!({ "kind": "potent_sulfur", "pos": [13, 64, 13],
             "state": "erupting" });
@@ -727,6 +743,9 @@ fn a_geyser_counts_its_eruption_from_the_tick_it_joined_the_level() {
 #[test]
 #[ignore = "daily"]
 fn a_decorated_pots_wobble_survives_the_client_ticks() {
+    if run_in_child("a_decorated_pots_wobble_survives_the_client_ticks") {
+        return;
+    }
     use sunrise_protocol::packets::play::{self, Clientbound as C};
 
     with_remote_game(|game| {
@@ -828,6 +847,9 @@ fn a_decorated_pots_wobble_survives_the_client_ticks() {
 #[test]
 #[ignore = "daily"]
 fn a_conduit_sent_again_between_ticks_starts_fresh() {
+    if run_in_child("a_conduit_sent_again_between_ticks_starts_fresh") {
+        return;
+    }
     with_remote_game(|game| {
         let conduit = serde_json::json!({ "kind": "conduit", "pos": [8, 64, 8] });
         let case = case_of(
@@ -861,6 +883,9 @@ fn a_conduit_sent_again_between_ticks_starts_fresh() {
 #[test]
 #[ignore = "daily"]
 fn a_book_after_a_shulker_lid_reads_the_pushed_player() {
+    if run_in_child("a_book_after_a_shulker_lid_reads_the_pushed_player") {
+        return;
+    }
     with_remote_game(|game| {
         let shulker = serde_json::json!({ "kind": "shulker", "pos": [8, 64, 8], "facing": "east" });
         let table = serde_json::json!({ "kind": "enchanting_table", "pos": [9, 64, 10] });
@@ -896,6 +921,9 @@ fn a_book_after_a_shulker_lid_reads_the_pushed_player() {
 #[test]
 #[ignore = "daily"]
 fn a_campfires_smoke_joins_the_engine_in_the_tick_that_made_it() {
+    if run_in_child("a_campfires_smoke_joins_the_engine_in_the_tick_that_made_it") {
+        return;
+    }
     with_remote_game(|game| {
         let case = case_of(
             1000,
