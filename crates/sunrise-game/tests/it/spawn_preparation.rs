@@ -107,12 +107,18 @@ fn configuration_keeps_the_cold_spawn_corner_loaded_until_an_immediate_fill() {
     }).to_string()).unwrap();
     fs::write(
         functions.join("check_corner.mcfunction"),
-        format!("execute if block {CORNER} minecraft:air run say spawn-corner-loaded\n"),
+        format!(
+            "execute if block {CORNER} minecraft:air unless entity @a[name={name}] run say spawn-corner-loaded\n"
+        ),
     )
     .unwrap();
     let (_server, port, lines, mut log, mut console) = boot(scratch.path(), &resources);
-    writeln!(console, "execute if block {CORNER} minecraft:air").unwrap();
-    expect_log(&lines, &mut log, "That position is not loaded");
+    writeln!(
+        console,
+        "execute unless loaded {CORNER} run say spawn-corner-cold"
+    )
+    .unwrap();
+    expect_log(&lines, &mut log, "spawn-corner-cold");
     let mut bot = configure(port, name).unwrap_or_else(|e| {
         log.extend(lines.try_iter());
         panic!("configuration failed: {e}\n{}", log.join("\n"));
@@ -122,10 +128,6 @@ fn configuration_keeps_the_cold_spawn_corner_loaded_until_an_immediate_fill() {
     // player is placed yet to keep the cold corner resident with its view.
     writeln!(console, "schedule function test:check_corner 25t").unwrap();
     expect_log(&lines, &mut log, "spawn-corner-loaded");
-    assert!(
-        !log.iter()
-            .any(|line| line.contains("SpawnWalker joined the game"))
-    );
 
     bot.send(&cfg::Serverbound::FinishConfiguration(Empty).encode())
         .unwrap();
