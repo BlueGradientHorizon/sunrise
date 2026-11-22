@@ -2262,8 +2262,6 @@ impl Game<'_> {
             None,
             &mut components,
             tooltip::quantize_tooltip_anchor((x, y)),
-            mod_api::Identifier::from_parts("minecraft", "default")
-                .expect("minecraft:default is a valid identifier"),
             true,
         )
     }
@@ -3851,14 +3849,8 @@ mod cycling_tests {
                 let mut batch = HudBatch::scratch([320, 240]);
                 let anchor = super::tooltip::quantize_tooltip_anchor((10.6, 20.4));
                 let mut pre = |game: &super::Game<'_>| {
-                    game.tooltip_pre_components(
-                        &mut batch,
-                        None,
-                        &mut components,
-                        anchor,
-                        (320.0, 240.0),
-                        default_font.clone(),
-                    )
+                    game.tooltip_pre_components(&mut batch, None, &mut components, anchor)
+                        .map(|(anchor, font)| (anchor, font.into_owned()))
                 };
                 MODE.store(0, Ordering::Relaxed);
                 assert_eq!(pre(game), Some(([11, 20], default_font.clone())));

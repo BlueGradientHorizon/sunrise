@@ -366,10 +366,7 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
         // Empty text line preserved as a single empty text component right after wrapped text.
         assert_eq!(text_lines(&mixed[n..=n]), [""]);
         // Override factory won: WideData(250, 12) -> WideClient(500, 12).
-        let tooltip_font = crate::game::host::draw::EngineTooltipFont {
-            font,
-            id: &DEFAULT_FONT_ID,
-        };
+        let tooltip_font = EngineTooltipFont::new(font, &DEFAULT_TOOLTIP_FONT_ID);
         let wide = mixed[n + 1]
             .downcast_ref::<WideClient>()
             .expect("override factory should prepare WideClient");
@@ -543,14 +540,7 @@ fn two_pass_draw_order_geometry_and_zero_sized_components() {
                 .unwrap(),
         ];
         let mut batch = HudBatch::scratch([320, 240]);
-        let rect = game.draw_prepared_tooltip(
-            &mut batch,
-            None,
-            &mut components,
-            [10, 20],
-            DEFAULT_FONT_ID.clone(),
-            true,
-        );
+        let rect = game.draw_prepared_tooltip(&mut batch, None, &mut components, [10, 20], true);
         // x = 10 + 12 = 22, y = 20 - 12 = 8, w = 80, h = 0 + 10 + 6 + 0 + 16 = 32.
         assert_eq!(rect, Some([22.0, 8.0, 80.0, 32.0]));
         assert_eq!(
@@ -571,14 +561,8 @@ fn two_pass_draw_order_geometry_and_zero_sized_components() {
                 .unwrap(),
         ];
         let mut single_batch = HudBatch::scratch([320, 240]);
-        let single_rect = game.draw_prepared_tooltip(
-            &mut single_batch,
-            None,
-            &mut single,
-            [10, 20],
-            DEFAULT_FONT_ID.clone(),
-            true,
-        );
+        let single_rect =
+            game.draw_prepared_tooltip(&mut single_batch, None, &mut single, [10, 20], true);
         assert_eq!(single_rect, Some([22.0, 8.0, 40.0, 14.0]));
         assert_eq!(
             std::mem::take(&mut *log.lock().unwrap()),
@@ -759,14 +743,8 @@ fn render_tooltip_pre_observes_components_replaces_font_without_rewrap_and_cance
 
         // Mode 1: move place and switch font to minecraft:alt without rewrapping.
         let mut batch = HudBatch::scratch([320, 240]);
-        let rect = game.draw_prepared_tooltip(
-            &mut batch,
-            Some(&stick),
-            &mut prepared,
-            [10, 20],
-            DEFAULT_FONT_ID.clone(),
-            true,
-        );
+        let rect =
+            game.draw_prepared_tooltip(&mut batch, Some(&stick), &mut prepared, [10, 20], true);
         let expected_h = (wrapped_count as i32) * 10 + 45 + 12;
         assert_eq!(rect, Some([52.0, 38.0, 130.0, expected_h as f32]));
         assert_eq!(
@@ -800,7 +778,6 @@ fn render_tooltip_pre_observes_components_replaces_font_without_rewrap_and_cance
             Some(&stick),
             &mut prepared,
             [10, 20],
-            DEFAULT_FONT_ID.clone(),
             true,
         );
         assert_eq!(cancelled, None);
@@ -1114,15 +1091,12 @@ fn audit_88_no_listener_fast_path_and_deep_local_text() {
         assert_eq!(text_lines(&gathered), ["Plain"]);
 
         let mut batch = HudBatch::scratch([320, 240]);
-        let pre = game.tooltip_pre_components(
-            &mut batch,
-            Some(&unconvertible),
-            &mut gathered,
-            [10, 20],
-            (320.0, 240.0),
-            DEFAULT_FONT_ID.clone(),
+        let pre =
+            game.tooltip_pre_components(&mut batch, Some(&unconvertible), &mut gathered, [10, 20]);
+        assert_eq!(
+            pre,
+            Some(([10, 20], Cow::Borrowed(&*DEFAULT_TOOLTIP_FONT_ID)))
         );
-        assert_eq!(pre, Some(([10, 20], DEFAULT_FONT_ID.clone())));
         game.draw_stack_tooltip_lines(&mut batch, &unconvertible, lines, 10.0, 20.0);
         assert!(!batch.vertices.is_empty());
     });
@@ -1213,10 +1187,11 @@ fn audit_88_no_listener_fast_path_and_deep_local_text() {
             Some(&unconvertible),
             &mut one_line,
             [10, 20],
-            (320.0, 240.0),
-            DEFAULT_FONT_ID.clone(),
         );
-        assert_eq!(pre, Some(([10, 20], DEFAULT_FONT_ID.clone())));
+        assert_eq!(
+            pre,
+            Some(([10, 20], Cow::Borrowed(&*DEFAULT_TOOLTIP_FONT_ID)))
+        );
         assert_eq!(
             pre_calls.load(Ordering::Relaxed),
             0,
@@ -1243,7 +1218,6 @@ fn audit_88_no_listener_fast_path_and_deep_local_text() {
                 Some(&stick),
                 &mut gathered,
                 [10, 20],
-                DEFAULT_FONT_ID.clone(),
                 true
             )
             .is_some()
@@ -1565,7 +1539,6 @@ fn panic_containment_rolls_back_partial_paint_and_disables_only_failing_factory(
                     None,
                     std::slice::from_mut(&mut component),
                     [10, 20],
-                    DEFAULT_FONT_ID.clone(),
                     true,
                 ),
                 None
@@ -1664,7 +1637,6 @@ fn panic_containment_rolls_back_partial_paint_and_disables_only_failing_factory(
                 None,
                 std::slice::from_mut(&mut sibling),
                 [10, 20],
-                DEFAULT_FONT_ID.clone(),
                 true,
             )
             .is_some()
@@ -1790,7 +1762,6 @@ fn unconvertible_engine_text_and_bundle_preserved_without_api_roundtrip() {
             Some(&stick),
             &mut gathered,
             [10, 20],
-            DEFAULT_FONT_ID.clone(),
             true,
         );
         assert!(rect.is_some());
@@ -1822,7 +1793,6 @@ fn unconvertible_engine_text_and_bundle_preserved_without_api_roundtrip() {
                 Some(&bundle),
                 &mut gathered_bundle,
                 [10, 20],
-                DEFAULT_FONT_ID.clone(),
                 true,
             )
             .is_some()
@@ -2119,24 +2089,46 @@ fn item_tooltip_font_wraps_in_gather_pre_replaces_without_rewrap_and_anchor_quan
     ) {
         return;
     }
-    struct ItemFontProvider(Identifier);
-    impl mod_api::ClientItemExtensions for ItemFontProvider {
-        fn tooltip_font(&self, _: &dyn ClientHost, _: &mod_api::ItemStack) -> Option<Identifier> {
-            Some(self.0.clone())
+    struct FontFlowState {
+        phase: AtomicU8,
+        item_font: Identifier,
+        pre_font: Identifier,
+        seen_pre_place: Mutex<Option<(i32, i32)>>,
+    }
+
+    #[derive(Clone)]
+    struct Image(Arc<FontFlowState>);
+    #[mod_api::sunrise_part]
+    impl ItemPart for Image {
+        fn tooltip_image(
+            &self,
+            _: &dyn ClientHost,
+            _: &mut TooltipImageEvent<'_>,
+        ) -> Option<TooltipComponent> {
+            assert_eq!(self.0.phase.fetch_add(1, Ordering::Relaxed), 0);
+            None
         }
     }
 
-    struct FontFlowState {
-        item_font: Identifier,
-        pre_font: Identifier,
-        seen_pre_font: Mutex<Option<Identifier>>,
-        seen_pre_place: Mutex<Option<(i32, i32)>>,
-        override_pre_font: AtomicBool,
-        edit_only_y: AtomicBool,
+    struct ItemFontProvider(Arc<FontFlowState>);
+    impl mod_api::ClientItemExtensions for ItemFontProvider {
+        fn tooltip_font(&self, _: &dyn ClientHost, _: &mod_api::ItemStack) -> Option<Identifier> {
+            match self.0.phase.fetch_add(1, Ordering::Relaxed) {
+                1 => Some(self.0.item_font.clone()),
+                3 => None,
+                step => panic!("unexpected tooltip font query at step {step}"),
+            }
+        }
     }
+
     struct FontFlowMod(Arc<FontFlowState>);
     #[mod_api::__subscriptions]
     impl Hooks for FontFlowMod {
+        fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+            let key = r.item_key("minecraft:stick");
+            r.item_part(key, Image(self.0.clone()));
+        }
+
         fn register_client_item_extensions(
             &self,
             _: &RegistrationContext,
@@ -2145,10 +2137,7 @@ fn item_tooltip_font_wraps_in_gather_pre_replaces_without_rewrap_and_anchor_quan
             let stick_key = mod_api::__private::item_key("minecraft:stick").unwrap();
             event
                 .extensions
-                .client_item_extensions(
-                    stick_key,
-                    Arc::new(ItemFontProvider(self.0.item_font.clone())),
-                )
+                .client_item_extensions(stick_key, Arc::new(ItemFontProvider(self.0.clone())))
                 .unwrap();
         }
         fn render_tooltip_gather_components(
@@ -2156,6 +2145,7 @@ fn item_tooltip_font_wraps_in_gather_pre_replaces_without_rewrap_and_anchor_quan
             _: &dyn ClientHost,
             event: &mut RenderTooltipGatherComponentsEvent<'_>,
         ) -> Flow {
+            assert_eq!(self.0.phase.fetch_add(1, Ordering::Relaxed), 2);
             // 25px fits "aa aa" in default (14px), wraps to 2 lines in item_font (36px).
             event.max_width = 25;
             Flow::Continue
@@ -2165,14 +2155,11 @@ fn item_tooltip_font_wraps_in_gather_pre_replaces_without_rewrap_and_anchor_quan
             _: &dyn ClientHost,
             event: &mut RenderTooltipPreEvent<'_>,
         ) -> Flow {
-            *self.0.seen_pre_font.lock().unwrap() = Some(event.font.clone());
+            assert_eq!(*event.font, *DEFAULT_TOOLTIP_FONT_ID);
+            assert_eq!(self.0.phase.fetch_add(1, Ordering::Relaxed), 4);
             *self.0.seen_pre_place.lock().unwrap() = Some((event.place.x, event.place.y));
-            if self.0.override_pre_font.load(Ordering::Relaxed) {
-                *event.font = self.0.pre_font.clone();
-            }
-            if self.0.edit_only_y.load(Ordering::Relaxed) {
-                event.place.y = 40;
-            }
+            *event.font = self.0.pre_font.clone();
+            event.place.y = 40;
             Flow::Continue
         }
     }
@@ -2180,12 +2167,10 @@ fn item_tooltip_font_wraps_in_gather_pre_replaces_without_rewrap_and_anchor_quan
     let item_font = Identifier::parse("minecraft:item_wide").unwrap();
     let pre_font = Identifier::parse("minecraft:pre_wider").unwrap();
     let state = Arc::new(FontFlowState {
-        item_font: item_font.clone(),
-        pre_font: pre_font.clone(),
-        seen_pre_font: Mutex::new(None),
+        phase: AtomicU8::new(0),
+        item_font,
+        pre_font,
         seen_pre_place: Mutex::new(None),
-        override_pre_font: AtomicBool::new(true),
-        edit_only_y: AtomicBool::new(true),
     });
     let mods: Mods = vec![ModEntry::new(
         "font_flow_mod",
@@ -2229,35 +2214,19 @@ fn item_tooltip_font_wraps_in_gather_pre_replaces_without_rewrap_and_anchor_quan
         let anchor = quantize_tooltip_anchor((10.75, 20.25));
         assert_eq!(anchor, [11, 20]);
 
-        let GatheredTooltip::Ready {
-            mut components,
-            font,
-        } = game.gather_tooltip_components(
-            &stick,
-            vec![(text, u32::MAX)],
-            anchor[0],
-            (320.0, 240.0),
-        )
-        else {
-            panic!("expected GatheredTooltip::Ready");
-        };
-        assert_eq!(font, item_font);
+        let mut components = game
+            .gather_tooltip_components(&stick, vec![(text, u32::MAX)], anchor[0], (320.0, 240.0))
+            .unwrap_ready();
         // Wrapped using item_wide (36px > 25px -> 2 lines of "aa"), NOT default (14px -> 1 line).
         assert_eq!(text_lines(&components), ["aa", "aa"]);
 
-        // Pre receives item_font and quantized [11, 20], replaces font with pre_wider, and edits
+        // Pre receives the newly queried default font and anchor [11, 20], replaces font with pre_wider, and edits
         // only y -> 40. Final rect must use quantized x = 11 (+12 = 23), edited y = 40 (-12 = 28),
         // pre_wider width of "aa" = 30, and 2 lines height = 20 (never rewrapped in pre_wider).
         let mut batch = HudBatch::scratch([320, 240]);
-        let rect = game.draw_prepared_tooltip(
-            &mut batch,
-            Some(&stick),
-            &mut components,
-            anchor,
-            font,
-            true,
-        );
-        assert_eq!(*state.seen_pre_font.lock().unwrap(), Some(item_font));
+        let rect =
+            game.draw_prepared_tooltip(&mut batch, Some(&stick), &mut components, anchor, true);
+        assert_eq!(state.phase.load(Ordering::Relaxed), 5);
         assert_eq!(*state.seen_pre_place.lock().unwrap(), Some((11, 20)));
         assert_eq!(rect, Some([23.0, 28.0, 30.0, 20.0]));
     });
@@ -2321,7 +2290,6 @@ fn gather_wraps_logical_arabic_advances_but_measures_visual_lines() {
                 Some(&stack),
                 &mut components,
                 [10, 20],
-                DEFAULT_FONT_ID.clone(),
                 true,
             );
             assert_eq!(rect, Some([22.0, 8.0, 5.0, 20.0]));
@@ -2591,14 +2559,7 @@ fn tooltip_height_and_local_y_use_wrapping_signed_i32_arithmetic() {
             .unwrap(),
         ];
         let mut batch = HudBatch::scratch([320, 240]);
-        let _ = game.draw_prepared_tooltip(
-            &mut batch,
-            None,
-            &mut components,
-            [10, 20],
-            DEFAULT_FONT_ID.clone(),
-            true,
-        );
+        let _ = game.draw_prepared_tooltip(&mut batch, None, &mut components, [10, 20], true);
         // Total height wraps: 0_i32.wrapping_add(i32::MAX).wrapping_add(10) == i32::MIN + 9.
         let expected_h = 0_i32.wrapping_add(i32::MAX).wrapping_add(10);
         // DefaultTooltipPositioner keeps y = 20 - 12 = 8 (since 8 + expected_h + 6 < 240).

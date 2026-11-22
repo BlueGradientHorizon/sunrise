@@ -12,7 +12,7 @@ pub trait Hooks {
     /// screen; set `x` and `y` to move it. `screen` is `[screen_width, screen_height]` in
     /// GUI pixels. `positioner` is the active `ClientTooltipPositioner` that places the
     /// tooltip box once measured. `font` is the font identifier used for measurement and
-    /// drawing (starting at `minecraft:default` or the tooltip's font); change it to
+    /// drawing (starting at `minecraft:default` or the item font queried again after Gather); change it to
     /// measure and draw with a replacement font without rewrapping already-split text
     /// lines. A prepared component's `width` and `height` return `None` on failure,
     /// distinct from a valid size of zero. A failed component measurement or draw
@@ -24,7 +24,7 @@ pub trait Hooks {
         receiver = "read",
         dispatch = "api_carrier",
         side = "client",
-        version = 2,
+        version = 3,
         contract = "cancel",
         out = "cancel",
         neoforge = "RenderTooltipEvent.Pre",

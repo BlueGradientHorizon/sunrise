@@ -16,9 +16,24 @@ pub(in crate::game) fn font_id_str(id: &mod_api::Identifier) -> std::borrow::Cow
 
 /// Engine font view lent to [`ClientTooltipComponent`] and `render_tooltip_pre`.
 pub(in crate::game) struct EngineTooltipFont<'a> {
-    pub font: &'a sunrise_client::font::Font,
-    pub id: &'a mod_api::Identifier,
+    font: &'a sunrise_client::font::Font,
+    id: &'a Identifier,
+    name: std::borrow::Cow<'static, str>,
 }
+impl<'a> EngineTooltipFont<'a> {
+    pub(in crate::game) fn new(font: &'a sunrise_client::font::Font, id: &'a Identifier) -> Self {
+        Self {
+            font,
+            id,
+            name: font_id_str(id),
+        }
+    }
+
+    pub(in crate::game) fn name(&self) -> &str {
+        &self.name
+    }
+}
+
 impl TooltipFont for EngineTooltipFont<'_> {
     fn id(&self) -> &Identifier {
         self.id
@@ -28,12 +43,12 @@ impl TooltipFont for EngineTooltipFont<'_> {
     }
     fn width(&self, text: &Text) -> Result<i32, TextFormError> {
         let text: crate::text::Text = text.try_into_engine(&())?;
-        Ok(self.font.width_text_with_font(&text, &font_id_str(self.id)) as i32)
+        Ok(self.font.width_text_with_font(&text, self.name()) as i32)
     }
     fn split(&self, text: &Text, max_width: i32) -> Result<Vec<Text>, TextFormError> {
         let text: crate::text::Text = text.try_into_engine(&())?;
         self.font
-            .split_formatted_with_font(&text, max_width as f32, &font_id_str(self.id))
+            .split_formatted_with_font(&text, max_width as f32, self.name())
             .into_iter()
             .map(|line| line.try_into_api())
             .collect()
@@ -46,6 +61,7 @@ pub(crate) struct GameDrawContext<'a, 'g> {
     pub(crate) surface: &'a mut crate::hud::HudBatch,
     /// The call's open clips (`push_clip`), closed when the call returns.
     clips: crate::game::gui_clips::GuiClips,
+    tooltip_font: Option<&'a EngineTooltipFont<'a>>,
 }
 impl<'a, 'g> GameDrawContext<'a, 'g> {
     /// Lend a fresh clip stack and isolate the drawable tail of one listener.
@@ -80,7 +96,15 @@ impl<'a, 'g> GameDrawContext<'a, 'g> {
             game,
             surface,
             clips: Default::default(),
+            tooltip_font: None,
         }
+    }
+    pub(in crate::game) fn with_active_tooltip_font(
+        mut self,
+        font: &'a EngineTooltipFont<'a>,
+    ) -> Self {
+        self.tooltip_font = Some(font);
+        self
     }
 }
 impl Drop for GameDrawContext<'_, '_> {
@@ -136,6 +160,14 @@ impl DrawContext for GameDrawContext<'_, '_> {
         if a == 0 {
             return Ok(0.0);
         }
+        let formatted;
+        let name: &str = match self.tooltip_font.filter(|active| active.id == font) {
+            Some(active) => active.name(),
+            None => {
+                formatted = font_id_str(font);
+                &formatted
+            }
+        };
         Ok(self.surface.text_styled_with_font(
             &self.game.gui.atlas,
             &text,
@@ -143,15 +175,15 @@ impl DrawContext for GameDrawContext<'_, '_> {
             at[1],
             crate::hud::rgba(r, g, b, a),
             shadow,
-            &font_id_str(font),
+            name,
         ))
     }
     fn with_tooltip_font_raw(&self, font: &Identifier, f: &mut dyn FnMut(&dyn TooltipFont)) {
-        let tooltip_font = EngineTooltipFont {
-            font: &self.game.gui.atlas.font,
-            id: font,
-        };
-        f(&tooltip_font);
+        if let Some(active) = self.tooltip_font.filter(|active| active.id == font) {
+            f(active);
+        } else {
+            f(&EngineTooltipFont::new(&self.game.gui.atlas.font, font));
+        }
     }
     fn text_scaled(&mut self, text: &str, at: [f32; 2], scale: f32, argb: u32, shadow: bool) {
         self.game
@@ -1184,14 +1216,8 @@ mod tests {
         let default_id = Identifier::parse("minecraft:default").unwrap();
         let alt_id = Identifier::parse("minecraft:alt").unwrap();
 
-        let default_tf = EngineTooltipFont {
-            font: &font,
-            id: &default_id,
-        };
-        let alt_tf = EngineTooltipFont {
-            font: &font,
-            id: &alt_id,
-        };
+        let default_tf = EngineTooltipFont::new(&font, &default_id);
+        let alt_tf = EngineTooltipFont::new(&font, &alt_id);
         assert_eq!(default_tf.id(), &default_id);
         assert_eq!(alt_tf.id(), &alt_id);
         assert_eq!(default_tf.line_height(), 9);
