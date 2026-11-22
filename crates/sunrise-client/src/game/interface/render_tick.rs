@@ -843,7 +843,7 @@ impl Game<'_> {
                 block_parts: parts
                     .then_some(&Self::animate_part_listens as &dyn Fn(BlockStateId) -> bool),
             };
-            if let (Some(block), Some(sampling)) = (block, sampling.as_mut()) {
+            if let Some(sampling) = sampling.as_mut() {
                 if !sampling.started() {
                     laps.lap("tp_ctx");
                     self.particles
@@ -876,11 +876,12 @@ impl Game<'_> {
                         / if self.settings.particles == 1 { 2 } else { 1 };
                     let mut rain_position = None;
                     for _ in 0..count {
-                        let x =
-                            weather_block[0] + random.next_int_bound(diameter).unwrap_or(0) - radius;
-                        let z =
-                            weather_block[2] + random.next_int_bound(diameter).unwrap_or(0) - radius;
-                        let Some(top) = splash_height(world, properties, x, weather_block[1], z) else {
+                        let x = weather_block[0] + random.next_int_bound(diameter).unwrap_or(0)
+                            - radius;
+                        let z = weather_block[2] + random.next_int_bound(diameter).unwrap_or(0)
+                            - radius;
+                        let Some(top) = splash_height(world, properties, x, weather_block[1], z)
+                        else {
                             continue;
                         };
                         if !rains_at(world, biomes, x, top, z) {

@@ -635,7 +635,7 @@ fn camera_consumers_bob_fog_dark_disc_and_vignette_26_3() {
         game.avatar.bob = 0.08;
         game.avatar.bob_o = 0.04;
         game.settings.view_bobbing = true;
-        game.set_mode_id(3);
+        game.set_local_mode(sunrise_client::command::args::GameMode::Spectator);
         let profile = game.remote.as_ref().unwrap().profile;
         game.handle_packet(C::PlayerInfoUpdate(play::PlayerInfoUpdate {
             actions: 0x01 | 0x04 | 0x08,
@@ -698,9 +698,6 @@ fn camera_consumers_bob_fog_dark_disc_and_vignette_26_3() {
         let sky = Sky {
             fog_start: 16.0,
             fog_end: 128.0,
-            sky_fog_end: 128.0,
-            water_fog_start: -8.0,
-            water_fog_end: 96.0,
             cloud_fog_end: 2048.0,
             ..Sky::default()
         };

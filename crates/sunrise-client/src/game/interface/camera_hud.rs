@@ -45,9 +45,9 @@ impl Game<'_> {
                 let inputs = HotbarInputs {
                     selected: 0,
                     right_handed: !m.extra.main_hand_left,
-                    offhand: m.slot_stack(OFFHAND).is_some(),
+                    offhand: m.extra.slot_stack(OFFHAND).is_some(),
                     slots: std::array::from_fn(|s| {
-                        (s == 0 && m.main_hand_stack().is_some()).then_some(0.0)
+                        (s == 0 && m.extra.main_hand_stack().is_some()).then_some(0.0)
                     }),
                     offhand_pop: 0.0,
                     attack,

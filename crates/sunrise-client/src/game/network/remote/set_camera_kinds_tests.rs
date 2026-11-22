@@ -70,9 +70,15 @@ fn set_camera_follows_the_real_26_3_clients_camera_for_every_entity_kind() {
                 game.handle_packet(C::SetCamera(play::SetCamera { camera_id: sent }))
                     .unwrap();
                 let attached = camera(game).unwrap();
-                seen.push(if attached == local { 7 } else { attached.id() as i32 });
+                seen.push(if attached == local {
+                    7
+                } else {
+                    attached.id() as i32
+                });
             }
-            let seen = seen.iter().map(|id| if *id == 7 { 7 } else { target }.to_string());
+            let seen = seen
+                .iter()
+                .map(|id| if *id == 7 { 7 } else { target }.to_string());
             let seen = seen.collect::<Vec<_>>().join(",");
             let expected = expected.replace("40", &target.to_string());
             if seen != expected {

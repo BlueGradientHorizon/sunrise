@@ -59,7 +59,6 @@ impl Game<'_> {
             && let Some(mut detached) = self.camera_subject()
             && detached.entity_id == cam_id as u32
         {
-            detached.removed = true;
             detached.has_player_passenger = false;
             detached.camera.mount = None;
             detached.camera.previous = detached.camera.position;

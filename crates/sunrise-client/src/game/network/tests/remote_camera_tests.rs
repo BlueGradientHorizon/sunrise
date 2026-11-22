@@ -140,10 +140,14 @@ fn a_spectated_sleeping_villager_shows_the_bed_view() {
     use super::mob_camera_entity;
     use sunrise_client::camera::{Camera, CameraType};
 
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/game/network/tests/fixtures/remote_camera_sleeping");
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src/game/network/tests/fixtures/remote_camera_sleeping");
     let cases = std::fs::read_to_string(dir.join("cases.jsonl")).unwrap();
     let vanilla = std::fs::read_to_string(dir.join("vanilla.txt")).unwrap();
-    let frames: Vec<&str> = vanilla.lines().filter(|l| l.starts_with("frame ")).collect();
+    let frames: Vec<&str> = vanilla
+        .lines()
+        .filter(|l| l.starts_with("frame "))
+        .collect();
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../.local/sunrise-client")
         .join(sunrise_core::VANILLA_VERSION);
@@ -185,11 +189,23 @@ fn a_spectated_sleeping_villager_shows_the_bed_view() {
         let q = camera.rotation;
         let got = format!(
             "frame {:016x} {:016x} {:016x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x}",
-            camera.position[0].to_bits(), camera.position[1].to_bits(), camera.position[2].to_bits(),
-            camera.x_rot.to_bits(), camera.y_rot.to_bits(), q.x.to_bits(), q.y.to_bits(), q.z.to_bits(), q.w.to_bits(),
+            camera.position[0].to_bits(),
+            camera.position[1].to_bits(),
+            camera.position[2].to_bits(),
+            camera.x_rot.to_bits(),
+            camera.y_rot.to_bits(),
+            q.x.to_bits(),
+            q.y.to_bits(),
+            q.z.to_bits(),
+            q.w.to_bits(),
         );
         let want: Vec<&str> = frame.split(' ').take(10).collect();
-        assert_eq!(got, want.join(" "), "{id} bed {} case {checked}", case["bed"][3]);
+        assert_eq!(
+            got,
+            want.join(" "),
+            "{id} bed {} case {checked}",
+            case["bed"][3]
+        );
         checked += 1;
     }
     assert_eq!(checked, 40);

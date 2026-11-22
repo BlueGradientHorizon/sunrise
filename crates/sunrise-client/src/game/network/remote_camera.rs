@@ -45,11 +45,9 @@ impl CameraHurt {
 #[derive(Clone, Debug)]
 pub(in crate::game) struct ResolvedCameraEntity {
     pub entity_id: u32,
-    pub kind: String,
     pub camera: CameraEntity,
     pub is_local_player: bool,
     pub is_player: bool,
-    pub is_living: bool,
     pub is_spectator: bool,
     pub is_sleeping: bool,
     pub blocks_sky: bool,
@@ -59,7 +57,6 @@ pub(in crate::game) struct ResolvedCameraEntity {
     pub has_player_passenger: bool,
     pub collision_kind: EntityContextKind,
     pub post_effect: Option<&'static str>,
-    pub removed: bool,
 }
 
 /// The entity `Hud.getCameraPlayer` finds: the local player, another player (its index in
@@ -131,6 +128,7 @@ pub(super) fn mob_camera_entity(m: &Mob, (scale, camera_distance): (f32, f64)) -
 /// on `yRot`, so its view turns with its yaw; its eyes are its dimensions'
 /// (`getDimensionsMarker`): none for a marker, `BABY_DIMENSIONS`' 0.9875 for
 /// a small stand, the type's 1.7775 otherwise.
+#[cfg(test)]
 pub(super) fn stand_camera_entity(a: &ArmorStand) -> CameraEntity {
     stand_camera_entity_with(a, (1.0, 4.0))
 }
@@ -273,6 +271,7 @@ impl CameraEntities<'_> {
     }
     /// `Camera.alignWithEntity`: the view out of the entity, `None` when the
     /// level does not hold it.
+    #[cfg(test)]
     pub(super) fn view(&self, id: u32) -> Option<CameraEntity> {
         let mut entity = self.entity_view(id)?;
         entity.mount = self.living_vehicle(id);
@@ -296,6 +295,7 @@ impl CameraEntities<'_> {
             attribute("minecraft:camera_distance", 4.0),
         ))
     }
+    #[cfg(test)]
     fn entity_view(&self, id: u32) -> Option<CameraEntity> {
         if let Some(m) = self.mobs.iter().find(|m| m.id == id) {
             return Some(mob_camera_entity(m, (self.living)(m)));
@@ -324,10 +324,9 @@ impl Game<'_> {
     /// `ClientPacketListener.handleSetCamera`.
     pub(in crate::game) fn remote_set_camera(&mut self, camera_id: i32) {
         let id = camera_id as u32;
-        let in_level = self
-            .remote
-            .as_ref()
-            .is_some_and(|r| self.camera_entities(r).holds(id) || r.tracked_entity(camera_id).is_some());
+        let in_level = self.remote.as_ref().is_some_and(|r| {
+            self.camera_entities(r).holds(id) || r.tracked_entity(camera_id).is_some()
+        });
         let player = self
             .remote
             .as_ref()
@@ -449,7 +448,7 @@ impl Game<'_> {
             } else {
                 sunrise_items::equipment::MAINHAND
             };
-            let item = match m.slot_stack(slot).map(|s| &*s.item) {
+            let item = match m.extra.slot_stack(slot).map(|s| &*s.item) {
                 Some("minecraft:bow") => UseItem::Bow,
                 Some("minecraft:spyglass") => UseItem::Spyglass,
                 _ => UseItem::Other,
@@ -512,11 +511,9 @@ impl Game<'_> {
         };
         Some(ResolvedCameraEntity {
             entity_id: self.own_entity_id() as u32,
-            kind: "minecraft:player".to_owned(),
             camera,
             is_local_player: true,
             is_player: true,
-            is_living: true,
             is_spectator: self.own_player_is_spectator(),
             is_sleeping: self.sleeping.is_some(),
             blocks_sky: self.potions.effects.get("blindness").is_some()
@@ -532,7 +529,6 @@ impl Game<'_> {
             has_player_passenger: false,
             collision_kind: EntityContextKind::Player,
             post_effect: None,
-            removed: false,
         })
     }
     fn living_vehicle_for(&self, remote: &Remote, id: u32) -> Option<(f32, f64)> {
@@ -578,11 +574,9 @@ impl Game<'_> {
             let dead = camera.living.and_then(|l| l.dead);
             return Some(ResolvedCameraEntity {
                 entity_id: uid,
-                kind: m.kind.id.to_string(),
                 camera,
                 is_local_player: false,
                 is_player,
-                is_living: true,
                 is_spectator: is_player && m.extra.spectator,
                 is_sleeping,
                 blocks_sky: false,
@@ -601,7 +595,6 @@ impl Game<'_> {
                     EntityContextKind::Living
                 },
                 post_effect: entity_post_effect(&m.kind.id),
-                removed: false,
             });
         }
         if let Some(a) = self.armor_stands.iter().find(|a| a.id == uid) {
@@ -609,11 +602,9 @@ impl Game<'_> {
             camera.mount = mount;
             return Some(ResolvedCameraEntity {
                 entity_id: uid,
-                kind: "minecraft:armor_stand".to_owned(),
                 camera,
                 is_local_player: false,
                 is_player: false,
-                is_living: true,
                 is_spectator: false,
                 is_sleeping: false,
                 blocks_sky: false,
@@ -623,7 +614,6 @@ impl Game<'_> {
                 has_player_passenger,
                 collision_kind: EntityContextKind::Living,
                 post_effect: entity_post_effect("minecraft:armor_stand"),
-                removed: false,
             });
         }
         if let Some(i) = self.interactions.get(&id) {
@@ -640,11 +630,9 @@ impl Game<'_> {
             };
             return Some(ResolvedCameraEntity {
                 entity_id: uid,
-                kind: "minecraft:interaction".to_owned(),
                 camera,
                 is_local_player: false,
                 is_player: false,
-                is_living: false,
                 is_spectator: false,
                 is_sleeping: false,
                 blocks_sky: false,
@@ -654,7 +642,6 @@ impl Game<'_> {
                 has_player_passenger,
                 collision_kind: EntityContextKind::Other,
                 post_effect: entity_post_effect("minecraft:interaction"),
-                removed: false,
             });
         }
         if let Some(b) = self.boats.iter().find(|b| b.id == uid) {
@@ -667,11 +654,9 @@ impl Game<'_> {
             let post_effect = entity_post_effect(&kind);
             return Some(ResolvedCameraEntity {
                 entity_id: uid,
-                kind,
                 camera,
                 is_local_player: false,
                 is_player: false,
-                is_living: false,
                 is_spectator: false,
                 is_sleeping: false,
                 blocks_sky: false,
@@ -681,7 +666,6 @@ impl Game<'_> {
                 has_player_passenger,
                 collision_kind: EntityContextKind::Other,
                 post_effect,
-                removed: false,
             });
         }
         if let Some(c) = self.carts.iter().find(|c| c.id == uid) {
@@ -703,11 +687,9 @@ impl Game<'_> {
             let post_effect = entity_post_effect(&kind);
             return Some(ResolvedCameraEntity {
                 entity_id: uid,
-                kind,
                 camera,
                 is_local_player: false,
                 is_player: false,
-                is_living: false,
                 is_spectator: false,
                 is_sleeping: false,
                 blocks_sky: false,
@@ -717,7 +699,6 @@ impl Game<'_> {
                 has_player_passenger,
                 collision_kind: EntityContextKind::Other,
                 post_effect,
-                removed: false,
             });
         }
         if let Some(f) = self.item_frames.iter().find(|f| f.id == uid) {
@@ -730,11 +711,9 @@ impl Game<'_> {
             camera.mount = mount;
             return Some(ResolvedCameraEntity {
                 entity_id: uid,
-                kind: kind.to_owned(),
                 camera,
                 is_local_player: false,
                 is_player: false,
-                is_living: false,
                 is_spectator: false,
                 is_sleeping: false,
                 blocks_sky: false,
@@ -744,7 +723,6 @@ impl Game<'_> {
                 has_player_passenger,
                 collision_kind: EntityContextKind::Other,
                 post_effect: entity_post_effect(kind),
-                removed: false,
             });
         }
         if let Some(p) = self.paintings.iter().find(|p| p.id == uid) {
@@ -752,11 +730,9 @@ impl Game<'_> {
             camera.mount = mount;
             return Some(ResolvedCameraEntity {
                 entity_id: uid,
-                kind: "minecraft:painting".to_owned(),
                 camera,
                 is_local_player: false,
                 is_player: false,
-                is_living: false,
                 is_spectator: false,
                 is_sleeping: false,
                 blocks_sky: false,
@@ -766,7 +742,6 @@ impl Game<'_> {
                 has_player_passenger,
                 collision_kind: EntityContextKind::Other,
                 post_effect: entity_post_effect("minecraft:painting"),
-                removed: false,
             });
         }
         if let Some(t) = self.tnts.iter().find(|t| t.id == uid) {
@@ -774,11 +749,9 @@ impl Game<'_> {
             camera.mount = mount;
             return Some(ResolvedCameraEntity {
                 entity_id: uid,
-                kind: "minecraft:tnt".to_owned(),
                 camera,
                 is_local_player: false,
                 is_player: false,
-                is_living: false,
                 is_spectator: false,
                 is_sleeping: false,
                 blocks_sky: false,
@@ -788,7 +761,6 @@ impl Game<'_> {
                 has_player_passenger,
                 collision_kind: EntityContextKind::Other,
                 post_effect: entity_post_effect("minecraft:tnt"),
-                removed: false,
             });
         }
         let tracked = remote.entities.get(&id)?;
@@ -811,11 +783,9 @@ impl Game<'_> {
         };
         Some(ResolvedCameraEntity {
             entity_id: uid,
-            kind: tracked.kind.clone(),
             camera,
             is_local_player: false,
             is_player: false,
-            is_living: false,
             is_spectator: false,
             is_sleeping: false,
             blocks_sky: false,
@@ -825,7 +795,6 @@ impl Game<'_> {
             has_player_passenger,
             collision_kind,
             post_effect,
-            removed: false,
         })
     }
     /// `Hud.getCameraPlayer`: whose hotbar, bars and vehicle the HUD shows.
@@ -844,18 +813,6 @@ impl Game<'_> {
             Some(i) if &*self.mobs[i].kind.id == "minecraft:player" => CameraPlayer::Other(i),
             _ => CameraPlayer::Absent,
         }
-    }
-    /// The mob the view follows, while the level still holds it.
-    pub(super) fn camera_mob(&self) -> Option<&Mob> {
-        let id = self.remote_camera_id()?;
-        if self
-            .remote
-            .as_ref()
-            .is_some_and(|r| r.detached_camera.is_some())
-        {
-            return None;
-        }
-        self.mobs.iter().find(|m| m.id == id)
     }
     /// The view of the entity a server attached the camera to, live or detached.
     pub(super) fn spectated_camera_snapshot(&self) -> Option<CameraEntity> {

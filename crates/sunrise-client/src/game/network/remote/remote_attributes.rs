@@ -17,7 +17,9 @@ impl Game<'_> {
         {
             return Some(value);
         }
-        self.motion.attributes.default_base(&tracked.kind, attribute)
+        self.motion
+            .attributes
+            .default_base(&tracked.kind, attribute)
     }
 
     /// No-op on main because `remote_mob_attributes` applies updates immediately.

@@ -204,7 +204,7 @@ impl Game<'_> {
     }
     /// `EntityType.getDimensions().eyeHeight()` from `entity-types.json`,
     /// read once: a float, widened as `Entity.getEyeY` does.
-    fn type_eye_height(&self, ty: &str) -> f64 {
+    pub(in crate::game) fn type_eye_height(&self, ty: &str) -> f64 {
         static EYE_HEIGHTS: std::sync::OnceLock<std::collections::HashMap<String, f64>> =
             std::sync::OnceLock::new();
         EYE_HEIGHTS

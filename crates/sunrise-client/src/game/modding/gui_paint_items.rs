@@ -26,8 +26,8 @@ impl HotbarItems<'_, '_> {
         match (self.source, slot) {
             (HotbarSource::Own, 40) => self.game.offhand.as_ref(),
             (HotbarSource::Own, 0..=8) => self.game.inventory.get(slot as usize)?.as_ref(),
-            (HotbarSource::Mob(i), 40) => self.game.mobs[i].slot_stack(OFFHAND),
-            (HotbarSource::Mob(i), 0) => self.game.mobs[i].main_hand_stack(),
+            (HotbarSource::Mob(i), 40) => self.game.mobs[i].extra.slot_stack(OFFHAND),
+            (HotbarSource::Mob(i), 0) => self.game.mobs[i].extra.main_hand_stack(),
             _ => None,
         }
     }

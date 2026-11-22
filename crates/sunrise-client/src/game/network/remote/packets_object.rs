@@ -331,27 +331,27 @@ impl Game<'_> {
             self.teleport_driven_vehicle(position, rotation, delta, p.on_ground);
             return Ok(());
         }
-        let (base, now_yaw, now_pitch) = if let Some(m) = self.mob_index.get(&self.mobs, p.id as u32)
-        {
-            let at = self
-                .remote
-                .as_ref()
-                .and_then(|r| r.stepped.get(&p.id))
-                .map_or_else(|| mob_pos_rot(m), |h| h.heading(mob_pos_rot(m)));
-            (at.position, at.yaw, at.pitch)
-        } else if let Some(i) = self.interactions.get(&p.id) {
-            ([i.position.x, i.position.y, i.position.z], i.yaw, i.pitch)
-        } else if let Some(a) = self.armor_stands.iter().find(|a| a.id == p.id as u32) {
-            ([a.position.x, a.position.y, a.position.z], a.yaw, a.pitch)
-        } else if let Some(b) = self.boats.iter().find(|b| b.id == p.id as u32) {
-            ([b.position.x, b.position.y, b.position.z], b.yaw, b.pitch)
-        } else if let Some(c) = self.carts.iter().find(|c| c.id == p.id as u32) {
-            ([c.position.x, c.position.y, c.position.z], c.yaw, c.pitch)
-        } else if let Some(t) = self.remote.as_ref().and_then(|r| r.entities.get(&p.id)) {
-            (t.position, t.yaw, t.pitch)
-        } else {
-            ([0.0; 3], 0.0, 0.0)
-        };
+        let (base, now_yaw, now_pitch) =
+            if let Some(m) = self.mob_index.get(&self.mobs, p.id as u32) {
+                let at = self
+                    .remote
+                    .as_ref()
+                    .and_then(|r| r.stepped.get(&p.id))
+                    .map_or_else(|| mob_pos_rot(m), |h| h.heading(mob_pos_rot(m)));
+                (at.position, at.yaw, at.pitch)
+            } else if let Some(i) = self.interactions.get(&p.id) {
+                ([i.position.x, i.position.y, i.position.z], i.yaw, i.pitch)
+            } else if let Some(a) = self.armor_stands.iter().find(|a| a.id == p.id as u32) {
+                ([a.position.x, a.position.y, a.position.z], a.yaw, a.pitch)
+            } else if let Some(b) = self.boats.iter().find(|b| b.id == p.id as u32) {
+                ([b.position.x, b.position.y, b.position.z], b.yaw, b.pitch)
+            } else if let Some(c) = self.carts.iter().find(|c| c.id == p.id as u32) {
+                ([c.position.x, c.position.y, c.position.z], c.yaw, c.pitch)
+            } else if let Some(t) = self.remote.as_ref().and_then(|r| r.entities.get(&p.id)) {
+                (t.position, t.yaw, t.pitch)
+            } else {
+                ([0.0; 3], 0.0, 0.0)
+            };
         let rel = |bit: i32, i: usize| {
             if p.relatives & bit != 0 {
                 base[i] + p.position[i]
