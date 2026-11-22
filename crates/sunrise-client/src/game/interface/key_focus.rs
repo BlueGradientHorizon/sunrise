@@ -568,9 +568,9 @@ mod tests {
         let moved = button(0.0, 4.0);
         let far = button(200.0, 100.0);
         assert_eq!(follow(a, &[far, moved]), Some(moved));
-        // Gone (another screen): the first in tab order.
+        // Gone (another screen): the first in tab order (insertion order in default group).
         let first = button(0.0, 50.0);
-        assert_eq!(follow(a, &[far, first]), Some(first));
+        assert_eq!(follow(a, &[far, first]), Some(far));
         assert_eq!(follow(a, &[]), None);
     }
 

@@ -3796,7 +3796,7 @@ mod tests {
         assert!(game.transactions.is_empty());
 
         // `transaction_matches` checks the exact innermost open frame only, and passing an
-        // outer/ancestor `TransactionContext` to a write inside a nested transaction panics
+        // outer/ancestor `TransactionContext` to a write inside a nested transaction is refused
         // cleanly without modifying state.
         let host: &mut dyn ServerHost = &mut game;
         assert!(host.transaction_matches(None));
@@ -3807,10 +3807,10 @@ mod tests {
                 assert!(!host.transaction_matches(None));
                 assert!(!host.transaction_matches(Some(outer)));
                 assert!(host.transaction_matches(Some(inner)));
-                let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    insert(host, on([0, 64, 0], None), 0, sticks(1), outer)
-                }));
-                assert!(panicked.is_err());
+                assert_eq!(
+                    insert(host, on([0, 64, 0], None), 0, sticks(1), outer),
+                    Some(sticks(1))
+                );
                 Ok(())
             });
             assert_eq!(inner_ok, Ok(()));

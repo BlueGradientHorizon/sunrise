@@ -281,7 +281,7 @@ fn key(game: &mut Game<'_>, key: KeyCode, state: ElementState) {
 fn publish_frame(game: &mut Game<'_>, frame: u64) {
     let renderer = game.renderer.as_ref().unwrap();
     let size = [renderer.config.width, renderer.config.height];
-    game.hud_layers(size);
+    game.hud(size);
     widgets::set_action_screen(game.key_screen());
     widgets::end_frame(frame);
 }
@@ -424,6 +424,7 @@ fn inventory_release_post_distinguishes_quick_craft_from_swallowed_release() {
         };
         let first = point(300);
         let second = point(301);
+        let third = point(302);
         move_mouse(game, id, first.0, first.1);
         send_mouse_button(game, id, MouseButton::Left, true);
         move_mouse(game, id, second.0, second.1);
@@ -435,7 +436,8 @@ fn inventory_release_post_distinguishes_quick_craft_from_swallowed_release() {
         assert_eq!(game.slot_view(301).unwrap().count, 4);
 
         game.carried = Some(ItemStack::new("minecraft:stick", 6));
-        move_mouse(game, id, first.0, first.1);
+        // Start on a fresh slot so a click within 250ms does not trigger vanilla PickupAll.
+        move_mouse(game, id, third.0, third.1);
         send_mouse_button(game, id, MouseButton::Left, true);
         assert!(game.inv_drag.is_some());
         take(state);

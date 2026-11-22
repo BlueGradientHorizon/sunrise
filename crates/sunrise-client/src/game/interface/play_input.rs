@@ -78,7 +78,8 @@ impl Game<'_> {
 
     pub(super) fn clear_device_keys(&mut self) {
         self.keys.clear();
-        self.vanilla_mappings.set_keyboard_movement_up();
+        let options = self.toggle_options();
+        self.vanilla_mappings.set_keys_up_on_focus_loss(options);
     }
 
     fn sync_device_key(&mut self, key: KeyCode, down: bool) {

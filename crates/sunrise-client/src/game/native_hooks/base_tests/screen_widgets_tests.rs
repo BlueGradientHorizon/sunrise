@@ -895,7 +895,7 @@ fn mounted_button_sprites_keep_their_pixels_and_accessibility() {
                         assert_eq!(a, b, "outside mounted buttons at {x},{y}");
                     }
                 }
-                let buttons = widgets::last();
+                let buttons = widgets::last_labelled();
                 assert_eq!(buttons.len(), COUNT);
                 for (i, button) in buttons.iter().enumerate() {
                     assert_eq!([button.x, button.y, button.w, button.h], bounds(i));
@@ -1464,6 +1464,14 @@ fn custom_screen_widget_callbacks_and_per_widget_panic_isolation() {
                 InputOrigin::User,
             );
             assert_eq!(take_log(&log), ["focus:false"]);
+            // Match the offscreen window's 640x480 inner size again so pointer projection stays 1:1.
+            game.handle_window_event(
+                &NoLoop,
+                win_id,
+                WindowEvent::Resized(PhysicalSize::new(640, 480)),
+                InputOrigin::User,
+            );
+            assert!(take_log(&log).is_empty());
             game.sync_mounted_focus(game.mounted_widget_targets()[0]);
             assert!(game.close_screen());
             assert_eq!(take_log(&log), ["focus:true", "focus:false"]);

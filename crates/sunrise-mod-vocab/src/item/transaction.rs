@@ -93,6 +93,7 @@ pub enum TransactionLifecycle {
 }
 
 // no wire: local admission refusal, not a mod boundary payload.
+// exhaustive: unit error marker carrying no fields.
 /// There is no open transaction this caller can borrow.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TransactionUnavailable;
@@ -106,6 +107,7 @@ impl fmt::Display for TransactionUnavailable {
 impl std::error::Error for TransactionUnavailable {}
 
 // no wire: local scope settlement, not a mod boundary payload.
+// exhaustive: all scoped transaction failure outcomes (failed to open, or rolled back on commit).
 /// A host could not open a transaction, or refused it during commit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TransactionScopeError {
