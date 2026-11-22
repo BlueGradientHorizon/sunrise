@@ -92,7 +92,7 @@ pub trait GuiCanvas {
 
     /// Draw in a child scope. Apply `ops` in order to a copy of the current pose, then transform
     /// the local scissor (`[x, y, w, h]`) into screen space and intersect it with the enclosing
-    /// scissor. The two ordered corners are transformed, flooring the resulting origin and
+    /// scissor (or the viewport if there is none). The two ordered corners are transformed, flooring the resulting origin and
     /// extents separately. `None` inherits the enclosing scissor unchanged. Empty, inverted or
     /// reflected scissor axes draw nothing. The clip does not move when a descendant changes its
     /// pose. Non-finite geometry refuses the scope before calling `draw`; zero scale is allowed.

@@ -385,10 +385,14 @@ impl Resolver {
             );
         }
     }
-    /// How the resolution of `key` stands, starting it the first time.
-    pub fn state(&mut self, key: &NameOrId) -> Resolve {
+    fn prepare_lookup(&mut self) {
         self.receive_completed();
         self.sweep();
+    }
+
+    /// How the resolution of `key` stands, starting it the first time.
+    pub fn state(&mut self, key: &NameOrId) -> Resolve {
+        self.prepare_lookup();
         if let Some(entry) = self.entries.get_mut(key) {
             entry.touched = std::time::Instant::now();
             return entry
@@ -678,7 +682,7 @@ pub fn head_skin_with_journal(
             return None;
         }
         let resolution = if let Some(journal) = journal {
-            resolver.receive_completed();
+            resolver.prepare_lookup();
             journal
                 .0
                 .borrow_mut()
@@ -2001,6 +2005,68 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn scoped_head_uses_the_fallback_instead_of_an_expired_resolution() {
+        use base64::Engine as _;
+        use serde_json::json;
+        let profile = json!({"name":"invalid name"});
+        let fallback =
+            crate::tab_list::default_skin(sunrise_protocol::crypto::offline_uuid("invalid name"));
+        let key = NameOrId::Name("invalid name".into()); // An expired miss starts no request.
+        let payload =
+            json!({"textures":{"SKIN":{"url":"https://textures.minecraft.net/texture/abc123"}}});
+        let value = base64::engine::general_purpose::STANDARD.encode(payload.to_string());
+        let mut resolver = Resolver::new();
+        let mut downloads = Downloader::new(std::path::PathBuf::new());
+        resolver.entries.insert(
+            key.clone(),
+            Entry {
+                touched: std::time::Instant::now() - PROFILE_TTL,
+                resolved: Some(Some(ResolvedProfile {
+                    id: 1,
+                    name: "old".into(),
+                    properties: vec![("textures".into(), value, Some("signed".into()))],
+                })),
+            },
+        );
+        downloads.set_state((Kind::Skin, "abc123".into()), Download::Ready);
+        let present = |id: &str| id == skin_location("abc123");
+        let journal = HeadSkinJournal::default();
+        // Before the scheduled maintenance the scoped draw still sees the cached skin.
+        assert_eq!(
+            head_skin_with_journal(
+                &profile,
+                &mut resolver,
+                &mut downloads,
+                present,
+                Some(&journal)
+            ),
+            skin_location("abc123")
+        );
+        drop(journal);
+        resolver.last_sweep -= std::time::Duration::from_secs(30);
+        let journal = HeadSkinJournal::default();
+        assert_eq!(
+            head_skin_with_journal(
+                &profile,
+                &mut resolver,
+                &mut downloads,
+                present,
+                Some(&journal)
+            ),
+            fallback
+        );
+        assert!(
+            !resolver.entries.contains_key(&key),
+            "new lookup stays deferred"
+        );
+        assert!(downloads.take_drawn().is_empty());
+        assert_eq!(
+            head_skin(&profile, &mut resolver, &mut downloads, present),
+            fallback
+        );
+    }
 
     #[test]
     fn gui_head_skin_requests_commit_only_for_retained_scopes() {

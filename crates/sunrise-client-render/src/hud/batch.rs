@@ -555,6 +555,14 @@ impl HudBatch {
     /// GUI scissor): axis-aligned quads are cut with their UVs, others (item
     /// triangles) are clipped as polygons.
     pub fn clip_since(&mut self, start: usize, x0: f32, y0: f32, x1: f32, y1: f32) {
+        let contains = |v: &HudVertex| {
+            let [x, y] = v.pos;
+            x >= x0 && x <= x1 && y >= y0 && y <= y1
+        };
+        let empty = x0 >= x1 || y0 >= y1;
+        if !empty && self.vertices[start..].iter().all(contains) {
+            return;
+        }
         let quads: Vec<[HudVertex; 6]> = self.vertices[start..].as_chunks::<6>().0.to_vec();
         self.vertices.truncate(start);
         // Where each source quad now begins, to move the blend ranges (foil
@@ -562,6 +570,14 @@ impl HudBatch {
         let mut moved = Vec::with_capacity(quads.len() + 1);
         for q in quads {
             moved.push(self.vertices.len() as u32);
+            if empty {
+                continue;
+            }
+            // Preserve vertex order and attributes of a draw already cut to an inner scissor.
+            if q.iter().all(contains) {
+                self.vertices.extend_from_slice(&q);
+                continue;
+            }
             let corners = [q[0], q[1], q[2], q[5]];
             let (mut x_lo, mut x_hi) = (f32::INFINITY, f32::NEG_INFINITY);
             let (mut y_lo, mut y_hi) = (f32::INFINITY, f32::NEG_INFINITY);

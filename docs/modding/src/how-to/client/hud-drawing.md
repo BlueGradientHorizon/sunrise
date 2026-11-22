@@ -4,8 +4,8 @@ A HUD layer, a screen or a tooltip hook draws through the `DrawContext` it is ha
 is one of vanilla's `GuiGraphics` calls: `fill`, `text`, `sprite`, `item_stack` and the others.
 [Draw through a canvas](gui-paint.md#drawing-directly-with-a-canvas) with `draw_gui` to group
 fills, styled text, blits and seeded items with their decorations in lexical pose and scissor scopes.
-For the player-health rows specifically, [select a replacement renderer](gui-paint.md#replacing-the-player-health-hud)
-so it draws at the original layer and can reserve space for overlays.
+See [status rows and fixed text positions](#status-rows-and-fixed-text-positions) to draw at the
+original layer or reserve space for overlays.
 
 `ClientHost::debug_overlay_visible()` reports whether the client draws its debug overlay this frame. In
 `render_gui_post`, use it to leave space for the overlay. Always-on debug entries can make it visible with

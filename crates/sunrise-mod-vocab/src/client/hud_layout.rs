@@ -17,8 +17,8 @@ pub enum PoseOp {
 }
 
 // no wire: the blend is passed directly to an in-process blit.
-/// The render pipeline of a [`GuiCanvas::blit`]. Only `Textured` and `Crosshair` are
-/// available to [`GuiCanvas::blit_sprite`].
+/// The render pipeline of a [`crate::GuiCanvas::blit`]. Only `Textured` and `Crosshair` are
+/// available to [`crate::GuiCanvas::blit_sprite`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 // exhaustive: a closed set the game matches without a wildcard
 pub enum Blend {

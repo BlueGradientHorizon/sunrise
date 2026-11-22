@@ -31,10 +31,11 @@ impl GameGuiCanvas<'_, '_> {
         batch: &mut HudBatch,
         atlas: &HudAtlas,
         game: Option<&Game<'_>>,
+        scissor: Option<[f32; 4]>,
         draw: &mut dyn FnMut(&mut dyn GuiCanvas) -> Result<(), GuiDrawError>,
     ) -> Result<(), GuiDrawError> {
         let head_skins = HeadSkinJournal::default();
-        Self::group(batch, atlas, game, &head_skins, IDENTITY, None, draw)?;
+        Self::group(batch, atlas, game, &head_skins, IDENTITY, scissor, draw)?;
         if let Some(game) = game
             && !head_skins.is_empty()
         {
@@ -175,14 +176,15 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
             if !clip.into_iter().all(f32::is_finite) {
                 return Err(GuiDrawError::NotFinite);
             }
-            if let Some([x0, y0, x1, y1]) = self.scissor {
-                clip = [
-                    clip[0].max(x0),
-                    clip[1].max(y0),
-                    clip[2].min(x1),
-                    clip[3].min(y1),
-                ];
-            }
+            let [x0, y0, x1, y1] =
+                self.scissor
+                    .unwrap_or([0.0, 0.0, self.batch.width, self.batch.height]);
+            clip = [
+                clip[0].max(x0),
+                clip[1].max(y0),
+                clip[2].min(x1),
+                clip[3].min(y1),
+            ];
             if w <= 0.0 || h <= 0.0 || clip[2] <= clip[0] || clip[3] <= clip[1] {
                 clip = [0.0; 4];
             }
@@ -230,6 +232,10 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
             return Err(GuiDrawError::NotFinite);
         }
         let text = text.try_into_engine(&()).map_err(GuiDrawError::Text)?;
+        // GuiGraphicsExtractor.text skips extraction when the default alpha is zero.
+        if argb >> 24 == 0 {
+            return Ok(());
+        }
         self.paint(|batch, atlas| {
             batch.text_styled(atlas, &text, x, y, abgr(argb), shadow);
         })
@@ -385,12 +391,12 @@ mod tests {
             )
         };
         let mut batch = HudBatch::scratch([320, 240]);
-        GameGuiCanvas::draw(&mut batch, &atlas, None, &mut |root| {
+        GameGuiCanvas::draw(&mut batch, &atlas, None, None, &mut |root| {
             crosshair(root, [2.0, 3.0, 2.0, 2.0])
         })
         .unwrap();
 
-        GameGuiCanvas::draw(&mut batch, &atlas, None, &mut |root| {
+        GameGuiCanvas::draw(&mut batch, &atlas, None, None, &mut |root| {
             assert_eq!(root.size(), [320.0, 240.0]);
             root.scope(
                 &[PoseOp::Translate(10.75, 20.25)],
@@ -472,7 +478,7 @@ mod tests {
 
         let before = bytemuck::cast_slice::<_, u8>(&batch.vertices).to_vec();
         assert_eq!(
-            GameGuiCanvas::draw(&mut batch, &atlas, None, &mut |root| {
+            GameGuiCanvas::draw(&mut batch, &atlas, None, None, &mut |root| {
                 root.scope(&[], None, &mut |child| {
                     crosshair(child, [4.0, 7.0, 1.0, 1.0])
                 })?;
@@ -520,7 +526,7 @@ mod tests {
         atlas.live.insert("test:live".into(), rect);
 
         let mut batch = HudBatch::scratch([320, 240]);
-        GameGuiCanvas::draw(&mut batch, &atlas, None, &mut |root| {
+        GameGuiCanvas::draw(&mut batch, &atlas, None, None, &mut |root| {
             root.atlas_sprite("test:removed", DST, WHITE)?;
             root.blit_sprite("test:present", DST, None, WHITE, Blend::Crosshair)
         })
@@ -534,7 +540,7 @@ mod tests {
         let mut refuses = |draw: &mut dyn FnMut(&mut dyn GuiCanvas) -> Result<(), GuiDrawError>,
                            expected| {
             assert_eq!(
-                GameGuiCanvas::draw(&mut batch, &atlas, None, &mut |root| {
+                GameGuiCanvas::draw(&mut batch, &atlas, None, None, &mut |root| {
                     root.scope(&[PoseOp::Translate(2.0, 0.0)], None, &mut |child| {
                         child.blit("test:live", DST, REGION, WHITE, Blend::Crosshair)
                     })?;
@@ -632,14 +638,14 @@ mod tests {
         let at = [10.0, 20.0];
         let mut batch = HudBatch::scratch([320, 240]);
         assert_eq!(
-            GameGuiCanvas::draw(&mut batch, &atlas, None, &mut |root| {
+            GameGuiCanvas::draw(&mut batch, &atlas, None, None, &mut |root| {
                 root.text(&styled, at, u32::MAX, false)?;
                 root.text(&too_deep, at, u32::MAX, false)
             }),
             Err(GuiDrawError::Text(mod_api::text::TextFormError::TooDeep))
         );
         assert!(batch.vertices.is_empty());
-        GameGuiCanvas::draw(&mut batch, &atlas, None, &mut |root| {
+        GameGuiCanvas::draw(&mut batch, &atlas, None, None, &mut |root| {
             root.text(&styled, at, u32::MAX, false)
         })
         .unwrap();
@@ -653,13 +659,45 @@ mod tests {
     }
 
     #[test]
+    fn transparent_styled_text_does_not_extract_inline_profiles_or_glyphs() {
+        use mod_api::text::{TextContent, TextObject, TextProfile};
+        let atlas = HudAtlas::build(&ResourceSource::directory(
+            "/nonexistent/sunrise-test-assets".into(),
+        ))
+        .unwrap();
+        let mut text = Text::new(TextContent::Object(TextObject::Player {
+            profile: TextProfile {
+                name: Some("CanvasHead".into()),
+                ..TextProfile::default()
+            },
+            hat: true,
+            fallback: None,
+        }));
+        text.children.push(Text::literal("Visible only with alpha"));
+        let mut batch = HudBatch::scratch([320, 240]);
+        GameGuiCanvas::draw(&mut batch, &atlas, None, None, &mut |root| {
+            root.text(&text, [10.0, 20.0], 0x00FF_FFFF, false)
+        })
+        .unwrap();
+        assert!(batch.vertices.is_empty());
+        assert!(batch.inline_profiles.is_empty());
+        assert!(batch.patches.is_empty());
+        GameGuiCanvas::draw(&mut batch, &atlas, None, None, &mut |root| {
+            root.text(&text, [10.0, 20.0], u32::MAX, false)
+        })
+        .unwrap();
+        assert!(!batch.vertices.is_empty());
+        assert_eq!(batch.inline_profiles.len(), 1);
+    }
+
+    #[test]
     fn gui_scissors_are_empty_on_reflection_inversion_and_disjoint_intersection() {
         let atlas = HudAtlas::build(&ResourceSource::directory(
             "/nonexistent/sunrise-test-assets".into(),
         ))
         .unwrap();
         let mut batch = HudBatch::scratch([320, 240]);
-        GameGuiCanvas::draw(&mut batch, &atlas, None, &mut |root| {
+        GameGuiCanvas::draw(&mut batch, &atlas, None, None, &mut |root| {
             let mut over_scissor =
                 |canvas: &mut dyn GuiCanvas| canvas.fill([-32.0, -32.0, 64.0, 64.0], 0xFFFF_FFFF);
             root.scope(

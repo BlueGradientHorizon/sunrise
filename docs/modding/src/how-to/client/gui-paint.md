@@ -48,8 +48,10 @@ translation, but only the model gets the pop squeeze, as in vanilla's hotbar:
 ```rust,ignore
 use mod_api::client::hud_layout::PoseOp;
 
-let slots = host.local_player().and_then(|player| player.with_inventory(host, |inv| inv.get(slot)?.project())).flatten();
-if let Some((_, stack)) = slots.into_iter().flatten().find(|(slot, _)| *slot == 0) {
+let stack = host.local_player()
+    .and_then(|player| player.with_inventory(host, |inv| inv.get(0)?.project()))
+    .flatten();
+if let Some(stack) = stack {
     draw.draw_gui(&mut |canvas| {
         canvas.scope(&[PoseOp::Translate(20.0, 30.0)], None, &mut |panel| {
             let at = [0.0, 0.0];

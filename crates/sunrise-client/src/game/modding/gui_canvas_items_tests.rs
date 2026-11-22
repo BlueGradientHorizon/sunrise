@@ -212,6 +212,14 @@ fn scoped_items_keep_the_seed_and_draw_decorations_outside_the_squeeze() {
                         bytemuck::cast_slice::<_, u8>(&canvas.vertices),
                         committed.as_slice()
                     );
+
+                    // The ordinary hotbar resolves real sparse slots, then the off hand.
+                    game.inventory[..9].fill(None);
+                    game.inventory[2] = Some(ItemStack::new(ITEM, 2));
+                    game.inventory[7] = Some(ItemStack::new(ITEM, 7));
+                    game.offhand = Some(ItemStack::new(ITEM, 10));
+                    let mut hotbar = HudBatch::scratch([320, 240]);
+                    game.draw_item_hotbar(&mut hotbar, [320, 240], None);
                 });
             });
             assert_eq!(
@@ -220,7 +228,11 @@ fn scoped_items_keep_the_seed_and_draw_decorations_outside_the_squeeze() {
             );
             assert_eq!(
                 *resolves.lock().unwrap(),
-                [37, 37].map(|seed| (seed, 65, ItemDisplayContext::Gui))
+                [(37, 65), (37, 65), (3, 2), (8, 7), (10, 10)].map(|(seed, count)| (
+                    seed,
+                    count,
+                    ItemDisplayContext::Gui
+                ))
             );
         },
     );

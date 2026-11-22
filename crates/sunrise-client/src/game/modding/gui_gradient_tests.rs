@@ -36,6 +36,17 @@ impl Hooks for Gradients {
             })
         })
         .unwrap();
+        // The enclosing clip must win before the inner canvas cuts the original colour.
+        draw.with_scissor([0.0, 104.0, 100.0, 10.0], &mut |clipped| {
+            clipped
+                .draw_gui(&mut |root| {
+                    root.scope(&[], Some([0.0, 102.0, 100.0, 10.0]), &mut |canvas| {
+                        canvas.fill_gradient([10.0, 100.0, 20.0, 10.0], 0xFF00_0000, 0xFF03_0000)
+                    })
+                })
+                .unwrap();
+        })
+        .unwrap();
         mod_api::Flow::Cancel
     }
 }
@@ -79,6 +90,12 @@ fn a_mods_gradients_draw_top_to_bottom_in_the_clip_and_pose_and_empty_ones_draw_
                     ([50.0, 60.0], 0x8000_FF00),
                     ([54.0, 62.0], 0xFFFF_0000),
                     ([50.0, 62.0], 0xFFFF_0000),
+                    ([10.0, 104.0], 0xFF00_0001),
+                    ([30.0, 104.0], 0xFF00_0001),
+                    ([30.0, 110.0], 0xFF00_0003),
+                    ([10.0, 104.0], 0xFF00_0001),
+                    ([30.0, 110.0], 0xFF00_0003),
+                    ([10.0, 110.0], 0xFF00_0003),
                 ]
             );
         },

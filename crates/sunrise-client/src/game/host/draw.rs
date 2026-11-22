@@ -11,9 +11,10 @@ impl Game<'_> {
     pub(in crate::game) fn draw_gui_canvas(
         &self,
         batch: &mut crate::hud::HudBatch,
+        scissor: Option<[f32; 4]>,
         draw: &mut dyn FnMut(&mut dyn GuiCanvas) -> Result<(), GuiDrawError>,
     ) -> Result<(), GuiDrawError> {
-        gui_canvas::GameGuiCanvas::draw(batch, &self.gui.atlas, Some(self), draw)
+        gui_canvas::GameGuiCanvas::draw(batch, &self.gui.atlas, Some(self), scissor, draw)
     }
 }
 
@@ -117,7 +118,13 @@ impl DrawContext for GameDrawContext<'_, '_> {
         &mut self,
         draw: &mut dyn FnMut(&mut dyn GuiCanvas) -> Result<(), GuiDrawError>,
     ) -> Result<(), GuiDrawError> {
-        self.game.draw_gui_canvas(self.surface, draw)
+        self.game.draw_gui_canvas(
+            self.surface,
+            self.clip
+                .as_ref()
+                .map(crate::game::gui_clips::GuiClip::rect),
+            draw,
+        )
     }
     fn gui_nine_slice(&mut self, sprite: &str, rect: [f32; 4], color: u32) {
         self.game

@@ -4,9 +4,40 @@ use sunrise_client::hud::HudBatch;
 use sunrise_client::hud_layout::GuiItems;
 use sunrise_client::items::ItemStack;
 
+impl Game<'_> {
+    pub(super) fn draw_item_hotbar(
+        &self,
+        batch: &mut HudBatch,
+        [w, h]: [i32; 2],
+        attack: Option<f32>,
+    ) {
+        use sunrise_client::hud_layout::{HotbarInputs, hotbar, paint_items};
+        let partial = self.clock.fraction() as f32;
+        let inputs = HotbarInputs {
+            selected: self.selected as i32,
+            right_handed: !self.settings.main_hand_left,
+            offhand: self.offhand.is_some(),
+            slots: std::array::from_fn(|i| {
+                self.inventory[i]
+                    .as_ref()
+                    .map(|_| (f32::from(self.hotbar_pop[i]) - partial).max(0.0))
+            }),
+            offhand_pop: (f32::from(self.hotbar_pop[9]) - partial).max(0.0),
+            attack,
+        };
+        let draws = hotbar(w, h, &inputs);
+        paint_items(
+            batch,
+            &self.gui.atlas,
+            &draws,
+            &mut HotbarItems { game: self },
+        );
+    }
+}
+
 /// The local player's hotbar slots (0-8) and off hand (40), drawn for `GuiDraw::Item`.
-pub(crate) struct HotbarItems<'a, 'g> {
-    pub(crate) game: &'a Game<'g>,
+struct HotbarItems<'a, 'g> {
+    game: &'a Game<'g>,
 }
 impl HotbarItems<'_, '_> {
     fn stack(&self, slot: u32) -> Option<&ItemStack> {

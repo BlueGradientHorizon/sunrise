@@ -32,6 +32,10 @@ impl GuiClip {
         })
     }
 
+    pub(crate) fn rect(&self) -> [f32; 4] {
+        self.rect
+    }
+
     pub(crate) fn close(self, batch: &mut HudBatch) {
         let [x0, y0, x1, y1] = self.rect;
         batch.clip_since(self.start, x0, y0, x1, y1);
