@@ -2940,9 +2940,10 @@ fn continue_base_tick(
                 if m.alive() {
                     let roll = m.random.next_int_bound(1000).unwrap_or(999);
                     let t = m.ambient_timer;
-                    m.ambient_timer += 1;
+                    // `ambientSoundTime++` and `-getAmbientSoundInterval()`, in int arithmetic.
+                    m.ambient_timer = m.ambient_timer.wrapping_add(1);
                     if roll < t {
-                        m.ambient_timer = -m.ambient_interval();
+                        m.ambient_timer = m.ambient_interval().wrapping_neg();
                         super::entity_sounds::ambient(m, w, events);
                     }
                 }

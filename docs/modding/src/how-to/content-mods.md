@@ -974,11 +974,13 @@ template:
 - `volume` is `LivingEntity.getSoundVolume()`, the volume of the ambient, hurt and death sounds.
 - `voice_pitch` is the base of `LivingEntity.getVoicePitch()` in place of 1.0: the random spread of ±0.2 still applies,
   and a baby's pitch is still raised by the template's factor (1.5 for most mobs), now times the base.
-- `ambient_interval` is `Mob.getAmbientSoundInterval()`, in ticks: after each ambient or hurt sound the ambient sound's
-  timer starts again from minus this value.
+- `ambient_interval` is `Mob.getAmbientSoundInterval()`, in ticks: after each ambient or hurt sound, and after a
+  merchant's trade, the ambient sound's timer starts again from minus this value. Any int is accepted, as vanilla
+  accepts any; the arithmetic on it wraps as Java's does.
 
-Each omitted key keeps the template's value. The numbers must be finite and `ambient_interval` at least 1; anything
-else stops content admission, with the entity and key in the error.
+Each omitted key keeps the template's value. `volume`, `voice_pitch` and the step's `volume` and `pitch` must be
+finite as a float; another number, or a step given in another form than an id, `"none"` or that object, stops
+content admission, with the file and the key in the error.
 
 A code mod can also register an attribute type of its own with `Registrar::declare_attribute(path, default,
 min, max, syncable, sentiment, tooltip)` (vanilla's `RangedAttribute` in the attribute registry). Only both-side

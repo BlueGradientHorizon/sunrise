@@ -36,4 +36,4 @@ icon:
 None
 
 content:
-refused: refused_entity_type_nonfinite_sound:sample: sounds.step.volume: inf is not finite
+refused: data/refused_entity_type_nonfinite_sound/sunrise/entity_type/sample.json: sounds.step.volume: 1e39 is not a finite float at line 1 column 124

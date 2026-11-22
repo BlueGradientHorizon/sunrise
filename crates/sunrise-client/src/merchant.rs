@@ -209,6 +209,8 @@ pub struct Session {
     pub future_xp: i32,
     /// `Mob.ambientSoundTime`.
     pub ambient_sound_time: i32,
+    /// The merchant's `Mob.getAmbientSoundInterval` (80 unless a content type declares one).
+    pub ambient_interval: i32,
     /// `Villager.lastTradedPlayer` is set: the TRADE reputation event is due.
     pub last_traded: bool,
     /// A server's merchant on its client (`ClientSideMerchant`): a trade only counts the
@@ -234,10 +236,23 @@ impl Session {
             active: None,
             future_xp: 0,
             ambient_sound_time: 0,
+            ambient_interval: 80,
             last_traded: false,
             client_side: false,
             events: Vec::new(),
         }
+    }
+    /// The trading mob's random and ambient sound clock, which the session draws
+    /// from and resets while it trades (the mob ticks meanwhile).
+    pub fn take_mob_clock(&mut self, m: &crate::mobs::Mob) {
+        self.random.clone_from(&m.random);
+        self.ambient_sound_time = m.ambient_timer;
+        self.ambient_interval = m.ambient_interval();
+    }
+    /// The random and ambient sound clock back to the mob after a trade.
+    pub fn give_mob_clock(&self, m: &mut crate::mobs::Mob) {
+        m.random = self.random.clone();
+        m.ambient_timer = self.ambient_sound_time;
     }
     /// `Merchant.showProgressBar` / `canRestock`.
     pub fn show_progress(&self) -> bool {
@@ -274,7 +289,7 @@ impl Session {
             return false;
         }
         let offer = offer.clone();
-        self.ambient_sound_time = -80;
+        self.ambient_sound_time = self.ambient_interval.wrapping_neg();
         self.events
             .push(Event::Traded(index, Box::new(offer.clone())));
         let mut prices = false;
@@ -335,8 +350,9 @@ impl Session {
         if self.client_side {
             return;
         }
-        if self.ambient_sound_time > -80 + 20 {
-            self.ambient_sound_time = -80;
+        let reset = self.ambient_interval.wrapping_neg();
+        if self.ambient_sound_time > reset.wrapping_add(20) {
+            self.ambient_sound_time = reset;
             let pitch = self.voice_pitch();
             self.events.push(Event::TradeUpdated(has_result, pitch));
         }
@@ -939,6 +955,40 @@ mod tests {
         }
     }
 
+    /// `AbstractVillager.notifyTrade` and `notifyTradeUpdated` reset the clock to
+    /// `-getAmbientSoundInterval()`: a content merchant's declared interval reaches
+    /// the mob's clock after a trade.
+    #[test]
+    fn a_trade_resets_the_mobs_ambient_clock_to_its_interval() {
+        let items = items();
+        let mut kind = (*crate::mobs::sensor_scan_tests::kind()).clone();
+        kind.ambient_interval = 200;
+        let mut m = crate::mobs::Mob::new(
+            1,
+            std::sync::Arc::new(kind),
+            sunrise_core::geometry::Vec3::ZERO,
+            0.0,
+        );
+        m.ambient_timer = 37;
+        let mut s = Session::new(vec![offer(4, None)], true);
+        s.take_mob_clock(&m);
+        s.notify_trade(0, None, &items);
+        s.give_mob_clock(&mut m);
+        assert_eq!(m.ambient_timer, -200);
+        // The yes/no voice waits until the clock is past `-interval + 20`.
+        let updated = |s: &Session| {
+            s.events
+                .iter()
+                .filter(|e| matches!(e, Event::TradeUpdated(..)))
+                .count()
+        };
+        s.ambient_sound_time = -180;
+        s.notify_trade_updated(true);
+        assert_eq!((updated(&s), s.ambient_sound_time), (0, -180));
+        s.ambient_sound_time = -179;
+        s.notify_trade_updated(true);
+        assert_eq!((updated(&s), s.ambient_sound_time), (1, -200));
+    }
     /// A shift-click trades several times in one session: each `Traded`
     /// event keeps the offer as it was right after its own trade, which is
     /// what the mods hear (`TradeWithVillagerEvent` per `onTake`).

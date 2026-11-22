@@ -4461,7 +4461,7 @@ impl Mob {
                 entity_sounds::voices(self)[if dead { 2 } else { 1 }]
             };
             if !dead {
-                self.ambient_timer = -self.ambient_interval();
+                self.ambient_timer = self.ambient_interval().wrapping_neg();
             }
             if !sound.is_empty() {
                 let pitch = self.voice_pitch();
@@ -5109,7 +5109,7 @@ impl Mob {
     pub fn ambient_interval(&self) -> i32 {
         let ridden = self.rider.is_some() || self.extra.rider.is_some();
         if self.species() == Species::HappyGhast && ridden {
-            self.kind.ambient_interval * 6
+            self.kind.ambient_interval.wrapping_mul(6)
         } else {
             self.kind.ambient_interval
         }

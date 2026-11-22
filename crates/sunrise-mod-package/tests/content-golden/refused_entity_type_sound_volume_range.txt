@@ -1,7 +1,7 @@
 manifest:
 Manifest {
-    id: "refused_entity_type_sound_interval_zero",
-    name: "Refused entity type sound interval zero",
+    id: "refused_entity_type_sound_volume_range",
+    name: "Refused entity type sound volume range",
     version: Version {
         major: 1,
         minor: 2,
@@ -36,4 +36,4 @@ icon:
 None
 
 content:
-refused: refused_entity_type_sound_interval_zero:sample: sounds.ambient_interval: 0 is below 1
+refused: data/refused_entity_type_sound_volume_range/sunrise/entity_type/sample.json: sounds.volume: 1e39 is not a finite float at line 1 column 59

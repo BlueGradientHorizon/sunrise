@@ -120,17 +120,19 @@ pub fn step(
     pos: [i32; 3],
     state: sunrise_world::registry::BlockStateId,
 ) -> Option<(Cow<'static, str>, f32, f32)> {
-    match m.kind.sound_overrides.step {
-        Selection::Inherit => super::ai::inherited_step_sound(m, w, pos, state),
+    declared_step(&m.kind.sound_overrides)
+        .unwrap_or_else(|| super::ai::inherited_step_sound(m, w, pos, state))
+}
+/// The step a content type declares (`playSound(step, volume, pitch)`, or
+/// silence), or `None` when the slot inherits the template's.
+fn declared_step(sounds: &Sounds) -> Option<Option<(Cow<'static, str>, f32, f32)>> {
+    match sounds.step {
+        Selection::Inherit => None,
         Selection::Id(id) => {
-            let (volume, pitch) = m
-                .kind
-                .sound_overrides
-                .step_volume_pitch
-                .unwrap_or((0.15, 1.0));
-            Some((Cow::Borrowed(id), volume, pitch))
+            let (volume, pitch) = sounds.step_volume_pitch.unwrap_or((0.15, 1.0));
+            Some(Some((Cow::Borrowed(id), volume, pitch)))
         }
-        Selection::Mute => None,
+        Selection::Mute => Some(None),
     }
 }
 

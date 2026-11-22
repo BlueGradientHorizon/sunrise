@@ -251,7 +251,7 @@ pub fn load_archetype_items(tags: &HashMap<String, HashSet<String>>) {
 // These unit fixtures share a process-wide item lookup. Whichever initializes
 // it first must include both the explosive and hot bodies exercised below.
 #[cfg(test)]
-pub(crate) fn test_archetype_items() {
+fn test_archetype_items() {
     load_archetype_items(&HashMap::from([
         (
             "minecraft:sulfur_cube_archetype/explosive".into(),
