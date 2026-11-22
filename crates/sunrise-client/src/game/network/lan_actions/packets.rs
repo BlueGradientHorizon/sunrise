@@ -1116,7 +1116,6 @@ impl Game<'_> {
                         g.native_clone_item_stack(
                             g.dim.level(),
                             sunrise_core::position::BlockPos::new(p.pos[0], p.pos[1], p.pos[2]),
-                            &g.res.facts().get(state).name,
                             state,
                             include_data,
                             player,
