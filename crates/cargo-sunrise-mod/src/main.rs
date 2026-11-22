@@ -3,7 +3,7 @@
 //!
 //! - `new <path> [--name "Name"]`: a content mod from the template; with
 //!   `--template native [--sunrise <build>]`, a code mod pinned to the current Nightly's
-//!   SDK unless `--sunrise` names another build (`nightly-<date>` or a sha), with that SDK fetched
+//!   SDK unless `--sunrise` names another build (a release tag such as `nightly-<date>` or `26.3-0.1.0`, or a sha), with that SDK fetched
 //!   into `.sunrise/sdk/` (`sdk_fetch.rs`).
 //! - `update [--sunrise <build>]`: repin a native mod and diff/refresh declared internals.
 //! - `internals sync [--repo <path>]`: sync declarations for native mods.
@@ -426,12 +426,13 @@ fn new(args: &[String], fetch: FetchSdk) -> Result<Option<PathBuf>, String> {
     Ok(None)
 }
 
-/// The build a code mod pins: `--sunrise`'s (a sha or a Nightly name), or the current Nightly's,
-/// the build players have.
-fn pin(sunrise: Option<&str>) -> Result<String, String> {
+/// The build a code mod pins: `--sunrise`'s (a sha or a release tag), or by default the current
+/// Nightly's, the build players have.
+fn pin(sunrise: &str) -> Result<String, String> {
     sdk_fetch::resolve(
         &sdk_fetch::Base::from_env(),
-        sunrise.unwrap_or(sunrise_release_sign::NIGHTLY),
+        &sdk_fetch::release_keys(),
+        sunrise,
     )
 }
 
@@ -454,10 +455,11 @@ fn update(dir: &Path, fetch: FetchSdk, sunrise: Option<&str>) -> Result<(), Stri
             "{MANIFEST}: a content mod pins no game build, so there is nothing to update"
         ));
     };
-    let sunrise = pin(sunrise)?;
+    let requested = sunrise.unwrap_or(sunrise_release_sign::NIGHTLY);
+    let sunrise = pin(requested)?;
     // The new build's SDK must exist and verify before anything is written; the mixins revision
     // is the SDK's own unless the manifest pins one.
-    fetch(dir, &sunrise)?;
+    fetch(dir, &sunrise).map_err(|e| sdk_fetch::named(requested, &sunrise, e))?;
     let mut doc: toml_edit::DocumentMut = text
         .parse()
         .map_err(|e| format!("{}: {e}", path.display()))?;
@@ -497,7 +499,8 @@ fn new_native(
     if id.len() > 64 {
         return Err(format!("mod id {id}: 64 characters at most"));
     }
-    let sunrise = pin(sunrise)?;
+    let requested = sunrise.unwrap_or(sunrise_release_sign::NIGHTLY);
+    let sunrise = pin(requested)?;
     let sunrise = sunrise.as_str();
     // The folder is made exclusively, so anything already at the path (a dangling link included)
     // is refused untouched, and a failed fetch removes only what this run made.
@@ -509,9 +512,11 @@ fn new_native(
         _ => format!("{}: {e}", dir.display()),
     })?;
     // The SDK is fetched now, so a failed pin leaves no folder; the mixins revision is its own.
-    fetch(dir, sunrise).inspect_err(|_| {
-        let _ = std::fs::remove_dir_all(dir);
-    })?;
+    fetch(dir, sunrise)
+        .inspect_err(|_| {
+            let _ = std::fs::remove_dir_all(dir);
+        })
+        .map_err(|e| sdk_fetch::named(requested, sunrise, e))?;
     let manifest = format!(
         "{}\n[native]\ngame = \"26.3\"\nsunrise = \"{sunrise}\"\n",
         include_str!("../template/native/sunrise-mod.toml"),
@@ -1445,5 +1450,87 @@ mod tests {
             let error = check_args(&argv(line)).map(drop).unwrap_err();
             assert!(error.contains(named), "{line}: {error}");
         }
+    }
+
+    #[test]
+    fn served_by_package_with_host_crafting_remainder_packs_and_checks() {
+        let dir = std::env::temp_dir().join(format!(
+            "sunrise-mod-tool-served-rem-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let root = dir.join("runes");
+        std::fs::create_dir_all(root.join("data/runes/sunrise/item")).unwrap();
+        std::fs::create_dir_all(root.join("data/runes/recipe")).unwrap();
+        let manifest_text = "\
+id = \"runes\"
+name = \"Runes\"
+version = \"1.0.0\"
+side = \"both\"
+namespaces = [\"runes_extra\"]
+served_by = \"horizon_java\"
+";
+        std::fs::write(root.join(MANIFEST), manifest_text).unwrap();
+        // Item references a host-declared crafting remainder in a served namespace, and a recipe
+        // references a host-declared item in the same namespace.
+        std::fs::write(
+            root.join("data/runes/sunrise/item/stew.json"),
+            r#"{"template":"minecraft:mushroom_stew","crafting_remainder":"runes_extra:host_bowl"}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("data/runes/recipe/host_bowl.json"),
+            r#"{"type":"minecraft:crafting_shapeless","ingredients":["minecraft:oak_planks"],"result":{"id":"runes_extra:host_bowl"}}"#,
+        )
+        .unwrap();
+        let manifest = Package::read(&root).unwrap().manifest;
+        let smod = pack_into(
+            &root,
+            &PackageOutput::in_project(&root).unwrap(),
+            &manifest,
+            None,
+            None,
+        )
+        .unwrap();
+        let report = check::check(&smod, check::kind_of(&smod).unwrap(), None, None).unwrap();
+        assert_eq!(report.facts.id.as_deref(), Some("runes"));
+
+        // Invalid syntax, minecraft:air, foreign namespace, or unserved undeclared remainder still fail.
+        for (label, manifest_override, remainder) in [
+            ("air", None, "minecraft:air"),
+            ("bad-id", None, "runes:Bad"),
+            ("foreign", None, "other:bowl"),
+            (
+                "unserved",
+                Some(manifest_text.replace("served_by = \"horizon_java\"\n", "")),
+                "runes_extra:host_bowl",
+            ),
+        ] {
+            if let Some(text) = &manifest_override {
+                std::fs::write(root.join(MANIFEST), text).unwrap();
+            } else {
+                std::fs::write(root.join(MANIFEST), manifest_text).unwrap();
+            }
+            std::fs::write(
+                root.join("data/runes/sunrise/item/stew.json"),
+                format!(
+                    r#"{{"template":"minecraft:mushroom_stew","crafting_remainder":"{remainder}"}}"#
+                ),
+            )
+            .unwrap();
+            let manifest = Package::read(&root).unwrap().manifest;
+            assert!(
+                pack_into(
+                    &root,
+                    &PackageOutput::in_project(&root).unwrap(),
+                    &manifest,
+                    None,
+                    None,
+                )
+                .is_err(),
+                "{label} ({remainder}) should fail pack_into"
+            );
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

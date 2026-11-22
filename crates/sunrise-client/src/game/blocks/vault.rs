@@ -304,8 +304,10 @@ impl Game<'_> {
     ) {
         let _items = sunrise_client::spans::raw_flight_guard("block_entity_items");
         let reach = Reach::Default;
-        let radius = f64::from(reach.view_distance(0));
-        for (key, entity) in self.world.block_entities.near(camera.x, camera.z, radius) {
+        sunrise_client::spans::note_block_entity_item_visits(|| {
+            self.world.block_entities.len() as u64
+        });
+        for (key, entity) in &self.world.block_entities {
             let BlockEntity::Vault(vault) = entity else {
                 continue;
             };

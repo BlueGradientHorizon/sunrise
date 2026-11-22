@@ -32,7 +32,7 @@ use std::{
 
 /// CPU copies of the meshes uploaded since capturing was turned on.
 #[derive(Default)]
-pub(super) struct Copies {
+pub(crate) struct Copies {
     sections: FxHashMap<SectionKey, SectionMesh>,
     tiles: FxHashMap<TileKey, SectionMesh>,
 }
@@ -567,6 +567,7 @@ impl Scene {
             glint_ticks: f.glint_ticks,
             nether_lighting: f.nether_lighting,
             entities: &[],
+            explicit_particles: None,
             static_block_entities: &[],
             visible_static_block_entity_sections: &[],
             static_block_entity_stats: Default::default(),

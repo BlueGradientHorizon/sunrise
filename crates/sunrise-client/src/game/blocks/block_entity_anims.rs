@@ -409,7 +409,9 @@ impl Game<'_> {
                 Ticker::Book => {
                     // The player where earlier tickers (a lid's push) left it.
                     let player = match &self.player {
-                        Some(p) if !self.spectator() => Some([p.position.x, p.position.y, p.position.z]),
+                        Some(p) if !self.spectator() => {
+                            Some([p.position.x, p.position.y, p.position.z])
+                        }
                         _ => None,
                     };
                     let anims = &mut self.be_anims;
@@ -677,7 +679,7 @@ impl Game<'_> {
                 ambient: true,
                 ..EffectInstance::new("conduit_power", 260, 0)
             };
-            g.potions.effects.add(power);
+            g.apply_player_effect(power);
         });
     }
     /// `Entity.isInRain`: rain at the block position or at the top of the box.
@@ -749,12 +751,13 @@ impl Game<'_> {
                 self.mark_block_entity_updated(key);
             }
         }
-        let Some(m) = conduit
+        let Some(index) = conduit
             .target
-            .and_then(|id| self.mobs.iter_mut().find(|m| m.id == id))
+            .and_then(|id| self.mob_index.find(&self.mobs, id))
         else {
             return;
         };
+        let m = &mut self.mobs[index];
         let at = [m.position.x, m.position.y, m.position.z];
         m.damage(
             crate::game::entity::damage_level_of!(
@@ -766,6 +769,7 @@ impl Game<'_> {
             4.0,
             Damage::of(DamageKind::Magic),
         );
+        self.finish_mob_damage_at(index);
         self.audio
             .play("minecraft:block.conduit.attack.target", Some(at), 1.0, 1.0);
     }

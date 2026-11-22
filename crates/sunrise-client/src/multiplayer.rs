@@ -1818,7 +1818,7 @@ impl Screen {
     }
     /// The button was released: a server that was dragged somewhere else is
     /// saved there.
-    pub fn release(&mut self, saves: &Path) {
+    pub fn release(&mut self, saves: &Path) -> bool {
         if let Self::List {
             servers,
             scroll,
@@ -1826,11 +1826,15 @@ impl Screen {
             ..
         } = self
         {
+            let scrolled = scroll.held();
             scroll.release();
-            if held.take().is_some_and(|h| h.moved) {
+            let row = held.take();
+            if row.as_ref().is_some_and(|h| h.moved) {
                 save_servers(&servers_file(saves), servers);
             }
+            return scrolled || row.is_some();
         }
+        false
     }
     /// The focused box, in GUI pixels: name at 66, address at 106
     /// (`ManageServerScreen`), direct address at 116, friend fields at 64 and 105.

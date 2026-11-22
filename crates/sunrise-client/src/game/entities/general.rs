@@ -532,6 +532,11 @@ impl GeneralTypeCatalog {
         &self.entries[slot].id
     }
 
+    /// The range and update interval of the already-resolved type.
+    pub(in crate::game) fn tracking(&self, slot: usize) -> sunrise_client::lan::tracking::General {
+        (&self.entries[slot]).into()
+    }
+
     pub(in crate::game) fn keys(&self) -> impl Iterator<Item = &str> {
         self.entries.iter().map(|entry| entry.id.as_str())
     }
@@ -1297,8 +1302,8 @@ impl Entity for GeneralRow {
     fn get_piston_push_reaction(&self) -> sunrise_world::level::PushReaction {
         general_type_catalog().piston_push_reaction(self.type_slot)
     }
-    fn native_type(&self) -> Cow<'static, str> {
-        Cow::Owned(general_type_catalog().key(self.type_slot).to_owned())
+    fn native_type(&self) -> Cow<'_, str> {
+        Cow::Borrowed(general_type_catalog().key(self.type_slot))
     }
     fn save_nbt(
         game: &mut Game<'_>,

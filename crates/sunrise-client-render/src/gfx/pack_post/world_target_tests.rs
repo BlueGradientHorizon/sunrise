@@ -352,6 +352,7 @@ fn render(
         &[],
         &mut |_, _, _, _| {},
         &std::sync::atomic::AtomicBool::new(false),
+        super::super::in_flight::poll_live,
     )
     .unwrap();
     encoder.copy_texture_to_buffer(
@@ -427,6 +428,7 @@ fn frame(hud: &HudBatch) -> Frame<'_> {
         glint_ticks: 0.0,
         nether_lighting: false,
         entities: &[],
+        explicit_particles: None,
         static_block_entities: &[],
         visible_static_block_entity_sections: &[],
         static_block_entity_stats: crate::block_entity_render::StaticCacheFrameStats::default(),

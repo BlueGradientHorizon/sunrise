@@ -62,7 +62,7 @@ impl Game<'_> {
         }
         let [x, y, z] = delta;
         self.in_this_levels_colliders(|game| {
-            game.move_local_player(MoverType::SelfMovement, Vec3::new(x, y, z))
+            game.move_local_player(MoverType::SelfMovement, Vec3::new(x, y, z), false)
         })
         .map(|moved| moved.map(Vec3::components))
         .map_err(|_| LevelWriteError::Unavailable)
@@ -374,6 +374,7 @@ mod tests {
                         player.reset_fall_distance(host),
                         Err(mod_api::LevelWriteError::Unavailable),
                     );
+                    assert!(host.client_executor().is_none());
                     self.0.lock().unwrap().push((
                         event.old_section,
                         event.new_section,
@@ -438,7 +439,7 @@ mod tests {
             game.world.set(2, 64, 0, stone).unwrap();
 
             let mut move_and_read = |movement| {
-                game.move_local_player(MoverType::SelfMovement, movement)
+                game.move_local_player(MoverType::SelfMovement, movement, false)
                     .unwrap();
                 player.collision_flags(game).unwrap().unwrap()
             };

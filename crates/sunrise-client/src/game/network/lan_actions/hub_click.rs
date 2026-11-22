@@ -6,7 +6,7 @@
 use super::*;
 use crate::game::{lan_menus::ClickReply, stacked_on_other::Pickup};
 use std::cell::RefCell;
-use sunrise_client::menu::{PlanningRules, RuleAnswers, StackedOutcome, StoredRules};
+use sunrise_client::menu::StackedOutcome;
 
 impl Game<'_> {
     /// Run `f` with the LAN host taken out of `self.lan`, then put it back. `f` is given the whole
@@ -57,13 +57,11 @@ impl Game<'_> {
                 _ => Vec::new(),
             })
             .unwrap_or_default();
-        let answers = RuleAnswers::default();
         let prepared = RefCell::new(Some(prepared));
         let outcome = RefCell::new(None);
         if let Some(frozen) = frozen {
             let shared = &prepared;
             let outcome_ref = &outcome;
-            let stored = &answers;
             let (stacks, slot) = (frozen.clone(), frozen.slot);
             let picked = self.stacked_pickup(
                 route,
@@ -76,27 +74,6 @@ impl Game<'_> {
                             .click_stacks(conn, slot, &game.world)?;
                     (carried == stacks.carried && clicked == stacks.clicked).then(|| stacks.clone())
                 },
-                |game, answer| {
-                    game.with_lan_lifted(|game, host| {
-                        let mut prepared = prepared.borrow_mut();
-                        let Some(prepared) = prepared.as_mut() else {
-                            answer.refused.set(true);
-                            return;
-                        };
-                        let planning = PlanningRules {
-                            rules: Some(&*game),
-                            answers: &answers,
-                        };
-                        let rules = ItemRules(
-                            world_items!(game),
-                            &world_stations!(game).enchantments,
-                            Some(&planning),
-                            Some(answer),
-                            prepared.container_insert_rules().to_vec(),
-                        );
-                        host.hub.plan_click(prepared, p, &rules);
-                    });
-                },
                 move |game, answer| {
                     // What the click writes belongs to the action: the guest's inventory and
                     // cursor, and the container's block entities.
@@ -104,7 +81,7 @@ impl Game<'_> {
                     for key in blocks {
                         game.journal_block_entity(key);
                     }
-                    *outcome_ref.borrow_mut() = game.hub_click_run(p, shared, answer, Some(stored));
+                    *outcome_ref.borrow_mut() = game.hub_click_run(p, shared, answer);
                 },
             );
             if matches!(picked, Pickup::Refused) {
@@ -112,10 +89,15 @@ impl Game<'_> {
                 return None;
             }
         } else {
+            // Plain hub routing writes the parked guest's inventory and cursor directly.
+            // A surrounding transaction must keep that storage before the hub takes it.
+            if !self.transactions.is_empty() {
+                self.journal_parked_player(self.guest_index(conn)?);
+            }
             for key in blocks {
                 self.journal_block_entity(key);
             }
-            *outcome.borrow_mut() = self.hub_click_run(p, &prepared, None, None);
+            *outcome.borrow_mut() = self.hub_click_run(p, &prepared, None);
         }
         let (drops, changed) = outcome.into_inner()?;
         self.reply_predicted_menu_click(conn, p, changed);
@@ -130,19 +112,13 @@ impl Game<'_> {
         p: &play::ContainerClick,
         prepared: &RefCell<Option<sunrise_client::lan::containers::PreparedClick>>,
         answer: Option<&StackedOutcome>,
-        stored: Option<&RuleAnswers>,
     ) -> Option<(Vec<ItemStack>, Vec<usize>)> {
         let mut click = prepared.take()?;
         self.with_lan_lifted(|game, host| {
-            // Decided clicks use only the answers their plan kept; plain ones ask the game.
-            let stored = stored.map(StoredRules);
             let rules = ItemRules(
                 world_items!(game),
                 &world_stations!(game).enchantments,
-                match &stored {
-                    Some(stored) => Some(stored),
-                    None => Some(&*game),
-                },
+                Some(&*game),
                 answer,
                 click.container_insert_rules().to_vec(),
             );

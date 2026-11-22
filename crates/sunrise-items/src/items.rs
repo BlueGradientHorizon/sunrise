@@ -86,6 +86,7 @@ pub enum ConsumeEffect {
     Native {
         kind: String,
         data: Arc<sunrise_core::nbt::Tag>,
+        registered: Option<sunrise_world::component_value::consume_effects::Admitted>,
     },
 }
 
@@ -118,6 +119,7 @@ pub fn parse_consumable(
                         Some(ConsumeEffect::Native {
                             kind: kind.to_owned(),
                             data: Arc::new(data),
+                            registered: None,
                         })
                     });
                 }
@@ -193,9 +195,87 @@ pub fn parse_consume_effect(effect: &serde_json::Value) -> Option<ConsumeEffect>
         k if !k.starts_with("minecraft:") => Some(ConsumeEffect::Native {
             kind: k.to_owned(),
             data: Arc::new(sunrise_core::json_nbt::json_to_tag(effect).ok()?),
+            registered: None,
         }),
         _ => None,
     }
+}
+
+/// Admit custom effects from saved NBT, or install effects already decoded by
+/// the connection's Wire codecs. Only the built-in gameplay projection uses JSON.
+pub(crate) fn stack_effects(
+    raw: &mut sunrise_core::nbt::Tag,
+    key: &str,
+    received: Option<&[sunrise_world::component_value::consume_effects::Admitted]>,
+    mut refused: Option<&mut bool>,
+) -> std::result::Result<Vec<ConsumeEffect>, String> {
+    use sunrise_core::nbt::Tag;
+    use sunrise_world::component_value::consume_effects::admit;
+
+    let Tag::Compound(_) = raw else {
+        return Err("expected effect component map".into());
+    };
+    let list = match raw.get_mut(key) {
+        None => return Ok(Vec::new()),
+        Some(Tag::List(list)) => list,
+        Some(Tag::ByteArray(a)) if a.is_empty() => return Ok(Vec::new()),
+        Some(Tag::IntArray(a)) if a.is_empty() => return Ok(Vec::new()),
+        Some(Tag::LongArray(a)) if a.is_empty() => return Ok(Vec::new()),
+        _ => return Err("expected consume effect list".into()),
+    };
+    let mut effects = Vec::with_capacity(list.len());
+    for entry in list {
+        let kind = entry.get("type").and_then(|t| match t {
+            Tag::String(name) => Some(name.to_string_lossy()),
+            _ => None,
+        });
+        if let Some(kind) = kind.filter(|kind| {
+            kind.split_once(':')
+                .is_some_and(|(ns, _)| !ns.is_empty() && ns != "minecraft")
+        }) {
+            let Tag::Compound(fields) = entry else {
+                return Err("expected consume effect map".into());
+            };
+            let registered = match received {
+                Some(received) => received
+                    .iter()
+                    .find(|effect| effect.saved.as_ref() == entry)
+                    .cloned(),
+                None => match admit(&kind, fields) {
+                    Ok(effect) => effect,
+                    Err(error) => {
+                        // The registered codec already reported the error. Preserve this
+                        // saved entry, but don't let it run or discard its siblings.
+                        let Some(refused) = refused.as_deref_mut() else {
+                            return Err(error);
+                        };
+                        *refused = true;
+                        continue;
+                    }
+                },
+            };
+            let data = if let Some(effect) = &registered {
+                *entry = (*effect.saved).clone();
+                effect.saved.clone()
+            } else {
+                // Unregistered gameplay-only effects retain their existing JSON projection.
+                let json = sunrise_client_core::scoreboard::tag_to_json(entry);
+                let data = sunrise_core::json_nbt::json_to_tag(&json)
+                    .map_err(|error| error.to_string())?;
+                Arc::new(data)
+            };
+            effects.push(ConsumeEffect::Native {
+                kind,
+                data,
+                registered,
+            });
+        } else if let Some(effect) =
+            parse_consume_effect(&sunrise_client_core::scoreboard::tag_to_json(entry))
+        {
+            effects.push(effect);
+        }
+    }
+    Ok(effects)
 }
 
 #[derive(Clone, Debug)]
@@ -223,8 +303,6 @@ pub struct ItemInfo {
     pub death_protection: Option<Vec<ConsumeEffect>>,
     /// Kinetic pose timing decoded once from the shared item prototype.
     pub kinetic_timing: Option<crate::kinetic_weapon::UseTiming>,
-    /// `use_remainder`: what a finished use leaves (`UseRemainder`).
-    pub use_remainder: Option<String>,
     /// `use_cooldown`: the cooldown a use starts (`UseCooldown`).
     pub use_cooldown: Option<crate::cooldowns::UseCooldown>,
     pub model: String,
@@ -1045,11 +1123,13 @@ impl Items {
         let mut items = Self::catalog_items(root, overlay, defaults, |items| {
             items.load_resource_registries(root, overlay, defaults)
         })?;
+        items.load_table_loot(root, overlay, defaults)?;
         ingredient_defaults::load_component_damage_registry(root, overlay, &mut items)?;
         Ok(items)
     }
-    /// Build a standalone catalog against the owning world's already loaded
-    /// damage registry. Reloading recipes must not decode new damage definitions.
+    /// Build the item catalog for recipe sync against the world's loaded damage
+    /// registry. The world loads loot separately; loading it here would reopen
+    /// damage definitions instead of respecting the frozen registry on reload.
     pub fn catalog_with_damage_registry(
         root: &Path,
         overlay: &PackOverlay,
@@ -1058,6 +1138,7 @@ impl Items {
         load_registries: impl FnOnce(&mut Self) -> Result<()>,
     ) -> Result<Self> {
         let mut items = Self::catalog_items(root, overlay, defaults, load_registries)?;
+        items.component_defaults = ingredient_defaults::component_defaults(defaults)?;
         Arc::make_mut(&mut items.component_registry)
             .by_registry
             .insert("minecraft:damage_type".into(), damage);
@@ -1077,7 +1158,6 @@ impl Items {
             })?;
         load_registries(&mut items)?;
         items.block_items = Arc::new(block_items);
-        items.load_table_loot(root, overlay, defaults)?;
         Ok(items)
     }
 
@@ -1163,6 +1243,15 @@ impl Items {
                 extra,
             };
             let villager_food = component_prototype.villager_food(None);
+            let consumable = component_prototype.consumable(None).cloned();
+            let death_protection = component_prototype
+                .death_protection(None)
+                .map(<[_]>::to_vec);
+            if (c.get("minecraft:consumable").is_some() && consumable.is_none())
+                || (c.get("minecraft:death_protection").is_some() && death_protection.is_none())
+            {
+                return Err(format!("{name}: invalid consume effect component").into());
+            }
             items.insert(
                 id.clone(),
                 ItemInfo {
@@ -1188,20 +1277,8 @@ impl Items {
                     kinetic_timing: c
                         .get("minecraft:kinetic_weapon")
                         .and_then(crate::kinetic_weapon::UseTiming::from_json),
-                    // Consumable.CODEC's defaults.
-                    death_protection: c
-                        .get("minecraft:death_protection")
-                        .map(parse_death_effects)
-                        .transpose()
-                        .map_err(|e| format!("{name}: {e}"))?,
-                    consumable: c
-                        .get("minecraft:consumable")
-                        .map(parse_consumable)
-                        .transpose()
-                        .map_err(|e| format!("{name}: {e}"))?,
-                    use_remainder: c["minecraft:use_remainder"]["id"]
-                        .as_str()
-                        .map(str::to_owned),
+                    death_protection,
+                    consumable,
                     use_cooldown: c
                         .get("minecraft:use_cooldown")
                         .and_then(crate::cooldowns::UseCooldown::from_json),
@@ -1459,6 +1536,39 @@ impl Items {
         );
         table
     }
+    /// `TagLoader.loadPendingTags`: no successfully built tags means no update
+    /// for that registry. A built tag with no members still replaces the map.
+    pub fn retain_unbound_tags(&mut self, previous: &Self) {
+        use sunrise_world::level::classes::is_generated_tag;
+        if self.block_tag_order.is_empty() {
+            self.set_tags(
+                TagRegistry::Block,
+                previous
+                    .block_tag_order
+                    .iter()
+                    // These are installed from the current block facts, not the pack stack.
+                    .filter(|(tag, _)| !is_generated_tag(tag))
+                    .map(|(tag, members)| (tag.clone(), members.clone()))
+                    .collect(),
+            );
+        }
+        if self.item_tag_order.is_empty() {
+            self.set_tags(TagRegistry::Item, previous.item_tag_order.clone());
+        }
+        if self.fluid_tag_order.is_empty() {
+            self.set_tags(TagRegistry::Fluid, previous.fluid_tag_order.clone());
+        }
+    }
+
+    /// Ordered bindings for data loaders, keyed by the vanilla registry directory.
+    pub fn ordered_tags(&self) -> [(&'static str, &sunrise_world::loot::RegistryTags); 3] {
+        [
+            ("block", &self.block_tag_order),
+            ("item", &self.item_tag_order),
+            ("fluid", &self.fluid_tag_order),
+        ]
+    }
+
     /// Replace one registry's tags with `tags`, each tag's members in order.
     pub fn set_tags(&mut self, registry: TagRegistry, tags: HashMap<String, Vec<String>>) {
         let (sets, order) = match registry {
@@ -3488,7 +3598,7 @@ mod consume_effect_tests {
         // A mod's own kind: Native with its JSON.
         let native =
             parse_consume_effect(&v(r#"{"type":"mymod:energy_boost","amount":42}"#)).unwrap();
-        assert!(matches!(&native, ConsumeEffect::Native { kind, data }
+        assert!(matches!(&native, ConsumeEffect::Native { kind, data, .. }
             if kind == "mymod:energy_boost" && data.get("amount") == Some(&sunrise_core::nbt::Tag::Byte(42))));
         // A bare vanilla name and its namespaced form are the same kind.
         let bare = parse_consume_effect(&v(

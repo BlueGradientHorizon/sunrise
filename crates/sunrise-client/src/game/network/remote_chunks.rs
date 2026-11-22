@@ -82,6 +82,7 @@ impl Game<'_> {
             }
         };
         let (x, z) = (p.x, p.z);
+        self.supersede_group_predictions(&chunk);
         // A column sent again while it is resident (a bulk edit): only what changed is lit and meshed again.
         let resident = self.world.chunks.contains_key(&(x, z));
         if resident {
@@ -94,7 +95,9 @@ impl Game<'_> {
         // Before any block entity joins: a state change before the first ticker pass (a campfire
         // lit) must find which states tick, to join the list at that moment, not at its place.
         self.ensure_client_ticking_states();
-        self.world.block_entities.unload_column((x, z));
+        sunrise_client::spans::time("unload_block_entities", || {
+            self.world.block_entities.unload_column((x, z));
+        });
         self.load_block_entities((x, z), &p.chunk.block_entities);
         // After the column's block entities load: an attachment keeps its block entity if the
         // packet sent it again, and one left from a forgotten column goes.

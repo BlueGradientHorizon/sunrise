@@ -175,6 +175,26 @@ fn builds_the_sample_index() {
 }
 
 #[test]
+fn a_stable_source_file_has_its_kinds_extension() {
+    let mut entry: Entry = toml::from_str(GLOW).unwrap();
+    entry.source = "https://github.com/author/glow".into();
+    let mut row = entry.versions[0].clone();
+    row.sunrise = Some("26.3-0.1.0".into());
+    let asset = "https://github.com/author/glow/releases/download/v1.0.0/glow-1.0.0";
+    row.file = format!("{asset}.sshader");
+    assert_eq!(entry.source_file_name(&row), Ok("glow-1.0.0.sshader"));
+    row.file = format!("{asset}.smod");
+    assert!(entry.source_file_name(&row).is_err());
+    entry.kind = Kind::Other("future-pack".into());
+    assert!(
+        entry
+            .source_file_name(&row)
+            .unwrap_err()
+            .contains("future-pack")
+    );
+}
+
+#[test]
 fn stable_source_uses_an_author_url_but_the_index_uses_the_registry_mirror() {
     let s = Scratch::new("author-source");
     let releases = parse_releases(
@@ -403,7 +423,8 @@ fn owner_ids_are_optional_and_kept() {
 
 #[test]
 fn owner_only_nightly_changes_are_routine() {
-    let old: Entry = toml::from_str(&hud_entry()).unwrap();
+    let mut old: Entry = toml::from_str(&hud_entry()).unwrap();
+    old.versions[0].sunrise = Some("26.3-0.1.0".into());
     let mut with_source = old.clone();
     with_source.nightly = Some(NightlySource {
         repo: "ludovic111/coords_hud".into(),
@@ -484,14 +505,15 @@ fn the_release_list_refuses_malformed_or_ambiguous_releases() {
 #[test]
 fn a_review_protects_published_files() {
     let base: Entry = toml::from_str(&hud_entry()).unwrap();
-    let cozy: Entry = toml::from_str(COZY).unwrap();
+    let mut cozy: Entry = toml::from_str(COZY).unwrap();
+    cozy.versions[0].sunrise = Some("26.3-0.1.0".into());
     let one = std::slice::from_ref(&base);
-    let same = review(one, one, "someone");
-    assert_eq!(same, Review::default());
+    assert_eq!(review(one, one, "someone"), Review::default());
 
     let mut update = base.clone();
     let mut next = update.versions[0].clone();
     next.version = "0.2.0".into();
+    next.sunrise = Some("26.3-0.1.0".into());
     update.versions.insert(0, next);
     let r = review(one, std::slice::from_ref(&update), "ludovic111");
     assert!(r.errors.is_empty(), "{r:?}");
@@ -501,6 +523,7 @@ fn a_review_protects_published_files() {
 
     let mut swapped = base.clone();
     swapped.versions[0].sha256 = SPACK.into();
+    swapped.versions[0].sunrise = Some("26.3-0.1.0".into());
     swapped.kind = Kind::ResourcePack;
     swapped.key = None;
     let r = review(&[base.clone(), cozy.clone()], &[swapped], "ludovic111");
@@ -511,6 +534,7 @@ fn a_review_protects_published_files() {
     assert!(r.notes.iter().any(|n| n.contains("signing key")));
 
     let r = review(&[], &[cozy], "newcomer");
+    assert!(r.errors.is_empty(), "{r:?}");
     assert_eq!(r.notes, ["cozy: a new modpack by ludovic111"]);
 
     // A row may gain a stable release; once published, the release it names stays.
@@ -528,9 +552,51 @@ fn a_review_protects_published_files() {
 }
 
 #[test]
+fn review_requires_a_stable_release_on_a_new_row() {
+    let base: Entry = toml::from_str(&hud_entry()).unwrap();
+    let mut head = base.clone();
+    let mut next = base.versions[0].clone();
+    next.version = "0.2.0".into();
+    head.versions.push(next);
+    for (before, version) in [(std::slice::from_ref(&base), "0.2.0"), (&[][..], "0.1.0")] {
+        let r = review(before, std::slice::from_ref(&head), "ludovic111");
+        assert!(
+            r.errors
+                .iter()
+                .any(|e| e.contains(&format!("coords_hud {version}:"))
+                    && e.contains("needs sunrise")),
+            "{r:?}"
+        );
+    }
+}
+
+#[test]
+fn review_requires_a_stable_release_on_a_changed_row() {
+    let base: Entry = toml::from_str(&hud_entry()).unwrap();
+    let mut head = base.clone();
+    head.versions[0].changelog = "An edited changelog.".into();
+    let r = review(&[base], &[head], "ludovic111");
+    assert!(
+        matches!(&r.errors[..], [e] if e.starts_with("coords_hud 0.1.0:")),
+        "{r:?}"
+    );
+}
+
+#[test]
+fn review_refuses_deleting_an_entry_even_with_only_legacy_rows() {
+    let base: Entry = toml::from_str(&hud_entry()).unwrap();
+    let r = review(&[base], &[], "ludovic111");
+    assert!(
+        matches!(&r.errors[..], [e] if e.starts_with("coords_hud:")),
+        "{r:?}"
+    );
+}
+
+#[test]
 fn a_version_taken_down_by_hash_may_leave_its_entry() {
     // A lost signing key: the next version comes under a new key, and the old one is dropped.
-    let base: Entry = toml::from_str(&hud_entry()).unwrap();
+    let mut base: Entry = toml::from_str(&hud_entry()).unwrap();
+    base.versions[0].sunrise = Some("26.3-0.1.0".into());
     let old = base.versions[0].clone();
     let mut rotated = base.clone();
     rotated.versions[0].version = "0.2.0".into();
@@ -664,6 +730,172 @@ fn native_project_rejects_a_content_only_version() {
         errors.iter().any(|e| e.contains("coords_hud 0.1.0:")),
         "{errors:?}"
     );
+}
+
+const CRATES_IO: &str = "registry+https://github.com/rust-lang/crates.io-index";
+const REQUIREMENT_BUILD: &str = "0123456789abcdef0123456789abcdef01234567";
+
+fn package_for_requirement_review(files: &Path, cargo: &str, helper: &str) -> Entry {
+    let manifest = format!(
+        "id='coords_hud'\nname='Coords'\nversion='0.1.0'\napi='0.2'\n[native]\ngame='26.3'\nsunrise='{REQUIREMENT_BUILD}'\n"
+    );
+    let bytes = crate::Package::write_files(
+        &manifest,
+        &[
+            ("Cargo.toml", cargo.as_bytes()),
+            ("src/lib.rs", b""),
+            ("src/helper/Cargo.toml", helper.as_bytes()),
+            (
+                "Cargo.lock",
+                b"version = 4\n[[package]]\nname='serde_json'\nversion='1.0.154'\nsource='registry+https://github.com/rust-lang/crates.io-index'\n",
+            ),
+        ],
+    )
+    .unwrap();
+    let sha256 = super::super::sha256(&bytes);
+    std::fs::write(files.join(&sha256), bytes).unwrap();
+    let mut entry: Entry = toml::from_str(&hud_entry()).unwrap();
+    entry.kind = Kind::NativeMod;
+    entry.versions[0].sha256 = sha256;
+    entry.versions[0].sunrise = Some("26.3-0.1.0".into());
+    entry
+}
+
+fn write_requirement_review_game_lock(sdk_data: &Path) {
+    let build = sdk_data.join(REQUIREMENT_BUILD);
+    std::fs::create_dir(&build).unwrap();
+    let mut lock = String::from("version = 4\n");
+    for (name, version) in [
+        ("syn", "2.0.119"),
+        ("syn", "3.0.5"),
+        ("syn", "3.0.6"),
+        ("serde_json", "1.0.151"),
+        ("log", "0.4.34"),
+        ("parser", "3.1.0"),
+        ("zero", "0.0.1"),
+        ("zero_pre", "0.0.1-alpha.1"),
+    ] {
+        lock.push_str(&format!(
+            "[[package]]\nname='{name}'\nversion='{version}'\nsource='{CRATES_IO}'\n"
+        ));
+    }
+    std::fs::write(build.join("Cargo.lock"), lock).unwrap();
+}
+
+#[test]
+fn native_requirement_review_warns_on_an_edited_row_and_follows_target_path_dependencies() {
+    let files = tempfile::tempdir().unwrap();
+    let sdk = tempfile::tempdir().unwrap();
+    write_requirement_review_game_lock(sdk.path());
+    let old = package_for_requirement_review(
+        files.path(),
+        "[package]\nname='coords_hud'\nversion='0.1.0'\n[dependencies]\nsyn='3.0.10'\nolder={package='parser',version='=3.0.9'}\nzero_pre='0.0.*'\n\
+         [target.'cfg(unix)'.build-dependencies]\nhelper={path='src/helper'}\n",
+        "[package]\nname='helper'\nversion='0.1.0'\n[dev-dependencies]\n\
+         other_json={package='serde_json',version='=1.0.154'}\nlog='>0.4.34, <0.5'\n",
+    );
+    let base = std::slice::from_ref(&old);
+    let mut review = review(base, base, "ludovic111");
+    review.check_native_requirements(base, base, files.path(), Some(sdk.path()), CRATES_IO);
+    assert!(
+        review.warnings.is_empty() && review.notes.is_empty(),
+        "{review:?}"
+    );
+
+    let mut edited = old.clone();
+    edited.versions[0].changelog = "A note about this version.".into();
+    let head = &[edited];
+    review.check_native_requirements(base, head, files.path(), Some(sdk.path()), CRATES_IO);
+    assert!(
+        review.errors.is_empty() && review.notes.is_empty(),
+        "{review:?}"
+    );
+    assert_eq!(review.warnings.len(), 5, "{review:?}");
+    for (warning, (manifest, name, req, pins)) in review.warnings.iter().zip([
+        // Below the game's pin on its line: a build could only use it by moving the pin back.
+        ("Cargo.toml", "parser", "=3.0.9", "3.1.0"),
+        ("Cargo.toml", "syn", "3.0.10", "3.0.5, 3.0.6"),
+        // A prerelease pin shares its line with its own release.
+        ("Cargo.toml", "zero_pre", "0.0.*", "0.0.1-alpha.1"),
+        ("src/helper/Cargo.toml", "log", ">0.4.34, <0.5", "0.4.34"),
+        ("src/helper/Cargo.toml", "serde_json", "=1.0.154", "1.0.151"),
+    ]) {
+        for fact in [
+            "coords_hud 0.1.0",
+            manifest,
+            name,
+            req,
+            pins,
+            &REQUIREMENT_BUILD[..12],
+        ] {
+            assert!(warning.contains(fact), "missing {fact}: {warning}");
+        }
+    }
+    assert!(!review.warnings[1].contains("2.0.119"), "{review:?}");
+
+    // A valid archive at the wrong digest path must not be attributed to the edited row.
+    let mut wrong_hash = head[0].clone();
+    wrong_hash.versions[0].sha256 = "f".repeat(64);
+    std::fs::copy(
+        files.path().join(&head[0].versions[0].sha256),
+        files.path().join(&wrong_hash.versions[0].sha256),
+    )
+    .unwrap();
+    let mut skipped = Review::default();
+    skipped.check_native_requirements(
+        base,
+        &[wrong_hash],
+        files.path(),
+        Some(sdk.path()),
+        CRATES_IO,
+    );
+    assert!(skipped.warnings.is_empty(), "{skipped:?}");
+}
+
+#[test]
+fn native_requirement_review_accepts_game_pins_even_if_the_mod_lock_is_ahead() {
+    let files = tempfile::tempdir().unwrap();
+    let sdk = tempfile::tempdir().unwrap();
+    write_requirement_review_game_lock(sdk.path());
+    let entry = package_for_requirement_review(
+        files.path(),
+        "[package]\nname='coords_hud'\nversion='0.1.0'\n[dependencies]\n\
+         serde_json='1'\nsyn='>=4'\nlog='0.5'\nextra='1'\nparser='>=2, <3'\nzero='0.0.2'\n\
+         matching_syn={package='syn',version='>=2.0.119, <3.0.5'}\n\
+         upstream={package='serde_json',version='1.0.154',git='https://example.invalid/serde'}\n\
+         alternate={package='log',version='0.4.35',registry='other'}\n",
+        "[package]\nname='unused'\nversion='0.1.0'\n[dependencies]\nsyn='3.0.10'\n",
+    );
+    let mut review = Review::default();
+    review.check_native_requirements(&[], &[entry], files.path(), Some(sdk.path()), CRATES_IO);
+    assert_eq!(review, Review::default());
+}
+
+#[test]
+fn native_requirement_review_notes_a_missing_game_lock_once_per_build() {
+    let files = tempfile::tempdir().unwrap();
+    let sdk = tempfile::tempdir().unwrap();
+    let entry = package_for_requirement_review(
+        files.path(),
+        "[package]\nname='coords_hud'\nversion='0.1.0'\n[dependencies]\nsyn='3.0.10'\n",
+        "",
+    );
+    let mut head = vec![entry];
+    let mut other = head[0].clone();
+    other.id = "other".into();
+    head.push(other);
+    for sdk_data in [None, Some(sdk.path())] {
+        let mut review = Review::default();
+        review.check_native_requirements(&[], &head, files.path(), sdk_data, CRATES_IO);
+        assert!(
+            review.warnings.is_empty() && review.errors.is_empty(),
+            "{review:?}"
+        );
+        assert_eq!(review.notes.len(), 1, "{review:?}");
+        for fact in [REQUIREMENT_BUILD, "not compared", "Cargo.lock"] {
+            assert!(review.notes[0].contains(fact), "missing {fact}: {review:?}");
+        }
+    }
 }
 
 #[test]

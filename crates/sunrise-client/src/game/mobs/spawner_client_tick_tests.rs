@@ -218,7 +218,10 @@ fn client_tick_entity(game: &Game<'_>, e: &serde_json::Value) -> (BlockStateId, 
         "bell" => (
             "minecraft:bell",
             9,
-            vec![("facing", text("facing")), ("attachment", "floor".to_owned())],
+            vec![
+                ("facing", text("facing")),
+                ("attachment", "floor".to_owned()),
+            ],
             BlockEntity::Bell,
         ),
         "enchanting_table" => (
@@ -440,20 +443,45 @@ fn animation_states(game: &Game<'_>) -> Vec<serde_json::Value> {
             let pos = [k.0, k.1, k.2];
             let anims = &game.be_anims;
             let colour = |sections: &[(u32, i32)]| -> Vec<_> {
-                sections.iter().map(|(c, h)| json!([c & 0xFF_FFFF, h])).collect()
+                sections
+                    .iter()
+                    .map(|(c, h)| json!([c & 0xFF_FFFF, h]))
+                    .collect()
             };
             let ticker = anims.ticker(game.world.block(k.0, k.1, k.2).0);
             let [x, y, z] = pos;
             let row = match (e, ticker) {
-                (BlockEntity::Beacon(b), _) => json!([x, y, z, "beacon", b.levels, b.last_check_y,
-                    colour(&b.sections), colour(&b.checking)]),
+                (BlockEntity::Beacon(b), _) => json!([
+                    x,
+                    y,
+                    z,
+                    "beacon",
+                    b.levels,
+                    b.last_check_y,
+                    colour(&b.sections),
+                    colour(&b.checking)
+                ]),
                 (_, Some(Ticker::Lid)) => {
                     let lid = anims.chests.get(&pos).cloned().unwrap_or_default();
-                    json!([x, y, z, "chest", hex_f32(lid.get_openness(1.0)), hex_f32(lid.get_openness(0.0))])
+                    json!([
+                        x,
+                        y,
+                        z,
+                        "chest",
+                        hex_f32(lid.get_openness(1.0)),
+                        hex_f32(lid.get_openness(0.0))
+                    ])
                 }
                 (_, Some(Ticker::Shulker { .. })) => {
                     let s = anims.shulkers.get(&pos).cloned().unwrap_or_default();
-                    json!([x, y, z, "shulker", hex_f32(s.progress), hex_f32(s.progress_old)])
+                    json!([
+                        x,
+                        y,
+                        z,
+                        "shulker",
+                        hex_f32(s.progress),
+                        hex_f32(s.progress_old)
+                    ])
                 }
                 (_, Some(Ticker::Bell)) => {
                     let b = anims.bells.get(&pos).cloned().unwrap_or_default();
@@ -461,14 +489,35 @@ fn animation_states(game: &Game<'_>) -> Vec<serde_json::Value> {
                 }
                 (_, Some(Ticker::Book)) => {
                     let b = anims.books.get(&pos).cloned().unwrap_or_default();
-                    json!([x, y, z, "book", b.time, hex_f32(b.flip), hex_f32(b.o_flip), hex_f32(b.flip_t),
-                        hex_f32(b.flip_a), hex_f32(b.open), hex_f32(b.o_open), hex_f32(b.rot),
-                        hex_f32(b.o_rot), hex_f32(b.t_rot)])
+                    json!([
+                        x,
+                        y,
+                        z,
+                        "book",
+                        b.time,
+                        hex_f32(b.flip),
+                        hex_f32(b.o_flip),
+                        hex_f32(b.flip_t),
+                        hex_f32(b.flip_a),
+                        hex_f32(b.open),
+                        hex_f32(b.o_open),
+                        hex_f32(b.rot),
+                        hex_f32(b.o_rot),
+                        hex_f32(b.t_rot)
+                    ])
                 }
                 (_, Some(Ticker::Conduit)) => {
                     let c = anims.conduits.get(&pos).cloned().unwrap_or_default();
-                    json!([x, y, z, "conduit", c.tick_count, hex_f32(c.active_rotation),
-                        i32::from(c.is_active), i32::from(c.is_hunting)])
+                    json!([
+                        x,
+                        y,
+                        z,
+                        "conduit",
+                        c.tick_count,
+                        hex_f32(c.active_rotation),
+                        i32::from(c.is_active),
+                        i32::from(c.is_hunting)
+                    ])
                 }
                 _ => return None,
             };
@@ -635,10 +684,16 @@ fn a_campfire_lit_before_the_first_ticker_pass_ticks_behind_the_spawner() {
             campfire_seen += usize::from(first_campfire.is_some());
             spawner_seen += usize::from(last_spawner.is_some());
             if let (Some(c), Some(s)) = (first_campfire, last_spawner) {
-                assert!(s < c, "the lit campfire ticked ahead of the spawner: {events:?}");
+                assert!(
+                    s < c,
+                    "the lit campfire ticked ahead of the spawner: {events:?}"
+                );
             }
         }
-        assert!(spawner_seen > 0 && campfire_seen > 0, "{spawner_seen} {campfire_seen}");
+        assert!(
+            spawner_seen > 0 && campfire_seen > 0,
+            "{spawner_seen} {campfire_seen}"
+        );
     });
 }
 
@@ -673,11 +728,21 @@ fn a_geyser_counts_its_eruption_from_the_tick_it_joined_the_level() {
 fn a_decorated_pots_wobble_survives_the_client_ticks() {
     with_remote_game(|game| {
         let pos = [8, 64, 8];
-        let case = case_of(1000, [6.5, 64.0, 2.5], serde_json::json!([]), serde_json::json!([]));
+        let case = case_of(
+            1000,
+            [6.5, 64.0, 2.5],
+            serde_json::json!([]),
+            serde_json::json!([]),
+        );
         start_case(game, &case, &mut false);
         game.streaming
             .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
-        let pot = game.pack.assets.registry.default_state("minecraft:decorated_pot").unwrap();
+        let pot = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:decorated_pot")
+            .unwrap();
         game.world.set(pos[0], pos[1], pos[2], pot).unwrap();
         game.block_entity_event(pos, 1, 0);
         for _ in 0..3 {
@@ -685,9 +750,15 @@ fn a_decorated_pots_wobble_survives_the_client_ticks() {
         }
         let time = game.world.game_time;
         let anim = game.be_anims.block_anim(pos, time, 0.5, Default::default());
-        assert!(anim.wobble.is_some_and(|(_, progress)| progress > 0.0), "{:?}", anim.wobble);
+        assert!(
+            anim.wobble.is_some_and(|(_, progress)| progress > 0.0),
+            "{:?}",
+            anim.wobble
+        );
         // Its block gone, so is the wobble.
-        game.world.set(pos[0], pos[1], pos[2], game.world.air).unwrap();
+        game.world
+            .set(pos[0], pos[1], pos[2], game.world.air)
+            .unwrap();
         tick_phase(game);
         assert!(game.be_anims.pots.is_empty());
     });
@@ -700,7 +771,12 @@ fn a_decorated_pots_wobble_survives_the_client_ticks() {
 fn a_conduit_sent_again_between_ticks_starts_fresh() {
     with_remote_game(|game| {
         let conduit = serde_json::json!({ "kind": "conduit", "pos": [8, 64, 8] });
-        let case = case_of(1000, [6.5, 64.0, 2.5], serde_json::json!([conduit]), serde_json::json!([]));
+        let case = case_of(
+            1000,
+            [6.5, 64.0, 2.5],
+            serde_json::json!([conduit]),
+            serde_json::json!([]),
+        );
         let entities = start_case(game, &case, &mut false);
         for _ in 0..3 {
             tick_phase(game);
@@ -733,10 +809,18 @@ fn a_book_after_a_shulker_lid_reads_the_pushed_player() {
         let before = game.player.as_ref().unwrap().position.x;
         tick_phase(game);
         let player = game.player.as_ref().unwrap().position;
-        assert!(player.x > before, "the lid did not push the player: {before} {}", player.x);
+        assert!(
+            player.x > before,
+            "the lid did not push the player: {before} {}",
+            player.x
+        );
         let book = &game.be_anims.books[&[9, 64, 10]];
         let expected = (player.z - 10.5).atan2(player.x - 9.5) as f32;
-        assert!((book.t_rot - expected).abs() < 1e-5, "{} {expected}", book.t_rot);
+        assert!(
+            (book.t_rot - expected).abs() < 1e-5,
+            "{} {expected}",
+            book.t_rot
+        );
     });
 }
 
@@ -759,7 +843,11 @@ fn a_campfires_smoke_joins_the_engine_in_the_tick_that_made_it() {
         game.remote.as_mut().unwrap().loaded_sent = true;
         for _ in 0..40 {
             game.tick_remote().unwrap();
-            assert_eq!(game.particles.pending_len(), 0, "particles wait a tick to join the engine");
+            assert_eq!(
+                game.particles.pending_len(),
+                0,
+                "particles wait a tick to join the engine"
+            );
         }
         assert!(!game.particles.is_empty(), "the campfire made no smoke");
     });

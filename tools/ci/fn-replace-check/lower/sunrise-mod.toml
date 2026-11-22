@@ -58,3 +58,18 @@ bindings = [
     { name = "value", ty = "f32", value = "$value" },
     { name = "m", ty = "&Mob", value = "m" },
 ]
+
+# A RETURN that turns the hand `translate_to_hand` returns, about X at the elbow, before
+# `hand_base` applies vanilla's item rotations: the held item follows a bent forearm, as a
+# Java mixin on `ItemInHandLayer.submitArmWithItem` does (sunrise-org/sunrise#3970). The
+# build is the check.
+[[native.mixin]]
+id = "hand"
+target = "sunrise_client_lib::mobs::render::translate_to_hand"
+kind = "RETURN"
+helper = "src/mixins/hand.rs"
+bindings = [
+    { name = "value", ty = "Option<glam::Mat4>", value = "$value" },
+    { name = "m", ty = "&Mob", value = "m" },
+    { name = "left", ty = "bool", value = "left" },
+]

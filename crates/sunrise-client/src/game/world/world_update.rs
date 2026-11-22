@@ -159,6 +159,12 @@ impl Game<'_> {
             return;
         }
         let areas = self.streaming.extra.len();
+        let dim = self.dim;
+        self.streaming.extra.extend(
+            self.server_trips
+                .iter()
+                .flat_map(|trip| trip.spawn_destination_areas(dim)),
+        );
         let waiting = std::mem::take(&mut self.spawn_wait);
         self.streaming
             .extra
@@ -198,24 +204,18 @@ impl Game<'_> {
         }
         let dirty: Vec<_> = unloaded
             .iter()
-            .filter(|c| self.world.modified.contains(&(c.x, c.z)))
+            .filter(|c| self.world.modified.remove(&(c.x, c.z)))
             .cloned()
             .collect();
         let modified = sunrise_client::spans::time("with_entities", || self.with_entities(&dirty));
         self.native_full_chunk_snapshots(&modified);
-        if !modified.is_empty() {
-            match sunrise_client::spans::time("save_chunks", || {
+        if !modified.is_empty()
+            && let Err(e) = sunrise_client::spans::time("save_chunks", || {
                 self.save
                     .save_later(&modified, self.pack.assets.registry, world_biomes!(self))
-            }) {
-                // The writer's pending snapshots now hold the dirty data until sync.
-                Ok(_) => {
-                    for chunk in &dirty {
-                        self.world.modified.remove(&(chunk.x, chunk.z));
-                    }
-                }
-                Err(e) => log::warn!("Sunrise: failed to save unloaded chunks: {e}"),
-            }
+            })
+        {
+            log::warn!("Sunrise: failed to save unloaded chunks: {e}");
         }
         sunrise_client::spans::time("spawn_fresh_chunks", || self.spawn_fresh_chunks());
         self.ask_loaded_light_emission();
@@ -489,7 +489,7 @@ fn order_uploads<T, K: Ord>(
     }
 
     // At equal distance, write the waiting mesh first so the fresh mesh is
-    // popped first, as on the former stable merge path.
+    // popped first.
     let merged = waiting.len() + fresh.len();
     scratch.reserve(merged);
     let mut old = waiting.drain(..).peekable();
@@ -519,8 +519,9 @@ mod tests {
         let mut scratch = Vec::new();
         let priority = |&(distance, _): &(i32, &str)| Reverse(distance);
         order_uploads(&mut waiting, &mut fresh, &mut scratch, true, priority);
-        // Two uploads this frame leave the waiting (equal-distance) mesh first
-        // in line for the next frame.
+        // Pin the stationary queue's fresh-first tie policy: two uploads leave
+        // the waiting mesh first in line next frame. The old sort_unstable_by_key
+        // did not guarantee this tie order.
         let selected: Vec<_> = std::iter::from_fn(|| waiting.pop().map(|(_, name)| name))
             .take(2)
             .collect();

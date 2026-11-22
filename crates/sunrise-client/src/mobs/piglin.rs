@@ -2891,7 +2891,7 @@ mod brute_home_tests {
         Arc::make_mut(&mut kind).species = Species::PiglinBrute;
         let mut m = Mob::new(1, kind, at, 0.0);
         m.extra.home = home;
-        m.on_ground = true;
+        m.ground.on_ground = true;
         m
     }
     /// A stone floor under the brute, and the chunks the pathfinder reads.

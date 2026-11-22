@@ -36,7 +36,7 @@ impl Game<'_> {
         // with a stack in either hand never reaches the block's `useItemOn`,
         // so the food stays in the hand and the item's own use (eating)
         // runs instead.
-        if self.keys.held(Action::Sneak) {
+        if self.held_mapping(Action::Sneak) {
             return Ok(None);
         }
         let state = self.world.block(pos[0], pos[1], pos[2]);
@@ -161,8 +161,10 @@ impl Game<'_> {
     pub(super) fn campfire_items(&self, camera: glam::DVec3, mut draw: impl FnMut(BlockItemDraw)) {
         let _items = sunrise_client::spans::raw_flight_guard("block_entity_items");
         let reach = Reach::Default;
-        let radius = f64::from(reach.view_distance(0));
-        for (key, entity) in self.world.block_entities.near(camera.x, camera.z, radius) {
+        sunrise_client::spans::note_block_entity_item_visits(|| {
+            self.world.block_entities.len() as u64
+        });
+        for (key, entity) in &self.world.block_entities {
             let BlockEntity::Campfire(c) = entity else {
                 continue;
             };

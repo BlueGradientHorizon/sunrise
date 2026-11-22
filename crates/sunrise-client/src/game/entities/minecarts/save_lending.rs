@@ -4,7 +4,7 @@ use super::*;
 impl Game<'_> {
     /// `MinecartTNT.explode`: with explosions disabled, only a primed cart is
     /// discarded. An unprimed cart survives, including its current tick.
-    pub(super) fn explode_cart(&mut self, c: &mut Minecart, speed_sqr: f64) -> bool {
+    pub(in crate::game) fn explode_cart(&mut self, c: &mut Minecart, speed_sqr: f64) -> bool {
         let explodes = self
             .ui
             .rules
@@ -77,7 +77,11 @@ impl Game<'_> {
                 false,
                 super::super::explosion::ExplosionSource::default()
                     .with_silence(silent)
-                    .with_entity(c.id, "minecraft:tnt_minecart"),
+                    .with_entity(
+                        c.id,
+                        "minecraft:tnt_minecart",
+                        sunrise_client::health::DirectEntity::Other,
+                    ),
             )
         });
         self.combat.explosion_direct = None;

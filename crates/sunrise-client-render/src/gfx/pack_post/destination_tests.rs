@@ -2,6 +2,7 @@
 use super::*;
 use crate::{gfx::Frame, hud::HudBatch};
 use std::io::{Cursor, Write};
+use sunrise_shaders::Post;
 use wgpu::TextureFormat as T;
 
 const VERTEX: &str = "#version 120\nvarying vec2 uv;\nvoid main() { uv=gl_MultiTexCoord0.xy; gl_Position=ftransform(); }\n";
@@ -313,6 +314,7 @@ impl Fixture {
             &[],
             terrain,
             &std::sync::atomic::AtomicBool::new(false),
+            super::super::in_flight::poll_live,
         )
         .unwrap();
         encoder.copy_texture_to_buffer(
@@ -481,6 +483,7 @@ fn fixture_frame(hud: &HudBatch) -> Frame<'_> {
         glint_ticks: 0.0,
         nether_lighting: false,
         entities: &[],
+        explicit_particles: None,
         static_block_entities: &[],
         visible_static_block_entity_sections: &[],
         static_block_entity_stats: crate::block_entity_render::StaticCacheFrameStats::default(),
@@ -521,9 +524,6 @@ fn fixture_frame(hud: &HudBatch) -> Frame<'_> {
         post_effects: crate::post_chain::Request::none(),
     }
 }
-
-#[path = "clear_budget_tests.rs"]
-mod clear_budget_tests;
 
 /// A cleared buffer written three times a frame flips an odd number of times, so its first write
 /// goes to the texture that was "main" the frame before, which a later program wrote after that
@@ -592,6 +592,3 @@ fn a_cleared_buffer_starts_every_frame_cleared_on_both_textures() {
         assert!(wrong.is_empty(), "frame {frame}: {wrong:?}");
     }
 }
-
-#[path = "clear_false_tests.rs"]
-mod clear_false_tests;

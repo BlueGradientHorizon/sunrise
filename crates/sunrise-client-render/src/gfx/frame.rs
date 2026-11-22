@@ -77,7 +77,7 @@ impl<'a> MeshFacts<'a> {
 }
 /// The water mirror's targets: the world as a camera mirrored about the water plane sees
 /// it, at half the world's resolution (the material stage's `reflection`).
-pub(super) struct MirrorTarget {
+pub(crate) struct MirrorTarget {
     pub(super) size: [u32; 2],
     pub(super) color: wgpu::TextureView,
     pub(super) depth: wgpu::TextureView,
@@ -85,7 +85,7 @@ pub(super) struct MirrorTarget {
 
 /// Not before then may a large translucent page start to shrink.
 #[derive(Default)]
-pub(super) struct ShrinkGate(pub(super) Option<Instant>);
+pub(crate) struct ShrinkGate(pub(super) Option<Instant>);
 impl ShrinkGate {
     /// Not before `wait` from `now`, nor before an earlier wait is over.
     pub(super) fn wait(&mut self, now: Instant, wait: std::time::Duration) {
@@ -193,6 +193,8 @@ pub struct Frame<'a> {
     pub nether_lighting: bool,
     /// Camera-relative entity geometry textured from the shared atlas.
     pub entities: &'a [Vertex],
+    /// Explicit world particle-atlas geometry, drawn outside the combined entity buffer.
+    pub explicit_particles: Option<&'a crate::particles::ParticleQuads>,
     /// Per-section cacheable block-entity models. Positions are section-local.
     pub static_block_entities: &'a [StaticSectionSnapshot],
     /// Sections currently intersecting the coarse camera frustum.
