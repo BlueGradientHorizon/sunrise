@@ -184,7 +184,6 @@ impl Game<'_> {
             r.camera = None;
             r.detached_camera = None;
         }
-        self.view = Default::default();
         self.capture(true);
         if let Some((old_id, uuid)) = old_player {
             self.native_client_player_clone(

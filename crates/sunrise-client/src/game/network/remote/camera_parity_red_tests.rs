@@ -2126,7 +2126,7 @@ fn spectated_rider_mount_attributes_26_3() {
 #[test]
 #[ignore = "run by tools/test_camera_parity.py"]
 fn particle_camera_before_first_frame_and_after_reset_26_3() {
-    use sunrise_client::particles::{ParticleOptions, ParticleType};
+    use sunrise_client::particles::{ParticleLevel, ParticleOptions, ParticleType};
 
     let witness = parity_witness();
     let w = &witness["particle_camera_before_first_frame"];
@@ -2138,6 +2138,15 @@ fn particle_camera_before_first_frame_and_after_reset_26_3() {
         game.particles.clear();
         game.particles
             .add(&ParticleOptions::simple(ParticleType::Flame), pos, [0.0; 3]);
+        // ParticleEngine::add queues into `pending` (vanilla `particlesToAdd`) until the next tick.
+        let level = ParticleLevel {
+            world: &game.world,
+            facts: game.res.facts(),
+            collision: game.collision,
+            player: None,
+            cached_chunk: std::cell::Cell::new(None),
+        };
+        game.particles.tick(&level);
         game.particles.len() == 1
     };
 

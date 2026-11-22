@@ -910,7 +910,6 @@ impl Game<'_> {
             .as_ref()
             .map(|d| (d.dimension.clone(), d.pos));
         if !same {
-            self.view = Default::default();
             self.clock.reset_client_level_tick_state();
             let mut streaming = Streaming::new(
                 Arc::new(NoTerrain),
