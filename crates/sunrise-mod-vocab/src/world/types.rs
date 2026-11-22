@@ -1490,6 +1490,15 @@ pub trait LevelHost {
     fn block_entity(&self, _pos: [i32; 3]) -> Option<crate::BlockEntityRef> {
         None
     }
+    /// Whether the first provider for [`crate::ITEMS`] at `pos` and `side` answers, as in
+    /// NeoForge's `Level.getCapability(Capabilities.Item.BLOCK, pos, side)`. `None` as the
+    /// side means unsided, not a search over faces. An empty or slotless handler can answer.
+    /// Returns `Some(false)` for a resident block with no answer, and `None` for an unavailable
+    /// view, unloaded chunk or invalid position. Clients use only their resident world and
+    /// installed providers. Does not allocate a handler, open loot, load chunks or query the server.
+    fn has_item_capability(&self, _pos: [i32; 3], _side: Option<Direction>) -> Option<bool> {
+        None
+    }
     /// The slots on this side, as `ItemsHost::container_size` reads them.
     /// Snapshot only: never generates loot or loads chunks. None for unloaded positions,
     /// clients or unsupported storage. Owning game thread only, never in worker hook bodies.

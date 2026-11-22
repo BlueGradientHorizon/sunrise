@@ -537,6 +537,26 @@ impl Game<'_> {
         forced.sort_unstable_by_key(|&(x, z)| ChunkPos::new(x, z).pack());
         Some(forced.into_iter().map(|(x, z)| [x, z]).collect())
     }
+    /// Borrow the resident site without lending any writable host to discovery.
+    pub(super) fn level_with_capability_site(
+        &self,
+        at: mod_api::BlockSide,
+        visit: &mut dyn FnMut(&dyn mod_api::LevelHost, mod_api::BlockCapabilitySite),
+    ) -> Result<(), mod_api::LevelReadError> {
+        if !self.level_in_place(at.level) {
+            return Err(mod_api::LevelReadError::Unavailable);
+        }
+        let view = super::native_level_signals::ReadLevel {
+            game: self,
+            level: at.level,
+        };
+        let Some(site) = view.capability_site(at) else {
+            return Err(mod_api::LevelReadError::Unavailable);
+        };
+        visit(&view, site);
+        Ok(())
+    }
+
     /// The block state ID at `pos` (`Level.getBlockState`), without formatting a string.
     /// None for a chunk that isn't loaded or a `y` outside the world. On a client, the state
     /// the server sent for a column the client holds, of its own level or a viewed one.

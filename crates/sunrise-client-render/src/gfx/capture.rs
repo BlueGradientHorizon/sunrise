@@ -567,6 +567,7 @@ impl Scene {
             glint_ticks: f.glint_ticks,
             nether_lighting: f.nether_lighting,
             entities: &[],
+            explicit_particles: None,
             static_block_entities: &[],
             visible_static_block_entity_sections: &[],
             static_block_entity_stats: Default::default(),
