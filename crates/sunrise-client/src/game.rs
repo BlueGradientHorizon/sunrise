@@ -5834,12 +5834,11 @@ impl Game<'_> {
                     data,
                     ..
                 } => {
-                    // LevelEventHandler: destroy particles and the block's
-                    // break sound (none for air).
+                    // LevelEventHandler plays the block's break sound before asking for debris.
                     let state = BlockStateId(data as u32);
                     let p = [pos.x, pos.y, pos.z];
-                    self.destroy_particles(p, state);
                     self.play_break_sound(p, state);
+                    self.destroy_particles(p, state);
                 }
                 LevelEvent::LevelEvent {
                     id: 3006,
