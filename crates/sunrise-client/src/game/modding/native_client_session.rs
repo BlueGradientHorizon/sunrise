@@ -210,6 +210,8 @@ impl ClientTabListEntry for TabEntryView<'_> {
 pub(super) mod tests {
     use super::super::native_entity_refs::tests::with_client_game;
     use super::*;
+    use sunrise_client::scoreboard::tag_to_json;
+    use sunrise_core::nbt::Tag;
 
     /// The Tab overlay's borrowed rows, order, cap and rich names.
     #[test]
@@ -220,7 +222,10 @@ pub(super) mod tests {
         team.suffix = serde_json::json!(" *");
         board.add_to_team("Alex", "red");
         let mut named = TabPlayer::new(1, "Steve");
-        named.display_name = Some(serde_json::json!({"text": "Captain"}));
+        named.display_name = Some(serde_json::json!({
+            "text": "Captain",
+            "test:opaque": [null], // Unknown component fields aren't part of the display name.
+        }));
         named.latency = 42;
         let teamed = TabPlayer::new(2, "Alex");
         let mut watcher = TabPlayer::new(3, "Bob");
@@ -247,7 +252,7 @@ pub(super) mod tests {
                 match row.uuid() {
                     1 => {
                         assert_eq!(row.latency(), 42);
-                        assert_eq!(plain(&row.copy_display().unwrap()), "Captain");
+                        assert_eq!(row.copy_display(), Ok(Text::literal("Captain")));
                     }
                     2 => assert_eq!(plain(&row.copy_display().unwrap()), "[R] Alex *"),
                     3 => {
@@ -299,10 +304,25 @@ pub(super) mod tests {
         );
 
         let mut uncopyable = TabPlayer::new(42, "A");
-        uncopyable.display_name = Some(serde_json::json!({
-            "text": "invalid metadata",
-            "test:opaque": [null],
-        }));
+        // The hover item retains its custom data, but the packet's NBT-to-JSON
+        // projection turns the non-finite number into a nested null.
+        uncopyable.display_name = Some(tag_to_json(&Tag::compound([
+            ("text", Tag::String("Hover for details".into())),
+            (
+                "hover_event",
+                Tag::compound([
+                    ("action", Tag::String("show_item".into())),
+                    ("id", Tag::String("minecraft:stone".into())),
+                    (
+                        "components",
+                        Tag::compound([(
+                            "minecraft:custom_data",
+                            Tag::compound([("example", Tag::Double(f64::NAN.to_bits()))]),
+                        )]),
+                    ),
+                ]),
+            ),
+        ])));
         let mut seen = Vec::new();
         assert_eq!(
             visit_tab_entries([&uncopyable, &players[2]], &board, &mut |row| {

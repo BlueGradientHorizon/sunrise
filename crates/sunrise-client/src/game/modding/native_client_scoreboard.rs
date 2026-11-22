@@ -185,6 +185,7 @@ impl ClientTeam for TeamView<'_> {
 mod tests {
     use super::*;
     use core::ops::ControlFlow::{Break, Continue};
+    use sunrise_core::nbt::Tag;
 
     #[test]
     fn client_scoreboard_lends_received_rows_and_copies_text_independently() {
@@ -214,10 +215,25 @@ mod tests {
         row.number_format = Some(sb::NumberFormat::Fixed(sb::literal("minus three")));
         let row = board.score_mut("Sam", "points");
         row.value = 17;
-        row.display = Some(serde_json::json!({
-            "text": "invalid metadata",
-            "test:opaque": [null],
-        }));
+        // The hover item retains its custom data, but the packet's NBT-to-JSON
+        // projection turns the non-finite number into a nested null.
+        row.display = Some(sb::tag_to_json(&Tag::compound([
+            ("text", Tag::String("Hover for details".into())),
+            (
+                "hover_event",
+                Tag::compound([
+                    ("action", Tag::String("show_item".into())),
+                    ("id", Tag::String("minecraft:stone".into())),
+                    (
+                        "components",
+                        Tag::compound([(
+                            "minecraft:custom_data",
+                            Tag::compound([("example", Tag::Double(f64::NAN.to_bits()))]),
+                        )]),
+                    ),
+                ]),
+            ),
+        ])));
         let team = board.add_team("red");
         team.display_name = sb::literal("Reds");
         team.color = Some("red".into());
