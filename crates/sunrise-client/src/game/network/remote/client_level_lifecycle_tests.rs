@@ -221,6 +221,7 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
                         Received::Event(event, credit)
                     }));
                 game.poll_remote_events(true).unwrap();
+                game.remote.as_mut().unwrap().logged_in = true;
                 game.enter_remote_dimension(&login, RemoteDimensionEntry::Login, Reason::Other);
                 let next = game.level(&login.dimension).unwrap();
                 assert_eq!(nether.datapack_entries(game, "levels:spell"), None);
