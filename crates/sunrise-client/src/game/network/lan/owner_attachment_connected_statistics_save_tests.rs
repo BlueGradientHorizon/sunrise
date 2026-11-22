@@ -60,45 +60,60 @@ mod owner_attachment_save_tests {
         });
     }
 
+    /// Each test loads resources, which replaces process-wide tables: it runs
+    /// in a fresh process of its own.
+    const HERE: &str =
+        "game::lan::owner_attachment_connected_statistics_save_tests::owner_attachment_save_tests";
+
     #[test]
     #[ignore = "daily"]
     fn an_autosave_writes_the_owners_live_attachments_to_the_file_it_loads() {
-        let mut resources = None;
-        let mut game = crate::game::game_tests::tests::server_game(&mut resources);
-        owned_host(&mut game);
-        // The integrated server has no player of its own: outside a turn, where
-        // the autosave and the pause save run, the owner's map is their record's.
-        set_value(&mut game, 1, 7);
-        assert!(game.store_owner().is_some());
-        assert_eq!(
-            saved_value(&game),
-            Some(7),
-            "the autosave stores the live value"
+        crate::game::in_own_process(
+            &format!("{HERE}::an_autosave_writes_the_owners_live_attachments_to_the_file_it_loads"),
+            || {
+                let mut resources = None;
+                let mut game = crate::game::game_tests::tests::server_game(&mut resources);
+                owned_host(&mut game);
+                // The integrated server has no player of its own: outside a turn, where
+                // the autosave and the pause save run, the owner's map is their record's.
+                set_value(&mut game, 1, 7);
+                assert!(game.store_owner().is_some());
+                assert_eq!(
+                    saved_value(&game),
+                    Some(7),
+                    "the autosave stores the live value"
+                );
+                // A later change is what the next autosave writes.
+                set_value(&mut game, 1, 9);
+                game.store_owner();
+                assert_eq!(saved_value(&game), Some(9));
+            },
         );
-        // A later change is what the next autosave writes.
-        set_value(&mut game, 1, 9);
-        game.store_owner();
-        assert_eq!(saved_value(&game), Some(9));
     }
 
     #[test]
     #[ignore = "daily"]
     fn a_save_in_another_players_turn_writes_the_owners_attachments() {
-        let mut resources = None;
-        let mut game = crate::game::game_tests::tests::server_game(&mut resources);
-        owned_host(&mut game);
-        let other = crate::game::native_player_death::tests::new_guest(2, 2);
-        game.lan.as_mut().unwrap().hub.guests.push(other);
-        set_value(&mut game, 1, 7);
-        set_value(&mut game, 2, 5);
-        // For their turn, the other player's map is the game's.
-        let saved = game
-            .as_guest(2, |game| {
-                assert!(game.store_owner().is_some());
-                saved_value(game)
-            })
-            .unwrap();
-        assert_eq!(saved, Some(7), "the owner's value, not the acting player's");
+        crate::game::in_own_process(
+            &format!("{HERE}::a_save_in_another_players_turn_writes_the_owners_attachments"),
+            || {
+                let mut resources = None;
+                let mut game = crate::game::game_tests::tests::server_game(&mut resources);
+                owned_host(&mut game);
+                let other = crate::game::native_player_death::tests::new_guest(2, 2);
+                game.lan.as_mut().unwrap().hub.guests.push(other);
+                set_value(&mut game, 1, 7);
+                set_value(&mut game, 2, 5);
+                // For their turn, the other player's map is the game's.
+                let saved = game
+                    .as_guest(2, |game| {
+                        assert!(game.store_owner().is_some());
+                        saved_value(game)
+                    })
+                    .unwrap();
+                assert_eq!(saved, Some(7), "the owner's value, not the acting player's");
+            },
+        );
     }
 }
 
