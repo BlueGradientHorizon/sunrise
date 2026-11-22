@@ -17,6 +17,7 @@ use sunrise_world::{
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum BlockProviderQuery {
     EnchantPower,
+    LightEmission,
 }
 
 #[derive(PartialEq, Eq)]

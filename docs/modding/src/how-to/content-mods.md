@@ -360,6 +360,10 @@ again and relights, and clients ask their own parts again as its light update re
 as it sits on the block's row: every state of the block is asked, so a block with only some states that vary pays
 the ask for all of them. Light that depends only on the state needs no part: use `light` or `state_light`.
 
+A mod can [query a candidate state's source light](world/block-state-facts.md#contextual-light-emission)
+with `LevelRef::get_light_emission`. It returns the raw Part answer or the declared light, with no
+relight. This differs from `LevelRef::brightness`, which reads the light the engine has propagated.
+
 A block copies its template's states. It can also declare state properties of
 its own, which its template does not have — how a pipe says which sides it
 connects to, or a machine whether it is running. Its states then become its
