@@ -126,6 +126,7 @@ mod adjacent_block_path_type;
 mod affect_neighbors_after_removal;
 mod animal_tame;
 mod animate_tick;
+#[cfg(test)]
 mod animate_tick_tests;
 mod anvil_update;
 mod apply_enchantments;
@@ -137,10 +138,12 @@ mod base;
 mod beacon_color_multiplier;
 mod block_drops;
 mod block_entity_client_tick;
+#[cfg(test)]
 mod block_entity_client_tick_tests;
 mod block_entity_data_received;
 mod block_entity_load_additional;
 mod block_entity_neighbors;
+#[cfg(test)]
 mod block_entity_neighbors_tests;
 mod block_entity_on_load;
 mod block_entity_on_load_routes_tests;
@@ -153,6 +156,7 @@ mod block_entity_view_distance;
 mod block_grow_feature;
 mod block_landing;
 mod block_particle_effects;
+#[cfg(test)]
 mod block_particle_effects_tests;
 mod block_path_type;
 mod block_render_visibility;
@@ -170,6 +174,7 @@ mod camera_read;
 mod camera_submersion;
 mod camera_type;
 mod can_be_connected_to;
+#[cfg(test)]
 mod can_be_connected_to_tests;
 mod can_be_hydrated;
 mod can_continue_sleeping;
@@ -190,6 +195,7 @@ mod client_attack_target;
 mod client_block_changed;
 mod client_chat;
 mod client_chat_received;
+#[cfg(test)]
 mod client_chunk_hooks_tests;
 mod client_chunk_load;
 mod client_chunk_unload;
@@ -200,6 +206,7 @@ mod client_input_reads;
 mod client_input_reads_tests;
 mod client_mining_predict;
 mod client_narrator;
+#[cfg(test)]
 mod client_narrator_tests;
 mod client_options;
 mod client_packet;
@@ -233,6 +240,7 @@ mod create_fluid_source;
 mod create_skull_models;
 mod create_spawn_position;
 mod creative_tabs_read;
+#[cfg(test)]
 mod creative_tabs_read_tests;
 mod creator_mod_id;
 mod crop_grow;
@@ -242,6 +250,7 @@ mod customize_boss_event_progress;
 mod customize_chat_overlay;
 mod damage_item;
 mod data_maps_updated;
+#[cfg(test)]
 mod death_source_tests;
 mod default_components_bound;
 mod dispense_method;
@@ -251,6 +260,7 @@ mod empty_contents;
 mod enchant_power_bonus;
 mod enchanted_block_loot;
 mod enchanted_entity_loot;
+#[cfg(test)]
 mod enchantment_and_lang_tests;
 mod enchantment_level_set;
 mod enchantments;
@@ -278,6 +288,7 @@ mod extract_block_screen_effect;
 mod falling_tick;
 mod farmland_trample;
 mod fence_gate_in_wall;
+#[cfg(test)]
 mod fence_gate_in_wall_tests;
 mod finalize_spawn;
 mod fire_behaviour;
@@ -298,6 +309,7 @@ mod general_entity_tick;
 mod get_arm_pose;
 mod grindstone_place;
 mod grindstone_take;
+#[cfg(test)]
 mod guest_death_lifecycle_tests;
 mod gui_ticks;
 mod held_item_tint;
@@ -325,6 +337,7 @@ mod item_fished;
 mod item_interact_mob;
 mod item_model_property;
 mod item_picked_up;
+#[cfg(test)]
 mod item_picked_up_tests;
 mod item_smelted;
 mod item_stacked_on_other;
@@ -366,6 +379,7 @@ mod minecart_pass;
 mod mob_effect_events;
 mod mob_spawn_checks;
 mod mob_split;
+#[cfg(test)]
 mod mod_block_entity_payload_tests;
 mod mod_mismatch;
 pub(in crate::game) mod mod_settings;
@@ -380,29 +394,37 @@ mod neighbor_notify;
 mod note_block_play;
 mod on_block_exploded;
 mod on_block_placed_by;
+#[cfg(test)]
 mod on_block_placed_by_tests;
 mod on_block_state_change;
+#[cfg(test)]
 mod on_block_state_change_tests;
 mod on_caught_fire;
 mod on_chunk_unloaded;
+#[cfg(test)]
 mod on_chunk_unloaded_tests;
 mod on_destroyed_by_player;
 mod on_destroyed_by_push_reaction;
+#[cfg(test)]
 mod on_destroyed_by_push_reaction_tests;
 mod on_dropped_by_player;
 mod on_entity_item_update;
 mod on_item_use_first;
 mod on_sheared;
 mod panel_recipes;
+#[cfg(test)]
 mod panel_recipes_tests;
 mod permissions_changed;
 mod piston_carries_block_entity;
 mod piston_push_reaction;
+#[cfg(test)]
 mod piston_push_reaction_tests;
 mod place_liquid;
 mod placement_context;
+#[cfg(test)]
 mod placement_context_tests;
 mod play_hit_sound;
+#[cfg(test)]
 mod play_hit_sound_tests;
 mod player_bed_leave;
 mod player_break_speed;
@@ -470,8 +492,10 @@ mod register_sprite_sources;
 mod register_texture_atlases;
 mod register_villager_professions;
 mod registered_potions;
+#[cfg(test)]
 mod registered_potions_tests;
 mod remove_block;
+#[cfg(test)]
 mod remove_block_tests;
 mod render_arm;
 mod render_frame_post;
@@ -501,11 +525,13 @@ mod screen_exclusion_areas;
 mod screen_hovered_item;
 mod screen_init_post;
 mod screen_input_post;
+#[cfg(test)]
 mod screen_input_tests;
 mod screen_opening;
 mod screen_preedit_effects;
 mod screen_render_stages;
 mod screen_room;
+#[cfg(test)]
 mod screen_slot_tests;
 mod screen_transparent_background;
 mod screenshot;
@@ -535,6 +561,7 @@ mod tick_target_millis;
 mod toast_add;
 mod tool_modified_state;
 mod translate;
+#[cfg(test)]
 mod trident_family_tests;
 mod use_item_hand;
 mod use_item_on_block;

@@ -122,6 +122,8 @@ pub mod witch;
 pub mod wither;
 
 #[cfg(test)]
+mod equine_graze_tests;
+#[cfg(test)]
 mod invisible_follow_tests;
 #[cfg(test)]
 mod template_mob_tests;
@@ -520,6 +522,7 @@ impl MobTypes {
             flags.entity_tag_slot = entity_ids.binary_search(&id).ok();
             let passenger_attachments =
                 riders::parse_passenger_attachments(&t["passenger_attachments"]);
+            let sound_overrides = entity_sounds::Sounds::load(&id, t)?;
             out.insert(
                 id.clone(),
                 MobType {
@@ -552,7 +555,9 @@ impl MobTypes {
                     head_rot_speed: def.head_rot_speed(),
                     max_head_x_rot: def.max_head_x_rot(),
                     max_head_y_rot: def.max_head_y_rot(),
-                    ambient_interval: def.ambient_interval(),
+                    ambient_interval: sound_overrides
+                        .ambient_interval
+                        .unwrap_or_else(|| def.ambient_interval()),
                     flags,
                     model: model.map_or_else(
                         || empty_model.clone(),
@@ -568,7 +573,7 @@ impl MobTypes {
                     brain: def.brain(),
                     anim: def.anim,
                     sounds: def.sounds,
-                    sound_overrides: entity_sounds::Sounds::load(&id, t)?,
+                    sound_overrides,
                     food: def.food_tag().map_or_else(|| Arc::from(Vec::new()), tag),
                     tempt: def
                         .tempt_tag()
@@ -4559,7 +4564,7 @@ impl Mob {
                 entity_sounds::voices(self)[if dead { 2 } else { 1 }]
             };
             if !dead {
-                self.ambient_timer = -self.ambient_interval();
+                self.ambient_timer = self.ambient_interval().wrapping_neg();
             }
             let at = self.position.components();
             let voice = if sound.is_empty() {
@@ -5225,16 +5230,18 @@ impl Mob {
     pub fn ambient_interval(&self) -> i32 {
         let ridden = self.rider.is_some() || self.extra.rider.is_some();
         if self.species() == Species::HappyGhast && ridden {
-            self.kind.ambient_interval * 6
+            self.kind.ambient_interval.wrapping_mul(6)
         } else {
             self.kind.ambient_interval
         }
     }
-    /// LivingEntity.getVoicePitch.
+    /// LivingEntity.getVoicePitch. A content type's `sounds.voice_pitch` takes
+    /// the place of 1.0, and a baby's raised pitch is that base times the usual factor.
     pub fn voice_pitch(&mut self) -> f32 {
+        let base = self.kind.sound_overrides.voice_pitch();
         // HappyGhast.getVoicePitch: always 1.0, babies and all.
         if self.species() == Species::HappyGhast {
-            return 1.0;
+            return base;
         }
         // Parrot.getVoicePitch is `getPitch(random)`, the plain 1.0 ± 0.2 an
         // adult gets below: a parrot is never a baby (`Parrot.canBeABaby`), so
@@ -5247,7 +5254,7 @@ impl Mob {
             1.5
         };
         let pitch = (self.random.next_float() - self.random.next_float()) * 0.2
-            + if self.is_baby() { baby } else { 1.0 };
+            + if self.is_baby() { baby * base } else { base };
         // Bat.getVoicePitch: a little lower.
         if self.species() == Species::Bat {
             pitch * 0.95
@@ -5301,8 +5308,9 @@ impl EntityModelDocument {
             if !model_layers::is_layer_key(&key) {
                 return Err(format!("{}: invalid model layer key {key:?}", path.display()).into());
             }
-            let part = Part::decode("root", model)
+            let mut part = Part::decode("root", model)
                 .map_err(|error| format!("{}: layer {key}: {error}", path.display()))?;
+            part.layer = Some(key.as_str().into());
             models.insert(key, part);
         }
         Ok(Self(Arc::new(models)))
@@ -5343,7 +5351,10 @@ pub fn render_model(
     );
 }
 
-/// Draw a posed model, skipping a part and its descendants when its pose is `None`.
+/// Draw a posed model, skipping a part and its descendants when its pose is `None`. Each part's
+/// own geometry goes through the step every baked model's draw takes (`render::compile_part`
+/// when a mod replaced it), with the model's layer and empty `Poses`: these draws are posed by
+/// `pose_for`, not by `anim`.
 pub fn render_model_filtered(
     part: &Part,
     base: (glam::Mat4, ModelNormals),
@@ -5353,16 +5364,44 @@ pub fn render_model_filtered(
     overlay: u32,
     out: &mut Vec<Vertex>,
 ) {
-    visit(part, base.0, base.1, pose_for, uv, light, overlay, out);
+    let paint = skin::Paint {
+        uv,
+        scroll: 0.0,
+        color: 0xFFFF_FFFF,
+        light,
+        overlay,
+    };
+    let compile = render::compiler();
+    // Built only for a replacement to read: empty maps allocate nothing.
+    let poses = anim::Poses::default();
+    let draw = Draw {
+        layer: part.layer.as_deref(),
+        compile,
+        paint,
+        poses: &poses,
+    };
+    visit(
+        part,
+        base.0,
+        base.1,
+        pose_for,
+        &draw,
+        &mut render::Quads::new(out),
+    );
+    /// What every part of one draw shares.
+    struct Draw<'a> {
+        layer: Option<&'a str>,
+        compile: Option<render::CompilePart>,
+        paint: skin::Paint,
+        poses: &'a anim::Poses,
+    }
     fn visit(
         part: &Part,
         parent: glam::Mat4,
         normals: ModelNormals,
         pose_for: &impl Fn(&Part) -> Option<[f32; 9]>,
-        uv: [f32; 4],
-        light: u32,
-        overlay: u32,
-        out: &mut Vec<Vertex>,
+        draw: &Draw<'_>,
+        quads: &mut render::Quads<'_>,
     ) {
         let Some(p) = pose_for(part) else {
             return;
@@ -5377,31 +5416,17 @@ pub fn render_model_filtered(
             ))
             * glam::Mat4::from_scale(glam::Vec3::new(p[6], p[7], p[8]));
         let normals = normals.part(p);
-        for poly in &part.polygons {
-            let normal = poly.vertex_normal(normals);
-            for v in poly.vertices {
-                let pos = m.transform_point3(glam::Vec3::new(v[0], v[1], v[2]) / 16.0);
-                out.push(Vertex {
-                    normal,
-                    pos: pos.to_array(),
-                    uv: [
-                        uv[0] + (uv[2] - uv[0]) * v[3],
-                        uv[1] + (uv[3] - uv[1]) * v[4],
-                    ],
-                    layer: overlay,
-                    color: 0xFFFF_FFFF,
-                    light,
-                    // The armour glint scrolls the model UV in the shader.
-                    glint_uv: if overlay == render::ARMOR_GLINT {
-                        [v[3], v[4]]
-                    } else {
-                        [0.0, 0.0]
-                    },
-                });
-            }
-        }
+        render::emit_part(
+            draw.compile,
+            draw.layer,
+            part,
+            (m, normals),
+            draw.paint,
+            draw.poses,
+            quads,
+        );
         for c in &part.children {
-            visit(c, m, normals, pose_for, uv, light, overlay, out);
+            visit(c, m, normals, pose_for, draw, quads);
         }
     }
 }

@@ -1,5 +1,5 @@
 //! Baked equipment overrides, drawn in the same pose and material path as vanilla layers.
-use super::{ModelNormals, Part, Poses, Vertex, anim, draw_polygons, posed, put};
+use super::{ModelNormals, Part, Poses, Quads, Vertex, anim, posed, push_polygons, put};
 use crate::mobs::{
     Polygon,
     skin::{Paint, Skin},
@@ -70,7 +70,7 @@ impl WornModel<'_> {
                     let normals = normals.part(pose);
                     transforms[at] = (m, normals);
                     if !poses.skips_key(part.key) {
-                        draw_polygons(&part.polygons, m, normals, paint, out);
+                        push_polygons(&part.polygons, m, normals, paint, &mut Quads::new(out));
                     }
                     at += 1;
                 }

@@ -414,6 +414,7 @@ mod tests {
                 cull_back: false,
             }],
             children: Vec::new(),
+            layer: None,
         };
         let poses = Poses::new(&model);
         let equipment = HashMap::from([(
