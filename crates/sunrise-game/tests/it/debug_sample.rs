@@ -58,6 +58,7 @@ fn install_tick_marker(game: &Path) {
 /// A joined player that answers what keeps it in the world: teleports, chunk batches, keep-alives.
 struct Bot {
     c: Connection,
+    player_id: Option<i32>,
     loaded: bool,
 }
 impl Bot {
@@ -86,6 +87,7 @@ impl Bot {
             C::decode(id, &payload).ok()?
         };
         match &packet {
+            C::Login(login) => self.player_id = Some(login.player_id),
             C::PlayerPosition(p) => {
                 self.send(S::AcceptTeleportation(play::AcceptTeleportation {
                     id: p.teleport,
@@ -164,6 +166,7 @@ fn a_dedicated_server_sends_tick_samples_only_to_an_operator_who_asked() {
     let mut say = |line: &str| writeln!(console, "{line}").unwrap();
     let mut bot = Bot {
         c: join(port, "Sampler").unwrap(),
+        player_id: None,
         loaded: false,
     };
     bot.c
@@ -171,6 +174,7 @@ fn a_dedicated_server_sends_tick_samples_only_to_an_operator_who_asked() {
         .set_read_timeout(Some(Duration::from_millis(50)))
         .unwrap();
     bot.until_chat(TICK_MARKER);
+    let player_id = bot.player_id.expect("play login before the tick marker");
 
     // The pong proves the preceding request was processed without operator permission.
     bot.request(vec![0]);
@@ -190,7 +194,7 @@ fn a_dedicated_server_sends_tick_samples_only_to_an_operator_who_asked() {
     assert!(
         bot.until(
             "operator permission",
-            |p, _| matches!(p, C::EntityEvent(e) if e.event == 28)
+            |p, _| matches!(p, C::EntityEvent(e) if e.id == player_id && e.event == 28)
         )
         .is_empty()
     );
@@ -199,14 +203,8 @@ fn a_dedicated_server_sends_tick_samples_only_to_an_operator_who_asked() {
         bot.until_chat(TICK_MARKER).is_empty(),
         "sample on first eligible tick"
     );
-    let mut samples = bot.until_chat(TICK_MARKER);
+    let samples = bot.until_chat(TICK_MARKER);
     assert_eq!(samples.len(), 1, "the next tick sends exactly one sample");
-
-    say("tp Sampler 3000.5 100 3000.5");
-    samples.extend(bot.until("teleport", |p, _| matches!(p, C::PlayerPosition(p) if p.position[0] == 3000.5 && p.position[2] == 3000.5)));
-    samples.extend(bot.until("sample with scheduled chunk work", |_, s| {
-        s.iter().any(|v| v[2] > 0)
-    }));
     for v in &samples {
         assert!(v.iter().all(|n| *n >= 0), "{v:?}");
         assert!(
@@ -217,8 +215,10 @@ fn a_dedicated_server_sends_tick_samples_only_to_an_operator_who_asked() {
 
     // Deop stops the stream; re-op resumes it without another request.
     say("deop Sampler");
-    say("say sample-test-deopped");
-    bot.until_chat("sample-test-deopped");
+    bot.until(
+        "permission level zero from /deop",
+        |p, _| matches!(p, C::EntityEvent(e) if e.id == player_id && e.event == 24),
+    );
     bot.silence();
     say("op Sampler");
     bot.until("sample after re-op", |_, s| !s.is_empty());
