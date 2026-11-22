@@ -9,8 +9,7 @@
 //! undone with every write the listener made rolled back.
 use super::*;
 use crate::game::transactions::decision::{
-    self, ActionTarget, GameHost, Identity, InvalidReason, MenuId, Outcome, Reply, Side,
-    StaleReason,
+    self, ActionTarget, GameHost, Identity, InvalidReason, MenuId, Outcome, Reply, StaleReason,
 };
 use mod_api::EntityRef;
 use std::{cell::RefCell, rc::Rc};
@@ -32,7 +31,7 @@ pub(in crate::game) struct DecidedTarget {
 
 #[cfg(test)]
 thread_local! {
-    /// How many times `decided_action` was entered: the no-listener tests prove it stays zero.
+    /// How many times `decided_action_on` was entered: the no-listener tests prove it stays zero.
     pub(in crate::game) static DECIDED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
@@ -98,39 +97,6 @@ impl<'a, 'g> ActionTarget<GameHost<'a, 'g>> for Action<'_> {
 }
 
 impl Game<'_> {
-    /// Decide an action `name` on the menu `route` for the player entity `actor`: `fire` calls the
-    /// hook and validates what it answered (`Reply::Allow`, or `Invalid` to refuse), `fresh` says
-    /// the menu is still the one the action froze, and `perform` is the action, run once inside the
-    /// savepoint when the decision stands. The result says whether it did.
-    #[allow(clippy::too_many_arguments)]
-    pub(in crate::game) fn decided_action<'p>(
-        &mut self,
-        name: &'static str,
-        route: MenuId,
-        actor: EntityRef,
-        epoch: Epoch,
-        fresh: impl Fn(&Game<'_>) -> bool + 'p,
-        fire: impl FnOnce(&mut Game<'_>) -> Reply,
-        perform: impl FnOnce(&mut Game<'_>) + 'p,
-    ) -> bool {
-        self.decided_action_on(
-            name,
-            DecidedTarget {
-                route,
-                identity: Identity {
-                    side: Side::Server,
-                    world: actor.epoch(),
-                    actor,
-                    target: actor,
-                },
-            },
-            epoch,
-            fresh,
-            fire,
-            perform,
-        )
-    }
-
     /// Run a decision whose action target is distinct from its acting player.
     pub(in crate::game) fn decided_action_on<'p>(
         &mut self,
