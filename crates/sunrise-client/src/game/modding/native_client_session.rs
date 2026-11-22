@@ -299,25 +299,17 @@ pub(super) mod tests {
         );
 
         let mut uncopyable = TabPlayer::new(42, "A");
-        let mut deep = serde_json::json!("deep");
-        for _ in 0..mod_api::text::MAX_TEXT_DEPTH {
-            deep = serde_json::Value::Object(
-                [
-                    ("text".into(), serde_json::json!("")),
-                    ("extra".into(), serde_json::Value::Array(vec![deep])),
-                ]
-                .into_iter()
-                .collect(),
-            );
-        }
-        uncopyable.display_name = Some(deep);
+        uncopyable.display_name = Some(serde_json::json!({
+            "text": "invalid metadata",
+            "test:opaque": [null],
+        }));
         let mut seen = Vec::new();
         assert_eq!(
             visit_tab_entries([&uncopyable, &players[2]], &board, &mut |row| {
                 seen.push(row.uuid());
                 if row.uuid() == 42 {
                     assert_eq!(row.name(), "A");
-                    assert_eq!(row.copy_display(), Err(TextFormError::TooDeep));
+                    assert_eq!(row.copy_display(), Err(TextFormError::NestedNull));
                     return ControlFlow::Continue(());
                 }
                 assert_eq!(plain(&row.copy_display().unwrap()), "[R] Alex *");

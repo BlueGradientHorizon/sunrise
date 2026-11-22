@@ -214,18 +214,10 @@ mod tests {
         row.number_format = Some(sb::NumberFormat::Fixed(sb::literal("minus three")));
         let row = board.score_mut("Sam", "points");
         row.value = 17;
-        let mut deep = sb::literal("deep");
-        for _ in 0..mod_api::text::MAX_TEXT_DEPTH {
-            deep = sb::Comp::Object(
-                [
-                    ("text".into(), sb::literal("")),
-                    ("extra".into(), sb::Comp::Array(vec![deep])),
-                ]
-                .into_iter()
-                .collect(),
-            );
-        }
-        row.display = Some(deep);
+        row.display = Some(serde_json::json!({
+            "text": "invalid metadata",
+            "test:opaque": [null],
+        }));
         let team = board.add_team("red");
         team.display_name = sb::literal("Reds");
         team.color = Some("red".into());
@@ -269,7 +261,7 @@ mod tests {
                     objective.visit_scores(&mut |row| {
                         rows.push((row.holder().to_owned(), row.value()));
                         if row.holder() == "Sam" {
-                            assert_eq!(row.copy_display(), Err(TextFormError::TooDeep));
+                            assert_eq!(row.copy_display(), Err(TextFormError::NestedNull));
                             assert_eq!(row.copy_number_format(), Ok(None));
                         } else {
                             assert_eq!(row.copy_display(), Ok(Some(Text::literal("Counter"))));
