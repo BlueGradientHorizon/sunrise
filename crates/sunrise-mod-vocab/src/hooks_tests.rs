@@ -617,7 +617,7 @@ fn nested_weather_dispatch_skips_only_the_active_listener() {
         ) -> Flow {
             self.0.lock().unwrap().push(("reenter", event.thundering));
             if event.raining && !event.thundering {
-                dispatch_weather_change(host, event.dimension, true, true, &mut false);
+                dispatch_weather_change(host, event.dimension, 0, 2, true, true, &mut false);
             }
             Flow::Continue
         }
@@ -634,7 +634,7 @@ fn nested_weather_dispatch_skips_only_the_active_listener() {
             if event.thundering {
                 // Both listeners are now active. Neither should hear this deeper event;
                 // the flags also end recursion even if the stack check regresses.
-                dispatch_weather_change(host, event.dimension, false, false, &mut false);
+                dispatch_weather_change(host, event.dimension, 3, 0, false, false, &mut false);
             }
             Flow::Continue
         }
@@ -649,7 +649,15 @@ fn nested_weather_dispatch_skips_only_the_active_listener() {
         || {
             let mut host = FakeHost::new();
             for _ in 0..2 {
-                dispatch_weather_change(&mut host, "minecraft:overworld", true, false, &mut false);
+                dispatch_weather_change(
+                    &mut host,
+                    "minecraft:overworld",
+                    0,
+                    1,
+                    true,
+                    false,
+                    &mut false,
+                );
             }
         },
     );
@@ -737,6 +745,8 @@ fn a_weather_panic_disables_only_that_listener_and_preserves_prior_cancellation(
             dispatch_weather_change(
                 &mut host,
                 "minecraft:overworld",
+                0,
+                1,
                 true,
                 false,
                 &mut cancelled,
@@ -744,7 +754,15 @@ fn a_weather_panic_disables_only_that_listener_and_preserves_prior_cancellation(
             assert!(cancelled);
 
             cancelled = false;
-            dispatch_weather_change(&mut host, "minecraft:overworld", true, true, &mut cancelled);
+            dispatch_weather_change(
+                &mut host,
+                "minecraft:overworld",
+                0,
+                2,
+                true,
+                true,
+                &mut cancelled,
+            );
             assert!(!cancelled);
             dispatch_client_tick_pre(&mut host);
         },

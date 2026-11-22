@@ -26,7 +26,7 @@ impl Game<'_> {
             self.world.weather.thundering,
         );
         let mut cancel = false;
-        self.native_weather_change(self.dim.id(), raining, thundering, &mut cancel);
+        self.native_weather_change(self.dim.id(), clear, time, raining, thundering, &mut cancel);
         let old_thundering = self.world.weather.thundering;
         let old_thunder_time = self.world.weather.thunder_time;
         let mut cancel_thunder = false;

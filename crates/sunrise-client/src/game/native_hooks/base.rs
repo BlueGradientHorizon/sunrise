@@ -2605,12 +2605,22 @@ impl Game<'_> {
     pub(in crate::game) fn native_weather_change(
         &mut self,
         dimension: &str,
+        clear_ticks: i32,
+        weather_ticks: i32,
         raining: bool,
         thundering: bool,
         cancel: &mut bool,
     ) {
-        crate::game::level_control_hooks::LevelControl::Weather
-            .hear(|| self.fire_weather_change(dimension, raining, thundering, cancel));
+        crate::game::level_control_hooks::LevelControl::Weather.hear(|| {
+            self.fire_weather_change(
+                dimension,
+                clear_ticks,
+                weather_ticks,
+                raining,
+                thundering,
+                cancel,
+            );
+        });
     }
 
     /// The server changed its thunder state through `/weather`. Set `cancel`

@@ -21,5 +21,12 @@ pub trait Hooks {
         neoforge = "none (NeoForge has no such event)",
         cancellable = true
     )]
-    fn weather_change(dimension: &str, raining: bool, thundering: bool, cancel: &mut bool);
+    fn weather_change(
+        dimension: &str,
+        clear_ticks: i32,
+        weather_ticks: i32,
+        raining: bool,
+        thundering: bool,
+        cancel: &mut bool,
+    );
 }
