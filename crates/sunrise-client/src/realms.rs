@@ -2552,10 +2552,12 @@ impl Screen {
     }
 
     /// `AbstractSliderButton.onRelease`.
-    pub fn release(&mut self) {
-        self.settings_slider = None;
-        self.other_slider = None;
+    pub fn release(&mut self) -> bool {
+        let settings = self.settings_slider.take().is_some();
+        let other = self.other_slider.take().is_some();
+        let scrolled = self.settings_scroll.held();
         self.settings_scroll.release();
+        settings || other || scrolled
     }
 
     /// Escape: a sub-screen goes back to the list (cancelling a join); the list goes back to

@@ -491,6 +491,8 @@ pub struct Guest {
     /// Network guests reach this state after placeNewPlayer; fake actors do not
     /// log in. Online iterators must also check `participates_online`.
     pub placed: bool,
+    /// Removed from its level for `showEndCredits` or `PlayerList.respawn`, but still joined.
+    pub respawning: bool,
     /// The hand-over a proxy started by exporting it with `freeze`
     /// (`arrivals::Handover`): while it lasts, what it sends other than its
     /// acknowledgements is not acted on, and every export answers with the
@@ -721,6 +723,10 @@ impl Guest {
     pub fn is_fake(&self) -> bool {
         self.kind == GuestKind::Fake
     }
+    /// The connection has joined; unloading a body for respawn does not log it out.
+    pub fn joined(&self) -> bool {
+        self.placed || self.respawning
+    }
     /// Whether the guest is online and placed in level `dimension`: one of the
     /// level's players (`ServerLevel.players`).
     pub fn placed_in(&self, dimension: &str) -> bool {
@@ -910,6 +916,7 @@ impl Guest {
             death_canceled: false,
             death_time: 0,
             placed: false,
+            respawning: false,
             handover: None,
             expected: j.expected,
             held: false,

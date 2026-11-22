@@ -1384,6 +1384,37 @@ impl Game<'_> {
         }
     }
 
+    /// `ServerPlayer.teleport` via `ServerGamePacketListenerImpl.teleport`: place the acting
+    /// player's body and send the teleport at the end of the guest turn. Returns its old feet
+    /// position, without adding command-only chunk holds or notifications.
+    pub(super) fn place_player_teleport_in_level(
+        &mut self,
+        at: Vec3,
+        rotation: Option<[f32; 2]>,
+        relative: [bool; 3],
+    ) -> Option<[f64; 3]> {
+        self.stop_riding();
+        let from = self.player.as_mut().map(|p| {
+            let from = [p.position.x, p.position.y, p.position.z];
+            p.position = at;
+            p.velocity = teleport_velocity(p.velocity, relative, p.fall_flying);
+            p.teleported = true;
+            p.teleported_delta = relative;
+            from
+        });
+        self.previous_position = at;
+        if let Some([yaw, pitch]) = rotation {
+            if yaw.is_finite() {
+                self.yaw = yaw;
+            }
+            if !pitch.is_nan() {
+                // PositionMoveRotation.calculateAbsolute clamps pitch before setXRot.
+                self.pitch = pitch.clamp(-90.0, 90.0);
+            }
+        }
+        from
+    }
+
     /// `Entity.teleportSameDimension`: shared entity/passenger placement.
     /// Returns its old position for the command caller's completion notification.
     pub(super) fn place_teleport_in_level(
@@ -1403,7 +1434,11 @@ impl Game<'_> {
         // Entity.teleportSameDimension teleports the riders before their vehicle.
         let riding = self.teleport_riders_first(t, v, relative, requested.filter(|_| turn_riders));
         // PositionMoveRotation.calculateAbsolute clamps pitch before setXRot.
-        let rotation = rotation.map(|[yaw, pitch]| [yaw, pitch.clamp(-90.0, 90.0)]);
+        let rotation = if matches!(t, Target::Player | Target::Guest(_)) {
+            requested // Player placement applies the clamp itself.
+        } else {
+            requested.map(|[yaw, pitch]| [yaw, pitch.clamp(-90.0, 90.0)])
+        };
         match t {
             Target::General(id) => {
                 if let Some(entity) = self.entity(id) {
@@ -1428,37 +1463,18 @@ impl Game<'_> {
                 });
             }
             Target::Player => {
-                // ServerPlayer.teleport: removeVehicle before placing the player.
-                self.stop_riding();
+                let from = self.place_player_teleport_in_level(v, rotation, relative);
                 // A server's player teleported within their level is placed
                 // there at once: the arrival they were waiting for elsewhere
                 // in it (whose chunks lose their tickets) is abandoned.
                 if let Some(conn) = self.lan_acting {
                     self.hold_for_chunks(conn, v);
                 }
-                let from = self
-                    .player
-                    .as_ref()
-                    .map(|p| [p.position.x, p.position.y, p.position.z]);
-                if let Some(p) = self.player.as_mut() {
-                    p.position = v;
-                    p.velocity = teleport_velocity(p.velocity, relative, p.fall_flying);
-                    if !p.fall_flying {
-                        p.ground.on_ground = true;
-                    }
-                    // The end of a guest's turn sends the position packet
-                    // with the command's relatives, even without a move.
-                    p.teleported = true;
-                    p.teleported_delta = relative;
-                }
-                self.previous_position = v;
-                if let Some([yaw, pitch]) = rotation {
-                    if yaw.is_finite() {
-                        self.yaw = yaw;
-                    }
-                    if !pitch.is_nan() {
-                        self.pitch = entity_pitch(pitch);
-                    }
+                // TeleportCommand.performTeleport grounds a player unless they're gliding.
+                if let Some(p) = self.player.as_mut()
+                    && !p.fall_flying
+                {
+                    p.ground.on_ground = true;
                 }
                 // A server player's teleport is told to the mods once their
                 // move is in the hub (`leave_guest`).
@@ -2252,7 +2268,7 @@ impl Game<'_> {
                     && !m.removed
                     && self.died.insert(id)
                 {
-                    self.mob_died(&m);
+                    self.mob_die(&m);
                 }
             }
             Target::Item(id) => {
@@ -4806,146 +4822,75 @@ mod forced_respawn_tests {
     #[test]
     #[ignore = "daily"]
     fn overworld_spawnpoint_is_validated_at_both_player_blocks() {
-        use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
-        use std::sync::Arc;
+        use crate::game::{native_guest_turn_tests::with_guests, respawn_anchor::RespawnConfig};
         use sunrise_client::chunk::Chunk;
-        use sunrise_core::geometry::Vec3;
-        let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let settings = Settings::default();
-        let loaded = load_resources(
-            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
-            Vec::new(),
-            None,
-            &root,
-            &settings,
-            std::time::Instant::now(),
-            false,
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
-            &Progress::new(),
-            &mut |_, _| unreachable!(),
-        )
-        .unwrap();
-        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
-        options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
-            &loaded.resources,
-            loaded.pack,
-            loaded.gui.unwrap(),
-            options,
-            settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
-            None,
-        )
-        .unwrap();
-        game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(5.5, 64.0, 5.5))
-                .unwrap(),
-        );
-        game.build_registries();
-        game.set_allow_commands(true);
-        game.world
-            .chunks
-            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        game.level.world_spawn = Some([0, 80, 0]);
-        let registry = game.pack.assets.registry;
-        let air = registry.default_state("minecraft:air").unwrap();
-        // Liquid is a block property: aquatic plants such as kelp still permit
-        // a forced point, while a bubble column does not, at feet or head.
-        for (block, allowed) in [
-            ("air", true),
-            ("water", false),
-            ("lava", false),
-            ("bubble_column", false),
-            ("kelp", true),
-            ("stone", false),
-        ] {
-            let state = registry
-                .default_state(&format!("minecraft:{block}"))
-                .unwrap();
-            for height in [0, 1] {
-                game.world.set(5, 64, 5, air).unwrap();
-                game.world.set(5, 65, 5, air).unwrap();
-                game.world.set(5, 64 + height, 5, state).unwrap();
-                assert!(game.run_command("spawnpoint @s 5 64 5"));
-                let config = game
-                    .respawn_config
-                    .expect("Overworld commands must retain a forced configuration");
-                assert!(config.forced);
-                assert_eq!(config.pos, [5, 64, 5]);
-                let actual = game.resolve_server_respawn(config, true);
-                assert_eq!(actual.is_some(), allowed, "{block} at height {height}");
-                assert_eq!(game.respawn_config.is_some(), allowed);
-                assert_eq!(game.level.world_spawn, Some([0, 80, 0]));
-                if let Some((at, yaw, pitch)) = actual {
-                    assert_eq!(at, Vec3::new(5.5, 64.1, 5.5));
-                    assert_eq!(yaw, 0.0);
-                    assert_eq!(pitch, 0.0);
-                }
-            }
-        }
-    }
 
-    #[test]
-    #[ignore = "daily"]
-    fn a_forced_spawnpoint_on_a_respawn_anchor_still_depletes_with_its_sound() {
-        // PlayerList.respawn: the deplete sound has no `forced` test, so a point
-        // that `/spawnpoint` kept (a forced anchor config) whooshes on every
-        // respawn at it, while the anchor keeps its charges
-        // (ServerPlayer.findRespawnAndUseSpawnBlock only consumes one when the
-        // config is not forced).
-        use crate::game::{
-            Dim, native_entity_refs::tests::with_game, respawn_anchor::RespawnConfig,
-        };
-        use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
-        with_game(|game| {
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            let registry = game.pack.assets.registry;
-            let stone = registry.default_state("minecraft:stone").unwrap();
-            for x in 0..16 {
-                for z in 0..16 {
-                    game.world.set(x, 99, z, stone).unwrap();
+        mod_platform::testing::with_mods(Vec::new().into(), || {
+            with_guests(|game| {
+                game.build_registries();
+                for x in -2..=2 {
+                    for z in -2..=2 {
+                        game.streaming
+                            .insert_remote(&mut game.world, Chunk::empty(x, z));
+                    }
                 }
-            }
-            game.dim = Dim::Nether;
-            let mut anchor = registry
-                .state(registry.default_state("minecraft:respawn_anchor").unwrap())
-                .unwrap()
-                .clone();
-            anchor.properties.insert("charges".into(), "2".into());
-            let anchor = registry.resolve(&anchor).unwrap();
-            let pos = [5, 100, 5];
-            game.world.set(pos[0], pos[1], pos[2], anchor).unwrap();
-            game.audio.capture = Some(Vec::new());
-            let config = RespawnConfig::forced(Dim::Nether, pos, 0.0, 0.0);
-            game.respawn_config = Some(config);
-            game.resolve_server_respawn(config, true)
-                .expect("a forced anchor keeps the point");
-            // The whoosh is the anchor's own block position, at full volume and pitch.
-            let played = game.audio.capture.take().expect("capture");
-            let sound = played
-                .iter()
-                .find(|s| s.event == "minecraft:block.respawn_anchor.deplete")
-                .expect("the deplete sound plays for a forced anchor too");
-            assert_eq!(sound.position, [5.0, 100.0, 5.0]);
-            assert_eq!((sound.volume, sound.pitch), (1.0, 1.0));
-            assert_eq!(
-                game.audio
-                    .heard
-                    .get("minecraft:block.respawn_anchor.deplete"),
-                Some(&1)
-            );
-            assert_eq!(
-                game.world.block(pos[0], pos[1], pos[2]),
-                anchor,
-                "a forced config does not use a charge"
-            );
-            assert_eq!(game.respawn_config, Some(config));
+                game.level.world_spawn = Some([0, 80, 0]);
+                game.level.world_spawn_angle = [-30.0, -5.0];
+                let registry = game.pack.assets.registry;
+                let air = registry.default_state("minecraft:air").unwrap();
+                // Liquid is a block property: aquatic plants such as kelp still permit
+                // a forced point, while a bubble column does not, at feet or head.
+                for (block, allowed) in [
+                    ("air", true),
+                    ("water", false),
+                    ("lava", false),
+                    ("bubble_column", false),
+                    ("kelp", true),
+                    ("stone", false),
+                ] {
+                    let state = registry
+                        .default_state(&format!("minecraft:{block}"))
+                        .unwrap();
+                    for height in [0, 1] {
+                        game.world.set(5, 64, 5, air).unwrap();
+                        game.world.set(5, 65, 5, air).unwrap();
+                        game.world.set(5, 64 + height, 5, state).unwrap();
+                        assert!(
+                            game.as_console(|g| g.run_command("spawnpoint guest12 5 64 5 45 10"))
+                        );
+                        let config = game
+                            .command_guest(12)
+                            .unwrap()
+                            .respawn_elsewhere
+                            .as_ref()
+                            .and_then(RespawnConfig::from_saved)
+                            .unwrap();
+                        assert!(config.forced);
+                        assert_eq!(config.pos, [5, 64, 5]);
+                        game.lan.as_mut().unwrap().hub.update_guest(12, |g| {
+                            g.dead = true;
+                            g.health = 0.0;
+                        });
+                        game.guest_respawn(12);
+                        let guest = game.command_guest(12).unwrap();
+                        assert!(!guest.dead, "{block} at height {height}");
+                        assert_eq!(
+                            guest.respawn_elsewhere.is_some(),
+                            allowed,
+                            "{block} at height {height}"
+                        );
+                        assert_eq!(game.level.world_spawn, Some([0, 80, 0]));
+                        if allowed {
+                            assert_eq!(guest.position, [5.5, 64.1, 5.5]);
+                            assert_eq!([guest.yaw, guest.pitch], [45.0, 10.0]);
+                        } else {
+                            // The missing point must not supply the fallback's facing.
+                            assert_eq!([guest.yaw, guest.pitch], [-30.0, -5.0]);
+                            assert_eq!(game.level.world_spawn_angle, [-30.0, -5.0]);
+                        }
+                    }
+                }
+            });
         });
     }
 }

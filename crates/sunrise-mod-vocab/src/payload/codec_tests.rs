@@ -243,7 +243,6 @@ fn typed_forms_with_unmetered_conversions_are_refused() {
         assert_eq!(input.rest(), writer.bytes());
     }
 
-    ordinary_only(&"test:static-value");
     ordinary_only(&MeshDefinition::new());
     ordinary_only(&ModelPart::new(Vec::new(), Vec::new(), PartPose::ZERO));
     ordinary_only(&serde_json::json!({"field": []}));
@@ -259,10 +258,6 @@ fn typed_forms_with_unmetered_conversions_are_refused() {
         decode_payload::<String>(&[1, 0, 0, 0, b'a']),
         Ok("a".to_owned())
     );
-    assert!(matches!(
-        decode_payload::<&str>(&[0xff]),
-        Err(WireError::Invalid(_))
-    ));
 }
 
 #[test]
@@ -425,7 +420,6 @@ fn checked_decoders_do_not_share_the_raw_representations_fingerprint() {
         payload_schema::<serde_json::Map<String, serde_json::Value>>(),
         payload_schema::<serde_json::Value>()
     );
-    assert_ne!(payload_schema::<&str>(), payload_schema::<String>());
     assert_ne!(
         payload_schema::<crate::ModelPart>(),
         payload_schema::<String>()

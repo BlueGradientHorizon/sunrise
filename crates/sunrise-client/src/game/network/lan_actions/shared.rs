@@ -87,9 +87,8 @@ pub(super) struct GuestPlay {
     /// `Entity.portalProcess` and `portalCooldown` (game/world/server_travel.rs).
     pub(super) portal: sunrise_client::nether_portal::PortalState,
     /// `ServerPlayer.wonGame`: the End poem is showing, the player waits for
-    /// its client's PERFORM_RESPAWN (`respawn_requested`).
+    /// its client's PERFORM_RESPAWN.
     pub(super) won_game: bool,
-    pub(super) respawn_requested: bool,
     /// `Player.takeXpDelay`: ticks until the next orb can be taken.
     pub(super) xp_delay: u32,
     /// This player entity's age and level-up sound cooldown.
@@ -523,14 +522,6 @@ fn stop_dig(play: &GuestPlay, pos: [i32; 3], air: bool, ticks: u64, per_tick: f3
     }
 }
 
-/// What `copyRespawnPosition` sets at respawn time, when it is decided here:
-/// nothing to decide for a point with a block (`has_config`, copied once the
-/// block is found); otherwise the Overworld forced point's block (`spawn`,
-/// stored at its bottom centre), or none.
-fn copied_respawn_point(has_config: bool, spawn: Option<[f64; 3]>) -> Option<Option<[i32; 3]>> {
-    (!has_config).then(|| spawn.map(|s| s.map(|c| c.floor() as i32)))
-}
-
 /// ServerPlayer.swingAndResetAttackStrength resets only when a use starts a swing.
 fn reset_use_attack_strength(ticker: &mut u32, before: u32, after: u32) {
     if before != after {
@@ -540,7 +531,7 @@ fn reset_use_attack_strength(ticker: &mut u32, before: u32, after: u32) {
 
 #[cfg(test)]
 mod tests {
-    use super::{copied_respawn_point, eye_columns, reset_use_attack_strength};
+    use super::{eye_columns, reset_use_attack_strength};
     use crate::game::api_values::TryIntoApi;
     use sunrise_client::pose::Pose;
 
@@ -2166,18 +2157,6 @@ mod tests {
             game.lan_acting_fake = false;
             assert_eq!(game.sleep_counts(), real);
         });
-    }
-
-    /// `copyRespawnPosition` copies an Overworld forced point, not none; a
-    /// point with a block is left to its block check.
-    #[test]
-    fn respawn_copies_the_forced_point() {
-        assert_eq!(
-            copied_respawn_point(false, Some([12.5, 64.0, -3.5])),
-            Some(Some([12, 64, -4]))
-        );
-        assert_eq!(copied_respawn_point(false, None), Some(None));
-        assert_eq!(copied_respawn_point(true, Some([0.5, 64.0, 0.5])), None);
     }
 
     /// #4124: a STOP is measured from the START that named its block (`destroyPos`) — an abort, or

@@ -103,8 +103,8 @@ fn a_panicking_hidden_status_replacement_leaves_other_rows() {
             assert!(batch.vertices.iter().any(|v| v.color == SIBLING));
             assert_eq!(game.ui.room.bottom(), 125.0);
             if frame == 0 {
-                // F1 hides the toast's paint, not its report.
-                let [Some(toast)] = game.server_packs.hook_panics.as_slice() else {
+                // The shared queue retains the failure under F1.
+                let [(Some(toast), _)] = game.server_packs.hook_panics.as_slice() else {
                     panic!("expected one mandatory mod error toast");
                 };
                 assert_eq!(
