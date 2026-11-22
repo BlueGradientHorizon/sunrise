@@ -123,8 +123,3 @@ pub(super) fn drop_held_behind_dialog(
         *right = false;
     }
 }
-
-/// Middle-button cloning follows the container's keyboard mapping.
-pub(super) fn container_key_clones(button: MouseButton, action: KeyAction) -> bool {
-    button == MouseButton::Middle && action != KeyAction::Release
-}

@@ -6747,12 +6747,13 @@ mod tests {
         ui.show(Page::Extras);
         // Too short for the page.
         let short = (480.0, 180.0);
-        ui.wheel(&mut s, short, (0.0, 0.0), [960, 360], -1.0);
+        let inside = (240.0, 90.0);
+        ui.wheel(&mut s, short, inside, [960, 360], -1.0);
         let one = ui.extras.scroll_amount();
         assert!(one > 0.0);
-        ui.scroll_at(&s, short, (0.0, 0.0), -1.0);
+        ui.scroll_at(&s, short, inside, -1.0);
         assert_eq!(ui.extras.scroll_amount(), 2.0 * one);
-        ui.scroll_at(&s, short, (0.0, 0.0), 2.0);
+        ui.scroll_at(&s, short, inside, 2.0);
         assert_eq!(ui.extras.scroll_amount(), 0.0);
     }
 

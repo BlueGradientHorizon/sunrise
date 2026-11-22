@@ -3,8 +3,7 @@
 #[cfg(test)]
 use key_codes::drop_held_behind_dialog;
 use key_codes::{
-    container_key_clones, follow_named_keymap, gameplay_has_keyboard, glfw_button, glfw_modifiers,
-    keyboard_button,
+    follow_named_keymap, gameplay_has_keyboard, glfw_button, glfw_modifiers, keyboard_button,
 };
 use loading_screen::{
     App, Loading, leave_fullscreen_after, missing_resources, run_event_loop, unclean_start_recovery,

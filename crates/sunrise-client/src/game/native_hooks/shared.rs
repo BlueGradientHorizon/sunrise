@@ -645,7 +645,7 @@ impl Game<'_> {
             ScreenDecision::Open
         };
         match decision {
-            ScreenDecision::Keep => return,
+            ScreenDecision::Keep => (),
             ScreenDecision::ModScreen(mod_id) => self.apply_screen(Screen::Mod, Some(mod_id)),
             ScreenDecision::Vanilla(target) => self.open_screen_target(target),
             ScreenDecision::Open => {
@@ -770,7 +770,15 @@ impl Game<'_> {
                     from.is_some(),
                 );
             }
-            self.commit_screen_transition();
+            self.screen_state.bump_instance();
+            self.clear_screen_widgets();
+            self.screen_state.observed = current.clone();
+            if let Some(new) = &current
+                && self.options.execution_role.is_client()
+                && self.lan_acting.is_none()
+            {
+                self.init_screen_widgets(&new.view());
+            }
             return;
         }
         if matches!(
@@ -1710,7 +1718,7 @@ impl Game<'_> {
             if c.is_control() {
                 continue;
             }
-            if self.observed_screen_view().is_none() {
+            if self.observed_screen_view().is_none() && self.headless_screen_snapshot().is_none() {
                 break;
             }
             let receiver = self.observed_input_screen();
@@ -1742,7 +1750,7 @@ impl Game<'_> {
         let Some(text) = text else {
             return;
         };
-        if self.observed_screen_view().is_none() {
+        if self.observed_screen_view().is_none() && self.headless_screen_snapshot().is_none() {
             return;
         }
         // A held edit modifier makes a shortcut of the key, not text.

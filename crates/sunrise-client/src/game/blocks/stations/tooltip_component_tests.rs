@@ -1645,7 +1645,7 @@ fn unconvertible_engine_text_and_bundle_preserved_without_api_roundtrip() {
     let make_unconvertible_text = || {
         let text = sunrise_client::text::Text::from(serde_json::json!({
             "text": "Visible",
-            "extra": [{"text": []}]
+            "bad_meta": [1, "a"]
         }));
         assert_eq!(text.plain(), "Visible");
         assert!(text.try_into_api().is_err());
@@ -2284,7 +2284,7 @@ fn only_hovered_slots_check_show_tooltip_with_item_in_hand() {
     .into();
 
     with_mod_factories(mods, |game| {
-        assert!(game.open_station([0, 64, 0], "minecraft:crafting_table"));
+        assert!(game.open_station([0, 64, 0], "minecraft:anvil"));
         game.inventory[9] = Some(ItemStack::new("minecraft:stick", 1));
         game.carried = Some(ItemStack::new("minecraft:stone", 1));
 

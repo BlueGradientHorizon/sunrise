@@ -388,10 +388,7 @@ impl Game<'_> {
                         };
                         match prepared {
                             Ok(prepared) => out.push(prepared),
-                            Err(err) => {
-                                report_tooltip_prepare_error(&err);
-                                return GatheredTooltip::PrepareError(err);
-                            }
+                            Err(err) => return GatheredTooltip::PrepareError(err),
                         }
                     }
                 }
@@ -425,10 +422,7 @@ impl Game<'_> {
             .transpose()
         {
             Ok(prepared) => prepared,
-            Err(err) => {
-                report_tooltip_prepare_error(&err);
-                return GatheredTooltip::PrepareError(err);
-            }
+            Err(err) => return GatheredTooltip::PrepareError(err),
         };
         let mut out = Vec::with_capacity(resolved.len() + usize::from(prepared_image.is_some()));
         let mut iter = resolved.into_iter();
@@ -738,12 +732,18 @@ impl Game<'_> {
         y: f32,
     ) {
         let anchor = quantize_tooltip_anchor((x, y));
-        let GatheredTooltip::Ready {
-            mut components,
-            font,
-        } = self.gather_tooltip_components(stack, lines, anchor[0], (batch.width, batch.height))
-        else {
-            return;
+        let (mut components, font) = match self.gather_tooltip_components(
+            stack,
+            lines,
+            anchor[0],
+            (batch.width, batch.height),
+        ) {
+            GatheredTooltip::Ready { components, font } => (components, font),
+            GatheredTooltip::Cancelled => return,
+            GatheredTooltip::PrepareError(err) => {
+                report_tooltip_prepare_error(&err);
+                return;
+            }
         };
         self.draw_prepared_tooltip(batch, Some(stack), &mut components, anchor, font, true);
     }

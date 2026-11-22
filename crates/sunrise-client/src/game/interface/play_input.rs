@@ -179,10 +179,9 @@ impl Game<'_> {
                             self.screen_over_playing(),
                         ),
                         action,
-                    ) {
-                        if button != MouseButton::Middle {
-                            self.mouse_mapping(button, pressed, Source::Keyboard)?;
-                        }
+                    ) && button != MouseButton::Middle
+                    {
+                        self.mouse_mapping(button, pressed, Source::Keyboard)?;
                     }
                 }
             }

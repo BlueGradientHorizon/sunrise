@@ -143,7 +143,7 @@ impl Game<'_> {
             ScreenDecision::Open
         };
         match decision {
-            ScreenDecision::Keep => return,
+            ScreenDecision::Keep => (),
             ScreenDecision::ModScreen(mod_id) => self.apply_screen(Screen::Mod, Some(mod_id)),
             ScreenDecision::Vanilla(target) => self.open_screen_target(target),
             ScreenDecision::Open => {

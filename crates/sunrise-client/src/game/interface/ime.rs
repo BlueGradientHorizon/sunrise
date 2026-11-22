@@ -283,13 +283,13 @@ impl Game<'_> {
         }
         if self.screen == Screen::Playing && self.title.is_some() {
             self.title_edit(Some(text), false);
-            return true;
+            true
         } else if self.book.is_some() {
             self.book_input(None, Some(text));
-            return true;
+            true
         } else if self.sign_edit.is_some() {
             self.sign_input(None, Some(text));
-            return true;
+            true
         } else {
             match self.screen {
                 Screen::Chat => self.chat_type(text),

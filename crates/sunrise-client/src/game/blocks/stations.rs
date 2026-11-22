@@ -3242,7 +3242,11 @@ mod tests {
                         .take(3)
                         .map(|line| line.unwrap().0)
                         .collect::<Vec<_>>(),
-                    ["Stick", "part", "minecraft:stick"].map(mod_api::Text::literal)
+                    [
+                        mod_api::Text::translate("item.minecraft.stick", vec![]),
+                        mod_api::Text::literal("part"),
+                        mod_api::Text::literal("minecraft:stick"),
+                    ]
                 );
                 assert!(event.advanced);
                 // Only the hidden stack is asked from a creative slot, where its
@@ -3696,17 +3700,15 @@ mod tests {
         #[mod_api::__subscriptions]
         impl Hooks for InvalidListener {
             fn item_tooltip(&self, _: &dyn ClientHost, event: &mut ItemTooltipEvent<'_>) {
-                let mut too_deep = Text::literal("leaf");
-                for _ in 0..mod_api::text::MAX_TEXT_DEPTH {
-                    too_deep = Text::literal("parent").append(too_deep);
-                }
+                let mut malformed = Text::literal("bad");
+                malformed.metadata = mod_api::Tag::Int(7);
                 assert_eq!(
-                    event.lines.push(too_deep.clone(), u32::MAX),
-                    Err(TextFormError::TooDeep)
+                    event.lines.push(malformed.clone(), u32::MAX),
+                    Err(TextFormError::Malformed)
                 );
                 assert_eq!(
-                    event.lines.set(0, too_deep, u32::MAX),
-                    Err(TextFormError::TooDeep)
+                    event.lines.set(0, malformed, u32::MAX),
+                    Err(TextFormError::Malformed)
                 );
                 self.0.store(true, Ordering::Relaxed);
             }
