@@ -1175,6 +1175,7 @@ impl Package {
             fn walk(
                 root: &Path,
                 dir: &Path,
+                prefix: &str,
                 files: &mut std::collections::BTreeMap<String, Vec<u8>>,
                 source_bytes: &mut u64,
                 source_count: &mut usize,
@@ -1184,32 +1185,30 @@ impl Package {
                     let kind = entry.file_type().map_err(|e| e.to_string())?;
                     // A name no package path can hold (not UTF-8, or with a `\` in it) is left
                     // out, and at the top so is any folder but `src/`.
-                    let Some(file_name) = entry
-                        .file_name()
-                        .to_str()
-                        .filter(|name| !name.contains('\\'))
-                        .map(str::to_owned)
+                    let file_name = entry.file_name();
+                    let Some(file_name) = file_name.to_str().filter(|name| !name.contains('\\'))
                     else {
                         continue;
                     };
-                    if dir == root && kind.is_dir() && file_name != "src" {
-                        continue;
-                    }
-                    let path = entry.path();
-                    let name = match dir.strip_prefix(root).map_err(|e| e.to_string())?.to_str() {
-                        Some("") => file_name,
-                        Some(parent) => format!("{}/{file_name}", parent.replace('\\', "/")),
-                        None => continue,
+                    let name = if prefix.is_empty() {
+                        file_name.to_owned()
+                    } else {
+                        format!("{prefix}/{file_name}")
                     };
                     if kind.is_dir() {
-                        if entry
-                            .file_name()
-                            .to_str()
-                            .is_some_and(|name| NOT_PACKAGED.contains(&name))
+                        if (prefix.is_empty() && file_name != "src")
+                            || NOT_PACKAGED.contains(&file_name)
                         {
                             continue;
                         }
-                        walk(root, &path, files, source_bytes, source_count)?;
+                        walk(
+                            root,
+                            &entry.path(),
+                            &name,
+                            files,
+                            source_bytes,
+                            source_count,
+                        )?;
                     } else if source_file(&name) {
                         check_folder_file(root, &name)?;
                         let size = entry.metadata().map_err(|e| e.to_string())?.len();
@@ -1220,13 +1219,21 @@ impl Package {
                         if *source_bytes > MAX_SOURCE_BYTES || *source_count > MAX_SOURCE_FILES {
                             return Err("native package exceeds its entry or size limit".into());
                         }
-                        files.insert(name, std::fs::read(path).map_err(|e| e.to_string())?);
+                        let bytes = std::fs::read(entry.path()).map_err(|e| e.to_string())?;
+                        files.insert(name, bytes);
                     }
                 }
                 Ok(())
             }
             let (mut source_bytes, mut source_count) = (0, 0);
-            walk(root, root, &mut files, &mut source_bytes, &mut source_count)?
+            walk(
+                root,
+                root,
+                "",
+                &mut files,
+                &mut source_bytes,
+                &mut source_count,
+            )?
         }
         files.insert(
             MANIFEST.to_owned(),
@@ -1540,6 +1547,14 @@ mod tests {
             .unwrap();
             // On Unix a `\` is part of a file name, never a separator.
             std::fs::write(folder.path().join("src").join("a\\b.rs"), "").unwrap();
+            std::fs::write(
+                folder
+                    .path()
+                    .join("src")
+                    .join(std::ffi::OsStr::from_bytes(b"\xff.rs")),
+                "",
+            )
+            .unwrap();
         }
 
         let bytes = Package::pack_directory(folder.path()).unwrap();
