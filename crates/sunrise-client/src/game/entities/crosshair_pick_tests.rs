@@ -1,0 +1,743 @@
+//! Crosshair targeting parity tests (#32 TNT/falling blocks, #34 root-vehicle exclusion) against vanilla 26.3.
+use crate::game::{
+    FallingBlock, Game,
+    interactions::RemoteInteraction,
+    native_entity_refs::tests::{with_client_game, with_game},
+    native_lifecycle::NativeLifecycle,
+    tnt::PrimedTnt,
+};
+use mod_api::CrosshairTarget;
+use serde_json::Value;
+use std::sync::Arc;
+use sunrise_client::{
+    camera::CameraType,
+    chunk::Chunk,
+    entities::ArmorStand,
+    first_person::Hand,
+    level_loading::Reason,
+    mobs::Mob,
+    motion::PlayerMotion,
+};
+use sunrise_core::{geometry::Vec3, position::BlockPos};
+use sunrise_protocol::{
+    buf::pack_degrees,
+    connection::Pipe,
+    entity_data::Value as EntityDataValue,
+    packets::play::{self, Clientbound as C, SpawnInfo},
+};
+
+fn crosshair_witness() -> Value {
+    let path = std::env::var("SUNRISE_CROSSHAIR_PICK_WITNESS")
+        .expect("run through tools/test_crosshair_pick_parity.py, which records the witness");
+    let raw = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+        panic!(
+            "failed to read SUNRISE_CROSSHAIR_PICK_WITNESS={path} (run through tools/test_crosshair_pick_parity.py): {err}"
+        )
+    });
+    serde_json::from_str(&raw).expect("valid 26.3 crosshair pick witness")
+}
+
+fn hex_f32(v: &Value) -> u32 {
+    u32::from_str_radix(v.as_str().unwrap(), 16).unwrap()
+}
+
+fn hex_f64(v: &Value) -> u64 {
+    u64::from_str_radix(v.as_str().unwrap(), 16).unwrap()
+}
+
+fn vec3_from_bits(v: &Value) -> [f64; 3] {
+    [
+        f64::from_bits(hex_f64(&v[0])),
+        f64::from_bits(hex_f64(&v[1])),
+        f64::from_bits(hex_f64(&v[2])),
+    ]
+}
+
+fn vec3_bits_expected(v: &Value) -> [u64; 3] {
+    [hex_f64(&v[0]), hex_f64(&v[1]), hex_f64(&v[2])]
+}
+
+fn face_from_name(name: &str) -> [i32; 3] {
+    match name {
+        "DOWN" => [0, -1, 0],
+        "UP" => [0, 1, 0],
+        "NORTH" => [0, 0, -1],
+        "SOUTH" => [0, 0, 1],
+        "WEST" => [-1, 0, 0],
+        "EAST" => [1, 0, 0],
+        other => panic!("unexpected block face {other}"),
+    }
+}
+
+fn entity_type_id(game: &Game<'_>, kind: &str) -> i32 {
+    game.remote
+        .as_ref()
+        .unwrap()
+        .builtin
+        .get("minecraft:entity_type")
+        .unwrap()
+        .id(kind)
+        .unwrap_or_else(|| panic!("missing entity type {kind}"))
+}
+
+#[must_use]
+fn setup_remote_overworld(game: &mut Game<'_>, player_id: i32, player_pos: [f64; 3]) -> Pipe {
+    game.native_lifecycle = NativeLifecycle::default();
+    let (client, server) = Pipe::pair();
+    game.connect_local(client, "CrosshairPickTest").unwrap();
+    let spawn = SpawnInfo {
+        dimension_type: 0,
+        dimension: "minecraft:overworld".into(),
+        seed: 0,
+        game_type: 0,
+        previous_game_type: None,
+        debug: false,
+        flat: true,
+        last_death: None,
+        portal_cooldown: 0,
+        sea_level: 63,
+    };
+    game.enter_remote_dimension(&spawn, false, Reason::Other);
+    let remote = game.remote.as_mut().unwrap();
+    remote.logged_in = true;
+    remote.entity_id = player_id;
+    remote.view_distance = 8;
+    remote.level_load.finish();
+    game.title = None;
+    let pos = Vec3::new(player_pos[0], player_pos[1], player_pos[2]);
+    game.player = Some(PlayerMotion::new(game.motion, pos).unwrap());
+    game.previous_position = pos;
+    game.camera_type = CameraType::FirstPerson;
+    game.settings.fov = 70.0;
+    game.settings.render_distance = 8;
+    server
+}
+
+fn add_entity_with_data(
+    game: &mut Game<'_>,
+    id: i32,
+    kind: &str,
+    position: [f64; 3],
+    yaw: f32,
+    pitch: f32,
+    data: i32,
+) {
+    let uuid = id as u128 + 1000;
+    let kind_id = entity_type_id(game, kind);
+    let y = pack_degrees(yaw);
+    let p = pack_degrees(pitch);
+    game.handle_packet(C::AddEntity(play::AddEntity {
+        id,
+        uuid,
+        kind: kind_id,
+        position,
+        velocity: [0.0; 3],
+        pitch: p,
+        yaw: y,
+        head_yaw: y,
+        data,
+    }))
+    .unwrap();
+}
+
+fn sync_interaction_size(game: &mut Game<'_>, id: i32, width: f32, height: f32) {
+    game.handle_packet(C::SetEntityData(play::SetEntityData {
+        id,
+        values: vec![
+            (8, 3, EntityDataValue::Float(width)),
+            (9, 3, EntityDataValue::Float(height)),
+        ],
+    }))
+    .unwrap();
+}
+
+fn ensure_chunk(game: &mut Game<'_>, cx: i32, cz: i32) {
+    game.world
+        .chunks
+        .entry((cx, cz))
+        .or_insert_with(|| Arc::new(Chunk::empty(cx, cz)));
+}
+
+fn pin_entity_pose(
+    game: &mut Game<'_>,
+    player_id: i32,
+    id: i32,
+    pos_arr: [f64; 3],
+    yaw: f32,
+    pitch: f32,
+) {
+    let pos = Vec3::new(pos_arr[0], pos_arr[1], pos_arr[2]);
+    if id == player_id {
+        if let Some(p) = game.player.as_mut() {
+            p.position = pos;
+        }
+        game.previous_position = pos;
+        return;
+    }
+    let uid = id as u32;
+    if let Some(t) = game
+        .remote
+        .as_mut()
+        .and_then(|r| r.entities.get_mut(&id))
+    {
+        (t.position, t.previous) = (pos_arr, pos_arr);
+        (t.yaw, t.previous_yaw, t.pitch, t.previous_pitch) = (yaw, yaw, pitch, pitch);
+    }
+    game.mobs.for_each_mut(|m| {
+        if m.id == uid {
+            (m.position, m.previous) = (pos, pos);
+            (m.yaw, m.previous_yaw, m.head_yaw, m.previous_head_yaw) = (yaw, yaw, yaw, yaw);
+            (m.head_pitch, m.previous_head_pitch) = (pitch, pitch);
+        }
+    });
+    game.armor_stands.for_each_mut(|a| {
+        if a.id == uid {
+            (a.position, a.previous) = (pos, pos);
+            (a.yaw, a.previous_yaw, a.pitch) = (yaw, yaw, pitch);
+        }
+    });
+    game.boats.for_each_mut(|b| {
+        if b.id == uid {
+            (b.position, b.previous, b.yaw, b.previous_yaw, b.pitch) = (pos, pos, yaw, yaw, pitch);
+        }
+    });
+    game.carts.for_each_mut(|c| {
+        if c.id == uid {
+            (c.position, c.previous) = (pos, pos);
+            (c.yaw, c.previous_yaw, c.pitch, c.previous_pitch) = (yaw, yaw, pitch, pitch);
+        }
+    });
+    if let Some(inter) = game.interactions.get_mut(&id) {
+        (inter.position, inter.previous) = (pos, pos);
+        (inter.yaw, inter.previous_yaw, inter.pitch, inter.previous_pitch) =
+            (yaw, yaw, pitch, pitch);
+    }
+    game.tnts.for_each_mut(|t| {
+        if t.id == uid {
+            (t.position, t.previous, t.rotation) = (pos, pos, [yaw, pitch]);
+        }
+    });
+    game.falling.for_each_mut(|f| {
+        if f.id == uid {
+            (f.position, f.previous, f.rotation) = (pos, pos, [yaw, pitch]);
+        }
+    });
+}
+
+fn replay_witness_case(game: &mut Game<'_>, tc: &Value) -> Pipe {
+    let player_id = tc["player_id"].as_i64().unwrap() as i32;
+    let camera_id = tc["camera_id"].as_i64().unwrap() as i32;
+    let entities = tc["entities"].as_array().unwrap();
+    let player_entry = entities
+        .iter()
+        .find(|e| e["id"].as_i64().unwrap() as i32 == player_id)
+        .unwrap();
+    let player_pos = vec3_from_bits(&player_entry["pos_bits"]);
+
+    let server = setup_remote_overworld(game, player_id, player_pos);
+    for (cx, cz) in [(0, 0), (-1, 0), (0, -1), (-1, -1)] {
+        ensure_chunk(game, cx, cz);
+    }
+    for b in tc["blocks"].as_array().unwrap() {
+        let pos = b["pos"].as_array().unwrap();
+        let x = pos[0].as_i64().unwrap() as i32;
+        let y = pos[1].as_i64().unwrap() as i32;
+        let z = pos[2].as_i64().unwrap() as i32;
+        ensure_chunk(game, x >> 4, z >> 4);
+        let state = game
+            .pack
+            .assets
+            .registry
+            .default_state(b["block"].as_str().unwrap())
+            .unwrap();
+        game.world.set(x, y, z, state).unwrap();
+    }
+
+    for e in entities {
+        let id = e["id"].as_i64().unwrap() as i32;
+        if id == player_id {
+            continue;
+        }
+        let kind = e["kind"].as_str().unwrap();
+        let pos = vec3_from_bits(&e["pos_bits"]);
+        let yaw = f32::from_bits(hex_f32(&e["yRot_bits"]));
+        let pitch = f32::from_bits(hex_f32(&e["xRot_bits"]));
+        let data = if kind == "minecraft:falling_block" {
+            let block_name = e["block_state"].as_str().unwrap();
+            game.pack
+                .assets
+                .registry
+                .default_state(block_name)
+                .unwrap()
+                .0 as i32
+        } else {
+            e["data"].as_i64().unwrap() as i32
+        };
+        add_entity_with_data(game, id, kind, pos, yaw, pitch, data);
+        if kind == "minecraft:interaction" {
+            sync_interaction_size(game, id, 1.0, 1.0);
+        }
+    }
+
+    for ride in tc["rides"].as_array().unwrap() {
+        let vehicle = ride["vehicle"].as_i64().unwrap() as i32;
+        let passengers: Vec<i32> = ride["passengers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p.as_i64().unwrap() as i32)
+            .collect();
+        game.handle_packet(C::SetPassengers(play::SetPassengers {
+            vehicle,
+            passengers,
+        }))
+        .unwrap();
+    }
+
+    if camera_id != player_id {
+        game.handle_packet(C::GameEvent(play::GameEvent {
+            event: 3,
+            param: 3.0,
+        }))
+        .unwrap();
+        game.handle_packet(C::SetCamera(play::SetCamera { camera_id }))
+            .unwrap();
+    }
+
+    // Pin exact witness positions and unquantized float rotations after SetPassengers.
+    for e in entities {
+        let id = e["id"].as_i64().unwrap() as i32;
+        let pos = vec3_from_bits(&e["pos_bits"]);
+        let yaw = f32::from_bits(hex_f32(&e["yRot_bits"]));
+        let pitch = f32::from_bits(hex_f32(&e["xRot_bits"]));
+        pin_entity_pose(game, player_id, id, pos, yaw, pitch);
+    }
+
+    let cam_pos = vec3_from_bits(&tc["camera_pos_bits"]);
+    let cam_yaw = f32::from_bits(hex_f32(&tc["camera_yRot_bits"]));
+    let cam_pitch = f32::from_bits(hex_f32(&tc["camera_xRot_bits"]));
+    pin_entity_pose(game, player_id, camera_id, cam_pos, cam_yaw, cam_pitch);
+    if camera_id == player_id {
+        game.yaw = cam_yaw;
+        game.pitch = cam_pitch;
+    }
+
+    game.block_reach = f64::from_bits(hex_f64(&tc["block_reach_bits"]));
+    game.entity_reach = f64::from_bits(hex_f64(&tc["entity_reach_bits"]));
+    game.refresh_client_pick(1.0);
+    server
+}
+
+fn check_case_hit(game: &Game<'_>, tc: &Value, failures: &mut Vec<String>) {
+    let name = tc["name"].as_str().unwrap();
+    let hit = &tc["hit"];
+    let want_type = hit["type"].as_str().unwrap();
+    let want_loc_bits = vec3_bits_expected(&hit["location_bits"]);
+    let target = game.crosshair_target();
+
+    match want_type {
+        "ENTITY" => {
+            let want_id = hit["entity_id"].as_i64().unwrap() as i32;
+            match target {
+                Some(CrosshairTarget::Entity { entity, point }) => {
+                    if entity.id() as i32 != want_id {
+                        failures.push(format!(
+                            "{name}: crosshair entity id {} != vanilla {want_id}",
+                            entity.id()
+                        ));
+                    }
+                    let got_bits = point.map(f64::to_bits);
+                    if got_bits != want_loc_bits {
+                        failures.push(format!(
+                            "{name}: entity hit location {:016x?} ({point:?}) != vanilla {:016x?} ({:?})",
+                            got_bits,
+                            want_loc_bits,
+                            want_loc_bits.map(f64::from_bits)
+                        ));
+                    }
+                }
+                other => failures.push(format!(
+                    "{name}: crosshair_target {other:?} != vanilla ENTITY {want_id}"
+                )),
+            }
+            if game.crosshair_entity_id() != Some(want_id) {
+                failures.push(format!(
+                    "{name}: crosshair_entity_id {:?} != Some({want_id})",
+                    game.crosshair_entity_id()
+                ));
+            }
+            if !game.entity_targeted() {
+                failures.push(format!("{name}: entity_targeted() was false for ENTITY {want_id}"));
+            }
+            if game.spectator_click_target() != Some(want_id) {
+                failures.push(format!(
+                    "{name}: spectator_click_target {:?} != Some({want_id})",
+                    game.spectator_click_target()
+                ));
+            }
+        }
+        "BLOCK" => {
+            let bp = hit["block_pos"].as_array().unwrap();
+            let want_pos = [
+                bp[0].as_i64().unwrap() as i32,
+                bp[1].as_i64().unwrap() as i32,
+                bp[2].as_i64().unwrap() as i32,
+            ];
+            let want_face = face_from_name(hit["block_face"].as_str().unwrap());
+            let want_inside = hit["inside"].as_bool().unwrap();
+            match target {
+                Some(CrosshairTarget::Block { pos, hit: bh, .. }) => {
+                    let got_pos = [pos.x, pos.y, pos.z];
+                    if got_pos != want_pos || bh.face != want_face || bh.inside != want_inside {
+                        failures.push(format!(
+                            "{name}: block hit ({got_pos:?}, {:?}, {}) != vanilla ({want_pos:?}, {want_face:?}, {want_inside})",
+                            bh.face, bh.inside
+                        ));
+                    }
+                    let got_bits = bh.point.map(f64::to_bits);
+                    if got_bits != want_loc_bits {
+                        failures.push(format!(
+                            "{name}: block hit location {:016x?} ({:?}) != vanilla {:016x?} ({:?})",
+                            got_bits,
+                            bh.point,
+                            want_loc_bits,
+                            want_loc_bits.map(f64::from_bits)
+                        ));
+                    }
+                }
+                other => failures.push(format!(
+                    "{name}: crosshair_target {other:?} != vanilla BLOCK {want_pos:?}"
+                )),
+            }
+            if game.crosshair_entity_id().is_some() {
+                failures.push(format!(
+                    "{name}: crosshair_entity_id {:?} != None for BLOCK",
+                    game.crosshair_entity_id()
+                ));
+            }
+            if game.entity_targeted() {
+                failures.push(format!("{name}: entity_targeted() was true for BLOCK"));
+            }
+            if game.spectator_click_target().is_some() {
+                failures.push(format!(
+                    "{name}: spectator_click_target {:?} != None for BLOCK",
+                    game.spectator_click_target()
+                ));
+            }
+        }
+        "MISS" => {
+            if target.is_some() {
+                failures.push(format!("{name}: crosshair_target {target:?} != vanilla MISS"));
+            }
+            if game.crosshair_entity_id().is_some() {
+                failures.push(format!(
+                    "{name}: crosshair_entity_id {:?} != None for MISS",
+                    game.crosshair_entity_id()
+                ));
+            }
+            if game.entity_targeted() {
+                failures.push(format!("{name}: entity_targeted() was true for MISS"));
+            }
+            if game.spectator_click_target().is_some() {
+                failures.push(format!(
+                    "{name}: spectator_click_target {:?} != None for MISS",
+                    game.spectator_click_target()
+                ));
+            }
+        }
+        other => panic!("unexpected hit type {other}"),
+    }
+}
+
+/// Parity #32: primed TNT and falling blocks are pickable by the crosshair with exact 26.3 geometry.
+#[test]
+#[ignore = "run by tools/test_crosshair_pick_parity.py"]
+fn primed_tnt_and_falling_blocks_match_26_3_witness() {
+    let witness = crosshair_witness();
+    let traits = &witness["entity_traits"];
+    for key in ["tnt", "falling_block"] {
+        assert_eq!(traits[key]["is_pickable"].as_bool(), Some(true), "{key}");
+        assert_eq!(
+            traits[key]["can_be_picked_from_inside"].as_bool(),
+            Some(true),
+            "{key}"
+        );
+        assert_eq!(
+            traits[key]["has_pick_result"].as_bool(),
+            Some(false),
+            "{key}"
+        );
+        assert_eq!(
+            traits[key]["interact_result"].as_str(),
+            Some("Pass"),
+            "{key}"
+        );
+        assert_eq!(hex_f32(&traits[key]["pick_radius_bits"]), 0, "{key}");
+    }
+
+    let cases = witness["tnt_and_falling"].as_array().unwrap();
+    assert_eq!(cases.len(), 18);
+    let mut failures = Vec::new();
+
+    for tc in cases {
+        let name = tc["name"].as_str().unwrap();
+        with_client_game(|game| {
+            let _server = replay_witness_case(game, tc);
+            check_case_hit(game, tc, &mut failures);
+
+            if tc["hit"]["type"].as_str() == Some("ENTITY") {
+                let hit_id = tc["hit"]["entity_id"].as_i64().unwrap() as i32;
+                let hit_kind = tc["entities"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|e| e["id"].as_i64().unwrap() as i32 == hit_id)
+                    .unwrap()["kind"]
+                    .as_str()
+                    .unwrap();
+                if matches!(hit_kind, "minecraft:tnt" | "minecraft:falling_block") {
+                    if game.pick_entity_hit() != Some(None) {
+                        failures.push(format!(
+                            "{name}: pick_entity_hit {:?} != Some(None) for {hit_kind}",
+                            game.pick_entity_hit()
+                        ));
+                    }
+                    if !game.within_entity_range(hit_id) {
+                        failures.push(format!(
+                            "{name}: within_entity_range({hit_id}) was false for {hit_kind}"
+                        ));
+                    }
+                    let swings_before = game.swings_started;
+                    let consumed = game.remote_use_entity(Hand::Main);
+                    if consumed || game.swings_started != swings_before {
+                        failures.push(format!(
+                            "{name}: remote_use_entity must PASS without swinging for {hit_kind}"
+                        ));
+                    }
+                }
+            }
+        });
+    }
+
+    assert!(
+        failures.is_empty(),
+        "{} #32 TNT/falling-block crosshair mismatches against real 26.3:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}
+
+/// Parity #34: same-root-vehicle exclusion follows the real vehicle chain across nested rides and all kinds.
+#[test]
+#[ignore = "run by tools/test_crosshair_pick_parity.py"]
+fn nested_ride_root_vehicle_exclusion_matches_26_3_witness() {
+    let witness = crosshair_witness();
+    let cases = witness["nested_rides"].as_array().unwrap();
+    assert_eq!(cases.len(), 19);
+    let mut failures = Vec::new();
+
+    for tc in cases {
+        with_client_game(|game| {
+            let _server = replay_witness_case(game, tc);
+            check_case_hit(game, tc, &mut failures);
+        });
+    }
+
+    assert!(
+        failures.is_empty(),
+        "{} #34 nested-ride crosshair mismatches against real 26.3:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}
+
+/// Parity #32 and #34: singleplayer/unstored pick paths share the unified pickable query and root exclusion.
+#[test]
+#[ignore = "run by tools/test_crosshair_pick_parity.py"]
+fn singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3() {
+    let witness = crosshair_witness();
+    assert_eq!(witness["entity_traits"]["tnt"]["is_pickable"].as_bool(), Some(true));
+    assert_eq!(
+        witness["entity_traits"]["falling_block"]["is_pickable"].as_bool(),
+        Some(true)
+    );
+
+    with_game(|game| {
+        assert!(!game.uses_stored_pick(), "with_game exercises the unstored pick path");
+        ensure_chunk(game, 0, 0);
+        game.title = None;
+        game.block_reach = 4.5;
+        game.entity_reach = 3.0;
+        let registry = game.pack.assets.registry;
+        let stone = registry.default_state("minecraft:stone").unwrap();
+        let sand = registry.default_state("minecraft:sand").unwrap();
+        let air = registry.default_state("minecraft:air").unwrap();
+
+        let place_player = |game: &mut Game<'_>, pos: [f64; 3], yaw: f32, pitch: f32| {
+            let v = Vec3::new(pos[0], pos[1], pos[2]);
+            let mut p = PlayerMotion::new(game.motion, v).unwrap();
+            p.entity_id = 1;
+            game.player = Some(p);
+            game.previous_position = v;
+            game.yaw = yaw;
+            game.pitch = pitch;
+        };
+
+        // A: singleplayer primed TNT occludes stone behind it and reports no getPickResult.
+        place_player(game, [0.5, 64.0, 0.5], 0.0, 0.0);
+        game.world.set(0, 65, 4, stone).unwrap();
+        let tnt_pos = Vec3::new(0.5, 65.1, 2.5);
+        game.tnts.push(PrimedTnt {
+            attachment_lifetime: Default::default(),
+            rotation: [0.0, 0.0],
+            join: Default::default(),
+            no_gravity: false,
+            id: 10,
+            position: tnt_pos,
+            previous: tnt_pos,
+            velocity: Vec3::ZERO,
+            fuse: 80,
+            ticks: 0,
+            ground: Default::default(),
+            fall_distance: 0.0,
+            stuck: Vec3::ZERO,
+            in_water: false,
+            owner: None,
+            guest: None,
+            power: 4.0,
+            used_portal: false,
+            block_state: None,
+        });
+        assert_eq!(game.crosshair_entity_id(), Some(10), "singleplayer TNT crosshair_entity_id");
+        assert!(game.entity_targeted(), "singleplayer TNT entity_targeted");
+        assert_eq!(game.spectator_click_target(), Some(10), "singleplayer TNT spectator_click_target");
+        assert_eq!(game.pick_entity_hit(), Some(None), "singleplayer TNT has no pick result");
+        assert!(game.within_entity_range(10), "singleplayer TNT within_entity_range");
+
+        // B: singleplayer falling sand occludes stone behind it and reports no getPickResult.
+        game.tnts.clear();
+        let fb_pos = Vec3::new(0.5, 65.1, 2.5);
+        game.falling.push(FallingBlock {
+            attachment_lifetime: Default::default(),
+            rotation: [0.0, 0.0],
+            join: Default::default(),
+            id: 20,
+            state: sand,
+            start_pos: BlockPos::new(0, 65, 2),
+            position: fb_pos,
+            previous: fb_pos,
+            velocity: Vec3::ZERO,
+            age: 0,
+            no_gravity: false,
+            portal: Default::default(),
+            drop_item: false,
+            fall_distance: 0.0,
+            ground: Default::default(),
+            fire_ticks: 0,
+            sync_velocity: false,
+            stuck: Vec3::ZERO,
+            damage: Default::default(),
+            saved: None,
+        });
+        assert_eq!(game.crosshair_entity_id(), Some(20), "singleplayer falling block crosshair_entity_id");
+        assert!(game.entity_targeted(), "singleplayer falling block entity_targeted");
+        assert_eq!(game.spectator_click_target(), Some(20), "singleplayer falling block spectator_click_target");
+        assert_eq!(game.pick_entity_hit(), Some(None), "singleplayer falling block has no pick result");
+        assert!(game.within_entity_range(20), "singleplayer falling block within_entity_range");
+
+        // C: unmounted singleplayer player carrying a pig excludes the pig and hits ceiling stone.
+        game.falling.clear();
+        game.world.set(0, 65, 4, air).unwrap();
+        game.world.set(0, 68, 0, stone).unwrap();
+        game.riding = None;
+        place_player(game, [0.5, 64.0, 0.5], 0.0, -90.0);
+        let pig_type = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+        let mut pig = Mob::new(150, pig_type, Vec3::new(0.5, 66.2, 0.5), 0.0);
+        pig.extra.mount = Some(1);
+        pig.extra.passenger = true;
+        game.mobs.push(pig);
+        assert_eq!(game.crosshair_entity_id(), None, "pig riding unmounted player must be excluded");
+        assert!(!game.entity_targeted(), "pig riding unmounted player must not be targeted");
+        assert_eq!(game.spectator_click_target(), None, "pig riding unmounted player must not be spectator target");
+        assert_eq!(game.pick().map(|h| h.pos), Some([0, 68, 0]));
+
+        // D: singleplayer camel rider with eye inside camel box looks through co-passenger husk to external TNT.
+        game.mobs.clear();
+        game.world.set(0, 68, 0, air).unwrap();
+        let camel_type = game.res.mob_types().get("minecraft:camel").unwrap().clone();
+        let husk_type = game.res.mob_types().get("minecraft:husk").unwrap().clone();
+        game.mobs.push(Mob::new(130, camel_type, Vec3::new(0.5, 64.0, 0.5), 0.0));
+        let mut husk = Mob::new(131, husk_type, Vec3::new(0.5, 64.17, 1.0), 0.0);
+        husk.extra.mount = Some(130);
+        husk.extra.passenger = true;
+        game.mobs.push(husk);
+        let behind_tnt = Vec3::new(0.5, 65.3, 2.5);
+        game.tnts.push(PrimedTnt {
+            attachment_lifetime: Default::default(),
+            rotation: [0.0, 0.0],
+            join: Default::default(),
+            no_gravity: false,
+            id: 201,
+            position: behind_tnt,
+            previous: behind_tnt,
+            velocity: Vec3::ZERO,
+            fuse: 80,
+            ticks: 0,
+            ground: Default::default(),
+            fall_distance: 0.0,
+            stuck: Vec3::ZERO,
+            in_water: false,
+            owner: None,
+            guest: None,
+            power: 4.0,
+            used_portal: false,
+            block_state: None,
+        });
+        game.riding = Some(130);
+        place_player(game, [0.5, 64.17, 0.0], 0.0, 0.0);
+        assert_eq!(game.crosshair_entity_id(), Some(201), "unified unstored pick must pick TNT past camel co-passenger");
+        assert_eq!(game.spectator_click_target(), Some(201), "spectator_click_target must pick TNT past camel co-passenger");
+        assert!(game.entity_targeted());
+
+        // E: singleplayer horse excludes ArmorStand and RemoteInteraction co-passengers and picks external falling block.
+        game.mobs.clear();
+        game.tnts.clear();
+        let horse_type = game.res.mob_types().get("minecraft:horse").unwrap().clone();
+        game.mobs.push(Mob::new(110, horse_type, Vec3::new(0.5, 64.0, 0.5), 0.0));
+        let mut stand = ArmorStand::new(112, Vec3::new(0.5, 65.6, 1.4), 0.0);
+        stand.vehicle = Some(110);
+        game.armor_stands.push(stand);
+        let mut inter = RemoteInteraction::new([0.5, 66.1, 1.9]);
+        inter.vehicle = Some(110);
+        inter.dimensions_refreshed = true;
+        game.interactions.insert(113, inter);
+        let behind_fb = Vec3::new(0.5, 66.1, 2.9);
+        game.falling.push(FallingBlock {
+            attachment_lifetime: Default::default(),
+            rotation: [0.0, 0.0],
+            join: Default::default(),
+            id: 202,
+            state: sand,
+            start_pos: BlockPos::new(0, 66, 2),
+            position: behind_fb,
+            previous: behind_fb,
+            velocity: Vec3::ZERO,
+            age: 0,
+            no_gravity: false,
+            portal: Default::default(),
+            drop_item: false,
+            fall_distance: 0.0,
+            ground: Default::default(),
+            fire_ticks: 0,
+            sync_velocity: false,
+            stuck: Vec3::ZERO,
+            damage: Default::default(),
+            saved: None,
+        });
+        game.riding = Some(110);
+        place_player(game, [0.5, 65.0, 0.5], 0.0, 0.0);
+        assert_eq!(game.interaction_hit(), None, "interaction_hit must exclude same-root-vehicle interaction");
+        assert_eq!(game.crosshair_entity_id(), Some(202), "horse co-passenger stand and interaction must be excluded");
+        assert_eq!(game.spectator_click_target(), Some(202), "spectator_click_target must skip co-passenger stand and interaction");
+    });
+}
