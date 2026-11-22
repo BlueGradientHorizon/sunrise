@@ -5,20 +5,30 @@ pub trait Hooks {
     /// A player pressed a mod menu's button (`clickMenuButton`), on the
     /// server. `entity` is the block entity backing the menu when there is
     /// one, out of the world during the call; it is None for a blockless
-    /// menu. Mods may change it and the clicking player's carried stack.
+    /// menu. Mods may change it and the clicking player's carried stack. If a
+    /// listener panics, the button invocation publishes neither detached output.
     #[notes = r#"### Menu buttons
 
 `menu_button` handles a mod menu's button (`AbstractContainerMenu.clickMenuButton(Player, int)`) on the server, for
 single player and LAN guests. It is routed to the active menu type's owner and exposes the player identity, button,
 optional block position, optional backing block entity and mutable carried stack, so a widget outside the slots can
-take or give what the player carries. A blockless menu supplies None for the position and entity."#]
+take or give what the player carries. A blockless menu supplies None for the position and entity. A panic discards both
+detached outputs, including any one-shot update fields the callback requested."#]
     #[hook(
-        version = 2,
+        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_menu_button",
+        dispatch = "flat",
+        version = 3,
         side = "server",
         contract = "listen",
         scope = "menu",
         key = "menu",
         neoforge = "none (NeoForge has no such event; vanilla AbstractContainerMenu.clickMenuButton)"
     )]
-    fn menu_button();
+    fn menu_button(
+        menu: &str,
+        block: Option<&str>,
+        context: &mod_api::item::menu::MenuButtonContext,
+        entity: Option<&mut ModBlockEntity>,
+        carried: &mut Option<mod_api::ItemStack>,
+    );
 }

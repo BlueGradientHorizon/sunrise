@@ -226,6 +226,7 @@ jobs:
             tools/check_cpu_baseline.py
             tools/check_glibc.py
             tools/check_imports.py
+            tools/check_pe_arch.py
             tools/ci/build-musl.sh
             tools/ci/check-musl-startup.sh
             tools/ci/game_smoke.sh
@@ -257,7 +258,11 @@ jobs:
           dpkg-query -W libasound2-dev libudev-dev
       - name: Build the official game, sunrise-ctl, sunrise-perf, sunrise-prepare, sunrise-server and sunrise-port-pack
         if: ${{ !matrix.musl }}
-        run: cargo build --release --locked --timings ${{ matrix.target && format('--target {0}', matrix.target) || '' }} -p sunrise-official --bin sunrise-official -p sunrise-client-lib --bin sunrise-ctl -p sunrise-perf --bin sunrise-perf -p sunrise-prepare --bin sunrise-prepare -p sunrise-server --bin sunrise-server -p sunrise-port-pack --bin sunrise-port-pack
+        run: |
+          cargo build --release --locked --timings ${{ matrix.target && format('--target {0}', matrix.target) || '' }} \
+            -p sunrise-official --bin sunrise-official -p sunrise-client-lib --bin sunrise-ctl \
+            -p sunrise-perf --bin sunrise-perf -p sunrise-prepare --bin sunrise-prepare \
+            -p sunrise-server --bin sunrise-server -p sunrise-port-pack --bin sunrise-port-pack
       - name: The official game is the game players get, under its name
         # sunrise-official: sunrise-client's game with Sunrise's own parts plugged in (docs/layers.md, "How a
         # Sunrise crate plugs in"). Everything below, the launcher and players know it as sunrise-client.
@@ -270,12 +275,13 @@ jobs:
             test -f "$BIN/$binary${{ matrix.exe }}" || { echo "::error::$BIN/$binary${{ matrix.exe }} is missing"; exit 1; }
           done
       - name: Verify Windows executable architecture
+        # Snapshots can build older refs. The exact stack check belongs to the same-ref Windows job in ci.yml.
         if: runner.os == 'Windows'
         run: |
-          python tools/check_pe_arch.py "${{ matrix.pe_arch }}" \
-            "$BIN/sunrise-client${{ matrix.exe }}" "$BIN/sunrise-ctl${{ matrix.exe }}" "$BIN/sunrise-perf${{ matrix.exe }}" \
-            "$BIN/sunrise-prepare${{ matrix.exe }}" "$BIN/sunrise-server${{ matrix.exe }}" \
-            "$BIN/sunrise-port-pack${{ matrix.exe }}"
+          python .workflow-tools/tools/check_pe_arch.py "${{ matrix.pe_arch }}" \
+            "$BIN/sunrise-client${{ matrix.exe }}" "$BIN/sunrise-ctl${{ matrix.exe }}" \
+            "$BIN/sunrise-perf${{ matrix.exe }}" "$BIN/sunrise-prepare${{ matrix.exe }}" \
+            "$BIN/sunrise-server${{ matrix.exe }}" "$BIN/sunrise-port-pack${{ matrix.exe }}"
       - name: Rosetta for the Intel build on Apple Silicon
         if: runner.os == 'macOS' && matrix.target == 'x86_64-apple-darwin'
         run: |
@@ -335,24 +341,6 @@ jobs:
         run: |
           python3 .workflow-tools/tools/check_glibc.py \
             "$BIN/sunrise-client" "$BIN/sunrise-ctl" "$BIN/sunrise-perf" "$BIN/sunrise-prepare" "$BIN/sunrise-server" "$BIN/sunrise-port-pack"
-      - name: macOS main-stack diagnostics
-        if: runner.os == 'macOS'
-        run: |
-          echo "LC_MAIN of sunrise-client:"
-          otool -l "$BIN/sunrise-client" | grep -A4 LC_MAIN || true
-          if [[ "$(lipo -archs "$BIN/sunrise-client")" == x86_64 ]]; then
-            translated=$(arch -x86_64 /usr/sbin/sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)
-            stack_limit=$(arch -x86_64 /bin/sh -c 'ulimit -s' || true)
-          else
-            translated=$(sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)
-            stack_limit=$(ulimit -s || true)
-          fi
-          echo "sysctl.proc_translated (sunrise-client architecture): $translated"
-          echo "ulimit -s (sunrise-client architecture): $stack_limit"
-          echo "Runner uname -m:"
-          uname -m || true
-          echo "Runner arch:"
-          arch || true
       - name: Every program starts
         if: ${{ !matrix.musl && !matrix.started_elsewhere }}
         run: |

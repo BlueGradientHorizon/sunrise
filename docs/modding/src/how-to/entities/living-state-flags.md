@@ -214,8 +214,8 @@ underwater or activator ejection.
 `host.entity_type_default_attribute(entity_type, attribute)` reads what a new entity of a type has, with no entity
 spawned and before any modifier: `DefaultAttributes.getSupplier(type).getValue(attribute)`, the supplier's base inside
 the attribute's range. It works for vanilla's types and mods' registered ones (a mod type's declared row, with the
-attributes other mods added to it), on both sides. It is metadata, like `entity_type_in_tag`: any host answers it in
-setup, a reload or a world once the game has built its attribute catalog, and it never unwinds.
+attributes other mods added to it), on both sides. The Host and typed reload and client setup contexts read the same
+published catalog without unwinding. Registration and config contexts do not expose the read.
 
 ```rust,ignore
 // The Zombie's 20 health and 2 armor, for a screen that lists a mob's stats.
@@ -223,6 +223,5 @@ let health = host.entity_type_default_attribute("minecraft:zombie", "minecraft:m
 let armor = host.entity_type_default_attribute("minecraft:zombie", "minecraft:armor");
 ```
 
-`None` means the catalog isn't built yet (registration, config loading), the type is no registered entity type or has
-no attribute supplier (it isn't a living type, such as `minecraft:item`), or it doesn't have that attribute, or the
-attribute is unknown. Names are read as `Identifier.parse` reads them: `zombie` and `:zombie` are `minecraft:zombie`.
+`None` means the catalog has not been published yet, the type is not registered or has no attribute supplier
+(such as `minecraft:item`), or the supplier has no entry for that attribute. Names are read as `Identifier.parse` reads them: `zombie` and `:zombie` are `minecraft:zombie`.

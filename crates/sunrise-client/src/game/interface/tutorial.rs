@@ -105,7 +105,7 @@ impl super::Game<'_> {
                 Action::Jump,
             ]
             .into_iter()
-            .any(|action| self.keys.held(action))
+            .any(|action| self.held_mapping(action))
                 || self
                     .input_move()
                     .is_some_and(|[left, forward]| left.abs() > 0.3 || forward.abs() > 0.3))

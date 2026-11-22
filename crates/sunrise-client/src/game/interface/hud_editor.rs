@@ -59,8 +59,8 @@ impl Game<'_> {
         if self.player.is_none() || self.title.is_some() {
             return;
         }
-        self.native_input.mappings.release_all();
-        self.keys.clear();
+        self.release_mappings_on_screen_open();
+        self.clear_device_keys();
         self.pvp.editor = Some(HudEditor {
             from_options,
             ..HudEditor::default()

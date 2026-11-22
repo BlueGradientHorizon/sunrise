@@ -354,8 +354,7 @@ impl Game<'_> {
         if hurt && self.mobs[index].health != old_health {
             self.mob_damage_event(id);
         }
-        // Warden.hurtServer: anger and target at hurt time, refused hit or not.
-        self.settle_warden_hurt(id);
+        self.settle_mob_hurt(id);
         hurt
     }
     /// Takes the absorbed tenths a projectile's hit left on the mobs; the shooter gets them

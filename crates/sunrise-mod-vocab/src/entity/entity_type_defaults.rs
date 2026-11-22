@@ -25,16 +25,9 @@ pub fn publish_entity_type_defaults(
 }
 
 /// `DefaultAttributes.getSupplier(type).getValue(attribute)`: what every host answers for
-/// `ItemsHost::entity_type_default_attribute`, the game included. None where metadata may not be
-/// read, before a catalog is published, or where the type or attribute has no value; never a
-/// panic and never an unwind.
+/// `ItemsHost::entity_type_default_attribute` and the typed reload/setup contexts. None before
+/// a catalog is published, or where the type or attribute has no value; never unwinds.
 pub fn entity_type_default_attribute(entity_type: &str, attribute: &str) -> Option<f64> {
-    if !crate::world::phase::access_allowed(
-        "entity_type_default_attribute",
-        crate::world::phase::LoadAccess::Metadata,
-    ) {
-        return None;
-    }
     let suppliers = PUBLISHED.read().ok()?.clone()?;
     lookup(&suppliers, entity_type, attribute, |id| {
         crate::content::registry_keys::resolved_entity_type_key(id).is_some()
