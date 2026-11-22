@@ -528,7 +528,7 @@ mod tests {
                 }
             );
             assert!(fake.transaction_matches(None));
-            assert_eq!(items.amount(&fake, 0), if commit { 0 } else { 1 });
+            assert_eq!(items.amount(&mut fake, 0), if commit { 0 } else { 1 });
         }
     }
 
