@@ -1237,7 +1237,8 @@ mod furnace_changed_tests {
         .into();
         mod_platform::testing::with_mods(mods, || {
             let mut resources = None;
-            let mut game = server_game(&mut resources);
+            let (_published, mut game) =
+                crate::game::game_tests::tests::isolated_server_game(&mut resources);
             let pos = (8, 64, 8);
             let state = game
                 .pack
