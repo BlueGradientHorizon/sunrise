@@ -78,14 +78,18 @@ pub trait LevelChunksBackendMut {
     /// vanilla; the call only gives up, false, if the level closes meanwhile.
     ///
     /// Like vanilla, the call places an `UNKNOWN` ticket at FULL's level on the chunk: it keeps
-    /// the chunk loaded, not ticking, through the next tick and expires at the one after
+    /// the chunk loaded, not ticking, through the next ticket purge and expires at the one after
     /// (`TicketType.UNKNOWN`'s one-tick timeout), after which the chunk unloads as any other
-    /// with no ticket. Nothing is forced or saved: to keep a chunk, use `ChunkRef::set_forced`
+    /// with no ticket. Depending on when in the tick the call runs, the first purge can come in
+    /// the same tick. Nothing is forced or saved: to keep a chunk, use `ChunkRef::set_forced`
     /// or a `TicketController`'s ticket.
     ///
-    /// Works in any open level, not only the one in place. The `chunk_load` listeners of each
-    /// chunk the call brings in run during the call, while that chunk is loaded and before
-    /// the call returns, as NeoForge's `ChunkEvent.Load` does inside `getChunk`. False for a
+    /// Works in any open level, not only the one in place. Loading a chunk of a parked level
+    /// does not put that level in place: block writes that need the level in place
+    /// (`set_block`) still answer `LevelWriteError::Unavailable` there. The `chunk_load`
+    /// listeners of each chunk the call brings in run during the call, while that chunk is
+    /// loaded and before the call returns, as NeoForge's `ChunkEvent.Load` does inside
+    /// `getChunk`. False for a
     /// stale handle, on a client, for a level the server has not opened, for a chunk past
     /// `ChunkPos.isValid` (beyond `ChunkPyramid.MAX_CHUNK_COORDINATE_VALUE` on x or z, where
     /// vanilla's block reads and writes stop, `Level.isInValidBounds`), and while the level's

@@ -3586,7 +3586,8 @@ impl ExtraCover {
     fn new(extra: &[((i32, i32), i32)]) -> Option<Self> {
         if extra.len() < 2
             || extra.iter().any(|&((x, z), r)| {
-                !(0..=64).contains(&r) || x.abs() > Self::LIMIT || z.abs() > Self::LIMIT
+                // -1: an `UNKNOWN` ticket's square of its column alone (`hold_unknown_tickets`).
+                !(-1..=64).contains(&r) || x.abs() > Self::LIMIT || z.abs() > Self::LIMIT
             })
         {
             return None;
@@ -5941,6 +5942,42 @@ mod cover_tests {
                         assert_eq!(scan.unloaded(x, z, d), grid.unloaded(x, z, d));
                         assert_eq!(scan.requested(x, z, d), grid.requested(x, z, d));
                         assert_eq!(scan.chunk_kept(x, z, d), grid.chunk_kept(x, z, d));
+                    }
+                }
+            }
+        }
+    }
+
+    /// A ticket's single column (radius -1) keeps the index beside a player's area: the
+    /// grid and the buckets answer as a scan, and the column is covered from margin one.
+    #[test]
+    fn a_single_column_ticket_keeps_the_index() {
+        let forced: HashSet<(i32, i32)> = HashSet::new();
+        for (extra, span) in [
+            (vec![((0, 0), 10), ((30, 5), -1)], 0..=40),
+            (vec![((0, 0), 10), ((5000, 5000), -1)], 4980..=5020),
+        ] {
+            let cover = ExtraCover::new(&extra).expect("an index");
+            let ranges = |cover| Ranges {
+                center: (3, -2),
+                radius: 10,
+                extra: &extra,
+                forced: &forced,
+                cover,
+                forced_cover: None,
+                band: None,
+            };
+            let (scan, index) = (ranges(None), ranges(Some(&cover)));
+            let (cx, cz) = extra[1].0;
+            assert!(!index.in_extra(cx, cz, 0) && index.in_extra(cx, cz, 1));
+            for z in span.clone() {
+                for x in span.clone() {
+                    for m in 0..=ExtraCover::REACH {
+                        assert_eq!(
+                            scan.in_extra(x, z, m),
+                            index.in_extra(x, z, m),
+                            "({x}, {z}) {m}"
+                        );
                     }
                 }
             }
