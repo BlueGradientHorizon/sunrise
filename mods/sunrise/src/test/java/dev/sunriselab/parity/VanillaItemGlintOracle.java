@@ -1152,6 +1152,41 @@ public final class VanillaItemGlintOracle {
             st.submit(ps, col, 15728880, 0, 0);
             specialFoilJson.put("ground_posed", evaluateItemSubmits(col.items, gameRenderState, computeFoilDecalPose, true));
         }
+        // Degenerate flattened compass [1, 1, 0]: non-finite inverse projection, never zeroed.
+        for (Object[] fc : new Object[][] {
+            {"flattened_gui", ItemDisplayContext.GUI},
+            {"flattened_ground", ItemDisplayContext.GROUND}
+        }) {
+            ItemStackRenderState st = new ItemStackRenderState();
+            resolver.updateForTopItem(st, glintCompass, (ItemDisplayContext) fc[1], null, null, 0);
+            RecordingCollector col = new RecordingCollector();
+            PoseStack ps = new PoseStack();
+            ps.scale(1.0F, 1.0F, 0.0F);
+            st.submit(ps, col, 15728880, 0, 0);
+            specialFoilJson.put((String) fc[0], evaluateItemSubmits(col.items, gameRenderState, computeFoilDecalPose, false));
+        }
+        // All 6 face directions (stone's 6 faces) through SPECIAL decal projection, plus
+        // scale [1e-21, 1, 1] where East/West transformed normals overflow normalization -> North.
+        for (Object[] dc : new Object[][] {
+            {"stone_six_dirs_gui", ItemDisplayContext.GUI, new float[] {1.0F, 1.0F, 1.0F}},
+            {"stone_six_dirs_ground", ItemDisplayContext.GROUND, new float[] {1.0F, 1.0F, 1.0F}},
+            {"stone_scale_1e21_ground", ItemDisplayContext.GROUND, new float[] {1e-21F, 1.0F, 1.0F}}
+        }) {
+            ItemStackRenderState st = new ItemStackRenderState();
+            resolver.updateForTopItem(st, glintStone, (ItemDisplayContext) dc[1], null, null, 0);
+            RecordingCollector col = new RecordingCollector();
+            PoseStack ps = new PoseStack();
+            float[] sc = (float[]) dc[2];
+            if (sc[0] != 1.0F || sc[1] != 1.0F || sc[2] != 1.0F) {
+                ps.scale(sc[0], sc[1], sc[2]);
+            }
+            st.submit(ps, col, 15728880, 0, 0);
+            List<CapturedItemSubmit> asSpecial = col.items.stream().map(s -> new CapturedItemSubmit(
+                s.pose(), s.displayContext(), s.lightCoords(), s.overlayCoords(),
+                s.outlineColor(), s.tintLayers(), s.quads(), ItemStackRenderState.FoilType.SPECIAL
+            )).toList();
+            specialFoilJson.put((String) dc[0], evaluateItemSubmits(asSpecial, gameRenderState, computeFoilDecalPose, false));
+        }
 
         // 8. Special entity-model items: trident (2D gui/ground, 3D hand) and plain/red shields.
         ItemStack glintTrident = new ItemStack(Items.TRIDENT);

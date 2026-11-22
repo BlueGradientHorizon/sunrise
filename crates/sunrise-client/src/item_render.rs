@@ -579,7 +579,7 @@ fn joml_transform_pos(m: &[f32; 16], p: [f32; 3]) -> [f32; 3] {
 }
 
 /// JOML 1.10.9 `Matrix4f.invertAffine` when `MatrixUtil.mulComponentWise` was not called.
-fn joml_invert_affine(m: &[f32; 16]) -> Option<[f32; 16]> {
+fn joml_invert_affine(m: &[f32; 16]) -> [f32; 16] {
     let [
         m00,
         m01,
@@ -605,9 +605,6 @@ fn joml_invert_affine(m: &[f32; 16]) -> Option<[f32; 16]> {
     let t6 = m01 * m12;
     let t7 = m02 * m11;
     let det = (t2 - t3) * m22 + (t4 - t5) * m21 + (t6 - t7) * m20;
-    if det == 0.0 || !det.is_finite() {
-        return None;
-    }
     let inv = 1.0 / det;
     let t10 = m10 * m22;
     let t11 = m10 * m21;
@@ -624,7 +621,7 @@ fn joml_invert_affine(m: &[f32; 16]) -> Option<[f32; 16]> {
     let nm30 = (t10 * m31 - t11 * m32 + t13 * m32 - t12 * m30 + t14 * m30 - t15 * m31) * inv;
     let nm31 = (t16 * m31 - t17 * m32 + t19 * m32 - t18 * m30 + t20 * m30 - t21 * m31) * inv;
     let nm32 = (t7 * m30 - t6 * m30 + t5 * m31 - t4 * m31 + t3 * m32 - t2 * m32) * inv;
-    Some([
+    [
         (t12 - t14) * inv,
         (t18 - t20) * inv,
         (t6 - t7) * inv,
@@ -641,11 +638,11 @@ fn joml_invert_affine(m: &[f32; 16]) -> Option<[f32; 16]> {
         nm31,
         nm32,
         1.0,
-    ])
+    ]
 }
 
 /// JOML 1.10.9 `Matrix4f.invertGenericThis` after `MatrixUtil.mulComponentWise` clears properties.
-fn joml_invert_generic(m: &[f32; 16]) -> Option<[f32; 16]> {
+fn joml_invert_generic(m: &[f32; 16]) -> [f32; 16] {
     let [
         m00,
         m01,
@@ -677,11 +674,8 @@ fn joml_invert_generic(m: &[f32; 16]) -> Option<[f32; 16]> {
     let k = m21 * m33 - m23 * m31;
     let l = m22 * m33 - m23 * m32;
     let det = a * l - b * k + c * j + d * i - e * h + f * g;
-    if det == 0.0 || !det.is_finite() {
-        return None;
-    }
     let inv = 1.0 / det;
-    Some([
+    [
         (m11 * l + (-m12 * k + m13 * j)) * inv,
         (-m01 * l + (m02 * k + -m03 * j)) * inv,
         (m31 * f + (-m32 * e + m33 * d)) * inv,
@@ -698,7 +692,80 @@ fn joml_invert_generic(m: &[f32; 16]) -> Option<[f32; 16]> {
         (m00 * j + (-m01 * h + m02 * g)) * inv,
         (-m30 * d + (m31 * b + -m32 * a)) * inv,
         (m20 * d + (-m21 * b + m22 * a)) * inv,
-    ])
+    ]
+}
+
+/// JOML 1.10.9 `Matrix3f.invert` (column-major).
+fn joml_mat3_invert(m: &[f32; 9]) -> [f32; 9] {
+    let [m00, m01, m02, m10, m11, m12, m20, m21, m22] = *m;
+    let a = m00 * m11 + (-m01 * m10);
+    let b = m02 * m10 + (-m00 * m12);
+    let c = m01 * m12 + (-m02 * m11);
+    let d = a * m22 + (b * m21 + c * m20);
+    let s = 1.0 / d;
+    [
+        (m11 * m22 + (-m21 * m12)) * s,
+        (m21 * m02 + (-m01 * m22)) * s,
+        c * s,
+        (m20 * m12 + (-m10 * m22)) * s,
+        (m00 * m22 + (-m20 * m02)) * s,
+        b * s,
+        (m10 * m21 + (-m20 * m11)) * s,
+        (m20 * m01 + (-m00 * m21)) * s,
+        a * s,
+    ]
+}
+
+fn joml_mat3_transpose(m: &[f32; 9]) -> [f32; 9] {
+    [m[0], m[3], m[6], m[1], m[4], m[7], m[2], m[5], m[8]]
+}
+
+fn joml_mat3_transform(m: &[f32; 9], v: [f32; 3]) -> [f32; 3] {
+    [
+        m[0] * v[0] + (m[3] * v[1] + m[6] * v[2]),
+        m[1] * v[0] + (m[4] * v[1] + m[7] * v[2]),
+        m[2] * v[0] + (m[5] * v[1] + m[8] * v[2]),
+    ]
+}
+
+/// JOML 1.10.9 `Vector3f.normalize`.
+fn joml_vec3_normalize(v: [f32; 3]) -> [f32; 3] {
+    let inv = 1.0 / (v[0] * v[0] + (v[1] * v[1] + v[2] * v[2])).sqrt();
+    [v[0] * inv, v[1] * inv, v[2] * inv]
+}
+
+/// `Direction.getApproximateNearest(float, float, float)`.
+fn direction_approximate_nearest(v: [f32; 3]) -> Direction {
+    const DIRECTIONS: [(Direction, [f32; 3]); 6] = [
+        (Direction::Down, [0.0, -1.0, 0.0]),
+        (Direction::Up, [0.0, 1.0, 0.0]),
+        (Direction::North, [0.0, 0.0, -1.0]),
+        (Direction::South, [0.0, 0.0, 1.0]),
+        (Direction::West, [-1.0, 0.0, 0.0]),
+        (Direction::East, [1.0, 0.0, 0.0]),
+    ];
+    let mut result = Direction::North;
+    // `Float.MIN_VALUE` (smallest positive subnormal f32).
+    let mut highest_dot = f32::from_bits(1);
+    for (dir, n) in DIRECTIONS {
+        let dot = v[0] * n[0] + v[1] * n[1] + v[2] * n[2];
+        if dot > highest_dot {
+            highest_dot = dot;
+            result = dir;
+        }
+    }
+    result
+}
+
+fn direction_unit_vec(d: Direction) -> [f32; 3] {
+    match d {
+        Direction::Down => [0.0, -1.0, 0.0],
+        Direction::Up => [0.0, 1.0, 0.0],
+        Direction::North => [0.0, 0.0, -1.0],
+        Direction::South => [0.0, 0.0, 1.0],
+        Direction::West => [-1.0, 0.0, 0.0],
+        Direction::East => [1.0, 0.0, 0.0],
+    }
 }
 
 fn joml_rotate_x(v: [f32; 3], angle: f32) -> [f32; 3] {
@@ -731,8 +798,16 @@ fn direction_rotation(d: Direction) -> crate::camera::joml::Quat {
     }
 }
 
-/// `ItemFeatureRenderer.computeFoilDecalPose` inverted for `SheetedDecalTextureGenerator`.
-fn special_foil_inverse(m: &[f32; 16], display: DisplayContext) -> Option<[f32; 16]> {
+/// Position and normal inverses for `VertexConsumer.putBakedQuadWithGlint` +
+/// `SheetedDecalTextureGenerator.setSheetedDecalUv`.
+struct DecalTransforms {
+    camera_inv: [f32; 16],
+    normal_mat: [f32; 9],
+    normal_inv: [f32; 9],
+}
+
+/// `ItemFeatureRenderer.computeFoilDecalPose` + `PoseStack.Pose.computeNormalMatrix` inverted.
+fn special_foil_transforms(m: &[f32; 16], display: DisplayContext) -> DecalTransforms {
     let scale = match display {
         DisplayContext::Gui => Some(0.5_f32),
         DisplayContext::FirstPersonLeftHand | DisplayContext::FirstPersonRightHand => {
@@ -740,26 +815,36 @@ fn special_foil_inverse(m: &[f32; 16], display: DisplayContext) -> Option<[f32; 
         }
         _ => None,
     };
-    match scale {
+    let camera_inv = match scale {
         Some(s) => joml_invert_generic(&m.map(|v| v * s)),
         None => joml_invert_affine(m),
+    };
+    let upper = [m[0], m[1], m[2], m[4], m[5], m[6], m[8], m[9], m[10]];
+    let normal_mat = joml_mat3_transpose(&joml_mat3_invert(&upper));
+    let normal_inv = joml_mat3_invert(&normal_mat);
+    DecalTransforms {
+        camera_inv,
+        normal_mat,
+        normal_inv,
     }
 }
 
-/// `SheetedDecalTextureGenerator.setSheetedDecalUv` for one `Foil::Special` quad (compass/clock).
+/// `VertexConsumer.putBakedQuadWithGlint` + `SheetedDecalTextureGenerator.setSheetedDecalUv`.
 fn special_foil_uv(
     m_cols: &[f32; 16],
-    inv: Option<[f32; 16]>,
+    decal: &DecalTransforms,
     positions: [[f32; 3]; 4],
     facing: Direction,
 ) -> [[f32; 2]; 4] {
-    let Some(inv) = inv else {
-        return [[0.0, 0.0]; 4];
-    };
-    let rot = direction_rotation(facing);
+    let normal = joml_vec3_normalize(joml_mat3_transform(
+        &decal.normal_mat,
+        direction_unit_vec(facing),
+    ));
+    let recovered = joml_mat3_transform(&decal.normal_inv, normal);
+    let rot = direction_rotation(direction_approximate_nearest(recovered));
     positions.map(|p| {
         let pos = joml_transform_pos(m_cols, p);
-        let wp = joml_transform_pos(&inv, pos);
+        let wp = joml_transform_pos(&decal.camera_inv, pos);
         let wp = joml_rotate_y(wp, std::f32::consts::PI);
         let wp = joml_rotate_x(wp, -std::f32::consts::FRAC_PI_2);
         let wp = rot.transform(wp);
@@ -818,13 +903,13 @@ fn submit_quads(
         (None, None)
     };
     let m_cols = (foil != Foil::None).then(|| m.to_cols_array());
-    let decal_inv = if foil == Foil::Special {
-        m_cols
-            .as_ref()
-            .and_then(|c| special_foil_inverse(c, layer.display))
-    } else {
-        None
-    };
+    let decal = (foil == Foil::Special)
+        .then(|| {
+            m_cols
+                .as_ref()
+                .map(|c| special_foil_transforms(c, layer.display))
+        })
+        .flatten();
     let mut normals = FaceNormals::new(m);
     // Quads of one layer mostly share a sprite: look its rect and its
     // translucency up once.
@@ -896,7 +981,8 @@ fn submit_quads(
             }
             Foil::Special => m_cols
                 .as_ref()
-                .map(|cols| special_foil_uv(cols, decal_inv, q.positions, q.facing)),
+                .zip(decal.as_ref())
+                .map(|(cols, d)| special_foil_uv(cols, d, q.positions, q.facing)),
         };
         sink.quad(ItemQuad {
             pos,

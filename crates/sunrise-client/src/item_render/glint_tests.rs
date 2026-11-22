@@ -1213,6 +1213,94 @@ fn translucent_standard_and_special_foil_emit_translucent_glint_overlay_with_dis
     fs::remove_dir_all(root).ok();
 }
 
+#[test]
+fn special_foil_preserves_degenerate_inverse_and_normal_overflow_direction() {
+    let root = fixture("decal-degenerate-and-normal");
+    let data = crate::test_resources::item_data(
+        &root,
+        sunrise_world::native_load_context::DataLoadOrigin::ClientPreload,
+    )
+    .unwrap();
+    let renderer = ItemRenderer::load(
+        &sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+        &data,
+    )
+    .unwrap();
+    renderer.prepare_glint_atlas(16384, (0, 2)).unwrap();
+    let sprites = dummy_hud_sprites(&["item/enchanted_book"]);
+    let book_state = |facing: Direction, display: DisplayContext| {
+        let mut st = state("minecraft:item/enchanted_book", FoilType::Special, display);
+        let LayerGeometry::Quads(baked) = &mut st.layers[0].geometry else {
+            unreachable!();
+        };
+        let mut b = (**baked).clone();
+        b.quads[0].facing = facing;
+        *baked = Arc::new(b);
+        st
+    };
+
+    // Flattened [1, 1, 0] preserves non-finite inverse projection instead of returning [0, 0].
+    for display in [DisplayContext::Gui, DisplayContext::Ground] {
+        let mut quads = Vec::new();
+        book_state(Direction::South, display).submit(
+            &renderer,
+            &sprites,
+            &NoHost,
+            Mat4::from_scale(Vec3::new(1.0, 1.0, 0.0)),
+            &mut quads,
+        );
+        assert_eq!(quads.len(), 1);
+        let uv3 = quads[0].gui_glint_uv.unwrap();
+        assert!(
+            uv3.iter().all(|[u, v]| !u.is_finite() && !v.is_finite()),
+            "{display:?} flattened [1, 1, 0] must preserve non-finite UV3, got {uv3:?}"
+        );
+    }
+
+    // East-facing quad at scale [1e-21, 1, 1]: transformed normal overflows normalization to
+    // (0, 0, 0), so `Direction.getApproximateNearest` selects North instead of East.
+    let overflow_scale = Mat4::from_scale(Vec3::new(1e-21, 1.0, 1.0));
+    let mut east_quads = Vec::new();
+    book_state(Direction::East, DisplayContext::Ground).submit(
+        &renderer,
+        &sprites,
+        &NoHost,
+        overflow_scale,
+        &mut east_quads,
+    );
+    let mut north_quads = Vec::new();
+    book_state(Direction::North, DisplayContext::Ground).submit(
+        &renderer,
+        &sprites,
+        &NoHost,
+        overflow_scale,
+        &mut north_quads,
+    );
+    let mut east_unscaled = Vec::new();
+    book_state(Direction::East, DisplayContext::Ground).submit(
+        &renderer,
+        &sprites,
+        &NoHost,
+        Mat4::IDENTITY,
+        &mut east_unscaled,
+    );
+    let east_uv = east_quads[0].gui_glint_uv.unwrap();
+    let north_uv = north_quads[0].gui_glint_uv.unwrap();
+    let unscaled_east_uv = east_unscaled[0].gui_glint_uv.unwrap();
+    assert_eq!(
+        east_uv.map(|p| p.map(f32::to_bits)),
+        north_uv.map(|p| p.map(f32::to_bits)),
+        "east quad at scale [1e-21, 1, 1] must match North fallback"
+    );
+    assert_ne!(
+        east_uv.map(|p| p.map(f32::to_bits)),
+        unscaled_east_uv.map(|p| p.map(f32::to_bits)),
+        "normal-overflow fallback must differ from unscaled East projection"
+    );
+
+    fs::remove_dir_all(root).ok();
+}
+
 fn glint_witness_26_3() -> Value {
     let path = std::env::var("SUNRISE_ITEM_GLINT_WITNESS")
         .expect("SUNRISE_ITEM_GLINT_WITNESS must be set (run via tools/test_glint_parity.py)");
@@ -1803,6 +1891,117 @@ fn compass_special_foil_uses_decal_uv_26_3() {
                 expected_quads,
                 key,
                 &format!("26.3 compass {case_key} {key}"),
+            );
+        }
+    }
+
+    // Flattened compass at [1, 1, 0]: non-finite UV3 / glint UV matching vanilla (no zero fallback, no panic).
+    let flat_pose = Mat4::from_scale(Vec3::new(1.0, 1.0, 0.0));
+    for (case_key, ctx) in [
+        ("flattened_gui", DisplayContext::Gui),
+        ("flattened_ground", DisplayContext::Ground),
+    ] {
+        let expected_quads = witness["special_foil"][case_key]["quads"]
+            .as_array()
+            .unwrap();
+        let state = renderer.resolve(&stack, ctx, None, None, 0, &NoEnv);
+        let mut out = Vec::new();
+        state.submit(
+            &renderer,
+            &sprites,
+            &NoHost,
+            flat_pose,
+            &mut WorldSink {
+                out: &mut out,
+                light: 0xF0F0,
+                lights: None,
+                glint: Some(Glint {
+                    millis: 123_456,
+                    speed: 0.5,
+                    alpha: 0.75,
+                    scale: 8.0,
+                }),
+                tier: 0,
+            },
+        );
+        assert_eq!(out.len(), expected_quads.len() * 4, "{case_key} count");
+        assert!(
+            expected_quads.iter().all(|w| {
+                parse_quad_uv_bits(&w["uv3_bits"])
+                    .iter()
+                    .all(|&[u, v]| !f32::from_bits(u).is_finite() && !f32::from_bits(v).is_finite())
+            }),
+            "witness {case_key} expected non-finite UV3"
+        );
+        assert!(
+            out.iter()
+                .all(|v| !v.glint_uv[0].is_finite() && !v.glint_uv[1].is_finite()),
+            "{case_key} must emit non-finite glint UVs"
+        );
+    }
+
+    // All 6 face directions (Down, Up, North, South, West, East) via stone's 6 faces under
+    // `FoilType::Special`, plus `[1e-21, 1, 1]` normal overflow selecting North for East/West.
+    let mut stone_stack = StackView::new("minecraft:stone", 1);
+    stone_stack.patch.insert(
+        "minecraft:enchantment_glint_override".into(),
+        Some(Value::Bool(true)),
+    );
+    let stone_sprites = dummy_hud_sprites(&["block/stone"]);
+    for (case_key, ctx, pose) in [
+        ("stone_six_dirs_gui", DisplayContext::Gui, Mat4::IDENTITY),
+        (
+            "stone_six_dirs_ground",
+            DisplayContext::Ground,
+            Mat4::IDENTITY,
+        ),
+        (
+            "stone_scale_1e21_ground",
+            DisplayContext::Ground,
+            Mat4::from_scale(Vec3::new(1e-21, 1.0, 1.0)),
+        ),
+    ] {
+        let expected_quads = witness["special_foil"][case_key]["quads"]
+            .as_array()
+            .unwrap();
+        assert_eq!(expected_quads.len(), 6, "{case_key} all 6 faces");
+        let mut state = renderer.resolve(&stone_stack, ctx, None, None, 0, &NoEnv);
+        for layer in &mut state.layers {
+            layer.foil = FoilType::Special;
+        }
+        let mut out = Vec::new();
+        let mut sink = PairedWorldSink {
+            world: WorldSink {
+                out: &mut out,
+                light: 0xF0F0,
+                lights: None,
+                glint: Some(Glint {
+                    millis: 123_456,
+                    speed: 0.5,
+                    alpha: 0.75,
+                    scale: 8.0,
+                }),
+                tier: 0,
+            },
+            quads: Vec::new(),
+        };
+        state.submit(&renderer, &stone_sprites, &NoHost, pose, &mut sink);
+        let PairedWorldSink { quads, .. } = sink;
+        assert_eq!(quads.len(), 6);
+        let got_glint = vertex_quad_glint_bits(&out);
+        for (q, want_quad) in expected_quads.iter().enumerate() {
+            let want_uv3 = parse_quad_uv_bits(&want_quad["uv3_bits"]);
+            let got_uv3 = quads[q].gui_glint_uv.unwrap().map(|p| p.map(f32::to_bits));
+            assert_eq!(
+                got_uv3, want_uv3,
+                "26.3 {case_key} face[{q}] ({}) uv3",
+                want_quad["facing"]
+            );
+            let want_glint = parse_quad_uv_bits(&want_quad["glint_uv_t123456_bits"]);
+            assert_eq!(
+                got_glint[q], want_glint,
+                "26.3 {case_key} face[{q}] ({}) glint_uv",
+                want_quad["facing"]
             );
         }
     }
