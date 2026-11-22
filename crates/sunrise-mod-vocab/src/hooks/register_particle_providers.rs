@@ -6,11 +6,12 @@ pub trait Hooks {
     /// options and ticks its live particles in one batch. Later registration for the same type
     /// replaces the previous provider. Registration runs once before resources load; each reload
     /// rebinds the sprite sets and discards live provider particles.
+    /// If this listener panics or a phase call is refused, none of its registrations take effect.
     #[notes = r#"## Particle providers
 
 Register a common `ParticleType<T>` in `Hooks::register`, supplying its map and stream codecs.
 `Hooks::register_particle_providers` binds it on the logical client with
-`event.providers.register_sprite_set(ty, Arc::new(provider))`. The matching sprite list is
+`providers.register_sprite_set(ty, Arc::new(provider))`. The matching sprite list is
 `assets/<namespace>/particles/<path>.json`. Spawn using `ty.options(value)`; a unit type uses
 `ParticleMapCodec::unit()`, `ParticleStreamCodec::wire()` and `ty.options(())`.
 
@@ -35,11 +36,14 @@ what the render level stores and the sky layer always reads zero in a dimension 
 A code-defined type without its provider or sprite set draws nothing. Asset-only particles
 keep declarative motion. Reload drops the previous sprite set's live provider particles."#]
     #[hook(
+        receiver = "associated",
+        dispatch = "flat",
         side = "client",
+        version = 3,
         contract = "listen",
+        staged_surface = "providers",
         context = "registration",
-        version = 2,
         neoforge = "RegisterParticleProvidersEvent"
     )]
-    fn register_particle_providers();
+    fn register_particle_providers(providers: &mut dyn ParticleProviders);
 }

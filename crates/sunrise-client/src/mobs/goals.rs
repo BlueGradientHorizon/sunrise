@@ -70,7 +70,7 @@ pub trait Goal: std::fmt::Debug + Send + Sync {
         &mut self,
         mob: &mut Mob,
         cx: &mut Cx,
-    ) -> Option<super::living::TravelTrample> {
+    ) -> Option<super::living::TravelPause> {
         self.tick(mob, cx);
         None
     }
@@ -123,7 +123,7 @@ pub struct GoalSelector {
 }
 #[derive(Debug)]
 pub(super) struct GoalTrample {
-    pub(super) movement: super::living::TravelTrample,
+    pub(super) movement: super::living::TravelPause,
     slot: usize,
     force: bool,
 }
@@ -273,7 +273,9 @@ impl GoalSelector {
         cx: &mut Cx,
         paused: GoalTrample,
     ) -> Option<GoalTrample> {
-        paused.movement.resume(m, cx.w, cx.level, cx.events);
+        if let Err(movement) = paused.movement.resume(m, cx.w, cx.level, cx.events) {
+            return Some(GoalTrample { movement, ..paused });
+        }
         // An owning-host listener can remove or shift the running goal. Only
         // the still-resident goal holding this pause can finish its path update.
         let next = self

@@ -227,10 +227,9 @@ pub fn bind_particle_provider<T: 'static>(
     provider: Arc<dyn ParticleProvider<T>>,
 ) -> Arc<dyn BoundParticleProvider> {
     let owner = crate::content::crash::current_native_mod().unwrap_or("unowned provider");
-    let index = crate::runtime::mod_index(owner).unwrap_or(usize::MAX);
     Arc::new(BoundProvider {
         provider,
-        callback: ParticleCallback::new(owner, index),
+        callback: ParticleCallback::new(crate::callback_owner::CallbackOwner::for_mod(owner)),
     })
 }
 
@@ -239,19 +238,51 @@ pub fn bind_particle_provider<T: 'static>(
 #[derive(Default)]
 // exhaustive: its field is private; the game builds it
 pub struct ParticleProviderRegistry {
-    providers: HashMap<ParticleKey, Arc<dyn BoundParticleProvider>>,
+    providers: crate::runtime::RegistrationMap<Arc<dyn BoundParticleProvider>, u32>,
+}
+
+const REGISTRATION: (crate::generated::HookId, &str) = (
+    crate::generated::HookId::RegisterParticleProviders,
+    "register_particle_providers",
+);
+
+#[derive(Default)]
+struct ProviderEdits(crate::runtime::RegistrationEdits<Arc<dyn BoundParticleProvider>, u32>);
+
+impl ParticleProviders for ProviderEdits {
+    fn add_sprite_set(&mut self, key: ParticleKey, provider: Arc<dyn BoundParticleProvider>) {
+        self.0.insert(key.0, provider);
+    }
 }
 
 impl ParticleProviders for ParticleProviderRegistry {
     fn add_sprite_set(&mut self, key: ParticleKey, provider: Arc<dyn BoundParticleProvider>) {
-        self.providers.insert(key, provider);
+        self.providers
+            .finish(REGISTRATION, true, [(key.0, provider)]);
     }
 }
 
 impl ParticleProviderRegistry {
-    /// Each type's provider, the last registration for a type winning.
+    /// Apply the current listener's provider edits only if its registration succeeds.
+    // hidden: the engine stages one listener at a time; mods receive only the registrar trait.
+    #[doc(hidden)]
+    pub fn register_listener(
+        &mut self,
+        listen: &mut dyn FnMut(&mut dyn ParticleProviders) -> bool,
+    ) {
+        let mut edits = ProviderEdits::default();
+        let publish = listen(&mut edits);
+        self.providers
+            .finish(REGISTRATION, publish, edits.0.ordered());
+    }
+
+    /// Each type's provider, the last successful registration for a type winning.
     pub fn into_providers(self) -> HashMap<ParticleKey, Arc<dyn BoundParticleProvider>> {
         self.providers
+            .into_values()
+            .into_iter()
+            .map(|(slot, provider)| (ParticleKey(slot), provider))
+            .collect()
     }
 }
 
@@ -296,7 +327,7 @@ mod tests {
     }
 
     #[test]
-    fn a_later_registration_for_a_type_replaces_the_earlier_one() {
+    fn only_a_successful_later_registration_replaces_a_provider() {
         let mut registry = ParticleProviderRegistry::default();
         let a = ParticleType::new(ParticleKey(0));
         let b = ParticleType::new(ParticleKey(1));
@@ -304,6 +335,10 @@ mod tests {
         event.register_sprite_set(a, Arc::new(Drift(1.0)));
         event.register_sprite_set(b, Arc::new(Drift(2.0)));
         event.register_sprite_set(a, Arc::new(Drift(3.0)));
+        registry.register_listener(&mut |providers| {
+            providers.register_sprite_set(a, Arc::new(Drift(4.0)));
+            false
+        });
         let providers = registry.into_providers();
         assert_eq!(providers.len(), 2);
         let mut batch_a = particle_batch_from_vec(vec![particle()]);

@@ -48,6 +48,8 @@ A code-defined particle has a common `ParticleType<T>` and a client sprite-set p
 Register the type in `Hooks::register`; neither the client atlas nor its JSON is needed on a
 server. Register the provider in `Hooks::register_particle_providers` on the client. Its sprite
 list is `assets/<namespace>/particles/<path>.json`. Missing providers or sprite sets draw nothing.
+The last successful registration for a type wins;
+[a failed registration callback](../../concepts/load-phases.md#registration-and-setup) leaves the earlier provider in place.
 
 For example, a rising particle with a signed `lift` option can use two forms of the same value:
 SNBT fields for structured data and `/particle example:riser{lift:5}`, and a derived `Wire` value
@@ -99,7 +101,7 @@ impl ParticleProvider<Rise> for Riser {
 }
 
 // In Hooks::register_particle_providers, using the retained `riser` type:
-event.providers.register_sprite_set(riser, Arc::new(Riser));
+providers.register_sprite_set(riser, Arc::new(Riser));
 // From a client hook:
 host.add_particle(&riser.options(Rise { lift: 5 }), at, [0.0; 3]);
 ```
@@ -136,6 +138,18 @@ reads full sky where present and no block light; below a loaded column both laye
 for padding sections and unloaded borders is tracked in [#2761](https://github.com/sunrise-org/sunrise/issues/2761).
 
 Dispatch reuses its batch storage once it has enough capacity.
+
+### Particle render groups
+
+In `Hooks::register_particle_groups`, call `event.register(id, factory)` with an
+`Identifier` having a nonempty namespace and path (any namespace, including `minecraft`,
+is allowed) and a factory returning `ParticleGroup { blend, particles }`. The hook runs
+once at client startup; each accepted factory runs once per particle engine construction.
+Duplicate IDs fail client startup without invoking any factory (matching NeoForge
+`RegisterParticleGroupsEvent`). Reloading resources re-associates sprite sets with the
+groups already built; it does not call factories again. Provider registration is separate:
+a group chooses the draw layer and quota for the listed particle types, not how those
+particles move.
 
 ## Client fireworks
 

@@ -47,14 +47,17 @@ struct Press;
 impl BlockPart for Press {}
 #[mod_api::sunrise_part]
 impl BlockEntityPart for Press {
-    fn block_entity_tick(&self, host: &mut dyn ServerHost, event: &mut BlockEntityTickEvent<'_>) {
-        let level = host.level(host.dimension()).unwrap();
+    fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>) {
+        let (level, pos, entity) = event
+            .subject
+            .with_view(|entity| (entity.level(), entity.position(), entity.handle()))
+            .unwrap();
+        let host = event.subject.host();
         assert_eq!(
-            host.block_entity(level, event.pos),
-            None,
-            "out for its tick"
+            host.block_entity(level, pos),
+            Some(entity),
+            "resident during its tick"
         );
-        let entity = host.block_entity_identity(level, event.pos).unwrap();
         Press::edit_state(host, entity, |_, ticks| *ticks += 1).unwrap();
     }
 }
@@ -74,6 +77,14 @@ impl Hooks for StateMod {
             .blocks(&["part_state:press"])
             .build();
         r.block_entity_part_with_state(&kind, Press).unwrap();
+        let press = r.block_key("part_state:press");
+        r.block_container(
+            &press,
+            mod_api::ModContainer {
+                slots: 1,
+                ..Default::default()
+            },
+        );
     }
     fn blocks(&self, _: &mod_api::RegistrationContext, e: &mut mod_api::BlocksEvent<'_>) {
         e.register(mod_api::Block::new("part_state:press", "minecraft:barrel").with_item(false))
@@ -126,22 +137,10 @@ fn press(game: &mut Game<'_>, pos: (i32, i32, i32)) -> BlockEntityRef {
 }
 
 fn press_with_item_slot(game: &mut Game<'_>, pos: (i32, i32, i32)) -> BlockEntityRef {
-    use sunrise_client::containers::ModContainer;
-
-    let entity = press(game, pos);
-    let state = game.world.block(pos.0, pos.1, pos.2);
-    game.world.block_entities.set_mod_containers(
-        [(
-            state.0,
-            Arc::new(ModContainer {
-                slots: 1,
-                ..Default::default()
-            }),
-        )]
-        .into_iter()
-        .collect(),
-    );
-    entity
+    // The save fixture never runs the block-entity tick that binds these declarations.
+    let containers = game.native_containers();
+    game.world.block_entities.set_mod_containers(containers);
+    press(game, pos)
 }
 
 fn stored(game: &mut Game<'_>, entity: BlockEntityRef) -> Option<i32> {
@@ -199,9 +198,12 @@ fn part_state_is_per_block_entity_through_ticks_transactions_and_replacement() {
         // An inner edit commits into the outer transaction, which then aborts: the value and
         // the chunk's unsaved mark go back, so a chunk that was clean is clean again.
         game.world.modified.clear();
-        let aborted: Result<(), ()> = (game as &mut dyn ServerHost).transaction(|host, _| {
-            assert_eq!(Press::edit_state(host, a, |_, n| *n = 11), Ok(()));
-            assert_eq!(Press::state(host, a), Ok(11), "later steps see it");
+        let aborted: Result<(), ()> = game.transaction(|game, _| {
+            assert_eq!(Press::edit_state(game, a, |_, n| *n = 11), Ok(()));
+            assert_eq!(Press::state(game, a), Ok(11), "later steps see it");
+            game.with_level(|_, level, _| {
+                assert_eq!(Press::state_existing_in(level, a), Ok(Some(11)));
+            });
             assert!(
                 !sunrise_client::join_seq::visibility::passes_settled(),
                 "no save while it is tentative"
@@ -391,7 +393,12 @@ fn item_slot_writes_save_but_menu_data_is_transient() {
         assert_eq!(entity.set_data_slots(game, vec![23]), Ok(true));
         assert_eq!(entity.set_data_slot(game, 0, 42), Ok(true));
         assert_eq!(entity.data_slots(game), Some(vec![42]));
-        assert!(game.world.modified.is_empty(), "menu data is not saved");
+        assert!(
+            !game.world.modified.contains(&(0, 0)),
+            "transient menu data edits must not mark the chunk unsaved"
+        );
+        game.save_level(true).unwrap();
+        assert!(game.world.modified.is_empty());
 
         // Both growing a lazy slot list and editing an existing slot must save
         // without an explicit notification, a ticker, or another dirty write.
@@ -498,7 +505,10 @@ fn indexed(game: &Game<'_>, entity: BlockEntityRef) -> Option<i32> {
     let host: &dyn mod_api::Host = game;
     host.query(&PROGRESS)
         .unwrap()
-        .get(mod_api::AttachmentHolder::BlockEntity(entity))
+        .get(
+            game.attachment_frame_borrow(),
+            mod_api::AttachmentHolder::BlockEntity(entity),
+        )
         .ok()
         .flatten()
 }
@@ -692,7 +702,7 @@ fn part_state_counts_ticks_across_chunk_reload() {
     ) {
         return;
     }
-    sunrise_guest_stack::run_on_guest_stack(|| {
+    crate::game::native_entity_refs::tests::run_with_game_stack(|| {
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
             "part_state_fixture",
             Box::new(NativeFixture),

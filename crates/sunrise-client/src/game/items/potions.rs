@@ -4,17 +4,19 @@
 //! effect attribute modifiers and the HUD effect icons (`Hud.extractEffects`).
 use super::{
     Game, Screen,
+    commands::Target,
     dragon::{Breath, FightPlayer, FightWho},
     item_draw::owner_at,
+    living_attributes::AttributeWrite,
     splash_water::thrown_block_hit,
 };
 use mod_api::{EffectApplicable, EffectTickChange, EntityRef, LivingRef, PlayerFood};
 use sunrise_assets::item_model::DisplayContext;
-use sunrise_client::health::{Attack, DamageLevel};
+use sunrise_client::health::Attack;
 use sunrise_client::{
     block_entity_render::vertex_light,
     brewing,
-    effects::{EffectAction, EffectInstance, OmenTick, PlayerEffects},
+    effects::{EffectAction, EffectInstance, OmenTick, PlayerEffects, effect_modifier},
     hud::HudBatch,
     hud_layout, hud_overlays, inventory_effects,
     items::ItemStack,
@@ -634,11 +636,10 @@ pub(super) fn thrown_projectile(stack: ItemStack, position: Vec3, by_player: boo
 /// a guest keeps their own while the host's are in `PotionState`.
 #[derive(Default)]
 pub(super) struct BodyPotions {
-    pub(super) applied: Vec<(&'static str, &'static str, f64, &'static str)>,
     protection_for: Option<(u64, Vec<Option<ItemStack>>)>,
     enchant_modifiers: Vec<(String, String, f64, String)>,
 }
-/// Effects, thrown potions and the attribute modifiers last applied.
+/// Effects, thrown potions and the cached armor and enchantment modifiers.
 #[derive(Default)]
 pub(super) struct PotionState {
     pub(super) effects: PlayerEffects,
@@ -647,7 +648,6 @@ pub(super) struct PotionState {
     pub(super) thrown: Vec<ThrownPotion>,
     /// The area effect clouds a server tracks (game/network/remote_projectiles.rs).
     pub(super) clouds: Vec<super::remote_projectiles::RemoteCloud>,
-    pub(super) applied: Vec<(&'static str, &'static str, f64, &'static str)>,
     /// Armor the protection table was computed for.
     protection_for: Option<(u64, Vec<Option<ItemStack>>)>,
 
@@ -660,7 +660,6 @@ impl PotionState {
     /// with a guest's, around `as_guest`. Potions in flight stay.
     pub(super) fn swap_player(&mut self, effects: &mut PlayerEffects, body: &mut BodyPotions) {
         std::mem::swap(&mut self.effects, effects);
-        std::mem::swap(&mut self.applied, &mut body.applied);
         std::mem::swap(&mut self.protection_for, &mut body.protection_for);
         std::mem::swap(&mut self.enchant_modifiers, &mut body.enchant_modifiers);
     }
@@ -1225,6 +1224,10 @@ impl Game<'_> {
                 food.saturation = (food.saturation + nutrition as f32 * saturation * 2.0)
                     .clamp(0.0, food.food as f32);
             }
+            EffectAction::Update(id, amplifier) => {
+                self.update_player_effect_attributes(id, amplifier, true)
+            }
+            EffectAction::Remove(id) => self.remove_player_effect_attributes(&[id]),
         }
     }
     /// The local player's effects (`tick_mob_effects`), then the potions
@@ -1265,6 +1268,7 @@ impl Game<'_> {
             let ids: Vec<&'static str> = self.potions.effects.list.iter().map(|e| e.id).collect();
             self.potions.effects.clear();
             if !ids.is_empty() {
+                self.remove_player_effect_attributes(&ids);
                 self.effects_on_death(&ids, bounds, self.player_silent(), None, None);
             }
         }
@@ -1400,7 +1404,7 @@ impl Game<'_> {
         {
             let mut effect = EffectInstance::new("water_breathing", 200, 0);
             effect.visible = false;
-            self.potions.effects.add(effect);
+            self.apply_player_effect(effect);
         }
     }
     /// A client's own effects (`LivingEntity.tickEffects` on the client,
@@ -1462,8 +1466,7 @@ impl Game<'_> {
         let id = effect.id;
         let amp = effect.amplifier;
         let new = self.potions.effects.get(id).is_none();
-        let changed = self.potions.effects.add(effect);
-        self.apply_effect_status();
+        let changed = self.apply_player_effect(effect);
         // MobEffect.onEffectAdded: an omen's sound when it is new, at the
         // player's feet (#11373).
         if new
@@ -1486,9 +1489,23 @@ impl Game<'_> {
         }
         changed
     }
+    /// Store an admitted effect. Only a real update replaces its modifier and
+    /// refreshes pending attributes; an add writes the modifier but defers refresh.
+    pub(in crate::game) fn apply_player_effect(&mut self, effect: EffectInstance) -> bool {
+        let id = effect.id;
+        let new = self.potions.effects.get(id).is_none();
+        let changed = self.potions.effects.add(effect);
+        if changed {
+            let amplifier = self.potions.effects.get(id).unwrap().amplifier;
+            self.update_player_effect_attributes(id, amplifier, !new);
+            self.apply_effect_status();
+        }
+        changed
+    }
+
     /// Removes one effect, or all effects, and refreshes the player's derived state.
     pub(super) fn remove_player_effects(&mut self, effect: Option<usize>) -> bool {
-        let before = self.potions.effects.list.len();
+        let mut removed = Vec::new();
         let mut index = 0;
         while index < self.potions.effects.list.len() {
             let current = &self.potions.effects.list[index];
@@ -1517,14 +1534,14 @@ impl Game<'_> {
             if cancel {
                 index += 1;
             } else {
-                self.potions.effects.list.remove(index);
+                removed.push(self.potions.effects.list.remove(index).id);
             }
         }
-        let changed = self.potions.effects.list.len() != before;
-        if changed {
+        if !removed.is_empty() {
+            self.remove_player_effect_attributes(&removed);
             self.apply_effect_status();
         }
-        changed
+        !removed.is_empty()
     }
     /// `LivingEntity.addEffect` for a content mod's effect: its
     /// `onEffectAdded` when it is new, then its `onEffectStarted`, on a
@@ -1619,46 +1636,57 @@ impl Game<'_> {
         );
         (keep, changes)
     }
-    /// The effects' attribute modifiers, armor protection and status flags
-    /// on `self.player`.
+    /// Effects' armor protection and status flags on the current player.
     pub(super) fn apply_effect_status(&mut self) {
-        // LivingEntity.onEffectAdded, onEffectUpdated and onEffectsRemoved
-        // change the attributes on a server only. A server's client has the
-        // modifiers its ClientboundUpdateAttributesPacket sends, which comes a
-        // tick after the effect's own packet when the effect starts or ends in
-        // the player's tick (ServerPlayer.doTick runs after the tick's
-        // sendDirtyEntityData). Its own would slow it a tick before the
-        // server's player when Speed runs out (#12040).
-        if self.remote.is_some() {
-            self.potions.applied.clear();
-        }
-        let modifiers = self.potions.effects.modifiers();
-        if self.remote.is_none()
-            && modifiers != self.potions.applied
-            && let Some(p) = self.player.as_mut()
-        {
-            for (attr, id, _, op) in &self.potions.applied {
-                let _ = p.set_modifier_unclamped(attr, id, 0.0, op, false);
-            }
-            for (attr, id, amount, op) in &modifiers {
-                let _ = p.set_modifier_unclamped(attr, id, *amount, op, true);
-            }
-            // onAttributeUpdated, once the batch settled: a lost health_boost.
-            let _ = p.clamp_health_to_max();
-            self.potions.applied = modifiers;
-        }
-        if let Some(p) = self.player.as_mut()
-            && self.potions.effects.amplifier("absorption").is_none()
-            && p.health.absorption() > 0.0
-        {
-            let _ = p.set_health(0.0, true);
-        }
         self.refresh_armor_protection();
         let mut status = self.potions.effects.status();
         if let Some(p) = self.player.as_mut() {
             status.protection = std::mem::take(&mut p.status.protection);
             p.status = status;
         }
+    }
+
+    /// `LivingEntity.onEffectAdded` and `onEffectUpdated`: only a server
+    /// writes the modifier. The client receives it with its attributes.
+    fn update_player_effect_attributes(&mut self, effect: &str, amplifier: i32, refresh: bool) {
+        if self.remote.is_some() {
+            return;
+        }
+        if let Some((attribute, id, amount, operation)) = effect_modifier(effect) {
+            let amount = amount * f64::from(amplifier.wrapping_add(1));
+            // MobEffect.addAttributeModifiers replaces by id and stores permanently.
+            if let Some(write) = AttributeWrite::add(id, amount, operation, true, true) {
+                self.write_attribute(Target::Player, attribute, write);
+            }
+        }
+        if refresh {
+            self.refresh_effect_attributes();
+        }
+    }
+
+    /// `LivingEntity.onEffectsRemoved`: refresh even if there was no modifier
+    /// to remove; other writes can still have attributes pending.
+    fn remove_player_effect_attributes(&mut self, effects: &[&str]) {
+        if self.remote.is_some() {
+            return;
+        }
+        for effect in effects {
+            if let Some((attribute, id, _, _)) = effect_modifier(effect) {
+                self.write_attribute(
+                    Target::Player,
+                    attribute,
+                    AttributeWrite::Remove(id.to_owned()),
+                );
+            }
+        }
+        self.refresh_effect_attributes();
+    }
+
+    fn refresh_effect_attributes(&mut self) {
+        if let Some(player) = self.player.as_mut() {
+            let _ = player.refresh_attributes();
+        }
+        self.apply_player_waypoint_updates();
     }
     /// `EnchantmentHelper.getDamageProtection` after equipment changes. This
     /// does not tick effects or clear absorption while a hit is in progress.
@@ -2765,14 +2793,15 @@ impl Game<'_> {
 impl sunrise_client::mobs::ModEffectTicks for Game<'_> {
     fn tick_mod_effect(
         &self,
-        level: &mut DamageLevel<'_>,
         effect: usize,
-        mob: &mut Mob,
+        mob: &Mob,
         tick_count: i32,
         amplifier: i32,
-    ) -> bool {
+    ) -> (bool, Vec<sunrise_client::mobs::MobEffectChange>) {
+        use sunrise_client::mobs::MobEffectChange;
+
         let Some(epoch) = self.native_lifecycle.epoch() else {
-            return true;
+            return (true, Vec::new());
         };
         let holder = LivingRef::new(EntityRef::new(epoch, mob.id));
         let (keep, changes) = self.mod_effect_tick(
@@ -2789,21 +2818,19 @@ impl sunrise_client::mobs::ModEffectTicks for Game<'_> {
                 .iter()
                 .filter_map(|effect| effect.registry_index),
         );
-        for change in changes {
-            match change {
-                EffectTickChange::Heal(amount) => mob.heal(&self.loop_context, amount),
+        let registry = &self.health_resources.damage;
+        let changes = changes
+            .into_iter()
+            .filter_map(|change| match change {
+                EffectTickChange::Heal(amount) => Some(MobEffectChange::Heal(amount)),
                 // An unregistered damage type hurts nothing.
-                EffectTickChange::Hurt(source, amount) => {
-                    let registry = &self.health_resources.damage;
-                    if registry.id(&source).is_some() {
-                        let kind = Self::damage_kind(registry, &source);
-                        mob.damage(level, amount, Damage::of(kind));
-                    }
-                }
-                _ => {}
-            }
-        }
-        keep
+                EffectTickChange::Hurt(source, amount) if registry.id(&source).is_some() => Some(
+                    MobEffectChange::Hurt(Self::damage_kind(registry, &source), amount),
+                ),
+                _ => None,
+            })
+            .collect();
+        (keep, changes)
     }
     fn effect_expired(&self, mob: u32, effect: usize, amplifier: i32, cancel: &mut bool) {
         if let Some(living) = self.effect_living_ref(Some(mob as i32))

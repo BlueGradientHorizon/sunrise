@@ -388,7 +388,7 @@ impl Peer {
     /// never a silent skip. Callers separately distinguish unrelated engine/plugin channels.
     pub fn receiver(&self, phase: Phase, id: &str) -> Result<&PayloadReceiver, PayloadSendError> {
         match self.phases[index(phase)].get(id) {
-            Some(Some(receiver)) if receiver.enabled() => Ok(receiver),
+            Some(Some(receiver)) if receiver.owner_enabled() => Ok(receiver),
             Some(Some(_)) => Err(PayloadSendError::Disconnected),
             Some(None) => Err(PayloadSendError::WrongDirection(PayloadId(id.to_owned()))),
             None => Err(self.missing(phase, id)),

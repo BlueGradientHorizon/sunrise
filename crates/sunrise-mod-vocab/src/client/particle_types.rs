@@ -1,12 +1,8 @@
 //! Typed particle registration and the shared structured/stream dispatch.
+use crate::callback_owner::CallbackOwner;
 use crate::wire::{Reader, Wire, Writer};
 use crate::{Compound, FluidKey, Identifier, ItemKey, ParticleKey, ParticleOptions};
-use std::{
-    any::Any,
-    fmt,
-    marker::PhantomData,
-    sync::{Arc, atomic::AtomicBool},
-};
+use std::{any::Any, fmt, marker::PhantomData, sync::Arc};
 use sunrise_mod_runtime::registry_keys::Names;
 
 /// The load-stable identity of a registered particle type and its Rust options type.
@@ -244,19 +240,11 @@ pub trait ParticleCodec: Send + Sync {
 }
 
 /// Attribution and the existing retained-callback failure policy for a codec or factory.
-pub(super) struct ParticleCallback {
-    owner: &'static str,
-    index: usize,
-    panicked: AtomicBool,
-}
+pub(super) struct ParticleCallback(CallbackOwner);
 
 impl ParticleCallback {
-    pub(super) fn new(owner: &'static str, index: usize) -> Self {
-        Self {
-            owner,
-            index,
-            panicked: AtomicBool::new(false),
-        }
+    pub(super) fn new(owner: CallbackOwner) -> Self {
+        Self(owner)
     }
 
     pub(super) fn call<T>(
@@ -265,20 +253,14 @@ impl ParticleCallback {
         operation: &'static str,
         invoke: impl FnOnce() -> Result<T, String>,
     ) -> Result<T, String> {
-        crate::callback_owner::call(
-            self.owner,
-            self.index,
-            &self.panicked,
-            "particle",
-            operation,
-            invoke,
-        )
-        .and_then(|value| value)
-        .map_err(|error| {
-            let name =
-                super::particle_keys::particle_name(key).unwrap_or("unresolved particle type");
-            format!("mod {}, {name}: {error}", self.owner)
-        })
+        self.0
+            .call("particle", operation, invoke)
+            .and_then(|value| value)
+            .map_err(|error| {
+                let name =
+                    super::particle_keys::particle_name(key).unwrap_or("unresolved particle type");
+                format!("{name}: {error}")
+            })
     }
 }
 
@@ -295,7 +277,7 @@ pub fn own_particle_codec(
 ) -> Arc<dyn ParticleCodec> {
     Arc::new(OwnedParticleCodec {
         codec,
-        callback: ParticleCallback::new(owner, index),
+        callback: ParticleCallback::new(CallbackOwner::for_index(owner, index)),
     })
 }
 

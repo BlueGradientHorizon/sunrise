@@ -54,15 +54,16 @@ irm https://raw.githubusercontent.com/sunrise-org/sunrise/main/packaging/server/
 
 The script picks the machine's x64 or ARM64 archive, including when PowerShell runs under x64 emulation. It downloads
 the current Sunrise Nightly from GitHub, or the release `--version <tag>` names (Windows: `-Version <tag>`): a stable
-release's tag, such as `26.3-0.1.0`, puts the server on that stable line, which its updates then follow. It checks it against the release's signature when OpenSSL 3 is installed (on Windows, Git
-for Windows includes it), else against the SHA-256 GitHub publishes, and never asks for sudo or administrator rights. It installs:
+release's tag, such as `26.3-0.1.0`, puts the server on that stable line, which its updates then follow. It checks it
+against the release's signature with a verifier the script pins (it refuses the install if anything doesn't match),
+and never asks for sudo or administrator rights. It installs:
 
 - the release in `~/.local/share/sunrise/releases/<version>` (Windows: `%LOCALAPPDATA%\Sunrise`), with
   `current` pointing at the one in use;
 - `sunrise-server` and `sunrise-prepare` in `~/.local/bin` (Windows: added to your PATH);
 - a `game-files` folder for the files you prepare, kept across updates.
 
-Options: `--version <tag>`, `--dir FOLDER`, `--bin FOLDER` (Windows: `-Version`, `-Dir`). Other systems,
+Options: `--version <tag>`, `--dir FOLDER`, `--bin FOLDER` (Windows: `-Version <tag>`, `-Dir FOLDER`). Other systems,
 such as Linux on ARM, build from source: `cargo build --release -p sunrise-game --bin sunrise-client -p
 sunrise-server` and keep both programs in one folder.
 
@@ -797,12 +798,12 @@ environment still applies.
 A mod can declare a payload channel as droppable (voice chat, live data): under congestion the game drops
 those sends, instead of letting them queue behind chunks and arrive late ([the modding
 book](modding/src/how-to/client/networking.md)). Under `[engine]`, `droppable_clientbound` is the bytes a
-second of them the server sends to each player (default 262144, 256 KiB, about 45 simultaneous speakers
-of Opus voice) and `droppable_serverbound` the bytes a second it accepts from each player (default 16384,
-16 KiB, one microphone with room to spare). Raise them for a busy voice server; `0` turns droppable
-delivery off in that direction. A player over the limit loses those sends, which are counted, and is not
-kicked; nothing else on the connection is ever dropped. Vanilla's `rate-limit` (off by default) still
-counts droppable payloads as packets. It applies at the next start.
+second of them the server sends to each player (default 262144, 256 KiB) and `droppable_serverbound`
+the bytes a second it accepts from each player (default 16384, 16 KiB). For voice, tune these budgets
+for the traffic your mod's codec and relay produce; `0` turns droppable delivery off in that direction.
+A player over the limit loses those sends, which are counted, and is not kicked; nothing else on the
+connection is ever dropped. Vanilla's `rate-limit` (off by default) still counts droppable payloads as
+packets. Changes to the budgets apply at the next start.
 
 ## When something goes wrong
 

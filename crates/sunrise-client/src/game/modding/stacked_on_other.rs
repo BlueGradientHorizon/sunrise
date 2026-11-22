@@ -20,9 +20,7 @@ use std::{
     cell::{Cell, RefCell},
     rc::Rc,
 };
-use sunrise_client::menu::{
-    Env, Menu, PlanningRules, RuleAnswers, StackedClick, StackedOutcome, StoredRules,
-};
+use sunrise_client::menu::{Env, StackedClick, StackedOutcome};
 
 /// What a pickup click did: it ran, or the decision refused it and nothing changed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -138,7 +136,6 @@ impl Game<'_> {
         route: MenuId,
         frozen: StackedClick,
         current: impl Fn(&Game<'_>) -> Option<StackedClick> + 'p,
-        plan: impl FnOnce(&mut Game<'_>, &StackedOutcome),
         perform: impl FnOnce(&mut Game<'_>, Option<&StackedOutcome>) + 'p,
     ) -> Pickup {
         if !Self::stacked_listened() {
@@ -184,7 +181,7 @@ impl Game<'_> {
                 &mut host,
                 &target,
                 |_, _| PickupPlan,
-                move |host| fire(host.game, &fired, plan),
+                move |host| fire(host.game, &fired),
             )
         };
         // A replacement the slot's rules refused is undone with everything the listeners wrote.
@@ -216,11 +213,7 @@ impl Game<'_> {
 
 /// Fire the hook with the frozen stacks and validate what it answers. The answer is kept for the
 /// click; a bad one refuses it.
-fn fire(
-    game: &mut Game<'_>,
-    shared: &Shared<'_>,
-    plan: impl FnOnce(&mut Game<'_>, &StackedOutcome),
-) -> Reply {
+fn fire(game: &mut Game<'_>, shared: &Shared<'_>) -> Reply {
     let frozen = &shared.frozen;
     let (Ok(carried), Ok(clicked)) = (frozen.carried.try_into_api(), frozen.clicked.try_into_api())
     else {
@@ -241,12 +234,6 @@ fn fire(
     game.native_item_stacked_on_other(&event, &mut result, &mut canceled);
     match answer(game, canceled, &result) {
         Ok(answer) => {
-            // Ask each rule with the exact stack and context the accepted click would use.
-            // Model it on a probe before deciding whether any write can be applied.
-            plan(game, &answer);
-            if answer.refused.get() {
-                return Reply::Invalid(InvalidReason::Plan);
-            }
             *shared.answer.borrow_mut() = Some(answer);
             Reply::Allow
         }
@@ -332,8 +319,6 @@ impl Game<'_> {
         if !Self::stacked_listened() || slot == 200 {
             return None;
         }
-        // Freeze the stacks first; the answer determines the actual slot-rule questions.
-        let answers = RuleAnswers::default();
         let mut found = None;
         let modeled = self.menu_session(|menu, env, to_menu| {
             let menu_slot = to_menu(slot)? as i32;
@@ -350,13 +335,6 @@ impl Game<'_> {
             // What the click reads of the game itself: the cursor. The rest is the journals'.
             move |game| (game.carried == carried).then(|| frozen.clone()),
             |game, answer| {
-                game.menu_session(|menu, env, to_menu| {
-                    let menu_slot = to_menu(slot)? as i32;
-                    plan_click(menu, env, menu_slot, button, &answers, answer);
-                    Some(false)
-                });
-            },
-            |game, answer| {
                 // The click's own writes belong to the action: an outer abort puts them back.
                 let player = game.native_acting_id();
                 game.journal_player(player);
@@ -364,10 +342,7 @@ impl Game<'_> {
                     game.journal_block_entity(key);
                 }
                 result.set(game.menu_session(|menu, env, to_menu| {
-                    // The click asks no one: it uses what the plan was told.
-                    let rules = StoredRules(&answers);
                     let env = Env {
-                        slot_rules: Some(&rules),
                         stacked: answer,
                         ..*env
                     };
@@ -382,28 +357,4 @@ impl Game<'_> {
         // A refused click was handled: nothing of it is kept, and no other click is made.
         Some(pickup == Pickup::Refused || handled.get())
     }
-}
-
-/// Resolve the slot questions for the exact pickup the hook answered. Run it on a copy:
-/// only the rule answers survive and the live click will reuse them without asking again.
-pub(in crate::game) fn plan_click(
-    menu: &Menu,
-    env: &Env,
-    slot: i32,
-    button: i32,
-    answers: &RuleAnswers,
-    outcome: &StackedOutcome,
-) {
-    let planning = PlanningRules {
-        rules: env.slot_rules,
-        answers,
-    };
-    let env = Env {
-        slot_rules: Some(&planning),
-        stacked: Some(outcome),
-        ..*env
-    };
-    let _ = menu
-        .clone()
-        .click(&env, slot, button, sunrise_client::menu::Input::Pickup);
 }

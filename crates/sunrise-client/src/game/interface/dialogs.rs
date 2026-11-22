@@ -287,10 +287,10 @@ impl Game<'_> {
                 selecting: None,
             });
             game.dialogs.waiting = None;
-            game.keys.clear();
+            game.clear_device_keys();
             game.physical_keys.clear();
-            game.left = false;
-            game.right = false;
+            game.set_mapping_held("key.attack", false);
+            game.set_mapping_held("key.use", false);
             game.capture(false);
         });
     }

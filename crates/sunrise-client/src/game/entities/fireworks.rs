@@ -66,7 +66,7 @@ pub(super) struct Rocket {
     pub(super) random: sunrise_core::random::LegacyRandom,
     /// `Entity.onGround`: whether its last move was stopped going down (or
     /// the one it was loaded with, until it moves).
-    pub(super) on_ground: bool,
+    pub(super) ground: sunrise_world::ground_support::GroundState,
     /// `Projectile.hasBeenShot`: its first tick posts `projectile_shoot`.
     pub(super) has_been_shot: bool,
     /// `Entity.isSilent`: no launch sound.
@@ -106,7 +106,7 @@ impl Rocket {
             angled: false,
             item,
             random: sunrise_client::projectiles::unique_random(position),
-            on_ground: false,
+            ground: Default::default(),
             // The server posts the shot.
             has_been_shot: true,
             silent: false,
@@ -150,7 +150,7 @@ impl Rocket {
                     self.owner_uuid
                 },
                 left_owner: self.left_owner,
-                on_ground: self.on_ground,
+                on_ground: self.ground.on_ground,
                 has_been_shot: self.has_been_shot,
                 fall_distance: self.fall_distance,
             },
@@ -185,7 +185,7 @@ impl Rocket {
             angled: r.angled,
             item,
             random: sunrise_client::projectiles::unique_random(r.position),
-            on_ground: r.on_ground,
+            ground: sunrise_world::ground_support::GroundState::from_ground_flag(r.on_ground),
             has_been_shot: r.has_been_shot,
             silent: r.silent,
             fall_distance: r.fall_distance,
@@ -211,20 +211,35 @@ impl Rocket {
         self.item = loaded.item;
         self.angled = loaded.angled;
         self.left_owner = loaded.left_owner;
-        self.on_ground = loaded.on_ground;
+        self.ground = loaded.ground;
         self.fall_distance = loaded.fall_distance;
     }
     /// One tick of a server's client: the rocket flies on by itself between
     /// the server's updates (a rocket that follows an entity is placed by the
     /// caller).
-    pub(super) fn remote_step(
-        &mut self,
-        scene: &mut SceneCollisions,
-        context: &sunrise_world::native_load_context::LoopContext,
-    ) {
+    pub(super) fn remote_step(&mut self, motion: sunrise_client::motion::BodyMotion<'_>) {
         self.previous = self.position;
         if self.attached_to.is_none() {
-            let _ = self.free_flight(scene, context);
+            let mut scene = SceneCollisions {
+                world: motion.world,
+                binding: motion.collision,
+                subject: None,
+            };
+            if let Some((_, wanted, moved, restored)) = self.free_flight(&mut scene, motion.context)
+            {
+                let movement = self.flight_contact(motion, wanted, moved);
+                self.velocity = motion
+                    .restitute(
+                        (self.id, "minecraft:firework_rocket"),
+                        movement,
+                        0.0,
+                        0.98_f32,
+                        self.velocity,
+                        self.fall_distance,
+                    )
+                    .velocity;
+                self.velocity = restored;
+            }
         }
         self.life += 1;
     }
@@ -254,10 +269,15 @@ impl Rocket {
         if self.angled {
             self.velocity
         } else {
+            let acceleration = if self.ground.horizontal_collision {
+                1.0
+            } else {
+                1.15
+            };
             Vec3::new(
-                self.velocity.x * 1.15,
+                self.velocity.x * acceleration,
                 self.velocity.y + 0.04,
-                self.velocity.z * 1.15,
+                self.velocity.z * acceleration,
             )
         }
     }
@@ -281,10 +301,11 @@ impl Rocket {
         &mut self,
         scene: &mut SceneCollisions,
         context: &sunrise_world::native_load_context::LoopContext,
-    ) -> Option<(Vec3, Vec3, Vec3)> {
+    ) -> Option<(Vec3, Vec3, Vec3, Vec3)> {
         let bounds = self.bounds();
         let motion = self.next_motion();
         let mut wanted = motion;
+        self.velocity = motion;
         if self.stuck.length_squared() > 1.0e-7 {
             wanted = Vec3::new(
                 wanted.x * self.stuck.x,
@@ -292,6 +313,7 @@ impl Rocket {
                 wanted.z * self.stuck.z,
             );
             self.stuck = Vec3::ZERO;
+            self.velocity = Vec3::ZERO;
         }
         let from = self.position;
         let mut gate = sunrise_client::move_gate::armed(
@@ -307,21 +329,38 @@ impl Rocket {
         else {
             return None;
         };
-        let horizontal = (moved.x - wanted.x).abs() > 1e-7 || (moved.z - wanted.z).abs() > 1e-7;
-        // Entity.move: on the ground when a move down was stopped.
-        self.on_ground = wanted.y < 0.0 && moved.y != wanted.y;
         self.position = Vec3::new(
             self.position.x + moved.x,
             self.position.y + moved.y,
             self.position.z + moved.z,
         );
-        // setDeltaMovement(movement2): the motion before the move's scaling.
-        self.velocity = if horizontal {
-            Vec3::new(self.velocity.x, motion.y, self.velocity.z)
-        } else {
-            motion
-        };
-        Some((from, wanted, moved))
+        Some((from, wanted, moved, motion))
+    }
+
+    fn flight_contact(
+        &mut self,
+        motion: sunrise_client::motion::BodyMotion<'_>,
+        wanted: Vec3,
+        moved: Vec3,
+    ) -> sunrise_client::motion::BodyMove {
+        let authoritative =
+            motion.context.side() == sunrise_world::native_load_context::LoopSide::Server;
+        motion.record_move(
+            sunrise_client::motion::BodyCollision {
+                footprint: (self.position, self.bounds()),
+                movement: (wanted, moved),
+                authoritative,
+                context: sunrise_client::motion::BodyMotion::entity_context(self.id, self.position),
+                subject: None,
+            },
+            &mut self.ground,
+        );
+        let effect = motion.legacy_contact(self.position, &self.ground);
+        sunrise_client::motion::BodyMove {
+            wanted,
+            moved,
+            effect,
+        }
     }
     /// Position and motion (the dispenser parity fixture).
     pub(super) fn motion(&self) -> (Vec3, Vec3) {
@@ -391,14 +430,15 @@ impl Game<'_> {
     fn rocket_moved(
         &mut self,
         r: &mut Rocket,
-        (from, wanted, moved): (Vec3, Vec3, Vec3),
+        (from, wanted, moved, restored): (Vec3, Vec3, Vec3, Vec3),
         water: bool,
     ) {
+        let movement = r.flight_contact(self.body_motion(&game_side!(self)), wanted, moved);
         r.fall_distance = self.vehicle_fall_reset(r.fall_distance, from, moved);
         if !water && moved.y < 0.0 {
             r.fall_distance -= f64::from(moved.y as f32);
         }
-        if r.on_ground {
+        if r.ground.on_ground {
             if r.fall_distance > 0.0 {
                 // Block.fallOn (farmland's random draw, honey's slide) is not
                 // run for a rocket yet, nor for the other entities that are
@@ -416,6 +456,16 @@ impl Game<'_> {
             }
             r.fall_distance = 0.0;
         }
+        let entity = (r.id, "minecraft:firework_rocket");
+        let response = self.body_motion(&game_side!(self)).restitute(
+            entity,
+            movement,
+            0.0,
+            0.98_f32,
+            r.velocity,
+            r.fall_distance,
+        );
+        r.velocity = self.finish_body_restitution(entity, r.position, response);
         let length = moved.length_squared();
         let recorded = length > 1.0e-7 || wanted.length_squared() - length < 1.0e-7;
         let (world, facts) = (&self.world, self.res.facts());
@@ -430,7 +480,7 @@ impl Game<'_> {
         };
         let stuck = sunrise_client::falling_block::apply_effects_from_blocks_of(
             effects,
-            &mut r.velocity.clone(),
+            &mut r.velocity,
             &mut r.fall_distance,
             &mut tops,
             |p| {
@@ -451,6 +501,8 @@ impl Game<'_> {
         for pos in tops {
             self.bubble_column_particles(pos);
         }
+        // FireworkRocketEntity.tick restores the pre-move delta after block effects.
+        r.velocity = restored;
     }
     /// A rocket built from `own`, the rocket's own random (`Entity.random`): the
     /// UUID, the motion and the lifetime draw from it in that order, and a rocket
@@ -490,7 +542,7 @@ impl Game<'_> {
             angled: false,
             item: stack.clone(),
             random: own.clone(),
-            on_ground: false,
+            ground: Default::default(),
             has_been_shot: false,
             silent: false,
             fall_distance: 0.0,
@@ -925,8 +977,7 @@ impl Game<'_> {
                     self.remember_mob_player_credit(id);
                 }
             }
-            // Warden.hurtServer: anger and target at hurt time, refused hit or not.
-            self.settle_warden_hurt(id);
+            self.settle_mob_hurt(id);
         }
     }
     /// The owner as `rocket_targets` names it: a guest by their entity id.
