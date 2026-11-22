@@ -1,5 +1,6 @@
 use super::movement::stepped_move;
 use super::*;
+use crate::game::entity::Entity;
 
 impl Game<'_> {
     /// A move packet for entity `id`: to the end of `path` (None: a
@@ -69,7 +70,7 @@ impl Game<'_> {
                         m.yaw += wrap_degrees(yaw - m.yaw);
                         m.head_pitch = (pitch % 360.0).clamp(-90.0, 90.0);
                     }
-                    m.on_ground = on_ground;
+                    m.update_retained_ground(&self.world, self.collision, on_ground, None);
                     return;
                 }
                 // A living entity: LivingEntity.createInterpolationHandler's
@@ -90,7 +91,9 @@ impl Game<'_> {
                     m.previous_yaw = m.yaw;
                     m.previous_head_pitch = m.head_pitch;
                 }
-                m.on_ground = on_ground;
+                // ClientPacketListener sets onGround after moving or queuing the
+                // interpolation; the support probe uses the current bounds.
+                m.update_retained_ground(&self.world, self.collision, on_ground, None);
                 return;
             }
             // An armor stand is a living entity too: the same handler, over
@@ -112,7 +115,7 @@ impl Game<'_> {
                         at.yaw,
                     );
                 }
-                a.on_ground = on_ground;
+                a.update_retained_ground(&self.world, self.collision, on_ground, None);
                 return;
             }
             // Interaction extends Entity and keeps its NO_OP interpolation

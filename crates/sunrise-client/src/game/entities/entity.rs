@@ -15,6 +15,7 @@ use super::{
 };
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+use sunrise_client::collisions::{PowderSnowSubject, SceneCollisions};
 use sunrise_client::entities::{
     ArmorStand, Cushion, ExperienceOrb, ItemEntity, ItemFrame, Painting,
 };
@@ -27,7 +28,10 @@ use sunrise_core::geometry::{Aabb, Direction, Vec3};
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
 use sunrise_core::random::RandomSource as _;
-use sunrise_world::{level::data::PushReaction, move_gate::MoveGate, piston_push};
+use sunrise_world::{
+    collision_context::CollisionContext, ground_support::GroundState, level::data::PushReaction,
+    move_gate::MoveGate, piston_push,
+};
 
 /// Assign a stored owner's delayed id at its existing allocation point.
 /// Kinds without a lifetime slot pass None; a bound owner must keep its id.
@@ -124,11 +128,44 @@ pub(super) trait Entity: EntityRules {
     fn body_fall_distance(&self) -> f64 {
         0.0
     }
-    fn ground_state(&self) -> Option<&sunrise_world::ground_support::GroundState> {
+    fn ground_state(&self) -> Option<&GroundState> {
         None
     }
-    fn ground_state_mut(&mut self) -> Option<&mut sunrise_world::ground_support::GroundState> {
+    fn ground_state_mut(&mut self) -> Option<&mut GroundState> {
         None
+    }
+    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+        (CollisionContext::empty(false), None)
+    }
+    /// Update the live owner's retained support. None is `Entity.setOnGround`'s null movement.
+    fn update_retained_ground(
+        &mut self,
+        world: &sunrise_client::world::World,
+        binding: &sunrise_world::block_collision::BlockCollisionRegistry<'_>,
+        on_ground: bool,
+        movement: Option<Vec3>,
+    ) -> bool {
+        let Some(mut ground) = self.ground_state().copied() else {
+            return false;
+        };
+        ground.on_ground = on_ground;
+        let (context, subject) = self.support_collision();
+        let mut scene = SceneCollisions {
+            world,
+            binding,
+            subject,
+        };
+        let _ = scene.update_ground_support(
+            &mut ground,
+            self.position(),
+            self.bounds(),
+            movement,
+            context,
+        );
+        if let Some(owner) = self.ground_state_mut() {
+            *owner = ground;
+        }
+        true
     }
     /// `Entity.maxUpStep`.
     fn get_step_height(&self) -> f32 {
@@ -745,11 +782,14 @@ mod render_bounds_tests {
     }
 }
 
-/// The common retained support owned by bodies that use `BodyMotion`.
+/// The common retained support owned by moving bodies.
 macro_rules! stored_ground {
     () => {
+        stored_ground!(fall_distance);
+    };
+    ($fall_distance:ident) => {
         fn body_fall_distance(&self) -> f64 {
-            self.fall_distance
+            self.$fall_distance
         }
         fn ground_state(&self) -> Option<&sunrise_world::ground_support::GroundState> {
             Some(&self.ground)
@@ -1930,13 +1970,14 @@ impl Game<'_> {
 
 impl Entity for Mob {
     const SERIALIZES_ATTACHMENTS: bool = true;
+    stored_ground!();
 
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
     }
-
-    fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
+    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+        let (context, subject) = Mob::support_collision(self);
+        (context, Some(subject))
     }
     /// `Entity.noPhysics`: written through the mod API; no mob tick rewrites it
     /// (a vex sets it only for the length of its own, custom travel). Its own
@@ -2013,9 +2054,6 @@ impl Entity for Mob {
     fn bounds(&self) -> Aabb {
         Mob::bounds(self)
     }
-    fn on_ground(&self) -> bool {
-        self.on_ground
-    }
     fn get_step_height(&self) -> f32 {
         self.kind.step_height as f32
     }
@@ -2053,9 +2091,6 @@ impl Entity for Mob {
             self.velocity.z + push.z,
         );
         self.needs_sync = true;
-    }
-    fn is_supported_by(&self, pos: BlockPos) -> bool {
-        self.supporting == Some([pos.x, pos.y, pos.z])
     }
     fn thunder_hit(&self) -> ThunderHit {
         if self.alive() {
@@ -2411,6 +2446,11 @@ fn armor_stand_size(stand: &ArmorStand) -> (f64, f64) {
 }
 
 impl Entity for ArmorStand {
+    stored_ground!(enchantment_fall_distance);
+    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+        let (context, subject) = ArmorStand::support_collision(self);
+        (context, Some(subject))
+    }
     fn reset_fall_distance(&mut self) {
         self.enchantment_fall_distance = 0.0;
     }
@@ -2426,9 +2466,6 @@ impl Entity for ArmorStand {
         *position = position.add_vector(movement);
     }
 
-    fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
     fn rotation(&self) -> [f32; 2] {
         [self.yaw, self.pitch]
     }
@@ -2509,14 +2546,6 @@ impl Entity for ArmorStand {
     fn bounds(&self) -> Aabb {
         ArmorStand::bounds(self)
     }
-    fn on_ground(&self) -> bool {
-        self.on_ground
-    }
-    /// A living entity's own flag too: keeping the old support flag would run
-    /// Frost Walker while the stand is moving over open water.
-    fn set_piston_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
     fn is_living(&self) -> bool {
         true
     }
@@ -2563,6 +2592,9 @@ impl Entity for ArmorStand {
 
 impl Entity for PrimedTnt {
     stored_ground!();
+    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+        (self.collision_context(), Some(self.powder_snow_subject()))
+    }
     fn reset_fall_distance(&mut self) {
         // Primed TNT keeps no fall distance here.
     }

@@ -97,7 +97,7 @@ fn mob(game: &mut Game<'_>, id: u32, kind: &str, at: Vec3, health: f32) {
     let mut mob = Mob::new(id, kind, at, 0.0);
     mob.persistent = true;
     mob.no_ai = true;
-    mob.on_ground = true;
+    mob.ground.on_ground = true;
     mob.health = health;
     game.mobs.push(mob);
 }

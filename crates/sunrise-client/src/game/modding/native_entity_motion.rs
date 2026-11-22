@@ -340,6 +340,7 @@ impl Game<'_> {
 
 #[cfg(test)]
 mod tests {
+    use crate::game::entity::Entity as _;
     use mod_api::EntityRef;
     use sunrise_core::geometry::{Aabb, Vec3};
 
@@ -433,21 +434,24 @@ mod tests {
                 .unwrap()
                 .clone();
             // A zombie 0.6 wide straddling x = 1: its box is over blocks 0 and 1.
-            let mut zombie = Mob::new(40, kind, Vec3::new(0.9, 65.0, 0.5), 0.0);
-            zombie.on_ground = true;
-            game.mobs.push(zombie);
+            game.mobs
+                .push(Mob::new(40, kind, Vec3::new(0.9, 65.0, 0.5), 0.0));
             let entity = game.entity(40).unwrap();
             // Only block 1 is under the box: it supports, not the block of the feet's own column.
             game.world.set(1, 64, 0, stone).unwrap();
+            game.mobs[0].update_retained_ground(&game.world, game.collision, true, None);
             assert_eq!(game.entity_on_block(entity), Some([1, 64, 0]));
-            // With both, the one whose centre is nearest the feet: 0.4 against 0.6 away.
+            // Adding a nearer block doesn't change the support until the next check.
             game.world.set(0, 64, 0, stone).unwrap();
+            assert_eq!(game.entity_on_block(entity), Some([1, 64, 0]));
+            game.mobs[0].update_retained_ground(&game.world, game.collision, true, None);
             assert_eq!(game.entity_on_block(entity), Some([0, 64, 0]));
             game.mobs[0].position = Vec3::new(1.1, 65.0, 0.5);
+            game.mobs[0].update_retained_ground(&game.world, game.collision, true, None);
             assert_eq!(game.entity_on_block(entity), Some([1, 64, 0]));
             // Off the ground there is no support: the cell under the feet.
             game.mobs[0].position = Vec3::new(0.9, 65.0, 0.5);
-            game.mobs[0].on_ground = false;
+            game.mobs[0].update_retained_ground(&game.world, game.collision, false, None);
             assert_eq!(game.entity_on_block(entity), Some([0, 64, 0]));
             let air = game
                 .pack
@@ -456,7 +460,7 @@ mod tests {
                 .default_state("minecraft:air")
                 .unwrap();
             game.world.set(0, 64, 0, air).unwrap();
-            game.mobs[0].on_ground = true;
+            game.mobs[0].update_retained_ground(&game.world, game.collision, true, None);
             assert_eq!(game.entity_on_block(entity), Some([1, 64, 0]));
 
             // Facing south (yaw 0) level, the eyes see a block two cells ahead.

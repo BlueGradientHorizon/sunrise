@@ -30,9 +30,8 @@ pub trait EntityPositionBackend {
     fn entity_on_ground(&self, entity: EntityRef) -> Option<bool>;
     /// Side: server.
     /// `Entity.getOnPos()`: the supporting block when available, otherwise the feet block with
-    /// vanilla's `1.0E-5F` subtracted from Y. Players and nonliving bodies that keep ground
-    /// support use the last move's retained `Entity.mainSupportingBlockPos`, not the current
-    /// ground flag or a new collision query.
+    /// vanilla's `1.0E-5F` subtracted from Y. Simulated bodies with retained support use
+    /// `Entity.mainSupportingBlockPos` from their last support check, not a new collision query.
     /// A dragon part, which never stands, has the block under its feet. None for a stale handle.
     #[access(WorldOnly)]
     fn entity_on_block(&self, entity: EntityRef) -> Option<[i32; 3]>;

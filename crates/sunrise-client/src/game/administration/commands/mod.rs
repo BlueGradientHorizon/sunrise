@@ -1354,22 +1354,9 @@ impl Game<'_> {
                     return;
                 }
             }
-            let motion = sunrise_client::motion::BodyMotion {
-                world: &g.world,
-                collision: g.collision,
-                facts: g.res.facts(),
-                blocks: Some(&g.res.motion().blocks),
-                context: &g.loop_context,
-                side: None,
-            };
             target_entity_mut!(g, t, e => {
                 e.velocity_mut().y = 0.0;
-                let (feet, bounds) = (e.position(), e.bounds());
-                if let Some(ground) = e.ground_state_mut() {
-                    ground.on_ground = true;
-                    motion.update_support(ground, feet, bounds, None,
-                        sunrise_world::collision_context::CollisionContext::empty(false), None);
-                } else {
+                if !e.update_retained_ground(&g.world, g.collision, true, None) {
                     e.set_on_ground(true);
                 }
             });
@@ -1518,7 +1505,7 @@ impl Game<'_> {
                     m.ai.nav.stop();
                     m.velocity = teleport_velocity(m.velocity, relative, m.extra.fall_flying);
                     if !m.extra.fall_flying {
-                        m.on_ground = true;
+                        m.ground.on_ground = true;
                     }
                     sunrise_client::mobs::living::teleports::snap_to(m, v);
                     m.needs_sync = true;

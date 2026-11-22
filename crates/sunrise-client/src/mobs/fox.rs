@@ -366,7 +366,7 @@ impl Consumption {
             && !m.no_ai
             && m.position == expected
             && m.ai.target.is_none()
-            && m.on_ground
+            && m.ground.on_ground
             && !flag(m, SLEEPING)
     }
     /// Finish the original item use after its own effects have moved the actor.
@@ -405,7 +405,7 @@ pub fn decide_consumption(m: &Mob, w: &MobWorld) -> Option<Consumption> {
         || m.extra.ints[TICKS_SINCE_EATEN] <= 600
         || !eats(w, stack)
         || m.ai.target.is_some()
-        || !m.on_ground
+        || !m.ground.on_ground
         || flag(m, SLEEPING)
     {
         return None;
@@ -476,7 +476,7 @@ pub fn ai_step_until_consumption(
     if let Some(stack) = m.extra.main_hand_stack()
         && eats(w, stack)
         && m.ai.target.is_none()
-        && m.on_ground
+        && m.ground.on_ground
         && !flag(m, SLEEPING)
     {
         let eaten = m.extra.ints[TICKS_SINCE_EATEN];
@@ -1216,7 +1216,7 @@ impl Goal for Pounce {
             return false;
         }
         let yd = m.velocity.y;
-        (yd * yd >= f64::from(0.05f32) || m.head_pitch.abs() >= 15.0 || !m.on_ground)
+        (yd * yd >= f64::from(0.05f32) || m.head_pitch.abs() >= 15.0 || !m.ground.on_ground)
             && !flag(m, FACEPLANTED)
     }
     fn interruptable(&self) -> bool {
@@ -1264,7 +1264,7 @@ impl Goal for Pounce {
         {
             super::ai::do_hurt_target(m, who, cx);
         } else if m.head_pitch > 0.0
-            && m.on_ground
+            && m.ground.on_ground
             && m.velocity.y as f32 != 0.0
             && cx.w.block_name(
                 m.position.x.floor() as i32,
@@ -1764,7 +1764,7 @@ mod consume_tests {
                 |w, types| {
                     let kind = std::sync::Arc::new(types.types["minecraft:fox"].clone());
                     let mut fox = Mob::new(1, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);
-                    fox.on_ground = true;
+                    fox.ground.on_ground = true;
                     fox.extra.ints[TICKS_SINCE_EATEN] = 601;
                     for removed in ["!minecraft:food", "!minecraft:consumable"] {
                         let mut stack = crate::items::ItemStack::new("minecraft:golden_apple", 2);
@@ -1874,7 +1874,7 @@ mod consume_tests {
                 |w, types| {
                     let kind = std::sync::Arc::new(types.types["minecraft:fox"].clone());
                     let mut fox = Mob::new(1, kind, Vec3::new(-1.2, 64.25, 3.75), 0.0);
-                    fox.on_ground = true;
+                    fox.ground.on_ground = true;
                     fox.silent = true;
                     fox.extra.ints[TICKS_SINCE_EATEN] = 601;
                     let mut stack = crate::items::ItemStack::new("minecraft:golden_apple", 1);
@@ -1957,7 +1957,7 @@ mod consume_tests {
             |w, types| {
                 let kind = std::sync::Arc::new(types.types["minecraft:fox"].clone());
                 let mut m = Mob::new(1, kind, Vec3::new(0.5, 1.0, 0.5), 0.0);
-                m.on_ground = true;
+                m.ground.on_ground = true;
                 let velocity = Vec3::new(0.2, 0.0, -0.1);
                 m.velocity = velocity;
                 m.extra.set_main_hand(Some("minecraft:chorus_fruit".into()));
@@ -2062,7 +2062,7 @@ mod consume_tests {
             |w, types| {
                 let kind = std::sync::Arc::new(types.types["minecraft:fox"].clone());
                 let mut m = Mob::new(1, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);
-                m.on_ground = true;
+                m.ground.on_ground = true;
                 m.extra.set_main_hand(Some("minecraft:golden_apple".into()));
                 m.extra.ints[TICKS_SINCE_EATEN] = 601;
                 let mut events = Vec::new();

@@ -510,19 +510,17 @@ mod tests {
                 )
             };
             // An armor stand moving 0.2 along x on the ground, after one travel: 0.2 × friction × 0.91.
-            let stand = |game: &Game<'_>| {
-                let mut stand = ArmorStand::new(7, Vec3::new(5.5, 65.0, 5.5), 0.0);
-                stand.on_ground = true;
-                stand.velocity = Vec3::new(0.2, 0.0, 0.0);
-                let mut scene = sunrise_client::collisions::SceneCollisions {
+            let travel_stand = |game: &Game<'_>, stand: &mut ArmorStand| {
+                let scene = sunrise_client::collisions::SceneCollisions {
                     world: &game.world,
                     binding: game.collision,
                     subject: None,
                 };
                 let step = stand
                     .tick_move(
-                        &mut scene,
+                        &scene,
                         game.res.facts(),
+                        Some(&game.motion.blocks),
                         &game.motion.climbing,
                         false,
                         None,
@@ -532,6 +530,12 @@ mod tests {
                     )
                     .unwrap();
                 stand.tick_settle(StandMedium::Air, step);
+            };
+            let stand = |game: &Game<'_>| {
+                let mut stand = ArmorStand::new(7, Vec3::new(5.5, 65.0, 5.5), 0.0);
+                stand.ground.on_ground = true;
+                stand.velocity = Vec3::new(0.2, 0.0, 0.0);
+                travel_stand(game, &mut stand);
                 stand.velocity.x
             };
             let registry = game.pack.assets.registry;
@@ -692,6 +696,21 @@ mod tests {
                 assert_eq!(item_got.to_bits(), item_x.to_bits(), "item {block}");
                 assert_eq!(orb_got.to_bits(), item_x.to_bits(), "orb {block}");
             }
+
+            // Its feet are over the lower path but the edge of its box lands on wool.
+            // The next travel reads the wool's Part rather than the path's own friction.
+            let path = registry.default_state("minecraft:dirt_path").unwrap();
+            game.world.set(floor.x, floor.y, floor.z, material).unwrap();
+            game.world.set(floor.x + 1, floor.y, floor.z, path).unwrap();
+            let mut edge = ArmorStand::new(7, Vec3::new(6.125, 65.0, 5.5), 0.0);
+            edge.velocity = Vec3::new(0.0, -0.08, 0.0);
+            travel_stand(game, &mut edge);
+            assert_eq!(edge.ground.supporting_block, Some(floor));
+            edge.velocity = Vec3::new(0.2, -0.08, 0.0);
+            calls.store(0, Ordering::SeqCst);
+            travel_stand(game, &mut edge);
+            assert_eq!(edge.velocity.x, 0.2 * f64::from(0.98_f32 * 0.91));
+            assert_eq!(calls.load(Ordering::SeqCst), 1, "wool's friction Part");
         });
     }
     #[test]
@@ -956,7 +975,7 @@ mod tests {
                 {
                     let world = game.mob_world_base(&snapshot);
                     let mut mob = Mob::new(10, horse.clone(), at, 0.0);
-                    mob.on_ground = true;
+                    mob.ground.on_ground = true;
                     mob.velocity = Vec3::new(0.2, 0.0, 0.0);
                     calls.store(0, Ordering::SeqCst);
                     mob.travel(&world, &mut damage.level(), Vec3::ZERO, &mut Vec::new());
@@ -971,7 +990,7 @@ mod tests {
                         "one answer per mob travel tick"
                     );
                     mob.position = at;
-                    mob.on_ground = true;
+                    mob.ground.on_ground = true;
                     mob.velocity = Vec3::ZERO;
                     mob.extra.leash = Some(leash::Holder::Mob(99));
                     mob.extra.leash_spin = 2.0;
@@ -997,6 +1016,22 @@ mod tests {
                 );
                 assert_eq!(calls.load(Ordering::SeqCst), listens);
             }
+
+            let registry = game.pack.assets.registry;
+            let wool = registry.default_state("minecraft:white_wool").unwrap();
+            let path = registry.default_state("minecraft:dirt_path").unwrap();
+            game.world.set(5, 64, 5, wool).unwrap();
+            game.world.set(6, 64, 5, path).unwrap();
+            let world = game.mob_world_base(&[]);
+            let mut edge = Mob::new(12, horse, Vec3::new(6.25, 65.0, 5.5), 0.0);
+            edge.velocity = Vec3::new(0.0, -0.08, 0.0);
+            edge.travel(&world, &mut damage.level(), Vec3::ZERO, &mut Vec::new());
+            assert_eq!(edge.ground.supporting_block, Some(BlockPos::new(5, 64, 5)));
+            edge.velocity = Vec3::new(0.2, -0.08, 0.0);
+            calls.store(0, Ordering::SeqCst);
+            edge.travel(&world, &mut damage.level(), Vec3::ZERO, &mut Vec::new());
+            assert_eq!(edge.velocity.x, 0.2 * f64::from(0.98_f32 * 0.91));
+            assert_eq!(calls.load(Ordering::SeqCst), 1, "wool's friction Part");
         });
     }
 }

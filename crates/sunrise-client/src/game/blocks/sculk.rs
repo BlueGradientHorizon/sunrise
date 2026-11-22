@@ -1323,7 +1323,7 @@ impl Game<'_> {
         self.sculk_step_on_player();
         let mut standing: Vec<(Who, [f64; 3])> = Vec::new();
         for m in &self.mobs {
-            if m.alive() && m.on_ground {
+            if m.alive() && m.ground.on_ground {
                 standing.push((Who::Mob(m.id), [m.position.x, m.position.y, m.position.z]));
             }
         }
@@ -2266,7 +2266,7 @@ impl Game<'_> {
                 (
                     m.id,
                     [m.position.x, m.position.y, m.position.z],
-                    m.on_ground,
+                    m.ground.on_ground,
                     m.fluids.in_water,
                     m.species(),
                     m.last_damage.map(|(_, t)| t),
@@ -2454,8 +2454,7 @@ impl Game<'_> {
             Who::Player => self.player.as_ref()?.ground.supporting_block,
             Who::Mob(id) => {
                 let slot = self.mob_slot(id)?;
-                let mob = &self.mobs[slot];
-                self.supporting_block(mob.position, mob.bounds())
+                self.mobs[slot].ground.supporting_block
             }
         }
     }
