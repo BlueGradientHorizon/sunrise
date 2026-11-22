@@ -881,8 +881,10 @@ fn mounted_button_sprites_keep_their_pixels_and_accessibility() {
                     assert_ne!(pixel(&stock, bounds(i)), expected);
                 }
                 for (i, (a, b)) in custom
-                    .chunks_exact(4)
-                    .zip(stock.chunks_exact(4))
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .zip(stock.as_chunks::<4>().0)
                     .enumerate()
                 {
                     let (x, y) = ((i as u32 % SIZE[0]) as f32, (i as u32 / SIZE[0]) as f32);
