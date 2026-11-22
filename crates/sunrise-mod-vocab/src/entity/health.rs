@@ -103,16 +103,10 @@ impl OwnedReduction {
             .as_mut()
             .expect("reduction callback is live until dropped");
         let _guard = crate::mark_mod(self.owner, REDUCTION_CALLBACK);
-        match crate::runtime::invoke(REDUCTION_KEY, REDUCTION_CALLBACK, self.owner, true, || {
+        crate::runtime::invoke(REDUCTION_KEY, REDUCTION_CALLBACK, self.owner, || {
             modifier(view, amount)
-        }) {
-            crate::runtime::DispatchOutcome::Ok(next) => next,
-            crate::runtime::DispatchOutcome::Refused(refusal) => {
-                refusal.report();
-                amount
-            }
-            crate::runtime::DispatchOutcome::Panicked => amount,
-        }
+        })
+        .unwrap_or(amount)
     }
 }
 
@@ -121,13 +115,9 @@ impl Drop for OwnedReduction {
         // Captures can run mod code when dropped, even if the hit was cancelled,
         // the stage never ran, or the mod's callback is already disabled.
         let _guard = crate::mark_mod(self.owner, REDUCTION_CALLBACK);
-        if let crate::runtime::DispatchOutcome::Refused(refusal) =
-            crate::runtime::invoke(REDUCTION_KEY, REDUCTION_CALLBACK, self.owner, true, || {
-                drop(self.modifier.take());
-            })
-        {
-            refusal.report();
-        }
+        crate::runtime::invoke(REDUCTION_KEY, REDUCTION_CALLBACK, self.owner, || {
+            drop(self.modifier.take());
+        });
     }
 }
 
@@ -446,7 +436,6 @@ pub struct ShieldBlock {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::world::phase::ModPhase;
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
@@ -708,44 +697,6 @@ mod tests {
                         hook: "living_damage_reduction",
                     }]
                 );
-                assert!(crate::__private::take_hook_panics().is_empty());
-            },
-        );
-    }
-
-    #[test]
-    fn phase_refusal_in_reduction_callback_is_not_latched_and_does_not_poison() {
-        crate::testing::with_dispatch(
-            vec![crate::ModEntry::new("refusing_mod", Box::new(DummyMod))].into(),
-            || {
-                let attempts = Arc::new(AtomicUsize::new(0));
-                let attempts_cb = attempts.clone();
-
-                let mut backend = FakeDamageBackend::new(20.0);
-                {
-                    let mut container = DamageContainer::new(&mut backend);
-                    let _guard = crate::mark_mod("refusing_mod", "living_incoming_damage");
-                    container.add_reduction_modifier(Reduction::Armor, move |_view, amount| {
-                        let attempt = attempts_cb.fetch_add(1, Ordering::Relaxed);
-                        if attempt < 2 {
-                            crate::world::phase_refusal::refuse("test_op", ModPhase::Setup);
-                        }
-                        amount + 3.0
-                    });
-                }
-
-                // Refusals fall back to the incoming reduction without poisoning or latching.
-                assert_eq!(backend.apply_reduction(Reduction::Armor, 5.0), 5.0);
-                assert_eq!(attempts.load(Ordering::Relaxed), 1);
-                assert!(!crate::runtime::poisoned(REDUCTION_KEY, "refusing_mod"));
-
-                assert_eq!(backend.apply_reduction(Reduction::Armor, 5.0), 5.0);
-                assert_eq!(attempts.load(Ordering::Relaxed), 2);
-                assert!(!crate::runtime::poisoned(REDUCTION_KEY, "refusing_mod"));
-
-                // Once the callback succeeds, it applies normally.
-                assert_eq!(backend.apply_reduction(Reduction::Armor, 5.0), 8.0);
-                assert_eq!(attempts.load(Ordering::Relaxed), 3);
                 assert!(crate::__private::take_hook_panics().is_empty());
             },
         );

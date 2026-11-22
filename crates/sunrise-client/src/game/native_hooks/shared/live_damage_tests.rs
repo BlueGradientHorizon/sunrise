@@ -3,44 +3,14 @@ use mod_api::{
     DamageContainerView, Flow, HitHost, Hooks, LivingDamagePostEvent, LivingDamagePreEvent,
     LivingIncomingDamageEvent, ModEntry, Mods, Reduction,
 };
-use std::cell::RefCell;
 use std::sync::{
-    Arc, Mutex, Once,
+    Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
 };
 use sunrise_client::health::{HurtSource, Hurting, TestLevel, Victim};
 use sunrise_world::living_damage::{
     DamageContainer, DamageStat, DamageWorld, Reduction as EngineReduction, actually_hurt,
 };
-
-thread_local! {
-    static CAPTURED_LOGS: RefCell<Vec<(log::Level, String)>> = const { RefCell::new(Vec::new()) };
-}
-
-struct ThreadLogCapture;
-
-impl log::Log for ThreadLogCapture {
-    fn enabled(&self, _: &log::Metadata<'_>) -> bool {
-        true
-    }
-    fn log(&self, record: &log::Record<'_>) {
-        CAPTURED_LOGS.with_borrow_mut(|out| out.push((record.level(), record.args().to_string())));
-    }
-    fn flush(&self) {}
-}
-
-fn install_log_capture() -> bool {
-    static LOGGER: ThreadLogCapture = ThreadLogCapture;
-    static INIT: Once = Once::new();
-    static INSTALLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-    INIT.call_once(|| {
-        if log::set_logger(&LOGGER).is_ok() {
-            log::set_max_level(log::LevelFilter::Warn);
-            INSTALLED.store(true, Ordering::Relaxed);
-        }
-    });
-    INSTALLED.load(Ordering::Relaxed)
-}
 
 struct Target<'a> {
     level: &'a mut TestLevel,
@@ -496,114 +466,34 @@ fn panicking_reduction_callback_is_isolated_disabled_and_reported() {
 }
 
 #[test]
-fn phase_refusal_in_reduction_callback_is_not_disabled_and_reports_each_time() {
-    let capture_active = install_log_capture();
-    CAPTURED_LOGS.with_borrow_mut(Vec::clear);
-
-    let attempts = Arc::new(AtomicUsize::new(0));
-
-    struct RefusingMod(Arc<AtomicUsize>);
-    #[mod_api::__subscriptions]
-    impl Hooks for RefusingMod {
-        fn living_incoming_damage(
-            &self,
-            _: &mut dyn HitHost,
-            event: &mut LivingIncomingDamageEvent<'_>,
-        ) -> Flow {
-            let attempts = Arc::clone(&self.0);
-            event
-                .container
-                .add_reduction_modifier(Reduction::Armor, move |_, amount| {
-                    if attempts.fetch_add(1, Ordering::Relaxed) < 2 {
-                        mod_api::__private::refuse(
-                            "block_state",
-                            mod_api::__private::ModPhase::Setup,
-                        );
-                    }
-                    amount + 3.0
-                });
-            Flow::Continue
-        }
-    }
-
-    struct FollowingMod;
-    #[mod_api::__subscriptions]
-    impl Hooks for FollowingMod {
-        fn living_incoming_damage(
-            &self,
-            _: &mut dyn HitHost,
-            event: &mut LivingIncomingDamageEvent<'_>,
-        ) -> Flow {
-            event
-                .container
-                .add_reduction_modifier(Reduction::Armor, |_, amount| amount + 1.0);
-            Flow::Continue
-        }
-    }
-
-    let mods: Mods = vec![
-        ModEntry::new("refusing_mod", Box::new(RefusingMod(Arc::clone(&attempts)))),
-        ModEntry::new("following_mod", Box::new(FollowingMod)),
-    ]
-    .into();
-
-    mod_platform::testing::with_mods(mods, || {
-        // Hit 1: refusal leaves 10.0 unchanged; following_mod still runs -> 11.0.
-        let first = run_simple_hit(20.0, 0.0);
-        assert_eq!(first.reduction(EngineReduction::Armor), 11.0);
-        assert_eq!(attempts.load(Ordering::Relaxed), 1);
-        assert!(mod_api::__private::take_hook_panics().is_empty());
-
-        // Hit 2: callback is NOT disabled; refuses a second time and leaves 10.0 unchanged.
-        let second = run_simple_hit(20.0, 0.0);
-        assert_eq!(second.reduction(EngineReduction::Armor), 11.0);
-        assert_eq!(attempts.load(Ordering::Relaxed), 2);
-        assert!(mod_api::__private::take_hook_panics().is_empty());
-
-        // Hit 3: once it stops refusing, it applies normally (10.0 + 3.0 + 1.0 = 14.0).
-        let third = run_simple_hit(20.0, 0.0);
-        assert_eq!(third.reduction(EngineReduction::Armor), 14.0);
-        assert_eq!(attempts.load(Ordering::Relaxed), 3);
-        assert!(mod_api::__private::take_hook_panics().is_empty());
-    });
-
-    if capture_active {
-        let refusal_warnings = CAPTURED_LOGS.with_borrow(|logs| {
-            logs.iter()
-                .filter(|(level, msg)| {
-                    *level == log::Level::Warn
-                        && msg
-                            .contains("native refusal: refusing_mod hook living_damage_reduction:")
-                })
-                .count()
-        });
-        assert_eq!(
-            refusal_warnings, 2,
-            "each phase refusal occurrence must be logged without latching"
-        );
-    }
-}
-
-#[test]
-fn production_crash_hook_contains_reduction_panic_and_refusal_on_server_thread() {
-    struct RestoreHook(Option<Box<dyn Fn(&std::panic::PanicHookInfo<'_>) + Sync + Send + 'static>>);
-    impl Drop for RestoreHook {
-        fn drop(&mut self) {
-            if let Some(prev) = self.0.take() {
-                std::panic::set_hook(prev);
-            }
-        }
-    }
-
+#[ignore = "daily"]
+fn production_crash_hook_contains_reduction_panics_on_server_thread() {
+    const CHILD: &str = "SUNRISE_DAMAGE_REDUCTION_CRASH_CHILD";
     let home = tempfile::tempdir().expect("tempdir for crash reports");
-    let _restore = RestoreHook(Some(std::panic::take_hook()));
-    sunrise_client::crash::install(home.path().to_path_buf(), "client");
+    if std::env::var_os(CHILD).is_none() {
+        let result = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--ignored",
+                "--exact",
+                "game::native_hooks::live_damage_tests::production_crash_hook_contains_reduction_panics_on_server_thread",
+            ])
+            .env(CHILD, "1")
+            .current_dir(home.path())
+            .output()
+            .expect("run crash-hook witness in its own process");
+        assert!(
+            result.status.success() && String::from_utf8_lossy(&result.stdout).contains("1 passed"),
+            "{}\n{}",
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr),
+        );
+        return;
+    }
+    sunrise_client::crash::install(home.path().to_path_buf(), "client", || None);
 
     let panic_runs = Arc::new(AtomicUsize::new(0));
-    let refuse_runs = Arc::new(AtomicUsize::new(0));
     let payload_drops = Arc::new(AtomicUsize::new(0));
     let panic_runs_thread = Arc::clone(&panic_runs);
-    let refuse_runs_thread = Arc::clone(&refuse_runs);
     let payload_drops_thread = Arc::clone(&payload_drops);
     let reports_dir = home.path().join("crash-reports");
 
@@ -635,30 +525,6 @@ fn production_crash_hook_contains_reduction_panic_and_refusal_on_server_thread()
                         .add_reduction_modifier(Reduction::Armor, move |_, _| {
                             runs.fetch_add(1, Ordering::Relaxed);
                             std::panic::panic_any(PanicPayload(Arc::clone(&payload_drops)));
-                        });
-                    Flow::Continue
-                }
-            }
-
-            struct ServerRefuseMod(Arc<AtomicUsize>);
-            #[mod_api::__subscriptions]
-            impl Hooks for ServerRefuseMod {
-                fn living_incoming_damage(
-                    &self,
-                    _: &mut dyn HitHost,
-                    event: &mut LivingIncomingDamageEvent<'_>,
-                ) -> Flow {
-                    let runs = Arc::clone(&self.0);
-                    event
-                        .container
-                        .add_reduction_modifier(Reduction::Armor, move |_, amount| {
-                            if runs.fetch_add(1, Ordering::Relaxed) == 0 {
-                                mod_api::__private::refuse(
-                                    "block_state",
-                                    mod_api::__private::ModPhase::Setup,
-                                );
-                            }
-                            amount + 1.5
                         });
                     Flow::Continue
                 }
@@ -720,10 +586,6 @@ fn production_crash_hook_contains_reduction_panic_and_refusal_on_server_thread()
                         payload_drops: payload_drops_thread,
                     }),
                 ),
-                ModEntry::new(
-                    "server_refuse_mod",
-                    Box::new(ServerRefuseMod(refuse_runs_thread)),
-                ),
                 ModEntry::new("server_good_mod", Box::new(ServerGoodMod)),
             ]
             .into();
@@ -745,8 +607,7 @@ fn production_crash_hook_contains_reduction_panic_and_refusal_on_server_thread()
                 assert!(!sunrise_client::crash::server_crashed());
                 assert!(!reports_dir.exists());
 
-                // Hit 1: panic and phase refusal are both contained without tripping
-                // `server_crashed()` or writing crash reports.
+                // A reduction panic does not trip `server_crashed()` or write a crash report.
                 let first = run_simple_hit(20.0, 0.0);
                 assert_eq!(first.reduction(EngineReduction::Armor), 12.0);
                 assert!(!sunrise_client::crash::server_crashed());
@@ -757,10 +618,9 @@ fn production_crash_hook_contains_reduction_panic_and_refusal_on_server_thread()
                 assert_eq!(faults[0].mod_id, "server_panic_mod");
                 assert_eq!(faults[0].hook, "living_damage_reduction");
 
-                // Hit 2: only the panicking mod is poisoned; the refusing mod still runs
-                // and applies its +1.5 adjustment alongside server_good_mod's +2.0.
+                // The second hit still gets server_good_mod's adjustment.
                 let second = run_simple_hit(20.0, 0.0);
-                assert_eq!(second.reduction(EngineReduction::Armor), 13.5);
+                assert_eq!(second.reduction(EngineReduction::Armor), 12.0);
                 assert!(!sunrise_client::crash::server_crashed());
                 assert!(!reports_dir.exists());
                 assert!(mod_api::__private::take_hook_panics().is_empty());
@@ -771,5 +631,4 @@ fn production_crash_hook_contains_reduction_panic_and_refusal_on_server_thread()
     handle.join().expect("server thread must not panic");
     assert_eq!(payload_drops.load(Ordering::Relaxed), 1);
     assert_eq!(panic_runs.load(Ordering::Relaxed), 1);
-    assert_eq!(refuse_runs.load(Ordering::Relaxed), 2);
 }
