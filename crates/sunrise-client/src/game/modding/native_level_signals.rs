@@ -249,6 +249,9 @@ impl LevelHost for ReadLevel<'_, '_> {
         }
         self.game.container_stack(at, slot)?.try_into_api().ok()
     }
+    fn attachment_read_scope(&self) -> mod_api::AttachmentReadScope<'_> {
+        self.game.attachment_frame_borrow()
+    }
     fn block_entity_part_snapshot(
         &self,
         entity: mod_api::BlockEntityRef,
@@ -260,9 +263,9 @@ impl LevelHost for ReadLevel<'_, '_> {
             Some(self.level),
             self.game.native_authoritative(),
             self.game.attachment_indexes.get(&self.game.dim),
+            &self.game.transactions.attachment_query_scopes,
             entity,
-            namespace,
-            name,
+            (namespace, name),
         )
     }
     fn block_entity_data(&self, entity: mod_api::BlockEntityRef) -> Option<mod_api::Compound> {

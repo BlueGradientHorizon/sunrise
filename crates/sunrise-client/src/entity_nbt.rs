@@ -556,14 +556,14 @@ fn profile_from_nbt(tag: &Tag) -> Option<sunrise_protocol::entity_data::Profile>
         });
     }
     let property = |name: String, value: &Tag, signature: Option<String>| match value {
-        Tag::String(v) => Some(sunrise_protocol::packets::login::Property {
+        Tag::String(v) => Some(sunrise_core::profile::AccountProperty {
             name,
             value: v.to_string_lossy(),
             signature,
         }),
         _ => None,
     };
-    let properties: Vec<sunrise_protocol::packets::login::Property> = match tag.get("properties") {
+    let properties: Vec<sunrise_core::profile::AccountProperty> = match tag.get("properties") {
         // `ExtraCodecs.PROPERTY_MAP`: a list of properties ...
         Some(Tag::List(list)) => list
             .iter()
@@ -1902,6 +1902,21 @@ fn home_block_pos(tag: Option<&Tag>) -> Option<[i32; 3]> {
 mod mob_load;
 pub use mob_load::{mob_from_nbt, mob_from_nbt_remote, mob_from_nbt_with_random};
 
+/// `LivingEntity.readAdditionalSaveData`'s `setHealth(getFloatOr("Health", getMaxHealth()))`:
+/// `Mth.clamp` to `[0, getMaxHealth()]`, the max health the loaded attributes and their
+/// modifiers give (a NaN stays, as `Math.min` keeps it).
+pub(crate) fn loaded_health(m: &Mob, health: Option<f64>) -> f32 {
+    let max = m.attrs.max_health;
+    let health = health.map_or(max, |h| h as f32);
+    if health < 0.0 {
+        0.0
+    } else if health.is_nan() {
+        health
+    } else {
+        health.min(max)
+    }
+}
+
 fn mob_from_nbt_at(
     tag: &Tag,
     types: &HashMap<String, Arc<MobType>>,
@@ -1925,6 +1940,16 @@ fn mob_from_nbt_at(
     read_mob_home(&mut m, tag);
     m.on_ground = flag(tag, "OnGround");
     m.fall_distance = float(tag.get("fall_distance")).unwrap_or(0.0);
+    // AbstractCubeMob.readAdditionalSaveData sizes before the living load, so saved bases win.
+    if matches!(
+        m.species(),
+        crate::mobs::Species::Slime | crate::mobs::Species::MagmaCube
+    ) {
+        crate::mobs::cube::set_size(
+            &mut m,
+            (number(tag.get("Size")).unwrap_or(0) as i32).wrapping_add(1),
+        );
+    }
     // LivingEntity.readAdditionalSaveData: the saved attribute bases, then
     // the health, the max health when there is none.
     if let Some(Tag::List(attrs)) = tag.get("attributes") {
@@ -1946,13 +1971,12 @@ fn mob_from_nbt_at(
                     crate::mobs::finalize::Attr::MovementSpeed,
                     v,
                 ),
-                // A saved base other than the type's default is the
-                // attribute's base, which `/attribute ... base get` reads.
+                // A saved base unlike the current one (type default or cube size) becomes the base.
                 "minecraft:max_health"
-                    if crate::mobs::finalize::default_value(
+                    if crate::mobs::finalize::base_value(
                         &m,
                         crate::mobs::finalize::Attr::MaxHealth,
-                    ) != Some(v) =>
+                    ) != v =>
                 {
                     crate::mobs::finalize::set_base(
                         &mut m,
@@ -1962,10 +1986,10 @@ fn mob_from_nbt_at(
                 }
                 "minecraft:max_health" => m.attrs.max_health = v as f32,
                 "minecraft:movement_speed"
-                    if crate::mobs::finalize::default_value(
+                    if crate::mobs::finalize::base_value(
                         &m,
                         crate::mobs::finalize::Attr::MovementSpeed,
-                    ) != Some(v) =>
+                    ) != v =>
                 {
                     crate::mobs::finalize::set_base(
                         &mut m,
@@ -1975,10 +1999,10 @@ fn mob_from_nbt_at(
                 }
                 "minecraft:movement_speed" => m.attrs.speed = v,
                 "minecraft:attack_damage"
-                    if crate::mobs::finalize::default_value(
+                    if crate::mobs::finalize::base_value(
                         &m,
                         crate::mobs::finalize::Attr::AttackDamage,
-                    ) != Some(v) =>
+                    ) != v =>
                 {
                     crate::mobs::finalize::set_base(
                         &mut m,
@@ -1989,10 +2013,10 @@ fn mob_from_nbt_at(
                 "minecraft:attack_damage" => m.attrs.attack_damage = v as f32,
                 "minecraft:attack_knockback" => m.attrs.attack_knockback = v,
                 "minecraft:flying_speed"
-                    if crate::mobs::finalize::default_value(
+                    if crate::mobs::finalize::base_value(
                         &m,
                         crate::mobs::finalize::Attr::FlyingSpeed,
-                    ) != Some(v) =>
+                    ) != v =>
                 {
                     crate::mobs::finalize::set_base(
                         &mut m,
@@ -2028,16 +2052,10 @@ fn mob_from_nbt_at(
                 && !Attr::ALL.iter().any(|a| *a != Attr::Armor && a.id() == id)
         });
     }
-    m.health = float(tag.get("Health")).map_or(m.attrs.max_health, |h| h as f32);
+    m.health = loaded_health(&m, float(tag.get("Health")));
     // LivingEntity.readAdditionalSaveData: `internalSetAbsorptionAmount`
     // stores the value as read; only `setAbsorptionAmount` clamps.
     m.absorption = float(tag.get("AbsorptionAmount")).map_or(0.0, |h| h as f32);
-    // LivingEntity.setHealth clamps to the max health: a horse or llama is made
-    // with the type's and saved before it drops to the one it rolled. (Only
-    // the base is read here, so the clamp would cut a leader zombie's bonus.)
-    if crate::mobs::equine::is_equine(m.species()) {
-        m.health = m.health.min(m.attrs.max_health);
-    }
     m.hurt_time = i32::from(number(tag.get("HurtTime")).unwrap_or(0) as i16);
     // What it holds (equipment.mainhand / offhand), when saved.
     if let Some(eq) = tag.get("equipment") {
@@ -2675,15 +2693,6 @@ fn mob_from_nbt_at(
         m.species(),
         crate::mobs::Species::Slime | crate::mobs::Species::MagmaCube
     ) {
-        // AbstractCubeMob.readAdditionalSaveData: the size's attributes, then
-        // the saved health, the max health when there is none.
-        crate::mobs::cube::set_size(
-            &mut m,
-            (number(tag.get("Size")).unwrap_or(0) as i32).wrapping_add(1),
-        );
-        if let Some(h) = float(tag.get("Health")) {
-            m.health = h as f32;
-        }
         m.extra.flag2 = flag(tag, "wasOnGround");
     }
     if m.species() == crate::mobs::Species::Phantom {
@@ -6827,11 +6836,11 @@ pub fn bucket_components(m: &Mob) -> crate::item_data::StackData {
     data.set_other("minecraft:bucket_entity_data", Some(bucket_data(m)));
     // SulfurCube.saveToBucketTag: the body block, when it has one.
     if m.species() == crate::mobs::Species::SulfurCube
-        && let Some(body) = m.extra.body_id()
+        && let Some(body) = m.extra.body_stack()
     {
         data.set_other(
             "minecraft:sulfur_cube_content",
-            Some(Tag::compound([("id", string(body))])),
+            Some(crate::item_data::raw_template_tag(body)),
         );
     }
     if m.species() == crate::mobs::Species::Axolotl {
@@ -6875,6 +6884,11 @@ pub fn apply_item_components(m: &mut Mob, stack: &crate::items::ItemStack) {
     };
     if let Some(name) = stack.custom_name() {
         m.custom_name = Some(name);
+    }
+    if m.species() == crate::mobs::Species::SulfurCube
+        && let Some(body) = components.template_stack("minecraft:sulfur_cube_content")
+    {
+        m.extra.set_body_stack(Some(body));
     }
     if let Some(data) = components.other("minecraft:bucket_entity_data") {
         if let Some(v) = number(data.get("Age")) {

@@ -941,12 +941,16 @@ fn blocked_pull_ticks_extract_abort_restore_without_hopper_mark_or_cooldown() {
                         "face:Down",
                         "open",
                         "extract:0",
+                        "open",
                         "notice:1:Open",
+                        "commit",
                         "abort",
                         "restore:8,65,8:0",
                         "open",
                         "extract:1",
+                        "open",
                         "notice:1:Open",
+                        "commit",
                         "abort",
                         "restore:8,65,8:1"
                     ]
@@ -982,7 +986,7 @@ fn blocked_push_ticks_share_one_abort_and_restore_refused_source_slots() {
                 game.world.game_time = time;
                 game.tick_hopper(HOPPER);
                 let mut seen = trace(&probe);
-                let mut restored = seen.split_off(7);
+                let mut restored = seen.split_off(11);
                 restored.sort();
                 assert_eq!(
                     seen,
@@ -990,9 +994,13 @@ fn blocked_push_ticks_share_one_abort_and_restore_refused_source_slots() {
                         "face:Up",
                         "open",
                         "insert:minecraft:diamond",
+                        "open",
                         "notice:0:Open",
+                        "commit",
                         "insert:minecraft:gold_ingot",
+                        "open",
                         "notice:0:Open",
+                        "commit",
                         "abort"
                     ]
                 );
@@ -1012,11 +1020,17 @@ fn blocked_push_ticks_share_one_abort_and_restore_refused_source_slots() {
                     "face:Up",
                     "open",
                     "insert:minecraft:diamond",
+                    "open",
                     "notice:0:Open",
+                    "commit",
                     "insert:minecraft:gold_ingot",
+                    "open",
                     "notice:1:Open",
                     "commit",
-                    "mark:hopper:None"
+                    "commit",
+                    "open",
+                    "mark:hopper:Open",
+                    "commit"
                 ]
             );
             assert_eq!((count(game, HOPPER, 0), count(game, HOPPER, 1)), (1, 0));
@@ -1051,9 +1065,13 @@ fn push_then_pull_commit_in_one_tick_with_only_the_ordered_hopper_marks() {
                     "face:Down",
                     "open",
                     "extract:0",
+                    "open",
                     "mark:hopper:Open",
                     "commit",
-                    "mark:hopper:None"
+                    "commit",
+                    "open",
+                    "mark:hopper:Open",
+                    "commit"
                 ]
             );
             assert_eq!(game.hopper_cooldown(HOPPER), 8);
@@ -1081,7 +1099,9 @@ fn push_then_pull_commit_in_one_tick_with_only_the_ordered_hopper_marks() {
                     "insert:minecraft:stone",
                     "commit",
                     "face:Down",
-                    "mark:hopper:None"
+                    "open",
+                    "mark:hopper:Open",
+                    "commit"
                 ]
             );
         },
@@ -1109,10 +1129,16 @@ fn pull_chooses_the_first_slot_after_extract_and_not_an_existing_stack() {
                     "face:Down",
                     "open",
                     "extract:0",
+                    "open",
                     "mark:hopper:Open",
                     "commit",
+                    "commit",
+                    "open",
                     "mark:hopper:RootClosing",
-                    "mark:hopper:None"
+                    "commit",
+                    "open",
+                    "mark:hopper:Open",
+                    "commit"
                 ]
             );
             assert_eq!(count(game, HOPPER, 0), 1);
@@ -1222,7 +1248,9 @@ fn dropper_commits_refused_insertion_and_its_storage_notifications() {
                     "face:Up",
                     "open",
                     "insert:minecraft:diamond",
+                    "open",
                     "notice:0:Open",
+                    "commit",
                     "commit"
                 ]
             );
@@ -1238,7 +1266,9 @@ fn dropper_commits_refused_insertion_and_its_storage_notifications() {
                     "face:Up",
                     "open",
                     "insert:minecraft:diamond",
+                    "open",
                     "notice:1:Open",
+                    "commit",
                     "commit"
                 ]
             );
@@ -1284,11 +1314,13 @@ fn vanilla_container_provider_and_entity_never_ask_their_storage() {
                 }
                 game.tick_hopper(HOPPER);
                 assert_eq!(count(game, HOPPER, 0), 1, "{target}");
-                assert_eq!(
-                    trace(&probe),
-                    ["mark:hopper:None", "mark:hopper:None"],
-                    "{target}"
-                );
+                let mut expected = vec!["open", "mark:hopper:Open", "commit"];
+                if target == "minecraft:chest" {
+                    // The source's notice runs CommitMover without emitting a trace message.
+                    expected.extend(["open", "commit"]);
+                }
+                expected.extend(["open", "mark:hopper:Open", "commit"]);
+                assert_eq!(trace(&probe), expected, "{target}");
             }
         },
     );
@@ -1443,7 +1475,9 @@ fn extract_notifications_cross_signal_each_tick_and_comparator_ticks_every_secon
                         "face:Down",
                         "open",
                         "extract:0",
+                        "open",
                         "notice:63:Open",
+                        "commit",
                         "abort",
                         "restore:8,65,8:0"
                     ]
@@ -1495,9 +1529,13 @@ fn a_blocked_pull_slot_aborts_before_the_next_slot_commits() {
                     "restore:8,65,8:0",
                     "open",
                     "extract:1",
+                    "open",
                     "mark:hopper:Open",
                     "commit",
-                    "mark:hopper:None"
+                    "commit",
+                    "open",
+                    "mark:hopper:Open",
+                    "commit"
                 ]
             );
             assert_eq!(
@@ -1551,7 +1589,9 @@ fn pushes_use_only_the_opposite_face_for_each_hopper_facing() {
                         "open",
                         "insert:minecraft:stone",
                         "commit",
-                        "mark:hopper:None"
+                        "open",
+                        "mark:hopper:Open",
+                        "commit"
                     ]
                 );
                 assert_eq!(count(game, target, 0), 1);
@@ -1590,7 +1630,9 @@ fn refused_push_callback_journals_source_without_losing_the_restored_item() {
                     "face:Up",
                     "open",
                     "insert:minecraft:diamond",
+                    "open",
                     "notice:0:Open",
+                    "commit",
                     "abort",
                     "restore:8,64,8:0"
                 ]
@@ -1655,7 +1697,9 @@ fn dropper_removes_accepted_source_before_a_real_root_commit_callback() {
                     "open",
                     "commit",
                     "commit",
-                    "sink-source:0:RootClosing"
+                    "open",
+                    "sink-source:0:RootClosing",
+                    "commit"
                 ]
             );
             assert_eq!(count(game, HOPPER, 0), 0);

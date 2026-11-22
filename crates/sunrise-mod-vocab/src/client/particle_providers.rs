@@ -160,19 +160,47 @@ pub trait ParticleProviders {
 #[derive(Default)]
 // exhaustive: its field is private; the game builds it
 pub struct ParticleProviderRegistry {
-    providers: BTreeMap<String, Arc<dyn ParticleProvider>>,
+    providers: crate::runtime::RegistrationMap<Arc<dyn ParticleProvider>>,
+}
+
+const REGISTRATION: (crate::generated::HookId, &str) = (
+    crate::generated::HookId::RegisterParticleProviders,
+    "register_particle_providers",
+);
+
+#[derive(Default)]
+struct ProviderEdits(crate::runtime::RegistrationEdits<Arc<dyn ParticleProvider>>);
+
+impl ParticleProviders for ProviderEdits {
+    fn register(&mut self, name: String, provider: Arc<dyn ParticleProvider>) {
+        self.0.insert(name, provider);
+    }
 }
 
 impl ParticleProviders for ParticleProviderRegistry {
     fn register(&mut self, name: String, provider: Arc<dyn ParticleProvider>) {
-        self.providers.insert(name, provider);
+        self.providers
+            .finish(REGISTRATION, true, [(name, provider)]);
     }
 }
 
 impl ParticleProviderRegistry {
+    /// Apply the current listener's provider edits only if its registration succeeds.
+    // hidden: the engine stages one listener at a time; mods receive only the registrar trait.
+    #[doc(hidden)]
+    pub fn register_listener(
+        &mut self,
+        listen: &mut dyn FnMut(&mut dyn ParticleProviders) -> bool,
+    ) {
+        let mut edits = ProviderEdits::default();
+        let publish = listen(&mut edits);
+        self.providers
+            .finish(REGISTRATION, publish, edits.0.ordered());
+    }
+
     /// Each type's provider, the last registration for a name winning.
     pub fn into_providers(self) -> BTreeMap<String, Arc<dyn ParticleProvider>> {
-        self.providers
+        self.providers.into_values()
     }
 }
 

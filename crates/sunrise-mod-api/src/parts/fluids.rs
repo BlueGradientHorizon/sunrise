@@ -301,7 +301,7 @@ pub mod tests {
                 &crate::parts::tests::Level,
                 crate::BlockCapabilitySite::new(
                     at,
-                    crate::BlockStateRecord::new(air, 0).into(),
+                    crate::__private::block_state_from_ordinal(air, 0),
                     resident,
                     false,
                 ),

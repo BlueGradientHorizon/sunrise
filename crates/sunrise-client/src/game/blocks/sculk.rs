@@ -600,7 +600,7 @@ impl Game<'_> {
             owner_uuid: None,
             dampening_state: self.state_dampens(state),
             spectator: self.spectator(),
-            stepping_carefully: self.keys.held(Action::Sneak),
+            stepping_carefully: self.held_mapping(Action::Sneak),
             dampens: false,
             targetable: !dead && !creative && !self.spectator(),
             living: true,
@@ -1677,7 +1677,7 @@ impl Game<'_> {
         let effect =
             sunrise_client::effects::EffectInstance::new("darkness", warden::DARKNESS_DURATION, 0)
                 .with_flags(false, false);
-        self.potions.effects.add(effect);
+        self.apply_player_effect(effect);
     }
 
     // ---- catalysts ----
@@ -2122,7 +2122,7 @@ impl Game<'_> {
             )
         });
         if let Some((at, on_ground, health, flying)) = player {
-            let crouch = self.keys.held(Action::Sneak);
+            let crouch = self.held_mapping(Action::Sneak);
             if on_ground && !self.spectator() {
                 self.step_on_redstone_ore(at, crouch, true);
             }
