@@ -1058,7 +1058,7 @@ pub(super) fn tnt_general_seat(tnt: Vec3) -> Vec3 {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::*;
 
     #[test]
@@ -1794,6 +1794,10 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn portal_transfer_tnt_state_follows_memory_but_not_saved_nbt() {
+        run_portal_transfer_tnt_state_follows_memory_but_not_saved_nbt();
+    }
+
+    pub(in crate::game) fn run_portal_transfer_tnt_state_follows_memory_but_not_saved_nbt() {
         use super::super::commands::Target;
         let mut resources = None;
         let mut game = server_game(&mut resources).expect("set SUNRISE_TEST_RESOURCES");
@@ -1823,6 +1827,10 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn portal_transfer_ordinary_nbt_cannot_supply_runtime_immunity() {
+        run_portal_transfer_ordinary_nbt_cannot_supply_runtime_immunity();
+    }
+
+    pub(in crate::game) fn run_portal_transfer_ordinary_nbt_cannot_supply_runtime_immunity() {
         use sunrise_core::nbt::Tag;
         let mut resources = None;
         let mut game = server_game(&mut resources).expect("set SUNRISE_TEST_RESOURCES");
@@ -1844,6 +1852,10 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn portal_blast_sulfur_cube_uses_only_positive_cooldown() {
+        run_portal_blast_sulfur_cube_uses_only_positive_cooldown();
+    }
+
+    pub(in crate::game) fn run_portal_blast_sulfur_cube_uses_only_positive_cooldown() {
         use sunrise_client::mobs::Mob;
         use sunrise_client::nether_portal::PortalState;
         let mut resources = None;
@@ -2102,6 +2114,10 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn silent_tnt_keeps_the_blast_without_its_sound() {
+        run_silent_tnt_keeps_the_blast_without_its_sound();
+    }
+
+    pub(in crate::game) fn run_silent_tnt_keeps_the_blast_without_its_sound() {
         on_big_stack(|| {
             let mut resources = None;
             let Some(mut game) = source_silence_game(&mut resources) else {
@@ -2161,6 +2177,10 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn silent_potions_keep_the_splash_without_its_sound() {
+        run_silent_potions_keep_the_splash_without_its_sound();
+    }
+
+    pub(in crate::game) fn run_silent_potions_keep_the_splash_without_its_sound() {
         on_big_stack(|| {
             use sunrise_client::projectiles::{Hit, Projectile, ProjectileKind};
             let mut resources = None;
@@ -2231,6 +2251,10 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn silent_creeper_keeps_the_blast_after_its_source_is_removed() {
+        run_silent_creeper_keeps_the_blast_after_its_source_is_removed();
+    }
+
+    pub(in crate::game) fn run_silent_creeper_keeps_the_blast_after_its_source_is_removed() {
         on_big_stack(|| {
             let mut resources = None;
             let Some(mut game) = source_silence_game(&mut resources) else {
@@ -2268,6 +2292,10 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn silent_launched_potions_and_bottles_keep_their_impact() {
+        run_silent_launched_potions_and_bottles_keep_their_impact();
+    }
+
+    pub(in crate::game) fn run_silent_launched_potions_and_bottles_keep_their_impact() {
         on_big_stack(|| {
             let mut resources = None;
             let Some(mut game) = source_silence_game(&mut resources) else {
@@ -2381,6 +2409,10 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn silent_bottles_preserve_xp_and_the_server_random_stream() {
+        run_silent_bottles_preserve_xp_and_the_server_random_stream();
+    }
+
+    pub(in crate::game) fn run_silent_bottles_preserve_xp_and_the_server_random_stream() {
         on_big_stack(|| {
             use sunrise_client::projectiles::{Hit, Projectile, ProjectileKind};
             let mut resources = None;

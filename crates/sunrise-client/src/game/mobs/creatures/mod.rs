@@ -520,7 +520,7 @@ impl Game<'_> {
     /// [`Self::player_view`], so a tick that lends no guest's view names its
     /// player (#1077). None where the view stands for nobody: no player of
     /// the game's own, a fake one, or a guest's turn acting in its place.
-    pub(super) fn player_identity(&self) -> Option<([i32; 4], u32)> {
+    pub(in crate::game) fn player_identity(&self) -> Option<([i32; 4], u32)> {
         if self.lan_acting_fake || self.lan_acting_uuid.is_some() || self.player.is_none() {
             return None;
         }
@@ -9845,7 +9845,7 @@ mod conversion_tag_tests;
 mod pickable_projectile_tests;
 
 #[cfg(test)]
-mod mob_pearl_hook_tests;
+pub(in crate::game) mod mob_pearl_hook_tests;
 
 #[cfg(test)]
 mod breeding_orb_tests;
@@ -9924,8 +9924,8 @@ mod frame_projectile_tests;
 
 #[cfg(test)]
 #[path = "projectile_targets_tests.rs"]
-mod projectile_targets_tests;
+pub(in crate::game) mod projectile_targets_tests;
 
 #[cfg(test)]
 #[path = "projectiles_120_124_tests.rs"]
-mod projectiles_120_124_tests;
+pub(in crate::game) mod projectiles_120_124_tests;
