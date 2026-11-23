@@ -11,9 +11,8 @@ build before you have the [prepared resources](#prepared-resources) needed to pl
 
 ## 1. Install the mod tool
 
-Follow [Install the mod tool](install-tool.md) for your computer. When `cargo sunrise-mod` prints its usage, come
-back here. This page needs a tool that answers `cargo sunrise-mod --version` with a commit; one that prints the usage
-instead is older, and the [newest tool from main](install-tool.md#newest-tool-from-main) replaces it.
+Follow [Install the mod tool](install-tool.md) for your computer and check `cargo sunrise-mod --version` as described
+there (it reports a commit SHA or `dev`). When it works, come back here.
 
 ## 2. Make the project
 
@@ -81,19 +80,18 @@ cargo sunrise-mod build
 the library it made and the build log's path:
 
 ```text
-Downloading runtime-x86_64-unknown-linux-gnu.tar.xz (71 MB), once for every project
-…
 Compiling greeter (1/1)
 Built …/sunrise-mod/work/greeter/prebuilt-build/…/libmod_greeter.so
 Build log: …/sunrise-mod/work/greeter/build.log
 ```
 
-The first build downloads the pinned build's compiled slices, checks Sunrise's signature on their checksums and
-unpacks them into the tool's cache, shared by every project: `~/.cache/sunrise-mod` on Linux (`$XDG_CACHE_HOME`),
-`~/Library/Caches/sunrise-mod` on macOS, `%LOCALAPPDATA%\sunrise-mod` on Windows, or the folder
-`SUNRISE_MOD_CACHE` names. Delete that folder to clear it; the next build fetches again. It also finds the Rust the SDK
-names: through `rustup` (installing it with `--profile minimal` when missing), or the `rustc` on `PATH` when that is
-exactly the version; it never builds with another compiler.
+On a cache miss for that pinned build and target, `build` downloads the compiled slices, checks Sunrise's signature on
+their checksums and unpacks them into the tool's per-user cache, shared by every project: `~/.cache/sunrise-mod` on
+Linux (`$XDG_CACHE_HOME`), `~/Library/Caches/sunrise-mod` on macOS, `%LOCALAPPDATA%\sunrise-mod` on Windows, or the
+folder `SUNRISE_MOD_CACHE` names. Later projects pinned to the same build reuse that cache without downloading again.
+Delete that folder to clear it; the next build fetches again. It also finds the Rust the SDK names: through `rustup`
+(installing it with `--profile minimal` when missing), or the `rustc` on `PATH` when that is exactly the version; it
+never builds with another compiler.
 
 A mod with crates.io dependencies is compiled with them, as `cargo build` would, and `build` pins them in
 `Cargo.lock` the first time. After you change `Cargo.toml`, `cargo sunrise-mod build --update-lock` resolves again.
@@ -121,16 +119,19 @@ the greeting appears in chat, and the mod is listed on the game's **Mods** scree
 ### Prepared resources
 
 The game needs resources prepared from your own Minecraft: Java Edition 26.3. The tool never downloads or bundles
-Mojang's files. Make them once and name the folder with `--resources`:
+Mojang's files. `sunrise-prepare` is in the game download for your computer in the
+[Nightly release](https://github.com/sunrise-org/sunrise/releases/tag/nightly). Make the resources once and pass the
+folder to `--resources`:
 
-1. Have your own copy of Minecraft: Java Edition 26.3 installed. Play it once so the client files are on
-   your computer.
-2. Download the 26.3 server jar from `minecraft.net/download/server` while 26.3 is the current release,
-   otherwise use the address in `downloads.server.url` in your installation's `versions/26.3/26.3.json`.
-3. Run `sunrise-prepare --prepare --server-jar <server.jar> --output <folder>`. `sunrise-prepare` is in the game
-   download for your computer in the [Nightly release](https://github.com/sunrise-org/sunrise/releases/tag/nightly).
-   If your client files are in a non-default location, `sunrise-prepare --help` explains how to point the tool
-   at them. For a Prism or MultiMC installation, pass `--prism-dir <path>` instead of `--server-jar`.
+- **Official Minecraft Launcher:**
+  1. Play Minecraft: Java Edition 26.3 once so the client files are on your computer.
+  2. Download the 26.3 server jar from `minecraft.net/download/server` while 26.3 is the current release,
+     otherwise use the address in `downloads.server.url` in your installation's `versions/26.3/26.3.json`.
+  3. Run `sunrise-prepare --prepare --server-jar <server.jar> --output <folder>`. If your client files are in a
+     non-default location, `sunrise-prepare --help` explains how to point the tool at them.
+- **Prism Launcher or MultiMC:**
+  - Run `sunrise-prepare --prepare --prism-dir <path> --output <folder>`. This reads the installed client jar and
+    needs no separate server jar download.
 
 ## 7. Test it
 

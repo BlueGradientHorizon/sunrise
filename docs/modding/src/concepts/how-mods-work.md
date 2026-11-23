@@ -47,9 +47,10 @@ when you edit your project files. Native hooks run when the game reaches the mom
 registration hooks run during setup, while a join hook runs when a player joins.
 
 If your mod needs another mod first, declare it in `[dependencies]` in `sunrise-mod.toml`. By default a
-dependency's content and listeners come before yours. A missing required mod, a version that doesn't
-match, or a cycle in the order stops loading. An optional dependency can be absent; when present, it
-must match the declared version. See [Dependencies between mods](dependencies.md) for ordering options.
+dependency's content and listeners come before yours. Under the default rules, a missing applicable required
+mod, a version that doesn't satisfy the declared version requirement, or a cycle in the order stops loading.
+An optional dependency can be absent; when present and applicable, it must match the declared version
+requirement. See [Dependencies between mods](dependencies.md) for instance overrides and ordering options.
 
 ## Next
 
