@@ -1022,10 +1022,10 @@ impl Game<'_> {
         equine::is_equine(species) || sunrise_client::mobs::nautilus::is_nautilus(species)
     }
     /// `Player.jumpableVehicle`: a saddled mount that jumps (not a pig or a
-    /// strider, which a saddle only steers).
-    pub(super) fn jumpable_mount(&self) -> bool {
-        self.mount_index()
-            .is_some_and(|i| self.mobs[i].extra.saddled() && Self::jumps(self.mobs[i].species()))
+    /// strider, which a saddle only steers), by its entity id.
+    pub(super) fn jumpable_mount(&self) -> Option<u32> {
+        let mount = &self.mobs[self.mount_index()?];
+        (mount.extra.saddled() && Self::jumps(mount.species())).then_some(mount.id)
     }
     /// `willPrioritizeJumpInfo`: charging a jump or recharging.
     pub(super) fn mount_jumping(&self) -> bool {

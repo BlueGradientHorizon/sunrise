@@ -9,6 +9,13 @@ It advances once per unpaused client tick, including on the title screen, and wr
 Java's `int`. Pausing holds it; a server tick freeze does not. This is not world game time
 or the frame's animation clock.
 
+Two reads give the facts the HUD picks its contextual bar from (the jump bar, the locator bar or the
+experience bar): `ClientHost::jumpable_vehicle()` is the vehicle the local player rides that can jump
+(`LocalPlayer.jumpableVehicle`: a saddled horse, donkey, mule, camel or nautilus, not a pig or a strider),
+and `ClientHost::has_waypoints()` is whether the server tracks any waypoint for this client
+(`ClientWaypointManager.hasWaypoints`). The HUD reads the same state. The bar it chose is not exposed, as
+vanilla's `Hud.nextContextualInfoState` is private.
+
 `ClientHost::gui_scale()` reads the GUI scale in effect (`Window.getGuiScale`), at least 1,
 or `None` without a window (a server, a headless run). Vanilla's `Window.calculateScale` resolves
 it from the GUI Scale option and the window size: the option is a maximum, where 0 means automatic,

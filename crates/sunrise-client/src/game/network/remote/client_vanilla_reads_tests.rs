@@ -141,3 +141,62 @@ fn a_client_counts_its_copies_ticks_and_a_respawned_player_starts_at_zero() {
         },
     );
 }
+
+/// The two facts `Hud.nextContextualInfoState` reads, as a client mod reads them:
+/// `LocalPlayer.jumpableVehicle` (a saddled mount that jumps, not a pig) and
+/// `ClientWaypointManager.hasWaypoints` (any waypoint the server tracks for this client).
+#[test]
+#[ignore = "daily"]
+fn the_contextual_bar_facts_read_the_jumpable_mount_and_the_tracked_waypoints() {
+    use sunrise_client::locator_bar::ContextualBar;
+    use sunrise_protocol::packets::play::{TrackedWaypoint, WaypointId, WaypointTarget};
+    crate::game::in_own_process(
+        "game::remote::tests::client_vanilla_reads_tests::the_contextual_bar_facts_read_the_jumpable_mount_and_the_tracked_waypoints",
+        || {
+            with_client_game(|game| {
+                let _connection = join(game);
+                let facts = |game: &Game<'_>| {
+                    let host: &dyn ClientHost = game;
+                    (host.jumpable_vehicle(), host.has_waypoints())
+                };
+                assert_eq!(facts(game), (None, false));
+                let ride = |game: &mut Game<'_>, vehicle: u32, passengers: Vec<i32>| {
+                    game.handle_packet(C::SetPassengers(play::SetPassengers {
+                        vehicle: vehicle as i32,
+                        passengers,
+                    }))
+                    .unwrap();
+                };
+                for (id, kind) in [(30, "minecraft:horse"), (31, "minecraft:pig")] {
+                    add(game, id, kind);
+                    let mount = game.mobs.iter_mut().find(|m| m.id == id).unwrap();
+                    mount.extra.set_saddled(true);
+                }
+                ride(game, 30, vec![PLAYER as i32]);
+                let horse = game.entity(30);
+                assert!(horse.is_some());
+                assert_eq!(facts(game), (horse, false));
+                assert_eq!(game.contextual_bar(), ContextualBar::JumpableVehicle);
+                // A saddle only steers a pig.
+                ride(game, 30, Vec::new());
+                ride(game, 31, vec![PLAYER as i32]);
+                assert_eq!(facts(game), (None, false));
+
+                let waypoint = |operation| {
+                    C::TrackedWaypoint(TrackedWaypoint {
+                        operation,
+                        id: WaypointId::Uuid(0x4677),
+                        style: "minecraft:default".into(),
+                        color: None,
+                        target: WaypointTarget::Block([40, 64, 40]),
+                    })
+                };
+                game.handle_packet(waypoint(0)).unwrap();
+                assert_eq!(facts(game), (None, true));
+                assert_eq!(game.contextual_bar(), ContextualBar::Locator);
+                game.handle_packet(waypoint(1)).unwrap();
+                assert_eq!(facts(game), (None, false));
+            });
+        },
+    );
+}
