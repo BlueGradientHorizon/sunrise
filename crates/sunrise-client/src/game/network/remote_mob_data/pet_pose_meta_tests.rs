@@ -9,7 +9,7 @@ use sunrise_core::geometry::Vec3;
 use sunrise_protocol::entity_data::Value;
 use sunrise_protocol::registry::Builtin;
 
-pub(super) fn root() -> std::path::PathBuf {
+fn root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../.local/sunrise-client")
         .join(sunrise_core::VANILLA_VERSION)

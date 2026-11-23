@@ -2,19 +2,12 @@
 //! `startUsingItem` and `stopUsingItem` as callers, and `Witch.aiStep` counts her drink in its
 //! own `usingTime` and `DATA_USING_ITEM`. So a host sends her living flags as 0 while she
 //! drinks (a vanilla client would otherwise start a use of her potion), and her drink on her
-//! own flag.
+//! own flag. A use she really starts is sent as one.
 use super::super::lan;
-use super::pet_pose_meta_tests::{meta_hub, root};
-use sunrise_client::mobs::{Mob, MobTypes};
-use sunrise_core::geometry::Vec3;
+use super::pet_pose_meta_tests::meta_hub;
+use super::tests::fixture_mob;
+use sunrise_client::mobs::Mob;
 use sunrise_protocol::entity_data::Value;
-
-/// A witch as the host tracks her (None without the prepared resources).
-fn witch() -> Option<Mob> {
-    let types = MobTypes::load(&root()).ok()?;
-    let kind = std::sync::Arc::new(types.types.get("minecraft:witch")?.clone());
-    Some(Mob::new(1, kind, Vec3::ZERO, 0.0))
-}
 
 /// What the host sends for `m` at `index`, if anything.
 fn sent_at(m: &Mob, hub: &sunrise_client::lan::hub::Hub, index: u8) -> Option<Value> {
@@ -27,11 +20,9 @@ fn sent_at(m: &Mob, hub: &sunrise_client::lan::hub::Hub, index: u8) -> Option<Va
 
 #[test]
 fn a_drinking_witch_sends_her_own_flag_and_no_item_use() {
-    let Some(mut witch) = witch() else {
-        return;
-    };
     let hub = meta_hub();
-    // `Witch.aiStep` as it starts a drink: 32 ticks, her flag set, the potion in hand.
+    let mut witch = fixture_mob("minecraft:witch");
+    // `Witch.aiStep` as it starts a drink: 32 ticks, her flag set.
     witch.extra.using_item = 32;
     witch.extra.flag = true;
     assert_eq!(sent_at(&witch, &hub, 8), None, "living flags stay 0");
@@ -41,5 +32,10 @@ fn a_drinking_witch_sends_her_own_flag_and_no_item_use() {
     witch.extra.using_item = 0;
     witch.extra.flag = false;
     assert_eq!(sent_at(&witch, &hub, 8), None);
+    assert_eq!(sent_at(&witch, &hub, 17), None);
+
+    // A use she starts while not drinking (`start_mob_using_item`) is one.
+    witch.extra.using_item = 20;
+    assert_eq!(sent_at(&witch, &hub, 8), Some(Value::Byte(1)));
     assert_eq!(sent_at(&witch, &hub, 17), None);
 }

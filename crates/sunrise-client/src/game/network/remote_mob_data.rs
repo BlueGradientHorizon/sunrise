@@ -73,11 +73,7 @@ pub(super) fn apply(
             // LivingEntity.DATA_LIVING_ENTITY_FLAGS: using an item 1, in the
             // off hand 2. Bit 0 starts and stops the use; the client ticks the
             // count itself (a bow's pull follows it). stopUsingItem clears
-            // only bit 0, so a stopped off-hand use arrives as 2. A witch's
-            // drink is not a use: its count is her own (Witch.DATA_USING_ITEM).
-            (8, Value::Byte(flags)) if species == Species::Witch => {
-                m.extra.using_off_hand = flags & 2 != 0;
-            }
+            // only bit 0, so a stopped off-hand use arrives as 2.
             (8, Value::Byte(flags)) => {
                 m.extra.using_off_hand = flags & 2 != 0;
                 if flags & 1 == 0 {
@@ -561,7 +557,7 @@ pub(in crate::game) mod tests {
     use super::*;
     use sunrise_protocol::entity_data::serializer as s;
 
-    fn fixture_mob(kind: &str) -> Mob {
+    pub(super) fn fixture_mob(kind: &str) -> Mob {
         use std::sync::Arc;
         use sunrise_client::mobs::{Anim, Brain, Flags, MobType, Part};
         let species = match kind {
@@ -973,8 +969,7 @@ pub(in crate::game) mod tests {
     }
 
     /// Witch.DATA_USING_ITEM (17): her drink goes out on her own flag, the end
-    /// of it too, and nothing repeats. Her living flags would start a use of
-    /// the potion on a client, so they don't change her count there.
+    /// of it too, and nothing repeats.
     #[test]
     fn a_witchs_drink_crosses_the_tracker_on_her_own_flag() {
         let drink = |m: &mut Mob, on: bool| {
@@ -993,16 +988,6 @@ pub(in crate::game) mod tests {
         let trace = raider_flag_trace("witch", 17, drink, |m| m.extra.flag, &sequence);
         assert_eq!(trace, expected);
 
-        let mut client = fixture_mob("minecraft:witch");
-        for flags in [1, 0, 1] {
-            let _ = super::apply(
-                &mut client,
-                &[(8, s::BYTE, Value::Byte(flags))],
-                &Builtin::default(),
-                99,
-            );
-            assert_eq!(client.extra.using_item, 0, "living flags {flags}");
-        }
         // A pillager's 17 is its crossbow charge, still.
         let mut pillager = fixture_mob("minecraft:pillager");
         let _ = super::apply(
