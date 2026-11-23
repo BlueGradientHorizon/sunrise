@@ -3,13 +3,20 @@
 use super::*;
 use crate::game::{Dim, execution_role::ExecutionRole, native_entity_refs::tests};
 use serde_json::{Map, Value, json};
-use std::sync::{atomic::AtomicI32, mpsc};
+use std::{
+    collections::HashSet,
+    sync::{atomic::AtomicI32, mpsc},
+};
 use sunrise_client::{
     chunk::Chunk,
     lan::{
         Joined, Out, PlayerSender,
         guest::{Guest, InboxItem},
     },
+};
+use sunrise_core::{
+    geometry::Vec3,
+    nbt::{self, Tag},
 };
 use sunrise_protocol::{
     buf::Reader,
@@ -19,7 +26,10 @@ use sunrise_protocol::{
 const VIEWER: u32 = 1;
 const START: [f64; 3] = [0.5, 100.0, 0.5];
 const REPORT: &str = "SUNRISE_PLAYER_PACKET_REPORT";
-const CHILD: &str = "SUNRISE_PLAYER_PACKET_CHILD";
+fn witness(rows: &mut Map<String, Value>, name: &str, actual: Value, expected: Value) {
+    assert_eq!(actual, expected, "{name}");
+    rows.insert(name.into(), actual);
+}
 
 fn join(game: &mut Game<'_>, conn: u32, loaded: bool) -> mpsc::Receiver<Out> {
     let (tx, rx) = mpsc::channel();
@@ -53,6 +63,9 @@ fn join(game: &mut Game<'_>, conn: u32, loaded: bool) -> mpsc::Receiver<Out> {
 }
 
 fn packet_tick(game: &mut Game<'_>, conn: u32, packets: impl IntoIterator<Item = S>) {
+    let back = game.dim;
+    let level = Dim::from_id(&guest(game, conn).dimension);
+    game.enter_level(level).unwrap();
     game.lan.as_mut().unwrap().hub.update_guest(conn, |guest| {
         guest.inbox.extend(packets.into_iter().map(|packet| {
             let body = packet.encode();
@@ -63,7 +76,12 @@ fn packet_tick(game: &mut Game<'_>, conn: u32, packets: impl IntoIterator<Item =
     });
     game.level_pass = Default::default();
     game.tick_lan_packets();
+    assert_eq!(
+        game.dim, level,
+        "packet pass did not restore its source level"
+    );
     guest(game, conn).sender.flush();
+    game.enter_level(back).unwrap();
 }
 
 fn guest<'a>(game: &'a Game<'_>, conn: u32) -> &'a Guest {
@@ -111,6 +129,11 @@ fn credits(game: &mut Game<'_>, rows: &mut Map<String, Value>) {
             .iter()
             .any(|p| matches!(p, C::GameEvent(event) if event.event == 4))
     );
+    game.lan
+        .as_mut()
+        .unwrap()
+        .hub
+        .update_guest(7, |g| g.last_action_tick = 0);
     packet_tick(
         game,
         7,
@@ -124,6 +147,12 @@ fn credits(game: &mut Game<'_>, rows: &mut Map<String, Value>) {
         })],
     );
     rows.insert("141/credits_pose".into(), pose(guest(game, 7)));
+    witness(
+        rows,
+        "141/credits_idle_credit",
+        json!(guest(game, 7).last_action_tick != 0),
+        json!(false),
+    );
     rows.insert(
         "141/credits_move_count".into(),
         json!(guest(game, 7).received_moves),
@@ -159,6 +188,23 @@ fn credits(game: &mut Game<'_>, rows: &mut Map<String, Value>) {
         json!(rx.try_iter().any(|p| matches!(p, Out::Disconnect(_)))),
     );
     game.enter_level(Dim::Overworld).unwrap();
+    let _rx = join(game, 9, true);
+    packet_tick(
+        game,
+        9,
+        [S::MovePlayerPos(play::MovePlayerPos {
+            x: 0.75,
+            y: 100.0,
+            z: 0.5,
+            flags: 0,
+        })],
+    );
+    witness(
+        rows,
+        "141/ordinary_idle_credit",
+        json!(guest(game, 9).last_action_tick != 0),
+        json!(true),
+    );
 }
 
 fn use_item(game: &mut Game<'_>, rows: &mut Map<String, Value>) {
@@ -268,8 +314,67 @@ fn spectate(game: &mut Game<'_>, rx: &mpsc::Receiver<Out>, rows: &mut Map<String
                 .count()
         ),
     );
+    assert!(game.as_console(|g| g.run_command("summon oak_boat 2.5 100 3.5")));
+    let boat = game.boats.last().unwrap().id;
+    for active in [false, true] {
+        let i = game.guest_index(VIEWER).unwrap();
+        if active {
+            game.guest_set_camera(i, Some(boat as i32));
+            assert!(guest(game, VIEWER).watching);
+        }
+        game.lan.as_mut().unwrap().hub.update_guest(VIEWER, |g| {
+            g.place(START);
+            g.vehicle = Some(boat);
+        });
+        game.as_guest(VIEWER, |g| {
+            let body = g.player.as_mut().unwrap();
+            body.fall_distance = 7.25;
+            body.velocity = Vec3::new(0.125, -0.25, 0.5);
+        });
+        guest(game, VIEWER).sender.flush();
+        receive(rx);
+        packet_tick(game, VIEWER, [shoot(2)]);
+        let viewer = guest(game, VIEWER);
+        let body = viewer.motion.as_ref().unwrap();
+        let packets: Vec<_> = receive(rx)
+            .iter()
+            .filter_map(|p| match p {
+                C::SetPassengers(p) if p.vehicle == boat as i32 && p.passengers.is_empty() => {
+                    Some("dismount")
+                }
+                C::PlayerPosition(_) => Some("position"),
+                C::SetCamera(p) if p.camera_id == viewer.entity_id => Some("camera_self"),
+                _ => None,
+            })
+            .collect();
+        let expected_packets = if active {
+            vec!["dismount", "position", "camera_self", "position"]
+        } else {
+            vec!["dismount", "position"]
+        };
+        witness(
+            rows,
+            &format!("144/same_level_{active}"),
+            json!([
+                packets,
+                viewer.vehicle.is_none(),
+                !viewer.watching && !game.cmds.guest_cameras.contains_key(&VIEWER),
+                body.fall_distance.to_bits() as i64,
+                vector_bits(body.velocity),
+                viewer.first_good == viewer.position,
+            ]),
+            json!([
+                expected_packets,
+                true,
+                true,
+                7.25_f64.to_bits() as i64,
+                [0; 3],
+                true
+            ]),
+        );
+    }
     for (word, dim, name, x) in [
-        (9u128, Dim::Overworld, "overworld", 6.25),
+        (90u128, Dim::Overworld, "overworld", 6.25),
         (10, Dim::Nether, "the_nether", 8.25),
     ] {
         let from = game.dim;
@@ -279,7 +384,6 @@ fn spectate(game: &mut Game<'_>, rx: &mpsc::Receiver<Out>, rows: &mut Map<String
         ))));
         game.enter_level(from).unwrap();
         packet_tick(game, VIEWER, [shoot(word)]);
-        game.run_level_teleports();
         let viewer = guest(game, VIEWER);
         rows.insert(format!("144/stand_{name}"), pose(viewer));
         rows.insert(
@@ -301,15 +405,103 @@ fn spectate(game: &mut Game<'_>, rx: &mpsc::Receiver<Out>, rows: &mut Map<String
             "summon item_frame 7.5 100.5 3.5 {UUID:[I;0,0,0,12],block_pos:[I;7,100,3],Facing:1b,Fixed:1b}",
         ),
     ] {
-        let from = Dim::from_id(&guest(game, VIEWER).dimension);
+        let from = game.dim;
         game.enter_level(dim).unwrap();
         assert!(game.as_console(|g| g.run_command(command)));
         game.enter_level(from).unwrap();
         packet_tick(game, VIEWER, [shoot(word)]);
-        game.run_level_teleports();
         rows.insert(format!("144/{name}"), pose(guest(game, VIEWER)));
     }
-    game.enter_level(Dim::Overworld).unwrap();
+
+    receive(rx);
+    // A return is a second level change; a target in the destination is not.
+    for (name, target, levels, at, angles) in [
+        (
+            "mixed_return",
+            90,
+            vec![Dim::Nether, Dim::Overworld],
+            [6.25_f64, 101.0, 2.75],
+            [63.0_f32, 0.0],
+        ),
+        (
+            "mixed_stay",
+            11,
+            vec![Dim::Nether],
+            [5.125, 101.5, 3.25],
+            [-123.25, -32.5],
+        ),
+    ] {
+        packet_tick(game, VIEWER, [shoot(10), shoot(target)]);
+        let packets = receive(rx);
+        let transitions: Vec<_> = packets
+            .iter()
+            .filter_map(|p| match p {
+                C::Respawn(p) => Some(p.spawn.dimension.as_str()),
+                _ => None,
+            })
+            .collect();
+        let corrections = packets
+            .iter()
+            .filter(|p| matches!(p, C::PlayerPosition(_)))
+            .count();
+        let expected_levels: Vec<_> = levels.iter().map(|level| level.id()).collect();
+        witness(
+            rows,
+            &format!("144/{name}"),
+            json!([
+                transitions,
+                corrections,
+                guest(game, VIEWER).dimension,
+                pose(guest(game, VIEWER))
+            ]),
+            json!([
+                expected_levels,
+                2,
+                expected_levels.last().unwrap(),
+                [
+                    at[0].to_bits() as i64,
+                    at[1].to_bits() as i64,
+                    at[2].to_bits() as i64,
+                    i64::from(angles[0].to_bits() as i32),
+                    i64::from(angles[1].to_bits() as i32)
+                ],
+            ]),
+        );
+    }
+}
+
+fn vector_bits(v: Vec3) -> [i64; 3] {
+    [v.x, v.y, v.z].map(|x| x.to_bits() as i64)
+}
+
+fn vehicle_packet() -> S {
+    S::MoveVehicle(play::MoveVehicleRequest {
+        position: [2.0, 101.0, 3.0],
+        yaw: 72.0,
+        pitch: 35.0,
+        on_ground: true,
+    })
+}
+
+fn correction_sample(packets: &[C], guest: &Guest) -> Value {
+    let corrections: Vec<_> = packets
+        .iter()
+        .filter_map(|p| match p {
+            C::PlayerPosition(p) => Some(json!([
+                p.teleport,
+                p.yaw.to_bits() as i32,
+                p.pitch.to_bits() as i32,
+                p.delta.map(|x| x.to_bits() as i64),
+            ])),
+            _ => None,
+        })
+        .collect();
+    json!([
+        corrections,
+        guest.yaw.to_bits() as i32,
+        guest.pitch.to_bits() as i32,
+        guest.awaiting_teleport.map(|(id, _)| id),
+    ])
 }
 
 fn resend(game: &mut Game<'_>, rows: &mut Map<String, Value>) {
@@ -325,12 +517,7 @@ fn resend(game: &mut Game<'_>, rows: &mut Map<String, Value>) {
             let mut packet = None;
             if elapsed >= 19 {
                 packet = Some(if route.ends_with("vehicle") {
-                    S::MoveVehicle(play::MoveVehicleRequest {
-                        position: [2.0, 101.0, 3.0],
-                        yaw: 72.0,
-                        pitch: 35.0,
-                        on_ground: true,
-                    })
+                    vehicle_packet()
                 } else {
                     S::MovePlayerRot(play::MovePlayerRot {
                         yaw: 72.0,
@@ -343,44 +530,157 @@ fn resend(game: &mut Game<'_>, rows: &mut Map<String, Value>) {
             packet_tick(game, conn, packet);
             let packets = receive(&rx);
             if elapsed >= 19 {
-                let positions: Vec<_> = packets
-                    .iter()
-                    .filter_map(|packet| match packet {
-                        C::PlayerPosition(p) => Some(p),
-                        _ => None,
-                    })
-                    .collect();
-                rows.insert(
-                    format!("145/{route}_{elapsed}"),
-                    json!([
-                        positions.len(),
-                        positions.first().map_or(-1, |p| p.teleport),
-                        positions.first().map_or(0, |p| p.yaw.to_bits() as i32),
-                        guest(game, conn).yaw.to_bits() as i32
-                    ]),
+                let angles = |yaw: f32, pitch: f32| (yaw.to_bits() as i32, pitch.to_bits() as i32);
+                let turns = route == "player";
+                let (yaw, pitch) = if turns {
+                    angles(72.0, 35.0)
+                } else {
+                    angles(17.0, -12.0)
+                };
+                let resends = route != "loading_player" && elapsed >= 21;
+                let sent = if resends && elapsed == 21 {
+                    json!([[2, yaw, pitch, [0; 3]]])
+                } else {
+                    json!([])
+                };
+                witness(
+                    rows,
+                    &format!("145/{route}_{elapsed}"),
+                    correction_sample(&packets, guest(game, conn)),
+                    json!([sent, yaw, pitch, if resends { 2 } else { 1 }]),
                 );
             }
         }
     }
+    for (conn, kind) in [
+        (24, "vehicle_then_accept"),
+        (25, "status"),
+        (26, "position"),
+    ] {
+        let rx = join(game, conn, true);
+        let yaw: f32 = if conn == 24 { 17.0 } else { 270.0 };
+        let pitch = -12.0_f32;
+        let i = game.guest_index(conn).unwrap();
+        let hub = &mut game.lan.as_mut().unwrap().hub;
+        hub.guests.update(i, |g| g.yaw = yaw);
+        hub.teleport(i, Some(START));
+        for _ in 0..20 {
+            packet_tick(game, conn, []);
+        }
+        receive(&rx);
+        let packets = match kind {
+            "vehicle_then_accept" => vec![
+                vehicle_packet(),
+                S::AcceptTeleportation(play::AcceptTeleportation {
+                    id: 1,
+                    x: START[0],
+                    y: START[1],
+                    z: START[2],
+                    yaw,
+                    pitch,
+                }),
+            ],
+            "status" => vec![S::MovePlayerStatus(play::MovePlayerStatus { flags: 1 })],
+            _ => vec![S::MovePlayerPos(play::MovePlayerPos {
+                x: START[0],
+                y: START[1],
+                z: START[2],
+                flags: 1,
+            })],
+        };
+        packet_tick(game, conn, packets);
+        let now = if conn == 24 { yaw } else { -90.0 };
+        witness(
+            rows,
+            &format!("145/{kind}"),
+            correction_sample(&receive(&rx), guest(game, conn)),
+            json!([
+                [[2, yaw.to_bits() as i32, pitch.to_bits() as i32, [0; 3]]],
+                now.to_bits() as i32,
+                pitch.to_bits() as i32,
+                2
+            ]),
+        );
+    }
+}
+
+fn crystal_round_trip(game: &mut Game<'_>, rows: &mut Map<String, Value>) {
+    let key = (1, 0);
+    game.streaming
+        .insert_remote(&mut game.world, Chunk::empty(key.0, key.1));
+    let tag = nbt::parse_snbt(
+        r#"{id:"minecraft:end_crystal",UUID:[I;0,0,0,130],Pos:[18.5d,100d,0.5d],Rotation:[-132.25f,31.5f],Invulnerable:1b,beam_target:[I;0,128,0],Fire:120s}"#,
+    ).unwrap().0;
+    game.spawn_loaded_entity(key, tag, None);
+    let crystal = game.crystals.last_mut().unwrap();
+    let id = crystal.id;
+    let rotation = [-132.25_f32, 31.5].map(|angle| angle.to_bits() as i32);
+    witness(
+        rows,
+        "146/loaded_crystal",
+        json!([
+            game.target_rotation(crate::game::commands::Target::Crystal(id))
+                .map(|angle| angle.to_bits() as i32),
+            game.crystals.last().unwrap().invulnerable,
+            game.crystals.last().unwrap().beam,
+            game.crystals.last().unwrap().fire,
+        ]),
+        json!([rotation, true, [0, 128, 0], 120]),
+    );
+    let crystal = game.crystals.last_mut().unwrap();
+    crystal.invulnerable = false;
+    crystal.beam = None;
+    game.clear_crystal_fire();
+    let (_, tags) = game
+        .entity_chunks(&HashSet::from([key]), true)
+        .pop()
+        .unwrap();
+    assert!(game.crystals.iter().all(|c| c.id != id));
+    let tag = tags
+        .into_iter()
+        .find(|tag| {
+            sunrise_client::entity_nbt::kind(tag).as_deref() == Some("minecraft:end_crystal")
+        })
+        .unwrap();
+    let cleared = tag.get("beam_target").is_none()
+        && matches!(tag.get("Fire"), Some(Tag::Short(0)))
+        && matches!(tag.get("Invulnerable"), Some(Tag::Byte(0)));
+    let binary = nbt::write_network(&tag, nbt::Limits::default()).unwrap();
+    let (saved, _) = nbt::read_network(&binary, nbt::Limits::default()).unwrap();
+    game.spawn_loaded_entity(key, saved, None);
+    let c = game.crystals.last().unwrap();
+    witness(
+        rows,
+        "146/reloaded_crystal",
+        json!([
+            game.target_rotation(crate::game::commands::Target::Crystal(c.id))
+                .map(|angle| angle.to_bits() as i32),
+            c.invulnerable,
+            c.beam,
+            c.fire,
+            cleared,
+        ]),
+        json!([rotation, false, null, 0, true]),
+    );
 }
 
 #[test]
 #[ignore = "daily"]
 fn server_player_packet_witness() {
-    // Resource loading installs process-wide registries. The fixture owns a fresh process.
-    if std::env::var_os(CHILD).is_none() {
-        let (_, module) = module_path!().split_once("::").unwrap();
-        let status = std::process::Command::new(std::env::current_exe().unwrap())
-            .arg("--exact")
-            .arg(format!("{module}::server_player_packet_witness"))
-            .args(["--ignored", "--nocapture"])
-            .env(CHILD, "1")
-            .env("RUST_MIN_STACK", "16777216")
-            .status()
+    // Resource loading installs process-wide registries. Use the standard child
+    // boundary, with a larger stack on the thread that loads the prepared game.
+    let (_, module) = module_path!().split_once("::").unwrap();
+    crate::game::in_own_process(&format!("{module}::server_player_packet_witness"), || {
+        std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(run_witness)
+            .unwrap()
+            .join()
             .unwrap();
-        assert!(status.success());
-        return;
-    }
+    });
+}
+
+fn run_witness() {
     tests::with_game_role(
         tests::fixture_root(),
         ExecutionRole::DedicatedServer,
@@ -425,15 +725,13 @@ fn server_player_packet_witness() {
             interact(game, &mut rows);
             spectate(game, &rx, &mut rows);
             resend(game, &mut rows);
+            crystal_round_trip(game, &mut rows);
+            assert_eq!(rows["141/repeated_position"], true);
+            assert_eq!(rows["141/invalid_rotation"], true);
+            assert_eq!(rows["144/missing"], 0);
             let report = serde_json::to_vec_pretty(&rows).unwrap();
             if let Some(path) = std::env::var_os(REPORT) {
                 std::fs::write(path, report).unwrap();
-            } else {
-                // The differential runner checks every row against the jar; the independent daily
-                // shard also checks the validation and missing-target controls without Java.
-                assert_eq!(rows["141/repeated_position"], true);
-                assert_eq!(rows["141/invalid_rotation"], true);
-                assert_eq!(rows["144/missing"], 0);
             }
         },
     );

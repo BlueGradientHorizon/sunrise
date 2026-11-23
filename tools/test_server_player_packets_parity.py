@@ -24,13 +24,15 @@ NAME = 'server-player-packets-parity'
 ORACLE = 'VanillaServerPlayerPacketsOracle'
 TEST = 'game::lan::player_packet_tests::server_player_packet_witness'
 CASES = {
-    '141': ['credits_pose', 'credits_move_count', 'repeated_position', 'invalid_rotation'],
+    '141': ['credits_pose', 'credits_move_count', 'credits_idle_credit', 'ordinary_idle_credit',
+            'repeated_position', 'invalid_rotation'],
     '142': ['empty', 'disabled', 'survival', 'spectator'],
     '143': ['missing_true', 'missing_false', 'boat_true', 'boat_false', 'next_input'],
     '144': ['stand_overworld', 'level_overworld', 'stand_the_nether', 'level_the_nether', 'player', 'missing',
-            'arrow', 'upward_frame'],
+            'arrow', 'upward_frame', 'same_level_false', 'same_level_true', 'mixed_return', 'mixed_stay'],
     '145': [f'{route}_{tick}' for route in ('vehicle', 'player', 'loading_vehicle', 'loading_player')
-            for tick in (19, 20, 21, 22)],
+            for tick in (19, 20, 21, 22)] + ['vehicle_then_accept', 'status', 'position'],
+    '146': ['loaded_crystal', 'reloaded_crystal'],
 }
 
 
