@@ -201,17 +201,24 @@ fn scope(level: crate::game::Dim) -> Scope {
 use crate::game::Dim::{Nether, Overworld};
 
 /// The crossings queued since the last call, as a telling takes them.
-fn told(sections: &mut EntitySections) -> Vec<Crossing> {
+fn told(sections: &mut EntitySections) -> Vec<Seen> {
     if !sections.begin_telling() {
         return Vec::new();
     }
-    let crossings = sections.queue.drain(..).collect();
+    let crossings = sections.queue.drain(..).map(seen).collect();
     sections.end_telling();
     crossings
 }
 
-fn crossing(id: u32, old: [i32; 3], new: [i32; 3]) -> Crossing {
-    Crossing { id, old, new }
+/// A crossing's entity and its two sections.
+type Seen = (u32, [i32; 3], [i32; 3]);
+
+fn seen(crossing: Crossing) -> Seen {
+    (crossing.id, crossing.old, crossing.new)
+}
+
+fn crossing(id: u32, old: [i32; 3], new: [i32; 3]) -> Seen {
+    (id, old, new)
 }
 
 #[test]
@@ -330,13 +337,24 @@ fn nested_writes_stay_queued_until_the_current_event_returns() {
     s.placed(w, 6, [0.5, 70.0, 0.5]);
     s.moved(w, 6, None, [16.5, 70.0, 0.5]);
     assert!(s.begin_telling());
-    assert_eq!(s.queue.pop_front(), Some(crossing(6, [0, 4, 0], [1, 4, 0])));
+    assert_eq!(
+        s.queue.pop_front().map(seen),
+        Some(crossing(6, [0, 4, 0], [1, 4, 0]))
+    );
     // The listener moves two entities, then removes the second before its event runs.
     s.moved(w, 6, None, [32.5, 70.0, 0.5]);
     s.moved(w, 7, Some([0.5, 70.0, 0.5]), [16.5, 70.0, 0.5]);
     assert!(!s.begin_telling());
     s.forget(7);
-    assert_eq!(s.queue.pop_front(), Some(crossing(6, [1, 4, 0], [2, 4, 0])));
+    // Both filed crossings stay: a removal deletes none.
+    assert_eq!(
+        s.queue.pop_front().map(seen),
+        Some(crossing(6, [1, 4, 0], [2, 4, 0]))
+    );
+    assert_eq!(
+        s.queue.pop_front().map(seen),
+        Some(crossing(7, [0, 4, 0], [1, 4, 0]))
+    );
     assert!(s.queue.is_empty());
     s.end_telling();
 }
@@ -1368,4 +1386,31 @@ fn live_section_host_builds_play_packets_and_refuses_container_click() {
             field: "host".into(),
         })
     );
+}
+
+#[test]
+fn each_filed_crossing_keeps_the_placement_of_its_own_move() {
+    let mut s = EntitySections::default();
+    let w = scope(Overworld);
+    s.placed(w, 8, [0.5, 70.0, 0.5]);
+    // Two nested moves of one entity, filed before either is told.
+    s.moved(w, 8, None, [16.5, 70.0, 0.5]);
+    s.moved(w, 8, None, [32.5, 70.0, 0.5]);
+    assert!(s.begin_telling());
+    let first = s.queue.pop_front().unwrap();
+    let second = s.queue.pop_front().unwrap();
+    assert_eq!(
+        (first.at, second.at),
+        ([16.5, 70.0, 0.5], [32.5, 70.0, 0.5])
+    );
+}
+
+#[test]
+fn a_move_followed_by_a_discard_still_tells_its_crossing() {
+    let mut s = EntitySections::default();
+    let w = scope(Overworld);
+    s.placed(w, 8, [0.5, 70.0, 0.5]);
+    s.moved(w, 8, None, [16.5, 70.0, 0.5]);
+    s.forget(8);
+    assert_eq!(told(&mut s), [crossing(8, [0, 4, 0], [1, 4, 0])]);
 }

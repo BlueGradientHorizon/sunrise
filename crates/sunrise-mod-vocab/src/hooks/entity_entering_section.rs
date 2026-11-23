@@ -33,8 +33,9 @@ pub trait Hooks {
     /// write delivered after its row is restored) can read the resident entities. Crossings
     /// queued while a listener runs, for example by a vehicle teleport, are told after that
     /// callback returns, in the order they were filed, with the owning Host before the pass
-    /// resumes; each reads entities as they are when it is told, not as they were when it was
-    /// filed.
+    /// resumes. Each keeps the placement of the move that filed it: a later move, or the entity's
+    /// removal, neither rewrites nor deletes it, and a read of that entity's position while it is
+    /// told answers that placement (the no-reentry rule rules out telling it at its own write).
     #[notes = r#"## Entering a section
 
 `Hooks::entity_entering_section` (NeoForge's `EntityEvent.EnteringSection`) tells a mod each time an entity's
@@ -71,8 +72,8 @@ gets a position-only Host: the crossing entity's position, `entity_residency` `B
 entity, and nothing else of the world; a player move also answers that player's ground flag and velocity before the
 move updates them, and `local_player` on the client. A write captured without a live observer is told after the
 owning row is restored, before the next mob ticks, with the owning Host that reads resident entities. Crossings
-queued while a listener runs are told after it returns, in filing order, with that Host, and read entities as they
-are when told. Listeners must not move or remove the crossing entity while its write in progress."#]
+queued while a listener runs are told after it returns, in filing order, with that Host; each keeps the placement of its
+own move, which a read of the entity's position answers, and no later move or removal rewrites or deletes it. Listeners must not move or remove the crossing entity while its write in progress."#]
     #[hook(
         dispatch = "flat",
         side = "both",
