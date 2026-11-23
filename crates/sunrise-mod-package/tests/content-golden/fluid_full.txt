@@ -119,9 +119,9 @@ Content {
                 },
             ),
             measures: FluidMeasures {
-                temperature: 300,
-                density: 1000,
-                viscosity: 1000,
+                temperature: 295,
+                density: 1100,
+                viscosity: 1200,
             },
         },
     ],
