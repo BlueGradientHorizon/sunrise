@@ -663,8 +663,6 @@ pub fn block_entity_id<'a>(e: &'a crate::containers::BlockEntity, block: &'a str
         _ => e.id(),
     }
 }
-/// `block_entity_nbt::overlay`, then a container that now holds items loses its
-/// loot table (vanilla clears it when the loot is generated into the container).
 /// A live block entity's `current` encoding over the `original` NBT it was loaded from:
 /// what the game left unchanged keeps its original form, what it changed or cleared takes the
 /// current value, and keys Sunrise never models (a stored `components` patch, a mod's
@@ -715,6 +713,8 @@ pub fn overlay_block_entity_source(
     merge_block_entity(original, &loaded, current, items_are_payload)
 }
 
+/// `block_entity_nbt::overlay`, then a container that now holds items loses its
+/// loot table (vanilla clears it when the loot is generated into the container).
 fn merge_block_entity(original: &Tag, loaded: &Tag, current: &Tag, items_are_payload: bool) -> Tag {
     let mut merged = crate::block_entity_nbt::overlay(original, loaded, current, items_are_payload);
     let has_items = !items_are_payload
