@@ -13,12 +13,14 @@ For a tagged registry release, edit `page.toml` beside `sunrise-mod.toml`:
 
 - `summary`: a short description of at least 25 characters.
 - `description`: a long description of at least 125 characters. You can use Markdown.
-- `categories`: an optional list of up to eight IDs from the registry's `registry/categories.toml`.
+- `categories`: an optional list of up to eight distinct IDs from the registry's `registry/categories.toml`.
+  Each category must apply to your package kind (`mod` or `native-mod`).
 - `[[screenshots]]`: at least one entry, with a `path` such as `page/recipes.png` and an optional `caption`.
-  Put the images under `page/`. Use PNG or JPEG files, at most 5 MiB each.
+  Put the images under `page/`. Use readable PNG (`.png`) or JPEG (`.jpg` or `.jpeg`) files, at most 5 MiB each.
 
 Text minimums count Unicode scalar values after trimming surrounding whitespace. Optional `name`, `authors`,
-`homepage` and `issues` override the values in `sunrise-mod.toml`. The page uses the mod's own `icon.png`.
+`homepage` and `issues` override the values in `sunrise-mod.toml`. The name and each listed author must not be
+blank. Links must be absolute HTTP(S) URLs without credentials. The page uses the mod's own `icon.png`.
 
 Run `cargo sunrise-mod check` to see what you still need before release. Run
 [`cargo sunrise-mod check --release <tag>`](../reference/sdk/05-commands.md) to require a complete page and

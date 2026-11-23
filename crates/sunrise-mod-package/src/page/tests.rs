@@ -16,6 +16,8 @@ issues = "https://example.org/runes/issues"
 }
 
 const TEXT: &str = "summary = 'Summary'\ndescription = 'Description'\n";
+const PNG: &[u8] = include_bytes!("../../tests/fixtures/page.png");
+const JPEG: &[u8] = include_bytes!("../../tests/fixtures/page.jpg");
 
 #[test]
 fn page_fields_default_to_manifest_and_explicit_values_win() {
@@ -36,6 +38,40 @@ fn page_fields_default_to_manifest_and_explicit_values_win() {
     assert!(page.authors.is_empty());
     assert_eq!(page.homepage.as_deref(), Some("https://example.com"));
     assert_eq!(page.issues.as_deref(), Some("https://example.com/issues"));
+}
+
+#[test]
+fn page_refuses_blank_names_and_invalid_links_after_resolving_defaults() {
+    let manifest = manifest();
+    for (fields, rejected) in [
+        ("name = ''", "name"),
+        ("authors = ['Good author', ' ']", "author"),
+        ("homepage = 'https://'", "homepage"),
+        ("homepage = 'https://user@example.org'", "homepage"),
+        ("issues = 'http://user:secret@example.org'", "issues"),
+        ("issues = 'http://example.org/a b'", "issues"),
+        (r"issues = 'https://example.org\issues'", "issues"),
+    ] {
+        let error = Page::parse(&format!("{TEXT}{fields}\n"), &manifest).unwrap_err();
+        assert!(error.contains(rejected), "{error}");
+    }
+
+    // The package parser accepts this prefix, so the effective page must be checked again.
+    let inherited =
+        Manifest::parse("id = 'runes'\nname = 'Runes'\nversion = '1'\nissues = 'https://'\n")
+            .unwrap();
+    assert!(
+        Page::parse(TEXT, &inherited)
+            .unwrap_err()
+            .contains("issues")
+    );
+    assert!(
+        Page::parse(
+            &format!("{TEXT}issues = 'http://example.org/issues'"),
+            &inherited
+        )
+        .is_ok()
+    );
 }
 
 #[test]
@@ -74,29 +110,35 @@ fn screenshot_paths_are_relative_and_strictly_below_page() {
 }
 
 #[test]
-fn screenshot_format_comes_from_bytes_not_extension() {
+fn screenshots_must_decode_and_match_their_file_extension() {
     let root = tempfile::tempdir().unwrap();
-    let path = root.path().join("page/nested/image.jpg");
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    let page = Page::parse(
-        &format!(
-            "{TEXT}[[screenshots]]\npath = 'page/nested/image.jpg'\ncaption = 'Rune Stones'\n"
-        ),
-        &manifest(),
-    )
-    .unwrap();
-    let shot = &page.screenshots[0];
-    assert_eq!(shot.caption.as_deref(), Some("Rune Stones"));
-    fs::write(&path, b"not a JPG").unwrap();
-    assert!(
-        shot.read(root.path())
-            .unwrap_err()
-            .contains("not a PNG or JPEG")
-    );
-    for bytes in [b"\x89PNG\r\n\x1a\n".as_slice(), b"\xff\xd8\xff".as_slice()] {
+    fs::create_dir_all(root.path().join("page/nested")).unwrap();
+    for (name, bytes, signature_len) in [("image.png", PNG, 8), ("image.jpg", JPEG, 3)] {
+        let page = Page::parse(
+            &format!(
+                "{TEXT}[[screenshots]]\npath = 'page/nested/{name}'\ncaption = 'Rune Stones'\n"
+            ),
+            &manifest(),
+        )
+        .unwrap();
+        let shot = &page.screenshots[0];
+        assert_eq!(shot.caption.as_deref(), Some("Rune Stones"));
+        let path = root.path().join(shot.path());
         fs::write(&path, bytes).unwrap();
         assert_eq!(shot.read(root.path()).unwrap(), bytes);
+        for truncated in [&bytes[..signature_len], &bytes[..bytes.len() - 1]] {
+            fs::write(&path, truncated).unwrap();
+            assert!(shot.read(root.path()).unwrap_err().contains("unreadable"));
+            assert!(shot.check_image(truncated).is_err());
+        }
     }
+    assert!(check_screenshot(Path::new("image.jpeg"), JPEG).is_ok());
+    assert!(
+        check_screenshot(Path::new("image.jpg"), PNG)
+            .unwrap_err()
+            .contains("extension")
+    );
+    assert!(check_screenshot(Path::new("image.png"), b"not an image").is_err());
 }
 
 #[cfg(unix)]
@@ -104,7 +146,7 @@ fn screenshot_format_comes_from_bytes_not_extension() {
 fn linked_screenshot_subfolders_are_refused() {
     let root = tempfile::tempdir().unwrap();
     let outside = tempfile::tempdir().unwrap();
-    fs::write(outside.path().join("runes.png"), b"\x89PNG\r\n\x1a\n").unwrap();
+    fs::write(outside.path().join("runes.png"), PNG).unwrap();
     std::os::unix::fs::symlink(outside.path(), root.path().join("page")).unwrap();
     let page = Page::parse(
         &format!("{TEXT}[[screenshots]]\npath = 'page/runes.png'\n"),
@@ -141,9 +183,11 @@ fn release_text_counts_trimmed_unicode_scalars() {
 
 #[test]
 fn release_checks_the_category_catalog_and_cap_but_allows_no_categories() {
-    let catalog =
-        Categories::parse("[[category]]\nid = 'utility'\nicon = 'hammer'\nkinds = ['mod']\n")
-            .unwrap();
+    let catalog = Categories::parse(
+        "[[category]]\nid = 'utility'\nicon = 'hammer'\nkinds = ['mod']\n\
+         [[category]]\nid = 'automation'\nicon = 'cog'\nkinds = ['native-mod']\n",
+    )
+    .unwrap();
     let release = format!(
         "summary = '{}'\ndescription = '{}'\n",
         "s".repeat(25),
@@ -163,11 +207,29 @@ fn release_checks_the_category_catalog_and_cap_but_allows_no_categories() {
         ["page.toml: unknown registry category \"not_a_category\""]
     );
     assert_eq!(
-        check(
-            "categories = ['utility','utility','utility','utility','utility','utility','utility','utility','utility']"
-        ),
-        ["page.toml: choose at most 8 categories"]
+        check("categories = ['utility', 'utility']"),
+        ["page.toml: duplicate registry category \"utility\""]
     );
+    assert_eq!(
+        check("categories = ['automation']"),
+        ["page.toml: registry category \"automation\" does not apply to this project kind"]
+    );
+    let native = Manifest::parse("id = 'runes'\nname = 'Runes'\nversion = '1'\n[native]\ngame = '26.3'\nsunrise = '0123456789abcdef0123456789abcdef01234567'\n").unwrap();
+    assert!(
+        Page::parse(
+            &format!("{release}categories = ['automation']\n{screenshots}"),
+            &native
+        )
+        .unwrap()
+        .release_problems(Some(&catalog))
+        .is_empty()
+    );
+    let over_cap = category_problems(
+        ["a", "b", "c", "d", "e", "f", "g", "h", "i"].into_iter(),
+        Kind::Mod,
+        None,
+    );
+    assert_eq!(over_cap, ["choose at most 8 categories"]);
     assert_eq!(
         Page::parse(&release, &manifest)
             .unwrap()

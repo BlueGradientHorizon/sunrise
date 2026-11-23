@@ -19,8 +19,8 @@ fn builds_emit_an_identical_ustar_with_only_page_files() {
     tool(root.path(), &["new", "ruby"]);
     let project = root.path().join("ruby");
     let metadata = b"# keep the author's TOML\nsummary = 'Summary'\ndescription = 'Description'\n[[screenshots]]\npath = 'page/z.png'\n[[screenshots]]\npath = 'page/a.jpg'\n";
-    let png = b"\x89PNG\r\n\x1a\n";
-    let jpeg = b"\xff\xd8\xff";
+    let png = include_bytes!("../../sunrise-mod-package/tests/fixtures/page.png");
+    let jpeg = include_bytes!("../../sunrise-mod-package/tests/fixtures/page.jpg");
     fs::write(project.join("page.toml"), metadata).unwrap();
     fs::write(project.join("page/z.png"), png).unwrap();
     fs::write(project.join("page/a.jpg"), jpeg).unwrap();

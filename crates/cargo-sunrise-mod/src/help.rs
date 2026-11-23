@@ -32,7 +32,7 @@ const COMMANDS: &[Command] = &[
         name: "check",
         everyday: true,
         usage: "check [--release <tag>] [--uses] [--with <path>]… | check <file> [--kind <kind>] [--key <public key> --signature <file.minisig>] [--json]",
-        summary: "Checks the mod in this folder or a file as the registry would. Folder checks report missing page requirements; --release requires a valid page and matching version tag, and compiles native code. Repeat --with for local libraries; --uses lists what the mod uses of its pinned build.",
+        summary: "Checks the mod in this folder or a file as the registry would. Folder checks report missing page requirements; --release requires a valid page and matching version tag, and compiles native code. The registry's category list is fetched only when the page selects categories. Repeat --with for local libraries; --uses lists what the mod uses of its pinned build.",
     },
     Command {
         name: "update",
