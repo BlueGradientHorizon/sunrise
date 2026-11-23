@@ -1971,6 +1971,111 @@ mod sweep_tests {
         });
     }
 
+    /// A deferred hurt on the real mob tick must finish its Enderman teleport
+    /// before the next callback reads the live entity.
+    #[test]
+    #[ignore = "daily"]
+    fn mob_inside_hurt_teleports_before_the_next_callback() {
+        if fresh("mob_inside_hurt_teleports_before_the_next_callback") {
+            return;
+        }
+        use std::sync::{Arc, Mutex};
+        use sunrise_client::{chunk::Chunk, mobs::Mob, ticket_levels::Sources};
+        use sunrise_core::{geometry::Vec3, random::LegacyRandom};
+
+        type TeleportObservation = Arc<Mutex<Option<(bool, [f64; 3])>>>;
+        #[derive(Clone, Default)]
+        struct TeleportPart(TeleportObservation);
+        #[mod_api::sunrise_part]
+        impl mod_api::BlockPart for TeleportPart {
+            fn entity_inside(
+                &self,
+                _: &mut dyn mod_api::LevelRandomHost,
+                event: &mut mod_api::EntityInsideEvent<'_>,
+            ) {
+                let seen = self.0.clone();
+                event.run_before(mod_api::InsideEffect::Freeze, move |view| {
+                    let hurt = view.hurt("minecraft:generic", 2.0);
+                    *seen.lock().unwrap() = Some((hurt, [0.0; 3]));
+                });
+                let seen = self.0.clone();
+                event.run_after(mod_api::InsideEffect::Freeze, move |view| {
+                    seen.lock().unwrap().as_mut().unwrap().1 = view.position();
+                });
+            }
+        }
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for TeleportPart {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+                let grass = r.block_key("minecraft:short_grass");
+                r.block_part(grass, self.clone());
+            }
+        }
+        let part = TeleportPart::default();
+        let entry = || mod_api::ModEntry::new("inside-ender-hurt", Box::new(part.clone()));
+        crate::game::api_values::install_parts(&[entry()]).unwrap();
+        mod_platform::testing::with_mods(vec![entry()].into(), || {
+            crate::game::native_entity_refs::tests::with_game(|game| {
+                game.options.dedicated = Some(Vec::new());
+                game.world.health_rules.difficulty = sunrise_world::food::Difficulty::Normal;
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                game.tickets.update(Some(Sources {
+                    players: vec![(0, 0)],
+                    forced: Vec::new(),
+                    portal: Vec::new(),
+                    spawn: Vec::new(),
+                    dragon: None,
+                    viewed: Vec::new(),
+                    view_distance: 2,
+                    simulation_distance: 2,
+                }));
+                let state = |name| game.pack.assets.registry.default_state(name).unwrap();
+                let stone = state("minecraft:stone");
+                let grass = state("minecraft:short_grass");
+                for x in 0..16 {
+                    for z in 0..16 {
+                        game.world.set(x, 99, z, stone).unwrap();
+                    }
+                }
+                game.world.set(8, 100, 8, grass).unwrap();
+                let kind = game
+                    .res
+                    .mob_types()
+                    .get("minecraft:enderman")
+                    .unwrap()
+                    .clone();
+                let mut mob = Mob::new(200, kind, Vec3::new(8.5, 100.0, 8.5), 0.0);
+                mob.no_ai = true;
+                mob.no_gravity = true;
+                mob.persistent = true;
+                mob.random = LegacyRandom::new(118);
+                game.mobs.push(mob);
+                let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                sunrise_client::block_contact::in_level(
+                    sunrise_client::parallel::TickThread::mint(),
+                    Some("minecraft:overworld"),
+                    || game.tick_creatures().unwrap(),
+                );
+                // Independent Java Random trace from seed 118: Mob.baseTick's ambient
+                // roll, the two hurt pitch draws, then Enderman.hurtServer's roll
+                // (2) and its x/y/z draws. The flat floor stops the downward search at y=100.
+                let expected = [
+                    0x4001_b983_f817_1d50,
+                    0x4059_0000_0000_0000,
+                    0x4027_5895_7e8d_db18,
+                ];
+                let (hurt, at_hurt_return) = part.0.lock().unwrap().unwrap();
+                assert!(hurt);
+                assert_eq!(at_hurt_return.map(f64::to_bits), expected);
+                let mob = game.mobs.iter().find(|m| m.id == 200).unwrap();
+                assert_eq!(mob.position.components().map(f64::to_bits), expected);
+                assert_eq!(mob.random.state(), 0xf46e_d8cd_4912);
+            });
+        });
+    }
+
     /// Item float-health subtraction before truncation, bundle drop on fatal hurt, and
     /// projectile `mark_hurt` + `is_on_fire`.
     #[test]

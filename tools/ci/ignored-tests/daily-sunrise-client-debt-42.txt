@@ -7,3 +7,4 @@ sunrise-client game::native_hooks::entity_inside::sweep_tests::panicking_mod_cal
 sunrise-client game::native_hooks::entity_inside::sweep_tests::player_live_inside_flush_level_writes_peaceful_effect_and_fire_semantics lib daily child-process
 sunrise-client game::native_hooks::entity_inside::sweep_tests::player_powder_snow_and_fire_builtin_ordering lib daily child-process
 sunrise-client game::native_hooks::entity_inside::sweep_tests::item_tick_sweeps_once_and_keeps_the_single_hit lib daily child-process
+sunrise-client game::native_hooks::entity_inside::sweep_tests::mob_inside_hurt_teleports_before_the_next_callback lib daily child-process
