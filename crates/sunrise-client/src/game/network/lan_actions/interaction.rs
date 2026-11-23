@@ -399,8 +399,8 @@ impl Game<'_> {
     }
 
     /// `ServerGamePacketListenerImpl.handleUseItem` for guest `conn` (at `gi`) using the item in
-    /// `hand`, after the packet's sequence is acknowledged: the rotation the client sent, if any
-    /// (`absSnapRotationTo`), a spawn egg's own `mayInteract`, then `ServerPlayerGameMode.useItem`.
+    /// `hand`, after the packet's sequence is acknowledged: a non-empty, enabled stack permits
+    /// the packet rotation (`absSnapRotationTo`), then `ServerPlayerGameMode.useItem`.
     /// True when the use consumed (`InteractionResult` a success or a consume). A fake player's
     /// `PlayerRef::perform_action` runs it as the packet does, with no rotation.
     pub(in crate::game) fn guest_use_item(
@@ -413,30 +413,44 @@ impl Game<'_> {
         let Some(host) = self.lan.as_ref() else {
             return Err(ActionRefused::Stale);
         };
-        // ServerPlayerGameMode.useItem: a spectator's use passes.
-        if host.hub.guests[gi].spectator() {
-            return Ok(false);
-        }
-        // handleUseItem: the client's rotation (absSnapRotationTo, which
-        // sends nothing back), then the item alone. What it looked at a
-        // moment ago (a block, a mob) is UseItemOn's or Interact's.
-        let Some(host) = self.lan.as_mut() else {
-            return Err(ActionRefused::Stale);
-        };
-        if let Some((yaw, pitch)) = rotation {
-            host.hub
-                .guests
-                .update(gi, |g| (g.yaw, g.pitch) = (yaw, pitch));
-        }
         let g = &host.hub.guests[gi];
-        // SpawnEggItem.use calls ServerLevel.mayInteract at its own
-        // fluid ray's position, unlike useOn's packet-supplied block.
         let held = if hand == Hand::Off {
             g.offhand.as_ref()
         } else {
             g.inventory.get(g.selected).and_then(Option::as_ref)
         };
-        if held.is_some_and(|s| s.item.ends_with("_spawn_egg")) {
+        let Some(held) = held.filter(|s| s.count != 0 && s.item.as_ref() != "minecraft:air") else {
+            return Ok(false);
+        };
+        if !self
+            .creative_screen
+            .catalog()
+            .item_enabled(held, self.enabled_feature_ids())
+        {
+            return Ok(false);
+        }
+        let (spectator, spawn_egg) = (g.spectator(), held.item.ends_with("_spawn_egg"));
+        if let Some((yaw, pitch)) = rotation {
+            use sunrise_client::lan::hub::wrap_degrees;
+            let (yaw, pitch) = (wrap_degrees(yaw), wrap_degrees(pitch));
+            if yaw != g.yaw || pitch != g.pitch {
+                self.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
+                    // Entity.setYRot/setXRot discard non-finite values independently.
+                    if yaw.is_finite() {
+                        g.yaw = yaw;
+                    }
+                    if pitch.is_finite() {
+                        g.pitch = pitch.clamp(-90.0, 90.0);
+                    }
+                });
+            }
+        }
+        // ServerPlayerGameMode.useItem returns PASS for spectators, after the turn.
+        if spectator {
+            return Ok(false);
+        }
+        // SpawnEggItem.use calls ServerLevel.mayInteract at its own fluid ray's position.
+        if spawn_egg {
             let hit = self
                 .as_guest_at(gi, conn, |g| g.with_hand(hand, |g| g.spawn_egg_fluid_hit()))
                 .ok()
@@ -471,7 +485,7 @@ impl Game<'_> {
         Ok(consumed)
     }
 
-    /// `handleInteract`'s entity use for a guest or the persistent fake: the border and
+    /// `ServerGamePacketListenerImpl.handleInteract`'s entity use for a guest or the persistent fake: the border and
     /// interaction range, then that entity and hand only, never an air-use fallback.
     pub(in crate::game) fn guest_interact(
         &mut self,
@@ -533,7 +547,7 @@ impl Game<'_> {
         Ok(used.is_some_and(|u| u.1))
     }
 
-    /// `ServerGamePacketListenerImpl.handleInteract`'s ATTACK for guest `conn` (at `gi`) hitting
+    /// `ServerGamePacketListenerImpl.handleAttack` for guest `conn` (at `gi`) hitting
     /// entity `id`: the border and the attack range, the native mods' `attack_entity`, then
     /// `Player.attack` for a player, a mob or another entity, and the deflection of a fireball,
     /// a wind charge or a shulker bullet. True when the blow landed. A fake player's
@@ -604,7 +618,10 @@ impl Game<'_> {
                 let on_ground = self.pvp_victim_on_ground(victim);
                 let stops_sprint = strike.stops_sprint();
                 let sent = self
-                    .as_guest_at(gi, conn, |g| g.pvp_hit_after(on_ground, stops_sprint))
+                    .as_guest_at(gi, conn, |g| {
+                        g.remember_player_target(Some(id as u32));
+                        g.pvp_hit_after(on_ground, stops_sprint)
+                    })
                     .ok()
                     .flatten();
                 self.send_guest_motion(conn, sent);
@@ -679,6 +696,16 @@ impl Game<'_> {
         };
         let (old_yaw, old_pitch) = (host.hub.guests[gi].yaw, host.hub.guests[gi].pitch);
         let boat = self.boats.iter().position(|boat| boat.id as i32 == id);
+        let tnt = self
+            .tnts
+            .iter()
+            .find(|tnt| tnt.id as i32 == id)
+            .map(|tnt| tnt.id);
+        let falling = self.falling.iter().any(|block| block.id as i32 == id);
+        if falling {
+            // FallingBlockEntity.isAttackable is false: Player.attack exits at cannotAttack.
+            return Ok(false);
+        }
         let general = match u32::try_from(id).ok().and_then(|id| self.general_row(id)) {
             Some(row) => {
                 let catalog = crate::game::general::general_type_catalog();
@@ -689,9 +716,13 @@ impl Game<'_> {
             }
             None => None,
         };
-        // A packet names its target already. Boats and general rows use that target
+        // A packet names its target already. Boats, primed TNT and general rows use that target
         // with the attacker's actual aim instead of casting a new ray at its center.
-        if boat.is_none() && general.is_none() && self.look_at_entity(gi, id, None).is_none() {
+        if boat.is_none()
+            && tnt.is_none()
+            && general.is_none()
+            && self.look_at_entity(gi, id, None).is_none()
+        {
             return Err(ActionRefused::InvalidTarget);
         }
         // A mace's smash sets the attacker's velocity and sends it at once, before the
@@ -705,6 +736,8 @@ impl Game<'_> {
                 if let Some(index) = boat {
                     g.strike_boat(index);
                     g.swing_arm();
+                } else if let Some(tnt_id) = tnt {
+                    g.strike_general_row(tnt_id, "minecraft:tnt");
                 } else if let Some((id, kind)) = general {
                     g.strike_general_row(id, kind);
                 } else {
@@ -717,8 +750,8 @@ impl Game<'_> {
             .ok()
             .flatten();
         self.send_guest_motion(conn, sent);
-        if general.is_some() {
-            // The plain row refused damage, even though the attack spent its charge.
+        if tnt.is_some() || general.is_some() {
+            // Primed TNT and plain rows refuse damage, even though the attack spent its charge.
             return Ok(false);
         }
         // The mob now answers to this guest (game/network/lan_mobs.rs).

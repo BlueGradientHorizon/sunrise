@@ -99,6 +99,14 @@ macro_rules! game_side {
             items: $s.res.items(),
             damage_types: &$s.health_resources.damage,
             player_equipment: acting_equipment!($s),
+            hit_borrows: $crate::game::native_surface::HitBorrows {
+                living_types: $s.res.living_type_keys(),
+                attributes: &$s.motion.attributes,
+                player_effects: &$s.potions.effects,
+                player_uuid: $s.lan_acting_uuid,
+                player_attachments: &$s.player_state.attachments,
+                entity_attachments: &*$s.entity_attachments,
+            },
             tag_items: if $s.options.execution_role.is_client() {
                 $s.remote.as_ref().and_then(|remote| remote.tags.as_ref())
             } else {
@@ -254,6 +262,8 @@ mod bundle_use_tests;
 mod bundles;
 #[path = "game/items/cake_eligibility.rs"]
 mod cake_eligibility;
+#[path = "game/interface/camera_hud.rs"]
+mod camera_hud;
 #[cfg(test)]
 #[path = "game/interface/camera_submersion_tests.rs"]
 mod camera_submersion_tests;
@@ -354,6 +364,9 @@ mod container_layout;
 mod container_loot;
 #[path = "game/runtime/control.rs"]
 mod control;
+#[cfg(test)]
+#[path = "game/mobs/conversion_place_tests.rs"]
+mod conversion_place_tests;
 #[path = "game/mobs/copper_golems.rs"]
 mod copper_golems;
 #[cfg(test)]
@@ -381,6 +394,9 @@ mod creatures;
 mod crop_grow_tests;
 #[path = "game/items/crossbow.rs"]
 mod crossbow;
+#[cfg(test)]
+#[path = "game/entities/crosshair_pick_tests.rs"]
+mod crosshair_pick_tests;
 #[cfg(test)]
 #[path = "game/entities/cushion_refind_tests.rs"]
 mod cushion_refind_tests;
@@ -986,6 +1002,8 @@ mod mod_raycast_tests;
 #[cfg(test)]
 #[path = "game/interface/mod_recipe_property_tests.rs"]
 mod mod_recipe_property_tests;
+#[path = "game/interface/mod_toasts.rs"]
+mod mod_toasts;
 #[cfg(test)]
 #[path = "game/modding/model_baking_completed_tests.rs"]
 mod model_baking_completed_tests;
@@ -1313,6 +1331,9 @@ mod native_hit_effects;
 #[cfg(test)]
 #[path = "game/modding/native_hit_sounds_tests.rs"]
 mod native_hit_sounds_tests;
+#[cfg(test)]
+#[path = "game/modding/native_hit_view_tests.rs"]
+mod native_hit_view_tests;
 mod native_hooks;
 #[path = "game/modding/native_hotbar_slot.rs"]
 mod native_hotbar_slot;
@@ -1414,6 +1435,8 @@ mod native_live_holder_tests;
 mod native_living_absorption;
 #[path = "game/modding/native_living_blocking.rs"]
 mod native_living_blocking;
+#[path = "game/modding/native_living_body.rs"]
+mod native_living_body;
 #[path = "game/modding/native_living_effects.rs"]
 mod native_living_effects;
 #[path = "game/modding/native_living_flags.rs"]
@@ -1592,6 +1615,8 @@ mod native_player_visibility;
 mod native_player_visibility_tests;
 #[path = "game/modding/native_portal_destination.rs"]
 mod native_portal_destination;
+#[path = "game/modding/native_profiles.rs"]
+mod native_profiles;
 #[path = "game/modding/native_projectile_launch.rs"]
 mod native_projectile_launch;
 #[cfg(test)]
@@ -1671,6 +1696,11 @@ mod native_shaders;
 #[cfg(test)]
 #[path = "game/modding/native_shield_totem_tests.rs"]
 mod native_shield_totem_tests;
+#[path = "game/modding/native_singleplayer_owner.rs"]
+mod native_singleplayer_owner;
+#[cfg(test)]
+#[path = "game/modding/native_singleplayer_owner_tests.rs"]
+mod native_singleplayer_owner_tests;
 #[cfg(test)]
 #[path = "game/modding/native_small_reads_tests.rs"]
 mod native_small_reads_tests;
@@ -1823,6 +1853,9 @@ mod pickups;
 #[cfg(test)]
 #[path = "game/mobs/piglin_admire_tests.rs"]
 mod piglin_admire_tests;
+#[cfg(test)]
+#[path = "game/mobs/piglin_conversion_tests.rs"]
+mod piglin_conversion_tests;
 #[path = "game/mobs/piglins.rs"]
 mod piglins;
 #[path = "game/blocks/piston_carry.rs"]
@@ -2235,6 +2268,8 @@ mod tick_script;
 mod titles;
 #[path = "game/entities/tnt.rs"]
 mod tnt;
+#[path = "game/interface/toast_manager.rs"]
+mod toast_manager;
 #[path = "game/blocks/tool_modification.rs"]
 mod tool_modification;
 #[path = "game/items/totem.rs"]
@@ -3006,6 +3041,9 @@ struct WorldRest {
     recipes: Recipes,
     transformers: sunrise_client::block_transform::Transformers,
     mob_types: HashMap<String, Arc<MobType>>,
+    /// The registry keys of the player, the armor stand and the dragon, resolved with these
+    /// resources as each mob type's own key is ([`MobType::type_key`]).
+    living_type_keys: sunrise_client::health::LivingTypeKeys,
     mob_data: sunrise_client::mobs::MobData,
     /// Complete pre-creation facts for the registered entity types.
     spawner_types: HashMap<String, sunrise_client::mobs::spawner::SpawnerTypeFacts>,
@@ -3572,6 +3610,7 @@ struct Game<'a> {
     setting_overrides: std::cell::RefCell<std::collections::BTreeMap<(String, String), String>>,
     /// The native damage hooks every level of this game lends to its hits.
     damage_hooks: sunrise_client::health::DamageHooks,
+    paused_mob_hurt: Option<Box<sunrise_client::mobs::PausedMobHurt>>,
     music: sunrise_client::music::MusicManager,
     /// The tracks native mods play over the music (`native_music_layers`).
     music_layers: sunrise_client::music::MusicLayers,
@@ -3751,9 +3790,7 @@ struct Game<'a> {
     settings: Settings,
     look: look::LookCache,
     tutorial: tutorial::Tutorial,
-    tutorial_toasts: Vec<tutorial::HintToast>,
-    /// The `SystemToastId.NARRATOR_TOGGLE` toast, wherever the player is.
-    narrator_toast: Option<sunrise_client::toasts::SystemToast>,
+    toast_manager: toast_manager::ToastManager,
     /// The open screen's narration (`Screen`'s narration state and timing).
     narration: sunrise_client::screen_narrator::ScreenNarrator,
     /// Where the options screen returns: true = title, false = pause menu.
@@ -3906,6 +3943,8 @@ struct Game<'a> {
     /// The entity ids a hosted server gives the knots its mobs hang on, by
     /// block, while a lead is tied there.
     knot_ids: HashMap<[i32; 3], u32>,
+    /// Fence posts whose natural knot was killed and whose leads drop next tick.
+    broken_knots: Vec<[i32; 3]>,
     text_display_vertices: usize,
     /// Player skin downloads, and which skin each atlas skin slot holds
     /// (least recently shown first).
@@ -4130,6 +4169,9 @@ struct Game<'a> {
     level_shapes: sunrise_client::chunk::LevelShapes,
     /// This game is that server thread's (game/world/integrated.rs).
     serving: Option<integrated::Serving>,
+    /// `IntegratedServer`'s single-player profile, fixed when the server thread is created,
+    /// before its startup hooks (game/modding/native_singleplayer_owner.rs). None elsewhere.
+    singleplayer_profile: Option<native_singleplayer_owner::SingleplayerProfile>,
     /// The open world is shared behind an invite code (game/network/friends.rs).
     #[cfg(feature = "friends")]
     friends: Option<friends::Sharing>,
@@ -4208,6 +4250,8 @@ struct Game<'a> {
     user_input: std::cell::Cell<bool>,
     /// Select All in the append-only text fields.
     text_selection: sunrise_client::clipboard::AppendSelection,
+    /// The client loop consumes a mod's quit request outside the calling hook.
+    client_quit: std::cell::Cell<saving::ClientQuit>,
     /// The world was saved for the application ending (`save_for_exit`).
     saved_for_exit: bool,
     pending_save: Option<saving::ClosingSave>,
@@ -4783,6 +4827,64 @@ impl Game<'_> {
             sunrise_core::LevelKey::parse(dim.id()).unwrap_or(sunrise_core::LevelKey::OVERWORLD),
         )
     }
+    /// Sets up the same block-entity scene for both world draw paths.
+    fn with_block_entity_scene(
+        &self,
+        camera: glam::DVec3,
+        partial: f32,
+        dynamic_visible: &dyn Fn([i32; 3], u32, glam::DVec3, glam::DVec3) -> bool,
+        draw: impl FnOnce(&BlockEntityScene<'_>),
+    ) {
+        let lid = |p: [i32; 3]| self.chest_lid(p, partial);
+        let anim = |p: [i32; 3]| self.block_anim(p, partial);
+        let substitute = |text: &sunrise_client::text::Text| self.substitute_inline_images(text);
+        let inline_sprite = |atlas: &str, sprite: &str| self.gui.atlas.inline_sprite(atlas, sprite);
+        use block_entity_render::SignOutline;
+        let sign_outline =
+            if self.player.is_some() && self.camera_type.is_first_person() && self.scoping() {
+                SignOutline::FirstPersonScope
+            } else {
+                self.camera_subject().map_or(SignOutline::None, |subject| {
+                    SignOutline::CameraEntity(glam::DVec3::from_array(subject.camera.position))
+                })
+            };
+        let scene = BlockEntityScene {
+            camera,
+            sign_outline,
+            orientation: self.camera_orientation(),
+            anim: &anim,
+            texts: None,
+            partial,
+            game_time: self.world.game_time,
+            max_y: self.world.shape.max_y() - 1,
+            world: &self.world,
+            sprites: &self.gui.atlas.sprites,
+            emissive: &self.gui.atlas.emissive,
+            translucent_sprites: &self.gui.atlas.translucent,
+            atlas_revision: self.gui.atlas.revision,
+            nether: self.nether_lighting(),
+            lid: &lid,
+            sign: &|p| match self.world.block_entities.get(&(p[0], p[1], p[2])) {
+                Some(BlockEntity::Sign(sign)) => Some(sign),
+                _ => None,
+            },
+            inline_images: self.inline_images_revision().map(|revision| {
+                block_entity_render::SignInlineImages {
+                    revision,
+                    substitute: &substitute,
+                    sprite: &inline_sprite,
+                }
+            }),
+            banner: &|p| self.banner_layers_at(p),
+            skull: &|p| self.skull_skin_at(p),
+            glyph: &|c| self.gui.atlas.glyph_cell(c),
+            glyphs: self.gui.atlas.font.epoch(),
+            font: Some(&self.gui.atlas.font),
+            dynamic_visible: Some(dynamic_visible),
+        };
+        draw(&scene);
+    }
+
     fn eye_position(&self) -> Option<[f64; 3]> {
         let p = self.player.as_ref()?;
         Some([
@@ -4850,11 +4952,10 @@ impl Game<'_> {
         Some(b)
     }
     fn outline_context_kind(&self) -> sunrise_world::collision_context::EntityContextKind {
-        if self.spectated_camera_snapshot().is_some() {
-            sunrise_world::collision_context::EntityContextKind::Living
-        } else {
-            sunrise_world::collision_context::EntityContextKind::Player
-        }
+        self.camera_subject().map_or(
+            sunrise_world::collision_context::EntityContextKind::Player,
+            |c| c.collision_kind,
+        )
     }
     /// A block's outline boxes in world space (`getShape` plus the random offset).
     fn outline_boxes(&self, pos: [i32; 3]) -> Vec<[f64; 6]> {
@@ -4970,15 +5071,10 @@ impl Game<'_> {
         if let Some(hit) = self.tick_hit.get() {
             return hit;
         }
-        let (origin, dir) = self.aim()?;
-        // GameRenderer.pick: the block ray runs out to the larger of the two
-        // interaction ranges; filterHitResult then drops a hit past the
-        // block's.
-        self.clip_ray(origin, dir, self.block_reach.max(self.entity_reach))
-            .filter(|hit| {
-                let distance: [f64; 3] = std::array::from_fn(|i| hit.point[i] - origin[i]);
-                distance.iter().map(|v| v * v).sum::<f64>() <= self.block_reach.powi(2)
-            })
+        match self.compute_crosshair_decision() {
+            pick_entity::CrosshairDecision::Block(hit) => Some(hit),
+            _ => None,
+        }
     }
     /// An item-specific POV outline ray at the current rotation and block reach.
     pub(super) fn item_pick(&self) -> Option<Hit> {
@@ -7211,7 +7307,32 @@ impl Game<'_> {
     fn title_input_active(&self) -> bool {
         self.title.is_some() && !matches!(self.screen, Screen::DebugOptions | Screen::Mod)
     }
+    #[cfg(test)]
     fn hud(&mut self, size: [u32; 2]) -> HudBatch {
+        self.hud_with_reload(size, None)
+    }
+
+    /// Aligns `locator_camera` with this frame's render camera before HUD extraction
+    /// (`GameRenderer.renderLevel` sets `mainCamera` before `Gui.render`).
+    pub(in crate::game) fn extract_frame_hud(
+        &mut self,
+        size: [u32; 2],
+        reload_overlay: Option<(f32, sunrise_client::level_loading::OverlayFade)>,
+        title: bool,
+        camera: [f64; 3],
+        view_yaw: f32,
+        view_pitch: f32,
+        fov_degrees: f32,
+    ) -> HudBatch {
+        self.locator_camera = (!title).then_some((camera, view_yaw, view_pitch, fov_degrees));
+        self.hud_with_reload(size, reload_overlay)
+    }
+
+    fn hud_with_reload(
+        &mut self,
+        size: [u32; 2],
+        reload_overlay: Option<(f32, sunrise_client::level_loading::OverlayFade)>,
+    ) -> HudBatch {
         // Gui.extractRenderState passes integer coordinates to the HUD and screen. Keep
         // the projected fractions for input, but draw and hit-test hover at the frame's pixel.
         let pointer = self.project_window_cursor(size);
@@ -7224,14 +7345,13 @@ impl Game<'_> {
         self.ui.room = sunrise_client::hud_kit::room::Room::new(gui.width, gui.height);
         // The pack prompt replaces the connecting screen (setScreen), but
         // in game it opens over the world.
+        self.settle_title_toasts();
         let mut batch = if (self.server_packs.prompt.is_some()
             || self.code_of_conduct.is_some()
             || self.dialog_open())
             && self.player.is_none()
         {
-            let mut batch = HudBatch::new(size, self.settings.gui_scale_inputs());
-            self.draw_pack_toasts(&mut batch, true, false);
-            batch
+            gui
         } else {
             self.hud_layers(size)
         };
@@ -7243,9 +7363,12 @@ impl Game<'_> {
         self.draw_code_of_conduct(&mut batch);
         self.draw_link_prompt(&mut batch);
         self.draw_command_prompt(&mut batch);
-        // The ToastManager draws over every screen, the title and the
-        // options included: the narrator's toast follows the player there.
-        self.draw_narrator_toast(&mut batch);
+        if let Some((bar, fade)) = reload_overlay {
+            self.draw_reload_overlay(&mut batch, bar, fade);
+        }
+        // Gui.extractRenderState draws toasts over the active screen or overlay,
+        // after the saving indicator and before the debug overlay.
+        self.draw_every_toast(&mut batch);
         // Gui.extractRenderState: the debug overlay comes after the screen
         // and the toasts, so it is over everything, menus included.
         self.draw_debug_overlay(&mut batch, size);
@@ -7268,6 +7391,21 @@ impl Game<'_> {
         self.pack.item_renderer.end_gui_frame();
         batch
     }
+    fn draw_reload_overlay(
+        &self,
+        batch: &mut HudBatch,
+        bar: f32,
+        fade: sunrise_client::level_loading::OverlayFade,
+    ) {
+        sunrise_client::level_loading::draw_loading_overlay(
+            batch,
+            &self.gui.atlas,
+            bar,
+            fade,
+            self.settings.file.bool("darkMojangStudiosBackground"),
+        );
+    }
+
     fn hud_layers(&mut self, size: [u32; 2]) -> HudBatch {
         use sunrise_client::gui_layers::VanillaGuiLayer;
 
@@ -7294,7 +7432,6 @@ impl Game<'_> {
             // screen, after its own drawing.
             self.publish_screen_regions(&batch, None);
             self.draw_screen_with_post_hook(&mut batch);
-            self.draw_pack_toasts(&mut batch, true, false);
             return batch;
         }
         if self.screen == Screen::Options && self.title.is_some() {
@@ -7302,23 +7439,17 @@ impl Game<'_> {
             self.draw_options(&mut batch, drawn);
             self.publish_screen_regions(&batch, None);
             self.draw_screen_with_post_hook(&mut batch);
-            self.draw_pack_toasts(&mut batch, true, false);
             return batch;
         }
-        self.settle_title_toasts();
-        if let Some(title) = &mut self.title {
-            if std::mem::take(&mut title.onboarding_finished) {
-                // Options.onboardingAccessibilityFinished.
-                self.settings.file.set(
-                    "onboardAccessibility",
-                    sunrise_client::options_file::V::Bool(false),
-                );
-                self.settings.save(&Self::options_path());
-            }
-            if let Some(sound) = title.update_toast(self.settings.notification_display_time as f32)
-            {
-                self.audio.play(sound, None, 1.0, 1.0);
-            }
+        if let Some(title) = &mut self.title
+            && std::mem::take(&mut title.onboarding_finished)
+        {
+            // Options.onboardingAccessibilityFinished.
+            self.settings.file.set(
+                "onboardAccessibility",
+                sunrise_client::options_file::V::Bool(false),
+            );
+            self.settings.save(&Self::options_path());
         }
         if let Some(title) = &self.title {
             for found in title.lan_found_narrations((w, h)) {
@@ -7336,10 +7467,6 @@ impl Game<'_> {
             }
             self.publish_screen_regions(&batch, None);
             self.draw_screen_with_post_hook(&mut batch);
-            self.draw_toasts(&mut batch, false);
-            self.draw_tutorial_toasts(&mut batch, false);
-            self.draw_pack_toasts(&mut batch, false, false);
-            self.draw_music_toast(&mut batch, false);
             return batch;
         }
         if self.title.is_some() {
@@ -7370,10 +7497,6 @@ impl Game<'_> {
             // toasts still come after, as over any screen.
             self.publish_screen_regions(&batch, None);
             self.draw_title_screen_with_post_hook(&mut batch);
-            self.draw_toasts(&mut batch, false);
-            self.draw_tutorial_toasts(&mut batch, false);
-            self.draw_pack_toasts(&mut batch, false, false);
-            self.draw_music_toast(&mut batch, false);
             return batch;
         }
         let atlas_ptr: *const HudAtlas = &self.gui.atlas;
@@ -7382,14 +7505,13 @@ impl Game<'_> {
         // download while the connection screen shows.
         if self.remote_overlay(&mut batch) {
             self.publish_screen_regions(&batch, None);
-            self.draw_pack_toasts(&mut batch, false, false);
-            self.draw_music_toast(&mut batch, false);
             return batch;
         }
         // Hud.extractRenderState: F1 (keyToggleGui) hides camera overlays, the
         // crosshair, hotbar, effects, bars, sidebar, action bar, titles and chat;
         // the sleep overlay, debug screen and open screens still draw.
         let spectator = self.spectator();
+        let camera = self.camera_player();
         let (wi, hi) = (w as i32, h as i32);
         let mut gui_canceled = false;
         let replaying = self.replay.playing();
@@ -7427,7 +7549,7 @@ impl Game<'_> {
             } else {
                 0
             };
-            let attack = (indicator == 1 || indicator == 2).then(|| {
+            let crosshair_attack = (indicator == 1).then(|| {
                 let speed = self.main_hand_attack_speed();
                 (
                     self.hand_strength.scale(0.0, speed),
@@ -7443,7 +7565,6 @@ impl Game<'_> {
                     && !g.debug_crosshair()
                     && !g.overlay_holds_view()
                 {
-                    let crosshair_attack = attack.filter(|_| indicator == 1);
                     let full = crosshair_attack.is_some_and(|(strength, delay)| {
                         hud_layout::full_attack_indicator(strength, delay, g.crosshair_living())
                     });
@@ -7468,27 +7589,30 @@ impl Game<'_> {
                     return;
                 }
                 if spectator {
-                    g.draw_spectator_hotbar(batch);
-                } else {
-                    let partial = g.clock.fraction() as f32;
-                    let inputs = hud_layout::HotbarInputs {
-                        selected: g.selected as i32,
-                        right_handed: !g.settings.main_hand_left,
-                        offhand: g.offhand.is_some(),
-                        slots: std::array::from_fn(|i| {
-                            g.inventory[i]
-                                .as_ref()
-                                .map(|_| (f32::from(g.hotbar_pop[i]) - partial).max(0.0))
-                        }),
-                        offhand_pop: (f32::from(g.hotbar_pop[9]) - partial).max(0.0),
-                        attack: attack
-                            .filter(|_| indicator == 2)
-                            .map(|(strength, _)| strength),
-                    };
-                    let draws = hud_layout::hotbar(wi, hi, &inputs);
+                    g.draw_spectator_hotbar(batch, g.own_player_is_spectator());
+                } else if let Some((inputs, source)) = g.camera_hotbar(camera) {
+                    let mut draws = hud_layout::hotbar(wi, hi, &inputs);
                     // `extractSlot` for each item, in order, on the path `gui_paint` takes.
-                    let mut items = crate::game::gui_paint_items::HotbarItems { game: g };
+                    let mut items = crate::game::gui_paint_items::HotbarItems { game: g, source };
                     hud_layout::paint_items(batch, &g.gui.atlas, &draws, &mut items);
+                    if indicator == 2 {
+                        // Items and arm follow the camera; the charge belongs to the local player.
+                        let mut progress = g.hand_strength.scale(0.0, g.main_hand_attack_speed());
+                        g.native_hotbar_attack_indicator_progress(
+                            native_hooks::HotbarAttackIndicatorProgressCall {
+                                progress: &mut progress,
+                            },
+                        );
+                        let start = draws.len();
+                        hud_layout::hotbar_attack_indicator(
+                            wi,
+                            hi,
+                            inputs.right_handed,
+                            progress,
+                            &mut draws,
+                        );
+                        hud_layout::paint(batch, &g.gui.atlas, &draws[start..]);
+                    }
                 }
             });
             self.gui_layer(VanillaGuiLayer::Effects, &mut batch, &mut |g, batch| {
@@ -7522,7 +7646,7 @@ impl Game<'_> {
             let mount = if !show_hud {
                 None
             } else {
-                self.camera_player_vehicle_health()
+                self.camera_vehicle_health(camera)
             };
             // NeoForge applies hudVisible and survivalVisible to the vanilla bodies only.
             let show_survival_status = show_hud && self.can_hurt_player();
@@ -7533,23 +7657,7 @@ impl Game<'_> {
                     if !show_survival_status {
                         return;
                     }
-                    let (tick, millis) = (g.visual_ticks() as i32, g.visual_millis());
-                    let Some(p) = &mut g.player else { return };
-                    let blink = g.health_hud.update_health(
-                        p.health.health(),
-                        tick,
-                        millis,
-                        p.health.hurt.cooldown > 0,
-                    );
-                    let inputs = hud_layout::HealthInputs {
-                        tick,
-                        max_health: p.attribute("minecraft:max_health").unwrap_or(20.0) as f32,
-                        absorption: p.health.absorption(),
-                        regeneration: g.potions.effects.get("regeneration").is_some(),
-                        hardcore: g.level.hardcore,
-                        blink,
-                    };
-                    let Some(kind) = g.player_heart_kind() else {
+                    let Some((inputs, kind)) = g.camera_health_inputs(camera) else {
                         return;
                     };
                     status_rows.clear();
@@ -7568,11 +7676,9 @@ impl Game<'_> {
                 if !show_survival_status {
                     return;
                 }
-                let Some(p) = &mut g.player else { return };
-                let armor = p
-                    .attribute("minecraft:armor")
-                    .or_else(|_| p.attribute("armor"))
-                    .unwrap_or(0.0) as i32;
+                let Some(armor) = g.camera_armor(camera) else {
+                    return;
+                };
                 status_rows.clear();
                 hud_layout::armor_level(armor, wi, hi, &mut status_heights, &mut status_rows);
                 hud_layout::paint(batch, &g.gui.atlas, &status_rows);
@@ -7581,12 +7687,8 @@ impl Game<'_> {
                 if !show_survival_status || mount.is_some_and(|(hearts, _)| hearts != 0) {
                     return;
                 }
-                let Some(p) = &g.player else { return };
-                let inputs = hud_layout::FoodInputs {
-                    tick: g.visual_ticks() as i32,
-                    food: p.health.food.food,
-                    saturation: p.health.food.saturation,
-                    hunger: g.potions.effects.get("hunger").is_some(),
+                let Some(inputs) = g.camera_food_inputs(camera) else {
+                    return;
                 };
                 status_rows.clear();
                 g.health_hud
@@ -7616,23 +7718,19 @@ impl Game<'_> {
                 if !show_survival_status {
                     return;
                 }
-                let Some(p) = &g.player else { return };
-                let inputs = hud_layout::AirInputs {
-                    tick: g.visual_ticks() as i32,
-                    air: p.air,
-                    max_air: 300,
-                    // Hud.extractAirBubbles checks the fluid at the eyes, not the block.
-                    under_water: p.is_eye_in_fluid(sunrise_client::motion::WATER),
+                let Some((inputs, sound_at)) = g.camera_air_inputs(camera) else {
+                    return;
                 };
-                let at = [p.position.x, p.position.y, p.position.z];
                 status_rows.clear();
                 let pop_sound =
                     g.health_hud
                         .air_level(&inputs, wi, hi, &mut status_heights, &mut status_rows);
                 hud_layout::paint(batch, &g.gui.atlas, &status_rows);
-                // Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard
-                // by this client only.
-                if let Some((volume, pitch)) = pop_sound {
+                // Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard by this
+                // client only, so another player's bubbles pop silently.
+                if let Some((volume, pitch)) = pop_sound
+                    && let Some(at) = sound_at
+                {
                     let players = sunrise_client::settings::SOUND_SOURCES
                         .iter()
                         .position(|s| *s == "player")
@@ -7848,7 +7946,6 @@ impl Game<'_> {
         self.publish_screen_regions(&batch, region_screen);
         self.draw_screen_with_post_hook(&mut batch);
         self.draw_saving_indicator(&mut batch);
-        self.draw_every_toast(&mut batch, self.replay.playing(), gui_canceled);
         if self.server_packs.prompt.is_none() {
             self.remote_hud(&mut batch);
             self.draw_sign_editor(&mut batch);
@@ -8010,11 +8107,7 @@ impl Game<'_> {
         // One scan for both passes that draw them (block entities below and the
         // overlay near the end of this function).
         let cracks = self.cracks(camera);
-        let fire_yaw = if self.camera_type == sunrise_client::camera::CameraType::ThirdPersonFront {
-            self.yaw + 180.0
-        } else {
-            self.yaw
-        };
+        let fire_yaw = self.posed_rotation.map_or(self.view.y_rot, |(y, _)| y);
         // Packs may move vertices or draw from another camera. The guarded
         // billboard frustum covers TAA's jitter without changing model culling.
         let fire_view = billboard_frustum
@@ -8027,6 +8120,9 @@ impl Game<'_> {
         };
         laps.lap("eg_prep");
         for item in &self.dropped {
+            if self.hides_as_camera(item.id) {
+                continue;
+            }
             if item.fire_ticks > 0
                 && self
                     .stack_can_be_hurt_by(&item.stack, "minecraft:in_fire")
@@ -8054,6 +8150,9 @@ impl Game<'_> {
         }
         laps.lap("eg_fire_items");
         for stand in &self.armor_stands {
+            if self.hides_as_camera(stand.id) {
+                continue;
+            }
             if stand.is_on_fire() && !stand.marker {
                 let scale = if stand.small { 0.5 } else { 1.0 };
                 let at = stand.render_position(alpha);
@@ -8108,7 +8207,9 @@ impl Game<'_> {
                 }
                 F::Dragon => {
                     // A dragon summoned outside the End draws at its join slot too.
-                    if let Some(dragon) = self.dragon.as_ref() {
+                    if let Some(dragon) =
+                        self.dragon.as_ref().filter(|d| !self.hides_as_camera(d.id))
+                    {
                         self.dragon_geometry(dragon, camera, alpha, &mut out, additive);
                     }
                 }
@@ -8126,14 +8227,17 @@ impl Game<'_> {
                 }
                 F::Orb => {
                     self.mark_entity(out.len(), "minecraft:experience_orb");
-                    let live = self.orbs[range].iter().map(|o| {
-                        let at = [
-                            o.previous.x + (o.position.x - o.previous.x) * alpha,
-                            o.previous.y + (o.position.y - o.previous.y) * alpha,
-                            o.previous.z + (o.position.z - o.previous.z) * alpha,
-                        ];
-                        (o, at, alpha as f32)
-                    });
+                    let live = self.orbs[range]
+                        .iter()
+                        .filter(|o| !self.hides_as_camera(o.id))
+                        .map(|o| {
+                            let at = [
+                                o.previous.x + (o.position.x - o.previous.x) * alpha,
+                                o.previous.y + (o.position.y - o.previous.y) * alpha,
+                                o.previous.z + (o.position.z - o.previous.z) * alpha,
+                            ];
+                            (o, at, alpha as f32)
+                        });
                     let frame = orb_frame.get_or_init(|| self.orb_frame());
                     self.orb_geometry(camera, frame, live, orb_view, &mut out);
                 }
@@ -8189,6 +8293,9 @@ impl Game<'_> {
         laps.lap("eg_other_creatures");
         // These billboards stay in their later pass, outside the ordered body runs.
         for m in &self.mobs {
+            if self.hides_as_camera(m.id) {
+                continue;
+            }
             // Blaze.isOnFire: a charged blaze burns.
             let blazing = m.species() == sunrise_client::mobs::Species::Blaze && m.extra.flag;
             if (m.is_on_fire() || blazing) && !m.removed {
@@ -8284,19 +8391,32 @@ impl Game<'_> {
             };
             // Each caster carries (interpolated placement pos, current distance pos, radius, strength).
             let mut casters: Vec<(glam::DVec3, glam::DVec3, f32, f32)> =
-                sunrise_client::shadows::mob_casters(&self.mobs, a)
-                    .map(|(pos, r, s)| (pos, pos, r, s))
-                    .collect();
+                sunrise_client::shadows::mob_casters(
+                    self.mobs.iter().filter(|m| !self.hides_as_camera(m.id)),
+                    a,
+                )
+                .map(|(pos, r, s)| (pos, pos, r, s))
+                .collect();
             let item = sunrise_client::shadows::shadow_params("minecraft:item");
-            casters.extend(self.dropped.iter().map(|i| {
-                let p = lerp(i.previous, i.position);
-                (p, p, item.0, item.1)
-            }));
+            casters.extend(
+                self.dropped
+                    .iter()
+                    .filter(|i| !self.hides_as_camera(i.id))
+                    .map(|i| {
+                        let p = lerp(i.previous, i.position);
+                        (p, p, item.0, item.1)
+                    }),
+            );
             let orb = sunrise_client::shadows::shadow_params("minecraft:experience_orb");
-            casters.extend(self.orbs.iter().map(|o| {
-                let p = lerp(o.previous, o.position);
-                (p, p, orb.0, orb.1)
-            }));
+            casters.extend(
+                self.orbs
+                    .iter()
+                    .filter(|o| !self.hides_as_camera(o.id))
+                    .map(|o| {
+                        let p = lerp(o.previous, o.position);
+                        (p, p, orb.0, orb.1)
+                    }),
+            );
             // Text, block and item displays: same visibility gate, per-entity partial tick,
             // and current-position distance fade as `EntityRenderer.extractShadow`.
             let display_scale = self.view_scale();
@@ -8441,135 +8561,103 @@ impl Game<'_> {
                 );
                 !self.block_entity_occluded(bounds)
             };
-            let lid = |p: [i32; 3]| self.chest_lid(p, alpha as f32);
-            let anim = |p: [i32; 3]| self.block_anim(p, alpha as f32);
-            let substitute =
-                |text: &sunrise_client::text::Text| self.substitute_inline_images(text);
-            let inline_sprite =
-                |atlas: &str, sprite: &str| self.gui.atlas.inline_sprite(atlas, sprite);
-            let scene = BlockEntityScene {
-                camera,
-                orientation: self.camera_orientation(),
-                anim: &anim,
-                texts: None,
-                partial: alpha as f32,
-                game_time: self.world.game_time,
-                max_y: self.world.shape.max_y() - 1,
-                world: &self.world,
-                sprites: &self.gui.atlas.sprites,
-                emissive: &self.gui.atlas.emissive,
-                translucent_sprites: &self.gui.atlas.translucent,
-                atlas_revision: self.gui.atlas.revision,
-                nether: self.nether_lighting(),
-                lid: &lid,
-                sign: &|p| match self.world.block_entities.get(&(p[0], p[1], p[2])) {
-                    Some(BlockEntity::Sign(sign)) => Some(sign),
-                    _ => None,
-                },
-                inline_images: self.inline_images_revision().map(|revision| {
-                    block_entity_render::SignInlineImages {
-                        revision,
-                        substitute: &substitute,
-                        sprite: &inline_sprite,
-                    }
-                }),
-                banner: &|p| self.banner_layers_at(p),
-                skull: &|p| self.skull_skin_at(p),
-                glyph: &|c| self.gui.atlas.glyph_cell(c),
-                glyphs: self.gui.atlas.font.epoch(),
-                font: Some(&self.gui.atlas.font),
-                dynamic_visible: Some(&dynamic_visible),
-            };
-            let visible = camera_list.into_iter().chain(shadow_only.iter().copied());
-            let block_entity_cache = CacheOptions {
-                shulker_boxes: self.settings.sunrise.cache_shulker_boxes,
-                signs: self.settings.sunrise.cache_signs,
-                decorated_pots: self.settings.sunrise.cache_decorated_pots,
-                bells: self.settings.sunrise.cache_bells,
-                chests: self.settings.sunrise.cache_chests,
-                banners: self.settings.sunrise.cache_banners,
-                copper_golem_statues: self.settings.sunrise.cache_copper_golem_statues,
-            };
-            // Entity occlusion is for ordinary entity meshes. Block entities
-            // already have section and per-block frustum culling; routing them
-            // through the per-vertex occlusion callback both repeats that work
-            // and disables their per-section GPU cache. Shader packs still need
-            // per-entity span marks, so they keep the callback path.
-            if self.pack_ids.is_some() {
-                let section_revision = |pos| r.block_entity_section_revision(pos);
-                static_block_entity_stats = self
-                    .res
-                    .block_entity_render()
-                    .render_with_cache_options_and_callbacks(
-                        &scene,
-                        visible,
-                        block_entity_cache,
-                        r.block_entity_revision(),
-                        Some(&section_revision),
-                        &mut out,
-                        |pos, state, start| {
-                            self.mark_block_entity(start, state);
-                            self.mark_motion(start, motion_block_entity(pos));
-                        },
-                        |pos, _, start, out| {
-                            if shadow_only_at.contains(&pos) {
-                                self.hide_spans_from(start, out.len());
-                            }
-                        },
-                    );
-            } else {
-                (
-                    static_block_entities,
-                    visible_static_block_entity_sections,
-                    static_block_entity_stats,
-                ) = self
-                    .res
-                    .block_entity_render()
-                    .render_with_gpu_cache_options(
-                        &scene,
-                        visible,
-                        cache_candidates.into_iter(),
-                        block_entity_cache,
-                        r.block_entity_revision(),
-                        |pos| r.block_entity_section_revision(pos),
-                        &mut out,
-                    );
-            }
-            // Mod block entities: their mods draw them (`native_block_entity_submit`),
-            // culled by the eye-visible section filter (ordinary renderers) and the bounds
-            // they give. A world without any (`has_mods`) has none to find among its other
-            // unrendered block entities (furnaces, hoppers...).
-            let radius = self.effective_render_distance();
-            let untemplated = self.untemplated_mod_block_entities(camera);
-            let mods = self
-                .world
-                .block_entities
-                .has_mods()
-                .then(|| {
-                    r.visible_block_entities(self.settings.chunk_fade as f32, camera, view, radius)
+            self.with_block_entity_scene(camera, alpha as f32, &dynamic_visible, |scene| {
+                let visible = camera_list.into_iter().chain(shadow_only.iter().copied());
+                let block_entity_cache = CacheOptions {
+                    shulker_boxes: self.settings.sunrise.cache_shulker_boxes,
+                    signs: self.settings.sunrise.cache_signs,
+                    decorated_pots: self.settings.sunrise.cache_decorated_pots,
+                    bells: self.settings.sunrise.cache_bells,
+                    chests: self.settings.sunrise.cache_chests,
+                    banners: self.settings.sunrise.cache_banners,
+                    copper_golem_statues: self.settings.sunrise.cache_copper_golem_statues,
+                };
+                // Entity occlusion is for ordinary entity meshes. Block entities
+                // already have section and per-block frustum culling; routing them
+                // through the per-vertex occlusion callback both repeats that work
+                // and disables their per-section GPU cache. Shader packs still need
+                // per-entity span marks, so they keep the callback path.
+                if self.pack_ids.is_some() {
+                    let section_revision = |pos| r.block_entity_section_revision(pos);
+                    static_block_entity_stats = self
+                        .res
+                        .block_entity_render()
+                        .render_with_cache_options_and_callbacks(
+                            scene,
+                            visible,
+                            block_entity_cache,
+                            r.block_entity_revision(),
+                            Some(&section_revision),
+                            &mut out,
+                            |pos, state, start| {
+                                self.mark_block_entity(start, state);
+                                self.mark_motion(start, motion_block_entity(pos));
+                            },
+                            |pos, _, start, out| {
+                                if shadow_only_at.contains(&pos) {
+                                    self.hide_spans_from(start, out.len());
+                                }
+                            },
+                        );
+                } else {
+                    (
+                        static_block_entities,
+                        visible_static_block_entity_sections,
+                        static_block_entity_stats,
+                    ) = self
+                        .res
+                        .block_entity_render()
+                        .render_with_gpu_cache_options(
+                            scene,
+                            visible,
+                            cache_candidates.into_iter(),
+                            block_entity_cache,
+                            r.block_entity_revision(),
+                            |pos| r.block_entity_section_revision(pos),
+                            &mut out,
+                        );
+                }
+                // Mod block entities: their mods draw them (`native_block_entity_submit`),
+                // culled by the eye-visible section filter (ordinary renderers) and the bounds
+                // they give. A world without any (`has_mods`) has none to find among its other
+                // unrendered block entities (furnaces, hoppers...).
+                let radius = self.effective_render_distance();
+                let untemplated = self.untemplated_mod_block_entities(camera);
+                let mods = self
+                    .world
+                    .block_entities
+                    .has_mods()
+                    .then(|| {
+                        r.visible_block_entities(
+                            self.settings.chunk_fade as f32,
+                            camera,
+                            view,
+                            radius,
+                        )
                         .filter(|((_, state), _)| !self.res.block_entity_render().renders(*state))
-                })
-                .into_iter()
-                .flatten();
-            let untemplated_eye = untemplated.iter().map(|block| {
-                (
-                    block,
-                    r.block_entity_section_in_eye_view(block.0, camera, view.as_ref(), radius),
-                )
+                    })
+                    .into_iter()
+                    .flatten();
+                let untemplated_eye = untemplated.iter().map(|block| {
+                    (
+                        block,
+                        r.block_entity_section_in_eye_view(block.0, camera, view.as_ref(), radius),
+                    )
+                });
+                self.mod_block_entity_geometry(
+                    mods.chain(untemplated_eye),
+                    camera,
+                    alpha as f32,
+                    &mut out,
+                );
+                self.mark_stage(out.len(), "DESTROY");
+                for &(pos, stage) in &cracks {
+                    let state = self.world.block(pos[0], pos[1], pos[2]);
+                    self.res
+                        .block_entity_render()
+                        .render_breaking(scene, pos, state.0, stage, &mut out);
+                }
             });
-            self.mod_block_entity_geometry(
-                mods.chain(untemplated_eye),
-                camera,
-                alpha as f32,
-                &mut out,
-            );
-            self.mark_stage(out.len(), "DESTROY");
-            for &(pos, stage) in &cracks {
-                let state = self.world.block(pos[0], pos[1], pos[2]);
-                self.res
-                    .block_entity_render()
-                    .render_breaking(&scene, pos, state.0, stage, &mut out);
-            }
         }
         laps.lap("eg_block_entities");
         self.mark_motion(out.len(), 0);
@@ -8663,6 +8751,9 @@ impl Game<'_> {
         } = *setup;
         let tables = &self.pack.context.tables;
         for f in &self.falling[run] {
+            if self.hides_as_camera(f.id) {
+                continue;
+            }
             let p = f.model_origin(alpha, |state, x, z| tables.offset(state, x, z)) - camera;
             let o = p.as_vec3();
             // Only rear-origin models pay for the envelope/depth check. The
@@ -8985,9 +9076,7 @@ impl Game<'_> {
         }
     }
 
-    /// The mob hit along the view, the distance to it and the point the ray
-    /// met its box at, measured from the mob's feet (`EntityHitResult
-    /// .getLocation() - entity.position()`, the interact packet's location).
+    /// The mob hit along the view, its distance, and the hit point relative to its feet.
     fn mob_hit(&self) -> Option<(usize, f64, [f64; 3])> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, point) = hit?;
@@ -9002,45 +9091,32 @@ impl Game<'_> {
         if let Some(hit) = self.tick_mob {
             return hit;
         }
-        let mut pick = crate::game::pick_accumulator::PickAccumulator::new(self.entity_reach);
-        self.mob_hit_within_with_pick(self.entity_reach, &mut pick)
+        let pick_entity::CrosshairDecision::Entity(hit) = self.compute_crosshair_decision() else {
+            return None;
+        };
+        let i = self.mob_index.find_ref(&self.mobs, hit.id)?;
+        let point = Vec3::new(hit.point[0], hit.point[1], hit.point[2]);
+        Some((
+            i,
+            hit.distance_sq.sqrt(),
+            interact_location(point, self.mobs[i].position),
+        ))
     }
-    /// The brush's `ProjectileUtil.getHitResultOnViewVector` uses the nearest
-    /// box entry, excluding the source but not its vehicle or passengers.
+    /// The brush's `ProjectileUtil.getHitResultOnViewVector` excludes only the source entity.
     pub(super) fn mob_hit_within(&self, reach: f64) -> Option<(usize, f64, [f64; 3])> {
         let source = self.pick_camera_id();
-        let mut nearest = f64::INFINITY;
-        self.mob_hit_within_consider(reach, |id, distance| {
-            if Some(id) == source || distance == 0.0 || distance >= nearest {
-                return false;
-            }
-            nearest = distance;
-            true
-        })
-    }
-    pub(super) fn mob_hit_within_with_pick(
-        &self,
-        reach: f64,
-        pick: &mut crate::game::pick_accumulator::PickAccumulator,
-    ) -> Option<(usize, f64, [f64; 3])> {
-        self.mob_hit_within_consider(reach, |id, distance| pick.consider(self, id, distance))
-    }
-    fn mob_hit_within_consider(
-        &self,
-        reach: f64,
-        mut consider: impl FnMut(u32, f64) -> bool,
-    ) -> Option<(usize, f64, [f64; 3])> {
         let (eye, dir) = self.aim()?;
+        let mut nearest = f64::INFINITY;
         let mut best: Option<(usize, f64, [f64; 3])> = None;
         for (i, m) in self.mobs.iter().enumerate() {
-            // EntitySelector.CAN_BE_PICKED is isPickable — `!isRemoved`,
-            // not alive: a health-0 fake player still answers a click.
-            if m.removed {
+            if m.removed || Some(m.id) == source {
                 continue;
             }
             if let Some(t) = ray_box(eye, dir, reach, m.bounds())
-                && consider(m.id, t)
+                && t != 0.0
+                && t < nearest
             {
+                nearest = t;
                 let point = Vec3::new(
                     eye[0] + dir[0] * t,
                     eye[1] + dir[1] * t,
@@ -10932,28 +11008,6 @@ impl Game<'_> {
             }
             return Ok(false);
         }
-        // A pack reload's `LoadingOverlay`: once opaque it covers the frame
-        // alone; while it fades in or out it is drawn over the frame's GUI.
-        let reload_overlay = self.reload_overlay_frame();
-        if let Some((bar, fade)) = reload_overlay.filter(|(_, fade)| fade.opaque()) {
-            if let Some(renderer) = &mut self.renderer {
-                let mut hud = HudBatch::new(
-                    [renderer.config.width, renderer.config.height],
-                    self.settings.gui_scale_inputs(),
-                );
-                sunrise_client::level_loading::draw_loading_overlay(
-                    &mut hud,
-                    &self.gui.atlas,
-                    bar,
-                    fade,
-                    self.settings.file.bool("darkMojangStudiosBackground"),
-                );
-                pr.lap("pr_loading");
-                drop(prepare);
-                return renderer.render(&loading_frame(&hud));
-            }
-            return Ok(false);
-        }
         let Some(size) = self
             .renderer
             .as_ref()
@@ -10961,12 +11015,27 @@ impl Game<'_> {
         else {
             return Ok(false);
         };
+        // An opaque LoadingOverlay needs no world or screen behind it; the
+        // ToastManager still draws in front of it.
+        let reload_overlay = self.reload_overlay_frame();
+        if let Some((bar, fade)) = reload_overlay.filter(|(_, fade)| fade.opaque()) {
+            let mut hud = HudBatch::new(size, self.settings.gui_scale_inputs());
+            self.draw_reload_overlay(&mut hud, bar, fade);
+            self.draw_every_toast(&mut hud);
+            self.pack.item_renderer.end_gui_frame();
+            pr.lap("pr_loading");
+            drop(prepare);
+            return self
+                .renderer
+                .as_mut()
+                .expect("renderer sized above")
+                .render(&loading_frame(&hud));
+        }
         pr.lap("pr_setup");
         let alpha = self.frame_world_partial_tick();
         self.refresh_client_pick(alpha as f32);
-        // Camera.getCameraEntityPartialTicks: the view, the hand and the
-        // player's own model stay smooth while the level is frozen.
-        let camera_alpha = self.clock.camera_fraction();
+        // Camera.getCameraEntityPartialTicks: only players and their mounts stay unfrozen.
+        let camera_alpha = self.camera_partial_tick();
         self.apply_requested_camera_type();
         let vanilla = self.camera_view(camera_alpha as f32);
         let view = vanilla.map(|view| {
@@ -11222,44 +11291,29 @@ impl Game<'_> {
         // CAN_PLACE_ON item matching the block, and spectators with a menu block; Sunrise
         // does not open menus for spectators, so those never show it. An open
         // screen does not hide it: vanilla checks the HUD and the game mode, not the screen.
-        let adventure = self.mode == sunrise_client::command::args::GameMode::Adventure;
-        let can_build = self.may_build() || adventure;
-        let outline = if block_outline_drawn(
-            self.ui.hide_gui,
-            self.entity_targeted(),
-            can_build,
-            self.shows_panorama(),
-        ) {
-            self.pick()
-                .filter(|h| {
-                    self.may_build()
-                        || !self.block_action_restricted(h.pos)
-                        || self.can_place_on_in_adventure(h.pos)
-                })
-                .filter(|h| {
-                    let state = self.world.block(h.pos[0], h.pos[1], h.pos[2]);
-                    let mut canceled = false;
-                    self.native_block_highlight(h.pos, state, alpha as f32, &mut canceled);
-                    !canceled
-                })
-                .map(|h| {
-                    let state = self.world.block(h.pos[0], h.pos[1], h.pos[2]);
-                    outline_after_terrain = self
-                        .pack
-                        .render
-                        .model_catalog
-                        .collect(state, BlockPos::new(h.pos[0], h.pos[1], h.pos[2]))
-                        .is_ok_and(|models| {
-                            models
-                                .iter()
-                                .any(|(_, model)| model.faces.iter().any(|f| f.translucent))
-                        });
-                    self.outline_edges_iter(state, h.pos).collect()
-                })
-                .unwrap_or_default()
-        } else {
-            Vec::new()
-        };
+        let outline: Vec<_> = self
+            .block_outline_hit()
+            .filter(|h| {
+                let state = self.world.block(h.pos[0], h.pos[1], h.pos[2]);
+                let mut canceled = false;
+                self.native_block_highlight(h.pos, state, alpha as f32, &mut canceled);
+                !canceled
+            })
+            .map(|h| {
+                let state = self.world.block(h.pos[0], h.pos[1], h.pos[2]);
+                outline_after_terrain = self
+                    .pack
+                    .render
+                    .model_catalog
+                    .collect(state, BlockPos::new(h.pos[0], h.pos[1], h.pos[2]))
+                    .is_ok_and(|models| {
+                        models
+                            .iter()
+                            .any(|(_, model)| model.faces.iter().any(|f| f.translucent))
+                    });
+                self.outline_edges_iter(state, h.pos).collect()
+            })
+            .unwrap_or_default();
         pr.lap("pr_outline");
         let title = self.shows_panorama();
         let (yaw, pitch) = if title {
@@ -11279,6 +11333,11 @@ impl Game<'_> {
         } else {
             self.fov_degrees(camera_alpha as f32, camera.to_array())
         };
+        let cull_fov_degrees = if title {
+            85.0
+        } else {
+            sunrise_client::gfx::cull_fov(fov_degrees, (self.settings.fov as i32) as f32)
+        };
         let camera_effects = fov::camera_effects_enabled(title, self.studio.flying());
         let bob = if !camera_effects {
             glam::Mat4::IDENTITY
@@ -11288,7 +11347,7 @@ impl Game<'_> {
         let spin = if !camera_effects {
             glam::Mat4::IDENTITY
         } else {
-            self.spinning_matrix(camera_alpha as f32)
+            self.spinning_matrix(alpha as f32)
         };
         let terrain_distance = self.terrain_distance();
         let distance = (terrain_distance * 16) as f32;
@@ -11324,22 +11383,23 @@ impl Game<'_> {
         pr.lap("pr_projection");
         let vanilla_skin = self.apply_player_skin_override(title);
         // GUI hooks project against this frame's camera, including its bob/spin and FOV.
-        let mut hud = sunrise_client::spans::time("hud", || self.hud(size));
-        self.flush_ime(&mut hud);
-        self.native_gui_render_post(&mut hud, self.ui.hide_gui, self.focused);
-        if let Some((bar, fade)) = reload_overlay {
-            sunrise_client::level_loading::draw_loading_overlay(
-                &mut hud,
-                &self.gui.atlas,
-                bar,
-                fade,
-                self.settings.file.bool("darkMojangStudiosBackground"),
-            );
+        let mut hud = sunrise_client::spans::time("hud", || {
+            self.extract_frame_hud(
+                size,
+                reload_overlay,
+                title,
+                camera.to_array(),
+                view_yaw,
+                view_pitch,
+                fov_degrees,
+            )
+        });
+        if reload_overlay.is_none() {
+            self.flush_ime(&mut hud);
+            self.native_gui_render_post(&mut hud, self.ui.hide_gui, self.focused);
         }
         self.resolve_inline_profiles(&hud.inline_profiles);
         pr.lap("pr_hud");
-        self.locator_camera =
-            (!title).then_some((camera.to_array(), view_yaw, view_pitch, fov_degrees));
         // The packs' Polytone post chains, after vanilla's (#11486).
         let game_ticks = self.world.game_time as f64 + alpha;
         let delta_ticks = (game_ticks - self.polytone_post_ticks).clamp(0.0, 20.0) as f32;
@@ -11386,16 +11446,21 @@ impl Game<'_> {
         self.give_poly_globals(core_globals.as_ref());
         self.expression_frame = frame;
         // Camera.createProjectionMatrixForCulling: max(fov, configuredFov), without bob or spin.
-        let cull_fov = fov_degrees.max(self.settings.fov);
         self.view_frustum = self.world_view_frustum(
             camera,
-            [cull_fov, yaw, pitch],
+            [cull_fov_degrees, yaw, pitch],
             glam::Mat4::IDENTITY,
             depth_far,
         );
         let billboard_frustum = if self.settings.sunrise.taa {
             self.renderer.as_ref().map(|r| {
-                r.camera_frustum_with_jitter(fov_degrees, yaw, pitch, bob * spin, depth_far)
+                r.camera_frustum_with_jitter(
+                    cull_fov_degrees,
+                    yaw,
+                    pitch,
+                    glam::Mat4::IDENTITY,
+                    depth_far,
+                )
             })
         } else {
             self.view_frustum
@@ -11415,7 +11480,7 @@ impl Game<'_> {
         let mut pack_inputs = if title {
             Default::default()
         } else {
-            self.shader_pack_inputs(camera, alpha as f32, &sky)
+            self.shader_pack_inputs(camera, eye.map_or(camera, |e| e.0), alpha as f32, &sky)
         };
         // Retain the existing additive particle stream; the ordered dragon emitter appends
         // the eyes and rays to it without changing their material routing.
@@ -11446,12 +11511,10 @@ impl Game<'_> {
             self.dragon_fireball_geometry(camera, alpha, &mut entities);
         }
         pr.lap("pr_dragon_fireballs_bolts");
+        let sky_effect_blocked = self.camera_subject().is_some_and(|c| c.blocks_sky);
         let (celestial, celestial_bodies, stars) = if title {
             (Vec::new(), Vec::new(), None)
-        } else if self.overworld_skybox()
-            && self.potions.effects.get("darkness").is_none()
-            && self.potions.effects.get("blindness").is_none()
-        {
+        } else if self.overworld_skybox() && !sky_effect_blocked {
             // Camera.doesMobEffectBlockSky: no sun, moon or stars.
             self.celestial_geometry(&sky, rain)
         } else if self.end_skybox() && self.settings.sunrise.sky {
@@ -11587,6 +11650,7 @@ impl Game<'_> {
             yaw,
             pitch,
             fov_degrees,
+            cull_fov_degrees,
             eye: eye.filter(|_| !title).map_or(camera, |e| e.0),
             eye_rotation: eye.filter(|_| !title).map_or([yaw, pitch], |e| e.1),
             first_person: eye.is_none() || title || !self.view.detached,
@@ -11614,8 +11678,7 @@ impl Game<'_> {
             title,
             sky_blocked: sunrise_client::fog::sky_pass_skipped(
                 self.camera_fog_type([camera.x, camera.y, camera.z]),
-                self.potions.effects.get("blindness").is_some()
-                    || self.potions.effects.get("darkness").is_some(),
+                sky_effect_blocked,
                 self.boss_overlay.should_create_world_fog(),
             ),
             skybox: self.overworld_skybox() && self.settings.sunrise.sky,
@@ -11642,22 +11705,19 @@ impl Game<'_> {
             hud: &hud,
             glint_alpha: self.glint_frame.alpha,
             glint_ticks: self.glint_frame.scroll_ticks(),
-            clouds: (!title
-                && self.overworld_skybox()
-                && sunrise_client::clouds::visible(&self.settings.clouds, sky.cloud_color[3]))
-            .then(|| self.gui.atlas.sprites.get("sunrise/white"))
-            .flatten()
-            .map(|white| sunrise_client::clouds::Input {
-                texture: &self.pack.clouds,
-                uv: [(white.u0 + white.u1) / 2.0, (white.v0 + white.v1) / 2.0],
-                camera,
-                time: self.world.game_time,
-                partial_tick: alpha,
-                range: self.settings.cloud_range,
-                fast: self.settings.clouds == "fast",
-                color: sky.cloud_color,
-                height: sky.cloud_height,
-            }),
+            clouds: self
+                .frame_cloud_uv(title, &sky)
+                .map(|uv| sunrise_client::clouds::Input {
+                    texture: &self.pack.clouds,
+                    uv,
+                    camera,
+                    time: self.world.game_time,
+                    partial_tick: alpha,
+                    range: self.settings.cloud_range,
+                    fast: self.settings.clouds == "fast",
+                    color: sky.cloud_color,
+                    height: sky.cloud_height,
+                }),
             entities: &entities,
             explicit_particles: Some(&explicit_particle_quads),
             static_block_entities: &static_block_entities,
@@ -13760,6 +13820,7 @@ impl<'a> Game<'a> {
             tick: sunrise_client::parallel::TickThread::mint(),
             setting_overrides: Default::default(),
             damage_hooks: native_hooks::DAMAGE_HOOKS,
+            paused_mob_hurt: None,
             music: {
                 // The manager starts with the saved option (MusicManager's constructor).
                 let mut music = sunrise_client::music::MusicManager::default();
@@ -13862,8 +13923,7 @@ impl<'a> Game<'a> {
             settings,
             look: Default::default(),
             tutorial,
-            tutorial_toasts: Vec::new(),
-            narrator_toast: None,
+            toast_manager: Default::default(),
             narration: Default::default(),
             options_from_title: false,
             avatar: Default::default(),
@@ -13951,6 +14011,7 @@ impl<'a> Game<'a> {
             interactions: Default::default(),
             remote_knots: Default::default(),
             knot_ids: Default::default(),
+            broken_knots: Vec::new(),
             text_display_vertices: 0,
             skin_downloads: RefCell::new({
                 let mut downloads = sunrise_client::skins::Downloader::new(
@@ -14075,6 +14136,7 @@ impl<'a> Game<'a> {
             integrated: None,
             level_shapes: Default::default(),
             serving: None,
+            singleplayer_profile: None,
             world_options: None,
             options_to_world_options: false,
             command_block_screen: None,
@@ -14114,6 +14176,7 @@ impl<'a> Game<'a> {
             clipboard: Default::default(),
             user_input: Default::default(),
             text_selection: Default::default(),
+            client_quit: std::cell::Cell::new(saving::ClientQuit::Running),
             saved_for_exit: false,
             pending_save: None,
             server_tick_deadline: None,
@@ -14611,7 +14674,9 @@ pub(crate) use closest_space::closest_space_nudge;
 use inventory_input::drop_whole_stack;
 use subtitles::{Subtitles, in_game_ui, subtitles};
 
-use hud_render::{block_outline_drawn, debug_crosshair_drawn, is_game_master_block};
+#[cfg(test)]
+use hud_render::block_outline_drawn;
+use hud_render::{debug_crosshair_drawn, is_game_master_block};
 #[cfg(test)]
 mod test_neighbourhood {
     //! Shared fixture step for tests that tick entities on prepared data.
@@ -14762,6 +14827,10 @@ impl Game<'_> {
 #[cfg(test)]
 #[path = "game/interface/tests/sign_chain_tests.rs"]
 mod sign_chain_tests;
+
+#[cfg(test)]
+#[path = "game/interface/tests/sign_outline_tests.rs"]
+mod sign_outline_tests;
 
 #[cfg(test)]
 #[path = "game/interface/tests/sign_use_tests.rs"]
