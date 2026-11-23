@@ -308,7 +308,7 @@ impl<F: FnMut(&mut InsideEntityView<'_>) + 'static> CaptureStorage for Vec<Optio
 
     fn clear(&mut self) {
         debug_assert!(self.iter().all(Option::is_none));
-        self.truncate(0);
+        Vec::clear(self);
     }
 }
 
