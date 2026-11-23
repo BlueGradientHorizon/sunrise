@@ -2377,6 +2377,7 @@ fn native_client_identity(
 }
 
 /// `ClientBrandRetriever.getClientModName`, then the identity's configuration payloads, in order.
+/// Every packet is encoded before any is sent, so an identity the codecs refuse sends nothing.
 fn send_identity(
     c: &mut Connection,
     identity: &sunrise_hooks::ClientIdentity,
@@ -2384,19 +2385,23 @@ fn send_identity(
     let mut brand = ::sunrise_core::vanilla_bytes::Writer::new();
     brand.string(&identity.brand);
     let brand = ("minecraft:brand", brand.data);
-    for (channel, data) in std::iter::once(brand).chain(
-        identity
-            .payloads
-            .iter()
-            .map(|(channel, data)| (channel.as_str(), data.clone())),
-    ) {
-        c.send(
-            &cfg::Serverbound::CustomPayload(cfg::CustomPayload {
+    let packets = std::iter::once(brand)
+        .chain(
+            identity
+                .payloads
+                .iter()
+                .map(|(channel, data)| (channel.as_str(), data.clone())),
+        )
+        .map(|(channel, data)| {
+            cfg::Serverbound::CustomPayload(cfg::CustomPayload {
                 channel: channel.into(),
                 data,
             })
-            .try_encode()?,
-        )?;
+            .try_encode()
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    for packet in &packets {
+        c.send(packet)?;
     }
     Ok(())
 }
@@ -3019,6 +3024,71 @@ mod tests {
                 );
             },
         );
+    }
+
+    #[test]
+    fn initial_identity_sends_nothing_unless_every_packet_fits() {
+        use mod_api::{ClientIdentity, ClientIdentityPayload, Identifier, ModEntry};
+        use sunrise_protocol::connection::Pipe;
+
+        let payload = |len| {
+            vec![ClientIdentityPayload::new(
+                Identifier::parse("fixture:body").unwrap(),
+                vec![7; len],
+            )]
+        };
+        // ServerboundCustomPayloadPacket.MAX_PAYLOAD_SIZE is 32767 bytes; BrandPayload.write
+        // writes the brand with FriendlyByteBuf.writeUtf, at most 32767 characters.
+        for (brand, payloads, sent) in [
+            ("custom".to_owned(), payload(32_767), true),
+            ("custom".to_owned(), payload(32_768), false),
+            ("b".repeat(32_768), payload(0), false),
+        ] {
+            let answer = ClientIdentity::new(brand.clone(), payloads);
+            mod_platform::testing::with_mods(
+                vec![ModEntry::new(
+                    "limits",
+                    Box::new(JoinIdentityMod {
+                        answers: vec![("Join.Example", answer)],
+                        seen: Arc::default(),
+                    }),
+                )]
+                .into(),
+                || {
+                    let (client, server) = Pipe::pair();
+                    let mut client = Connection::local(client);
+                    let result = native_client_identity(
+                        &mut client,
+                        Some(("Join.Example", sunrise_hooks::ClientIdentity::vanilla())),
+                        &crate::raw_payloads::Local::empty(),
+                    );
+                    drop(client);
+                    let mut server = Connection::local(server);
+                    if sent {
+                        result.unwrap();
+                        let mut received = Vec::new();
+                        while let Ok((id, body)) = server.recv() {
+                            let cfg::Serverbound::CustomPayload(payload) =
+                                cfg::Serverbound::decode(id, &body).unwrap()
+                            else {
+                                panic!("expected a custom payload");
+                            };
+                            received.push((payload.channel.to_string(), payload.data.len()));
+                        }
+                        assert_eq!(
+                            received,
+                            [
+                                ("minecraft:brand".to_owned(), 7),
+                                ("fixture:body".to_owned(), 32_767)
+                            ]
+                        );
+                    } else {
+                        assert!(result.is_err(), "brand of {} bytes", brand.len());
+                        assert!(server.recv().is_err(), "sent part of a refused identity");
+                    }
+                },
+            );
+        }
     }
 
     #[test]
