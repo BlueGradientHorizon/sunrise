@@ -33,7 +33,7 @@ pub(super) use sunrise_gameplay::container_openers::recheck_opener_count;
 /// What a client tick of the animated block entities shares between them.
 pub(super) struct AnimTick {
     /// The tags of bells and conduits, copied when the first of them ticks.
-    raiders: Option<sunrise_client::items::EntityTypeTags>,
+    raiders: Option<std::sync::Arc<sunrise_client::items::EntityTypeTags>>,
     frames: Option<std::collections::HashSet<String>>,
 }
 
