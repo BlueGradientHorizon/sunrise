@@ -39,15 +39,36 @@ fn tick(game: &mut crate::game::Game<'_>) {
     game.tick_armor_stands().unwrap();
 }
 
-/// #2678: vanilla 26.3 witness for armor stand living counters in air and water.
+const WITNESS_ENV: &str = "SUNRISE_STAND_LIVING_COUNTERS_WITNESS";
+
+fn load_witness() -> Witness {
+    let raw_path = std::env::var_os(WITNESS_ENV).unwrap_or_else(|| {
+        panic!(
+            "{WITNESS_ENV} is unset; run tools/test_stand_living_counters_parity.py to record the witness"
+        )
+    });
+    let mut path = std::path::PathBuf::from(raw_path);
+    if path.is_dir() {
+        path.push("stand_living_counters.json");
+    }
+    let raw = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        panic!(
+            "failed to read witness {} (record via tools/test_stand_living_counters_parity.py): {e}",
+            path.display()
+        )
+    });
+    serde_json::from_str(&raw).expect("valid 26.3 armor stand living counters witness JSON")
+}
+
+/// #2678: vanilla 26.3 witness for armor stand living counters in air and water, recorded by `tools/test_stand_living_counters_parity.py`.
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_stand_living_counters_parity.py"]
 fn an_armor_stand_ticks_its_living_counters() {
-    let witness: Witness = serde_json::from_str(include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tools/witness/26.3/stand_living_counters.json"
-    )))
-    .unwrap();
+    run_an_armor_stand_ticks_its_living_counters();
+}
+
+pub(in crate::game) fn run_an_armor_stand_ticks_its_living_counters() {
+    let witness = load_witness();
     assert_eq!(witness.minecraft, "26.3");
     assert!(!witness.cases.is_empty());
     with_game(|game| {

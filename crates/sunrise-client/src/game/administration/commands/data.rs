@@ -2522,7 +2522,7 @@ mod saved_tag_tests;
 
 #[cfg(test)]
 #[path = "data/stand_living_tests.rs"]
-mod stand_living_tests;
+pub(in crate::game) mod stand_living_tests;
 
 #[cfg(test)]
 mod mod_block_entity_tests;
