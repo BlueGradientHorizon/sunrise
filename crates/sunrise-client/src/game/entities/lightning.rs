@@ -657,6 +657,7 @@ impl Game<'_> {
                         f32::MAX,
                         damage,
                     );
+                    self.finish_mob_damage_at(i);
                     continue;
                 }
                 Species::Creeper => {
@@ -695,6 +696,7 @@ impl Game<'_> {
                 5.0,
                 damage,
             );
+            self.finish_mob_damage_at(i);
         }
         for entity in powered {
             self.native_creeper_power(entity, [at[0], at[1], at[2]]);
@@ -855,8 +857,10 @@ impl Game<'_> {
         self.bolts
             .iter()
             .filter(|b| {
-                let at = glam::DVec3::new(b.at[0], b.at[1], b.at[2]);
-                at.distance_squared(camera) < range * range
+                !self.hides_as_camera(b.id) && {
+                    let at = glam::DVec3::new(b.at[0], b.at[1], b.at[2]);
+                    at.distance_squared(camera) < range * range
+                }
             })
             .map(|b| sunrise_client::gfx::lightning::Bolt {
                 at: b.at,
@@ -892,6 +896,7 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::native_entity_refs::tests::collect_entities_in;
     use mod_api::{self, ServerHost};
     use std::sync::Arc;
     use sunrise_client::mobs::{Anim, Brain, Mob, MobType, Part, Species};
@@ -1054,34 +1059,40 @@ mod tests {
             ) {
                 let old = host
                     .entity(event.entity)
-                    .and_then(|entity| entity.kind(host).map(|kind| kind.id(host)));
+                    .and_then(|entity| entity.kind(host)?.id(host))
+                    .map(|name| name.as_str().to_owned());
                 let outcome = host.entity(event.converted);
                 let weapon = outcome
                     .and_then(|entity| host.living(entity))
-                    .and_then(|living| living.equipment(host, EquipmentSlot::MainHand))
-                    .map(|stack| {
-                        mod_api::__private::item_key_id(stack.item())
-                            .unwrap()
-                            .to_string()
+                    .and_then(|living| {
+                        living.with_equipment(host, EquipmentSlot::MainHand, |stack| {
+                            mod_api::__private::item_key_id(stack.item())
+                                .unwrap()
+                                .to_string()
+                        })
                     });
                 let mushrooms = host
                     .level("minecraft:overworld")
                     .and_then(|level| {
-                        level.entities_in(host, [-10.0, 60.0, -10.0], [20.0, 70.0, 20.0])
+                        collect_entities_in(host, level, [-10.0, 60.0, -10.0], [20.0, 70.0, 20.0])
+                            .ok()
                     })
                     .unwrap()
                     .into_iter()
                     .filter_map(|entity| host.item_entity(entity))
-                    .filter_map(|item| item.stack(host))
-                    .filter(|stack| {
-                        mod_api::__private::item_key_id(stack.item())
-                            .unwrap()
-                            .ends_with("mushroom")
+                    .filter(|item| {
+                        item.with_stack(host, |stack| {
+                            mod_api::__private::item_key_id(stack.item())
+                                .unwrap()
+                                .ends_with("mushroom")
+                        }) == Some(true)
                     })
                     .count();
                 self.seen.lock().unwrap().push(SeenConversion {
                     old,
-                    outcome: outcome.and_then(|entity| entity.kind(host).map(|kind| kind.id(host))),
+                    outcome: outcome
+                        .and_then(|entity| entity.kind(host)?.id(host))
+                        .map(|name| name.as_str().to_owned()),
                     weapon,
                     mushrooms,
                 });
@@ -1265,6 +1276,7 @@ mod tests {
     fn a_baby_pig_hit_by_lightning_becomes_a_baby_zombified_piglin() {
         let make_pig = |baby: bool| {
             let kind = Arc::new(MobType {
+                type_key: Default::default(),
                 shadow: None,
                 id: "minecraft:pig".into(),
                 species: Species::Pig,
@@ -1303,6 +1315,7 @@ mod tests {
                     pose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
                     polygons: Vec::new(),
                     children: Vec::new(),
+                    layer: None,
                 }),
                 layers: Default::default(),
                 texture: String::new(),
