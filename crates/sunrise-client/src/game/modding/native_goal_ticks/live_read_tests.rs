@@ -278,9 +278,17 @@ fn body_yaw_is_the_raw_mob_yaw_and_none_for_others() {
 #[test]
 #[ignore = "daily"]
 fn a_players_last_hurt_mob_resolves_the_mob_lent_to_its_tick() {
-    use crate::game::native_entity_refs::tests::bind_local_player;
+    use crate::game::native_entity_refs::tests::{bind_local_player, run_fresh_cases};
     use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
 
+    // Loading resources replaces process-wide tables: the case runs in its own process.
+    if run_fresh_cases(
+        "game::native_goal_ticks::live_read_tests::a_players_last_hurt_mob_resolves_the_mob_lent_to_its_tick",
+        "SUNRISE_GOAL_LAST_HURT_MOB_CASE",
+        &["lent"],
+    ) {
+        return;
+    }
     with_game(|game| {
         game.enter_level(crate::game::Dim::Overworld).unwrap();
         game.options.dedicated = Some(Vec::new());

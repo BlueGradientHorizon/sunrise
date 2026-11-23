@@ -324,7 +324,7 @@ impl GoalCx<'_, '_> {
             Some(Resolved::Live(mob)) => mob.last_hurt_mob,
             // A snapshot row carries no record, and an unavailable mob answers nothing.
             Some(Resolved::Seen(_) | Resolved::Unavailable) => None,
-            // Holders the game keeps during the tick: its record, resolved here below.
+            // Holders that resolve in the ordinary game view: its raw record, resolved below.
             Some(Resolved::Dragon(_)) | None => self.w.goal_host?.living_last_hurt_record(living),
         }?;
         let entity = self.lookup_entity(id)?;

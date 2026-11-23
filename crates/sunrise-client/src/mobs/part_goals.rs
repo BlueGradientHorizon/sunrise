@@ -51,8 +51,8 @@ pub trait GoalHost {
     /// Compute climbing from the game's collision and climbing registry.
     fn mob_is_climbing(&self, mob: &Mob) -> bool;
     /// The raw `setLastHurtMob` record (target id, holder tick) of a living holder that
-    /// stays in the game during the tick: a player, an armor stand, the dragon or a mob of
-    /// another level. Its target is resolved in the tick's view, where a lent mob is visible.
+    /// resolves in the ordinary game view during the tick: a player, or an armor stand or the
+    /// dragon of this level. Its target is resolved in the tick's view, where a lent mob is visible.
     fn living_last_hurt_record(&self, living: mod_api::LivingRef) -> Option<(u32, i32)>;
     /// Player credit for a mob, distinguishing absent credit from an unresolved player.
     fn mob_player_credit(&self, mob: &Mob) -> Option<Option<u32>>;
