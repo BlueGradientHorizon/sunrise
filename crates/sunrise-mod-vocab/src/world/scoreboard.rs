@@ -166,7 +166,7 @@ impl DisplaySlot {
 /// A sidebar shown to one player by [`PlayerRef::set_sidebar`], not an objective on the world board.
 // no wire: in-process argument to the player handle; only the game sends scoreboard packets.
 // exhaustive: mods construct this record with a literal.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Sidebar {
     /// The text above the lines.
     pub title: Text,
@@ -177,7 +177,7 @@ pub struct Sidebar {
 /// One line of a [`Sidebar`].
 // no wire: in-process argument to the player handle, through Sidebar.
 // exhaustive: mods construct this record with a literal.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct SidebarLine {
     /// The text on the left.
     pub text: Text,
