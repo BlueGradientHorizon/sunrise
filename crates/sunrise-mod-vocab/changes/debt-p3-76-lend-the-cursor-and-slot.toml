@@ -23,7 +23,7 @@ why = """`item_stacked_on_other` (version 7) lends the click's cursor and clicke
 - `StackedOnOtherResult` and `ClickedStackResult` are removed. `handled` moves onto the click and starts `true`, as NeoForge's cancellation result does; only global listeners read it.
 - An `ItemPart` answers with its `Flow` alone, as vanilla's `Item.overrideStackedOnOther` / `overrideOtherStackedOnMe` return a boolean. The contradictory-answer refusal is gone.
 - `primary` becomes `action: ClickAction` (vanilla's `ClickAction`).
-- `take_clicked` answers `None`, and records nothing, for a take of 0 or more than the slot holds, where `ClickedStackResult::Take` refused the click.
+- `take_clicked(count)` is `Slot.safeTake(count, count, player)`: a count above what the slot holds takes all of it, and a take of 0 or from an empty slot answers `None` and records nothing, where `ClickedStackResult::Take` refused the click for both.
 - `StackedOnOther` is no longer Wire."""
 migrate = """
 - Replace `event.event.carried` / `event.event.clicked` with `event.click.carried()` / `event.click.clicked()`, and `event.event.direction` with `event.click.direction`.

@@ -83,6 +83,41 @@ pub struct MenuButtonContext {
 }
 
 #[cfg(test)]
+mod stacked_on_other_tests {
+    use super::{ClickAction, StackedEdit, StackedEdits, StackedOnOther, StackedOnOtherDirection};
+    use crate::{ItemKey, ItemStack};
+
+    fn dirt(count: u32) -> Option<ItemStack> {
+        ItemStack::new(ItemKey(3), count)
+    }
+
+    /// `take_clicked` as `Slot.safeTake(count, count, player)` on a slot of 3 dirt.
+    fn take(count: u32) -> (Option<ItemStack>, Vec<StackedEdit>) {
+        let mut edits = StackedEdits::new(None, dirt(3));
+        let mut click = StackedOnOther::new(
+            None,
+            None,
+            0,
+            0,
+            0,
+            ClickAction::Primary,
+            StackedOnOtherDirection::CarriedOnOther,
+            &mut edits,
+        );
+        let taken = click.take_clicked(count);
+        (taken, edits.into_edits())
+    }
+
+    #[test]
+    fn a_take_of_nothing_records_nothing_and_a_large_take_takes_what_the_slot_holds() {
+        assert_eq!(take(0), (None, vec![]));
+        assert_eq!(take(4), (dirt(3), vec![StackedEdit::Take(3)]));
+        assert_eq!(take(3), (dirt(3), vec![StackedEdit::Take(3)]));
+        assert_eq!(take(2), (dirt(2), vec![StackedEdit::Take(2)]));
+    }
+}
+
+#[cfg(test)]
 mod menu_button_context_tests {
     use super::MenuButtonContext;
     use crate::wire::{Reader, Writer};
@@ -193,6 +228,18 @@ impl StackedEdits {
         self.edits
     }
 }
+/// The working stacks of a lent click at one moment, for the generated dispatch to undo a
+/// panicking listener's edits. Only [`StackedOnOther::checkpoint`] makes one.
+#[derive(Debug)]
+// hidden: the generated dispatch's unwind checkpoint, not part of the mod surface
+// exhaustive: its fields are private and only `checkpoint` builds it.
+// no wire: lives for one listener call.
+#[doc(hidden)]
+pub struct StackedCheckpoint {
+    carried: Option<ItemStack>,
+    clicked: Option<ItemStack>,
+    len: usize,
+}
 /// A pickup click on a menu slot, as `item_stacked_on_other` is asked about it, with the cursor
 /// and the clicked slot lent for this call (NeoForge's `getCarriedSlotAccess` and `getSlot`).
 /// Reads see what earlier phases and this call already changed. Edits are applied to the menu in
@@ -253,24 +300,22 @@ impl<'a> StackedOnOther<'a> {
     /// The working stacks and the number of edits, for undoing a panicking listener's edits.
     // hidden: the generated dispatch's unwind checkpoint, not part of the mod surface
     #[doc(hidden)]
-    pub fn checkpoint(&self) -> (Option<ItemStack>, Option<ItemStack>, usize) {
+    pub fn checkpoint(&self) -> StackedCheckpoint {
         let edits = &*self.edits;
-        (
-            edits.carried.clone(),
-            edits.clicked.clone(),
-            edits.edits.len(),
-        )
+        StackedCheckpoint {
+            carried: edits.carried.clone(),
+            clicked: edits.clicked.clone(),
+            len: edits.edits.len(),
+        }
     }
-    /// Undo the edits made since `checkpoint`.
+    /// Undo the edits made since `checkpoint`. Only a checkpoint taken on this click can be
+    /// given back, so it never reaches past the edits the click had then.
     // hidden: the generated dispatch's unwind restore, not part of the mod surface
     #[doc(hidden)]
-    pub fn rollback(
-        &mut self,
-        (carried, clicked, len): (Option<ItemStack>, Option<ItemStack>, usize),
-    ) {
-        self.edits.carried = carried;
-        self.edits.clicked = clicked;
-        self.edits.edits.truncate(len);
+    pub fn rollback(&mut self, checkpoint: StackedCheckpoint) {
+        self.edits.carried = checkpoint.carried;
+        self.edits.clicked = checkpoint.clicked;
+        self.edits.edits.truncate(checkpoint.len);
     }
     /// The stack on the cursor, `None` when it is empty (`SlotAccess.get`).
     pub fn carried(&self) -> Option<&ItemStack> {
@@ -293,16 +338,16 @@ impl<'a> StackedOnOther<'a> {
         self.edits.clicked = stack.clone();
         self.edits.edits.push(StackedEdit::Clicked(stack));
     }
-    /// Take `count` items from the clicked slot through `Slot.safeTake`, which runs the slot's
-    /// take side effects (furnace experience, `recipes_used`, crafting remainders, take hooks)
-    /// when the click applies. Returns the stack taken, or `None` (nothing recorded) when the
-    /// slot is empty, `count` is 0 or more than it holds. Only `ItemPart` overrides may take: a
-    /// global listener's take refuses the click.
+    /// Take up to `count` items from the clicked slot through `Slot.safeTake(count, count,
+    /// player)`, which runs the slot's take side effects (furnace experience, `recipes_used`,
+    /// crafting remainders, take hooks) when the click applies. As vanilla's `Slot.tryRemove`
+    /// and `Container.removeItem`, a `count` above what the slot holds takes all of it, and
+    /// nothing is taken from an empty slot or for a `count` of 0: then it returns `None` and
+    /// records nothing. Only `ItemPart` overrides may take: a global listener's take refuses
+    /// the click.
     pub fn take_clicked(&mut self, count: u32) -> Option<ItemStack> {
-        let current = self
-            .edits
-            .clicked
-            .take_if(|current| (1..=current.count()).contains(&count))?;
+        let current = self.edits.clicked.take_if(|_| count > 0)?;
+        let count = count.min(current.count());
         let split = current.split(count);
         self.edits.clicked = split.remainder;
         self.edits.edits.push(StackedEdit::Take(count));

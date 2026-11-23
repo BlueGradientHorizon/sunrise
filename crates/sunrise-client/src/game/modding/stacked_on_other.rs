@@ -300,7 +300,10 @@ impl Working {
                 }
                 mod_api::item::menu::StackedEdit::Take(count) => {
                     if let Some(current) = self.clicked.as_mut() {
-                        current.count -= count;
+                        current.count = current
+                            .count
+                            .checked_sub(*count)
+                            .ok_or(InvalidReason::Count)?;
                     }
                     if self.clicked.as_ref().is_some_and(|stack| stack.count == 0) {
                         self.clicked = None;

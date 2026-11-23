@@ -2631,37 +2631,41 @@ mod item_part_tests {
                 };
                 assert!(f.recipes_used.is_empty());
 
-                // An impossible take (0, or 5 of 4) records nothing: the cancelled click takes
-                // nothing from the slot, and the Part's host write stays.
-                for script in [
-                    PartScript {
-                        cancel_carried: true,
-                        take_clicked: Some(0),
-                        write_scoreboard: true,
-                        ..PartScript::default()
-                    },
-                    PartScript {
-                        cancel_carried: true,
-                        take_clicked: Some(5),
-                        write_scoreboard: true,
-                        ..PartScript::default()
-                    },
-                ] {
-                    seed_furnace(game, pos);
-                    game.orbs.clear();
-                    game.carried = Some(ItemStack::new("minecraft:stick", 1));
-                    set_part_script(script);
-                    assert!(game.menu_ops(&[(Some(302), 0, Input::Pickup)]));
-                    assert_eq!(
-                        game.world.block_entities.get(&pos).unwrap().slots()[2]
-                            .as_ref()
-                            .map(|s| (&*s.item, s.count)),
-                        Some(("minecraft:iron_ingot", 4))
-                    );
-                    assert!(game.orbs.is_empty());
-                    assert!(game.score.board.objective("part_pickup").is_some());
-                    game.score.board.remove_objective("part_pickup");
-                }
+                // A take of 0 records nothing: the cancelled click takes nothing from the
+                // slot, and the Part's host write stays.
+                seed_furnace(game, pos);
+                game.orbs.clear();
+                game.carried = Some(ItemStack::new("minecraft:stick", 1));
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    take_clicked: Some(0),
+                    write_scoreboard: true,
+                    ..PartScript::default()
+                });
+                assert!(game.menu_ops(&[(Some(302), 0, Input::Pickup)]));
+                assert_eq!(
+                    game.world.block_entities.get(&pos).unwrap().slots()[2]
+                        .as_ref()
+                        .map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:iron_ingot", 4))
+                );
+                assert!(game.orbs.is_empty());
+                assert!(game.score.board.objective("part_pickup").is_some());
+                game.score.board.remove_objective("part_pickup");
+
+                // A take of 5 from 4 takes the 4 the slot holds (`Slot.safeTake` takes at most
+                // what is there), with the take's smelting experience.
+                seed_furnace(game, pos);
+                game.orbs.clear();
+                game.carried = Some(ItemStack::new("minecraft:stick", 1));
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    take_clicked: Some(5),
+                    ..PartScript::default()
+                });
+                assert!(game.menu_ops(&[(Some(302), 0, Input::Pickup)]));
+                assert!(game.world.block_entities.get(&pos).unwrap().slots()[2].is_none());
+                assert_eq!(game.orbs.iter().map(|o| o.points()).sum::<u32>(), 7);
                 game.container = None;
             });
         });

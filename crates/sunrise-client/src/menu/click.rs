@@ -10,16 +10,20 @@ pub struct ClickContinuation(ClickStep);
 
 impl ClickContinuation {
     /// Only a player-side write from a completed take survives the loss of its backing menu.
+    /// The mods' cursor edits survive only when nothing else is left: a cursor write after a
+    /// slot edit or take that can no longer apply could hand out items the slot never gave.
     pub fn after_menu_closed(self) -> Option<Self> {
         match self.0 {
             ClickStep::SwapOverflow(_) => Some(self),
-            ClickStep::StackedEdits { carried, rest, .. } => {
-                let cursor: Vec<_> = rest
-                    .into_iter()
-                    .filter(|edit| matches!(edit, StackedEdit::Carried(_)))
-                    .collect();
-                (!cursor.is_empty())
-                    .then_some(Self(ClickStep::StackedCursorOnly { carried, cursor }))
+            ClickStep::StackedEdits { carried, rest, .. }
+                if rest
+                    .iter()
+                    .all(|edit| matches!(edit, StackedEdit::Carried(_))) =>
+            {
+                (!rest.is_empty()).then_some(Self(ClickStep::StackedCursorOnly {
+                    carried,
+                    cursor: rest,
+                }))
             }
             _ => None,
         }
@@ -1468,5 +1472,48 @@ impl Menu {
         }
         let next = self.run_click_step(env, rest.0);
         self.with_result_notifications(next)
+    }
+}
+
+#[cfg(test)]
+mod after_menu_closed_tests {
+    use super::*;
+
+    fn owed(rest: Vec<StackedEdit>) -> Option<Vec<StackedEdit>> {
+        let step = ClickContinuation(ClickStep::StackedEdits {
+            slot: 0,
+            primary: true,
+            clicked: None,
+            carried: None,
+            rest,
+        });
+        match step.after_menu_closed()?.0 {
+            ClickStep::StackedCursorOnly { cursor, .. } => Some(cursor),
+            _ => panic!("only cursor edits survive a closed menu"),
+        }
+    }
+
+    #[test]
+    fn cursor_edits_survive_a_closed_menu_only_when_nothing_else_is_left() {
+        let dirt = |count| Some(ItemStack::new("minecraft:dirt", count));
+        // The take that suspended the click completed: its cursor write is owed.
+        assert_eq!(
+            owed(vec![StackedEdit::Carried(dirt(1))]),
+            Some(vec![StackedEdit::Carried(dirt(1))])
+        );
+        // A second take that can no longer run would leave the cursor holding items the slot
+        // never gave: nothing applies.
+        assert_eq!(
+            owed(vec![StackedEdit::Take(1), StackedEdit::Carried(dirt(2))]),
+            None
+        );
+        assert_eq!(
+            owed(vec![
+                StackedEdit::Clicked(None),
+                StackedEdit::Carried(dirt(2))
+            ]),
+            None
+        );
+        assert_eq!(owed(vec![]), None);
     }
 }
