@@ -3392,6 +3392,7 @@ struct Game<'a> {
     view_arrival: sunrise_client::streaming::ViewArrival,
     options: Options,
     player: Option<PlayerMotion>,
+    drop_spam_throttler: sunrise_client::menu::DropSpamThrottler,
     spawn: Option<Vec3>,
     clock: FixedStep,
     previous_position: Vec3,
@@ -13389,6 +13390,15 @@ impl Game<'_> {
         if self.screen_state.screen_instance != instance {
             return Ok(false);
         }
+        // AdvancementsScreen.keyPressed consumes its own binding before its children.
+        if self.screen == Screen::Advancements
+            && self.observed_overlay_now().is_none()
+            && sunrise_client::keybinds::key_name(key)
+                == Some(self.settings.keys.get("key.advancements"))
+        {
+            self.close_advancements();
+            return Ok(true);
+        }
         if key == KeyCode::Escape
             && self.screen == Screen::Mod
             && self.observed_overlay_now().is_none()
@@ -13735,6 +13745,7 @@ impl<'a> Game<'a> {
             view_arrival: Default::default(),
             options,
             player: None,
+            drop_spam_throttler: Default::default(),
             spawn: None,
             clock: FixedStep::default(),
             previous_position: Vec3::ZERO,

@@ -135,7 +135,7 @@ impl Game<'_> {
             });
         }
         match prepared {
-            Some(Ok((predicted, packets))) => self.send_clicks(&predicted, packets),
+            Some(Ok((predicted, packets))) => self.send_clicks(predicted, packets),
             other => {
                 if let Some(Err(error)) = other {
                     log::warn!("Sending menu clicks without prediction: {error}");
@@ -251,7 +251,7 @@ impl Game<'_> {
                             if let Some(key) = game.container {
                                 game.journal_block_entity(key);
                             }
-                            game.menu_session_with_game(|_, m, env, _| {
+                            game.menu_session(|m, env, _| {
                                 let Some(predicted) = predict_clicks_with(m, env, gesture, answer)
                                 else {
                                     return Some(false);
@@ -283,7 +283,7 @@ impl Game<'_> {
                         game.journal_block_entity(key);
                     }
                     let mut step_result: Option<(Vec<Predicted>, bool)> = None;
-                    let modeled = game.menu_session_with_game(|_, m, env, _| {
+                    let modeled = game.menu_session(|m, env, _| {
                         let Some(predicted) = predict_clicks(m, env, gesture) else {
                             return Some(false);
                         };
@@ -324,7 +324,7 @@ impl Game<'_> {
                 return early;
             }
         };
-        self.send_clicks(&all_predicted, packets);
+        self.send_clicks(all_predicted, packets);
         if threw {
             self.swing_hand(Hand::Main, SwingAnimation::DEFAULT);
         }
@@ -404,7 +404,7 @@ impl Game<'_> {
             });
         }
         match prepared {
-            Some(Ok(packets)) => self.send_clicks(&sent, packets),
+            Some(Ok(packets)) => self.send_clicks(sent, packets),
             Some(Err(error)) => {
                 log::warn!("Sending quick moves without prediction: {error}");
                 self.send_unpredicted_clicks(
@@ -471,7 +471,7 @@ impl Game<'_> {
 
     pub(in crate::game) fn send_clicks(
         &mut self,
-        clicks: &[Predicted],
+        clicks: Vec<Predicted>,
         packets: Vec<play::ContainerClick>,
     ) {
         // A result the engine claims to have changed is the one the server
@@ -482,7 +482,7 @@ impl Game<'_> {
             "inventory" | "minecraft:crafting"
         ) && let Some(r) = self.remote.as_mut()
         {
-            for (.., changed, _) in clicks {
+            for (.., changed, _) in &clicks {
                 if let Some((_, result)) = changed.iter().find(|(slot, _)| *slot == 0) {
                     r.craft_result = result.clone();
                 }
@@ -557,8 +557,11 @@ impl Game<'_> {
     /// one of it) is dropped through `handleCreativeModeItemDrop`, a SetCreativeModeSlot to slot
     /// -1, and the hand swings as `Player.drop` predicts.
     pub(in crate::game) fn remote_creative_drop(&mut self, right: bool) {
+        if !self.drop_spam_throttler.is_under_threshold() {
+            return;
+        }
         let one = right && !self.creative_inventory_open();
-        let Some(carried) = self.carried.as_mut() else {
+        let Some(carried) = self.carried.as_mut().filter(|s| !s.is_empty()) else {
             return;
         };
         let thrown = if one && carried.count > 1 {
@@ -570,21 +573,49 @@ impl Game<'_> {
         } else {
             self.carried.take().expect("carried")
         };
+        self.creative_screen_drop(thrown);
+    }
+
+    /// The creative screen calls `Player.drop` before `handleCreativeModeItemDrop`;
+    /// its predicted swing is not conditional on whether a packet can go out.
+    pub(in crate::game) fn creative_screen_drop(&mut self, thrown: ItemStack) {
+        if !thrown.is_empty() {
+            self.swing_hand(Hand::Main, SwingAnimation::DEFAULT);
+        }
         self.remote_creative_throw(thrown);
     }
-    /// `MultiPlayerGameMode.handleCreativeModeItemDrop`: a stack thrown out of the creative
-    /// screen goes to the server as a SetCreativeModeSlot to slot -1, which drops it from the
-    /// player's hand; the client only swings (`Player.drop` on a client).
-    pub(in crate::game) fn remote_creative_throw(&mut self, thrown: ItemStack) {
-        if !self.creative {
-            return;
+
+    fn creative_drop_features(&self) -> Option<&Arc<[String]>> {
+        // Screen::Inventory covers the non-creative AbstractContainerScreens.
+        (self.creative && self.remote.is_some() && self.screen != Screen::Inventory)
+            .then(|| self.enabled_feature_ids())
+    }
+
+    /// Single admission path for `MultiPlayerGameMode.handleCreativeModeItemDrop`:
+    /// resolves mode/screen/feature checks, `client_packet_send`, and transport acceptance
+    /// before charging `drop_spam_throttler`.
+    pub(in crate::game) fn try_send_creative_drop_packet(&self, thrown: &ItemStack) -> bool {
+        let Some(flags) = self.creative_drop_features() else {
+            return false;
+        };
+        if thrown.is_empty() || !self.creative_screen.catalog().item_enabled(thrown, flags) {
+            return false;
         }
-        self.swing_arm();
-        let item = self.to_network(&Some(thrown));
-        self.send(S::SetCreativeModeSlot(play::SetCreativeModeSlot {
+        let Some(item) = self.to_network(&Some(thrown.clone())) else {
+            return false;
+        };
+        self.send_play(S::SetCreativeModeSlot(play::SetCreativeModeSlot {
             slot: -1,
-            item,
-        }));
+            item: Some(item),
+        }))
+    }
+
+    /// `MultiPlayerGameMode.handleCreativeModeItemDrop`: the click site, not
+    /// this sender, checks the threshold. Only an accepted send incurs a charge.
+    pub(in crate::game) fn remote_creative_throw(&mut self, thrown: ItemStack) {
+        if self.try_send_creative_drop_packet(&thrown) {
+            self.drop_spam_throttler.increment();
+        }
     }
     pub(in crate::game) fn remote_close_container(&mut self) {
         let id = self
