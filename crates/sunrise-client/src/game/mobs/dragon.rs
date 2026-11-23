@@ -885,7 +885,12 @@ impl Dragon {
             position: [self.position.x, self.position.y, self.position.z],
             view: [view.x, view.y, view.z],
         };
-        if level.incoming_canceled(hurting, victim, &mut container) {
+        let body = super::native_living_body::dragon_body(self);
+        if level
+            .reborrow()
+            .with_victim(body)
+            .incoming_canceled(hurting, victim, &mut container)
+        {
             return Hurt::Landed { full: false };
         }
         damage = container.new_damage();
@@ -931,7 +936,11 @@ impl Dragon {
         dealt = container.reduce(Reduction::Armor, before_armor, before_armor - dealt, dealt);
         let hurting = sunrise_client::health::Hurting::Dragon(self.id as i32, source);
         container.record_new_damage(dealt);
-        level.damage_pre(hurting, &mut container);
+        let body = super::native_living_body::dragon_body(self);
+        level
+            .reborrow()
+            .with_victim(body)
+            .damage_pre(hurting, &mut container);
         dealt = container.capture_inflicted();
         // LivingEntity.actuallyHurt: absorption runs after Pre even with 0.0 absorption hearts.
         let (remaining, _, _) = container.absorb(dealt, 0.0);
@@ -974,7 +983,11 @@ impl Dragon {
         // The last of `LivingEntity.hurtServer` (`reallyHurt`'s `super.hurtServer`):
         // `LivingDamageEvent.Post`, health taken or not.
         let hurting = sunrise_client::health::Hurting::Dragon(self.id as i32, source);
-        level.damage_post(hurting, &container);
+        let body = super::native_living_body::dragon_body(self);
+        level
+            .reborrow()
+            .with_victim(body)
+            .damage_post(hurting, &container);
         if self.phase.sitting() {
             self.sitting_damage += before - self.health.max(0.0);
             if self.sitting_damage > 0.25 * MAX_HEALTH {
