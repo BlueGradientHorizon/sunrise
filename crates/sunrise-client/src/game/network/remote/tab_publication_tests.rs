@@ -86,7 +86,7 @@ fn texture_signatures_use_only_the_profile_property_keys() {
 
 #[test]
 fn signed_texture_retained_by_entity_resolves_when_keys_arrive() {
-    use skins::{Download, Lookup, TEXTURE_URIS, lookup};
+    use skins::{Download, SkinLookup, TEXTURE_URIS, lookup};
     let fixture: serde_json::Value = serde_json::from_str(SIGNED_TEXTURES).unwrap();
     let property = Arc::new(PlayerTextures::new(AccountProperty {
         name: "textures".into(),
@@ -118,7 +118,7 @@ fn signed_texture_retained_by_entity_resolves_when_keys_arrive() {
         "the entity kept the same property"
     );
     let textures = entries[0].1.unpack(&keys, &TEXTURE_URIS).unwrap();
-    let Lookup::Ready(resolved) = lookup(textures, true, |_, _| Download::Ready) else {
+    let SkinLookup::Ready(resolved) = lookup(textures, true, |_, _| Download::Ready) else {
         panic!("the retained signed property must pass the secure lookup once keys load");
     };
     assert_eq!(resolved.cape, Some(skins::cape_location("abcd1234")));
@@ -168,7 +168,7 @@ fn tab_object_skin_publication_tracks_changes_and_atlas_clear() {
 #[test]
 fn a_replay_client_waits_for_the_services_keys_as_a_joined_client_does() {
     use crate::game::native_entity_refs::tests::with_game;
-    use skins::{Download, Lookup, TEXTURE_URIS, lookup};
+    use skins::{Download, SkinLookup, TEXTURE_URIS, lookup};
     use std::sync::Mutex;
     use sunrise_server_files::profiles::ServicesKeySet;
     let fixture: serde_json::Value = serde_json::from_str(SIGNED_TEXTURES).unwrap();
@@ -213,7 +213,7 @@ fn a_replay_client_waits_for_the_services_keys_as_a_joined_client_does() {
     let textures = property
         .unpack(&keys.lock().unwrap(), &TEXTURE_URIS)
         .unwrap();
-    let Lookup::Ready(resolved) = lookup(textures, true, |_, _| Download::Ready) else {
+    let SkinLookup::Ready(resolved) = lookup(textures, true, |_, _| Download::Ready) else {
         panic!("the signed property must resolve once the keys arrive");
     };
     assert_eq!(resolved.cape, Some(skins::cape_location("abcd1234")));

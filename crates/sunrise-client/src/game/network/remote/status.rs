@@ -58,7 +58,7 @@ impl Game<'_> {
             // may be unsigned.
             let mut downloads = self.skin_downloads.borrow_mut();
             let mut resolve = |uuid, textures: &skins::Textures| {
-                if let skins::Lookup::Ready(skin) =
+                if let skins::SkinLookup::Ready(skin) =
                     skins::lookup(textures, uuid != local, |kind, url| {
                         downloads.state(kind, url)
                     })
@@ -180,7 +180,7 @@ impl Game<'_> {
             let mut downloads = self.skin_downloads.borrow_mut();
             let (skin, slim) =
                 match skins::lookup(&textures, false, |kind, url| downloads.state(kind, url)) {
-                    skins::Lookup::Ready(skin) => skin.custom_body.unzip(),
+                    skins::SkinLookup::Ready(skin) => skin.custom_body.unzip(),
                     _ => (None, None),
                 };
             resolved.push((id, skin, slim.unwrap_or(false)));

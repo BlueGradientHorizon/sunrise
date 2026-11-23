@@ -201,7 +201,7 @@ impl Game<'_> {
             .map(|r| {
                 let skin = r.skins.get(&uuid).map_or_else(
                     || sunrise_client::tab_list::default_skin(uuid),
-                    String::as_str,
+                    |skin| skin.body(uuid).0,
                 );
                 self.shown_face(uuid, skin)
             });

@@ -923,7 +923,7 @@ pub fn drawable_skin(
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Lookup {
+pub enum SkinLookup {
     Ready(ResolvedSkin),
     Pending,
     Failed,
@@ -937,7 +937,7 @@ pub fn lookup(
     textures: &Textures,
     require_secure: bool,
     mut download: impl FnMut(Kind, &str) -> Download,
-) -> Lookup {
+) -> SkinLookup {
     let mut resolved = ResolvedSkin::default();
     let mut pending = false;
     let mut failed = false;
@@ -962,13 +962,13 @@ pub fn lookup(
         }
     }
     if pending {
-        Lookup::Pending
+        SkinLookup::Pending
     } else if failed {
-        Lookup::Failed
+        SkinLookup::Failed
     } else if require_secure && textures.signature != Signature::Signed {
-        Lookup::Disallowed
+        SkinLookup::Disallowed
     } else {
-        Lookup::Ready(resolved)
+        SkinLookup::Ready(resolved)
     }
 }
 
@@ -2043,7 +2043,7 @@ mod tests {
             slim: false,
         };
         let all_ready = super::lookup(&textures, true, |_, _| super::Download::Ready);
-        let super::Lookup::Ready(resolved) = all_ready else {
+        let super::SkinLookup::Ready(resolved) = all_ready else {
             panic!("all textures are ready");
         };
         assert_eq!(
@@ -2059,7 +2059,7 @@ mod tests {
                     super::Download::Ready
                 }
             });
-            assert_eq!(skin, super::Lookup::Failed, "{failing:?} failed");
+            assert_eq!(skin, super::SkinLookup::Failed, "{failing:?} failed");
         }
         let bad_cape_url = super::Textures {
             cape: Some("no-scheme".into()),
@@ -2067,19 +2067,19 @@ mod tests {
         };
         assert_eq!(
             super::lookup(&bad_cape_url, true, |_, _| super::Download::Ready),
-            super::Lookup::Failed
+            super::SkinLookup::Failed
         );
     }
 
     #[test]
     fn cape_only_profiles_draw_the_uuid_default_body_and_model() {
-        use super::{Download, Kind, Lookup, Textures, drawable_skin, lookup};
+        use super::{Download, Kind, SkinLookup, Textures, drawable_skin, lookup};
         let mut textures = Textures {
             cape: Some("https://textures.minecraft.net/texture/cape1".into()),
             signature: super::Signature::Signed,
             ..Textures::default()
         };
-        let Lookup::Ready(resolved) = lookup(&textures, true, |kind, _| {
+        let SkinLookup::Ready(resolved) = lookup(&textures, true, |kind, _| {
             assert_eq!(kind, Kind::Cape);
             Download::Ready
         }) else {
@@ -2101,7 +2101,7 @@ mod tests {
         }
         assert_eq!(
             lookup(&textures, true, |_, _| Download::Failed),
-            Lookup::Failed
+            SkinLookup::Failed
         );
         assert_eq!(
             drawable_skin(0, None, true, |_| unreachable!()),
@@ -2114,23 +2114,23 @@ mod tests {
                 Kind::Elytra => Download::Pending,
                 _ => Download::Ready,
             }),
-            Lookup::Pending
+            SkinLookup::Pending
         );
         assert_eq!(
             lookup(&textures, true, |kind, _| match kind {
                 Kind::Elytra => Download::Failed,
                 _ => Download::Ready,
             }),
-            Lookup::Failed
+            SkinLookup::Failed
         );
-        let Lookup::Ready(resolved) = lookup(&textures, true, |_, _| Download::Ready) else {
+        let SkinLookup::Ready(resolved) = lookup(&textures, true, |_, _| Download::Ready) else {
             panic!("the completed cape and elytra must resolve together");
         };
         assert_eq!(resolved.cape.as_deref(), Some(cape.as_str()));
         assert_eq!(resolved.elytra, Some(super::location("elytra/", "wings1")));
 
         textures.cape = None;
-        let Lookup::Ready(wings_only) = lookup(&textures, true, |_, _| Download::Ready) else {
+        let SkinLookup::Ready(wings_only) = lookup(&textures, true, |_, _| Download::Ready) else {
             panic!("elytra without a cape or custom body must still resolve");
         };
         assert_eq!(wings_only.body(9), ("entity/player/wide/alex", false));
@@ -2140,15 +2140,15 @@ mod tests {
 
     #[test]
     fn an_unsigned_cape_is_allowed_locally_but_not_on_a_remote_player() {
-        use super::{Download, Lookup, Signature, TEXTURE_URIS, lookup, unpack};
+        use super::{Download, Signature, SkinLookup, TEXTURE_URIS, lookup, unpack};
         let value = "eyJ0ZXh0dXJlcyI6eyJDQVBFIjp7InVybCI6Imh0dHBzOi8vdGV4dHVyZXMubWluZWNyYWZ0Lm5ldC90ZXh0dXJlL2FiY2QxMjM0In19fQ==";
         let unsigned = unpack(value, Signature::Unsigned, &TEXTURE_URIS);
         let ready = |_, _: &str| Download::Ready;
-        let Lookup::Ready(local) = lookup(&unsigned, false, ready) else {
+        let SkinLookup::Ready(local) = lookup(&unsigned, false, ready) else {
             panic!("the local player doesn't require a signature");
         };
         assert_eq!(local.cape, Some(super::cape_location("abcd1234")));
-        assert_eq!(lookup(&unsigned, true, ready), Lookup::Disallowed);
+        assert_eq!(lookup(&unsigned, true, ready), SkinLookup::Disallowed);
     }
 
     /// A 1x1 PNG of `rgba`.
