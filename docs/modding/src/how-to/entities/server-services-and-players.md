@@ -49,6 +49,16 @@ for comparisons, and use `.map(str::to_owned)` only to keep the text beyond the
 host borrow. A stale or unavailable player gives `None`; an acting player without
 a known connection gives `Some("")` for address and brand.
 
+`player.virtual_host(host)` returns `Option<&VirtualHost>` on the server. Its
+`host` and `port` are the destination sent in this connection's login handshake,
+not the peer IP, after any `player_handshake` listener's rewrite. The host keeps its original case and punctuation up to the
+first NUL; any suffix is discarded. A transfer uses the new login handshake.
+The value comes from the client, so it is not a verified name or necessarily
+what the player originally typed. Clone it only if you need it after the host
+borrow ends. The host may be empty. The window's own player on an integrated server
+reports its memory connection's handshake: the host `local`, standing for the local address, and port 0. It is `None`
+on a client, for stale or unavailable players, and for fake players.
+
 `player.announced_channels(host)` returns `Option<Arc<[String]>>` in announcement
 order. The snapshot includes `minecraft:register` minus `minecraft:unregister`
 from configuration and play. It can outlive the host borrow and does not change
@@ -87,8 +97,8 @@ reported. Configuration, login, status, and the separate play latency request
 do not fire this hook. Neither API changes keep-alive latency.
 
 The online list includes connected players during nested player turns. Name,
-permission and address reads work for connected players whose bodies are displaced
-by another player's turn; stale handles are refused. Entity and living handles
+permission, address and virtual-host reads work for connected players whose bodies
+are displaced by another player's turn; stale handles are refused. Entity and living handles
 provide world-state reads, which require a resolvable body.
 
 In `player_stat_award`, find the recipient with
