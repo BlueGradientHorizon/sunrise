@@ -22,7 +22,9 @@ TREES = ("crates/sunrise-mod-api/src", "crates/sunrise-mod-vocab/src", "crates/s
 DISCOVERED = ("crates/sunrise-mod-api-gen/dispatch-tests/src/fixtures/*.rs",
               "crates/sunrise-mod-api-gen/dispatch-tests/src/fixtures/*/*.rs")
 RUSTFMT = ["rustfmt", "--edition", "2024", "--check", "--config", "skip_children=true"]
-# Windows limits a command line to 32,767 characters; Unix handles much larger argv buffers.
+# Windows limits a command line to 32,767 characters (CHUNK=200).
+# On Linux and macOS, ARG_MAX is at least 2 MiB (MAX_ARG_STRLEN is 128 KiB); 500 relative
+# paths averaging ~60 characters total ~30 KiB, staying well within Unix limits while reducing process spawn overhead.
 CHUNK = 200 if os.name == "nt" else 500
 
 
@@ -37,10 +39,17 @@ def main() -> int:
     all_commands = commands(ROOT)
     # Run formatting checks in parallel across available cores, overlapping cargo fmt and rustfmt chunks.
     max_workers = min(len(all_commands), os.cpu_count() or 4)
-    # Using pool.map preserves input command order for results.
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        exit_codes = list(pool.map(lambda cmd: subprocess.run(cmd, cwd=ROOT).returncode, all_commands))
-    failed = [cmd for cmd, code in zip(all_commands, exit_codes) if code != 0]
+        results = list(pool.map(lambda cmd: subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True), all_commands))
+    failed = [cmd for cmd, result in zip(all_commands, results) if result.returncode != 0]
+    # Replay differences in deterministic command order to avoid interleaved outputs across threads.
+    for result in results:
+        if result.stdout:
+            sys.stdout.write(result.stdout)
+        if result.stderr:
+            sys.stderr.write(result.stderr)
+    sys.stdout.flush()
+    sys.stderr.flush()
     if failed:
         print(f"format_scan: {len(failed)} formatting check(s) failed; the differences are above.", file=sys.stderr)
     return 1 if failed else 0
