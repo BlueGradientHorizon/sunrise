@@ -21,12 +21,21 @@ fn attribute_values_add_then_multiply_as_vanilla() {
     assert_eq!(snapshot_value(&snapshot(1.0, all)), 6.0);
 }
 
-/// The pinned-vanilla side is `VanillaTurnOracle`'s `look_at.txt` (`tools/test_turn_parity.py`):
+/// The pinned vanilla 26.3 side is `VanillaTurnOracle`'s `look_at.txt`
+/// (`tools/test_mob_turn_parity.py`, committed at `tools/witness/26.3/mob_turn/look_at.txt`):
 /// `Entity.lookAt(FEET, target)` from each place to each offset, as the yaw and pitch bits it
 /// stores: the cardinal directions, the yaw wrap at -180, both pitch signs, straight up and down
 /// (`Mth.atan2` stops a hair short of 90) and a target at the eye (-90 yaw, pitch -0.0).
 #[test]
 fn look_at_matches_the_pinned_oracle() {
+    run_look_at_matches_the_pinned_oracle();
+}
+
+pub(in crate::game) fn run_look_at_matches_the_pinned_oracle() {
+    const WITNESS_26_3: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tools/witness/26.3/mob_turn/look_at.txt"
+    ));
     let bits = |v: f64| format!("{:016x}", v.to_bits());
     let mut rows = Vec::new();
     for from in [[10.0, 64.0, -5.0], [0.0, 0.0, 0.0], [0.5, 64.5, 0.5]] {
@@ -59,23 +68,12 @@ fn look_at_matches_the_pinned_oracle() {
             ));
         }
     }
+    let actual = rows.join("\n") + "\n";
     if let Some(dir) = std::env::var_os("SUNRISE_TURN_OUTPUT_DIR") {
-        std::fs::write(
-            std::path::Path::new(&dir).join("look_at.txt"),
-            rows.join("\n") + "\n",
-        )
-        .unwrap();
-    }
-    for row in [
-        "0000000000000000 0000000000000000 0000000000000000 3ff0000000000000 3fe0000000000000 4000000000000000 c1d48530 c149ab9b",
-        "0000000000000000 0000000000000000 0000000000000000 0000000000000000 4014000000000000 0000000000000000 c2b40000 c2b3ffff",
-        "0000000000000000 0000000000000000 0000000000000000 0000000000000000 c014000000000000 0000000000000000 c2b40000 42b3ffff",
-        "0000000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 0000000000000000 c2b40000 80000000",
-        "4024000000000000 4050000000000000 c014000000000000 0000000000000000 0000000000000000 0000000000000000 c2b40000 80000000",
-    ] {
-        assert!(rows.iter().any(|r| r == row), "missing pinned row {row}");
+        std::fs::write(std::path::Path::new(&dir).join("look_at.txt"), &actual).unwrap();
     }
     assert_eq!(rows.len(), 36);
+    assert_eq!(actual, WITNESS_26_3);
 }
 
 /// `handleMovePlayer` moves the player's pitch and the model's old pitch

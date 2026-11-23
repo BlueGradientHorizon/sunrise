@@ -7,9 +7,9 @@ use super::{
     goals::{Cx, Goal, JUMP, LOOK, MOVE, goal_clone, reduced},
 };
 use crate::blocks::Fluid;
+use std::ops::ControlFlow;
 use sunrise_core::geometry::trig::Mth;
 use sunrise_core::random::RandomSource;
-use sunrise_world::move_gate::MoveGate;
 
 /// `Entity.getMotionDirection`: the horizontal step of the yaw
 /// (`Direction.fromYRot`: south, west, north, east).
@@ -235,7 +235,7 @@ impl Goal for Jump {
             || m.head_pitch == 0.0
             || m.head_pitch.abs() >= 10.0
             || !m.fluids.in_water)
-            && !m.on_ground
+            && !m.ground.on_ground
     }
     fn start(&mut self, m: &mut Mob, _: &mut Cx) {
         let [sx, sz] = motion_step(m.yaw);
@@ -288,6 +288,8 @@ pub struct FollowPlayerRidden {
     following: bool,
     recalc: i32,
     leading: bool,
+    // One rider sample belongs to the whole move, even if its landing yields again.
+    pending_rider: Option<(sunrise_core::geometry::Vec3, f32)>,
 }
 impl FollowPlayerRidden {
     pub fn new(nautilus: bool) -> Self {
@@ -296,6 +298,7 @@ impl FollowPlayerRidden {
             following: false,
             recalc: 0,
             leading: false,
+            pending_rider: None,
         }
     }
     /// `Entity.hasMovedHorizontallyRecently` of the rider, and the player's
@@ -353,10 +356,39 @@ impl Goal for FollowPlayerRidden {
     /// `FollowPlayerRiddenEntityGoal.stop`.
     fn stop(&mut self, _: &mut Mob, _: &mut Cx) {
         self.following = false;
+        self.pending_rider = None;
     }
     /// `FollowPlayerRiddenEntityGoal.tick`.
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
-        let Some(p) = self.rider(cx) else { return };
+        self.move_to_rider(m, cx, false);
+    }
+
+    fn tick_until_movement_pause(
+        &mut self,
+        m: &mut Mob,
+        cx: &mut Cx,
+    ) -> Option<super::living::TravelPause> {
+        self.move_to_rider(m, cx, true)
+    }
+
+    fn after_movement(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
+        if let Some((position, yaw)) = self.pending_rider.take() {
+            self.repath(m, cx, position, yaw);
+            true
+        } else {
+            false
+        }
+    }
+}
+
+impl FollowPlayerRidden {
+    fn move_to_rider(
+        &mut self,
+        m: &mut Mob,
+        cx: &mut Cx,
+        pause: bool,
+    ) -> Option<super::living::TravelPause> {
+        let p = self.rider(cx)?;
         let (position, yaw) = (p.position, p.yaw);
         let speed = if self.leading { 0.01 } else { 0.015 };
         let input = sunrise_core::geometry::Vec3::new(
@@ -365,7 +397,23 @@ impl Goal for FollowPlayerRidden {
             f64::from(m.ai.zza),
         );
         m.move_relative(speed, input);
-        m.do_move(cx.w, cx.level, cx.events, &mut MoveGate::new());
+        if let ControlFlow::Break(movement) =
+            m.travel_move(cx.w, cx.level, cx.events, pause, |_, _, _, _| {})
+        {
+            self.pending_rider = Some((position, yaw));
+            return Some(movement);
+        }
+        self.repath(m, cx, position, yaw);
+        None
+    }
+
+    fn repath(
+        &mut self,
+        m: &mut Mob,
+        cx: &mut Cx,
+        position: sunrise_core::geometry::Vec3,
+        yaw: f32,
+    ) {
         self.recalc -= 1;
         if self.recalc > 0 {
             return;
@@ -700,25 +748,19 @@ mod treasure_play_tests {
 }
 
 #[cfg(test)]
-mod breach_pitch_tests {
-    /// `DolphinJumpGoal.tick`: `Math.atan2` times `Mth.RAD_TO_DEG` in one multiply.
-    #[test]
-    fn the_breach_pitch_uses_vanillas_degree_factor() {
-        let v = sunrise_core::geometry::Vec3::new(0.3, 0.5, 0.0);
-        assert_eq!(super::breach_pitch(v), -59.03624);
-        let v = sunrise_core::geometry::Vec3::new(0.5, 1.0, 0.0);
-        assert_eq!(super::breach_pitch(v), -63.434944);
-    }
-}
-
-#[cfg(test)]
 mod jump_turn_tests {
     use super::*;
     use crate::mobs::Mob;
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;
 
-    /// The pinned-vanilla side is `VanillaTurnOracle`'s `dolphin.txt` (`tools/test_turn_parity.py`):
+    const WITNESS_26_3: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tools/witness/26.3/mob_turn/dolphin.txt"
+    ));
+
+    /// The pinned vanilla 26.3 side is `VanillaTurnOracle`'s `dolphin.txt`
+    /// (`tools/test_mob_turn_parity.py`, committed at `tools/witness/26.3/mob_turn/dolphin.txt`):
     /// `DolphinJumpGoal.tick` on a dolphin out of water, from each motion and pitch, as the pitch
     /// bits it leaves (rising, falling, straight up and down, nearly still).
     #[test]
@@ -752,20 +794,12 @@ mod jump_turn_tests {
                     ));
                 }
             }
+            let actual = rows.join("\n") + "\n";
             if let Some(dir) = std::env::var_os("SUNRISE_TURN_OUTPUT_DIR") {
-                std::fs::write(
-                    std::path::Path::new(&dir).join("dolphin.txt"),
-                    rows.join("\n") + "\n",
-                )
-                .unwrap();
-            }
-            for row in [
-                "3fd3333333333333 3fe0000000000000 0000000000000000 00000000 c26c251c",
-                "3fd3333333333333 3fe0000000000000 0000000000000000 41f00000 c26c251c",
-            ] {
-                assert!(rows.iter().any(|r| r == row), "missing pinned row {row}");
+                std::fs::write(std::path::Path::new(&dir).join("dolphin.txt"), &actual).unwrap();
             }
             assert_eq!(rows.len(), MOTIONS.len() * 3);
+            assert_eq!(actual, WITNESS_26_3);
         });
         assert!(ran, "prepared mob data must run the jump fixture");
     }

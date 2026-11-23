@@ -161,10 +161,6 @@ pub fn title_entry() -> Option<Screen> {
         None => crate::net::joins_friends().then(|| Screen::friend(true)),
     }
 }
-/// Whether the title screen's Friends icon opens something ([`title_entry`]).
-pub fn has_title_entry() -> bool {
-    page::title_page().is_some() || crate::net::joins_friends()
-}
 
 /// What a click asks the title screen to do.
 pub enum Outcome {
@@ -172,6 +168,8 @@ pub enum Outcome {
     Back,
     Connect {
         address: String,
+        /// The saved list row's name, when the join came from that row.
+        name: Option<String>,
         lan: bool,
     },
     /// Another multiplayer screen (`Minecraft.setScreen`): the title opens it
@@ -390,14 +388,18 @@ pub fn save_server_icon(saves: &Path, address: &str, png: &[u8]) {
 }
 
 /// The address and kind of list row `index`: saved servers, then discovered LAN games.
-fn entry_address(servers: &[ServerEntry], lan: &Scanner, index: usize) -> Option<(String, bool)> {
+fn entry_address(
+    servers: &[ServerEntry],
+    lan: &Scanner,
+    index: usize,
+) -> Option<(String, Option<String>, bool)> {
     match servers.get(index) {
-        Some(s) => Some((s.ip.clone(), false)),
+        Some(s) => Some((s.ip.clone(), Some(s.name.clone()), false)),
         None => lan
             .games()
             .into_iter()
             .nth(index - servers.len())
-            .map(|g| (g.address, true)),
+            .map(|g| (g.address, None, true)),
     }
 }
 
@@ -1126,7 +1128,7 @@ impl Screen {
                                     motd.resolve_legacy(),
                                     Ping::player_count(*players),
                                     format!(
-                                        "gui/sprites/server_list/ping_{}",
+                                        "server_list/ping_{}",
                                         match ms {
                                             0..150 => 5,
                                             150..300 => 4,
@@ -1139,13 +1141,13 @@ impl Screen {
                                 Some(Ping::Incompatible { motd, version, .. }) => (
                                     motd.resolve_legacy(),
                                     version.clone().with_color(crate::text::RED),
-                                    "gui/sprites/server_list/incompatible".to_owned(),
+                                    "server_list/incompatible".to_owned(),
                                 ),
                                 Some(Ping::Failed(_)) => (
                                     Text::translate("multiplayer.status.cannot_connect", &[])
                                         .with_color(0xFF0000),
                                     Text::empty(),
-                                    "gui/sprites/server_list/unreachable".to_owned(),
+                                    "server_list/unreachable".to_owned(),
                                 ),
                                 _ => {
                                     // The pinging bars bounce, offset by the row.
@@ -1154,7 +1156,7 @@ impl Screen {
                                     (
                                         Text::translate("multiplayer.status.pinging", &[]),
                                         Text::empty(),
-                                        format!("gui/sprites/server_list/pinging_{}", frame + 1),
+                                        format!("server_list/pinging_{}", frame + 1),
                                     )
                                 }
                             };
@@ -1200,7 +1202,7 @@ impl Screen {
                                         let lit = if over { "_highlighted" } else { "" };
                                         batch.sprite_scaled(
                                             atlas,
-                                            &format!("gui/sprites/server_list/{sprite}{lit}"),
+                                            &format!("server_list/{sprite}{lit}"),
                                             cx,
                                             cy,
                                             32.0,
@@ -1427,6 +1429,7 @@ impl Screen {
             Self::Direct { address } if servers::parse_address(address).is_some() => {
                 Outcome::Connect {
                     address: direct_address(address),
+                    name: None,
                     lan: false,
                 }
             }
@@ -1436,7 +1439,7 @@ impl Screen {
                 lan,
                 ..
             } => match selected.and_then(|i| entry_address(servers, lan, i)) {
-                Some((address, lan)) => Outcome::Connect { address, lan },
+                Some((address, name, lan)) => Outcome::Connect { address, name, lan },
                 None => Outcome::None,
             },
             _ => Outcome::None,
@@ -1486,26 +1489,15 @@ impl Screen {
                 },
                 Some(40),
             ) => {
-                if let Some((address, lan)) = selected.and_then(|i| entry_address(servers, lan, i))
+                if let Some((address, name, lan)) =
+                    selected.and_then(|i| entry_address(servers, lan, i))
                 {
-                    return Outcome::Connect { address, lan };
+                    return Outcome::Connect { address, name, lan };
                 }
             }
-            (Self::List { .. }, Some(41)) => {
-                return Outcome::Open(Box::new(Self::Direct {
-                    address: String::new(),
-                }));
-            }
+            (Self::List { .. }, Some(41)) => return Outcome::Open(Box::new(Self::direct())),
             (Self::List { .. }, Some(47)) => return Outcome::Open(Box::new(Self::friend(false))),
-            (Self::List { .. }, Some(42)) => {
-                return Outcome::Open(Box::new(Self::Edit {
-                    index: None,
-                    name: crate::lang::get_or("selectServer.defaultName", "Minecraft Server"),
-                    address: String::new(),
-                    focus: 1,
-                    packs: None,
-                }));
-            }
+            (Self::List { .. }, Some(42)) => return Outcome::Open(Box::new(Self::add_server())),
             (
                 Self::List {
                     servers, selected, ..
@@ -1589,6 +1581,7 @@ impl Screen {
                         *selected = Some(k);
                         return Outcome::Connect {
                             address: servers[k].ip.clone(),
+                            name: Some(servers[k].name.clone()),
                             lan: false,
                         };
                     }
@@ -1618,10 +1611,10 @@ impl Screen {
                     None => None,
                 };
                 if let Some(index) = index
-                    && let Some((address, lan)) = entry_address(servers, lan, index)
+                    && let Some((address, name, lan)) = entry_address(servers, lan, index)
                 {
                     if *selected == Some(index) {
-                        return Outcome::Connect { address, lan };
+                        return Outcome::Connect { address, name, lan };
                     }
                     *selected = Some(index);
                     // The press that selects a saved server can drag it.
@@ -1698,6 +1691,7 @@ impl Screen {
                 remember_direct_join(saves, &address);
                 return Outcome::Connect {
                     address,
+                    name: None,
                     lan: false,
                 };
             }
@@ -1707,6 +1701,7 @@ impl Screen {
                     let code: String = code.chars().filter(|c| !c.is_whitespace()).collect();
                     return Outcome::Connect {
                         address: format!("{}{code}", crate::net::FRIEND),
+                        name: None,
                         lan: false,
                     };
                 }
@@ -1785,7 +1780,7 @@ impl Screen {
         }
         true
     }
-    pub fn wheel(&mut self, delta: f32, cursor: (f32, f32), size: (f32, f32)) {
+    pub fn wheel(&mut self, delta: f32, cursor: (f32, f32), size: (f32, f32)) -> bool {
         if let Self::List {
             servers,
             lan,
@@ -1797,13 +1792,15 @@ impl Screen {
             if cursor.1 >= top && cursor.1 < bottom {
                 let content = content_height(servers.len(), lan.games().len());
                 scroll.wheel(delta, ROW_HEIGHT / 2.0, top, bottom, content);
+                return true;
             }
         }
+        false
     }
     /// The pointer moved: a held scrollbar follows it, and a held server
     /// moves to the saved server's row under the pointer, the others closing
     /// up behind it; it stays selected.
-    pub fn drag(&mut self, y: f32, size: (f32, f32)) {
+    pub fn drag(&mut self, y: f32, size: (f32, f32)) -> bool {
         if let Self::List {
             servers,
             selected,
@@ -1816,7 +1813,7 @@ impl Screen {
             let (w, h) = (size.0.ceil(), size.1.ceil());
             let (top, bottom, left) = list_area(w, h);
             let games = lan.games().len();
-            scroll.drag(y, top, bottom, content_height(servers.len(), games));
+            let scrolled = scroll.drag(y, top, bottom, content_height(servers.len(), games));
             if let Some(held) = held
                 && let Some(Row::Server(to)) =
                     row_at(servers.len(), games, (left + 1.0, y), (w, h), scroll.amount)
@@ -1830,11 +1827,13 @@ impl Screen {
                 };
                 *selected = Some(to);
             }
+            return scrolled || held.is_some();
         }
+        false
     }
     /// The button was released: a server that was dragged somewhere else is
     /// saved there.
-    pub fn release(&mut self, saves: &Path) {
+    pub fn release(&mut self, saves: &Path) -> bool {
         if let Self::List {
             servers,
             scroll,
@@ -1842,11 +1841,15 @@ impl Screen {
             ..
         } = self
         {
+            let scrolled = scroll.held();
             scroll.release();
-            if held.take().is_some_and(|h| h.moved) {
+            let row = held.take();
+            if row.as_ref().is_some_and(|h| h.moved) {
                 save_servers(&servers_file(saves), servers);
             }
+            return scrolled || row.is_some();
         }
+        false
     }
     /// The focused box, in GUI pixels: name at 66, address at 106
     /// (`ManageServerScreen`), direct address at 116, friend fields at 64 and 105.
@@ -1894,6 +1897,22 @@ impl Screen {
             self,
             Self::Edit { .. } | Self::Friend { .. } | Self::Page(_)
         )
+    }
+    /// Add Server (`EditServerScreen` for a new `ServerData`), empty.
+    pub fn add_server() -> Self {
+        Self::Edit {
+            index: None,
+            name: crate::lang::get_or("selectServer.defaultName", "Minecraft Server"),
+            address: String::new(),
+            focus: 1,
+            packs: None,
+        }
+    }
+    /// Direct Connection (`DirectJoinServerScreen`), empty.
+    pub fn direct() -> Self {
+        Self::Direct {
+            address: String::new(),
+        }
     }
     /// Join a friend, with the relay the player set before.
     pub fn friend(from_title: bool) -> Self {
@@ -2235,6 +2254,7 @@ mod tests {
             let Outcome::Connect {
                 address: actual,
                 lan,
+                ..
             } = click(
                 &mut screen,
                 Some(40),
@@ -2574,8 +2594,9 @@ mod tests {
         let size = (427.0, 240.0);
         assert!(screen.arrow(false, false, size, &saves));
         match screen.confirm() {
-            Outcome::Connect { address, lan } => {
+            Outcome::Connect { address, name, lan } => {
                 assert_eq!(address, "127.0.0.1:2");
+                assert_eq!(name.as_deref(), Some("a"));
                 assert!(!lan);
             }
             _ => panic!("Enter did not join the selected server"),
@@ -2583,8 +2604,9 @@ mod tests {
         // Down picks the next server, and Enter joins that one.
         assert!(screen.arrow(false, false, size, &saves));
         match screen.confirm() {
-            Outcome::Connect { address, lan } => {
+            Outcome::Connect { address, name, lan } => {
                 assert_eq!(address, "127.0.0.1:3");
+                assert_eq!(name.as_deref(), Some("b"));
                 assert!(!lan);
             }
             _ => panic!("Enter did not join the second server"),
@@ -2722,8 +2744,9 @@ mod tests {
             size,
             &saves,
         ) {
-            Outcome::Connect { address, lan } => {
+            Outcome::Connect { address, name, lan } => {
                 assert_eq!(address, list[2].ip);
+                assert_eq!(name.as_deref(), Some(list[2].name.as_str()));
                 assert!(!lan);
             }
             _ => panic!("the join arrow connects"),

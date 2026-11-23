@@ -237,31 +237,6 @@ pub fn resets_x_rot(m: &Mob) -> bool {
     !flag(m, POUNCING | CROUCHING | INTERESTED | FACEPLANTED)
 }
 
-/// `Fox.populateDefaultEquipmentSlots`: one fox in five holds an emerald, an
-/// egg, rabbit feet or hide, wheat, leather or a feather in its mouth.
-pub fn populate_default_equipment(m: &mut Mob, r: &mut impl RandomSource) {
-    if r.next_float() < 0.2 {
-        let odds = r.next_float();
-        let held = if odds < 0.05 {
-            "minecraft:emerald"
-        } else if odds < 0.2 {
-            "minecraft:egg"
-        } else if odds < 0.4 {
-            if r.next_boolean() {
-                "minecraft:rabbit_foot"
-            } else {
-                "minecraft:rabbit_hide"
-            }
-        } else if odds < 0.6 {
-            "minecraft:wheat"
-        } else if odds < 0.8 {
-            "minecraft:leather"
-        } else {
-            "minecraft:feather"
-        };
-        m.extra.set_main_hand(Some(held.into()));
-    }
-}
 /// `Fox.registerGoals` and `setTargetGoals` (the targets wait for the variant:
 /// red foxes prefer chickens and rabbits, snow foxes fish).
 pub fn register(m: &mut Mob) {
@@ -391,7 +366,7 @@ impl Consumption {
             && !m.no_ai
             && m.position == expected
             && m.ai.target.is_none()
-            && m.on_ground
+            && m.ground.on_ground
             && !flag(m, SLEEPING)
     }
     /// Finish the original item use after its own effects have moved the actor.
@@ -400,7 +375,7 @@ impl Consumption {
         &self,
         m: &mut Mob,
         expected: Vec3,
-        remainder: Option<std::sync::Arc<str>>,
+        info: Option<&crate::items::ItemInfo>,
     ) -> bool {
         if !self.same_item_use(m) || m.position != expected {
             return false;
@@ -412,7 +387,8 @@ impl Consumption {
             // LivingEntity.handleExtraItemsCreatedOnUse is empty for a fox:
             // an additional use remainder is discarded while food remains.
         } else {
-            m.extra.set_main_hand(remainder);
+            m.extra
+                .set_main_hand_stack(crate::item_sync::use_remainder(&self.stack, info));
         }
         m.extra.ints[TICKS_SINCE_EATEN] = 0;
         true
@@ -430,7 +406,7 @@ pub fn decide_consumption(m: &Mob, w: &MobWorld) -> Option<Consumption> {
         || m.extra.ints[TICKS_SINCE_EATEN] <= 600
         || !eats(w, stack)
         || m.ai.target.is_some()
-        || !m.on_ground
+        || !m.ground.on_ground
         || flag(m, SLEEPING)
     {
         return None;
@@ -449,37 +425,25 @@ pub fn apply_consumption(
     decision: &Consumption,
     w: &MobWorld,
     m: &mut Mob,
-    level: &mut crate::health::DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
 ) -> bool {
     if !decision.still_valid(m) {
         return false;
     }
-    if !consume(w, m, level, events, &decision.stack) {
+    if !consume(w, m, events, &decision.stack) {
         return false;
     }
-    let remainder = crate::item_sync::use_remainder(
-        &decision.stack,
-        w.items
-            .and_then(|items| items.items.get(&decision.stack.item))
-            .and_then(|info| info.use_remainder.clone()),
-    )
-    .map(Into::into);
+    let info = w.items.and_then(|items| items.get(&decision.stack.item));
     let position = m.position;
-    decision.finish(m, position, remainder)
+    decision.finish(m, position, info)
 }
 
 /// `Fox.tick` and `Fox.aiStep`: eating, and `SoundEvents.FOX_AGGRO`
 /// (`Entity.playSound` at its feet) while the fox is defending. Only the
 /// server broadcasts that sound.
-pub fn ai_step(
-    m: &mut Mob,
-    w: &MobWorld,
-    level: &mut crate::health::DamageLevel<'_>,
-    events: &mut Vec<MobEvent>,
-) {
+pub fn ai_step(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
     if let Some(decision) = ai_step_until_consumption(m, w, events) {
-        apply_consumption(&decision, w, m, level, events);
+        apply_consumption(&decision, w, m, events);
         before_living_ai_step(m, w);
     }
     finish_ai_step(m, w, events);
@@ -501,7 +465,7 @@ pub fn ai_step_until_consumption(
     if let Some(stack) = m.extra.main_hand_stack()
         && eats(w, stack)
         && m.ai.target.is_none()
-        && m.on_ground
+        && m.ground.on_ground
         && !flag(m, SLEEPING)
     {
         let eaten = m.extra.ints[TICKS_SINCE_EATEN];
@@ -592,7 +556,6 @@ fn eats(w: &MobWorld, stack: &crate::items::ItemStack) -> bool {
 fn consume(
     w: &MobWorld,
     m: &mut Mob,
-    level: &mut crate::health::DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
     stack: &sunrise_items::items::ItemStack,
 ) -> bool {
@@ -625,7 +588,7 @@ fn consume(
                 1.0,
             ));
         } else {
-            m.apply_consume_effect(level, effect);
+            m.apply_consume_effect(effect);
         }
     }
     // `user.gameEvent(animation == DRINK ? GameEvent.DRINK : GameEvent.EAT)` at
@@ -1247,7 +1210,7 @@ impl Goal for Pounce {
             return false;
         }
         let yd = m.velocity.y;
-        (yd * yd >= f64::from(0.05f32) || m.head_pitch.abs() >= 15.0 || !m.on_ground)
+        (yd * yd >= f64::from(0.05f32) || m.head_pitch.abs() >= 15.0 || !m.ground.on_ground)
             && !flag(m, FACEPLANTED)
     }
     fn interruptable(&self) -> bool {
@@ -1294,7 +1257,7 @@ impl Goal for Pounce {
         {
             super::ai::do_hurt_target(m, who, cx);
         } else if m.head_pitch > 0.0
-            && m.on_ground
+            && m.ground.on_ground
             && m.velocity.y as f32 != 0.0
             && cx.w.block_name(
                 m.position.x.floor() as i32,
@@ -1794,7 +1757,7 @@ mod consume_tests {
                 |w, types| {
                     let kind = std::sync::Arc::new(types.types["minecraft:fox"].clone());
                     let mut fox = Mob::new(1, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);
-                    fox.on_ground = true;
+                    fox.ground.on_ground = true;
                     fox.extra.ints[TICKS_SINCE_EATEN] = 601;
                     for removed in ["!minecraft:food", "!minecraft:consumable"] {
                         let mut stack = crate::items::ItemStack::new("minecraft:golden_apple", 2);
@@ -1805,12 +1768,7 @@ mod consume_tests {
                         fox.extra.set_main_hand_stack(Some(stack.clone()));
                         assert!(decide_consumption(&fox, w).is_none(), "{removed}");
                         let mut events = Vec::new();
-                        ai_step(
-                            &mut fox,
-                            w,
-                            &mut crate::health::TestLevel::new(0).level(),
-                            &mut events,
-                        );
+                        ai_step(&mut fox, w, &mut events);
                         assert_eq!(fox.extra.main_hand_stack(), Some(&stack), "{removed}");
                         assert!(!events.iter().any(|event| matches!(
                             event,
@@ -1837,13 +1795,7 @@ mod consume_tests {
                     let decision = decide_consumption(&fox, w)
                         .expect("effective components make stone edible");
                     let mut events = Vec::new();
-                    assert!(apply_consumption(
-                        &decision,
-                        w,
-                        &mut fox,
-                        &mut crate::health::TestLevel::new(0).level(),
-                        &mut events
-                    ));
+                    assert!(apply_consumption(&decision, w, &mut fox, &mut events));
                     assert_eq!(fox.extra.main_hand_stack().unwrap().count, 1);
                     assert!(events.iter().any(|event| matches!(
                         event,
@@ -1875,13 +1827,7 @@ mod consume_tests {
                         fox.extra.set_main_hand_stack(Some(stack));
                         fox.extra.ints[TICKS_SINCE_EATEN] = 601;
                         let decision = decide_consumption(&fox, w).unwrap();
-                        assert!(apply_consumption(
-                            &decision,
-                            w,
-                            &mut fox,
-                            &mut crate::health::TestLevel::new(0).level(),
-                            &mut Vec::new()
-                        ));
+                        assert!(apply_consumption(&decision, w, &mut fox, &mut Vec::new()));
                         assert_eq!(
                             fox.extra.main_hand_id(),
                             expected,
@@ -1904,7 +1850,7 @@ mod consume_tests {
                 |w, types| {
                     let kind = std::sync::Arc::new(types.types["minecraft:fox"].clone());
                     let mut fox = Mob::new(1, kind, Vec3::new(-1.2, 64.25, 3.75), 0.0);
-                    fox.on_ground = true;
+                    fox.ground.on_ground = true;
                     fox.silent = true;
                     fox.extra.ints[TICKS_SINCE_EATEN] = 601;
                     let mut stack = crate::items::ItemStack::new("minecraft:golden_apple", 1);
@@ -1912,13 +1858,7 @@ mod consume_tests {
                     fox.extra.set_main_hand_stack(Some(stack));
                     let decision = decide_consumption(&fox, w).unwrap();
                     let mut events = Vec::new();
-                    assert!(apply_consumption(
-                        &decision,
-                        w,
-                        &mut fox,
-                        &mut crate::health::TestLevel::new(0).level(),
-                        &mut events
-                    ));
+                    assert!(apply_consumption(&decision, w, &mut fox, &mut events));
                     let effects: Vec<_> = events
                         .iter()
                         .filter_map(|event| match event {
@@ -1987,19 +1927,14 @@ mod consume_tests {
             |w, types| {
                 let kind = std::sync::Arc::new(types.types["minecraft:fox"].clone());
                 let mut m = Mob::new(1, kind, Vec3::new(0.5, 1.0, 0.5), 0.0);
-                m.on_ground = true;
+                m.ground.on_ground = true;
                 let velocity = Vec3::new(0.2, 0.0, -0.1);
                 m.velocity = velocity;
                 m.extra.set_main_hand(Some("minecraft:chorus_fruit".into()));
                 // Past the 600 ticks `Fox.aiStep` waits before it finishes the item.
                 m.extra.ints[TICKS_SINCE_EATEN] = 601;
                 let mut events = Vec::new();
-                ai_step(
-                    &mut m,
-                    w,
-                    &mut crate::health::TestLevel::new(0).level(),
-                    &mut events,
-                );
+                ai_step(&mut m, w, &mut events);
                 assert_ne!(m.position, Vec3::new(0.5, 1.0, 0.5), "the fruit moved it");
                 // `Entity.randomTeleport` drops the drawn height by one per
                 // step until the block below it is ground: just above the stone.
@@ -2092,16 +2027,11 @@ mod consume_tests {
             |w, types| {
                 let kind = std::sync::Arc::new(types.types["minecraft:fox"].clone());
                 let mut m = Mob::new(1, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);
-                m.on_ground = true;
+                m.ground.on_ground = true;
                 m.extra.set_main_hand(Some("minecraft:golden_apple".into()));
                 m.extra.ints[TICKS_SINCE_EATEN] = 601;
                 let mut events = Vec::new();
-                ai_step(
-                    &mut m,
-                    w,
-                    &mut crate::health::TestLevel::new(0).level(),
-                    &mut events,
-                );
+                ai_step(&mut m, w, &mut events);
                 // `ApplyStatusEffectsConsumeEffect`: regeneration II for 100
                 // ticks, then absorption for 2400.
                 assert!(
@@ -2438,22 +2368,17 @@ mod defend_tests {
 }
 
 #[cfg(test)]
-mod pounce_pitch_tests {
-    /// `FoxPounceGoal.tick` multiplies by `Mth.RAD_TO_DEG` once, then narrows to a float.
-    #[test]
-    fn the_pounce_pitch_uses_vanillas_degree_factor() {
-        let (horizontal, y) = (0.3f64, 0.5f64);
-        let len = (horizontal * horizontal + y * y).sqrt();
-        assert_eq!(super::pounce_pitch(horizontal, y, len) as f32, -59.03624);
-    }
-}
-
-#[cfg(test)]
 mod pounce_turn_tests {
     use super::*;
     use std::sync::Arc;
 
-    /// The pinned-vanilla side is `VanillaTurnOracle`'s `fox.txt` (`tools/test_turn_parity.py`):
+    const WITNESS_26_3: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tools/witness/26.3/mob_turn/fox.txt"
+    ));
+
+    /// The pinned vanilla 26.3 side is `VanillaTurnOracle`'s `fox.txt`
+    /// (`tools/test_mob_turn_parity.py`, committed at `tools/witness/26.3/mob_turn/fox.txt`):
     /// `Fox$FoxPounceGoal.tick` on a fox with no target, from each motion, pitch and `jumping`
     /// (the upward bias), as the pitch bits it leaves. A flat motion keeps `Math.signum`'s zero
     /// sign, and the rising, falling and nearly still ones take each branch.
@@ -2491,21 +2416,12 @@ mod pounce_turn_tests {
                     }
                 }
             }
+            let actual = rows.join("\n") + "\n";
             if let Some(dir) = std::env::var_os("SUNRISE_TURN_OUTPUT_DIR") {
-                std::fs::write(
-                    std::path::Path::new(&dir).join("fox.txt"),
-                    rows.join("\n") + "\n",
-                )
-                .unwrap();
-            }
-            for row in [
-                "3ff0000000000000 0000000000000000 0000000000000000 00000000 false 80000000",
-                "3fd3333333333333 3fe0000000000000 0000000000000000 00000000 false c26c251c",
-                "3fd3333333333333 3fe0000000000000 0000000000000000 00000000 true c2a973c3",
-            ] {
-                assert!(rows.iter().any(|r| r == row), "missing pinned row {row}");
+                std::fs::write(std::path::Path::new(&dir).join("fox.txt"), &actual).unwrap();
             }
             assert_eq!(rows.len(), MOTIONS.len() * 3 * 2);
+            assert_eq!(actual, WITNESS_26_3);
         });
         assert!(ran, "prepared mob data must run the pounce fixture");
     }
