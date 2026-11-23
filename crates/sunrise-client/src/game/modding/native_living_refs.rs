@@ -774,6 +774,37 @@ impl Game<'_> {
         }
     }
 
+    pub(super) fn living_last_hurt_mob(&self, living: LivingRef) -> Option<(EntityRef, i32)> {
+        let (id, timestamp) = self.living_last_hurt_record(living)?;
+        let target = self.entity(id)?;
+        self.last_hurt_target_alive(id)
+            .then_some((target, timestamp))
+    }
+
+    /// The holder's `lastHurtMob` id and `lastHurtMobTimestamp`, its target unresolved.
+    pub(in crate::game) fn living_last_hurt_record(&self, living: LivingRef) -> Option<(u32, i32)> {
+        match self.native_living_target(living)? {
+            Target::Player => self.player.as_ref()?.health.last_hurt_mob,
+            Target::Guest(conn) => {
+                let guest = self.command_guest(conn)?;
+                match &guest.motion {
+                    Some(body) => body.health.last_hurt_mob,
+                    None => guest.carried_last_hurt_mob,
+                }
+            }
+            Target::Mob(id) => {
+                let (_, join) = self.last_hurt_living_target(id)?;
+                self.mobs[self.mobs.locate(join)?].last_hurt_mob
+            }
+            Target::Stand(id) => {
+                let (_, join) = self.last_hurt_living_target(id)?;
+                self.armor_stands[self.armor_stands.locate(join)?].last_hurt_mob
+            }
+            Target::Dragon(id) => self.dragon.as_ref().filter(|d| d.id == id)?.last_hurt_mob,
+            _ => None,
+        }
+    }
+
     /// `EntityReference.getEntity` for a kill credit, which looks through
     /// every level (`getEntityInAnyDimension`): the entity `id` in the level
     /// in place, else [`Self::credited_elsewhere`].
