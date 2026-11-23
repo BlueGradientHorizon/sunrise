@@ -102,13 +102,15 @@ pub(super) struct SecureChat {
     /// LocalChatSession: the key pair it signs with, and its chain.
     session: Option<(Arc<ChatKeyPair>, Encoder)>,
     tracker: LastSeenTracker,
-    #[cfg(test)]
-    pub(super) processed: Option<Vec<(Signature, bool)>>,
 }
 
 impl SecureChat {
     pub(super) fn signed(&self) -> bool {
         self.session.is_some()
+    }
+    #[cfg(test)]
+    pub(super) fn tracker_mut(&mut self) -> &mut LastSeenTracker {
+        &mut self.tracker
     }
     /// handleDeleteChat: a deleted message that is still pending is not
     /// acknowledged.
@@ -513,10 +515,6 @@ impl Game<'_> {
         let Some(r) = self.remote.as_mut() else {
             return;
         };
-        #[cfg(test)]
-        if let Some(processed) = r.secure_chat.processed.as_mut() {
-            processed.push((*signature, shown));
-        }
         let tracker = &mut r.secure_chat.tracker;
         if tracker.add_pending(signature, shown) && tracker.offset() > ACK_AFTER {
             let offset = tracker.take_offset();

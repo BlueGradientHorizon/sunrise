@@ -119,8 +119,10 @@ impl Remote {
     pub(super) fn remove_queued_chat(&mut self, signature: &Signature) -> bool {
         let queued = self.chat_queue.len();
         self.chat_queue.retain(|chat| {
-            !matches!(chat.kind, QueuedChatKind::Player { .. })
-                || chat.signature.as_ref() != Some(signature)
+            !matches!(
+                chat.kind,
+                QueuedChatKind::Player { .. } | QueuedChatKind::Filtered
+            ) || chat.signature.as_ref() != Some(signature)
         });
         self.chat_queue.len() != queued
     }

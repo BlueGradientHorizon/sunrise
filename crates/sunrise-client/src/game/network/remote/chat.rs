@@ -134,18 +134,21 @@ impl Game<'_> {
         self.enqueue_chat(QueuedChat {
             signature,
             sender,
-            chat_type,
-            kind: QueuedChatKind::Error,
+            kind: QueuedChatKind::Error { chat_type },
         });
     }
     /// `ChatTrustLevel.evaluate` of a player message, with
     /// `ChatListener.evaluateTrustLevel`: the player's own message on their
-    /// own server is secure. `decorated` is the receipt-time chat decoration
+    /// own server is secure. `decorated` is the acceptance-time chat decoration
     /// before applying the server's filter mask.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn chat_trust(
         &self,
-        message: &play::PlayerChat,
+        sender: u128,
         signed: bool,
+        timestamp: i64,
+        signed_content: &str,
+        unsigned_content: Option<&Tag>,
         decorated: &Text,
         received_ms: i64,
     ) -> ChatTrust {
@@ -154,14 +157,14 @@ impl Game<'_> {
             && self
                 .remote
                 .as_ref()
-                .is_some_and(|r| r.profile == message.sender)
+                .is_some_and(|r| r.has_logical_player && r.profile == sender)
         {
             return ChatTrust::Secure;
         }
         // PlayerChatMessage.hasExpiredClient: MESSAGE_EXPIRES_AFTER_CLIENT is
         // the server's five minutes and two more.
         let expired = received_ms
-            > message.timestamp.saturating_add(
+            > timestamp.saturating_add(
                 sunrise_protocol::secure_chat::EXPIRES_AFTER_SERVER + 2 * 60 * 1000,
             );
         if !signed || expired {
@@ -169,7 +172,7 @@ impl Game<'_> {
         }
         // ChatTrustLevel.isModified: the signed content is not in the line, or
         // the replacement uses a font other than the default.
-        let font_changed = message.unsigned_content.as_ref().is_some_and(|tag| {
+        let font_changed = unsigned_content.is_some_and(|tag| {
             comp_text(&tag_to_json(tag)).spans.iter().any(|span| {
                 span.style
                     .font
@@ -177,8 +180,8 @@ impl Game<'_> {
                     .is_some_and(|font| font != "minecraft:default")
             })
         });
-        if !decorated.plain().contains(message.content.as_str()) || font_changed {
-            ChatTrust::Modified(message.content.clone())
+        if !decorated.plain().contains(signed_content) || font_changed {
+            ChatTrust::Modified(signed_content.to_owned())
         } else {
             ChatTrust::Secure
         }
@@ -211,27 +214,52 @@ impl Game<'_> {
         let QueuedChat {
             signature,
             sender,
-            chat_type,
             kind,
         } = chat;
+        let has_player = self.remote.as_ref().is_some_and(|r| r.has_logical_player);
         let source = ChatSource::Player;
         let visible = self.ui.chat.shows(source);
-        let (mut line, narration, tag, info) = match kind {
+        let (chat_type, mut line, narration, tag, info) = match kind {
+            QueuedChatKind::Filtered => return false,
             QueuedChatKind::Player {
-                mut line,
-                mut narration,
-                trust,
+                chat_type,
+                signed,
+                timestamp,
+                received_ms,
                 only_show_secure,
                 signed_content,
+                unsigned_content,
                 filter,
                 info,
             } => {
+                // Only Show Secure Chat drops unsigned replacement text; narration
+                // uses `message.decoratedContent()`. Evaluate trust and render on
+                // acceptance so language changes and expiry follow vanilla 26.3.
+                let decorated = unsigned_content.as_ref().map_or_else(
+                    || serde_json::Value::from(signed_content.as_str()),
+                    sunrise_client::scoreboard::tag_to_json,
+                );
+                let display = if only_show_secure {
+                    serde_json::Value::from(signed_content.as_str())
+                } else {
+                    decorated.clone()
+                };
+                let mut line = self.decorate_chat(&chat_type, &display, Decoration::Chat);
+                let trust = self.chat_trust(
+                    sender,
+                    signed,
+                    timestamp,
+                    &signed_content,
+                    unsigned_content.as_ref(),
+                    &line,
+                    received_ms,
+                );
                 if (only_show_secure && matches!(trust, ChatTrust::NotSecure))
                     || self.social_hides(sender)
                 {
                     return false;
                 }
-                let filtered = if matches!(filter.0, 1 | 2) {
+                let filtered = if filter.0 == 2 {
                     let Some(filtered) =
                         sunrise_client::chat::filtered_message(&signed_content, &filter)
                     else {
@@ -241,30 +269,33 @@ impl Game<'_> {
                 } else {
                     None
                 };
-                if !visible {
+                if !has_player || !visible {
                     return false;
                 }
-                if let Some(filtered) = filtered {
+                let narration = if let Some(filtered) = filtered {
                     line = self.decorate_chat(&chat_type, &filtered, Decoration::Chat);
-                    narration = self.decorate_chat(&chat_type, &filtered, Decoration::Narration);
-                }
-                (line, narration, trust.tag(), info)
+                    self.decorate_chat(&chat_type, &filtered, Decoration::Narration)
+                } else {
+                    self.decorate_chat(&chat_type, &decorated, Decoration::Narration)
+                };
+                (chat_type, line, narration, trust.tag(), info)
             }
-            QueuedChatKind::Disguised { message } => {
-                if !visible {
+            QueuedChatKind::Disguised { chat_type, message } => {
+                if !has_player || !visible {
                     return false;
                 }
                 let content = sunrise_client::scoreboard::tag_to_json(&message);
                 (
+                    chat_type.clone(),
                     self.decorate_chat(&chat_type, &content, Decoration::Chat),
                     self.decorate_chat(&chat_type, &content, Decoration::Narration),
                     Some(ChatTag::system()),
                     None,
                 )
             }
-            QueuedChatKind::Error => {
+            QueuedChatKind::Error { chat_type } => {
                 // Validation errors use the player channel but no signature or mod event.
-                if self.social_hides(sender) || !visible {
+                if self.social_hides(sender) || !has_player || !visible {
                     return false;
                 }
                 let error = serde_json::json!({

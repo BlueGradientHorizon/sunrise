@@ -1,36 +1,43 @@
 //! `ClientChatReceivedEvent` for the lines the server sends: the queued player
 //! message and the hook that may replace or cancel a line.
-use super::{chat::ChatTrust, *};
+use super::*;
 
 /// Receipt-time context for `ChatListener.handleMessage`. Its presentation,
-/// including the mod hook and checks against current social/visibility options,
-/// waits until the queue accepts it.
+/// including trust evaluation, decoration, the mod hook, and checks against
+/// current social/visibility options, waits until the queue accepts it.
 pub(super) struct QueuedChat {
     /// The valid player signature (also the deletion key), or the invalid
     /// signature an error only acknowledges. Disguised chat has neither.
     pub(super) signature: Option<Signature>,
     /// The player's UUID, 0 for disguised chat (`Util.NIL_UUID`).
     pub(super) sender: u128,
-    pub(super) chat_type: play::ChatTypeBound,
     pub(super) kind: QueuedChatKind,
 }
 
 pub(super) enum QueuedChatKind {
     Player {
-        line: Text,
-        narration: Text,
-        trust: ChatTrust,
+        chat_type: play::ChatTypeBound,
+        signed: bool,
+        timestamp: i64,
+        received_ms: i64,
         only_show_secure: bool,
-        /// `FilterMask.applyWithFormatting` uses the signed text, not the server's replacement.
+        /// `FilterMask.applyWithFormatting` and `ChatTrustLevel.isModified` use the signed text.
         signed_content: String,
+        unsigned_content: Option<Tag>,
         filter: (i32, Vec<i64>),
         /// Saved only while a mod listens to `ClientChatReceivedEvent`.
         info: Option<Box<mod_api::PlayerChatInfo>>,
     },
+    /// `FilterMask.FULLY_FILTERED`: stays in FIFO queue order with its deletion
+    /// key and acknowledges as not shown on acceptance, without retaining text.
+    Filtered,
     Disguised {
+        chat_type: play::ChatTypeBound,
         message: Tag,
     },
-    Error,
+    Error {
+        chat_type: play::ChatTypeBound,
+    },
 }
 
 /// `PlayerChatMessage` of a `ClientboundPlayerChatPacket`, for

@@ -526,8 +526,10 @@ impl Game<'_> {
         self.enqueue_chat(QueuedChat {
             signature: None,
             sender: 0,
-            chat_type: p.chat_type,
-            kind: QueuedChatKind::Disguised { message: p.message },
+            kind: QueuedChatKind::Disguised {
+                chat_type: p.chat_type,
+                message: p.message,
+            },
         });
     }
 
@@ -624,7 +626,6 @@ impl Game<'_> {
 
     /// `C::PlayerChat`: its arms of `apply_packet`, guard and order kept.
     pub(super) fn apply_player_chat_packet(&mut self, p: play::PlayerChat) -> Result<()> {
-        use sunrise_client::scoreboard::tag_to_json;
         // SignedMessageBody.Packed.unpack: the last seen it names must
         // be in the cache; then the message joins it
         // (MessageSignatureCache.push).
@@ -690,36 +691,37 @@ impl Game<'_> {
             return Ok(());
         };
         let signature = signature.filter(|_| validated == secure_chat::Validated::Signed);
-        // ChatListener.handlePlayerChatMessage: Only Show Secure Chat
-        // shows the signed content, never the server's replacement.
-        // The narrator says the message's own decorated content
-        // (`narrateChatMessage(boundChatType, message.decoratedContent())`).
-        let decorated = p
-            .unsigned_content
-            .as_ref()
-            .map_or_else(|| serde_json::Value::from(p.content.as_str()), tag_to_json);
+        if p.filter.0 == 1 {
+            // `FilterMask.FULLY_FILTERED` can never display or narrate; keep
+            // FIFO ordering and its deletion/ack key without text payloads.
+            self.enqueue_chat(QueuedChat {
+                signature,
+                sender: p.sender,
+                kind: QueuedChatKind::Filtered,
+            });
+            return Ok(());
+        }
+        // ChatListener.handlePlayerChatMessage: capture Only Show Secure Chat
+        // and the post-validation receipt time; decorate and evaluate trust
+        // when the queue accepts the message.
         let only_show_secure = self.settings.file.bool("onlyShowSecureChat");
-        let content = if only_show_secure {
-            serde_json::Value::from(p.content.as_str())
-        } else {
-            decorated.clone()
-        };
-        let narration = self.decorate_chat(&p.chat_type, &decorated, Decoration::Narration);
-        let line = self.decorate_chat(&p.chat_type, &content, Decoration::Chat);
-        let trust = self.chat_trust(&p, signature.is_some(), &line, now);
+        let signed = signature.is_some();
         let listened = mod_api::__private::listened(mod_api::HookId::ClientChatReceived);
-        let info =
-            listened.then(|| Box::new(chat_received::player_chat_info(&p, signature.is_some())));
+        let info = listened.then(|| Box::new(chat_received::player_chat_info(&p, signed)));
+        let received_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis() as i64);
         self.enqueue_chat(QueuedChat {
             signature,
             sender: p.sender,
-            chat_type: p.chat_type,
             kind: QueuedChatKind::Player {
-                line,
-                narration,
-                trust,
+                chat_type: p.chat_type,
+                signed,
+                timestamp: p.timestamp,
+                received_ms,
                 only_show_secure,
                 signed_content: p.content,
+                unsigned_content: p.unsigned_content,
                 filter: p.filter,
                 info,
             },
