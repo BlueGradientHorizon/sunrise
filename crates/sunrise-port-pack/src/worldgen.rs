@@ -1004,6 +1004,32 @@ mod tests {
         );
     }
 
+    /// YUNG's API's structure type and element need YUNG's API itself: each is left as written
+    /// and listed once as unsupported.
+    #[test]
+    fn yungs_jigsaw_and_element_are_unsupported() {
+        let mut report = Upgrade::default();
+        let mut structure = json!({"type": "yungsapi:yung_jigsaw", "start_pool": "m:start",
+            "size": 30, "biomes": "#minecraft:is_overworld"});
+        let written = structure.clone();
+        assert!(!upgrade("structure", &mut structure, &mut report, &NO_TAGS));
+        assert_eq!(structure, written);
+        let mut pool = json!({"fallback": "minecraft:empty", "elements": [
+            {"weight": 1, "element": {"element_type": "yungsapi:yung_single_element",
+                "location": "m:room", "projection": "rigid", "processors": "minecraft:empty"}}
+        ]});
+        let written = pool.clone();
+        assert!(!upgrade("template_pool", &mut pool, &mut report, &NO_TAGS));
+        assert_eq!(pool, written);
+        assert_eq!(
+            report.unsupported,
+            BTreeMap::from([
+                ("yungsapi:yung_jigsaw".into(), 1),
+                ("yungsapi:yung_single_element".into(), 1),
+            ])
+        );
+    }
+
     #[test]
     fn keeps_the_jigsaws_start_rules() {
         let mut report = Upgrade::default();

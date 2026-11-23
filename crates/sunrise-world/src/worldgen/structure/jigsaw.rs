@@ -676,7 +676,7 @@ impl PoolPiece {
         tag
     }
     pub(super) fn moved(&mut self, dy: i32) {
-        self.position[1] += dy;
+        self.position[1] = self.position[1].wrapping_add(dy);
         self.bounding_box = self.bounding_box.moved([0, dy, 0]);
     }
     /// PoolElementStructurePiece.postProcess.
@@ -939,12 +939,9 @@ pub fn assemble(
     let start = place_start(
         config, context, pools, resources, bindings, random, position,
     )?;
-    let (position, mut pieces) =
-        lay_out_children(start, config, context, pools, resources, bindings, random);
-    if config.max_depth <= 0 {
-        pieces.clear();
-    }
-    Some((position, pieces))
+    Some(lay_out_children(
+        start, config, context, pools, resources, bindings, random,
+    ))
 }
 
 /// A jigsaw's start piece in place ([`place_start`]), its children not laid out yet: vanilla's
@@ -991,8 +988,9 @@ pub fn place_start(
         }
         None => position,
     };
-    let local: [i32; 3] = std::array::from_fn(|i| anchored[i] - position[i]);
-    let adjusted: [i32; 3] = std::array::from_fn(|i| position[i] - local[i]);
+    // Java's int arithmetic wraps here; a mod type's position, reach and padding are its own.
+    let local: [i32; 3] = std::array::from_fn(|i| anchored[i].wrapping_sub(position[i]));
+    let adjusted: [i32; 3] = std::array::from_fn(|i| position[i].wrapping_sub(local[i]));
     let mut center = PoolPiece {
         bounding_box: element.bounding_box(adjusted, rotation),
         ground_level_delta: element.ground_level_delta(),
@@ -1003,27 +1001,27 @@ pub fn place_start(
         waterlogging: config.waterlogging,
     };
     let b = center.bounding_box;
-    let cx = (b.max[0] + b.min[0]) / 2;
-    let cz = (b.max[2] + b.min[2]) / 2;
+    let cx = b.max[0].wrapping_add(b.min[0]) / 2;
+    let cz = b.max[2].wrapping_add(b.min[2]) / 2;
     let bottom = match config.project_to {
         None => adjusted[1],
         Some(kind) => {
             if !context.column_has_valid_biome(cx, cz, context.min_y(), context.max_y()) {
                 return None;
             }
-            position[1] + context.base_height(cx, cz, kind)
+            position[1].wrapping_add(context.base_height(cx, cz, kind))
         }
     };
-    let old_ground = b.min[1] + center.ground_level_delta;
-    center.moved(bottom - old_ground);
+    let old_ground = b.min[1].wrapping_add(center.ground_level_delta);
+    center.moved(bottom.wrapping_sub(old_ground));
     let b = center.bounding_box;
     if config.padding != [0, 0]
-        && (b.min[1] < context.min_y() + config.padding[0]
-            || b.max[1] > context.max_y() - config.padding[1])
+        && (b.min[1] < context.min_y().wrapping_add(config.padding[0])
+            || b.max[1] > context.max_y().wrapping_sub(config.padding[1]))
     {
         return None;
     }
-    let cy = bottom + local[1];
+    let cy = bottom.wrapping_add(local[1]);
     Some(PlacedStart {
         position: [cx, cy, cz],
         center,
@@ -1045,12 +1043,32 @@ pub fn lay_out_children(
         position: [cx, cy, cz],
         center,
     } = start;
+    // JigsawPlacement.addPieces adds its pieces, the start among them, to the
+    // builder only when `maxDepth > 0`.
+    if config.max_depth <= 0 {
+        return ([cx, cy, cz], Vec::new());
+    }
     let mut pieces = vec![center];
-    if config.max_depth > 0 {
+    {
+        // Java's int arithmetic wraps; a mod type's reach and padding are its own.
         let [h, v] = config.max_distance;
-        let low_y = (cy - v).max(context.min_y() + config.padding[0]);
-        let high_y = (cy + v + 1).min(context.max_y() + 1 - config.padding[1]);
-        let container = BoundingBox::new([cx - h, low_y, cz - h], [cx + h, high_y - 1, cz + h]);
+        let low_y = cy
+            .wrapping_sub(v)
+            .max(context.min_y().wrapping_add(config.padding[0]));
+        let high_y = cy.wrapping_add(v).wrapping_add(1).min(
+            context
+                .max_y()
+                .wrapping_add(1)
+                .wrapping_sub(config.padding[1]),
+        );
+        let container = BoundingBox::new(
+            [cx.wrapping_sub(h), low_y, cz.wrapping_sub(h)],
+            [
+                cx.wrapping_add(h),
+                high_y.wrapping_sub(1),
+                cz.wrapping_add(h),
+            ],
+        );
         add_children(
             config,
             context,

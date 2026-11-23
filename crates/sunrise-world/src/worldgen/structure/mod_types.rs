@@ -527,6 +527,37 @@ mod tests {
         assert_eq!(bottoms, (0..47).map(|i| first + 3 * i).collect::<Vec<_>>());
         assert!(pieces.iter().all(|p| matches!(p, Piece::Pool(_))));
 
+        // `JigsawPlacement.addPieces` adds no piece at depth 0, the start's included.
+        let aliases = BTreeMap::new();
+        let mut settings = JigsawConfig {
+            start_pool: "test:links",
+            start_jigsaw: None,
+            max_depth: 0,
+            use_expansion_hack: false,
+            project_to: None,
+            max_distance: [16, 400],
+            aliases: &aliases,
+            padding: [0, 0],
+            waterlogging: true,
+        };
+        let mut random = WorldgenRandom::new(LegacyRandom::new(0));
+        let (_, none) = inputs
+            .assemble_jigsaw(&settings, &mut Flat, &mut random, [0, 0, 0])
+            .expect("the start fits");
+        assert!(none.is_empty());
+        // A type's reach and padding are its own: Java's int arithmetic wraps at the extremes.
+        for (max_distance, padding) in [
+            ([i32::MAX, i32::MAX], [0, 0]),
+            ([1, 1], [i32::MIN, i32::MAX]),
+            ([i32::MAX, i32::MAX], [i32::MAX, i32::MIN]),
+        ] {
+            settings.max_depth = 2;
+            settings.max_distance = max_distance;
+            settings.padding = padding;
+            let mut random = WorldgenRandom::new(LegacyRandom::new(0));
+            let _ = inputs.assemble_jigsaw(&settings, &mut Flat, &mut random, [0, 0, 0]);
+        }
+
         // The same structure as `minecraft:jigsaw` is past its codec's bound and refused.
         let structures = BTreeMap::from([(
             "test:deep".to_owned(),
