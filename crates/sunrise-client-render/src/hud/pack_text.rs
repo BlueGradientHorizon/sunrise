@@ -1178,3 +1178,7 @@ mod gpu_tests;
 #[cfg(test)]
 #[path = "pack_text_clouds_tests.rs"]
 mod clouds_tests;
+
+#[cfg(test)]
+#[path = "pack_text_depth_tests.rs"]
+mod depth_tests;

@@ -364,6 +364,9 @@ mod container_layout;
 mod container_loot;
 #[path = "game/runtime/control.rs"]
 mod control;
+#[cfg(test)]
+#[path = "game/mobs/conversion_place_tests.rs"]
+mod conversion_place_tests;
 #[path = "game/mobs/copper_golems.rs"]
 mod copper_golems;
 #[cfg(test)]
@@ -1612,6 +1615,8 @@ mod native_player_visibility;
 mod native_player_visibility_tests;
 #[path = "game/modding/native_portal_destination.rs"]
 mod native_portal_destination;
+#[path = "game/modding/native_profiles.rs"]
+mod native_profiles;
 #[path = "game/modding/native_projectile_launch.rs"]
 mod native_projectile_launch;
 #[cfg(test)]
@@ -1848,6 +1853,9 @@ mod pickups;
 #[cfg(test)]
 #[path = "game/mobs/piglin_admire_tests.rs"]
 mod piglin_admire_tests;
+#[cfg(test)]
+#[path = "game/mobs/piglin_conversion_tests.rs"]
+mod piglin_conversion_tests;
 #[path = "game/mobs/piglins.rs"]
 mod piglins;
 #[path = "game/blocks/piston_carry.rs"]
@@ -2916,7 +2924,7 @@ impl<'w> entity::EntityLists<'w> {
                 self.falling
                     .iter()
                     .filter(|f| f.blocks_building)
-                    .map(|f| sunrise_client::falling_block::bounds(f.position)),
+                    .map(FallingBlock::bounds),
             )
     }
 }
@@ -2970,10 +2978,25 @@ struct FallingBlock {
     damage: sunrise_client::falling_block::Damage,
     /// The UUID and compound it was loaded with, kept while it moves.
     saved: Option<Box<([i32; 4], sunrise_core::nbt::Tag)>>,
+    /// What `entity_size` answered at its last size refresh (`EntityEvent.Size`): its box takes
+    /// the answer while it holds for its vanilla size.
+    pub(super) size_answer: Option<sunrise_client::pose::SizeAnswer>,
 }
 sunrise_mod_runtime::impl_attachment_lifetime!(FallingBlock);
 
 impl FallingBlock {
+    /// `EntityType.FALLING_BLOCK.getDimensions()`: width, height and eye height.
+    const DIMENSIONS: [f32; 3] = [0.98, 0.98, 0.833_000_06];
+    /// Its box (`falling_block::bounds`), or its `entity_size` answer's.
+    fn bounds(&self) -> sunrise_core::geometry::Aabb {
+        let vanilla = sunrise_client::falling_block::bounds(self.position);
+        sunrise_client::pose::SizeAnswer::sized_box(
+            self.size_answer,
+            Self::DIMENSIONS,
+            self.position,
+            vanilla,
+        )
+    }
     /// Where `FallingBlockRenderer` draws the block's model corner, `alpha`
     /// into the tick: centred on the entity, then moved by `offset`, the
     /// block's random model offset (`ModelBlockRenderer.tesselateBlock`:
@@ -6333,6 +6356,7 @@ impl Game<'_> {
                     );
                     self.next_entity += 1;
                     self.falling.push(FallingBlock {
+                        size_answer: None,
                         attachment_lifetime: Default::default(),
                         rotation: [0.0, 0.0],
                         join: Default::default(),
@@ -7538,7 +7562,7 @@ impl Game<'_> {
             } else {
                 0
             };
-            let attack = (indicator == 1 || indicator == 2).then(|| {
+            let crosshair_attack = (indicator == 1).then(|| {
                 let speed = self.main_hand_attack_speed();
                 (
                     self.hand_strength.scale(0.0, speed),
@@ -7554,7 +7578,6 @@ impl Game<'_> {
                     && !g.debug_crosshair()
                     && !g.overlay_holds_view()
                 {
-                    let crosshair_attack = attack.filter(|_| indicator == 1);
                     let full = crosshair_attack.is_some_and(|(strength, delay)| {
                         hud_layout::full_attack_indicator(strength, delay, g.crosshair_living())
                     });
@@ -7580,16 +7603,29 @@ impl Game<'_> {
                 }
                 if spectator {
                     g.draw_spectator_hotbar(batch, g.own_player_is_spectator());
-                } else if let Some((inputs, source)) = g.camera_hotbar(
-                    camera,
-                    attack
-                        .filter(|_| indicator == 2)
-                        .map(|(strength, _)| strength),
-                ) {
-                    let draws = hud_layout::hotbar(wi, hi, &inputs);
+                } else if let Some((inputs, source)) = g.camera_hotbar(camera) {
+                    let mut draws = hud_layout::hotbar(wi, hi, &inputs);
                     // `extractSlot` for each item, in order, on the path `gui_paint` takes.
                     let mut items = crate::game::gui_paint_items::HotbarItems { game: g, source };
                     hud_layout::paint_items(batch, &g.gui.atlas, &draws, &mut items);
+                    if indicator == 2 {
+                        // Items and arm follow the camera; the charge belongs to the local player.
+                        let mut progress = g.hand_strength.scale(0.0, g.main_hand_attack_speed());
+                        g.native_hotbar_attack_indicator_progress(
+                            native_hooks::HotbarAttackIndicatorProgressCall {
+                                progress: &mut progress,
+                            },
+                        );
+                        let start = draws.len();
+                        hud_layout::hotbar_attack_indicator(
+                            wi,
+                            hi,
+                            inputs.right_handed,
+                            progress,
+                            &mut draws,
+                        );
+                        hud_layout::paint(batch, &g.gui.atlas, &draws[start..]);
+                    }
                 }
             });
             self.gui_layer(VanillaGuiLayer::Effects, &mut batch, &mut |g, batch| {
@@ -11457,7 +11493,7 @@ impl Game<'_> {
         let mut pack_inputs = if title {
             Default::default()
         } else {
-            self.shader_pack_inputs(camera, alpha as f32, &sky)
+            self.shader_pack_inputs(camera, eye.map_or(camera, |e| e.0), alpha as f32, &sky)
         };
         // Retain the existing additive particle stream; the ordered dragon emitter appends
         // the eyes and rays to it without changing their material routing.
