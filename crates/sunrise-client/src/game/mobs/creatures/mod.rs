@@ -6592,7 +6592,7 @@ impl Game<'_> {
             self.sweep_projectile_inside(&mut arrow);
             self.lava_mark_hurt(&mut arrow);
             let (aid, from, to) = (arrow.id, arrow.previous, arrow.position);
-            self.reinsert_bounced_arrow(arrow);
+            self.reinsert_continuing_projectile(arrow);
             self.entity_section_step(aid, from.components(), to.components());
         } else if save_lease.is_some() && self.creatures.projectiles.locate(arrow.join).is_none() {
             self.creatures
@@ -6804,7 +6804,7 @@ impl Game<'_> {
                 self.sweep_projectile_inside(&mut deflected);
                 self.lava_mark_hurt(&mut deflected);
                 let (pid, from, to) = (deflected.id, deflected.previous, deflected.position);
-                self.reinsert_bounced_arrow(deflected);
+                self.reinsert_continuing_projectile(deflected);
                 self.entity_section_step(pid, from.components(), to.components());
             }
             return Ok(());
