@@ -190,6 +190,7 @@ impl Game<'_> {
         self.inventory = vec![None; 36];
         self.offhand = None;
         self.armor = [None, None, None, None];
+        self.equipment = Default::default();
         self.craft_grid = vec![None; 9];
         self.craft_size = 2;
         self.remove_local_player_body();
@@ -389,6 +390,8 @@ impl Game<'_> {
             online_mode: false,
             levels: Vec::new(),
             level_players: HashMap::new(),
+            level_uuids: HashMap::new(),
+            level_entity_uuids: HashMap::new(),
             level_player_infos: HashMap::new(),
             level_player_names: HashMap::new(),
             level_player_textures: HashMap::new(),
@@ -484,6 +487,7 @@ impl Game<'_> {
         self.inventory = vec![None; 36];
         self.offhand = None;
         self.armor = [None, None, None, None];
+        self.equipment = Default::default();
         self.craft_grid = vec![None; 9];
         self.craft_size = 2;
         self.remove_local_player_body();
@@ -659,6 +663,8 @@ impl Game<'_> {
             online_mode: false,
             levels: Vec::new(),
             level_players: HashMap::new(),
+            level_uuids: HashMap::new(),
+            level_entity_uuids: HashMap::new(),
             level_player_infos: HashMap::new(),
             level_player_names: HashMap::new(),
             level_player_textures: HashMap::new(),
@@ -1013,6 +1019,8 @@ impl Game<'_> {
                 // The entity ids are the old world's; the new dimension's
                 // player entities re-map to their profiles on AddEntity.
                 r.level_players.clear();
+                r.level_uuids.clear();
+                r.level_entity_uuids.clear();
                 r.level_player_infos.clear();
                 r.level_player_names.clear();
                 r.level_player_textures.clear();
