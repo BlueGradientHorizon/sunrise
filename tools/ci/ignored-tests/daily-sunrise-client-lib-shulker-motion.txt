@@ -1,2 +1,0 @@
-# Daily row for #2682: a NoAI shulker in flowing water keeps zero motion and its loaded rotation.
-sunrise-client-lib mobs::shulker::saved_bytes_tests::a_noai_shulker_in_flowing_water_keeps_zero_motion lib daily resources

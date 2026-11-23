@@ -199,8 +199,9 @@ def main():
                         help='leave out the sync_randoms steps: the control in which their fields differ run to run')
     parser.add_argument('--groups-file', type=Path,
                         help='run these generated [name, ops] groups after the common setup instead of the corpus')
-    parser.add_argument('--record-shulker-motion', nargs='?', const=lab.ROOT / 'tools/witness/26.3/shulker_motion.json',
-                        type=Path, help='record the 26.3 shulker motion/yaw witness from VanillaCommandExecOracle only')
+    parser.add_argument('--record-shulker-motion', nargs='?',
+                        const=lab.LOCAL / 'witness' / lab.VERSION / 'shulker_motion' / 'shulker_motion.json',
+                        type=Path, help='record the shulker motion/yaw witness into .local from VanillaCommandExecOracle only')
     args = parser.parse_args()
     build = args.work_dir.resolve() if args.work_dir else lab.LOCAL / 'command-exec-parity'
     build.mkdir(parents=True, exist_ok=True)
@@ -614,8 +615,9 @@ def main():
             if 'expect_map' in op and row.get('messages') != [[[op['expect_map'], [None, False, False, False, False, False]]]]:
                 sys.exit(f'Java map prerequisite failed: {op}: {row}')
         if args.record_shulker_motion:
-            write_shulker_motion_witness(args.record_shulker_motion, reference, lock, jars['server'])
-            print(f'Recorded 26.3 shulker motion witness: {args.record_shulker_motion}')
+            write_shulker_motion_witness(args.record_shulker_motion, reference, lock, jars['server'],
+                                         script_path=script_path, oracle_path=oracle)
+            print(f'Recorded {lock["minecraft"]["version"]} shulker motion witness: {args.record_shulker_motion}')
             return
         print(f'Java reference: {len(reference)} records, fixture guards passed')
         return
@@ -925,8 +927,8 @@ def compare(v, r, comparison=None):
     return None
 
 
-def write_shulker_motion_witness(path, reference, lock, server_jar):
-    # Extract exact vanilla 26.3 Motion and Rotation SNBT + IEEE-754 bits from /data get records.
+def write_shulker_motion_witness(path, reference, lock, server_jar, script_path=None, oracle_path=None):
+    # Extract exact vanilla Motion and Rotation SNBT + IEEE-754 bits from /data get records.
     readings = {}
     prefix = ' has the following entity data: '
     for row in reference:
@@ -995,20 +997,51 @@ def write_shulker_motion_witness(path, reference, lock, server_jar):
         'ticks': [{'tick': tick, **sample(water_uid, tick)} for tick in range(want_water)],
     }
 
+    java_version_proc = subprocess.run(['java', '-version'], capture_output=True, text=True, check=True)
+    java_version = (java_version_proc.stderr or java_version_proc.stdout).strip().splitlines()[0]
+    command = 'python3 tools/test_shulker_motion_parity.py --record'
+    server_jar_sha256 = lab.digest(server_jar, 'sha256')
     witness = {
         'schema': 1,
         'minecraft': lock['minecraft']['version'],
         'oracle': 'VanillaCommandExecOracle',
         'group': corpus_module.SHULKER_MOTION_GROUP,
-        'command': 'python3 tools/test_command_exec_parity.py --record-shulker-motion',
-        'server_jar_sha256': lab.digest(server_jar, 'sha256'),
-        'java': subprocess.check_output(['java', '--version'], text=True).splitlines()[0],
+        'command': command,
+        'server_jar_sha256': server_jar_sha256,
+        'java': java_version,
         'loaded_cases': loaded_cases,
         'flowing_water_case': water_case,
     }
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(witness, indent=2) + '\n', encoding='utf-8')
+    oracle_file = Path(oracle_path) if oracle_path else lab.ROOT / 'mods/sunrise/src/test/java/dev/sunriselab/parity/VanillaCommandExecOracle.java'
+    input_hashes = {
+        'research-lock.json': lab.digest(lab.LOCK, 'sha256'),
+        'server.jar': server_jar_sha256,
+        oracle_file.relative_to(lab.ROOT).as_posix(): lab.digest(oracle_file, 'sha256'),
+        'tools/command_exec_corpus.py': lab.digest(lab.ROOT / 'tools/command_exec_corpus.py', 'sha256'),
+        'tools/test_command_exec_parity.py': lab.digest(lab.ROOT / 'tools/test_command_exec_parity.py', 'sha256'),
+    }
+    if script_path is not None and Path(script_path).is_file():
+        input_hashes['script.jsonl'] = lab.digest(Path(script_path), 'sha256')
+    lab.write_json(path.parent / 'meta.json', {
+        'game_version': lock['minecraft']['version'],
+        'java_major': lock['minecraft']['java_major'],
+        'java_version': java_version,
+        'harness': 'tools/test_shulker_motion_parity.py',
+        'oracle': oracle_file.relative_to(lab.ROOT).as_posix(),
+        'group': corpus_module.SHULKER_MOTION_GROUP,
+        'witness_env': 'SUNRISE_SHULKER_MOTION_WITNESS',
+        'command': command,
+        'input_hashes': input_hashes,
+        'outputs': {
+            path.name: {
+                'sha256': lab.digest(path, 'sha256'),
+                'bytes': path.stat().st_size,
+            },
+        },
+    })
 
 
 def render(record):

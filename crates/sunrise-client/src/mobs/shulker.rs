@@ -1454,11 +1454,6 @@ mod tests {
 mod saved_bytes_tests {
     use super::*;
 
-    const SHULKER_MOTION_WITNESS_26_3: &str = include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tools/witness/26.3/shulker_motion.json"
-    ));
-
     fn shulker_types() -> std::collections::HashMap<String, std::sync::Arc<crate::mobs::MobType>> {
         let mut kind = crate::mobs::sensor_scan_tests::kind();
         let k = std::sync::Arc::make_mut(&mut kind);
@@ -1468,7 +1463,22 @@ mod saved_bytes_tests {
     }
 
     fn shulker_motion_witness_26_3() -> serde_json::Value {
-        let value: serde_json::Value = serde_json::from_str(SHULKER_MOTION_WITNESS_26_3).unwrap();
+        let env_path = std::env::var("SUNRISE_SHULKER_MOTION_WITNESS").expect(
+            "SUNRISE_SHULKER_MOTION_WITNESS is unset; run through tools/test_shulker_motion_parity.py, which records the witness",
+        );
+        let path = std::path::PathBuf::from(&env_path);
+        let path = if path.is_dir() {
+            path.join("shulker_motion.json")
+        } else {
+            path
+        };
+        let raw = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+            panic!(
+                "failed to read shulker motion witness at {} ({err}); run through tools/test_shulker_motion_parity.py",
+                path.display()
+            )
+        });
+        let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
         assert_eq!(value["minecraft"].as_str(), Some("26.3"));
         value
     }
@@ -1497,8 +1507,9 @@ mod saved_bytes_tests {
         [m.yaw.to_bits(), m.head_pitch.to_bits()]
     }
 
-    /// Vanilla 26.3 witness (`tools/witness/26.3/shulker_motion.json`): a loaded shulker matches vanilla 26.3 motion and rotation bits.
+    /// Vanilla 26.3 witness recorded by `tools/test_shulker_motion_parity.py`: a loaded shulker matches vanilla 26.3 motion and rotation bits.
     #[test]
+    #[ignore = "run by tools/test_shulker_motion_parity.py"]
     fn a_loaded_shulker_has_no_motion_and_keeps_its_yaw() {
         use crate::entity_nbt::mob_from_nbt;
         let witness = shulker_motion_witness_26_3();
@@ -1524,9 +1535,9 @@ mod saved_bytes_tests {
         }
     }
 
-    /// Vanilla 26.3 witness (`tools/witness/26.3/shulker_motion.json`): a NoAI shulker in flowing water matches vanilla 26.3 motion and rotation bits on every tick.
+    /// Vanilla 26.3 witness recorded by `tools/test_shulker_motion_parity.py`: a NoAI shulker in flowing water matches vanilla 26.3 motion and rotation bits on every tick.
     #[test]
-    #[ignore = "daily"]
+    #[ignore = "run by tools/test_shulker_motion_parity.py"]
     fn a_noai_shulker_in_flowing_water_keeps_zero_motion() {
         use std::sync::Arc;
         use sunrise_core::nbt::Tag;
