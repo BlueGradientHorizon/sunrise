@@ -1387,7 +1387,8 @@ impl Renderer {
             native_translucent_quads,
             banner_pattern_quads,
             glint_only_quads,
-            text_solid_quads,
+            text_offset_solid_quads,
+            text_normal_solid_quads,
         ] = self.entity_batch.update(
             entities,
             frame.additive,
@@ -1401,6 +1402,7 @@ impl Renderer {
         self.entity_order.prepare(entities, ordinary_skin, oit_on);
         let entity_quads = entity_quads + posed / 4;
         let weather_quads = frame.weather.len() as u32 / 4;
+        let text_solid_quads = text_offset_solid_quads + text_normal_solid_quads;
         let world_quads = entity_quads
             + text_quads
             + crumbling_quads
@@ -2876,14 +2878,37 @@ impl Renderer {
             }
             if text_solid_quads > 0 {
                 pass.stage(self.own_timing.as_mut(), "entity text solid");
-                pass.set_pipeline(&self.text_polygon_offset_pipeline);
-                self.bind_world_text(&mut pass, true, false);
                 pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
-                pass.draw_indexed(
-                    0..text_solid_quads * 6,
-                    ((world_quads - text_solid_quads) * 4) as i32,
-                    0..1,
-                );
+                // Draw glowing outline copies with NORMAL depth before coplanar
+                // POLYGON_OFFSET sign glyph faces and inline sprites.
+                let marked = light_marks(self.output.frame.format, self.hdr.is_some());
+                for (index, (pipeline, count, first)) in [
+                    (
+                        &self.world_text_pipeline,
+                        text_normal_solid_quads,
+                        world_quads - text_normal_solid_quads,
+                    ),
+                    (
+                        &self.text_polygon_offset_pipeline,
+                        text_offset_solid_quads,
+                        world_quads - text_solid_quads,
+                    ),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    if count == 0 {
+                        continue;
+                    }
+                    pass.set_pipeline(pipeline);
+                    self.bind_world_text(&mut pass, index == 1, false);
+                    pass.draw_indexed(0..count * 6, (first * 4) as i32, 0..1);
+                    if marked {
+                        pass.set_pipeline(&self.text_mark_pipelines[index]);
+                        pass.set_bind_group(0, &self.entity_group, &[]);
+                        pass.draw_indexed(0..count * 6, (first * 4) as i32, 0..1);
+                    }
+                }
                 pass.set_bind_group(0, &self.group, &[]);
             }
             if self.explicit_opaque_particles.any() {
