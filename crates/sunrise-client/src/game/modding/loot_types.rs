@@ -1,4 +1,3 @@
-// game-module-visibility: pub(crate)
 //! Direct, owner-scoped adapters for the two loot map-codec registries.
 use super::api_values::{TryIntoApi, TryIntoEngine};
 #[cfg(test)]
@@ -37,12 +36,6 @@ impl Registry for Codecs {
         function: bool,
     ) -> Result<Vec<String>, String> {
         let data = LootEntryData::new(data.clone())?;
-        // Check the exact same value layout even for a native codec: no native-only data.
-        let mut writer = mod_api::wire::Writer::new();
-        writer.put(&data);
-        if let Some(error) = writer.error() {
-            return Err(format!("LootEntryData cannot cross Wire: {error}"));
-        }
         if function {
             let codec = self
                 .functions
