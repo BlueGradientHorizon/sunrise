@@ -43,6 +43,7 @@ fn falling_impacts_wear_the_helmet_before_normal_armor_and_reduction() {
     game.lan_acting = Some(1);
     let position = Vec3::new(4.5, 100.0, 4.5);
     game.falling.push(FallingBlock {
+        size_answer: None,
         id: 71,
         state: game
             .pack

@@ -1387,6 +1387,7 @@ impl Game<'_> {
         // `EntityEvent.Size` for the sizes that changed outside the mob ticks (spawns,
         // commands, a player's interaction), before the ticks move by them.
         self.native_mob_sizes();
+        self.native_entity_sizes();
         // Hit-driven deaths already ran inside the hurt. Handle deaths from other
         // state changes before the mob ticks.
         let killed: Vec<Mob> = self
@@ -1705,6 +1706,7 @@ impl Game<'_> {
         laps.lap("creature_outbox");
         // And for the sizes the ticks changed (a pose, a baby grown, a scale).
         self.native_mob_sizes();
+        self.native_entity_sizes();
         Ok(())
     }
 

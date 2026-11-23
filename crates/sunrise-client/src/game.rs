@@ -2963,10 +2963,25 @@ struct FallingBlock {
     damage: sunrise_client::falling_block::Damage,
     /// The UUID and compound it was loaded with, kept while it moves.
     saved: Option<Box<([i32; 4], sunrise_core::nbt::Tag)>>,
+    /// What `entity_size` answered at its last size refresh (`EntityEvent.Size`): its box takes
+    /// the answer while it holds for its vanilla size.
+    pub(super) size_answer: Option<sunrise_client::pose::SizeAnswer>,
 }
 sunrise_mod_runtime::impl_attachment_lifetime!(FallingBlock);
 
 impl FallingBlock {
+    /// `EntityType.FALLING_BLOCK.getDimensions()`: width, height and eye height.
+    const DIMENSIONS: [f32; 3] = [0.98, 0.98, 0.833_000_06];
+    /// Its box (`falling_block::bounds`), or its `entity_size` answer's.
+    fn bounds(&self) -> sunrise_core::geometry::Aabb {
+        let vanilla = sunrise_client::falling_block::bounds(self.position);
+        sunrise_client::pose::SizeAnswer::sized_box(
+            self.size_answer,
+            Self::DIMENSIONS,
+            self.position,
+            vanilla,
+        )
+    }
     /// Where `FallingBlockRenderer` draws the block's model corner, `alpha`
     /// into the tick: centred on the entity, then moved by `offset`, the
     /// block's random model offset (`ModelBlockRenderer.tesselateBlock`:
@@ -6320,6 +6335,7 @@ impl Game<'_> {
                     );
                     self.next_entity += 1;
                     self.falling.push(FallingBlock {
+                        size_answer: None,
                         attachment_lifetime: Default::default(),
                         rotation: [0.0, 0.0],
                         join: Default::default(),

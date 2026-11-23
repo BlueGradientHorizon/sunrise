@@ -26,7 +26,7 @@ impl super::commands::OtherEntity {
         ) {
             return None;
         }
-        Some(if let Some(settings) = self.interaction {
+        let vanilla = if let Some(settings) = self.interaction {
             let mut interaction = super::interactions::RemoteInteraction::new([
                 self.position.x,
                 self.position.y,
@@ -39,7 +39,27 @@ impl super::commands::OtherEntity {
         } else {
             // Display and Marker have zero-sized physical dimensions.
             sunrise_core::geometry::Aabb::new(self.position, self.position)
-        })
+        };
+        Some(sunrise_client::pose::SizeAnswer::sized_box(
+            self.size_answer,
+            self.vanilla_dimensions(),
+            self.position,
+            vanilla,
+        ))
+    }
+
+    /// `Entity.getDimensions(pose)` of an entity this list holds: an interaction's
+    /// `EntityDimensions.scalable(width, height)`, else its type's (a display or a marker
+    /// has none; an eye of ender is 0.25 by 0.25, its eyes at 0.2125). None for a kind whose
+    /// box doesn't follow its dimensions (a leash knot).
+    pub(in crate::game) fn vanilla_dimensions(&self) -> [f32; 3] {
+        if let Some(settings) = self.interaction {
+            return [settings.width, settings.height, settings.height * 0.85];
+        }
+        match self.kind.as_str() {
+            "minecraft:eye_of_ender" => [0.25, 0.25, 0.2125],
+            _ => [0.0; 3],
+        }
     }
 }
 
@@ -1075,6 +1095,7 @@ mod tests {
                 );
                 drop(seen);
                 game.tnts.push(super::super::tnt::PrimedTnt {
+                    size_answer: None,
                     attachment_lifetime: Default::default(),
                     rotation: [0.0, 0.0],
                     join: Default::default(),
