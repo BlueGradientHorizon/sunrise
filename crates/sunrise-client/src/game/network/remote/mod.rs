@@ -2611,6 +2611,9 @@ pub(crate) mod tests {
     mod spear_jab_tests {
         include!("spear_jab_tests.rs");
     }
+    mod client_admission_tests {
+        include!("client_admission_tests.rs");
+    }
     mod tab_publication_tests {
         include!("tab_publication_tests.rs");
     }
