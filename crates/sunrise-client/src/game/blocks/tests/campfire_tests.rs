@@ -29,6 +29,14 @@ fn campfire_game<'a>(pos: [i32; 3], resources: &'a mut Option<Arc<Resources>>) -
         .default_state("minecraft:campfire")
         .unwrap();
     game.world.set(pos[0], pos[1], pos[2], state).unwrap();
+    // A FULL read of this hand-made column (the advancement's block read) finds it ready.
+    std::sync::Arc::make_mut(
+        game.world
+            .chunks
+            .get_mut(&(pos[0] >> 4, pos[2] >> 4))
+            .unwrap(),
+    )
+    .lit = true;
     game.world.block_entities.insert(
         (pos[0], pos[1], pos[2]),
         BlockEntity::Campfire(Box::default()),
