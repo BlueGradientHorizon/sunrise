@@ -102,12 +102,12 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             ) {
                 return Err("tooltip_sprites drew nothing".into());
             }
-            let chunks = batch.vertices.chunks_exact(6);
-            if !chunks.remainder().is_empty() {
+            let (quads, rest) = batch.vertices.as_chunks::<6>();
+            if !rest.is_empty() {
                 return Err(format!("non-quad vertex count: {}", batch.vertices.len()).into());
             }
             let mut draws = Vec::new();
-            for quad in chunks {
+            for quad in quads {
                 let u0 = quad[0].uv[0].to_bits();
                 let key = if u0 == rects[0].u0.to_bits() {
                     &sprites[0]
