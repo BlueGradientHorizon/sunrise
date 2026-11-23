@@ -9,8 +9,10 @@ fixtures. Each of those is checked by path as well. Every check runs, so one run
 exit status is 1 if any of them failed. The launcher is a separate workspace with its own check.
 """
 
+import os
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -20,8 +22,8 @@ TREES = ("crates/sunrise-mod-api/src", "crates/sunrise-mod-vocab/src", "crates/s
 DISCOVERED = ("crates/sunrise-mod-api-gen/dispatch-tests/src/fixtures/*.rs",
               "crates/sunrise-mod-api-gen/dispatch-tests/src/fixtures/*/*.rs")
 RUSTFMT = ["rustfmt", "--edition", "2024", "--check", "--config", "skip_children=true"]
-# Windows limits a command line to 32,767 characters; a chunk of paths stays well under it.
-CHUNK = 200
+# Windows limits a command line to 32,767 characters; Unix handles much larger argv buffers.
+CHUNK = 200 if os.name == "nt" else 500
 
 
 def commands(root: Path) -> list[list[str]]:
@@ -32,7 +34,13 @@ def commands(root: Path) -> list[list[str]]:
 
 
 def main() -> int:
-    failed = [command for command in commands(ROOT) if subprocess.run(command, cwd=ROOT).returncode != 0]
+    all_commands = commands(ROOT)
+    # Run formatting checks in parallel across available cores, overlapping cargo fmt and rustfmt chunks.
+    max_workers = min(len(all_commands), os.cpu_count() or 4)
+    # Using pool.map preserves input command order for results.
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        exit_codes = list(pool.map(lambda cmd: subprocess.run(cmd, cwd=ROOT).returncode, all_commands))
+    failed = [cmd for cmd, code in zip(all_commands, exit_codes) if code != 0]
     if failed:
         print(f"format_scan: {len(failed)} formatting check(s) failed; the differences are above.", file=sys.stderr)
     return 1 if failed else 0
