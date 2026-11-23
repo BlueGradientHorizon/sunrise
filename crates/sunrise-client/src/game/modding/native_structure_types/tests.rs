@@ -1324,9 +1324,11 @@ fn start_panic_skips_only_that_callback_without_disabling_independent_type() {
             let facts = serde_json::json!({
                 "states": [
                     ["air", true, false, "", {"id":"minecraft:air","properties":{}}],
-                    ["stone", false, false, "", {"id":"minecraft:stone","properties":{}}]
+                    ["stone", false, false, "", {"id":"minecraft:stone","properties":{}}],
+                    ["cave_air", true, false, "", {"id":"minecraft:cave_air","properties":{}}],
+                    ["void_air", true, false, "", {"id":"minecraft:void_air","properties":{}}]
                 ],
-                "defaults":{"minecraft:air":0,"minecraft:stone":1}
+                "defaults":{"minecraft:air":0,"minecraft:stone":1,"minecraft:cave_air":2,"minecraft:void_air":3}
             });
             let registry = sunrise_world::registry::BlockRegistry::from_facts_json(
                 facts.to_string().as_bytes(),
@@ -2194,9 +2196,11 @@ fn piece_and_after_place_panics_poison_only_their_operation_with_toast_notices()
             let facts = serde_json::json!({
                 "states": [
                     ["air", true, false, "", {"id":"minecraft:air","properties":{}}],
-                    ["stone", false, false, "", {"id":"minecraft:stone","properties":{}}]
+                    ["stone", false, false, "", {"id":"minecraft:stone","properties":{}}],
+                    ["cave_air", true, false, "", {"id":"minecraft:cave_air","properties":{}}],
+                    ["void_air", true, false, "", {"id":"minecraft:void_air","properties":{}}]
                 ],
-                "defaults":{"minecraft:air":0,"minecraft:stone":1}
+                "defaults":{"minecraft:air":0,"minecraft:stone":1,"minecraft:cave_air":2,"minecraft:void_air":3}
             });
             let block_registry = sunrise_world::registry::BlockRegistry::from_facts_json(
                 facts.to_string().as_bytes(),

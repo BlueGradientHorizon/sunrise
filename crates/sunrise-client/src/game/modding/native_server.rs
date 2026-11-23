@@ -467,18 +467,14 @@ pub(super) fn register_command_nodes(
                     .unwrap_or(0) as u8;
                 dispatcher.requires(id, level);
             }
-            // For display merges, a shared node keeps the server's parser, permissions
-            // and redirect. Only its missing children (and executable marker) are added.
-            if node["executable"] == true && dispatcher.nodes[id].command.is_none() {
+            if node["executable"] == true {
                 dispatcher.executes(id, handler);
-                if added {
-                    dispatcher.requires_execution(
-                        id,
-                        node["execution_level"]
-                            .as_u64()
-                            .expect("runnable usage level") as u8,
-                    );
-                }
+                dispatcher.requires_execution(
+                    id,
+                    node["execution_level"]
+                        .as_u64()
+                        .expect("runnable usage level") as u8,
+                );
                 on_executable(path, id);
             }
             if let Some(children) = node["children"].as_object() {
