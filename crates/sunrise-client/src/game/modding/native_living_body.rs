@@ -226,6 +226,17 @@ impl Game<'_> {
             _ => None,
         }
     }
+    /// The entity id `who` names as a hit's causing entity: a mob's own, the player in place's
+    /// for `Who::Player`; 0 for none.
+    pub(in crate::game) fn causer_id(&self, who: Option<sunrise_client::mobs::Who>) -> i32 {
+        match who {
+            Some(sunrise_client::mobs::Who::Mob(id)) => id as i32,
+            Some(sunrise_client::mobs::Who::Player) => {
+                self.player.as_ref().map_or(0, |p| p.entity_id)
+            }
+            None => 0,
+        }
+    }
     /// The body a living target names now, where its reads are: the player in place's own
     /// fields, a guest's hub record, a mob that is not removed, an armor stand or the dragon.
     pub(super) fn native_living_body(&self, target: Target) -> Option<LivingBody<'_>> {
