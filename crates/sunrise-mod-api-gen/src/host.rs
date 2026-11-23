@@ -119,6 +119,7 @@ pub(super) const GOAL_VIEW_READS: &[&str] = &[
     "mob_navigation_speed",
     "mob_pathfinding_malus",
     "mob_is_aggressive",
+    "mob_is_in_sitting_pose",
     "mob_persistence_required",
     "mob_requires_custom_persistence",
     "mob_no_ai",
@@ -165,7 +166,7 @@ pub(super) const AREAS_OUTPUT: &str = "mod_api_host_areas.rs";
 
 /// The traits an area file may hold, each a part of one of the unions.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
-enum Tier {
+pub(crate) enum Tier {
     Host,
     ServerHost,
     ClientHost,
@@ -221,10 +222,10 @@ impl Tier {
 }
 
 /// A method of an area trait, as the file declares it.
-struct Entry {
-    name: String,
-    sig: syn::Signature,
-    attrs: Vec<syn::Attribute>,
+pub(crate) struct Entry {
+    pub(crate) name: String,
+    pub(crate) sig: syn::Signature,
+    pub(crate) attrs: Vec<syn::Attribute>,
 }
 
 impl Entry {
@@ -237,10 +238,10 @@ impl Entry {
 }
 
 /// One area file: its traits by tier.
-struct Area {
-    stem: String,
-    camel: String,
-    tiers: BTreeMap<Tier, Vec<Entry>>,
+pub(crate) struct Area {
+    pub(crate) stem: String,
+    pub(crate) camel: String,
+    pub(crate) tiers: BTreeMap<Tier, Vec<Entry>>,
     /// The backend tiers the game answers from a borrowed view of its read-only tables, not
     /// from `Game`, declared by `#[table_backend("path")]` on the trait: the view carries the
     /// reads and implements the trait once, and `Game` forwards to it.
@@ -298,6 +299,7 @@ fn area_tiers(camel: &str, file: syn::File) -> Result<BTreeMap<Tier, Vec<Entry>>
                         | "Levels"
                         | "Messages"
                         | "Players"
+                        | "Profiles"
                         | "RuntimeLevels"
                         | "RenderAssets"
                         | "InstanceGroups"
@@ -352,7 +354,7 @@ fn table_backends(camel: &str, file: &syn::File) -> Result<BTreeMap<Tier, String
 }
 
 /// The area files, `base` first and then by name, as the catalog's are.
-fn load(root: &Path) -> Result<Vec<Area>, String> {
+pub(crate) fn load(root: &Path) -> Result<Vec<Area>, String> {
     let dir = root.join(DIRECTORY);
     let mut areas = Vec::new();
     for stem in catalog::Catalog::modules(&dir)? {
@@ -1402,14 +1404,14 @@ mod tests {
         assert!(code.contains("client_backend_mut_of(host)"));
         // A command result refuses with an unsuccessful run and no feedback.
         let command = entry(
-            "fn entity_run_command_with_output(&mut self, entity: EntityRef, line: &str, level: PermissionLevel) -> CommandResult;",
+            "fn entity_run_command_with_output(&mut self, entity: EntityRef, line: &str, level: PermissionLevel, suppress_output: bool) -> CommandResult;",
         );
         let (handle, code) = handle_method(&command, Tier::BackendMut, &handles)
             .unwrap()
             .unwrap();
         assert_eq!(handle, "EntityRef");
         assert!(code.contains(
-            "backend_mut_of(host).map(|backend| backend.entity_run_command_with_output(self, line, level)).unwrap_or_default()"
+            "backend_mut_of(host).map(|backend| backend.entity_run_command_with_output(self, line, level, suppress_output)).unwrap_or_default()"
         ));
         // A `Result` method refuses with its error's `NoBackend` value on a host without a game.
         let tried = entry("fn level_attempt(&mut self, level: LevelRef) -> Result<u8, Refused>;");

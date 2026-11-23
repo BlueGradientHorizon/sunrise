@@ -172,7 +172,7 @@ which is the same place NeoForge's item components live. Reads are on `host` (`h
 | `getCreatorModId(registries, stack)` | Covered | `ItemPart::creator_mod_id` (`hooks/creator_mod_id.rs`), read by `ItemResource::creator_mod_id` | Both sides, from the stack alone. The answer arrives as the item id's namespace; a part sets another mod or none. An item without a part costs one table lookup. |
 | `onAnimalArmorTick(stack, level, mob)` | Missing | — | No per-item animal-armour tick. |
 | `damageItem(stack, amount, entity, onBreak)` | Covered | `ItemPart::damage_item` (`hooks/damage_item.rs`) | Runs on the server for the parts of the worn item, after Unbreaking, on every wear path (a player's tools, armour and shield, a dispenser's tool, a mob's armour). The part gets the stack, the wearing or using entity (`None` for a dispenser's tool) and the amount about to be lost, and changes it (0 or less leaves the item whole), cancels the wear, or sets `break_now` to break the item whatever durability is left, the Sunrise form of calling `onBroken`. |
-| `onDestroyed(itemEntity, source)` | Missing | — | `item_despawn` is lifetime removal, not damage destruction. |
+| `onDestroyed(itemEntity, source)` | Covered | `ItemPart::item_destroyed` (`hooks/item_destroyed.rs`) | Runs on the server inside a transaction when a dropped item entity reaches zero health from damage (fire, lava, cactus, explosion, `/damage`, or block-contact hurt), before the entity is discarded. Receives `stack`, live `item: ItemEntityRef`, `damage_type`, and mutable `drops` (pre-populated with vanilla `minecraft:bundle_contents` / `minecraft:container` spills); validated drops spawn at the entity's position (`ItemUtils.onContainerDestroyed`). A panic or a refused commit rolls back host writes and falls back to the vanilla drop baseline. `item_despawn` remains lifetime removal. |
 | `isGazeDisguise(stack, player, target)` | Missing | — | No gaze-disguise query. |
 | `canWalkOnPowderedSnow(stack, entity)` | Missing | — | Powder-snow walking is engine-owned. |
 | `isDamageable(stack)` | Covered | `ItemResource::damageable(host)` | Reads the effective components: `minecraft:max_damage` and `minecraft:damage` present, `minecraft:unbreakable` absent. |
@@ -272,13 +272,14 @@ are reachable through `BlockEntityRef`.
 Fluid type facts are one record, `FluidTypeProperties` (`crates/sunrise-mod-vocab/src/block/fluid_states.rs`), read with
 `host.fluid_states().type_properties(key)`. They are static per fluid, not per position or block, and they are
 derived today: the record describes water's and lava's families and gives every other fluid inert values
-(`crates/sunrise-client/src/game/modding/native_block_states.rs`). A mod's own fluid declares a sprite and tint,
-not its type properties, so "partial" below means the vanilla answer is readable but a mod fluid cannot set it.
+(`crates/sunrise-client/src/game/modding/native_block_states.rs`). A mod's own fluid declares a sprite and tint
+and its `temperature`, `density` and `viscosity`, but none of the other type properties, so "partial" below means
+the vanilla answer is readable but a mod fluid cannot set it.
 
 | Method | Verdict | Sunrise | Notes |
 | --- | --- | --- | --- |
 | `getExplosionResistance(state, level, pos, explosion)` | Missing | — | No fluid explosion resistance. |
-| `getFluidType()` | Partial | `host.fluid_states().type_properties` | Reads water's and lava's type record; a mod's own fluid cannot declare one and reads as inert. |
+| `getFluidType()` | Partial | `host.fluid_states().type_properties` | Reads water's and lava's type record. A mod's own fluid states its `temperature`, `density` and `viscosity` in its fluid file; the rest of its record reads as inert. |
 | `canConvertToSource(state, level, pos)` | Partial | `create_fluid_source` (`hooks/create_fluid_source.rs`) | Global `CreateFluidSourceEvent`; not per-fluid and not a Part. |
 | `supportsBoating(state, boat)` | Partial | `FluidTypeProperties.supports_boating` | Static, and only a water-family fluid supports boating; a mod fluid cannot opt in. |
 | `getBlockPathType(state, level, pos, mob, canFloat)` | Partial | `BlockPart::is_pathfindable` (`hooks/is_pathfindable.rs`) | Block-level path computation type only; no fluid `PathType`. |
@@ -371,7 +372,7 @@ Sunrise, as #3425 asks.
 | NeoForge | Verdict | Sunrise route |
 | --- | --- | --- |
 | `ChunkEvent.Load` on the client (`isNewChunk` always false) | **Covered** | `client_chunk_load(dimension, chunk)`, once per adopted chunk packet after the column and its block entities are in the client level; a re-sent column is told again. |
-| `ChunkEvent.Unload` on the client | **Covered, wider** | `client_chunk_unload(dimension, chunk)`, before the column's data is freed, on every route a column leaves by: the forget packet (NeoForge's only route), the view centre moving, the view radius shrinking and the client level going. |
+| `ChunkEvent.Unload` on the client | **Covered, wider** | `client_chunk_unload(dimension, chunk)`, before the column's data is freed, on every route a column's data is freed by: the forget packet (NeoForge's only route), a newer column taking the slot of one out of view, the view radius shrinking and the client level going. The view centre moving away hides a column without a hook and shows it again without `client_chunk_load`, as `ClientChunkCache` keeps it in its slot. |
 
 Both are client-only, so the server's `chunk_load` and `chunk_unload` listeners are not called on a client. An
 integrated world's own chunks are told only through the server hooks. Inside a held column, NeoForge posts no

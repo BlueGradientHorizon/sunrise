@@ -734,6 +734,31 @@ struct FluidFile {
     sprite: Option<String>,
     tint: Option<u32>,
     world: Option<WorldFluid>,
+    temperature: Option<i32>,
+    density: Option<i32>,
+    viscosity: Option<i32>,
+}
+
+/// A fluid's `FluidType` numbers, which mods read for one another's fluids: NeoForge's
+/// `FluidType.getTemperature`, `getDensity` and `getViscosity`. Each defaults to
+/// `FluidType.Properties`' own, which are water's.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FluidMeasures {
+    /// How hot it is, room temperature in kelvin by default: 300.
+    pub temperature: i32,
+    /// How dense it is, water's kg/m³ by default: 1000. Below 0 is lighter than air.
+    pub density: i32,
+    /// How thick it is, 0 or more, water's by default: 1000.
+    pub viscosity: i32,
+}
+impl Default for FluidMeasures {
+    fn default() -> Self {
+        Self {
+            temperature: 300,
+            density: 1000,
+            viscosity: 1000,
+        }
+    }
 }
 
 /// What makes a fluid exist in the world: a block holding it, as `minecraft:water`'s does, and
@@ -782,8 +807,8 @@ impl WorldFluid {
 }
 
 /// How a fluid the mod names looks on the client (`data/<id>/sunrise/fluid/`), as
-/// NeoForge's `IClientFluidTypeExtensions`: `getStillTexture` and `getTintColor`.
-/// The fluid needs no block, so it can be a fluid only a tank holds.
+/// NeoForge's `IClientFluidTypeExtensions`: `getStillTexture` and `getTintColor`, and its
+/// [`FluidMeasures`]. The fluid needs no block, so it can be a fluid only a tank holds.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FluidLook {
     /// `<mod id>:<path>`.
@@ -794,6 +819,8 @@ pub struct FluidLook {
     pub tint: Option<u32>,
     /// How it exists in the world; none for a fluid only a tank holds.
     pub world: Option<WorldFluid>,
+    /// Its temperature, density and viscosity.
+    pub measures: FluidMeasures,
 }
 impl FluidLook {
     /// The registry name of its flowing form: `<namespace>:flowing_<path>`.
@@ -1882,11 +1909,21 @@ impl Content {
             if let Some(world) = &file.world {
                 world.check().map_err(|e| format!("{name}: world: {e}"))?;
             }
+            // `FluidType.Properties.viscosity` throws for a negative one; the others take any.
+            if file.viscosity.is_some_and(|viscosity| viscosity < 0) {
+                return Err(format!("{name}: viscosity is never negative"));
+            }
+            let defaults = FluidMeasures::default();
             let look = FluidLook {
                 id: fluid,
                 sprite: file.sprite,
                 tint: file.tint,
                 world: file.world,
+                measures: FluidMeasures {
+                    temperature: file.temperature.unwrap_or(defaults.temperature),
+                    density: file.density.unwrap_or(defaults.density),
+                    viscosity: file.viscosity.unwrap_or(defaults.viscosity),
+                },
             };
             if self.fluids.iter().any(|known| {
                 known.id == look.id
@@ -1988,99 +2025,191 @@ impl Content {
             let source = format!("{name} ({menu})");
             let file: MenuType =
                 serde_json::from_slice(&bytes).map_err(|e| format!("{source}: {e}"))?;
-            let total_slots = usize::from(file.slots) + if file.player_inventory { 36 } else { 0 };
-            if total_slots > usize::from(MAX_MENU_SLOTS) {
-                return Err(format!(
-                    "{source}: total menu slots ({total_slots}) exceed {MAX_MENU_SLOTS}"
-                ));
-            }
-            if let Some(limits) = &file.owned_slots
-                && (limits.len() != usize::from(file.slots)
-                    || limits.iter().any(|limit| !(1..=99).contains(limit)))
-            {
-                return Err(format!(
-                    "{name} ({menu}): owned_slots must give one maximum in 1..=99 per container slot"
-                ));
-            }
-            if file.owned_slots.is_some() && (!file.results.is_empty() || file.crafting.is_some()) {
-                return Err(format!(
-                    "{source}: owned_slots cannot be combined with results or crafting"
-                ));
-            }
-            let mut seen = BTreeSet::new();
-            for &r in &file.results {
-                if r >= file.slots {
-                    return Err(format!(
-                        "{source}: result slot {r} is outside the {} container slots",
-                        file.slots
-                    ));
-                }
-                if !seen.insert(r) {
-                    return Err(format!("{source}: result {r} is listed twice"));
-                }
-            }
-            for &input in &file.inputs {
-                if input >= file.slots {
-                    return Err(format!(
-                        "{source}: input {input} is outside the {} container slots",
-                        file.slots
-                    ));
-                }
-                if !seen.insert(input) {
-                    return Err(format!(
-                        "{source}: input {input} is listed twice or is a result"
-                    ));
-                }
-            }
-            if let Some(c) = file.crafting {
-                let end = u32::from(c.grid) + u32::from(c.size) * u32::from(c.size);
-                if !matches!(c.size, 2 | 3) {
-                    return Err(format!("{source}: crafting size is 2 or 3"));
-                }
-                if end > u32::from(file.slots) || c.result >= file.slots {
-                    return Err(format!(
-                        "{source}: crafting grid {}..{end} and result slot {} must be within the {} container slots",
-                        c.grid, c.result, file.slots
-                    ));
-                }
-                if (u32::from(c.grid)..end).contains(&u32::from(c.result)) {
-                    return Err(format!("{source}: the crafting result is in its grid"));
-                }
-                let is_crafting_slot =
-                    |&s: &u16| s == c.result || (u32::from(c.grid)..end).contains(&u32::from(s));
-                if file.results.iter().any(is_crafting_slot) {
-                    return Err(format!(
-                        "{source}: results lists a crafting slot (the result is take-only already)"
-                    ));
-                }
-                if file.inputs.iter().any(is_crafting_slot) {
-                    return Err(format!("{source}: inputs lists a crafting slot"));
-                }
-            }
-            if let Some(l) = file.links {
-                let linked = l.range();
-                if l.count == 0 || linked.end > u32::from(file.slots) {
-                    return Err(format!(
-                        "{source}: linked slots {linked:?} must be nonempty and within the {} container slots",
-                        file.slots
-                    ));
-                }
-                if file.results.iter().any(|&r| linked.contains(&u32::from(r))) {
-                    return Err(format!("{source}: results lists a linked slot"));
-                }
-                if let Some(c) = file.crafting {
-                    let end = u32::from(c.grid) + u32::from(c.size) * u32::from(c.size);
-                    if linked.contains(&u32::from(c.result))
-                        || (u32::from(c.grid)..end).any(|s| linked.contains(&s))
-                    {
-                        return Err(format!("{source}: links overlap the crafting slots"));
-                    }
-                }
-            }
+            validate_menu_type(&file).map_err(|reason| format!("{source}: {reason}"))?;
             self.menu_types.push(MenuType { id: menu, ..file });
         }
         Ok(())
     }
+}
+
+/// Structured refusal kind for validating a mod's `menu/<name>.json` declaration.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum MenuTypeRefusal {
+    TotalSlotsExceeded {
+        total_slots: usize,
+    },
+    OwnedSlotsInvalidLimits,
+    OwnedSlotsWithCrafting,
+    ResultOutOfRange {
+        slot: u16,
+        slots: u16,
+    },
+    DuplicateResult(u16),
+    InputOutOfRange {
+        slot: u16,
+        slots: u16,
+    },
+    DuplicateOrResultInput(u16),
+    CraftingInvalidSize,
+    CraftingOutOfRange {
+        grid: u16,
+        end: u32,
+        result: u16,
+        slots: u16,
+    },
+    CraftingResultInGrid,
+    ResultsListCraftingSlot,
+    InputsListCraftingSlot,
+    LinksOutOfRange {
+        range: std::ops::Range<u32>,
+        slots: u16,
+    },
+    ResultsListLinkedSlot,
+    LinksOverlapCrafting,
+}
+
+impl std::fmt::Display for MenuTypeRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TotalSlotsExceeded { total_slots } => {
+                write!(
+                    f,
+                    "total menu slots ({total_slots}) exceed {MAX_MENU_SLOTS}"
+                )
+            }
+            Self::OwnedSlotsInvalidLimits => {
+                write!(
+                    f,
+                    "owned_slots must give one maximum in 1..=99 per container slot"
+                )
+            }
+            Self::OwnedSlotsWithCrafting => {
+                write!(f, "owned_slots cannot be combined with crafting")
+            }
+            Self::ResultOutOfRange { slot, slots } => {
+                write!(
+                    f,
+                    "result slot {slot} is outside the {slots} container slots"
+                )
+            }
+            Self::DuplicateResult(slot) => write!(f, "result {slot} is listed twice"),
+            Self::InputOutOfRange { slot, slots } => {
+                write!(f, "input {slot} is outside the {slots} container slots")
+            }
+            Self::DuplicateOrResultInput(slot) => {
+                write!(f, "input {slot} is listed twice or is a result")
+            }
+            Self::CraftingInvalidSize => write!(f, "crafting size is 2 or 3"),
+            Self::CraftingOutOfRange {
+                grid,
+                end,
+                result,
+                slots,
+            } => write!(
+                f,
+                "crafting grid {grid}..{end} and result slot {result} must be within the {slots} container slots"
+            ),
+            Self::CraftingResultInGrid => write!(f, "the crafting result is in its grid"),
+            Self::ResultsListCraftingSlot => {
+                write!(
+                    f,
+                    "results lists a crafting slot (the result is take-only already)"
+                )
+            }
+            Self::InputsListCraftingSlot => write!(f, "inputs lists a crafting slot"),
+            Self::LinksOutOfRange { range, slots } => write!(
+                f,
+                "linked slots {range:?} must be nonempty and within the {slots} container slots"
+            ),
+            Self::ResultsListLinkedSlot => write!(f, "results lists a linked slot"),
+            Self::LinksOverlapCrafting => write!(f, "links overlap the crafting slots"),
+        }
+    }
+}
+
+pub(crate) fn validate_menu_type(file: &MenuType) -> Result<(), MenuTypeRefusal> {
+    let total_slots = usize::from(file.slots) + if file.player_inventory { 36 } else { 0 };
+    if total_slots > usize::from(MAX_MENU_SLOTS) {
+        return Err(MenuTypeRefusal::TotalSlotsExceeded { total_slots });
+    }
+    if let Some(limits) = &file.owned_slots
+        && (limits.len() != usize::from(file.slots)
+            || limits.iter().any(|limit| !(1..=99).contains(limit)))
+    {
+        return Err(MenuTypeRefusal::OwnedSlotsInvalidLimits);
+    }
+    if file.owned_slots.is_some() && file.crafting.is_some() {
+        return Err(MenuTypeRefusal::OwnedSlotsWithCrafting);
+    }
+    let mut seen = BTreeSet::new();
+    for &r in &file.results {
+        if r >= file.slots {
+            return Err(MenuTypeRefusal::ResultOutOfRange {
+                slot: r,
+                slots: file.slots,
+            });
+        }
+        if !seen.insert(r) {
+            return Err(MenuTypeRefusal::DuplicateResult(r));
+        }
+    }
+    for &input in &file.inputs {
+        if input >= file.slots {
+            return Err(MenuTypeRefusal::InputOutOfRange {
+                slot: input,
+                slots: file.slots,
+            });
+        }
+        if !seen.insert(input) {
+            return Err(MenuTypeRefusal::DuplicateOrResultInput(input));
+        }
+    }
+    if let Some(c) = file.crafting {
+        let end = u32::from(c.grid) + u32::from(c.size) * u32::from(c.size);
+        if !matches!(c.size, 2 | 3) {
+            return Err(MenuTypeRefusal::CraftingInvalidSize);
+        }
+        if end > u32::from(file.slots) || c.result >= file.slots {
+            return Err(MenuTypeRefusal::CraftingOutOfRange {
+                grid: c.grid,
+                end,
+                result: c.result,
+                slots: file.slots,
+            });
+        }
+        if (u32::from(c.grid)..end).contains(&u32::from(c.result)) {
+            return Err(MenuTypeRefusal::CraftingResultInGrid);
+        }
+        let is_crafting_slot =
+            |&s: &u16| s == c.result || (u32::from(c.grid)..end).contains(&u32::from(s));
+        if file.results.iter().any(is_crafting_slot) {
+            return Err(MenuTypeRefusal::ResultsListCraftingSlot);
+        }
+        if file.inputs.iter().any(is_crafting_slot) {
+            return Err(MenuTypeRefusal::InputsListCraftingSlot);
+        }
+    }
+    if let Some(l) = file.links {
+        let linked = l.range();
+        if l.count == 0 || linked.end > u32::from(file.slots) {
+            return Err(MenuTypeRefusal::LinksOutOfRange {
+                range: linked,
+                slots: file.slots,
+            });
+        }
+        if file.results.iter().any(|&r| linked.contains(&u32::from(r))) {
+            return Err(MenuTypeRefusal::ResultsListLinkedSlot);
+        }
+        if let Some(c) = file.crafting {
+            let end = u32::from(c.grid) + u32::from(c.size) * u32::from(c.size);
+            if linked.contains(&u32::from(c.result))
+                || (u32::from(c.grid)..end).any(|s| linked.contains(&s))
+            {
+                return Err(MenuTypeRefusal::LinksOverlapCrafting);
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Namespaced component types, removals as `{}`, and none of `fields`,
@@ -3262,16 +3391,35 @@ capabilities = ["registries"]
     }
 
     #[test]
-    fn menu_owned_slots_reject_take_only_and_crafting_results() {
+    fn menu_owned_slots_allow_results_and_reject_crafting() {
         let path = "data/ruby/sunrise/menu/filter.json";
-        for (case, result) in [
-            ("take-only", r#""results":[4]"#),
-            ("crafting", r#""crafting":{"grid":0,"size":2,"result":4}"#),
-        ] {
-            let menu = format!(r#"{{"slots":5,"owned_slots":[1,1,1,1,1],{result}}}"#);
-            let error = smod(case, MANIFEST_TEXT, &[(path, menu.as_bytes())]).unwrap_err();
-            assert!(error.contains("ruby:filter"), "{case}: {error}");
-        }
+        let processing = br#"{"slots":3,"owned_slots":[64,64,64],"inputs":[0,1],"results":[2]}"#;
+        let content = smod("owned-results", MANIFEST_TEXT, &[(path, processing)]).unwrap();
+        assert_eq!(
+            content.menu_types[0].owned_slots.as_deref(),
+            Some(&[64, 64, 64][..])
+        );
+        assert_eq!(content.menu_types[0].inputs, [0, 1]);
+        assert_eq!(content.menu_types[0].results, [2]);
+
+        let crafting =
+            br#"{"slots":5,"owned_slots":[1,1,1,1,1],"crafting":{"grid":0,"size":2,"result":4}}"#;
+        let parsed_crafting: MenuType = serde_json::from_slice(crafting).unwrap();
+        assert_eq!(
+            validate_menu_type(&parsed_crafting),
+            Err(MenuTypeRefusal::OwnedSlotsWithCrafting)
+        );
+        let error = smod("owned-crafting", MANIFEST_TEXT, &[(path, crafting)]).unwrap_err();
+        assert!(error.contains("ruby:filter"), "{error}");
+
+        let overlap = br#"{"slots":3,"owned_slots":[64,64,64],"inputs":[0,2],"results":[2]}"#;
+        let parsed_overlap: MenuType = serde_json::from_slice(overlap).unwrap();
+        assert_eq!(
+            validate_menu_type(&parsed_overlap),
+            Err(MenuTypeRefusal::DuplicateOrResultInput(2))
+        );
+        let error = smod("owned-overlap", MANIFEST_TEXT, &[(path, overlap)]).unwrap_err();
+        assert!(error.contains("ruby:filter"), "{error}");
     }
 
     #[test]
@@ -4435,12 +4583,14 @@ capabilities = ["registries"]
                     sprite: None,
                     tint: None,
                     world: None,
+                    measures: FluidMeasures::default(),
                 },
                 FluidLook {
                     id: "ruby:steam".into(),
                     sprite: Some("ruby:gui/fluids/steam".into()),
                     tint: Some(4291343520),
                     world: None,
+                    measures: FluidMeasures::default(),
                 },
             ]
         );
@@ -4454,6 +4604,52 @@ capabilities = ["registries"]
             let e = smod("fluid", MANIFEST_TEXT, bad).unwrap_err();
             assert!(e.contains("sprite"), "{e}");
         }
+    }
+
+    /// `FluidType.Properties`: a file states its own numbers, a missing key keeps water's, and
+    /// only a negative viscosity is refused.
+    #[test]
+    fn fluids_declare_their_temperature_density_and_viscosity() {
+        let files: &[(&str, &[u8])] = &[
+            (
+                "data/ruby/sunrise/fluid/molten.json",
+                br#"{"temperature":1500,"density":-200,"viscosity":0}"#,
+            ),
+            (
+                "data/ruby/sunrise/fluid/cold.json",
+                br#"{"temperature":-5}"#,
+            ),
+        ];
+        let content = smod("fluid-measures", MANIFEST_TEXT, files).unwrap();
+        let measures: Vec<_> = content
+            .fluids
+            .iter()
+            .map(|look| (look.id.as_str(), look.measures))
+            .collect();
+        assert_eq!(
+            measures,
+            [
+                (
+                    "ruby:cold",
+                    FluidMeasures {
+                        temperature: -5,
+                        density: 1000,
+                        viscosity: 1000,
+                    }
+                ),
+                (
+                    "ruby:molten",
+                    FluidMeasures {
+                        temperature: 1500,
+                        density: -200,
+                        viscosity: 0,
+                    }
+                ),
+            ]
+        );
+        let bad: &[(&str, &[u8])] = &[("data/ruby/sunrise/fluid/tar.json", br#"{"viscosity":-1}"#)];
+        let e = smod("fluid-viscosity", MANIFEST_TEXT, bad).unwrap_err();
+        assert!(e.contains("tar.json") && e.contains("viscosity"), "{e}");
     }
 
     #[test]

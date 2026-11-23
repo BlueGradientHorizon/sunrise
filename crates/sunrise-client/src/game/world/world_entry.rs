@@ -73,11 +73,19 @@ impl Game<'_> {
             Some(PendingWorldEntry::Server {
                 address,
                 name,
+                list_name,
                 cookies,
                 lan,
                 realm,
             }) => {
-                self.connect_server_with_options(&address, &name, cookies, lan, realm)?;
+                self.connect_server_with_options(
+                    &address,
+                    &name,
+                    cookies,
+                    lan,
+                    realm,
+                    list_name.as_deref(),
+                )?;
             }
             Some(PendingWorldEntry::StudioReplay(path)) => {
                 let path_str = path.to_string_lossy().to_string();
@@ -633,6 +641,7 @@ impl Game<'_> {
         self.install_fluid_interactions()?;
         self.install_profession_save_snapshots();
         self.share_mob_maps();
+        self.share_biome_keys();
         sunrise_client::datapack_net::serve(self.mods.datapack_registries.clone());
         Ok(())
     }
@@ -698,6 +707,7 @@ impl Game<'_> {
         }
         self.install_profession_save_snapshots();
         self.share_mob_maps();
+        self.share_biome_keys();
         self.world.pois.clear();
         for world in self.levels.parked_worlds() {
             world.pois.clear();

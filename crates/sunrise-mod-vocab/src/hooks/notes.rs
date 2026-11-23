@@ -14,7 +14,7 @@ A native server tick hook can call `native_server_block` with its context, a dim
 
 ### Neighbour observations (draft)
 
-`neighbor_changed` observes each authoritative server `neighborChanged` before the block handles it. It supplies the dimension, position, current owned `BlockState`, changed `BlockKey` and moved flag. The changed block key comes from the source block's default state through the prepared state index, after the primary state's routing guard. No registry-name lookup or allocation occurs on this path. Use explicit immutable block metadata for property queries; the hook does not load chunks or change the update queue. Its host is the level with its ticks (`&mut dyn LevelTicksHost`), as vanilla's `neighborChanged` gets the level: a `BlockPart::neighbor_changed` can read its inputs there with `level.signal(pos, direction)`, `direct_signal`, `direct_signal_to`, `best_neighbor_signal` and `has_neighbor_signal`, the same reads as `LevelRef`'s (mods' parts included), and schedule its own tick with `level.schedule_block_tick`, as a diode does (`DiodeBlock.checkTickOnNeighbor`). The reads write nothing and draw nothing, so they leave the update as it was, and cost what the game's own call does. `tick_block` and the other hooks with a `LevelWriteHost` have them too. Contract version `2`: version `1` handed the hook a plain `&dyn LevelHost`. Diverges from upstream.
+`neighbor_changed` observes each authoritative server `neighborChanged` before the block handles it. It supplies the dimension, position, current owned `BlockState`, changed `BlockKey` and moved flag. The changed block key comes from the source block's default state through the prepared state index, after the primary state's routing guard. No registry-name lookup or allocation occurs on this path. Use explicit immutable block metadata for property queries; the hook does not load chunks. Its host is the level writer vanilla's `neighborChanged` gets (`&mut dyn LevelWriteHost`): a `BlockPart::neighbor_changed` can read its inputs there with `level.signal(pos, direction)`, `direct_signal`, `direct_signal_to`, `best_neighbor_signal` and `has_neighbor_signal`, the same reads as `LevelRef`'s (mods' parts included), schedule its own tick with `level.schedule_block_tick`, as a diode does (`DiodeBlock.checkTickOnNeighbor`), and set blocks with `level.set_block`, as `RedstoneLampBlock.neighborChanged` lights itself at once (`level.setBlock(pos, state.cycle(LIT), 2)`) and only schedules its tick to turn off. A write with neighbour-update flags queues those updates to run next, depth first, before the rest of the update that delivered the call, as `Level.setBlock` from inside `neighborChanged` does through `CollectingNeighborUpdater`; the block's own handling then runs with the state it was called with. Contract version `3`: version `2` handed the hook a `&mut dyn LevelTicksHost`, which could not set blocks, and version `1` a plain `&dyn LevelHost`. Diverges from upstream.
 
 ### Server commands and players
 
@@ -823,8 +823,8 @@ handle, an entity the client doesn't track and a level it doesn't show:
 - `living.drop(host, stack, throw_randomly, include_thrower_name)` throws a stack the mod holds from the eyes
   (`LivingEntity.drop`) and gives the item entity; it never touches a slot. `is_tamed(host)` and `owner(host)` read a
   tamable mob or a horse (`TamableAnimal.isTame`, its owner's UUID).
-- `entity.velocity(host)` (a player's is the move its client last reported), `set_velocity(host, v)` (not for players,
-  whose client moves them), `on_ground`, `bounding_box` (lowest and highest corner), `eye_height`, `eye_position`,
+- `entity.velocity(host)` (a player's is the move its client last reported), `set_velocity(host, v)` (for a player it
+  replaces the server's motion and sends that player's own client the motion packet), `on_ground`, `bounding_box` (lowest and highest corner), `eye_height`, `eye_position`,
   `view_vector` and `distance_to_sqr(host, pos)` read and move it.
 - `entity.up_vector(host)` is `Entity.getUpVector`, the view vector turned toward the zenith. `on_block(host)` is
   `Entity.getOnPos`: the supporting block of an entity on the ground (the solid block under its box nearest it),
@@ -1323,7 +1323,7 @@ stock client shows as a chest (`generic_9x1` to `generic_9x6`); nothing is insta
 - A display menu's default click moves nothing. `MenuPart::menu_clicked` v3 runs on parts registered for the
   menu type. It shares one transaction with the default click unless the part handles the click and returns
   `Flow::Cancel`. An override or refusal sends the committed menu, cursor and any omitted swap target.
-- `menu_closed` v2 names the player and window and passes any opening hand and detached owned slot values.
+- `menu_closed` v3 names the player and window and passes any opening hand and detached owned slot values.
 - A trade on these menus leaves the offered stacks in their owners' inventories until both sides are settled. Then,
   in one `host.transaction`, each offered inventory index is checked to still hold exactly what was offered, taken
   out of the player's [`ENTITY_ITEMS`](../concepts/capabilities/entity-items.md) handler and put into the other's with `insert`
@@ -1411,7 +1411,7 @@ mods and again on each `/reload`, so a reload captures fresh settings. A LAN or 
 current one, so its Tab list and chat names, and the clicks of its players, see it too.
 
 `item_stacked_on_other(host, event, result, canceled)` is NeoForge's `ItemStackedOnOtherEvent` plus vanilla's `Item.overrideStackedOnOther` / `Item.overrideOtherStackedOnMe` on `ItemPart`, fired inside a pickup click on
-the authoritative side only (the server: single player's server thread, a LAN host and its guests, a dedicated server) with the game's `Host` and the click frozen in `event` (`event.direction` distinguishes `Event`, `CarriedOnOther`, and `OtherStackedOnMe` in vanilla `AbstractContainerMenu.tryItemClickBehaviourOverride` order); see its hook documentation. `player_name_format(context, username,
+the authoritative side only (the server: single player's server thread, a LAN host and its guests, a dedicated server) with the game's `Host` and the click frozen in `event` (`event.direction` distinguishes `Event`, `CarriedOnOther`, and `OtherStackedOnMe` in vanilla `AbstractContainerMenu.tryItemClickBehaviourOverride` order); see its hook documentation. `item_destroyed(host, stack, item, damage_type, drops)` is `IItemExtension.onDestroyed` (`ItemStack.onDestroyed`) on `ItemPart`, fired on the server inside a transaction with the original intact stack before built-in components are cleared and before the destroyed dropped item entity is discarded, returning validated drop stacks to spawn at the entity's position. `player_name_format(context, username,
 displayname)` and `player_tab_list_name_format(context, player, name, display_name)` format a player's name for chat and
 commands (both sides) and for the Tab list (server). The name hooks are contract version `2`: a mod written for `1` takes the
 context as a new first argument of the `Hooks` method, and reads the side from it instead of `event.side`.
@@ -1491,7 +1491,7 @@ mod mixin or use it replaces in its design or PR."#]
 - [A block's items](#a-blocks-items) are available to server mods through the item capability and
   `move_resources`, so a pipe or machine can move items transactionally.
 
-- What a server mod needs for a public server's screens: `native_sidebar(uuid, sidebar)` shows one
+- What a server mod needs for a public server's screens: `player.set_sidebar(host, sidebar)` shows one
   player a sidebar of up to 15 lines (a text, and one where the score would be) that only their client holds (the
   server's scoreboard never sees it; a mod sends it again when they rejoin), or takes it away with `None`;
   `player.tab_list(host, header, footer)` sets the lines over and under their Tab list; `native_tick_stats()` reads the

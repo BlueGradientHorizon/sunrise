@@ -140,8 +140,8 @@ impl Game<'_> {
         let id = mod_api::__private::menu_key_id(menu).ok_or(OpenMenuError::NotModMenu)?;
         let kind =
             sunrise_client::containers::mod_menu_type(&id).ok_or(OpenMenuError::NotModMenu)?;
-        if kind.owned_slots.is_some() && (!kind.results.is_empty() || kind.crafting.is_some()) {
-            return Err(OpenMenuError::OwnedSlotsWithResults);
+        if kind.owned_slots.is_some() && kind.crafting.is_some() {
+            return Err(OpenMenuError::OwnedSlotsWithCrafting);
         }
         if extra.len() > menu_extra::MAX_DATA {
             return Err(OpenMenuError::TooLarge);
@@ -477,6 +477,23 @@ impl Game<'_> {
                 NativeMenuEvent::ReturnCarried { conn, item } => {
                     if let Some(gi) = self.guest_index(conn) {
                         self.lan_place_back(gi, vec![item]);
+                    }
+                }
+                NativeMenuEvent::ReturnProcessingInputs {
+                    conn,
+                    items,
+                    drop_instead,
+                } => {
+                    if let Some(gi) = self.guest_index(conn) {
+                        let dead = self
+                            .lan
+                            .as_ref()
+                            .is_some_and(|host| host.hub.guests[gi].dead);
+                        if drop_instead || dead {
+                            self.drop_guest_items(gi, items);
+                        } else {
+                            self.lan_place_back(gi, items);
+                        }
                     }
                 }
                 NativeMenuEvent::Closed {

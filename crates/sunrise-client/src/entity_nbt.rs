@@ -71,11 +71,20 @@ fn hidden_effect_nbt(effect: &crate::effects::EffectInstance) -> Tag {
     Tag::compound(fields)
 }
 
+/// `MobEffectInstance.Details`' `amplifier`, `ExtraCodecs.UNSIGNED_BYTE` (default 0): Codec.BYTE
+/// takes the stored number's `byteValue()`, read as 0..255, so `-56b` is 200 and an int `256` is
+/// 0. The same codec reads an active effect and every hidden effect of its chain.
+fn effect_amplifier(tag: &Tag) -> i32 {
+    tag.get("amplifier")
+        .and_then(sunrise_world::datafix::dynamic::as_number)
+        .map_or(0, |n| i32::from(n.byte_value() as u8))
+}
+
 fn hidden_effect_from_nbt(effect: &'static str, tag: &Tag) -> crate::effects::EffectInstance {
     let mut instance = crate::effects::EffectInstance::new(
         effect,
         number(tag.get("duration")).unwrap_or(0) as i32,
-        number(tag.get("amplifier")).unwrap_or(0) as i32,
+        effect_amplifier(tag),
     );
     instance.ambient = number(tag.get("ambient")).is_some_and(|v| v != 0);
     instance.visible = number(tag.get("show_particles")) != Some(0);
@@ -107,6 +116,17 @@ pub fn loaded_motion(tag: &Tag) -> Vec3 {
 }
 pub fn rotation(tag: &Tag) -> [f32; 2] {
     read_doubles::<2>(tag.get("Rotation")).map_or([0.0; 2], |r| [r[0] as f32, r[1] as f32])
+}
+/// `Entity.load`: the initial rotation on a new entity, before its subtype reads NBT.
+pub fn loaded_rotation(tag: &Tag) -> [f32; 2] {
+    let [yaw, pitch] = rotation(tag).map(|angle| {
+        if angle.is_finite() {
+            angle % 360.0
+        } else {
+            0.0
+        }
+    });
+    [yaw, pitch.clamp(-90.0, 90.0)]
 }
 /// `TagValueInput.getBooleanOr`: a numeric tag's byteValue is nonzero, with a false default.
 pub fn flag(tag: &Tag, key: &str) -> bool {
@@ -2186,12 +2206,7 @@ fn mob_from_nbt_at(
             };
             let effect = crate::brewing::namespaced(def.id);
             let duration = number(e.get("duration")).unwrap_or(0) as i32;
-            // `MobEffectInstance.Details`: Codec.BYTE uses boxed Number.byteValue,
-            // then UNSIGNED_BYTE interprets the resulting byte as 0..255.
-            let amplifier = e
-                .get("amplifier")
-                .and_then(sunrise_world::datafix::dynamic::as_number)
-                .map_or(0, |n| i32::from(n.byte_value() as u8));
+            let amplifier = effect_amplifier(e);
             // Details.CODEC: `show_particles` defaults to true, `show_icon` to `show_particles`.
             let particles = number(e.get("show_particles")) != Some(0);
             let mut stored = crate::mobs::StoredEffect::new(effect, duration, amplifier);
@@ -2932,6 +2947,7 @@ pub fn item_entity_from_nbt(tag: &Tag, id: u32, bob_offset: f32) -> Option<ItemE
         other => number(other).unwrap_or(default) as i16,
     };
     Some(ItemEntity {
+        size_answer: None,
         attachment_lifetime: Default::default(),
         rotation: rotation(tag),
         join: Default::default(),
@@ -3047,6 +3063,7 @@ pub fn orbs_from_nbt(tag: &Tag) -> Vec<ExperienceOrb> {
     };
     let count = number(tag.get("Count")).unwrap_or(1).max(1) as u32;
     let orb = ExperienceOrb {
+        size_answer: None,
         fire_ticks: number(tag.get("Fire")).unwrap_or(0) as i16 as i32,
         attachment_lifetime: Default::default(),
         fall_distance: float(tag.get("fall_distance")).unwrap_or(0.0),
@@ -3800,21 +3817,6 @@ pub fn cushion_from_nbt(tag: &Tag, id: u32) -> Option<Cushion> {
 
 #[cfg(test)]
 mod cushion_tests;
-/// `ItemFrame.setDirection`: a frame on a wall turns to face away from it
-/// (`yRot` = the 2D data value times 90, `xRot` 0); one on a floor or a
-/// ceiling looks straight down or up (`xRot` = -90 times the axis step).
-/// `facing` is the 3D data value (down, up, north, south, west, east).
-fn frame_rotation(facing: u8) -> [f32; 2] {
-    match facing {
-        0 => [0.0, 90.0],
-        1 => [0.0, -90.0],
-        2 => [180.0, 0.0],
-        3 => [0.0, 0.0],
-        4 => [90.0, 0.0],
-        _ => [270.0, 0.0],
-    }
-}
-
 /// ItemFrame.addAdditionalSaveData.
 pub fn item_frame_to_nbt(
     f: &ItemFrame,
@@ -3832,7 +3834,7 @@ pub fn item_frame_to_nbt(
             (lo[2] + hi[2]) / 2.0,
         ),
         motion: raw.map_or(Vec3::ZERO, loaded_motion),
-        rotation: frame_rotation(f.facing),
+        rotation: f.entity_rotation(),
         on_ground: raw.is_some_and(|raw| flag(raw, "OnGround")),
         fall_distance: raw.map_or(0.0, |raw| ground_from_nbt(raw).1),
     };
@@ -6608,6 +6610,7 @@ mod tests {
     #[test]
     fn orbs_save_and_load_their_fire() {
         let mut o = ExperienceOrb {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             rotation: [0.0, 0.0],
             join: Default::default(),

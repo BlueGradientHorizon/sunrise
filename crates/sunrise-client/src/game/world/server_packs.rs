@@ -79,6 +79,8 @@ pub(super) struct ServerPackState {
     pub(super) prompt: Option<PackPrompt>,
     /// The server list entry the setting is saved to (none: a direct join).
     pub(super) address: Option<String>,
+    /// That entry's name, with `address`, so a pack answer updates only that row.
+    pub(super) name: Option<String>,
     /// The account the downloads are made for (the download headers).
     user: (String, u128),
     /// The packs loaded on top of the player's own, bottom first.
@@ -87,6 +89,34 @@ pub(super) struct ServerPackState {
     notifiers: Vec<PackNotifier>,
     /// Distinguish batches while their download notifications are still queued or visible.
     next_download_toast: usize,
+}
+impl ServerPackState {
+    /// Submit every request to the pack manager and save the server list. A missing
+    /// policy change leaves the current entry alone but still saves the list.
+    fn complete_prompt(&mut self, prompt: PackPrompt, policy_change: Option<bool>) {
+        for (id, url, hash) in prompt.requests {
+            self.packs.push(id, &url, parse_sha1(&hash));
+        }
+        // ServerList.saveSingleServer: one row, matched by name and address.
+        let (Some(address), Some(name)) = (&self.address, &self.name) else {
+            return;
+        };
+        let file = multiplayer::servers_file(&saves());
+        let _guard = servers::lock();
+        let (mut shown, mut hidden) = servers::load_all(&file);
+        if let Some(setting) = policy_change {
+            servers::save_single_accept_textures(
+                &mut shown,
+                &mut hidden,
+                name,
+                address,
+                Some(setting),
+            );
+        }
+        if let Err(e) = servers::save_all(&file, &shown, &hidden) {
+            log::warn!("Sunrise: could not save {}: {e}", file.display());
+        }
+    }
 }
 /// `DownloadedPackSource.createDownloadNotifier`: one batch's progress in its
 /// own `SystemToast`.
@@ -201,22 +231,29 @@ impl Game<'_> {
     /// `ConnectScreen`: the server's setting decides what its packs do
     /// (`configureForServerControl`); single player's own server takes them
     /// all, quietly (`configureForLocalWorld`).
-    pub(super) fn server_packs_connect(&mut self, address: Option<&str>, user: (String, u128)) {
+    pub(super) fn server_packs_connect(
+        &mut self,
+        address: Option<&str>,
+        list_name: Option<&str>,
+        user: (String, u128),
+    ) {
         let state = &mut self.server_packs;
         state.user = user;
         state.prompt = None;
         state.notifiers.clear();
         let Some(address) = address else {
             state.address = None;
+            state.name = None;
             state.packs.local_world();
             return;
         };
         let file = multiplayer::servers_file(&saves());
         // ServerList.get: the shown entries, then the hidden ones.
         let (shown, hidden) = servers::load_all(&file);
-        let entry = shown.into_iter().chain(hidden).find(|s| s.ip == address);
+        let entry = servers::find(&shown, &hidden, address, list_name).cloned();
         let setting = entry.as_ref().and_then(|e| e.accept_textures);
-        state.address = entry.map(|e| e.ip);
+        state.address = entry.as_ref().map(|e| e.ip.clone());
+        state.name = entry.map(|e| e.name);
         state.packs.connect(Prompt::for_server(setting));
         // GetServerDetailsTask.scheduleResourcePackDownload: the Realm's own pack, which the
         // player agreed to before connecting (`allowServerPacks`, then `pushPack`).
@@ -286,11 +323,7 @@ impl Game<'_> {
     fn server_setting(&self) -> Option<bool> {
         let address = self.server_packs.address.as_deref()?;
         let (shown, hidden) = servers::load_all(&multiplayer::servers_file(&saves()));
-        shown
-            .into_iter()
-            .chain(hidden)
-            .find(|s| s.ip == address)?
-            .accept_textures
+        servers::find(&shown, &hidden, address, self.server_packs.name.as_deref())?.accept_textures
     }
     fn send_pack_status(&self, id: u128, status: i32) {
         if let Some(r) = &self.remote {
@@ -298,9 +331,8 @@ impl Game<'_> {
         }
     }
 
-    /// The prompt's answer (`PackConfirmScreen`'s callback): the server's
-    /// setting follows it, declining a required pack disconnects, and every
-    /// pack it asked about is pushed.
+    /// `PackConfirmScreen`'s callback: push every pending pack and save the server list.
+    /// Declining a required pack closes the connection without changing its stored policy.
     pub(super) fn answer_pack_prompt(&mut self, yes: bool) -> Result<()> {
         let Some(prompt) = self.server_packs.prompt.take() else {
             return Ok(());
@@ -308,41 +340,21 @@ impl Game<'_> {
         if self.player.is_some() && self.screen == super::Screen::Playing {
             self.capture(true);
         }
-        let setting = if yes {
+        if yes {
             self.server_packs.packs.allow();
-            Some(true)
         } else {
             self.server_packs.packs.reject();
             if prompt.required {
                 let reason = Text::translate("multiplayer.requiredTexturePrompt.disconnect", &[]);
-                return self.leave_server(Some(reason));
+                // The requests still get local DECLINED feedback. The transport is already
+                // closed, so cleanup drops the replies without sending them.
+                return self.close_server_session(Some(reason), |state| {
+                    state.complete_prompt(prompt, None);
+                });
             }
-            Some(false)
-        };
+        }
         self.refresh_screen_widgets();
-        for (id, url, hash) in prompt.requests {
-            self.server_packs.packs.push(id, &url, parse_sha1(&hash));
-        }
-        // ServerList.saveSingleServer.
-        if let Some(address) = &self.server_packs.address {
-            let file = multiplayer::servers_file(&saves());
-            let _guard = servers::lock();
-            let (mut list, mut hidden) = servers::load_all(&file);
-            let mut found = false;
-            for entry in list.iter_mut().filter(|s| &s.ip == address) {
-                entry.accept_textures = setting;
-                found = true;
-            }
-            // Not among the shown entries: the hidden ones (a Direct Connection's).
-            if !found {
-                for entry in hidden.iter_mut().filter(|s| &s.ip == address) {
-                    entry.accept_textures = setting;
-                }
-            }
-            if let Err(e) = servers::save_all(&file, &list, &hidden) {
-                log::warn!("Sunrise: could not save {}: {e}", file.display());
-            }
-        }
+        self.server_packs.complete_prompt(prompt, Some(yes));
         Ok(())
     }
 
@@ -573,7 +585,187 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::{
+        in_own_process,
+        native_client_session::tests::{finish_login, logged_client},
+        native_entity_refs::tests::with_client_game,
+    };
     use download::Progress::*;
+    use std::{path::Path, time::Duration};
+    use sunrise_protocol::{
+        connection::Connection,
+        packets::{Empty, play::Serverbound},
+    };
+
+    const PACK_IDS: [u128; 2] = [31, 32];
+
+    fn with_pack_prompt(required: bool, test: impl FnOnce(&mut Game<'_>, &mut Connection, &Path)) {
+        const ADDRESS: &str = "pack-test.invalid";
+        let dir = tempfile::tempdir().unwrap();
+        sunrise_client::logging::set_player_dir(dir.path().to_owned());
+        let file = dir.path().join("servers.dat");
+        if required {
+            // Start the joined shown row at Disabled (`0`) and include an unrelated entry
+            // whose Disabled policy is encoded as an NBT Int `0` (valid under vanilla's
+            // NbtOps.getBooleanValue) so a lossy decoder or policy reset would be caught.
+            let root = sunrise_core::nbt::NamedTag {
+                name: sunrise_core::nbt::JavaString::from(""),
+                tag: sunrise_core::nbt::Tag::compound([(
+                    "servers",
+                    sunrise_core::nbt::Tag::List(vec![
+                        sunrise_core::nbt::Tag::compound([
+                            ("name", sunrise_core::nbt::Tag::String("Shown".into())),
+                            ("ip", sunrise_core::nbt::Tag::String(ADDRESS.into())),
+                            ("acceptTextures", sunrise_core::nbt::Tag::Byte(0)),
+                            ("hidden", sunrise_core::nbt::Tag::Byte(0)),
+                        ]),
+                        sunrise_core::nbt::Tag::compound([
+                            ("name", sunrise_core::nbt::Tag::String("Numeric".into())),
+                            ("ip", sunrise_core::nbt::Tag::String("other.invalid".into())),
+                            ("acceptTextures", sunrise_core::nbt::Tag::Int(0)),
+                            ("hidden", sunrise_core::nbt::Tag::Byte(0)),
+                        ]),
+                        sunrise_core::nbt::Tag::compound([
+                            ("name", sunrise_core::nbt::Tag::String("Hidden".into())),
+                            ("ip", sunrise_core::nbt::Tag::String(ADDRESS.into())),
+                            ("acceptTextures", sunrise_core::nbt::Tag::Byte(1)),
+                            ("hidden", sunrise_core::nbt::Tag::Byte(1)),
+                        ]),
+                    ]),
+                )]),
+            };
+            let bytes = sunrise_core::nbt::write_named(&root, sunrise_core::nbt::Limits::default())
+                .unwrap();
+            std::fs::write(&file, bytes).unwrap();
+        } else {
+            let shown = servers::ServerEntry::new("Shown", ADDRESS);
+            let mut hidden = servers::ServerEntry::new("Hidden", ADDRESS);
+            hidden.accept_textures = Some(true);
+            servers::save_all(&file, &[shown], &[hidden]).unwrap();
+        }
+
+        with_client_game(|game| {
+            let mut peer = Connection::local(logged_client(game));
+            peer.reader
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            finish_login(game, &mut peer);
+            game.server_packs_connect(Some(ADDRESS), None, ("SessionReadTest".into(), 42));
+            for id in PACK_IDS {
+                game.handle_pack_push(ResourcePackPush {
+                    id,
+                    url: "https://pack-test.invalid/server.zip".into(),
+                    hash: String::new(),
+                    required,
+                    prompt: None,
+                });
+            }
+            test(game, &mut peer, &file);
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn required_decline_closes_the_wire_but_reports_locally_and_saves() {
+        in_own_process(
+            "game::server_packs::tests::required_decline_closes_the_wire_but_reports_locally_and_saves",
+            || {
+                with_pack_prompt(true, |game, peer, file| {
+                    let original_bytes = std::fs::read(file).unwrap();
+                    let backup = file.with_file_name("servers.dat_old");
+                    // Mark an old mtime to detect an actual rewrite.
+                    std::fs::OpenOptions::new()
+                        .write(true)
+                        .open(file)
+                        .unwrap()
+                        .set_modified(std::time::UNIX_EPOCH)
+                        .unwrap();
+                    let old_modified = file.metadata().unwrap().modified().unwrap();
+                    game.server_packs.packs.record_feedback();
+                    game.answer_pack_prompt(false).unwrap();
+
+                    assert!(game.remote.is_none());
+                    assert!(matches!(
+                        &game.title.as_ref().unwrap().mode,
+                        sunrise_client::title::Mode::Multiplayer(multiplayer::Screen::Disconnected {
+                            reason, retry: None, ..
+                        }) if reason.translation_key() == Some("multiplayer.requiredTexturePrompt.disconnect")
+                    ));
+                    loop {
+                        match peer.recv() {
+                            Ok((id, body)) => assert!(!matches!(
+                                Serverbound::decode(id, &body).unwrap(),
+                                Serverbound::ResourcePack(_)
+                            )),
+                            Err(e) if e.is_end_of_stream() => break,
+                            Err(e) => panic!("expected transport EOF: {e}"),
+                        }
+                    }
+                    assert_eq!(
+                        game.server_packs.packs.take_recorded_feedback(),
+                        PACK_IDS.map(|id| (id, action::DECLINED))
+                    );
+                    assert_eq!(game.server_packs.packs.prompt(), Prompt::Pending);
+                    assert!(game.server_packs.packs.take_replies().is_empty());
+                    assert_ne!(file.metadata().unwrap().modified().unwrap(), old_modified);
+                    assert_eq!(std::fs::read(&backup).unwrap(), original_bytes);
+                    // Read the saved raw NBT directly to prove Disabled policies were not cleared.
+                    let (saved, _) = sunrise_core::nbt::read_named(
+                        &std::fs::read(file).unwrap(),
+                        sunrise_core::nbt::Limits::default(),
+                    )
+                    .unwrap();
+                    let Some(sunrise_core::nbt::Tag::List(entries)) = saved.tag.get("servers")
+                    else {
+                        panic!("expected servers list");
+                    };
+                    assert_eq!(entries.len(), 3);
+                    assert_eq!(
+                        entries[0].get("acceptTextures"),
+                        Some(&sunrise_core::nbt::Tag::Byte(0))
+                    );
+                    assert_eq!(
+                        entries[1].get("acceptTextures"),
+                        Some(&sunrise_core::nbt::Tag::Byte(0))
+                    );
+                    assert_eq!(
+                        entries[2].get("acceptTextures"),
+                        Some(&sunrise_core::nbt::Tag::Byte(1))
+                    );
+                });
+            },
+        );
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn optional_decline_replies_on_the_live_wire_and_saves_disabled_policy() {
+        in_own_process(
+            "game::server_packs::tests::optional_decline_replies_on_the_live_wire_and_saves_disabled_policy",
+            || {
+                with_pack_prompt(false, |game, peer, file| {
+                    let (mut shown, hidden) = servers::load_all(file);
+                    shown[0].accept_textures = Some(false);
+                    game.answer_pack_prompt(false).unwrap();
+                    game.tick_server_packs();
+                    game.send(Serverbound::Punch(Empty)); // Fence the outgoing replies.
+                    let mut replies = Vec::new();
+                    loop {
+                        let (id, body) = peer.recv().unwrap();
+                        match Serverbound::decode(id, &body).unwrap() {
+                            Serverbound::ResourcePack(response) => {
+                                replies.push((response.id, response.action));
+                            }
+                            Serverbound::Punch(_) => break,
+                            _ => {}
+                        }
+                    }
+                    assert_eq!(replies, PACK_IDS.map(|id| (id, 1))); // DECLINED
+                    assert_eq!(servers::load_all(file), (shown, hidden));
+                });
+            },
+        );
+    }
 
     #[test]
     #[ignore = "daily"]

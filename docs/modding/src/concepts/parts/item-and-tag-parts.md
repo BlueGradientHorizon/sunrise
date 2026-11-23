@@ -77,55 +77,7 @@ second registration for the same item refuses startup; there is no last-writer-w
 This example traces the input for an existing `mymod:tool` without doing anything in the world:
 
 ```rust
-use std::sync::Arc;
-
-use mod_api::{
-    ClientHost, ClientItemUseBehavior, Hooks, ItemStack, JavaString, Registrar, RegistrationContext,
-};
-
-struct ToolMod;
-struct Behavior;
-
-#[mod_api::sunrise_mod]
-impl Hooks for ToolMod {
-    fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
-        let key = r.item_key("mymod:tool");
-        r.register_client_item_use(key, Arc::new(Behavior));
-    }
-}
-
-impl ClientItemUseBehavior for Behavior {
-    fn use_item(&self, _host: &mut dyn ClientHost, stack: &ItemStack, slot: u32) {
-        let data = stack
-            .components()
-            .and_then(|c| c.as_nbt().get(&JavaString::from("minecraft:custom_data")));
-        eprintln!(
-            "Tool input started in slot {slot}: {} item(s), custom data present: {}",
-            stack.count(),
-            data.is_some(),
-        );
-    }
-
-    fn release_using(
-        &self,
-        _host: &mut dyn ClientHost,
-        _stack: &ItemStack,
-        slot: u32,
-        ticks_held: u32,
-    ) {
-        eprintln!("Tool input released in slot {slot} after {ticks_held} ticks");
-    }
-
-    fn on_stop_using(
-        &self,
-        _host: &mut dyn ClientHost,
-        _stack: &ItemStack,
-        slot: u32,
-        _ticks_held: u32,
-    ) {
-        eprintln!("Tool input ended in slot {slot}");
-    }
-}
+{{#include ../../../examples/src/item_behaviors.rs:client_item_use}}
 ```
 
 An enabled owner consumes the input before crosshair handling. This applies to main-hand
@@ -439,3 +391,27 @@ failing slot placement/pickup rules, or panicking refuses the click and rolls ba
 Global `Hooks::item_stacked_on_other` listeners preserve their separate contract (stacks may only
 be set on `Flow::Cancel` + `handled = true`, result/potion slots cannot be edited directly, and
 `Flow::Cancel` with `handled = false` skips vanilla bundle overrides and runs plain pickup).
+
+For an authoritative mount-menu pickup, the saddle, body equipment and chest slots belong to
+the mount, but roll back together with the player's inventory and cursor if the click is refused
+or an enclosing transaction aborts. The server reconciles the open menu from settled storage.
+
+## Dropped item destruction
+
+`ItemPart::item_destroyed` is `IItemExtension.onDestroyed` (vanilla `ItemStack.onDestroyed`). It
+fires on the server inside a transaction whenever a dropped item entity reaches zero health from
+damage — fire (`minecraft:on_fire`, `minecraft:in_fire`), lava (`minecraft:lava`), cactus
+(`minecraft:cactus`), explosions, `/damage`, `EntityRef::hurt`, or block-contact damage — before
+built-in container components are cleared and before the entity is discarded (matching vanilla
+`ItemEntity.hurtServer` -> `ItemStack.onDestroyed` -> `discard()`). Lifetime despawn
+(`item_despawn`) and void removal do not fire it.
+
+The part receives the original intact `event.stack`, the still-live `event.item: ItemEntityRef`
+(whose `with_stack(host, ...)` also still holds the original un-emptied stack), the lethal
+`event.damage_type`, and `event.drops: &mut Vec<ItemStack>` (pre-populated with any vanilla
+`minecraft:bundle_contents` or `minecraft:container` spills). Push or edit stacks in `event.drops`
+to spawn them at the entity's position (`ItemUtils.onContainerDestroyed`) once the entity is
+discarded. Each part's drop edits are validated against the item registry (an invalid stack rolls
+that part's edit back); a panic or a refused commit rolls back the transaction's host writes and
+falls back to the vanilla drop baseline while still discarding the destroyed item entity. An item
+with no listening `ItemPart` pays one table lookup and opens no transaction.

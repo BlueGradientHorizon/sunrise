@@ -1406,13 +1406,13 @@ impl Renderer {
             write_mask: wgpu::ColorWrites::ALL,
         });
         // Marked HDR targets store a glowing glyph's tier in alpha. Match the colour pass's
-        // depth bias and culling in each mode so an outline cannot mark over its fill.
+        // exact depth, bias and culling in each mode so discarded or occluded glyphs never mark.
         let text_mark_pipelines = [wgpu::DepthBiasState::default(), text_bias].map(|bias| {
             entity_pipeline_with(EntityPipelineOptions {
                 label: "HDR text mark",
                 cull_mode: Some(wgpu::Face::Back),
                 depth_write: false,
-                compare: wgpu::CompareFunction::GreaterEqual,
+                compare: wgpu::CompareFunction::Equal,
                 bias,
                 blend: wgpu::BlendState::REPLACE,
                 clouds: false,
@@ -2584,6 +2584,7 @@ impl Renderer {
             section_draw_calls: 0,
             frame_serial: 0,
             stats_frame: 0,
+            stats_halves: Default::default(),
             uploaded_bytes: 0,
             started: Instant::now(),
             screenshot: None,

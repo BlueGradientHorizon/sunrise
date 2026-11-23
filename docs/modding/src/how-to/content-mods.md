@@ -12,7 +12,7 @@ cargo sunrise-mod new my-mod        # a content mod: manifest, one block with it
 cd my-mod
 cargo sunrise-mod run               # build my-mod.smod, then start the game with it turned on
 cargo sunrise-mod build             # only build: target/sunrise-mod/my_mod.smod
-cargo sunrise-mod check target/sunrise-mod/my_mod.smod   # the registry's checks; --json for JSON
+cargo sunrise-mod check             # validate the project before release
 ```
 
 - `new <path> [--name "Name"]` writes the content template. `--template native` writes
@@ -27,7 +27,7 @@ cargo sunrise-mod check target/sunrise-mod/my_mod.smod   # the registry's checks
   works after one command; your editor needs that first command too. `.sunrise/` is in the template's `.gitignore`
   and is never packed. The fetch checks Sunrise's signature on the release and every file against its `sdk.json`;
   `SUNRISE_SDK_BASE` (a URL or a folder) reads the releases from a mirror instead. When that Nightly has no SDK,
-  `new` says so and asks for `--sunrise`. `update` repins a native mod the same way
+  `new` asks for `--sunrise`. `pin [<build>]` moves a native mod to another build (the current Nightly by default)
   ([the SDK in a mod project](../reference/sdk/03-in-a-project.md)). Its root `impl Hooks` uses
   `#[mod_api::sunrise_mod]`. Compile it with `cargo sunrise-mod build`
   ([writing hooks](../start/writing-hooks.md)). Any other `--template` is refused.
@@ -62,12 +62,9 @@ cargo sunrise-mod check target/sunrise-mod/my_mod.smod   # the registry's checks
   It also checks for blockstates on blocks with `render_shape` set to `MODEL` and warns about missing local loot
   tables, item definitions or English names, or registry content on a client-only package. Reference diagnostics name
   the source file, the relevant field or member index, and the ID.
-- `check <file>` runs what the registry runs: the file's size and SHA-256, its manifest and content, and a signature
-  with `--key <public key> --signature <file>.minisig`. It reads `.smod`, `.spack`, resource pack `.zip`
-  and `.sshader` files.
-- `registry build|review|check|list|release|releases|page` supports the registry repository's CI
-  ([the registry index](../reference/registry-index.md)). `registry releases --out releases.json` discovers stable
-  release tags and commits. The workflow verifies the signed SDK separately.
+- `check <file>` reads `.smod`, `.spack`, resource pack `.zip` and `.sshader` files. A `.smod` also
+  needs its [release attestation](../reference/sdk/05-commands.md#check-a-released-package).
+- To release a mod to the registry, follow [Publishing your mod](publish.md).
 - `use-jar <path>` records and caches an original Java jar as an external asset/data source, without copying it into the mod
   ([Java jars as external assets](#java-jars-as-external-assets)).
 
@@ -218,7 +215,10 @@ NeoForge's `IClientFluidTypeExtensions`; the fluid needs no block, and a recipe 
 object makes it exist in the world: `{"world": {}}` adds the block `<id>:<path>`, a copy of `minecraft:water` that flows
 with vanilla's fluid simulation, and the bucket item `<id>:<path>_bucket`, which needs its model as any item does. `world`
 takes `tick_delay` (1 or more, default 5), `drop_off` (1 to 7, default 1), `slope_find_distance` (1 to 4, default 4),
-`source_conversion` (default false) and `bucket` (default true). The fluid is in no vanilla fluid tag, so entities don't
+`source_conversion` (default false) and `bucket` (default true). Beside `world`, a fluid file may state NeoForge's
+`FluidType` numbers, which other mods read through `FluidTypeProperties`: `temperature` and `density` (any signed
+32-bit integer, defaults 300 and 1000) and `viscosity` (0 or more, default 1000). A file without `world` declares no
+fluid by itself; its numbers describe the tank-only fluid a native mod declares in code with `declare_fluid`. The fluid is in no vanilla fluid tag, so entities don't
 swim in it or get pushed by it. In the world it draws its `sprite`, a block atlas texture such as `mymod:block/oil`, times
 its `tint`; with neither it looks like water, and a `tint` alone colours water's textures. A client mod's
 `register_fluid_models` hook accepts `mod_api::FluidModel` values with separate flowing and overlay sprites via
@@ -1200,7 +1200,7 @@ but each sync packet retains its index range: 0 through 32,767 for a block-backe
 
 For blockless opens, an optional `owned_slots` array declares [transient menu storage](../concepts/capabilities/menu-slots.md#menu-owned-slots).
 It must contain exactly `slots` entries, each the maximum stack size (1–99) of that slot.
-Types declaring `owned_slots` are blockless-only and cannot declare `results` or `crafting`.
+Types declaring `owned_slots` are blockless-only and cannot declare `crafting`; they may declare `results` for take-only output slots whose non-result inputs return to the player on close.
 A block container cannot bind an owned-slot type as its menu.
 
 The optional menu `inputs` list marks machine feeds, including fuel, as `Input`
@@ -1426,7 +1426,7 @@ the keys it leaves out stay:
       "additions": { "sound": "minecraft:ambient.warped_forest.additions", "tick_chance": 0.0111 },
       "mood": { "sound": "minecraft:ambient.warped_forest.mood", "tick_delay": 6000, "block_search_extent": 8, "offset": 2.0 }
     },
-    "minecraft:audio/background_music": { "default": { "sound": "zinc:music.dunes", "min_delay": 12000, "max_delay": 24000 } },
+    "minecraft:audio/background_music": { "default": { "sound": { "sound_id": "zinc:music.dunes" }, "min_delay": 12000, "max_delay": 24000 } },
     "minecraft:audio/music_volume": 0.5
   }
 }
@@ -1436,8 +1436,10 @@ The particle list also accepts `{ "argument": [...] }`.
 
 | Value | Validation |
 |---|---|
-| Particle or sound | Namespaced ID |
-| Particle `probability`, music volume | 0 to 1 |
+| Particle | Namespaced ID |
+| Sound | Registered vanilla sound ID string, or inline `{ "sound_id": "<ns>:<path>" }` (optional `"range"`) for any sound including custom mod sounds |
+| Particle `probability` | 0 to 1 |
+| Music volume | 0 to 1, or a float environment-attribute modifier object (e.g. `{ "modifier": "multiply", "argument": 0.5 }`) |
 | Ambient additions | One object or a list; any finite `tick_chance` |
 | Ambient mood | Requires sound, `tick_delay`, `block_search_extent` and `offset` |
 | Music `default`, `creative`, `underwater` | Requires sound and nonnegative `min_delay` and `max_delay`; delays need not be ordered |

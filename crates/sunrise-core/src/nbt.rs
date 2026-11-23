@@ -1657,24 +1657,37 @@ impl Tag {
     /// bytes. Container nesting is limited to 512. End represents vanilla null.
     /// Malformed input, quota exhaustion and excessive depth return an Error.
     pub fn from_network_bytes(bytes: &[u8], quota: Option<u64>) -> Result<(Self, usize), Error> {
-        let mut reader = Reader {
-            bytes,
-            offset: 0,
-            limits: Limits {
-                max_bytes: usize::MAX,
-                max_nodes: usize::MAX,
-                max_depth: 512,
-            },
-            nodes: 0,
-            heap: Some((0, quota.unwrap_or(NETWORK_NBT_QUOTA))),
-            stream: None,
-            bounded: None,
-            strict: false,
-            entering: 0,
-            rejected: 0,
-        };
-        read_network_with_reader(&mut reader, &mut Tree)
+        read_network_accounted(bytes, quota.unwrap_or(NETWORK_NBT_QUOTA), 512)
     }
+}
+
+/// `NbtIo.readAnyTag` with `new NbtAccounter(quota, max_depth)`: one nameless
+/// network root and its consumed byte count, charging the heap as
+/// `NbtAccounter.accountBytes` does and nesting at most `max_depth` lists and
+/// compounds (`NbtAccounter.pushDepth`). Trailing bytes stay unread; `End` is
+/// vanilla's null.
+pub fn read_network_accounted(
+    bytes: &[u8],
+    quota: u64,
+    max_depth: usize,
+) -> Result<(Tag, usize), Error> {
+    let mut reader = Reader {
+        bytes,
+        offset: 0,
+        limits: Limits {
+            max_bytes: usize::MAX,
+            max_nodes: usize::MAX,
+            max_depth,
+        },
+        nodes: 0,
+        heap: Some((0, quota)),
+        stream: None,
+        bounded: None,
+        strict: false,
+        entering: 0,
+        rejected: 0,
+    };
+    read_network_with_reader(&mut reader, &mut Tree)
 }
 
 #[cfg(test)]
@@ -2198,6 +2211,20 @@ mod tests {
             write_network(&Tag::Double((-0.0_f64).to_bits()), Limits::default()).unwrap()[1],
             0x80
         );
+    }
+    /// A NaN read from the network goes back out with its bits (#308 item 4).
+    /// Expected bytes from vanilla 26.3.
+    #[test]
+    fn a_network_nan_round_trips_with_its_bits() {
+        for bytes in [
+            // FriendlyByteBuf.readNbt then writeNbt on FloatTag NaN 0x7f800001
+            &[5, 0x7f, 0x80, 0, 1][..],
+            // FriendlyByteBuf.readNbt then writeNbt on DoubleTag NaN 0xfff0000000000001
+            &[6, 0xff, 0xf0, 0, 0, 0, 0, 0, 1],
+        ] {
+            let tag = read_network(bytes, Limits::default()).unwrap().0;
+            assert_eq!(write_network(&tag, Limits::default()).unwrap(), bytes);
+        }
     }
     #[test]
     fn snbt_parses_typed_values() {

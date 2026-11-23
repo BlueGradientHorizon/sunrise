@@ -65,12 +65,7 @@ impl Game<'_> {
                     b.leash = Some(Holder::Knot(block));
                 }
             });
-        } else if let Some(shows) = match kind {
-            "minecraft:text_display" => Some(super::text_displays::Shows::Text),
-            "minecraft:block_display" => Some(super::text_displays::Shows::Block),
-            "minecraft:item_display" => Some(super::text_displays::Shows::Item),
-            _ => None,
-        } {
+        } else if let Some(shows) = super::text_displays::Shows::from_kind(kind) {
             self.text_displays.insert(
                 id as i32,
                 super::text_displays::RemoteTextDisplay::new(shows, position, yaw)
@@ -411,6 +406,7 @@ impl Game<'_> {
         mut turn: impl FnMut(u32, f32) -> f32,
         mut lerp_cart: impl FnMut(&mut super::minecarts::Minecart) -> bool,
     ) {
+        let improved = self.minecart_improvements();
         let mut cart = 0;
         while cart < self.carts.len() {
             let (id, from, to, kind, fuse, fuel) = self.carts.update(cart, |c| {
@@ -429,6 +425,15 @@ impl Game<'_> {
                 }
                 (c.id, from, c.position, c.kind, fuse, c.fuel)
             });
+            // NewMinecartBehavior.tick: sample the rail at the interpolated position,
+            // even when this tick has no new movement.
+            if improved {
+                let [x, y, z] = self.rail_block(to, true);
+                let on_rails = self.is_rail(self.world.block(x, y, z));
+                if self.carts[cart].on_rails != on_rails {
+                    self.carts.update(cart, |c| c.on_rails = on_rails);
+                }
+            }
             if kind == super::minecarts::CartKind::Tnt && fuse {
                 self.particles.add(
                     &ParticleOptions::simple(ParticleType::Smoke),

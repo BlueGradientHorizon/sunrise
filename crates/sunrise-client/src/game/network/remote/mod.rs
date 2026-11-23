@@ -32,8 +32,10 @@ mod block_entity_data;
 mod block_entity_data_tests;
 #[cfg(test)]
 mod claimed_item_use_tests;
+#[cfg(test)]
+mod gamemode_actions_tests;
 use super::raw_backlog::Received;
-use super::remote_chunks::{ChunkDecoder, ChunkFormat, Next};
+use super::remote_chunks::{ChunkDecoder, ChunkFormat, Next, RemoteLight};
 use super::remote_vehicles::PassengerSeat;
 use super::render_tick::{mob_tracking_body, player_tracking_body};
 use super::{Dim, Game, Hit, Mining, Screen, item_use::ticks_left, level_sounds::LevelSound};
@@ -95,7 +97,7 @@ use {
     },
 };
 
-mod abilities;
+pub(in crate::game) mod abilities;
 mod chat;
 mod chat_received;
 mod commands;
@@ -233,8 +235,8 @@ pub(super) struct Tracked {
 
 /// An item has joined the client level, but has no stack to draw yet.
 pub(super) struct PendingItem {
-    join: JoinSeq,
-    position: [f64; 3],
+    pub(in crate::game) join: JoinSeq,
+    pub(in crate::game) position: [f64; 3],
     velocity: Vec3,
 }
 
@@ -601,6 +603,10 @@ pub(super) struct Remote {
     pub(super) levels: Vec<String>,
     /// Player entities in the level: entity id to profile UUID.
     pub(super) level_players: HashMap<i32, u128>,
+    /// Authoritative entity UUID index scoped to the current client level (`EntityLookup.byUuid`).
+    pub(super) level_uuids: HashMap<u128, i32>,
+    /// Reverse entity-id-to-UUID index for O(1) removal and replacement in the current client level.
+    pub(super) level_entity_uuids: HashMap<i32, u128>,
     /// First resolved `PlayerInfo` game mode cell per remote `AbstractClientPlayer` entity.
     level_player_infos: HashMap<i32, std::cell::OnceCell<Arc<std::sync::atomic::AtomicI32>>>,
     /// The profile name each player entity was created with (`RemotePlayer.getGameProfile`): it outlives the
@@ -666,6 +672,9 @@ pub(super) struct Remote {
     clock_game_time: i64,
     /// `ClientChunkCache.Storage`'s view centre (ClientboundSetChunkCacheCenterPacket).
     chunk_center: (i32, i32),
+    /// A viewed-level swap adopts columns before the server sends the active cache centre.
+    pub(super) awaiting_viewed_chunk_center: bool,
+    pub(super) chunk_light: RemoteLight,
     /// Received events a frame left for the next one, in order, and when
     /// the oldest of them first waited (`poll_remote`).
     backlog: VecDeque<Received>,
@@ -1387,25 +1396,8 @@ impl Game<'_> {
                     r.simulation_distance = p.distance;
                 }
             }
-            C::SetChunkCacheRadius(p) => {
-                self.streaming.radius = crate::game::entity_culling::streaming_radius_for(
-                    self.settings.render_distance,
-                    Some(p.distance),
-                );
-                if let Some(r) = self.remote.as_mut() {
-                    r.view_distance = p.distance;
-                    let center = r.chunk_center;
-                    // ClientChunkCache.updateViewRadius: a new storage of that size.
-                    self.drop_remote_chunks_out_of_range(center, p.distance);
-                }
-            }
-            C::SetChunkCacheCenter(p) => {
-                if let Some(r) = self.remote.as_mut() {
-                    r.chunk_center = (p.x, p.z);
-                    let distance = r.view_distance;
-                    self.drop_remote_chunks_out_of_range((p.x, p.z), distance);
-                }
-            }
+            C::SetChunkCacheRadius(p) => self.set_remote_chunk_cache_radius(p.distance),
+            C::SetChunkCacheCenter(p) => self.set_remote_chunk_cache_center((p.x, p.z)),
             C::BlockEntityData(p) => self.remote_block_entity_packet(p),
             C::OpenSignEditor(p) => self.remote_open_sign_editor(p),
             C::OpenBook(p) => self.remote_open_book(p.hand),
@@ -2363,15 +2355,6 @@ fn client_has_level(logged_in: bool, reconfiguring: Option<u64>) -> bool {
     logged_in && reconfiguring.is_none()
 }
 
-/// `ClientChunkCache.Storage.inRange`: whether column `x`, `z` is within `calculateStorageRange`
-/// (the server's radius, at least two, plus three) of the view centre. The radius and the centre
-/// are the server's to send, any `i32`: the distances are taken without overflow, which panicked
-/// a debug build and, wrapping in release, dropped every loaded chunk.
-fn in_storage_range(view_distance: i32, center: (i32, i32), x: i32, z: i32) -> bool {
-    let range = view_distance.max(2).saturating_add(3).unsigned_abs();
-    x.abs_diff(center.0) <= range && z.abs_diff(center.1) <= range
-}
-
 // A packet's removals (`RemoveEntities`), apart: this file may not grow.
 #[cfg(test)]
 mod interaction_event_tests;
@@ -2379,6 +2362,8 @@ mod interaction_event_tests;
 #[cfg(test)]
 mod native_entity_tests;
 
+#[cfg(test)]
+mod camera_view_tests;
 #[cfg(test)]
 mod effect_blend_tests;
 #[cfg(test)]
@@ -2390,6 +2375,8 @@ mod attachment_query_tests;
 mod passage_cross_tests;
 #[cfg(test)]
 mod respawn_motion_tests;
+#[cfg(test)]
+mod riptide_tests;
 impl Remote {
     /// Project the session address for display once, dropping the memory transport's marker.
     pub(super) fn display_address_for(address: &str) -> Option<String> {
@@ -2398,7 +2385,11 @@ impl Remote {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+pub(in crate::game) mod tests {
+    mod client_explosion_tests {
+        include!("client_explosion_tests.rs");
+    }
+
     use super::super::api_values::TryIntoApi;
 
     mod block_entity_state_tests {
@@ -2428,22 +2419,22 @@ pub(crate) mod tests {
     mod client_block_changed_tests {
         include!("client_block_changed_tests.rs");
     }
-    mod camera_draw_tests {
+    pub(in crate::game) mod camera_draw_tests {
         include!("camera_draw_tests.rs");
     }
-    mod client_camera_tests {
+    pub(in crate::game) mod client_camera_tests {
         include!("client_camera_tests.rs");
     }
-    mod camera_parity_red_tests {
+    pub(in crate::game) mod camera_parity_red_tests {
         include!("camera_parity_red_tests.rs");
     }
-    mod set_camera_kinds_tests {
+    pub(in crate::game) mod set_camera_kinds_tests {
         include!("set_camera_kinds_tests.rs");
     }
-    mod camera_death_tests {
+    pub(in crate::game) mod camera_death_tests {
         include!("camera_death_tests.rs");
     }
-    mod client_hud_camera_tests {
+    pub(in crate::game) mod client_hud_camera_tests {
         include!("client_hud_camera_tests.rs");
     }
     mod client_day_time_tests {
@@ -2524,7 +2515,7 @@ pub(crate) mod tests {
     mod particle_group_tests {
         include!("particle_group_tests.rs");
     }
-    mod placement_preview_tests {
+    pub(in crate::game) mod placement_preview_tests {
         include!("placement_preview_tests.rs");
     }
     mod player_animation_tests {

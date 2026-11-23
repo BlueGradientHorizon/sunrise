@@ -640,10 +640,15 @@ impl Game<'_> {
             _ => None,
         }
     }
-    /// Returns the mob's no-gravity flag (`Entity.isNoGravity`).
+    /// Returns the mob's or dropped item's no-gravity flag (`Entity.isNoGravity`).
     pub(super) fn entity_no_gravity(&self, entity: EntityRef) -> Option<bool> {
         match self.native_entity_body(entity)? {
             Body::Mob(m) => Some(m.no_gravity),
+            Body::Other(Target::Item(id)) => self
+                .dropped
+                .iter()
+                .find(|i| i.id == id)
+                .map(|i| i.no_gravity),
             _ => None,
         }
     }
@@ -687,8 +692,10 @@ impl Game<'_> {
     /// entity pass (`Entity.commonTick`) since the client added it.
     fn client_entity_tick_count(&self, entity: EntityRef) -> Option<i32> {
         let (remote, id) = self.native_client_entity_context(entity)?;
+        // The local player from its admission (Login, Respawn), before the server's first
+        // teleport gives it a body.
         if id == remote.entity_id {
-            return self.player.as_ref().map(|_| remote.own_tick_count);
+            return remote.has_logical_player.then_some(remote.own_tick_count);
         }
         remote
             .entities
@@ -707,16 +714,27 @@ impl Game<'_> {
             true
         })
     }
-    /// Sets the mob's no-gravity flag (`Entity.setNoGravity`). Returns false for players and guests.
+    /// Sets the mob's or dropped item's no-gravity flag (`Entity.setNoGravity`). Returns false
+    /// for players and guests.
     pub(super) fn entity_set_no_gravity(&mut self, entity: EntityRef, no_gravity: bool) -> bool {
-        let Some(Target::Mob(id)) = self.native_entity_target(entity) else {
-            return false;
-        };
-        self.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
-            m.no_gravity = no_gravity;
-            m.needs_sync = true;
-            true
-        })
+        match self.native_entity_target(entity) {
+            Some(Target::Mob(id)) => self.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
+                m.no_gravity = no_gravity;
+                m.needs_sync = true;
+                true
+            }),
+            Some(Target::Item(id)) => {
+                self.dropped
+                    .iter_mut()
+                    .find(|i| i.id == id)
+                    .is_some_and(|i| {
+                        i.no_gravity = no_gravity;
+                        i.needs_sync = true;
+                        true
+                    })
+            }
+            _ => false,
+        }
     }
     /// Sets the entity's shared invisibility flag (`Entity.setInvisible`). Returns false for players and guests.
     pub(super) fn entity_set_invisible(&mut self, entity: EntityRef, invisible: bool) -> bool {
@@ -852,6 +870,52 @@ mod tests {
             assert!(entity.set_no_gravity(game, true));
             assert!(game.mobs[0].no_gravity);
             assert!(game.mobs[0].needs_sync);
+        });
+    }
+
+    /// `Entity.setNoGravity` and `Entity.isNoGravity` reach a live dropped item, not only a
+    /// mob; a kind that is neither still refuses both, as does a stale handle (#5011, #3938
+    /// item 47).
+    #[test]
+    #[ignore = "daily"]
+    fn no_gravity_reads_and_writes_a_live_dropped_item() {
+        use super::super::native_entity_refs::tests::with_game;
+        use mod_api::WorldEpoch;
+        use sunrise_client::entities::ArmorStand;
+        use sunrise_client::items::ItemStack;
+        use sunrise_core::geometry::Vec3;
+
+        with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
+            game.spawn_item(
+                ItemStack {
+                    item: "minecraft:stone".into(),
+                    count: 1,
+                    damage: 0,
+                    extra: None,
+                },
+                [0.0; 3],
+                [0.0; 3],
+                0,
+            );
+            let item = game.entity(game.dropped[0].id).unwrap();
+            assert_eq!(item.no_gravity(game), Some(false));
+
+            assert!(item.set_no_gravity(game, true));
+            assert!(game.dropped[0].no_gravity);
+            assert!(game.dropped[0].needs_sync);
+            assert_eq!(item.no_gravity(game), Some(true));
+
+            // A kind that is neither an item nor a mob keeps refusing both: the new arm
+            // widened the match for items alone.
+            game.armor_stands.push(ArmorStand::new(43, Vec3::ZERO, 0.0));
+            let stand = game.entity(43).unwrap();
+            assert_eq!(stand.no_gravity(game), None);
+            assert!(!stand.set_no_gravity(game, true));
+
+            let stale = EntityRef::new(WorldEpoch::new(item.epoch().get() + 1), item.id());
+            assert_eq!(stale.no_gravity(game), None);
+            assert!(!stale.set_no_gravity(game, true));
         });
     }
 
@@ -1049,6 +1113,7 @@ mod tests {
             assert_eq!(item.tick_count(game), Some(77));
 
             game.orbs.push(ExperienceOrb {
+                size_answer: None,
                 attachment_lifetime: Default::default(),
                 fall_distance: 0.0,
                 rotation: [0.0, 0.0],
@@ -1144,6 +1209,7 @@ mod tests {
             );
             let item = game.dropped[0].id;
             game.orbs.push(ExperienceOrb {
+                size_answer: None,
                 attachment_lifetime: Default::default(),
                 fall_distance: 0.0,
                 rotation: [0.0, 0.0],
@@ -1215,6 +1281,7 @@ mod tests {
             game.next_entity += 1;
             let falling = game.next_entity;
             game.falling.push(FallingBlock {
+                size_answer: None,
                 ground: Default::default(),
                 fire_ticks: 0,
                 sync_velocity: false,
@@ -1397,6 +1464,7 @@ mod tests {
             game.next_entity += 1;
             let id = game.next_entity;
             game.falling.push(FallingBlock {
+                size_answer: None,
                 ground: Default::default(),
                 fire_ticks: 0,
                 sync_velocity: false,

@@ -32,6 +32,14 @@ mob's movement speed already reads as that modifier (a cat's or ocelot's own AI 
 handle, on a client and for a kind with no sprinting flag. It is the flag `Entity.isSprinting` reads, not
 the player's sprint key: a player's own client sets its flag again from its input.
 
+## No gravity
+
+`EntityRef::no_gravity(host)` reads `Entity.isNoGravity` and
+`EntityRef::set_no_gravity(host, enabled)` sets it on the server. Both cover mobs and live
+dropped items, including an `EntityRef` resolved from `ItemPart::on_entity_item_update`; an
+item honours the flag in its own tick. Stale handles and other kinds read `None` and refuse
+the write. The write marks the item for its next sync, as it does for a mob.
+
 ## Fire, water and consumption
 
 `EntityRef::is_on_fire(host)` reads vanilla `Entity.isOnFire` on either side: an entity that is not
@@ -104,8 +112,11 @@ On a client, the read answers for every entity of the level the client shows, wh
 own copy: as in vanilla, each copy counts the ticks the client level gives it from when the server added it
 (`Entity.commonTick` in `ClientLevel.tickNonPassenger` and `tickPassenger`), not the server's count. A frozen level
 ticks only the players and the entities carrying them. The local player counts before its own update, so also before
-it has loaded and while it sleeps, and an entity tick callback already reads the new count. The new local player that a
-respawn or a dimension change makes starts again at 0.
+it has loaded and while it sleeps. A root counts at its own visit, once its `entity_tick_pre` let it through (a
+canceled root does not count that tick), and a passenger counts before its own tick, whatever its Pre answers; a
+`player_tick_pre` callback already reads the player's new count. The new local player that a
+respawn or a dimension change makes starts again at 0 as soon as it is admitted, and counts from there, before the
+server's first teleport gives it a body.
 
 `MobRef::can_use_portal` reads the existing server portal decision for a mob in the current level, including mounts and player riders. It takes `&dyn Host`: `Some(false)` means the mob is ineligible, while `None` means a client, stale or unavailable handle, parked mob, or the separately modelled dragon. It does not load a level.
 
@@ -138,12 +149,16 @@ in its saved compound.
 
 ## Mob flags
 
-Through `MobRef`: `no_ai`/`set_no_ai` (`Mob.isNoAi` and `setNoAi`: the mob stands, saved as `NoAI`) and
+Through `MobRef`: `no_ai`/`set_no_ai` (`Mob.isNoAi` and `setNoAi`: the mob stands, saved as `NoAI`),
+`is_in_sitting_pose`/`set_in_sitting_pose` (`TamableAnimal.isInSittingPose` and `setInSittingPose`, on the tamable
+animals: wolf, cat, parrot, nautilus and zombie nautilus) and
 `set_baby` (`Mob.setBaby` through the canonical species-specific setup). Ageable mobs start at their species'
 baby age (`-48000` for a sniffer, otherwise `-24000`) or become adults at `0`, including the age-boundary
 attribute, navigation and AI changes. Their age is saved as `Age` where the kind saves one. Non-ageable babies,
 such as zombies and piglins, keep their non-growing baby state instead. A species with no baby form refuses
-`set_baby` without changing anything. Neither `set_baby` nor `set_no_ai` changes `PersistenceRequired`.
+`set_baby` without changing anything. The sitting write changes the synced pose only, not the saved
+`isOrderedToSit` order, so the pet's own sit goal may write the pose again on its next tick, as vanilla. Neither
+`set_baby` nor `set_no_ai` changes `PersistenceRequired`.
 
 `ai_paused`/`set_ai_paused` pause a mob's AI step while its physics runs on, as vanilla's `isImmobile` does for a
 dying mob or a stunned ravager. A paused mob skips `Mob.serverAiStep` whole: its Brain or its goal and target
@@ -160,10 +175,7 @@ For an Allay, the expiring liked-player memory, liked-note-block cooldown and it
 stop during the pause. Passive healing, the duplication countdown, dancing and animation continue.
 
 ```rust
-// A spawner's movable no-AI mob: paused once, and still paused after a reload.
-if let Some(mob) = host.mob(entity) {
-    let _ = mob.set_ai_paused(host, true);
-}
+{{#include ../../../examples/src/entity_and_native.rs:pause_mob_ai}}
 ```
 
 The persistence pair `persistence_required`/`set_persistence_required` reads and sets `Mob.isPersistenceRequired`;

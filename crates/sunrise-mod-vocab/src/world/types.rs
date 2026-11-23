@@ -354,6 +354,41 @@ impl LevelRef {
         let backend = crate::backend::backend_mut_of(host)?;
         crate::world::random::with_random_draw(draw, |draw| backend.with_level_random(self, draw))
     }
+    /// The loaded entity of this server level with `uuid`, as vanilla's
+    /// `ServerLevel.getEntity(UUID)` reads the level's entity lookup; NeoForge mods call the
+    /// same vanilla method, which NeoForge does not extend. It reads the named open level
+    /// whether it is the one in place for this hook or parked while the server ticks
+    /// another, through the level's UUID index: it never switches, loads or scans a level.
+    /// To search every level, as vanilla's `ServerLevel.getEntityInAnyDimension(UUID)`
+    /// does, ask the hook's own level first, then each other level of
+    /// [`Levels::list_levels`]:
+    ///
+    /// ```
+    /// use mod_api::prelude::*;
+    /// use mod_api::{EntityRef, EntityUuid, LevelRef, ServerHost};
+    /// fn find_anywhere(host: &dyn ServerHost, own: LevelRef, uuid: EntityUuid) -> Option<EntityRef> {
+    ///     own.entity_by_uuid(host, uuid).or_else(|| {
+    ///         let levels = host.levels().list_levels();
+    ///         levels
+    ///             .into_iter()
+    ///             .filter(|level| *level != own)
+    ///             .find_map(|level| level.entity_by_uuid(host, uuid))
+    ///     })
+    /// }
+    /// ```
+    ///
+    /// Returns `None` for an entity whose chunk is not loaded, one resident in another
+    /// level, a dragon part, an entity held out of lookup, taken from its resident storage,
+    /// unavailable under a scoped item loan or queued for removal, a vehicle being
+    /// destroyed, a stale handle, a level that is not open, and outside server world access.
+    /// The lookup leaves entity and level state alone.
+    ///
+    /// The handle it returns is an ordinary [`EntityRef`]: the calls that read an entity of a
+    /// parked level (`kind`, `uuid`, `level`) answer for it, and the others refuse it while
+    /// its level is parked, as they refuse any entity outside the level in place.
+    pub fn entity_by_uuid(self, host: &dyn ServerHost, uuid: EntityUuid) -> Option<EntityRef> {
+        crate::backend::backend_of(host)?.level_entity_by_uuid(self, uuid)
+    }
     /// The open of the world the handle belongs to.
     pub fn epoch(self) -> WorldEpoch {
         self.epoch
@@ -466,6 +501,32 @@ impl ChunkRef {
 pub enum ChunkStatus {
     /// A full chunk in a level's live world.
     Full,
+}
+
+/// Why `level.load_chunk` did not bring its chunk to FULL: the error of the `ChunkResult`
+/// vanilla's chunk futures carry (`ServerChunkCache.getChunkFuture`, `ChunkResult.isSuccess`),
+/// and the failure Sunrise adds where vanilla would crash. `Ok(())` is the chunk loaded.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+#[derive(sunrise_mod_api_macros::Wire)]
+pub enum ChunkLoadError {
+    /// Vanilla's `ChunkResult` error (`ChunkHolder.UNLOADED_CHUNK`): the chunk could not be
+    /// held, or the level went away during the wait. A stale handle, a client, a level the
+    /// server has not opened, a chunk past `ChunkPos.isValid` and a level whose generation is
+    /// paused or stopped answer it too.
+    Unloaded,
+    /// Generation panicked for this chunk or for one its generation needs around it: a mod's
+    /// chunk generator, contained by the engine where vanilla would crash. The level stays open
+    /// and is not generated there again until it opens again; asking again answers `Failed` at
+    /// once.
+    Failed,
+}
+
+impl crate::NoBackend for ChunkLoadError {
+    /// No game: as for a level the server has not opened.
+    fn no_backend() -> Self {
+        Self::Unloaded
+    }
 }
 
 /// A chunk's ticket level (`ChunkLevel`), as the server holds it: how much of
