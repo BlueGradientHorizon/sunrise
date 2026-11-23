@@ -325,22 +325,14 @@ impl Source {
                     .rsplit_once("::")
                     .ok_or_else(|| format!("no module {path}"))?;
                 let parent = self.module(parent)?;
-                let mut declarations = parent.items.iter().filter_map(|item| match item {
-                    Item::Mod(module)
-                        if module.ident == name
-                            && !mod_source::modules::test_only(&module.attrs) =>
-                    {
-                        module.content.as_ref().map(|(_, items)| items)
-                    }
-                    _ => None,
-                });
+                let mut declarations = crate::source::inline_module_items(&parent.items, name);
                 let items = declarations
                     .next()
                     .ok_or_else(|| format!("no module {path}"))?;
                 if declarations.next().is_some() {
                     return Err(format!("multiple inline declarations for module {path}"));
                 }
-                items.clone()
+                items.to_vec()
             };
             self.parsed.insert(path.to_owned(), Module { items });
         }

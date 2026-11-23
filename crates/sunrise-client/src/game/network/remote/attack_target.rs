@@ -40,9 +40,14 @@ impl Game<'_> {
                 if !living {
                     self.remote_object_attack();
                 }
-            } else if let Some(row) = self.shown_remote_general(id) {
+            } else if let Some(kind) = self
+                .remote
+                .as_ref()
+                .and_then(|r| r.general.rows.get(&id))
+                .map(|row| row.kind())
+            {
                 // A row reaches Player.attack but hurtClient is false.
-                self.remote_sweep_event(row.kind(), false);
+                self.remote_sweep_event(kind, false);
             }
         }
         self.reset_attack_strength();
@@ -127,17 +132,7 @@ mod tests {
             let at = Vec3::new(0.5, 65.0, 2.5);
             game.boats.push(Boat::new(101, Arc::from("oak"), at, 0.0));
             game.carts.push(Minecart::new(102, CartKind::Rideable, at));
-            game.crystals.push(Crystal {
-                attachment_lifetime: Default::default(),
-                join: Default::default(),
-                id: 103,
-                position: at,
-                show_bottom: false,
-                time: 0,
-                beam: None,
-                invulnerable: false,
-                fall: (false, 0.0),
-            });
+            game.crystals.push(Crystal::new(103, at, false, 0));
             let bullet = ProjectileKind::ShulkerBullet {
                 target: None,
                 dir: None,

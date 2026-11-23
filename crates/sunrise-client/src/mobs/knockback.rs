@@ -79,7 +79,7 @@ impl Mob {
         let (kx, kz) = (xd / len * power, zd / len * power);
         self.velocity = Vec3::new(
             self.velocity.x / 2.0 - kx,
-            if self.on_ground {
+            if self.ground.on_ground {
                 (self.velocity.y / 2.0 + power).min(0.4)
             } else {
                 self.velocity.y

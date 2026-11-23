@@ -105,7 +105,7 @@ pub type EventKind = (&'static str, Option<u32>, Option<String>);
 
 pub fn event_kind(event: &HostEvent) -> EventKind {
     match event {
-        HostEvent::Joined(c) => ("join", Some(*c), None),
+        HostEvent::Joined(c, _) => ("join", Some(*c), None),
         HostEvent::Left(g) => ("leave", None, Some(g.name.clone())),
         HostEvent::Packet(c, p) => (p.name(), Some(*c), None),
         HostEvent::InputCredits(_) => ("input credits", None, None),
@@ -113,7 +113,7 @@ pub fn event_kind(event: &HostEvent) -> EventKind {
         HostEvent::ClientInformation(c, _, _) => ("client settings", Some(*c), None),
         HostEvent::ChatSubmitted { .. } => ("chat submitted", None, None),
         HostEvent::ChatSessionStarted(_) => ("chat session", None, None),
-        HostEvent::Jump { conn, .. } => ("jump", Some(*conn), None),
+        HostEvent::AcceptedMove(conn, _) => ("accepted player move", Some(*conn), None),
         HostEvent::PlayerMove(c) => ("player move", Some(*c), None),
         HostEvent::PlayerLoaded(c) => ("loaded", Some(*c), None),
         HostEvent::RecipeBookSettings { conn, .. } => ("recipe book", Some(*conn), None),

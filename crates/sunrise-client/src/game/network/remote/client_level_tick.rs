@@ -52,6 +52,7 @@ impl Game<'_> {
         // tick's actions and its move.
         self.remote_send_carried();
         self.tick_chat_session();
+        self.tick_debug_connection();
         self.fire_pending_block_entity_loads();
         self.ticks += 1;
         self.repro_tick();
@@ -61,6 +62,7 @@ impl Game<'_> {
         self.tick_sign_editor();
         self.track_experience_display();
         self.tick_enchanting_book();
+        self.tick_inventory_screen();
         // Leaving a slot clears its bundle's selection here and on the server.
         self.tick_bundle_hover();
         // Options.broadcastOptions: a changed render distance or Chat option

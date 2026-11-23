@@ -36,7 +36,7 @@ pub use biomes::{
     category as biome_category, pack_id as biome_pack_id, precipitation as biome_precipitation,
 };
 pub use block_ids::BlockIds;
-pub use condition::eval_condition;
+pub use condition::{Conditionals, eval_condition, resolve_defined};
 pub use config::{
     BUFFERS, Buffer, Config, Format, HALF_LIVES, Kind, SHADOW_COLORS, Shadow, buffer_index,
     draw_buffers, shadow_color,

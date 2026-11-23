@@ -40,7 +40,11 @@ fn with_spectator(test: impl FnOnce(&mut Game<'_>)) {
     with_client_game(|game| {
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "CameraViewTest").unwrap();
-        game.enter_remote_dimension(&spawn("minecraft:overworld"), false, Reason::Other);
+        game.enter_remote_dimension(
+            &spawn("minecraft:overworld"),
+            super::RemoteDimensionEntry::Login,
+            Reason::Other,
+        );
         let remote = game.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.entity_id = OWN;
@@ -105,10 +109,22 @@ fn view(game: &Game<'_>) -> ViewEntity {
     }
 }
 
+/// The effects the client keeps for the entity `id` (a mob, another player or an armor stand),
+/// `None` when the level holds no such entity or it has none.
 fn kept(game: &Game<'_>, id: i32) -> Option<Vec<(&'static str, i32)>> {
-    let r = game.remote.as_ref().unwrap();
-    let fx = r.entity_effects.get(&id)?;
-    Some(fx.effects.list.iter().map(|e| (e.id, e.duration)).collect())
+    let id = id as u32;
+    let list = match game.mobs.iter().find(|m| m.id == id) {
+        Some(m) => &m.extra.client_effects.list,
+        None => {
+            &game
+                .armor_stands
+                .iter()
+                .find(|a| a.id == id)?
+                .client_effects
+                .list
+        }
+    };
+    (!list.is_empty()).then(|| list.iter().map(|e| (e.id, e.duration)).collect())
 }
 
 const PLAYER_VIEW: ViewEntity = ViewEntity {
@@ -205,10 +221,28 @@ fn a_view_on_another_entity_has_none_of_the_players_values() {
                 ..none
             }
         );
-        // The boat leaves while it is the camera: the view is the player's again.
+        // The boat leaves while it is the camera: the view stays on it (`Minecraft.cameraEntity`
+        // keeps the removed entity), with none of the player's values.
         set_camera(game, BOAT);
         game.handle_packet(C::RemoveEntities(play::RemoveEntities { ids: vec![BOAT] }))
             .unwrap();
+        assert_eq!(view(game), none);
+        // So does a removed living camera: the zombie's blindness as it was.
+        update(game, ZOMBIE, "minecraft:blindness", 100, 0);
+        set_camera(game, ZOMBIE);
+        game.handle_packet(C::RemoveEntities(play::RemoveEntities {
+            ids: vec![ZOMBIE],
+        }))
+        .unwrap();
+        assert_eq!(
+            view(game),
+            ViewEntity {
+                living: true,
+                blindness: 1.0,
+                ..none
+            }
+        );
+        set_camera(game, OWN);
         assert_eq!(view(game), PLAYER_VIEW);
     });
 }
@@ -264,6 +298,14 @@ fn other_entities_effects_go_with_the_entity() {
         add(game, 50, "minecraft:armor_stand", [2.0, 64.0, 2.0]);
         update(game, 50, "minecraft:slowness", 100, 0);
         assert_eq!(kept(game, 50), Some(vec![("slowness", 100)]));
+        // The view on the stand reads its effects, and RemoveMobEffect takes them off it.
+        update(game, 50, "minecraft:blindness", 100, 0);
+        set_camera(game, 50);
+        assert_eq!(view(game).blindness, 1.0);
+        remove(game, 50, "minecraft:blindness");
+        assert_eq!(view(game).blindness, 0.0);
+        assert_eq!(kept(game, 50), Some(vec![("slowness", 100)]));
+        set_camera(game, OWN);
 
         update(game, ZOMBIE, "minecraft:speed", 100, 0);
         game.handle_packet(C::Respawn(play::Respawn {
@@ -277,7 +319,8 @@ fn other_entities_effects_go_with_the_entity() {
             keep: 0,
         }))
         .unwrap();
-        assert!(game.remote.as_ref().unwrap().entity_effects.is_empty());
+        assert_eq!(kept(game, ZOMBIE), None);
+        assert_eq!(kept(game, 50), None);
     });
 }
 
@@ -461,7 +504,7 @@ fn the_view_drops_values_whose_source_is_gone_before_a_tick() {
         }))
         .unwrap();
         assert_eq!(view(game).darkness, 0.0);
-        assert!(game.remote.as_ref().unwrap().entity_effects.is_empty());
+        assert_eq!(kept(game, ZOMBIE), None);
     });
 }
 
@@ -478,6 +521,16 @@ fn effects_count_down_on_the_ticks_their_entity_ticks() {
     const STAND: i32 = 50;
     with_spectator(|game| {
         add(game, PIG, "minecraft:pig", [3.0, 64.0, 3.0]);
+        // createEntityFromPacket: another player needs its PlayerInfo first.
+        game.handle_packet(C::PlayerInfoUpdate(play::PlayerInfoUpdate {
+            actions: 0x01,
+            entries: vec![play::PlayerInfo {
+                uuid: OTHER as u128,
+                name: Some("Other".into()),
+                ..play::PlayerInfo::default()
+            }],
+        }))
+        .unwrap();
         add(game, OTHER, "minecraft:player", [4.0, 64.0, 4.0]);
         add(game, RIDER, "minecraft:zombie", [5.0, 64.0, 5.0]);
         add(game, STAND, "minecraft:armor_stand", [2.0, 64.0, 2.0]);
@@ -524,10 +577,7 @@ fn a_driven_mounts_effects_count_down_in_its_own_tick() {
         ride(game, HORSE, vec![OWN]);
         assert_eq!(game.driven_mount().map(|m| m.id), Some(HORSE as u32));
         update(game, HORSE, "minecraft:speed", 100, 0);
-        assert!(
-            game.remote_ride(sunrise_client::sprint::Keys::default(), 0)
-                .unwrap()
-        );
+        assert!(game.remote_ride(sunrise_client::sprint::Keys::default()));
         assert_eq!(kept(game, HORSE), Some(vec![("speed", 99)]));
         game.tick_remote_entities(true);
         assert_eq!(kept(game, HORSE), Some(vec![("speed", 99)]));

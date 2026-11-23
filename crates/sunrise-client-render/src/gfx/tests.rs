@@ -619,7 +619,12 @@ fn special_material_batches_preserve_quad_order_and_offsets() {
     let mut batch = super::EntityBatch::default();
     let counts = batch.update(&entities, &quad(3, 5), &quad(0, 6), &quad(0, 8), false);
     let vertices = &batch.combined;
-    assert_eq!(counts, [4, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    assert_eq!(
+        counts,
+        [
+            4, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ]
+    );
     assert_eq!(
         vertices
             .as_chunks::<4>()
@@ -780,8 +785,9 @@ fn shaders_translate_to_hlsl_for_directx_12_and_glsl_for_opengl() {
         } else if name == "rt_unpack.wgsl" {
             // Appended to terrain.wgsl (`ray_scene`'s `Unpacker`), on ray tracing devices.
             continue;
+        } else if name == "entity.wgsl" {
+            sources.push((path, super::entity_shader()));
         } else if name == "terrain.wgsl"
-            || name == "entity.wgsl"
             || name == "stars.wgsl"
             || name == "custom_sky.wgsl"
             || name == "border.wgsl"
@@ -1244,7 +1250,7 @@ fn a_fade_ends_by_its_deadline_and_never_comes_back() {
 fn fading_sections_go_to_the_cpu_and_come_back() {
     use super::{
         FadeInputs, SectionGpu, SectionKey, decide_fade, forget_records, gpu_culling, hold_fading,
-        mark_fades,
+        mark_fades, section_fade,
     };
     use crate::fast_hash::{FxHashMap, FxHashSet};
     use std::time::{Duration, Instant};
@@ -1257,7 +1263,7 @@ fn fading_sections_go_to_the_cpu_and_come_back() {
     struct Sim {
         sections: super::resident::Resident<SectionGpu>,
         records: gpu_culling::Records,
-        fades: gpu_culling::Fades,
+        fades: section_fade::Fades,
         uploaded: FxHashMap<SectionKey, Instant>,
         retiring: FxHashSet<SectionKey>,
     }

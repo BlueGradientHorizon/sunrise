@@ -1,5 +1,5 @@
 //! Real server/client Game owners, world publication and negotiated client registry limits.
-use super::native_entity_refs::tests::{with_client_game, with_game};
+use super::native_entity_refs::tests::{run_fresh_cases, with_client_game, with_game};
 use mod_api::{
     DatapackField, DatapackFieldKind, DatapackRegistrySync, Hooks, ModEntry, Registrar,
     RegistrationContext,
@@ -72,6 +72,14 @@ fn check_rejected_sync_tags(game: &super::Game<'_>) {
 #[test]
 #[ignore = "daily"]
 fn generic_entries_follow_real_server_tables_and_atomic_reload() {
+    // The lazy wire cache is process-wide; another world must not replace this world's snapshot.
+    if run_fresh_cases(
+        "game::native_registry_entries_tests::generic_entries_follow_real_server_tables_and_atomic_reload",
+        "SUNRISE_REGISTRY_ENTRIES_RELOAD_CHILD",
+        &["reload"],
+    ) {
+        return;
+    }
     let _publication = sunrise_client::datapack_net::isolate_server_publication();
     let scratch = tempfile::tempdir().unwrap();
     let pack = scratch.path().join("datapacks/entries");
@@ -362,6 +370,7 @@ fn generic_client_entries_use_only_builtin_synced_and_negotiated_tables() {
                 let sync = super::lan::sync::sync_data(
                     &game.options.resources,
                     &game.res.core.item_data,
+                    game.items(),
                     &game.pack_files(),
                 )
                 .unwrap();
@@ -425,7 +434,7 @@ fn generic_client_entries_use_only_builtin_synced_and_negotiated_tables() {
                         [("addon:hot".into(), vec!["addon:remote".into()])].into(),
                     )
                     .unwrap();
-                let server_set = mod_api::DatapackRegistrySet::first(candidate, 900);
+                let server_set = mod_api::DatapackRegistrySet::from_candidate(candidate);
                 // A same-process server snapshot is deliberately present on the client Game too.
                 game.mods.datapack_registries = Some(Arc::new(server_set.clone()));
                 sunrise_client::datapack_net::serve(Some(Arc::new(server_set)));

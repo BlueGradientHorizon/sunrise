@@ -7,12 +7,37 @@ impl PartRegistrar {
     pub(crate) fn owned_declaration_id(&self, name: &str) -> Result<String, String> {
         owned_declaration_id(self.mod_id, name)
     }
+
+    /// Whether the declaring package or any package supplying `id`'s namespace in
+    /// `loaded_mods()` has a side other than `Side::Both`.
+    ///
+    /// Used by registrars whose output assigns client-required registry entries or
+    /// network-synced schemas (`declare_general_entity`, `declare_attribute`,
+    /// `widen_attribute_bounds`, `declare_datapack_registry`).
+    pub(crate) fn declaration_side_not_both(&self, id: &str) -> bool {
+        let loaded = mod_vocab::__private::parts_installation::loaded_mods();
+        if loaded
+            .get(self.mod_id)
+            .is_some_and(|package| package.side() != crate::Side::Both)
+        {
+            return true;
+        }
+        let Some((namespace, _)) = id.split_once(':') else {
+            return false;
+        };
+        loaded.iter().any(|package| {
+            package.side() != crate::Side::Both
+                && (package.id() == self.mod_id || package.served_by() == Some(self.mod_id))
+                && package.namespaces().any(|owned| owned == namespace)
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::*;
+    use mod_vocab::__private::game::RegistrationContextNew;
 
     fn with_porter(f: impl FnOnce()) {
         crate::load_state::with_test_package_inventory(
@@ -240,11 +265,62 @@ mod tests {
         crate::testing::with_mods(vec![ModEntry::new("late", Box::new(Late))].into(), || {
             let mut blocks = Vec::new();
             // Call the engine dispatcher out of phase; a mod cannot retain the event.
-            crate::dispatch_blocks(&RegistrationContext::new(), &mut |block| {
-                blocks.push(block);
-                Ok(())
+            crate::dispatch_blocks(&RegistrationContext::new(), &mut |listen| {
+                assert!(listen(&mut |block| {
+                    blocks.push(block);
+                    Ok(())
+                }));
             });
             assert!(blocks.is_empty());
+        });
+    }
+
+    #[test]
+    fn panicking_block_declaration_drops_its_batch_and_is_skipped_next_time() {
+        struct Declares(bool);
+        #[crate::__subscriptions]
+        impl Hooks for Declares {
+            fn blocks(&self, _: &RegistrationContext, event: &mut BlocksEvent<'_>) {
+                event
+                    .register(Block::new("stone_variant", "minecraft:stone"))
+                    .unwrap();
+                if self.0 {
+                    panic!("declare then panic");
+                }
+            }
+        }
+        let mods = vec![
+            ModEntry::new("broken", Box::new(Declares(true))),
+            ModEntry::new("later", Box::new(Declares(false))),
+        ]
+        .into();
+        crate::testing::with_mods(mods, || {
+            let _registration = crate::__private::RegistrationGuard::open();
+            let context = RegistrationContext::new();
+            for expected in [[false, true].as_slice(), [true].as_slice()] {
+                let mut outcomes = Vec::new();
+                let mut published = Vec::new();
+                crate::dispatch_blocks(&context, &mut |listen| {
+                    let mut pending = Vec::new();
+                    let completed = listen(&mut |declaration| {
+                        pending.push(declaration.answer.id);
+                        Ok(())
+                    });
+                    outcomes.push(completed);
+                    if completed {
+                        published.extend(pending);
+                    }
+                });
+                assert_eq!(outcomes, expected);
+                assert_eq!(published, ["later:stone_variant"]);
+            }
+            assert_eq!(
+                mod_vocab::__private::take_hook_panics(),
+                [mod_vocab::__private::HookPanicReport {
+                    mod_id: "broken",
+                    hook: "blocks",
+                }]
+            );
         });
     }
 
@@ -284,18 +360,21 @@ mod tests {
         let mods: Mods = vec![ModEntry::new("porter", Box::new(Declares))].into();
         crate::testing::with_mods(mods, || {
             with_porter(|| {
-                let _registration =
-                    crate::__private::PhaseOwner::scope(crate::__private::ModPhase::Registration);
+                let _registration = crate::__private::RegistrationGuard::open();
                 let context = RegistrationContext::new();
                 let mut blocks = Vec::new();
                 let mut items = Vec::new();
-                crate::dispatch_blocks(&context, &mut |block| {
-                    blocks.push(block);
-                    Ok(())
+                crate::dispatch_blocks(&context, &mut |listen| {
+                    assert!(listen(&mut |block| {
+                        blocks.push(block);
+                        Ok(())
+                    }));
                 });
-                crate::dispatch_items(&context, &mut |item| {
-                    items.push(item);
-                    Ok(())
+                crate::dispatch_items(&context, &mut |listen| {
+                    assert!(listen(&mut |item| {
+                        items.push(item);
+                        Ok(())
+                    }));
                 });
                 assert_eq!(blocks.len(), 1);
                 assert_eq!(blocks[0].mod_id, "porter");
@@ -333,6 +412,176 @@ mod tests {
                     ]
                 );
             })
+        });
+    }
+
+    #[test]
+    fn served_by_grants_namespace_ownership_only_to_the_serving_code_mod() {
+        let packages = vec![
+            PackageInfo::new(
+                "horizon_java".into(),
+                "1".into(),
+                PackageKind::Code,
+                Side::Both,
+                vec!["horizon_java".into()],
+                vec![],
+            ),
+            PackageInfo::new(
+                "third".into(),
+                "1".into(),
+                PackageKind::Code,
+                Side::Both,
+                vec!["third".into()],
+                vec![],
+            ),
+            PackageInfo::new(
+                "runes".into(),
+                "1".into(),
+                PackageKind::Content,
+                Side::Both,
+                vec!["runes".into(), "runes_extra".into()],
+                vec![],
+            )
+            .with_served_by(Some("horizon_java".into())),
+            PackageInfo::new(
+                "plain".into(),
+                "1".into(),
+                PackageKind::Content,
+                Side::Both,
+                vec!["plain".into()],
+                vec![],
+            ),
+        ];
+
+        struct HostDeclares;
+        #[crate::__subscriptions]
+        impl Hooks for HostDeclares {
+            fn blocks(&self, _: &RegistrationContext, event: &mut BlocksEvent<'_>) {
+                event
+                    .register(Block::new("runes:altar", "minecraft:stone"))
+                    .unwrap();
+                event
+                    .register(Block::new("runes_extra:pillar", "minecraft:stone"))
+                    .unwrap();
+                assert_eq!(
+                    event.register(Block::new("minecraft:altar", "minecraft:stone")),
+                    Err(DeclarationError::UnownedNamespace {
+                        id: "minecraft:altar".into(),
+                        namespace: "minecraft".into(),
+                    })
+                );
+                assert_eq!(
+                    event.register(Block::new("plain:altar", "minecraft:stone")),
+                    Err(DeclarationError::UnownedNamespace {
+                        id: "plain:altar".into(),
+                        namespace: "plain".into(),
+                    })
+                );
+            }
+            fn items(&self, _: &RegistrationContext, event: &mut ItemsEvent<'_>) {
+                event
+                    .register(Item::new("runes:fire_rune", "minecraft:stick"))
+                    .unwrap();
+            }
+        }
+        struct ThirdDeclares;
+        #[crate::__subscriptions]
+        impl Hooks for ThirdDeclares {
+            fn blocks(&self, _: &RegistrationContext, event: &mut BlocksEvent<'_>) {
+                assert_eq!(
+                    event.register(Block::new("runes:stolen", "minecraft:stone")),
+                    Err(DeclarationError::UnownedNamespace {
+                        id: "runes:stolen".into(),
+                        namespace: "runes".into(),
+                    })
+                );
+            }
+        }
+
+        crate::load_state::with_test_package_inventory(packages, || {
+            let mut host = PartRegistrar::new("horizon_java");
+            assert_eq!(
+                host.owned_declaration_id("runes:crafting").unwrap(),
+                "runes:crafting"
+            );
+            assert_eq!(
+                host.owned_declaration_id("runes_extra:infusing").unwrap(),
+                "runes_extra:infusing"
+            );
+            assert!(host.owned_declaration_id("plain:block").is_err());
+            assert!(host.owned_declaration_id("minecraft:custom").is_err());
+            assert!(host.owned_declaration_id("c:custom").is_err());
+            assert!(host.owned_declaration_id("sunrise:custom").is_err());
+
+            (&mut host as &mut dyn Registrar).register_recipe_type("runes:crafting");
+            (&mut host as &mut dyn Registrar)
+                .register_raw_recipe_serializer("runes:crafting_json", "runes:crafting");
+            (&mut host as &mut dyn Registrar).register_recipe_type("runes_extra:infusing");
+            (&mut host as &mut dyn Registrar).register_raw_recipe_serializer(
+                "runes_extra:infusing_json",
+                "runes_extra:infusing",
+            );
+            let book = host.recipe_book_type("runes:book").unwrap();
+            host.menu_recipe_book(
+                "runes:altar",
+                &book,
+                "runes:crafting",
+                crate::RecipeBookLayout::Furnace {
+                    input: 0,
+                    fuel: 1,
+                    result: 2,
+                },
+            )
+            .unwrap();
+            assert!(host.refused.is_empty(), "{:?}", host.refused);
+
+            let mut third = PartRegistrar::new("third");
+            assert!(third.owned_declaration_id("runes:crafting").is_err());
+            assert!(third.owned_declaration_id("runes_extra:infusing").is_err());
+            assert!(third.owned_declaration_id("minecraft:crafting").is_err());
+            (&mut third as &mut dyn Registrar).register_recipe_type("runes:crafting");
+            (&mut third as &mut dyn Registrar)
+                .register_raw_recipe_serializer("runes:crafting_json", "runes:crafting");
+            assert_eq!(third.refused.len(), 2, "{:?}", third.refused);
+
+            let mods: Mods = vec![
+                ModEntry::new("horizon_java", Box::new(HostDeclares)),
+                ModEntry::new("third", Box::new(ThirdDeclares)),
+            ]
+            .into();
+            crate::testing::with_mods(mods, || {
+                let _registration = crate::__private::RegistrationGuard::open();
+                let context = RegistrationContext::new();
+                let mut blocks = Vec::new();
+                let mut items = Vec::new();
+                crate::dispatch_blocks(&context, &mut |listen| {
+                    assert!(listen(&mut |block| {
+                        blocks.push(block);
+                        Ok(())
+                    }));
+                });
+                crate::dispatch_items(&context, &mut |listen| {
+                    assert!(listen(&mut |item| {
+                        items.push(item);
+                        Ok(())
+                    }));
+                });
+                assert_eq!(
+                    blocks
+                        .iter()
+                        .map(|b| b.answer.id.as_str())
+                        .collect::<Vec<_>>(),
+                    ["runes:altar", "runes_extra:pillar"]
+                );
+                assert_eq!(
+                    items
+                        .iter()
+                        .map(|i| i.answer.id.as_str())
+                        .collect::<Vec<_>>(),
+                    ["runes:fire_rune"]
+                );
+                assert_eq!(take_declaration_refusals(&context).len(), 3);
+            });
         });
     }
 }

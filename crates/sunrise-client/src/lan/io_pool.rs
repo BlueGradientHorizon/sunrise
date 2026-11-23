@@ -87,6 +87,15 @@ pub(super) fn charge(retained: usize) -> usize {
     retained.saturating_add(std::mem::size_of::<Queued>() * 2)
 }
 
+/// A pairing payload carries its own prepaid charge until the queued body is dropped.
+pub(super) fn body_charge(body: &Body) -> usize {
+    if body.is_prepared() {
+        0
+    } else {
+        charge(body.retained())
+    }
+}
+
 pub(super) struct Queued {
     body: Body,
     prepared: bool,
@@ -173,9 +182,9 @@ impl Outbox {
         let bodies = bodies
             .into_iter()
             .map(|body| Queued {
-                cost: charge(body.retained()),
+                cost: body_charge(&body),
+                prepared: body.is_prepared(),
                 body,
-                prepared: false,
                 pending: self.pending.clone(),
             })
             .collect();
@@ -354,7 +363,10 @@ fn start(threads: usize) -> std::io::Result<Pool> {
         });
         let mine = worker.clone();
         // Mod payload handlers run on these threads (the server's network root).
-        sunrise_guest_stack::spawn(format!("sunrise-net-{n}"), move || run(poll, &mine))?;
+        std::thread::Builder::new()
+            .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
+            .name(format!("sunrise-net-{n}"))
+            .spawn(move || run(poll, &mine))?;
         workers.push(worker);
     }
     Ok(Pool { workers })
@@ -640,7 +652,7 @@ impl Conn {
     /// if one could not be.
     fn frame(&mut self, now: Instant, bodies: Vec<Queued>, _queued: bool) -> bool {
         for body in &bodies {
-            // A bundle's delimiters travel as bodies of their own, possibly in different batches.
+            // Do not insert a droppable packet between a bundle's delimiters.
             if self.outbox.droppable.get().is_some()
                 && !body.prepared
                 && body.body.first()

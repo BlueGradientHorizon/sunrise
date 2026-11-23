@@ -531,6 +531,70 @@ fn the_stamp_follows_a_mod_files_contents_not_its_folder_or_time() {
     );
 }
 
+#[test]
+fn an_admitted_archive_keys_resource_caches_by_bytes_not_entry_metadata() {
+    use sunrise_mod_package::content::ContentSource;
+
+    const FILE: &str = "data/testmod/custom/value.bin";
+    // Equal length and CRC-32, but different bytes.
+    const FIRST: &[u8] = b"\xba\x42\xc6\x9b\xb4\x3d\x52\xdd";
+    const SECOND: &[u8] = b"\x63\xd6\x35\x1a\x43\xda\x3a\xd9";
+    let dir = tempfile::tempdir().unwrap();
+    let base = resources(dir.path());
+    let cache = dir.path().join("cache");
+    let jars = dir.path().join("jars");
+    let path = dir.path().join("testmod.smod");
+    let manifest_text = manifest("testmod", "");
+    let manifest = sunrise_mod_package::Manifest::parse(&manifest_text).unwrap();
+    let archive = |payload| {
+        let bytes =
+            sunrise_mod_package::Package::write_files(&manifest_text, &[(FILE, payload)]).unwrap();
+        {
+            let mut zip = zip::ZipArchive::new(std::io::Cursor::new(&bytes)).unwrap();
+            let entry = zip.by_name(FILE).unwrap();
+            assert_eq!((entry.crc32(), entry.size()), (0x5eab_a44f, 8));
+        }
+        bytes
+    };
+    let admit = || {
+        let source = ContentSource::open(&path)
+            .unwrap()
+            .admit(&manifest)
+            .unwrap();
+        [ContentMod {
+            id: "testmod".into(),
+            content: Content::read_opened(&source, &manifest, &[]).unwrap(),
+            jars: Vec::new(),
+        }]
+    };
+    let build = |mods: &[ContentMod]| resource_root_fixture(&base, &jars, mods, &cache).unwrap();
+    let fingerprint = |root, mods: &[ContentMod]| {
+        resolved_resources(&base, root, &jars, mods, cache.clone())
+            .unwrap()
+            .mod_layers()[0]
+            .fingerprint_under("data", &["custom"])
+            .unwrap()
+    };
+    fs::write(&path, archive(FIRST)).unwrap();
+    let first = admit();
+    let original_root = build(&first);
+    let original_fingerprint = fingerprint(original_root.clone(), &first);
+
+    let replacement = dir.path().join("replacement.smod");
+    fs::write(&replacement, archive(SECOND)).unwrap();
+    fs::rename(replacement, &path).unwrap();
+    assert_eq!(build(&first), original_root);
+    assert_eq!(
+        fingerprint(original_root.clone(), &first),
+        original_fingerprint
+    );
+
+    let second = admit();
+    let new_root = build(&second);
+    assert_ne!(new_root, original_root);
+    assert_ne!(fingerprint(new_root, &second), original_fingerprint);
+}
+
 /// Each game folder reaches the one set of prepared resources through its own link
 /// (`.local/sunrise-client/26.3`), and keeps its own copy of the mods.
 #[cfg(unix)]
@@ -748,9 +812,11 @@ fn block_aliases_keep_the_original_item_in_placement_context() {
                 face: Direction::Up,
                 hit: Vec3::new(f64::from(pos.x) + 0.5, 70.0, 0.5),
                 inside: false,
-                yaw: 0.0,
-                pitch: 0.0,
-                sneaking: false,
+                source: sunrise_world::level::PlacementSource::Player {
+                    yaw: 0.0,
+                    pitch: 0.0,
+                    sneaking: false,
+                },
                 item: (*name).into(),
                 can_use_game_master_blocks: false,
             };
@@ -1666,9 +1732,11 @@ fn content_root_loads_with_every_table() {
             face: Direction::Up,
             hit: Vec3::new(0.5, 1.0, 0.5),
             inside: false,
-            yaw: 0.0,
-            pitch: 0.0,
-            sneaking: false,
+            source: sunrise_world::level::PlacementSource::Player {
+                yaw: 0.0,
+                pitch: 0.0,
+                sneaking: false,
+            },
             item: "ruby:ruby_sword".into(),
             can_use_game_master_blocks: false,
         };
@@ -8311,5 +8379,281 @@ fn plain_block_properties_replace_template_facts_and_face_rule() {
             assert_eq!(row[8], J::Str("CUSTOM_HEAD".into()));
         }
         fs::remove_dir_all(base.parent().unwrap()).unwrap();
+    }
+}
+
+#[test]
+fn accept_declared_refuses_host_duplicates_of_served_content_and_keeps_served_remainders() {
+    use sunrise_mod_package::content::{Block, Content, Item};
+    let block = |id: &str, item: bool| Block {
+        id: id.into(),
+        template: "minecraft:stone".into(),
+        item,
+        ..Block::default()
+    };
+    let item = |id: &str, remainder: Option<&str>| Item {
+        id: id.into(),
+        template: "minecraft:stick".into(),
+        crafting_remainder: remainder.map(str::to_owned),
+        ..Item::default()
+    };
+    let mut runes = Content::declared("runes");
+    runes.blocks.push(block("runes:altar", true));
+    runes.blocks.push(block("runes:crop", false));
+    runes.items.push(item("runes:stone", None));
+    runes
+        .items
+        .push(item("runes:soup", Some("runes:extra_item")));
+    runes
+        .items
+        .push(item("runes:ritual", Some("runes:extra_block")));
+    let mut plain = Content::declared("plain");
+    plain.items.push(item("plain:spoon", None));
+
+    let host_manifest = sunrise_mod_package::Manifest::parse(&format!(
+        "id='horizon_java'\nname='Horizon'\nversion='1.0.0'\napi='0.2'\nside='both'\ncapabilities=['registries']\n[native]\ngame='26.3'\nsunrise='{}'\nserves_content=true\n",
+        "a".repeat(40),
+    ))
+    .unwrap();
+    let runes_manifest = sunrise_mod_package::Manifest::parse(
+        "id='runes'\nname='Runes'\nversion='1.0.0'\napi='0.2'\nside='both'\ncapabilities=['registries']\nserved_by='horizon_java'\n",
+    )
+    .unwrap();
+    let plain_manifest = sunrise_mod_package::Manifest::parse(
+        "id='plain'\nname='Plain'\nversion='1.0.0'\napi='0.2'\nside='both'\ncapabilities=['registries']\n",
+    )
+    .unwrap();
+    let manifests = [&host_manifest, &runes_manifest, &plain_manifest];
+    let known = BTreeSet::new();
+
+    // Non-colliding host declarations in a served namespace succeed and coexist without clash.
+    // Both directions of cross-layer crafting_remainder work (served -> host item & block item,
+    // and host -> served item & block item).
+    let mut mods = vec![
+        ContentMod {
+            id: "runes".into(),
+            content: runes,
+            jars: Vec::new(),
+        },
+        ContentMod {
+            id: "plain".into(),
+            content: plain,
+            jars: Vec::new(),
+        },
+    ];
+    let valid = BTreeMap::from([(
+        "horizon_java",
+        DeclaredContent {
+            blocks: vec![block("runes:extra_block", true).validate_local().unwrap()],
+            items: vec![
+                item("runes:extra_item", None).validate_local().unwrap(),
+                // Host item using a served content item as its crafting_remainder.
+                item("runes:filled_stone", Some("runes:stone"))
+                    .validate_local()
+                    .unwrap(),
+                // Host item using a served content item-bearing block as its crafting_remainder.
+                item("horizon_java:altar_kit", Some("runes:altar"))
+                    .validate_local()
+                    .unwrap(),
+                // Same ID as a block with `item: false` is allowed.
+                item("runes:crop", None).validate_local().unwrap(),
+            ],
+            ..Default::default()
+        },
+    )]);
+    let mut errors = Vec::new();
+    accept_declared(&mut mods, &valid, &manifests, &known, &mut errors).unwrap();
+    assert!(errors.is_empty(), "{errors:?}");
+    assert_eq!(mods.len(), 3);
+    assert_eq!(mods[2].id, "horizon_java");
+    // Served and host items with valid cross-layer remainders (both items and block items) survive.
+    assert!(drop_dangling_remainders(&mut mods).is_empty());
+    assert_eq!(mods.len(), 3);
+
+    // Host items cannot use an unserved package's item or a nonexistent item as remainder.
+    for (label, bad_item) in [
+        (
+            "unserved package remainder",
+            item("horizon_java:stolen_rem", Some("plain:spoon")),
+        ),
+        (
+            "missing remainder",
+            item("runes:missing_rem", Some("runes:nonexistent")),
+        ),
+    ] {
+        let mut errors = Vec::new();
+        let batches = BTreeMap::from([(
+            "horizon_java",
+            DeclaredContent {
+                items: vec![bad_item.validate_local().unwrap()],
+                ..Default::default()
+            },
+        )]);
+        accept_declared(&mut mods, &batches, &manifests, &known, &mut errors).unwrap();
+        assert_eq!(errors.len(), 1, "{label}: {errors:?}");
+        assert!(
+            matches!(
+                &errors[0].error,
+                mod_api::DeclarationError::Rejected { reason, .. }
+                    if reason.contains("crafting_remainder")
+            ),
+            "{label}: {:?}",
+            errors[0]
+        );
+    }
+
+    // A served block with `item: false` does not supply a remainder item when no item shares its ID.
+    let mut itemless_runes = Content::declared("runes");
+    itemless_runes.blocks.push(block("runes:no_item", false));
+    let mut itemless_mods = vec![ContentMod {
+        id: "runes".into(),
+        content: itemless_runes,
+        jars: Vec::new(),
+    }];
+    let mut itemless_errors = Vec::new();
+    let itemless_batches = BTreeMap::from([(
+        "horizon_java",
+        DeclaredContent {
+            items: vec![
+                item("runes:uses_no_item", Some("runes:no_item"))
+                    .validate_local()
+                    .unwrap(),
+            ],
+            ..Default::default()
+        },
+    )]);
+    accept_declared(
+        &mut itemless_mods,
+        &itemless_batches,
+        &manifests,
+        &known,
+        &mut itemless_errors,
+    )
+    .unwrap();
+    assert_eq!(itemless_errors.len(), 1, "{itemless_errors:?}");
+    assert!(
+        matches!(
+            &itemless_errors[0].error,
+            mod_api::DeclarationError::Rejected { id, reason }
+                if id == "runes:uses_no_item" && reason.contains("crafting_remainder")
+        ),
+        "{:?}",
+        itemless_errors[0]
+    );
+
+    // An itemless block never reserves an item ID in either direction across layers:
+    // (1) code itemless block + file item with the same ID, and
+    // (2) file itemless block + code item with the same ID.
+    let mut itemless_cross_runes = Content::declared("runes");
+    itemless_cross_runes
+        .blocks
+        .push(block("runes:no_item", false));
+    itemless_cross_runes.items.push(item("runes:stone", None));
+    let mut itemless_cross_mods = vec![ContentMod {
+        id: "runes".into(),
+        content: itemless_cross_runes,
+        jars: Vec::new(),
+    }];
+    let mut itemless_cross_errors = Vec::new();
+    let itemless_cross_batches = BTreeMap::from([(
+        "horizon_java",
+        DeclaredContent {
+            blocks: vec![block("runes:stone", false).validate_local().unwrap()],
+            items: vec![item("runes:no_item", None).validate_local().unwrap()],
+            ..Default::default()
+        },
+    )]);
+    accept_declared(
+        &mut itemless_cross_mods,
+        &itemless_cross_batches,
+        &manifests,
+        &known,
+        &mut itemless_cross_errors,
+    )
+    .unwrap();
+    assert!(
+        itemless_cross_errors.is_empty(),
+        "{itemless_cross_errors:?}"
+    );
+    assert!(
+        itemless_cross_mods[1]
+            .content
+            .blocks
+            .iter()
+            .any(|b| b.id == "runes:stone" && !b.item)
+    );
+    assert!(
+        itemless_cross_mods[1]
+            .content
+            .items
+            .iter()
+            .any(|i| i.id == "runes:no_item")
+    );
+
+    // Every true block/item collision against a served package refuses atomically.
+    let cases = [
+        (
+            "duplicate block",
+            DeclaredContent {
+                blocks: [block("runes:altar", true), block("runes:atomic_skip", true)]
+                    .into_iter()
+                    .map(|b| b.validate_local().unwrap())
+                    .collect(),
+                ..Default::default()
+            },
+            "runes:altar",
+        ),
+        (
+            "item-bearing block colliding with served item",
+            DeclaredContent {
+                blocks: [block("runes:stone", true), block("runes:atomic_skip", true)]
+                    .into_iter()
+                    .map(|b| b.validate_local().unwrap())
+                    .collect(),
+                ..Default::default()
+            },
+            "runes:stone",
+        ),
+        (
+            "item colliding with served block item",
+            DeclaredContent {
+                blocks: vec![block("runes:atomic_skip", true).validate_local().unwrap()],
+                items: vec![item("runes:altar", None).validate_local().unwrap()],
+                ..Default::default()
+            },
+            "runes:altar",
+        ),
+        (
+            "duplicate item",
+            DeclaredContent {
+                blocks: vec![block("runes:atomic_skip", true).validate_local().unwrap()],
+                items: vec![item("runes:stone", None).validate_local().unwrap()],
+                ..Default::default()
+            },
+            "runes:stone",
+        ),
+    ];
+    for (label, batch, conflicting_id) in cases {
+        let mut errors = Vec::new();
+        let batches = BTreeMap::from([("horizon_java", batch)]);
+        accept_declared(&mut mods, &batches, &manifests, &known, &mut errors).unwrap();
+        assert_eq!(errors.len(), 1, "{label}: {errors:?}");
+        assert!(
+            matches!(
+                &errors[0].error,
+                mod_api::DeclarationError::Rejected { id, reason }
+                    if id == conflicting_id && reason.contains("runes")
+            ),
+            "{label}: {:?}",
+            errors[0]
+        );
+        assert!(
+            !mods[2]
+                .content
+                .blocks
+                .iter()
+                .any(|b| b.id == "runes:atomic_skip"),
+            "{label}: batch must be refused atomically"
+        );
     }
 }

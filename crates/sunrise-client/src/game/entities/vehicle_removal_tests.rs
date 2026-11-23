@@ -229,7 +229,6 @@ fn with_removal_test_hooks(hooks: impl Hooks, test: impl FnOnce(&mut Game<'_>)) 
             game.options.dedicated = Some(Vec::new());
             tick_area(game);
             game.next_entity = 100;
-            let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
             test(game);
         });
     });

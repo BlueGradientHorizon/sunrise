@@ -2050,8 +2050,7 @@ pub(super) mod initial_history_tests {
     #[ignore = "requires a host GPU; run with --ignored --nocapture"]
     fn core_matrix_inputs_render_provider_values() {
         let _gpu = crate::test_gpu::lock();
-        let instance = crate::test_gpu::instance();
-        let adapter = pollster::block_on(instance.request_adapter(&Default::default())).unwrap();
+        let adapter = crate::test_gpu::adapter().unwrap();
         eprintln!("Core matrix GPU: {:?}", adapter.get_info());
         let (device, queue) =
             pollster::block_on(adapter.request_device(&Default::default())).unwrap();
@@ -2127,8 +2126,7 @@ pub(super) mod initial_history_tests {
     #[ignore = "daily"]
     fn core_normal_matrix_renders_the_view_rotation() {
         let _gpu = crate::test_gpu::lock();
-        let instance = crate::test_gpu::instance();
-        let adapter = pollster::block_on(instance.request_adapter(&Default::default())).unwrap();
+        let adapter = crate::test_gpu::adapter().unwrap();
         eprintln!("Normal matrix GPU: {:?}", adapter.get_info());
         let (device, queue) =
             pollster::block_on(adapter.request_device(&Default::default())).unwrap();

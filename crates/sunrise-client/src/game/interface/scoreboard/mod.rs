@@ -3,6 +3,7 @@
 //! entities, the selector options `scores=`, `team=` and `tag=`, the
 //! commands' [`Env`] and the sidebar.
 use super::{Game, chat::PLAYER_NAME, commands::Target};
+use mod_api::EntityTags;
 use std::collections::{HashMap, HashSet};
 use sunrise_client::actions::Action;
 use sunrise_client::{
@@ -285,8 +286,8 @@ impl Game<'_> {
         let uuid = uuid_from_text(name).filter(|_| name.len() == 36)?;
         self.target_with_uuid(uuid)
     }
-    /// `Entity.getTags` (the `Tags` list of the saved entity).
-    pub(super) fn tags_of(&self, t: Target) -> Vec<String> {
+    /// The saved `Tags` list read by commands and native entity handles.
+    pub(super) fn saved_entity_tags(&self, t: Target) -> EntityTags<'_> {
         let raw = match t {
             Target::Mob(id)
             | Target::Item(id)
@@ -325,16 +326,19 @@ impl Game<'_> {
             // A natural knot keeps no saved compound: it has no tags.
             Target::Knot(_) => None,
         };
-        match raw.and_then(|r| r.get("Tags")) {
-            Some(Tag::List(l)) => l
-                .iter()
-                .filter_map(|t| match t {
-                    Tag::String(s) => Some(s.to_string_lossy()),
-                    _ => None,
-                })
-                .collect(),
-            _ => Vec::new(),
-        }
+        let tags = match raw.and_then(|r| r.get("Tags")) {
+            Some(Tag::List(tags)) => tags.as_slice(),
+            _ => &[],
+        };
+        mod_api::__private::game::borrow_entity_tags(tags)
+    }
+
+    /// The lossy UTF-8 presentation used by `/tag` and its existing write paths.
+    pub(super) fn tags_of(&self, t: Target) -> Vec<String> {
+        self.saved_entity_tags(t)
+            .iter_utf16()
+            .map(String::from_utf16_lossy)
+            .collect()
     }
     /// The selector options that need the scoreboard or entity data: which
     /// of `candidates` pass `scores=`, `team=` and `tag=`.
@@ -574,27 +578,37 @@ impl Game<'_> {
         self.score_player_killed_named(name, matches!(victim, Target::Player | Target::Guest(_)));
     }
     /// [`score_player_killed`](Self::score_player_killed) with the victim's
-    /// scoreboard name at hand: a guest's record is out of `self.lan` during
-    /// its turn (`ServerPlayer.die` runs there).
+    /// scoreboard name at hand.
     pub(super) fn score_player_killed_named(&mut self, victim_name: Option<String>, player: bool) {
-        let display = self.player_display_comp();
-        let me = self.acting_player_name().to_owned();
+        let killer = self.acting_player_name().to_owned();
+        self.score_player_kill_for(&killer, victim_name.as_deref(), player);
+    }
+
+    /// `ServerPlayer.awardKillScore` uses the killer as score holder, even
+    /// when the body installed for `ServerPlayer.die` belongs to the victim.
+    pub(super) fn score_player_kill_for(
+        &mut self,
+        killer: &str,
+        victim: Option<&str>,
+        player: bool,
+    ) {
+        let display = self.player_score_display(killer);
         let board = &mut self.score.board;
         let inc = |v: i32| v.wrapping_add(1);
-        board.for_all_objectives_with(sb::CRITERIA_TOTAL_KILLS, &me, Some(&display), inc);
+        board.for_all_objectives_with(sb::CRITERIA_TOTAL_KILLS, killer, Some(&display), inc);
         if player {
-            board.for_all_objectives_with(sb::CRITERIA_PLAYER_KILLS, &me, Some(&display), inc);
+            board.for_all_objectives_with(sb::CRITERIA_PLAYER_KILLS, killer, Some(&display), inc);
         }
         let color_of =
             |board: &Scoreboard, name: &str| board.players_team(name).and_then(|t| t.color.clone());
-        if let Some(victim_name) = victim_name {
-            if let Some(color) = color_of(board, &victim_name) {
+        if let Some(victim) = victim {
+            if let Some(color) = color_of(board, victim) {
                 let criteria = format!("teamkill.{color}");
-                board.for_all_objectives_with(&criteria, &me, Some(&display), inc);
+                board.for_all_objectives_with(&criteria, killer, Some(&display), inc);
             }
-            if let Some(color) = color_of(board, &me) {
+            if let Some(color) = color_of(board, killer) {
                 let criteria = format!("killedByTeam.{color}");
-                board.for_all_objectives(&criteria, &victim_name, inc);
+                board.for_all_objectives(&criteria, victim, inc);
             }
         }
     }
@@ -785,10 +799,13 @@ impl Game<'_> {
     }
     /// `Player.getDisplayName`: the name with the team's prefix, suffix and colour.
     pub(super) fn player_display_comp(&self) -> Comp {
-        let name = literal(self.acting_player_name());
-        match self.player_team() {
-            Some(t) => t.formatted_name_comp(&name),
-            None => name,
+        self.player_score_display(self.acting_player_name())
+    }
+    fn player_score_display(&self, name: &str) -> Comp {
+        let display = literal(name);
+        match self.score.board.players_team(name) {
+            Some(t) => t.formatted_name_comp(&display),
+            None => display,
         }
     }
     pub(super) fn player_display_text(&self) -> Text {
@@ -960,7 +977,7 @@ impl Game<'_> {
         // Player heads and the player list both draw from the same skin
         // slots: a new frame, with what the last one drew.
         self.flush_skin_slots();
-        let key = self.screen == super::Screen::Playing && self.keys.held(Action::Playerlist);
+        let key = self.screen == super::Screen::Playing && self.held_mapping(Action::Playerlist);
         let count = self.remote.as_ref().map_or_else(
             || {
                 1 + self

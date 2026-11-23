@@ -1769,7 +1769,7 @@ impl Screen {
         }
         true
     }
-    pub fn wheel(&mut self, delta: f32, cursor: (f32, f32), size: (f32, f32)) {
+    pub fn wheel(&mut self, delta: f32, cursor: (f32, f32), size: (f32, f32)) -> bool {
         if let Self::List {
             servers,
             lan,
@@ -1781,13 +1781,15 @@ impl Screen {
             if cursor.1 >= top && cursor.1 < bottom {
                 let content = content_height(servers.len(), lan.games().len());
                 scroll.wheel(delta, ROW_HEIGHT / 2.0, top, bottom, content);
+                return true;
             }
         }
+        false
     }
     /// The pointer moved: a held scrollbar follows it, and a held server
     /// moves to the saved server's row under the pointer, the others closing
     /// up behind it; it stays selected.
-    pub fn drag(&mut self, y: f32, size: (f32, f32)) {
+    pub fn drag(&mut self, y: f32, size: (f32, f32)) -> bool {
         if let Self::List {
             servers,
             selected,
@@ -1800,7 +1802,7 @@ impl Screen {
             let (w, h) = (size.0.ceil(), size.1.ceil());
             let (top, bottom, left) = list_area(w, h);
             let games = lan.games().len();
-            scroll.drag(y, top, bottom, content_height(servers.len(), games));
+            let scrolled = scroll.drag(y, top, bottom, content_height(servers.len(), games));
             if let Some(held) = held
                 && let Some(Row::Server(to)) =
                     row_at(servers.len(), games, (left + 1.0, y), (w, h), scroll.amount)
@@ -1814,11 +1816,13 @@ impl Screen {
                 };
                 *selected = Some(to);
             }
+            return scrolled || held.is_some();
         }
+        false
     }
     /// The button was released: a server that was dragged somewhere else is
     /// saved there.
-    pub fn release(&mut self, saves: &Path) {
+    pub fn release(&mut self, saves: &Path) -> bool {
         if let Self::List {
             servers,
             scroll,
@@ -1826,11 +1830,15 @@ impl Screen {
             ..
         } = self
         {
+            let scrolled = scroll.held();
             scroll.release();
-            if held.take().is_some_and(|h| h.moved) {
+            let row = held.take();
+            if row.as_ref().is_some_and(|h| h.moved) {
                 save_servers(&servers_file(saves), servers);
             }
+            return scrolled || row.is_some();
         }
+        false
     }
     /// The focused box, in GUI pixels: name at 66, address at 106
     /// (`ManageServerScreen`), direct address at 116, friend fields at 64 and 105.

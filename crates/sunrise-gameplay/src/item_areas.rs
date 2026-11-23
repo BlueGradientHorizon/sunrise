@@ -203,7 +203,10 @@ mod tests {
             position: p,
             previous: p,
             velocity: Vec3::ZERO,
-            on_ground: true,
+            ground: sunrise_world::ground_support::GroundState {
+                on_ground: true,
+                ..Default::default()
+            },
             age: 0,
             pickup_delay: 0,
             bob_offset: 0.0,
@@ -213,7 +216,6 @@ mod tests {
             was_touching_water: false,
             no_gravity: false,
             vertical_collision: false,
-            horizontal_collision: false,
         }
     }
 

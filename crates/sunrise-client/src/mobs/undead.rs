@@ -16,6 +16,7 @@ use super::{
 };
 use crate::health::DamageLevel;
 use crate::projectiles::{Projectile, ProjectileKind};
+use std::ops::ControlFlow;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 
 /// `ZombifiedPiglin.alertOthers` keeps the source's player identity.
@@ -250,7 +251,7 @@ pub fn drowned_move_control(m: &mut Mob, w: &super::MobWorld) {
             m.velocity.z + s * zd * 0.005,
         );
     } else {
-        if !m.on_ground {
+        if !m.ground.on_ground {
             m.velocity = Vec3::new(m.velocity.x, m.velocity.y - 0.008, m.velocity.z);
         }
         let speed = m.movement_speed();
@@ -265,7 +266,7 @@ pub(super) fn drowned_travel(
     input: Vec3,
     events: &mut Vec<MobEvent>,
     pause: bool,
-) -> Result<(), super::living::TravelTrample> {
+) -> ControlFlow<super::living::TravelPause> {
     m.move_relative(0.01, input);
     m.travel_move(w, level, events, pause, |m, _, _, _| {
         m.velocity = Vec3::new(m.velocity.x * 0.9, m.velocity.y * 0.9, m.velocity.z * 0.9);
@@ -281,7 +282,10 @@ fn ranged_attack_uncertainty(difficulty: u8) -> f32 {
 /// The trident throw of `Drowned.performRangedAttack`: a `ThrownTrident` of
 /// the held trident (a plain one when it holds none), owned by the drowned,
 /// which cannot be picked up and does not return (`AbstractArrow` constructor:
-/// only a player's projectile is `Pickup.ALLOWED`).
+/// only a player's projectile is `Pickup.ALLOWED`). A native mod takes the throw here
+/// through `[[native.mixin]]`, where a Java mod's mixin on `Drowned.performRangedAttack`
+/// cancels or delays it (#4678).
+#[sunrise_mod_api_macros::replaceable]
 fn drowned_throw(m: &mut Mob, who: Who, _power: f32, cx: &mut Cx) {
     let Some(t) = cx.w.target_info(who) else {
         return;
@@ -755,7 +759,7 @@ impl Goal for SkeletonWeapon {
         }
     }
 }
-/// RangedBowAttackGoal for skeletons.
+/// RangedBowAttackGoal for skeletons and the illusioner.
 #[derive(Clone, Debug)]
 pub struct BowAttack {
     speed: f64,
@@ -867,7 +871,13 @@ impl Goal for BowAttack {
                 let pull = m.extra.using_item;
                 if pull >= 20 {
                     m.extra.using_item = 0;
-                    perform_ranged_attack(m, who, cx, bow_power(pull));
+                    // `RangedAttackMob.performRangedAttack`: the illusioner's own or the
+                    // skeleton family's.
+                    if m.species() == Species::Illusioner {
+                        super::illusioner::perform_ranged_attack(m, who, cx, bow_power(pull));
+                    } else {
+                        perform_ranged_attack(m, who, cx, bow_power(pull));
+                    }
                     self.attack_time = self.interval_min;
                 }
             }
@@ -927,9 +937,17 @@ pub fn bow_power(ticks: i32) -> f32 {
     let t = ticks as f32 / 20.0;
     ((t * t + t * 2.0) / 3.0).min(1.0)
 }
-/// AbstractSkeleton.performRangedAttack: aim 20% above the target's lower
-/// third, speed 1.6, uncertainty 14 - 4 * difficulty.
+/// `AbstractSkeleton.performRangedAttack`: the skeleton family's [`bow_shot`]. A native mod
+/// takes the shot here through `[[native.mixin]]`, where a Java mod's mixin on
+/// `AbstractSkeleton.performRangedAttack` cancels or delays it (#4678). The illusioner shoots
+/// the same arrow through its own `performRangedAttack`, which doesn't come through here.
+#[sunrise_mod_api_macros::replaceable]
 pub fn perform_ranged_attack(m: &mut Mob, who: Who, cx: &mut Cx, power: f32) {
+    bow_shot(m, who, cx, power);
+}
+/// The bow shot of `AbstractSkeleton.performRangedAttack` and `Illusioner.performRangedAttack`:
+/// aim 20% above the target's lower third, speed 1.6, uncertainty 14 - 4 * difficulty.
+pub(super) fn bow_shot(m: &mut Mob, who: Who, cx: &mut Cx, power: f32) {
     let Some(t) = cx.w.target_info(who) else {
         return;
     };

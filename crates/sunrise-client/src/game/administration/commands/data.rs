@@ -251,7 +251,14 @@ impl Game<'_> {
             Target::Orb(id) => {
                 let uuid = self.uuid_for(id);
                 let tag = entity_nbt::orb_to_nbt(self.orbs.iter().find(|o| o.id == id)?, uuid);
-                crate::game::persist::with_raw(tag, self.persist.raw.get(&id))
+                // Entity.saveWithoutId: the live fire, air and portal cooldown.
+                let mut tag = crate::game::persist::with_raw_over(
+                    tag,
+                    self.persist.raw.get(&id),
+                    crate::game::persist::ORB_LIVE,
+                );
+                self.save_portal_cooldown(id, &mut tag);
+                tag
             }
             Target::Projectile(id) => {
                 let uuid = self.uuid_for(id);
@@ -300,10 +307,7 @@ impl Game<'_> {
             }
             Target::Crystal(id) => {
                 let c = self.crystals.iter().find(|c| c.id == id)?;
-                let raw = self.persist_anon("minecraft:end_crystal", c.position);
-                let uuid = self.persist.uuids.get(&id).copied();
-                let tag = c.to_nbt(uuid.unwrap_or_else(random_uuid), raw);
-                crate::game::persist::with_raw(tag, self.persist.raw.get(&id))
+                self.crystal_nbt(c)
             }
             Target::Dragon(id) => {
                 let d = self.dragon.as_ref().filter(|d| d.id == id)?;
@@ -335,7 +339,7 @@ impl Game<'_> {
                     f.drop_item,
                     f.damage,
                     f.fall_distance,
-                    f.on_ground,
+                    f.ground.on_ground,
                     f.rotation,
                     uuid,
                 );
@@ -530,13 +534,13 @@ impl Game<'_> {
                     .is_none();
                 if let Some(slot) = self.mobs.iter_mut().find(|m| m.id == id) {
                     // LivingEntity.readAdditionalSaveData only replaces a decoded
-                    // Brain. Keep the Allay's modeled LIKED_PLAYER when the
-                    // required root memory map cannot load; valid empty maps clear it.
-                    let keep_liked_player = slot.species() == sunrise_client::mobs::Species::Allay
-                        && !matches!(
-                            tag.get("Brain").and_then(|brain| brain.get("memories")),
-                            Some(Tag::Compound(_))
-                        );
+                    // Brain. A missing or unreadable memory map is not an empty map.
+                    let unreadable_brain = !matches!(
+                        tag.get("Brain").and_then(|brain| brain.get("memories")),
+                        Some(Tag::Compound(_))
+                    );
+                    let keep_liked_player =
+                        unreadable_brain && slot.species() == sunrise_client::mobs::Species::Allay;
                     // Runtime identity and lifetime stay on the resident owner.
                     new.join = slot.join;
                     new.random = slot.random.clone();
@@ -594,6 +598,12 @@ impl Game<'_> {
                     }
                     if slot.species() == sunrise_client::mobs::Species::Shulker {
                         sunrise_client::mobs::shulker::keep_eased_peek(slot, &old);
+                    }
+                    if unreadable_brain
+                        && let (Some(st), Some(was)) =
+                            (slot.extra.warden.as_mut(), old.extra.warden)
+                    {
+                        st.brain = was.brain;
                     }
                     slot.ai = old.ai;
                     // Mob.readAdditionalSaveData updates persistent home fields,
@@ -714,7 +724,7 @@ impl Game<'_> {
                     b.previous_yaw = yaw;
                     b.pitch = entity_nbt::rotation(&tag)[1];
                     b.no_gravity = entity_nbt::flag(&tag, "NoGravity");
-                    b.on_ground = entity_nbt::flag(&tag, "OnGround");
+                    b.ground.on_ground = entity_nbt::flag(&tag, "OnGround");
                     b.fire_ticks = crate::game::boats::saved_fire(&tag);
                     b.ticks_frozen = crate::game::boats::saved_ticks_frozen(&tag);
                     if b.chest {
@@ -751,7 +761,7 @@ impl Game<'_> {
                     falling.no_gravity = no_gravity;
                     falling.drop_item = drop_item;
                     falling.fall_distance = fall_distance;
-                    falling.on_ground = entity_nbt::flag(&tag, "OnGround");
+                    falling.ground.on_ground = entity_nbt::flag(&tag, "OnGround");
                     falling.fire_ticks = crate::game::boats::saved_fire(&tag);
                     falling.damage = damage;
                     // Keep id/join, start_pos, portal state and stuck multiplier.
@@ -782,7 +792,7 @@ impl Game<'_> {
                 tnt.velocity = entity_nbt::motion(&tag);
                 tnt.rotation = entity_nbt::rotation(&tag);
                 tnt.fuse = super::super::persist::tnt_fuse(&tag);
-                tnt.on_ground = entity_nbt::flag(&tag, "OnGround");
+                tnt.ground.on_ground = entity_nbt::flag(&tag, "OnGround");
                 tnt.fall_distance =
                     sunrise_client::save::float(tag.get("fall_distance")).unwrap_or(0.0);
                 tnt.no_gravity = entity_nbt::flag(&tag, "NoGravity");
@@ -810,11 +820,13 @@ impl Game<'_> {
                 orb.velocity = new.velocity;
                 orb.value = new.value;
                 orb.age = new.age;
-                orb.on_ground = new.on_ground;
+                orb.ground.on_ground = new.ground.on_ground;
                 orb.count = new.count;
                 orb.health = new.health;
                 orb.no_gravity = new.no_gravity;
                 orb.fall_distance = new.fall_distance;
+                orb.fire_ticks = new.fire_ticks;
+                orb.air = new.air;
                 // Entity.load reads portalCooldown and leaves the portal
                 // process as it is.
                 if let Some(portal) = self.portals.entities.get_mut(&id) {
@@ -905,7 +917,7 @@ impl Game<'_> {
                     p.yaw = yaw;
                     p.pitch = pitch;
                     p.no_gravity = entity_nbt::flag(&tag, "NoGravity");
-                    p.on_ground = entity_nbt::flag(&tag, "OnGround");
+                    p.ground.on_ground = entity_nbt::flag(&tag, "OnGround");
                 });
                 set_key(&mut tag, "UUID", Tag::IntArray(uuid.to_vec()));
             }
@@ -1584,12 +1596,12 @@ impl Game<'_> {
             let (_, provider) = self.provider_arg(ctx, registry)?;
             if integer {
                 // ContextIntProvider.getInt: an ArithmeticException reads as 0.
-                let value = self.provider_int(&provider, &compute, 0).unwrap_or(0);
+                let value = self.provider_int(&provider, &compute).unwrap_or(0);
                 vec![Tag::Int(value)]
             } else {
                 // ContextFloatProvider.getFloat: a failure or a non-finite
                 // value reads as 0.
-                let value = self.provider_float(&provider, &compute, 0).unwrap_or(0.0);
+                let value = self.provider_float(&provider, &compute).unwrap_or(0.0);
                 let value = if value.is_finite() { value } else { 0.0 };
                 vec![Tag::Float(value.to_bits())]
             }
@@ -2048,6 +2060,7 @@ mod tests {
                     range: (0, 23),
                 }],
                 command: None,
+                executor: None,
                 range: (0, 23),
                 child: None,
                 literals: vec![],

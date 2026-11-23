@@ -150,8 +150,9 @@ fn setup(game: &mut Game<'_>) -> &'static ModMenuType {
         sent: vec![None; 73],
         drag: None,
         sent_data: vec![],
+        reported_unsent_data_len: None,
         blockless_data: Vec::new(),
-        hidden: vec![],
+
         mod_type: Some(t),
         craft: None,
         links: vec![],

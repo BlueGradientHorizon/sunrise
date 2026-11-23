@@ -26,11 +26,6 @@ use sunrise_render_shaderpack::pack_uniforms::PackInputs;
 
 pub(crate) use super::external::ShadowView;
 
-/// The path-facing names the game reaches through `gfx::pack_post` keep their visibility.
-pub(crate) use sunrise_render_shaderpack::pack_post::construction::{
-    Geometry, TerrainDraw, TerrainList, TerrainPage,
-};
-
 /// The shader pack's `PackPost` methods that still take the client's own `Frame`: `run`, whose
 /// `Frame` it turns into the crate's `UniformFrameView`, sky and hand inputs; `shadow_view`; and
 /// `prepare_entities`, which uploads the frame's `Vertex` runs and its `SkinFrame`.

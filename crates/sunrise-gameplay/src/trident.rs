@@ -39,7 +39,7 @@ pub struct ThrownTrident {
     /// `Entity.isNoGravity`: `AbstractArrow.applyGravity` then skips the pull.
     pub no_gravity: bool,
     /// `Entity.onGround`: moved by `setPos`, it keeps the one it was loaded with.
-    pub on_ground: bool,
+    pub ground: sunrise_world::ground_support::GroundState,
     /// `Entity.remainingFireTicks`; on clients, the synchronized on-fire flag.
     pub fire_ticks: i32,
     pub random: sunrise_core::random::LegacyRandom,
@@ -103,7 +103,7 @@ impl ThrownTrident {
         self.owner_uuid = n.owner;
         self.guest = None;
         self.no_gravity = n.no_gravity;
-        self.on_ground = n.on_ground;
+        self.ground.on_ground = n.on_ground;
         self.fire_ticks = n.fire_ticks;
         self.fall_distance = n.fall_distance;
         self.sound_event = n.sound_event;
@@ -131,7 +131,7 @@ impl ThrownTrident {
                 has_been_shot: self.has_been_shot,
                 owner: self.owner_uuid,
                 no_gravity: self.no_gravity,
-                on_ground: self.on_ground,
+                on_ground: self.ground.on_ground,
                 fire_ticks: self.fire_ticks,
                 fall_distance: self.fall_distance,
                 sound_event: &self.sound_event,
@@ -180,7 +180,7 @@ impl ThrownTrident {
             has_been_shot: false,
             owner_uuid: None,
             no_gravity: false,
-            on_ground: false,
+            ground: Default::default(),
             fire_ticks: 0,
             fall_distance: 0.0,
             sound_event: sunrise_client::entity_nbt::TRIDENT_HIT_GROUND.to_owned(),

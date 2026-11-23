@@ -27,7 +27,7 @@ mod horizon_names_tests;
 pub mod level_mods;
 mod respawn;
 mod writes;
-use writes::{Outstanding, QueuedWrite, Writer};
+use writes::{Outstanding, Writer};
 
 use crate::{
     Result,
@@ -91,9 +91,9 @@ use record::{Encoding, Record};
 /// mutating the world. Each map is visited once, retaining its iteration order
 /// within each chunk (including repeated chunk coordinates in the input).
 /// An empty batch skips both maps; one chunk uses the direct filter path.
-pub fn chunks_with_block_entities<'a, N: std::hash::BuildHasher>(
+pub fn chunks_with_block_entities<'a, E: std::hash::BuildHasher, N: std::hash::BuildHasher>(
     chunks: impl IntoIterator<Item = &'a Arc<Chunk>>,
-    entities: &HashMap<(i32, i32, i32), crate::containers::BlockEntity>,
+    entities: &HashMap<(i32, i32, i32), crate::containers::BlockEntity, E>,
     names: &HashMap<(i32, i32, i32), Tag, N>,
 ) -> Vec<Chunk> {
     let chunks: Vec<_> = chunks.into_iter().collect();
@@ -644,10 +644,6 @@ fn fluid_id(name: &str) -> Option<u32> {
 pub use sunrise_items::item_nbt::{
     decode_items, encode_item, encode_items, item_from_nbt, item_to_nbt,
 };
-/// Whether a mod block entity is temporarily out of the world for its tick.
-pub fn block_entity_placeholder(entity: &crate::containers::BlockEntity) -> bool {
-    matches!(entity, crate::containers::BlockEntity::Mod(m) if m.id().is_empty())
-}
 
 /// The block entity type ID for the block it sits in (a chest-like container
 /// is a chest, trapped chest or barrel).
@@ -669,9 +665,10 @@ pub fn block_entity_id<'a>(e: &'a crate::containers::BlockEntity, block: &'a str
 }
 /// `block_entity_nbt::overlay`, then a container that now holds items loses its
 /// loot table (vanilla clears it when the loot is generated into the container).
-fn merge_block_entity(original: &Tag, loaded: &Tag, current: &Tag) -> Tag {
-    let mut merged = crate::block_entity_nbt::overlay(original, loaded, current);
-    let has_items = matches!(current.get("Items"), Some(Tag::List(items)) if !items.is_empty());
+fn merge_block_entity(original: &Tag, loaded: &Tag, current: &Tag, items_are_payload: bool) -> Tag {
+    let mut merged = crate::block_entity_nbt::overlay(original, loaded, current, items_are_payload);
+    let has_items = !items_are_payload
+        && matches!(current.get("Items"), Some(Tag::List(items)) if !items.is_empty());
     if has_items
         && current.get("LootTable").is_none()
         && let Tag::Compound(map) = &mut merged
@@ -703,9 +700,14 @@ pub fn decode_end_gateway(tag: &Tag) -> crate::containers::EndGateway {
     }
 }
 /// A mod's block entity: its compound without `id` and the position, and
+/// (when `decode_items` is true, i.e. container-backed or unknown-block loads)
 /// the `Items` rows that can be represented losslessly as modeled slots.
-/// The game sizes the modeled vector to its container when it uses it.
-fn decode_mod_block_entity(id: String, tag: &Tag) -> Option<crate::containers::ModBlockEntity> {
+/// Slotless holders loaded at a known block keep `Items` verbatim in `nbt`.
+fn decode_mod_block_entity(
+    id: String,
+    tag: &Tag,
+    decode_items: bool,
+) -> Option<crate::containers::ModBlockEntity> {
     use crate::block_entity_nbt::saved_item_slot;
     let Tag::Compound(map) = tag else {
         return None;
@@ -719,33 +721,35 @@ fn decode_mod_block_entity(id: String, tag: &Tag) -> Option<crate::containers::M
         .remove(&crate::containers::SHAPES_KEY.into())
         .and_then(|tag| crate::containers::PublishedShapes::from_tag(&tag));
     let mut items = Vec::new();
-    let key = "Items".into();
-    if let Some(Tag::List(entries)) = nbt.get_mut(&key) {
-        let mut occurrences = [0u8; 256];
-        for slot in entries.iter().filter_map(saved_item_slot) {
-            occurrences[slot] = occurrences[slot].saturating_add(1);
-        }
-        entries.retain(|raw| {
-            let Some(slot) = saved_item_slot(raw) else {
-                return true;
-            };
-            if occurrences[slot] == 1
-                && let Some(stack) = item_from_nbt(raw)
-                && let Tag::Compound(mut canonical) = Tag::from(&stack)
-            {
-                canonical.insert("Slot".into(), Tag::Byte(slot as i8));
-                if raw == &Tag::Compound(canonical) {
-                    if items.len() <= slot {
-                        items.resize(slot + 1, None);
-                    }
-                    items[slot] = Some(stack);
-                    return false;
-                }
+    if decode_items {
+        let key = "Items".into();
+        if let Some(Tag::List(entries)) = nbt.get_mut(&key) {
+            let mut occurrences = [0u8; 256];
+            for slot in entries.iter().filter_map(saved_item_slot) {
+                occurrences[slot] = occurrences[slot].saturating_add(1);
             }
-            true
-        });
-        if entries.is_empty() && !items.is_empty() {
-            nbt.remove(&key);
+            entries.retain(|raw| {
+                let Some(slot) = saved_item_slot(raw) else {
+                    return true;
+                };
+                if occurrences[slot] == 1
+                    && let Some(stack) = item_from_nbt(raw)
+                    && let Tag::Compound(mut canonical) = Tag::from(&stack)
+                {
+                    canonical.insert("Slot".into(), Tag::Byte(slot as i8));
+                    if raw == &Tag::Compound(canonical) {
+                        if items.len() <= slot {
+                            items.resize(slot + 1, None);
+                        }
+                        items[slot] = Some(stack);
+                        return false;
+                    }
+                }
+                true
+            });
+            if entries.is_empty() && !items.is_empty() {
+                nbt.remove(&key);
+            }
         }
     }
     let mut entity = crate::containers::ModBlockEntity::new(
@@ -759,6 +763,11 @@ fn decode_mod_block_entity(id: String, tag: &Tag) -> Option<crate::containers::M
     entity.set_shapes(shapes.map(std::sync::Arc::new));
     Some(entity)
 }
+/// Whether a mod block owns the saved `Items` field as engine-managed inventory.
+fn block_has_mod_item_slots(block: &str) -> bool {
+    mod_api::__private::parts_installation::block_container(block).is_some_and(|c| c.slots > 0)
+}
+
 /// Decode an entity at a known block, refusing undeclared IDs and invalid native membership.
 /// Canonical membership wins; blocks absent from the table use vanilla membership.
 pub fn decode_block_entity_for_block(
@@ -775,13 +784,23 @@ pub fn decode_block_entity_replacing(
     block: &str,
     previous: Option<&crate::containers::BlockEntity>,
 ) -> Option<((i32, i32, i32), crate::containers::BlockEntity)> {
-    let decoded = decode_block_entity_with_history(tag, previous)?;
+    let slots = mod_api::__private::parts_installation::block_container(block)
+        .map_or(0, |container| container.slots);
+    let mut decoded = decode_block_entity_with_history(tag, previous, slots > 0)?;
     // Several vanilla types share a decoded representation (for example barrel
     // and chest). Membership belongs to the saved type, not that representation.
     let saved_id = text(tag.get("id"))?;
-    let valid = match &decoded.1 {
+    let valid = match &mut decoded.1 {
         crate::containers::BlockEntity::Mod(m) => {
-            crate::block_entity_types::valid(block, m.id()) == Some(true)
+            if crate::block_entity_types::valid(block, m.id()) != Some(true) {
+                return None;
+            }
+            // Missing saved stacks are empty slots, not a shorter container.
+            // Keep any saved stacks past the declared size out of the menu but on disk.
+            if m.items.len() < slots {
+                m.items.resize(slots, None);
+            }
+            true
         }
         _ => crate::block_entity_types::valid(block, &saved_id)
             .unwrap_or_else(|| decoded.1.fits(block)),
@@ -790,12 +809,13 @@ pub fn decode_block_entity_replacing(
 }
 
 pub fn decode_block_entity(tag: &Tag) -> Option<((i32, i32, i32), crate::containers::BlockEntity)> {
-    decode_block_entity_with_history(tag, None)
+    decode_block_entity_with_history(tag, None, true)
 }
 
 fn decode_block_entity_with_history(
     tag: &Tag,
     previous: Option<&crate::containers::BlockEntity>,
+    decode_mod_items: bool,
 ) -> Option<((i32, i32, i32), crate::containers::BlockEntity)> {
     use crate::containers::BlockEntity;
     let int = |k: &str| tag.get(k).and_then(crate::nbt_path::int_value); // getIntOr
@@ -804,7 +824,11 @@ fn decode_block_entity_with_history(
     if id.contains(':') && !id.starts_with("minecraft:") {
         return Some((
             pos,
-            BlockEntity::Mod(Box::new(decode_mod_block_entity(id, tag)?)),
+            BlockEntity::Mod(Box::new(decode_mod_block_entity(
+                id,
+                tag,
+                decode_mod_items,
+            )?)),
         ));
     }
     if id == "minecraft:end_gateway" {
@@ -1412,9 +1436,6 @@ fn encode_full(
     let mut block_entities: Vec<Tag> = chunk
         .block_entities
         .iter()
-        // A mod block entity a native mod is ticking right now
-        // (`tick_mod_block_entity`): its data is out of the world.
-        .filter(|(_, e)| !block_entity_placeholder(e))
         .map(|(p, e)| {
             let block = block_name(p);
             let stored = extras
@@ -1455,38 +1476,43 @@ fn encode_full(
             );
             let mut saved = match source {
                 Some(original) => {
-                    let loaded = decode_block_entity(original).map_or_else(
-                        || current.clone(),
-                        |(q, e)| {
-                            // External name removal must win over the source overlay.
-                            let custom_name = (!matches!(
-                                e,
-                                crate::containers::BlockEntity::Banner(_)
-                                    | crate::containers::BlockEntity::Sign(_)
-                                    | crate::containers::BlockEntity::Mod(_)
-                            ))
-                            .then(|| {
-                                original
-                                    .get("CustomName")
-                                    .and_then(crate::block_entity_nbt::component)
-                            })
-                            .flatten();
-                            block_entity_encode::encode_with(
-                                q,
-                                &e,
-                                &block,
-                                block_entity_encode::DataFields {
-                                    lock,
-                                    custom_name: custom_name.as_ref(),
-                                    pending: PendingContainerLoot::from_tag(original).as_ref(),
-                                    hopper_cooldown,
+                    let items_are_payload = matches!(e, crate::containers::BlockEntity::Mod(_))
+                        && !block_has_mod_item_slots(&block);
+                    let loaded =
+                        decode_block_entity_with_history(original, None, !items_are_payload)
+                            .map_or_else(
+                                || current.clone(),
+                                |(q, e)| {
+                                    // External name removal must win over the source overlay.
+                                    let custom_name = (!matches!(
+                                        e,
+                                        crate::containers::BlockEntity::Banner(_)
+                                            | crate::containers::BlockEntity::Sign(_)
+                                            | crate::containers::BlockEntity::Mod(_)
+                                    ))
+                                    .then(|| {
+                                        original
+                                            .get("CustomName")
+                                            .and_then(crate::block_entity_nbt::component)
+                                    })
+                                    .flatten();
+                                    block_entity_encode::encode_with(
+                                        q,
+                                        &e,
+                                        &block,
+                                        block_entity_encode::DataFields {
+                                            lock,
+                                            custom_name: custom_name.as_ref(),
+                                            pending: PendingContainerLoot::from_tag(original)
+                                                .as_ref(),
+                                            hopper_cooldown,
+                                        },
+                                        items,
+                                        |_| None,
+                                    )
                                 },
-                                items,
-                                |_| None,
-                            )
-                        },
-                    );
-                    merge_block_entity(original, &loaded, &current)
+                            );
+                    merge_block_entity(original, &loaded, &current, items_are_payload)
                 }
                 None => current,
             };
@@ -1982,6 +2008,8 @@ struct RegionFiles {
     clock: u64,
     /// Each region's write stamp (`far_regions::writing`).
     written: HashMap<(i32, i32), u64>,
+    #[cfg(test)]
+    close_on_evict: Option<fn(RegionFile) -> std::io::Result<()>>,
 }
 impl RegionFiles {
     #[cfg(test)]
@@ -1993,11 +2021,14 @@ impl RegionFiles {
     fn open(&self) -> usize {
         self.regions.values().filter(|(r, _)| r.is_some()).count()
     }
-    /// Close the least recently used regions until there is room for one
-    /// more, as `RegionFileStorage.getRegionFile` does. A region a reader or
-    /// the writer still holds stays: closing it under them would let a
+    /// `RegionFileStorage.cache`: remove the least recently used region before closing it.
+    /// A region a reader or the writer still holds stays: closing it under them would let a
     /// second handle read a header older than its sectors.
-    fn make_room(&mut self) {
+    fn make_room(&mut self) -> Vec<((i32, i32), std::io::Error)> {
+        let close = RegionFile::close;
+        #[cfg(test)]
+        let close = self.close_on_evict.unwrap_or(close);
+        let mut failures = Vec::new();
         while self.regions.len() >= MAX_OPEN_REGIONS {
             let oldest = self
                 .regions
@@ -2006,109 +2037,196 @@ impl RegionFiles {
                 .min_by_key(|(_, (_, used))| *used)
                 .map(|(key, _)| *key);
             let Some(key) = oldest else {
-                return;
+                break;
             };
-            self.regions.remove(&key);
+            let (file, _) = self.regions.remove(&key).unwrap();
+            if let Some(file) = file {
+                // The cache owns the only reference, as checked above under its lock.
+                let closed = Arc::into_inner(file)
+                    .unwrap()
+                    .into_inner()
+                    .map_err(|_| std::io::Error::other("region file poisoned"))
+                    .and_then(close);
+                if let Err(error) = closed {
+                    failures.push((key, error));
+                }
+            }
         }
+        failures
     }
 }
-/// The region file at `path` through the cache, which readers and the writer
-/// share, so a read never sees a header older than the sectors it points to.
-/// `create` makes a missing file (for a write); otherwise a missing file is
-/// `None`, until a write creates it.
-fn cached_region(
-    cache: &RegionCache,
-    key: (i32, i32),
-    path: &Path,
-    create: bool,
-) -> Result<Option<Arc<Mutex<RegionFile>>>> {
-    let mut cache = cache.lock().map_err(|_| "region cache poisoned")?;
-    cache.clock += 1;
-    let now = cache.clock;
-    if let Some((cached, used)) = cache.regions.get_mut(&key)
-        && (cached.is_some() || !create)
-    {
-        *used = now;
-        return Ok(cached.clone());
-    }
-    cache.make_room();
-    if create && let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    // A file this process can't write (a read-only world) is still read.
-    let region = match RegionFile::open_writable(path, create) {
-        Err(e) if !create && e.kind() == std::io::ErrorKind::PermissionDenied => {
-            RegionFile::open(path)
+
+#[derive(Clone, Copy)]
+struct RegionStorage<'a> {
+    root: &'a Path,
+    folder: Folder,
+    cache: &'a RegionCache,
+    reporting: &'a writes::SaveReporting,
+}
+
+impl RegionStorage<'_> {
+    /// Readers and writers share a cache, so a read never sees a header older than the sectors
+    /// it points to. `create` makes a missing file; otherwise a missing file is `None`.
+    fn open_cached(
+        self,
+        (rx, rz): (i32, i32),
+        create: bool,
+    ) -> std::io::Result<Option<Arc<Mutex<RegionFile>>>> {
+        let key = (rx, rz);
+        let mut cache = self
+            .cache
+            .lock()
+            .map_err(|_| std::io::Error::other("region cache poisoned"))?;
+        cache.clock += 1;
+        let now = cache.clock;
+        if let Some((cached, used)) = cache.regions.get_mut(&key)
+            && (cached.is_some() || !create)
+        {
+            *used = now;
+            return Ok(cached.clone());
         }
-        other => other,
-    };
-    let region = match region {
-        Ok(r) => Some(Arc::new(Mutex::new(r))),
-        Err(e) if !create && e.kind() == std::io::ErrorKind::NotFound => None,
-        Err(e) => return Err(e.into()),
-    };
-    cache.regions.insert(key, (region.clone(), now));
-    Ok(region)
+        let failed_evictions = cache.make_room();
+        let opened = (|| {
+            let path = region_path(self.root, self.folder.name(), rx, rz);
+            if create && let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            // A file this process can't write (a read-only world) is still read.
+            let region = match RegionFile::open_writable(&path, create) {
+                Err(e) if !create && e.kind() == std::io::ErrorKind::PermissionDenied => {
+                    RegionFile::open(&path)
+                }
+                other => other,
+            };
+            let region = match region {
+                Ok(r) => Some(Arc::new(Mutex::new(r))),
+                Err(e) if !create && e.kind() == std::io::ErrorKind::NotFound => None,
+                Err(e) => return Err(e),
+            };
+            cache.regions.insert(key, (region.clone(), now));
+            Ok(region)
+        })();
+        drop(cache);
+        // Isolate the evicted region's failure: the requested region must use its own result.
+        for ((rx, rz), error) in failed_evictions {
+            let error = std::io::Error::new(
+                error.kind(),
+                format!(
+                    "Failed to close region [{rx}, {rz}] in {}: {error}",
+                    self.folder.name()
+                ),
+            );
+            self.reporting
+                .report(self.folder, (rx << 5, rz << 5), &error);
+        }
+        opened
+    }
 }
 /// Write `records` into the region files of `folder` in place, as vanilla's
 /// `RegionFile.write` does: each chunk takes free sectors and the header
 /// then points to it; the region's other chunks are not touched. `None`
 /// clears a chunk. The chunks are encoded and compressed before their region
 /// is locked for the writes (`compress_records`), and each region is flushed
-/// to the disk once.
+/// to the disk once. An unencodable record is skipped, leaving its old slot alone.
 fn write_region_records(
-    root: &Path,
-    cache: &RegionCache,
-    folder: &str,
+    storage: RegionStorage<'_>,
     records: &[((i32, i32), &Record)],
-) -> Result<()> {
+    sync_data: &impl Fn(&fs::File) -> std::io::Result<()>,
+) -> RegionWriteOutcome {
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs() as u32);
     let compressed = compress_records(records, timestamp);
+    write_prepared_region_records(storage, timestamp, records, compressed, sync_data)
+}
+
+#[derive(Default)]
+struct RegionWriteOutcome {
+    failed_records: BTreeMap<(i32, i32), std::io::Error>,
+    sync_error: Option<std::io::Error>,
+}
+
+fn write_prepared_region_records(
+    storage: RegionStorage<'_>,
+    timestamp: u32,
+    records: &[((i32, i32), &Record)],
+    compressed: Vec<compression_pool::Prepared>,
+    sync_data: &impl Fn(&fs::File) -> std::io::Result<()>,
+) -> RegionWriteOutcome {
     type RegionWrite<'a> = (ChunkPos, &'a Record, Option<CompressedWrite>);
     let mut by_region: BTreeMap<(i32, i32), Vec<RegionWrite<'_>>> = BTreeMap::new();
+    let mut outcome = RegionWriteOutcome::default();
+    let failed = &mut outcome.failed_records;
     for (&((x, z), source), record) in records.iter().zip(compressed) {
-        let record = record?;
-        by_region
-            .entry((x >> 5, z >> 5))
-            .or_default()
-            .push((ChunkPos::new(x, z), source, record));
+        match record {
+            Ok(record) => by_region.entry((x >> 5, z >> 5)).or_default().push((
+                ChunkPos::new(x, z),
+                source,
+                record,
+            )),
+            Err(error) => {
+                failed.insert((x, z), error);
+            }
+        }
     }
-    for ((rx, rz), list) in by_region {
-        let path = region_path(root, folder, rx, rz);
+    for ((rx, rz), mut list) in by_region {
         // Clearing chunks of a region that doesn't exist changes nothing.
         let create = list.iter().any(|(_, _, r)| r.is_some());
-        let Some(region) = cached_region(cache, (rx, rz), &path, create)? else {
-            continue;
-        };
-        // Keep far readers on the exact locked read path while writes and their
-        // flush are in progress, so they cannot use a stale kept header.
-        let _writing = far_regions::writing(cache, (rx, rz));
-        let mut region = region.lock().map_err(|_| "region file poisoned")?;
-        let mut changed = false;
-        for (pos, source, record) in list {
-            match record {
-                Some(record) => {
-                    write_chunk_record(&mut region, pos, source, record)?;
-                    changed = true;
+        let result: std::io::Result<()> = (|| {
+            let Some(region) = storage.open_cached((rx, rz), create)? else {
+                return Ok(());
+            };
+            // Keep far readers on the exact locked read path until the flush completes.
+            let _writing = far_regions::writing(storage.cache, (rx, rz));
+            let mut region = region
+                .lock()
+                .map_err(|_| std::io::Error::other("region file poisoned"))?;
+            let mut needs_sync = false;
+            for (pos, source, record) in &mut list {
+                let changed = match record.take() {
+                    Some(record) => {
+                        write_chunk_record(&mut region, *pos, source, record).map(|()| true)
+                    }
+                    None => region.clear(*pos, timestamp),
+                };
+                match changed {
+                    Ok(changed) => needs_sync |= changed,
+                    Err(error) => {
+                        failed.insert((pos.x, pos.z), error);
+                    }
                 }
-                None => changed |= region.clear(pos, timestamp)?,
             }
-        }
-        if changed {
-            match region.sync_handle() {
-                Ok(handle) => {
-                    drop(region);
-                    handle.sync_data()?;
+            if needs_sync {
+                let synced = match region.sync_handle() {
+                    Ok(handle) => {
+                        drop(region);
+                        sync_data(&handle)
+                    }
+                    // Out of descriptors: flush under the lock rather than skip durability.
+                    Err(_) => region.sync(),
+                };
+                if let Err(error) = synced {
+                    log::warn!(
+                        "Failed to synchronize {} region [{rx}, {rz}]: {error}",
+                        storage.folder.name()
+                    );
+                    outcome.sync_error.get_or_insert(error);
                 }
-                // Out of descriptors: flush under the lock as before rather than
-                // skip durability for this region and every region after it.
-                Err(_) => region.sync()?,
+            }
+            Ok(())
+        })();
+        if let Err(error) = result {
+            // Open or lock failed before any record reached this region.
+            let error = Arc::new(error);
+            for (pos, _, _) in list {
+                failed.insert(
+                    (pos.x, pos.z),
+                    std::io::Error::new(error.kind(), error.clone()),
+                );
             }
         }
     }
-    Ok(())
+    outcome
 }
 
 fn write_chunk_record(
@@ -2117,34 +2235,11 @@ fn write_chunk_record(
     source: &Record,
     CompressedWrite { record, primary }: CompressedWrite,
 ) -> std::io::Result<()> {
-    let error = match region.write(pos, &record) {
-        Ok(()) => {
-            if primary {
-                source.accept_block_entity_edits();
-            }
-            return Ok(());
-        }
-        Err(error) => error,
-    };
-    if !primary
-        || !error
-            .get_ref()
-            .is_some_and(|cause| cause.is::<sunrise_world::region::CompressedChunkLimit>())
-    {
-        return Err(error);
+    region.write(pos, &record)?;
+    if primary {
+        source.accept_block_entity_edits();
     }
-    let (compression, timestamp) = (record.compression, record.timestamp);
-    drop(record);
-    let Some(stored) = source.without_block_entity_edits() else {
-        return Err(error);
-    };
-    log::warn!(
-        "block_entity_save_additional: discarding listener edits from chunk {},{}: {error}",
-        pos.x,
-        pos.z
-    );
-    let stored = ChunkRecord::from_nbt(&stored, compression, timestamp, Limits::saved())?;
-    region.write(pos, &stored)
+    Ok(())
 }
 
 /// `job(i)` for every `i` below `count`, in order, shared between this thread
@@ -2193,16 +2288,11 @@ fn region_path(root: &Path, folder: &str, rx: i32, rz: i32) -> PathBuf {
 /// A queued POI record as it is written: claims kept from the saved one, and
 /// a chunk that lost its last POI gets an empty one, as vanilla trusts a
 /// saved section. None when the chunk never had any.
-fn resolve_poi(
-    root: &Path,
-    cache: &RegionCache,
-    (x, z): (i32, i32),
-    record: &Record,
-) -> Option<Record> {
+fn resolve_poi(storage: RegionStorage<'_>, (x, z): (i32, i32), record: &Record) -> Option<Record> {
     let Record::Poi(chunk, tables, professions) = record else {
         return Some(record.clone());
     };
-    let old = read_region_record(root, cache, "poi", x, z)
+    let old = read_region_record(storage, x, z)
         .and_then(|old| {
             old.map(|mut old| {
                 upgrade_record(Folder::Poi, &mut old, || None)?;
@@ -2225,16 +2315,8 @@ fn resolve_poi(
     };
     Some(Record::Tag(Arc::new(tag)))
 }
-fn read_region_record(
-    root: &Path,
-    cache: &RegionCache,
-    folder: &str,
-    x: i32,
-    z: i32,
-) -> Result<Option<NamedTag>> {
-    let key = (x >> 5, z >> 5);
-    let path = region_path(root, folder, key.0, key.1);
-    let Some(region) = cached_region(cache, key, &path, false)? else {
+fn read_region_record(storage: RegionStorage<'_>, x: i32, z: i32) -> Result<Option<NamedTag>> {
+    let Some(region) = storage.open_cached((x >> 5, z >> 5), false)? else {
         return Ok(None);
     };
     let record = region
@@ -2317,7 +2399,6 @@ fn upgrade_record<'a>(
 /// Chunk and entity records waiting for the writer thread, by (entities?,
 /// x, z): reads see them before the region files do.
 type PendingWrites = Mutex<HashMap<(Folder, i32, i32), (u64, Record)>>;
-type WriteBatch = (Folder, Vec<QueuedWrite>);
 /// The region folders of a dimension.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum Folder {
@@ -2346,6 +2427,7 @@ impl Folder {
 /// read lazily by worker threads.
 pub struct SaveDir {
     pub root: PathBuf,
+    save_reporting: writes::SaveReporting,
     /// The loaded catalog for stack encoding; absent for metadata-only readers.
     items: Option<Arc<crate::items::Items>>,
     regions: Arc<RegionCache>,
@@ -2356,6 +2438,7 @@ pub struct SaveDir {
     pending: Arc<PendingWrites>,
     sequence: AtomicU64,
     disk: OnceLock<Arc<chunk_disk::DiskRuntime>>,
+    /// The server report destination shared by all dimensions and their I/O workers.
     writer: Mutex<Option<Writer>>,
     outstanding: Arc<Outstanding>,
     /// Set by `Persistent` before the first load.
@@ -2521,6 +2604,12 @@ impl SaveDir {
     /// The saves of a level of `shape` at `root` (its dimension folder).
     pub fn new(root: PathBuf, shape: LevelShape, items: Option<Arc<crate::items::Items>>) -> Self {
         Self {
+            save_reporting: writes::SaveReporting::new(
+                root.clone(),
+                "minecraft:overworld",
+                Arc::default(),
+                crate::chunk_io::PROCESS_REPORTS.clone(),
+            ),
             root,
             items,
             regions: Default::default(),
@@ -2542,6 +2631,38 @@ impl SaveDir {
             blending_lookup: OnceLock::new(),
         }
     }
+    /// Share the world's record diagnostic sink across its levels, before any writes.
+    pub fn set_save_reporting(
+        &mut self,
+        world_root: PathBuf,
+        dimension: &'static str,
+        reporter: Arc<crate::chunk_io::SaveFailureReporter>,
+        inbox: Arc<crate::chunk_io::Reports>,
+    ) {
+        self.save_reporting = writes::SaveReporting::new(world_root, dimension, reporter, inbox);
+    }
+
+    pub fn chunk_reports(&self) -> &Arc<crate::chunk_io::Reports> {
+        &self.save_reporting.inbox
+    }
+
+    pub fn save_failure_reporter(&self) -> &Arc<crate::chunk_io::SaveFailureReporter> {
+        &self.save_reporting.reporter
+    }
+
+    fn region_storage(&self, folder: Folder) -> RegionStorage<'_> {
+        RegionStorage {
+            root: &self.root,
+            folder,
+            cache: match folder {
+                Folder::Region => &self.regions,
+                Folder::Entities => &self.entity_regions,
+                Folder::Poi => &self.poi_regions,
+            },
+            reporting: &self.save_reporting,
+        }
+    }
+
     fn items_for_save(&self) -> Result<&Arc<crate::items::Items>> {
         self.items
             .as_ref()
@@ -2786,7 +2907,10 @@ impl SaveDir {
     /// A record as saved: the pending write first, then the region file.
     fn read_record_raw(&self, folder: &str, x: i32, z: i32) -> Option<NamedTag> {
         self.try_read_record_raw(folder, x, z, Record::tag_for_metadata)
-            .inspect_err(|e| crate::chunk_io::report_load_failure(&self.root, x, z, e))
+            .inspect_err(|e| {
+                self.chunk_reports()
+                    .report_load_failure(&self.root, x, z, e)
+            })
             .ok()
             .flatten()
     }
@@ -2798,23 +2922,21 @@ impl SaveDir {
         z: i32,
         read_pending: fn(&Record) -> Option<Arc<NamedTag>>,
     ) -> Result<Option<NamedTag>> {
+        let kind = Folder::of(folder);
         let pending = self
             .pending
             .lock()
             .map_err(|_| "pending writes poisoned")?
-            .get(&(Folder::of(folder), x, z))
+            .get(&(kind, x, z))
             .map(|(_, r)| r.clone());
-        if let Some(record) = pending {
-            return Ok(read_pending(&record).map(|t| (*t).clone()));
+        if let Some(record) = pending
+            && let Ok(tag) = compression_pool::catch_encoding_panic(|| Ok(read_pending(&record)))
+        {
+            return Ok(tag.map(|t| (*t).clone()));
         }
-        let cache = match Folder::of(folder) {
-            Folder::Region => &self.regions,
-            Folder::Entities => &self.entity_regions,
-            Folder::Poi => &self.poi_regions,
-        };
-        read_region_record(&self.root, cache, folder, x, z).inspect(|record| {
+        read_region_record(self.region_storage(kind), x, z).inspect(|record| {
             if self.trusted_fluid_load
-                && folder == "region"
+                && kind == Folder::Region
                 && let Some(root) = record
             {
                 intern_saved_fluids(root);
@@ -2838,7 +2960,10 @@ impl SaveDir {
     /// A record brought to the current version (`upgrade_record`).
     fn read_record(&self, folder: &str, x: i32, z: i32) -> Option<NamedTag> {
         self.try_read_record(folder, x, z, Record::tag_for_metadata)
-            .inspect_err(|e| crate::chunk_io::report_load_failure(&self.root, x, z, e))
+            .inspect_err(|e| {
+                self.chunk_reports()
+                    .report_load_failure(&self.root, x, z, e)
+            })
             .ok()
             .flatten()
     }
@@ -2849,6 +2974,8 @@ impl SaveDir {
                 .as_ref()
         })
     }
+    /// `ChunkMap.handleChunkLoadFailure`: once this chunk's read failure has been reported,
+    /// let generation replace it, as `ChunkMap.createEmptyChunk` does.
     pub fn load(&self, x: i32, z: i32, registry: &BlockRegistry, biomes: &Biomes) -> Option<Chunk> {
         self.try_load(x, z, registry, biomes).ok().flatten()
     }
@@ -2863,7 +2990,10 @@ impl SaveDir {
     ) -> std::result::Result<Option<Chunk>, ()> {
         let Some(root) = self
             .try_read_record("region", x, z, Record::tag)
-            .map_err(|e| crate::chunk_io::report_load_failure(&self.root, x, z, &e))?
+            .map_err(|e| {
+                self.chunk_reports()
+                    .report_load_failure(&self.root, x, z, &e)
+            })?
         else {
             return Ok(None);
         };
@@ -2931,7 +3061,8 @@ impl SaveDir {
             .inspect_err(|e| {
                 self.failed_entity_reads.lock().unwrap().insert((x, z));
                 log::error!("Failed to load entity chunk {x},{z}: {e}");
-                crate::chunk_io::report_load_failure(&self.root, x, z, e);
+                self.chunk_reports()
+                    .report_load_failure(&self.root, x, z, e);
             })?;
         let mut out = Vec::new();
         if let Some(root) = record
@@ -2956,11 +3087,11 @@ impl SaveDir {
         let tables = self.tables.get().map(|t| &**t);
         let records = chunks
             .iter()
-            .map(|c| {
-                let blending = self.calculated_blending(c.x, c.z);
-                (
-                    (c.x, c.z),
-                    Some(encode_saved(
+            .filter_map(|c| {
+                let key = (c.x, c.z);
+                match compression_pool::catch_encoding_panic(|| {
+                    let blending = self.calculated_blending(c.x, c.z);
+                    Ok(encode_saved(
                         c,
                         registry,
                         biomes,
@@ -2968,8 +3099,14 @@ impl SaveDir {
                         self.shape,
                         blending.as_deref(),
                         items,
-                    )),
-                )
+                    ))
+                }) {
+                    Ok(tag) => Some((key, Some(tag))),
+                    Err(error) => {
+                        self.report_record_failure(Folder::Region, key, &error);
+                        None
+                    }
+                }
             })
             .collect();
         self.write_records("region", records, true)?;
@@ -5159,6 +5296,9 @@ impl SaveDir {
 
 impl<G: ChunkGenerator> ChunkGenerator for Persistent<G> {
     type Worker = G::Worker;
+    fn spawn_height(&self) -> i32 {
+        self.inner.spawn_height()
+    }
     fn worker(&self) -> G::Worker {
         let save = self.save.clone();
         self.inner.set_saved_starts(Arc::new(move |pos| {
@@ -6972,23 +7112,10 @@ mod tests {
         let save =
             super::SaveDir::new(dir.clone(), LevelShape::OVERWORLD, Some(Default::default()));
         let before = open_fds();
-        let held = super::cached_region(
-            &save.regions,
-            (0, 0),
-            &save.region_path("region", 0, 0),
-            true,
-        )
-        .unwrap()
-        .unwrap();
+        let storage = save.region_storage(Folder::Region);
+        let held = storage.open_cached((0, 0), true).unwrap().unwrap();
         for x in 1..=600 {
-            super::cached_region(
-                &save.regions,
-                (x, 0),
-                &save.region_path("region", x, 0),
-                true,
-            )
-            .unwrap()
-            .unwrap();
+            storage.open_cached((x, 0), true).unwrap().unwrap();
         }
         // Other tests open files at the same time: a margin, far below 600.
         let grown = open_fds().saturating_sub(before);
@@ -7027,18 +7154,16 @@ mod tests {
         let save =
             super::SaveDir::new(dir.clone(), LevelShape::OVERWORLD, Some(Default::default()));
         let lock = super::SessionLock::acquire(&dir).unwrap();
-        let path = save.region_path("entities", 0, 0);
-        let region = super::cached_region(&save.entity_regions, (0, 0), &path, true)
+        let region = save
+            .region_storage(Folder::Entities)
+            .open_cached((0, 0), true)
             .unwrap()
             .unwrap();
-        let chunk_region = super::cached_region(
-            &save.regions,
-            (0, 0),
-            &save.region_path("region", 0, 0),
-            true,
-        )
-        .unwrap()
-        .unwrap();
+        let chunk_region = save
+            .region_storage(Folder::Region)
+            .open_cached((0, 0), true)
+            .unwrap()
+            .unwrap();
         // Hold the actual region locks, rather than relying on disk speed or sleeps. The
         // writer takes the Region folder before Entities in a pass, so both are held.
         let blocked = (region.lock().unwrap(), chunk_region.lock().unwrap());
@@ -7121,14 +7246,11 @@ mod tests {
         let lock = super::SessionLock::acquire(&dir).unwrap();
         // Hold the region lock so the writer stops there deterministically, rather
         // than relying on disk speed or sleeps: it keeps the lock while it writes.
-        let region = super::cached_region(
-            &save.regions,
-            (0, 0),
-            &save.region_path("region", 0, 0),
-            true,
-        )
-        .unwrap()
-        .unwrap();
+        let region = save
+            .region_storage(Folder::Region)
+            .open_cached((0, 0), true)
+            .unwrap()
+            .unwrap();
         let blocked = region.lock().unwrap();
         let record = |x: i32| ((x, 0), None);
         save.write_records("region", (0..4).map(record).collect(), false)
@@ -7207,24 +7329,26 @@ mod tests {
     }
 
     #[test]
-    fn failed_async_writes_are_readable_and_never_reported_durable() {
-        let dir = std::env::temp_dir().join(format!("sunrise-save-failure-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
+    fn an_async_io_failure_retires_the_pending_snapshot_without_retrying_it() {
+        let dir = tempfile::tempdir().unwrap();
         // A file where a directory is needed causes a real writer I/O error.
-        std::fs::write(dir.join("entities"), b"blocked").unwrap();
-        let save =
-            super::SaveDir::new(dir.clone(), LevelShape::OVERWORLD, Some(Default::default()));
+        let blocked = dir.path().join("entities");
+        std::fs::write(&blocked, b"blocked").unwrap();
+        let save = super::SaveDir::new(dir.path().to_path_buf(), LevelShape::OVERWORLD, None);
         let entity = Tag::compound([("version", Tag::Int(3))]);
-        save.save_entities_later(vec![((0, 0), vec![entity.clone()])])
+        save.save_entities_later(vec![((0, 0), vec![entity])])
             .unwrap();
-        assert!(save.flush().is_err());
-        assert!(save.writes_finished().is_err());
-        assert_eq!(save.load_entities(0, 0).unwrap(), vec![entity]);
-        // The failure stays visible on subsequent barriers too.
-        assert!(save.flush().is_err());
-        drop(save);
-        let _ = std::fs::remove_dir_all(dir);
+        save.flush().unwrap();
+        assert!(save.writes_finished().unwrap());
+        assert_eq!(save.record_save_failures(), 1);
+
+        // Fix the directory without submitting another snapshot. A fresh read
+        // does not see the unpersisted entity and a barrier does not retry it.
+        std::fs::remove_file(&blocked).unwrap();
+        save.flush().unwrap();
+        assert!(save.load_entities(0, 0).unwrap().is_empty());
+        assert!(!blocked.exists());
+        assert_eq!(save.record_save_failures(), 1);
     }
 
     #[test]
@@ -7895,6 +8019,37 @@ mod tests {
         assert_eq!(encode(&data).get("Items"), Some(&parse("{energy:5}")));
         data.nbt.remove(&"Items".into());
         assert_eq!(encode(&data).get("Items"), None);
+    }
+
+    #[test]
+    fn mod_block_entity_round_trips_the_first_and_last_byte_indexed_slots() {
+        use crate::{
+            containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields},
+            items::ItemStack,
+        };
+
+        let mut items = vec![None; 256];
+        items[0] = Some(ItemStack::new("minecraft:stone", 2));
+        items[255] = Some(ItemStack::new("minecraft:dirt", 3));
+        let entity = BlockEntity::Mod(Box::new(ModBlockEntity::new(
+            "test:machine".into(),
+            ModBlockEntityFields {
+                items: items.clone(),
+                ..Default::default()
+            },
+        )));
+        let saved =
+            block_entity_encode::encode((0, 64, 0), &entity, "test:machine", &Default::default());
+        let expected_rows = sunrise_core::nbt::parse_snbt(
+            r#"[{Slot:0b,id:"minecraft:stone",count:2},{Slot:-1b,id:"minecraft:dirt",count:3}]"#,
+        )
+        .unwrap()
+        .0;
+        assert_eq!(saved.get("Items"), Some(&expected_rows));
+        let (_, BlockEntity::Mod(reloaded)) = decode_block_entity(&saved).unwrap() else {
+            panic!("expected mod block entity")
+        };
+        assert_eq!(reloaded.items, items);
     }
 
     #[test]
@@ -9999,12 +10154,12 @@ mod tests {
             name: "".into(),
             tag,
         }));
-        let cache = match Folder::of(folder) {
-            Folder::Region => &save.regions,
-            Folder::Entities => &save.entity_regions,
-            Folder::Poi => &save.poi_regions,
-        };
-        super::write_region_records(&save.root, cache, folder, &[((0, 0), &record)]).unwrap();
+        let result = super::write_region_records(
+            save.region_storage(Folder::of(folder)),
+            &[((0, 0), &record)],
+            &fs::File::sync_data,
+        );
+        assert!(result.failed_records.is_empty() && result.sync_error.is_none());
     }
 
     #[test]
@@ -10148,13 +10303,12 @@ mod tests {
                 ("sections", Tag::List(Vec::new())),
             ]),
         }));
-        super::write_region_records(
-            &nether.root,
-            &nether.regions,
-            "region",
+        let result = super::write_region_records(
+            nether.region_storage(Folder::Region),
             &[((1, 0), &current)],
-        )
-        .unwrap();
+            &fs::File::sync_data,
+        );
+        assert!(result.failed_records.is_empty() && result.sync_error.is_none());
         assert!(nether.is_old_chunk(0, 0));
         assert!(!nether.is_old_chunk(1, 0));
         assert!(!nether.is_old_chunk(2, 0));
@@ -10697,7 +10851,7 @@ mod jukebox_song_clock_tests {
         record_kept(&current);
         // The chunk writer uses this real overlay after encoding its model.
         // A stale input clock must not resurrect the removed modeled field.
-        let merged = merge_block_entity(&raw, &loaded, &current);
+        let merged = merge_block_entity(&raw, &loaded, &current, false);
         check("contradictory raw clock", &merged, None);
         record_kept(&merged);
         let canonical = crate::block_entity_nbt::canonical(&merged).unwrap();

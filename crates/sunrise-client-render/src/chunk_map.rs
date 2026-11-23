@@ -353,6 +353,7 @@ impl ChunkMap {
         }
     }
     /// Whether the column at `key` and its eight neighbours are all resident.
+    #[inline]
     pub fn surrounded(&self, key: Key) -> bool {
         self.near.get(&key) == Some(&9)
     }

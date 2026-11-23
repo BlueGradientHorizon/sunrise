@@ -160,13 +160,10 @@ pub fn fetch(
     {
         let checksum = format!("{url}.sha1");
         let result = (|| {
-            let agent = crate::net::agent(&checksum).map_err(|e| format!("{checksum}: {e}"))?;
-            let sha1 = agent
-                .get(&checksum)
-                .set("User-Agent", modrinth::AGENT)
-                .call()
-                .ok()
-                .and_then(|r| r.into_string().ok());
+            let sha1 = sunrise_proxy::get(&checksum, &[("User-Agent", modrinth::AGENT)], None)
+                .map_err(|e| format!("{checksum}: no SHA-1 ({e})"))?
+                .into_string()
+                .ok();
             if let Some(parent) = dest.parent() {
                 fs::create_dir_all(parent).map_err(|e| e.to_string())?;
             }

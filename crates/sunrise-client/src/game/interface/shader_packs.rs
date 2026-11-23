@@ -4,6 +4,7 @@
 //! `game/modding/native_shaders.rs`. The programs of the current dimension's folder are loaded when the
 //! dimension changes (spec 1.2).
 
+use super::remote_camera::CameraFogEffects;
 use sunrise_client::camera::CameraFluid;
 use sunrise_client::gfx::pack_uniforms::{PackInputs, PlayerStatus, ViewEntity};
 use sunrise_client::mod_list::ModList;
@@ -591,53 +592,42 @@ impl Game<'_> {
         }
     }
 
-    /// The camera entity's (`Minecraft.getCameraEntity`) values for the uniforms tied to the
-    /// view (#3948), at `eye`, the entity's eye `Camera.alignWithEntity` placed (the frame's
-    /// `eyePosition`). The local player's are the ones the lightmap, the HUD and the cave
-    /// ambience have; another entity's are what the server sent of its effects; an entity that
-    /// isn't living has none and looks nowhere. The view follows the local player whenever the
-    /// level doesn't hold the entity a server attached it to, and so do these.
+    /// The camera entity's (`Minecraft.getCameraEntity`, [`Self::camera_subject`]) values for
+    /// the uniforms tied to the view (#3948), at `eye`, the entity's eye
+    /// `Camera.alignWithEntity` placed (the frame's `eyePosition`). The local player's are the
+    /// ones the lightmap, the HUD and the cave ambience have; another living entity's are the
+    /// effects the server sent for it (its `CameraFogEffects`, the same the fog reads); an
+    /// entity that isn't living has none and looks nowhere.
     pub(super) fn pack_view_entity(&self, eye: glam::DVec3, partial: f32) -> ViewEntity {
         let at = eye.floor().as_ivec3();
         let light = self.world.light(at.x, at.y, at.z);
         let eye_light = [i32::from(light & 15), i32::from(light >> 4)];
-        let Some(camera) = self.spectated_camera_snapshot() else {
-            return ViewEntity {
-                living: true,
-                blindness: f32::from(u8::from(self.potions.effects.get("blindness").is_some())),
-                night_vision: self.night_vision_intensity(partial),
-                darkness: super::sculk::view_darkness_blend(
-                    &self.potions.effects,
-                    self.sculk.darkness,
-                    partial,
-                ) * self.darkness_effect_scale(),
-                mood: self.ambience.moodiness,
-                eye_light,
-            };
+        let other = self.camera_subject().filter(|c| !c.is_local_player);
+        let (living, effects, night_vision, mood) = match &other {
+            Some(c) => {
+                let fx = c.fog_effects;
+                let night_vision = fx.night_vision.map_or(0.0, |duration| {
+                    super::sculk::night_vision_scale(duration, partial)
+                });
+                (c.camera.living.is_some(), fx, night_vision, 0.0)
+            }
+            None => (
+                true,
+                CameraFogEffects::from_effects(&self.potions.effects, self.sculk.darkness),
+                self.night_vision_intensity(partial),
+                self.ambience.moodiness,
+            ),
         };
-        let effects = self
-            .remote_camera_id()
-            .zip(self.remote.as_ref())
-            .and_then(|(id, r)| r.entity_effects.get(&(id as i32)))
-            .filter(|_| camera.living.is_some());
-        let Some(fx) = effects else {
-            return ViewEntity {
-                living: camera.living.is_some(),
-                blindness: 0.0,
-                night_vision: 0.0,
-                darkness: 0.0,
-                mood: 0.0,
-                eye_light,
-            };
-        };
+        // LivingEntity.getEffectBlendFactor: the fade only while the instance is there.
+        let darkness = effects
+            .darkness_blend
+            .map_or(0.0, |blend| super::sculk::darkness_blend_at(blend, partial));
         ViewEntity {
-            living: true,
-            blindness: f32::from(u8::from(fx.effects.get("blindness").is_some())),
-            night_vision: (fx.effects.get("night_vision"))
-                .map_or(0.0, |e| super::sculk::night_vision_scale(e, partial)),
-            darkness: super::sculk::view_darkness_blend(&fx.effects, fx.darkness, partial)
-                * self.darkness_effect_scale(),
-            mood: 0.0,
+            living,
+            blindness: f32::from(u8::from(effects.blindness.is_some())),
+            night_vision,
+            darkness: darkness * self.darkness_effect_scale(),
+            mood,
             eye_light,
         }
     }
@@ -1677,6 +1667,7 @@ mod player_status_tests {
                     seed: 0,
                     except: None,
                     entity: None,
+                    skip_hooks: false,
                 });
             game.spill.orbs.push((at, 1, 0));
             rain_on_the_player(game, true);

@@ -182,20 +182,6 @@ pub(super) fn refresh_sleeping_position(m: &mut Mob, w: &MobWorld) {
 /// sleeper stands at `AbstractBedBlock.findStandUpPosition` for its yaw,
 /// else 0.1 above the block over the bed.
 pub fn stop_sleeping(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
-    m.extra.ints[1] = 0;
-    let bed = m
-        .extra
-        .villager
-        .as_deref_mut()
-        .and_then(|e| e.sleeping_pos.take());
-    let Some(p) = bed else { return };
-    if !w.block_name(p[0], p[1], p[2]).ends_with("_bed") {
-        return;
-    }
-    events.push(MobEvent::BedOccupied {
-        pos: p,
-        occupied: false,
-    });
     let level = crate::stand_up::StandUpLevel {
         world: w.world,
         registry: w.registry,
@@ -204,11 +190,37 @@ pub fn stop_sleeping(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
         block_tags: w.block_tags,
         border: w.border,
     };
-    let forward = crate::stand_up::bed_forward(w.prop(p[0], p[1], p[2], "facing"));
-    let stand = level
-        .bed_stand_up(crate::stand_up::StandUpType::VILLAGER, p, forward, m.yaw)
-        .unwrap_or_else(|| crate::stand_up::stand_up_fallback(p));
-    set_wake_pose(m, p, stand, w.section_writer.clone());
+    if let Some(pos) = wake(m, w.game_time, Some(&level), w.section_writer.clone()) {
+        events.push(MobEvent::BedOccupied {
+            pos,
+            occupied: false,
+        });
+    }
+}
+
+pub fn wake(
+    m: &mut Mob,
+    game_time: i64,
+    level: Option<&crate::stand_up::StandUpLevel<'_, '_>>,
+    observer: Option<super::living::section_writes::Observer>,
+) -> Option<[i32; 3]> {
+    let bed = level
+        .zip(sleeping_pos(m))
+        .filter(|(level, p)| level.name(*p).ends_with("_bed"));
+    if let Some((level, p)) = bed {
+        let state = level.world.block(p[0], p[1], p[2]);
+        let forward = crate::stand_up::bed_forward(level.prop(state, "facing"));
+        let stand = level
+            .bed_stand_up(crate::stand_up::StandUpType::VILLAGER, p, forward, m.yaw)
+            .unwrap_or_else(|| crate::stand_up::stand_up_fallback(p));
+        set_wake_pose(m, p, stand, observer);
+    }
+    m.extra.ints[1] = 0;
+    if let Some(extra) = m.extra.villager.as_deref_mut() {
+        extra.sleeping_pos = None;
+    }
+    super::villager_brain::woken(m, game_time);
+    bed.map(|(_, p)| p)
 }
 /// Rotation part of `LivingEntity.stopSleeping`, after choosing where to stand.
 fn set_wake_pose(
@@ -278,18 +290,12 @@ pub fn tick(m: &mut Mob, now: i64) {
     }
     ext_mut(m).maybe_decay(now);
 }
-/// A hurt sleeper wakes up (`LivingEntity.hurtServer`; the `checkBedExists`
-/// wake runs earlier in `LivingEntity.tick`, for AI-less mobs too), and lies
-/// the way its bed faces (`getBedOrientation`). The brain does the rest.
-pub fn ai_step(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
+/// A sleeper lies the way its bed faces (`getBedOrientation`).
+pub fn ai_step(m: &mut Mob, w: &MobWorld) {
     if sleeping(m) {
         let bed = sleeping_pos(m).filter(|p| w.block_name(p[0], p[1], p[2]).ends_with("_bed"));
         if let Some(p) = bed {
             m.extra.ints[1] = bed_facing_code(w.prop(p[0], p[1], p[2], "facing"));
-        }
-        if m.hurt_time > 0 {
-            stop_sleeping(m, w, events);
-            super::villager_brain::woken(m, w.game_time);
         }
     }
 }
@@ -338,6 +344,18 @@ pub const RAID_VICTORY: u8 = 3;
 /// The raid there was lost (still found by `getRaidAt` until it stops).
 pub const RAID_LOSS: u8 = 4;
 
+/// The owner of this hit publishes the response before another hit can land.
+#[derive(Clone, Copy, Debug)]
+pub struct PlayerHurt {
+    pub uuid: [i32; 4],
+    pub angry: bool,
+    pub trade_pitch: Option<f32>,
+}
+
+/// Sound requests kept with the accepted hit, not in the tick's mob outbox.
+#[derive(Clone, Copy, Debug)]
+pub struct HurtSound(pub &'static str, pub [f64; 3], pub f32, pub f32);
+
 /// Villager state beyond `Extra`'s scratch fields.
 #[derive(Clone, Debug, Default)]
 pub struct Ext {
@@ -349,6 +367,10 @@ pub struct Ext {
     pub raid_wave: bool,
     /// What the villager remembers of players (`gossips`).
     pub gossips: crate::gossip::Gossips,
+    pub pending_hurt_player: Option<PlayerHurt>,
+    /// `LivingEntity.hurtServer`'s damage broadcast for a full, unblocked hit.
+    pub pending_hurt_damage: Option<(super::Damage, Option<i32>)>,
+    pub pending_hurt_sounds: [Option<HurtSound>; 2],
     /// `Villager.lastTradedPlayer`: the most recent trader, consumed by the
     /// next customServerAiStep. This is runtime state, not saved gossip.
     pub last_traded_player: Option<[i32; 4]>,
@@ -365,8 +387,6 @@ pub struct Ext {
     pub sleeping_pos: Option<[i32; 3]>,
     /// `GOLEM_DETECTED_RECENTLY` expires at this game time.
     pub golem_until: i64,
-    /// The `last_hurt_by_time` of the player's hit already counted.
-    pub hurt_seen: i32,
     /// A zombie villager's cure under way.
     pub cure: Option<super::zombie_villager::Cure>,
     /// `CanContinueSleepingEvent.mayContinueSleeping`, set by the game before the tick
@@ -382,6 +402,28 @@ pub struct Ext {
 }
 pub fn ext(m: &Mob) -> Option<&Ext> {
     m.extra.villager.as_deref()
+}
+/// `Villager.setLastHurtByMob`: gossip names the accepted hit's causing entity.
+/// The anger and the hitting player's offers are delivered by the owning game.
+pub fn hurt_by(m: &mut Mob, source: &super::Damage, uuid: [i32; 4]) {
+    let Some(who) = source.attacker else { return };
+    if m.species() != Species::Villager || source.kind.no_anger() {
+        return;
+    }
+    let alive = m.alive();
+    let ext = ext_mut(m);
+    ext.gossips.add(
+        uuid,
+        crate::gossip::GossipType::MinorNegative,
+        crate::gossip::REPUTATION_CHANGE_PER_EVENT,
+    );
+    if who == super::Who::Player {
+        ext.pending_hurt_player = Some(PlayerHurt {
+            uuid,
+            angry: alive,
+            trade_pitch: None,
+        });
+    }
 }
 pub fn ext_mut(m: &mut Mob) -> &mut Ext {
     m.extra.villager.get_or_insert_with(Box::default)

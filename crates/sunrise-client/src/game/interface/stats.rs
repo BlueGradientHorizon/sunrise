@@ -128,27 +128,80 @@ impl Game<'_> {
         if self.lan_acting_fake {
             return;
         }
-        // No mod, no name copied: the per-tick counters come through here.
-        let acting = if !mod_api::__private::listened(mod_api::HookId::PlayerStatAward) {
-            None
-        } else {
-            self.lan_acting_uuid.zip(self.lan_acting_name.clone())
-        };
-        if let Some((player, name)) = acting {
-            let award = namespaced(ty, |stat_type| {
+        self.award_stat_to(
+            ty,
+            key,
+            n,
+            |game| game.lan_acting_uuid.zip(game.lan_acting_name.clone()),
+            |game| &mut game.stats,
+        );
+    }
+
+    /// Edit the award before borrowing its owner's stats. The normal counter,
+    /// dirty set and scoreboard event are all written by `Stats::add`.
+    pub(super) fn award_stat_to(
+        &mut self,
+        ty: &str,
+        key: &str,
+        n: i32,
+        identity: impl FnOnce(&Self) -> Option<(u128, String)>,
+        stats: impl FnOnce(&mut Self) -> &mut Stats,
+    ) {
+        // No listener, no player name copied: per-tick counters come through here.
+        if mod_api::__private::listened(mod_api::HookId::PlayerStatAward)
+            && let Some((player, name)) = identity(self)
+        {
+            if let Some((ty, key, amount)) = namespaced(ty, |stat_type| {
                 self.edited_stat_award(player, &name, stat_type, key, n)
-            });
-            if let Some((ty, key, amount)) = award {
-                self.stats
-                    .add(ty.strip_prefix("minecraft:").unwrap_or(&ty), &key, amount);
+            }) {
+                stats(self).add(ty.strip_prefix("minecraft:").unwrap_or(&ty), &key, amount);
             }
-            return;
+        } else {
+            stats(self).add(ty, key, n);
         }
-        self.stats.add(ty, key, n);
     }
     /// `Player.awardStat(Identifier)`: `n` more of the custom statistic `key`.
     pub(super) fn award_custom_stat(&mut self, key: &str, n: i32) {
         namespaced(key, |key| self.award_stat("custom", key, n));
+    }
+    /// `ServerPlayer.awardStat` for a causing entity, regardless of who owns the acting turn.
+    pub(in crate::game) fn award_custom_stat_for(&mut self, player: u32, key: &str, n: i32) {
+        use super::lan_actions::CombatPlayer;
+        match self.combat_player(player) {
+            Some(CombatPlayer::InPlace) => self.award_custom_stat(key, n),
+            Some(CombatPlayer::Displaced(depth, _)) => self.award_displaced_stat(depth, key, n),
+            Some(CombatPlayer::Parked(guest)) => {
+                self.as_guest(guest.conn, |g| g.award_custom_stat(key, n));
+            }
+            None => {}
+        }
+    }
+
+    pub(super) fn award_displaced_stat(&mut self, depth: usize, key: &str, n: i32) {
+        let frame = &self.lan_displaced_players[depth];
+        if frame.fake {
+            return;
+        }
+        namespaced(key, |key| {
+            self.award_stat_to(
+                "custom",
+                key,
+                n,
+                |game| {
+                    let frame = &game.lan_displaced_players[depth];
+                    frame.uuid.map(|uuid| {
+                        (
+                            uuid,
+                            frame
+                                .name
+                                .clone()
+                                .unwrap_or_else(|| super::chat::PLAYER_NAME.to_owned()),
+                        )
+                    })
+                },
+                |game| &mut game.lan_displaced_players[depth].stats,
+            );
+        });
     }
     /// The per-tick counters (`Player.tick`/`ServerPlayer.tick` awardStat).
     pub(super) fn tick_player_stat_counters(&mut self) {

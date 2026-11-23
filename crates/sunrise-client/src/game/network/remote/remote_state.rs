@@ -68,7 +68,7 @@ impl Remote {
     /// (`minecraft:text_display`) and its position as last sent.
     pub(in crate::game) fn tracked_entity(&self, id: i32) -> Option<(&str, [f64; 3])> {
         if let Some(row) = self.general.rows.get(&id) {
-            return row.shown.then(|| (row.kind(), row.position));
+            return Some((row.kind(), row.position));
         }
         self.entities
             .get(&id)
@@ -198,6 +198,11 @@ impl Remote {
             entity.mod_fire_immune = immune;
             true
         })
+    }
+    pub(in crate::game) fn set_tracked_position(&mut self, id: i32, position: [f64; 3]) {
+        if let Some(entity) = self.entities.get_mut(&id) {
+            entity.position = position;
+        }
     }
     /// The kind and last sent position of a tracked server entity.
     pub(in crate::game) fn tracked(&self, id: i32) -> Option<(&str, [f64; 3])> {

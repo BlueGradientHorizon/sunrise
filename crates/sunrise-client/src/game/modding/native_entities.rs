@@ -27,14 +27,15 @@ impl super::commands::OtherEntity {
             return None;
         }
         Some(if let Some(settings) = self.interaction {
-            super::interactions::RemoteInteraction {
-                position: self.position,
-                width: settings.width,
-                height: settings.height,
-                response: settings.response,
-                vehicle: None,
-            }
-            .bounds()
+            let mut interaction = super::interactions::RemoteInteraction::new([
+                self.position.x,
+                self.position.y,
+                self.position.z,
+            ]);
+            interaction.width = settings.width;
+            interaction.height = settings.height;
+            interaction.response = settings.response;
+            interaction.bounds()
         } else {
             // Display and Marker have zero-sized physical dimensions.
             sunrise_core::geometry::Aabb::new(self.position, self.position)
@@ -257,7 +258,7 @@ impl Game<'_> {
             }
             while let Some((slot, id, seq)) = self.next_unannounced(mark, &[], None) {
                 mark = seq;
-                let kind = self.slot_kind_and_position(slot).0;
+                let kind = self.slot_kind_and_position(slot).0.into_owned();
                 self.construct_joining(id, &kind);
             }
             return true;
@@ -270,6 +271,7 @@ impl Game<'_> {
         {
             self.persist.joined_seq = seq;
             let (kind, at) = self.slot_kind_and_position(slot);
+            let kind = kind.into_owned();
             let mut canceled = false;
             let dimension = self.dim.id();
             self.construct_joining(id, &kind);
@@ -295,7 +297,7 @@ impl Game<'_> {
                 self.discard_slot(slot);
                 kept &= id != watch;
             } else {
-                self.remember_join(id, kind.into_owned());
+                self.remember_join(id, kind);
                 // `addEntity` files it under its section, untold.
                 self.entity_section_joined(id, [at.x, at.y, at.z]);
                 if let Some((id, item, count, position)) = spawn {
@@ -409,7 +411,7 @@ impl Game<'_> {
         self.persist.live.insert(index, (id, kind, true));
     }
     /// The type id and position a mod is told of.
-    fn slot_kind_and_position(&self, slot: Slot) -> (std::borrow::Cow<'static, str>, Vec3) {
+    fn slot_kind_and_position(&self, slot: Slot) -> (std::borrow::Cow<'_, str>, Vec3) {
         use super::entity::Entity;
         let block = |p: [i32; 3]| {
             Vec3::new(
@@ -441,7 +443,7 @@ impl Game<'_> {
                 (kind.into(), block(f.pos))
             }
             Slot::Apart(Apart::Other(i)) => {
-                (self.others[i].kind.clone().into(), self.others[i].position)
+                (self.others[i].kind.as_str().into(), self.others[i].position)
             }
             Slot::Apart(Apart::Dragon) => (
                 "minecraft:ender_dragon".into(),
@@ -556,6 +558,7 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::native_entity_refs::tests::collect_entities_in;
     use mod_api::ServerHost;
 
     #[test]
@@ -574,15 +577,14 @@ mod tests {
             ) -> Flow {
                 let entity = host.entity(event.entity).expect("joining handle");
                 assert_eq!(
-                    entity.kind(host).map(|kind| kind.id(host)).as_deref(),
+                    entity.kind(host).and_then(|kind| kind.id(host)).as_deref(),
                     Some(event.kind)
                 );
                 assert_eq!(entity.position(host), Some(event.pos));
                 let level = host.level(event.dimension).unwrap();
                 if event.kind != "minecraft:eye_of_ender" {
                     assert!(
-                        level
-                            .entities_in(host, [4.0, 63.0, 4.0], [6.0, 66.0, 6.0])
+                        collect_entities_in(host, level, [4.0, 63.0, 4.0], [6.0, 66.0, 6.0])
                             .unwrap()
                             .contains(&entity)
                     );
@@ -618,9 +620,8 @@ mod tests {
                     kinds.map(|kind| (kind.to_owned(), false))
                 );
                 let level = game.level("minecraft:overworld").unwrap();
-                let handles = level
-                    .entities_in(game, [4.0, 63.0, 4.0], [6.0, 66.0, 6.0])
-                    .unwrap();
+                let handles =
+                    collect_entities_in(game, level, [4.0, 63.0, 4.0], [6.0, 66.0, 6.0]).unwrap();
                 assert_eq!(handles.len(), 5);
                 let mut chunks =
                     game.entity_chunks(&std::collections::HashSet::from([(0, 0)]), true);
@@ -629,8 +630,7 @@ mod tests {
                 assert_eq!(saved.len(), 5);
                 game.native_leaves_flush();
                 assert!(
-                    level
-                        .entities_in(game, [4.0, 63.0, 4.0], [6.0, 66.0, 6.0])
+                    collect_entities_in(game, level, [4.0, 63.0, 4.0], [6.0, 66.0, 6.0])
                         .unwrap()
                         .is_empty()
                 );
@@ -646,9 +646,8 @@ mod tests {
                         .chain(kinds.into_iter().map(|k| (k.to_owned(), true)))
                         .collect::<Vec<_>>()
                 );
-                let reloaded = level
-                    .entities_in(game, [4.0, 63.0, 4.0], [6.0, 66.0, 6.0])
-                    .unwrap();
+                let reloaded =
+                    collect_entities_in(game, level, [4.0, 63.0, 4.0], [6.0, 66.0, 6.0]).unwrap();
                 assert_eq!(reloaded.len(), 5);
                 assert!(handles.iter().all(|e| e.kind(game).is_none()));
                 assert!(
@@ -1009,17 +1008,12 @@ mod tests {
                     Some(&(base + 3, "minecraft:sheep".into(), true))
                 );
 
-                game.crystals.push(super::super::dragon::Crystal {
-                    fall: Default::default(),
-                    attachment_lifetime: Default::default(),
-                    join: Default::default(),
-                    id: base + 4,
-                    position: Vec3::ZERO,
-                    show_bottom: true,
-                    time: 0,
-                    beam: None,
-                    invulnerable: false,
-                });
+                game.crystals.push(super::super::dragon::Crystal::new(
+                    base + 4,
+                    Vec3::ZERO,
+                    true,
+                    0,
+                ));
                 game.cushions.push(sunrise_client::entities::Cushion {
                     attachment_lifetime: Default::default(),
                     join: Default::default(),
@@ -1038,6 +1032,7 @@ mod tests {
                     pos: [0; 3],
                     facing: 0,
                     variant: "minecraft:kebab".into(),
+                    asset: None,
                     width: 1,
                     height: 1,
                     check_interval: 0,
@@ -1089,7 +1084,7 @@ mod tests {
                     velocity: Vec3::ZERO,
                     fuse: 80,
                     ticks: 0,
-                    on_ground: false,
+                    ground: Default::default(),
                     in_water: false,
                     stuck: Vec3::ZERO,
                     fall_distance: 0.0,

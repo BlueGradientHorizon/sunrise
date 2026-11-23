@@ -152,4 +152,4 @@ TropicalFishRenderer.submit	port	crates/sunrise-client/src/mobs/render.rs::body	
 TropicalFishRenderer.setupRotations	inline	crates/sunrise-client/src/mobs/aquatic.rs::rotations	the same body rotation, cod included
 TurtleRenderer.getShadowRadius	inline	crates/sunrise-client/src/shadows.rs::mob_shadow_radius	the same path, with the turtle's 0.3 age factor and its 0.83 renderer factor
 TurtleRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/body_anim.rs::turtle	on-land, laying and egg states
-VexRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/vex.rs::anim	charging pose; held item in mobs/render.rs::hand_base
+VexRenderer.extractRenderState	port	crates/sunrise-client/src/mobs/vex.rs::anim	charging pose; held item in mobs/render.rs::translate_to_hand

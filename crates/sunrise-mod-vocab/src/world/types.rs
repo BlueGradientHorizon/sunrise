@@ -8,7 +8,7 @@ use crate::*;
 pub struct UnresolvedFluid(pub(crate) u64);
 
 /// A dimension (`minecraft:the_nether`), as the game's table numbers it: a `LevelRef`'s identity.
-/// A key stays the same dimension until the game exits; `key.id(host)` gives the name.
+/// A key stays the same dimension until the game exits; `key.id(host)` borrows the name.
 // no wire: decoding validates the u32 slot with DimensionKey::from_slot on the host.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: its field is private, so only the game's table creates a key
@@ -325,7 +325,7 @@ impl LevelRef {
     pub fn generation(self) -> u32 {
         self.generation
     }
-    /// The level's dimension. `level.dimension().id(host)` gives its name.
+    /// The level's dimension. `level.dimension().id(host)` borrows its name.
     pub fn dimension(self) -> DimensionKey {
         self.dimension
     }
@@ -336,17 +336,23 @@ impl LevelRef {
         crate::content::registry_keys::dimension_id(self.dimension)
             .expect("the game's table made the key")
     }
-    /// Draw from the level's own random stream (vanilla's `Level.random`), in vanilla's order:
-    /// `draw` gets the stream and the level keeps it after. None where `random` is None.
+    /// Borrow the named server level's live random stream (`Level.getRandom`) for `draw`
+    /// only: `level.with_random(host, |rng| rng.next_int_bound(bound))`. The closure cannot
+    /// keep or reseed the stream. Draws advance that level's live stream directly in
+    /// vanilla's order, even when the level is parked; this never switches or loads levels.
+    ///
+    /// Returns `None` without calling `draw` if the host lacks server authority, the
+    /// handle is stale, the level is not resident, or world access is unavailable.
+    ///
+    /// Matching vanilla `Level.getRandom()`, draws are not rolled back if `draw` panics
+    /// and unwinds, or if an enclosing transaction aborts.
     pub fn with_random<T>(
         self,
         host: &mut dyn ServerHost,
         draw: impl FnOnce(&mut dyn RandomSource) -> T,
     ) -> Option<T> {
-        let mut random = self.random(host)?;
-        let drawn = draw(&mut random);
-        self.set_random(host, random);
-        Some(drawn)
+        let backend = crate::backend::backend_mut_of(host)?;
+        crate::world::random::with_random_draw(draw, |draw| backend.with_level_random(self, draw))
     }
     /// The open of the world the handle belongs to.
     pub fn epoch(self) -> WorldEpoch {
@@ -967,18 +973,19 @@ pub enum Spawner {
 pub enum SpawnCheck {
     /// `SUCCEED`: the check passes.
     Succeed,
-    /// `DEFAULT`: vanilla's own answer stands.
+    /// `DEFAULT`: keep the check's own answer, including the effective predicate result
+    /// for a placement check.
     #[default]
     Default,
     /// `FAIL`: the check fails.
     Fail,
 }
 
-/// Where a mod entity type stands to spawn (`SpawnPlacementType`):
-/// `SpawnPlacements.isSpawnPositionOk`'s first check.
+/// Where an entity type may stand (`SpawnPlacementType`), checked by
+/// `SpawnPlacements.isSpawnPositionOk` separately from its spawn predicate.
+// no wire: only used to register native spawn predicates.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub enum SpawnPlacementType {
     /// `ON_GROUND`: a block that is valid to spawn on below, free room at the feet and the head.
     OnGround,
@@ -990,53 +997,101 @@ pub enum SpawnPlacementType {
     NoRestrictions,
 }
 
-/// How bright a spot a mod entity type needs to spawn.
+/// A read-only view of the level, lent for one spawn predicate call. None of its
+/// reads load chunks or write to the level.
+pub trait SpawnPlacementLevel {
+    /// The namespaced name of the block at `pos`, such as `minecraft:grass_block`.
+    fn block_name(&self, pos: BlockPos) -> &str;
+    /// Whether the block at `pos` is in `tag`. Use a namespaced tag name without `#`,
+    /// such as `minecraft:animals_spawnable_on`.
+    fn block_in_tag(&self, pos: BlockPos, tag: &str) -> bool;
+    /// Whether the biome at `pos` is in `tag`. Use a namespaced tag name without `#`.
+    fn biome_in_tag(&self, pos: BlockPos, tag: &str) -> bool;
+    /// The sky light at `pos` (`LightLayer.SKY`).
+    fn sky_light(&self, pos: BlockPos) -> i32;
+    /// The block light at `pos` (`LightLayer.BLOCK`).
+    fn block_light(&self, pos: BlockPos) -> i32;
+    /// `Animal.isBrightEnoughToSpawn` at `pos`, without any spawn-reason bypass or random draws.
+    fn is_bright_enough_to_spawn(&self, pos: BlockPos) -> bool;
+}
+
+/// The level and live random stream lent for one spawn predicate call.
+/// To preserve the vanilla trial-spawner light bypass, test [`SpawnReason::TrialSpawner`]
+/// before calling either light helper. The helpers themselves do not check the reason.
+pub trait SpawnPlacementContext {
+    /// The read-only level for this check. Reads never load chunks or write to the level.
+    fn level(&self) -> &dyn SpawnPlacementLevel;
+    /// The caller's live random stream, not a fork. Draws advance it in call order and
+    /// are kept even if this predicate or a later check rejects the spawn. A panic
+    /// restores the stream to the start of that predicate's call.
+    fn random(&mut self) -> &mut dyn RandomSource;
+    /// `Monster.isDarkEnoughToSpawn` at `pos`, without any spawn-reason bypass.
+    /// It draws from the same stream as [`Self::random`].
+    fn is_dark_enough_to_spawn(&mut self, pos: BlockPos) -> bool;
+}
+
+/// How a native spawn predicate composes with a type's existing predicate.
+/// For a type not previously registered, the first predicate is the original
+/// whatever operation is specified.
+// no wire: only used to register native spawn predicates.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
-pub enum SpawnLight {
-    /// Any light level.
-    Any,
-    /// Dark enough for a monster (`Monster.isDarkEnoughToSpawn`: sky light, block light
-    /// and the dimension's monster light test, which draw from the level's random).
-    Dark,
-    /// Bright enough for an animal (`Animal.isBrightEnoughToSpawn`: light above 8).
-    Bright,
+// exhaustive: the vanilla registration contract has And, Or, and Replace, matched by the resolver.
+pub enum SpawnPlacementOperation {
+    /// Require this predicate as well as a passing original or `Or` predicate.
+    And,
+    /// Try this predicate if the original and earlier `Or` predicates failed.
+    Or,
+    /// Replace an existing entry's predicate, bypassing the original and all `And` and `Or`
+    /// predicates. Only the last replacement is evaluated. A replacement can change either
+    /// placement or heightmap; a field it omits retains its current value.
+    Replace,
 }
 
-/// A mod entity type's spawn rule, declared with
-/// [`Registrar::declare_spawn_placement`](SpawnPlacementsRegistrar::declare_spawn_placement):
-/// the arguments of NeoForge's `RegisterSpawnPlacementsEvent.register` as data. Every field
-/// must hold for a spawn to pass; a trial spawner ignores `light`, as for vanilla types.
-#[derive(Clone, Debug, PartialEq)]
-// exhaustive: a mod builds it with a literal; the game reads it
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct SpawnPlacementRule {
-    /// Where the type stands (`SpawnPlacementType`).
-    pub placement: SpawnPlacementType,
-    /// The heightmap natural spawning and chunk generation find the surface with.
-    pub heightmap: Heightmap,
-    /// A block tag (`minecraft:animals_spawnable_on`, no `#`) the block below must be in.
-    pub spawnable_on: Option<String>,
-    /// How bright the spot must be.
-    pub light: SpawnLight,
-    /// A biome tag (no `#`) the spot's biome must be in.
-    pub biome_tag: Option<String>,
+/// A native spawn predicate for an entity type, reason and block position. Register a
+/// [`Send`] and [`Sync`] function or closure with the same signature, or implement this trait.
+/// Use the lent level and random stream to decide the result; do not depend on call counts.
+pub trait SpawnPlacementPredicate: Send + Sync + 'static {
+    /// Whether this check passes. Use the lent random stream for any draws. The game invokes
+    /// the predicate as the registering mod, skipping it when disabled. A panic restores
+    /// the predicate's random draws, disables that predicate for the session, and reports
+    /// the mod in the log and client error toast. A disabled or refused replacement fails
+    /// the predicate check; it never retries the original.
+    fn test(
+        &self,
+        kind: EntityTypeKey,
+        ctx: &mut dyn SpawnPlacementContext,
+        reason: SpawnReason,
+        pos: BlockPos,
+    ) -> bool;
 }
 
-/// Why a spawn placement declaration was refused
-/// ([`Registrar::declare_spawn_placement`](SpawnPlacementsRegistrar::declare_spawn_placement)).
+impl<F> SpawnPlacementPredicate for F
+where
+    F: Fn(EntityTypeKey, &mut dyn SpawnPlacementContext, SpawnReason, BlockPos) -> bool
+        + Send
+        + Sync
+        + 'static,
+{
+    fn test(
+        &self,
+        kind: EntityTypeKey,
+        ctx: &mut dyn SpawnPlacementContext,
+        reason: SpawnReason,
+        pos: BlockPos,
+    ) -> bool {
+        self(kind, ctx, reason, pos)
+    }
+}
+
+/// An immediate refusal from [`SpawnPlacementsRegistrar::register_spawn_placement`].
+/// Resource-load refusals are reported separately, after the game resolves the registrations.
+// no wire: only returned by the native spawn predicate registrar.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub enum SpawnPlacementError {
-    /// The entity type's id is invalid, empty, or in a namespace the declaring
-    /// mod does not own.
-    InvalidId,
-    /// A tag is not a namespaced tag name (write it without `#`).
-    InvalidTag,
-    /// Another declaration already covers the entity type.
-    Duplicate,
+    /// The entity type key is not available in this registrar. The call also records
+    /// a registration refusal, even if the returned error is ignored.
+    InvalidEntityType,
 }
 
 /// What a mod answers a despawn check (`MobDespawnEvent.Result`).
@@ -1128,8 +1183,8 @@ pub struct MapState {
     pub colors: Vec<u8>,
 }
 
-/// One entity a level ray passes through (`LevelRef::ray_trace_entities`): what
-/// `ProjectileUtil.getEntityHitResult` tests for each candidate.
+/// One entity a level ray passes through, as tested by `ProjectileUtil.getEntityHitResult`.
+/// Returned by [`LevelRef::ray_trace_entities`] and [`LevelRef::ray_trace_nearest_entity`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 // exhaustive: the game builds it with a literal; mods only read it
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -1319,6 +1374,15 @@ impl LevelSide<'_> {
     }
 }
 
+impl LevelRandomSide<'_> {
+    pub(crate) fn reborrow(&mut self) -> LevelRandomSide<'_> {
+        match self {
+            Self::Server(host) => LevelRandomSide::Server(&mut **host),
+            Self::Client(host) => LevelRandomSide::Client(*host),
+        }
+    }
+}
+
 /// NeoForge's `TriState`: force a part of an action off or on, or leave it
 /// to vanilla.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -1367,10 +1431,23 @@ impl TriState {
 /// }
 /// ```
 pub trait LevelHost {
+    /// Whether the exact, namespaced `id` is a living entity type (`LivingEntity`).
+    /// Includes living content types, players and armor stands, whether alive or not in a level.
+    /// Returns `None` before the registry is complete or when no classification exists for `id`.
+    /// This is a load-owned registry read, not an entity lookup. It allocates nothing and gives
+    /// the same answer on either side; no entity need be loaded.
+    #[sunrise_mod_api_macros::computed_in_mod]
+    fn entity_type_is_living(&self, id: &str) -> Option<bool> {
+        crate::content::registry_keys::resolved_entity_types()
+            .get()?
+            .is_living(id)
+    }
+
     /// The block-state facts service, as `host.block_states()` gives it on a game host: the
     /// same tables and the same answers, so a part can ask a neighbour's `weathering_age`
     /// inside `random_tick`. Read-only and allocation-free per read. A level view with no
-    /// tables answers every fact with `None` (or `BlockStateError::Unavailable`).
+    /// tables answers `None`, `BlockStateError::Unavailable` or `LevelReadError::Unavailable`,
+    /// according to the read's result type.
     ///
     /// Computed from this level view's tables.
     #[sunrise_mod_api_macros::computed_in_mod]
@@ -1406,10 +1483,20 @@ pub trait LevelHost {
         None
     }
     /// `BlockGetter.getBlockEntity` in this level. None if absent, unloaded, outside the
-    /// build height, or out for its own tick. Never loads chunks or opens loot containers.
+    /// build height, or temporarily detached for a menu operation. Tick callbacks keep the
+    /// entity resident until removal. Never loads chunks or opens loot containers.
     /// Clients return their local block entity handle, not unsynced server contents. Owning
     /// game thread only, never reachable from a worker-thread hook body.
     fn block_entity(&self, _pos: [i32; 3]) -> Option<crate::BlockEntityRef> {
+        None
+    }
+    /// Whether the first provider for [`crate::ITEMS`] at `pos` and `side` answers, as in
+    /// NeoForge's `Level.getCapability(Capabilities.Item.BLOCK, pos, side)`. `None` as the
+    /// side means unsided, not a search over faces. An empty or slotless handler can answer.
+    /// Returns `Some(false)` for a resident block with no answer, and `None` for an unavailable
+    /// view, unloaded chunk or invalid position. Clients use only their resident world and
+    /// installed providers. Does not allocate a handler, open loot, load chunks or query the server.
+    fn has_item_capability(&self, _pos: [i32; 3], _side: Option<Direction>) -> Option<bool> {
         None
     }
     /// The slots on this side, as `ItemsHost::container_size` reads them.
@@ -1425,7 +1512,13 @@ pub trait LevelHost {
     fn container_stack(&self, _at: crate::BlockSide, _slot: usize) -> Option<crate::ItemStack> {
         None
     }
+    /// Borrow the host for a snapshot read in the transaction that captured it.
+    /// A level view without transaction state supplies only the unscoped default.
+    fn attachment_read_scope(&self) -> crate::AttachmentReadScope<'_> {
+        crate::AttachmentReadScope::default()
+    }
     /// Capture Part state using the same attachment snapshot as `Host::query`.
+    /// In a transaction it can be used only while the capturing frame is current.
     /// No chunk loading or loot generation. Refuses unloaded or stale holders; clients
     /// have no server Part state. Owning game thread only, never in worker hook bodies.
     // hidden: typed BlockEntityPartState read implementation.
@@ -1439,7 +1532,9 @@ pub trait LevelHost {
         Err(crate::PartStateError::Stale)
     }
     /// Read this level's copy of a block entity's saved data without identity or position
-    /// metadata. This never loads chunks or opens loot containers.
+    /// metadata. This never loads chunks or opens loot containers. A mod holder
+    /// without declared inventory slots exposes saved `Items` as mod-owned NBT
+    /// and preserves the saved list order.
     /// Returns `None` when no saved data is available, the handle is stale, or it names
     /// another level or world. A view with no block entities returns `None` explicitly.
     fn block_entity_data(&self, entity: crate::BlockEntityRef) -> Option<crate::Compound>;
@@ -1590,7 +1685,7 @@ pub trait LevelHost {
     }
 }
 
-/// Access vanilla's `Level.random`, so draws come in vanilla's order.
+/// Restricted access to the hook's own level and its live `Level.getRandom` stream.
 pub trait LevelRandomHost: LevelHost {
     /// Vanilla comparator container signal, 0 to 15, through the engine comparator path.
     /// Generates unopened container loot once before reading, as vanilla getItem does;
@@ -1605,16 +1700,14 @@ pub trait LevelRandomHost: LevelHost {
     fn attachments(&mut self) -> &mut dyn AttachmentStore {
         unimplemented!("LevelRandomHost::attachments")
     }
-    /// A copy of the level's random stream through `native_level_random`, or None on a
-    /// non-authoritative level. Draw with `with_random`, which stores it back.
-    fn random(&mut self) -> Option<LegacyRandomSource> {
-        unimplemented!("LevelRandomHost::random")
-    }
-    /// Replace the level's random stream with `random`, one `random` gave and the mod drew from.
-    /// False on a non-authoritative level.
-    fn set_random(&mut self, _random: LegacyRandomSource) -> bool {
-        unimplemented!("LevelRandomHost::set_random")
-    }
+    /// Lend the level's live random stream to `draw` for this call by using
+    /// [`RandomDraw::run`]. A host that cannot lend the stream declines by not running it,
+    /// as the default implementation does. Draws advance the live stream directly and are
+    /// not rolled back on panic/unwind or transaction abort, matching vanilla
+    /// `Level.getRandom()`.
+    ///
+    /// Listeners request a draw with `host.with_random(|rng| rng.next_int_bound(bound))`.
+    fn lend_random(&mut self, _draw: RandomDraw<'_>) {}
 }
 
 /// What a hit's listener may do beyond reading and drawing the level's random: play level
@@ -1623,8 +1716,8 @@ pub trait LevelRandomHost: LevelHost {
 /// and `living_use_totem`. It writes no block and schedules no tick.
 ///
 /// A sound is queued at the call, and its seed is drawn then from the level's sound-seed
-/// stream, never from [`LevelRandomHost::random`]. An entity's random is the entity's own
-/// stream (`Entity.getRandom`), advanced in listener order, so the hit's continuation sees
+/// stream, never from the level's [draw stream](LevelRandomHost::lend_random). An entity's
+/// own stream (`Entity.getRandom`) advances in listener order, so the hit's continuation sees
 /// the draws. A hit lends its attacker where the game applies a melee hit (the attacking player or mob,
 /// for player → mob, mob → mob and mob → player) and no entity at any other damage site
 /// (environment, projectiles, explosions, potions and the like); any other entity, a stale
@@ -1677,6 +1770,22 @@ pub trait HitHost: LevelRandomHost {
     fn entity_next_int(&mut self, _entity: EntityRef, _bound: i32) -> Option<i32> {
         unimplemented!("HitHost::entity_next_int")
     }
+    /// The entity the hit lands on, when it is living (`LivingIncomingDamageEvent.getEntity`), at
+    /// `living_incoming_damage`, `living_damage_pre` and `living_damage_post`: a mob, a player
+    /// or the dragon (an armor stand's own `hurtServer` never reaches these hooks). Its reads
+    /// answer from the live entity at the call. None at `living_shield_block` and
+    /// `living_use_totem`, which lend no view.
+    fn victim(&self) -> Option<LivingView<'_>> {
+        unimplemented!("HitHost::victim")
+    }
+    /// The hit's causing entity (`DamageSource.getEntity`), at the same three hooks, when the
+    /// hit already lends that entity (the attacking player or mob it lends for the entity's own
+    /// random) and the source names it: None where the source names another entity or none
+    /// (a wither skull whose shooter was removed), for a removed entity, at a damage site that
+    /// lends no entity, for a non-living causer and for a causer in another level.
+    fn causing(&self) -> Option<LivingView<'_>> {
+        unimplemented!("HitHost::causing")
+    }
 }
 
 /// A `LevelReader` with vanilla's `ScheduledTickAccess`. Shape updates cannot write blocks.
@@ -1717,7 +1826,10 @@ pub trait LevelWriteHost: LevelTicksHost + LevelRandomHost {
     ) -> bool {
         unimplemented!("LevelWriteHost::set_block_property")
     }
-    /// Play a sound for nearby players through `play_sound`.
+    /// Play a sound for nearby players. Inside an open transaction in the active level, the
+    /// level-sound hook runs synchronously; only the resolved sound waits for the owning level's
+    /// outermost commit and draws its seed when published. An abort discards it. Outside a
+    /// transaction a queued sound draws its seed at the call, even if a later hook cancels it.
     fn play_sound(
         &mut self,
         _sound: &str,
@@ -1730,7 +1842,8 @@ pub trait LevelWriteHost: LevelTicksHost + LevelRandomHost {
     }
     /// `ServerLevel.sendParticles` through `native_send_particles`.
     /// Item particles require `options.item_stack`; invalid stacks return false, and so does an
-    /// item crumb whose colour has a component outside 0 to 1.
+    /// item crumb whose colour has a component outside 0 to 1. Inside an open transaction the
+    /// particles wait for the outermost commit and are discarded on abort.
     fn send_particles(
         &mut self,
         _options: &ParticleOptions,
@@ -1743,7 +1856,9 @@ pub trait LevelWriteHost: LevelTicksHost + LevelRandomHost {
         unimplemented!("LevelWriteHost::send_particles")
     }
     /// `LevelAccessor.levelEvent(null, id, pos, data)` through `native_level_event`: the event
-    /// is queued with the write's own events, in order, and plays when the write is done.
+    /// is queued with the write's own events, in order. Inside an open transaction it plays at the
+    /// outermost commit, in call order with the other deferred effects, and is discarded on abort;
+    /// otherwise it plays when the write is done.
     /// `LevelRef::level_event` takes the same `id` and `data`.
     fn level_event(&mut self, _id: i32, _pos: [i32; 3], _data: i32) -> bool {
         unimplemented!("LevelWriteHost::level_event")
@@ -1818,7 +1933,8 @@ pub struct ObjectiveRef {
 /// One of the scoreboard's teams of an open server world (vanilla's `PlayerTeam`). It holds the
 /// world's epoch and an identity the board gave the team when it was added, so a team that was
 /// removed (even if its name was added again) or a handle from an earlier open reads as stale:
-/// reads answer `None` or [`TeamError::Stale`] and writes change nothing.
+/// reads answer `None`, [`TeamError::Stale`] or [`TeamMembersReadError::Stale`], and writes
+/// change nothing.
 #[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: its fields are private, so mods cannot build or destructure it
 pub struct TeamRef {

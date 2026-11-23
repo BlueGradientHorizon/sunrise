@@ -513,7 +513,7 @@ fn the_hook_names_the_entry_a_push_came_through_once_per_full_entry_call() {
         zombie_at(game, 42, Vec3::ZERO);
         let mut mob = game.mobs.pop().unwrap();
         mob.velocity = Vec3::ZERO;
-        mob.on_ground = false;
+        mob.ground.on_ground = false;
         with_detached_credit(game, 42, |level| {
             mob.knockback(level, 0.4, 1.0, 0.0, &hit, 0.0)
         });
@@ -587,6 +587,7 @@ pub(in crate::game) fn credit_pig(game: &mut super::Game<'_>) {
             players: vec![(0, 0)],
             forced: Vec::new(),
             portal: Vec::new(),
+            spawn: Vec::new(),
             dragon: None,
             viewed: Vec::new(),
             view_distance: 2,
@@ -605,7 +606,7 @@ fn credit_push(game: &mut super::Game<'_>) {
     let mut credit = plan.lend(&mut game.last_hurt_by_player);
     let mob = &mut game.mobs[0];
     mob.velocity = Vec3::ZERO;
-    mob.on_ground = false;
+    mob.ground.on_ground = false;
     mob.knockback(
         damage_level_of!(game, &NO_ATTACK, &mut credit, None),
         0.4,
@@ -672,6 +673,13 @@ fn accepted_wolf_hits_commit_owner_replacement_clearing_and_unresolved_precedenc
 #[test]
 #[ignore = "daily"]
 fn remembered_player_wins_after_forty_ticks_then_recent_mob_credit_expires_at_one_hundred() {
+    if super::native_entity_refs::tests::run_fresh_cases(
+        "game::native_knockback_tests::remembered_player_wins_after_forty_ticks_then_recent_mob_credit_expires_at_one_hundred",
+        "SUNRISE_KNOCKBACK_EXPIRY_CHILD",
+        &["expiry"],
+    ) {
+        return;
+    }
     let heard = guest_heard(|game, log| {
         credit_pig(game);
         zombie_at(game, 101, Vec3::new(1.0, 0.0, 0.0));
@@ -712,7 +720,7 @@ fn remembered_player_wins_after_forty_ticks_then_recent_mob_credit_expires_at_on
         [
             (12, Some("minecraft:iron_sword".into())),
             (12, Some("minecraft:iron_axe".into())),
-            (101, Some("minecraft:bone".into())),
+            (12, Some("minecraft:iron_axe".into())),
             (101, Some("minecraft:bone".into())),
             (0, None),
         ]

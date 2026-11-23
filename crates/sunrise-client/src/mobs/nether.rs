@@ -140,7 +140,7 @@ impl Goal for BlazeAttack {
 /// `isClientSide()` branch, which the window's game makes for itself
 /// (`sunrise_client_gameplay::mob_ambient::client_ai_step`): a server neither plays them nor draws for them.
 pub fn blaze_ai_step(m: &mut Mob) {
-    if !m.on_ground && m.velocity.y < 0.0 {
+    if !m.ground.on_ground && m.velocity.y < 0.0 {
         m.velocity.y *= 0.6;
     }
 }
