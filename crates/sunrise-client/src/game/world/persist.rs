@@ -229,6 +229,9 @@ pub struct EntityMemory {
     /// Entity sections loaded before their terrain for a save. They stay owned
     /// until unload, even when empty, so the next save can clear a departed row.
     hidden_entity_sections: HashSet<ChunkKey>,
+    /// The columns whose old entity record the last [`Game::prepare_entity_save`] could not read.
+    /// Their records stay untouched and the save as a whole is incomplete.
+    pub(super) unreadable_entity_sections: usize,
     /// The compound of orbs, arrows, falling blocks, tridents, crystals and the
     /// dragon as they were loaded, found again by type and position (one that
     /// has moved since loading is saved afresh); their UUIDs are in `uuids`.
@@ -2247,6 +2250,7 @@ impl Game<'_> {
                 }
             }
             if !queued {
+                self.persist.unreadable_entity_sections = failed.len();
                 return keys;
             }
             // Loading entities can itself add or move them to another column.
@@ -2279,9 +2283,18 @@ impl Game<'_> {
         let chunks = self.entity_chunks(&keys, false);
         self.prune_entity_memory();
         if wait {
-            self.save.save_entities(chunks)
+            self.save.save_entities(chunks)?;
         } else {
-            self.save.save_entities_later(chunks)
+            self.save.save_entities_later(chunks)?;
+        }
+        self.entity_save_complete()
+    }
+    /// An error when the last entity save left a column's unreadable old record untouched, after
+    /// the unaffected columns were saved.
+    pub(super) fn entity_save_complete(&self) -> Result<()> {
+        match self.persist.unreadable_entity_sections {
+            0 => Ok(()),
+            n => Err(format!("the old entity records of {n} column(s) could not be read").into()),
         }
     }
     /// Complete a removed vehicle's scoreboard callback at logical removal,
