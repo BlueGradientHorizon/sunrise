@@ -6,12 +6,21 @@ use std::{
     process::Command,
 };
 use sunrise_mod_package::{
-    Manifest,
+    Manifest, Package,
+    index::MAX_FILE,
+    manifest::is_unresolved,
     page::{Categories, PAGE_FILE, Page},
 };
 
-pub(crate) fn check(root: &Path, manifest: &Manifest, release: Option<&str>) -> Result<(), String> {
-    let mut problems = page_problems(root, manifest, release.is_some(), fetch_categories);
+pub(crate) fn check(root: &Path, package: &Package, release: Option<&str>) -> Result<(), String> {
+    let manifest = &package.manifest;
+    let mut problems = package_problems(package);
+    problems.extend(page_problems(
+        root,
+        manifest,
+        release.is_some(),
+        fetch_categories,
+    ));
     if let Some(tag) = release {
         match release_tag(root, manifest) {
             Ok(expected) if tag != expected => problems.push(format!(
@@ -35,25 +44,69 @@ pub(crate) fn check(root: &Path, manifest: &Manifest, release: Option<&str>) -> 
     Ok(())
 }
 
+/// What the registry needs of the package itself before it lists a release.
+fn package_problems(package: &Package) -> Vec<String> {
+    let manifest = &package.manifest;
+    let mut problems = Vec::new();
+    if package.icon.is_none() {
+        problems.push(
+            "add icon.png beside sunrise-mod.toml: the registry shows it as the mod's icon".into(),
+        );
+    }
+    if manifest.license.trim().is_empty() {
+        problems.push("sunrise-mod.toml: set license".into());
+    }
+    if is_unresolved(&manifest.version) {
+        problems.push(format!(
+            "sunrise-mod.toml: version {} is a placeholder; set the mod's own version",
+            manifest.version
+        ));
+    }
+    problems
+}
+
+/// The size of the page bundle [`write_bundle`] writes for files of these sizes: a ustar header
+/// and the data padded to 512 bytes for each, then the two zero blocks that end the archive.
+fn bundle_size(files: impl IntoIterator<Item = u64>) -> u64 {
+    files
+        .into_iter()
+        .map(|size| 512 + size.div_ceil(512) * 512)
+        .sum::<u64>()
+        + 1024
+}
+
 fn page_problems(
     root: &Path,
     manifest: &Manifest,
     strict: bool,
     fetch_categories: impl FnOnce() -> Result<Categories, String>,
 ) -> Vec<String> {
-    let page = match Page::read(root, manifest) {
-        Ok(Some((page, _))) => page,
+    let (page, text) = match Page::read(root, manifest) {
+        Ok(Some(read)) => read,
         Ok(None) => return vec![format!("add {PAGE_FILE} beside sunrise-mod.toml")],
         Err(e) => return vec![e],
     };
     let categories = (!page.categories.is_empty()).then(fetch_categories);
     let mut problems =
         page.release_problems(categories.as_ref().and_then(|result| result.as_ref().ok()));
-    problems.extend(
-        page.screenshots
-            .iter()
-            .filter_map(|shot| shot.read(root).err()),
-    );
+    let mut sizes = BTreeMap::new();
+    for shot in &page.screenshots {
+        match shot.read(root) {
+            Ok(bytes) => {
+                sizes.insert(shot.path(), bytes.len() as u64);
+            }
+            Err(e) => problems.push(e),
+        }
+    }
+    // The registry downloads the bundle within its bound for one release asset.
+    let size = bundle_size(std::iter::once(text.len() as u64).chain(sizes.into_values()));
+    if size > MAX_FILE {
+        problems.push(format!(
+            "the page bundle would be {} MiB, over the registry's {} MiB for one release file",
+            size.div_ceil(1 << 20),
+            MAX_FILE >> 20
+        ));
+    }
     if let Some(Err(reason)) = categories {
         let reason = reason.lines().next().unwrap_or_default();
         if strict {
@@ -153,6 +206,15 @@ pub(crate) fn write_bundle(
         tar.append(&header, data).map_err(output_error)?;
     }
     tar.into_inner().map_err(output_error)?;
+    let size = temp.as_file().metadata().map_err(output_error)?.len();
+    if size > MAX_FILE {
+        return Err(format!(
+            "{}: {} MiB, over the registry's {} MiB for one release file",
+            path.display(),
+            size.div_ceil(1 << 20),
+            MAX_FILE >> 20
+        ));
+    }
     temp.persist(&path).map_err(|e| output_error(e.error))?;
     Ok(Some(path))
 }
@@ -217,6 +279,44 @@ mod tests {
                 .is_empty()
             );
         }
+    }
+
+    #[test]
+    fn the_counted_bundle_size_is_the_written_one() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("page")).unwrap();
+        let png = include_bytes!("../../sunrise-mod-package/tests/fixtures/page.png");
+        fs::write(root.path().join("page/runes.png"), png).unwrap();
+        let text = format!(
+            "summary = '{}'\ndescription = '{}'\n[[screenshots]]\npath = 'page/runes.png'\n",
+            "a".repeat(25),
+            "a".repeat(125)
+        );
+        fs::write(root.path().join(PAGE_FILE), &text).unwrap();
+        let out = tempfile::tempdir().unwrap();
+        let bundle = write_bundle(root.path(), out.path(), &manifest())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            fs::metadata(bundle).unwrap().len(),
+            bundle_size([text.len() as u64, png.len() as u64])
+        );
+    }
+
+    #[test]
+    fn a_release_needs_an_icon_a_licence_and_a_real_version() {
+        let package = |manifest: &str| Package {
+            manifest: Manifest::parse(manifest).unwrap(),
+            icon: None,
+        };
+        let problems = package_problems(&package(
+            "id = 'runes'\nname = 'Runes'\nversion = '1.2.3'\n",
+        ));
+        assert_eq!(problems.len(), 2);
+        let licensed = package_problems(&package(
+            "id = 'runes'\nname = 'Runes'\nversion = '1.2.3'\nlicense = 'MIT'\n",
+        ));
+        assert_eq!(licensed.len(), 1);
     }
 
     #[test]
