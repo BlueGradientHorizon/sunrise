@@ -6,7 +6,7 @@ use sunrise_client::{
 use sunrise_world::damage_source::Catalog;
 
 #[path = "registered_damage_tests/creaking_borrowed.rs"]
-mod creaking_borrowed;
+pub(in crate::game) mod creaking_borrowed;
 
 #[test]
 fn formerly_aliased_types_keep_their_id_and_registry_tags() {

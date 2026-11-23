@@ -198,7 +198,7 @@ mod block_entity_anims;
 mod block_entity_part_state_tests;
 #[cfg(test)]
 #[path = "game/blocks/block_entity_reach_draw_tests.rs"]
-mod block_entity_reach_draw_tests;
+pub(in crate::game) mod block_entity_reach_draw_tests;
 #[path = "game/blocks/block_entity_ticks.rs"]
 mod block_entity_ticks;
 #[path = "game/blocks/block_items.rs"]
@@ -1655,7 +1655,7 @@ mod native_registry_ids_tests;
 mod native_registry_processor_tests;
 #[cfg(test)]
 #[path = "game/modding/native_render_pair_tests.rs"]
-mod native_render_pair_tests;
+pub(in crate::game) mod native_render_pair_tests;
 #[path = "game/modding/native_render_visibility.rs"]
 mod native_render_visibility;
 #[cfg(test)]
@@ -2145,7 +2145,7 @@ mod spawn_yaw_tests;
 mod spawner;
 #[cfg(test)]
 #[path = "game/mobs/spawner_client_tick_tests.rs"]
-mod spawner_client_tick_tests;
+pub(in crate::game) mod spawner_client_tick_tests;
 #[path = "game/items/spear.rs"]
 mod spear;
 #[path = "game/items/spear_players.rs"]
@@ -2313,7 +2313,7 @@ mod using_item;
 mod vault;
 #[cfg(test)]
 #[path = "game/entities/vehicle_removal_tests.rs"]
-mod vehicle_removal_tests;
+pub(in crate::game) mod vehicle_removal_tests;
 #[path = "game/entities/vehicle_teleport.rs"]
 mod vehicle_teleport;
 #[cfg(test)]

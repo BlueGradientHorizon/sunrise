@@ -2742,7 +2742,7 @@ pub(in crate::game) mod tests {
 
 #[cfg(test)]
 #[path = "tests/portal_cooldown_tests.rs"]
-mod cooldown_tests;
+pub(in crate::game) mod cooldown_tests;
 
 #[cfg(test)]
 #[path = "nether_portal/arrival_effects_tests.rs"]

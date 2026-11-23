@@ -5826,7 +5826,7 @@ impl super::Dim {
 }
 
 #[cfg(test)]
-mod player_packet_tests;
+pub(in crate::game) mod player_packet_tests;
 
 #[cfg(test)]
 pub(in crate::game) mod world_spawn_sync_tests {

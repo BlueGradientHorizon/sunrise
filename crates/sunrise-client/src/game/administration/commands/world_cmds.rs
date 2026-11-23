@@ -2435,7 +2435,7 @@ mod allay_owner_damage_tests {
 
 #[cfg(test)]
 #[path = "registered_damage_tests.rs"]
-mod registered_damage_tests;
+pub(in crate::game) mod registered_damage_tests;
 
 #[cfg(test)]
 pub(in crate::game) mod datapack_damage_tests {
