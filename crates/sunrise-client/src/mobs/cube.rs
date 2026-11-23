@@ -840,9 +840,6 @@ mod own_base_tests {
     use sunrise_core::nbt::Tag;
     use sunrise_world::{attribute_map::ValueKind, attributes::entity::Catalog};
 
-    const WITNESS_26_3: &str =
-        include_str!("../../../../tools/fixtures/26.3/mob_attribute_nbt.tsv");
-
     fn mob_seed(m: &Mob) -> Vec<Tag> {
         crate::entity_nbt::attribute_entries(m)
             .into_iter()
@@ -907,10 +904,18 @@ mod own_base_tests {
             .collect()
     }
 
-    /// Replays the vanilla 26.3 cube load/save/reload cases from `tools/fixtures/26.3/mob_attribute_nbt.tsv` (#2676).
+    /// Replays the vanilla 26.3 cube load/save/reload cases `tools/test_mob_attribute_nbt_parity.py` records (#2676).
     #[test]
-    #[ignore = "daily"]
+    #[ignore = "run by tools/test_mob_attribute_nbt_parity.py"]
     fn a_cube_keeps_the_bases_its_own_size_set() {
+        let path = std::env::var("SUNRISE_MOB_ATTRIBUTE_NBT_WITNESS").expect(
+            "run through tools/test_mob_attribute_nbt_parity.py, which records the witness",
+        );
+        let witness = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+            panic!(
+                "cannot read {path} (run through tools/test_mob_attribute_nbt_parity.py, which records the witness): {e}"
+            )
+        });
         let ran = crate::mobs::world::with_test_world(&[], |w, types| {
             let types: HashMap<String, Arc<MobType>> = types
                 .types
@@ -918,7 +923,7 @@ mod own_base_tests {
                 .map(|(id, kind)| (id.clone(), Arc::new(kind.clone())))
                 .collect();
             let mut checked = 0usize;
-            for line in WITNESS_26_3.lines() {
+            for line in witness.lines() {
                 if line.is_empty() || line.starts_with('#') {
                     continue;
                 }

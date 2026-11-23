@@ -179,7 +179,6 @@ sunrise-client-lib mobs::cube::golem_touch_tests::split_uses_parent_random_and_w
 sunrise-client-lib mobs::cube::golem_touch_tests::sulfur_split_has_fixed_count_and_draws_only_yaws lib daily resources
 sunrise-client-lib mobs::cube::keep_jumping_tests::a_cube_that_rides_something_does_not_keep_jumping lib daily resources
 sunrise-client-lib mobs::cube::keep_jumping_tests::a_no_ai_cube_updates_was_on_ground lib daily resources
-sunrise-client-lib mobs::cube::own_base_tests::a_cube_keeps_the_bases_its_own_size_set lib daily resources
 sunrise-client-lib mobs::dolphin::target_tests::a_baby_dolphin_spares_whatever_hurt_it lib daily resources
 sunrise-client-lib mobs::dolphin::treasure_play_tests::a_dolphin_hearts_its_treasure_on_the_levels_random_every_40_ticks lib daily resources
 sunrise-client-lib mobs::dolphin::treasure_play_tests::a_silent_dolphin_makes_no_sound_swimming_to_an_item lib daily resources
