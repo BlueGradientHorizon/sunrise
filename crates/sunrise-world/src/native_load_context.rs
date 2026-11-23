@@ -50,6 +50,72 @@ struct Snapshot {
     registered_settings: RegisteredSettingsTable,
 }
 
+/// The settings one candidate generation reads, captured once: the generic per-mod values and
+/// the registered `(mod_id, key)` values. Everything of that generation (reload-listener
+/// registration, the data load, the loop readers and the live store) is built from the same
+/// capture, so none of them can see a file another capture would not.
+#[derive(Clone)]
+pub struct SettingsCapture {
+    settings: SettingsTable,
+    registered_settings: RegisteredSettingsTable,
+}
+
+impl SettingsCapture {
+    /// Captures generic settings for `mod_ids` and registered settings by their known
+    /// `(mod_id, key)` pairs from `settings_root`.
+    pub fn new<'a, 'b>(
+        settings_root: &Path,
+        mod_ids: impl IntoIterator<Item = &'a str>,
+        registered_keys: impl IntoIterator<Item = (&'b str, &'b str)>,
+    ) -> Self {
+        Self {
+            registered_settings: capture_registered_table(settings_root, registered_keys),
+            settings: shared_settings(capture_settings(settings_root, mod_ids)),
+        }
+    }
+
+    /// The initial load's capture over registration's already-captured, sorted settings:
+    /// only `mod_ids` stay visible, and registered keys registration did not capture are
+    /// read by known key.
+    pub fn from_registration<'a, 'b>(
+        settings_root: &Path,
+        mod_ids: impl IntoIterator<Item = &'a str>,
+        settings: Arc<[(String, Arc<[(String, String)]>)]>,
+        registered_keys: impl IntoIterator<Item = (&'b str, &'b str)>,
+    ) -> Self {
+        let registered_settings =
+            merge_registered_with_snapshot(settings_root, &settings, registered_keys);
+        let ids: BTreeSet<_> = mod_ids.into_iter().collect();
+        let settings = if settings.iter().all(|(id, _)| ids.contains(id.as_str())) {
+            settings
+        } else {
+            settings
+                .iter()
+                .filter(|(id, _)| ids.contains(id.as_str()))
+                .cloned()
+                .collect()
+        };
+        Self {
+            settings,
+            registered_settings,
+        }
+    }
+
+    /// A mod's setting as captured, with no file I/O.
+    pub fn setting(&self, mod_id: &str, key: &str) -> Option<&str> {
+        if let Ok(mod_at) = self
+            .registered_settings
+            .binary_search_by(|(known, _)| known.as_str().cmp(mod_id))
+        {
+            let values = &self.registered_settings[mod_at].1;
+            if let Ok(at) = values.binary_search_by(|(known, _)| known.as_str().cmp(key)) {
+                return values[at].1.as_deref();
+            }
+        }
+        lookup_settings_table(&self.settings, mod_id, key)
+    }
+}
+
 impl Snapshot {
     /// Captures settings for `mod_ids`; the registry inputs are shared, not scanned again.
     fn capture<'a>(inputs: Arc<LoadInputs>, mod_ids: impl IntoIterator<Item = &'a str>) -> Self {
@@ -63,12 +129,15 @@ impl Snapshot {
         mod_ids: impl IntoIterator<Item = &'a str>,
         registered_keys: impl IntoIterator<Item = (&'b str, &'b str)>,
     ) -> Self {
-        let registered_settings = capture_registered_table(&inputs.settings_root, registered_keys);
-        let settings = shared_settings(capture_settings(&inputs.settings_root, mod_ids));
+        let capture = SettingsCapture::new(&inputs.settings_root, mod_ids, registered_keys);
+        Self::from_capture(inputs, capture)
+    }
+
+    fn from_capture(inputs: Arc<LoadInputs>, capture: SettingsCapture) -> Self {
         Self {
             inputs,
-            settings,
-            registered_settings,
+            settings: capture.settings,
+            registered_settings: capture.registered_settings,
         }
     }
 
@@ -81,23 +150,13 @@ impl Snapshot {
         settings: SettingsTable,
         registered_keys: impl IntoIterator<Item = (&'b str, &'b str)>,
     ) -> Self {
-        let registered_settings =
-            merge_registered_with_snapshot(&inputs.settings_root, &settings, registered_keys);
-        let ids: BTreeSet<_> = mod_ids.into_iter().collect();
-        let settings = if settings.iter().all(|(id, _)| ids.contains(id.as_str())) {
-            settings
-        } else {
-            settings
-                .iter()
-                .filter(|(id, _)| ids.contains(id.as_str()))
-                .cloned()
-                .collect()
-        };
-        Self {
-            inputs,
+        let capture = SettingsCapture::from_registration(
+            &inputs.settings_root,
+            mod_ids,
             settings,
-            registered_settings,
-        }
+            registered_keys,
+        );
+        Self::from_capture(inputs, capture)
     }
 
     fn registry(&self, name: &str) -> Option<&[String]> {
@@ -287,6 +346,20 @@ impl LoadContext {
         }
     }
 
+    /// An owning load of `origin` over a settings capture taken earlier, so the load reads
+    /// the values the candidate's other readers were given.
+    pub fn with_capture(
+        origin: DataLoadOrigin,
+        inputs: Arc<LoadInputs>,
+        capture: SettingsCapture,
+    ) -> Self {
+        Self {
+            origin,
+            snapshot: Snapshot::from_capture(inputs, capture),
+            fluid_tags: None,
+        }
+    }
+
     /// A new owning load of `origin` over this load's registry inputs, with
     /// fresh settings and no recipe fluid tags.
     pub fn for_load<'a>(
@@ -355,6 +428,21 @@ impl LoadContext {
                 mod_ids,
                 registered_keys,
             ),
+            recipe_properties: Default::default(),
+            item_tags: None,
+        }
+    }
+
+    /// The context of a loop of `side` over this load's registry inputs and a settings capture
+    /// taken earlier, not a new one.
+    pub fn loop_context_with_capture(
+        &self,
+        side: LoopSide,
+        capture: SettingsCapture,
+    ) -> LoopContext {
+        LoopContext {
+            side,
+            snapshot: Snapshot::from_capture(self.snapshot.inputs.clone(), capture),
             recipe_properties: Default::default(),
             item_tags: None,
         }
@@ -949,6 +1037,29 @@ mod tests {
         ));
         fs::create_dir_all(root.join("reader")).unwrap();
         root
+    }
+
+    #[test]
+    fn one_capture_gives_every_reader_of_a_generation_the_same_value() {
+        let root = root("shared-capture");
+        fs::write(root.join("reader").join("count"), "3").unwrap();
+        let capture = SettingsCapture::new(&root, ["reader"], [("reader", "count")]);
+        // A file edited after the capture reaches nobody built from it.
+        fs::write(root.join("reader").join("count"), "9").unwrap();
+        let inputs = Arc::new(LoadInputs::new(BTreeMap::new(), root.clone()));
+        let load = LoadContext::with_capture(
+            DataLoadOrigin::ClientPreload,
+            inputs.clone(),
+            capture.clone(),
+        );
+        let looped = load.loop_context_with_capture(LoopSide::Client, capture.clone());
+        assert_eq!(capture.setting("reader", "count"), Some("3"));
+        assert_eq!(load.setting("reader", "count"), Some("3"));
+        assert_eq!(looped.setting("reader", "count"), Some("3"));
+        // A new capture is the one that sees the edit.
+        let next = SettingsCapture::new(&root, ["reader"], [("reader", "count")]);
+        assert_eq!(next.setting("reader", "count"), Some("9"));
+        fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]

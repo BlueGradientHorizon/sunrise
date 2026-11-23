@@ -366,7 +366,7 @@ impl ModsState {
 }
 
 mod item_data_load;
-pub(super) use item_data_load::{LoadRole, load_item_data};
+pub(super) use item_data_load::{LoadRole, capture_load_settings, load_item_data};
 
 /// The built-in registries' names in ID order, with Sunrise's own data components.
 fn builtin_registry_names(root: &Path) -> sunrise_client::Result<BTreeMap<String, Vec<String>>> {
@@ -2081,11 +2081,12 @@ impl Game<'_> {
         Ok(())
     }
 
-    pub(super) fn prepare_loop_context(
+    /// The settings the candidate generation under `resources` reads, captured once. The
+    /// reload listeners registered for it and its loop readers are built from this capture.
+    pub(super) fn capture_candidate_settings(
         &self,
         resources: &std::path::Path,
-    ) -> sunrise_client::Result<PreparedLoopContext> {
-        let side = self.options.execution_role.loop_side();
+    ) -> sunrise_client::Result<sunrise_world::native_load_context::SettingsCapture> {
         let inventory = sunrise_mod_package::enabled::EnabledMods::read(resources)?;
         // EnabledMods yields ids in sorted order.
         let ids: Vec<_> = if self.is_logical_server() {
@@ -2093,11 +2094,35 @@ impl Game<'_> {
         } else {
             inventory.client_ids().collect()
         };
-        let item_data = self.res.core.item_data.context();
         let registered = super::native_hooks::mod_settings::registered_setting_keys()
             .filter(|(owner, _)| ids.binary_search(owner).is_ok());
-        let context = item_data.loop_context_with_registered(side, ids.iter().copied(), registered);
-        Ok(self.loop_context_readers(context))
+        Ok(sunrise_world::native_load_context::SettingsCapture::new(
+            &Self::mod_data_root(),
+            ids.iter().copied(),
+            registered,
+        ))
+    }
+
+    pub(super) fn prepare_loop_context(
+        &self,
+        resources: &std::path::Path,
+    ) -> sunrise_client::Result<PreparedLoopContext> {
+        Ok(self.prepare_loop_context_from(self.capture_candidate_settings(resources)?))
+    }
+
+    /// The loop readers of a generation over the capture it was prepared from.
+    pub(super) fn prepare_loop_context_from(
+        &self,
+        captured: sunrise_world::native_load_context::SettingsCapture,
+    ) -> PreparedLoopContext {
+        let side = self.options.execution_role.loop_side();
+        let context = self
+            .res
+            .core
+            .item_data
+            .context()
+            .loop_context_with_capture(side, captured);
+        self.loop_context_readers(context)
     }
 
     fn loop_context_readers(

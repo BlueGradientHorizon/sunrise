@@ -636,7 +636,11 @@ fn a_mods_pack_is_on_the_screen_and_applies_through_client_reload() {
                 &[],
                 &[],
                 &game.mods,
-                game.register_client_reload_listeners(),
+                game.register_client_reload_listeners(
+                    &game
+                        .capture_candidate_settings(&game.options.resources)
+                        .unwrap(),
+                ),
                 &[],
                 &game.pack.assets,
                 &game.res,
@@ -665,7 +669,11 @@ fn a_mods_pack_is_on_the_screen_and_applies_through_client_reload() {
             );
             game.settings.resource_packs = vec![fixture.asset_id()];
             for expected in ["first", "second"] {
-                let listeners = game.register_client_reload_listeners();
+                let listeners = game.register_client_reload_listeners(
+                    &game
+                        .capture_candidate_settings(&game.options.resources)
+                        .unwrap(),
+                );
                 let staged = crate::game::packs::stage_pack(
                     &game.vanilla_root(),
                     &game.settings.resource_packs,

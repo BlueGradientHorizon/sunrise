@@ -2643,7 +2643,11 @@ mod tests {
                 ),
             ] {
                 std::fs::write(&path, document).unwrap();
-                let listeners = game.register_client_reload_listeners();
+                let listeners = game.register_client_reload_listeners(
+                    &game
+                        .capture_candidate_settings(&game.options.resources)
+                        .unwrap(),
+                );
                 let error = super::super::packs::stage_pack(
                     bad_root.path(),
                     &[],
@@ -2679,7 +2683,11 @@ mod tests {
             let before = bytes(&surface.vertices);
             // Identical texture bytes still produce a new model generation.
             let old_generation = game.pack.render.generation;
-            let listeners = game.register_client_reload_listeners();
+            let listeners = game.register_client_reload_listeners(
+                &game
+                    .capture_candidate_settings(&game.options.resources)
+                    .unwrap(),
+            );
             let staged = super::super::packs::stage_pack(
                 &game.options.resources,
                 &[],
