@@ -865,6 +865,10 @@ impl Game<'_> {
             self.note_direct_entity(damage_type, direct);
         }
         let rules = self.world.health_rules;
+        // The blast's causing entity, lent to the hit's listeners: decided once, before the
+        // player is borrowed for the hit.
+        let causing = attacker.map_or(0, |(id, _)| *id as i32);
+        let decision = crate::game::entity::causer_decision!(self, causing);
         if let Some(p) = self.player.as_mut()
             && let Some(id) = self.health_resources.damage.id(damage_type)
         {
@@ -876,7 +880,7 @@ impl Game<'_> {
                         self,
                         self.combat.attack(),
                         no_push,
-                        None,
+                        crate::game::entity::player_victim_causer!(self, causing, decision),
                         acting_equipment!(self)
                     ),
                     &self.health_resources,
@@ -1257,15 +1261,20 @@ impl Game<'_> {
                             source.attacker,
                             &blast_attack,
                         );
+                        // The blast's causing entity, lent beside its victim.
+                        let causing = attacker.as_ref().map_or(0, |&(id, _)| id as i32);
+                        let decision = crate::game::entity::causer_decision!(self, causing);
                         let mut credit = plan.lend(&mut self.last_hurt_by_player);
+                        let (victim_mob, lend) =
+                            crate::game::entity::victim_and_causer!(self, i, causing, decision);
                         let hurt = hurt_mob(
                             crate::game::entity::damage_level_of!(
                                 self,
                                 &blast_attack,
                                 &mut credit,
-                                None
+                                lend
                             ),
-                            &mut self.mobs[i],
+                            victim_mob,
                             hurtable,
                             cause,
                             (amount, source),
