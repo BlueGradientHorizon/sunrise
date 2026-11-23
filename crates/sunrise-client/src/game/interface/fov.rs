@@ -86,7 +86,6 @@ impl Game<'_> {
             let stack = self.use_start.item.as_ref()?;
             Some((fov_use_item(&stack.item), ticks as i32))
         });
-        });
         Some(FovPlayer {
             flying: p.flying,
             walking_speed: self.remote_walking_speed(),
