@@ -171,6 +171,240 @@ fn quad(height: f32, color: u32) -> [TerrainVertex; 4] {
     })
 }
 
+/// The tiles' draw rig: the `TILES` pipeline, whole and with alpha blending, its uniform,
+/// its target, and the quad indices (`Renderer::quad_indices`).
+struct Rig {
+    pipeline: wgpu::RenderPipeline,
+    blended: wgpu::RenderPipeline,
+    group: wgpu::BindGroup,
+    color_view: wgpu::TextureView,
+    depth_view: wgpu::TextureView,
+    target: wgpu::Texture,
+    extent: wgpu::Extent3d,
+    pixels: wgpu::Buffer,
+    indices: wgpu::Buffer,
+}
+
+/// The view and projection the rig's uniform carries, for the frames' frustum.
+fn rig_view() -> glam::Mat4 {
+    world_projection(100.0, 1.0, 4096.0) * crate::camera::view_matrix(0.0, 90.0)
+}
+
+/// The pass's picture: the target copied out and read back, the uploads with it.
+fn copy_and_submit(
+    device: &wgpu::Device,
+    queue: &Queue,
+    mut encoder: wgpu::CommandEncoder,
+    rig: &Rig,
+    uploads: &mut Uploads,
+) -> Vec<u32> {
+    encoder.copy_texture_to_buffer(
+        rig.target.as_image_copy(),
+        wgpu::TexelCopyBufferInfo {
+            buffer: &rig.pixels,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(SIDE * 4),
+                rows_per_image: None,
+            },
+        },
+        rig.extent,
+    );
+    uploads.finish(&encoder);
+    queue.submit([encoder.finish()]);
+    read(device, queue, &rig.pixels, rig.pixels.size())
+}
+
+fn rig(device: &wgpu::Device, queue: &Queue, stride: u64) -> Rig {
+    let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: None,
+        source: wgpu::ShaderSource::Wgsl(TILES.into()),
+    });
+    // One layout for both pipelines: auto layouts are one pipeline's alone.
+    let group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: None,
+        entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: Some(wgpu::BufferSize::new(64).unwrap()),
+            },
+            count: None,
+        }],
+    });
+    let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: None,
+        bind_group_layouts: &[Some(&group_layout)],
+        immediate_size: 0,
+    });
+    let instance = wgpu::vertex_attr_array![5 => Float32x4];
+    let buffers = [
+        Some(wgpu::VertexBufferLayout {
+            array_stride: stride,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &TERRAIN_ATTRIBUTES,
+        }),
+        Some(wgpu::VertexBufferLayout {
+            array_stride: 16,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &instance,
+        }),
+    ];
+    let whole = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: None,
+        layout: Some(&layout),
+        vertex: wgpu::VertexState {
+            module: &module,
+            entry_point: None,
+            compilation_options: Default::default(),
+            buffers: &buffers,
+        },
+        primitive: Default::default(),
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: DEPTH,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::Less),
+            stencil: Default::default(),
+            bias: Default::default(),
+        }),
+        multisample: Default::default(),
+        fragment: Some(wgpu::FragmentState {
+            module: &module,
+            entry_point: None,
+            compilation_options: Default::default(),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: COLOR,
+                blend: None,
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        multiview_mask: None,
+        cache: None,
+    });
+    let blended = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: None,
+        layout: Some(&layout),
+        vertex: wgpu::VertexState {
+            module: &module,
+            entry_point: None,
+            compilation_options: Default::default(),
+            buffers: &buffers,
+        },
+        primitive: Default::default(),
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: DEPTH,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::Less),
+            stencil: Default::default(),
+            bias: Default::default(),
+        }),
+        multisample: Default::default(),
+        fragment: Some(wgpu::FragmentState {
+            module: &module,
+            entry_point: None,
+            compilation_options: Default::default(),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: COLOR,
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        multiview_mask: None,
+        cache: None,
+    });
+    let lens = world_projection(100.0, 1.0, 4096.0);
+    let view_proj = lens * crate::camera::view_matrix(0.0, 90.0);
+    let uniform = device.create_buffer(&wgpu::BufferDescriptor {
+        label: None,
+        size: 64,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    queue.write_buffer(
+        &uniform,
+        0,
+        bytemuck::cast_slice(&view_proj.to_cols_array()),
+    );
+    let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: None,
+        layout: &group_layout,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: uniform.as_entire_binding(),
+        }],
+    });
+    let extent = wgpu::Extent3d {
+        width: SIDE,
+        height: SIDE,
+        depth_or_array_layers: 1,
+    };
+    let texture = |format, usage| {
+        device.create_texture(&wgpu::TextureDescriptor {
+            label: None,
+            size: extent,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage,
+            view_formats: &[],
+        })
+    };
+    let target = texture(
+        COLOR,
+        wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+    );
+    let depth = texture(DEPTH, wgpu::TextureUsages::RENDER_ATTACHMENT);
+    let pixels = device.create_buffer(&wgpu::BufferDescriptor {
+        label: None,
+        size: u64::from(SIDE * SIDE) * 4,
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
+        mapped_at_creation: false,
+    });
+    Rig {
+        blended,
+        group,
+        color_view: target.create_view(&Default::default()),
+        depth_view: depth.create_view(&Default::default()),
+        target,
+        extent,
+        pixels,
+        indices: Renderer::quad_indices(device, 1),
+        pipeline: whole,
+    }
+}
+
+/// A render pass over the rig's target, cleared black, the tiles' pipeline bound.
+fn cleared_pass<'a>(rig: &'a Rig, encoder: &'a mut wgpu::CommandEncoder) -> wgpu::RenderPass<'a> {
+    let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        label: None,
+        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+            view: &rig.color_view,
+            resolve_target: None,
+            depth_slice: None,
+            ops: wgpu::Operations {
+                load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                store: wgpu::StoreOp::Store,
+            },
+        })],
+        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+            view: &rig.depth_view,
+            depth_ops: Some(wgpu::Operations {
+                load: wgpu::LoadOp::Clear(1.0),
+                store: wgpu::StoreOp::Discard,
+            }),
+            stencil_ops: None,
+        }),
+        ..Default::default()
+    });
+    pass.set_pipeline(&rig.pipeline);
+    pass.set_bind_group(0, &rig.group, &[]);
+    pass.set_index_buffer(rig.indices.slice(..), wgpu::IndexFormat::Uint32);
+    pass
+}
+
 /// The same frame drawn by the CPU alone (a draw per tile) and with the GPU path (steady tiles
 /// through `SourcedGpu::draw`, after the CPU draws of the fading and standing-in ones) is the
 /// same image, with a fading mesh and a stand-in among the tiles; the GPU frame without the
@@ -254,104 +488,7 @@ fn images_match(device: &wgpu::Device, queue: &Queue) {
         assert!(tile.id.is_some());
     }
 
-    let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: None,
-        source: wgpu::ShaderSource::Wgsl(TILES.into()),
-    });
-    let instance = wgpu::vertex_attr_array![5 => Float32x4];
-    let buffers = [
-        Some(wgpu::VertexBufferLayout {
-            array_stride: stride,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &TERRAIN_ATTRIBUTES,
-        }),
-        Some(wgpu::VertexBufferLayout {
-            array_stride: 16,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &instance,
-        }),
-    ];
-    let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: None,
-        layout: None,
-        vertex: wgpu::VertexState {
-            module: &module,
-            entry_point: None,
-            compilation_options: Default::default(),
-            buffers: &buffers,
-        },
-        primitive: Default::default(),
-        depth_stencil: Some(wgpu::DepthStencilState {
-            format: DEPTH,
-            depth_write_enabled: Some(true),
-            depth_compare: Some(wgpu::CompareFunction::Less),
-            stencil: Default::default(),
-            bias: Default::default(),
-        }),
-        multisample: Default::default(),
-        fragment: Some(wgpu::FragmentState {
-            module: &module,
-            entry_point: None,
-            compilation_options: Default::default(),
-            targets: &[Some(COLOR.into())],
-        }),
-        multiview_mask: None,
-        cache: None,
-    });
-    let lens = world_projection(100.0, 1.0, 4096.0);
-    let view_proj = lens * crate::camera::view_matrix(0.0, 90.0);
-    let uniform = device.create_buffer(&wgpu::BufferDescriptor {
-        label: None,
-        size: 64,
-        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    });
-    queue.write_buffer(
-        &uniform,
-        0,
-        bytemuck::cast_slice(&view_proj.to_cols_array()),
-    );
-    let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: None,
-        layout: &pipeline.get_bind_group_layout(0),
-        entries: &[wgpu::BindGroupEntry {
-            binding: 0,
-            resource: uniform.as_entire_binding(),
-        }],
-    });
-    let extent = wgpu::Extent3d {
-        width: SIDE,
-        height: SIDE,
-        depth_or_array_layers: 1,
-    };
-    let texture = |format, usage| {
-        device.create_texture(&wgpu::TextureDescriptor {
-            label: None,
-            size: extent,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage,
-            view_formats: &[],
-        })
-    };
-    let target = texture(
-        COLOR,
-        wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-    );
-    let depth = texture(DEPTH, wgpu::TextureUsages::RENDER_ATTACHMENT);
-    let (color_view, depth_view) = (
-        target.create_view(&Default::default()),
-        depth.create_view(&Default::default()),
-    );
-    let pixels = device.create_buffer(&wgpu::BufferDescriptor {
-        label: None,
-        size: u64::from(SIDE * SIDE) * 4,
-        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
-        mapped_at_creation: false,
-    });
-    let indices = Renderer::quad_indices(device, 1);
+    let rig = rig(device, queue, stride);
     let rows: Vec<[f32; 4]> = tiles.iter().map(Tile::instance).collect();
     let rows_buffer = {
         use wgpu::util::DeviceExt;
@@ -361,7 +498,7 @@ fn images_match(device: &wgpu::Device, queue: &Queue) {
             usage: wgpu::BufferUsages::VERTEX,
         })
     };
-    let all = Frustum::from_planes(frustum(view_proj));
+    let all = Frustum::from_planes(frustum(rig_view()));
     let mut uploads = Uploads::new(device);
 
     // `gpu`: whether sourced geometry draws the steady tiles; `cpu_lists`: whether the CPU
@@ -383,30 +520,7 @@ fn images_match(device: &wgpu::Device, queue: &Queue) {
             assert_eq!(prepared, Prepared::Gpu);
             sourced.dispatch(&mut encoder, None);
         }
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: None,
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &color_view,
-                resolve_target: None,
-                depth_slice: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &depth_view,
-                depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(1.0),
-                    store: wgpu::StoreOp::Discard,
-                }),
-                stencil_ops: None,
-            }),
-            ..Default::default()
-        });
-        pass.set_pipeline(&pipeline);
-        pass.set_bind_group(0, &group, &[]);
-        pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
+        let mut pass = cleared_pass(&rig, &mut encoder);
         pass.set_vertex_buffer(1, rows_buffer.slice(..));
         for (i, tile) in tiles.iter().enumerate() {
             if gpu && (tile.stand == State::Steady || !cpu_lists) {
@@ -420,21 +534,7 @@ fn images_match(device: &wgpu::Device, queue: &Queue) {
             sourced.draw(&mut pass, &arena, |_| None);
         }
         drop(pass);
-        encoder.copy_texture_to_buffer(
-            target.as_image_copy(),
-            wgpu::TexelCopyBufferInfo {
-                buffer: &pixels,
-                layout: wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(SIDE * 4),
-                    rows_per_image: None,
-                },
-            },
-            extent,
-        );
-        uploads.finish(&encoder);
-        queue.submit([encoder.finish()]);
-        read(device, queue, &pixels, pixels.size())
+        copy_and_submit(device, queue, encoder, &rig, &mut uploads)
     };
     let cpu = image(false, true);
     let gpu = image(true, true);
@@ -449,4 +549,292 @@ fn images_match(device: &wgpu::Device, queue: &Queue) {
     let without = image(true, false);
     assert_ne!(cpu, without, "the flagged tiles are not drawn by the GPU");
     assert!(sourced.draw_calls() > 0);
+}
+
+/// The residency, driven as `Renderer` drives it, draws the CPU's image: tiles come in
+/// (`Sourced::record`), fade in over `lod::FADE` with their flags and places in the CPU's
+/// list kept by `take_due` and `refresh`, a stand-in draws in a fading tile's place and is
+/// meshed again (`unrecord`, `record`), and one tile carries translucent quads whose solid
+/// quads the pass draws whole while the CPU draws the water. The frame's split is the
+/// walk's (`walk_tiles`): the complete set drives the water, what the pass left the CPU
+/// drives its draws and instances — none of it hand-assigned.
+#[test]
+#[ignore = "daily"]
+fn the_residency_draws_the_cpu_paths_image() {
+    let _gpu = crate::gfx::test_gpu::lock();
+    on_each_device(residency_images_match);
+}
+
+fn residency_images_match(device: &wgpu::Device, queue: &Queue) {
+    use crate::fast_hash::FxHashMap;
+    use crate::gfx::SectionGpu;
+    use std::time::Duration;
+
+    let stride = std::mem::size_of::<TerrainVertex>() as u64;
+    let grain = crate::gfx::arena::GRAIN;
+    let mut arena = Arena::new(device, stride, grain, false);
+    assert!(arena.open_page(device, 256 * grain));
+    let camera = DVec3::new(100.5, 3000.25, -37.75);
+    let side = f64::from(1u32 << SIZE_LOG2);
+    let mut slot = 0u64;
+    let mut quad_at = |queue: &Queue, height: f32, color: u32| {
+        let at = slot * grain;
+        slot += 1;
+        queue.write_buffer(
+            arena.buffer(0),
+            at * stride,
+            bytemuck::cast_slice(&quad(height, color)),
+        );
+        at as u32
+    };
+    let sides = Sides::unsorted(1);
+    // A mesh of one quad in the arena, or of a solid quad with a translucent one.
+    let mut mesh = |queue: &Queue, height: f32, color: u32, water: Option<(f32, u32)>| {
+        let start = quad_at(queue, height, color);
+        let water = water.map(|(height, color)| quad_at(queue, height, color));
+        SectionGpu {
+            page: 0,
+            start: u64::from(start),
+            translucent_at: (0, u64::from(water.unwrap_or(start)) * 4),
+            solid: 1,
+            solid_slots: 4,
+            packed_far: false,
+            packed: false,
+            sides,
+            translucent: u32::from(water.is_some()),
+            sort: crate::gfx::translucency::SortState::new(Vec::new()),
+            sorted_indices: None,
+            flat_id: None,
+            gpu_id: None,
+            gpu_fading: false,
+            fading: None,
+            leaving: None,
+            animated_layers: Box::new([]),
+        }
+    };
+    let key = |x: i32, z: i32| crate::lod::TileKey {
+        x,
+        z,
+        level: SIZE_LOG2 - 4,
+    };
+    let bounds = [
+        Vec3::new(0.0, 30.0, 0.0),
+        Vec3::new(side as f32, 90.0, side as f32),
+    ];
+    let near = GpuCulling::new(device, None).expect("the pass");
+    let mut sourced = Sourced::default();
+    let mut tiles: FxHashMap<crate::lod::TileKey, crate::gfx::lod::Tile> = Default::default();
+    let mut grid = crate::gfx::lod::TileGrid::default();
+    // Time starts a second out: the tiles' fades and their due ends are handed the
+    // frames' instants, none waited for.
+    let t0 = Instant::now() + Duration::from_secs(1);
+    let whole = t0 - lod::FADE;
+    // Whole: a tile the pass draws, with its quads in the arena and its record made.
+    let mut steady =
+        |queue: &Queue, x: i32, z: i32, height: f32, color: u32, water: Option<(f32, u32)>| {
+            let key = key(x, z);
+            tiles.insert(
+                key,
+                crate::gfx::lod::Tile::for_test(
+                    mesh(queue, height, color, water),
+                    bounds,
+                    Some(whole),
+                    None,
+                ),
+            );
+            grid.insert_bounds(key, bounds);
+            assert!(!sourced.record(key, tiles.get_mut(&key).unwrap(), Some(&near), device, t0));
+        };
+    steady(queue, 0, 0, 40.0, 0xFF30_5070, None);
+    steady(queue, 2, 1, 34.0, 0xFF60_2070, None);
+    // The tile with both solid and translucent quads: its solid quads are the pass's,
+    // its water the CPU's, in every frame the pass draws.
+    steady(queue, -1, 0, 46.0, 0xFF20_8040, Some((60.0, 0x8000_00FF)));
+    // Fading in since `t0`: the pass leaves it to the CPU until its fade-in is due,
+    // then draws it (`take_due`, `refresh`).
+    let fading = key(1, 0);
+    tiles.insert(
+        fading,
+        crate::gfx::lod::Tile::for_test(
+            mesh(queue, 52.0, 0xFF90_1050, None),
+            bounds,
+            Some(t0),
+            None,
+        ),
+    );
+    grid.insert_bounds(fading, bounds);
+    assert!(!sourced.record(
+        fading,
+        tiles.get_mut(&fading).unwrap(),
+        Some(&near),
+        device,
+        t0
+    ));
+    // Standing in for its replacement: its previous mesh draws in its place.
+    let stand_in = key(0, 1);
+    tiles.insert(
+        stand_in,
+        crate::gfx::lod::Tile::for_test(
+            mesh(queue, 44.0, 0xFF50_6070, None),
+            bounds,
+            Some(t0),
+            Some((mesh(queue, 80.0, 0xFF10_A0A0, None), Some(t0))),
+        ),
+    );
+    grid.insert_bounds(stand_in, bounds);
+    assert!(!sourced.record(
+        stand_in,
+        tiles.get_mut(&stand_in).unwrap(),
+        Some(&near),
+        device,
+        t0
+    ));
+    assert!(!sourced.off());
+
+    let rig = rig(device, queue, stride);
+    let view = Frustum::from_planes(frustum(rig_view()));
+    let mut uploads = Uploads::new(device);
+    use wgpu::util::DeviceExt;
+
+    // One frame at `now`: the walk's complete set, the CPU's draws and instances of what
+    // the pass left it (`pass`: the pass draws the rest, whole), and the water of every
+    // tile with translucent quads, blended, back to front.
+    let mut frame = |sourced: &mut Sourced,
+                     tiles: &FxHashMap<crate::lod::TileKey, crate::gfx::lod::Tile>,
+                     now: Instant,
+                     pass: bool|
+     -> Vec<u32> {
+        sourced.take_due(tiles, now);
+        let mut all = Vec::new();
+        let mut list = |v| all.push(v);
+        walk_tiles(&grid, tiles, camera, &view, now, None, &mut list);
+        all.sort_unstable_by_key(|v| (v.distance, v.key));
+        let listed: Vec<_> = if pass {
+            all.iter()
+                .filter(|v| sourced.lists(v.key))
+                .cloned()
+                .collect()
+        } else {
+            all.clone()
+        };
+        let mut encoder = device.create_command_encoder(&Default::default());
+        if pass {
+            let prepared = sourced.prepare(
+                device,
+                queue,
+                &mut uploads,
+                &mut encoder,
+                camera,
+                -64,
+                &view,
+                None,
+                None,
+            );
+            assert_eq!(prepared, Prepared::Gpu);
+            sourced.dispatch(&mut encoder, None);
+        }
+        let mut world = cleared_pass(&rig, &mut encoder);
+        // The CPU's solid draws and their instances: what the pass left it (all of it,
+        // when it draws nothing), at the fades the walk gives them.
+        let cpu_solid = |v: &&crate::gfx::lod::Visible| !pass || !sourced.draws_solid(v.key);
+        let solids: Vec<[f32; 4]> = listed
+            .iter()
+            .filter(cpu_solid)
+            .map(|v| lod::instance(v.origin, v.fade))
+            .collect();
+        let instances = |rows: &[[f32; 4]]| {
+            (!rows.is_empty()).then(|| {
+                device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: None,
+                    contents: bytemuck::cast_slice(rows),
+                    usage: wgpu::BufferUsages::VERTEX,
+                })
+            })
+        };
+        if let Some(buffer) = instances(&solids) {
+            world.set_vertex_buffer(1, buffer.slice(..));
+        }
+        for (base, v) in listed.iter().filter(cpu_solid).enumerate() {
+            let s = tiles[&v.key].drawn();
+            world.set_vertex_buffer(0, arena.buffer(s.page).slice(..));
+            world.draw_indexed(0..6, s.solid_base() as i32, base as u32..base as u32 + 1);
+        }
+        if pass {
+            sourced.draw(&mut world, &arena, |_| None);
+        }
+        // The water, over the solid quads: every tile with translucent quads, whatever
+        // draws its solid ones.
+        world.set_pipeline(&rig.blended);
+        let water: Vec<[f32; 4]> = all
+            .iter()
+            .filter(|v| tiles[&v.key].drawn().translucent > 0)
+            .map(|v| lod::instance(v.origin, v.fade))
+            .collect();
+        if let Some(buffer) = instances(&water) {
+            world.set_vertex_buffer(1, buffer.slice(..));
+        }
+        for (base, v) in all
+            .iter()
+            .filter(|v| tiles[&v.key].drawn().translucent > 0)
+            .enumerate()
+        {
+            let s = tiles[&v.key].drawn();
+            world.set_vertex_buffer(0, arena.buffer(s.page).slice(..));
+            world.draw_indexed(
+                0..6,
+                s.translucent_at.1 as i32,
+                base as u32..base as u32 + 1,
+            );
+        }
+        drop(world);
+        copy_and_submit(device, queue, encoder, &rig, &mut uploads)
+    };
+
+    let frame_ms = Duration::from_millis(16);
+    // While B fades in and D stands in: their solid quads are the CPU's, at the fades
+    // the walk gives them.
+    let at = t0 + frame_ms;
+    let cpu = frame(&mut sourced, &tiles, at, false);
+    let split = frame(&mut sourced, &tiles, at, true);
+    let black = |image: &[u32]| image.iter().filter(|&&p| p == 0xFF00_0000).count();
+    let (covered, total) = (cpu.len() - black(&cpu), cpu.len());
+    assert!(covered > 250, "the tiles cover {covered} of {total}");
+    let wrong = cpu.iter().zip(&split).filter(|(a, b)| a != b).count();
+    assert_eq!(wrong, 0, "{wrong} pixels of {total} differ as they fade");
+    assert!(sourced.lists(fading) && sourced.lists(stand_in));
+    assert!(sourced.lists(key(-1, 0)) && sourced.draws_solid(key(-1, 0)));
+    assert!(!sourced.lists(key(0, 0)) && sourced.draws_solid(key(0, 0)));
+    assert!(sourced.draw_calls() > 0);
+
+    // The fade-in is due: the pass draws B whole, the CPU leaves it; D's replacement
+    // came in (`upload_lod`'s take and add), its stand-in gone.
+    let at = t0 + lod::FADE + frame_ms;
+    tiles.remove(&stand_in).expect("the standing tile");
+    sourced.unrecord(stand_in);
+    tiles.insert(
+        stand_in,
+        crate::gfx::lod::Tile::for_test(
+            mesh(queue, 44.0, 0xFF50_6070, None),
+            bounds,
+            Some(t0),
+            None,
+        ),
+    );
+    assert!(!sourced.record(
+        stand_in,
+        tiles.get_mut(&stand_in).unwrap(),
+        Some(&near),
+        device,
+        at
+    ));
+    let cpu = frame(&mut sourced, &tiles, at, false);
+    let split = frame(&mut sourced, &tiles, at, true);
+    let wrong = cpu.iter().zip(&split).filter(|(a, b)| a != b).count();
+    assert_eq!(wrong, 0, "{wrong} pixels of {total} differ once whole");
+    // The flags followed the fades: B and D the pass's, C's water still the CPU's.
+    assert!(!sourced.lists(fading) && sourced.draws_solid(fading));
+    assert!(!sourced.lists(stand_in) && sourced.draws_solid(stand_in));
+    assert!(sourced.lists(key(-1, 0)) && sourced.draws_solid(key(-1, 0)));
+    // The residency's own invariant, as the debug renderer walks it each 64th frame.
+    sourced.check(&tiles, at);
 }

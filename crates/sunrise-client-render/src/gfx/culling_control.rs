@@ -88,7 +88,7 @@ impl Renderer {
         if !on {
             if self.gpu_culling.take().is_some() {
                 forget_records(&mut self.sections, self.layout.sections());
-                self.record_tiles(false);
+                self.sourced.clear();
             }
             self.gpu_frame = false;
             return Ok(());
@@ -116,7 +116,14 @@ impl Renderer {
             }
         }
         self.gpu_culling = Some(gpu);
-        self.record_tiles(true);
+        let mut lods = std::mem::take(&mut self.lods);
+        let oom = self
+            .sourced
+            .record_all(&mut lods, self.gpu_culling.as_ref(), &self.device);
+        self.lods = lods;
+        if oom {
+            self.sourced_oom();
+        }
         #[cfg(debug_assertions)]
         {
             self.gpu_checks = 0;
@@ -186,21 +193,18 @@ impl Renderer {
         now: Instant,
         encoder: &mut wgpu::CommandEncoder,
     ) -> (bool, bool) {
-        if !gpu_frame || self.gpu_sourced.is_none() {
+        if !gpu_frame || self.sourced.off() {
             return (gpu_frame, false);
         }
-        self.take_due_tiles(now);
+        self.sourced.take_due(&self.lods, now);
         #[cfg(debug_assertions)]
         if self.gpu_checks.wrapping_sub(1).is_multiple_of(64) {
-            self.check_gpu_tiles(now);
+            self.sourced.check(&self.lods, now);
         }
         let min_y = self.sections.min_y();
-        let Some(sourced) = &mut self.gpu_sourced else {
-            return (gpu_frame, false);
-        };
         let prepared = crate::spans::time("gpu sourced geometry", || {
             let timing = self.own_timing.as_mut();
-            sourced.prepare(
+            self.sourced.prepare(
                 &self.device,
                 &self.queue,
                 &mut self.uploads,
@@ -213,14 +217,19 @@ impl Renderer {
             )
         });
         if prepared == gpu_culling::Prepared::OutOfMemory {
-            log::warn!(
-                "Sunrise renderer: GPU culling off until the next start: the sourced geometry's buffers do not fit in video memory"
-            );
-            self.offer_gpu_culling(crate::graphics::GpuCullingOffer::OutOfMemory);
-            let _ = self.set_gpu_culling(false);
+            self.sourced_oom();
             return (false, false);
         }
         (gpu_frame, prepared == gpu_culling::Prepared::Gpu)
+    }
+    /// Sourced geometry's buffers do not fit in video memory: GPU culling off until the
+    /// next start, as when its own buffers do not (`set_gpu_culling`, `prepare_sourced`).
+    pub(super) fn sourced_oom(&mut self) {
+        log::warn!(
+            "Sunrise renderer: GPU culling off until the next start: the sourced geometry's buffers do not fit in video memory"
+        );
+        self.offer_gpu_culling(crate::graphics::GpuCullingOffer::OutOfMemory);
+        let _ = self.set_gpu_culling(false);
     }
     /// GPU culling offered or not from now on, here and in the settings' switch.
     pub(super) fn offer_gpu_culling(&mut self, offer: crate::graphics::GpuCullingOffer) {

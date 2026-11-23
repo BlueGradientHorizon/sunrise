@@ -505,18 +505,18 @@ impl Renderer {
                     label: Some("Section uploads"),
                 })
         });
+        // GPU culling's records move with the sections, sourced geometry's with its meshes.
+        let (sourced, sourced_ids) = self.sourced.moves();
         let meshes = self.sections.values_mut().map(|s| (s, None)).chain(
             self.lods
-                .values_mut()
-                .flat_map(|tile| tile.recorded_meshes_mut()),
+                .iter_mut()
+                .flat_map(|(key, tile)| tile.recorded_meshes_mut(sourced_ids(*key))),
         );
         let flat = self
             .flat
             .as_mut()
             .map(|f| (f, &self.device, &mut self.section_uploads));
-        // GPU culling's records move with the sections, sourced geometry's with its meshes.
         let gpu = self.gpu_culling.as_mut().map(|g| &mut g.records);
-        let sourced = self.gpu_sourced.as_mut().map(|s| s.records());
         let split = self.translucent_arena.is_some();
         let (arena, part) = (&mut self.arena, Part::Section { split });
         if !move_off_page(
@@ -834,8 +834,7 @@ impl Renderer {
         self.lods.clear();
         self.lod_vertex_bytes = 0;
         self.lod_cells.clear();
-        self.lod_listed.clear();
-        self.gpu_sourced = None;
+        self.sourced.clear();
         self.lod_cutout.clear();
         self.lod_retiring.clear();
         self.lod_leaving.clear();

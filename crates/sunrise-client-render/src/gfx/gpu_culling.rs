@@ -1238,7 +1238,9 @@ impl GpuCulling {
         second: bool,
     ) -> Option<Self> {
         use wgpu::BufferUsages as U;
-        let readbacks = (0..if second { 0 } else { READBACKS })
+        // The second table copies its counts out too: its frames' statistics are the near
+        // table's with its own (`SourcedGpu::copy_stats`, `Sourced::collect`).
+        let readbacks = (0..READBACKS)
             .map(|_| {
                 Some(Readback {
                     buffer: try_create(
