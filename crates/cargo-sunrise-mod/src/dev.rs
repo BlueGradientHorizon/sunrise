@@ -191,7 +191,6 @@ impl NativeSdk {
         &self,
         side: sdk::Side,
         route: Route,
-        release: bool,
     ) -> Result<sunrise_native_build::prebuilt::Package, String> {
         sdk_fetch::fetch_slices(
             &self.base,
@@ -199,7 +198,6 @@ impl NativeSdk {
             &self.rust.target,
             side,
             route,
-            release,
             &self.dir,
             &self.stamp,
         )
@@ -396,7 +394,7 @@ fn prepare(
         .map(sunrise_native_build::api::Project::read)
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
-    let slices = sdk.slices(side, Route::of(&projects), false)?;
+    let slices = sdk.slices(side, Route::of(&projects))?;
     let rust = sdk.rust;
     // A stable source path keeps the native builder's Cargo stage and fingerprints reusable.
     let mods = work.join("input");
