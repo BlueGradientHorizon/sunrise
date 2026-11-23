@@ -4893,24 +4893,21 @@ def check_fireworks(host, guest, out):
     def held():
         return host('state')['held']
 
-    def step(state, ticks):
-        target = state['game_time'] + ticks
-        reply = host('command', command=f'tick step {ticks}')
+    def step(state):
+        target = state['game_time'] + 1
+        reply = host('command', command='tick step 1')
         assert reply['success'], reply
         return host.until(simulation, lambda s: s['game_time'] == target)
 
-    def capture(state, label):
-        ticks = 4
-        state = step(state, ticks)
-        # A stop for an unused sound marks packet delivery without drawing on either view.
-        # Once the marker arrives, wait out the step budget and the first frozen client tick.
+    def settle_clients(state):
+        # A stop for an unused sound marks delivery of the step and any explosion event.
+        # Give each client one tick to spend the step, then one to reach the frozen state.
         marker = f'sunrise:lan_fireworks_{state["game_time"]}'
         reply = host('command', command=f'stopsound @a * {marker}')
         assert reply['success'], reply
         for game in (host, guest):
             game.until(lambda: game('status')['stopped_sounds'].get(f'* {marker}', 0), bool)
-            game.wait(ticks + 1)
-        return state, {g.name: g.shot(out, label) for g in (host, guest)}
+            game.wait(2)
 
     # Red where the view had none: the setup's own red chat lines (a fill that changed nothing) are in the
     # baseline, and fade out before the later shots, which a plain count difference would take as missing sparks.
@@ -4929,22 +4926,41 @@ def check_fireworks(host, guest, out):
         # Stop on the explosion tick. Flight 0 expires by tick 22 (FireworkRocketEntity's
         # constructor and tick), even if the rocket misses the ceiling.
         for _ in range(22):
-            state = step(state, 1)
+            state = step(state)
             if not has_rocket(state):
                 break
         else:
             raise AssertionError('the clicked rocket did not explode')
-        # The first step batch lets both particle engines admit the starter and draw the burst.
-        # The next ages the sparks past the flash. PNG latency cannot advance either phase.
-        state, burst_shots = capture(state, 'fireworks-burst')
-        _, trail_shots = capture(state, 'fireworks-trail-fade')
-        flashes = {g.name: made(g, 'flash') - before[g.name] for g in (host, guest)}
+        # FireworkParticles' overlay lasts four ticks. Capture halfway through it,
+        # and again four ticks later, after the overlay has gone but Sparks remain.
+        burst_age, trail_age = 2, 6
+        flash_tick, burst_shots, trail_shots = {}, {}, {}
+        # The event can miss the exploding step on either client. ParticleEngine
+        # takes one tick to admit the starter and then Starter.tick emits the flash.
+        # Allow those two steps, then advance to the last client's trail phase.
+        for tick in range(2 + trail_age + 1):
+            if tick:
+                state = step(state)
+            settle_clients(state)
+            flashes = {g.name: made(g, 'flash') - before[g.name] for g in (host, guest)}
+            for game in (host, guest):
+                name = game.name
+                if flashes[name] == 0:
+                    continue
+                age = tick - flash_tick.setdefault(name, tick)
+                if age == burst_age:
+                    burst_shots[name] = game.shot(out, 'fireworks-burst')
+                elif age == trail_age:
+                    trail_shots[name] = game.shot(out, 'fireworks-trail-fade')
+            if len(trail_shots) == 2:
+                break
         rockets = {g.name: g('status')['rockets'] for g in (host, guest)}
     finally:
         host('command', command='tick unfreeze')
+    assert all(n == 1 for n in flashes.values()), f'configured burst missing or duplicated: {flashes}'
+    assert len(burst_shots) == len(trail_shots) == 2, f'missing particle phase: {flash_tick}'
     burst = {name: len(reds(path) - baseline[name]) for name, path in burst_shots.items()}
     trails = {name: len(reds(path) - baseline[name]) for name, path in trail_shots.items()}
-    assert all(n == 1 for n in flashes.values()), f'configured burst missing or duplicated: {flashes}'
     assert not any(rockets.values()), f'exploded rocket remains: {rockets}'
     assert all(n > 20 for n in burst.values()), f'no red burst: {burst}'
     assert all(n > 20 for n in trails.values()), f'no later red trail/fade: {trails}'
