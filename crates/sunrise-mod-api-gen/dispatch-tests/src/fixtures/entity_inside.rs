@@ -3,10 +3,8 @@ mod stubs {
     #[derive(Default)]
     pub(super) struct InsideEffects;
     impl InsideEffects {
-        pub(crate) fn staged_for(_: &'static str) -> Self {
-            Self
+        pub(crate) fn stage(&mut self, _: &'static str, listen: impl FnOnce(&mut Self) -> bool) {
+            let _ = listen(self);
         }
-
-        pub(crate) fn absorb_step(&mut self, _: Self) {}
     }
 }

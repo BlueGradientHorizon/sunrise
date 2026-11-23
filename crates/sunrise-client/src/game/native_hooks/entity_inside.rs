@@ -25,6 +25,13 @@ mod entity_inside_tests {
     #[test]
     #[ignore = "daily"]
     fn landing_writes_apply_at_the_batch_end() {
+        if crate::game::native_entity_refs::tests::run_fresh_cases(
+            "game::native_hooks::entity_inside::entity_inside_tests::landing_writes_apply_at_the_batch_end",
+            "SUNRISE_INSIDE_LANDING_CHILD",
+            &["landing"],
+        ) {
+            return;
+        }
         use crate::game::api_values::{TryIntoApi, TryIntoEngine};
         use sunrise_client::block_contact::{landed, take_pending};
         use sunrise_world::level::LandingWrite;
@@ -115,6 +122,14 @@ mod entity_inside_tests {
 #[cfg(test)]
 mod sweep_tests {
     use super::*;
+
+    fn fresh(name: &str) -> bool {
+        crate::game::native_entity_refs::tests::run_fresh_cases(
+            &format!("game::native_hooks::entity_inside::sweep_tests::{name}"),
+            "SUNRISE_INSIDE_SWEEP_CHILD",
+            &["sweep"],
+        )
+    }
 
     /// The `entity_inside` part the player's sweep tests install: it draws the
     /// level's random once a contact (vanilla's order), queues a push and a wither
@@ -332,6 +347,9 @@ mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn a_part_pushes_the_player_and_its_effect_lands() {
+        if fresh("a_part_pushes_the_player_and_its_effect_lands") {
+            return;
+        }
         let part = InsidePart::default();
         let mods = install_inside_mod("inside-push", &part);
         mod_platform::testing::with_mods(mods, || {
@@ -365,34 +383,31 @@ mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn a_killing_write_stops_the_flush() {
-        crate::game::in_own_process(
-            "game::native_hooks::entity_inside::sweep_tests::a_killing_write_stops_the_flush",
-            || {
-                let part = InsidePart {
-                    hurt_after: Some((0, 1000.0)),
-                    ..InsidePart::default()
-                };
-                let mods = install_inside_mod("inside-kill", &part);
-                mod_platform::testing::with_mods(mods, || {
-                    crate::game::native_entity_refs::tests::with_game(|game| {
-                        let _ =
-                            sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
-                        let (before, after, dead) = sweep_game_player(game);
-                        assert_eq!(
-                            part.contacts.lock().unwrap().len(),
-                            2,
-                            "the walk itself reaches both contacts"
-                        );
-                        assert!(dead, "the killing write applied");
-                        assert_eq!(
-                            after.to_bits(),
-                            before.to_bits(),
-                            "the writes after the death never apply"
-                        );
-                    });
-                });
-            },
-        );
+        if fresh("a_killing_write_stops_the_flush") {
+            return;
+        }
+        let part = InsidePart {
+            hurt_after: Some((0, 1000.0)),
+            ..InsidePart::default()
+        };
+        let mods = install_inside_mod("inside-kill", &part);
+        mod_platform::testing::with_mods(mods, || {
+            crate::game::native_entity_refs::tests::with_game(|game| {
+                let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                let (before, after, dead) = sweep_game_player(game);
+                assert_eq!(
+                    part.contacts.lock().unwrap().len(),
+                    2,
+                    "the walk itself reaches both contacts"
+                );
+                assert!(dead, "the killing write applied");
+                assert_eq!(
+                    after.to_bits(),
+                    before.to_bits(),
+                    "the writes after the death never apply"
+                );
+            });
+        });
     }
 
     /// A part that panics on its first contact: the panic is contained, the mod's
@@ -401,6 +416,9 @@ mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn a_panicking_part_leaves_the_players_tick_restored() {
+        if fresh("a_panicking_part_leaves_the_players_tick_restored") {
+            return;
+        }
         let part = InsidePart {
             panic_after: Some(0),
             ..InsidePart::default()
@@ -450,6 +468,9 @@ mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn without_a_part_the_walk_costs_no_mod_work() {
+        if fresh("without_a_part_the_walk_costs_no_mod_work") {
+            return;
+        }
         // The production binding, as every sweep test sets it: nothing is installed
         // on this thread, so its gate answers false for every state and the fire's
         // DamageLevel is never built. (A dummy binding here would race the
@@ -482,6 +503,9 @@ mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn an_added_effect_keeps_its_collector_position() {
+        if fresh("an_added_effect_keeps_its_collector_position") {
+            return;
+        }
         let part = InsidePart::default();
         let mods = install_inside_mod("inside-order", &part);
         mod_platform::testing::with_mods(mods, || {
@@ -507,6 +531,9 @@ mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn a_servers_player_is_told_once_a_tick() {
+        if fresh("a_servers_player_is_told_once_a_tick") {
+            return;
+        }
         let part = InsidePart::default();
         let mods = install_inside_mod("inside-once", &part);
         mod_platform::testing::with_mods(mods, || {
@@ -564,6 +591,9 @@ mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn the_server_passes_without_a_part_keep_vanilla_behavior() {
+        if fresh("the_server_passes_without_a_part_keep_vanilla_behavior") {
+            return;
+        }
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             let stone = game
@@ -658,6 +688,9 @@ mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn a_part_pushes_an_item_once_a_block() {
+        if fresh("a_part_pushes_an_item_once_a_block") {
+            return;
+        }
         let part = InsidePart::default();
         let mods = install_inside_mod("inside-item", &part);
         mod_platform::testing::with_mods(mods, || {
@@ -669,7 +702,7 @@ mod sweep_tests {
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        game.sweep_item_inside(&mut item);
+                        game.sweep_item_inside(&mut item, None);
                     },
                 );
                 assert_eq!(
@@ -686,92 +719,207 @@ mod sweep_tests {
         });
     }
 
+    #[test]
+    #[ignore = "daily"]
+    fn item_tick_sweeps_once_and_keeps_the_single_hit() {
+        if fresh("item_tick_sweeps_once_and_keeps_the_single_hit") {
+            return;
+        }
+        use sunrise_core::geometry::Vec3;
+        let part = InsidePart {
+            hurt_after: Some((0, 1.0)),
+            ..InsidePart::default()
+        };
+        let mods = install_inside_mod("inside-item-tick", &part);
+        mod_platform::testing::with_mods(mods, || {
+            crate::game::native_entity_refs::tests::with_game(|game| {
+                let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                let mut item = single_stone_item(game);
+                let grass = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:short_grass")
+                    .unwrap();
+                game.world.set(1, 100, 0, grass).unwrap();
+                item.position = Vec3::new(1.5, 100.25, 0.5);
+                let outcome = sunrise_client::block_contact::in_level(
+                    sunrise_client::parallel::TickThread::mint(),
+                    Some("minecraft:overworld"),
+                    || {
+                        game.tick_item_with_block_contacts(
+                            &mut item,
+                            None,
+                            &[],
+                            false,
+                            None,
+                            &mut |_| {},
+                        )
+                    },
+                );
+                assert_eq!(outcome, (true, false));
+                assert_eq!(*part.contacts.lock().unwrap(), [[1, 100, 0]]);
+                assert_eq!(item.health, 4);
+                assert_eq!(
+                    item.velocity.x.to_bits(),
+                    (0.5 * f64::from(0.98_f32)).to_bits()
+                );
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn item_tick_places_vanilla_fire_inside_the_ignition_slot() {
+        if fresh("item_tick_places_vanilla_fire_inside_the_ignition_slot") {
+            return;
+        }
+        use std::sync::{Arc, Mutex};
+        use sunrise_core::geometry::Vec3;
+
+        #[derive(Clone, Default)]
+        struct FireProbe(Arc<Mutex<Vec<i32>>>);
+        #[mod_api::sunrise_part]
+        impl mod_api::BlockPart for FireProbe {
+            fn entity_inside(
+                &self,
+                _: &mut dyn mod_api::LevelRandomHost,
+                event: &mut mod_api::EntityInsideEvent<'_>,
+            ) {
+                let seen = self.0.clone();
+                event.run_before(mod_api::InsideEffect::FireIgnite, move |view| {
+                    seen.lock().unwrap().push(view.fire_ticks());
+                });
+                let seen = self.0.clone();
+                event.run_after(mod_api::InsideEffect::FireIgnite, move |view| {
+                    seen.lock().unwrap().push(view.fire_ticks());
+                });
+            }
+        }
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for FireProbe {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+                let fire = r.block_key("minecraft:fire");
+                r.block_part(fire, self.clone());
+            }
+        }
+        let part = FireProbe::default();
+        let entry = || mod_api::ModEntry::new("inside-item-fire", Box::new(part.clone()));
+        crate::game::api_values::install_parts(&[entry()]).unwrap();
+        mod_platform::testing::with_mods(vec![entry()].into(), || {
+            crate::game::native_entity_refs::tests::with_game(|game| {
+                let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                let mut item = single_stone_item(game);
+                let fire = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:fire")
+                    .unwrap();
+                game.world.set(1, 100, 0, fire).unwrap();
+                item.position = Vec3::new(1.5, 100.25, 0.5);
+                let outcome = sunrise_client::block_contact::in_level(
+                    sunrise_client::parallel::TickThread::mint(),
+                    Some("minecraft:overworld"),
+                    || {
+                        game.tick_item_with_block_contacts(
+                            &mut item,
+                            None,
+                            &[],
+                            false,
+                            None,
+                            &mut |_| {},
+                        )
+                    },
+                );
+                assert_eq!(outcome, (true, false));
+                assert_eq!(*part.0.lock().unwrap(), [0, 160]);
+                assert_eq!((item.fire_ticks, item.health), (160, 4));
+            });
+        });
+    }
+
     /// A killing write stops the item's flush: the walk still reaches both blocks,
     /// the writes after the destruction never apply.
     #[test]
     #[ignore = "daily"]
     fn a_killing_write_stops_the_items_flush() {
-        crate::game::in_own_process(
-            "game::native_hooks::entity_inside::sweep_tests::a_killing_write_stops_the_items_flush",
-            || {
-                let part = InsidePart {
-                    hurt_after: Some((0, 0.5)),
-                    ..InsidePart::default()
-                };
-                let mods = install_inside_mod("inside-item-kill", &part);
-                mod_platform::testing::with_mods(mods, || {
-                    crate::game::native_entity_refs::tests::with_game(|game| {
-                        let _ =
-                            sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
-                        let mut item = item_at_blocks(game);
-                        use sunrise_client::items::ItemStack;
-                        let diamonds = ItemStack::new("minecraft:diamond", 3);
-                        item.stack = ItemStack::new("minecraft:shulker_box", 1);
-                        item.stack.data_mut().container = vec![(0, diamonds.clone())];
-                        item.health = 1;
-                        let before = item.velocity.x;
-                        sunrise_client::block_contact::in_level(
-                            sunrise_client::parallel::TickThread::mint(),
-                            Some("minecraft:overworld"),
-                            || {
-                                game.sweep_item_inside(&mut item);
-                            },
-                        );
-                        assert_eq!(part.contacts.lock().unwrap().len(), 2);
-                        assert_eq!(item.health, 0, "subtract 0.5 before truncating health");
-                        assert_eq!(game.dropped.len(), 1);
-                        assert_eq!(game.dropped[0].stack, diamonds);
-                        assert_eq!(game.dropped[0].position, item.position);
-                        assert_eq!(
-                            item.velocity.x.to_bits(),
-                            before.to_bits(),
-                            "the writes after the destruction never apply"
-                        );
+        if fresh("a_killing_write_stops_the_items_flush") {
+            return;
+        }
+        let part = InsidePart {
+            hurt_after: Some((0, 0.5)),
+            ..InsidePart::default()
+        };
+        let mods = install_inside_mod("inside-item-kill", &part);
+        mod_platform::testing::with_mods(mods, || {
+            crate::game::native_entity_refs::tests::with_game(|game| {
+                let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                let mut item = item_at_blocks(game);
+                use sunrise_client::items::ItemStack;
+                let diamonds = ItemStack::new("minecraft:diamond", 3);
+                item.stack = ItemStack::new("minecraft:shulker_box", 1);
+                item.stack.data_mut().container = vec![(0, diamonds.clone())];
+                item.health = 1;
+                let before = item.velocity.x;
+                sunrise_client::block_contact::in_level(
+                    sunrise_client::parallel::TickThread::mint(),
+                    Some("minecraft:overworld"),
+                    || {
+                        game.sweep_item_inside(&mut item, None);
+                    },
+                );
+                assert_eq!(part.contacts.lock().unwrap().len(), 2);
+                assert_eq!(item.health, 0, "subtract 0.5 before truncating health");
+                assert_eq!(game.dropped.len(), 1);
+                assert_eq!(game.dropped[0].stack, diamonds);
+                assert_eq!(game.dropped[0].position, item.position);
+                assert_eq!(
+                    item.velocity.x.to_bits(),
+                    before.to_bits(),
+                    "the writes after the destruction never apply"
+                );
 
-                        // Run the real batch on a merge tick. The victim touches a
-                        // non-solid block, its neighbour is close enough to merge
-                        // but doesn't touch that block.
-                        let grass = game
-                            .pack
-                            .assets
-                            .registry
-                            .default_state("minecraft:short_grass")
-                            .unwrap();
-                        game.world.set(1, 104, 0, grass).unwrap();
-                        game.tickets.update(None);
-                        game.ticked_entities_through = u32::MAX;
-                        for (health, count) in [(5, 3), (1, 2)] {
-                            part.contacts.lock().unwrap().clear();
-                            game.dropped.clear();
-                            for (x, count, ticks, health) in
-                                [(1.25, 1, 39, health), (0.75, 2, 0, 5)]
-                            {
-                                game.spawn_item(
-                                    ItemStack::new("minecraft:stone", count),
-                                    [x, 104.5, 0.5],
-                                    [0.0; 3],
-                                    20,
-                                );
-                                let item = game.dropped.last_mut().unwrap();
-                                item.no_gravity = true;
-                                item.health = health;
-                                item.ticks = ticks;
-                            }
-                            let neighbour = game.dropped[1].id;
-                            sunrise_client::block_contact::in_level(
-                                sunrise_client::parallel::TickThread::mint(),
-                                Some("minecraft:overworld"),
-                                || game.tick_items(),
-                            );
-                            assert_eq!(*part.contacts.lock().unwrap(), [[1, 104, 0]]);
-                            assert_eq!(game.dropped.len(), 1);
-                            assert_eq!(game.dropped[0].id, neighbour);
-                            assert_eq!(game.dropped[0].stack.count, count);
-                        }
-                    });
-                });
-            },
-        );
+                // Run the real batch on a merge tick. The victim touches a
+                // non-solid block, its neighbour is close enough to merge
+                // but doesn't touch that block.
+                let grass = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:short_grass")
+                    .unwrap();
+                game.world.set(1, 104, 0, grass).unwrap();
+                game.tickets.update(None);
+                game.ticked_entities_through = u32::MAX;
+                for (health, count) in [(5, 3), (1, 2)] {
+                    part.contacts.lock().unwrap().clear();
+                    game.dropped.clear();
+                    for (x, count, ticks, health) in [(1.25, 1, 39, health), (0.75, 2, 0, 5)] {
+                        game.spawn_item(
+                            ItemStack::new("minecraft:stone", count),
+                            [x, 104.5, 0.5],
+                            [0.0; 3],
+                            20,
+                        );
+                        let item = game.dropped.last_mut().unwrap();
+                        item.no_gravity = true;
+                        item.health = health;
+                        item.ticks = ticks;
+                    }
+                    let neighbour = game.dropped[1].id;
+                    sunrise_client::block_contact::in_level(
+                        sunrise_client::parallel::TickThread::mint(),
+                        Some("minecraft:overworld"),
+                        || game.tick_items(),
+                    );
+                    assert_eq!(*part.contacts.lock().unwrap(), [[1, 104, 0]]);
+                    assert_eq!(game.dropped.len(), 1);
+                    assert_eq!(game.dropped[0].id, neighbour);
+                    assert_eq!(game.dropped[0].stack.count, count);
+                }
+            });
+        });
     }
 
     /// A panicking part inside the item batch: generated dispatch contains it and
@@ -781,6 +929,9 @@ mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn a_panicking_part_leaves_the_item_batch_restored() {
+        if fresh("a_panicking_part_leaves_the_item_batch_restored") {
+            return;
+        }
         let part = InsidePart {
             panic_after: Some(0),
             ..InsidePart::default()
@@ -798,7 +949,7 @@ mod sweep_tests {
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        game.sweep_item_inside(&mut items[0]);
+                        game.sweep_item_inside(&mut items[0], None);
                     },
                 );
                 game.put_back_dropped(items);
@@ -835,6 +986,9 @@ mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn an_item_without_a_part_is_left_alone() {
+        if fresh("an_item_without_a_part_is_left_alone") {
+            return;
+        }
         crate::game::native_entity_refs::tests::with_game(|game| {
             let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
             let mut item = item_at_blocks(game);
@@ -843,7 +997,7 @@ mod sweep_tests {
                 sunrise_client::parallel::TickThread::mint(),
                 Some("minecraft:overworld"),
                 || {
-                    game.sweep_item_inside(&mut item);
+                    game.sweep_item_inside(&mut item, None);
                 },
             );
             assert_eq!(
@@ -860,6 +1014,9 @@ mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn a_part_pushes_a_projectile_and_removal_stops_the_flush() {
+        if fresh("a_part_pushes_a_projectile_and_removal_stops_the_flush") {
+            return;
+        }
         let part = InsidePart::default();
         let mods = install_inside_mod("inside-shot", &part);
         mod_platform::testing::with_mods(mods, || {
@@ -890,7 +1047,7 @@ mod sweep_tests {
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        game.sweep_projectile_inside(&mut shot);
+                        game.sweep_projectile_inside(&mut shot, None);
                     },
                 );
                 assert_eq!(
@@ -925,7 +1082,7 @@ mod sweep_tests {
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        game.sweep_projectile_inside(&mut arrow);
+                        game.sweep_projectile_inside(&mut arrow, None);
                     },
                 );
                 assert!(
@@ -942,6 +1099,9 @@ mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn a_projectile_without_a_part_is_left_alone() {
+        if fresh("a_projectile_without_a_part_is_left_alone") {
+            return;
+        }
         crate::game::native_entity_refs::tests::with_game(|game| {
             let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
             let stone = game
@@ -966,7 +1126,7 @@ mod sweep_tests {
                 sunrise_client::parallel::TickThread::mint(),
                 Some("minecraft:overworld"),
                 || {
-                    game.sweep_projectile_inside(&mut shot);
+                    game.sweep_projectile_inside(&mut shot, None);
                 },
             );
             assert_eq!(
@@ -984,6 +1144,9 @@ mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn an_arrow_is_told_once_a_block_stuck_and_flying() {
+        if fresh("an_arrow_is_told_once_a_block_stuck_and_flying") {
+            return;
+        }
         let part = InsidePart::default();
         let mods = install_inside_mod("inside-arrow", &part);
         mod_platform::testing::with_mods(mods, || {
@@ -1009,7 +1172,7 @@ mod sweep_tests {
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        game.sweep_projectile_inside(&mut flying);
+                        game.sweep_projectile_inside(&mut flying, None);
                     },
                 );
                 assert_eq!(
@@ -1029,7 +1192,7 @@ mod sweep_tests {
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        game.sweep_projectile_inside(&mut stuck);
+                        game.sweep_projectile_inside(&mut stuck, None);
                     },
                 );
                 assert_eq!(
@@ -1049,6 +1212,9 @@ mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn a_panicking_part_leaves_the_arrow_list_whole() {
+        if fresh("a_panicking_part_leaves_the_arrow_list_whole") {
+            return;
+        }
         let part = InsidePart {
             panic_after: Some(0),
             ..InsidePart::default()
@@ -1081,7 +1247,7 @@ mod sweep_tests {
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        projectiles.update(0, |p| game.sweep_projectile_inside(p));
+                        projectiles.update(0, |p| game.sweep_projectile_inside(p, None));
                     },
                 );
                 game.creatures.projectiles.restore(
@@ -1172,6 +1338,11 @@ mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn callback_level_writes_apply_after_block_state_changes_and_do_not_rollback_siblings() {
+        if fresh(
+            "callback_level_writes_apply_after_block_state_changes_and_do_not_rollback_siblings",
+        ) {
+            return;
+        }
         use crate::game::api_values::TryIntoApi;
         use std::sync::{Arc, Mutex};
 
@@ -1287,7 +1458,7 @@ mod sweep_tests {
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        game.sweep_item_inside(&mut item);
+                        game.sweep_item_inside(&mut item, None);
                     },
                 );
 
@@ -1331,22 +1502,26 @@ mod sweep_tests {
         });
     }
 
-    /// Calling `hurt_with_source` with a stale `EntityRef` refuses that hurt call
-    /// (returns `false` without applying damage) and leaves sibling `push` and
-    /// `set_block` writes intact without rolling them back.
+    /// The item tick lifts its batch; a source in that batch is still live, but a
+    /// retired handle refuses just that call without rolling back the other writes.
     #[test]
     #[ignore = "daily"]
-    fn callback_hurt_with_stale_source_does_not_refuse_or_rollback() {
+    fn callback_hurt_resolves_a_lifted_sibling_but_not_a_retired_handle() {
+        if fresh("callback_hurt_resolves_a_lifted_sibling_but_not_a_retired_handle") {
+            return;
+        }
         use crate::game::api_values::TryIntoApi;
         use std::sync::{Arc, Mutex};
+        use sunrise_client::items::ItemStack;
 
         #[derive(Clone, Default)]
-        struct StaleSourcePart {
+        struct SourcePart {
             dirt: Arc<Mutex<Option<mod_api::BlockState>>>,
+            sources: Arc<Mutex<Option<[mod_api::EntityRef; 3]>>>,
             outcomes: Arc<Mutex<Option<[bool; 3]>>>,
         }
         #[mod_api::sunrise_part]
-        impl mod_api::BlockPart for StaleSourcePart {
+        impl mod_api::BlockPart for SourcePart {
             fn entity_inside(
                 &self,
                 _: &mut dyn mod_api::LevelRandomHost,
@@ -1354,69 +1529,94 @@ mod sweep_tests {
             ) {
                 let dirt = self.dirt.lock().unwrap().unwrap();
                 let pos = [event.pos.x, event.pos.y, event.pos.z];
-                let stale_ref =
-                    mod_api::EntityRef::new(mod_api::WorldEpoch::new(u64::MAX), 999_999);
+                let [direct, causing, stale] = self.sources.lock().unwrap().unwrap();
                 let outcomes = self.outcomes.clone();
                 event.run_after(mod_api::InsideEffect::Freeze, move |view| {
-                    let hurt_ok = view.hurt_with_source(
-                        "minecraft:in_fire",
+                    let retired_hit =
+                        view.hurt_with_source("minecraft:generic", 2.0, Some(stale), None);
+                    let live_hit = view.hurt_with_source(
+                        "minecraft:generic",
                         1.0,
-                        Some(stale_ref),
-                        Some(stale_ref),
+                        Some(direct),
+                        Some(causing),
                     );
-                    let push_ok = view.push([0.5, 0.0, 0.0]);
                     let block_ok = view.set_block(pos, dirt);
-                    *outcomes.lock().unwrap() = Some([hurt_ok, push_ok, block_ok]);
+                    *outcomes.lock().unwrap() = Some([retired_hit, live_hit, block_ok]);
                 });
             }
         }
-        struct StaleSourceMod(StaleSourcePart);
+        type Hits = Arc<Mutex<Vec<(i32, i32, Option<[f64; 3]>)>>>;
+        struct SourceMod(SourcePart, Hits);
         #[mod_api::__subscriptions]
-        impl mod_api::Hooks for StaleSourceMod {
+        impl mod_api::Hooks for SourceMod {
             fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-                let stone = r.block_key("minecraft:stone");
-                r.block_part(stone, self.0.clone());
+                let grass = r.block_key("minecraft:short_grass");
+                r.block_part(grass, self.0.clone());
+            }
+
+            fn entity_invulnerability_check(
+                &self,
+                _: mod_api::LevelSide<'_>,
+                event: &mut mod_api::EntityInvulnerabilityCheckEvent<'_>,
+            ) {
+                if event.kind == "minecraft:item" && event.source.damage_type == "minecraft:generic"
+                {
+                    self.1.lock().unwrap().push((
+                        event.source.direct,
+                        event.source.causing,
+                        event.source.position,
+                    ));
+                }
             }
         }
 
-        let part = StaleSourcePart::default();
+        let part = SourcePart::default();
+        let hits = Hits::default();
         let entry = || {
             mod_api::ModEntry::new(
-                "inside-stale-source",
-                Box::new(StaleSourceMod(part.clone())),
+                "inside-batch-source",
+                Box::new(SourceMod(part.clone(), hits.clone())),
             )
         };
         crate::game::api_values::install_parts(&[entry()]).unwrap();
-        let mods: mod_api::Mods = vec![entry()].into();
-        mod_platform::testing::with_mods(mods, || {
+        mod_platform::testing::with_mods(vec![entry()].into(), || {
             crate::game::native_entity_refs::tests::with_game(|game| {
                 game.options.dedicated = Some(Vec::new());
                 let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
-                let dirt = game
-                    .pack
-                    .assets
-                    .registry
-                    .default_state("minecraft:dirt")
-                    .unwrap();
-                let mut item = single_stone_item(game);
+                let _ = single_stone_item(game); // the contact test chunk
+                let state = |name| game.pack.assets.registry.default_state(name).unwrap();
+                let grass = state("minecraft:short_grass");
+                let dirt = state("minecraft:dirt");
+                game.world.set(1, 100, 0, grass).unwrap();
                 *part.dirt.lock().unwrap() = Some(dirt.try_into_api().unwrap());
-                let health_before = item.health;
-                let velocity_before = item.velocity.x;
+                for x in [1.5, 5.5, 8.5, 11.5] {
+                    game.spawn_item(
+                        ItemStack::new("minecraft:stone", 1),
+                        [x, 100.25, 0.5],
+                        [0.0; 3],
+                        20,
+                    );
+                    game.dropped.last_mut().unwrap().no_gravity = true;
+                }
+                let ids = std::array::from_fn::<_, 3, _>(|i| game.dropped[i + 1].id);
+                let [direct, causing, stale] = ids.map(|id| game.entity(id).unwrap());
+                *part.sources.lock().unwrap() = Some([direct, causing, stale]);
+                game.dropped.remove(3);
+                game.tickets.update(None);
+                game.ticked_entities_through = u32::MAX;
 
                 sunrise_client::block_contact::in_level(
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
-                    || {
-                        game.sweep_item_inside(&mut item);
-                    },
+                    || game.tick_items(),
                 );
 
                 assert_eq!(*part.outcomes.lock().unwrap(), Some([false, true, true]));
                 assert_eq!(
-                    item.health, health_before,
-                    "stale explicit source refuses that hurt call without applying damage"
+                    *hits.lock().unwrap(),
+                    [(ids[0] as i32, ids[1] as i32, Some([5.5, 100.25, 0.5]))]
                 );
-                assert_eq!(item.velocity.x, velocity_before + 0.5);
+                assert_eq!(game.dropped[0].health, 4);
                 assert_eq!(game.world.block(1, 100, 0), dirt);
             });
         });
@@ -1428,6 +1628,9 @@ mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn panicking_mod_callback_disables_only_that_mod_and_queues_error_toast() {
+        if fresh("panicking_mod_callback_disables_only_that_mod_and_queues_error_toast") {
+            return;
+        }
         use std::sync::{
             Arc,
             atomic::{AtomicUsize, Ordering},
@@ -1510,7 +1713,7 @@ mod sweep_tests {
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        game.sweep_item_inside(&mut item1);
+                        game.sweep_item_inside(&mut item1, None);
                     },
                 );
                 assert_eq!(panics_part.part_calls.load(Ordering::SeqCst), 1);
@@ -1524,7 +1727,7 @@ mod sweep_tests {
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
                     || {
-                        game.sweep_item_inside(&mut item2);
+                        game.sweep_item_inside(&mut item2, None);
                     },
                 );
                 assert_eq!(
@@ -1572,6 +1775,9 @@ mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn player_live_inside_flush_level_writes_peaceful_effect_and_fire_semantics() {
+        if fresh("player_live_inside_flush_level_writes_peaceful_effect_and_fire_semantics") {
+            return;
+        }
         use crate::game::api_values::TryIntoApi;
         use crate::game::native_item_places::tests::{guest, open_to_lan};
         use std::sync::{Arc, Mutex};
@@ -1601,7 +1807,8 @@ mod sweep_tests {
                     let saw_dirt = view.block_state(pos) == Some(dirt);
                     let destroy_first = view.destroy_block(pos, false);
                     let destroy_air = view.destroy_block(pos, false);
-                    let effect_ok = view.add_effect(speed, 60, 0);
+                    let expired_admitted = view.add_effect(speed, -2, 0);
+                    let effect_ok = view.add_effect(speed, 60, 0) && expired_admitted;
                     view.set_remaining_fire_ticks(100);
                     let on_fire = view.is_on_fire();
                     let ticks = view.fire_ticks();
@@ -1699,6 +1906,9 @@ mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn mob_inside_tick_keeps_water_and_resolves_live_sources() {
+        if fresh("mob_inside_tick_keeps_water_and_resolves_live_sources") {
+            return;
+        }
         use crate::game::api_values::TryIntoApi;
         use std::sync::{Arc, Mutex};
         use sunrise_client::{chunk::Chunk, mobs::Mob, ticket_levels::Sources};
@@ -1832,11 +2042,176 @@ mod sweep_tests {
         });
     }
 
+    /// A deferred hurt on the real mob tick must finish its Enderman teleport
+    /// before the next callback reads the live entity.
+    #[test]
+    #[ignore = "daily"]
+    fn mob_inside_hurt_teleports_before_the_next_callback() {
+        if fresh("mob_inside_hurt_teleports_before_the_next_callback") {
+            return;
+        }
+        use std::sync::{Arc, Mutex};
+        use sunrise_client::{chunk::Chunk, mobs::Mob, ticket_levels::Sources};
+        use sunrise_core::{geometry::Vec3, random::LegacyRandom};
+
+        type TeleportObservation = Arc<Mutex<Option<(bool, [f64; 3])>>>;
+        #[derive(Clone, Default)]
+        struct TeleportPart(TeleportObservation);
+        #[mod_api::sunrise_part]
+        impl mod_api::BlockPart for TeleportPart {
+            fn entity_inside(
+                &self,
+                _: &mut dyn mod_api::LevelRandomHost,
+                event: &mut mod_api::EntityInsideEvent<'_>,
+            ) {
+                let seen = self.0.clone();
+                event.run_before(mod_api::InsideEffect::Freeze, move |view| {
+                    let hurt = view.hurt("minecraft:generic", 2.0);
+                    *seen.lock().unwrap() = Some((hurt, [0.0; 3]));
+                });
+                let seen = self.0.clone();
+                event.run_after(mod_api::InsideEffect::Freeze, move |view| {
+                    seen.lock().unwrap().as_mut().unwrap().1 = view.position();
+                });
+            }
+        }
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for TeleportPart {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+                let grass = r.block_key("minecraft:short_grass");
+                r.block_part(grass, self.clone());
+            }
+        }
+        let part = TeleportPart::default();
+        let entry = || mod_api::ModEntry::new("inside-ender-hurt", Box::new(part.clone()));
+        crate::game::api_values::install_parts(&[entry()]).unwrap();
+        mod_platform::testing::with_mods(vec![entry()].into(), || {
+            crate::game::native_entity_refs::tests::with_game(|game| {
+                game.options.dedicated = Some(Vec::new());
+                game.world.health_rules.difficulty = sunrise_world::food::Difficulty::Normal;
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                game.tickets.update(Some(Sources {
+                    players: vec![(0, 0)],
+                    forced: Vec::new(),
+                    portal: Vec::new(),
+                    spawn: Vec::new(),
+                    dragon: None,
+                    viewed: Vec::new(),
+                    view_distance: 2,
+                    simulation_distance: 2,
+                }));
+                let state = |name| game.pack.assets.registry.default_state(name).unwrap();
+                let stone = state("minecraft:stone");
+                let grass = state("minecraft:short_grass");
+                for x in 0..16 {
+                    for z in 0..16 {
+                        game.world.set(x, 99, z, stone).unwrap();
+                    }
+                }
+                game.world.set(8, 100, 8, grass).unwrap();
+                let kind = game
+                    .res
+                    .mob_types()
+                    .get("minecraft:enderman")
+                    .unwrap()
+                    .clone();
+                let mut mob = Mob::new(200, kind, Vec3::new(8.5, 100.0, 8.5), 0.0);
+                mob.no_ai = true;
+                mob.no_gravity = true;
+                mob.persistent = true;
+                mob.random = LegacyRandom::new(118);
+                game.mobs.push(mob);
+                let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                sunrise_client::block_contact::in_level(
+                    sunrise_client::parallel::TickThread::mint(),
+                    Some("minecraft:overworld"),
+                    || game.tick_creatures().unwrap(),
+                );
+                // Independent Java Random trace from seed 118: Mob.baseTick's ambient
+                // roll, the two hurt pitch draws, then Enderman.hurtServer's roll
+                // (2) and its x/y/z draws. The flat floor stops the downward search at y=100.
+                let expected = [
+                    0x4001_b983_f817_1d50,
+                    0x4059_0000_0000_0000,
+                    0x4027_5895_7e8d_db18,
+                ];
+                let (hurt, at_hurt_return) = part.0.lock().unwrap().unwrap();
+                assert!(hurt);
+                assert_eq!(at_hurt_return.map(f64::to_bits), expected);
+                let mob = game.mobs.iter().find(|m| m.id == 200).unwrap();
+                assert_eq!(mob.position.components().map(f64::to_bits), expected);
+                assert_eq!(mob.random.state(), 0xf46e_d8cd_4912);
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn burning_mob_sweeping_into_dry_powder_snow_melts_it_and_draws_the_hiss() {
+        if fresh("burning_mob_sweeping_into_dry_powder_snow_melts_it_and_draws_the_hiss") {
+            return;
+        }
+        use std::sync::Arc;
+        use sunrise_client::{
+            chunk::Chunk,
+            mobs::{Mob, goals::GoalSelector},
+            ticket_levels::Sources,
+        };
+        use sunrise_core::{geometry::Vec3, random::LegacyRandom};
+
+        crate::game::native_entity_refs::tests::with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            game.tickets.update(Some(Sources {
+                players: vec![(0, 0)],
+                forced: Vec::new(),
+                portal: Vec::new(),
+                spawn: Vec::new(),
+                dragon: None,
+                viewed: Vec::new(),
+                view_distance: 2,
+                simulation_distance: 2,
+            }));
+            let state = |name| game.pack.assets.registry.default_state(name).unwrap();
+            let snow = state("minecraft:powder_snow");
+            let air = state("minecraft:air");
+            game.world.set(8, 100, 8, snow).unwrap();
+            let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+            let mut mob = Mob::new(200, kind, Vec3::new(7.5, 100.25, 8.5), 0.0);
+            mob.ai.goals = GoalSelector::default();
+            mob.ai.targets = GoalSelector::default();
+            mob.no_gravity = true;
+            mob.persistent = true;
+            mob.velocity = Vec3::new(0.25, 0.0, 0.0);
+            mob.fire_ticks = 21;
+            mob.random = LegacyRandom::new(1);
+            game.mobs.push(mob);
+            sunrise_client::block_contact::in_level(
+                sunrise_client::parallel::TickThread::mint(),
+                Some("minecraft:overworld"),
+                || game.tick_creatures().unwrap(),
+            );
+            let mob = game.mobs.iter().find(|m| m.id == 200).unwrap();
+            assert_eq!(game.world.block(8, 100, 8), air);
+            assert_eq!((mob.fire_ticks, mob.ticks_frozen, mob.health), (0, 1, 10.0));
+            // Java Random(seed=1) after the ambient nextInt(1000) and the two
+            // extinguish nextFloat() calls. No periodic fire damage at 21 ticks.
+            assert_eq!(mob.random.state(), 0x68fb_0e6f_f399);
+        });
+    }
+
     /// Item float-health subtraction before truncation, bundle drop on fatal hurt, and
     /// projectile `mark_hurt` + `is_on_fire`.
     #[test]
     #[ignore = "daily"]
     fn item_float_hurt_bundle_spill_and_projectile_mark_hurt() {
+        if fresh("item_float_hurt_bundle_spill_and_projectile_mark_hurt") {
+            return;
+        }
         use std::sync::{Arc, Mutex};
 
         #[derive(Clone, Default)]
@@ -1893,7 +2268,7 @@ mod sweep_tests {
                 sunrise_client::block_contact::in_level(
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
-                    || game.sweep_item_inside(&mut item),
+                    || game.sweep_item_inside(&mut item, None),
                 );
                 assert_eq!(item.health, 3, "float health subtraction before truncation");
 
@@ -1916,7 +2291,7 @@ mod sweep_tests {
                 sunrise_client::block_contact::in_level(
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
-                    || game.sweep_item_inside(&mut bundle_item),
+                    || game.sweep_item_inside(&mut bundle_item, None),
                 );
                 assert!(bundle_item.health <= 0);
                 assert!(
@@ -1935,7 +2310,7 @@ mod sweep_tests {
                 sunrise_client::block_contact::in_level(
                     sunrise_client::parallel::TickThread::mint(),
                     Some("minecraft:overworld"),
-                    || game.sweep_projectile_inside(&mut shot),
+                    || game.sweep_projectile_inside(&mut shot, None),
                 );
                 assert_eq!(*part.proj_outcomes.lock().unwrap(), Some((true, false)));
                 assert!(
@@ -1952,6 +2327,9 @@ mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn player_powder_snow_and_fire_builtin_ordering() {
+        if fresh("player_powder_snow_and_fire_builtin_ordering") {
+            return;
+        }
         use std::sync::{Arc, Mutex};
 
         #[derive(Clone, Default)]

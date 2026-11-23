@@ -23,6 +23,102 @@ pub enum InsideShape {
     Empty,
 }
 
+/// The filled inside-collision shape of a lava or layered cauldron: its shell
+/// and the contents up to that level's surface (vanilla `FILLED_SHAPE(S)`).
+pub fn cauldron_inside_shape(
+    collision: &sunrise_world::block_collision::BlockCollisionRegistry<'_>,
+    state: BlockStateId,
+    definition: &sunrise_world::chunk::BlockState,
+    pos: BlockPos,
+) -> InsideShape {
+    let top = match definition.name.as_str() {
+        "minecraft:lava_cauldron" => 15.0,
+        "minecraft:water_cauldron" | "minecraft:powder_snow_cauldron" => {
+            let Some(level) = definition
+                .properties
+                .get("level")
+                .and_then(|value| value.parse::<u8>().ok())
+            else {
+                return InsideShape::Empty;
+            };
+            6.0 + 3.0 * f64::from(level)
+        }
+        _ => return InsideShape::Full,
+    };
+    let offset = Vec3::new(f64::from(pos.x), f64::from(pos.y), f64::from(pos.z));
+    let shell = collision.static_shape(state).ok().flatten();
+    let mut boxes: Vec<_> = shell
+        .into_iter()
+        .flat_map(|shape| shape.boxes())
+        .map(|bounds| bounds.move_by(offset))
+        .collect();
+    boxes.push(Aabb::new(
+        Vec3::new(2.0 / 16.0, 4.0 / 16.0, 2.0 / 16.0).add_vector(offset),
+        Vec3::new(14.0 / 16.0, top / 16.0, 14.0 / 16.0).add_vector(offset),
+    ));
+    InsideShape::Boxes(boxes)
+}
+
+/// The fire, cauldron and powder snow effects that run in vanilla's ordered
+/// collector, rather than immediately inside `Block.entityInside`.
+pub fn queue_block_effects(
+    effects: &mut mod_api::InsideEffects,
+    block: &str,
+    state: BlockStateId,
+    pos: BlockPos,
+) {
+    use mod_api::{__private::BuiltinInsideAction as Action, InsideEffect as Effect};
+    match block {
+        "minecraft:fire" | "minecraft:soul_fire" => {
+            effects.apply(Effect::ClearFreeze);
+            effects.apply(Effect::FireIgnite);
+            let damage = if block == "minecraft:fire" { 1.0 } else { 2.0 };
+            effects.run_after_builtin(Effect::FireIgnite, Action::FireHurt(damage));
+        }
+        "minecraft:lava_cauldron" => {
+            queue_fluid_effects(effects, sunrise_world::fluid::FluidKind::Lava)
+        }
+        "minecraft:water_cauldron" | "minecraft:powder_snow_cauldron" => {
+            effects.run_before_builtin(
+                Effect::Extinguish,
+                Action::LayeredCauldronExtinguish {
+                    pos: [pos.x, pos.y, pos.z],
+                    state: state.0,
+                },
+            );
+            effects.apply(Effect::Extinguish);
+        }
+        "minecraft:powder_snow" => {
+            effects.run_before_builtin(
+                Effect::Extinguish,
+                Action::PowderSnowMelt([pos.x, pos.y, pos.z]),
+            );
+            effects.apply(Effect::Freeze);
+            effects.apply(Effect::Extinguish);
+        }
+        _ => {}
+    }
+}
+
+/// `LavaFluid.entityInside` and `WaterFluid.entityInside` at the fluid's
+/// position in the walk. Lava shares its slots with a filled lava cauldron.
+pub fn queue_fluid_effects(
+    effects: &mut mod_api::InsideEffects,
+    kind: sunrise_world::fluid::FluidKind,
+) {
+    use mod_api::{__private::BuiltinInsideAction as Action, InsideEffect as Effect};
+    use sunrise_world::fluid::FluidKind;
+    match kind {
+        FluidKind::Water | FluidKind::FlowingWater => effects.apply(Effect::Extinguish),
+        FluidKind::Lava | FluidKind::FlowingLava => {
+            effects.apply(Effect::ClearFreeze);
+            effects.apply(Effect::LavaIgnite);
+            effects.run_after_builtin(Effect::LavaIgnite, Action::LavaHurt);
+        }
+        _ => {}
+    }
+}
+
 /// The collector a walk queues its per-step effects into. `advanceStep` is the only
 /// call the shared walk makes on it; the kind's own moments queue the effects.
 pub trait StepCollector {

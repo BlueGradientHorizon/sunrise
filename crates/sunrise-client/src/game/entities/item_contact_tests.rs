@@ -303,6 +303,7 @@ fn item_restitution_uses_the_legacy_contact_on_both_simulating_sides() {
                                     None,
                                     &[],
                                     client,
+                                    None,
                                     &mut |_| {},
                                 )
                             });
@@ -489,7 +490,7 @@ fn item_support_survives_idle_then_clears_on_an_airborne_move() {
                 );
                 let mut item = game.dropped[0].clone();
                 let tick = |game: &mut Game<'_>, item: &mut ItemEntity| {
-                    game.tick_item_with_block_contacts(item, None, &[], false, &mut |_| {})
+                    game.tick_item_with_block_contacts(item, None, &[], false, None, &mut |_| {})
                 };
                 assert_eq!(tick(game, &mut item), (true, false));
                 assert_eq!(item.position, Vec3::new(5.5, 64.0, 4.5));
@@ -634,6 +635,7 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
                                     escape,
                                     &[],
                                     client,
+                                    None,
                                     &mut |_| {},
                                 )
                             },
@@ -825,6 +827,7 @@ fn step_on_hurts_the_stepping_body_and_guards_its_block_writes() {
                                 None,
                                 &[],
                                 client,
+                                None,
                                 &mut |_| {}
                             ),
                             (true, false)
@@ -874,6 +877,7 @@ fn step_on_hurts_the_stepping_body_and_guards_its_block_writes() {
                                         None,
                                         &[],
                                         false,
+                                        None,
                                         &mut |_| {}
                                     ),
                                     (false, true),
@@ -987,6 +991,7 @@ fn step_on_can_hurt_only_living_bodies_on_the_same_block() {
                                 None,
                                 &[],
                                 false,
+                                None,
                                 &mut |_| {}
                             ),
                             (true, false)
@@ -1122,6 +1127,7 @@ fn step_on_refuses_only_the_invalid_part_outputs() {
                                         None,
                                         &[],
                                         false,
+                                        None,
                                         &mut |_| {}
                                     ),
                                     (true, false),

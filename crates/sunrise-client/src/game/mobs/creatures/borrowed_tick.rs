@@ -697,17 +697,16 @@ impl Game<'_> {
                                 i,
                                 &w,
                                 &mut level,
-                                *paused,
+                                paused,
                                 &mut events,
                             )
                         }
-                        Some(Pause::Consumption { was_on_fire, .. }) => {
+                        Some(Pause::Consumption { .. }) => {
                             sunrise_client::mobs::riders::resume_after_consumption(
                                 &mut mobs,
                                 i,
                                 &w,
                                 &mut level,
-                                was_on_fire,
                                 &mut events,
                                 &mut movement,
                             )
@@ -1559,9 +1558,6 @@ impl mod_api::InsideEntityAccess for GameMobInsideAccess<'_, '_> {
         else {
             return false;
         };
-        if duration < -1 {
-            return false;
-        }
         let Some(m) = self.mob() else {
             return false;
         };
@@ -1617,6 +1613,7 @@ impl mod_api::InsideEntityAccess for GameMobInsideAccess<'_, '_> {
             subject_pos,
             direct,
             causing,
+            None,
         ) else {
             return false;
         };
@@ -1712,14 +1709,19 @@ impl mod_api::InsideEntityAccess for GameMobInsideAccess<'_, '_> {
                 }
             }
             mod_api::__private::BuiltinInsideAction::FireHurt(damage) => {
-                let _ = self.game.hurt_target(
-                    crate::game::commands::Target::Mob(self.mob_id),
-                    damage,
-                    "minecraft:in_fire",
-                    None,
-                    None,
-                    None,
-                );
+                self.hurt_with_source("minecraft:in_fire", damage, None, None);
+            }
+            mod_api::__private::BuiltinInsideAction::LavaHurt => {
+                if self.mob().is_some_and(|m| !m.fire_immune())
+                    && self.hurt_with_source("minecraft:lava", 4.0, None, None)
+                    && let Some(m) = self.mob_mut().filter(|m| !m.silent)
+                {
+                    let at = m.position.components();
+                    let pitch = 2.0 + m.random.next_float() * 0.4;
+                    self.game
+                        .audio
+                        .play("minecraft:entity.generic.burn", Some(at), 0.4, pitch);
+                }
             }
         }
     }

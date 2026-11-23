@@ -204,6 +204,11 @@
     "category": "dispatch table",
     "reason": "Thread-local dispatch inventory for isolated engine tests."
   },
+  "world/inside_write.rs::SPARE_SWEEP": {
+    "type": "std::cell::RefCell<Option<Box<SweepScratch>>>",
+    "category": "scratch buffer",
+    "reason": "Per-thread reusable inside-block collector storage, lent exclusively to one sweep and returned empty; a nested sweep takes its own, and no callback runs under the borrow."
+  },
   "world/scheduler.rs::allocate::NEXT_ID": {
     "type": "AtomicU64",
     "category": "monotonic counter",
