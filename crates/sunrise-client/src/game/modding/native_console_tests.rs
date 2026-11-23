@@ -275,6 +275,30 @@ fn guest_chats(
     result
 }
 
+/// The disguised-chat messages a guest was sent, as plain text.
+fn guest_disguised_chats(
+    receiver: &std::sync::mpsc::Receiver<sunrise_client::lan::Out>,
+) -> Vec<String> {
+    use sunrise_client::scoreboard::{comp_text, tag_to_json};
+    use sunrise_protocol::packets::play::Clientbound;
+    let mut result = Vec::new();
+    for sent in receiver.try_iter() {
+        let bodies = match sent {
+            sunrise_client::lan::Out::Packet(p) => vec![p],
+            sunrise_client::lan::Out::Packets(p) => p,
+            sunrise_client::lan::Out::Disconnect(_) => panic!("unexpected disconnect"),
+        };
+        for body in bodies {
+            let mut reader = sunrise_protocol::buf::Reader::new(&body);
+            let id = reader.varint().unwrap();
+            if let Clientbound::DisguisedChat(p) = Clientbound::decode(id, reader.rest()).unwrap() {
+                result.push(comp_text(&tag_to_json(&p.message)).plain());
+            }
+        }
+    }
+    result
+}
+
 struct FailGameTest;
 
 impl mod_api::GameTestFunction for FailGameTest {
@@ -434,7 +458,6 @@ fn native_console_delivers_delayed_game_test_summary_and_closes() {
 #[ignore = "daily"]
 fn native_console_msg_routes_outgoing_confirmation_to_source() {
     use std::sync::mpsc::TryRecvError;
-    use sunrise_core::nbt::Tag;
     with_guests(|game| {
         game.build_registries();
         let (tx12, rx12) = std::sync::mpsc::channel();
@@ -472,15 +495,16 @@ fn native_console_msg_routes_outgoing_confirmation_to_source() {
             Err(TryRecvError::Disconnected)
         ));
 
-        let received12 = guest_chats(&rx12);
-        assert_eq!(received12.len(), 1, "{received12:?}");
-        assert!(matches!(
-            &received12[0],
-            Tag::Compound(fields)
-                if fields.get(&"translate".into())
-                    == Some(&Tag::String("commands.message.display.incoming".into()))
-        ));
+        // The target's copy is private chat with the incoming whisper type (`Hub::whisper`'s
+        // delivery, which respects the recipient's chat visibility), not system chat.
+        let received12 = guest_disguised_chats(&rx12);
+        assert_eq!(received12, ["hello there"]);
+        assert!(
+            guest_chats(&rx12).is_empty(),
+            "no system chat for the target"
+        );
         assert!(guest_chats(&rx13).is_empty());
+        assert!(guest_disguised_chats(&rx13).is_empty());
 
         let plain = Commands::run_command_with_output(game, "msg guest12 second whisper");
         assert!(plain.success);
