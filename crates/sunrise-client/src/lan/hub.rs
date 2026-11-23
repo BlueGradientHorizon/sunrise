@@ -2609,8 +2609,7 @@ impl Hub {
                 | S::MovePlayerStatus(_)
                     if self.guests[i].won_game =>
                 {
-                    self.guests
-                        .update(i, |g| g.inbox.push_back(InboxItem::Packet(packet, credit)));
+                    kept.push(InboxItem::Packet(packet, credit));
                     continue;
                 }
                 // A player whose body was removed still controls the respawn button.

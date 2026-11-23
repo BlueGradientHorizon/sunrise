@@ -218,8 +218,21 @@ fn player_pong_observes_order_and_sends_typed_ping() {
             ));
         }
     }
+    /// Runs first and rewrites its own event: the observer still hears what the client sent.
+    struct Tamper;
+    #[mod_api::__subscriptions]
+    impl Hooks for Tamper {
+        fn player_pong(&self, _: &mut dyn ServerHost, event: &mut PlayerPongEvent<'_>) {
+            event.id = 99;
+            event.name = "tampered";
+        }
+    }
     let seen = Arc::new(Mutex::new(Vec::new()));
-    let mods: Mods = vec![ModEntry::new("observer", Box::new(Observer(seen.clone())))].into();
+    let mods: Mods = vec![
+        ModEntry::new("tamper", Box::new(Tamper)),
+        ModEntry::new("observer", Box::new(Observer(seen.clone()))),
+    ]
+    .into();
     mod_platform::__private::install(mods);
 
     let mut resources = None;
