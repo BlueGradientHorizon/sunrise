@@ -259,9 +259,22 @@ impl Game<'_> {
                 collector,
             );
         }
-        // An orb stays: the server may still hold merged ones in it.
+        // An orb stays: the server may still hold merged ones in it. An item shrinks by the
+        // amount taken and goes only when its stack is empty, so a survivor stays in view.
         if !orb {
-            self.remove_entity(p.item);
+            let remaining = self
+                .dropped
+                .iter_mut()
+                .find(|d| d.id == p.item as u32)
+                .map(|item| {
+                    if item.stack.count > 0 {
+                        item.stack.count = item.stack.count.saturating_sub(p.amount.max(0) as u32);
+                    }
+                    item.stack.count
+                });
+            if remaining.is_none_or(|count| count == 0) {
+                self.remove_entity(p.item);
+            }
         }
     }
 

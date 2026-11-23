@@ -357,12 +357,18 @@ impl Game<'_> {
                     self.native_take_item(item, feet);
                 }
                 PickupSlot::Resident { taken, .. } => {
-                    if let Some(at) = self.dropped.iter().position(|d| d.id == id)
-                        && !keeps_replacement(&self.dropped[at])
-                    {
-                        self.remove_dropped(at);
+                    // The take packet shrinks the entity's stack by its amount and removes it
+                    // only when empty (`handleTakeItemEntity`): a replacement Pre installed
+                    // survives it, so it is told as an animation of nothing taken from it.
+                    let mut amount = before;
+                    if let Some(at) = self.dropped.iter().position(|d| d.id == id) {
+                        if keeps_replacement(&self.dropped[at]) {
+                            amount = 0;
+                        } else {
+                            self.remove_dropped(at);
+                        }
                     }
-                    taken.push((id, before));
+                    taken.push((id, amount));
                 }
             }
             return;
