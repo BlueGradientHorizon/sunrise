@@ -640,14 +640,14 @@ mod tests {
             &settings,
             Instant::now(),
             false,
-            execution_role::ExecutionRole::IntegratedServer,
+            execution_role::ExecutionRole::Client,
             &Progress::new(),
             &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = execution_role::ExecutionRole::Client;
         let res = resources.insert(loaded.resources);
         let mut game = Game::new(
             res,
