@@ -115,6 +115,31 @@ mod stacked_on_other_tests {
         assert_eq!(take(3), (dirt(3), vec![StackedEdit::Take(3)]));
         assert_eq!(take(2), (dirt(2), vec![StackedEdit::Take(2)]));
     }
+
+    #[test]
+    fn a_rollback_restores_the_stacks_handled_and_the_edit_log() {
+        let mut edits = StackedEdits::new(None, dirt(3));
+        let mut click = StackedOnOther::new(
+            None,
+            None,
+            0,
+            0,
+            0,
+            ClickAction::Primary,
+            StackedOnOtherDirection::Event,
+            &mut edits,
+        );
+        click.set_carried(dirt(1));
+        let checkpoint = click.checkpoint();
+        click.handled = false;
+        click.set_carried(None);
+        click.set_clicked(None);
+        click.rollback(checkpoint);
+        assert!(click.handled);
+        assert_eq!(click.carried(), dirt(1).as_ref());
+        assert_eq!(click.clicked(), dirt(3).as_ref());
+        assert_eq!(edits.into_edits(), vec![StackedEdit::Carried(dirt(1))]);
+    }
 }
 
 #[cfg(test)]
@@ -154,6 +179,7 @@ pub enum LogicalSide {
 /// asking `item_stacked_on_other`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 // exhaustive: NeoForge's event, then vanilla's carried-on-other and other-on-me overrides
+// no wire: read only from the lent click within one call.
 pub enum StackedOnOtherDirection {
     /// The global `Hooks::item_stacked_on_other` event, before either item override.
     #[default]
@@ -166,6 +192,7 @@ pub enum StackedOnOtherDirection {
 /// Vanilla's `ClickAction`: which action a pickup click is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 // exhaustive: vanilla's two click actions
+// no wire: read only from the lent click within one call.
 pub enum ClickAction {
     /// `ClickAction.PRIMARY`: with the default bindings, a left click.
     Primary,
@@ -174,8 +201,10 @@ pub enum ClickAction {
 }
 /// One edit a listener made to a pickup click's cursor or clicked slot, in the order it made it.
 #[derive(Clone, Debug, PartialEq)]
+// hidden: the game's record of a click's edits; mods edit through `StackedOnOther`
 // exhaustive: a cursor write, a slot write, or a take from the slot
 // no wire: recorded and applied in-process within one click.
+#[doc(hidden)]
 pub enum StackedEdit {
     /// `SlotAccess.set` on the cursor.
     Carried(Option<ItemStack>),
@@ -187,8 +216,10 @@ pub enum StackedEdit {
 /// The cursor and the clicked slot as one pickup click's listeners have left them so far, and
 /// the edits that put them there, in order. Every phase of the click shares it.
 #[derive(Debug, Default)]
+// hidden: the game's working stacks for a click; mods edit through `StackedOnOther`
 // exhaustive: the game builds it and reads it back
 // no wire: lent to listeners within one click.
+#[doc(hidden)]
 pub struct StackedEdits {
     carried: Option<ItemStack>,
     clicked: Option<ItemStack>,
@@ -204,16 +235,6 @@ impl StackedEdits {
             clicked,
             edits: Vec::new(),
         }
-    }
-    /// The cursor and clicked slot now, and how many edits have been made.
-    // hidden: a game-side helper, not part of the mod surface
-    #[doc(hidden)]
-    pub fn state(&self) -> (Option<&ItemStack>, Option<&ItemStack>, usize) {
-        (
-            self.carried.as_ref(),
-            self.clicked.as_ref(),
-            self.edits.len(),
-        )
     }
     /// The edits made since edit `from`.
     // hidden: a game-side helper, not part of the mod surface
@@ -238,6 +259,7 @@ impl StackedEdits {
 pub struct StackedCheckpoint {
     carried: Option<ItemStack>,
     clicked: Option<ItemStack>,
+    handled: bool,
     len: usize,
 }
 /// A pickup click on a menu slot, as `item_stacked_on_other` is asked about it, with the cursor
@@ -297,7 +319,8 @@ impl<'a> StackedOnOther<'a> {
             edits,
         }
     }
-    /// The working stacks and the number of edits, for undoing a panicking listener's edits.
+    /// The working stacks, `handled` and the number of edits, for undoing a panicking
+    /// listener's edits.
     // hidden: the generated dispatch's unwind checkpoint, not part of the mod surface
     #[doc(hidden)]
     pub fn checkpoint(&self) -> StackedCheckpoint {
@@ -305,6 +328,7 @@ impl<'a> StackedOnOther<'a> {
         StackedCheckpoint {
             carried: edits.carried.clone(),
             clicked: edits.clicked.clone(),
+            handled: self.handled,
             len: edits.edits.len(),
         }
     }
@@ -315,6 +339,7 @@ impl<'a> StackedOnOther<'a> {
     pub fn rollback(&mut self, checkpoint: StackedCheckpoint) {
         self.edits.carried = checkpoint.carried;
         self.edits.clicked = checkpoint.clicked;
+        self.handled = checkpoint.handled;
         self.edits.edits.truncate(checkpoint.len);
     }
     /// The stack on the cursor, `None` when it is empty (`SlotAccess.get`).
