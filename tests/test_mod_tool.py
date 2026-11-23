@@ -49,6 +49,7 @@ class ToolFoldersTests(unittest.TestCase):
             document = json.loads(out.read_text())
         self.assertEqual(document["tag"], "mod-tool")
         self.assertIsInstance(document["native_contract"], int)
+        self.assertIsInstance(document["release_contract"], int)
 
 
 class WorkflowTests(unittest.TestCase):
@@ -67,6 +68,9 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(job.get("permissions", {}).get("contents") == "write", name == "publish", name)
             self.assertEqual("environment" in job, name == "sign", name)
         self.assertNotIn("pull_request", workflow["on"])
+        # It follows the gate it reads: a run started by the push itself would look before the gate had finished.
+        self.assertNotIn("push", workflow["on"])
+        self.assertEqual(workflow["on"]["workflow_run"]["workflows"], ["dyna-checks"])
 
     def test_signing_mirrors_the_sdks(self):
         mine = self.load("mod-tool.yml")["jobs"]["sign"]

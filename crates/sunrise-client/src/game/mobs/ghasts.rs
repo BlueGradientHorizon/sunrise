@@ -21,7 +21,7 @@ impl Game<'_> {
             return false;
         }
         let at = m.center();
-        let sneaking = self.keys.held(Action::Sneak);
+        let sneaking = self.held_mapping(Action::Sneak);
         let harnessed = m.extra.body_id().is_some();
         // Equippable.equipOnInteract: a harness goes on a bare adult.
         if item.ends_with("_harness") && item.starts_with("minecraft:") && !harnessed {
@@ -57,7 +57,11 @@ impl Game<'_> {
             // doPlayerRide: `player.startRiding(this)`, which keeps the
             // rider's view (`ServerPlayer.startRiding`'s `Relative.ROTATION`).
             let id = self.mobs[index].id;
-            if !self.native_may_board(id) {
+            // `startRiding` without `force` asks `canAddPassenger`: a fifth rider is refused.
+            let aboard = self.seated_passengers(id).len();
+            if !sunrise_client::mobs::riders::can_add_passenger(&self.mobs[index], aboard)
+                || !self.native_may_board(id)
+            {
                 return true;
             }
             self.break_leash(id, true, false);
