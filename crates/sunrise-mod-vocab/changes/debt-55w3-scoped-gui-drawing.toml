@@ -16,6 +16,7 @@ ids = [
     "type:GuiDraw.FillGradient",
     "type:GuiDraw.Text",
     "type:GuiDraw.Item",
+    "type:GuiDraw.PlayerFace",
     "type:GuiDraw.Push",
     "type:GuiDraw.Pop",
     "type:GuiPaintError",
