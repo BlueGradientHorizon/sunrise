@@ -1,5 +1,6 @@
 //! Entities, mobs, players, effects and their handles.
 
+pub(crate) mod account_profile;
 pub(crate) mod attachment_holder;
 pub(crate) mod attachment_query;
 pub(crate) mod chunk_areas;
@@ -10,7 +11,6 @@ pub(crate) mod entity_type_defaults;
 pub(crate) mod mob_ai_pause;
 pub(crate) mod original_player;
 pub(crate) mod player_data;
-pub(crate) mod account_profile;
 pub(crate) mod player_world;
 pub(crate) mod ride_player;
 pub(crate) mod start_riding;
