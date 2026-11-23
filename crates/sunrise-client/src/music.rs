@@ -275,12 +275,13 @@ impl MusicTables {
         };
         let layer = Layer::parse(json, &self.builtin).unwrap_or_default();
         let dimension = self.dimensions.get(dimension);
+        let volume = resolve_volume(dimension, Some(&layer));
         (
             layer
                 .music
                 .or_else(|| dimension.and_then(|l| l.music.clone()))
                 .unwrap_or_default(),
-            resolve_volume(dimension, Some(&layer)),
+            volume,
         )
     }
 }
