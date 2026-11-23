@@ -4,7 +4,10 @@
 //! differential test world answer the same questions. Random draws follow
 //! vanilla's order.
 use super::{MobType, Species, data};
-use crate::blocks::{BlockFacts, Fluid};
+use crate::{
+    blocks::{BlockFacts, Fluid},
+    chunk::Chunk,
+};
 use mod_api::{BlockPos, SpawnPlacementContext, SpawnPlacementLevel};
 use sunrise_core::random::{RandomSource, slime_chunk_random};
 use sunrise_world::{dimension_type::DimensionFacts, registry::BlockStateId};
@@ -675,6 +678,44 @@ fn slime_rules<L: SpawnLevel>(
     false
 }
 
+impl super::MobWorld<'_> {
+    /// Tests a spawn biome tag using the biome table index from the level.
+    #[inline]
+    pub fn spawn_biome_tag(&self, tag: &str, biome: Option<u16>) -> bool {
+        biome.is_some_and(|id| {
+            self.data
+                .biome_has(tag.trim_start_matches('#'), &self.biomes.get(id).name)
+        })
+    }
+
+    /// Reads the sky layer used by spawn checks. The light read is deferred
+    /// so levels whose sky is treated as dark do not look up a chunk.
+    #[inline]
+    pub fn spawn_sky_light(&self, light: impl FnOnce() -> u8) -> i32 {
+        // Kept as before: vanilla's End has sky light, but Sunrise reads 0 there.
+        if matches!(
+            self.dimension_type.id.as_str(),
+            "minecraft:the_nether" | "minecraft:the_end"
+        ) {
+            return 0;
+        }
+        i32::from(light() >> 4)
+    }
+
+    /// Reads WORLD_SURFACE with the caller's lookup result for this column.
+    #[inline]
+    pub fn spawn_world_surface(&self, x: i32, z: i32, chunk: Option<&Chunk>) -> i32 {
+        self.world
+            .world_surface_with_chunk(x, z, chunk, |id| self.facts.is_air(id))
+    }
+}
+
+/// Gets the block layer used by spawn checks from the level's packed light.
+#[inline]
+pub fn spawn_block_light(light: u8) -> i32 {
+    i32::from(light & 15)
+}
+
 impl SpawnLevel for super::MobWorld<'_> {
     fn within_world_border(&self, x: i32, z: i32) -> bool {
         self.border
@@ -693,27 +734,13 @@ impl SpawnLevel for super::MobWorld<'_> {
         self.has_tag(tag, block)
     }
     fn biome_tag(&self, tag: &str, x: i32, y: i32, z: i32) -> bool {
-        let Some(biome) = self.world.noise_biome(x, y, z) else {
-            return false;
-        };
-        let biome = &self.biomes.get(biome).name;
-        self.data
-            .biome_tags
-            .get(tag.trim_start_matches('#'))
-            .is_some_and(|members| members.contains(biome))
+        self.spawn_biome_tag(tag, self.world.noise_biome(x, y, z))
     }
     fn sky_light(&self, x: i32, y: i32, z: i32) -> i32 {
-        // Kept as before: vanilla's End has sky light, but Sunrise reads 0 there.
-        if matches!(
-            self.dimension_type.id.as_str(),
-            "minecraft:the_nether" | "minecraft:the_end"
-        ) {
-            return 0;
-        }
-        i32::from(self.world.light(x, y, z) >> 4)
+        self.spawn_sky_light(|| self.world.light(x, y, z))
     }
     fn block_light(&self, x: i32, y: i32, z: i32) -> i32 {
-        i32::from(self.world.light(x, y, z) & 15)
+        spawn_block_light(self.world.light(x, y, z))
     }
     fn sky_darken(&self) -> i32 {
         super::MobWorld::sky_darken(self)
@@ -725,7 +752,7 @@ impl SpawnLevel for super::MobWorld<'_> {
         self.sea_level
     }
     fn world_surface(&self, x: i32, z: i32) -> i32 {
-        self.world.world_surface(x, z, |id| self.facts.is_air(id))
+        self.spawn_world_surface(x, z, self.world.chunk_at(x >> 4, z >> 4))
     }
     fn peaceful(&self) -> bool {
         self.difficulty.effective == 0.0

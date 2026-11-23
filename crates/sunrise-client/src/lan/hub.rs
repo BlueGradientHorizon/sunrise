@@ -459,8 +459,6 @@ pub struct Hub {
     /// the other operators get a command's `[name: ...]` line (vanilla's
     /// broadcastToAdmins). False keeps it to the console's log.
     pub admin_feedback_to_ops: bool,
-    /// Whether bubble-column particle traffic yields to a backlogged connection.
-    pub protect_bubble_particles: bool,
     chat_type: i32,
     dimension_type: i32,
     clock_ids: Vec<i32>,
@@ -806,7 +804,6 @@ impl Hub {
             chat_spam_threshold: 0,
             command_spam_threshold: 0,
             admin_feedback_to_ops: true,
-            protect_bubble_particles: false,
             weather: (false, 0.0, 0.0),
             level_sync: Default::default(),
             chat_type,

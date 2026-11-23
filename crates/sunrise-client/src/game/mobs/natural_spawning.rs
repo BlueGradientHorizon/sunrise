@@ -431,7 +431,7 @@ impl<'g> GameLevel<'g, '_> {
         {
             return chunk;
         }
-        let chunk = self.game.world.chunks.get(&key).map(std::sync::Arc::as_ref);
+        let chunk = self.w.world.chunk_at(cx, cz);
         self.last_chunk.set(Some((key, chunk)));
         chunk
     }
@@ -493,10 +493,19 @@ impl<'g> GameLevel<'g, '_> {
         true
     }
     fn biome(&self, x: i32, y: i32, z: i32) -> Option<&BiomeInfo> {
-        let shape = &self.game.world.shape;
-        let y = y.clamp(shape.min_y, shape.max_y() - 1);
-        let id = self.chunk_at(x >> 4, z >> 4)?.biome(x, y, z);
-        Some(world_biomes!(self.game).get(id))
+        Some(self.w.biomes.get(self.noise_biome(x, y, z)?))
+    }
+    #[inline]
+    fn noise_biome(&self, x: i32, y: i32, z: i32) -> Option<u16> {
+        self.w
+            .world
+            .noise_biome_with_chunk(x, y, z, self.chunk_at(x >> 4, z >> 4))
+    }
+    #[inline]
+    fn light(&self, x: i32, y: i32, z: i32) -> u8 {
+        self.w
+            .world
+            .light_with_chunk(x, y, z, self.chunk_at(x >> 4, z >> 4))
     }
     /// The block whose noise cell `BiomeManager.getBiome` reads.
     fn zoomed(&self, x: i32, y: i32, z: i32) -> [i32; 3] {
@@ -701,8 +710,9 @@ impl SpawnLevel for GameLevel<'_, '_> {
             .is_within_bounds(f64::from(x), f64::from(z), 0.0)
     }
     fn state(&self, x: i32, y: i32, z: i32) -> BlockStateId {
-        self.chunk_at(x >> 4, z >> 4)
-            .map_or(self.game.world.air, |c| c.block(x & 15, y, z & 15))
+        self.w
+            .world
+            .block_with_chunk(x, y, z, self.chunk_at(x >> 4, z >> 4))
     }
     fn facts(&self) -> &BlockFacts {
         self.w.facts
@@ -716,34 +726,13 @@ impl SpawnLevel for GameLevel<'_, '_> {
     // Level.getBiome: the zoomed biome.
     fn biome_tag(&self, tag: &str, x: i32, y: i32, z: i32) -> bool {
         let [x, y, z] = self.zoomed(x, y, z);
-        let Some(biome) = self.biome(x, y, z) else {
-            return false;
-        };
-        self.w
-            .data
-            .biome_has(tag.trim_start_matches('#'), &biome.name)
+        self.w.spawn_biome_tag(tag, self.noise_biome(x, y, z))
     }
     fn sky_light(&self, x: i32, y: i32, z: i32) -> i32 {
-        if matches!(
-            self.w.dimension_type.id.as_str(),
-            "minecraft:the_nether" | "minecraft:the_end"
-        ) {
-            return 0;
-        }
-        if let Some(chunk) = self.chunk_at(x >> 4, z >> 4)
-            && let Some(s) = chunk.section_index(y)
-        {
-            return i32::from(chunk.sections[s].light(sunrise_client::chunk::index(x, y, z)) >> 4);
-        }
-        self.w.sky_light(x, y, z)
+        self.w.spawn_sky_light(|| self.light(x, y, z))
     }
     fn block_light(&self, x: i32, y: i32, z: i32) -> i32 {
-        if let Some(chunk) = self.chunk_at(x >> 4, z >> 4)
-            && let Some(s) = chunk.section_index(y)
-        {
-            return i32::from(chunk.sections[s].light(sunrise_client::chunk::index(x, y, z)) & 0xF);
-        }
-        self.w.block_light(x, y, z)
+        sunrise_client::mobs::spawn_rules::spawn_block_light(self.light(x, y, z))
     }
     fn sky_darken(&self) -> i32 {
         SpawnLevel::sky_darken(&self.w)
@@ -755,10 +744,8 @@ impl SpawnLevel for GameLevel<'_, '_> {
         self.w.sea_level()
     }
     fn world_surface(&self, x: i32, z: i32) -> i32 {
-        let bottom = self.game.world.layout().min_y();
-        self.chunk_at(x >> 4, z >> 4).map_or(bottom, |chunk| {
-            chunk.world_surface(x, z, |v| self.w.facts.is_air(BlockStateId(v)))
-        })
+        self.w
+            .spawn_world_surface(x, z, self.chunk_at(x >> 4, z >> 4))
     }
     fn peaceful(&self) -> bool {
         self.w.peaceful()

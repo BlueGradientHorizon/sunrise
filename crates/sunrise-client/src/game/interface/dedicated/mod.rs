@@ -1231,10 +1231,6 @@ impl Game<'_> {
                 .raw
                 .get(ADMIN_FEEDBACK_PROPERTY)
                 .is_none_or(|v| v.trim() != "false");
-            host.hub.protect_bubble_particles = props
-                .raw
-                .get("sunrise-protect-bubble-particles")
-                .is_some_and(|v| v.trim().eq_ignore_ascii_case("true"));
         }
         log("INFO", &startup_done(level_load_time));
         // DedicatedServer.initServer ends with saveEverything(false, true, true).

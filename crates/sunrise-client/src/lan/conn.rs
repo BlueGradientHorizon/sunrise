@@ -574,13 +574,6 @@ impl PlayerSender {
             self.pending.load(Ordering::Relaxed),
         )
     }
-
-    /// Whether optional effects should yield to this network connection's output.
-    pub fn output_backlogged(&self, queue_bytes: usize) -> bool {
-        !matches!(self.framing, sunrise_protocol::connection::Framing::Memory)
-            && (self.pending.load(Ordering::Relaxed) >= queue_bytes
-                || matches!(&self.to, To::Pool(outbox, _) if outbox.write_blocked.load(Ordering::Relaxed)))
-    }
     /// Several packets in order, as [`Self::send`] each: under one lock
     /// while the tick holds them. Shared bodies stay shared up to the wire.
     pub fn send_many<B: Into<Body>>(&self, bodies: impl IntoIterator<Item = B>) {

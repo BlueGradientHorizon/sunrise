@@ -524,8 +524,6 @@ def run_once(kind, bots, behaviour, args, out):
     if args.spread_bots:
         # A fixed spawn Y may be above the ground at some of the teleports.
         props['allow-flight'] = 'true'
-    if args.protect_bubble_particles:
-        props['sunrise-protect-bubble-particles'] = 'true'
     (directory / 'server.properties').write_text(''.join(f'{k}={v}\n' for k, v in props.items()))
     (directory / 'eula.txt').write_text('eula=true\n')
     command = server_command(kind, directory, args, props)
@@ -762,8 +760,6 @@ def main():
                            help='teleport idle bots onto a grid in a flat world for natural spawning')
     scenarios.add_argument('--water-stands', type=int, default=0, metavar='COUNT',
                            help='summon armor stands into a bubble-column tank near idle bots')
-    parser.add_argument('--protect-bubble-particles', action='store_true',
-                        help='enable the server\'s bubble-column particle backpressure protection')
     parser.add_argument('--ground', action='store_true',
                         help='a flat survival world, the bots walking on its ground and saying so in every move')
     parser.add_argument('--bots-via', default='', help="a command prefix to run the bots elsewhere ('ssh host')")
@@ -780,8 +776,6 @@ def main():
         parser.error('view and simulation distances must be between 2 and 32 chunks')
     if args.spread_bots < 0 or args.water_stands < 0:
         parser.error('entity load scenario values must be nonnegative')
-    if args.protect_bubble_particles and not args.water_stands:
-        parser.error('--protect-bubble-particles requires --water-stands')
     if args.spread_bots or args.water_stands:
         if args.servers != 'sunrise' or args.behaviour != 'idle' or not args.ground:
             parser.error('entity load scenarios require --servers sunrise --behaviour idle --ground')

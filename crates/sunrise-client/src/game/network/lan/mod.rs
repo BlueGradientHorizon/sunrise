@@ -55,7 +55,6 @@ pub struct LanSettings {
 
 pub(super) struct LanHost {
     pub hub: Hub,
-    pub(super) bubble_particle_budget: super::lan_particles::BubbleParticleBudget,
     /// Acknowledged joins whose runtime destination closed before placement.
     spawn_joins: Vec<(u32, Configured)>,
     /// The mods heard that everyone still here leaves with the server.
@@ -1302,7 +1301,6 @@ impl Game<'_> {
         self.lan = Some(LanHost {
             players_told_left: false,
             hub,
-            bubble_particle_budget: Default::default(),
             spawn_joins: Vec::new(),
             settings: LanSettings { port, ..settings },
             play: HashMap::new(),
@@ -6005,7 +6003,6 @@ mod merchant_packet_tests {
             hub.guests.push(guest);
             game.lan = Some(super::LanHost {
                 hub,
-                bubble_particle_budget: Default::default(),
                 spawn_joins: Vec::new(),
                 players_told_left: false,
                 settings: super::LanSettings {
