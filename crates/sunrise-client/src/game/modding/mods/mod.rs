@@ -1271,6 +1271,11 @@ fn content_overlay_with_refusals(
                 detail,
             }));
         }
+        // A built native package keeps its code and Parts only with the content it declared:
+        // refusing the content refuses the package, so no dependent starts without it.
+        if sources.native.built().iter().any(|native| native.id == id) {
+            return Err(format!("{id}: native content refused at admission: {detail}").into());
+        }
         log::warn!("Sunrise: mod {id} content not loaded: {detail}");
     }
     for m in &manifests {
