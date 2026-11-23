@@ -33,7 +33,7 @@ impl Game<'_> {
     }
     fn cast_view_ray(&self, max_distance: Option<f64>) -> Option<(f32, mod_api::Hit)> {
         use sunrise_client::collisions::SceneCollisions;
-        use sunrise_core::geometry::{Axis, Vec3, traverse_blocks};
+        use sunrise_core::geometry::{Axis, Vec3, traverse_blocks_window};
         use sunrise_world::{
             collision_context::{
                 CollisionContext, CollisionEntity, CollisionItem, EntityContextKind,
@@ -63,12 +63,11 @@ impl Game<'_> {
                 best
             }
         });
-        let walk_from = if t_start > 0.0 {
-            ray_at(t_start)
-        } else {
-            clip_from
-        };
-        let walk_to = ray_at(t_end);
+        // The walk keeps the whole segment's nudge, stepping state and candidate order; the loaded
+        // span only says where its visits begin and end.
+        let total = max_distance.unwrap_or(t_end);
+        let walk_to = ray_at(total);
+        let window = (t_start / total, t_end / total);
         let mut rays = super::explosion::ColliderRays {
             scene: SceneCollisions {
                 world: &self.world,
@@ -93,7 +92,7 @@ impl Game<'_> {
             }),
         };
         let (bottom_y, top_y) = (self.world.bottom_y(), self.world.top_y());
-        let (state, hit) = traverse_blocks(walk_from, walk_to, usize::MAX, |p| {
+        let (state, hit) = traverse_blocks_window(clip_from, walk_to, window, usize::MAX, |p| {
             if !(bottom_y..top_y).contains(&p.y)
                 || !self.world.chunks.contains_key(&(p.x >> 4, p.z >> 4))
             {
