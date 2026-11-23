@@ -76,9 +76,13 @@ impl OverworldGenerator {
             &generator,
             &settings_json,
             structures,
-            Some((level_min_y, level_height)),
+            None,
             None,
         )?;
+        // `FlatLevelSource` has no noise settings: its level's build height bounds it, not the
+        // overworld noise range the data above comes with.
+        pipeline.settings.level_min_y = level_min_y;
+        pipeline.settings.level_height = level_height;
         let mut states = Vec::new();
         let mut null = Vec::new();
         for (block, height) in &flat.layers {
