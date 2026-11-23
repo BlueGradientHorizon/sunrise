@@ -421,6 +421,8 @@ mod tests {
             }
         }
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
+            fixture_resident_column(&mut game.world, (-1, 0));
             game.options.dedicated = Some(Vec::new());
             let boat_id = game.take_entity_id();
             game.boats.push(super::super::boats::Boat::new(
@@ -471,6 +473,7 @@ mod tests {
     fn a_vehicle_owned_trident_does_not_scale_damage_as_a_living_attacker() {
         use sunrise_client::projectiles::Hit;
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             game.options.dedicated = Some(Vec::new());
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             game.world.health_rules.difficulty = sunrise_world::food::Difficulty::Easy;
@@ -683,6 +686,7 @@ mod tests {
     #[ignore = "daily"]
     fn trident_and_rocket_handles_narrow_and_turn_with_their_own_random() {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             game.options.dedicated = Some(Vec::new());
             let player = player(game);
             let id = game.take_entity_id();
@@ -789,6 +793,7 @@ mod tests {
     #[ignore = "daily"]
     fn deflection_follows_vanilla_for_wind_charges_owners_random_and_known_speed() {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             game.options.dedicated = Some(Vec::new());
             let player = player(game);
             let kind = game
@@ -879,6 +884,7 @@ mod tests {
     #[ignore = "daily"]
     fn momentum_follows_a_boats_displacement_and_a_refused_blow_still_attacks() {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             game.options.dedicated = Some(Vec::new());
             // A boat that moved along +Z while its velocity points along +X.
             let id = game.take_entity_id();
