@@ -2,7 +2,8 @@
 //! a mod's `gui_paint`. A mod's buffer is checked first ([`undrawable`]): one op the paint
 //! cannot draw refuses the buffer, and nothing of it is drawn.
 use super::{Blend, GuiDraw, paint_with};
-use crate::hud::{HudAtlas, HudBatch};
+use crate::hud::{GuiSprite, HudAtlas, HudBatch};
+use std::borrow::Cow;
 
 /// What draws a `GuiDraw::Item`: the stack of hotbar slot `slot` (0-8, 40 = the off hand).
 pub trait GuiItems {
@@ -12,6 +13,14 @@ pub trait GuiItems {
     /// `GuiGraphicsExtractor.itemDecorations(font, stack, x, y)`: the slot's count, bar and
     /// cooldown; nothing for an empty slot.
     fn decorations(&mut self, batch: &mut HudBatch, slot: u32, x: i32, y: i32);
+}
+
+/// What draws a `GuiDraw::PlayerFace`: the skin of a player by UUID.
+pub trait GuiFaces {
+    /// The skin texture to draw `uuid`'s face from now, as a `Blit` names it: the player's own
+    /// once it is in the atlas, else the UUID's default skin. It never waits for a lookup or a
+    /// download, and borrows the name where it can: it is asked for every face, every frame.
+    fn skin(&mut self, uuid: u128) -> Cow<'_, str>;
 }
 
 /// Why [`paint_checked`] drew nothing: the op it could not draw.
@@ -39,16 +48,15 @@ pub fn item_slot(slot: u32) -> bool {
 }
 
 /// The first op of `draws` [`paint_checked`] cannot draw, with its index. It reads the buffer
-/// and allocates only a sprite's name, once.
+/// and allocates a sprite's name only to report its refusal.
 pub fn undrawable(atlas: &HudAtlas, draws: &[GuiDraw]) -> Option<(usize, Undrawable)> {
-    let mut name = String::new();
     draws
         .iter()
         .enumerate()
-        .find_map(|(i, d)| refusal(atlas, d, &mut name).map(|why| (i, why)))
+        .find_map(|(i, d)| refusal(atlas, d).map(|why| (i, why)))
 }
 
-fn refusal(atlas: &HudAtlas, draw: &GuiDraw, name: &mut String) -> Option<Undrawable> {
+fn refusal(atlas: &HudAtlas, draw: &GuiDraw) -> Option<Undrawable> {
     match draw {
         GuiDraw::Item {
             slot, scale, pivot, ..
@@ -64,7 +72,7 @@ fn refusal(atlas: &HudAtlas, draw: &GuiDraw, name: &mut String) -> Option<Undraw
         GuiDraw::Blit {
             texture, uv, tex, ..
         } => {
-            if !atlas.sprites.contains_key(texture.as_ref()) {
+            if atlas.blit_rect(texture.as_ref()).is_none() {
                 Some(Undrawable::BlitTexture(texture.to_string()))
             } else if tex[0] <= 0 || tex[1] <= 0 || !uv.iter().all(|v| v.is_finite()) {
                 Some(Undrawable::BlitSize)
@@ -84,26 +92,18 @@ fn refusal(atlas: &HudAtlas, draw: &GuiDraw, name: &mut String) -> Option<Undraw
             if region.is_some_and(|[sw, sh, ..]| sw <= 0 || sh <= 0) {
                 return Some(Undrawable::SpriteRegion);
             }
-            // As `paint` looks it up: a mob effect sprite (namespaced or not) by its own name,
-            // the others under `gui/sprites/`. A mod's missing effect sprite is refused, not
-            // drawn as the missing texture.
-            let effect = sprite.starts_with("mob_effect/")
-                || sprite
-                    .split_once(':')
-                    .is_some_and(|(_, path)| path.starts_with("mob_effect/"));
-            name.clear();
-            if !effect {
-                name.push_str("gui/sprites/");
-            }
-            name.push_str(sprite);
-            let known = atlas.sprites.contains_key(name.as_str());
+            // As `paint` looks it up, by GUI id. A sprite the GUI atlas lists as missing, or does
+            // not own, is refused, not drawn as the missing texture.
+            let known = matches!(atlas.gui_lookup(sprite), Some(GuiSprite::Present { .. }));
             (!known).then(|| Undrawable::Sprite(sprite.to_string()))
         }
         GuiDraw::AtlasSprite { sprite, .. } => {
             let known = atlas.sprites.contains_key(sprite.as_ref());
             (!known).then(|| Undrawable::Sprite(sprite.to_string()))
         }
+        // A face always has a skin to draw: the UUID's default until its own is uploaded.
         GuiDraw::Fill { .. }
+        | GuiDraw::PlayerFace { .. }
         | GuiDraw::FillGradient { .. }
         | GuiDraw::Text { .. }
         | GuiDraw::Push(_)
@@ -120,21 +120,23 @@ pub fn paint_items(
     draws: &[GuiDraw],
     items: &mut dyn GuiItems,
 ) {
-    paint_with(batch, atlas, draws, Some(items));
+    paint_with(batch, atlas, draws, Some(items), None);
 }
 
-/// [`paint_items`] for a buffer a mod sent: an op it cannot draw ([`undrawable`]) refuses the
-/// whole buffer, with that op's index, and nothing of it is drawn.
+/// [`paint_items`] for a buffer a mod sent, each `PlayerFace` with the skin `faces` gives: an op
+/// it cannot draw ([`undrawable`]) refuses the whole buffer, with that op's index, and nothing of
+/// it is drawn.
 pub fn paint_checked(
     batch: &mut HudBatch,
     atlas: &HudAtlas,
     draws: &[GuiDraw],
     items: &mut dyn GuiItems,
+    faces: &mut dyn GuiFaces,
 ) -> Result<(), (usize, Undrawable)> {
     if let Some(refused) = undrawable(atlas, draws) {
         return Err(refused);
     }
-    paint_items(batch, atlas, draws, items);
+    paint_with(batch, atlas, draws, Some(items), Some(faces));
     Ok(())
 }
 
