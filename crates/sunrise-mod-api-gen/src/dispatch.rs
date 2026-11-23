@@ -1605,13 +1605,14 @@ pub(super) fn emit<'a>(
                     )
                 } else if name == "entity_inside" {
                     let inside_stage = fresh_name("inside_stage", &mut used);
-                    let invoke_inside = call(&part_item, &listener_id, "continue;", "break");
+                    let invoke_inside = call(&part_item, &listener_id, "return false;", "break");
                     format!(
                         "for ({listener_id}, {part_item}) in super::entered_parts(HookId::{hook_id}, {part_list}, \"{name}\") {{
-                             let mut {inside_stage} = InsideEffects::staged_for({listener_id});
-                             let mut {event} = {event_type} {{ dimension, entity, kind, state, pos, precise, effects: &mut {inside_stage} }};
-                             {invoke_inside}
-                             effects.absorb_step({inside_stage});
+                             effects.stage({listener_id}, |{inside_stage}| {{
+                                 let mut {event} = {event_type} {{ dimension, entity, kind, state, pos, precise, effects: {inside_stage} }};
+                                 {invoke_inside}
+                                 true
+                             }});
                          }}"
                     )
                 } else if name == "tooltip_image" {

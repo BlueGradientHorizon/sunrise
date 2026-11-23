@@ -128,13 +128,12 @@ mod inside_walk_tests {
             // The production binding's own shape: each part's callback staged
             // into its own collector and absorbed only on normal return.
             inside_fire: |_level, _dimension, _entity, _kind, _state, at, _precise, effects| {
-                let mut staged = mod_api::InsideEffects::default();
-                let fired = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    fire_like_a_part(at, &mut staged);
-                }));
-                if fired.is_ok() {
-                    effects.absorb_step(staged);
-                }
+                effects.stage("mob-inside-walk-test", |staged| {
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        fire_like_a_part(at, staged);
+                    }))
+                    .is_ok()
+                });
             },
             state_to_api: |_| None,
             state_to_engine: |_| None,
@@ -1146,7 +1145,7 @@ pub enum Pause {
     /// A vehicle must propagate the selected fall before this move continues.
     FallToPassengers(super::living::PassengerFall),
     /// The mob's `InsideEffects` collector is ready to flush against the live level.
-    InsideEffects(Box<InsidePause>),
+    InsideEffects(InsidePause),
 }
 
 #[derive(Debug)]
@@ -1784,7 +1783,7 @@ fn continue_ai_tail(
                 } else {
                     let effects = std::mem::take(&mut walk.effects);
                     if pause_damage && !effects.is_empty() {
-                        return TickProgress::Paused(Pause::InsideEffects(Box::new(InsidePause {
+                        return TickProgress::Paused(Pause::InsideEffects(InsidePause {
                             mob: m.id,
                             join: m.join,
                             effects,
@@ -1794,7 +1793,7 @@ fn continue_ai_tail(
                             } else {
                                 InsideResume::AiStep
                             },
-                        })));
+                        }));
                     }
                     flush_mob_inside_hostless(m, w, level, events, effects);
                     AiStage::Freeze
@@ -1804,7 +1803,7 @@ fn continue_ai_tail(
                 if walk.run(m, w, level, events, pause_damage) {
                     let effects = std::mem::take(&mut walk.effects);
                     if pause_damage && !effects.is_empty() {
-                        return TickProgress::Paused(Pause::InsideEffects(Box::new(InsidePause {
+                        return TickProgress::Paused(Pause::InsideEffects(InsidePause {
                             mob: m.id,
                             join: m.join,
                             effects,
@@ -1814,7 +1813,7 @@ fn continue_ai_tail(
                             } else {
                                 InsideResume::AiStep
                             },
-                        })));
+                        }));
                     }
                     flush_mob_inside_hostless(m, w, level, events, effects);
                     AiStage::Freeze

@@ -256,13 +256,15 @@ pub enum EntityWrite {
     },
 }
 
+#[derive(Clone, Copy)]
 struct QueuedCallback {
     owner: Option<&'static str>,
-    callback: Option<Box<dyn FnMut(&mut InsideEntityView<'_>)>>,
+    storage: usize,
+    slot: usize,
 }
 
 impl QueuedCallback {
-    fn invoke(&self, call: impl FnOnce()) {
+    fn invoke(self, call: impl FnOnce()) {
         let _mark = self
             .owner
             .map(|id| crate::runtime::mark_mod(id, "entity_inside"));
@@ -273,26 +275,110 @@ impl QueuedCallback {
             call,
         );
     }
+
+    fn dispose(self, captures: &mut [Box<dyn CaptureStorage>]) {
+        self.invoke(|| captures[self.storage].dispose(self.slot));
+    }
 }
 
-impl Drop for QueuedCallback {
-    fn drop(&mut self) {
-        if let Some(callback) = self.callback.take() {
-            // Even an unexecuted callback runs mod code when its captures are dropped.
-            self.invoke(move || drop(callback));
+// Type erasure lives at the reusable bucket, not at every closure. Each
+// callback enters and leaves its slot independently, including on unwind.
+trait CaptureStorage {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
+    fn call(&mut self, slot: usize, view: &mut InsideEntityView<'_>);
+    fn dispose(&mut self, slot: usize);
+    fn clear(&mut self);
+}
+
+impl<F: FnMut(&mut InsideEntityView<'_>) + 'static> CaptureStorage for Vec<Option<F>> {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+
+    fn call(&mut self, slot: usize, view: &mut InsideEntityView<'_>) {
+        self[slot].as_mut().expect("queued inside callback")(view);
+    }
+
+    fn dispose(&mut self, slot: usize) {
+        // Remove the capture first: its destructor is allowed to panic.
+        drop(self[slot].take());
+    }
+
+    fn clear(&mut self) {
+        debug_assert!(self.iter().all(Option::is_none));
+        self.truncate(0);
+    }
+}
+
+enum Action {
+    Effect(InsideEffect),
+    Builtin(BuiltinInsideAction),
+    Callback(QueuedCallback),
+}
+
+impl Action {
+    fn dispose(self, captures: &mut [Box<dyn CaptureStorage>]) {
+        if let Self::Callback(callback) = self {
+            callback.dispose(captures);
         }
     }
 }
 
-enum StepAction {
-    Builtin(BuiltinInsideAction),
-    Callback(QueuedCallback),
+#[derive(Default)]
+struct SweepScratch {
+    before: [Vec<Action>; 5],
+    after: [Vec<Action>; 5],
+    planned: Vec<Action>,
+    by_type: std::collections::HashMap<std::any::TypeId, usize>,
+    captures: Vec<Box<dyn CaptureStorage>>,
 }
 
-enum PlannedAction {
-    Effect(InsideEffect),
-    Builtin(BuiltinInsideAction),
-    Callback(QueuedCallback),
+impl SweepScratch {
+    fn queue<F: FnMut(&mut InsideEntityView<'_>) + 'static>(
+        &mut self,
+        owner: Option<&'static str>,
+        callback: F,
+    ) -> Action {
+        let storage = *self
+            .by_type
+            .entry(std::any::TypeId::of::<F>())
+            .or_insert_with(|| {
+                let index = self.captures.len();
+                self.captures.push(Box::<Vec<Option<F>>>::default());
+                index
+            });
+        let slots = self.captures[storage]
+            .as_any_mut()
+            .downcast_mut::<Vec<Option<F>>>()
+            .expect("inside callback bucket matches its type ID");
+        let slot = slots.len();
+        slots.push(Some(callback));
+        Action::Callback(QueuedCallback {
+            owner,
+            storage,
+            slot,
+        })
+    }
+
+    fn discard(&mut self) {
+        for action in self.planned.drain(..).chain(
+            self.before
+                .iter_mut()
+                .chain(&mut self.after)
+                .flat_map(|slot| slot.drain(..)),
+        ) {
+            action.dispose(&mut self.captures);
+        }
+        for buffer in &mut self.captures {
+            buffer.clear();
+        }
+    }
+}
+
+thread_local! {
+    // One reusable collector per tick thread, lent exclusively to one sweep.
+    // Nested sweeps can take their own storage; no callback runs under the slot's borrow.
+    static SPARE_SWEEP: std::cell::RefCell<Option<Box<SweepScratch>>> = const { std::cell::RefCell::new(None) };
 }
 
 /// `InsideBlockEffectApplier.StepBasedCollector`: the effects and owned callbacks of one
@@ -304,54 +390,79 @@ enum PlannedAction {
 // no wire: holds owned Rust callbacks queued for the current sweep's flush; not a serializable payload.
 // exhaustive: the collector's state is private to the crate; a part only calls its methods.
 pub struct InsideEffects {
-    /// Explicit mod owner attached to a staging collector by generated dispatch.
-    default_owner: Option<&'static str>,
-    /// `lastStep`: the step the walk last advanced, `-1` before the first.
+    owner: Option<&'static str>,
     last_step: i32,
-    /// `effectsInStep`: the effect types queued for the current step.
     in_step: [bool; 5],
-    /// `beforeEffectsInStep`: the callbacks and built-ins asked before each effect this step.
-    before: [Vec<StepAction>; 5],
-    /// `afterEffectsInStep`: the callbacks and built-ins asked after each effect this step.
-    after: [Vec<StepAction>; 5],
-    /// `finalEffects`: the flushed plan, steps in the order they were reached.
-    planned: Vec<PlannedAction>,
+    scratch: Option<Box<SweepScratch>>,
 }
 
 impl Default for InsideEffects {
     fn default() -> Self {
         Self {
-            default_owner: None,
+            owner: None,
             last_step: -1,
             in_step: [false; 5],
-            before: std::array::from_fn(|_| Vec::new()),
-            after: std::array::from_fn(|_| Vec::new()),
-            planned: Vec::new(),
+            scratch: None,
+        }
+    }
+}
+
+impl Drop for InsideEffects {
+    fn drop(&mut self) {
+        if let Some(mut scratch) = self.scratch.take() {
+            scratch.discard();
+            let _ = SPARE_SWEEP.try_with(|slot| slot.replace(Some(scratch)));
         }
     }
 }
 
 impl std::fmt::Debug for InsideEffects {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let before: usize = self.before.iter().map(Vec::len).sum();
-        let after: usize = self.after.iter().map(Vec::len).sum();
         f.debug_struct("InsideEffects")
             .field("last_step", &self.last_step)
             .field("in_step", &self.in_step)
-            .field("before_count", &before)
-            .field("after_count", &after)
-            .field("planned_count", &self.planned.len())
+            .field(
+                "planned_count",
+                &self.scratch.as_ref().map_or(0, |s| s.planned.len()),
+            )
             .finish()
     }
 }
 
 impl InsideEffects {
-    /// Construct a staging collector owned by `owner` so every callback queued by
-    /// that part retains its explicit mod id regardless of crash instrumentation.
-    pub(crate) fn staged_for(owner: &'static str) -> Self {
-        Self {
-            default_owner: Some(owner),
-            ..Self::default()
+    fn scratch(&mut self) -> &mut SweepScratch {
+        self.scratch
+            .get_or_insert_with(|| SPARE_SWEEP.with(|slot| slot.take()).unwrap_or_default())
+    }
+
+    /// Checkpoint the current step. Only an answered listener keeps its effects and
+    /// captures; a listener with no writes never checks out scratch just to stage them.
+    // hidden: engine-internal per-listener collector checkpoint.
+    #[doc(hidden)]
+    pub fn stage(&mut self, owner: &'static str, listen: impl FnOnce(&mut Self) -> bool) {
+        let in_step = self.in_step;
+        let (before, after) = self.scratch.as_ref().map_or(([0; 5], [0; 5]), |s| {
+            (
+                std::array::from_fn(|i| s.before[i].len()),
+                std::array::from_fn(|i| s.after[i].len()),
+            )
+        });
+        let old_owner = self.owner.replace(owner);
+        let accepted = listen(self);
+        self.owner = old_owner;
+        if accepted {
+            return;
+        }
+        self.in_step = in_step;
+        if let Some(scratch) = &mut self.scratch {
+            for i in 0..5 {
+                for action in scratch.before[i]
+                    .drain(before[i]..)
+                    .chain(scratch.after[i].drain(after[i]..))
+                {
+                    action.dispose(&mut scratch.captures);
+                }
+            }
         }
     }
 
@@ -377,59 +488,45 @@ impl InsideEffects {
         effect: InsideEffect,
         callback: impl FnMut(&mut InsideEntityView<'_>) + 'static,
     ) {
-        self.before[effect as usize].push(StepAction::Callback(QueuedCallback {
-            owner: self.default_owner,
-            callback: Some(Box::new(callback)),
-        }));
+        let owner = self.owner;
+        let scratch = self.scratch();
+        let action = scratch.queue(owner, callback);
+        scratch.before[effect as usize].push(action);
     }
 
     /// `runAfter`: queue a callback that runs just after `effect` in the flush order.
+    /// It runs even when nothing queued `effect` itself that step, as vanilla's do.
     pub fn run_after(
         &mut self,
         effect: InsideEffect,
         callback: impl FnMut(&mut InsideEntityView<'_>) + 'static,
     ) {
-        self.after[effect as usize].push(StepAction::Callback(QueuedCallback {
-            owner: self.default_owner,
-            callback: Some(Box::new(callback)),
-        }));
+        let owner = self.owner;
+        let scratch = self.scratch();
+        let action = scratch.queue(owner, callback);
+        scratch.after[effect as usize].push(action);
     }
 
     /// Queue a vanilla built-in action just before `effect` in the flush order.
     // hidden: engine-internal built-in action queuing for vanilla blocks.
     #[doc(hidden)]
     pub fn run_before_builtin(&mut self, effect: InsideEffect, action: BuiltinInsideAction) {
-        self.before[effect as usize].push(StepAction::Builtin(action));
+        self.scratch().before[effect as usize].push(Action::Builtin(action));
     }
 
     /// Queue a vanilla built-in action just after `effect` in the flush order.
     // hidden: engine-internal built-in action queuing for vanilla blocks.
     #[doc(hidden)]
     pub fn run_after_builtin(&mut self, effect: InsideEffect, action: BuiltinInsideAction) {
-        self.after[effect as usize].push(StepAction::Builtin(action));
+        self.scratch().after[effect as usize].push(Action::Builtin(action));
     }
 
-    /// Commit another collector's current step into this one: a staged callback
-    /// answered, so what it queued joins this step. The staged collector must not
-    /// have flushed (its plan stays empty); a panicking callback is never absorbed.
-    // hidden: engine-internal step commit from a completed part dispatch.
-    #[doc(hidden)]
-    pub fn absorb_step(&mut self, mut staged: Self) {
-        for index in 0..5 {
-            self.in_step[index] |= staged.in_step[index];
-            let before = std::mem::take(&mut staged.before[index]);
-            self.before[index].extend(before);
-            let after = std::mem::take(&mut staged.after[index]);
-            self.after[index].extend(after);
-        }
-    }
-
-    /// Whether nothing is queued: the walk builds no collector work when no part listens.
+    /// Whether nothing is queued, neither a built-in nor a mod callback.
     pub fn is_empty(&self) -> bool {
-        self.planned.is_empty()
-            && self.in_step == [false; 5]
-            && self.before.iter().all(Vec::is_empty)
-            && self.after.iter().all(Vec::is_empty)
+        self.in_step == [false; 5]
+            && self.scratch.as_ref().is_none_or(|s| {
+                s.planned.is_empty() && s.before.iter().chain(&s.after).all(Vec::is_empty)
+            })
     }
 
     /// `applyAndClear`: flush the last step and run every queued effect and callback in
@@ -439,52 +536,54 @@ impl InsideEffects {
     pub fn apply_and_clear(&mut self, access: &mut dyn InsideEntityAccess) {
         self.flush_step();
         self.last_step = -1;
-        let planned = std::mem::take(&mut self.planned);
-        for action in planned {
+        let Some(scratch) = &mut self.scratch else {
+            return;
+        };
+        // Leave unconsumed actions in the plan if engine work unwinds. Drop
+        // still needs their ownership records to fence capture destructors.
+        scratch.planned.reverse();
+        while let Some(action) = scratch.planned.pop() {
             if !access.is_alive() {
-                break;
+                action.dispose(&mut scratch.captures);
+                continue;
             }
             match action {
-                PlannedAction::Effect(effect) => access.apply_effect(effect),
-                PlannedAction::Builtin(builtin) => access.apply_builtin(builtin),
-                PlannedAction::Callback(mut queued) => {
-                    if queued
+                Action::Effect(effect) => access.apply_effect(effect),
+                Action::Builtin(builtin) => access.apply_builtin(builtin),
+                Action::Callback(queued) => {
+                    if !queued
                         .owner
                         .is_some_and(|id| crate::runtime::poisoned(crate::HookId::EntityInside, id))
                     {
-                        continue;
+                        // The capture stays in its slot across a body unwind. Its separate
+                        // destruction cannot cause a second panic during that unwind.
+                        queued.invoke(|| {
+                            scratch.captures[queued.storage]
+                                .call(queued.slot, &mut InsideEntityView::new(access))
+                        });
                     }
-                    if let Some(mut callback) = queued.callback.take() {
-                        // Keep owned captures alive outside the invocation unwind frame so a
-                        // body panic cannot run a capture's Drop during unwind and abort;
-                        // dispose of the closure separately through the same boundary.
-                        queued.invoke(|| callback(&mut InsideEntityView::new(access)));
-                        queued.invoke(move || drop(callback));
-                    }
+                    queued.dispose(&mut scratch.captures);
                 }
             }
         }
+        for buffer in &mut scratch.captures {
+            buffer.clear();
+        }
     }
 
-    /// `flushStep`: move this step's callbacks, built-ins and effects into the plan, in
-    /// `InsideEffect` order: before the effect, the effect itself, then after it.
+    /// Flush the step in effect order: before the effect, the effect, then after.
     fn flush_step(&mut self) {
+        let in_step = std::mem::take(&mut self.in_step);
+        if self.scratch.is_none() && in_step == [false; 5] {
+            return;
+        }
+        let scratch = self.scratch();
         for (index, effect) in EFFECT_ORDER.into_iter().enumerate() {
-            for action in self.before[index].drain(..) {
-                self.planned.push(match action {
-                    StepAction::Builtin(b) => PlannedAction::Builtin(b),
-                    StepAction::Callback(c) => PlannedAction::Callback(c),
-                });
+            scratch.planned.append(&mut scratch.before[index]);
+            if in_step[index] {
+                scratch.planned.push(Action::Effect(effect));
             }
-            if std::mem::take(&mut self.in_step[index]) {
-                self.planned.push(PlannedAction::Effect(effect));
-            }
-            for action in self.after[index].drain(..) {
-                self.planned.push(match action {
-                    StepAction::Builtin(b) => PlannedAction::Builtin(b),
-                    StepAction::Callback(c) => PlannedAction::Callback(c),
-                });
-            }
+            scratch.planned.append(&mut scratch.after[index]);
         }
     }
 }
@@ -689,6 +788,30 @@ mod tests {
         assert!(effects.is_empty());
     }
 
+    #[test]
+    fn successive_builtin_only_sweeps_do_not_replay_old_actions() {
+        let mut effects = InsideEffects::default();
+        let mut access = RecordingAccess::new();
+        for _ in 0..2 {
+            effects.advance_step(0);
+            effects.apply(InsideEffect::Freeze);
+            effects.run_after_builtin(InsideEffect::FireIgnite, BuiltinInsideAction::FireHurt(1.0));
+            effects.apply(InsideEffect::Extinguish);
+            effects.apply_and_clear(&mut access);
+        }
+        assert_eq!(
+            access.log,
+            [
+                "builtin:Freeze",
+                "action:FireHurt(1.0)",
+                "builtin:Extinguish",
+                "builtin:Freeze",
+                "action:FireHurt(1.0)",
+                "builtin:Extinguish"
+            ]
+        );
+    }
+
     /// A panicking callback disables only its owning mod for `entity_inside`, keeps earlier
     /// writes, lets other mods' callbacks and built-in effects run, queues a panic notice
     /// naming the panicking mod, and non-panic refusals (`set_block` returning `false`)
@@ -711,37 +834,39 @@ mod tests {
 
                 let mut effects = InsideEffects::default();
                 effects.advance_step(0);
-                // Explicit owner from staged_for works without any crash instrumentation backend.
-                let mut staged_a = InsideEffects::staged_for("mod-a");
-                staged_a.run_before(InsideEffect::Freeze, |view| {
-                    view.push([1.0, 0.0, 0.0]);
-                });
+                // Explicit owner from staging works without a crash instrumentation backend.
                 let depth = std::rc::Rc::new(std::cell::Cell::new(0));
-                let observed_depth = depth.clone();
-                staged_a.run_after(InsideEffect::Freeze, move |view| {
-                    observed_depth.set(crate::__private::hook_dispatch_depth());
-                    view.push([4.0, 0.0, 0.0]);
-                    panic!("mod-a callback boom");
+                effects.stage("mod-a", |staged_a| {
+                    staged_a.run_before(InsideEffect::Freeze, |view| {
+                        view.push([1.0, 0.0, 0.0]);
+                    });
+                    let observed_depth = depth.clone();
+                    staged_a.run_after(InsideEffect::Freeze, move |view| {
+                        observed_depth.set(crate::__private::hook_dispatch_depth());
+                        view.push([4.0, 0.0, 0.0]);
+                        panic!("mod-a callback boom");
+                    });
+                    staged_a.run_after(InsideEffect::FireIgnite, |view| {
+                        view.push([2.0, 0.0, 0.0]);
+                    });
+                    true
                 });
-                staged_a.run_after(InsideEffect::FireIgnite, |view| {
-                    view.push([2.0, 0.0, 0.0]);
-                });
-                effects.absorb_step(staged_a);
 
-                let mut staged_b = InsideEffects::staged_for("mod-b");
-                staged_b.run_after(InsideEffect::FireIgnite, move |view| {
-                    assert!(!view.set_block([0, 64, 0], invalid));
-                    assert!(
-                        !view.set_block([0, 64, 0], invalid),
-                        "non-panic refusal returns false every time without latching"
-                    );
-                    assert!(
-                        view.set_block([0, 64, 0], valid),
-                        "subsequent valid call succeeds after refusals"
-                    );
-                    view.push([3.0, 0.0, 0.0]);
+                effects.stage("mod-b", |staged_b| {
+                    staged_b.run_after(InsideEffect::FireIgnite, move |view| {
+                        assert!(!view.set_block([0, 64, 0], invalid));
+                        assert!(
+                            !view.set_block([0, 64, 0], invalid),
+                            "non-panic refusal returns false every time without latching"
+                        );
+                        assert!(
+                            view.set_block([0, 64, 0], valid),
+                            "subsequent valid call succeeds after refusals"
+                        );
+                        view.push([3.0, 0.0, 0.0]);
+                    });
+                    true
                 });
-                effects.absorb_step(staged_b);
                 effects.apply(InsideEffect::Freeze);
                 effects.apply(InsideEffect::FireIgnite);
 
@@ -804,16 +929,17 @@ mod tests {
                 // Case 1: death-discard drops remaining queued callback whose capture panics on Drop.
                 let mut effects = InsideEffects::default();
                 effects.advance_step(0);
-                let mut staged = InsideEffects::staged_for("drop-death");
-                staged.run_before(InsideEffect::Freeze, |view| {
-                    view.hurt("minecraft:generic", 100.0);
+                effects.stage("drop-death", |staged| {
+                    staged.run_before(InsideEffect::Freeze, |view| {
+                        view.hurt("minecraft:generic", 100.0);
+                    });
+                    let bomb = PanicOnDrop("death-drop boom");
+                    staged.run_after(InsideEffect::Freeze, move |view| {
+                        let _keep = &bomb;
+                        view.push([1.0, 0.0, 0.0]);
+                    });
+                    true
                 });
-                let bomb = PanicOnDrop("death-drop boom");
-                staged.run_after(InsideEffect::Freeze, move |view| {
-                    let _keep = &bomb;
-                    view.push([1.0, 0.0, 0.0]);
-                });
-                effects.absorb_step(staged);
                 effects.run_after_builtin(
                     InsideEffect::FireIgnite,
                     BuiltinInsideAction::FireHurt(1.0),
@@ -827,14 +953,14 @@ mod tests {
                     "drop-death"
                 ));
 
-                // Case 2: rejected staging collector dropped without absorb_step contains panicking Drop.
-                {
-                    let mut rejected = InsideEffects::staged_for("drop-staged");
+                // Case 2: rolling back a rejected listener contains panicking Drop.
+                effects.stage("drop-staged", |rejected| {
                     let bomb = PanicOnDrop("rejected-stage boom");
                     rejected.run_before(InsideEffect::Extinguish, move |_view| {
                         let _keep = &bomb;
                     });
-                }
+                    false
+                });
                 assert!(crate::runtime::poisoned(
                     crate::HookId::EntityInside,
                     "drop-staged"
@@ -880,18 +1006,20 @@ mod tests {
             || {
                 let mut effects = InsideEffects::default();
                 effects.advance_step(0);
-                let mut bad = InsideEffects::staged_for("double-boom");
-                let bomb = PanicOnDrop("capture-drop boom");
-                bad.run_before(InsideEffect::Freeze, move |_view| {
-                    let _keep = &bomb;
-                    panic!("body boom");
+                effects.stage("double-boom", |bad| {
+                    let bomb = PanicOnDrop("capture-drop boom");
+                    bad.run_before(InsideEffect::Freeze, move |_view| {
+                        let _keep = &bomb;
+                        panic!("body boom");
+                    });
+                    true
                 });
-                let mut good = InsideEffects::staged_for("survivor");
-                good.run_after(InsideEffect::Freeze, |view| {
-                    view.push([2.0, 0.0, 0.0]);
+                effects.stage("survivor", |good| {
+                    good.run_after(InsideEffect::Freeze, |view| {
+                        view.push([2.0, 0.0, 0.0]);
+                    });
+                    true
                 });
-                effects.absorb_step(bad);
-                effects.absorb_step(good);
 
                 let mut access = RecordingAccess::new();
                 effects.apply_and_clear(&mut access);

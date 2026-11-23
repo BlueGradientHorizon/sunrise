@@ -694,7 +694,7 @@ impl Game<'_> {
                                 i,
                                 &w,
                                 &mut level,
-                                *paused,
+                                paused,
                                 &mut events,
                             )
                         }
