@@ -315,6 +315,7 @@ mod tests {
                 let player = acting_player(game);
                 game.lan_acting_name = Some("LevelProbe".into());
                 game.lan_acting_permission = Some(0);
+                game.lan_acting_uuid = Some(123);
                 assert!(player.set_experience_levels(game, 5));
                 assert!(player.set_experience_levels(game, 5));
                 game.enchantment_performed(4);
