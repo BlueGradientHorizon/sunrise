@@ -1221,9 +1221,9 @@ impl GpuCulling {
         Self::with_buffers(device, pipelines, layout, test, false)
     }
 
-    /// A second table of records for the same pass (gfx/sourced_geometry/gpu.rs): this one's
-    /// pipelines, buffers of its own, no statistics, occlusion test or room for cave culling's
-    /// graph. `None` when the memory is missing.
+    /// A second record table for the same pass (`gfx/sourced_geometry/gpu.rs`), sharing its
+    /// pipelines but with its own buffers and statistics readback. It has no occlusion test or
+    /// cave-culling graph. `None` when the memory is missing.
     pub fn second(&self, device: &wgpu::Device) -> Option<Self> {
         Self::with_buffers(
             device,
