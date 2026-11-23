@@ -918,7 +918,6 @@ impl Game<'_> {
                 {
                     self.load_resident_arrow(index, spectral, &tag)
                         .ok_or_else(stale)?;
-                    set_key(&mut tag, "UUID", Tag::IntArray(uuid.to_vec()));
                 } else {
                     self.creatures.projectiles.update(index, |p| {
                         if let Some(pos) = entity_nbt::position(&tag) {
@@ -932,8 +931,8 @@ impl Game<'_> {
                         p.no_gravity = entity_nbt::flag(&tag, "NoGravity");
                         p.ground.on_ground = entity_nbt::flag(&tag, "OnGround");
                     });
-                    set_key(&mut tag, "UUID", Tag::IntArray(uuid.to_vec()));
                 }
+                set_key(&mut tag, "UUID", Tag::IntArray(uuid.to_vec()));
             }
             _ => return Err(stale()),
         }
