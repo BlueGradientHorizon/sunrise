@@ -1,5 +1,4 @@
 ids = [
-  "handle:RenderPipeline::kind",
   "handle:WorldDrawUsage::new",
   "hook:register_render_pipelines",
   "hook:render_level_stage",
@@ -23,6 +22,7 @@ ids = [
   "type:KeyConflictContext",
   "type:KeyRegistration",
   "type:LayerDefinition",
+  "type:NameTagOptions",
   "type:MeshDefinition",
   "type:ModelPart",
   "type:ModelPolygon",
@@ -61,8 +61,11 @@ ids = [
   "type:SoundState",
   "type:Stack",
   "type:ToastKind",
+  "type:WorldDepth",
   "type:WorldDrawUsage",
   "type:WorldDrawUsage.quad_capacity",
+  "type:WorldLine",
+  "type:WorldQuad",
   "type:WorldRenderView",
   "type:Zoom",
 ]

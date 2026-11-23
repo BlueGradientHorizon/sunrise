@@ -381,6 +381,9 @@ fn client_tick_pre(&self, host: &mut dyn ClientHost, _: &mut ClientTickPreEvent)
   `event.context.oit_pass()` as appropriate. Draws run in call order, without uploading from the
   pass; handles cannot be used in a different view or stage. `AfterSky` and `AfterLevel` lend no
   pass, and stages skipped by the renderer are not replayed later.
+  Drawing values (`WorldLine`, `WorldQuad`, `WorldDepth`, `NameTagOptions`, and `DrawError`)
+  and stage selectors (`RenderLevelStage` and `OitStage`) are client-local. To synchronize a
+  draw effect, send only its data in your own typed payload and choose the stage on the client.
 
 Per-view draw storage grows dynamically without fixed per-view or per-mod copy caps,
 and copies past GPU instance buffer room fall back to CPU baking. Culled copies are

@@ -3,7 +3,7 @@
 /// Whether world geometry is hidden by nearer world surfaces.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local depth policy for world geometry.
 pub enum WorldDepth {
     /// Test against the world's depth, without writing depth.
     Tested,
@@ -14,7 +14,7 @@ pub enum WorldDepth {
 /// A world-space line, colored with 0xAARRGGBB and measured in screen pixels.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local world line submission.
 pub struct WorldLine {
     /// Starting position in blocks, before camera subtraction.
     pub from: [f64; 3],
@@ -44,7 +44,7 @@ impl WorldLine {
 /// top right as seen from the front; alpha blends without writing depth.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local world quad submission.
 pub struct WorldQuad {
     /// Four world-space corners in blocks, before camera subtraction.
     pub corners: [[f64; 3]; 4],
@@ -67,7 +67,7 @@ impl WorldQuad {
 /// Why a whole geometry batch or label was refused; nothing from that call was appended.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: refusal of an in-process draw submission.
 pub enum DrawError {
     /// A coordinate or width is not finite, or a camera-relative coordinate overflows f32.
     NonFinite,
@@ -109,7 +109,7 @@ pub struct PreparedWorldDrawError;
 /// How [`WorldDrawContext::name_tag`](crate::WorldDrawContext::name_tag) draws a label.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local world label drawing options.
 pub struct NameTagOptions {
     /// Draw it as vanilla draws a name that is not sneaking: opaque text in the world and a
     /// faded copy over everything, walls included. Off, it is drawn once as a sneaking name:
@@ -166,7 +166,8 @@ impl NameTagOptions {
 /// Order-independent transparency (OIT) sub-passes in vanilla 26.3 (`OitStage`), in execution
 /// order.
 // exhaustive: vanilla 26.3's closed three-pass OitStage enum
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, sunrise_mod_api_macros::Wire)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+// no wire: local OIT sub-pass selector.
 pub enum OitStage {
     /// First OIT pass: records depth bounds for translucent fragments (`OitStage.DEPTH_BOUNDS`).
     DepthBounds,
@@ -178,8 +179,9 @@ pub enum OitStage {
 
 /// Where in the world's frame a stage runs: all 9 NeoForge 26.3
 /// `RenderLevelStageEvent` stages, listed in engine order.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, sunrise_mod_api_macros::Wire)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
+// no wire: local world render-stage selector.
 pub enum RenderLevelStage {
     /// NeoForge's `RenderLevelStageEvent.AfterSky` in `LevelRenderer.addSkyPass`. Fires once
     /// immediately after the engine or classic pack's sky work, even if it draws nothing visible.
@@ -356,6 +358,26 @@ impl<'a> WorldRenderView<'a> {
 mod tests {
     use crate::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn world_draw_values_are_not_wire_values() {
+        // If a draw type implements Wire, there are two possible marker types for it
+        // and the compiler rejects the ambiguous assertion.
+        trait Local<Marker> {
+            fn assert_local() {}
+        }
+        impl<T> Local<()> for T {}
+        impl<T: Wire> Local<u8> for T {}
+
+        let _ = <DrawError as Local<_>>::assert_local;
+        let _ = <RenderLevelStage as Local<_>>::assert_local;
+        let _ = <OitStage as Local<_>>::assert_local;
+        let _ = <WorldDepth as Local<_>>::assert_local;
+        let _ = <WorldLine as Local<_>>::assert_local;
+        let _ = <WorldQuad as Local<_>>::assert_local;
+        let _ = <NameTagOptions as Local<_>>::assert_local;
+    }
+
     static CALLS: AtomicUsize = AtomicUsize::new(0);
     static PREPARE_CALLS: AtomicUsize = AtomicUsize::new(0);
     struct Listener;

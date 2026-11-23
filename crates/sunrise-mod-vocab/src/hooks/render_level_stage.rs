@@ -53,8 +53,8 @@ fire on title or connect screens.
 `StagePass::World(&mut dyn WorldPassDrawContext)`, and `OitTranslucent(oit)` returns
 `StagePass::Oit(oit, &mut dyn WorldOitPassDrawContext)`. Call `pass.draw(batch)` with a
 `PreparedWorldDraw` returned by `event.context` in `prepare_render_buffers` for this view and
-stage. Draws follow call order. Both pass kinds take prepared lines and quads; pipeline quads
-are standard-only because mod pipelines write to the world colour format, not OIT float targets.
+stage. Both pass kinds draw prepared engine lines and quads in call order. `RenderLevelStage`
+and `OitStage` are process-local selectors, not `Wire` values.
 
 Stages that do not run on the active route are not synthesized. Classic packs can replace engine
 terrain, water, and weather passes.
