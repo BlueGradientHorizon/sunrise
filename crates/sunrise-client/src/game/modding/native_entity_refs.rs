@@ -2444,7 +2444,8 @@ pub(super) mod tests {
                 neighbor_writes(),
                 [
                     (a, key(lever("true"))),
-                    (c, key(lit)),
+                    // `Level.setBlock` names the old block as the source (`oldState.getBlock()`).
+                    (c, key(glass)),
                     (b, key(lever("true"))),
                 ]
             );
