@@ -1,5 +1,6 @@
 use super::super::native_structure_types::book_example;
 use super::*;
+use mod_api::FeatureError;
 use sunrise_core::random::LegacyRandom;
 use sunrise_world::registry::BlockStateId;
 use sunrise_world::worldgen::mod_features::ModFeatureRandom;

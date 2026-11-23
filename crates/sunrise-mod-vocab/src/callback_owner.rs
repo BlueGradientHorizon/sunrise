@@ -103,6 +103,26 @@ pub fn panic_payload_text(payload: &(dyn Any + Send)) -> String {
         .unwrap_or_else(|| "Box<dyn Any>".into())
 }
 
+/// `error` and its source chain as text, for a log line. The chain is walked by identity: it
+/// ends at the first source already seen, so a cyclic chain terminates without any depth cap.
+/// Call it inside the retained callback that produced the error, where a `Display` that panics
+/// is contained; the error displays its immediate cause, so that cause is not printed twice.
+pub fn error_chain(error: &(dyn std::error::Error + 'static)) -> String {
+    use std::fmt::Write;
+    let mut text = error.to_string();
+    let mut seen: Vec<&(dyn std::error::Error + 'static)> = vec![error];
+    let mut remaining = error.source().and_then(std::error::Error::source);
+    while let Some(cause) = remaining {
+        if seen.iter().any(|earlier| std::ptr::eq(*earlier, cause)) {
+            break;
+        }
+        seen.push(cause);
+        let _ = write!(text, ": {cause}");
+        remaining = cause.source();
+    }
+    text
+}
+
 /// Whether the current panic will be reported and contained by the retained callback owner.
 pub fn retained_callback_active() -> bool {
     RETAINED_CALLBACK.try_with(Cell::get).unwrap_or(false)
@@ -760,5 +780,33 @@ mod tests {
             "mod owner: test callback panicked; it is disabled: original opaque callback panic"
         );
         assert!(!owner.is_enabled());
+    }
+
+    #[derive(Debug)]
+    struct Cycle(&'static str, &'static std::sync::OnceLock<Cycle>);
+    impl std::fmt::Display for Cycle {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(self.0)
+        }
+    }
+    impl std::error::Error for Cycle {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            self.1
+                .get()
+                .map(|next| next as &(dyn std::error::Error + 'static))
+        }
+    }
+
+    #[test]
+    fn a_cyclic_error_chain_ends_at_the_first_repeat() {
+        static A: std::sync::OnceLock<Cycle> = std::sync::OnceLock::new();
+        static B: std::sync::OnceLock<Cycle> = std::sync::OnceLock::new();
+        static C: std::sync::OnceLock<Cycle> = std::sync::OnceLock::new();
+        let a = A.get_or_init(|| Cycle("a", &B));
+        B.get_or_init(|| Cycle("b", &C));
+        C.get_or_init(|| Cycle("c", &B));
+        // The immediate cause (b) is left to the error's own text; the walk goes c, b, then
+        // meets c again and stops.
+        assert_eq!(super::error_chain(a), "a: c: b");
     }
 }
