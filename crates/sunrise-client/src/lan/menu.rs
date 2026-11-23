@@ -971,17 +971,22 @@ impl HostedSlotView<'_, '_> {
         }
     }
 
+    /// Run `edit` on a staged copy of the slot and the guest's cursor: both apply when it
+    /// accepts, and neither when it refuses.
     fn stage(&mut self, edit: impl FnOnce(&mut Self) -> bool) -> bool {
         let initial = self
             .staged
             .clone()
             .unwrap_or_else(|| self.view.get(self.slot));
         let previous = self.staged.replace(initial);
+        let carried = self.view.guest.carried.clone();
         let accepted = edit(self);
         let value = self.staged.take().expect("a staged slot");
         self.staged = previous;
         if accepted {
             self.set(value);
+        } else {
+            self.view.guest.carried = carried;
         }
         accepted
     }
@@ -3815,15 +3820,16 @@ pub(crate) mod tests {
 
         // 2. Part policy explicit full take (`Take(4)`) runs through `HostedSlotView::safe_take`
         //    even when `may_place` is false, is refused when `may_pickup` is false, and partial
-        //    `Take(2)` is refused on a Result slot.
+        //    `Take(2)` is refused on a Result slot. A refused take also drops the cursor edit
+        //    made before it.
         let part_take = StackedOutcome {
             canceled: true,
             handled: true,
             policy: StackedEditPolicy::Part,
             resume: StackedResume::Done,
             edits: vec![
-                StackedEdit::Take(4),
                 StackedEdit::Carried(Some(ItemStack::new("minecraft:stick", 5))),
+                StackedEdit::Take(4),
             ],
             ..Default::default()
         };
@@ -3835,6 +3841,10 @@ pub(crate) mod tests {
         click(&mut view, &mut drag, 0, 0, input::PICKUP, &blocked_rules);
         assert!(part_take.refused.get());
         assert_eq!(view.get(0), Some(ItemStack::new("minecraft:iron_ingot", 4)));
+        assert_eq!(
+            view.guest.carried,
+            Some(ItemStack::new("minecraft:stick", 1))
+        );
 
         let partial_result_take = StackedOutcome {
             canceled: true,
@@ -3907,10 +3917,10 @@ pub(crate) mod tests {
             handled: true,
             policy: StackedEditPolicy::Part,
             resume: StackedResume::Done,
-            edits: vec![StackedEdit::Clicked(Some(ItemStack::new(
-                "minecraft:snowball",
-                17,
-            )))],
+            edits: vec![
+                StackedEdit::Carried(Some(ItemStack::new("minecraft:stick", 9))),
+                StackedEdit::Clicked(Some(ItemStack::new("minecraft:snowball", 17))),
+            ],
             ..Default::default()
         };
         let oversize_rules = OutcomeRules {
@@ -3921,6 +3931,11 @@ pub(crate) mod tests {
         click(&mut view, &mut drag, 0, 0, input::PICKUP, &oversize_rules);
         assert!(oversize.refused.get());
         assert_eq!(view.get(0), Some(ItemStack::new("minecraft:iron_ingot", 4)));
+        // The refused slot edit also drops the cursor edit made before it.
+        assert_eq!(
+            view.guest.carried,
+            Some(ItemStack::new("minecraft:stick", 1))
+        );
 
         // The existing stack can be replaced, but dirt in the slot refuses pickup.
         // The same edit with a takeable replacement acts as the positive control.
