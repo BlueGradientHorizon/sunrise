@@ -164,26 +164,6 @@ impl Game<'_> {
             .collect()
     }
 
-    /// The guests a projectile can hit, under their entity ids.
-    pub(super) fn lan_projectile_targets(&self) -> Vec<(Who, Aabb)> {
-        self.lan_projectile_target_iter().collect()
-    }
-
-    /// Whether the guests a projectile can hit are still `guests`, compared without a new list.
-    pub(in crate::game) fn lan_projectile_targets_are(&self, guests: &[(Who, Aabb)]) -> bool {
-        self.lan_projectile_target_iter().eq(guests.iter().copied())
-    }
-
-    fn lan_projectile_target_iter(&self) -> impl Iterator<Item = (Who, Aabb)> + '_ {
-        self.lan.iter().flat_map(|host| {
-            host.hub
-                .guests
-                .iter()
-                .filter(move |g| host.hub.here(g) && g.loaded && !g.dead && !g.spectator())
-                .map(|g| (Who::Mob(g.entity_id as u32), guest_bounds(g)))
-        })
-    }
-
     /// A projectile that hit a guest: its hit runs as theirs. False when
     /// `id` is not a guest.
     pub(super) fn lan_projectile_hit(&mut self, p: &Projectile, id: u32, at: Vec3) -> bool {
@@ -317,10 +297,10 @@ mod tests {
     fn a_guests_view_keeps_who_hurt_them_and_who_they_hurt() {
         let mut v = view(0.0, false);
         v.hurt_by = Some((Who::Mob(7), 90));
-        v.last_hurt = Some((Who::Mob(8), 95));
+        v.last_hurt = Some((8, 95));
         let seen = guest_view(v, 5, [1.0, 0.0, 0.0]);
         assert_eq!(seen.hurt_by, Some((Who::Mob(7), 90)));
-        assert_eq!(seen.last_hurt, Some((Who::Mob(8), 95)));
+        assert_eq!(seen.last_hurt, Some((8, 95)));
         assert!(seen.remote);
         assert_eq!(seen.velocity, Vec3::new(1.0, 0.0, 0.0));
     }

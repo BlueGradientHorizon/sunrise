@@ -109,7 +109,9 @@ pub trait LivingBackend {
     /// Side: server.
     /// `LivingEntity.getKillCredit`: the remembered player takes precedence,
     /// even if the player cannot be resolved; otherwise the last hurting mob,
-    /// as [`Self::living_last_attacker`] finds it.
+    /// as [`Self::living_last_attacker`] finds it. A mob's death does not clear
+    /// the player reference: it can still resolve during the death animation,
+    /// until the `LivingEntity.baseTick` timer expires or the mob is removed.
     fn living_kill_credit(&self, living: LivingRef) -> Option<EntityRef>;
     /// Side: server.
     /// `LivingEntity.getLastHurtByMob`: the entity that last hurt this one,
@@ -121,6 +123,13 @@ pub trait LivingBackend {
     /// has passed, an attacker that is gone, an armor stand, the dragon or a
     /// client.
     fn living_last_attacker(&self, living: LivingRef) -> Option<EntityRef>;
+    /// Side: server.
+    /// The last living target recorded by `LivingEntity.setLastHurtMob`, with
+    /// the holder's `tickCount` at that moment (the same clock as `EntityRef::tick_count`).
+    /// There is no age cutoff. None for a stale holder, no remembered target,
+    /// or a target that is dead or gone.
+    #[goal_view]
+    fn living_last_hurt_mob(&self, living: LivingRef) -> Option<(EntityRef, i32)>;
     /// Side: server.
     /// `LivingEntity.hasLineOfSight(Entity)`: whether nothing that collides
     /// (`ClipContext.Block.COLLIDER`, fluids ignored) lies between the
@@ -257,14 +266,10 @@ pub trait LivingBackend {
     /// None for a stale handle, an armor stand or the dragon.
     fn living_can_freeze(&self, living: LivingRef) -> Option<bool>;
     /// Side: server.
-    /// `LivingEntity.canBreatheUnderwater`: the species' own breath —
-    /// `is(#can_breathe_under_water)` in vanilla, `breathes_water` here (a
-    /// squid's true, a dolphin's false); a player answers false (no player
-    /// kind is in the tag). This is the tag read only, not the whole drown
-    /// decision: the air tick itself also keeps the air up behind Water
-    /// Breathing, the conduit's power and a player's invulnerability,
-    /// which this read does not carry. None for a stale handle, an armor
-    /// stand or the dragon.
+    /// Membership in the world's `#can_breathe_under_water` tag for a mob; a player
+    /// answers false. This is the tag read only, not the whole drown decision,
+    /// which also considers species overrides, effects and invulnerability.
+    /// None for a stale handle, an armor stand or the dragon.
     fn living_can_breathe_underwater(&self, living: LivingRef) -> Option<bool>;
     /// Side: server.
     /// The bed a sleeper lies in, as its block faces
@@ -305,6 +310,13 @@ pub trait LivingClientBackend {
 #[doc(hidden)]
 #[sunrise_mod_api_macros::host_area]
 pub trait LivingBackendMut {
+    /// Side: server.
+    /// Pushes the living entity away from `direction` ([x, z]) using `LivingEntity.knockback`.
+    /// `living_knockback` can edit or cancel the push before knockback resistance is applied.
+    /// A successful push also sends the resulting motion to a player's own client.
+    /// False for an unavailable body, a non-finite input, a canceled push, or a strength
+    /// that is zero or less after resistance. This does not deal damage or assign credit.
+    fn living_knockback(&mut self, living: LivingRef, strength: f64, direction: [f64; 2]) -> bool;
     /// Side: server.
     /// Apply one loaded consumable effect without consuming the item.
     /// Mod-defined kinds enter the normal consume_effect hook: Some(true) means

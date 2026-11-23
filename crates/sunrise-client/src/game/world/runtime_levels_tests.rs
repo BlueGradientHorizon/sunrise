@@ -411,6 +411,89 @@ fn the_idle_close_keeps_a_runtime_level_open_until_its_unload() {
     });
 }
 
+#[test]
+#[ignore = "daily"]
+fn an_idle_level_aborts_an_abandoned_chunk_unload_transaction_before_it_closes() {
+    crate::game::in_own_process(
+        "game::runtime_levels_tests::an_idle_level_aborts_an_abandoned_chunk_unload_transaction_before_it_closes",
+        || {
+            const ID: &str = "abandon:a";
+            const POS: [i32; 3] = [1, -50, 1];
+
+            struct Abandon(Seen<bool>);
+
+            #[mod_api::__subscriptions]
+            impl Hooks for Abandon {
+                fn level_tick_post(&self, host: HostSide, _: &mut LevelTickPostEvent) {
+                    if let HostSide::Server(host) = host {
+                        host.runtime_levels().open(ID, flat()).unwrap();
+                    }
+                }
+
+                fn chunk_unload(
+                    &self,
+                    host: &mut dyn ServerHost,
+                    event: &mut ChunkUnloadEvent<'_>,
+                ) {
+                    if event.dimension == ID && event.chunk == [0, 0] {
+                        let level = host.level(ID).unwrap();
+                        assert_eq!(level.set_connection_group(host, POS, Some(30)), Ok(true));
+                        self.0.lock().unwrap().push(!host.transaction_matches(None));
+                    }
+                }
+
+                fn level_unload(
+                    &self,
+                    host: &mut dyn ServerHost,
+                    event: &mut LevelUnloadEvent<'_>,
+                ) {
+                    if event.dimension == ID {
+                        self.0.lock().unwrap().push(!host.transaction_matches(None));
+                    }
+                }
+            }
+
+            let open_frames = Seen::default();
+            let mods = vec![ModEntry::new(
+                "abandon",
+                Box::new(Abandon(Arc::clone(&open_frames))),
+            )]
+            .into();
+            mod_platform::testing::with_mods(mods, || {
+                with_game(|game| {
+                    let root = TempRoot::new("abandon");
+                    game.world_root = root.0.clone();
+                    tick_post(game);
+                    game.apply_runtime_levels();
+                    place_block(game, ID, "minecraft:stone");
+                    let dim = super::Dim::extra(ID).unwrap();
+                    let custom = game.level(ID).unwrap();
+                    let home = game.level("minecraft:overworld").unwrap();
+                    game.world
+                        .chunks
+                        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                    assert_eq!(home.set_connection_group(game, POS, Some(10)), Ok(true));
+                    game.enter_level(dim).unwrap();
+                    assert_eq!(custom.set_connection_group(game, POS, Some(20)), Ok(true));
+                    // Simulate an engine-abandoned transaction left open in `dim` before close.
+                    let _ = game.open_storage_transaction();
+                    assert_eq!(custom.set_connection_group(game, POS, Some(30)), Ok(true));
+                    game.enter_level(super::Dim::Overworld).unwrap();
+                    assert!(!game.transaction_matches(None));
+
+                    game.close_parked_level(dim).unwrap();
+                    assert!(!game.levels.parked.contains_key(&dim));
+                    assert_eq!(*open_frames.lock().unwrap(), [false, false]);
+                    assert!(game.transaction_matches(None));
+                    assert_eq!(home.connection_group(game, POS), Ok(Some(10)));
+                    game.abort_abandoned_transactions(0);
+                    assert_eq!(home.connection_group(game, POS), Ok(Some(10)));
+                });
+            });
+        },
+    );
+}
+
 /// A chunk-unload listener that forces a chunk in an idle custom level while a
 /// built-in level drains, in the same server tick that would have closed it,
 /// keeps that level open with its new ticket: the close plan is made after the
@@ -470,6 +553,62 @@ fn a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open() {
         assert!(seen.unloads.lock().unwrap().is_empty());
         assert_eq!(game.chunk_forced(custom), Some(true));
         assert!(game.chunk_loaded(custom));
+    });
+}
+
+/// A chunk a mod loads (`LevelRef::load_chunk`, #4550) in an idle custom level in the tick its
+/// close is due keeps the level open, not ticking, with the chunk, while the `UNKNOWN` ticket
+/// lives; once the ticket expires, the idle level closes as before.
+#[test]
+#[ignore = "daily"]
+fn a_live_loading_ticket_keeps_an_idle_custom_level_open_until_it_expires() {
+    use super::levels::IDLE_TICKS;
+    use super::native_entity_refs::tests::run_fresh_cases;
+
+    // A parallel world load can replace the process-wide dimension list during the idle ticks.
+    if run_fresh_cases(
+        "game::runtime_levels_tests::a_live_loading_ticket_keeps_an_idle_custom_level_open_until_it_expires",
+        "SUNRISE_RUNTIME_LEVEL_LOADING_TICKET_CHILD",
+        &["loading_ticket"],
+    ) {
+        return;
+    }
+    with_opener("loading", "loading:a", flat(), |game, seen| {
+        tick_post(game);
+        game.apply_runtime_levels();
+        seen.mode.store(IDLE, Ordering::SeqCst);
+        let dim = super::Dim::extra("loading:a").unwrap();
+        let level = game.level("loading:a").unwrap();
+        let chunk = ChunkRef::new(level, [5, 5]);
+        // Idle the custom level to one server tick short of its close.
+        for _ in 1..IDLE_TICKS {
+            game.tick_server(false).unwrap();
+        }
+        assert_eq!(game.levels.parked[&dim].idle, IDLE_TICKS - 1);
+        assert!(!game.chunk_loaded(chunk));
+        let host: &mut dyn ServerHost = game;
+        assert!(level.load_chunk(host, [5, 5]));
+        // The close falls due in this tick, and the ticket outlives it.
+        game.tick_server(false).unwrap();
+        assert!(
+            game.native_level_world(level).is_some(),
+            "the custom level stays open for the live ticket"
+        );
+        assert!(game.chunk_loaded(chunk));
+        assert!(
+            !game.levels_to_tick().contains(&dim),
+            "the ticket does not make the level tick"
+        );
+        assert!(seen.unloads.lock().unwrap().is_empty());
+        // The ticket expires within two purges; the idle level then closes.
+        for _ in 0..3 {
+            game.tick_server(false).unwrap();
+        }
+        assert!(
+            game.native_level_world(level).is_none(),
+            "the idle level closes once the ticket expired"
+        );
+        assert_eq!(*seen.unloads.lock().unwrap(), ["loading:a"]);
     });
 }
 

@@ -857,8 +857,10 @@ impl Game<'_> {
         self.bolts
             .iter()
             .filter(|b| {
-                let at = glam::DVec3::new(b.at[0], b.at[1], b.at[2]);
-                at.distance_squared(camera) < range * range
+                !self.hides_as_camera(b.id) && {
+                    let at = glam::DVec3::new(b.at[0], b.at[1], b.at[2]);
+                    at.distance_squared(camera) < range * range
+                }
             })
             .map(|b| sunrise_client::gfx::lightning::Bolt {
                 at: b.at,
@@ -1274,6 +1276,7 @@ mod tests {
     fn a_baby_pig_hit_by_lightning_becomes_a_baby_zombified_piglin() {
         let make_pig = |baby: bool| {
             let kind = Arc::new(MobType {
+                type_key: Default::default(),
                 shadow: None,
                 id: "minecraft:pig".into(),
                 species: Species::Pig,
@@ -1312,6 +1315,7 @@ mod tests {
                     pose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
                     polygons: Vec::new(),
                     children: Vec::new(),
+                    layer: None,
                 }),
                 layers: Default::default(),
                 texture: String::new(),

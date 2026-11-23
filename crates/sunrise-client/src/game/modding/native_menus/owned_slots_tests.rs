@@ -2,7 +2,7 @@ use super::tests::{MOD_MENU, mod_menu_guest, sent};
 use crate::game::{
     Game,
     api_values::{self, TryIntoApi},
-    native_entity_refs::tests::with_game,
+    native_entity_refs::tests::{run_fresh_cases, with_game},
 };
 use mod_api::{
     Flow, Hand, Hooks, HostTransaction, ItemPlace, ItemResource, MenuClickedEvent, MenuClosedEvent,
@@ -88,7 +88,12 @@ impl MenuPart for Part {
             return Flow::Continue;
         };
         host.transaction(|host, tx| {
-            ItemPlace::MenuSlot { menu, slot: 1 }.insert(host, tx, &ItemResource::of(&cursor), 1);
+            let _ = ItemPlace::MenuSlot { menu, slot: 1 }.insert(
+                host,
+                tx,
+                &ItemResource::of(&cursor),
+                1,
+            );
             Ok::<_, ()>(())
         })
         .unwrap();
@@ -259,7 +264,7 @@ fn an_item_opened_menu_has_two_empty_owned_slots_with_individual_caps() {
             let host: &mut dyn ServerHost = game;
             host.transaction(|host, tx| {
                 let place = ItemPlace::MenuSlot { menu, slot };
-                assert_eq!(place.insert(host, tx, &resource, 8), cap);
+                assert_eq!(place.insert(host, tx, &resource, 8), Ok(cap));
                 assert_eq!(place.with_stack(host, |stack| stack.count()), Some(cap));
                 Ok::<_, ()>(())
             })
@@ -322,8 +327,8 @@ fn a_cursor_cleared_outside_a_click_is_sent_once_on_the_next_broadcast() {
         let cursor = menu.cursor();
         let stick = ItemStack::new("minecraft:stick", 1).try_into_api().unwrap();
         let resource = ItemResource::of(&stick);
-        game.transaction(|host, tx| {
-            assert_eq!(cursor.insert(host, tx, &resource, 3), 3);
+        game.storage_transaction(|host, tx| {
+            assert_eq!(cursor.insert(host, tx, &resource, 3), Ok(3));
             Ok::<_, ()>(())
         })
         .unwrap();
@@ -341,8 +346,8 @@ fn a_cursor_cleared_outside_a_click_is_sent_once_on_the_next_broadcast() {
             "the full sync already sent the cursor"
         );
 
-        game.transaction(|host, tx| {
-            assert_eq!(cursor.extract(host, tx, &resource, 3), 3);
+        game.storage_transaction(|host, tx| {
+            assert_eq!(cursor.extract(host, tx, &resource, 3), Ok(3));
             Ok::<_, ()>(())
         })
         .unwrap();
@@ -568,6 +573,13 @@ fn owned_click_prediction_applies_caps_and_the_server_corrects_an_override() {
 #[test]
 #[ignore = "daily"]
 fn closing_discards_owned_slots_unless_the_listener_returns_their_contents() {
+    if run_fresh_cases(
+        "game::native_menus::owned_slots_tests::closing_discards_owned_slots_unless_the_listener_returns_their_contents",
+        "SUNRISE_OWNED_MENU_CLOSE_CASE",
+        &["close"],
+    ) {
+        return;
+    }
     for return_contents in [false, true] {
         with_owned_menu(return_contents, |game, _rx, key| {
             let (window, menu) = open(game, key);
@@ -582,7 +594,7 @@ fn closing_discards_owned_slots_unless_the_listener_returns_their_contents() {
                         &ItemResource::of(&stick),
                         3
                     ),
-                    3
+                    Ok(3)
                 );
                 Ok::<_, ()>(())
             })
@@ -604,6 +616,19 @@ fn closing_discards_owned_slots_unless_the_listener_returns_their_contents() {
                     vec![]
                 }
             );
+            if return_contents {
+                // GiveCommand.giveItem: a fully fitting give leaves only the one-tick fake item.
+                let [fake] = game.dropped.as_ref() else {
+                    panic!("expected only the fake pickup, not the contents of the closed menu");
+                };
+                assert_eq!(fake.stack, ItemStack::new("minecraft:stick", 1));
+                assert_eq!((fake.pickup_delay, fake.age), (32767, 5999));
+                game.load_ticking_neighbourhood(0, 0);
+                game.update_chunk_tickets();
+                assert!(game.entity_ticking_area()(0, 0));
+                game.ticked_entities_through = game.next_entity;
+                game.tick_items();
+            }
             assert!(game.dropped.is_empty());
             let (_, reopened) = open(game, key);
             assert_eq!(reopened.slot(game, 1), Some(None));
@@ -623,13 +648,13 @@ fn abort_after_replacement_restores_only_committed_contents_to_the_old_close() {
         let old_slot = ItemPlace::MenuSlot { menu: old, slot: 1 };
         let host: &mut dyn ServerHost = game;
         host.transaction(|host, tx| {
-            assert_eq!(old_slot.insert(host, tx, &resource, 2), 2);
+            assert_eq!(old_slot.insert(host, tx, &resource, 2), Ok(2));
             Ok::<_, ()>(())
         })
         .unwrap();
 
-        let aborted: Result<(), ()> = host.transaction(|host, tx| {
-            assert_eq!(old_slot.insert(host, tx, &resource, 1), 1);
+        let aborted: Result<(), mod_api::TransactionError<()>> = host.transaction(|host, tx| {
+            assert_eq!(old_slot.insert(host, tx, &resource, 1), Ok(1));
             player
                 .open_mod_menu(host, {
                     let mut request =
@@ -642,10 +667,10 @@ fn abort_after_replacement_restores_only_committed_contents_to_the_old_close() {
                 .unwrap();
             let new = player.container_menu(host).unwrap();
             let new_slot = ItemPlace::MenuSlot { menu: new, slot: 1 };
-            assert_eq!(new_slot.insert(host, tx, &resource, 4), 4);
+            assert_eq!(new_slot.insert(host, tx, &resource, 4), Ok(4));
             Err(())
         });
-        assert_eq!(aborted, Err(()));
+        assert_eq!(aborted, Err(mod_api::TransactionError::Aborted(())));
         let new = game.player_container_menu(player).unwrap();
         assert_eq!(old.slot(game, 1), None);
         assert_eq!(new.slot(game, 1), Some(None), "no leakage between windows");
@@ -850,10 +875,11 @@ fn a_replaced_or_aborted_drag_step_keeps_the_existing_drag() {
             assert_eq!(g.native_menu, [None, None]);
             assert_eq!(g.carried, stack(6));
             // An enclosing abort must discard this step and its publications as well.
-            let seal = game.transaction_open();
-            send_scoped_click(game, Flow::Continue, window, slot, step, QUICK_CRAFT);
-            assert!(sent(&rx).is_empty());
-            game.transaction_close(&seal, false);
+            game.storage_scope(|game, _| {
+                send_scoped_click(game, Flow::Continue, window, slot, step, QUICK_CRAFT);
+                assert!(sent(&rx).is_empty());
+                ((), false)
+            });
             assert!(sent(&rx).is_empty());
             send_scoped_click(game, Flow::Continue, window, slot, step, QUICK_CRAFT);
             sent(&rx);
@@ -918,11 +944,12 @@ fn a_click_refuses_opens_and_closes_only_on_commit() {
             CLOSE_NOTICES.set(0);
             WINDOW_REQUEST.set(Some((key, by_handle)));
 
-            let seal = game.transaction_open();
-            click(game, window, 0);
-            assert_eq!(game.menu(123, window), Some(menu));
-            assert!(sent(&rx).is_empty());
-            game.transaction_close(&seal, false);
+            game.storage_scope(|game, _| {
+                click(game, window, 0);
+                assert_eq!(game.menu(123, window), Some(menu));
+                assert!(sent(&rx).is_empty());
+                ((), false)
+            });
             game.run_native_menu_events();
             assert_eq!(game.menu(123, window), Some(menu));
             let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();

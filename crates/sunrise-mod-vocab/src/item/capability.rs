@@ -6,8 +6,8 @@
 //! attachments).
 use crate::{
     Answer, BlockEntityRef, BlockEntityTypeKey, BlockProviders, BlockState, Direction,
-    ItemResource, LevelHost, LevelRef, Overanswered, ResourceHandler, ServerHost, Transaction,
-    backend_mut_of, backend_of,
+    ItemResource, LevelHost, LevelRef, Overanswered, ResourceHandler, ServerHost,
+    TransactionContext, TransactionError, backend_mut_of, backend_of,
 };
 use std::{fmt::Debug, marker::PhantomData, ops::Deref};
 
@@ -166,7 +166,15 @@ impl<T: ?Sized> Capability<T> {
 
 // Keep a provider's specialised slot-less operations and queries when it is used as a handler.
 impl<R> ResourceHandler<R> for Capability<dyn ResourceHandler<R>> {
-    fn set_max_stack_size(&self, host: &mut dyn ServerHost, tx: &Transaction, limit: u32) -> bool {
+    fn set_max_stack_size(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        limit: u32,
+    ) -> Result<bool, TransactionError<()>> {
+        if !host.transaction_matches(Some(tx)) {
+            return Err(TransactionError::InvalidContext);
+        }
         self.handler.set_max_stack_size(host, tx, limit)
     }
 
@@ -201,37 +209,49 @@ impl<R> ResourceHandler<R> for Capability<dyn ResourceHandler<R>> {
     fn insert_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &R,
         amount: u32,
-    ) -> u32 {
-        let answer = self.handler.insert_at(host, tx, index, resource, amount);
-        // Keep the raw answer so the caller knows to abort; this boundary knows whom to warn about.
-        let _ = self.checked(answer, amount, &index);
-        answer
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        if !host.transaction_matches(Some(tx)) {
+            return Err(TransactionError::InvalidContext);
+        }
+        self.check_resource_transfer(
+            self.handler.insert_at(host, tx, index, resource, amount),
+            amount,
+            "insert_at",
+        )
     }
 
     fn extract_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &R,
         amount: u32,
-    ) -> u32 {
-        let answer = self.handler.extract_at(host, tx, index, resource, amount);
-        let _ = self.checked(answer, amount, &index);
-        answer
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        if !host.transaction_matches(Some(tx)) {
+            return Err(TransactionError::InvalidContext);
+        }
+        self.check_resource_transfer(
+            self.handler.extract_at(host, tx, index, resource, amount),
+            amount,
+            "extract_at",
+        )
     }
 
     fn insert(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         resource: &R,
         amount: u32,
-    ) -> Result<u32, Overanswered> {
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        if !host.transaction_matches(Some(tx)) {
+            return Err(TransactionError::InvalidContext);
+        }
         self.check_resource_transfer(
             self.handler.insert(host, tx, resource, amount),
             amount,
@@ -242,10 +262,13 @@ impl<R> ResourceHandler<R> for Capability<dyn ResourceHandler<R>> {
     fn extract(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         resource: &R,
         amount: u32,
-    ) -> Result<u32, Overanswered> {
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        if !host.transaction_matches(Some(tx)) {
+            return Err(TransactionError::InvalidContext);
+        }
         self.check_resource_transfer(
             self.handler.extract(host, tx, resource, amount),
             amount,
@@ -257,16 +280,28 @@ impl<R> ResourceHandler<R> for Capability<dyn ResourceHandler<R>> {
 impl<R> Capability<dyn ResourceHandler<R>> {
     fn check_resource_transfer(
         &self,
-        answer: Result<u32, Overanswered>,
+        answer: Result<u32, TransactionError<Overanswered>>,
         amount: u32,
         operation: &str,
-    ) -> Result<u32, Overanswered> {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         answer
-            .and_then(|answer| crate::content::resource::checked_transfer(answer, amount))
+            .and_then(|answer| {
+                crate::content::resource::checked_transfer(answer, amount)
+                    .map_err(TransactionError::Aborted)
+            })
             .map_err(|mut error| {
-                if error.owner.is_none() {
-                    crate::block::item_place::warn_broken(self.owner, &operation);
-                    error.owner = Some(self.owner());
+                match &mut error {
+                    TransactionError::InvalidContext
+                    | TransactionError::Unavailable
+                    | TransactionError::CommitRefused => {
+                        let owner = self.owner.unwrap_or("the game");
+                        log::warn!("Resource handler from {owner}: {operation}: {error:?}");
+                    }
+                    TransactionError::Aborted(over) if over.owner.is_none() => {
+                        crate::block::item_place::warn_broken(self.owner, &operation);
+                        over.owner = Some(self.owner());
+                    }
+                    TransactionError::Aborted(_) => {}
                 }
                 error
             })
@@ -298,6 +333,40 @@ impl<T: ?Sized + 'static> CapabilityKey<T> {
 /// meal only at level eight, and feedback waits for the root commit. Its position-local random
 /// stream is also journaled, so aborted retries keep their chance outcome without rewinding
 /// the level's unrelated random draws.
+///
+/// # Hopper and dropper automation rules
+///
+/// Vanilla block containers, composters and decorated pots keep their direct block automation
+/// paths even if a mod also exposes a block `ITEMS` handler; only blocks without a vanilla
+/// automation container use the block `ITEMS` storage attempt path. Container entities (such as
+/// chest or hopper minecarts and chest boats) use their own entity automation paths separately
+/// from block `ITEMS`.
+///
+/// - **Hopper pull:** skips only a fully stacked hopper. It visits nonempty source indices on the
+///   bottom-face `ITEMS` handler whose move is not cancelled, extracts one in a fresh transaction,
+///   then tries eligible hopper slots in order (empty or matching item and components with room;
+///   an empty lower index wins over a matching later stack), committing on the first success or
+///   aborting an ordinary refusal and continuing. For a block hopper, falling back to item
+///   entities happens only when no source (block container, `ITEMS` handler, or container entity)
+///   is found above it—a failed pull from a found source does not fall back to item entities. A
+///   hopper minecart still tries item entities after a failed pull and has no block-hopper
+///   transfer cooldown.
+/// - **Hopper push:** skips only storage whose slots are all at capacity. One root transaction
+///   covers eligible nonempty hopper slots in order (skipping cancelled moves): snapshots and
+///   removes one, calls indexless insertion on the face opposite the hopper's facing, restores a
+///   refused source slot directly and continues, committing on the first success or aborting if
+///   every eligible slot is refused.
+/// - **Dropper:** in one transaction, reserves (removes) the offered item from the source slot
+///   before calling `insert`, so writable insertion or root-commit callbacks cannot move the same
+///   source item a second time. An ordinary refusal (`Ok(0)`) restores the reserved item to the
+///   source slot and still commits the transaction; only an exceptional refusal (such as a
+///   writable callback replacing the source slot with another item, or an invalid overanswer)
+///   rolls back the dropper attempt's transaction.
+/// - **Ordinary refusal vs. invalid overanswer:** returning `Ok(0)` is an ordinary refusal handled
+///   as above; returning more than offered or requested is an invalid overanswer
+///   (`TransactionError::Aborted(Overanswered)`), which rolls back that attempt's transaction
+///   scope (or the `resource_util` helper's transaction scope when called through a helper, even
+///   if an enclosing transaction later commits).
 pub const ITEMS: CapabilityKey<dyn ResourceHandler<ItemResource>> = CapabilityKey {
     name: "sunrise:items",
     default: Some(BlockCapabilityDefault::Items(|at| Box::new(GameItems(at)))),
@@ -308,9 +377,17 @@ pub const ITEMS: CapabilityKey<dyn ResourceHandler<ItemResource>> = CapabilityKe
 /// rules hoppers follow.
 struct GameItems(BlockSide);
 impl ResourceHandler<ItemResource> for GameItems {
-    fn set_max_stack_size(&self, host: &mut dyn ServerHost, tx: &Transaction, limit: u32) -> bool {
-        backend_mut_of(host)
-            .is_some_and(|backend| backend.container_set_stack_limit(self.0, limit, tx))
+    fn set_max_stack_size(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        limit: u32,
+    ) -> Result<bool, TransactionError<()>> {
+        if !host.transaction_matches(Some(tx)) {
+            return Err(TransactionError::InvalidContext);
+        }
+        Ok(backend_mut_of(host)
+            .is_some_and(|backend| backend.container_set_stack_limit(self.0, limit, tx)))
     }
 
     fn size(&self, host: &mut dyn ServerHost) -> usize {
@@ -340,40 +417,46 @@ impl ResourceHandler<ItemResource> for GameItems {
     fn insert_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &ItemResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        if !host.transaction_matches(Some(tx)) {
+            return Err(TransactionError::InvalidContext);
+        }
         if amount == 0 {
-            return 0;
+            return Ok(0);
         }
         let Some(backend) = backend_mut_of(host) else {
-            return 0;
+            return Ok(0);
         };
         let Ok(rest) = backend.container_insert(self.0, index, resource, amount, tx) else {
-            return 0;
+            return Ok(0);
         };
-        amount - rest.map_or(0, |rest| rest.count().min(amount))
+        Ok(amount - rest.map_or(0, |rest| rest.count().min(amount)))
     }
     fn extract_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &ItemResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        if !host.transaction_matches(Some(tx)) {
+            return Err(TransactionError::InvalidContext);
+        }
         let held = backend_of(&*host).and_then(|backend| backend.container_stack(self.0, index));
         if !held.is_some_and(|held| resource.matches(&held)) {
-            return 0;
+            return Ok(0);
         }
         let Some(backend) = backend_mut_of(host) else {
-            return 0;
+            return Ok(0);
         };
-        backend
+        Ok(backend
             .container_extract(self.0, index, amount, tx)
-            .map_or(0, |out| out.count().min(amount))
+            .map_or(0, |out| out.count().min(amount)))
     }
 }
 

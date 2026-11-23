@@ -96,13 +96,10 @@ Consuming mutable events such as `bonemeal` and
 `item_after_vertical_collision` lend `Option<ItemStack>` so a listener can consume the value by
 setting `None`.
 
-The `item_stacked_on_other` hook runs on the authoritative side only (a client predicts vanilla and the server corrects it). It does not lend the slot: it hands the listener the cursor and
-the clicked slot's stack, frozen, and takes a typed answer (`StackedOnOtherResult`: `handled`, and
-`StackResult::Keep` or `Set` for the cursor and the slot) that the game validates once and applies
-once. A stack can be set only by a cancelled click that is also `handled`; any other answer that
-sets one is refused. A replacement must pass the clicked slot's pickup, placement and capacity
-rules for the actual stacks. It cannot change a result slot or take an item from a brewing potion
-slot, because the replacement does not run the slot's take effects. A refused replacement keeps
+The global `Hooks::item_stacked_on_other` hook runs on the authoritative server side only (`StackedOnOtherDirection::Event`), while `ItemPart::item_stacked_on_other` runs on both sides (server clicks, client prediction with authoritative server reconciliation, and creative inventory-tab/hotbar pickups), dispatching first to the carried stack (`CarriedOnOther`) and then — unless a carried vanilla `BundleItem` takes the click — to the clicked stack (`OtherStackedOnMe`). It does not lend the slot: it hands the listener the cursor and
+the clicked slot's stack, frozen, and takes a typed answer (`StackedOnOtherResult`: `handled`,
+`StackResult::Keep` or `Set` for `carried`, and `ClickedStackResult::Keep`, `Set`, or `Take(count)` for `clicked`) that the game validates once and applies
+once. For global listeners, a stack can be set only by a cancelled click that is also `handled` (`ClickedStackResult::Take` is refused), and a replacement cannot change a result slot or take an item from a brewing potion slot, because the replacement does not run the slot's take effects. For `ItemPart` overrides, `ClickedStackResult::Set` performs a direct write without `Slot.onTake` side effects while `ClickedStackResult::Take(count)` takes through `Slot.safeTake` / `Slot.onTake`. If both Parts take from the slot, each take runs its own effects in carried-then-clicked order. A refused replacement keeps
 the slot and cursor as they were and undoes the listener's writes. A write through the `Host` to
 what the click read likewise makes the click stale and refuses it.
 
@@ -127,7 +124,22 @@ receives the live typed `ItemStack` from its hotbar slot while the same item kin
 if the slot was emptied or replaced. These callbacks intercept local input without starting
 ordinary item use; see the linked example for registration and typed component reads.
 
-## A stack's name
+## A stack's names and lore
+
+On either side, `stack.custom_name(host)` and `stack.item_name(host)` return the effective
+name components as `Result<Option<Text>, TextFormError>`. `stack.lore(host)` returns
+`Result<Vec<Text>, TextFormError>`, with an empty vector if absent. A read takes the patch
+first, otherwise the item's prototype. An explicit removal hides the default; an invalid
+present value returns a `TextFormError`.
+
+On an owned stack, use `set_custom_name(host, Some(&name))`, `set_item_name(host, Some(&name))`,
+and `set_lore(host, &lines)`. To append lore, read `let mut lines = stack.lore(host)?`, push a
+`Text`, and write the slice back. Pass `None` for a name or `&[]` for lore to remove the component,
+including a prototype default. Writing the prototype value removes any override or explicit
+removal. If a text cannot be encoded or lore exceeds vanilla's 256 lines
+(`ItemLore.MAX_LINES`), the write leaves the stack unchanged. None of these methods add style:
+vanilla's styled hover name defaults to italics for a custom name unless the component overrides
+it, but not for `item_name`.
 
 `host.hover_name(&stack)` is `ItemStack.getHoverName()` as a component, on both sides. The
 custom name wins, then a written book's nonblank raw title. Otherwise the item's name is used:
@@ -140,6 +152,18 @@ translation key instead. Only a fallback written into a component is kept. The r
 no rarity colour or italics. Each player renders the component in their own language: put it into world
 text or a display as it is. Call `host.text_string(&name)` for a string in the language of the
 side that calls it. An invalid stack is a `TextFormError`.
+
+## A stack's use animation
+
+`stack.use_animation(host)` is `ItemStack.getUseAnimation` with the mods' answers applied, on
+either side: the animation the renderer draws while the stack is in use (`Bow`, `Drink`, `Block`,
+`Spear`...). It starts from the item's own answer (its consumable, shield or kinetic components
+included), then the item's Part may change it in `ItemPart::use_animation`, which is asked on both
+sides with a read-only `&dyn Host`: answer from the stack alone. There is no global listener; the
+Part is item-scoped. A `Spear` answer for a stack without kinetic data reads `None`, as it draws.
+Inside the Part, reading the effective animation of any stack of the item it is answering (a copy
+with another count or components included) gives the item's own answer: the Part is not asked
+again. Reading another item's stack asks that item's Parts.
 
 ## The NBT escape
 

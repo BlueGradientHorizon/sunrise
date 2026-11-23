@@ -1,7 +1,6 @@
 //! The per-tick mob update in vanilla order (`Entity.baseTick`,
 //! `LivingEntity.baseTick/tick/aiStep`, `Mob.serverAiStep`) and the
 //! dispatch to each species family's goals and special behaviour.
-pub(crate) use freezing::in_powder_snow;
 pub use freezing::{can_freeze, wears_gaze_disguise};
 mod feeding;
 mod flower_contact;
@@ -25,11 +24,16 @@ use super::{
 use crate::blocks::Fluid;
 use crate::breathing::{AirStep, Breath};
 use crate::health::DamageLevel;
+use mod_api::{
+    __private::{InsideAction, InsideCollector},
+    InsideEffect,
+};
 use sunrise_core::{
     geometry::{Aabb, Axis, ShapeOp, Vec3, VoxelShape},
+    position::BlockPos,
     random::RandomSource,
 };
-use sunrise_world::native_load_context::LoopContext;
+use sunrise_world::{native_load_context::LoopContext, registry::BlockStateId};
 
 #[cfg(test)]
 mod inside_walk_tests {
@@ -1515,7 +1519,6 @@ fn after_base_tick(
         })
     {
         super::villager::stop_sleeping(m, w, events);
-        super::villager_brain::woken(m, w.game_time);
     }
     // Fox.aiStep consumes before its super.aiStep, so the hook and its RNG
     // precede goals, travel and block effects at the resumed position.
@@ -1655,6 +1658,10 @@ fn continue_ai_tail(
 ) -> TickProgress {
     loop {
         next = match next {
+            // `Entity.isAffectedByBlocks` is `!isRemoved() && !noPhysics`: a mob that
+            // converted earlier in this tick (`Mob.convertTo` discards it) has no
+            // `stepOn` and no block insides.
+            AiStage::BlockWalk if m.removed => AiStage::Freeze,
             AiStage::BlockWalk => {
                 if !no_ai {
                     m.apply_effects_from_blocks(w, events);
@@ -2047,8 +2054,24 @@ struct MobBlockWalk {
     stationary_done: bool,
     travel: crate::block_contact::MovementSweep,
     visited: crate::fast_hash::FxHashSet<i64>,
-    effects: mod_api::InsideEffects,
-    writes: Option<std::vec::IntoIter<mod_api::PlannedInside>>,
+    effects: InsideCollector<MobInsideWrite>,
+    writes: Option<std::vec::IntoIter<InsideAction<MobInsideWrite>>>,
+}
+
+/// A write the mob's own blocks queue on its collector, beside a Part's.
+#[derive(Debug)]
+enum MobInsideWrite {
+    /// `Entity::lavaHurt`, after a lava cauldron's LAVA_IGNITE.
+    LavaHurt,
+    /// Powder snow's check before EXTINGUISH: a burning mob that may grief melts it.
+    MeltPowderSnow([i32; 3]),
+    Part(mod_api::EntityWrite),
+}
+
+impl From<mod_api::EntityWrite> for MobInsideWrite {
+    fn from(write: mod_api::EntityWrite) -> Self {
+        Self::Part(write)
+    }
 }
 
 impl MobBlockWalk {
@@ -2105,11 +2128,33 @@ impl MobBlockWalk {
             if !m.alive() {
                 break;
             }
-            if let mod_api::PlannedInside::Write(write) = planned {
-                apply_entity_write(m, w, level, events, write);
-                if pause_damage && m.hurt_needs_owner() {
-                    return false;
+            match planned {
+                InsideAction::Effect(InsideEffect::ClearFreeze) => m.ticks_frozen = 0,
+                InsideAction::Effect(InsideEffect::LavaIgnite) if !m.fire_immune() => {
+                    m.ignite_for_ticks(300);
                 }
+                InsideAction::Effect(InsideEffect::Extinguish) => m.extinguish_fire(),
+                InsideAction::Write(MobInsideWrite::LavaHurt) if !m.fire_immune() => {
+                    m.damage(level, 4.0, Damage::of(DamageKind::Lava));
+                    hurt_teleports(m, w, events);
+                }
+                InsideAction::Write(MobInsideWrite::MeltPowderSnow(pos)) => {
+                    if m.is_on_fire() && w.can_grief(m.id) {
+                        events.push(MobEvent::BreakBlock {
+                            pos,
+                            drop: false,
+                            by: None,
+                            breaker: None,
+                        });
+                    }
+                }
+                InsideAction::Write(MobInsideWrite::Part(write)) => {
+                    apply_entity_write(m, w, level, events, write);
+                }
+                _ => {}
+            }
+            if pause_damage && m.hurt_needs_owner() {
+                return false;
             }
         }
         true
@@ -2176,7 +2221,7 @@ struct MobInside<'a, 'w, 'l> {
 }
 
 impl crate::block_contact::InsideWalk for MobInside<'_, '_, '_> {
-    type Effects = mod_api::InsideEffects;
+    type Effects = InsideCollector<MobInsideWrite>;
     type Error = ();
     fn bounds_at(&self, at: Vec3) -> sunrise_core::geometry::Aabb {
         self.m.bounds_at(at)
@@ -2197,23 +2242,33 @@ impl crate::block_contact::InsideWalk for MobInside<'_, '_, '_> {
     }
     fn inside_shape(
         &mut self,
-        _state: sunrise_world::registry::BlockStateId,
-        _at: sunrise_core::position::BlockPos,
+        state: BlockStateId,
+        _at: BlockPos,
     ) -> crate::block_contact::InsideShape {
-        // `getEntityInsideCollisionShape` is the whole block for every block a
-        // mob meets, as the mob's own walk always treated it.
-        crate::block_contact::InsideShape::Full
+        use crate::block_contact::InsideShape;
+        if &*self.w.facts.get(state).name != "minecraft:lava_cauldron" {
+            return InsideShape::Full;
+        }
+        // LavaCauldronBlock.getEntityInsideCollisionShape: its fixed FILLED_SHAPE.
+        InsideShape::Fixed(crate::block_contact::lava_cauldron_filled_shape())
     }
     fn entity_inside(
         &mut self,
-        at: sunrise_core::position::BlockPos,
-        state: sunrise_world::registry::BlockStateId,
+        at: BlockPos,
+        state: BlockStateId,
         _step: i32,
         precise: bool,
-        effects: &mut mod_api::InsideEffects,
+        effects: &mut Self::Effects,
     ) -> std::result::Result<(), ()> {
         let (x, y, z) = (at.x, at.y, at.z);
         let p = [x, y, z];
+        let name = &*self.w.facts.get(state).name;
+        // LavaCauldronBlock.entityInside queues a hurt after this step's ignition.
+        if name == "minecraft:lava_cauldron" {
+            effects.apply(InsideEffect::ClearFreeze);
+            effects.apply(InsideEffect::LavaIgnite);
+            effects.run_after(InsideEffect::LavaIgnite, MobInsideWrite::LavaHurt);
+        }
         // The part's contact, mid-walk, staged: its writes join this step only
         // when it answered, and a panic is contained.
         if let Some(hooks) = crate::block_contact::HOOKS.get()
@@ -2238,22 +2293,16 @@ impl crate::block_contact::InsideWalk for MobInside<'_, '_, '_> {
             effects.absorb_step(staged);
             crate::block_contact::inside_written(state, at, writes);
         }
-        // PowderSnowBlock.entityInside: a burning mob destroys the
-        // block (`canEntityGrief` for the mob), then EXTINGUISH puts it out.
-        if self.w.block_name(x, y, z) == "minecraft:powder_snow" {
+        // PowderSnowBlock.entityInside: before this step's EXTINGUISH, a burning
+        // mob destroys the block (`canEntityGrief` for the mob), so a lava
+        // cauldron's ignition earlier in the same step melts it first.
+        if name == "minecraft:powder_snow" {
             // InsideBlockEffectType.FREEZE: `setIsInPowderSnow(true)`.
             self.m.in_powder_snow = true;
-            if self.m.is_on_fire() && self.w.can_grief(self.m.id) {
-                self.events.push(MobEvent::BreakBlock {
-                    pos: p,
-                    drop: false,
-                    by: None,
-                    breaker: None,
-                });
-            }
-            self.m.extinguish_fire();
+            effects.run_before(InsideEffect::Extinguish, MobInsideWrite::MeltPowderSnow(p));
+            effects.apply(InsideEffect::Extinguish);
         }
-        match self.w.block_name(x, y, z) {
+        match name {
             "minecraft:cactus" => {
                 self.m
                     .damage(self.level, 1.0, Damage::of(DamageKind::Cactus));
@@ -2469,6 +2518,22 @@ pub fn tick_swing(m: &mut Mob) {
     }
     m.anim.attack_anim = m.ai.swing_time as f32 / duration as f32;
 }
+/// Whether the mob's box, shrunk by 1e-5, touches powder snow. It lives here, beside
+/// `sun_burn_tick`, so a replacement copy of that function can name it.
+pub(crate) fn in_powder_snow(m: &Mob, w: &MobWorld) -> bool {
+    let b = m.bounds().deflate(Vec3::new(1e-5, 1e-5, 1e-5));
+    let (min, max) = (b.min_position(), b.max_position());
+    for x in min.x.floor() as i32..=max.x.floor() as i32 {
+        for y in min.y.floor() as i32..=max.y.floor() as i32 {
+            for z in min.z.floor() as i32..=max.z.floor() as i32 {
+                if &*w.facts.get(w.world.block(x, y, z)).name == "minecraft:powder_snow" {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
 /// `Entity.isInRain`: rain at the block position, or at the top of the box.
 pub(super) fn in_rain(m: &Mob, w: &MobWorld) -> bool {
     let (x, y, z) = (
@@ -2598,12 +2663,13 @@ fn extinguish_if_wet(m: &mut Mob, w: &MobWorld, was_on_fire: bool, events: &mut 
     }
 }
 
-/// `LivingEntity.canBreatheUnderWater`: the `can_breathe_under_water` tag, which
-/// `MobType.flags.breathes_water` holds, and the two overrides — a baby happy ghast
-/// and a sulfur cube with a block in its body breathe under water too.
-fn can_breathe_under_water(m: &Mob) -> bool {
-    m.kind.flags.breathes_water
-        || m.species() == Species::HappyGhast && m.is_baby()
+/// `LivingEntity.canBreatheUnderwater`: the live tag, plus the separate
+/// overrides for a baby happy ghast or a sulfur cube carrying a block.
+fn can_breathe_under_water(m: &Mob, w: &MobWorld<'_>) -> bool {
+    w.entity_tag_bit(
+        &m.kind,
+        crate::items::EntityTypeTags::CAN_BREATHE_UNDER_WATER,
+    ) || m.species() == Species::HappyGhast && m.is_baby()
         || m.species() == Species::SulfurCube && crate::mobs::sulfur_cube::has_body(m)
 }
 
@@ -2672,7 +2738,7 @@ fn base_tick(
         super::undead::drowned_update_swimming(m, w);
     }
     let fire = crate::motion::environment::fire_contact(w.world, w.registry, m.bounds());
-    let lava = m.fluids.in_lava || touches_lava_cauldron(m, w);
+    let lava = m.fluids.in_lava;
     let contact = Contact {
         fire,
         lava,
@@ -2817,8 +2883,10 @@ fn continue_base_tick(
                     let water_breathing = m.has_effect("minecraft:water_breathing")
                         || m.has_effect("minecraft:conduit_power");
                     let nautilus = m.has_effect("minecraft:breath_of_the_nautilus");
-                    let drowns =
-                        submerged && !can_breathe_under_water(m) && !water_breathing && !nautilus;
+                    let drowns = submerged
+                        && !can_breathe_under_water(m, w)
+                        && !water_breathing
+                        && !nautilus;
                     let held = submerged && nautilus && !water_breathing;
                     let max = m.max_air_supply();
                     let vanilla = Breath {
@@ -2868,6 +2936,21 @@ fn continue_base_tick(
                             super::illager::cast_particles(m, events);
                         }
                         level.tick_player_memory(m);
+                        if let Some((id, _)) = m.last_hurt_mob {
+                            let alive = if id == m.id {
+                                m.alive()
+                            } else if let Some(other) = w.live_mobs.and_then(|live| live.find(id)) {
+                                other.alive()
+                            } else {
+                                w.target_info(Who::Mob(id)).map_or_else(
+                                    || w.side.living_target_alive(id),
+                                    |target| target.alive,
+                                )
+                            };
+                            if !alive {
+                                m.last_hurt_mob = None;
+                            }
+                        }
                         super::hurt_by::base_tick(m, w);
                         EffectPass::new(m)
                     }
@@ -2895,7 +2978,7 @@ fn continue_base_tick(
                 } else {
                     (
                         crate::motion::environment::fire_contact(w.world, w.registry, m.bounds()),
-                        touches_lava(m, w) || touches_lava_cauldron(m, w),
+                        touches_lava(m, w),
                     )
                 };
                 let next = BaseStage::ContactLava { lava, was_on_fire };
@@ -2937,9 +3020,10 @@ fn continue_base_tick(
                 if m.alive() {
                     let roll = m.random.next_int_bound(1000).unwrap_or(999);
                     let t = m.ambient_timer;
-                    m.ambient_timer += 1;
+                    // `ambientSoundTime++` and `-getAmbientSoundInterval()`, in int arithmetic.
+                    m.ambient_timer = m.ambient_timer.wrapping_add(1);
                     if roll < t {
-                        m.ambient_timer = -m.ambient_interval();
+                        m.ambient_timer = m.ambient_interval().wrapping_neg();
                         super::entity_sounds::ambient(m, w, events);
                     }
                 }
@@ -2984,35 +3068,6 @@ fn touches_lava(m: &Mob, w: &MobWorld) -> bool {
         for y in min.y.floor() as i32..=max.y.floor() as i32 {
             for z in min.z.floor() as i32..=max.z.floor() as i32 {
                 if &*w.facts.get(w.world.block(x, y, z)).name == "minecraft:lava" {
-                    return true;
-                }
-            }
-        }
-    }
-    false
-}
-/// `LavaCauldronBlock.entityInside` (LAVA_IGNITE, then `lavaHurt`, as lava's own) for a mob
-/// whose box meets `getEntityInsideCollisionShape`'s `FILLED_SHAPE`: the cauldron's own shape
-/// and its lava, `Block.column(12, 4, 15)`. A mob standing on the rim is not inside.
-fn touches_lava_cauldron(m: &Mob, w: &MobWorld) -> bool {
-    let b = m.bounds().deflate(Vec3::new(1e-5, 1e-5, 1e-5));
-    let (min, max) = (b.min_position(), b.max_position());
-    for x in min.x.floor() as i32..=max.x.floor() as i32 {
-        for y in min.y.floor() as i32..=max.y.floor() as i32 {
-            for z in min.z.floor() as i32..=max.z.floor() as i32 {
-                let state = w.world.block(x, y, z);
-                if &*w.facts.get(state).name != "minecraft:lava_cauldron" {
-                    continue;
-                }
-                let at = Vec3::new(f64::from(x), f64::from(y), f64::from(z));
-                let lava = Aabb::new(
-                    Vec3::new(2.0 / 16.0, 4.0 / 16.0, 2.0 / 16.0),
-                    Vec3::new(14.0 / 16.0, 15.0 / 16.0, 14.0 / 16.0),
-                );
-                let shell = w.collision.static_shape(state).ok().flatten();
-                if lava.move_by(at).intersects(b)
-                    || shell.is_some_and(|s| s.boxes().iter().any(|c| c.move_by(at).intersects(b)))
-                {
                     return true;
                 }
             }
@@ -3291,7 +3346,7 @@ fn ai_step(
         super::piglin::before_goals(m, w, level.random(), events);
     }
     if m.alive() && !immobile {
-        server_ai_until_pause(m, w, level, events, pause_movement)?;
+        server_ai_step(m, w, level, events, pause_movement)?;
     } else {
         m.ai.jumping = false;
         m.ai.xxa = 0.0;
@@ -3596,7 +3651,10 @@ fn apply_entity_pushes(
 /// `Mob.aiStep` -> `Mob.burnUndead`: mobs in `minecraft:burn_in_daylight`
 /// can burn in daylight even with `NoAI`.
 fn burn_undead(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
-    if m.kind.flags.burns_in_day && m.alive() && sun_burn_tick(m, w) {
+    if w.entity_tag_bit(&m.kind, crate::items::EntityTypeTags::BURN_IN_DAYLIGHT)
+        && m.alive()
+        && sun_burn_tick(m, w)
+    {
         if m.item_by_slot(m.sun_protection_slot()).is_some() {
             events.push(MobEvent::SunProtectionWear { mob: m.id });
         } else {
@@ -3604,9 +3662,14 @@ fn burn_undead(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
         }
     }
 }
+/// `Mob.isSunBurnTick`: whether the sun reaches a mob that burns in daylight this tick. On
+/// `true` the caller applies the exposure, which may wear its protective equipment instead of
+/// igniting it (`burn_undead`). A native mod answers here through `[[native.mixin]]`, where a
+/// Java mod's mixin on `isSunBurnTick` spares one mob from the sun (#4678).
+#[sunrise_mod_api_macros::replaceable]
 fn sun_burn_tick(m: &mut Mob, w: &MobWorld) -> bool {
     // Mob.isSunBurnTick: the monsters_burn attribute, not the sky darkness.
-    if !w.monsters_burn {
+    if m.extra.client_side || !w.monsters_burn {
         return false;
     }
     let (x, y, z) = (
@@ -3765,13 +3828,25 @@ mod selector_restore_tests {
                             let mut level = crate::health::TestLevel::new(0);
                             let mut events = Vec::new();
                             // Start both live goals before testing either production branch.
-                            server_ai_step(&mut mob, world, &mut level.level(), &mut events);
+                            let _ = server_ai_step(
+                                &mut mob,
+                                world,
+                                &mut level.level(),
+                                &mut events,
+                                false,
+                            );
                             mob.age = age;
                             if let Some(i) = panic_at {
                                 panics[i].store(true, Ordering::SeqCst);
                             }
                             let result = catch_unwind(AssertUnwindSafe(|| {
-                                server_ai_step(&mut mob, world, &mut level.level(), &mut events);
+                                let _ = server_ai_step(
+                                    &mut mob,
+                                    world,
+                                    &mut level.level(),
+                                    &mut events,
+                                    false,
+                                );
                             }));
                             if panic_at.is_some() {
                                 assert_eq!(*result.unwrap_err().downcast::<u32>().unwrap(), 73);
@@ -3791,7 +3866,13 @@ mod selector_restore_tests {
                             for panic in &panics {
                                 panic.store(false, Ordering::SeqCst);
                             }
-                            server_ai_step(&mut mob, world, &mut level.level(), &mut events);
+                            let _ = server_ai_step(
+                                &mut mob,
+                                world,
+                                &mut level.level(),
+                                &mut events,
+                                false,
+                            );
                             for i in 0..2 {
                                 let expected_ticks =
                                     if panic_at == Some(0) && i == 1 { 2 } else { 3 };
@@ -3857,27 +3938,647 @@ mod selector_restore_tests {
     }
 }
 
+/// The replacement slot the staging pass writes at the head of `server_ai_step`, for tests: a
+/// plain build has no slot (`#[replaceable]` does nothing there), so a test installs its copy
+/// of the function here, on its own thread, and the head check above calls it as the staged
+/// head check calls an installed native row's copy.
 #[cfg(test)]
-/// Mob.serverAiStep
-pub(super) fn server_ai_step(
-    m: &mut Mob,
-    w: &MobWorld,
-    level: &mut DamageLevel<'_>,
-    events: &mut Vec<MobEvent>,
-) {
-    let _ = server_ai_until_pause(m, w, level, events, false);
+mod server_ai_slot {
+    use super::*;
+    use std::cell::Cell;
+
+    pub(super) type Copy = fn(
+        &mut Mob,
+        &MobWorld<'_>,
+        &mut DamageLevel<'_>,
+        &mut Vec<MobEvent>,
+        bool,
+    ) -> ControlFlow<AiPause>;
+
+    std::thread_local! {
+        static SLOT: Cell<Option<Copy>> = const { Cell::new(None) };
+    }
+
+    pub(super) fn installed() -> Option<Copy> {
+        SLOT.get()
+    }
+
+    /// Run `f` with `copy` installed in the slot on this thread.
+    pub(super) fn with_copy<R>(copy: Copy, f: impl FnOnce() -> R) -> R {
+        struct Restore;
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                SLOT.set(None);
+            }
+        }
+        SLOT.set(Some(copy));
+        let _restore = Restore;
+        f()
+    }
 }
 
-/// `Mob.serverAiStep`, pausing on goal movement or a bee's own hurt.
-fn server_ai_until_pause(
+#[cfg(test)]
+mod server_ai_brain_tests {
+    use super::super::piglin::{Activity, angry_at, set_angry_at};
+    use super::*;
+    use crate::mobs::world::{test_player, with_built_test_world, with_test_world};
+    use std::sync::Arc;
+
+    /// What `server_ai_step` alone leaves on a piglin whose target lies dead (its
+    /// celebration ticks and spot, and its `ADMIRING_DISABLED` time to live) and on a brute
+    /// (its `ANGRY_AT` time to live).
+    fn brain_after_one_step(
+        w: &MobWorld,
+        types: &super::super::MobTypes,
+    ) -> (i32, bool, Option<i32>, Option<i32>) {
+        let mut world = w.clone();
+        let mut player = test_player(Vec3::new(3.5, 64.0, 0.5));
+        player.alive = false;
+        world.player = Some(player);
+        let mut level = crate::health::TestLevel::new(0);
+        let mut events = Vec::new();
+        let kind = |name: &str| Arc::new(types.types[name].clone());
+        let mut piglin = Mob::new(1, kind("minecraft:piglin"), Vec3::new(0.5, 64.0, 0.5), 0.0);
+        piglin.ai.target = Some(Who::Player);
+        piglin.extra.piglin.admire_disabled.set(5);
+        let _ = server_ai_step(&mut piglin, &world, &mut level.level(), &mut events, false);
+        let mut brute = Mob::new(
+            2,
+            kind("minecraft:piglin_brute"),
+            Vec3::new(0.5, 64.0, 2.5),
+            0.0,
+        );
+        set_angry_at(&mut brute, 5);
+        let _ = server_ai_step(&mut brute, &world, &mut level.level(), &mut events, false);
+        (
+            piglin.extra.scratch[1],
+            piglin.extra.home.is_some(),
+            piglin.extra.piglin.admire_disabled.left(),
+            angry_at(&brute),
+        )
+    }
+
+    /// `Piglin` and `PiglinBrute.customServerAiStep` run the brain inside `Mob.serverAiStep`:
+    /// a killed target starts the piglin's celebration, its memories run down, and the
+    /// brute's `ANGRY_AT` runs down, all within `server_ai_step`, so a mod's row that skips
+    /// the step skips them too.
+    #[test]
+    #[ignore = "daily"]
+    fn the_piglin_brain_runs_inside_server_ai_step() {
+        let mut outcome = None;
+        let ran = with_test_world(&[], |w, types| {
+            outcome = Some(brain_after_one_step(w, types))
+        });
+        assert!(ran, "vanilla data is missing");
+        let (celebration, spot, admire_disabled, anger) = outcome.unwrap();
+        assert!(celebration > 0 && spot, "the celebration starts");
+        assert_eq!((admire_disabled, anger), (Some(4), Some(4)));
+    }
+
+    /// A mob of `name` at `at`, one tick from converting (`timeInOverworld` at 300), its
+    /// sensors due this tick (`timeToTick` 1), a repellent remembered that isn't there, an
+    /// `ANGRY_AT` with 3 ticks left and, for a piglin, a seen item's `ADMIRING_ITEM` with 3
+    /// ticks left and a held gold ingot whose `ADMIRING_ITEM` runs out this tick.
+    fn about_to_convert(types: &super::super::MobTypes, name: &str) -> Mob {
+        let mut m = Mob::new(
+            1,
+            Arc::new(types.types[name].clone()),
+            Vec3::new(0.5, 64.0, 0.5),
+            0.0,
+        );
+        m.extra.counter2 = 300;
+        m.extra.piglin.sensor_wait = 1;
+        m.extra.repellent = Some([7, 7, 7]);
+        set_angry_at(&mut m, 3);
+        if m.species() == Species::Piglin {
+            m.extra.piglin.seen_admire.set(3);
+            m.extra.set_slot_id(
+                sunrise_items::equipment::OFFHAND,
+                Some("minecraft:gold_ingot".into()),
+            );
+            m.extra.using_item = 1;
+        }
+        m
+    }
+
+    /// What one whole tick of `m` leaves: whether it converted or finished admiring, its
+    /// zombification count, its sensors' wait and remembered repellent, its `ANGRY_AT`, its
+    /// seen item's `ADMIRING_ITEM` and its held item's.
+    #[derive(Debug, PartialEq)]
+    struct After {
+        converted: bool,
+        finished_admiring: bool,
+        conversion: i32,
+        sensor_wait: i32,
+        repellent: Option<[i32; 3]>,
+        angry_at: Option<i32>,
+        seen_admire: Option<i32>,
+        held_admire: i32,
+    }
+
+    fn one_tick(w: &MobWorld, mut m: Mob) -> After {
+        let mut level = crate::health::TestLevel::new(0);
+        let mut events = Vec::new();
+        tick(&mut m, w, &mut level.level(), &mut events);
+        After {
+            converted: events.iter().any(|e| matches!(e, MobEvent::Convert { .. })),
+            finished_admiring: events
+                .iter()
+                .any(|e| matches!(e, MobEvent::FinishAdmiring { .. })),
+            conversion: m.extra.counter2,
+            sensor_wait: m.extra.piglin.sensor_wait,
+            repellent: m.extra.repellent,
+            angry_at: angry_at(&m),
+            seen_admire: m.extra.piglin.seen_admire.left(),
+            held_admire: m.extra.using_item,
+        }
+    }
+
+    /// The copy a native row with a cancelling `HEAD` on `Mob.serverAiStep` builds: its
+    /// helper (the `lower` fixture's `server_ai`, cancelling) returns `Break(value)`, and the
+    /// copy returns `value` before the body.
+    fn cancelling_row(
+        m: &mut Mob,
+        _: &MobWorld<'_>,
+        _: &mut DamageLevel<'_>,
+        _: &mut Vec<MobEvent>,
+        _: bool,
+    ) -> ControlFlow<AiPause> {
+        fn server_ai(m: &Mob) -> ControlFlow<ControlFlow<AiPause>> {
+            let _ = m;
+            ControlFlow::Break(ControlFlow::Continue(()))
+        }
+        match server_ai(&*m) {
+            ControlFlow::Break(value) => value,
+            ControlFlow::Continue(()) => unreachable!("the row cancels at HEAD"),
+        }
+    }
+
+    /// A native row that cancels `Mob.serverAiStep` at `HEAD`, installed in the step's slot,
+    /// skips all of the piglin's, brute's and hoglin's brain and conversion with it: no memory
+    /// runs out or finishes a barter, the sensors neither count down nor scan, and the
+    /// zombification neither counts nor converts. The same tick without the row does all of it.
+    #[test]
+    #[ignore = "daily"]
+    fn a_row_cancelling_server_ai_step_skips_the_brain_and_the_conversion() {
+        let ran = with_test_world(&[], |w, types| {
+            let mut world = w.clone();
+            world.player = None;
+            for name in [
+                "minecraft:piglin",
+                "minecraft:piglin_brute",
+                "minecraft:hoglin",
+            ] {
+                let piglin = name == "minecraft:piglin";
+                let hoglin = name == "minecraft:hoglin";
+                let skipped = server_ai_slot::with_copy(cancelling_row, || {
+                    one_tick(&world, about_to_convert(types, name))
+                });
+                assert_eq!(
+                    skipped,
+                    After {
+                        converted: false,
+                        finished_admiring: false,
+                        conversion: 300,
+                        sensor_wait: 1,
+                        repellent: Some([7, 7, 7]),
+                        angry_at: Some(3),
+                        seen_admire: piglin.then_some(3),
+                        held_admire: i32::from(piglin),
+                    },
+                    "{name}, step cancelled by the row"
+                );
+                let ran = one_tick(&world, about_to_convert(types, name));
+                assert!(ran.converted, "{name} converts when its step runs");
+                assert_eq!(ran.angry_at, Some(2), "{name}'s ANGRY_AT runs down");
+                assert_eq!(ran.finished_admiring, piglin, "{name} finishes admiring");
+                if piglin || hoglin {
+                    assert_eq!(
+                        (ran.sensor_wait, ran.repellent),
+                        (20, None),
+                        "{name}'s sensors scan"
+                    );
+                }
+            }
+        });
+        assert!(ran, "vanilla data is missing");
+    }
+
+    /// A stone floor wide enough to walk 16 blocks away on, and `block` at (0, 64, 0).
+    fn repellent_floor(
+        block: &'static str,
+    ) -> impl FnOnce(&mut crate::world::World, &sunrise_world::registry::BlockRegistry) {
+        move |world, registry| {
+            let stone = registry.default_state("minecraft:stone").unwrap();
+            for cx in -3..3 {
+                for cz in -3..3 {
+                    world
+                        .chunks
+                        .insert((cx, cz), Arc::new(crate::chunk::Chunk::empty(cx, cz)));
+                }
+            }
+            for x in -48..48 {
+                for z in -48..48 {
+                    world.set(x, 63, z, stone).unwrap();
+                }
+            }
+            world
+                .set(0, 64, 0, registry.default_state(block).unwrap())
+                .unwrap();
+        }
+    }
+
+    /// As [`a_repellent_scanned_this_tick_is_avoided_this_tick`], on a tick where
+    /// `Mob.serverAiStep`'s goal selectors only tick the goals already running (an odd `tickCount + id` past the first ticks): the avoid behaviour is the
+    /// brain's, which `Brain.startEachNonRunningBehavior` tries on every tick, so it still
+    /// starts on the scan's tick.
+    #[test]
+    #[ignore = "daily"]
+    fn a_repellent_scanned_on_a_running_goals_only_tick_is_avoided_that_tick() {
+        for (name, block, goal) in [
+            (
+                "minecraft:piglin",
+                "minecraft:soul_lantern",
+                "PiglinAvoidRepellent",
+            ),
+            (
+                "minecraft:hoglin",
+                "minecraft:warped_fungus",
+                "HoglinAvoidRepellent",
+            ),
+        ] {
+            let ran = with_built_test_world(&[], repellent_floor(block), |w, types| {
+                let mut world = w.clone();
+                world.player = None;
+                let mut level = crate::health::TestLevel::new(0);
+                let mut events = Vec::new();
+                let mut m = Mob::new(
+                    2,
+                    Arc::new(types.types[name].clone()),
+                    Vec3::new(3.5, 64.0, 0.5),
+                    0.0,
+                );
+                // `tickCount` 5, id 2: 7 is odd, so only the running goals tick.
+                m.age = 5;
+                m.extra.piglin.sensor_wait = 1;
+                m.ground.on_ground = true;
+                let _ = server_ai_step(&mut m, &world, &mut level.level(), &mut events, false);
+                assert_eq!(m.extra.repellent, Some([0, 64, 0]), "{name} scans");
+                assert!(
+                    m.ai.goals.is_running(goal),
+                    "{name}: {:?}",
+                    m.ai.goals.running_names()
+                );
+            });
+            assert!(ran, "vanilla data is missing");
+        }
+    }
+
+    /// `Brain.tick` runs the sensors before the behaviours: on the tick `PiglinSpecificSensor`
+    /// finds a soul lantern 3 blocks away, `PiglinAi.avoidRepellent` (the idle activity's
+    /// `SetWalkTargetAwayFrom.pos(NEAREST_REPELLENT, ..)`) already walks away from it, as
+    /// `HoglinSpecificSensor` and the hoglin's for a warped fungus.
+    #[test]
+    #[ignore = "daily"]
+    fn a_repellent_scanned_this_tick_is_avoided_this_tick() {
+        for (name, block, goal) in [
+            (
+                "minecraft:piglin",
+                "minecraft:soul_lantern",
+                "PiglinAvoidRepellent",
+            ),
+            (
+                "minecraft:hoglin",
+                "minecraft:warped_fungus",
+                "HoglinAvoidRepellent",
+            ),
+        ] {
+            let ran = with_built_test_world(
+                &[],
+                move |world: &mut crate::world::World,
+                      registry: &sunrise_world::registry::BlockRegistry| {
+                    // A stone floor wide enough to walk 16 blocks away on, and the
+                    // repellent at (0, 64, 0).
+                    let stone = registry.default_state("minecraft:stone").unwrap();
+                    for cx in -3..3 {
+                        for cz in -3..3 {
+                            world
+                                .chunks
+                                .insert((cx, cz), Arc::new(crate::chunk::Chunk::empty(cx, cz)));
+                        }
+                    }
+                    for x in -48..48 {
+                        for z in -48..48 {
+                            world.set(x, 63, z, stone).unwrap();
+                        }
+                    }
+                    world
+                        .set(0, 64, 0, registry.default_state(block).unwrap())
+                        .unwrap();
+                },
+                |w, types| {
+                    let mut world = w.clone();
+                    world.player = None;
+                    let mut level = crate::health::TestLevel::new(0);
+                    let mut events = Vec::new();
+                    let mut m = Mob::new(
+                        2,
+                        Arc::new(types.types[name].clone()),
+                        Vec3::new(3.5, 64.0, 0.5),
+                        0.0,
+                    );
+                    m.extra.piglin.sensor_wait = 1;
+                    // Standing on the floor, as after a tick there.
+                    m.ground.on_ground = true;
+                    let _ = server_ai_step(&mut m, &world, &mut level.level(), &mut events, false);
+                    assert_eq!(m.extra.repellent, Some([0, 64, 0]), "{name} scans");
+                    assert!(
+                        m.ai.goals.is_running(goal),
+                        "{name}: {:?}",
+                        m.ai.goals.running_names()
+                    );
+                },
+            );
+            assert!(ran, "vanilla data is missing");
+        }
+    }
+
+    /// `Brain.tick` forgets an `ANGRY_AT` whose time to live is already 0 before the
+    /// behaviours and `PiglinAi.updateActivity`: without it, a piglin's target that wears gold
+    /// is no longer valid and goes, and the piglin stays idle. One tick earlier the memory,
+    /// with 0 ticks left, is still there, and the piglin fights.
+    #[test]
+    #[ignore = "daily"]
+    fn an_angry_at_that_runs_out_drops_a_gold_wearer_before_the_activity() {
+        let ran = with_test_world(&[], |w, types| {
+            let mut world = w.clone();
+            let mut player = test_player(Vec3::new(4.5, 64.0, 0.5));
+            player.gold_armor = true;
+            world.player = Some(player);
+            let fight = |anger: i32| {
+                let mut level = crate::health::TestLevel::new(0);
+                let mut events = Vec::new();
+                let mut m = Mob::new(
+                    1,
+                    Arc::new(types.types["minecraft:piglin"].clone()),
+                    Vec3::new(0.5, 64.0, 0.5),
+                    0.0,
+                );
+                m.ai.target = Some(Who::Player);
+                m.extra.anger = anger;
+                let _ = server_ai_step(&mut m, &world, &mut level.level(), &mut events, false);
+                (m.ai.target, m.extra.piglin.activity, angry_at(&m))
+            };
+            // `ANGRY_AT` with 1 tick left: it counts down to 0 and stays.
+            assert_eq!(
+                fight(2),
+                (Some(Who::Player), Activity::Fight, Some(0)),
+                "the last angry tick"
+            );
+            // `ANGRY_AT` with 0 ticks left: it goes first.
+            assert_eq!(fight(1), (None, Activity::Idle, None), "the memory ran out");
+        });
+        assert!(ran, "vanilla data is missing");
+    }
+
+    /// `Piglin.customServerAiStep` is `Brain.tick`, then `PiglinAi.updateActivity`. In
+    /// `Brain.tick`, `forgetOutdatedMemories` clears a memory only once its time to live is
+    /// already 0 (`MemorySlot.tick`) and otherwise counts it down, so a seen item's
+    /// `ADMIRING_ITEM` with one tick left is still there for that tick's `updateActivity`: the
+    /// piglin admires through that tick and goes idle on the next.
+    #[test]
+    #[ignore = "daily"]
+    fn a_piglin_admires_through_the_last_tick_of_its_memory() {
+        let ran = with_test_world(&[], |w, types| {
+            let mut world = w.clone();
+            world.player = None;
+            let mut level = crate::health::TestLevel::new(0);
+            let mut events = Vec::new();
+            let mut m = Mob::new(
+                1,
+                Arc::new(types.types["minecraft:piglin"].clone()),
+                Vec3::new(0.5, 64.0, 0.5),
+                0.0,
+            );
+            m.extra.piglin.seen_admire.set(1);
+            m.extra.piglin.activity = Activity::Admire;
+            let _ = server_ai_step(&mut m, &world, &mut level.level(), &mut events, false);
+            assert_eq!(
+                (m.extra.piglin.activity, m.extra.piglin.seen_admire.left()),
+                (Activity::Admire, Some(0)),
+                "the last tick still admires"
+            );
+            let _ = server_ai_step(&mut m, &world, &mut level.level(), &mut events, false);
+            assert_eq!(m.extra.piglin.activity, Activity::Idle);
+        });
+        assert!(ran, "vanilla data is missing");
+    }
+
+    /// A piglin admiring a held gold ingot: its `ADMIRING_ITEM` (`admireGoldItem`) runs out in
+    /// `Brain.tick`, where `StopHoldingItemIfNoLongerAdmiring` finishes it (the game barters
+    /// the ingot) before `updateActivity`, which then finds the piglin idle. On a tick it also
+    /// converts, the finish comes first: the ingot isn't dropped at its feet as an
+    /// interrupted admiring would be, and the zombified piglin doesn't carry it.
+    #[test]
+    #[ignore = "daily"]
+    fn a_held_items_admiring_ends_in_the_brain_before_the_activity_and_the_conversion() {
+        let ran = with_test_world(&[], |w, types| {
+            let mut world = w.clone();
+            world.player = None;
+            let piglin = |held: i32, conversion: i32| {
+                let mut m = Mob::new(
+                    1,
+                    Arc::new(types.types["minecraft:piglin"].clone()),
+                    Vec3::new(0.5, 64.0, 0.5),
+                    0.0,
+                );
+                m.extra.set_slot_id(
+                    sunrise_items::equipment::OFFHAND,
+                    Some("minecraft:gold_ingot".into()),
+                );
+                m.extra.using_item = held;
+                m.extra.counter2 = conversion;
+                m.extra.piglin.activity = Activity::Admire;
+                m
+            };
+            let finished = |events: &[MobEvent]| {
+                events
+                    .iter()
+                    .position(|e| matches!(e, MobEvent::FinishAdmiring { mob: 1 }))
+            };
+            let mut level = crate::health::TestLevel::new(0);
+            // `using_item` keeps the memory as `Ttl` does: at 2, it counts down to its
+            // last tick (time to live 0) and stays; at 1, it runs out.
+            let mut m = piglin(2, 0);
+            let mut events = Vec::new();
+            let _ = server_ai_step(&mut m, &world, &mut level.level(), &mut events, false);
+            assert_eq!(m.extra.piglin.activity, Activity::Admire, "the last tick");
+            assert_eq!(finished(&events), None);
+            // Ran out: finished in the brain, and idle in the same tick.
+            let mut events = Vec::new();
+            let _ = server_ai_step(&mut m, &world, &mut level.level(), &mut events, false);
+            assert!(finished(&events).is_some(), "the brain finishes it");
+            assert_eq!(m.extra.piglin.activity, Activity::Idle);
+            // Running out on the conversion tick.
+            let mut m = piglin(1, 300);
+            let mut events = Vec::new();
+            let _ = server_ai_step(&mut m, &world, &mut level.level(), &mut events, false);
+            let convert = events
+                .iter()
+                .position(|e| matches!(e, MobEvent::Convert { .. }))
+                .expect("the piglin converts");
+            let finish = finished(&events).expect("the brain finishes the admiring");
+            assert!(finish < convert, "finished before the conversion");
+            assert!(
+                !events
+                    .iter()
+                    .any(|e| matches!(e, MobEvent::DropItem { .. })),
+                "the ingot is not dropped: {events:?}"
+            );
+            // What the zombified piglin carries is the game's to settle, once it has handled
+            // the `FinishAdmiring` (`game::piglin_conversion_tests`).
+        });
+        assert!(ran, "vanilla data is missing");
+    }
+
+    /// A piglin converting while it walks onto a slime block: `Mob.convertTo` takes its place
+    /// where it stood before `travel`, and discards it, so the discarded piglin's block
+    /// effects (`Entity.applyEffectsFromBlocks`: `isAffectedByBlocks` is false once removed)
+    /// don't run: `SlimeBlock.stepOn` doesn't slow it, as `TurtleEggBlock.stepOn` wouldn't
+    /// crack an egg under it. A piglin that doesn't convert is slowed. (A hot floor can't
+    /// show it: `isInvulnerableToBase` already spares a removed mob.)
+    #[test]
+    #[ignore = "daily"]
+    fn a_converted_piglin_takes_no_block_effects_after_its_conversion() {
+        // Where the zombified piglin took its place, and the discarded piglin's sideways speed.
+        let walk = |under: &'static str, conversion: i32| {
+            let mut outcome = None;
+            let ran = with_built_test_world(
+                &[],
+                super::hurt_teleport_contact_tests::build(under, "minecraft:air"),
+                |w, types| {
+                    let mut world = w.clone();
+                    world.player = None;
+                    let mut level = crate::health::TestLevel::new(0);
+                    let mut events = Vec::new();
+                    let mut m = Mob::new(
+                        1,
+                        Arc::new(types.types["minecraft:piglin"].clone()),
+                        Vec3::new(0.5, 64.0, 0.5),
+                        0.0,
+                    );
+                    // Walking, and pressed onto the floor so that the move lands it there.
+                    m.velocity = Vec3::new(0.3, -0.08, 0.0);
+                    m.extra.counter2 = conversion;
+                    tick(&mut m, &world, &mut level.level(), &mut events);
+                    let converted_at = events.iter().find_map(|e| match e {
+                        MobEvent::Convert { from, .. } => Some(from.position),
+                        _ => None,
+                    });
+                    outcome = Some((converted_at, [m.velocity.x, m.velocity.z]));
+                },
+            );
+            assert!(ran, "vanilla data is missing");
+            outcome.unwrap()
+        };
+        let (converted_at, on_slime) = walk("minecraft:slime_block", 300);
+        assert_eq!(
+            converted_at,
+            Some(Vec3::new(0.5, 64.0, 0.5)),
+            "the zombified piglin takes its place before travel"
+        );
+        let (_, on_stone) = walk("minecraft:stone", 300);
+        assert_eq!(
+            on_slime, on_stone,
+            "the discarded piglin's stepOn doesn't run"
+        );
+        let (_, staying_on_slime) = walk("minecraft:slime_block", 0);
+        let (_, staying_on_stone) = walk("minecraft:stone", 0);
+        assert_ne!(
+            staying_on_slime, staying_on_stone,
+            "a piglin that doesn't convert is slowed by the slime block"
+        );
+    }
+
+    /// `PiglinBrute.customServerAiStep` runs `updateActivity` and `maybePlayActivitySound`
+    /// inside `Mob.serverAiStep`, which `LivingEntity.aiStep` calls before `travel`: a moving
+    /// brute that starts fighting growls where it stood before it moved.
+    #[test]
+    #[ignore = "daily"]
+    fn a_moving_brutes_fight_growl_comes_from_before_travel() {
+        let ran = with_test_world(&[], |w, types| {
+            let mut world = w.clone();
+            world.player = Some(test_player(Vec3::new(4.5, 64.0, 0.5)));
+            let mut level = crate::health::TestLevel::new(0);
+            let mut events = Vec::new();
+            let mut m = Mob::new(
+                1,
+                Arc::new(types.types["minecraft:piglin_brute"].clone()),
+                Vec3::new(0.5, 64.0, 0.5),
+                0.0,
+            );
+            m.ai.target = Some(Who::Player);
+            m.extra.piglin.activity = Activity::Idle;
+            m.velocity = Vec3::new(0.3, 0.0, 0.0);
+            let before = [m.position.x, m.position.y, m.position.z];
+            tick(&mut m, &world, &mut level.level(), &mut events);
+            assert_ne!(
+                [m.position.x, m.position.y, m.position.z],
+                before,
+                "it moved"
+            );
+            let growls: Vec<_> = events
+                .iter()
+                .filter_map(|e| match e {
+                    MobEvent::Sound("entity.piglin_brute.angry", at, ..) => Some(*at),
+                    _ => None,
+                })
+                .collect();
+            assert!(!growls.is_empty(), "the fight starts with a growl");
+            assert!(
+                growls.iter().all(|at| *at == before),
+                "{growls:?} != {before:?}"
+            );
+        });
+        assert!(ran, "vanilla data is missing");
+    }
+}
+
+/// `Mob.serverAiStep`, which `ai_step` calls for a living mob that isn't immobile. With
+/// `pause_movement`, it pauses on goal movement or a bee's own hurt (`Break`), and the rest of
+/// the step resumes later without coming back through here. A native mod takes the step here
+/// through `[[native.mixin]]`, where a Java mod's mixin on `serverAiStep` skips it for a tick
+/// (#4678): a cancelling `HEAD` makes it return `Continue(())`, and `ai_step` goes on as after
+/// the step.
+#[sunrise_mod_api_macros::replaceable]
+fn server_ai_step(
     m: &mut Mob,
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
     pause_movement: bool,
 ) -> ControlFlow<AiPause> {
+    // The staged build's head check: when a native row's copy of this function is
+    // installed, the copy runs instead of this body. A test installs its copy here.
+    #[cfg(test)]
+    if let Some(copy) = server_ai_slot::installed() {
+        return copy(m, w, level, events, pause_movement);
+    }
     // A Java `int`: past `i32::MAX` it wraps, as there.
     m.ai.no_action_time = m.ai.no_action_time.wrapping_add(1);
+    // The start of the piglin's, brute's and hoglin's `Brain.tick`: memories that
+    // run out, then the sensors, before the goals that stand in for its behaviours.
+    if matches!(
+        m.species(),
+        Species::Piglin | Species::PiglinBrute | Species::Hoglin
+    ) {
+        super::piglin::brain_start(m, w, events);
+    }
+    // The piglin brain's `StartCelebratingIfTargetDead`, before the target goals
+    // drop the dead target.
+    if m.species() == Species::Piglin {
+        super::piglin::celebrate(m, w);
+    }
     // A happy ghast set up for its age (ageBoundaryReached runs at once).
     if m.species() == Species::HappyGhast {
         super::happy_ghast::ensure_setup(m, Some(w));
@@ -4046,8 +4747,17 @@ fn custom_server_ai_step(m: &mut Mob, cx: &mut Cx) {
         Species::Evoker | Species::Illusioner if m.extra.counter > 0 => m.extra.counter -= 1,
         Species::Bat => super::bat::server_ai_step(m, cx.w, cx.events),
         Species::Frog => super::frog::server_ai_step(m, cx.w),
-        // Hoglin and Piglin.customServerAiStep: the brain, then updateActivity.
-        Species::Piglin | Species::Hoglin => super::piglin::brain_step(m, cx),
+        // Hoglin, Piglin and PiglinBrute.customServerAiStep: the brain, then updateActivity,
+        // then (AbstractPiglin.customServerAiStep for both piglins) the zombification.
+        Species::Piglin | Species::Hoglin => {
+            super::piglin::brain_tick(m, cx.w, cx.level.random(), cx.events);
+            super::piglin::brain_step(m, cx);
+            super::piglin::zombification_tick(m, cx.w, cx.events);
+        }
+        Species::PiglinBrute => {
+            super::piglin::brain_tick(m, cx.w, cx.level.random(), cx.events);
+            super::piglin::zombification_tick(m, cx.w, cx.events);
+        }
         Species::Zoglin => super::piglin::zoglin_step(m, cx),
         _ => {}
     }
@@ -4069,9 +4779,7 @@ fn species_ai_step(
         Species::Wolf => super::tame::ai_step(m, w, events),
         Species::Cat => super::tame::cat_ai_step(m, events),
         Species::IronGolem => super::golem::iron_ai_step(m, w),
-        Species::Piglin | Species::PiglinBrute | Species::Hoglin => {
-            super::piglin::ai_step(m, w, level.random(), events)
-        }
+        Species::Piglin | Species::PiglinBrute | Species::Hoglin => super::piglin::ai_step(m),
         Species::Zoglin if m.extra.anim_ticks > 0 => m.extra.anim_ticks -= 1,
         s if super::equine::is_equine(s) => super::equine::ai_step(m, w, events),
         Species::Phantom => super::phantom::flap_sound(m, events),
@@ -4086,9 +4794,9 @@ fn species_ai_step(
         Species::Breeze => super::breeze::ai_step(m),
         Species::Sniffer => super::sniffer::ai_step(m, events),
         Species::HappyGhast => super::happy_ghast::ai_step(m, w),
-        Species::Villager => super::villager::ai_step(m, w, events),
+        Species::Villager => super::villager::ai_step(m, w),
         Species::WanderingTrader => {
-            super::villager::ai_step(m, w, events);
+            super::villager::ai_step(m, w);
             super::trader::ai_step(m, w);
         }
         Species::Shulker => {
@@ -4365,9 +5073,12 @@ pub fn feed_animal(
     }
     Some(sound)
 }
-/// `AgeableMob.canAgeUp`: a baby that no age lock holds back.
+/// `AgeableMob.canAgeUp`: a baby that no age lock holds back. `SkeletonHorse.canAgeUp` and
+/// `ZombieHorse.canAgeUp` are `false`: an undead foal never grows.
 pub fn can_age_up(m: &Mob) -> bool {
-    m.is_baby() && !m.extra.age_locked
+    m.is_baby()
+        && !m.extra.age_locked
+        && !matches!(m.species(), Species::SkeletonHorse | Species::ZombieHorse)
 }
 /// `AgeableMob.canUseGoldenDandelion`: a golden dandelion in hand, a baby
 /// whose particle timer has run out, and a type outside
@@ -4488,7 +5199,11 @@ pub fn eating_sound(
 pub fn eating_sound_is_bound(species: Species) -> bool {
     matches!(species, Species::Frog | Species::Goat | Species::Sniffer)
 }
+/// `LivingEntity.getSoundVolume`: a content type's declared `sounds.volume`, else its template's.
 pub fn sound_volume(m: &Mob) -> f32 {
+    if let Some(volume) = m.kind.sound_overrides.volume {
+        return volume;
+    }
     match m.species() {
         Species::Ghast => 5.0,
         Species::HappyGhast => super::happy_ghast::volume(m),
@@ -4652,7 +5367,6 @@ pub fn accepts_damage(
 }
 /// Reactions after taking damage (sounds, anger).
 pub fn after_hurt(m: &mut Mob, source: &Damage) {
-    m.ai.no_action_time = 0;
     match m.species() {
         Species::Armadillo => super::armadillo::after_hurt(m, source),
         Species::Nautilus | Species::ZombieNautilus => super::nautilus::after_hurt(m, source),
@@ -4666,7 +5380,7 @@ pub fn after_hurt(m: &mut Mob, source: &Damage) {
         Species::Piglin if source.attacker == Some(Who::Player) => {
             super::piglin::stop_admiring(m);
             m.extra.egg_time = 400;
-            m.extra.anger = 600;
+            super::piglin::set_angry_at(m, 600);
         }
         _ => {}
     }
@@ -7005,11 +7719,19 @@ mod age_up_tests {
 
     /// Official Java 26.3: NoAI leaves both age clocks running. AgeLocked
     /// holds a baby's age, but a positive breeding cooldown still expires.
+    /// An undead horse's `canAgeUp` is false, so its foal's age never moves.
     #[test]
     #[ignore = "daily"]
     fn age_clocks_tick_with_no_ai_and_respect_baby_age_lock() {
         let ran = crate::mobs::world::with_test_world(&[], |w, types| {
-            for species in ["pig", "cow", "horse", "turtle"] {
+            for species in [
+                "pig",
+                "cow",
+                "horse",
+                "turtle",
+                "skeleton_horse",
+                "zombie_horse",
+            ] {
                 for no_ai in [true, false] {
                     for locked in [false, true] {
                         for age in [-2, 2] {
@@ -7026,7 +7748,8 @@ mod age_up_tests {
                             let level = &mut test_level.level();
                             let expected = if age > 0 {
                                 [1, 0, 0, 0]
-                            } else if locked {
+                            } else if locked || matches!(species, "skeleton_horse" | "zombie_horse")
+                            {
                                 [-2, -2, -2, -2]
                             } else {
                                 [-1, 0, 0, 0]
@@ -7216,7 +7939,14 @@ mod burn_and_rose_tests {
     fn a_mob_in_a_lava_cauldron_burns() {
         let ran = crate::mobs::world::with_built_test_world(
             &[],
-            build_with("minecraft:lava_cauldron"),
+            |world, registry| {
+                build_with("minecraft:lava_cauldron")(world, registry);
+                // A second cauldron with powder snow on top of it.
+                let cauldron = registry.default_state("minecraft:lava_cauldron").unwrap();
+                let snow = registry.default_state("minecraft:powder_snow").unwrap();
+                world.set(-3, 64, -3, cauldron).unwrap();
+                world.set(-3, 65, -3, snow).unwrap();
+            },
             |w, types| {
                 for (y, hurt) in [(64.25, true), (65.0, false)] {
                     let kind = Arc::new(types.types["minecraft:pig"].clone());
@@ -7231,6 +7961,71 @@ mod burn_and_rose_tests {
                     assert_eq!(m.health, expected, "at y {y}");
                     assert_eq!(m.fire_ticks > 0, hurt, "at y {y}");
                 }
+
+                let kind = Arc::new(types.types["minecraft:pig"].clone());
+                let mut m = Mob::new(1, kind, Vec3::new(0.5, 64.96875, 0.5), 0.0);
+                register(&mut m);
+                crate::mobs::finalize::set_baby(&mut m, true);
+                m.previous = m.position;
+                let start = m.health;
+                let (mut lr, mut events) = (crate::health::TestLevel::new(0), Vec::new());
+                // A baby fits between the walls: above the fill but within
+                // the block bounds is still outside the inside shape.
+                effects_from_blocks(&mut m, w, &mut lr.level(), &mut events);
+                assert_eq!(m.fire_ticks, 0);
+                assert_eq!(m.health, start);
+
+                // Neither box overlaps the cauldron at the ends of the move,
+                // but the sweep crosses it and ignites, thaws and hurts once.
+                m.previous = Vec3::new(-0.5, 64.5, 0.5);
+                m.position = Vec3::new(1.5, 64.5, 0.5);
+                m.ticks_frozen = 100;
+                effects_from_blocks(&mut m, w, &mut lr.level(), &mut events);
+                assert_eq!(m.fire_ticks, 300);
+                assert_eq!(m.health, start - 4.0);
+                assert_eq!(m.ticks_frozen, 0);
+
+                // The hurt runs after the ignition: a pig the lava kills is
+                // already burning when it dies.
+                let kind = Arc::new(types.types["minecraft:pig"].clone());
+                let mut m = Mob::new(1, kind, Vec3::new(0.5, 64.25, 0.5), 0.0);
+                register(&mut m);
+                m.previous = m.position;
+                m.health = 1.0;
+                effects_from_blocks(&mut m, w, &mut lr.level(), &mut events);
+                assert!(!m.alive());
+                assert_eq!(m.fire_ticks, 300);
+
+                // CLEAR_FREEZE thaws a fire-immune mob, which the lava neither
+                // lights nor hurts.
+                let kind = Arc::new(types.types["minecraft:blaze"].clone());
+                let mut m = Mob::new(1, kind, Vec3::new(0.5, 64.25, 0.5), 0.0);
+                register(&mut m);
+                m.previous = m.position;
+                m.ticks_frozen = 100;
+                let (start, fire) = (m.health, m.fire_ticks);
+                effects_from_blocks(&mut m, w, &mut lr.level(), &mut events);
+                assert_eq!((m.ticks_frozen, m.fire_ticks, m.health), (0, fire, start));
+
+                // Feet in the lava and back in the powder snow above, in one
+                // step: the ignition comes first, so the burning pig melts the
+                // snow before EXTINGUISH puts it out.
+                let kind = Arc::new(types.types["minecraft:pig"].clone());
+                let mut m = Mob::new(1, kind, Vec3::new(-2.5, 64.25, -2.5), 0.0);
+                register(&mut m);
+                m.previous = m.position;
+                let start = m.health;
+                events.clear();
+                effects_from_blocks(&mut m, w, &mut lr.level(), &mut events);
+                assert_eq!(m.health, start - 4.0);
+                assert!(!m.is_on_fire());
+                assert!(events.iter().any(|event| matches!(
+                    event,
+                    MobEvent::BreakBlock {
+                        pos: [-3, 65, -3],
+                        ..
+                    }
+                )));
             },
         );
         assert!(ran, "vanilla data is missing");
@@ -7739,7 +8534,7 @@ mod iron_golem_push_tests {
                 got.push((
                     m.attrs.attack_damage,
                     events.iter().find_map(|e| match e {
-                        MobEvent::AttackPlayer(amount, _)
+                        MobEvent::AttackPlayer(amount, ..)
                         | MobEvent::AttackPlayerWithEffect { amount, .. } => Some(*amount),
                         _ => None,
                     }),
@@ -8056,7 +8851,7 @@ mod air_tests {
             }
         };
         let ran = crate::mobs::world::with_built_test_world(&[], build, |w, types| {
-            let drowned = |id: &str, baby: bool, body: Option<&str>| {
+            let drowned = |w: &MobWorld, id: &str, baby: bool, body: Option<&str>| {
                 let kind = std::sync::Arc::new(types.types[id].clone());
                 let mut m = Mob::new(1, kind, Vec3::new(2.5, 3.0, 2.5), 0.0);
                 if baby {
@@ -8071,21 +8866,38 @@ mod air_tests {
                 }
                 (start - m.health, m.air)
             };
-            // The tag itself, from the shipped data: the golems differ.
-            assert!(types.types["minecraft:copper_golem"].flags.breathes_water);
-            assert!(!types.types["minecraft:iron_golem"].flags.breathes_water);
-            assert_eq!(drowned("minecraft:guardian", false, None), (0.0, 300));
-            assert_eq!(drowned("minecraft:copper_golem", false, None), (0.0, 300));
-            // Not in the tag, and still no drowning damage: its decreaseAirSupply
-            // is the identity, so its air stays at 300 and it never refills.
-            assert_eq!(drowned("minecraft:iron_golem", false, None), (0.0, 300));
-            assert_eq!(drowned("minecraft:happy_ghast", false, None), (2.0, 0));
-            assert_eq!(drowned("minecraft:happy_ghast", true, None), (0.0, 300));
-            assert_eq!(drowned("minecraft:sulfur_cube", false, None), (2.0, 0));
+            assert_eq!(drowned(w, "minecraft:guardian", false, None), (0.0, 300));
             assert_eq!(
-                drowned("minecraft:sulfur_cube", false, Some("minecraft:stone")),
+                drowned(w, "minecraft:copper_golem", false, None),
                 (0.0, 300)
             );
+            // Not in the tag, and still no drowning damage: its decreaseAirSupply
+            // is the identity, so its air stays at 300 and it never refills.
+            assert_eq!(drowned(w, "minecraft:iron_golem", false, None), (0.0, 300));
+            assert_eq!(drowned(w, "minecraft:happy_ghast", false, None), (2.0, 0));
+            assert_eq!(drowned(w, "minecraft:happy_ghast", true, None), (0.0, 300));
+            assert_eq!(drowned(w, "minecraft:sulfur_cube", false, None), (2.0, 0));
+            assert_eq!(
+                drowned(w, "minecraft:sulfur_cube", false, Some("minecraft:stone")),
+                (0.0, 300)
+            );
+
+            // A replacement swaps which types breathe, without rebuilding their types.
+            let mut items = w.items.unwrap().clone();
+            items.set_entity_type_tags(crate::items::EntityTypeTags::from_ordered(
+                [(
+                    "minecraft:can_breathe_under_water".into(),
+                    vec!["minecraft:cow".into()],
+                )]
+                .into(),
+                items.entity_type_tags.ids().clone(),
+            ));
+            let w = MobWorld {
+                items: Some(&items),
+                ..w.clone()
+            };
+            assert_eq!(drowned(&w, "minecraft:guardian", false, None), (2.0, 0));
+            assert_eq!(drowned(&w, "minecraft:cow", false, None), (0.0, 300));
         });
         // Without the extracted vanilla data the world cannot be built.
         assert!(ran, "vanilla data is missing");
@@ -8268,114 +9080,119 @@ mod breathing_effect_tests {
     #[ignore = "daily"]
     fn breathing_effects_and_bubble_columns_preserve_mob_air() {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let ran = crate::mobs::world::with_resource_test_world(
-            &root,
-            &[],
-            true,
-            true,
-            |world, registry| {
-                world
-                    .chunks
-                    .insert((0, 0), Arc::new(crate::chunk::Chunk::empty(0, 0)));
-                for (x0, name) in [(6, "minecraft:water"), (10, "minecraft:bubble_column")] {
-                    let state = registry.default_state(name).unwrap();
-                    for x in x0..=x0 + 1 {
-                        for z in 2..=3 {
-                            for y in 63..=67 {
-                                world.set(x, y, z, state).unwrap();
-                            }
-                        }
-                    }
-                }
-                // Mixed columns distinguish the eye-block query from feet position.
-                for (x0, bubble_at_eye) in [(6, true), (10, false)] {
-                    for x in x0..=x0 + 1 {
-                        for z in 6..=7 {
-                            for y in 63..=67 {
-                                let bubble = (y >= 65) == bubble_at_eye;
-                                let name = if bubble {
-                                    "minecraft:bubble_column"
-                                } else {
-                                    "minecraft:water"
-                                };
-                                world
-                                    .set(x, y, z, registry.default_state(name).unwrap())
-                                    .unwrap();
-                            }
-                        }
-                    }
-                }
-            },
-            |world, types| {
-                let kind = Arc::new(types.types["minecraft:cow"].clone());
-                assert!(!kind.flags.needs_water && !kind.flags.breathes_water);
-                let mut rows = Vec::new();
-                let mut failures = Vec::new();
-                for (scene, x, z) in [
-                    (0, 2.5, 2.5),
-                    (1, 6.5, 2.5),
-                    (2, 10.5, 2.5),
-                    (3, 6.5, 6.5),
-                    (4, 10.5, 6.5),
-                ] {
-                    for mask in 0..8 {
-                        for air in [301, 300, 10, 0, -19, -20, -21] {
-                            let mut mob = Mob::new(1, kind.clone(), Vec3::new(x, 64.0, z), 0.0);
-                            mob.air = air;
-                            for (bit, effect) in [
-                                (1, "minecraft:water_breathing"),
-                                (2, "minecraft:conduit_power"),
-                                (4, "minecraft:breath_of_the_nautilus"),
-                            ] {
-                                if mask & bit != 0 {
-                                    mob.add_effect(effect, 100, 0);
+        let ran =
+            crate::mobs::world::with_resource_test_world(
+                &root,
+                &[],
+                true,
+                true,
+                |world, registry| {
+                    world
+                        .chunks
+                        .insert((0, 0), Arc::new(crate::chunk::Chunk::empty(0, 0)));
+                    for (x0, name) in [(6, "minecraft:water"), (10, "minecraft:bubble_column")] {
+                        let state = registry.default_state(name).unwrap();
+                        for x in x0..=x0 + 1 {
+                            for z in 2..=3 {
+                                for y in 63..=67 {
+                                    world.set(x, y, z, state).unwrap();
                                 }
                             }
-                            base_tick(
-                                &mut mob,
-                                world,
-                                &mut crate::health::TestLevel::new(0).level(),
-                                &mut Vec::new(),
-                            );
-                            assert_eq!(
-                                mob.fluids.eye_in_water,
-                                scene != 0,
-                                "invalid fixture immersion"
-                            );
-                            rows.push(format!(
-                                "{scene} {mask} {air} {} {:08x}",
-                                mob.air,
-                                mob.health.to_bits()
-                            ));
-                            // Selected independent goldens from the pinned Cow.baseTick
-                            // oracle. The parity harness compares all 280 air/health rows.
-                            let expected = match (scene, mask, air) {
-                                (1, 1, 10)
-                                | (1, 2, 10)
-                                | (1, 5, 10)
-                                | (2, 0, 10)
-                                | (2, 4, 10)
-                                | (0, 4, 10)
-                                | (3, 0, 10) => Some((14, 10.0)),
-                                (1, 4, 10) | (4, 4, 10) => Some((10, 10.0)),
-                                (4, 0, 10) => Some((9, 10.0)),
-                                (1, 0, -19) => Some((0, 8.0)),
-                                _ => None,
-                            };
-                            if let Some(expected) = expected
-                                && (mob.air, mob.health) != expected
-                            {
-                                failures.push((scene, mask, air, mob.air, mob.health));
+                        }
+                    }
+                    // Mixed columns distinguish the eye-block query from feet position.
+                    for (x0, bubble_at_eye) in [(6, true), (10, false)] {
+                        for x in x0..=x0 + 1 {
+                            for z in 6..=7 {
+                                for y in 63..=67 {
+                                    let bubble = (y >= 65) == bubble_at_eye;
+                                    let name = if bubble {
+                                        "minecraft:bubble_column"
+                                    } else {
+                                        "minecraft:water"
+                                    };
+                                    world
+                                        .set(x, y, z, registry.default_state(name).unwrap())
+                                        .unwrap();
+                                }
                             }
                         }
                     }
-                }
-                if let Some(path) = std::env::var_os("SUNRISE_MOB_BREATHING_OUTPUT") {
-                    std::fs::write(path, rows.join("\n") + "\n").unwrap();
-                }
-                assert!(failures.is_empty(), "mob air/health differs: {failures:?}");
-            },
-        );
+                },
+                |world, types| {
+                    let kind = Arc::new(types.types["minecraft:cow"].clone());
+                    assert!(!kind.flags.needs_water);
+                    assert!(!world.entity_tag_bit(
+                        &kind,
+                        crate::items::EntityTypeTags::CAN_BREATHE_UNDER_WATER
+                    ));
+                    let mut rows = Vec::new();
+                    let mut failures = Vec::new();
+                    for (scene, x, z) in [
+                        (0, 2.5, 2.5),
+                        (1, 6.5, 2.5),
+                        (2, 10.5, 2.5),
+                        (3, 6.5, 6.5),
+                        (4, 10.5, 6.5),
+                    ] {
+                        for mask in 0..8 {
+                            for air in [301, 300, 10, 0, -19, -20, -21] {
+                                let mut mob = Mob::new(1, kind.clone(), Vec3::new(x, 64.0, z), 0.0);
+                                mob.air = air;
+                                for (bit, effect) in [
+                                    (1, "minecraft:water_breathing"),
+                                    (2, "minecraft:conduit_power"),
+                                    (4, "minecraft:breath_of_the_nautilus"),
+                                ] {
+                                    if mask & bit != 0 {
+                                        mob.add_effect(effect, 100, 0);
+                                    }
+                                }
+                                base_tick(
+                                    &mut mob,
+                                    world,
+                                    &mut crate::health::TestLevel::new(0).level(),
+                                    &mut Vec::new(),
+                                );
+                                assert_eq!(
+                                    mob.fluids.eye_in_water,
+                                    scene != 0,
+                                    "invalid fixture immersion"
+                                );
+                                rows.push(format!(
+                                    "{scene} {mask} {air} {} {:08x}",
+                                    mob.air,
+                                    mob.health.to_bits()
+                                ));
+                                // Selected independent goldens from the pinned Cow.baseTick
+                                // oracle. The parity harness compares all 280 air/health rows.
+                                let expected = match (scene, mask, air) {
+                                    (1, 1, 10)
+                                    | (1, 2, 10)
+                                    | (1, 5, 10)
+                                    | (2, 0, 10)
+                                    | (2, 4, 10)
+                                    | (0, 4, 10)
+                                    | (3, 0, 10) => Some((14, 10.0)),
+                                    (1, 4, 10) | (4, 4, 10) => Some((10, 10.0)),
+                                    (4, 0, 10) => Some((9, 10.0)),
+                                    (1, 0, -19) => Some((0, 8.0)),
+                                    _ => None,
+                                };
+                                if let Some(expected) = expected
+                                    && (mob.air, mob.health) != expected
+                                {
+                                    failures.push((scene, mask, air, mob.air, mob.health));
+                                }
+                            }
+                        }
+                    }
+                    if let Some(path) = std::env::var_os("SUNRISE_MOB_BREATHING_OUTPUT") {
+                        std::fs::write(path, rows.join("\n") + "\n").unwrap();
+                    }
+                    assert!(failures.is_empty(), "mob air/health differs: {failures:?}");
+                },
+            );
         assert!(
             ran,
             "prepared resources must run the production breathing fixture"
@@ -8480,7 +9297,8 @@ mod nautilus_noai_air_tests {
         };
         let ran = crate::mobs::world::with_built_test_world(&[], build, |w, types| {
             let kind = Arc::new(types.types["minecraft:nautilus"].clone());
-            assert!(kind.flags.needs_water && kind.flags.breathes_water);
+            assert!(kind.flags.needs_water);
+            assert!(w.entity_tag_bit(&kind, crate::items::EntityTypeTags::CAN_BREATHE_UNDER_WATER));
             let mut mob = Mob::new(1, kind, Vec3::new(2.5, 3.0, 2.5), 0.0);
             mob.no_ai = no_ai;
             mob.no_gravity = true;

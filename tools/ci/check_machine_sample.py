@@ -11,7 +11,7 @@ import time
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
-PIN = "d946fca8e819a3ff7c648adf3ef70115a8252fd1"
+PIN = "0d770f3167a11afb6a3d2d08e0265c9b049a1ab6"
 
 
 def main():

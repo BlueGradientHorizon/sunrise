@@ -150,8 +150,10 @@ impl Cost {
             per_level: per_level.unwrap_or(0),
         }
     }
+    /// `Enchantment.Cost.calculate`: arithmetic wraps like Java `int`.
     pub fn calculate(self, level: u32) -> i32 {
-        self.base + self.per_level * (level as i32 - 1)
+        self.base
+            .wrapping_add(self.per_level.wrapping_mul((level as i32).wrapping_sub(1)))
     }
 }
 #[derive(Clone, Debug)]
@@ -198,7 +200,7 @@ pub struct Enchantments {
     custom_damage: HashMap<Arc<str>, Vec<DamageValueEffect>>,
     /// Enchantment tags in vanilla `HolderSet` order (nested tags expanded in place).
     pub tags: HashMap<String, Vec<Arc<str>>>,
-    pub entity_tags: HashMap<String, HashSet<String>>,
+    pub entity_tags: Arc<HashMap<String, HashSet<String>>>,
     pub damage_tags: HashMap<String, HashSet<String>>,
     pub props: HashMap<Arc<str>, ItemProps>,
     lang: HashMap<String, String>,
@@ -433,6 +435,18 @@ impl Enchantments {
         overlay: &sunrise_world::loot::PackOverlay,
         defaults: &sunrise_world::item_defaults::ItemDefaults,
     ) -> crate::Result<Self> {
+        let mut enchantments = Self::load_definitions(root, overlay, defaults)?;
+        use crate::items::ingredient_defaults::{LoadEntityTags, component_tables};
+        let (_, tags) = component_tables(root, overlay, LoadEntityTags::Prepared)?;
+        enchantments.entity_tags = tags.members().clone();
+        Ok(enchantments)
+    }
+
+    pub(crate) fn load_definitions(
+        root: &Path,
+        overlay: &sunrise_world::loot::PackOverlay,
+        defaults: &sunrise_world::item_defaults::ItemDefaults,
+    ) -> crate::Result<Self> {
         // The registry lists entries sorted by id, like the data-pack loader.
         let mut files: BTreeMap<String, Value> =
             crate::items::data_files(root, "enchantment", overlay)
@@ -468,7 +482,6 @@ impl Enchantments {
         .into_iter()
         .map(|(name, ids)| (name, ids.into_iter().map(Arc::from).collect()))
         .collect();
-        let entity_tags = crate::items::load_tags(root, "entity_type", overlay)?;
         let damage_tags = match sunrise_world::damage_source::Catalog::load(root, overlay) {
             Ok(catalog) => catalog
                 .tags()
@@ -579,7 +592,7 @@ impl Enchantments {
             index,
             custom_damage,
             tags,
-            entity_tags,
+            entity_tags: Default::default(),
             damage_tags,
             props,
             lang,
@@ -1627,6 +1640,7 @@ pub mod tests {
             ("tags/wpenchant:enchantment/fixture".to_owned(), vec![tag]),
         ];
         write("items.json", &json!({}));
+        write("entity-types.json", &json!({"minecraft:pig": {}}));
         let defaults = sunrise_world::item_defaults::read(&root).unwrap();
         let base = Enchantments::load(&root, &defaults).unwrap();
         let loaded = Enchantments::load_with(
@@ -1976,7 +1990,7 @@ pub mod tests {
             index,
             custom_damage: HashMap::new(),
             tags,
-            entity_tags,
+            entity_tags: Arc::new(entity_tags),
             damage_tags,
             props,
             lang: HashMap::new(),
@@ -2128,6 +2142,15 @@ pub mod tests {
             .calculate(5),
             45
         );
+    }
+
+    #[test]
+    fn enchantment_cost_wraps_like_java_int() {
+        let cost = Cost {
+            base: i32::MAX,
+            per_level: 1,
+        };
+        assert_eq!(cost.calculate(2), i32::MIN);
     }
 
     #[test]

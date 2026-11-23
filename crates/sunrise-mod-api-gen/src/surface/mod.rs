@@ -904,8 +904,9 @@ pub(crate) fn build(
         types.push(built);
     }
 
-    let hooks = hook_records(hooks, &types, &mut notes);
-    let parts = part_records(&hooks, &traits, &mut notes);
+    let catalog_hooks = hooks;
+    let hooks = hook_records(catalog_hooks, &types, &mut notes);
+    let parts = part_records(&hooks, catalog_hooks, &traits, &mut notes);
     capabilities.extend(manifest_capabilities(root, &mut notes));
     let behaviours = behaviours::read(root).map_err(|e| e.to_string())?;
     notes.sort();
@@ -1512,15 +1513,6 @@ fn hook_records(hooks: &[catalog::Hook], types: &[Type], notes: &mut Vec<String>
                 arguments.push(argument);
             }
         }
-        let snake = |kind: catalog::PartKind| match kind {
-            catalog::PartKind::Block => "block",
-            catalog::PartKind::BlockEntity => "block_entity",
-            catalog::PartKind::Item => "item",
-            catalog::PartKind::Menu => "menu",
-            catalog::PartKind::Effect => "effect",
-            catalog::PartKind::Fluid => "fluid",
-            catalog::PartKind::Entity => "entity",
-        };
         out.push(Hook::new(
             format!("hook:{}", hook.name),
             hook.doc.clone(),
@@ -1562,7 +1554,7 @@ fn hook_records(hooks: &[catalog::Hook], types: &[Type], notes: &mut Vec<String>
                     crate::Contract::Replace => HookKind::Replace,
                 },
                 scope: hook.scope.as_ref().map(|scope| Scope {
-                    kind: snake(scope.kind).to_owned(),
+                    kind: part_kind_snake(scope.kind).to_owned(),
                     key: scope.key.clone(),
                 }),
                 cancellable: hook.cancellable,
@@ -1586,8 +1578,26 @@ fn hook_records(hooks: &[catalog::Hook], types: &[Type], notes: &mut Vec<String>
     out
 }
 
-/// One Part kind per kind the catalog's scoped hooks name, implemented through `<Kind>Part`.
-fn part_records(hooks: &[Hook], traits: &[Trait], notes: &mut Vec<String>) -> Vec<Part> {
+fn part_kind_snake(kind: catalog::PartKind) -> &'static str {
+    match kind {
+        catalog::PartKind::Block => "block",
+        catalog::PartKind::BlockEntity => "block_entity",
+        catalog::PartKind::Item => "item",
+        catalog::PartKind::Menu => "menu",
+        catalog::PartKind::Effect => "effect",
+        catalog::PartKind::Fluid => "fluid",
+        catalog::PartKind::Entity => "entity",
+    }
+}
+
+/// One Part kind per kind the catalog's scoped or `part`-linked hooks name, implemented through
+/// `<Kind>Part`.
+fn part_records(
+    hooks: &[Hook],
+    catalog_hooks: &[catalog::Hook],
+    traits: &[Trait],
+    notes: &mut Vec<String>,
+) -> Vec<Part> {
     let mut kinds: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for hook in hooks {
         if let Some(scope) = &hook.contract.scope {
@@ -1597,8 +1607,21 @@ fn part_records(hooks: &[Hook], traits: &[Trait], notes: &mut Vec<String>) -> Ve
                 .push(hook.id.clone());
         }
     }
+    for hook in catalog_hooks {
+        if let Some(part_kind) = hook.part {
+            let id = format!("hook:{}", hook.name);
+            let entry = kinds
+                .entry(part_kind_snake(part_kind).to_owned())
+                .or_default();
+            if !entry.contains(&id) {
+                entry.push(id);
+            }
+        }
+    }
     let mut out = Vec::new();
-    for (kind, scoped) in kinds {
+    for (kind, mut scoped) in kinds {
+        scoped.sort();
+        scoped.dedup();
         let name = format!(
             "{}Part",
             heck::ToUpperCamelCase::to_upper_camel_case(kind.as_str())

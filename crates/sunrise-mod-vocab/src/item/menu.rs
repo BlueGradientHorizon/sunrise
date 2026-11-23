@@ -104,6 +104,24 @@ mod menu_button_context_tests {
             assert_eq!(decoded.id, context.id);
         }
     }
+
+    #[test]
+    fn stacked_on_other_direction_round_trips_on_wire() {
+        use super::{StackedOnOther, StackedOnOtherDirection};
+        for direction in [
+            StackedOnOtherDirection::Event,
+            StackedOnOtherDirection::CarriedOnOther,
+            StackedOnOtherDirection::OtherStackedOnMe,
+        ] {
+            let click = StackedOnOther::new(Some(7), Some(9), 1, 2, 3, true, None, None)
+                .with_direction(direction);
+            let mut writer = Writer::new();
+            writer.put(&click);
+            let decoded = Reader::decode::<StackedOnOther>(writer.bytes()).unwrap();
+            assert_eq!(decoded, click);
+            assert_eq!(decoded.direction, direction);
+        }
+    }
 }
 
 /// The logical side on which a menu click runs.
@@ -113,6 +131,20 @@ mod menu_button_context_tests {
 pub enum LogicalSide {
     Client,
     Server,
+}
+/// Which phase of a pickup click (`AbstractContainerMenu.tryItemClickBehaviourOverride`) is
+/// asking `item_stacked_on_other`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+// exhaustive: NeoForge's event, then vanilla's carried-on-other and other-on-me overrides
+#[derive(sunrise_mod_api_macros::Wire)]
+pub enum StackedOnOtherDirection {
+    /// The global `Hooks::item_stacked_on_other` event, before either item override.
+    #[default]
+    Event,
+    /// `Item.overrideStackedOnOther`: the carried (cursor) stack's `ItemPart`, asked first.
+    CarriedOnOther,
+    /// `Item.overrideOtherStackedOnMe`: the clicked slot stack's `ItemPart`, asked second.
+    OtherStackedOnMe,
 }
 /// A pickup click on a menu slot, as `item_stacked_on_other` is asked about it: the stacks are the
 /// ones the click found, frozen before any listener ran. A listener answers through
@@ -137,6 +169,10 @@ pub struct StackedOnOther {
     pub carried: Option<ItemStack>,
     /// The stack in the clicked slot, `None` when it is empty.
     pub clicked: Option<ItemStack>,
+    /// Which phase of `tryItemClickBehaviourOverride` is firing: the global event, the carried
+    /// stack's `ItemPart` (`CarriedOnOther`), or the clicked stack's `ItemPart`
+    /// (`OtherStackedOnMe`).
+    pub direction: StackedOnOtherDirection,
 }
 impl StackedOnOther {
     /// The click `slot` (menu index) of `container`'s slot `container_slot`, with the stacks it found.
@@ -160,7 +196,14 @@ impl StackedOnOther {
             primary,
             carried,
             clicked,
+            direction: StackedOnOtherDirection::Event,
         }
+    }
+
+    /// This click in the given `direction` phase.
+    pub fn with_direction(mut self, direction: StackedOnOtherDirection) -> Self {
+        self.direction = direction;
+        self
     }
 }
 /// Whether a listener keeps the original stack or replaces it.
@@ -174,10 +217,36 @@ pub enum StackResult {
     /// Replace the stack: `None` empties it.
     Set(Option<ItemStack>),
 }
-/// A listener's answer to [`StackedOnOther`], validated once and applied once. Setting a stack is
-/// allowed only on a cancelled click that is also `handled` (the listener did the click's work
-/// itself); on any other the click is refused and nothing changes. A replaced stack must be a
-/// valid stack (a known item, a count of at least one within the item's maximum).
+/// What a listener does to the clicked slot's stack in [`StackedOnOtherResult`].
+#[derive(Clone, Debug, Default, PartialEq)]
+// exhaustive: a clicked slot is left alone, directly written, or taken from
+#[derive(sunrise_mod_api_macros::Wire)]
+pub enum ClickedStackResult {
+    /// Leave the clicked slot unchanged.
+    #[default]
+    Keep,
+    /// Directly write the clicked slot (`Slot.set`): `None` clears the slot without running
+    /// `Slot.onTake` side effects.
+    Set(Option<ItemStack>),
+    /// Take `count` items from the clicked slot via `Slot.safeTake` / `Slot.onTake`, running the
+    /// slot's take side effects (such as furnace smelting experience, `recipes_used`, crafting
+    /// remainders, or potion take hooks). Valid only in `ItemPart` overrides (refused for global
+    /// listeners); `count` must be at least `1` and at most the slot's current stack size.
+    /// Two accepted takes run their effects separately, in carried-then-clicked order.
+    Take(u32),
+}
+/// A listener's answer to [`StackedOnOther`], validated once and applied once.
+///
+/// For global `Hooks::item_stacked_on_other` listeners (`StackedOnOtherDirection::Event`), setting
+/// a stack is allowed only on a cancelled click that is also `handled` (and
+/// [`ClickedStackResult::Take`] is refused); on any other answer the click is refused and nothing
+/// changes.
+///
+/// For `ItemPart::item_stacked_on_other` overrides (`CarriedOnOther` / `OtherStackedOnMe`),
+/// [`ClickedStackResult::Set`] performs a direct write (without `Slot.onTake` side effects, even
+/// when clearing a result/output slot to `None`), while [`ClickedStackResult::Take`] takes from
+/// the clicked slot through `Slot.safeTake` / `Slot.onTake`. A replaced stack must be a valid
+/// stack (a known item, a count of at least one within the item's maximum).
 #[derive(Clone, Debug, Default, PartialEq)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -187,8 +256,8 @@ pub struct StackedOnOtherResult {
     pub handled: bool,
     /// The cursor after the click.
     pub carried: StackResult,
-    /// The clicked slot after the click.
-    pub clicked: StackResult,
+    /// The clicked slot edit after the click.
+    pub clicked: ClickedStackResult,
 }
 /// The inputs and vanilla result of `AnvilMenu.createResult`, borrowed for
 /// the `anvil_update` callback. Edits by earlier listeners do not change these values.

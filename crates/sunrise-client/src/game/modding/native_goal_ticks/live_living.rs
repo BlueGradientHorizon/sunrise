@@ -3,7 +3,10 @@ use super::super::native_living_refs::{hand_slot, lend_equipment};
 use super::{GoalCx, Resolved};
 use crate::mobs::Mob;
 use mod_api::{ActiveEffect, EffectKey, EquipmentSlot, Hand, ItemStackView, LivingRef, Pose};
-use sunrise_client::mobs::{finalize, villager};
+use sunrise_client::{
+    items::EntityTypeTags,
+    mobs::{finalize, villager},
+};
 
 impl GoalCx<'_, '_> {
     fn live_living_mob(&self, living: LivingRef) -> Option<&Mob> {
@@ -131,7 +134,11 @@ impl GoalCx<'_, '_> {
     }
 
     pub(super) fn r_living_can_breathe_underwater(&self, living: LivingRef) -> Option<bool> {
-        Some(self.live_living_mob(living)?.kind.flags.breathes_water)
+        let mob = self.live_living_mob(living)?;
+        Some(
+            self.w
+                .entity_tag_bit(&mob.kind, EntityTypeTags::CAN_BREATHE_UNDER_WATER),
+        )
     }
     pub(super) fn r_living_has_line_of_sight(
         &self,
@@ -305,6 +312,26 @@ impl GoalCx<'_, '_> {
             crate::mobs::Who::Player => self.w.goal_host?.mob_player_credit(mob)??,
         };
         self.lookup_entity(id)
+    }
+
+    pub(super) fn r_living_last_hurt_mob(
+        &self,
+        living: LivingRef,
+    ) -> Option<(mod_api::EntityRef, i32)> {
+        let (id, tick) = match self.resolve(living.entity()) {
+            Some(Resolved::Player) => self.w.selected_player()?.last_hurt,
+            Some(Resolved::Own) => self.m.last_hurt_mob,
+            Some(Resolved::Live(mob)) => mob.last_hurt_mob,
+            // A snapshot row carries no record, and an unavailable mob answers nothing.
+            Some(Resolved::Seen(_) | Resolved::Unavailable) => None,
+            // Holders that resolve in the ordinary game view: its raw record, resolved below.
+            Some(Resolved::Dragon(_)) | None => self.w.goal_host?.living_last_hurt_record(living),
+        }?;
+        let entity = self.lookup_entity(id)?;
+        let alive = self
+            .r_living_alive(LivingRef::new(entity))
+            .unwrap_or_else(|| self.w.side.living_target_alive(id));
+        alive.then_some((entity, tick))
     }
 
     pub(super) fn r_living_kill_credit(&self, living: LivingRef) -> Option<mod_api::EntityRef> {

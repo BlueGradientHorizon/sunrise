@@ -424,10 +424,7 @@ fn controller<'a>(m: &Mob, w: &'a MobWorld) -> Option<&'a Seen> {
         .and_then(|id| w.passenger_object(id))
         .filter(|r| {
             r.alive
-                && !w.data.entity_has(
-                    "minecraft:non_controlling_rider",
-                    &format!("minecraft:{}", super::species::def(r.species).name),
-                )
+                && !w.entity_tag_bit(&r.kind, crate::items::EntityTypeTags::NON_CONTROLLING_RIDER)
         })
 }
 /// Vehicle goal flags are independent of whether the rider has a combat target.
@@ -905,6 +902,11 @@ mod tests {
         let mut rider = of(72, Species::Skeleton);
         rider.extra.mount = Some(vehicle.id);
         vehicle.extra.rider = Some(rider.id);
+        let custom = std::sync::Arc::make_mut(&mut rider.kind);
+        custom.id = "test:custom_rider".into();
+        // Its place in the one-type registry the tags below bind, as a content type's is set
+        // at load; in the resource world's registry that slot is a type outside the tag.
+        custom.flags.entity_tag_slot = Some(0);
         let retained = [rider.seen(None, &crate::items::Items::empty())];
         let root = std::env::var_os("SUNRISE_TEST_RESOURCES").expect("prepared resources required");
         assert!(crate::mobs::world::with_resource_test_world(
@@ -924,6 +926,25 @@ mod tests {
                 assert!(w.seen(rider.id).is_none());
                 assert!(w.target_info(super::super::Who::Mob(rider.id)).is_none());
                 assert_eq!(w.others_near(vehicle.bounds()).count(), 0);
+
+                let mut items = crate::items::Items::empty();
+                items.set_entity_type_tags(crate::items::EntityTypeTags::from_ordered(
+                    [(
+                        "minecraft:non_controlling_rider".into(),
+                        vec![rider.kind.id.clone()],
+                    )]
+                    .into(),
+                    vec![rider.kind.id.clone()].into(),
+                ));
+                drive(
+                    &mut vehicle,
+                    &MobWorld {
+                        items: Some(&items),
+                        ..w.clone()
+                    },
+                );
+                assert_eq!(vehicle.ai.goals.disabled & CONTROLLED, 0);
+
                 vehicle.extra.rider = None;
                 drive(&mut vehicle, &w);
                 assert_eq!(vehicle.ai.goals.disabled & CONTROLLED, 0);
