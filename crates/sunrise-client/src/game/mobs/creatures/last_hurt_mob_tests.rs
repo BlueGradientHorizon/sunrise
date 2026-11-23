@@ -54,7 +54,14 @@ fn last_hurt_mob_follows_the_attacking_entity() {
     if run_fresh_cases(
         "game::creatures::last_hurt_mob_tests::last_hurt_mob_follows_the_attacking_entity",
         CASE,
-        &["arrow", "wind_charge", "melee", "wolf"],
+        &[
+            "arrow",
+            "wind_charge",
+            "melee",
+            "spear_order",
+            "other_level",
+            "wolf",
+        ],
     ) {
         return;
     }
@@ -157,6 +164,53 @@ fn last_hurt_mob_follows_the_attacking_entity() {
                 game.mobs[0].invulnerable = 0;
                 game.handle_mob_events(vec![swing]).unwrap();
                 assert_eq!(zombie.last_hurt_mob(game), Some((pig, MOB_AGE as i32)));
+            }
+            "spear_order" => {
+                add_mob(game, MOB, "minecraft:zombie", 3.0);
+                game.mobs[1].age = MOB_AGE;
+                let zombie = living(game, MOB);
+                let stab = |target, contact, attempted_damage, otherwise_affected| {
+                    vec![MobEvent::StabMemory {
+                        attacker: MOB,
+                        target,
+                        contact,
+                        attempted_damage,
+                        otherwise_affected,
+                    }]
+                };
+                // The pig was the second contact; the player's row, the first contact, is
+                // delivered after it with that player's actions and must not overwrite it.
+                game.handle_mob_events(stab(Who::Mob(PIG), 1, false, true))
+                    .unwrap();
+                game.handle_mob_events(stab(Who::Player, 0, false, true))
+                    .unwrap();
+                assert_eq!(zombie.last_hurt_mob(game), Some((pig, MOB_AGE as i32)));
+                // A later contact whose only effect was a refused hurt writes nothing.
+                game.combat.hit_landed = false;
+                game.handle_mob_events(stab(Who::Player, 2, true, false))
+                    .unwrap();
+                assert_eq!(zombie.last_hurt_mob(game), Some((pig, MOB_AGE as i32)));
+                // A later contact that pushed the player is the last one.
+                game.handle_mob_events(stab(Who::Player, 2, false, true))
+                    .unwrap();
+                assert_eq!(
+                    zombie.last_hurt_mob(game),
+                    Some((player.entity(), MOB_AGE as i32))
+                );
+            }
+            "other_level" => {
+                game.attack_ticks = 20;
+                game.attack_mob(0);
+                assert_eq!(player.last_hurt_mob(game), Some((pig, PLAYER_AGE)));
+                game.enter_level(Dim::Nether).unwrap();
+                game.tick_mob_effects();
+                assert_eq!(
+                    game.player.as_ref().unwrap().health.last_hurt_mob,
+                    Some((PIG, PLAYER_AGE)),
+                    "the pig is alive in the level the player left"
+                );
+                game.enter_level(Dim::Overworld).unwrap();
+                assert_eq!(player.last_hurt_mob(game), Some((pig, PLAYER_AGE)));
             }
             "wolf" => {
                 add_mob(game, WOLF, "minecraft:wolf", 1.5);

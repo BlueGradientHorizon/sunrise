@@ -575,6 +575,8 @@ impl Goal for OwnerHurt {
         let Some((id, at)) = owner_view(m, cx.w).and_then(|p| p.last_hurt) else {
             return false;
         };
+        // Only a mob of the snapshot can be targeted here: a player the owner hurt, and an
+        // owner other than the tick's selected player, are #4539.
         at != self.timestamp && wants_to_attack(m, cx.w, Who::Mob(id))
     }
     fn can_continue(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
