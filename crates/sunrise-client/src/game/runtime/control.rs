@@ -1208,9 +1208,8 @@ impl Game<'_> {
                 use sunrise_client::options_ui::Page;
                 let page = match words.get(1).copied().unwrap_or("main") {
                     "main" => Page::Main,
-                    // What Video Settings... opens; vanilla's own layout, which no menu opens.
-                    "video" => Page::Graphics,
-                    "video-vanilla" => Page::Video,
+                    // What Video Settings... opens: vanilla's layout (`graphics` is Sunrise's).
+                    "video" | "video-vanilla" => Page::Video,
                     "sound" => Page::Sound,
                     "controls" => Page::Controls,
                     "keybinds" => Page::KeyBinds,
