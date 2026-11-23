@@ -1158,5 +1158,13 @@
     "path": "crates/sunrise-client/src/game/mobs/creatures/projectiles_120_124_tests.rs",
     "reason": "run by tools/test_projectile_targets_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_projectile_targets_parity.py records the vanilla 26.3 projectile witnesses into .local and runs this test against them through SUNRISE_PROJECTILE_WITNESS_DIR, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::potions::cloud_water_tests::a_cloud_in_water_resets_its_fall_distance_and_a_dry_one_keeps_it",
+    "path": "crates/sunrise-client/src/game/items/potions/cloud_water_tests.rs",
+    "reason": "run by tools/test_cloud_water_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_cloud_water_parity.py records the vanilla 26.3 cloud-water witness into .local and runs this test against it through SUNRISE_CLOUD_WATER_WITNESS, so no recorded vanilla data is committed."
   }
 ]

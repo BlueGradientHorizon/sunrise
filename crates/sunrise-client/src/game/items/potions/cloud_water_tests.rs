@@ -9,10 +9,25 @@ use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::ChunkPos;
 
-const WITNESS: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../tools/witness/26.3/cloud_water.json"
-));
+fn read_witness() -> String {
+    let raw = std::env::var_os("SUNRISE_CLOUD_WATER_WITNESS").unwrap_or_else(|| {
+        panic!(
+            "SUNRISE_CLOUD_WATER_WITNESS is unset; run through tools/test_cloud_water_parity.py, which records the 26.3 witness"
+        )
+    });
+    let path = std::path::PathBuf::from(raw);
+    let file = if path.is_dir() {
+        path.join("cloud_water.json")
+    } else {
+        path
+    };
+    std::fs::read_to_string(&file).unwrap_or_else(|err| {
+        panic!(
+            "failed to read {} (run through tools/test_cloud_water_parity.py): {err}",
+            file.display()
+        )
+    })
+}
 
 fn offset_coord(base: i32, offset: &str) -> String {
     match offset.split_once('.') {
@@ -40,11 +55,17 @@ fn parse_motion_bits(obs: &Value) -> Tag {
 }
 
 /// #2359 (vanilla 26.3): area_effect_cloud fall_distance and Motion in water,
-/// lava, and at the radius-32 boundary match the recorded 26.3 witness bit-for-bit.
+/// lava, and at the radius-32 boundary match the 26.3 witness recorded by
+/// `tools/test_cloud_water_parity.py` bit-for-bit.
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_cloud_water_parity.py"]
 fn a_cloud_in_water_resets_its_fall_distance_and_a_dry_one_keeps_it() {
-    let witness: Value = serde_json::from_str(WITNESS).unwrap();
+    run_a_cloud_in_water_resets_its_fall_distance_and_a_dry_one_keeps_it();
+}
+
+pub(in crate::game) fn run_a_cloud_in_water_resets_its_fall_distance_and_a_dry_one_keeps_it() {
+    let witness = read_witness();
+    let witness: Value = serde_json::from_str(&witness).unwrap();
     assert_eq!(witness["minecraft"].as_str(), Some("26.3"));
     let blocks = witness["blocks"].as_array().unwrap();
     let cases = witness["cases"].as_array().unwrap();
