@@ -368,7 +368,7 @@ fn spectate(game: &mut Game<'_>, rx: &mpsc::Receiver<Out>, rows: &mut Map<String
                 true,
                 true,
                 7.25_f64.to_bits() as i64,
-                [0; 3],
+                [0, 0, 0],
                 true
             ]),
         );
@@ -539,7 +539,7 @@ fn resend(game: &mut Game<'_>, rows: &mut Map<String, Value>) {
                 };
                 let resends = route != "loading_player" && elapsed >= 21;
                 let sent = if resends && elapsed == 21 {
-                    json!([[2, yaw, pitch, [0; 3]]])
+                    json!([[2, yaw, pitch, [0, 0, 0]]])
                 } else {
                     json!([])
                 };
@@ -595,7 +595,7 @@ fn resend(game: &mut Game<'_>, rows: &mut Map<String, Value>) {
             &format!("145/{kind}"),
             correction_sample(&receive(&rx), guest(game, conn)),
             json!([
-                [[2, yaw.to_bits() as i32, pitch.to_bits() as i32, [0; 3]]],
+                [[2, yaw.to_bits() as i32, pitch.to_bits() as i32, [0, 0, 0]]],
                 now.to_bits() as i32,
                 pitch.to_bits() as i32,
                 2
