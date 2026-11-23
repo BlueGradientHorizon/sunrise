@@ -274,6 +274,10 @@ pub(super) struct Creatures {
     /// (pickups, item searches) is for these alone.
     pub ticked: sunrise_client::fast_hash::FxHashSet<u32>,
     pub deferred_hits: bool,
+    /// The game time of the spear rows below, and for each attacker the latest contact
+    /// whose `setLastHurtMob` was applied then. A player's row is delivered after the
+    /// attacker's other rows, so an earlier contact never overwrites a later one.
+    stab_memory: (i64, sunrise_client::fast_hash::FxHashMap<u32, usize>),
     /// The wandering trader spawner's clock.
     pub trader: super::wandering_trader::Spawner,
     /// When each player last put a parrot on a shoulder (`timeEntitySatOnShoulder`).
@@ -3070,10 +3074,13 @@ impl Game<'_> {
                 MobEvent::StabMemory {
                     attacker,
                     target,
+                    contact,
                     attempted_damage,
                     otherwise_affected,
                 } => {
-                    if otherwise_affected || (attempted_damage && self.combat.hit_landed) {
+                    if (otherwise_affected || (attempted_damage && self.combat.hit_landed))
+                        && self.latest_stab_contact(attacker, contact)
+                    {
                         let target = match target {
                             Who::Player => self.player.as_ref().map(|p| p.entity_id as u32),
                             Who::Mob(id) => Some(id),
@@ -6521,6 +6528,22 @@ impl Game<'_> {
                 .play("minecraft:entity.player.teleport", Some(target), 1.0, 1.0);
             Ok(())
         });
+    }
+
+    /// Whether `contact` is the attacker's latest affected spear contact applied this tick.
+    fn latest_stab_contact(&mut self, attacker: u32, contact: usize) -> bool {
+        let now = self.world.game_time;
+        let (at, latest) = &mut self.creatures.stab_memory;
+        if *at != now {
+            *at = now;
+            latest.clear();
+        }
+        let seen = latest.entry(attacker).or_insert(contact);
+        if contact < *seen {
+            return false;
+        }
+        *seen = contact;
+        true
     }
 
     /// `setLastHurtMob` at the arrow/wind charge's onHitEntity site.

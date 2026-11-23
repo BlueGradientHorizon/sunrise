@@ -2220,6 +2220,9 @@ pub enum MobEvent {
     StabMemory {
         attacker: u32,
         target: Who,
+        /// Its place among the attacker's contacts this tick, in `stabAttack` order. A player
+        /// target's row is delivered with that player's actions, after the other rows.
+        contact: usize,
         attempted_damage: bool,
         otherwise_affected: bool,
     },

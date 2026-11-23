@@ -166,8 +166,13 @@ impl Game<'_> {
         let now = self.world.game_time;
         let actor = self.lan_acting;
         let mut affected = false;
+        let mut last_mob = None;
         let mut on_players = Vec::new();
-        for target in self.stab_targets(eye, look, movement) {
+        for (contact, target) in self
+            .stab_targets(eye, look, movement)
+            .into_iter()
+            .enumerate()
+        {
             let (entity, target_motion) = match target {
                 Target::Mob(i) => (self.mobs[i].id, self.mob_speed(i)),
                 Target::Player(k) => {
@@ -195,17 +200,21 @@ impl Game<'_> {
                 let amount = 1.0 + (relative * f64::from(kinetic.damage_multiplier)).floor() as f32;
                 match target {
                     Target::Mob(i) => {
-                        affected |= self.stab_mob(i, amount, damages, pushes, dismounts)
+                        if self.stab_mob(i, amount, damages, pushes, dismounts) {
+                            affected = true;
+                            last_mob = Some(contact);
+                        }
                     }
-                    Target::Player(k) => on_players
-                        .extend(self.queue_player_stab(k, amount, damages, pushes, dismounts)),
+                    Target::Player(k) => on_players.extend(
+                        self.queue_player_stab(k, contact, amount, damages, pushes, dismounts),
+                    ),
                 }
             }
         }
         if affected {
             self.spear_hit_feedback(&kinetic);
         }
-        self.keep_player_stabs(kinetic, true, affected, on_players);
+        self.keep_player_stabs(kinetic, true, last_mob, on_players);
     }
 
     /// What follows a charge tick that affected an entity:
@@ -399,23 +408,32 @@ impl Game<'_> {
         // The attack damage attribute.
         let damage = self.attack_damage();
         let movement = self.known_player_movement();
-        let mut hit = false;
+        let mut last_mob = None;
         let mut on_players = Vec::new();
-        for target in self.stab_targets(eye, look, movement) {
+        for (contact, target) in self
+            .stab_targets(eye, look, movement)
+            .into_iter()
+            .enumerate()
+        {
             match target {
-                Target::Mob(i) => hit |= self.stab_mob(i, damage, true, true, false),
+                Target::Mob(i) => {
+                    if self.stab_mob(i, damage, true, true, false) {
+                        last_mob = Some(contact);
+                    }
+                }
                 Target::Player(k) => {
-                    on_players.extend(self.queue_player_stab(k, damage, true, true, false))
+                    on_players.extend(self.queue_player_stab(k, contact, damage, true, true, false))
                 }
             }
         }
+        let hit = last_mob.is_some();
         // Player.onAttack, then postPiercingAttack.
         self.attack_ticks = 0;
         self.post_piercing_attack();
         if hit {
             self.play_at_feet(kinetic.hit_sound);
         }
-        self.keep_player_stabs(kinetic, false, hit, on_players);
+        self.keep_player_stabs(kinetic, false, last_mob, on_players);
         // swingAndResetAttackStrength (ServerPlayer): a swing that starts
         // resets the attack strength.
         let swings = self.swings_started;
