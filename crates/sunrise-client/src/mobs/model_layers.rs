@@ -34,6 +34,48 @@ pub fn from_part(part: &Part) -> ModelPart {
 
 static REGISTERED: OnceLock<HashMap<String, LayerDefinition>> = OnceLock::new();
 
+#[derive(Debug)]
+pub enum RegistrationError {
+    Load(Box<dyn std::error::Error>),
+    NotNonemptyObject,
+    InvalidVanillaLayer(String),
+    InvalidModLayer { owner: &'static str, id: String },
+    VanillaCollision { owner: &'static str, id: String },
+}
+
+impl std::fmt::Display for RegistrationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("register_layer_definitions: ")?;
+        match self {
+            Self::Load(error) => write!(f, "failed to load vanilla entity-models.json: {error}"),
+            Self::NotNonemptyObject => {
+                f.write_str("vanilla entity-models.json must be a nonempty object")
+            }
+            Self::InvalidVanillaLayer(id) => write!(
+                f,
+                "invalid vanilla model layer entry {id:?} in entity-models.json"
+            ),
+            Self::InvalidModLayer { owner, id } => write!(
+                f,
+                "mod {owner}: model layer {id:?} must be <namespace>:<path>#<layer> with a valid namespaced model identifier"
+            ),
+            Self::VanillaCollision { owner, id } => write!(
+                f,
+                "mod {owner}: model layer {id} collides with an existing vanilla model layer"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for RegistrationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Load(error) => Some(error.as_ref()),
+            _ => None,
+        }
+    }
+}
+
 /// Validate and stage accepted mod suppliers (last-writer-wins per ID), failing closed on a
 /// missing/invalid vanilla `entity-models.json`, any malformed ID, or any collision with an
 /// existing vanilla layer before invoking any supplier or publishing. Then invoke each winning
@@ -41,7 +83,7 @@ static REGISTERED: OnceLock<HashMap<String, LayerDefinition>> = OnceLock::new();
 pub fn register(
     layers: Vec<Answered<LayerDefinitionRegistration>>,
     vanilla_root: &Path,
-) -> crate::Result<()> {
+) -> Result<(), RegistrationError> {
     register_into(layers, vanilla_root, &REGISTERED)
 }
 
@@ -51,42 +93,34 @@ pub fn register_into(
     layers: Vec<Answered<LayerDefinitionRegistration>>,
     vanilla_root: &Path,
     slot: &OnceLock<HashMap<String, LayerDefinition>>,
-) -> crate::Result<()> {
-    let doc = super::EntityModelDocument::load(vanilla_root).map_err(|error| {
-        format!("register_layer_definitions: failed to load vanilla entity-models.json: {error}")
-    })?;
+) -> Result<(), RegistrationError> {
+    let doc = super::EntityModelDocument::load(vanilla_root).map_err(RegistrationError::Load)?;
     let vanilla_layers = doc
         .value()
         .as_object()
         .filter(|object| !object.is_empty())
-        .ok_or(
-            "register_layer_definitions: vanilla entity-models.json must be a nonempty object",
-        )?;
+        .ok_or(RegistrationError::NotNonemptyObject)?;
     if let Some((id, _)) = vanilla_layers
         .iter()
         .find(|(id, part)| !is_layer_id(id) || !part.is_object())
     {
-        return Err(format!(
-            "register_layer_definitions: invalid vanilla model layer entry {id:?} in entity-models.json"
-        )
-        .into());
+        return Err(RegistrationError::InvalidVanillaLayer(id.clone()));
     }
     let mut order: Vec<&str> = Vec::new();
     let mut staged: HashMap<&str, &Answered<LayerDefinitionRegistration>> = HashMap::new();
     for entry in &layers {
         let id = entry.answer.id.as_str();
-        let mod_id = entry.mod_id;
         if !is_layer_id(id) {
-            return Err(format!(
-                "register_layer_definitions: mod {mod_id}: model layer {id:?} must be <namespace>:<path>#<layer> with a valid namespaced model identifier"
-            )
-            .into());
+            return Err(RegistrationError::InvalidModLayer {
+                owner: entry.mod_id,
+                id: id.to_owned(),
+            });
         }
         if vanilla_layers.contains_key(id) {
-            return Err(format!(
-                "register_layer_definitions: mod {mod_id}: model layer {id} collides with an existing vanilla model layer"
-            )
-            .into());
+            return Err(RegistrationError::VanillaCollision {
+                owner: entry.mod_id,
+                id: id.to_owned(),
+            });
         }
         if staged.insert(id, entry).is_none() {
             order.push(id);
@@ -203,12 +237,8 @@ mod tests {
                     &RegistrationContext::new(),
                     &mut suppliers,
                 );
-                let err = register_into(suppliers, &dir, &slot).unwrap_err();
-                assert!(
-                    err.to_string()
-                        .contains("collides with an existing vanilla model layer"),
-                    "{err}"
-                );
+                assert!(matches!(register_into(suppliers, &dir, &slot),
+                    Err(RegistrationError::VanillaCollision { owner: "colliding", id }) if id == "minecraft:zombie#main"));
                 assert!(calls.lock().unwrap().is_empty());
                 assert!(registered("colliding:ok#main").is_none());
             },
@@ -227,7 +257,8 @@ mod tests {
                     &RegistrationContext::new(),
                     &mut suppliers,
                 );
-                assert!(register_into(suppliers, &dir, &slot).is_err());
+                assert!(matches!(register_into(suppliers, &dir, &slot),
+                    Err(RegistrationError::InvalidModLayer { owner: "badid", id }) if id == "BadMod:golem#main"));
                 assert!(calls.lock().unwrap().is_empty());
             },
         );

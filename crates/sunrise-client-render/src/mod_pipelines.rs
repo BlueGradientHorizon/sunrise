@@ -25,33 +25,99 @@ struct VanillaPipelines {
     optional: HashSet<String>,
 }
 
+#[derive(Debug)]
+pub enum RegistrationError {
+    Read {
+        path: std::path::PathBuf,
+        error: std::io::Error,
+    },
+    Parse {
+        path: std::path::PathBuf,
+        error: serde_json::Error,
+    },
+    InvalidIdTable(std::path::PathBuf),
+    VanillaCollision {
+        owner: String,
+        id: Identifier,
+        optional: bool,
+    },
+    DuplicateModId {
+        earlier: String,
+        owner: String,
+        id: Identifier,
+    },
+    AlreadyPublished,
+}
+
+impl std::fmt::Display for RegistrationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("register_render_pipelines: ")?;
+        match self {
+            Self::Read { path, error } => write!(
+                f,
+                "could not read {}: {error}; prepare the client resources again",
+                path.display()
+            ),
+            Self::Parse { path, error } => write!(
+                f,
+                "invalid {}: {error}; prepare the client resources again",
+                path.display()
+            ),
+            Self::InvalidIdTable(path) => write!(
+                f,
+                "invalid pipeline ID table in {}; prepare the client resources again",
+                path.display()
+            ),
+            Self::VanillaCollision {
+                owner,
+                id,
+                optional,
+            } => {
+                let kind = if *optional { "optional" } else { "required" };
+                write!(
+                    f,
+                    "mod {owner}: {kind} pipeline {id} collides with vanilla {kind} pipeline"
+                )
+            }
+            Self::DuplicateModId { earlier, owner, id } => write!(
+                f,
+                "mod {owner}: pipeline {id} collides with earlier registration from mod {earlier}"
+            ),
+            Self::AlreadyPublished => f.write_str("pipeline registrations were already published"),
+        }
+    }
+}
+
+impl std::error::Error for RegistrationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Read { error, .. } => Some(error),
+            Self::Parse { error, .. } => Some(error),
+            _ => None,
+        }
+    }
+}
+
 /// Validate and publish the mods' registrations once at startup, as `register_render_pipelines`
 /// left them: each ID at most once and never colliding with vanilla's same-kind table.
 /// A pipeline's place in the list is its slot.
-pub fn register(pipelines: Vec<RenderPipeline>, vanilla_root: &Path) -> Result<(), String> {
-    register_into(pipelines, vanilla_root, &REGISTERED)
-}
-
-/// Validate and publish render pipeline registrations into a caller-supplied slot (used by
-/// `register` for the process table and by tests with a scoped table).
-pub fn register_into(
+pub fn register(
     pipelines: Vec<RenderPipeline>,
     vanilla_root: &Path,
-    slot: &OnceLock<Vec<RenderPipeline>>,
-) -> Result<(), String> {
+) -> Result<(), RegistrationError> {
     if pipelines.is_empty() {
         return Ok(());
     }
     let path = vanilla_root.join("render-pipelines.json");
-    let bytes = std::fs::read(&path).map_err(|error| {
-        format!("register_render_pipelines: could not read {}: {error}; prepare the client resources again", path.display())
+    let bytes = std::fs::read(&path).map_err(|error| RegistrationError::Read {
+        path: path.clone(),
+        error,
     })?;
-    let vanilla: VanillaPipelines = serde_json::from_slice(&bytes).map_err(|error| {
-        format!(
-            "register_render_pipelines: invalid {}: {error}; prepare the client resources again",
-            path.display()
-        )
-    })?;
+    let vanilla: VanillaPipelines =
+        serde_json::from_slice(&bytes).map_err(|error| RegistrationError::Parse {
+            path: path.clone(),
+            error,
+        })?;
     if [&vanilla.required, &vanilla.optional]
         .into_iter()
         .any(|ids| {
@@ -61,36 +127,33 @@ pub fn register_into(
                     .any(|id| Identifier::parse_namespaced(id).is_none())
         })
     {
-        return Err(format!(
-            "register_render_pipelines: invalid pipeline ID table in {}; prepare the client resources again",
-            path.display()
-        ));
+        return Err(RegistrationError::InvalidIdTable(path));
     }
     let mut seen = HashMap::with_capacity(pipelines.len());
     for pipeline in &pipelines {
-        let (table, label) = if pipeline.optional {
-            (&vanilla.optional, "optional")
+        let table = if pipeline.optional {
+            &vanilla.optional
         } else {
-            (&vanilla.required, "required")
+            &vanilla.required
         };
         if table.contains(&pipeline.id.to_string()) {
-            return Err(format!(
-                "register_render_pipelines: mod {}: {label} pipeline {} collides with vanilla {label} pipeline",
-                pipeline.owner(),
-                pipeline.id
-            ));
+            return Err(RegistrationError::VanillaCollision {
+                owner: pipeline.owner().to_owned(),
+                id: pipeline.id.clone(),
+                optional: pipeline.optional,
+            });
         }
         if let Some(earlier) = seen.insert(&pipeline.id, pipeline.owner()) {
-            return Err(format!(
-                "register_render_pipelines: mod {}: pipeline {} collides with earlier registration from mod {earlier}",
-                pipeline.owner(),
-                pipeline.id
-            ));
+            return Err(RegistrationError::DuplicateModId {
+                earlier: earlier.to_owned(),
+                owner: pipeline.owner().to_owned(),
+                id: pipeline.id.clone(),
+            });
         }
     }
-    slot.set(pipelines).map_err(|_| {
-        "register_render_pipelines: pipeline registrations were already published".to_owned()
-    })
+    REGISTERED
+        .set(pipelines)
+        .map_err(|_| RegistrationError::AlreadyPublished)
 }
 
 /// The registered pipelines; none until registration publishes them.

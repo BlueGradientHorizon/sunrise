@@ -650,7 +650,7 @@ pub(super) fn collect_key_mappings<'declared>(
 pub(super) fn register_layer_definitions(
     role: ExecutionRole,
     vanilla_root: &std::path::Path,
-) -> sunrise_client::Result<()> {
+) -> Result<(), sunrise_client::mobs::model_layers::RegistrationError> {
     if !role.is_client() {
         return Ok(());
     }
@@ -5666,38 +5666,19 @@ mod startup_registration_tests {
         PipelineBlend, RegisterLayerDefinitionsEvent, RegisterRenderPipelinesEvent, RenderPipeline,
         WorldDepth,
     };
-    use std::sync::OnceLock;
-
-    fn register_layer_definitions_into(
-        role: ExecutionRole,
-        vanilla_root: &std::path::Path,
-        slot: &OnceLock<HashMap<String, LayerDefinition>>,
-    ) -> sunrise_client::Result<()> {
-        if !role.is_client() {
-            return Ok(());
-        }
-        let mut suppliers = Vec::new();
-        Game::native_register_layer_definitions(&RegistrationContext::new(), &mut suppliers);
-        sunrise_client::mobs::model_layers::register_into(suppliers, vanilla_root, slot)?;
-        Ok(())
-    }
-
-    fn register_render_pipelines_into(
-        role: ExecutionRole,
-        vanilla_root: &Path,
-        slot: &OnceLock<Vec<RenderPipeline>>,
-    ) -> sunrise_client::Result<()> {
-        if !role.is_client() {
-            return Ok(());
-        }
-        let mut pipelines = Vec::new();
-        Game::native_register_render_pipelines(&RegistrationContext::new(), &mut pipelines);
-        sunrise_client_render::mod_pipelines::register_into(pipelines, vanilla_root, slot)?;
-        Ok(())
-    }
+    use sunrise_client::mobs::model_layers::{self, RegistrationError as LayerError};
+    use sunrise_client_render::mod_pipelines::{self, RegistrationError as PipelineError};
 
     #[test]
+    #[ignore = "daily"]
     fn startup_register_layer_definitions_fails_closed_before_publishing() {
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::mods::startup_registration_tests::startup_register_layer_definitions_fails_closed_before_publishing",
+            "SUNRISE_LAYER_REGISTRATION_CHILD",
+            &["startup"],
+        ) {
+            return;
+        }
         struct LayerMod(&'static [(&'static str, i32)], Arc<Mutex<Vec<i32>>>);
         #[mod_api::__subscriptions]
         impl Hooks for LayerMod {
@@ -5723,13 +5704,10 @@ mod startup_registration_tests {
             }
         }
 
-        let dir =
-            std::env::temp_dir().join(format!("sunrise-startup-layer-reg-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let dir = dir.path();
+        let table = dir.join("entity-models.json");
         let calls = Arc::new(Mutex::new(Vec::new()));
-        let slot = OnceLock::new();
-
         mod_platform::testing::with_mods(
             vec![ModEntry::new(
                 "alpha",
@@ -5737,59 +5715,67 @@ mod startup_registration_tests {
             )]
             .into(),
             || {
-                // Missing, invalid, non-object, and empty entity-models.json fail closed.
+                let register = || register_layer_definitions(ExecutionRole::Client, dir);
+                assert!(matches!(register(), Err(LayerError::Load(e)) if e.is::<std::io::Error>()));
+                std::fs::write(&table, "not json").unwrap();
                 assert!(
-                    register_layer_definitions_into(ExecutionRole::Client, &dir, &slot).is_err()
+                    matches!(register(), Err(LayerError::Load(e)) if e.is::<serde_json::Error>())
                 );
-                std::fs::write(dir.join("entity-models.json"), "not json").unwrap();
+                for input in ["[]", "{}"] {
+                    std::fs::write(&table, input).unwrap();
+                    assert!(matches!(register(), Err(LayerError::NotNonemptyObject)));
+                }
+                std::fs::write(&table, r#"{"invalid": {}}"#).unwrap();
                 assert!(
-                    register_layer_definitions_into(ExecutionRole::Client, &dir, &slot).is_err()
-                );
-                std::fs::write(dir.join("entity-models.json"), "[]").unwrap();
-                assert!(
-                    register_layer_definitions_into(ExecutionRole::Client, &dir, &slot).is_err()
-                );
-                std::fs::write(dir.join("entity-models.json"), "{}").unwrap();
-                assert!(
-                    register_layer_definitions_into(ExecutionRole::Client, &dir, &slot).is_err()
-                );
-                std::fs::write(dir.join("entity-models.json"), r#"{"invalid": {}}"#).unwrap();
-                let err = register_layer_definitions_into(ExecutionRole::Client, &dir, &slot)
-                    .unwrap_err();
-                assert!(
-                    err.to_string()
-                        .contains("invalid vanilla model layer entry")
+                    matches!(register(), Err(LayerError::InvalidVanillaLayer(id)) if id == "invalid")
                 );
                 assert!(calls.lock().unwrap().is_empty());
-                assert!(slot.get().is_none());
+                assert!(model_layers::registered("alpha:golem#outer:armor").is_none());
             },
         );
 
         std::fs::write(
-            dir.join("entity-models.json"),
+            &table,
             r#"{"minecraft:zombie#main": {"pose": [0,0,0,0,0,0,1,1,1], "children": {}}}"#,
         )
         .unwrap();
 
-        // Vanilla collision fails startup freeze without invoking any supplier or publishing.
-        mod_platform::testing::with_mods(
-            vec![ModEntry::new(
-                "alpha",
-                Box::new(LayerMod(&[("minecraft:zombie#main", 1)], calls.clone())),
-            )]
-            .into(),
-            || {
-                let err = register_layer_definitions_into(ExecutionRole::Client, &dir, &slot)
-                    .unwrap_err();
-                assert!(
-                    err.to_string()
-                        .contains("collides with an existing vanilla model layer"),
-                    "{err}"
-                );
-                assert!(calls.lock().unwrap().is_empty());
-                assert!(slot.get().is_none());
-            },
-        );
+        for id in ["minecraft:zombie#main", "BadMod:golem#main"] {
+            let layers = if id == "minecraft:zombie#main" {
+                &[("alpha:valid#main", 1), ("minecraft:zombie#main", 2)][..]
+            } else {
+                &[("alpha:valid#main", 1), ("BadMod:golem#main", 2)][..]
+            };
+            mod_platform::testing::with_mods(
+                vec![ModEntry::new(
+                    "alpha",
+                    Box::new(LayerMod(layers, calls.clone())),
+                )]
+                .into(),
+                || {
+                    let err = register_layer_definitions(ExecutionRole::Client, dir).unwrap_err();
+                    match err {
+                        LayerError::VanillaCollision {
+                            owner: "alpha",
+                            id: failed,
+                        } => {
+                            assert_eq!(id, "minecraft:zombie#main");
+                            assert_eq!(failed, id);
+                        }
+                        LayerError::InvalidModLayer {
+                            owner: "alpha",
+                            id: failed,
+                        } => {
+                            assert_eq!(id, "BadMod:golem#main");
+                            assert_eq!(failed, id);
+                        }
+                        other => panic!("unexpected registration refusal: {other:?}"),
+                    }
+                    assert!(calls.lock().unwrap().is_empty());
+                    assert!(model_layers::registered("alpha:valid#main").is_none());
+                },
+            );
+        }
 
         // Valid startup registration freezes with last-writer-wins and unrestricted suffix.
         mod_platform::testing::with_mods(
@@ -5805,12 +5791,10 @@ mod startup_registration_tests {
             ]
             .into(),
             || {
-                register_layer_definitions_into(ExecutionRole::Client, &dir, &slot).unwrap();
+                register_layer_definitions(ExecutionRole::Client, dir).unwrap();
                 assert_eq!(*calls.lock().unwrap(), [8]);
                 assert_eq!(
-                    slot.get()
-                        .unwrap()
-                        .get("alpha:golem#outer:armor")
+                    model_layers::registered("alpha:golem#outer:armor")
                         .unwrap()
                         .bake_root()
                         .get_child("head")
@@ -5820,11 +5804,18 @@ mod startup_registration_tests {
                 );
             },
         );
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn startup_register_render_pipelines_rejects_same_kind_collisions_before_publishing() {
+    #[ignore = "daily"]
+    fn startup_register_render_pipelines_rejects_collisions_before_publishing() {
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::mods::startup_registration_tests::startup_register_render_pipelines_rejects_collisions_before_publishing",
+            "SUNRISE_PIPELINE_REGISTRATION_CHILD",
+            &["startup"],
+        ) {
+            return;
+        }
         struct PipeMod(&'static [(&'static str, bool)]);
         #[mod_api::__subscriptions]
         impl Hooks for PipeMod {
@@ -5849,14 +5840,11 @@ mod startup_registration_tests {
             }
         }
 
-        let dir = std::env::temp_dir().join(format!(
-            "sunrise-startup-pipeline-reg-{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let dir = dir.path();
         let table = dir.join("render-pipelines.json");
-        let slot = OnceLock::new();
+        let register = || register_client_presentations(ExecutionRole::Client, dir);
+        let failure = || *register().unwrap_err().downcast::<PipelineError>().unwrap();
         mod_platform::testing::with_mods(
             vec![ModEntry::new(
                 "example",
@@ -5864,23 +5852,20 @@ mod startup_registration_tests {
             )]
             .into(),
             || {
-                let err =
-                    register_render_pipelines_into(ExecutionRole::Client, &dir, &slot).unwrap_err();
-                assert!(err.to_string().contains("could not read"));
+                assert!(matches!(failure(), PipelineError::Read { path, error }
+                    if path == table && error.kind() == std::io::ErrorKind::NotFound));
                 std::fs::write(&table, r#"{"required":["INVALID"],"optional":[]}"#).unwrap();
-                let err =
-                    register_render_pipelines_into(ExecutionRole::Client, &dir, &slot).unwrap_err();
-                assert!(err.to_string().contains("invalid pipeline ID table"));
-                assert!(slot.get().is_none());
+                assert!(matches!(failure(), PipelineError::InvalidIdTable(path) if path == table));
+                assert!(mod_pipelines::registered().is_empty());
             },
         );
         std::fs::write(
-            table,
+            &table,
             r#"{"required":["minecraft:pipeline/solid_block"],"optional":["minecraft:pipeline/wireframe"]}"#,
         )
         .unwrap();
 
-        // Same-kind vanilla collisions (required and optional) fail startup registration.
+        // Vanilla collisions apply in the corresponding policy table.
         const VANILLA_COLLISIONS: &[&[(&str, bool)]] = &[
             &[("minecraft:pipeline/solid_block", false)],
             &[("minecraft:pipeline/wireframe", true)],
@@ -5889,32 +5874,32 @@ mod startup_registration_tests {
             mod_platform::testing::with_mods(
                 vec![ModEntry::new("bad", Box::new(PipeMod(colliding)))].into(),
                 || {
-                    let err = register_render_pipelines_into(ExecutionRole::Client, &dir, &slot)
-                        .unwrap_err();
-                    assert!(err.to_string().contains("collides with vanilla"));
-                    assert!(slot.get().is_none());
+                    let (expected_id, expected_optional) = colliding[0];
+                    assert!(
+                        matches!(failure(), PipelineError::VanillaCollision { owner, id, optional }
+                        if owner == "bad" && id == Identifier::parse(expected_id).unwrap() && optional == expected_optional)
+                    );
+                    assert!(mod_pipelines::registered().is_empty());
                 },
             );
         }
 
-        // Same-kind mod-to-mod collision fails startup registration without publishing.
-        mod_platform::testing::with_mods(
-            vec![
-                ModEntry::new("first", Box::new(PipeMod(&[("shared:glow", false)]))),
-                ModEntry::new("second", Box::new(PipeMod(&[("shared:glow", false)]))),
-            ]
-            .into(),
-            || {
-                let err =
-                    register_render_pipelines_into(ExecutionRole::Client, &dir, &slot).unwrap_err();
-                assert!(
-                    err.to_string()
-                        .contains("collides with earlier registration"),
-                    "{err}"
-                );
-                assert!(slot.get().is_none());
-            },
-        );
+        for duplicate in [&[("shared:glow", false)][..], &[("shared:glow", true)][..]] {
+            mod_platform::testing::with_mods(
+                vec![
+                    ModEntry::new("first", Box::new(PipeMod(&[("shared:glow", false)]))),
+                    ModEntry::new("second", Box::new(PipeMod(duplicate))),
+                ]
+                .into(),
+                || {
+                    assert!(
+                        matches!(failure(), PipelineError::DuplicateModId { earlier, owner, id }
+                        if earlier == "first" && owner == "second" && id == Identifier::parse("shared:glow").unwrap())
+                    );
+                    assert!(mod_pipelines::registered().is_empty());
+                },
+            );
+        }
 
         // A mod ID may match the opposite vanilla table, but cannot name two mod pipelines.
         mod_platform::testing::with_mods(
@@ -5936,13 +5921,12 @@ mod startup_registration_tests {
             ]
             .into(),
             || {
-                register_render_pipelines_into(ExecutionRole::Client, &dir, &slot).unwrap();
-                let published = slot.get().unwrap();
+                register().unwrap();
+                let published = mod_pipelines::registered();
                 assert_eq!(published.len(), 4);
                 assert!(!published[0].optional);
                 assert!(published[2].optional);
             },
         );
-        std::fs::remove_dir_all(dir).unwrap();
     }
 }
