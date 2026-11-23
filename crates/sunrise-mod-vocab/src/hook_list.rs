@@ -4,6 +4,7 @@
 /// Later listeners see accepted edits, in order. If a listener panics, its edits are undone.
 /// A fixed-size list (such as a brewing inventory) cannot insert or remove entries.
 // no wire: this type borrows the engine's list for the duration of a callback.
+// exhaustive: the fields are private; only the engine constructs a list.
 pub struct HookList<'a, T, E, const FIXED: bool = false> {
     backend: &'a mut dyn HookListBackend<T, E>,
     hook: &'static str,
@@ -12,6 +13,7 @@ pub struct HookList<'a, T, E, const FIXED: bool = false> {
 }
 
 impl<'a, T, E: core::fmt::Debug, const FIXED: bool> HookList<'a, T, E, FIXED> {
+    // hidden: the engine lends the list; mods receive it in a hook's event.
     #[doc(hidden)]
     pub fn new(
         backend: &'a mut dyn HookListBackend<T, E>,
@@ -105,6 +107,7 @@ impl<T, E: core::fmt::Debug> HookList<'_, T, E> {
     }
 }
 
+// hidden: the engine's side of a lent list.
 #[doc(hidden)]
 #[allow(clippy::len_without_is_empty)]
 pub trait HookListBackend<T, E> {
@@ -117,12 +120,16 @@ pub trait HookListBackend<T, E> {
     fn finish(&mut self, accepted: bool);
 }
 
+// hidden: the engine's storage behind a lent list.
+// exhaustive: a list is resizable or fixed, as `HookList`'s `FIXED` says.
 #[doc(hidden)]
 pub enum HookListStorage<'a, T> {
     Resizable(&'a mut Vec<T>),
     Fixed(&'a mut [T]),
 }
 
+// hidden: the engine's undo journal behind a lent list.
+// exhaustive: the fields are private.
 #[doc(hidden)]
 pub struct HookListJournal<'a, T, R, W> {
     storage: HookListStorage<'a, T>,

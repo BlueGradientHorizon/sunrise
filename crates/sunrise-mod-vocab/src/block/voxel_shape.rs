@@ -2,6 +2,7 @@ use sunrise_core::geometry::{Aabb, ShapeOp, Vec3, VoxelShape as CoreVoxelShape};
 
 // no wire: block collision queries lend immutable geometry in-process.
 /// An immutable voxel shape. Cloning retains the geometry without copying its boxes.
+// exhaustive: the field is private; shapes are built only through the constructors.
 #[derive(Clone, Debug)]
 pub struct VoxelShape(CoreVoxelShape);
 
