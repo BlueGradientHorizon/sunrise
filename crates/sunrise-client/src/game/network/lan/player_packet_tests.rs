@@ -414,6 +414,30 @@ fn spectate(game: &mut Game<'_>, rx: &mpsc::Receiver<Out>, rows: &mut Map<String
     }
 
     receive(rx);
+    type HeardTransition = (String, String, bool, String, [f64; 3]);
+    struct DimRecorder(std::sync::Arc<std::sync::Mutex<Vec<HeardTransition>>>);
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for DimRecorder {
+        fn player_changed_dimension(
+            &self,
+            host: &mut dyn mod_api::ServerHost,
+            event: &mut mod_api::PlayerChangedDimensionEvent<'_>,
+        ) {
+            let player = host.players().acting_player().unwrap();
+            let entity = player.entity();
+            let level = entity.level(host).unwrap();
+            let in_place = level.in_place(host);
+            let dim = level.dimension().id(host).unwrap().to_owned();
+            let pos = entity.position(host).unwrap();
+            self.0.lock().unwrap().push((
+                event.from.to_owned(),
+                event.to.to_owned(),
+                in_place,
+                dim,
+                pos,
+            ));
+        }
+    }
     // A return is a second level change; a target in the destination is not.
     for (name, target, levels, at, angles) in [
         (
@@ -431,7 +455,47 @@ fn spectate(game: &mut Game<'_>, rx: &mpsc::Receiver<Out>, rows: &mut Map<String
             [-123.25, -32.5],
         ),
     ] {
-        packet_tick(game, VIEWER, [shoot(10), shoot(target)]);
+        let heard = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "dim-recorder",
+            Box::new(DimRecorder(heard.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            packet_tick(game, VIEWER, [shoot(10), shoot(target)]);
+        });
+        if name == "mixed_return" {
+            assert_eq!(
+                *heard.lock().unwrap(),
+                vec![
+                    (
+                        "minecraft:overworld".to_owned(),
+                        "minecraft:the_nether".to_owned(),
+                        true,
+                        "minecraft:the_nether".to_owned(),
+                        [8.25, 101.0, 2.75],
+                    ),
+                    (
+                        "minecraft:the_nether".to_owned(),
+                        "minecraft:overworld".to_owned(),
+                        true,
+                        "minecraft:overworld".to_owned(),
+                        [6.25, 101.0, 2.75],
+                    ),
+                ]
+            );
+        } else {
+            assert_eq!(
+                *heard.lock().unwrap(),
+                vec![(
+                    "minecraft:overworld".to_owned(),
+                    "minecraft:the_nether".to_owned(),
+                    true,
+                    "minecraft:the_nether".to_owned(),
+                    [8.25, 101.0, 2.75],
+                )]
+            );
+        }
         let packets = receive(rx);
         let transitions: Vec<_> = packets
             .iter()
@@ -609,7 +673,7 @@ fn crystal_round_trip(game: &mut Game<'_>, rows: &mut Map<String, Value>) {
     game.streaming
         .insert_remote(&mut game.world, Chunk::empty(key.0, key.1));
     let tag = nbt::parse_snbt(
-        r#"{id:"minecraft:end_crystal",UUID:[I;0,0,0,130],Pos:[18.5d,100d,0.5d],Rotation:[-132.25f,31.5f],Invulnerable:1b,beam_target:[I;0,128,0],Fire:120s}"#,
+        r#"{id:"minecraft:end_crystal",UUID:[I;0,0,0,130],Pos:[18.5d,100d,0.5d],Rotation:[-132.25f,31.5f],Invulnerable:1b,beam_target:[I;0,128,0],Fire:120s,data:{marker:42}}"#,
     ).unwrap().0;
     game.spawn_loaded_entity(key, tag, None);
     let crystal = game.crystals.last_mut().unwrap();
@@ -627,7 +691,9 @@ fn crystal_round_trip(game: &mut Game<'_>, rows: &mut Map<String, Value>) {
         ]),
         json!([rotation, true, [0, 128, 0], 120]),
     );
+    let moved_pos = Vec3::new(20.5, 102.0, 2.5);
     let crystal = game.crystals.last_mut().unwrap();
+    crystal.position = moved_pos;
     crystal.invulnerable = false;
     crystal.beam = None;
     game.clear_crystal_fire();
@@ -645,10 +711,23 @@ fn crystal_round_trip(game: &mut Game<'_>, rows: &mut Map<String, Value>) {
     let cleared = tag.get("beam_target").is_none()
         && matches!(tag.get("Fire"), Some(Tag::Short(0)))
         && matches!(tag.get("Invulnerable"), Some(Tag::Byte(0)));
+    assert_eq!(
+        tag.get("data").and_then(|d| d.get("marker")),
+        Some(&Tag::Int(42)),
+        "custom entity data must survive crystal move and save"
+    );
     let binary = nbt::write_network(&tag, nbt::Limits::default()).unwrap();
     let (saved, _) = nbt::read_network(&binary, nbt::Limits::default()).unwrap();
     game.spawn_loaded_entity(key, saved, None);
     let c = game.crystals.last().unwrap();
+    assert_eq!(c.position, moved_pos);
+    assert_eq!(
+        game.crystal_nbt(c)
+            .get("data")
+            .and_then(|d| d.get("marker")),
+        Some(&Tag::Int(42)),
+        "custom entity data must survive crystal reload"
+    );
     witness(
         rows,
         "146/reloaded_crystal",

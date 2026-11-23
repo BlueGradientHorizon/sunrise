@@ -1110,9 +1110,7 @@ impl Game<'_> {
             if let Some(state) = transferred {
                 self.adopt_transferred_entity_state(c.id, state);
             }
-            self.restore_portal_cooldown(c.id, &tag);
-            self.remember_tags(c.id, &tag);
-            self.remember_uuid(c.id, uuid, &tag);
+            self.remember(c.id, uuid, tag);
             self.crystals.push(c);
         }
     }
@@ -1832,12 +1830,12 @@ impl Game<'_> {
 
     pub(super) fn crystal_nbt(&self, crystal: &super::dragon::Crystal) -> Tag {
         let uuid = saved_uuid(&self.persist, crystal.id);
-        let raw = self.persist_anon("minecraft:end_crystal", crystal.position);
-        with_raw_over(
-            crystal.to_nbt(uuid, raw),
-            self.persist.raw.get(&crystal.id),
-            &["Fire", "Invulnerable"],
-        )
+        let raw = self
+            .persist
+            .raw
+            .get(&crystal.id)
+            .or_else(|| self.persist_anon("minecraft:end_crystal", crystal.position));
+        crystal.to_nbt(uuid, raw)
     }
 
     /// The compound an entity was loaded with (and commands have edited).

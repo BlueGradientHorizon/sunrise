@@ -1599,6 +1599,11 @@ impl Game<'_> {
                         g.native_player_teleported(uuid, &name, origin, t.at, t.dim.id());
                     });
                 }
+                // `ServerPlayer.teleport` has already placed the player in `t.dim`;
+                // fire `player_changed_dimension` now (just like `EndExit` above) so
+                // consecutive direct cross-dimension teleports in one tick never lose
+                // the first transition when `self.server_trips.retain` replaces the trip.
+                self.tell_mods_changed_dimension(t.conn, Some(source), t.dim);
                 self.server_trips.retain(|trip| !trip.is(t.conn));
                 self.server_trips.push(Trip {
                     conn: t.conn,
@@ -1621,7 +1626,7 @@ impl Game<'_> {
                     // The body does not tick until arrival. Letting it leave the destination before
                     // its chunks load can strand this trip and freeze its damage cooldown indefinitely.
                     hold: true,
-                    left: Some(source),
+                    left: None,
                 });
             }
         }
