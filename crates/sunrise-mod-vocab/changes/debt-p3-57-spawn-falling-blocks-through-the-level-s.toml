@@ -2,6 +2,16 @@ ids = [
     "method:prelude::EntitiesServerHost::spawn_falling_block",
     "handle:LevelRef::spawn_falling_block",
     "hook:entity_join_level",
+    "hook:entities_load",
+    "handle:LevelRef::visit_all_entities",
+    "handle:LevelRef::visit_entities_in",
+    "handle:LevelRef::ray_trace_entities",
+    "handle:LevelRef::ray_trace_nearest_entity",
+    "behaviour:level_visit_all_entities",
+    "behaviour:level_visit_entities_in",
+    "behaviour:level_ray_trace_entities",
+    "behaviour:level_ray_trace_nearest_entity",
+    "behaviour:entity_lookup_accessible_sections",
 ]
 why = """
 Vanilla 26.3 `FallingBlockEntity.fall` replaces the source with its legacy fluid
@@ -61,6 +71,6 @@ match level.spawn_falling_block(host, state, pos, velocity, falling) {
   keeps the falling entity out; it does not restore the replaced source block.
   `loaded_from_disk` can also be true when a save first reads an entity section
   before its terrain loads; do not use a disk join as a terrain-load notice.
-- Keep the `entities_load` callback for entity records. Use `chunk_load` for
-  terrain availability: a save can now read an entity section before terrain loads.
+- Keep the `entities_load` callback for entity records and pin version 2 (`hook:entities_load` was version 1): it can fire during a save without the corresponding terrain. Entity-record admission is distinct from terrain availability, so use `chunk_load` for
+  terrain: a save can now read an entity section before terrain loads.
 """
