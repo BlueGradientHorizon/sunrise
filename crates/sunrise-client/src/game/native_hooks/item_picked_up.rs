@@ -307,7 +307,19 @@ impl Game<'_> {
                 }
             };
             if removed {
-                self.record_item_pickup(&slot, &kind, before, &captured, thrower);
+                // The count the inventory took, from the captured original and what Post left
+                // of it, before asking whether the entity is still alive (`ItemEntity.playerTouch`).
+                let left = told.as_ref().filter(|s| s.count > 0);
+                let taken = before.saturating_sub(left.map_or(0, |s| s.count));
+                if taken > 0 {
+                    self.record_item_pickup(
+                        &slot,
+                        &kind,
+                        taken,
+                        left.unwrap_or(&captured),
+                        thrower,
+                    );
+                }
                 if let PickupSlot::Lifted { index, .. } = &mut slot
                     && present
                 {
