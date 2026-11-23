@@ -141,7 +141,6 @@ fn screenshots_must_decode_and_match_their_file_extension() {
     assert!(check_screenshot(Path::new("image.png"), b"not an image").is_err());
 }
 
-#[cfg(unix)]
 #[test]
 fn a_jpeg_too_large_to_decode_is_refused_from_its_header() {
     // The fixture with its frame header claiming 16000 x 16000 pixels: over the decoded limit,
@@ -159,6 +158,7 @@ fn a_jpeg_too_large_to_decode_is_refused_from_its_header() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn linked_screenshot_subfolders_are_refused() {
     let root = tempfile::tempdir().unwrap();
