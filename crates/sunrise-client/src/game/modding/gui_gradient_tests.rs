@@ -36,7 +36,7 @@ impl Hooks for Gradients {
             })
         })
         .unwrap();
-        // The enclosing clip must win before the inner canvas cuts the original colour.
+        // The enclosing clip must win over the inner canvas's own.
         draw.with_scissor([0.0, 104.0, 100.0, 10.0], &mut |clipped| {
             clipped
                 .draw_gui(&mut |root| {
@@ -68,16 +68,17 @@ fn a_mods_gradients_draw_top_to_bottom_in_the_clip_and_pose_and_empty_ones_draw_
                 });
             });
             let drawn: Vec<_> = batch.vertices.iter().map(|v| (v.pos, v.color)).collect();
-            // Cut at y=14: halfway between the green and blue, rounding each channel up at .5.
+            // Each gradient stays whole with vanilla's corner colours; a clip gates fragments
+            // through the quad's scissor, as `GuiRenderer.executeDraw` does.
             assert_eq!(
                 drawn,
                 [
                     ([10.0, 10.0], 0x8000_FF00),
                     ([30.0, 10.0], 0x8000_FF00),
-                    ([30.0, 14.0], 0xC080_8000),
+                    ([30.0, 18.0], 0xFFFF_0000),
                     ([10.0, 10.0], 0x8000_FF00),
-                    ([30.0, 14.0], 0xC080_8000),
-                    ([10.0, 14.0], 0xC080_8000),
+                    ([30.0, 18.0], 0xFFFF_0000),
+                    ([10.0, 18.0], 0xFFFF_0000),
                     ([110.0, 20.0], 0xFF66_5544),
                     ([130.0, 20.0], 0xFF66_5544),
                     ([130.0, 28.0], 0x8033_2211),
@@ -90,12 +91,23 @@ fn a_mods_gradients_draw_top_to_bottom_in_the_clip_and_pose_and_empty_ones_draw_
                     ([50.0, 60.0], 0x8000_FF00),
                     ([54.0, 62.0], 0xFFFF_0000),
                     ([50.0, 62.0], 0xFFFF_0000),
-                    ([10.0, 104.0], 0xFF00_0001),
-                    ([30.0, 104.0], 0xFF00_0001),
+                    ([10.0, 100.0], 0xFF00_0000),
+                    ([30.0, 100.0], 0xFF00_0000),
                     ([30.0, 110.0], 0xFF00_0003),
-                    ([10.0, 104.0], 0xFF00_0001),
+                    ([10.0, 100.0], 0xFF00_0000),
                     ([30.0, 110.0], 0xFF00_0003),
                     ([10.0, 110.0], 0xFF00_0003),
+                ]
+            );
+            // The enclosing clip wins over the inner canvas's wider one.
+            let visible: Vec<_> = batch.visible_quads().collect();
+            assert_eq!(
+                visible,
+                [
+                    Some([10.0, 10.0, 30.0, 14.0]),
+                    Some([110.0, 20.0, 130.0, 28.0]),
+                    Some([50.0, 60.0, 54.0, 62.0]),
+                    Some([10.0, 104.0, 30.0, 110.0]),
                 ]
             );
         },
