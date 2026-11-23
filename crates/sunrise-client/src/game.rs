@@ -384,6 +384,9 @@ mod crop_grow_tests;
 #[path = "game/items/crossbow.rs"]
 mod crossbow;
 #[cfg(test)]
+#[path = "game/entities/crosshair_pick_tests.rs"]
+mod crosshair_pick_tests;
+#[cfg(test)]
 #[path = "game/entities/cushion_refind_tests.rs"]
 mod cushion_refind_tests;
 #[path = "game/entities/cushions.rs"]
@@ -988,6 +991,8 @@ mod mod_raycast_tests;
 #[cfg(test)]
 #[path = "game/interface/mod_recipe_property_tests.rs"]
 mod mod_recipe_property_tests;
+#[path = "game/interface/mod_toasts.rs"]
+mod mod_toasts;
 #[cfg(test)]
 #[path = "game/modding/model_baking_completed_tests.rs"]
 mod model_baking_completed_tests;
@@ -1673,6 +1678,11 @@ mod native_shaders;
 #[cfg(test)]
 #[path = "game/modding/native_shield_totem_tests.rs"]
 mod native_shield_totem_tests;
+#[path = "game/modding/native_singleplayer_owner.rs"]
+mod native_singleplayer_owner;
+#[cfg(test)]
+#[path = "game/modding/native_singleplayer_owner_tests.rs"]
+mod native_singleplayer_owner_tests;
 #[cfg(test)]
 #[path = "game/modding/native_small_reads_tests.rs"]
 mod native_small_reads_tests;
@@ -2235,6 +2245,8 @@ mod tick_script;
 mod titles;
 #[path = "game/entities/tnt.rs"]
 mod tnt;
+#[path = "game/interface/toast_manager.rs"]
+mod toast_manager;
 #[path = "game/blocks/tool_modification.rs"]
 mod tool_modification;
 #[path = "game/items/totem.rs"]
@@ -3572,6 +3584,7 @@ struct Game<'a> {
     setting_overrides: std::cell::RefCell<std::collections::BTreeMap<(String, String), String>>,
     /// The native damage hooks every level of this game lends to its hits.
     damage_hooks: sunrise_client::health::DamageHooks,
+    paused_mob_hurt: Option<Box<sunrise_client::mobs::PausedMobHurt>>,
     music: sunrise_client::music::MusicManager,
     /// The tracks native mods play over the music (`native_music_layers`).
     music_layers: sunrise_client::music::MusicLayers,
@@ -3751,9 +3764,7 @@ struct Game<'a> {
     settings: Settings,
     look: look::LookCache,
     tutorial: tutorial::Tutorial,
-    tutorial_toasts: Vec<tutorial::HintToast>,
-    /// The `SystemToastId.NARRATOR_TOGGLE` toast, wherever the player is.
-    narrator_toast: Option<sunrise_client::toasts::SystemToast>,
+    toast_manager: toast_manager::ToastManager,
     /// The open screen's narration (`Screen`'s narration state and timing).
     narration: sunrise_client::screen_narrator::ScreenNarrator,
     /// Where the options screen returns: true = title, false = pause menu.
@@ -3906,6 +3917,8 @@ struct Game<'a> {
     /// The entity ids a hosted server gives the knots its mobs hang on, by
     /// block, while a lead is tied there.
     knot_ids: HashMap<[i32; 3], u32>,
+    /// Fence posts whose natural knot was killed and whose leads drop next tick.
+    broken_knots: Vec<[i32; 3]>,
     text_display_vertices: usize,
     /// Player skin downloads, and which skin each atlas skin slot holds
     /// (least recently shown first).
@@ -4128,6 +4141,9 @@ struct Game<'a> {
     level_shapes: sunrise_client::chunk::LevelShapes,
     /// This game is that server thread's (game/world/integrated.rs).
     serving: Option<integrated::Serving>,
+    /// `IntegratedServer`'s single-player profile, fixed when the server thread is created,
+    /// before its startup hooks (game/modding/native_singleplayer_owner.rs). None elsewhere.
+    singleplayer_profile: Option<native_singleplayer_owner::SingleplayerProfile>,
     /// The open world is shared behind an invite code (game/network/friends.rs).
     #[cfg(feature = "friends")]
     friends: Option<friends::Sharing>,
@@ -4781,6 +4797,64 @@ impl Game<'_> {
             sunrise_core::LevelKey::parse(dim.id()).unwrap_or(sunrise_core::LevelKey::OVERWORLD),
         )
     }
+    /// Sets up the same block-entity scene for both world draw paths.
+    fn with_block_entity_scene(
+        &self,
+        camera: glam::DVec3,
+        partial: f32,
+        dynamic_visible: &dyn Fn([i32; 3], u32, glam::DVec3, glam::DVec3) -> bool,
+        draw: impl FnOnce(&BlockEntityScene<'_>),
+    ) {
+        let lid = |p: [i32; 3]| self.chest_lid(p, partial);
+        let anim = |p: [i32; 3]| self.block_anim(p, partial);
+        let substitute = |text: &sunrise_client::text::Text| self.substitute_inline_images(text);
+        let inline_sprite = |atlas: &str, sprite: &str| self.gui.atlas.inline_sprite(atlas, sprite);
+        use block_entity_render::SignOutline;
+        let sign_outline =
+            if self.player.is_some() && self.camera_type.is_first_person() && self.scoping() {
+                SignOutline::FirstPersonScope
+            } else {
+                self.camera_subject().map_or(SignOutline::None, |subject| {
+                    SignOutline::CameraEntity(glam::DVec3::from_array(subject.camera.position))
+                })
+            };
+        let scene = BlockEntityScene {
+            camera,
+            sign_outline,
+            orientation: self.camera_orientation(),
+            anim: &anim,
+            texts: None,
+            partial,
+            game_time: self.world.game_time,
+            max_y: self.world.shape.max_y() - 1,
+            world: &self.world,
+            sprites: &self.gui.atlas.sprites,
+            emissive: &self.gui.atlas.emissive,
+            translucent_sprites: &self.gui.atlas.translucent,
+            atlas_revision: self.gui.atlas.revision,
+            nether: self.nether_lighting(),
+            lid: &lid,
+            sign: &|p| match self.world.block_entities.get(&(p[0], p[1], p[2])) {
+                Some(BlockEntity::Sign(sign)) => Some(sign),
+                _ => None,
+            },
+            inline_images: self.inline_images_revision().map(|revision| {
+                block_entity_render::SignInlineImages {
+                    revision,
+                    substitute: &substitute,
+                    sprite: &inline_sprite,
+                }
+            }),
+            banner: &|p| self.banner_layers_at(p),
+            skull: &|p| self.skull_skin_at(p),
+            glyph: &|c| self.gui.atlas.glyph_cell(c),
+            glyphs: self.gui.atlas.font.epoch(),
+            font: Some(&self.gui.atlas.font),
+            dynamic_visible: Some(dynamic_visible),
+        };
+        draw(&scene);
+    }
+
     fn eye_position(&self) -> Option<[f64; 3]> {
         let p = self.player.as_ref()?;
         Some([
@@ -4967,15 +5041,10 @@ impl Game<'_> {
         if let Some(hit) = self.tick_hit.get() {
             return hit;
         }
-        let (origin, dir) = self.aim()?;
-        // GameRenderer.pick: the block ray runs out to the larger of the two
-        // interaction ranges; filterHitResult then drops a hit past the
-        // block's.
-        self.clip_ray(origin, dir, self.block_reach.max(self.entity_reach))
-            .filter(|hit| {
-                let distance: [f64; 3] = std::array::from_fn(|i| hit.point[i] - origin[i]);
-                distance.iter().map(|v| v * v).sum::<f64>() <= self.block_reach.powi(2)
-            })
+        match self.compute_crosshair_decision() {
+            pick_entity::CrosshairDecision::Block(hit) => Some(hit),
+            _ => None,
+        }
     }
     /// An item-specific POV outline ray at the current rotation and block reach.
     pub(super) fn item_pick(&self) -> Option<Hit> {
@@ -7208,7 +7277,16 @@ impl Game<'_> {
     fn title_input_active(&self) -> bool {
         self.title.is_some() && !matches!(self.screen, Screen::DebugOptions | Screen::Mod)
     }
+    #[cfg(test)]
     fn hud(&mut self, size: [u32; 2]) -> HudBatch {
+        self.hud_with_reload(size, None)
+    }
+
+    fn hud_with_reload(
+        &mut self,
+        size: [u32; 2],
+        reload_overlay: Option<(f32, sunrise_client::level_loading::OverlayFade)>,
+    ) -> HudBatch {
         // Gui.extractRenderState passes integer coordinates to the HUD and screen. Keep
         // the projected fractions for input, but draw and hit-test hover at the frame's pixel.
         let pointer = self.project_window_cursor(size);
@@ -7221,14 +7299,13 @@ impl Game<'_> {
         self.ui.room = sunrise_client::hud_kit::room::Room::new(gui.width, gui.height);
         // The pack prompt replaces the connecting screen (setScreen), but
         // in game it opens over the world.
+        self.settle_title_toasts();
         let mut batch = if (self.server_packs.prompt.is_some()
             || self.code_of_conduct.is_some()
             || self.dialog_open())
             && self.player.is_none()
         {
-            let mut batch = HudBatch::new(size, self.settings.gui_scale_inputs());
-            self.draw_pack_toasts(&mut batch, true, false);
-            batch
+            gui
         } else {
             self.hud_layers(size)
         };
@@ -7240,9 +7317,12 @@ impl Game<'_> {
         self.draw_code_of_conduct(&mut batch);
         self.draw_link_prompt(&mut batch);
         self.draw_command_prompt(&mut batch);
-        // The ToastManager draws over every screen, the title and the
-        // options included: the narrator's toast follows the player there.
-        self.draw_narrator_toast(&mut batch);
+        if let Some((bar, fade)) = reload_overlay {
+            self.draw_reload_overlay(&mut batch, bar, fade);
+        }
+        // Gui.extractRenderState draws toasts over the active screen or overlay,
+        // after the saving indicator and before the debug overlay.
+        self.draw_every_toast(&mut batch);
         // Gui.extractRenderState: the debug overlay comes after the screen
         // and the toasts, so it is over everything, menus included.
         self.draw_debug_overlay(&mut batch, size);
@@ -7265,6 +7345,21 @@ impl Game<'_> {
         self.pack.item_renderer.end_gui_frame();
         batch
     }
+    fn draw_reload_overlay(
+        &self,
+        batch: &mut HudBatch,
+        bar: f32,
+        fade: sunrise_client::level_loading::OverlayFade,
+    ) {
+        sunrise_client::level_loading::draw_loading_overlay(
+            batch,
+            &self.gui.atlas,
+            bar,
+            fade,
+            self.settings.file.bool("darkMojangStudiosBackground"),
+        );
+    }
+
     fn hud_layers(&mut self, size: [u32; 2]) -> HudBatch {
         use sunrise_client::gui_layers::VanillaGuiLayer;
 
@@ -7291,7 +7386,6 @@ impl Game<'_> {
             // screen, after its own drawing.
             self.publish_screen_regions(&batch, None);
             self.draw_screen_with_post_hook(&mut batch);
-            self.draw_pack_toasts(&mut batch, true, false);
             return batch;
         }
         if self.screen == Screen::Options && self.title.is_some() {
@@ -7299,23 +7393,17 @@ impl Game<'_> {
             self.draw_options(&mut batch, drawn);
             self.publish_screen_regions(&batch, None);
             self.draw_screen_with_post_hook(&mut batch);
-            self.draw_pack_toasts(&mut batch, true, false);
             return batch;
         }
-        self.settle_title_toasts();
-        if let Some(title) = &mut self.title {
-            if std::mem::take(&mut title.onboarding_finished) {
-                // Options.onboardingAccessibilityFinished.
-                self.settings.file.set(
-                    "onboardAccessibility",
-                    sunrise_client::options_file::V::Bool(false),
-                );
-                self.settings.save(&Self::options_path());
-            }
-            if let Some(sound) = title.update_toast(self.settings.notification_display_time as f32)
-            {
-                self.audio.play(sound, None, 1.0, 1.0);
-            }
+        if let Some(title) = &mut self.title
+            && std::mem::take(&mut title.onboarding_finished)
+        {
+            // Options.onboardingAccessibilityFinished.
+            self.settings.file.set(
+                "onboardAccessibility",
+                sunrise_client::options_file::V::Bool(false),
+            );
+            self.settings.save(&Self::options_path());
         }
         if let Some(title) = &self.title {
             for found in title.lan_found_narrations((w, h)) {
@@ -7333,10 +7421,6 @@ impl Game<'_> {
             }
             self.publish_screen_regions(&batch, None);
             self.draw_screen_with_post_hook(&mut batch);
-            self.draw_toasts(&mut batch, false);
-            self.draw_tutorial_toasts(&mut batch, false);
-            self.draw_pack_toasts(&mut batch, false, false);
-            self.draw_music_toast(&mut batch, false);
             return batch;
         }
         if self.title.is_some() {
@@ -7367,10 +7451,6 @@ impl Game<'_> {
             // toasts still come after, as over any screen.
             self.publish_screen_regions(&batch, None);
             self.draw_title_screen_with_post_hook(&mut batch);
-            self.draw_toasts(&mut batch, false);
-            self.draw_tutorial_toasts(&mut batch, false);
-            self.draw_pack_toasts(&mut batch, false, false);
-            self.draw_music_toast(&mut batch, false);
             return batch;
         }
         let atlas_ptr: *const HudAtlas = &self.gui.atlas;
@@ -7379,8 +7459,6 @@ impl Game<'_> {
         // download while the connection screen shows.
         if self.remote_overlay(&mut batch) {
             self.publish_screen_regions(&batch, None);
-            self.draw_pack_toasts(&mut batch, false, false);
-            self.draw_music_toast(&mut batch, false);
             return batch;
         }
         // Hud.extractRenderState: F1 (keyToggleGui) hides camera overlays, the
@@ -7810,7 +7888,6 @@ impl Game<'_> {
         self.publish_screen_regions(&batch, region_screen);
         self.draw_screen_with_post_hook(&mut batch);
         self.draw_saving_indicator(&mut batch);
-        self.draw_every_toast(&mut batch, self.replay.playing(), gui_canceled);
         if self.server_packs.prompt.is_none() {
             self.remote_hud(&mut batch);
             self.draw_sign_editor(&mut batch);
@@ -8426,135 +8503,103 @@ impl Game<'_> {
                 );
                 !self.block_entity_occluded(bounds)
             };
-            let lid = |p: [i32; 3]| self.chest_lid(p, alpha as f32);
-            let anim = |p: [i32; 3]| self.block_anim(p, alpha as f32);
-            let substitute =
-                |text: &sunrise_client::text::Text| self.substitute_inline_images(text);
-            let inline_sprite =
-                |atlas: &str, sprite: &str| self.gui.atlas.inline_sprite(atlas, sprite);
-            let scene = BlockEntityScene {
-                camera,
-                orientation: self.camera_orientation(),
-                anim: &anim,
-                texts: None,
-                partial: alpha as f32,
-                game_time: self.world.game_time,
-                max_y: self.world.shape.max_y() - 1,
-                world: &self.world,
-                sprites: &self.gui.atlas.sprites,
-                emissive: &self.gui.atlas.emissive,
-                translucent_sprites: &self.gui.atlas.translucent,
-                atlas_revision: self.gui.atlas.revision,
-                nether: self.nether_lighting(),
-                lid: &lid,
-                sign: &|p| match self.world.block_entities.get(&(p[0], p[1], p[2])) {
-                    Some(BlockEntity::Sign(sign)) => Some(sign),
-                    _ => None,
-                },
-                inline_images: self.inline_images_revision().map(|revision| {
-                    block_entity_render::SignInlineImages {
-                        revision,
-                        substitute: &substitute,
-                        sprite: &inline_sprite,
-                    }
-                }),
-                banner: &|p| self.banner_layers_at(p),
-                skull: &|p| self.skull_skin_at(p),
-                glyph: &|c| self.gui.atlas.glyph_cell(c),
-                glyphs: self.gui.atlas.font.epoch(),
-                font: Some(&self.gui.atlas.font),
-                dynamic_visible: Some(&dynamic_visible),
-            };
-            let visible = camera_list.into_iter().chain(shadow_only.iter().copied());
-            let block_entity_cache = CacheOptions {
-                shulker_boxes: self.settings.sunrise.cache_shulker_boxes,
-                signs: self.settings.sunrise.cache_signs,
-                decorated_pots: self.settings.sunrise.cache_decorated_pots,
-                bells: self.settings.sunrise.cache_bells,
-                chests: self.settings.sunrise.cache_chests,
-                banners: self.settings.sunrise.cache_banners,
-                copper_golem_statues: self.settings.sunrise.cache_copper_golem_statues,
-            };
-            // Entity occlusion is for ordinary entity meshes. Block entities
-            // already have section and per-block frustum culling; routing them
-            // through the per-vertex occlusion callback both repeats that work
-            // and disables their per-section GPU cache. Shader packs still need
-            // per-entity span marks, so they keep the callback path.
-            if self.pack_ids.is_some() {
-                let section_revision = |pos| r.block_entity_section_revision(pos);
-                static_block_entity_stats = self
-                    .res
-                    .block_entity_render()
-                    .render_with_cache_options_and_callbacks(
-                        &scene,
-                        visible,
-                        block_entity_cache,
-                        r.block_entity_revision(),
-                        Some(&section_revision),
-                        &mut out,
-                        |pos, state, start| {
-                            self.mark_block_entity(start, state);
-                            self.mark_motion(start, motion_block_entity(pos));
-                        },
-                        |pos, _, start, out| {
-                            if shadow_only_at.contains(&pos) {
-                                self.hide_spans_from(start, out.len());
-                            }
-                        },
-                    );
-            } else {
-                (
-                    static_block_entities,
-                    visible_static_block_entity_sections,
-                    static_block_entity_stats,
-                ) = self
-                    .res
-                    .block_entity_render()
-                    .render_with_gpu_cache_options(
-                        &scene,
-                        visible,
-                        cache_candidates.into_iter(),
-                        block_entity_cache,
-                        r.block_entity_revision(),
-                        |pos| r.block_entity_section_revision(pos),
-                        &mut out,
-                    );
-            }
-            // Mod block entities: their mods draw them (`native_block_entity_submit`),
-            // culled by the eye-visible section filter (ordinary renderers) and the bounds
-            // they give. A world without any (`has_mods`) has none to find among its other
-            // unrendered block entities (furnaces, hoppers...).
-            let radius = self.effective_render_distance();
-            let untemplated = self.untemplated_mod_block_entities(camera);
-            let mods = self
-                .world
-                .block_entities
-                .has_mods()
-                .then(|| {
-                    r.visible_block_entities(self.settings.chunk_fade as f32, camera, view, radius)
+            self.with_block_entity_scene(camera, alpha as f32, &dynamic_visible, |scene| {
+                let visible = camera_list.into_iter().chain(shadow_only.iter().copied());
+                let block_entity_cache = CacheOptions {
+                    shulker_boxes: self.settings.sunrise.cache_shulker_boxes,
+                    signs: self.settings.sunrise.cache_signs,
+                    decorated_pots: self.settings.sunrise.cache_decorated_pots,
+                    bells: self.settings.sunrise.cache_bells,
+                    chests: self.settings.sunrise.cache_chests,
+                    banners: self.settings.sunrise.cache_banners,
+                    copper_golem_statues: self.settings.sunrise.cache_copper_golem_statues,
+                };
+                // Entity occlusion is for ordinary entity meshes. Block entities
+                // already have section and per-block frustum culling; routing them
+                // through the per-vertex occlusion callback both repeats that work
+                // and disables their per-section GPU cache. Shader packs still need
+                // per-entity span marks, so they keep the callback path.
+                if self.pack_ids.is_some() {
+                    let section_revision = |pos| r.block_entity_section_revision(pos);
+                    static_block_entity_stats = self
+                        .res
+                        .block_entity_render()
+                        .render_with_cache_options_and_callbacks(
+                            scene,
+                            visible,
+                            block_entity_cache,
+                            r.block_entity_revision(),
+                            Some(&section_revision),
+                            &mut out,
+                            |pos, state, start| {
+                                self.mark_block_entity(start, state);
+                                self.mark_motion(start, motion_block_entity(pos));
+                            },
+                            |pos, _, start, out| {
+                                if shadow_only_at.contains(&pos) {
+                                    self.hide_spans_from(start, out.len());
+                                }
+                            },
+                        );
+                } else {
+                    (
+                        static_block_entities,
+                        visible_static_block_entity_sections,
+                        static_block_entity_stats,
+                    ) = self
+                        .res
+                        .block_entity_render()
+                        .render_with_gpu_cache_options(
+                            scene,
+                            visible,
+                            cache_candidates.into_iter(),
+                            block_entity_cache,
+                            r.block_entity_revision(),
+                            |pos| r.block_entity_section_revision(pos),
+                            &mut out,
+                        );
+                }
+                // Mod block entities: their mods draw them (`native_block_entity_submit`),
+                // culled by the eye-visible section filter (ordinary renderers) and the bounds
+                // they give. A world without any (`has_mods`) has none to find among its other
+                // unrendered block entities (furnaces, hoppers...).
+                let radius = self.effective_render_distance();
+                let untemplated = self.untemplated_mod_block_entities(camera);
+                let mods = self
+                    .world
+                    .block_entities
+                    .has_mods()
+                    .then(|| {
+                        r.visible_block_entities(
+                            self.settings.chunk_fade as f32,
+                            camera,
+                            view,
+                            radius,
+                        )
                         .filter(|((_, state), _)| !self.res.block_entity_render().renders(*state))
-                })
-                .into_iter()
-                .flatten();
-            let untemplated_eye = untemplated.iter().map(|block| {
-                (
-                    block,
-                    r.block_entity_section_in_eye_view(block.0, camera, view.as_ref(), radius),
-                )
+                    })
+                    .into_iter()
+                    .flatten();
+                let untemplated_eye = untemplated.iter().map(|block| {
+                    (
+                        block,
+                        r.block_entity_section_in_eye_view(block.0, camera, view.as_ref(), radius),
+                    )
+                });
+                self.mod_block_entity_geometry(
+                    mods.chain(untemplated_eye),
+                    camera,
+                    alpha as f32,
+                    &mut out,
+                );
+                self.mark_stage(out.len(), "DESTROY");
+                for &(pos, stage) in &cracks {
+                    let state = self.world.block(pos[0], pos[1], pos[2]);
+                    self.res
+                        .block_entity_render()
+                        .render_breaking(scene, pos, state.0, stage, &mut out);
+                }
             });
-            self.mod_block_entity_geometry(
-                mods.chain(untemplated_eye),
-                camera,
-                alpha as f32,
-                &mut out,
-            );
-            self.mark_stage(out.len(), "DESTROY");
-            for &(pos, stage) in &cracks {
-                let state = self.world.block(pos[0], pos[1], pos[2]);
-                self.res
-                    .block_entity_render()
-                    .render_breaking(&scene, pos, state.0, stage, &mut out);
-            }
         }
         laps.lap("eg_block_entities");
         self.mark_motion(out.len(), 0);
@@ -8973,9 +9018,7 @@ impl Game<'_> {
         }
     }
 
-    /// The mob hit along the view, the distance to it and the point the ray
-    /// met its box at, measured from the mob's feet (`EntityHitResult
-    /// .getLocation() - entity.position()`, the interact packet's location).
+    /// The mob hit along the view, its distance, and the hit point relative to its feet.
     fn mob_hit(&self) -> Option<(usize, f64, [f64; 3])> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, point) = hit?;
@@ -8990,45 +9033,32 @@ impl Game<'_> {
         if let Some(hit) = self.tick_mob {
             return hit;
         }
-        let mut pick = crate::game::pick_accumulator::PickAccumulator::new(self.entity_reach);
-        self.mob_hit_within_with_pick(self.entity_reach, &mut pick)
+        let pick_entity::CrosshairDecision::Entity(hit) = self.compute_crosshair_decision() else {
+            return None;
+        };
+        let i = self.mob_index.find_ref(&self.mobs, hit.id)?;
+        let point = Vec3::new(hit.point[0], hit.point[1], hit.point[2]);
+        Some((
+            i,
+            hit.distance_sq.sqrt(),
+            interact_location(point, self.mobs[i].position),
+        ))
     }
-    /// The brush's `ProjectileUtil.getHitResultOnViewVector` uses the nearest
-    /// box entry, excluding the source but not its vehicle or passengers.
+    /// The brush's `ProjectileUtil.getHitResultOnViewVector` excludes only the source entity.
     pub(super) fn mob_hit_within(&self, reach: f64) -> Option<(usize, f64, [f64; 3])> {
         let source = self.pick_camera_id();
-        let mut nearest = f64::INFINITY;
-        self.mob_hit_within_consider(reach, |id, distance| {
-            if Some(id) == source || distance == 0.0 || distance >= nearest {
-                return false;
-            }
-            nearest = distance;
-            true
-        })
-    }
-    pub(super) fn mob_hit_within_with_pick(
-        &self,
-        reach: f64,
-        pick: &mut crate::game::pick_accumulator::PickAccumulator,
-    ) -> Option<(usize, f64, [f64; 3])> {
-        self.mob_hit_within_consider(reach, |id, distance| pick.consider(self, id, distance))
-    }
-    fn mob_hit_within_consider(
-        &self,
-        reach: f64,
-        mut consider: impl FnMut(u32, f64) -> bool,
-    ) -> Option<(usize, f64, [f64; 3])> {
         let (eye, dir) = self.aim()?;
+        let mut nearest = f64::INFINITY;
         let mut best: Option<(usize, f64, [f64; 3])> = None;
         for (i, m) in self.mobs.iter().enumerate() {
-            // EntitySelector.CAN_BE_PICKED is isPickable — `!isRemoved`,
-            // not alive: a health-0 fake player still answers a click.
-            if m.removed {
+            if m.removed || Some(m.id) == source {
                 continue;
             }
             if let Some(t) = ray_box(eye, dir, reach, m.bounds())
-                && consider(m.id, t)
+                && t != 0.0
+                && t < nearest
             {
+                nearest = t;
                 let point = Vec3::new(
                     eye[0] + dir[0] * t,
                     eye[1] + dir[1] * t,
@@ -10920,28 +10950,6 @@ impl Game<'_> {
             }
             return Ok(false);
         }
-        // A pack reload's `LoadingOverlay`: once opaque it covers the frame
-        // alone; while it fades in or out it is drawn over the frame's GUI.
-        let reload_overlay = self.reload_overlay_frame();
-        if let Some((bar, fade)) = reload_overlay.filter(|(_, fade)| fade.opaque()) {
-            if let Some(renderer) = &mut self.renderer {
-                let mut hud = HudBatch::new(
-                    [renderer.config.width, renderer.config.height],
-                    self.settings.gui_scale_inputs(),
-                );
-                sunrise_client::level_loading::draw_loading_overlay(
-                    &mut hud,
-                    &self.gui.atlas,
-                    bar,
-                    fade,
-                    self.settings.file.bool("darkMojangStudiosBackground"),
-                );
-                pr.lap("pr_loading");
-                drop(prepare);
-                return renderer.render(&loading_frame(&hud));
-            }
-            return Ok(false);
-        }
         let Some(size) = self
             .renderer
             .as_ref()
@@ -10949,6 +10957,22 @@ impl Game<'_> {
         else {
             return Ok(false);
         };
+        // An opaque LoadingOverlay needs no world or screen behind it; the
+        // ToastManager still draws in front of it.
+        let reload_overlay = self.reload_overlay_frame();
+        if let Some((bar, fade)) = reload_overlay.filter(|(_, fade)| fade.opaque()) {
+            let mut hud = HudBatch::new(size, self.settings.gui_scale_inputs());
+            self.draw_reload_overlay(&mut hud, bar, fade);
+            self.draw_every_toast(&mut hud);
+            self.pack.item_renderer.end_gui_frame();
+            pr.lap("pr_loading");
+            drop(prepare);
+            return self
+                .renderer
+                .as_mut()
+                .expect("renderer sized above")
+                .render(&loading_frame(&hud));
+        }
         pr.lap("pr_setup");
         let alpha = self.frame_world_partial_tick();
         self.refresh_client_pick(alpha as f32);
@@ -11301,17 +11325,11 @@ impl Game<'_> {
         pr.lap("pr_projection");
         let vanilla_skin = self.apply_player_skin_override(title);
         // GUI hooks project against this frame's camera, including its bob/spin and FOV.
-        let mut hud = sunrise_client::spans::time("hud", || self.hud(size));
-        self.flush_ime(&mut hud);
-        self.native_gui_render_post(&mut hud, self.ui.hide_gui, self.focused);
-        if let Some((bar, fade)) = reload_overlay {
-            sunrise_client::level_loading::draw_loading_overlay(
-                &mut hud,
-                &self.gui.atlas,
-                bar,
-                fade,
-                self.settings.file.bool("darkMojangStudiosBackground"),
-            );
+        let mut hud =
+            sunrise_client::spans::time("hud", || self.hud_with_reload(size, reload_overlay));
+        if reload_overlay.is_none() {
+            self.flush_ime(&mut hud);
+            self.native_gui_render_post(&mut hud, self.ui.hide_gui, self.focused);
         }
         self.resolve_inline_profiles(&hud.inline_profiles);
         pr.lap("pr_hud");
@@ -11622,22 +11640,19 @@ impl Game<'_> {
             hud: &hud,
             glint_alpha: self.glint_frame.alpha,
             glint_ticks: self.glint_frame.scroll_ticks(),
-            clouds: (!title
-                && self.overworld_skybox()
-                && sunrise_client::clouds::visible(&self.settings.clouds, sky.cloud_color[3]))
-            .then(|| self.gui.atlas.sprites.get("sunrise/white"))
-            .flatten()
-            .map(|white| sunrise_client::clouds::Input {
-                texture: &self.pack.clouds,
-                uv: [(white.u0 + white.u1) / 2.0, (white.v0 + white.v1) / 2.0],
-                camera,
-                time: self.world.game_time,
-                partial_tick: alpha,
-                range: self.settings.cloud_range,
-                fast: self.settings.clouds == "fast",
-                color: sky.cloud_color,
-                height: sky.cloud_height,
-            }),
+            clouds: self
+                .frame_cloud_uv(title, &sky)
+                .map(|uv| sunrise_client::clouds::Input {
+                    texture: &self.pack.clouds,
+                    uv,
+                    camera,
+                    time: self.world.game_time,
+                    partial_tick: alpha,
+                    range: self.settings.cloud_range,
+                    fast: self.settings.clouds == "fast",
+                    color: sky.cloud_color,
+                    height: sky.cloud_height,
+                }),
             entities: &entities,
             explicit_particles: Some(&explicit_particle_quads),
             static_block_entities: &static_block_entities,
@@ -13740,6 +13755,7 @@ impl<'a> Game<'a> {
             tick: sunrise_client::parallel::TickThread::mint(),
             setting_overrides: Default::default(),
             damage_hooks: native_hooks::DAMAGE_HOOKS,
+            paused_mob_hurt: None,
             music: {
                 // The manager starts with the saved option (MusicManager's constructor).
                 let mut music = sunrise_client::music::MusicManager::default();
@@ -13842,8 +13858,7 @@ impl<'a> Game<'a> {
             settings,
             look: Default::default(),
             tutorial,
-            tutorial_toasts: Vec::new(),
-            narrator_toast: None,
+            toast_manager: Default::default(),
             narration: Default::default(),
             options_from_title: false,
             avatar: Default::default(),
@@ -13931,6 +13946,7 @@ impl<'a> Game<'a> {
             interactions: Default::default(),
             remote_knots: Default::default(),
             knot_ids: Default::default(),
+            broken_knots: Vec::new(),
             text_display_vertices: 0,
             skin_downloads: RefCell::new({
                 let mut downloads = sunrise_client::skins::Downloader::new(
@@ -14054,6 +14070,7 @@ impl<'a> Game<'a> {
             integrated: None,
             level_shapes: Default::default(),
             serving: None,
+            singleplayer_profile: None,
             world_options: None,
             options_to_world_options: false,
             command_block_screen: None,
@@ -14743,6 +14760,10 @@ impl Game<'_> {
 #[cfg(test)]
 #[path = "game/interface/tests/sign_chain_tests.rs"]
 mod sign_chain_tests;
+
+#[cfg(test)]
+#[path = "game/interface/tests/sign_outline_tests.rs"]
+mod sign_outline_tests;
 
 #[cfg(test)]
 #[path = "game/interface/tests/sign_use_tests.rs"]

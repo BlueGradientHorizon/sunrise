@@ -89,7 +89,7 @@ impl Game<'_> {
         };
         let mut title = song;
         let mut description = None;
-        if self.add_toast(mod_api::ToastKind::Other, &mut title, &mut description)
+        if self.admit_toast(mod_api::ToastKind::Other, &mut title, &mut description)
             && let Some(toast) = &mut self.now_playing
         {
             toast.title = title;

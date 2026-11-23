@@ -22,6 +22,10 @@ pub trait SideLevel {
     fn player_equipment(&self) -> crate::health::PlayerEquipment<'_> {
         [None; 8]
     }
+    /// Whether a living target not lent to the mob tick still has a live body.
+    fn living_target_alive(&self, _id: u32) -> bool {
+        false
+    }
     /// The damage-type registry of this side's current level.
     fn damage_types(&self) -> &sunrise_world::damage_source::Catalog;
     /// The resident block entity at `pos` of `world`, as a handle of this side's level.

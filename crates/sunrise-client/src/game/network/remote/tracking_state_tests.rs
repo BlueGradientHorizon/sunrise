@@ -46,7 +46,9 @@ fn tracking_emitters_follow_the_packet_target() {
     .unwrap();
     let (client, _server) = sunrise_protocol::connection::Pipe::pair();
     game.connect_local(client, "EmitterTest").unwrap();
-    game.remote.as_mut().unwrap().entity_id = 7;
+    let remote = game.remote.as_mut().unwrap();
+    remote.entity_id = 7;
+    remote.logged_in = true;
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.0, 64.0, 0.0)).unwrap());
     game.particles.seed_randoms(42, 43, 44);
 

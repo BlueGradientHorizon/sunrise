@@ -21,7 +21,7 @@ pub trait EntityLifetimeBackend {
     fn entity_portal_cooldown(&self, entity: EntityRef) -> Option<i32>;
     /// Side: both.
     /// Ticks the entity has lived (`Entity.tickCount`). Wraps as vanilla's `int` does.
-    /// On a server: players, mobs, item entities, experience orbs and minecarts.
+    /// On a server: living entities, item entities, experience orbs and minecarts.
     /// On a client: every entity of the level it shows, from the client copy's own
     /// counter. It counts each tick the client level gives the entity
     /// (`Entity.commonTick`) from when the server added it: a frozen level counts only

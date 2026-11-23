@@ -655,7 +655,7 @@ impl Game<'_> {
             _ => None,
         }
     }
-    /// Ticks the entity has lived (`Entity.tickCount`): on a server, players, mobs, item
+    /// Ticks the entity has lived (`Entity.tickCount`): on a server, living entities, item
     /// entities, experience orbs and minecarts; on a client, every entity of the level it
     /// shows ([`Self::client_entity_tick_count`]). Wraps as vanilla's `int` does.
     pub(super) fn entity_tick_count(&self, entity: EntityRef) -> Option<i32> {
@@ -674,6 +674,8 @@ impl Game<'_> {
                     .unwrap_or(0)
             }
             Target::Mob(id) => self.mobs.iter().find(|m| m.id == id)?.age as i32,
+            Target::Stand(id) => self.armor_stands.iter().find(|s| s.id == id)?.tick_count,
+            Target::Dragon(id) => self.dragon.as_ref().filter(|d| d.id == id)?.ticks,
             Target::Item(id) => self.dropped.iter().find(|i| i.id == id)?.ticks as i32,
             Target::Orb(id) => self.orbs.iter().find(|o| o.id == id)?.ticks as i32,
             Target::Cart(id) => self.carts.iter().find(|c| c.id == id)?.tick_count,
@@ -1917,6 +1919,15 @@ mod tests {
                         .id(name)
                         .unwrap()
                 };
+                game.handle_packet(C::PlayerInfoUpdate(play::PlayerInfoUpdate {
+                    actions: 1,
+                    entries: vec![play::PlayerInfo {
+                        uuid: 132,
+                        name: Some("Remote".into()),
+                        ..Default::default()
+                    }],
+                }))
+                .unwrap();
                 for (id, name) in [
                     (31, "minecraft:zombie"),
                     (32, "minecraft:player"),

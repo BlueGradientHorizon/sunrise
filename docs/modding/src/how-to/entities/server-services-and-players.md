@@ -9,7 +9,7 @@ players.
 |---|---|
 | `host.commands()` | `run_command(line)` runs through the console command path with permission level 4. `feedback(text)` answers the command source. |
 | `host.messages()` | `broadcast(text)` fires the broadcast hook and writes to the server log. |
-| `host.players()` | `server_players()` returns `Vec<PlayerRef>` in join order. `acting_player()` returns the optional player whose state is active in the hook. `player_by_name(name)` finds a connected real player by case-insensitive account name, not nickname. |
+| `host.players()` | `server_players()` returns `Vec<PlayerRef>` in join order. `acting_player()` returns the optional player whose state is active in the hook. `player_by_name(name)` finds a connected real player by case-insensitive account name, not nickname. `singleplayer_profile()` is an integrated server's launch profile ([below](#identity-and-location)). |
 | `host.levels()` | `list_levels()` returns loaded server levels in vanilla dimension order, or an empty list before a server world opens. |
 
 The players list and name lookup include the single-player owner, even before
@@ -54,6 +54,16 @@ when the client updates its list. Read it with `.iter()` and keep the `Arc` if
 you need that exact list later; call the method again to see new announcements.
 An acting player without a known connection gets an empty snapshot; a stale or
 unavailable player returns `None`.
+
+On an integrated (single player) server, `host.players().singleplayer_profile()` is the profile the
+server was created with (`MinecraftServer.getSingleplayerProfile`): the owner's name, UUID and login
+properties, borrowed from the host. It is fixed when the server is created, so it reads the same from
+`server_about_to_start` and `server_starting` on, before the owner joins and after they leave.
+`player.is_singleplayer_owner(host)` says whether a player is that owner, compared as
+`IntegratedServer.isSingleplayerOwner` does: by name, ignoring case, not by UUID. Cheats, opening to
+LAN, join order and permission level don't change the answer. Use `player.permission_level(host)` to
+check for an operator. A dedicated server has no owner: `None` and `false`, and a stale handle is
+`false` too. Neither read grants anything or changes who may log in.
 
 `player.latency(host)` reads the ping the Tab list shows, in milliseconds: the keep-alive round
 trips averaged three parts old to one part new. It is 0 until the first keep-alive answer, for a fake
@@ -244,6 +254,25 @@ palette keeps a state no block uses any more, and a section of more distinct sta
 named whenever the block exists. A mod that points at the nearest block of a kind asks it on `chunk_load` for
 blocks placed before it tracked them. `None` for a stale handle, on a client, or for a chunk that isn't
 loaded; it loads nothing.
+
+## Loading a chunk
+
+`level.load_chunk(host, [x, z])` is vanilla's `Level.getChunk(x, z)` (`ServerChunkCache.getChunk(x, z, FULL, true)`):
+it loads the chunk from the save, or generates it, to FULL, in any open server level, and returns true once it is
+there with its initial light done, so the level's block and light reads find it. To light it, the 8 chunks around
+it are loaded too (vanilla only generates them part of the way); they hold no ticket and unload with the next sweep. **It blocks the server tick until the chunk is loaded or
+generated**, as vanilla does, with no timeout; a chunk already full answers at once. Generating a new chunk takes
+long enough to be felt, so load ahead of time rather than many chunks in one tick. Like vanilla, the call leaves an
+`UNKNOWN` ticket on the chunk that keeps it loaded (not ticking) through the next ticket purge and expires at the one
+after, and the first purge can come in the same tick, depending on when the call runs; the chunk then unloads like
+any other. Loading a chunk of a parked level doesn't put the level in place: `set_block` and the other writes that
+need it in place still answer `LevelWriteError::Unavailable` there. To keep a chunk, force it (`chunk.set_forced`)
+or hold a ticket controller's
+ticket. The `chunk_load` listeners of each chunk the call brings in run during the call, while that chunk is loaded
+and before the call returns, as NeoForge's `ChunkEvent.Load` does inside `getChunk`. `false` for a
+stale handle, a client, a level the server has not opened, a chunk past `ChunkPos.isValid`
+(`ChunkPyramid.MAX_CHUNK_COORDINATE_VALUE`, where vanilla's block reads and writes stop), and while the level's
+generation is paused or stopped.
 
 ## World mutation: chunks, blocks shown and placed as a player
 

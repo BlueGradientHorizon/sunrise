@@ -109,13 +109,29 @@ fn setup_remote_overworld(
     server
 }
 
+fn add_player_info(game: &mut Game<'_>, id: i32, uuid: u128) {
+    game.handle_packet(C::PlayerInfoUpdate(play::PlayerInfoUpdate {
+        actions: 1, // ADD_PLAYER
+        entries: vec![play::PlayerInfo {
+            uuid,
+            name: Some(format!("Remote{id}")),
+            ..Default::default()
+        }],
+    }))
+    .unwrap();
+}
+
 fn add_entity(game: &mut Game<'_>, id: i32, kind: &str, position: [f64; 3], yaw: f32, pitch: f32) {
+    let uuid = id as u128;
+    if kind == "minecraft:player" {
+        add_player_info(game, id, uuid);
+    }
     let kind_id = entity_type_id(game, kind);
     let y = pack_degrees(yaw);
     let p = pack_degrees(pitch);
     game.handle_packet(C::AddEntity(play::AddEntity {
         id,
-        uuid: id as u128,
+        uuid,
         kind: kind_id,
         position,
         velocity: [0.0; 3],
@@ -1058,7 +1074,7 @@ fn culling_near_plane_uses_max_of_fov_and_option_fov_26_3() {
 
         game.inventory[0] = Some(ItemStack::new("minecraft:spyglass", 1));
         game.selected = 0;
-        game.using = Some((0, 5));
+        assert!(game.start_using_item());
         for _ in 0..20 {
             game.tick_fov();
         }
@@ -1089,9 +1105,7 @@ fn add_entity_with_data(
 ) {
     let uuid = id as u128 + 1000;
     if kind == "minecraft:player" {
-        let r = game.remote.as_mut().unwrap();
-        r.players.insert(uuid, format!("Remote{id}"));
-        r.level_players.insert(id, uuid);
+        add_player_info(game, id, uuid);
     }
     let kind_id = entity_type_id(game, kind);
     let y = pack_degrees(yaw);
@@ -1473,7 +1487,7 @@ fn camera_player_fov_modifier_and_death_isolation_26_3() {
             game.ui.death_time = 10;
             game.inventory[0] = Some(ItemStack::new("minecraft:spyglass", 1));
             game.selected = 0;
-            game.using = Some((0, 5));
+            assert!(game.start_using_item());
 
             add_entity_with_data(game, id, kind, [5.5, 64.0, 5.5], 0.0, 0.0, 0);
             game.handle_packet(C::SetCamera(play::SetCamera { camera_id: id }))
