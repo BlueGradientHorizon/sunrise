@@ -469,9 +469,9 @@ fn incoming_damage_carries_the_attack_data() {
             event: &mut LivingIncomingDamageEvent<'_>,
         ) -> Flow {
             assert_eq!(event.source.damage_type, "minecraft:player_attack");
-            assert_eq!(event.causing_weapon.unwrap().item.as_ref(), "test:sword");
+            assert_eq!(event.causing_weapon.unwrap().item().0, "test:sword");
             if let Some(weapon) = event.weapon {
-                assert_eq!(weapon.item.as_ref(), "test:crossbow");
+                assert_eq!(weapon.item().0, "test:crossbow");
             }
             let (from, at, look) = (
                 event.source.position.unwrap(),
@@ -498,6 +498,8 @@ fn incoming_damage_carries_the_attack_data() {
         item: "test:sword".into(),
         count: 1,
     };
+    let held = ItemStackView(&held);
+    let causing = ItemStackView(&causing);
     for (source_z, weapon, expected) in [
         (-1.0, Some(&held), 12.0),
         (1.0, Some(&held), 4.0),

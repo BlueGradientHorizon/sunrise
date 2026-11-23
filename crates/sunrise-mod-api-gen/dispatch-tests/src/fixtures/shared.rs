@@ -12,13 +12,13 @@ struct ItemStack {
 // Dispatch tests isolate the runtime key table: the fixture key retains its name.
 // Production key resolution and slot stability are tested in mod-runtime.
 #[derive(Clone, Copy)]
-struct ItemKey<'a>(&'a str);
+struct ItemKey(&'static str);
 impl ItemStack {
     fn count(&self) -> u32 {
         self.count
     }
-    fn item(&self) -> ItemKey<'_> {
-        ItemKey(&self.item)
+    fn item(&self) -> ItemKey {
+        ItemKey(Box::leak(self.item.to_string().into_boxed_str()))
     }
 }
 #[derive(Debug)]
@@ -42,7 +42,7 @@ mod content {
         ) -> Option<&'static str> {
             Some("test:counter")
         }
-        pub(in crate::tests) fn item_id(key: super::super::ItemKey<'_>) -> Option<&str> {
+        pub(in crate::tests) fn item_id(key: super::super::ItemKey) -> Option<&'static str> {
             Some(key.0)
         }
         pub(in crate::tests) fn effect_id(key: super::super::EffectKey) -> Option<&'static str> {
@@ -54,6 +54,7 @@ mod content {
     }
 }
 
+struct ItemPlace;
 struct BlockEntityDraw(Vec<u32>);
 use serde_json::{Map, Value};
 use stubs::*;
@@ -273,7 +274,7 @@ mod generated {
         pub struct Item {
             pub id: String,
         }
-        pub(super) use super::super::ItemStack;
+        pub(super) use super::super::{ItemKey, ItemPlace, ItemStack, ItemStackView};
         // Generated registration dispatch builds the stub `Answered` through this path.
         pub(super) use super::super::Answered;
         pub(super) use super::super::{

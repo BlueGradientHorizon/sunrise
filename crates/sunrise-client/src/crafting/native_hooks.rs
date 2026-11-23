@@ -47,7 +47,7 @@ pub fn native_recipe_property_sets(
 #[inline(never)]
 pub fn native_is_combine_repairable(
     context: &sunrise_world::native_load_context::LoopContext,
-    stack: &mod_api::ItemStack,
+    stack: mod_api::ItemStackView<'_>,
     repairable: &mut bool,
 ) {
     mod_api::dispatch_is_combine_repairable(

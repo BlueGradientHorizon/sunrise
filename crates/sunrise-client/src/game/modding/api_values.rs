@@ -5,6 +5,7 @@ mod ingredient_values;
 use mod_api::item::item_stack::{ItemStack as ApiStack, StackWriteError};
 use std::num::NonZeroU32;
 use std::sync::Arc;
+use sunrise_client::fast_hash::FxHashMap;
 #[cfg(test)]
 use sunrise_client::parallel::ListenSnapshot;
 use sunrise_client::parallel::TickThread;
@@ -838,6 +839,50 @@ pub(in crate::game) fn stack_read_metadata(
 #[cfg(test)]
 thread_local! {
     pub(in crate::game) static STACK_PROJECTIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static STACK_OVERRIDE_PROJECTIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Lend the stack to a whole dispatch. Readers share the first encoding of each requested
+/// override (including a miss). The full patch is encoded only for an explicit owned read.
+pub(in crate::game) fn with_stack_view<R>(
+    stack: Option<&EngineStack>,
+    read: impl FnOnce(Option<mod_api::ItemStackView<'_>>) -> R,
+) -> R {
+    let Some((stack, metadata)) =
+        stack.and_then(|stack| Some((stack, stack_read_metadata(stack).ok()?)))
+    else {
+        return read(None);
+    };
+    let owned = std::cell::OnceCell::new();
+    let project = |metadata| {
+        owned
+            .get_or_init(|| project_stack(stack, metadata).ok())
+            .clone()
+    };
+    let overrides = std::cell::RefCell::new(FxHashMap::<String, Option<Tag>>::default());
+    let read_override = |id: &str| {
+        let mut overrides = overrides.borrow_mut();
+        if let Some(value) = overrides.get(id) {
+            return value.clone();
+        }
+        #[cfg(test)]
+        STACK_OVERRIDE_PROJECTIONS.set(STACK_OVERRIDE_PROJECTIONS.get() + 1);
+        let bare = id.strip_prefix('!').unwrap_or(id);
+        let value =
+            match sunrise_items::item_data::encode_extra_components_matching(stack, |name| {
+                name == bare
+            }) {
+                Some(Tag::Compound(mut patch)) => patch.remove(&JavaString::from(id)),
+                _ => None,
+            };
+        overrides.insert(id.to_owned(), value.clone());
+        value
+    };
+    read(Some(mod_api::ItemStackView::resident_with_components(
+        metadata,
+        &project,
+        &read_override,
+    )))
 }
 
 /// Encode and normalize the patch using the scalars already read from this same stack.
@@ -1184,23 +1229,27 @@ impl TryIntoApi for crate::crafting::RecipeSnapshot {
     }
 }
 
-/// Install the engine-facing callbacks; snapshots never enter engine storage.
+/// Install the engine-facing callbacks; their stack arguments borrow the queried value.
 pub(crate) fn install_stack_hooks() {
     crate::native_stack_hooks::install(crate::native_stack_hooks::StackHooks {
         enchantments: |stack, target, value| {
-            if !mod_api::__private::listened(mod_api::HookId::GetEnchantmentLevel) {
-                return;
-            }
-            if let Ok(stack) = stack.try_into_api() {
-                mod_api::item::enchantments::native_get_enchantment_level(&stack, target, value);
+            if mod_api::__private::listened(mod_api::HookId::GetEnchantmentLevel) {
+                with_stack_view(Some(stack), |view| {
+                    if let Some(view) = view {
+                        mod_api::item::enchantments::native_get_enchantment_level(
+                            view, target, value,
+                        );
+                    }
+                });
             }
         },
         attributes: |stack, value| {
-            if !mod_api::__private::listened(mod_api::HookId::ItemAttributeModifier) {
-                return;
-            }
-            if let Ok(stack) = stack.try_into_api() {
-                mod_api::item::item_attributes::native_item_attribute_modifier(&stack, value);
+            if mod_api::__private::listened(mod_api::HookId::ItemAttributeModifier) {
+                with_stack_view(Some(stack), |view| {
+                    if let Some(view) = view {
+                        mod_api::item::item_attributes::native_item_attribute_modifier(view, value);
+                    }
+                });
             }
         },
     });
@@ -1609,13 +1658,30 @@ mod attribute_boundary_tests {
 mod enchantment_boundary_tests {
     use super::EngineStack as ItemStack;
     use crate::enchantment_levels::get_enchantment_level;
-    use mod_api::{GetEnchantmentLevelEvent, Hooks, Identifier, ModEntry};
+    use mod_api::{Component, GetEnchantmentLevelEvent, Hooks, Identifier, ModEntry, Tag};
     use mod_platform::testing::with_mods;
     use std::borrow::Cow;
     use std::sync::Arc;
     fn id(text: &str) -> Identifier {
         Identifier::parse(text).unwrap()
     }
+    struct Note;
+    impl Component for Note {
+        type Value = i32;
+        fn id(&self) -> &str {
+            "test:note"
+        }
+        fn decode(&self, value: &Tag) -> Option<i32> {
+            match value {
+                Tag::Int(value) => Some(*value),
+                _ => None,
+            }
+        }
+        fn encode(&self, value: i32) -> Tag {
+            Tag::Int(value)
+        }
+    }
+
     /// An iron sword fights as if it had Looting II and no Sharpness.
     struct Keen;
     #[mod_api::__subscriptions]
@@ -1624,6 +1690,10 @@ mod enchantment_boundary_tests {
             if mod_api::__private::item_key_id(event.stack.item()) != Some("minecraft:iron_sword") {
                 return;
             }
+            let encoded = super::STACK_OVERRIDE_PROJECTIONS.get();
+            assert_eq!(event.stack.get(&Note), Some(17));
+            assert_eq!(event.stack.get(&Note), Some(17));
+            assert_eq!(super::STACK_OVERRIDE_PROJECTIONS.get(), encoded + 1);
             let looting = id("minecraft:looting");
             if event.target.is_none_or(|target| *target == looting) {
                 event.enchantments.upgrade(looting, 2);
@@ -1641,6 +1711,7 @@ mod enchantment_boundary_tests {
         let _ = sunrise_items::native_enchantment_hooks::install(get_enchantment_level);
         let mut iron = ItemStack::new("minecraft:iron_sword", 1);
         iron.enchant("minecraft:sharpness", 3);
+        iron.data_mut().set_other("test:note", Some(Tag::Int(17)));
         let mut diamond = ItemStack::new("minecraft:diamond_sword", 1);
         diamond.enchant("minecraft:sharpness", 3);
         with_mods(Vec::new().into(), || {
@@ -1648,6 +1719,7 @@ mod enchantment_boundary_tests {
             assert_eq!(iron.enchantment_level("minecraft:sharpness"), 3);
         });
         with_mods(vec![ModEntry::new("keen", Box::new(Keen))].into(), || {
+            let projected = super::STACK_PROJECTIONS.get();
             assert_eq!(
                 &*iron.all_enchantments(),
                 [(Arc::from("minecraft:looting"), 2)]
@@ -1658,6 +1730,7 @@ mod enchantment_boundary_tests {
             assert_eq!(iron.enchantments(), [(Arc::from("minecraft:sharpness"), 3)]);
             assert!(matches!(diamond.all_enchantments(), Cow::Borrowed(_)));
             assert_eq!(diamond.enchantment_level("minecraft:sharpness"), 3);
+            assert_eq!(super::STACK_PROJECTIONS.get(), projected);
         });
     }
 }

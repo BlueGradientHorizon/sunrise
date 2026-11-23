@@ -393,6 +393,9 @@ pub(super) fn emit<'a>(
                     "& ItemStack" | "ItemStackView < '_ >" => {
                         format!("{table}(|| super::content::registry_keys::item_id({key}.item()))")
                     }
+                    "ItemKey" if table == "item" => {
+                        format!("item(|| super::content::registry_keys::item_id({key}))")
+                    }
                     "EffectKey" if table == "effect" => {
                         format!("effect(|| super::content::registry_keys::effect_id({key}))")
                     }

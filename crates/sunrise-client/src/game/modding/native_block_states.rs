@@ -129,7 +129,11 @@ impl Game<'_> {
         if !self.options.execution_role.is_client()
             && mod_api::__private::item_listens(mod_api::HookId::CraftingRemainder, &stack.item)
         {
-            self.native_crafting_remainder(stack, &mut remainder);
+            super::api_values::with_stack_view(Some(stack), |view| {
+                if let Some(view) = view {
+                    self.native_crafting_remainder(view, &mut remainder);
+                }
+            });
         }
         remainder.filter(|value| value.count > 0)
     }
@@ -1115,13 +1119,13 @@ mod crafting_remainder_tests {
         ) {
             CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             *event.remainder = if event.stack.damage() == 0 {
-                let mut stack = event.stack.clone();
+                let mut stack = event.stack.project().expect("the input stack projects");
                 stack.set_count(65).unwrap();
                 Some(stack)
             } else if event.stack.damage() >= 4 {
                 None
             } else {
-                let mut stack = event.stack.clone();
+                let mut stack = event.stack.project().expect("the input stack projects");
                 stack.set_count(1).unwrap();
                 stack.set_damage(event.stack.damage() + 1);
                 Some(stack)

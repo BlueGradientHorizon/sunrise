@@ -177,7 +177,7 @@ impl Hooks for Probe {
             .lock()
             .unwrap()
             .source("incoming", event.entity, event.source);
-        let item_id = |stack: Option<&mod_api::ItemStack>| {
+        let item_id = |stack: Option<&mod_api::ItemStackView<'_>>| {
             stack.and_then(|s| mod_api::__private::item_key_id(s.item()).map(str::to_owned))
         };
         let direct = item_id(event.weapon);

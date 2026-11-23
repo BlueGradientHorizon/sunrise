@@ -3835,29 +3835,22 @@ impl Game<'_> {
     /// every player of the world (the helpers read the acting one).
     pub(in crate::game) fn native_hurt_enemy(
         &mut self,
-        stack: &ItemStack,
+        stack: mod_api::ItemStackView<'_>,
         entity: u32,
         kind: &str,
     ) {
         self.fire_hurt_enemy(stack, entity, kind);
     }
-    /// A server tick of `stack`, the stack a player carries in `slot`: where
-    /// `Inventory.tick` calls `Item.inventoryTick`, for every stack, each tick,
-    /// `/tick freeze` included (it stops the world, not the player). `slot` is
-    /// as `Inventory` saves it (0 to 35; the armour 100 feet to 103 head; -106
-    /// the off hand), and `selected` says it is the held slot.
-    /// `ItemPlace::PlayerSlot { player, slot }` reads and changes the stack,
-    /// which stays in its slot: an emptied one empties the slot, and the
-    /// player's client gets the change. Only the `ItemPart`s attached to
-    /// `stack`'s item hear it. Server-side, for every living player of the world
-    /// (the helpers read the acting one).
+    /// `Item.inventoryTick` for a live carried `place`. `item` chooses the Parts once,
+    /// and `selected` identifies the held slot. Callbacks read and edit the same slot.
     pub(in crate::game) fn native_inventory_tick(
         &mut self,
-        stack: &ItemStack,
+        item: mod_api::ItemKey,
+        place: &mod_api::ItemPlace,
         slot: i32,
         selected: bool,
     ) {
-        self.fire_inventory_tick(stack, slot, selected);
+        self.fire_inventory_tick(item, place, slot, selected);
     }
     /// A player's equipment slot `slot` (`head`, `chest`, `legs`, `feet`,
     /// `offhand`, and `mainhand` on a swap of the hands or `/item`) took a different

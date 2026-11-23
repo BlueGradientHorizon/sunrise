@@ -211,6 +211,21 @@ and the local table otherwise. `enchantments()` lists `EnchantmentInfo` records 
 `weight` (selection weight) and `anvil_cost` (base anvil fee per enchantment level).
 `enchantment_supports` checks only `supported_items` membership, not Item Part overrides.
 
+## Inventory ticks and attacks
+
+`inventory_tick` chooses the Parts of `event.item` at the start of the tick. Read the live
+slot with `event.place.with_stack(host, |stack| ...)`, or use `event.place.edit(host, tx, ...)`
+to edit its component overrides in a transaction. A later read sees the write; replacing the
+item does not redispatch the tick. `event.slot` and `event.selected` still describe the slot
+that started this callback.
+
+`on_left_click_entity`, `on_entity_swing` and `hurt_enemy` lend `event.stack` as an
+`ItemStackView` of the stack that reached the action. `get_enchantment_level` and
+`item_attribute_modifier` likewise lend the queried stack; their output collections are
+unchanged. `living_incoming_damage` lends optional views of the direct weapon and causing
+weapon at the hit. Use `stack.get(&component)` to read an override or `stack.project()` when
+you need an owned value.
+
 ## Hand, break and name on the client
 
 Three client-side methods change how the local player's client shows and handles a held stack. Each `event` field
@@ -245,14 +260,27 @@ lookup.
   from the stack alone, and fast.
 
 ```rust,ignore
+struct DataModelMob;
+
+impl Component for DataModelMob {
+    type Value = JavaString;
+    fn id(&self) -> &str { "mymod:data_model" }
+    fn decode(&self, tag: &Tag) -> Option<JavaString> {
+        match tag {
+            Tag::String(name) => Some(name.clone()),
+            _ => None,
+        }
+    }
+    fn encode(&self, name: JavaString) -> Tag { Tag::String(name) }
+}
+
 struct DataModel;
 
 #[mod_api::sunrise_part]
 impl ItemPart for DataModel {
     fn item_name(&self, _context: &dyn LoopContext, event: &mut ItemNameEvent<'_>) {
         // The mob in the stack's own component names it: "Zombie Data Model".
-        let id = ComponentId::new("mymod:data_model").expect("a component id");
-        if let Some(Tag::String(mob)) = ItemResource::of(event.stack).component(&id) {
+        if let Some(mob) = event.stack.get(&DataModelMob) {
             let mob = Text::translate(format!("entity.{}", mob.to_string_lossy().replace(':', ".")), Vec::new());
             *event.name = Some(Text::translate("item.mymod.data_model.named", vec![mob]));
         }
@@ -267,7 +295,10 @@ sides, the server's menus and the client's own result display, so they take the 
 answer from `event.stack` and `context` alone, and fast. Each `event` field arrives holding vanilla's answer, which
 the part may set either way, and an item with no such part costs one table lookup.
 
-A client without this mod predicts vanilla here; the server corrects it.
+`event.stack` is a borrowed `ItemStackView`: read the item, count or damage directly, use
+`get` for a single component override, and use `project` only when you need an owned stack.
+`crafting_remainder` also lends its consumed stack; its replacement remainder is still an
+owned stack. A client without the menu Part predicts vanilla here; the server corrects it.
 
 - `ItemPart::can_grindstone_repair` is `IItemExtension.canGrindstoneRepair`. `event.can_repair` starts with
   whether the stack is damageable. It is asked for the top input when both grindstone inputs are single stacks of

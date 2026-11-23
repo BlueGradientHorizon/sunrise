@@ -50,7 +50,7 @@ mod system_helpers;
 mod world_helpers;
 
 use super::screen_build::ObservedScreen;
-use crate::game::api_values::{TryIntoApi, TryIntoEngine};
+use crate::game::api_values::{TryIntoApi, TryIntoEngine, with_stack_view};
 use screen_chars::chars_to_type;
 
 struct ContentsChangedGuard<'a, 'game> {
@@ -2121,29 +2121,44 @@ pub(super) fn incoming_damage(
     let (entity, kind, source) = hurt_server_args(hurting, level.attack());
     let mut canceled = false;
     let attack = level.attack();
-    let Ok(weapon) = attack.weapon_of(source.direct).try_into_api() else {
-        return false;
-    };
+    let weapon = attack.weapon_of(source.direct);
     let causing_weapon = (source.causing != 0 && source.causing == attack.attacker)
         .then_some(attack.held[0].as_ref())
         .flatten();
-    let Ok(causing_weapon) = causing_weapon.try_into_api() else {
-        return false;
-    };
-    let mut live = LiveDamageContainer(container);
-    HitLevel(level.caused_by(source.causing)).native_living_incoming_damage(
-        mod_api::__private::LivingIncomingDamageCall {
-            entity,
-            kind,
-            source: &source,
-            victim: &victim,
-            weapon: weapon.as_ref(),
-            causing_weapon: causing_weapon.as_ref(),
-            container: mod_api::DamageContainer::new(&mut live),
-            canceled: &mut canceled,
-        },
-    );
+    with_hit_weapons(weapon, causing_weapon, |weapon, causing_weapon| {
+        let mut live = LiveDamageContainer(container);
+        HitLevel(level.caused_by(source.causing)).native_living_incoming_damage(
+            mod_api::__private::LivingIncomingDamageCall {
+                entity,
+                kind,
+                source: &source,
+                victim: &victim,
+                weapon,
+                causing_weapon,
+                container: mod_api::DamageContainer::new(&mut live),
+                canceled: &mut canceled,
+            },
+        );
+    });
     canceled
+}
+
+/// One melee weapon can be both the direct and the causing weapon. Feed both fields the
+/// same view so reading either doesn't encode that stack's components again.
+fn with_hit_weapons(
+    direct: Option<&ItemStack>,
+    causing: Option<&ItemStack>,
+    dispatch: impl FnOnce(Option<&mod_api::ItemStackView<'_>>, Option<&mod_api::ItemStackView<'_>>),
+) {
+    with_stack_view(direct, |direct_view| {
+        if direct.zip(causing).is_some_and(|(a, b)| std::ptr::eq(a, b)) {
+            dispatch(direct_view.as_ref(), direct_view.as_ref());
+        } else {
+            with_stack_view(causing, |causing_view| {
+                dispatch(direct_view.as_ref(), causing_view.as_ref());
+            });
+        }
+    });
 }
 
 /// `native_living_damage_pre` for the damage code.
@@ -2283,12 +2298,19 @@ impl Game<'_> {
     }
 
     /// The [`Attack`] of `attacker` (an entity id, 0 for none) for the level a hit lands in
-    /// ([`DamageLevel::attacked_by`]). While a native mod listens it also records what the
-    /// attacker holds (the player's selected and off-hand stacks, a mob's main hand) for
-    /// `living_knockback` and the weapon of `living_incoming_damage`; without one it is the
-    /// id alone, two `None`s and no allocation. Taken before the level's borrows of the game.
+    /// ([`DamageLevel::attacked_by`]). Record the attacker's hand state only if a
+    /// subscribed hit, death or loot hook may read it. Capture before the level borrows
+    /// the game so nested damage can't substitute a different attacker's hands.
     pub(super) fn attack_of(&self, attacker: i32) -> Attack {
-        let held = if mod_api::__private::mods().is_empty() {
+        let held = if ![
+            mod_api::HookId::LivingIncomingDamage,
+            mod_api::HookId::LivingKnockback,
+            mod_api::HookId::LivingDeath,
+            mod_api::HookId::LootDrops,
+        ]
+        .into_iter()
+        .any(mod_api::__private::listened)
+        {
             [None, None]
         } else if self
             .player
@@ -3067,14 +3089,25 @@ impl Game<'_> {
     }
     /// The acting player's hit landed on mob `index`, holding `stack`.
     pub(super) fn native_hurt_enemy_event(&mut self, stack: &ItemStack, index: usize) {
+        if !mod_api::__private::item_listens(mod_api::HookId::HurtEnemy, &stack.item) {
+            return;
+        }
         let mob = &self.mobs[index];
-        let kind = ["minecraft:", mob.kind.id.trim_start_matches("minecraft:")].concat();
-        self.native_hurt_enemy(stack, mob.id, &kind);
+        let entity = mob.id;
+        // MobTypes retains the canonical registry id for vanilla and content types alike.
+        let kind = mob.kind.clone();
+        with_stack_view(Some(stack), |view| {
+            if let Some(view) = view {
+                self.native_hurt_enemy(view, entity, &kind.id);
+            }
+        });
     }
     /// `Inventory.tick` for the acting player: each carried stack goes through
     /// `native_inventory_tick`.
     pub(super) fn native_inventory_ticks(&mut self) {
-        if self.player.is_none() {
+        if self.player.is_none()
+            || !mod_api::__private::has_part_hook(mod_api::HookId::InventoryTick)
+        {
             return;
         }
         for i in 0..self.inventory.len() {
@@ -3087,13 +3120,19 @@ impl Game<'_> {
         self.native_slot_tick(-106, false);
     }
     fn native_slot_tick(&mut self, slot: i32, selected: bool) {
-        if !mod_api::__private::has_part_hook(mod_api::HookId::InventoryTick) {
-            return;
-        }
-        let Some(stack) = self.native_carried_slot(slot).and_then(|s| s.clone()) else {
+        let Some(stack) = self.native_carried_slot(slot).and_then(|s| s.as_ref()) else {
             return;
         };
-        self.native_inventory_tick(&stack, slot, selected);
+        if stack.count > 0
+            && mod_api::__private::item_listens(mod_api::HookId::InventoryTick, &stack.item)
+            && let Some(item) = mod_api::__private::item_key(&stack.item)
+        {
+            let place = mod_api::ItemPlace::PlayerSlot {
+                player: self.native_acting_id(),
+                slot,
+            };
+            self.native_inventory_tick(item, &place, slot, selected);
+        }
         if let Some(stack) = self.native_carried_slot(slot)
             && stack.as_ref().is_some_and(|s| s.count == 0)
         {
