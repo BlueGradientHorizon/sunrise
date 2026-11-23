@@ -86,7 +86,10 @@ defer their implicit change notice to root commit; explicit notifications are im
 survive abort. A provider that ignores the journal can lose an item on a refused transfer.
 A composter shows why the journal covers more than inventory slots: its capability ports
 journal the block state and a composter-local random stream, and publish fill feedback only
-on commit. An aborted probe does not shift the result of the next attempt.
+on commit. An aborted probe does not shift the result of the next attempt. For caller-specific
+hopper pull/push and dropper rules (including ordinary refusal vs. invalid overanswer, source-slot
+reservation before callbacks, and hopper-minecart item-entity fallback), see `ITEMS` in the
+[generated API reference](../reference/api.md).
 
 ## Keep addresses and values local
 

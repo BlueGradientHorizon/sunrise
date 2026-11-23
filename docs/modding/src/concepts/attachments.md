@@ -49,7 +49,9 @@ loaded chunks and block entities. Read-only level hosts cannot access attachment
 Supply an `AttachmentCodec` to persist the value as a compound. Without a codec the value is
 lost on unload or restart. Unknown mods' encoded entries survive load and save without being
 decoded. Holder data is stored under `sunrise:attachments`, by namespace and name; each level
-uses the dimension's `data/sunrise/attachments.dat` file rather than `level.dat`.
+uses the dimension's `data/sunrise/attachments.dat` file rather than `level.dat`. See
+`Holder::Entity` in the [generated API reference](../reference/api.md) for entity persistence
+exceptions such as split experience orbs.
 
 ## Querying holders
 
@@ -77,7 +79,10 @@ player data, or everyone in the level for level data. The connection must negoti
 sync; vanilla clients get no attachment data. A client reads its local copy through the host.
 Client writes affect only that copy, not the server; tracked copies go away with their holders.
 Restricted level hosts do not expose client attachment copies. The default takes no holder,
-and there is no custom copy handler, per-recipient predicate or partial update. See
+and there is no custom copy handler, per-recipient predicate or partial update. For send limits,
+failure outcomes (logged drops vs. queue disconnect) and connection-epoch behavior across
+reconfigurations, see `AttachmentType::sync` and `AttachmentType::sync_data` in the
+[generated API reference](../reference/api.md). See
 [Block entity attachment](attachments/block-entity-attachment.md) for a worked sync example.
 
 ## Copying on respawn and conversion

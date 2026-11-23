@@ -21,7 +21,9 @@ and returns `TransactionError::Aborted(error)`. `Unavailable` means the closure 
 
 Resident subject scopes also offer `transaction`: use it when the same operation needs both a
 live subject view and other host access. End one borrow before starting the next and abort if
-any required write or view is refused. A server main-thread payload handler can use its context's
+any required write or view is refused; see
+[Combining subject and world writes in one transaction](../how-to/world/machine-menu-data.md#combining-subject-and-world-writes-in-one-transaction)
+for a worked example. A server main-thread payload handler can use its context's
 transaction to stage replies with its world writes; configuration-task completion remains immediate.
 See the [API reference](../reference/api.md) and
 [Scratch stacks and wrapped places](capabilities/item-places-and-components.md#scratch-stacks-and-wrapped-places)
@@ -83,8 +85,10 @@ commit. Joins are processed in spawn order before removal effects. A refused joi
 spawn leaves a stale handle, not an ID that can be reused. Removing an entity makes it unavailable
 immediately, while dismounts, leave and other removal effects wait for commit. Abort restores the
 resident entity without a leave or join; a spawn removed within the same transaction is never
-announced. Travel between levels is not journaled. See
-[Spawning](../how-to/world/spawning.md) and [Hook notes](../reference/hook-notes.md).
+announced. A join listener that spawns, removes or commits a transaction during announcement
+receives its own joins after the announcing batch, in requested order. Travel between levels is
+not journaled. See [Spawning](../how-to/world/spawning.md) and
+[Hook notes](../reference/hook-notes.md).
 
 ## Transaction authority
 

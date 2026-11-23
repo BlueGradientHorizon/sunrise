@@ -13,7 +13,7 @@ reach the game through the Host, its handles, capabilities and attachments.](../
 | Hook kind | What the listener supplies |
 | --- | --- |
 | Listen | A reaction to a notice; every subscribed mod is called. |
-| Cancellable | `Flow::Cancel` stops the action unless a later listener clears cancellation. |
+| Cancellable | `Flow::Cancel` stops the action; on hooks whose contract permits it, a later `receive_cancelled` listener can clear cancellation (`entity_move` and `living_travel` keep an accepted veto sticky). |
 | Replacement | The first accepted `Some` wins; `None` passes to the next listener. |
 | Collection | Each listener can contribute to the event's list. |
 
@@ -39,10 +39,12 @@ the action; this is not a rollback of arbitrary external or mod-owned side effec
 `#[listener(priority = 100)]` runs before default-priority listeners. Higher `i32` priorities run
 first; the default is zero and ties keep dependency order. This order is fixed at installation.
 
-A listener normally skips an already-cancelled event. Add `receive_cancelled` to inspect it, or set
-`event.cancelled = false` and return `Flow::Continue` to let later listeners and the vanilla action
-proceed. `receive_cancelled` is only valid on cancellable hooks. These attributes order global hook
-listeners, not Parts; see [Parts](parts.md) for their dispatch rules.
+A listener normally skips an already-cancelled event. Add `receive_cancelled` to inspect it; on
+hooks whose contract permits clearing cancellation, setting `event.cancelled = false` and returning
+`Flow::Continue` lets later listeners and the vanilla action proceed. Some hooks keep an accepted
+veto sticky (`entity_move` and `living_travel`) and preserve the earlier veto even if a later
+listener clears the field. `receive_cancelled` is only valid on cancellable hooks. These attributes
+order global hook listeners, not Parts; see [Parts](parts.md) for their dispatch rules.
 
 Cancellation controls the current action, not all its side effects. For example, cancelling a
 projectile impact suppresses the hit without itself discarding the projectile. If a listener

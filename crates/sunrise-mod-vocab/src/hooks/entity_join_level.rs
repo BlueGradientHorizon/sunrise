@@ -61,7 +61,10 @@ pub trait Hooks {
     /// runs. An aborted transaction tells nothing, and the entity it spawned
     /// is gone. A join cancelled at the commit leaves the spawn's handle
     /// stale. Joins at one commit come in the order the entities were added,
-    /// before the removals the transaction asked for take effect.
+    /// before the removals the transaction asked for take effect. A join
+    /// listener that spawns, removes or commits a transaction while a commit is
+    /// announcing its joins is told about its own entities after the commit's
+    /// batch, in the order it requested.
     /// Live fallback-store entities also notify: displays, markers, interactions,
     /// and summoned or chunk-restored eyes of ender and explicit leash knots.
     /// Gameplay-thrown eyes and naturally tied leash knots live in separate lists

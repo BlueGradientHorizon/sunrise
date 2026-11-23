@@ -101,7 +101,9 @@ not the captured settings or pending reload data. A `RegistryEntry` carries cano
 and entry names; constructing one does not prove the entry exists. Narrow it through the host
 when you need a real [typed key](registry-keys.md). On clients, generic registry reads see
 built-ins and the connection's synchronized registries, not local copies of server-only data.
-A host can serve these reads even when its world queries return `None`.
+A host can serve these reads even when its world queries return `None`. See `KeysHost` in the
+[generated API reference](../reference/api.md) for registry availability rules such as
+`minecraft:worldgen/world_preset`.
 
 ## Settings snapshots
 

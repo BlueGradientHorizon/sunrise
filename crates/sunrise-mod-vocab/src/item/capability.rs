@@ -333,6 +333,30 @@ impl<T: ?Sized + 'static> CapabilityKey<T> {
 /// meal only at level eight, and feedback waits for the root commit. Its position-local random
 /// stream is also journaled, so aborted retries keep their chance outcome without rewinding
 /// the level's unrelated random draws.
+///
+/// # Hopper and dropper automation rules
+///
+/// Vanilla containers, composter-provided containers and container entities keep their direct
+/// automation paths even if a mod also exposes storage; only blocks without a vanilla container
+/// use the `ITEMS` storage attempt path.
+///
+/// - **Hopper pull:** skips only a fully stacked hopper. It probes every nonempty index of the
+///   source's bottom-face storage in order, extracts one in a fresh transaction, then picks the
+///   first receptive hopper slot (empty or matching item and components with room; an empty lower
+///   index wins over a matching later stack). It commits on success, or aborts an ordinary refusal
+///   and continues. A failed block-hopper pull does not fall back to item entities; a hopper
+///   minecart still tries item entities after failure and has no block-hopper transfer cooldown.
+/// - **Hopper push:** skips only storage whose slots are all at capacity. One root transaction
+///   covers the hopper slots in order: snapshot and remove one, ask the destination's indexless
+///   insertion on the face opposite the hopper's facing, restore a refused source slot directly
+///   and continue, committing the first success or aborting all refusals.
+/// - **Dropper:** inserts one in one transaction and always commits the attempt, including an
+///   ordinary refusal. An accepted item is removed from the source before root-commit callbacks
+///   run, so a writable destination callback cannot move the same source item a second time.
+/// - **Ordinary refusal vs. invalid overanswer:** returning `Ok(0)` or rejecting a transfer is an
+///   ordinary refusal handled as above; returning more than offered or requested is an invalid
+///   overanswer (`TransactionError::Aborted(Overanswered)`), which rolls back the transfer attempt
+///   even if the caller's enclosing transaction later commits.
 pub const ITEMS: CapabilityKey<dyn ResourceHandler<ItemResource>> = CapabilityKey {
     name: "sunrise:items",
     default: Some(BlockCapabilityDefault::Items(|at| Box::new(GameItems(at)))),

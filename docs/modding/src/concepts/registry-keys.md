@@ -22,7 +22,8 @@ load and names the requesting mod and entry, even if no Part uses it.
 
 ## Registry lookup and enumeration
 
-Use `host.item_key("minecraft:stick")` and similar typed lookups when a full name arrives from
+Use `host.block_key("minecraft:stone")` (and similar string-taking lookups such as `effect_key`
+and `fluid_key`), or `host.item_key(&id)` with a parsed `Identifier`, when a full name arrives from
 config, data or a command. These read the completed registry and return `None` for unknown names
 or unavailable tables. Registration callbacks see a startup snapshot, not the completed table.
 When you need a whole table, enumerate through the host's typed key methods once at load time;
