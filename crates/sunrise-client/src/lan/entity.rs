@@ -1272,14 +1272,25 @@ pub fn report_attachment_sync_refusal(
     log::warn!("Sunrise: attachment sync for {holder:?} not sent: {error}");
 }
 
-fn capture_attachment_projection()
--> impl Fn(AttachmentHolder, &str, &str, AttachmentSyncInput<'_>) -> Option<mod_api::Compound> + Sync
-{
+fn capture_attachment_projection() -> impl Fn(
+    AttachmentHolder,
+    &mod_api::JavaString,
+    &mod_api::JavaString,
+    AttachmentSyncInput<'_>,
+) -> Option<mod_api::Compound>
++ Sync {
     let project = mod_api::__private::attachment_sync_projection();
     move |holder, namespace, name, input| match project(namespace, name, input) {
         Ok(value) => value,
         Err(error) => {
-            report_attachment_sync_refusal(holder, format_args!("{namespace}:{name}: {error}"));
+            report_attachment_sync_refusal(
+                holder,
+                format_args!(
+                    "{}:{}: {error}",
+                    namespace.to_string_lossy(),
+                    name.to_string_lossy()
+                ),
+            );
             None
         }
     }
@@ -1287,7 +1298,11 @@ fn capture_attachment_projection()
 
 pub fn project_attachment_sync(
     holder: AttachmentHolder,
-) -> impl FnMut(&str, &str, AttachmentSyncInput<'_>) -> Option<mod_api::Compound> {
+) -> impl FnMut(
+    &mod_api::JavaString,
+    &mod_api::JavaString,
+    AttachmentSyncInput<'_>,
+) -> Option<mod_api::Compound> {
     let project = capture_attachment_projection();
     move |namespace, name, input| project(holder, namespace, name, input)
 }
@@ -1297,8 +1312,8 @@ fn encode_initial_attachment_snapshot(
     attachments: Option<&InitialAttachmentLookup<'_>>,
     project: &impl Fn(
         AttachmentHolder,
-        &str,
-        &str,
+        &mod_api::JavaString,
+        &mod_api::JavaString,
         AttachmentSyncInput<'_>,
     ) -> Option<mod_api::Compound>,
 ) -> Option<EncodedAttachmentSnapshot> {
@@ -1402,8 +1417,8 @@ impl PairingBodies {
         attachments: Option<&InitialAttachmentLookup<'_>>,
         project: &impl Fn(
             AttachmentHolder,
-            &str,
-            &str,
+            &mod_api::JavaString,
+            &mod_api::JavaString,
             AttachmentSyncInput<'_>,
         ) -> Option<mod_api::Compound>,
     ) {

@@ -4146,15 +4146,20 @@ mod tests {
 
         // An attachment map a write made inside an aborted transaction is gone with it.
         let chest_holder = mod_api::Holder::BlockEntity([0, 64, 0]);
+        let chest_key = sunrise_mod_runtime::attachments::AttachmentType {
+            namespace: "transaction_test",
+            name: "chest",
+            default: || 0u32,
+            codec: None,
+            copy_on_death: false,
+            sync_codec: None,
+        };
         // So is the unsaved mark it put on a clean chunk, through a committed child too.
         assert!(game.world.block_entities.attachments((0, 64, 0)).is_none());
         game.world.modified.clear();
         game.open_storage_transaction();
         game.open_storage_transaction();
-        assert!(
-            game.attachment_map_quiet(chest_holder, mod_api::AttachmentAccess::Existing)
-                .is_ok()
-        );
+        chest_key.set(&mut game, chest_holder, 31).unwrap();
         assert!(game.world.modified.contains(&(0, 0)));
         game.close_storage_transaction(true);
         assert!(game.world.block_entities.attachments((0, 64, 0)).is_some());
@@ -4163,10 +4168,7 @@ mod tests {
         assert!(!game.world.modified.contains(&(0, 0)), "clean again");
         // A committed one keeps it.
         game.open_storage_transaction();
-        assert!(
-            game.attachment_map_quiet(chest_holder, mod_api::AttachmentAccess::Existing)
-                .is_ok()
-        );
+        chest_key.set(&mut game, chest_holder, 31).unwrap();
         game.close_storage_transaction(true);
         assert!(game.world.modified.contains(&(0, 0)));
         game.world.block_entities.set_attachments((0, 64, 0), None);

@@ -183,6 +183,16 @@ pub trait AttachmentHost {
         let (namespace, name) = key.id();
         self.validate_attachment(namespace, name, key.policy.sync)
     }
+    /// Inspect an existing holder without materializing attachment storage.
+    fn read_attachments(
+        &mut self,
+        holder: Holder,
+    ) -> Result<Option<&Attachments>, AttachmentError> {
+        self.attachments(holder, AttachmentAccess::Existing)
+            .map(|map| Some(&*map))
+    }
+    /// Record side effects of an accepted write or sync, after the map loan ends.
+    fn attachment_changed(&mut self, _holder: Holder, _persist: bool, _sync: bool) {}
     fn attachments(
         &mut self,
         holder: Holder,
@@ -360,11 +370,9 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
     ) -> Result<bool, AttachmentError> {
         self.validate_attachment_key(key)?;
         let (namespace, name) = key.id();
-        Ok(Attachments::holds(
-            self.attachments(holder, AttachmentAccess::Existing)?,
-            namespace,
-            name,
-        ))
+        Ok(self
+            .read_attachments(holder)?
+            .is_some_and(|map| Attachments::holds(map, namespace, name)))
     }
     fn lend_decoded(
         &mut self,
@@ -374,8 +382,11 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
     ) -> Result<(), AttachmentError> {
         self.validate_attachment_key(key)?;
         let (namespace, name) = key.id();
-        let map = self.attachments(holder, AttachmentAccess::Existing)?;
-        read(Attachments::decoded(map, namespace, name)?.map(|value| value.as_ref()));
+        let value = match self.read_attachments(holder)? {
+            Some(map) => Attachments::decoded(map, namespace, name)?.map(|value| value.as_ref()),
+            None => None,
+        };
+        read(value);
         Ok(())
     }
     fn binding(
@@ -385,8 +396,10 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
     ) -> Result<Option<AttachmentBinding>, AttachmentError> {
         self.validate_attachment_key(key)?;
         let (namespace, name) = key.id();
-        let map = self.attachments(holder, AttachmentAccess::Existing)?;
-        Ok(map.entry(namespace, name)?.cloned().map(AttachmentBinding))
+        match self.read_attachments(holder)? {
+            Some(map) => Ok(map.entry(namespace, name)?.cloned().map(AttachmentBinding)),
+            None => Ok(None),
+        }
     }
     fn store(
         &mut self,
@@ -421,6 +434,9 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
             },
             form.write,
         );
+        if form.write != AttachmentWrite::Decoded {
+            self.attachment_changed(holder, true, form.policy.sync);
+        }
         Ok(())
     }
     fn discard(
@@ -430,9 +446,14 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
     ) -> Result<(), AttachmentError> {
         self.validate_attachment_key(key)?;
         let (namespace, name) = key.id();
-        let map = self.attachments(holder, AttachmentAccess::Existing)?;
-        map.check_namespace(namespace)?;
-        Attachments::discard(map, namespace, name, key.policy.sync);
+        let Some(map) = self.read_attachments(holder)? else {
+            return Ok(());
+        };
+        if map.entry(namespace, name)?.is_some() {
+            let map = self.attachments(holder, AttachmentAccess::Existing)?;
+            Attachments::discard(map, namespace, name, key.policy.sync);
+            self.attachment_changed(holder, true, key.policy.sync);
+        }
         Ok(())
     }
     fn queue_sync(
@@ -442,11 +463,14 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
     ) -> Result<(), AttachmentError> {
         self.validate_attachment_key(key)?;
         let (namespace, name) = key.id();
-        Attachments::queue_sync(
-            self.attachments(holder, AttachmentAccess::Existing)?,
-            namespace,
-            name,
-        );
+        if self.read_attachments(holder)?.is_some() {
+            Attachments::queue_sync(
+                self.attachments(holder, AttachmentAccess::Existing)?,
+                namespace,
+                name,
+            );
+            self.attachment_changed(holder, false, true);
+        }
         Ok(())
     }
 }
@@ -1663,7 +1687,7 @@ impl Attachments {
     /// is gone.
     pub fn take_sync_changes(
         &mut self,
-        mut project: impl FnMut(&str, &str, AttachmentSyncInput<'_>) -> Option<Compound>,
+        mut project: impl FnMut(&JavaString, &JavaString, AttachmentSyncInput<'_>) -> Option<Compound>,
     ) -> Vec<AttachmentSync> {
         std::mem::take(&mut self.pending)
             .into_iter()
@@ -1674,9 +1698,7 @@ impl Attachments {
                     value: None,
                 }),
                 Some(entry) => {
-                    let ns = key.0.to_string().ok()?;
-                    let nm = key.1.to_string().ok()?;
-                    let value = project(&ns, &nm, entry.sync_input())?;
+                    let value = project(&key.0, &key.1, entry.sync_input())?;
                     Some(AttachmentSync {
                         namespace: key.0,
                         name: key.1,
@@ -1686,6 +1708,11 @@ impl Attachments {
             })
             .collect()
     }
+    /// Whether a delivery pass has anything to project for this holder.
+    pub fn has_pending_sync(&self) -> bool {
+        !self.pending.is_empty()
+    }
+
     /// Discard queued changes when no client sees this holder. A new tracker gets a snapshot.
     pub fn discard_sync_changes(&mut self) {
         self.pending.clear();
@@ -1695,14 +1722,12 @@ impl Attachments {
     /// that starts seeing the holder. Unknown saved entries stay intact and are never sent.
     pub fn synced(
         &self,
-        mut project: impl FnMut(&str, &str, AttachmentSyncInput<'_>) -> Option<Compound>,
+        mut project: impl FnMut(&JavaString, &JavaString, AttachmentSyncInput<'_>) -> Option<Compound>,
     ) -> Vec<AttachmentSync> {
         self.entries
             .iter()
             .filter_map(|((namespace, name), entry)| {
-                let ns = namespace.to_string().ok()?;
-                let nm = name.to_string().ok()?;
-                let value = project(&ns, &nm, entry.sync_input())?;
+                let value = project(namespace, name, entry.sync_input())?;
                 Some(AttachmentSync {
                     namespace: namespace.clone(),
                     name: name.clone(),
@@ -1765,26 +1790,30 @@ mod tests {
         copy_on_death: false,
         sync_codec: None,
     };
+    fn same_component(units: &JavaString, text: &str) -> bool {
+        units.0.iter().copied().eq(text.encode_utf16())
+    }
     fn project_type<'a, T: 'static>(
         ty: &'a AttachmentType<T>,
-    ) -> impl FnMut(&str, &str, AttachmentSyncInput<'_>) -> Option<Compound> + 'a {
+    ) -> impl FnMut(&JavaString, &JavaString, AttachmentSyncInput<'_>) -> Option<Compound> + 'a
+    {
         move |namespace, name, input| {
-            (namespace == ty.namespace && name == ty.name)
+            (same_component(namespace, ty.namespace) && same_component(name, ty.name))
                 .then(|| ty.project_sync(input, &mut None).ok().flatten())
                 .flatten()
         }
     }
     fn project_standard(
-        namespace: &str,
-        name: &str,
+        namespace: &JavaString,
+        name: &JavaString,
         input: AttachmentSyncInput<'_>,
     ) -> Option<Compound> {
-        match (namespace, name) {
-            ("test", "synced") => SYNCED.project_sync(input, &mut None).ok().flatten(),
-            ("test", "counter") => COUNTER.project_sync(input, &mut None).ok().flatten(),
-            ("test", "memory") => MEMORY.project_sync(input, &mut None).ok().flatten(),
-            _ => None,
-        }
+        [&SYNCED, &COUNTER, &MEMORY]
+            .into_iter()
+            .find(|ty| same_component(namespace, ty.namespace) && same_component(name, ty.name))?
+            .project_sync(input, &mut None)
+            .ok()
+            .flatten()
     }
     fn rows(
         index: &Arc<Mutex<index::AttachmentIndex<u32>>>,

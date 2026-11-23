@@ -33,8 +33,9 @@ impl Game<'_> {
                 .get(&id)
                 .map(|map| map.synced(project_attachment_sync(holder))),
             _ => self
-                .attachment_map_quiet(holder, mod_api::AttachmentAccess::Existing)
+                .attachment_map_read(holder)
                 .ok()
+                .flatten()
                 .map(|map| map.synced(project_attachment_sync(holder))),
         }
         .unwrap_or_default();
@@ -146,6 +147,14 @@ impl Game<'_> {
             }
         }
         for holder in std::mem::take(&mut self.world.attachment_syncs) {
+            if !self
+                .attachment_map_read(holder)
+                .ok()
+                .flatten()
+                .is_some_and(Attachments::has_pending_sync)
+            {
+                continue;
+            }
             let senders = self
                 .lan
                 .as_ref()

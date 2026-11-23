@@ -2,7 +2,7 @@
 use super::*;
 use crate::{
     AttachmentCodec, AttachmentError, AttachmentPolicy, AttachmentStoreKey, Compound, Holder,
-    Identifier, LevelRandomHost,
+    Identifier, JavaString, LevelRandomHost,
 };
 use std::{fmt, sync::atomic::AtomicBool};
 use sunrise_mod_runtime::attachments::{
@@ -728,19 +728,33 @@ impl dyn Registrar + '_ {
 // hidden: engine-owned client attachment sync projection; not an authoring method.
 #[doc(hidden)]
 pub fn attachment_sync_projection()
--> impl Fn(&str, &str, AttachmentSyncInput<'_>) -> Result<Option<Compound>, String> + Sync {
+-> impl Fn(&JavaString, &JavaString, AttachmentSyncInput<'_>) -> Result<Option<Compound>, String> + Sync
+{
     let installed = installed();
     move |namespace, name, input| {
-        let Some(record) = installed
-            .and_then(|parts| parts.attachment_types.get(namespace))
-            .and_then(|types| types.get(name))
-            .filter(|record| {
-                record.is_synced()
-                    && !record
-                        .sync_panicked
-                        .load(std::sync::atomic::Ordering::Acquire)
-            })
-        else {
+        thread_local! {
+            static COMPONENTS: std::cell::RefCell<[String; 2]> = Default::default();
+        }
+        // Stored IDs are Java strings, the descriptor table uses Rust strings. Reuse
+        // conversion buffers and release them before invoking a possibly reentrant codec.
+        let record = COMPONENTS.with_borrow_mut(|[ns, nm]| {
+            for (out, source) in [(ns, namespace), (nm, name)] {
+                out.clear();
+                for c in char::decode_utf16(source.0.iter().copied()) {
+                    out.push(c.ok()?);
+                }
+            }
+            installed?
+                .attachment_types
+                .get(ns.as_str())?
+                .get(nm.as_str())
+        });
+        let Some(record) = record.filter(|record| {
+            record.is_synced()
+                && !record
+                    .sync_panicked
+                    .load(std::sync::atomic::Ordering::Acquire)
+        }) else {
             return Ok(None);
         };
         record.project_sync(input)
@@ -1080,9 +1094,10 @@ mod tests {
             name: "dual".into(),
             value: Some([("net".into(), Tag::Int(107))].into()),
         }];
-        let project = |namespace: &str, name: &str, input: AttachmentSyncInput<'_>| {
-            attachment_sync_projection()(namespace, name, input).unwrap()
-        };
+        let project =
+            |namespace: &JavaString, name: &JavaString, input: AttachmentSyncInput<'_>| {
+                attachment_sync_projection()(namespace, name, input).unwrap()
+            };
         assert_eq!(reloaded.0.synced(project), expected_v1);
         key_v1.sync_data_in(&mut reloaded, Holder::Level).unwrap();
         assert_eq!(reloaded.0.take_sync_changes(project), expected_v1);
@@ -1143,11 +1158,15 @@ mod tests {
         good_key.set_in(&mut level, Holder::Level, 42).unwrap();
         level.0 = Attachments::from_nbt(level.0.to_nbt());
         let mut failures = Vec::new();
-        let mut project = |ns: &str, name: &str, input: AttachmentSyncInput<'_>| {
+        let mut project = |ns: &JavaString, name: &JavaString, input: AttachmentSyncInput<'_>| {
             match attachment_sync_projection()(ns, name, input) {
                 Ok(value) => value,
                 Err(error) => {
-                    failures.push(format!("{ns}:{name}: {error}"));
+                    failures.push(format!(
+                        "{}:{}: {error}",
+                        ns.to_string_lossy(),
+                        name.to_string_lossy()
+                    ));
                     None
                 }
             }
@@ -1198,7 +1217,7 @@ mod tests {
         broken_key.set_in(&mut level, Holder::Level, 1).unwrap();
         healthy_key.set_in(&mut level, Holder::Level, 2).unwrap();
         let mut failures = Vec::new();
-        let mut project = |ns: &str, name: &str, input: AttachmentSyncInput<'_>| {
+        let mut project = |ns: &JavaString, name: &JavaString, input: AttachmentSyncInput<'_>| {
             attachment_sync_projection()(ns, name, input).unwrap_or_else(|error| {
                 failures.push(error);
                 None

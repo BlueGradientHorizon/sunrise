@@ -624,8 +624,20 @@ impl<'a> DamageLevel<'a> {
     pub fn registry(&self) -> &'a sunrise_world::registry::BlockRegistry {
         self.registry
     }
-    /// The level's own attachments (`Holder::Level`), marked for the next sync. A chunk,
-    /// block entity or entity's are not reachable from a hit: `MissingHolder`.
+    /// The level's own attachments (`Holder::Level`); other holders are not lent to a hit.
+    pub fn attachments_read(
+        &self,
+        holder: sunrise_mod_runtime::attachments::Holder,
+    ) -> std::result::Result<
+        &sunrise_mod_runtime::attachments::Attachments,
+        sunrise_mod_runtime::attachments::AttachmentError,
+    > {
+        if holder != sunrise_mod_runtime::attachments::Holder::Level {
+            return Err(sunrise_mod_runtime::attachments::AttachmentError::MissingHolder);
+        }
+        Ok(self.attachments)
+    }
+    /// Mutable attachment storage for an accepted hit edit.
     pub fn attachments(
         &mut self,
         holder: sunrise_mod_runtime::attachments::Holder,
@@ -633,11 +645,12 @@ impl<'a> DamageLevel<'a> {
         &mut sunrise_mod_runtime::attachments::Attachments,
         sunrise_mod_runtime::attachments::AttachmentError,
     > {
-        if holder != sunrise_mod_runtime::attachments::Holder::Level {
-            return Err(sunrise_mod_runtime::attachments::AttachmentError::MissingHolder);
-        }
-        self.attachment_syncs.insert(holder);
+        self.attachments_read(holder)?;
         Ok(self.attachments)
+    }
+    /// Schedule a hit edit or explicit sync for the next send pass.
+    pub fn attachment_sync_queued(&mut self, holder: sunrise_mod_runtime::attachments::Holder) {
+        self.attachment_syncs.insert(holder);
     }
     /// Return the hook's immunity decision, or vanilla's without a listener.
     pub fn invulnerability_check(&mut self, hurting: Hurting<'_>, vanilla: bool) -> bool {
