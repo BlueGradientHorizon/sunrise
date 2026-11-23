@@ -7,6 +7,10 @@ use crate::*;
 #[sunrise_mod_api_macros::host_area]
 pub trait LevelEntitiesBackend {
     /// Side: server.
+    /// The engine side of [`LevelRef::entity_by_uuid`], whose doc holds the contract.
+    #[manual_handle]
+    fn level_entity_by_uuid(&self, level: LevelRef, uuid: EntityUuid) -> Option<EntityRef>;
+    /// Side: server.
     /// Visit members of the server level's entity lookup (`ServerLevel.getAllEntities`),
     /// including spectators and entities outside any spatial query. Dragon parts are not
     /// lookup members. Vehicles being removed are skipped.

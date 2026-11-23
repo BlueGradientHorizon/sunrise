@@ -823,8 +823,8 @@ handle, an entity the client doesn't track and a level it doesn't show:
 - `living.drop(host, stack, throw_randomly, include_thrower_name)` throws a stack the mod holds from the eyes
   (`LivingEntity.drop`) and gives the item entity; it never touches a slot. `is_tamed(host)` and `owner(host)` read a
   tamable mob or a horse (`TamableAnimal.isTame`, its owner's UUID).
-- `entity.velocity(host)` (a player's is the move its client last reported), `set_velocity(host, v)` (not for players,
-  whose client moves them), `on_ground`, `bounding_box` (lowest and highest corner), `eye_height`, `eye_position`,
+- `entity.velocity(host)` (a player's is the move its client last reported), `set_velocity(host, v)` (for a player it
+  replaces the server's motion and sends that player's own client the motion packet), `on_ground`, `bounding_box` (lowest and highest corner), `eye_height`, `eye_position`,
   `view_vector` and `distance_to_sqr(host, pos)` read and move it.
 - `entity.up_vector(host)` is `Entity.getUpVector`, the view vector turned toward the zenith. `on_block(host)` is
   `Entity.getOnPos`: the supporting block of an entity on the ground (the solid block under its box nearest it),
