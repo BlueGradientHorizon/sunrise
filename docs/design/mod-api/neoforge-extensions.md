@@ -372,7 +372,7 @@ Sunrise, as #3425 asks.
 | NeoForge | Verdict | Sunrise route |
 | --- | --- | --- |
 | `ChunkEvent.Load` on the client (`isNewChunk` always false) | **Covered** | `client_chunk_load(dimension, chunk)`, once per adopted chunk packet after the column and its block entities are in the client level; a re-sent column is told again. |
-| `ChunkEvent.Unload` on the client | **Covered, wider** | `client_chunk_unload(dimension, chunk)`, before the column's data is freed, on every route a column leaves by: the forget packet (NeoForge's only route), the view centre moving, the view radius shrinking and the client level going. |
+| `ChunkEvent.Unload` on the client | **Covered, wider** | `client_chunk_unload(dimension, chunk)`, before the column's data is freed, on every route a column's data is freed by: the forget packet (NeoForge's only route), a newer column taking the slot of one out of view, the view radius shrinking and the client level going. The view centre moving away hides a column without a hook and shows it again without `client_chunk_load`, as `ClientChunkCache` keeps it in its slot. |
 
 Both are client-only, so the server's `chunk_load` and `chunk_unload` listeners are not called on a client. An
 integrated world's own chunks are told only through the server hooks. Inside a held column, NeoForge posts no

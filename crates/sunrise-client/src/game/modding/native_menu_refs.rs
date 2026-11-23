@@ -59,8 +59,9 @@ impl Game<'_> {
 
     /// `ServerPlayer.closeContainer` of a guest's menu: queue the client's close before
     /// running normal server teardown. Refuses clients, stale menus, a guest with a pending
-    /// disconnect or an active turn, and the inventory menu (window 0). While a click action
-    /// is active, true accepts a close at commit.
+    /// disconnect, and the inventory menu (window 0). In the guest's own turn it closes at the
+    /// call, through the same turn-aware teardown an open's close of the old menu uses
+    /// (`close_for_open`). While a click action is active, true accepts a close at commit.
     pub(super) fn menu_close_container(&mut self, menu: MenuRef) -> bool {
         let window = menu.fields().window;
         if !self.is_logical_server() || window == 0 {
@@ -69,7 +70,7 @@ impl Game<'_> {
         let Some(guest) = self.native_menu_guest(menu) else {
             return false;
         };
-        if guest.disconnect_pending || self.lan_acting == Some(guest.conn) {
+        if guest.disconnect_pending {
             return false;
         }
         self.request_menu_close(guest.conn, window, guest.menu_generation);
@@ -534,7 +535,12 @@ impl Game<'_> {
             let world = self.native_level_world(self.level(&guest.dimension)?)?;
             let limits = open.slots.stack_limits(world, open.size);
             rules.set_container_limits(limits);
-            rules.set_block_pos(open.pos.map(|(x, y, z)| [x, y, z]));
+            rules.set_block_pos(
+                (open.slots != Slots::Native)
+                    .then_some(open.pos)
+                    .flatten()
+                    .map(|(x, y, z)| [x, y, z]),
+            );
             if open.owned_slots().is_some() {
                 rules.load_container(&env, &guest.native_menu, None);
             } else if open.slots == Slots::Native && open.mod_type.is_some() {
