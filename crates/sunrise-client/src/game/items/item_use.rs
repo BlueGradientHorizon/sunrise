@@ -14,17 +14,19 @@ use sunrise_client::{
 use sunrise_core::use_animation::UseAnimation;
 
 thread_local! {
-    /// Set while an item's `use_animation` Part is asked on this thread: a read of
-    /// `ItemStack::use_animation` from inside the callback gets the item's own answer instead
-    /// of asking the Part again, which would never end.
-    static ASKING_USE_ANIMATION: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// The stacks whose `use_animation` Part is being asked on this thread, innermost last. A
+    /// read of one of them from inside a callback gets the item's own answer instead of asking
+    /// that Part again, which would never end; another stack's Parts are still asked.
+    static ASKING_USE_ANIMATION: std::cell::RefCell<Vec<ItemStack>> =
+        const { std::cell::RefCell::new(Vec::new()) };
 }
 
-/// Clears [`ASKING_USE_ANIMATION`] when the Part's answer is in, even if the dispatch unwinds.
+/// Takes its stack off [`ASKING_USE_ANIMATION`] when the Part's answer is in, even if the
+/// dispatch unwinds.
 struct AskingUseAnimation;
 impl Drop for AskingUseAnimation {
     fn drop(&mut self) {
-        ASKING_USE_ANIMATION.set(false);
+        ASKING_USE_ANIMATION.with_borrow_mut(|asking| asking.pop());
     }
 }
 
@@ -108,7 +110,8 @@ impl Game<'_> {
                 UseAnimation::None
             }
         });
-        if !ASKING_USE_ANIMATION.replace(true) {
+        if !ASKING_USE_ANIMATION.with_borrow(|asking| asking.contains(stack)) {
+            ASKING_USE_ANIMATION.with_borrow_mut(|asking| asking.push(stack.clone()));
             let _asking = AskingUseAnimation;
             self.native_use_animation(stack, &mut animation);
         }
@@ -835,6 +838,72 @@ mod tests {
                             UseAnimation::Drink
                         );
                         assert_eq!(inner.lock().unwrap().len(), 2);
+                    });
+                });
+            },
+        );
+    }
+
+    /// Inside a Part, reading another stack's effective animation still asks that stack's Part:
+    /// only a read of the stack being asked is answered without its Part.
+    #[test]
+    #[ignore = "daily"]
+    fn another_stacks_part_is_asked_from_inside_a_part() {
+        use crate::game::native_entity_refs::tests::with_client_game;
+        use mod_api::{Hooks, Host, ItemPart, ModEntry, Mods, Registrar, UseAnimationEvent};
+        use std::sync::{Arc, Mutex};
+        crate::game::in_own_process(
+            "game::item_use::tests::another_stacks_part_is_asked_from_inside_a_part",
+            || {
+                fn stack(id: &str) -> mod_api::ItemStack {
+                    mod_api::ItemStack::of(mod_api::__private::item_key(id).unwrap())
+                }
+                /// A bow is drawn as a crossbow.
+                #[derive(Clone)]
+                struct Bow;
+                #[mod_api::sunrise_part]
+                impl ItemPart for Bow {
+                    fn use_animation(&self, _: &dyn Host, event: &mut UseAnimationEvent<'_>) {
+                        *event.animation = UseAnimation::Crossbow;
+                    }
+                }
+                /// A stick reads a bow's and its own effective animation, then answers Drink.
+                #[derive(Clone)]
+                struct Stick(Arc<Mutex<Vec<UseAnimation>>>);
+                #[mod_api::sunrise_part]
+                impl ItemPart for Stick {
+                    fn use_animation(&self, host: &dyn Host, event: &mut UseAnimationEvent<'_>) {
+                        let bow = stack("minecraft:bow").use_animation(host);
+                        let own = mod_api::ItemStack::of(event.stack.item()).use_animation(host);
+                        self.0.lock().unwrap().extend([bow, own]);
+                        *event.animation = UseAnimation::Drink;
+                    }
+                }
+                struct Mod(Arc<Mutex<Vec<UseAnimation>>>);
+                #[mod_api::__subscriptions]
+                impl Hooks for Mod {
+                    fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+                        let bow = r.item_key("minecraft:bow");
+                        r.item_part(bow, Bow);
+                        let stick = r.item_key("minecraft:stick");
+                        r.item_part(stick, Stick(self.0.clone()));
+                    }
+                }
+                let read = Arc::new(Mutex::new(Vec::new()));
+                let mods: Mods = vec![ModEntry::new("nested", Box::new(Mod(read.clone())))].into();
+                crate::game::api_values::install_parts(&mods).unwrap();
+                mod_platform::testing::with_mods(mods, || {
+                    with_client_game(|game| {
+                        let host: &dyn Host = game;
+                        assert_eq!(
+                            stack("minecraft:stick").use_animation(host),
+                            UseAnimation::Drink
+                        );
+                        // The bow's Part answered; the stick's own read did not ask it again.
+                        assert_eq!(
+                            *read.lock().unwrap(),
+                            [UseAnimation::Crossbow, UseAnimation::None]
+                        );
                     });
                 });
             },
