@@ -7,7 +7,7 @@
 //! one branch.
 use mod_api::TravelMode;
 use sunrise_core::geometry::Vec3;
-use sunrise_world::native_load_context::{LoopContext, LoopSide};
+use sunrise_world::native_load_context::LoopContext;
 use sunrise_world::travel::TravelMode as GameTravelMode;
 
 /// The `living_travel` hook's target (#2414): the generated dispatch the
@@ -49,9 +49,9 @@ fn mode_of(mode: GameTravelMode) -> TravelMode {
 
 /// Ask one travel invocation (#2414) about to run for `entity` of `kind` in
 /// `mode`'s branch: the `living_travel` hook fires here - in this one
-/// function - on the authoritative side, and only when a listener
-/// subscribes; with none, or on a client's own prediction, the resolved
-/// values stand and the cost is the subscriber branch. `mode` names the
+/// function - on whichever side runs the travel (the server's, and the
+/// client's own prediction), and only when a listener subscribes; with none
+/// the resolved values stand and the cost is the subscriber branch. `mode` names the
 /// branch only when a listener asks for it. A listener that cancels skips
 /// the invocation - its nested move does not run and the flying vertical
 /// damping is skipped; what the tick already did is not undone. Listeners
@@ -73,9 +73,6 @@ pub fn decide(
     input: &mut Vec3,
     velocity: &mut Vec3,
 ) -> bool {
-    if context.side() != LoopSide::Server {
-        return true;
-    }
     if !mod_api::__private::listened(mod_api::HookId::LivingTravel) {
         return true;
     }

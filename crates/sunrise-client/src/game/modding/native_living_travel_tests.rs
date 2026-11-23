@@ -18,8 +18,7 @@ fn server_context() -> sunrise_world::native_load_context::LoopContext {
     .loop_context(LoopSide::Server, [])
 }
 
-/// The same context on the client's side, whose own prediction the hook
-/// must leave alone (#2414: no client-side prediction of a custom travel).
+/// The same context on the client's side, whose own prediction the hook fires for too.
 fn client_context() -> sunrise_world::native_load_context::LoopContext {
     LoadContext::new(
         DataLoadOrigin::ServerDataLoad,
@@ -305,18 +304,49 @@ fn a_panic_after_a_replacement_keeps_the_accepted_values() {
     });
 }
 
-/// A client's own prediction asks nobody: the hook fires on the
-/// authoritative side only (#2414: no client-side prediction until PR 3),
-/// and the mode closure never runs for it.
+/// A client's own prediction asks the same listeners as the server's travel: it hears the same
+/// inputs, applies a replacement, and a cancellation skips the client's predicted branch.
 #[test]
-fn a_client_side_travel_asks_nobody() {
-    let (_, input, velocity, heard, mode_calls) = decided_with(Answer::Continue, &client_context());
-    assert!(heard.is_empty(), "a client travel fires nobody");
-    assert_eq!(mode_calls, 0, "the mode is not built without a dispatch");
+fn a_client_side_travel_asks_the_listeners_and_applies_their_edits() {
+    let (_, input, velocity, heard, mode_calls) = decided_with(
+        Answer::Replace {
+            input: [0.5, 0.0, 0.0],
+            velocity: [2.0, 0.0, 0.0],
+        },
+        &client_context(),
+    );
+    assert_eq!(
+        heard,
+        [(
+            7,
+            TravelMode::Water,
+            [0.216, 0.0, 0.0],
+            [1.0, -0.078_4, 0.0]
+        )]
+    );
+    assert_eq!(mode_calls, 1);
     assert_eq!(
         (input, velocity),
-        (Vec3::new(0.216, 0.0, 0.0), Vec3::new(1.0, -0.078_4, 0.0))
+        (Vec3::new(0.5, 0.0, 0.0), Vec3::new(2.0, 0.0, 0.0))
     );
+    let (log, mods) = install(Answer::Cancel);
+    let mut input = Vec3::new(0.216, 0.0, 0.0);
+    let mut velocity = Vec3::new(1.0, 0.0, 0.0);
+    let runs = mod_platform::testing::with_mods(mods, || {
+        sunrise_client::travel_gate::decide(
+            &client_context(),
+            7,
+            "minecraft:player",
+            || sunrise_world::travel::TravelMode::Air,
+            &mut input,
+            &mut velocity,
+        )
+    });
+    assert!(
+        !runs,
+        "a client's cancelled travel skips its predicted branch"
+    );
+    assert_eq!(log.lock().unwrap().len(), 1);
 }
 
 /// With no listener the mode closure never runs: the resolved values stand
