@@ -2495,6 +2495,7 @@ mod datapack_damage_tests {
     }
 
     fn pig(game: &mut crate::game::Game<'_>, id: u32, at: Vec3) {
+        game.next_entity = game.next_entity.max(id);
         let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
         let mut pig = Mob::new(id, kind, at, 0.0);
         pig.no_ai = true;
@@ -2570,6 +2571,7 @@ mod datapack_damage_tests {
         with_game(|game| {
             with_pack(game);
             let crystal = |game: &mut crate::game::Game<'_>, id: u32| {
+                game.next_entity = game.next_entity.max(id);
                 game.crystals.push(crate::game::dragon::Crystal {
                     attachment_lifetime: Default::default(),
                     join: Default::default(),
