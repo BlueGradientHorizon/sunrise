@@ -663,13 +663,13 @@ class DynaRoutingTests(unittest.TestCase):
             env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
                    "PARITY_LOG_DIR": temporary, "RUNNER_TEMP": temporary, "BUCKET": "1"}
             subprocess.run(["bash", "-e", "-c", script], cwd=tree, env=env, check=True)
-            fixtures = "build --locked --profile test -p sunrise-client"
+            fixtures = "build --locked --profile test -p sunrise-parity-fixtures"
             self.assertEqual(calls.read_text().splitlines(), [
                 "test --locked --no-run -p sunrise-client --lib",
                 "test --locked --no-run -p sunrise-client-lib --lib",
                 "test --locked --no-run -p sunrise-gameplay --lib",
-                f"{fixtures} --features parity-fixtures --bin sunrise-parity-fixtures",
-                f"{fixtures} --no-default-features --features parity-fixtures --bin sunrise-parity-fixtures"])
+                f"{fixtures} --features fixtures,client-defaults --bin sunrise-parity-fixtures",
+                f"{fixtures} --features fixtures --bin sunrise-parity-fixtures"])
             # A share builds only for the harnesses its plan gives it (a shard named NAME#N), and nothing for none.
             calls.unlink()
             (Path(temporary, "plan")).mkdir()

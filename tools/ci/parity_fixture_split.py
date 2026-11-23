@@ -2,7 +2,7 @@
 
 For each named test it moves the body into a function beside it, `run_<test>`, that a build without `test` compiles,
 and leaves the `#[test]` (its attributes, name and ignore reason untouched, so test rows and discovery still see it)
-calling that function: build.rs's table (feature `parity-fixtures`) finds exactly that shape. The inline module that
+calling that function: crates/sunrise-parity-fixtures/build.rs's table finds exactly that shape. The inline module that
 holds it becomes visible to `game`, where the table is; a test at the top of a file module is reported, for the
 module's declaration to be made visible by hand.
 

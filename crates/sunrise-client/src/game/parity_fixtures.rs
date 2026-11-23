@@ -1,7 +1,7 @@
-//! The parity harnesses' fixtures, run by the `sunrise-parity-fixtures` binary (feature `parity-fixtures`, CI only)
-//! as the lib test runs them, without compiling the lib's other tests: the lib test's rustc outgrew a parity runner
-//! (#4896). The table is build.rs's: each `#[test]` whose body is one call to the function `run_<test>` beside it. build.rs
-//! sets `test` for this build, so the test-only code the fixtures read compiles as in the lib test, and only the
+//! The parity harnesses' fixtures, run by the `sunrise-parity-fixtures` program (crates/sunrise-parity-fixtures, CI
+//! only) as the lib test runs them, without compiling the lib's other tests: the lib test's rustc outgrew a parity
+//! runner (#4896). The table is that package's build.rs's: each `#[test]` whose body is one call to the function
+//! `run_<test>` beside it. Its build.rs sets `test` for this build, so the test-only code the fixtures read compiles as in the lib test, and only the
 //! `#[test]` functions, which need `--test`, are left out. The command line is libtest's, as far as the harnesses and
 //! `in_own_process` use it, and so is the report they read.
 

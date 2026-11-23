@@ -1819,7 +1819,7 @@ mod pad_menu;
 mod paintings;
 #[path = "game/mobs/pandas.rs"]
 mod pandas;
-#[cfg(feature = "parity-fixtures")]
+#[cfg(sunrise_parity_fixtures)]
 #[path = "game/parity_fixtures.rs"]
 pub mod parity_fixtures;
 #[path = "game/modding/part_admission.rs"]

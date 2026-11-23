@@ -214,7 +214,7 @@ python3 tools/lang_coverage.py --summary --show-keys   # the same, then the keys
   or the game binary with a fixture env var (`game/interface/dispense_fixture.rs`, `game/blocks/sculk_fixture.rs`,
   `game/administration/command_harness.rs`, `game/network/net_harness.rs`). Copy a nearby harness for a new one.
   A sunrise-client fixture (a `#[test]` under `game` whose body is one call to `run_<test>()`) runs from the
-  `sunrise-parity-fixtures` binary (`lab.parity_fixtures()`, [docs/parity-workflow.md](docs/parity-workflow.md#sunrise-client-fixtures));
+  `sunrise-parity-fixtures` program (`crates/sunrise-parity-fixtures`, `lab.parity_fixtures()`, [docs/parity-workflow.md](docs/parity-workflow.md#sunrise-client-fixtures));
   a harness never builds the `sunrise-client` lib test.
 - Native mods compile against a pinned prebuilt SDK; `[[native.mixin]]` rows compile into a function-replacement patch library.
   Use `native-build --trust-native-code`; the launcher never rebuilds the game for a mod.

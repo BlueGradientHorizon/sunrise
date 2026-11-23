@@ -149,15 +149,17 @@ On ludodesktop, source `~/code/sunrise-parity/env.sh` first: it sets the ALSA bu
 
 ## sunrise-client fixtures
 
-A harness that needs a sunrise-client fixture runs it from the `sunrise-parity-fixtures` binary, which
+A harness that needs a sunrise-client fixture runs it from the `sunrise-parity-fixtures` program, which
 `lab.parity_fixtures()` builds (`default_features=False` for the vanilla build) and returns. Its command line and
-report are libtest's: filters, `--exact`, `--list`; a filter that selects nothing exits 101. The binary is built
-with the `parity-fixtures` feature, under which `build.rs` sets `cfg(test)` for the package, so test-only code
-compiles while the `#[test]` functions stay out. A harness never builds the `sunrise-client` lib test: its one
+report are libtest's: filters, `--exact`, `--list`; a filter that selects nothing exits 101. Its package,
+`crates/sunrise-parity-fixtures`, a dev tool, compiles sunrise-client's sources as the program with `cfg(test)` set,
+so test-only code compiles while the `#[test]` functions stay out. It takes sunrise-client's dependencies and
+features with its dev-dependencies, which sunrise-client itself may not ship (docs/layers.md); its manifest is
+written by `tools/ci/parity_fixtures_manifest.py`, which you rerun after changing sunrise-client's. A harness never builds the `sunrise-client` lib test: its one
 rustc outgrows a parity runner's memory, and `tests/test_dyna_ci.py` refuses a harness that does.
 
 A fixture is a `#[test]` under `game` whose body is one call to a function beside it named `run_<test>`;
-`build.rs` finds every such test and lists it, so nothing is registered by hand. List them with
+the package's `build.rs` finds every such test and lists it, so nothing is registered by hand. List them with
 `$(python3 -c 'from tools import lab; print(lab.parity_fixtures())') --list`.
 
 ## Server execution in game fixtures
