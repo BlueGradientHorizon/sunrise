@@ -1791,8 +1791,7 @@ impl Game<'_> {
                 world_items!(self),
                 &world_stations!(self).enchantments,
             );
-            // One subscription decision for the resumed hit: its attacker's loan and its reads.
-            let listened = sunrise_client::health::hit_host_listened();
+            // The paused hit carries its setup's decision: an attacker id only if it was lent then.
             let lent_index = paused
                 .lent_attacker
                 .and_then(|id| self.mob_index.find(&self.mobs, id as u32));
@@ -1805,7 +1804,7 @@ impl Game<'_> {
             } else {
                 (
                     &mut self.mobs[index],
-                    paused.lent_attacker.filter(|_| listened).and_then(|id| {
+                    paused.lent_attacker.and_then(|id| {
                         HitLend::attacking_player(
                             self.player.as_mut(),
                             id,
@@ -1816,7 +1815,7 @@ impl Game<'_> {
                 )
             };
             hurt = mob.resume_hurt(
-                crate::game::entity::damage_level_of!(self, &attack, &mut credit, lend; listened),
+                crate::game::entity::damage_level_of!(self, &attack, &mut credit, lend),
                 paused,
                 weapon.map(|_| &mut breach as &mut _),
             );
@@ -2190,7 +2189,7 @@ impl Game<'_> {
         let plan = self.prepare_knockback_credit(target as i32, source.attacker, &attack);
         let mut credit = plan.lend(&mut self.last_hurt_by_player);
         let mut target_index = self.mobs.iter().position(|m| m.id == target);
-        // One subscription decision for the hit: its attacker's loan and its reads.
+        // One subscription decision for the hit's attacker loan.
         let listened = sunrise_client::health::hit_host_listened();
         let attacker_index = match source.attacker {
             Some(Who::Mob(id)) if listened => self.mobs.iter().position(|m| m.id == id),
@@ -2223,7 +2222,7 @@ impl Game<'_> {
             };
             let previous_invulnerable = t.invulnerable;
             let hit = t.damage_aimed(
-                crate::game::entity::damage_level_of!(self, &attack, &mut credit, lend; listened),
+                crate::game::entity::damage_level_of!(self, &attack, &mut credit, lend),
                 amount,
                 source,
                 aim,

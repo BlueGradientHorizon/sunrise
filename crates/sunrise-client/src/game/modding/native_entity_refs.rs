@@ -1023,7 +1023,7 @@ impl Game<'_> {
                 if self.native_lifecycle.epoch() == Some(entity.epoch())
                     && let Some((_, mob)) = self.mob_in_other_level(entity.id())
                 {
-                    return mob.kind.entity_type_key();
+                    return mob.kind.type_key;
                 }
                 mod_api::__private::resolved_entity_type_key(self.native_client_tracked(entity)?.0)
             }

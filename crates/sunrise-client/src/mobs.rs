@@ -281,34 +281,12 @@ pub struct MobType {
     /// TemptGoal items when they differ from the food.
     pub tempt: Arc<[String]>,
     pub passenger_attachments: Vec<[f32; 3]>,
-    /// The type's key in the completed entity-type registry (`Entity.getType`), resolved from
-    /// `id` the first time it is read after the registry is complete and kept for every later
-    /// read; the registry is complete once per process.
-    pub type_key: EntityTypeKeyCell,
-}
-/// A type's resolved [`mod_api::EntityTypeKey`], kept once it resolves ([`MobType::type_key`]).
-#[derive(Clone, Debug, Default)]
-pub struct EntityTypeKeyCell(std::sync::OnceLock<mod_api::EntityTypeKey>);
-impl EntityTypeKeyCell {
-    /// An empty cell, as a type starts.
-    pub const fn new() -> Self {
-        Self(std::sync::OnceLock::new())
-    }
-    /// The key of type `name`: the kept one, or the registry's, kept from then on. None before
-    /// the registry is complete, and for a name it does not have.
-    pub fn get_or_resolve(&self, name: &str) -> Option<mod_api::EntityTypeKey> {
-        if let Some(key) = self.0.get() {
-            return Some(*key);
-        }
-        let key = mod_api::__private::resolved_entity_type_key(name)?;
-        Some(*self.0.get_or_init(|| key))
-    }
+    /// The type's key in the entity-type registry the accepted resources were loaded with
+    /// (`Entity.getType`): set when the game accepts its type table, none in a table built
+    /// without one.
+    pub type_key: Option<mod_api::EntityTypeKey>,
 }
 impl MobType {
-    /// `Entity.getType`'s registry key, read once per type ([`Self::type_key`]).
-    pub fn entity_type_key(&self) -> Option<mod_api::EntityTypeKey> {
-        self.type_key.get_or_resolve(&self.id)
-    }
     /// `EntityType.isAllowedInPeaceful`, including a living mod type's override.
     pub fn allowed_in_peaceful(&self) -> bool {
         !self.flags.not_in_peaceful
@@ -602,7 +580,7 @@ impl MobTypes {
                         .or(def.food_tag())
                         .map_or_else(|| Arc::from(Vec::new()), tag),
                     passenger_attachments,
-                    type_key: EntityTypeKeyCell::default(),
+                    type_key: None,
                     category,
                     id,
                 },
@@ -5835,7 +5813,7 @@ pub mod sensor_scan_tests {
             food: Arc::default(),
             tempt: Arc::default(),
             passenger_attachments: Vec::new(),
-            type_key: EntityTypeKeyCell::default(),
+            type_key: None,
         })
     }
     #[test]

@@ -19,7 +19,7 @@ impl Game<'_> {
         armor_weapon: Option<sunrise_client::health::ArmorWeapon>,
     ) -> sunrise_client::Result<sunrise_client::health::BlockOutcome> {
         let rules = self.world.health_rules;
-        // One subscription decision for the hit's three levels: its loans and its reads.
+        // One subscription decision for the hit's three levels' attacker loans.
         let listened = sunrise_client::health::hit_host_listened();
         let helmet = self.armor[0]
             .as_ref()
@@ -38,8 +38,7 @@ impl Game<'_> {
                         self.mobs.iter_mut(),
                         attack.attacker
                     ),
-                    acting_equipment!(self);
-                    listened
+                    acting_equipment!(self)
                 ),
                 &self.health_resources,
                 rules,
@@ -71,8 +70,7 @@ impl Game<'_> {
                         listened,
                         self.mobs.iter_mut(),
                         attack.attacker
-                    );
-                    listened
+                    )
                 ),
                 &self.health_resources,
                 rules,
@@ -95,8 +93,7 @@ impl Game<'_> {
                         listened,
                         self.mobs.iter_mut(),
                         attack.attacker
-                    );
-                    listened
+                    )
                 ),
                 &self.health_resources,
                 rules,

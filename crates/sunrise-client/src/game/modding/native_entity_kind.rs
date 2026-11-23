@@ -4,18 +4,14 @@ use mod_api::{EntityRef, EntityTypeKey, LevelReadError, PushReaction};
 
 impl Game<'_> {
     pub(super) fn native_entity_kind_key(&self, target: Target) -> Option<EntityTypeKey> {
-        use super::native_living_body as living;
-        // A living entity's type keeps its key; other kinds resolve their name.
+        // A living entity's type key was resolved with the accepted resources; other kinds
+        // resolve their name.
+        let keys = self.res.living_type_keys();
         match target {
-            Target::Player | Target::Guest(_) => living::player_kind_key(),
-            Target::Mob(id) => self
-                .mobs
-                .iter()
-                .find(|mob| mob.id == id)?
-                .kind
-                .entity_type_key(),
-            Target::Stand(_) => living::armor_stand_kind_key(),
-            Target::Dragon(_) | Target::DragonPart(_) => living::ender_dragon_kind_key(),
+            Target::Player | Target::Guest(_) => keys.player,
+            Target::Mob(id) => self.mobs.iter().find(|mob| mob.id == id)?.kind.type_key,
+            Target::Stand(_) => keys.armor_stand,
+            Target::Dragon(_) | Target::DragonPart(_) => keys.ender_dragon,
             target => {
                 mod_api::__private::resolved_entity_type_key(self.native_entity_kind_name(target)?)
             }

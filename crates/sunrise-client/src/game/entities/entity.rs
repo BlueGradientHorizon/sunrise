@@ -1145,10 +1145,7 @@ impl Game<'_> {
             &self.damage_hooks,
         )
         .with_effects(crate::game::entity::hit_effects_of!(self, None))
-        .with_reads(crate::game::entity::hit_reads_of!(
-            self,
-            sunrise_client::health::hit_host_listened()
-        ));
+        .with_reads(crate::game::entity::hit_reads_of!(self));
         if let Some(hooks) = sunrise_client::block_contact::HOOKS.get() {
             (hooks.inside_fire)(
                 &mut level,
@@ -1785,15 +1782,16 @@ macro_rules! hit_effects_of {
 }
 /// What a hit's listeners need from `$game` to name and read the living entities the hit lends
 /// ([`HitReads`](sunrise_client::health::HitReads)), as field-level borrows; none before the
-/// world has an epoch, and none when `$listened` (the hit's one `hit_host_listened` decision)
-/// is false.
+/// world has an epoch. It asks nothing: the views it backs exist only inside a callback the
+/// hit dispatches, behind that callback's own subscription check.
 macro_rules! hit_reads_of {
-    ($game:expr, $listened:expr) => {
-        ($listened)
-            .then(|| $game.native_lifecycle.epoch())
-            .flatten()
+    ($game:expr) => {
+        $game
+            .native_lifecycle
+            .epoch()
             .map(|epoch| sunrise_client::health::HitReads {
                 epoch,
+                living_types: $game.res.living_type_keys(),
                 attributes: &$game.motion.attributes,
                 player_effects: Some(&$game.potions.effects),
                 player_equipment: acting_equipment!($game),
@@ -1804,17 +1802,6 @@ macro_rules! hit_reads_of {
     };
 }
 pub(super) use hit_reads_of;
-/// The hit's subscription decision: the one a site took (`; listened`), or, for a site that
-/// takes none, `hit_host_listened` asked once for its level.
-macro_rules! hit_listened {
-    () => {
-        sunrise_client::health::hit_host_listened()
-    };
-    ($listened:expr) => {
-        $listened
-    };
-}
-pub(super) use hit_listened;
 /// The level `$game` ticks, lent to a hit's damage hooks with its block registry and merged
 /// tag tables, so a mob or the player beside them can take the hit. `$attack` is the
 /// [`Attack`](sunrise_client::health::Attack) the site took first. Every site names what it
@@ -1823,10 +1810,8 @@ pub(super) use hit_listened;
 /// a check that pushes nothing), and the entity whose own random its listeners may draw
 /// (`$lend`: the attacker the site holds a live borrow of, built with `HitLend`, or `None` where
 /// it cannot lend one).
-/// A site that already asked whether a `HitHost` hook listens passes that decision after `;`, so
-/// the hit asks once for its loan and its reads.
 macro_rules! damage_level_of {
-    ($game:ident, $attack:expr, no_push, $lend:expr $(, $equipment:expr)? $(; $listened:expr)?) => {
+    ($game:ident, $attack:expr, no_push, $lend:expr $(, $equipment:expr)?) => {
         &mut sunrise_client::health::DamageLevel::of(
             &mut $game.world,
             $game.pack.assets.registry,
@@ -1838,13 +1823,10 @@ macro_rules! damage_level_of {
         .no_push()
         .with_mob_hurt_handoff(&mut $game.paused_mob_hurt)
         .with_effects(crate::game::entity::hit_effects_of!($game, $lend))
-        .with_reads(crate::game::entity::hit_reads_of!(
-            $game,
-            crate::game::entity::hit_listened!($($listened)?)
-        ))
+        .with_reads(crate::game::entity::hit_reads_of!($game))
         $(.with_player_equipment($equipment))?
     };
-    ($game:ident, $attack:expr, $credit:expr, $lend:expr $(; $listened:expr)?) => {
+    ($game:ident, $attack:expr, $credit:expr, $lend:expr) => {
         &mut sunrise_client::health::DamageLevel::of(
             &mut $game.world,
             $game.pack.assets.registry,
@@ -1856,10 +1838,7 @@ macro_rules! damage_level_of {
         .with_knockback_credit($credit)
         .with_mob_hurt_handoff(&mut $game.paused_mob_hurt)
         .with_effects(crate::game::entity::hit_effects_of!($game, $lend))
-        .with_reads(crate::game::entity::hit_reads_of!(
-            $game,
-            crate::game::entity::hit_listened!($($listened)?)
-        ))
+        .with_reads(crate::game::entity::hit_reads_of!($game))
     };
 }
 pub(super) use damage_level_of;

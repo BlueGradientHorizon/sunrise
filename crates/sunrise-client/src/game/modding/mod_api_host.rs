@@ -1027,7 +1027,8 @@ impl mod_api::__private::LivingReads for super::native_hooks::HitLevel<'_> {
         &self,
         party: mod_api::__private::LivingParty,
     ) -> Option<mod_api::EntityTypeKey> {
-        super::native_living_body::body_kind(self.party_body(party)?)
+        let keys = self.0.reads()?.living_types;
+        super::native_living_body::body_kind(self.party_body(party)?, keys)
     }
     fn living_holder(&self, party: mod_api::__private::LivingParty) -> Option<mod_api::Holder> {
         super::native_living_body::body_holder(self.party_body(party)?)

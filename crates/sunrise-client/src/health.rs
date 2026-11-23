@@ -379,6 +379,26 @@ pub struct PlayerBody<'a> {
     /// The stacks in vanilla `EquipmentSlot` order.
     pub equipment: PlayerEquipment<'a>,
 }
+/// The registry keys of the living types that are not mob types (`EntityType.PLAYER`,
+/// `ARMOR_STAND`, `ENDER_DRAGON`), resolved with the accepted resources, as a mob type keeps its
+/// own ([`crate::mobs::MobType::type_key`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LivingTypeKeys {
+    pub player: Option<mod_api::EntityTypeKey>,
+    pub armor_stand: Option<mod_api::EntityTypeKey>,
+    pub ender_dragon: Option<mod_api::EntityTypeKey>,
+}
+impl LivingTypeKeys {
+    /// The keys of the registry resolved now.
+    pub fn resolve() -> Self {
+        let key = mod_api::__private::resolved_entity_type_key;
+        Self {
+            player: key("minecraft:player"),
+            armor_stand: key("minecraft:armor_stand"),
+            ender_dragon: key("minecraft:ender_dragon"),
+        }
+    }
+}
 /// What a hit's listeners need to name and read the living entities it lends: the open of the
 /// world, the attribute catalog, the player in place's effects, stacks, UUID and attachments, and the
 /// entities' attachment maps, all lent for reading. Built by the game at the site; a level
@@ -386,6 +406,8 @@ pub struct PlayerBody<'a> {
 #[derive(Clone, Copy)]
 pub struct HitReads<'a> {
     pub epoch: mod_api::WorldEpoch,
+    /// The accepted resources' keys of the player, the armor stand and the dragon.
+    pub living_types: LivingTypeKeys,
     pub attributes: &'a std::sync::Arc<sunrise_world::attributes::entity::Catalog>,
     pub player_effects: Option<&'a crate::effects::PlayerEffects>,
     /// The player in place's stacks, in vanilla `EquipmentSlot` order.
