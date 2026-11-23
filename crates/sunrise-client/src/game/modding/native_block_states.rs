@@ -512,6 +512,9 @@ mod tests {
                 explosion_resistance: 100.0,
                 randomly_ticks: false,
                 drip_particle: Some("minecraft:dripping_water".into()),
+                temperature: 300,
+                density: 1000,
+                viscosity: 1000,
             };
             let lava = FluidTypeProperties {
                 description_id: "block.minecraft.lava".into(),
@@ -526,25 +529,38 @@ mod tests {
                 explosion_resistance: 100.0,
                 randomly_ticks: true,
                 drip_particle: Some("minecraft:dripping_lava".into()),
+                temperature: 1300,
+                density: 3000,
+                viscosity: 6000,
             };
-            let inert = |description_id: &str| FluidTypeProperties {
-                description_id: description_id.into(),
-                light_level: 0,
-                fall_distance_modifier: 1.0,
-                can_push_entity: false,
-                explosion_resistance: 0.0,
-                randomly_ticks: false,
-                drip_particle: None,
-                ..lava.clone()
+            // NeoForgeMod.EMPTY_TYPE states zeros; a tank-only fluid with no file keeps
+            // `FluidType.Properties`' defaults.
+            let inert = |description_id: &str, [temperature, density, viscosity]: [i32; 3]| {
+                FluidTypeProperties {
+                    description_id: description_id.into(),
+                    light_level: 0,
+                    fall_distance_modifier: 1.0,
+                    can_push_entity: false,
+                    explosion_resistance: 0.0,
+                    randomly_ticks: false,
+                    drip_particle: None,
+                    temperature,
+                    density,
+                    viscosity,
+                    ..lava.clone()
+                }
             };
             assert_eq!(read("minecraft:water"), water);
             assert_eq!(read("minecraft:flowing_water"), water);
             assert_eq!(read("minecraft:lava"), lava);
             assert_eq!(read("minecraft:flowing_lava"), lava);
-            assert_eq!(read("minecraft:empty"), inert("block.minecraft.air"));
+            assert_eq!(
+                read("minecraft:empty"),
+                inert("block.minecraft.air", [0; 3])
+            );
             assert_eq!(
                 read("sunrise:definition_test"),
-                inert("fluid_type.sunrise.definition_test")
+                inert("fluid_type.sunrise.definition_test", [300, 1000, 1000])
             );
             assert_eq!(host.fluid_key("minecraft:no_such_fluid"), None);
         });

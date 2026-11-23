@@ -8,6 +8,7 @@ use mod_api::{
     WeatheringAge,
 };
 use sunrise_client::items::ItemStack;
+use sunrise_mod_package::content::FluidMeasures;
 use sunrise_world::fluid::FluidKind;
 use sunrise_world::level::{fluid_drip_particle, fluid_explosion_resistance, fluid_randomly_ticks};
 use sunrise_world::registry::BlockStateId;
@@ -70,6 +71,28 @@ impl<'a> BlockTables<'a> {
         let kind = FluidKind::from_name(id);
         let water = kind.is_some_and(|kind| kind.same_family(FluidKind::Water));
         let lava = kind.is_some_and(|kind| kind.same_family(FluidKind::Lava));
+        // NeoForgeMod's EMPTY_TYPE and LAVA_TYPE state their own; water keeps
+        // `FluidType.Properties`' defaults, and a mod's fluid what its file states.
+        let measures = match kind {
+            Some(FluidKind::Empty) => FluidMeasures {
+                temperature: 0,
+                density: 0,
+                viscosity: 0,
+            },
+            _ if lava => FluidMeasures {
+                temperature: 1300,
+                density: 3000,
+                viscosity: 6000,
+            },
+            _ => {
+                let source = kind
+                    .and_then(FluidKind::mod_fluid)
+                    .map_or(id, |fluid| fluid.get().id.as_str());
+                sunrise_client::mod_content::fluid_look(source)
+                    .map(|look| look.measures)
+                    .unwrap_or_default()
+            }
+        };
         Some(FluidTypeProperties {
             description_id,
             light_level: block.map_or(0, |block| block.emission),
@@ -87,6 +110,9 @@ impl<'a> BlockTables<'a> {
             explosion_resistance: kind.map_or(0.0, fluid_explosion_resistance),
             randomly_ticks: kind.is_some_and(fluid_randomly_ticks),
             drip_particle: kind.and_then(fluid_drip_particle).map(str::to_owned),
+            temperature: measures.temperature,
+            density: measures.density,
+            viscosity: measures.viscosity,
         })
     }
 

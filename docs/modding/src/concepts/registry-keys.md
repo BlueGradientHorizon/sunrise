@@ -172,7 +172,7 @@ simulation or world state. Fluid stacks and recipe ingredients use these keys.
 Declare a fluid that exists in the world with `let mut fluid = WorldFluid::default(); fluid.drop_off = 2; r.declare_world_fluid("oil", fluid);`,
 using `mod_api::WorldFluid`, the code form of a fluid file's `world` object ([content mods](../how-to/content-mods.md)).
 For `mymod`, this adds the block `mymod:oil`, flowing fluid `mymod:flowing_oil` and bucket `mymod:oil_bucket`.
-The optional file `data/<namespace>/sunrise/fluid/<path>.json` describes its appearance.
+The optional file `data/<namespace>/sunrise/fluid/<path>.json` describes its appearance and its `FluidType` temperature, density and viscosity.
 `r.fluid_part("mymod:oil", Part)` attaches a `FluidPart`, whose `fluid_rules` can change the
 declared values by position on the server. It is asked for every cell a spread looks at, so answer fast.
 

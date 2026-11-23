@@ -142,7 +142,8 @@ pub fn menu_types(mods: &[ContentMod]) -> Vec<(&MenuType, &str)> {
 static FLUID_LOOKS: std::sync::RwLock<BTreeMap<String, FluidLook>> =
     std::sync::RwLock::new(BTreeMap::new());
 
-/// Remembers how the mods' fluids look (`data/<id>/sunrise/fluid/`), for what the client draws.
+/// Remembers how the mods' fluids look (`data/<id>/sunrise/fluid/`), for what the client draws,
+/// and their measures, for `FluidTypeProperties` on either side.
 pub fn set_fluid_looks(mods: &[ContentMod]) {
     let looks: BTreeMap<String, FluidLook> = mods
         .iter()
