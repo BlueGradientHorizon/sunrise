@@ -176,13 +176,25 @@ impl Game<'_> {
     pub(super) fn nether_lighting(&self) -> bool {
         self.dimension_type().cardinal_light == CardinalLight::Nether
     }
-    /// `SkyRenderer`'s overworld skybox: sun, moon, stars and clouds.
+    /// `SkyRenderer`'s overworld skybox: sun, moon and stars.
     pub(super) fn overworld_skybox(&self) -> bool {
         self.dimension_type().skybox == Skybox::Overworld
     }
     /// `SkyRenderer`'s End skybox and its flashes.
     pub(super) fn end_skybox(&self) -> bool {
         self.dimension_type().skybox == Skybox::End
+    }
+    /// `LevelRenderer.prepareTranslucents`: prepare the clouds the frame draws.
+    pub(super) fn frame_cloud_uv(
+        &self,
+        title: bool,
+        sky: &sunrise_client::environment::Sky,
+    ) -> Option<[f32; 2]> {
+        if title || !sunrise_client::clouds::visible(&self.settings.clouds, sky.cloud_color[3]) {
+            return None;
+        }
+        let white = self.gui.atlas.sprites.get("sunrise/white")?;
+        Some([(white.u0 + white.u1) / 2.0, (white.v0 + white.v1) / 2.0])
     }
     pub(super) fn forward(&self) -> [f64; 3] {
         let (yaw, pitch) = (
