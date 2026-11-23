@@ -279,6 +279,7 @@ impl Game<'_> {
         };
         let center = match hit {
             Hit::Entity { who, at } => {
+                self.remember_projectile_target(p, who);
                 self.wind_charge_damage(p, who);
                 [at.x, at.y, at.z]
             }
@@ -1011,6 +1012,7 @@ mod tests {
         assert!(!push_waits_for_tick(false, 3, Some(7)), "ticks before it");
         assert!(!push_waits_for_tick(true, 3, None), "not a charge's burst");
         let tnt = crate::game::tnt::PrimedTnt {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             rotation: [0.0, 0.0],
             id: 1,
