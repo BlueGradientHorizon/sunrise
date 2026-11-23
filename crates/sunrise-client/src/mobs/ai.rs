@@ -3626,9 +3626,10 @@ fn burn_undead(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
         }
     }
 }
-/// `Mob.isSunBurnTick`: whether a mob that burns in daylight catches fire this tick. A native
-/// mod answers here through `[[native.mixin]]`, where a Java mod's mixin on `isSunBurnTick`
-/// spares one mob from the sun (#4678).
+/// `Mob.isSunBurnTick`: whether the sun reaches a mob that burns in daylight this tick. On
+/// `true` the caller applies the exposure, which may wear its protective equipment instead of
+/// igniting it (`burn_undead`). A native mod answers here through `[[native.mixin]]`, where a
+/// Java mod's mixin on `isSunBurnTick` spares one mob from the sun (#4678).
 #[sunrise_mod_api_macros::replaceable]
 fn sun_burn_tick(m: &mut Mob, w: &MobWorld) -> bool {
     // Mob.isSunBurnTick: the monsters_burn attribute, not the sky darkness.
