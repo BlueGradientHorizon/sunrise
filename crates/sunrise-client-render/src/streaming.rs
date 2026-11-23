@@ -2868,6 +2868,22 @@ impl Streaming {
         self.lighting.contains_key(&key)
     }
 
+    /// The columns whose light is not settled: queued or running whole-column jobs and the
+    /// columns an unapplied edit can still reach (light spreads at most one column).
+    pub fn columns_with_outstanding_light(&self, world: &World) -> Vec<(i32, i32)> {
+        let mut columns: FxHashSet<(i32, i32)> = self.lighting.keys().copied().collect();
+        columns.extend(world.dirty_light.iter().copied());
+        for &((x, _, z), _, _) in &world.light_edits {
+            let (cx, cz) = (x >> 4, z >> 4);
+            for dz in -1..=1 {
+                for dx in -1..=1 {
+                    columns.insert((cx + dx, cz + dz));
+                }
+            }
+        }
+        columns.into_iter().collect()
+    }
+
     /// Whether this level has light work still running or ready to schedule.
     pub fn has_pending_light(&self, world: &World) -> bool {
         !self.lighting.is_empty()

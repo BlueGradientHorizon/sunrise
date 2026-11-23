@@ -2041,6 +2041,15 @@ impl Game<'_> {
         // Vanilla saves the level's chunks before their unload hooks.
         self.native_chunks_loaded();
         self.abort_abandoned_transactions(0);
+        // Light still queued or in flight would be saved with the new blocks under the old
+        // light arrays marked on: a column it can reach is saved unlit and relit on reopen.
+        for key in self.streaming.columns_with_outstanding_light(&self.world) {
+            if let Some(chunk) = self.world.chunks.get_mut(&key) {
+                Arc::make_mut(chunk).lit = false;
+                // A close that fails leaves the level parked: it relights.
+                self.world.dirty_light.insert(key);
+            }
+        }
         if let Err(why) = self.save_level(true) {
             // Not saved: the level stays parked, and the level in place is the one before.
             self.enter_level(back)?;
