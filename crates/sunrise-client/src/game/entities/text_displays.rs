@@ -956,6 +956,7 @@ impl Game<'_> {
         let mut round = self.native_tick_round();
         if !round.listening() {
             for id in eligible {
+                self.count_client_tick(id as u32);
                 self.tick_and_file_display(id);
             }
             return;
@@ -978,12 +979,22 @@ impl Game<'_> {
         }
         self.native_tick_pre_batch(&mut round);
         for id in batch {
-            if !round.canceled(id as u32) {
+            let ticks = !round.canceled(id as u32);
+            self.count_told_client_tick(id as u32, ticks);
+            if ticks {
                 self.tick_and_file_display(id);
             }
         }
         for (id, kind) in alone {
+            // A passenger's ride visit counts it before its own Pre.
+            let passenger = self.client_passenger(id as u32);
+            if passenger {
+                self.count_client_tick(id as u32);
+            }
             if self.native_tick_pre_one(&mut round, id as u32, kind) {
+                if !passenger {
+                    self.count_client_tick(id as u32);
+                }
                 self.tick_and_file_display(id);
                 self.native_tick_post_one(&round, id as u32, kind);
             }
