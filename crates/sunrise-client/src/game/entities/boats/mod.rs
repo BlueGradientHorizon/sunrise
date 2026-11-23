@@ -2181,6 +2181,7 @@ impl Game<'_> {
                 }
                 self.special_attack_slowdown(knockback);
             }
+            self.remember_player_target(None);
             self.special_attack_exhaustion();
         }
         // Player.onAttack: the hit starts the attack strength again.

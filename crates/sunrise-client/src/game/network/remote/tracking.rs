@@ -97,6 +97,7 @@ impl Game<'_> {
                     mod_fire_immune: false,
                     silent: false,
                     vehicle: None,
+                    tick_count: 0,
                 },
             );
         }

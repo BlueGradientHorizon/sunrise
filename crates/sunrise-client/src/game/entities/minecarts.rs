@@ -2855,6 +2855,7 @@ impl Game<'_> {
         let lid = |_: [i32; 3]| 0.0;
         let scene = sunrise_client::block_entity_render::Scene {
             camera: glam::DVec3::ZERO,
+            sign_outline: sunrise_client::block_entity_render::SignOutline::None,
             orientation: glam::Quat::IDENTITY,
             anim: &|_| sunrise_client::block_entity_render::BlockAnim::default(),
             texts: None,
