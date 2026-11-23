@@ -109,8 +109,10 @@ pub enum AttachmentError {
     Encode,
     /// A namespace in the saved compound is not a compound.
     InvalidNamespace,
-    /// Copy-on-death requires a serializer.
+    /// Copy-on-death requires an already configured serializer.
     InvalidCopyPolicy,
+    /// A persistence serializer has already been configured.
+    DuplicateSerializer,
     /// Attachment sync policy does not match its load-time declaration.
     InvalidSyncPolicy,
     /// The holder's physical storage is temporarily extracted or lifted.

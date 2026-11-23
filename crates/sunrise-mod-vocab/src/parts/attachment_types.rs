@@ -24,6 +24,7 @@ pub struct AttachmentDescriptor<T: 'static> {
     codec: Option<AttachmentCodec<T>>,
     copy_on_death: bool,
     sync_codec: Option<AttachmentCodec<T>>,
+    refusal: Option<AttachmentError>,
 }
 
 impl<T: 'static> AttachmentDescriptor<T> {
@@ -40,12 +41,19 @@ impl<T: 'static> AttachmentDescriptor<T> {
             codec: None,
             copy_on_death: false,
             sync_codec: None,
+            refusal: None,
         }
     }
 
     /// Persist this attachment to disk with `codec`.
+    /// A second call leaves the first codec in place and makes registration fail.
     pub fn serialize(mut self, codec: AttachmentCodec<T>) -> Self {
-        self.codec = Some(codec);
+        if self.codec.is_some() {
+            self.refusal
+                .get_or_insert(AttachmentError::DuplicateSerializer);
+        } else {
+            self.codec = Some(codec);
+        }
         self
     }
 
@@ -55,9 +63,15 @@ impl<T: 'static> AttachmentDescriptor<T> {
         self
     }
 
-    /// Copy this attachment when a player respawns from death. Requires [`serialize`](Self::serialize).
-    pub const fn copy_on_death(mut self) -> Self {
-        self.copy_on_death = true;
+    /// Copy this attachment when a player respawns from death.
+    /// Calling this before [`serialize`](Self::serialize) makes registration fail.
+    pub fn copy_on_death(mut self) -> Self {
+        if self.codec.is_none() {
+            self.refusal
+                .get_or_insert(AttachmentError::InvalidCopyPolicy);
+        } else {
+            self.copy_on_death = true;
+        }
         self
     }
 
@@ -182,6 +196,9 @@ impl<T: Send + Sync + 'static> From<AttachmentDescriptor<T>> for ErasedAttachmen
             sync: descriptor.sync_codec.is_some(),
         };
         let build: BuildAttachmentRecord = Box::new(move |namespace, name, owner| {
+            if let Some(error) = descriptor.refusal {
+                return Err(error);
+            }
             let checked = CheckedAttachmentType::new(AttachmentType {
                 namespace,
                 name,
@@ -920,12 +937,30 @@ mod tests {
         assert_eq!(record.owner(), "owner_mod");
         assert!(!record.has_codec());
         assert!(record.is_synced());
+    }
 
-        let bad_copy = AttachmentDescriptor::new("owner_mod:mana", || 0i32).copy_on_death();
+    #[test]
+    fn descriptor_refuses_duplicate_serializer_and_death_copy_before_serializer() {
+        let descriptor = || AttachmentDescriptor::new("owner_mod:mana", || 0i32);
+        let build = |descriptor: AttachmentDescriptor<i32>| {
+            let descriptor: ErasedAttachmentDescriptor = descriptor.into();
+            (descriptor.build)("owner_mod", "mana", "owner_mod").map(|_| ())
+        };
         assert_eq!(
-            check_attachment_descriptor(bad_copy.into(), "owner_mod").unwrap_err(),
-            "copy_on_death requires a serializer"
+            build(descriptor().serialize(i32_codec()).serialize(i32_codec())),
+            Err(AttachmentError::DuplicateSerializer)
         );
+        assert_eq!(
+            build(descriptor().copy_on_death().serialize(i32_codec())),
+            Err(AttachmentError::InvalidCopyPolicy)
+        );
+        let valid = check_attachment_descriptor(
+            descriptor().serialize(i32_codec()).copy_on_death().into(),
+            "owner_mod",
+        )
+        .unwrap();
+        assert!(valid.has_codec());
+        assert!(valid.policy().copy_on_death);
     }
 
     #[test]
