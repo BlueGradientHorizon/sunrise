@@ -17,7 +17,7 @@ See [stability and versioning](stability.md) for how to read the stability label
 
 Vanilla Minecraft: Java Edition 26.3 is the specification for game behaviour. Mod API hooks use NeoForge 26.3
 as the design reference for names and shapes where a counterpart exists; see the generated
-[Hook notes](../modding/src/reference/hook-notes.md) for the exact Sunrise contracts and any differences.
+[Hook notes](https://sunrise-org.github.io/sunrise/reference/hook-notes.html) for the exact Sunrise contracts and any differences.
 Single player runs on an integrated server thread and uses the same server-side gameplay code as LAN and
 dedicated servers.
 

@@ -178,7 +178,7 @@ Submit `mods/<id>.toml` to the registry with `icons/<id>.png` if an icon was sta
 points to your release asset. Registry CI downloads it from there, verifies it and mirrors it after merge.
 For a new version of an existing listing, use `--registry <checkout>` instead of the page flags.
 If the existing listing is unsigned and still contains unsigned version rows, `publish --registry` refuses
-adding a key; see [the registry entry rules](../reference/registry-index.md#the-entry) for the manual update steps.
+adding a key; see [Adding a signing key to an unsigned entry](../reference/registry-index.md#adding-a-signing-key-to-an-unsigned-entry).
 
 ## Publishing native binaries
 
