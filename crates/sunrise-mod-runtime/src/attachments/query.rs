@@ -392,6 +392,7 @@ mod tests {
         Arc::new(AttachmentEntry {
             state: super::super::Entry::Decoded(Decoded {
                 value: Arc::new(value),
+                persistence: None,
                 encoded: None,
                 synced: None,
                 policy: AttachmentPolicy {
