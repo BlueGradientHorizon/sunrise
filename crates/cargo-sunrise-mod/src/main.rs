@@ -125,8 +125,12 @@ fn main() -> ExitCode {
         Some("native-layout") => return native_build::layout(&args[1..]),
         Some("internals") => internals::run(&args[1..]),
         Some("pin") => pin_args(&args[1..]).and_then(|build| {
-            sdk_cmds::pin_report(entry, Path::new("."), build)
-                .and_then(|()| repin(Path::new("."), &sdk_fetch::fetch_build, build))
+            // Resolved once: the report and the manifest name the same build, even when a Nightly
+            // is published in between.
+            let requested = build.unwrap_or(sunrise_release_sign::NIGHTLY);
+            let sunrise = resolve_build(requested)?;
+            sdk_cmds::pin_report(entry, Path::new("."), &sunrise)
+                .and_then(|()| repin(Path::new("."), &sdk_fetch::fetch_build, requested, &sunrise))
                 .map(|()| println!("Run `cargo sunrise-mod check`."))
         }),
         None | Some("--help" | "-h") => {
@@ -488,34 +492,40 @@ fn pin_args(args: &[String]) -> Result<Option<&str>, String> {
 
 /// Repins a native mod. Declared internals are checked against the new build before writing.
 /// `Cargo.toml` names the SDK by path, so the next command fetches the new one.
-fn repin(dir: &Path, fetch: FetchSdk, build: Option<&str>) -> Result<(), String> {
+fn repin(dir: &Path, fetch: FetchSdk, requested: &str, sunrise: &str) -> Result<(), String> {
     let path = dir.join(MANIFEST);
     let text = bounded::read(&path, bounded::MAX_MANIFEST)?;
     let manifest = Manifest::parse(&text)?;
     let Some(native) = manifest.native.as_ref() else {
         return Err(format!("{MANIFEST}: a content mod pins no game build"));
     };
-    let requested = build.unwrap_or(sunrise_release_sign::NIGHTLY);
-    let sunrise = resolve_build(requested)?;
     // The new build's SDK must exist and verify before anything is written; the mixins revision
     // is the SDK's own unless the manifest pins one.
-    fetch(dir, &sunrise).map_err(|e| sdk_fetch::named(requested, &sunrise, e))?;
+    fetch(dir, sunrise).map_err(|e| sdk_fetch::named(requested, sunrise, e))?;
     let mut doc: toml_edit::DocumentMut = text
         .parse()
         .map_err(|e| format!("{}: {e}", path.display()))?;
     if !manifest.internals.is_empty() {
         // #2593: these become the pinned catalogs with the mod's own modules applied.
         let old = internals::load(dir, &native.sunrise)?;
-        let new = internals::load(dir, &sunrise)?;
+        let new = internals::load(dir, sunrise)?;
         print!("{}", internals::refresh(&manifest, &mut doc, &old, &new)?);
     }
     internals::set_string(
         doc["native"]["sunrise"].as_value_mut().expect("native pin"),
-        &sunrise,
+        sunrise,
     );
     // Every check passes before anything is written.
     let text = doc.to_string();
     Manifest::parse(&text)?;
+    // A cloned project's linked manifest must not repin a file outside it.
+    let inside = |p: &Path| std::fs::canonicalize(p).map_err(|e| format!("{}: {e}", p.display()));
+    if !inside(&path)?.starts_with(inside(dir)?) {
+        return Err(format!(
+            "{} links outside the project; pin it where it is",
+            path.display()
+        ));
+    }
     internals::atomic_write_manifest(&path, text)?;
     // The old pin's SDK goes; the next command fetches this one.
     if let Err(e) = std::fs::remove_dir_all(dir.join(sdk_fetch::DIR))
@@ -1073,8 +1083,24 @@ mod tests {
         // A build whose SDK cannot be fetched: nothing is written.
         let broken = |_: &Path, _: &str| Err("no such build".to_owned());
         let newer = "89abcdef0123456789abcdef0123456789abcdef";
-        assert!(repin(&path, &broken, Some(newer)).is_err());
+        assert!(repin(&path, &broken, newer, newer).is_err());
         assert_eq!(std::fs::read(path.join(MANIFEST)).unwrap(), before);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pin_leaves_a_manifest_linked_outside_the_project_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("greeter");
+        new(&code_args(&path, "native"), &offline).unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let real = outside.path().join(MANIFEST);
+        std::fs::rename(path.join(MANIFEST), &real).unwrap();
+        std::os::unix::fs::symlink(&real, path.join(MANIFEST)).unwrap();
+        let before = std::fs::read(&real).unwrap();
+        let newer = "89abcdef0123456789abcdef0123456789abcdef";
+        assert!(repin(&path, &offline, newer, newer).is_err());
+        assert_eq!(std::fs::read(&real).unwrap(), before);
     }
 
     #[test]
@@ -1082,7 +1108,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("gems");
         new(&[path.display().to_string()], &offline).unwrap();
-        let error = repin(&path, &offline, None).unwrap_err();
+        let error = repin(
+            &path,
+            &offline,
+            "nightly",
+            "89abcdef0123456789abcdef0123456789abcdef",
+        )
+        .unwrap_err();
         assert!(error.contains("pins no game build"), "{error}");
     }
 
@@ -1432,7 +1464,8 @@ mod tests {
             .contains("is not a build")
         );
         let newer = "89abcdef0123456789abcdef0123456789abcdef";
-        repin(&path, &offline, Some(newer)).unwrap();
+        // The resolved build is written as given: `nightly` is not resolved again.
+        repin(&path, &offline, "nightly", newer).unwrap();
         let manifest =
             Manifest::parse(&std::fs::read_to_string(path.join(MANIFEST)).unwrap()).unwrap();
         let native = manifest.native.unwrap();

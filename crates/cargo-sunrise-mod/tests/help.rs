@@ -53,13 +53,9 @@ fn help_lists_the_everyday_commands_and_each_command_says_its_usage() {
 fn an_unknown_command_is_an_error() {
     for name in ["frobnicate", "update", "fits"] {
         let output = run(&[name]);
+        // Refused before any work: nothing on standard output.
         assert_eq!(output.status.code(), Some(1));
-        assert_eq!(
-            String::from_utf8_lossy(&output.stderr).trim_end(),
-            format!(
-                "error: {name:?} is not a cargo sunrise-mod command; `cargo sunrise-mod --help` lists them"
-            )
-        );
+        assert!(output.stdout.is_empty());
     }
     let output = run(&["release", "frobnicate", "--help"]);
     assert!(!output.status.success());

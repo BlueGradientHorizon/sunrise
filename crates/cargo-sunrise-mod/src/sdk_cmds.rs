@@ -378,14 +378,33 @@ fn fit_lines(entry: ChildEntry, package: Option<&Path>, builds: &[&str]) -> Resu
     let mut baseline: Option<Result<(), String>> = None;
     println!("{name}:");
     let (mut all, mut known) = (true, true);
+    // Each build gets its own verdict: one that cannot be fetched or compared is not known, and
+    // the rest are still checked.
     for build in builds {
-        let target = fetch_build(project, build)?;
+        let target = match fetch_build(project, build).and_then(|target| {
+            let surface = surface_of(&target)?;
+            Ok((target, surface))
+        }) {
+            Ok(target) => target,
+            Err(why) => {
+                known = false;
+                println!("{build}  not known: {why}");
+                continue;
+            }
+        };
+        let (target, target_surface) = target;
         if target.build == table.made_for {
             println!("{}  made for", target.name);
             continue;
         }
-        let target_surface = surface_of(&target)?;
-        let game = game_fit(project, &manifest, &table, &target)?;
+        let game = match game_fit(project, &manifest, &table, &target) {
+            Ok(game) => game,
+            Err(why) => {
+                known = false;
+                println!("{}  not known: {why}", target.name);
+                continue;
+            }
+        };
         let Comparison {
             report,
             mut compared,
@@ -411,7 +430,9 @@ fn fit_lines(entry: ChildEntry, package: Option<&Path>, builds: &[&str]) -> Resu
         if let Some(why) = &uncompared
             && !matches!(answer, Fit::DoesNotFit(_))
         {
-            return Err(why.clone());
+            known = false;
+            println!("{}  not known: {why}", target.name);
+            continue;
         }
         match answer {
             Fit::Fits if !compared.unjudged.is_empty() => {
@@ -600,7 +621,7 @@ pub(crate) fn closest<'s>(old: &Surface, new: &'s Surface, id: &str) -> Option<R
 /// What moving the pin from the build the mod is pinned to to `to` (the current Nightly when
 /// `None`) breaks in this mod, item by item with the lines that use it; printed before `pin`
 /// repins. A mod made for exactly one build is only named.
-pub(crate) fn pin_report(entry: ChildEntry, root: &Path, to: Option<&str>) -> Result<(), String> {
+pub(crate) fn pin_report(entry: ChildEntry, root: &Path, to: &str) -> Result<(), String> {
     let parsed = crate::read_manifest(root)?;
     let name = &parsed.name;
     let exact_line = || {
@@ -624,7 +645,7 @@ pub(crate) fn pin_report(entry: ChildEntry, root: &Path, to: Option<&str>) -> Re
         }
         Scanned::Unread(why) => return Err(why),
     };
-    let new = fetch_build(root, to.unwrap_or("nightly"))?;
+    let new = fetch_build(root, to)?;
     let new_surface = surface_of(&new)?;
     let notes = migrate_notes(&build_notes(&new)?);
     print!(
@@ -926,7 +947,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            pin_report(mod_surface::child::child_entry(), dir.path(), None),
+            pin_report(mod_surface::child::child_entry(), dir.path(), "nightly"),
             Ok(())
         );
         assert!(!dir.path().join(".sunrise").exists());
