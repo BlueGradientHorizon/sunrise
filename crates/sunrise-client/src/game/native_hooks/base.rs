@@ -1582,8 +1582,8 @@ impl Game<'_> {
             requested_port,
             protocol_version,
             peer_ip,
-            cancel,
             reason,
+            cancel,
         );
     }
     /// A player whose login the server has accepted (NeoForge's
