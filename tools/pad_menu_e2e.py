@@ -1826,8 +1826,8 @@ def shell_choice_step(args, name):
     return check.failures
 
 
-ZOOM_INSTALL = 'Zoom: install from Mods'
-# How far a group's name sits over its first row (`graphics_style::GROUP_ROW`): the list's top from the Mods note.
+# How far a group's name sits over its first row (`graphics_style::GROUP_ROW`): the list's top from the
+# first group's first row, Sunrise Graphics..., before anything scrolls.
 GROUP_NAME_H = 14
 STICK_NOTCHES = 8
 
@@ -1844,14 +1844,13 @@ def extras_shell_edges(args, name):
         game.pad('down')
         check('Sunrise Graphics' in (game.focused_label() or ''),
               f'down from the search field went to {game.focused_label()}, not Sunrise Graphics...')
+        graphics_row = game.focus()
         check(focus_extra(game, FIRST_EXTRA), f'the D-pad never reached {FIRST_EXTRA}: {game.focused_label()}')
 
         # The right stick moves the list until the focused row's middle is above the list's top.
-        note = label_of(game, ZOOM_INSTALL)
-        check(note is not None, f'no Mods note to find the list by: {labels(game)}')
-        if not note or FIRST_EXTRA not in (game.focused_label() or ''):
+        if not graphics_row or FIRST_EXTRA not in (game.focused_label() or ''):
             return check.failures
-        top = note['bounds'][1] - GROUP_NAME_H
+        top = graphics_row[1] - GROUP_NAME_H
         before = game.focused_label()
         for _ in range(STICK_NOTCHES):
             focus = game.focus()
