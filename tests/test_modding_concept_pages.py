@@ -189,5 +189,32 @@ class ConceptPages(unittest.TestCase):
                 pages.check_html(output, self.src / "concepts/..")
 
 
+class BookSourceGuards(unittest.TestCase):
+    def setUp(self):
+        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.src = root / "src"
+        self.html = root / "html"
+
+    def write_page(self, name, text):
+        source = self.src / name
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text(text, encoding="utf-8")
+        if source.name != "SUMMARY.md":
+            rendered = (self.html / name).with_suffix(".html")
+            rendered.parent.mkdir(parents=True, exist_ok=True)
+            rendered.write_text("<html></html>", encoding="utf-8")
+
+    def test_duplicate_h1_is_case_insensitive_across_folders(self):
+        self.write_page("concepts/parts.md", "# Registry keys\n")
+        self.write_page("reference/keys.md", "# Registry Keys {#reference-keys}\n")
+        with self.assertRaisesRegex(AssertionError, r"reference/keys\.md: duplicate H1 .*concepts/parts\.md"):
+            pages.check_html(self.html, self.src)
+
+    def test_fenced_h1_is_ignored_when_checking_duplicate_titles(self):
+        self.write_page("concepts/parts.md", "# Registry keys\n")
+        self.write_page("reference/keys.md", "# Other page\n\n~~~markdown\n# Registry keys\n~~~\n")
+        pages.check_html(self.html, self.src)
+
+
 if __name__ == "__main__":
     unittest.main()
