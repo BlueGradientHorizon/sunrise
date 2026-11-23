@@ -11614,22 +11614,19 @@ impl Game<'_> {
             hud: &hud,
             glint_alpha: self.glint_frame.alpha,
             glint_ticks: self.glint_frame.scroll_ticks(),
-            clouds: (!title
-                && self.overworld_skybox()
-                && sunrise_client::clouds::visible(&self.settings.clouds, sky.cloud_color[3]))
-            .then(|| self.gui.atlas.sprites.get("sunrise/white"))
-            .flatten()
-            .map(|white| sunrise_client::clouds::Input {
-                texture: &self.pack.clouds,
-                uv: [(white.u0 + white.u1) / 2.0, (white.v0 + white.v1) / 2.0],
-                camera,
-                time: self.world.game_time,
-                partial_tick: alpha,
-                range: self.settings.cloud_range,
-                fast: self.settings.clouds == "fast",
-                color: sky.cloud_color,
-                height: sky.cloud_height,
-            }),
+            clouds: self
+                .frame_cloud_uv(title, &sky)
+                .map(|uv| sunrise_client::clouds::Input {
+                    texture: &self.pack.clouds,
+                    uv,
+                    camera,
+                    time: self.world.game_time,
+                    partial_tick: alpha,
+                    range: self.settings.cloud_range,
+                    fast: self.settings.clouds == "fast",
+                    color: sky.cloud_color,
+                    height: sky.cloud_height,
+                }),
             entities: &entities,
             explicit_particles: Some(&explicit_particle_quads),
             static_block_entities: &static_block_entities,
