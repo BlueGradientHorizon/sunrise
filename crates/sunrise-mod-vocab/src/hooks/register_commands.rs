@@ -21,8 +21,9 @@ pub trait Hooks {
     /// level for that node. Only that node's executor runs, attributed to its mod; if the
     /// owner is disabled, execution is refused rather than handed to another mod.
     /// Clients get the command tree, not executors. An argument's kind is one
-    /// of `word`, `text`, `integer`, `integer(min,max)`, `long`, `long(min,max)`, `number`,
-    /// `boolean`, `player`, `item`, `block_pos` and `vec3`, or a command argument type a mod
+    /// of `word`, `string` (a word or a quoted phrase), `text`, `integer`, `integer(min,max)`,
+    /// `long`, `long(min,max)`, `number`, `boolean`, `player`, `item`, `block_pos` and `vec3`,
+    /// or a command argument type a mod
     /// registered (`Registrar::register_command_argument`), named by its namespaced id.
     #[notes = r#"## Command argument kinds beyond the basics
 

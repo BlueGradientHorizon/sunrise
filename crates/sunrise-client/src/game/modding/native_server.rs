@@ -5015,6 +5015,112 @@ mod tests {
         assert_eq!(error.message, Text::tr("argument.integer.big", &[&64, &65]));
     }
 
+    /// `<name:string>` and a type declaring `CommandArgumentKind::Quotable` read Brigadier's
+    /// `StringArgumentType.string()`: a word or a quoted phrase, decoded, with an argument after
+    /// it. Both go to clients as `brigadier:string` in its quotable mode; only the mod's type asks
+    /// the server for completions, as `word` and a `Word` type do.
+    #[test]
+    fn a_string_usage_and_a_quotable_type_read_a_quoted_phrase_before_the_next_argument() {
+        struct QuestObject;
+        impl mod_api::CommandArgumentType for QuestObject {
+            fn kind(&self) -> mod_api::CommandArgumentKind {
+                mod_api::CommandArgumentKind::Quotable
+            }
+            fn parse(&self, input: &str) -> Result<String, mod_api::CommandArgumentError> {
+                Ok(input.to_lowercase())
+            }
+            fn suggest(
+                &self,
+                _: Option<&mod_api::CommandSender>,
+                _: &str,
+            ) -> Vec<mod_api::CommandSuggestion> {
+                Vec::new()
+            }
+        }
+        let arguments: CommandArguments = HashMap::from([(
+            "test:quest_object".to_owned(),
+            Arc::new(QuestObject) as Arc<dyn mod_api::CommandArgumentType>,
+        )]);
+        let (t, _, problems) = command_tree(
+            &[
+                mod_api::Command::new("quests open <object:test:quest_object> <count:integer>"),
+                mod_api::Command::new("quests rename <title:string> <count:integer>"),
+            ],
+            &Dispatcher::new(),
+            &arguments,
+        );
+        assert!(problems.is_empty(), "{problems:?}");
+        let quests = &t["children"]["quests"]["children"];
+        let object = &quests["open"]["children"]["object"];
+        assert_eq!(object["parser"], "brigadier:string");
+        assert_eq!(object["properties"], json!({"type": "phrase"}));
+        assert_eq!(object["custom_argument"], "test:quest_object");
+        assert_eq!(object["suggestions"], "minecraft:ask_server");
+        let title = &quests["rename"]["children"]["title"];
+        assert_eq!(title["parser"], "brigadier:string");
+        assert_eq!(title["properties"], json!({"type": "phrase"}));
+        assert_eq!(
+            title["suggestions"],
+            Value::Null,
+            "vanilla's string suggests nothing"
+        );
+
+        let mut dispatcher = Dispatcher::new();
+        register_dispatcher(&mut dispatcher, &t, "native_mod_command", &arguments);
+        let registries = sunrise_client::command::Registries::default();
+        for (line, value) in [
+            (r##"quests open "#Chapter_One" 3"##, "#chapter_one"),
+            ("quests open 1A2B3C4D5E6F7A8B 3", "1a2b3c4d5e6f7a8b"),
+            (r#"quests open "" 3"#, ""),
+        ] {
+            let parsed = dispatcher.parse(line, &registries);
+            let (context, _) = parsed
+                .executable()
+                .unwrap_or_else(|e| panic!("{line}: {e:?}"));
+            assert_eq!(
+                context.get("object"),
+                Some(&Arg::Custom {
+                    kind: "test:quest_object".into(),
+                    value: value.into(),
+                }),
+                "{line}"
+            );
+            assert_eq!(context.get("count"), Some(&Arg::Int(3)), "{line}");
+        }
+        for (line, value) in [
+            (
+                r#"quests rename "Getting \"Started\"" 2"#,
+                r#"Getting "Started""#,
+            ),
+            (r"quests rename 'back\\slash' 2", r"back\slash"),
+            ("quests rename '' 2", ""),
+            ("quests rename Plain 2", "Plain"),
+        ] {
+            let parsed = dispatcher.parse(line, &registries);
+            let (context, _) = parsed
+                .executable()
+                .unwrap_or_else(|e| panic!("{line}: {e:?}"));
+            assert_eq!(
+                context.get("title"),
+                Some(&Arg::Str(value.into())),
+                "{line}"
+            );
+            assert_eq!(context.get("count"), Some(&Arg::Int(2)), "{line}");
+        }
+        for line in [r#"quests rename "Getting 2"#, r#"quests open "Getting 2"#] {
+            let error = dispatcher
+                .parse(line, &registries)
+                .executable()
+                .unwrap_err();
+            assert_eq!(
+                error.message,
+                Text::tr("parsing.quote.expected.end", &[]),
+                "{line}"
+            );
+            assert_eq!(error.cursor, line.len(), "{line}");
+        }
+    }
+
     /// NeoForge's `RegisterCommandsEvent` registers into vanilla's dispatcher, whose literal
     /// merges by Brigadier's `CommandNode.addChild`: a mod usage under `/time` sits beside
     /// vanilla's, which stay; vanilla's node keeps its permission; an executor at a vanilla node

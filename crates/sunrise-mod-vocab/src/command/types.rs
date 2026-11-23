@@ -36,8 +36,9 @@ pub fn split_command_registration(
 /// A usage is words followed by arguments `<name:kind>`, with optional arguments
 /// last in brackets `[name:kind]`:
 /// `pay <player:player> <amount:integer>`, `balance [player:player]`,
-/// `eco give <player:player> <amount:integer>`. Kinds: `word`, `text` (the
-/// rest of the line, last), `integer`, `integer(min,max)` (Brigadier's
+/// `eco give <player:player> <amount:integer>`. Kinds: `word`, `string` (one word or one
+/// `"quoted"` / `'quoted'` phrase, Brigadier's `StringArgumentType.string()`; delivered decoded as
+/// `String`, and other arguments may follow it), `text` (the rest of the line, last), `integer`, `integer(min,max)` (Brigadier's
 /// `IntegerArgumentType.integer(min, max)`; either bound may be left empty, `integer(0,)`, and a
 /// value out of range is refused with `argument.integer.low` / `big` before the executor runs),
 /// `long` and `long(min,max)` (`LongArgumentType.longArg(min, max)`, delivered as `Long`, refused

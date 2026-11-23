@@ -74,7 +74,7 @@ executor. Omitted optional arguments are absent, including an omitted optional
 player: they do not silently select the source player. `player` selects exactly one
 online player, `players` one or more online players, `entity` exactly one entity,
 and `entities` one or more entities. Missing or too-large selections produce
-vanilla feedback without calling the executor. Word and greedy text arguments
+vanilla feedback without calling the executor. Word, `string` and greedy text arguments
 are strings, numbers are finite doubles, booleans are typed, and item arguments
 are component-bearing stacks of one item. `mod_id` takes a loaded package id and
 delivers it as a string (NeoForge's `ModIdArgument`). `resource:<registry>`, such as
@@ -333,11 +333,59 @@ declaring one is refused by name.
 
 `CommandArgumentKind::Word` takes one word of ASCII letters, digits and `_ - . +`; the
 word ends at the first other character, a space included, so a value with `:` or `/`
-needs `Greedy`, which takes the rest of the line. `suggest` receives that text as typed so
-far: one word, or the whole tail of the line up to the cursor. Players whose client does not know
-the type parse and complete the command: the server sends the argument as a Brigadier string
-of that shape with `minecraft:ask_server`, and their chat asks the server for the
-suggestions.
+needs `Greedy`, which takes the rest of the line, or `Quotable` with the value in quotes.
+`suggest` receives that text as typed so far: one word, or the whole tail of the line up to the
+cursor. Players whose client does not know the type parse and complete the command: the server
+sends the argument as a Brigadier string of that shape with `minecraft:ask_server`, and their
+chat asks the server for the suggestions.
+
+### Quoted phrases
+
+The `string` kind and `CommandArgumentKind::Quotable` read one value the way Brigadier's
+`StringArgumentType.string()` (`QUOTABLE_PHRASE`) does: one unquoted word of `Word`'s
+characters, or one phrase in `"double"` or `'single'` quotes, empty included. Inside a phrase
+a `\` escapes only the quote that opened it and `\` itself. Unlike `text`, other arguments may
+follow it:
+
+```rust,ignore
+// `/quests open "#main" @a`, `/quests open 1A2B3C4D @a` and `/quests open "Getting Started" @a`
+Command::new("quests open <object:string> <targets:players>")
+```
+
+| Typed | Delivered |
+|---|---|
+| `main` | `main` |
+| `"Getting Started"` | `Getting Started` |
+| `'say "hi"'` | `say "hi"` |
+| `"a \"b\" \\ c"` | `a "b" \ c` |
+| `""` | the empty string |
+
+The value arrives decoded, without its quotes, as `CommandArgumentValue::String` for `string`
+and in `parse`'s `input` for a `Quotable` type. A phrase with no closing quote is refused with
+vanilla's `parsing.quote.expected.end` ("Unclosed quoted string"), and a `\` before any other
+character with `parsing.quote.escape` ("Invalid escape sequence '\x' in quoted string"), at the
+character where the reader stopped, before the executor or the type's `parse` runs. There is no
+length limit beyond the chat line's. Clients receive the argument as `brigadier:string` in its
+quotable mode, so a vanilla client reads the phrase as the server does.
+
+A `Quotable` type's `suggest`, or its provider's `SuggestionRequest::prefix`, gets the text as
+typed, quote included and often unclosed: `"Getting St`. Brigadier gives a suggestion provider
+the same. Its suggestions replace that whole prefix, so a type returns text the player could
+have typed: a candidate that is not one word is quoted, and its quotes and `\` escaped, as
+NeoForge's `EntityCommand` quotes an entity id that needs it:
+
+```rust,ignore
+fn suggest(&self, _: Option<&CommandSender>, prefix: &str) -> Vec<CommandSuggestion> {
+    let typed = prefix.trim_start_matches(['"', '\'']);
+    titles()
+        .filter(|title| title.starts_with(typed))
+        .map(|title| match title.chars().all(|c| c.is_ascii_alphanumeric() || "_-.+".contains(c)) {
+            true => CommandSuggestion::new(title),
+            false => CommandSuggestion::new(format!("\"{}\"", title.replace('\\', "\\\\").replace('"', "\\\""))),
+        })
+        .collect()
+}
+```
 
 The namespaced id is in the registering mod's namespace; an id registered twice, a
 name in another namespace or an empty name refuses the mods at startup, naming the
