@@ -397,7 +397,7 @@ mod tests {
     /// `JigsawStructure`'s codec bounds `size` to 0..=20 for `minecraft:jigsaw` only: a mod's
     /// own structure type assembles from the same pools at its own depth. One link three
     /// blocks tall, a jigsaw at its foot facing down and one at its head facing up, stacks
-    /// 46 deep below the start: 47 pieces, each on the one before.
+    /// 46 deep above the start: 47 pieces, each on the one before.
     #[test]
     fn a_mod_type_assembles_past_the_jigsaw_types_depth_bound() {
         use super::super::{
