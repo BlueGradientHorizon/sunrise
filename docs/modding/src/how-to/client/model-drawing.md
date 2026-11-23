@@ -531,6 +531,12 @@ falls outside representable cell coordinates, the element uses its fixed light i
 Level-less scenes, previews and mob model frames also stay fixed. `light()` always reports the
 fixed setting; `set_light` returns subsequent draws to fixed light.
 
+For a hologram, a glowing display or a projected item, call `BlockEntityDrawContext::unlit(true)`:
+what `item`, `block`, `cube`, `quad`, `model` and `model_part` draw next skips directional face
+shading and the lightmap, full bright whatever `set_light` or `level_light` say, as NeoForge's
+unlit render types draw. An enchanted item keeps its glint. It lasts until `unlit(false)` or the
+end of the draw; `terrain_model` keeps its own shading option.
+
 ## Copycat faces
 
 Ask `block_sprites` for the material's side faces, then use each face's `texture` and
