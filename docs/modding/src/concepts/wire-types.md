@@ -7,7 +7,7 @@ Wire value with no extra envelope; raw channels carry caller-supplied bytes.
 Derive `mod_api::Wire` explicitly on a type that needs this encoding. The build
 never adds the derive. Every field of a derived type must also implement `Wire`.
 
-[Native recipe serializers](../crafting-recipe-kinds.md) do not use Wire for their
+[Native recipe serializers](../how-to/items/crafting-recipe-kinds.md) do not use Wire for their
 values. Both `CraftingRecipeKind` and `RecipeSerializer` decode and write JSON;
 the loader retains each typed value with its owner for the resource generation.
 Recipe content still syncs as bounded JSON, and raw recipe JSON keeps its size

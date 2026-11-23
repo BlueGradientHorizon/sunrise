@@ -130,5 +130,5 @@ This client view does not replace authoritative matching on the server. Types
 not sent keep the client's already-loaded recipes. An empty
 registered crafting serializer still participates in sync so removing its last
 recipe clears stale client data. Recipe placement and recipe-book sync keep
-their existing [transport](concepts/wire-types.md), including vanilla's display
+their existing [transport](../../concepts/wire-types.md), including vanilla's display
 packets.

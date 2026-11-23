@@ -178,3 +178,9 @@ changed. Other components are untouched. Literal NBT types, arrays and Java
 UTF-16 payloads are retained. Both evaluators use the same path parser and merge
 implementation. Like `set` and `insert`, append and merge refuse writes beyond
 the existing 512-level NBT budget before creating any target parents.
+
+## Container loot
+
+To inspect or edit rolled container loot after table-load changes and before shuffle, splitting and placement,
+implement the server-side `container_loot_filled` hook. Its full contract (opener rules, double-chest halves,
+stack trimming and error handling) lives in [Hook notes](../../reference/hook-notes.md#container-loot).
