@@ -42,33 +42,25 @@ impl Game<'_> {
             return vanilla_spilled;
         };
         let mut drops = vanilla_spilled.clone();
+        // One storage transaction around the dispatch. The hook runtime contains a listener's
+        // panic itself (and disposes of its payload), so a failed listener shows here only as
+        // a new isolated failure: the transaction then aborts, as it does on a refused commit.
+        // Whenever the writes roll back, the listeners' drops are discarded with them and
+        // vanilla's container spill is dropped instead.
         let failures = mod_api::runtime::isolated_failures();
-        // One storage transaction around the dispatch. It commits only when no listener
-        // failed (a latched panic shows in `isolated_failures`), and it rolls back on that
-        // failure, on a refused commit, or when the dispatch unwinds (the scope's guard
-        // aborts the frame). Whenever the writes roll back, the listeners' drops are
-        // discarded with them and vanilla's container spill is dropped instead.
-        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            self.storage_transaction_settled(|game, _| {
-                game.native_item_destroyed(&stack, handle, damage_type, &mut drops);
-                if mod_api::runtime::isolated_failures() == failures {
-                    Ok(())
-                } else {
-                    Err(())
-                }
-            })
-        }));
-        let result = match outcome {
-            Ok(Ok(())) => drops,
-            outcome => {
-                if let Err(payload) = outcome
-                    && let Err(payload) =
-                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(payload)))
-                {
-                    std::mem::forget(payload);
-                }
+        let settled = self.storage_transaction_settled(|game, _| {
+            game.native_item_destroyed(&stack, handle, damage_type, &mut drops);
+            if mod_api::runtime::isolated_failures() == failures {
+                Ok(())
+            } else {
+                Err(())
+            }
+        });
+        let result = match settled {
+            Ok(()) => drops,
+            Err(_) => {
                 log::warn!(
-                    "item_destroyed: a listener failed for {}; its writes were rolled back",
+                    "item_destroyed for {}: a listener failed or the commit was refused; its writes were rolled back",
                     stack.item
                 );
                 vanilla_spilled
