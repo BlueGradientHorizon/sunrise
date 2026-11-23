@@ -532,9 +532,10 @@ def main():
                   *[(name, ops) for name, ops in json.loads(args.groups_file.read_text(encoding='utf-8'))]]
     if args.record_fangs_ticking_witness:
         witness_cases = corpus_module.fangs_ominous_spawner_ticking_witness_cases()
+        pause_spec = corpus_module.fangs_spawner_scheduled_ticket_pause_witness_spec()
         groups = [('setup', corpus_module.group_setup()),
                   ('fangs and ominous spawner ticking witness',
-                   corpus_module.fangs_ominous_spawner_ticking_witness_script(witness_cases))]
+                   corpus_module.fangs_ominous_spawner_ticking_witness_script(witness_cases, pause_spec))]
     script = assemble(groups, args.unsynced_randoms)
     # docs/parity-workflow.md "Randoms that repeat": both engines' unseeded randoms repeat for a script that syncs them.
     synced = any(op['op'] == 'sync_randoms' for op in script)
@@ -592,6 +593,7 @@ def main():
             args.record_fangs_ticking_witness,
             lock['minecraft']['version'],
             witness_cases,
+            pause_spec,
             [json.loads(line) for line in (build / 'vanilla.jsonl').read_text(encoding='utf-8').splitlines()],
         )
         print(f'Recorded 26.3 fangs/spawner ticking witness: {args.record_fangs_ticking_witness}')
@@ -934,37 +936,70 @@ def compare(v, r, comparison=None):
     return None
 
 
-def write_fangs_ticking_witness(path, game_version, cases, records):
+def write_fangs_ticking_witness(path, game_version, cases, pause_spec, records):
     """Write the real-run vanilla ticking-gate witness JSON from VanillaCommandExecOracle output."""
-    if len(records) != 1 + 2 * len(cases):
-        sys.exit(f'unexpected record count for ticking witness: got {len(records)}, expected {1 + 2 * len(cases)}')
+    pause_records = sum(9 if s['action'] == 'schedule_remove_and_tick' else 8 for s in pause_spec['stages'])
+    expected_total = 1 + 2 * len(cases) + pause_records
+    if len(records) != expected_total:
+        sys.exit(f'unexpected record count for ticking witness: got {len(records)}, expected {expected_total}')
     distances = records[0].get('results', [])
     if len(distances) != 2 or not all(r[0] is True for r in distances):
         sys.exit(f'unexpected server_distances record: {records[0]}')
     view_distance, simulation_distance = distances[0][1], distances[1][1]
+
+    def parse_warmup(rec):
+        text = ''.join(span[0] for msg in rec['messages'] for span in msg)
+        match = re.search(r'has the following entity data: (-?\d+)$', text)
+        if not match:
+            sys.exit(f'could not parse Warmup from vanilla output: {rec}')
+        warmup = int(match.group(1))
+        if rec['results'] != [[True, warmup]]:
+            sys.exit(f'Warmup callback disagreed with message: {rec}')
+        return warmup
+
+    def parse_count(rec):
+        return rec['results'][0][1] if rec['results'] and rec['results'][0][0] else 0
+
+    def parse_flag(rec):
+        return bool(rec['results'] and rec['results'][0][0] and rec['results'][0][1] > 0)
+
     out_cases = []
     for index, case in enumerate(cases):
         present_rec = records[1 + 2 * index]
         detail_rec = records[2 + 2 * index]
-        present = bool(present_rec['results'] and present_rec['results'][0][0] and present_rec['results'][0][1] > 0)
+        present = parse_flag(present_rec)
         entry = dict(case)
         entry['expected_present'] = present
         if case['kind'] == 'evoker_fangs':
-            if present:
-                text = ''.join(span[0] for msg in detail_rec['messages'] for span in msg)
-                match = re.search(r'has the following entity data: (-?\d+)$', text)
-                if not match:
-                    sys.exit(f'could not parse Warmup from vanilla output: {detail_rec}')
-                warmup = int(match.group(1))
-                if detail_rec['results'] != [[True, warmup]]:
-                    sys.exit(f'Warmup callback disagreed with message: {detail_rec}')
-                entry['expected_warmup'] = warmup
-            else:
-                entry['expected_warmup'] = None
+            entry['expected_warmup'] = parse_warmup(detail_rec) if present else None
         else:
-            count = detail_rec['results'][0][1] if detail_rec['results'] and detail_rec['results'][0][0] else 0
-            entry['expected_spawned_items'] = count
+            entry['expected_spawned_items'] = parse_count(detail_rec)
         out_cases.append(entry)
+
+    cursor = 1 + 2 * len(cases)
+    out_stages = []
+    for stage in pause_spec['stages']:
+        entry = dict(stage)
+        if stage['action'] == 'schedule_remove_and_tick':
+            cb_rec = records[cursor]
+            cursor += 1
+            entry['expected_command_block_success'] = parse_count(cb_rec)
+        else:
+            entry['expected_command_block_success'] = None
+        t_loaded, c_loaded, t_warmup, t_spawner, t_items, c_warmup, c_spawner, c_items = records[cursor:cursor + 8]
+        cursor += 8
+        entry['expected_target_loaded'] = parse_flag(t_loaded)
+        entry['expected_control_loaded'] = parse_flag(c_loaded)
+        entry['expected_target_warmup'] = parse_warmup(t_warmup)
+        entry['expected_target_spawner_present'] = parse_flag(t_spawner)
+        entry['expected_target_items'] = parse_count(t_items)
+        entry['expected_control_warmup'] = parse_warmup(c_warmup)
+        entry['expected_control_spawner_present'] = parse_flag(c_spawner)
+        entry['expected_control_items'] = parse_count(c_items)
+        out_stages.append(entry)
+
+    pause_out = dict(pause_spec)
+    pause_out['stages'] = out_stages
     payload = {
         'game_version': game_version,
         'oracle': 'VanillaCommandExecOracle',
@@ -973,6 +1008,7 @@ def write_fangs_ticking_witness(path, game_version, cases, records):
         'view_distance': view_distance,
         'simulation_distance': simulation_distance,
         'cases': out_cases,
+        'scheduled_ticket_pause': pause_out,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + '\n', encoding='utf-8')

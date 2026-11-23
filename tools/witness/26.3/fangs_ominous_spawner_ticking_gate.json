@@ -382,5 +382,157 @@
       "expected_present": false,
       "expected_spawned_items": 1
     }
-  ]
+  ],
+  "scheduled_ticket_pause": {
+    "target_chunk": [
+      216,
+      212
+    ],
+    "control_chunk": [
+      217,
+      212
+    ],
+    "command_block_pos": [
+      3474,
+      300,
+      3404
+    ],
+    "target_fangs_pos": [
+      3461.5,
+      302.0,
+      3394.5
+    ],
+    "target_spawner_pos": [
+      3461.5,
+      302.0,
+      3398.5
+    ],
+    "control_fangs_pos": [
+      3477.5,
+      302.0,
+      3394.5
+    ],
+    "control_spawner_pos": [
+      3477.5,
+      302.0,
+      3398.5
+    ],
+    "initial_warmup": 10,
+    "item": "minecraft:stone",
+    "spawn_item_after_ticks": 4,
+    "stages": [
+      {
+        "name": "initial_active_tick",
+        "action": "tick",
+        "ticks": 1,
+        "expected_command_block_success": null,
+        "expected_target_loaded": true,
+        "expected_control_loaded": true,
+        "expected_target_warmup": 9,
+        "expected_target_spawner_present": true,
+        "expected_target_items": 0,
+        "expected_control_warmup": 9,
+        "expected_control_spawner_present": true,
+        "expected_control_items": 0
+      },
+      {
+        "name": "scheduled_removal_tick",
+        "action": "schedule_remove_and_tick",
+        "ticks": 1,
+        "expected_command_block_success": 1,
+        "expected_target_loaded": false,
+        "expected_control_loaded": true,
+        "expected_target_warmup": 9,
+        "expected_target_spawner_present": true,
+        "expected_target_items": 0,
+        "expected_control_warmup": 8,
+        "expected_control_spawner_present": true,
+        "expected_control_items": 0
+      },
+      {
+        "name": "pause_before_control_drop",
+        "action": "tick",
+        "ticks": 1,
+        "expected_command_block_success": null,
+        "expected_target_loaded": false,
+        "expected_control_loaded": true,
+        "expected_target_warmup": 9,
+        "expected_target_spawner_present": true,
+        "expected_target_items": 0,
+        "expected_control_warmup": 7,
+        "expected_control_spawner_present": true,
+        "expected_control_items": 0
+      },
+      {
+        "name": "pause_at_control_drop",
+        "action": "tick",
+        "ticks": 1,
+        "expected_command_block_success": null,
+        "expected_target_loaded": false,
+        "expected_control_loaded": true,
+        "expected_target_warmup": 9,
+        "expected_target_spawner_present": true,
+        "expected_target_items": 0,
+        "expected_control_warmup": 6,
+        "expected_control_spawner_present": false,
+        "expected_control_items": 1
+      },
+      {
+        "name": "pause_after_control_drop",
+        "action": "tick",
+        "ticks": 2,
+        "expected_command_block_success": null,
+        "expected_target_loaded": false,
+        "expected_control_loaded": true,
+        "expected_target_warmup": 9,
+        "expected_target_spawner_present": true,
+        "expected_target_items": 0,
+        "expected_control_warmup": 4,
+        "expected_control_spawner_present": false,
+        "expected_control_items": 1
+      },
+      {
+        "name": "resumed_before_ticking",
+        "action": "forceload_add",
+        "ticks": 0,
+        "expected_command_block_success": null,
+        "expected_target_loaded": true,
+        "expected_control_loaded": true,
+        "expected_target_warmup": 9,
+        "expected_target_spawner_present": true,
+        "expected_target_items": 0,
+        "expected_control_warmup": 4,
+        "expected_control_spawner_present": false,
+        "expected_control_items": 1
+      },
+      {
+        "name": "resumed_before_drop",
+        "action": "tick",
+        "ticks": 2,
+        "expected_command_block_success": null,
+        "expected_target_loaded": true,
+        "expected_control_loaded": true,
+        "expected_target_warmup": 7,
+        "expected_target_spawner_present": true,
+        "expected_target_items": 0,
+        "expected_control_warmup": 2,
+        "expected_control_spawner_present": false,
+        "expected_control_items": 1
+      },
+      {
+        "name": "resumed_at_drop",
+        "action": "tick",
+        "ticks": 1,
+        "expected_command_block_success": null,
+        "expected_target_loaded": true,
+        "expected_control_loaded": true,
+        "expected_target_warmup": 6,
+        "expected_target_spawner_present": false,
+        "expected_target_items": 1,
+        "expected_control_warmup": 1,
+        "expected_control_spawner_present": false,
+        "expected_control_items": 1
+      }
+    ]
+  }
 }

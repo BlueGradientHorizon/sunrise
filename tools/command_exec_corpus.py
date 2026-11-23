@@ -5337,6 +5337,96 @@ def entity_ticking_gate():
     return ops + setup(f'/kill @e[type=!player,{box}]', f'/forceload remove {x0} {z0}')
 
 
+def fangs_spawner_scheduled_ticket_pause():
+    """#2361: a resident chunk losing its forced ticket during a scheduled block tick pauses fangs and spawners that tick."""
+    tx0, y0, tz0 = 3456, 300, 3392
+    cx0, cz0 = 3472, 3392
+    t_chunk = [tx0 >> 4, tz0 >> 4]
+    c_chunk = [cx0 >> 4, cz0 >> 4]
+    target_box = f'x={tx0},y={y0 - 8},z={tz0},dx=15,dy=24,dz=15'
+    control_box = f'x={cx0},y={y0 - 8},z={cz0},dx=15,dy=24,dz=15'
+    t_fangs = '00000939-0000-0000-0001-000000000001'
+    t_spawner = '00000939-0000-0000-0001-000000000002'
+    c_fangs = '00000939-0000-0000-0001-000000000003'
+    c_spawner = '00000939-0000-0000-0001-000000000004'
+    cb = (cx0 + 2, y0, cz0 + 12)
+
+    def check_cb(command, accepted, value):
+        op = cmd(command)
+        op['expect_callback'] = [accepted, value]
+        return op
+
+    def observe(t_warmup, t_spawner_ok, t_items, c_warmup, c_spawner_ok, c_items):
+        return [
+            cmd(f'/data get entity {t_fangs} Warmup', expect_result=t_warmup),
+            check_cb(f'/execute if entity {t_spawner}', t_spawner_ok, int(t_spawner_ok)),
+            check_cb(f'/execute if entity @e[type=minecraft:item,{target_box}]', t_items > 0, t_items),
+            cmd(f'/data get entity {c_fangs} Warmup', expect_result=c_warmup),
+            check_cb(f'/execute if entity {c_spawner}', c_spawner_ok, int(c_spawner_ok)),
+            check_cb(f'/execute if entity @e[type=minecraft:item,{control_box}]', c_items > 0, c_items),
+        ]
+
+    def step(n):
+        return [cmd('/tick unfreeze', expect_result=0), {'op': 'tick', 'n': n}, cmd('/tick freeze', expect_result=1)]
+
+    ops = [
+        cmd('/tick freeze', expect_result=1),
+        cmd(f'/forceload add {tx0} {tz0}', expect_result=1),
+        cmd(f'/forceload add {cx0} {cz0}', expect_result=1),
+        {'op': 'wait_chunks', 'chunks': [t_chunk, c_chunk]},
+        cmd(f'/execute if loaded {tx0} {y0} {tz0}', expect_result=1),
+        cmd(f'/execute if loaded {cx0} {y0} {cz0}', expect_result=1),
+        cmd(f'/setblock {tx0 + 5} {y0} {tz0 + 6} minecraft:stone', expect_result=1),
+        cmd(f'/setblock {cx0 + 5} {y0} {cz0 + 6} minecraft:stone', expect_result=1),
+        cmd(f'/kill @e[type=!player,{target_box}]', False),
+        cmd(f'/kill @e[type=!player,{control_box}]', False),
+        cmd(f'/summon minecraft:evoker_fangs {tx0 + 5}.5 {y0 + 2} {tz0 + 2}.5 '
+            '{UUID:[I;2361,0,65536,1],Warmup:10,Silent:1b}', expect_result=1),
+        cmd(f'/summon minecraft:ominous_item_spawner {tx0 + 5}.5 {y0 + 2} {tz0 + 6}.5 '
+            '{UUID:[I;2361,0,65536,2],spawn_item_after_ticks:4L,item:{id:"minecraft:stone",count:1}}', expect_result=1),
+        cmd(f'/summon minecraft:evoker_fangs {cx0 + 5}.5 {y0 + 2} {cz0 + 2}.5 '
+            '{UUID:[I;2361,0,65536,3],Warmup:10,Silent:1b}', expect_result=1),
+        cmd(f'/summon minecraft:ominous_item_spawner {cx0 + 5}.5 {y0 + 2} {cz0 + 6}.5 '
+            '{UUID:[I;2361,0,65536,4],spawn_item_after_ticks:4L,item:{id:"minecraft:stone",count:1}}', expect_result=1),
+    ]
+    # Baseline active tick while both chunks are entity-ticking.
+    ops += step(1) + observe(9, True, 0, 9, True, 0)
+    # Scheduled command block in the neighboring forced chunk removes the target's ticket before entities tick.
+    ops += [cmd(f'/setblock {cb[0]} {cb[1]} {cb[2]} '
+                f'minecraft:command_block{{auto:1b,Command:"forceload remove {tx0} {tz0}"}}', expect_result=1)]
+    ops += step(1)
+    ops += [
+        cmd(f'/data get block {cb[0]} {cb[1]} {cb[2]} SuccessCount', expect_result=1),
+        cmd(f'/execute unless loaded {tx0} {y0} {tz0}', expect_result=1),
+        cmd(f'/execute if loaded {cx0} {y0} {cz0}', expect_result=1),
+    ]
+    # Removal tick: target chunk stays resident via neighbor ticket but pauses on this same tick.
+    ops += observe(9, True, 0, 8, True, 0)
+    # Pause: control reaches before-drop, drops at tick 4, and continues while target stays frozen.
+    ops += step(1) + observe(9, True, 0, 7, True, 0)
+    ops += step(1) + observe(9, True, 0, 6, False, 1)
+    ops += step(2) + observe(9, True, 0, 4, False, 1)
+    # Resumption: target regains its forced ticket, ticks to immediately before drop, then drops on the next tick.
+    ops += [
+        cmd(f'/forceload add {tx0} {tz0}', expect_result=1),
+        {'op': 'wait_chunks', 'chunks': [t_chunk]},
+        cmd(f'/execute if loaded {tx0} {y0} {tz0}', expect_result=1),
+    ]
+    ops += observe(9, True, 0, 4, False, 1)
+    ops += step(2) + observe(7, True, 0, 2, False, 1)
+    ops += step(1) + observe(6, False, 1, 1, False, 1)
+    return ops + setup(
+        '/tick unfreeze',
+        f'/setblock {cb[0]} {cb[1]} {cb[2]} minecraft:air',
+        f'/setblock {tx0 + 5} {y0} {tz0 + 6} minecraft:air',
+        f'/setblock {cx0 + 5} {y0} {cz0 + 6} minecraft:air',
+        f'/kill @e[type=!player,{target_box}]',
+        f'/kill @e[type=!player,{control_box}]',
+        f'/forceload remove {tx0} {tz0}',
+        f'/forceload remove {cx0} {cz0}',
+    )
+
+
 def fangs_ominous_spawner_ticking_witness_cases():
     """26.3 witness cases for #2361 (evoker_fangs and ominous_item_spawner ticking-chunk gate)."""
     return [
@@ -5393,7 +5483,35 @@ def fangs_ominous_spawner_ticking_witness_cases():
     ]
 
 
-def fangs_ominous_spawner_ticking_witness_script(cases):
+def fangs_spawner_scheduled_ticket_pause_witness_spec():
+    """26.3 witness spec for #2361 scheduled-block-tick ticket removal, pause, and resumption."""
+    tx0, y0, tz0 = 3456, 300, 3392
+    cx0, cz0 = 3472, 3392
+    return {
+        'target_chunk': [tx0 >> 4, tz0 >> 4],
+        'control_chunk': [cx0 >> 4, cz0 >> 4],
+        'command_block_pos': [cx0 + 2, y0, cz0 + 12],
+        'target_fangs_pos': [tx0 + 5.5, float(y0 + 2), tz0 + 2.5],
+        'target_spawner_pos': [tx0 + 5.5, float(y0 + 2), tz0 + 6.5],
+        'control_fangs_pos': [cx0 + 5.5, float(y0 + 2), cz0 + 2.5],
+        'control_spawner_pos': [cx0 + 5.5, float(y0 + 2), cz0 + 6.5],
+        'initial_warmup': 10,
+        'item': 'minecraft:stone',
+        'spawn_item_after_ticks': 4,
+        'stages': [
+            {'name': 'initial_active_tick', 'action': 'tick', 'ticks': 1},
+            {'name': 'scheduled_removal_tick', 'action': 'schedule_remove_and_tick', 'ticks': 1},
+            {'name': 'pause_before_control_drop', 'action': 'tick', 'ticks': 1},
+            {'name': 'pause_at_control_drop', 'action': 'tick', 'ticks': 1},
+            {'name': 'pause_after_control_drop', 'action': 'tick', 'ticks': 2},
+            {'name': 'resumed_before_ticking', 'action': 'forceload_add', 'ticks': 0},
+            {'name': 'resumed_before_drop', 'action': 'tick', 'ticks': 2},
+            {'name': 'resumed_at_drop', 'action': 'tick', 'ticks': 1},
+        ],
+    }
+
+
+def fangs_ominous_spawner_ticking_witness_script(cases, pause_spec=None):
     """Build VanillaCommandExecOracle operations for recording the 26.3 ticking-gate witness."""
     ops = [{'op': 'server_distances'}]
     for index, case in enumerate(cases, 1):
@@ -5435,6 +5553,79 @@ def fangs_ominous_spawner_ticking_witness_script(cases):
                 cmd(f'/forceload remove {chunk_x0} {chunk_z0}', False),
                 cmd('/tick unfreeze', False),
                 {'op': 'tick', 'n': 1}]
+    if pause_spec is not None:
+        tcx, tcz = pause_spec['target_chunk']
+        ccx, ccz = pause_spec['control_chunk']
+        tx0, tz0 = tcx * 16, tcz * 16
+        cx0, cz0 = ccx * 16, ccz * 16
+        cbx, cby, cbz = pause_spec['command_block_pos']
+        y0 = cby
+        target_box = f'x={tx0},y={y0 - 8},z={tz0},dx=15,dy=24,dz=15'
+        control_box = f'x={cx0},y={y0 - 8},z={cz0},dx=15,dy=24,dz=15'
+        tf = pause_spec['target_fangs_pos']
+        ts = pause_spec['target_spawner_pos']
+        cf = pause_spec['control_fangs_pos']
+        cs = pause_spec['control_spawner_pos']
+        t_fangs = '00000939-0000-0000-0002-000000000001'
+        t_spawner = '00000939-0000-0000-0002-000000000002'
+        c_fangs = '00000939-0000-0000-0002-000000000003'
+        c_spawner = '00000939-0000-0000-0002-000000000004'
+        warmup = pause_spec['initial_warmup']
+        delay = pause_spec['spawn_item_after_ticks']
+        item = pause_spec['item']
+        ops += [
+            cmd('/tick freeze', False),
+            cmd(f'/forceload add {tx0} {tz0}', False),
+            cmd(f'/forceload add {cx0} {cz0}', False),
+            {'op': 'wait_chunks', 'chunks': [[tcx, tcz], [ccx, ccz]]},
+            cmd(f'/setblock {int(ts[0])} {y0} {int(ts[2])} minecraft:stone', False),
+            cmd(f'/setblock {int(cs[0])} {y0} {int(cs[2])} minecraft:stone', False),
+            cmd(f'/kill @e[type=!player,{target_box}]', False),
+            cmd(f'/kill @e[type=!player,{control_box}]', False),
+            cmd(f'/summon minecraft:evoker_fangs {tf[0]} {tf[1]} {tf[2]} '
+                f'{{UUID:[I;2361,0,131072,1],Warmup:{warmup},Silent:1b}}', False),
+            cmd(f'/summon minecraft:ominous_item_spawner {ts[0]} {ts[1]} {ts[2]} '
+                f'{{UUID:[I;2361,0,131072,2],spawn_item_after_ticks:{delay}L,item:{{id:"{item}",count:1}}}}', False),
+            cmd(f'/summon minecraft:evoker_fangs {cf[0]} {cf[1]} {cf[2]} '
+                f'{{UUID:[I;2361,0,131072,3],Warmup:{warmup},Silent:1b}}', False),
+            cmd(f'/summon minecraft:ominous_item_spawner {cs[0]} {cs[1]} {cs[2]} '
+                f'{{UUID:[I;2361,0,131072,4],spawn_item_after_ticks:{delay}L,item:{{id:"{item}",count:1}}}}', False),
+        ]
+        for stage in pause_spec['stages']:
+            action = stage['action']
+            if action == 'schedule_remove_and_tick':
+                ops.append(cmd(
+                    f'/setblock {cbx} {cby} {cbz} '
+                    f'minecraft:command_block{{auto:1b,Command:"forceload remove {tx0} {tz0}"}}', False))
+            elif action == 'forceload_add':
+                ops += [cmd(f'/forceload add {tx0} {tz0}', False),
+                        {'op': 'wait_chunks', 'chunks': [[tcx, tcz]]}]
+            if stage['ticks'] > 0:
+                ops += [cmd('/tick unfreeze', False),
+                        {'op': 'tick', 'n': stage['ticks']},
+                        cmd('/tick freeze', False)]
+            if action == 'schedule_remove_and_tick':
+                ops.append(cmd(f'/data get block {cbx} {cby} {cbz} SuccessCount'))
+            ops += [
+                cmd(f'/execute if loaded {tx0} {y0} {tz0}'),
+                cmd(f'/execute if loaded {cx0} {y0} {cz0}'),
+                cmd(f'/data get entity {t_fangs} Warmup'),
+                cmd(f'/execute if entity {t_spawner}'),
+                cmd(f'/execute if entity @e[type=minecraft:item,{target_box}]'),
+                cmd(f'/data get entity {c_fangs} Warmup'),
+                cmd(f'/execute if entity {c_spawner}'),
+                cmd(f'/execute if entity @e[type=minecraft:item,{control_box}]'),
+            ]
+        ops += [
+            cmd('/tick unfreeze', False),
+            cmd(f'/setblock {cbx} {cby} {cbz} minecraft:air', False),
+            cmd(f'/setblock {int(ts[0])} {y0} {int(ts[2])} minecraft:air', False),
+            cmd(f'/setblock {int(cs[0])} {y0} {int(cs[2])} minecraft:air', False),
+            cmd(f'/kill @e[type=!player,{target_box}]', False),
+            cmd(f'/kill @e[type=!player,{control_box}]', False),
+            cmd(f'/forceload remove {tx0} {tz0}', False),
+            cmd(f'/forceload remove {cx0} {cz0}', False),
+        ]
     return ops
 
 
@@ -8705,6 +8896,7 @@ def groups():
         ('numeric array edits', numeric_array_edits()),
         ('projectile saved UUID', projectile_saved_uuid()),
         ('entity ticking gate', entity_ticking_gate()),
+        ('fangs and ominous spawner scheduled ticket pause', fangs_spawner_scheduled_ticket_pause()),
         ('summoned eye of ender', summoned_eye_of_ender()),
         ('awake villager saved position', awake_villager_saved_position()),
         ('villager wake rotation', villager_wake_rotation()),
