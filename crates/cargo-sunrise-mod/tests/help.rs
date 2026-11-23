@@ -16,7 +16,7 @@ fn help_lists_the_everyday_commands_and_each_command_says_its_usage() {
         assert!(output.status.success(), "{args:?}");
         let text = String::from_utf8(output.stdout).unwrap();
         assert!(text.lines().count() < 20, "{args:?}: {text}");
-        for command in ["new", "build", "run", "check", "update", "hooks", "release"] {
+        for command in ["new", "build", "run", "check", "pin", "hooks", "release"] {
             assert!(
                 text.lines().any(|l| l.trim_start().starts_with(command)),
                 "{args:?}: {command}"
@@ -57,8 +57,8 @@ fn help_lists_the_everyday_commands_and_each_command_says_its_usage() {
 #[test]
 #[ignore = "daily"]
 fn an_unknown_command_is_an_error() {
-    // The removed registry and publishing verbs get the ordinary refusal, before any work.
-    for name in ["frobnicate", "publish", "registry"] {
+    // Removed and renamed verbs get the ordinary refusal, before any work.
+    for name in ["frobnicate", "update", "fits", "publish", "registry"] {
         let output = run(&[name]);
         assert_eq!(output.status.code(), Some(1), "{name}");
         assert!(output.stdout.is_empty(), "{name}");
