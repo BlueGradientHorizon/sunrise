@@ -1,6 +1,6 @@
 //! The parity harnesses' fixtures, run by the `sunrise-parity-fixtures` binary (feature `parity-fixtures`, CI only)
 //! as the lib test runs them, without compiling the lib's other tests: the lib test's rustc outgrew a parity runner
-//! (#4896). The table is build.rs's: each `#[test]` whose body is one call to a plain function beside it. build.rs
+//! (#4896). The table is build.rs's: each `#[test]` whose body is one call to the function `run_<test>` beside it. build.rs
 //! sets `test` for this build, so the test-only code the fixtures read compiles as in the lib test, and only the
 //! `#[test]` functions, which need `--test`, are left out. The command line is libtest's, as far as the harnesses and
 //! `in_own_process` use it, and so is the report they read.
@@ -8,7 +8,8 @@
 include!(concat!(env!("OUT_DIR"), "/parity_fixtures.rs"));
 
 /// Runs the fixtures the arguments select, one after another, each on a thread named for it as libtest names
-/// its tests' threads; the exit code is libtest's (101 when one failed).
+/// its tests' threads; the exit code is libtest's (101 when one failed), and 101 too when the filters select none, so a
+/// harness whose fixture left the table fails instead of passing on nothing.
 pub fn main() {
     let mut filters = Vec::new();
     let (mut exact, mut list) = (false, false);
@@ -48,11 +49,15 @@ pub fn main() {
         for (name, _) in &chosen {
             println!("{name}: test");
         }
-        println!("\n{} tests, 0 benchmarks", chosen.len());
+        println!("\n{}, 0 benchmarks", tests(chosen.len()));
         return;
     }
+    if chosen.is_empty() {
+        eprintln!("sunrise-parity-fixtures: no fixture matches {filters:?}");
+        std::process::exit(101);
+    }
     let started = std::time::Instant::now();
-    println!("\nrunning {} tests", chosen.len());
+    println!("\nrunning {}", tests(chosen.len()));
     let mut failed = Vec::new();
     for (name, fixture) in &chosen {
         let fixture = *fixture;
@@ -86,4 +91,9 @@ pub fn main() {
     if !failed.is_empty() {
         std::process::exit(101);
     }
+}
+
+/// "1 test", "2 tests": libtest's wording, which harnesses match.
+fn tests(count: usize) -> String {
+    format!("{count} test{}", if count == 1 { "" } else { "s" })
 }

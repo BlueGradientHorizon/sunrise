@@ -11,9 +11,9 @@ autotests = false
 
 [build-dependencies]
 sunrise-mod-api-gen = { path = "../sunrise-mod-api-gen" }
-# The parity fixtures' table (build.rs, feature `parity-fixtures`).
-sunrise-mod-source = { path = "../sunrise-mod-source" }
-syn = { version = "2", features = ["full"] }
+# The parity fixtures' table (build.rs, feature `parity-fixtures` only).
+sunrise-mod-source = { path = "../sunrise-mod-source", optional = true }
+syn = { version = "2", features = ["full"], optional = true }
 
 [dependencies]
 sunrise-hooks = { path = "../sunrise-hooks" }
@@ -159,6 +159,8 @@ windows-segment-heap = []
 # The parity harnesses' fixtures as the `sunrise-parity-fixtures` binary (game/parity_fixtures.rs), with the test
 # support the lib test gets from [dev-dependencies], but none of the lib's other tests. CI only, never shipped.
 parity-fixtures = [
+  "dep:sunrise-mod-source",
+  "dep:syn",
   "dep:mod_platform",
   "dep:sunrise-perf",
   "dep:tempfile",

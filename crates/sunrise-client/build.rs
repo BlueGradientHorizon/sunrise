@@ -6,7 +6,8 @@ fn main() {
     let out_dir = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
     sunrise_mod_api_gen::generate(&root, &out_dir, sunrise_mod_api_gen::Target::Client)
         .expect("generating native mod API");
-    if std::env::var_os("CARGO_FEATURE_PARITY_FIXTURES").is_some() {
+    #[cfg(feature = "parity-fixtures")]
+    {
         // The fixtures read the test-only state, hooks and helpers the lib test compiles: `test` holds for the whole
         // package, while only `--test` keeps the `#[test]` functions, which this build leaves out.
         println!("cargo::rustc-cfg=test");
@@ -17,8 +18,9 @@ fn main() {
     }
 }
 
-/// `game::parity_fixtures`' table: every `#[test]` whose body is one call to a plain function beside it, by its
-/// libtest name. The bin `sunrise-parity-fixtures` runs them as the lib test would, without compiling the tests.
+/// `game::parity_fixtures`' table: every `#[test]` whose body is one call to a function `run_<test>` beside it, by
+/// its libtest name. The bin `sunrise-parity-fixtures` runs them as the lib test would, without compiling the tests.
+#[cfg(feature = "parity-fixtures")]
 fn parity_fixtures(manifest: &std::path::Path) -> Result<String, String> {
     use mod_source::modules::walk_module_files;
     let lib = manifest.join("src/lib.rs");
@@ -70,7 +72,9 @@ fn parity_fixtures(manifest: &std::path::Path) -> Result<String, String> {
         let plain: Vec<_> = items
             .iter()
             .filter_map(|item| match item {
-                syn::Item::Fn(function) if !is_test(function) => {
+                syn::Item::Fn(function)
+                    if !is_test(function) && function.sig.ident.to_string().starts_with("run_") =>
+                {
                     Some(function.sig.ident.to_string())
                 }
                 _ => None,
@@ -89,6 +93,7 @@ fn parity_fixtures(manifest: &std::path::Path) -> Result<String, String> {
                         && call.args.is_empty()
                         && let syn::Expr::Path(callee) = &*call.func
                         && let Some(callee) = callee.path.get_ident()
+                        && *callee == format!("run_{}", function.sig.ident)
                         && plain.contains(&callee.to_string())
                     {
                         fixtures.push((path(&function.sig.ident), path(callee)));
