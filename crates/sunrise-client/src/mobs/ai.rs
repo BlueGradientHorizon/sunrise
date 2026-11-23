@@ -8639,10 +8639,7 @@ mod noai_ridden_tests {
     use super::*;
     use std::sync::Arc;
 
-    const WITNESS_26_3: &str = include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tools/witness/26.3/noai_ridden_travel.tsv"
-    ));
+    const WITNESS_ENV: &str = "SUNRISE_NOAI_RIDDEN_TRAVEL_WITNESS";
 
     struct WitnessRow<'a> {
         case: &'a str,
@@ -8730,11 +8727,31 @@ mod noai_ridden_tests {
             .collect()
     }
 
-    /// Vanilla 26.3 parity (#3040): a ridden NoAI donkey matches the recorded 26.3 witness bit-for-bit.
+    /// Vanilla 26.3 parity (#3040): a ridden NoAI donkey matches the vanilla 26.3 witness
+    /// `tools/test_noai_ridden_travel_parity.py` records bit-for-bit.
     #[test]
-    #[ignore = "daily"]
+    #[ignore = "run by tools/test_noai_ridden_travel_parity.py"]
     fn a_ridden_noai_donkey_travels_and_turns_with_its_rider() {
-        let rows = parse_witness(WITNESS_26_3);
+        let witness_path = std::env::var(WITNESS_ENV).unwrap_or_else(|_| {
+            panic!(
+                "{WITNESS_ENV} is not set; run through tools/test_noai_ridden_travel_parity.py, which records the witness"
+            )
+        });
+        let witness_file = {
+            let path = std::path::PathBuf::from(&witness_path);
+            if path.is_dir() {
+                path.join("noai_ridden_travel.tsv")
+            } else {
+                path
+            }
+        };
+        let witness = std::fs::read_to_string(&witness_file).unwrap_or_else(|err| {
+            panic!(
+                "could not read {} (from {WITNESS_ENV}): {err}; run through tools/test_noai_ridden_travel_parity.py",
+                witness_file.display()
+            )
+        });
+        let rows = parse_witness(&witness);
         assert!(!rows.is_empty(), "26.3 witness must not be empty");
         let ran = crate::mobs::world::with_built_test_world(
             &[],

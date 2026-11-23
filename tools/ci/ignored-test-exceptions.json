@@ -1158,5 +1158,13 @@
     "path": "crates/sunrise-client/src/game/mobs/creatures/projectiles_120_124_tests.rs",
     "reason": "run by tools/test_projectile_targets_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_projectile_targets_parity.py records the vanilla 26.3 projectile witnesses into .local and runs this test against them through SUNRISE_PROJECTILE_WITNESS_DIR, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client-lib",
+    "target": "lib",
+    "test": "mobs::ai::noai_ridden_tests::a_ridden_noai_donkey_travels_and_turns_with_its_rider",
+    "path": "crates/sunrise-client/src/mobs/ai.rs",
+    "reason": "run by tools/test_noai_ridden_travel_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_noai_ridden_travel_parity.py records the vanilla 26.3 ridden NoAI donkey travel witness into .local and runs this test against it through SUNRISE_NOAI_RIDDEN_TRAVEL_WITNESS, so no recorded vanilla data is committed."
   }
 ]
