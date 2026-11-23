@@ -27,7 +27,7 @@ def main():
     (build / 'rust.json').unlink(missing_ok=True)
     harness.run_logged(
         [lab.parity_fixtures(),
-         'game::dragon::tests::', '--include-ignored'],
+         'game::dragon::tests::dragon_render_parity_fixture', '--exact'],
         build, 'rust', env=dict(os.environ, SUNRISE_DRAGON_RENDER_OUTPUT=str(build / 'rust.json'),
                                 SUNRISE_TEST_RESOURCES=os.environ.get('SUNRISE_TEST_RESOURCES', str(lab.RESOURCES))))
     expected = json.loads((build / 'client.json').read_text())
