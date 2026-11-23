@@ -14,7 +14,6 @@ use sunrise_client::{
     animate_tick::{
         AnimateContext, AnimateSampling, AnimateStep, campfire_particles, marker_particle_target,
     },
-    biome::Biomes,
     blocks::{BlockFacts, Fluid},
     containers::BlockEntity,
     mobs::Mob,
