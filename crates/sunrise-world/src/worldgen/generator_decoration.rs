@@ -54,7 +54,10 @@ use sunrise_core::{
     position::{BlockPos, ChunkPos},
 };
 use {
-    super::structure::start::{STEPS, place_in_chunk},
+    super::structure::{
+        jigsaw::FeatureKey,
+        start::{STEPS, place_in_chunk},
+    },
     sunrise_core::bounding_box::BoundingBox,
 };
 
@@ -324,17 +327,27 @@ impl Decoration {
             top_layers: Vec::new(),
         }))
     }
-    fn named_feature(&self, name: &str) -> Option<Arc<PlacedFeatureDefinition>> {
+    /// A structure piece's feature, as a placed feature: a configured one is
+    /// placed as one with no placement modifiers, which places it once at the
+    /// origin, as `ConfiguredFeature.place` does. Cached by its JSON.
+    fn piece_feature(&self, feature: FeatureKey<'_>) -> Option<Arc<PlacedFeatureDefinition>> {
+        let json = match feature {
+            FeatureKey::Placed(id) => Value::from(id).to_string(),
+            FeatureKey::Configured(id) => {
+                serde_json::json!({ "feature": id, "placement": [] }).to_string()
+            }
+        };
         let mut named = self.named.lock().unwrap();
-        named
-            .entry(name.to_owned())
-            .or_insert_with(|| {
-                self.catalog
-                    .placed_feature_with_blocks(&Value::from(name).to_string(), &self.bindings)
-                    .ok()
-                    .map(Arc::new)
-            })
-            .clone()
+        if let Some(found) = named.get(&json) {
+            return found.clone();
+        }
+        let decoded = self
+            .catalog
+            .placed_feature_with_blocks(&json, &self.bindings)
+            .ok()
+            .map(Arc::new);
+        named.insert(json, decoded.clone());
+        decoded
     }
     /// Vanilla's feature identity and the step-local index/step mixed into
     /// `set_feature_seed`.
@@ -477,9 +490,9 @@ impl Decoration {
                         let mut place_feature =
                             |world: &mut World<'_>,
                              random: &mut WorldgenRandom<XoroshiroRandom>,
-                             name: &str,
+                             feature: FeatureKey<'_>,
                              pos: [i32; 3]| {
-                                match self.named_feature(name) {
+                                match self.piece_feature(feature) {
                                     Some(feature) => feature
                                         .place(world, random, pos, blocks)
                                         .map_err(|e| PlacementQueryError::Failed(e.to_string())),

@@ -104,7 +104,7 @@ pub fn generate(
     let x = chunk.x * 16 + random.next_int_bound(16).ok()?;
     let z = chunk.z * 16 + random.next_int_bound(16).ok()?;
     let rotation = Rotation::random(random);
-    let b = element.bounding_box([x, 0, z], rotation);
+    let b = element.bounding_box(resources, [x, 0, z], rotation);
     let height = find_height(def.placement, context, b, random)?;
     let ground = element.ground_level_delta();
     let y = height - ground + 1;
