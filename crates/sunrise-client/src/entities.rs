@@ -222,6 +222,9 @@ pub struct ItemEntity {
     /// `Entity.random`, after the constructor's draws: `moveTowardsClosestSpace`
     /// takes an item's escape speed from it.
     pub random: sunrise_core::random::LegacyRandom,
+    /// What `entity_size` answered at its last size refresh (`EntityEvent.Size`): its box takes
+    /// the answer while it holds for its vanilla size.
+    pub size_answer: Option<crate::pose::SizeAnswer>,
 }
 /// What `Entity.doWaterSplashEffect` asks the level to do for a dropped item.
 /// Particles are drawn on the client (`Level.addParticle` is empty on the
@@ -437,6 +440,8 @@ impl ItemEntity {
 }
 impl ItemEntity {
     pub const WIDTH: f64 = 0.25;
+    /// `EntityType.ITEM.getDimensions()`: width, height and eye height.
+    pub const DIMENSIONS: [f32; 3] = [0.25, 0.25, 0.2125];
     /// `EntityTypes.ITEM` declares a float eye height, widened by `Entity.getEyeY`.
     pub const EYE_HEIGHT: f64 = 0.2125_f32 as f64;
     /// `Entity.getLightProbePosition(partialTick)` for a dropped item: the eye
@@ -461,13 +466,19 @@ impl ItemEntity {
     }
     pub fn bounds(&self) -> Aabb {
         let h = Self::WIDTH / 2.0;
-        Aabb::new(
+        let vanilla = Aabb::new(
             Vec3::new(self.position.x - h, self.position.y, self.position.z - h),
             Vec3::new(
                 self.position.x + h,
                 self.position.y + Self::WIDTH,
                 self.position.z + h,
             ),
+        );
+        crate::pose::SizeAnswer::sized_box(
+            self.size_answer,
+            Self::DIMENSIONS,
+            self.position,
+            vanilla,
         )
     }
     /// `ItemEntity.hurtServer`'s health: `amount` off the health, and an item
@@ -699,8 +710,6 @@ fn lava_cauldron_contacts(
     registry: &sunrise_world::registry::BlockRegistry,
     bounds: Aabb,
 ) -> usize {
-    use sunrise_core::geometry::ShapeOp;
-    static SHAPE: std::sync::OnceLock<VoxelShape> = std::sync::OnceLock::new();
     let epsilon = f64::from(1e-5_f32);
     let mut contacts = 0;
     let candidates = bounds.deflate(Vec3::new(epsilon, epsilon, epsilon));
@@ -712,31 +721,7 @@ fn lava_cauldron_contacts(
         {
             return true;
         }
-        let shape = SHAPE.get_or_init(|| {
-            let cuboid = |x0, y0, z0, x1, y1, z1| {
-                VoxelShape::from_box(Aabb::new(
-                    Vec3::new(x0 / 16.0, y0 / 16.0, z0 / 16.0),
-                    Vec3::new(x1 / 16.0, y1 / 16.0, z1 / 16.0),
-                ))
-                .expect("valid cauldron box")
-            };
-            let mut solid = VoxelShape::block();
-            // AbstractCauldronBlock.SHAPE: the openings under its feet
-            // and its hollow centre are cut out of the unit block.
-            for hole in [
-                cuboid(0.0, 0.0, 4.0, 16.0, 3.0, 12.0),
-                cuboid(4.0, 0.0, 0.0, 12.0, 3.0, 16.0),
-                cuboid(2.0, 0.0, 2.0, 14.0, 3.0, 14.0),
-                cuboid(2.0, 4.0, 2.0, 14.0, 16.0, 14.0),
-            ] {
-                solid = solid
-                    .join(&hole, ShapeOp::ONLY_FIRST)
-                    .expect("valid cauldron cutout");
-            }
-            solid
-                .join(&cuboid(2.0, 4.0, 2.0, 14.0, 15.0, 14.0), ShapeOp::OR)
-                .expect("valid filled cauldron")
-        });
+        let shape = crate::block_contact::lava_cauldron_filled_shape();
         let local = bounds.move_by(Vec3::new(-f64::from(x), -f64::from(y), -f64::from(z)));
         // Only block enumeration uses the deflated box. The actual
         // shape contact follows Entity.collidedWithShapeMovingFrom.
@@ -794,6 +779,9 @@ pub struct ExperienceOrb {
     pub fire_ticks: i32,
     /// `Entity.fallDistance` (`fall_distance` in its save).
     pub fall_distance: f64,
+    /// What `entity_size` answered at its last size refresh (`EntityEvent.Size`): its box takes
+    /// the answer while it holds for its vanilla size.
+    pub size_answer: Option<crate::pose::SizeAnswer>,
 }
 /// An orb's `Entity.move` this tick, for the fall bookkeeping its caller
 /// finishes (the long-move cast, `checkFallDamage`'s HIT_GROUND).
@@ -824,6 +812,7 @@ impl ExperienceOrb {
     /// health, no age, fall or followed player, not yet ticked.
     pub fn new(id: u32, position: Vec3, velocity: Vec3, value: i32) -> Self {
         Self {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             rotation: [0.0, 0.0],
             join: Default::default(),
@@ -858,8 +847,15 @@ impl ExperienceOrb {
             Vec3::new(at.x + h, at.y + 0.5, at.z + h),
         )
     }
+    /// `EntityType.EXPERIENCE_ORB.getDimensions()`: width, height and eye height.
+    pub const DIMENSIONS: [f32; 3] = [0.5, 0.5, 0.425];
     pub fn bounds(&self) -> Aabb {
-        Self::box_at(self.position)
+        crate::pose::SizeAnswer::sized_box(
+            self.size_answer,
+            Self::DIMENSIONS,
+            self.position,
+            Self::box_at(self.position),
+        )
     }
     /// `Entity.unstuckIfPossible`, which `ExperienceOrb`'s constructor runs as
     /// `if (!level.noCollision(box)) unstuckIfPossible(box.getSize())`: the free
@@ -1566,6 +1562,8 @@ pub struct Painting {
     /// Direction.get2DDataValue: south 0, west 1, north 2, east 3.
     pub facing: u8,
     pub variant: std::sync::Arc<str>,
+    /// Asset path for inline or synced custom variants; `None` looks up `variant`.
+    pub asset: Option<std::sync::Arc<str>>,
     pub width: i32,
     pub height: i32,
     /// BlockAttachedEntity.checkInterval.
@@ -1703,6 +1701,19 @@ pub struct ItemFrame {
     pub random: LegacyRandom,
 }
 impl ItemFrame {
+    /// `ItemFrame.setDirection`: wall frames use the horizontal direction's yaw;
+    /// ceiling and floor frames use the vertical direction's pitch.
+    pub fn entity_rotation(&self) -> [f32; 2] {
+        match self.facing {
+            0 => [0.0, 90.0],
+            1 => [0.0, -90.0],
+            2 => [180.0, 0.0],
+            3 => [0.0, 0.0],
+            4 => [90.0, 0.0],
+            _ => [270.0, 0.0],
+        }
+    }
+
     /// `ItemFrame.setItem`: the adopted stack holds one item. The caller owns
     /// the old map association, sounds and neighbour updates.
     pub fn set_item(&mut self, item: Option<ItemStack>) {
@@ -1753,12 +1764,17 @@ pub struct ArmorStand {
     pub attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
     /// `Entity.xRot`: kept for `/tp` and `Rotation`; the kind turns only in yaw.
     pub pitch: f32,
+    /// `Entity.xRotO`: pitch at the start of the tick for camera interpolation.
+    pub previous_pitch: f32,
     /// When it joined its list ([`crate::join_seq`]); set by the list, not by the spawn site.
     pub join: crate::join_seq::JoinSeq,
     pub fire_ticks: i32,
     /// Unsaved fire immunity granted on this logical side.
     pub mod_fire_immune: bool,
     pub health: f32,
+    pub tick_count: i32,
+    /// Transient `LivingEntity.lastHurtMob`; an owned arrow or wind charge can set it.
+    pub last_hurt_mob: Option<(u32, i32)>,
     pub id: u32,
     pub position: Vec3,
     /// `Entity.xo`, `yo`, `zo`: the position at the start of the tick, which
@@ -1823,6 +1839,13 @@ pub struct ArmorStand {
     pub speed_instance: bool,
     /// `NAME_TAG_DISTANCE` and `BELOW_NAME_DISTANCE` from server attribute updates.
     pub nameplate: crate::entities::nameplate::NameplateDistances,
+    /// What `entity_size` answered at its last size refresh (`EntityEvent.Size`): its box takes
+    /// the answer while it holds for its vanilla size.
+    pub size_answer: Option<crate::pose::SizeAnswer>,
+    /// Synced client-side effects from `UpdateMobEffect` / `RemoveMobEffect`, as a mob's.
+    pub client_effects: crate::effects::PlayerEffects,
+    /// `MobEffectInstance.BlendState` (previous, current) for its client-side darkness.
+    pub darkness_blend: (f32, f32),
 }
 /// The fluid a stand travels in (`LivingEntity.travelInFluid`: water first,
 /// then lava), from the heights `Entity::push_by_fluid` measured.
@@ -2029,30 +2052,38 @@ impl ArmorStand {
     /// put at, when one is due). The yaw
     /// turns the short way and stays continuous, so a frame between ticks
     /// never spins it.
-    pub fn interpolate(&mut self, step: Option<(Vec3, f32)>) {
+    pub fn interpolate(&mut self, step: Option<(Vec3, f32, f32)>) {
         self.previous = self.position;
         self.previous_yaw = self.yaw;
-        if let Some((at, yaw)) = step {
+        self.previous_pitch = self.pitch;
+        if let Some((at, yaw, pitch)) = step {
             self.position = at;
             self.yaw += crate::camera::wrap_degrees(yaw - self.yaw);
+            self.pitch = (pitch % 360.0).clamp(-90.0, 90.0);
         }
     }
     /// Put there at once, with nothing to blend from
     /// (`Entity.snapTo`).
-    pub fn snap(&mut self, at: Vec3, yaw: f32) {
+    pub fn snap(&mut self, at: Vec3, yaw: f32, pitch: f32) {
         self.position = at;
         self.previous = at;
         self.yaw = yaw;
         self.previous_yaw = yaw;
+        self.pitch = (pitch % 360.0).clamp(-90.0, 90.0);
+        self.previous_pitch = self.pitch;
     }
     pub fn new(id: u32, position: Vec3, yaw: f32) -> Self {
         Self {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             pitch: 0.0,
+            previous_pitch: 0.0,
             join: Default::default(),
             fire_ticks: 0,
             mod_fire_immune: false,
             health: 20.0,
+            tick_count: 0,
+            last_hurt_mob: None,
             id,
             position,
             previous: position,
@@ -2081,6 +2112,8 @@ impl ArmorStand {
             ground: Default::default(),
             speed_instance: false,
             nameplate: Default::default(),
+            client_effects: Default::default(),
+            darkness_blend: (0.0, 0.0),
         }
     }
     /// `Entity.getOnPos(0.2)` (`getOnPosLegacy`): the supporting block's
@@ -2182,26 +2215,40 @@ impl ArmorStand {
         if lava && !self.mod_fire_immune {
             self.fire_ticks = self.fire_ticks.max(300);
         }
-        // The fire block reaches a stand through `applyEffectsFromBlocks`,
-        // which a NoGravity stand does not feel (measured beside the server).
+        // BaseFireBlock.entityInside: FIRE_IGNITE runs before hurt(inFire), even when invisible.
         if !self.mod_fire_immune
-            && !self.invisible
             && !self.marker
             && !self.no_gravity
             && crate::motion::environment::fire_contact(world, registry, self.bounds()) > 0.0
         {
-            if self.fire_ticks > 0 {
-                if !invulnerable(world, "minecraft:in_fire") {
+            if self.fire_ticks < 0 {
+                self.fire_ticks += 1;
+            }
+            if self.fire_ticks >= 0 {
+                self.fire_ticks = self.fire_ticks.max(160);
+            }
+            if !self.invisible && !invulnerable(world, "minecraft:in_fire") {
+                if self.fire_ticks > 0 {
                     self.health -= 0.15;
                     hit_by = Some("minecraft:in_fire");
+                } else {
+                    // ArmorStand.hurtServer(#ignites_armor_stands): not on fire yet -> ignite 5s.
+                    self.fire_ticks = self.fire_ticks.max(100);
                 }
-            } else {
-                self.fire_ticks = 100;
             }
         }
         // Dead: the damage type that ran its health out, which vanilla's
         // `brokenByAnything` receives as the `DamageSource`.
         (self.health <= 0.5).then(|| hit_by.unwrap_or("minecraft:generic"))
+    }
+    /// `ArmorStand.getDefaultDimensions`: MARKER_DIMENSIONS, or BABY_DIMENSIONS (the type's at
+    /// half scale, its eyes at 0.9875) for a small one, else the type's.
+    pub fn default_dimensions(&self) -> [f32; 3] {
+        match (self.marker, self.small) {
+            (true, _) => [0.0; 3],
+            (_, true) => [0.25, 0.9875, 0.9875],
+            _ => [0.5, 1.975, 1.7775],
+        }
     }
     /// EntityType.ARMOR_STAND dimensions (0.5 x 1.975F, half for small).
     pub fn bounds(&self) -> Aabb {
@@ -2210,10 +2257,11 @@ impl ArmorStand {
         // (halving it for the small stand is exact).
         let (w, h) = (0.25 * s, f64::from(1.975_f32) * s);
         let p = self.position;
-        Aabb::new(
+        let vanilla = Aabb::new(
             Vec3::new(p.x - w, p.y, p.z - w),
             Vec3::new(p.x + w, p.y + h, p.z + w),
-        )
+        );
+        crate::pose::SizeAnswer::sized_box(self.size_answer, self.default_dimensions(), p, vanilla)
     }
     /// Leather boots on its feet: it walks on powder snow (`PowderSnowBlock.canEntityWalkOnPowderSnow`).
     fn feet_are_leather_boots(&self) -> bool {
@@ -2424,19 +2472,12 @@ impl ArmorStand {
     /// axis that hits something loses its speed
     /// (`restituteMovementAfterCollisions`: a stand does not bounce, so the
     /// speed becomes `-speed * 0`).
-    ///
-    /// Ground and terrain support are updated during the move, independently of
-    /// tick order. `travels_after` affects only the stand's settled vertical
-    /// velocity: Sunrise ticks stands before mobs, so a downward shove after
-    /// a stand's travel leaves the gravity already applied by that travel when
-    /// vanilla would tick the stand after the shulker.
     pub fn shove(
         &mut self,
         scene: SceneCollisions,
         delta: Vec3,
         border: Option<&BorderGeometry>,
         entities: &[Aabb],
-        travels_after: bool,
         authoritative: bool,
         mover: sunrise_world::entity_move::MoverType,
         context: &sunrise_world::native_load_context::LoopContext,
@@ -2464,7 +2505,7 @@ impl ArmorStand {
             self.velocity.z = -self.velocity.z * 0.0;
         }
         let vertical = moved.y != delta.y;
-        if vertical && (delta.y > 0.0 || delta.y < 0.0 && !travels_after) {
+        if vertical && delta.y != 0.0 {
             self.velocity.y = -self.velocity.y * 0.0;
         }
         if authoritative || delta.y.abs() > 0.0 {
@@ -2620,6 +2661,7 @@ mod fire_environment_tests {
             )
             .unwrap();
         let make = |id: &str| ItemEntity {
+            size_answer: None,
             random: sunrise_core::random::LegacyRandom::new(0),
             attachment_lifetime: Default::default(),
             fall_distance: 0.0,
@@ -2818,6 +2860,7 @@ mod destroyed_bundle_environment_tests {
             ItemStack::new("minecraft:diamond", 1),
         ];
         let mut bundle = ItemEntity {
+            size_answer: None,
             random: sunrise_core::random::LegacyRandom::new(0),
             attachment_lifetime: Default::default(),
             fall_distance: 0.0,
@@ -2876,7 +2919,7 @@ mod armor_stand_render_tests {
         let mut stand = ArmorStand::new(1, Vec3::new(0.5, 70.0, 0.5), 0.0);
         // A new stand has no move behind it.
         assert_eq!(stand.render_position(0.5), stand.position);
-        let fall = |s: &ArmorStand| Some((Vec3::new(0.5, s.position.y - 1.0, 0.5), 0.0));
+        let fall = |s: &ArmorStand| Some((Vec3::new(0.5, s.position.y - 1.0, 0.5), 0.0, 0.0));
         stand.interpolate(fall(&stand));
         assert_eq!(stand.render_position(0.0).y, 70.0);
         assert_eq!(stand.render_position(0.25).y, 69.75);
@@ -2894,7 +2937,7 @@ mod armor_stand_render_tests {
         let mut stand = ArmorStand::new(1, Vec3::ZERO, 170.0);
         assert_eq!(stand.render_yaw(0.5), 170.0);
         // To -170 is 20 degrees on through 180, not 340 back through 0.
-        stand.interpolate(Some((Vec3::ZERO, -170.0)));
+        stand.interpolate(Some((Vec3::ZERO, -170.0, 0.0)));
         assert_eq!(stand.render_yaw(0.0), 170.0);
         assert_eq!(stand.render_yaw(0.5), 180.0);
         assert_eq!(stand.render_yaw(1.0), 190.0);
@@ -2906,8 +2949,8 @@ mod armor_stand_render_tests {
     #[test]
     fn a_snapped_stand_is_drawn_where_it_landed() {
         let mut stand = ArmorStand::new(1, Vec3::new(0.5, 70.0, 0.5), 0.0);
-        stand.interpolate(Some((Vec3::new(0.5, 69.0, 0.5), 0.0)));
-        stand.snap(Vec3::new(200.5, 64.0, 0.5), 90.0);
+        stand.interpolate(Some((Vec3::new(0.5, 69.0, 0.5), 0.0, 0.0)));
+        stand.snap(Vec3::new(200.5, 64.0, 0.5), 90.0, 0.0);
         assert_eq!(stand.render_position(0.5), Vec3::new(200.5, 64.0, 0.5));
         assert_eq!(stand.render_yaw(0.5), 90.0);
     }
@@ -2950,7 +2993,7 @@ mod armor_stand_light_tests {
     fn a_stand_probe_follows_the_frame() {
         let dark = |_: i32, _: i32, _: i32| 0u8;
         let mut falling = stand(0.5, 70.0, 0.5);
-        falling.interpolate(Some((Vec3::new(0.5, 69.0, 0.5), 0.0)));
+        falling.interpolate(Some((Vec3::new(0.5, 69.0, 0.5), 0.0, 0.0)));
         assert_eq!(falling.light_probe(0.0, dark), [0, 71, 0]);
         assert_eq!(falling.light_probe(0.5, dark), [0, 71, 0]);
         assert_eq!(falling.light_probe(1.0, dark), [0, 70, 0]);
@@ -2994,7 +3037,7 @@ mod armor_stand_light_tests {
         // partial-tick position: falling does not move the scan.
         let mut moving = stand(0.5, 64.0, 0.5);
         moving.marker = true;
-        moving.interpolate(Some((Vec3::new(0.5, 70.0, 0.5), 0.0)));
+        moving.interpolate(Some((Vec3::new(0.5, 70.0, 0.5), 0.0, 0.0)));
         assert_eq!(moving.light_probe(0.0, |_, _, _| 0u8), [0, 70, 0]);
         assert_eq!(moving.light_probe(0.5, |_, _, _| 0u8), [0, 70, 0]);
     }
@@ -3026,6 +3069,7 @@ mod merge_tests {
     fn item(id: &str, count: u32, x: f64, age: i32) -> ItemEntity {
         let at = Vec3::new(x, 64.0, 0.5);
         ItemEntity {
+            size_answer: None,
             random: sunrise_core::random::LegacyRandom::new(0),
             attachment_lifetime: Default::default(),
             fall_distance: 0.0,
@@ -3350,6 +3394,7 @@ mod world_border_tests {
                 None,
             );
             let mut orb = ExperienceOrb {
+                size_answer: None,
                 attachment_lifetime: Default::default(),
                 fall_distance: 0.0,
                 rotation: [0.0, 0.0],
@@ -3558,6 +3603,7 @@ mod honey_slide_tests {
     pub(super) fn falling_item(x: f64, y: f64, z: f64, vx: f64, vy: f64, vz: f64) -> ItemEntity {
         let at = Vec3::new(x, y, z);
         ItemEntity {
+            size_answer: None,
             random: sunrise_core::random::LegacyRandom::new(0),
             attachment_lifetime: Default::default(),
             fall_distance: 0.0,
@@ -3661,6 +3707,7 @@ mod slime_bounce_tests {
     fn grounded_item() -> ItemEntity {
         let at = Vec3::new(0.5, 2.0, 0.5);
         ItemEntity {
+            size_answer: None,
             random: sunrise_core::random::LegacyRandom::new(0),
             attachment_lifetime: Default::default(),
             fall_distance: 0.0,
@@ -4543,7 +4590,6 @@ mod armor_stand_motion_tests {
                     delta,
                     None,
                     &[],
-                    false,
                     true,
                     sunrise_world::entity_move::MoverType::ShulkerBox,
                     crate::test_resources::server_loop_context(),
@@ -4573,6 +4619,7 @@ mod item_destroyed_tests {
             .map(|(id, count)| ItemStack::new(id, *count))
             .collect();
         ItemEntity {
+            size_answer: None,
             random: sunrise_core::random::LegacyRandom::new(0),
             attachment_lifetime: Default::default(),
             fall_distance: 0.0,
@@ -4724,6 +4771,7 @@ mod orb_underwater_tests {
             .iter()
             .map(|(v, _)| {
                 let mut orb = ExperienceOrb {
+                    size_answer: None,
                     attachment_lifetime: Default::default(),
                     fall_distance: 0.0,
                     rotation: [0.0, 0.0],
@@ -4762,6 +4810,7 @@ mod render_light_tests {
 
     fn orb(y: f64) -> ExperienceOrb {
         ExperienceOrb {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             fall_distance: 0.0,
             rotation: [0.0, 0.0],
@@ -4840,6 +4889,7 @@ mod dropped_item_light_tests {
 
     fn item(previous_y: f64, y: f64) -> ItemEntity {
         ItemEntity {
+            size_answer: None,
             random: sunrise_core::random::LegacyRandom::new(0),
             attachment_lifetime: Default::default(),
             fall_distance: 0.0,
@@ -4978,6 +5028,7 @@ mod orb_lava_tests {
 
     fn sample_orb(at: Vec3, health: i32) -> ExperienceOrb {
         ExperienceOrb {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             fall_distance: 0.0,
             rotation: [0.0, 0.0],

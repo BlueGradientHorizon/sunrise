@@ -426,6 +426,7 @@ mod tests {
         use sunrise_client::mobs::{Anim, Brain, MobType, Part};
         use sunrise_core::geometry::Vec3;
         let kind = MobType {
+            type_key: Default::default(),
             shadow: None,
             id: name.into(),
             species,
@@ -469,6 +470,7 @@ mod tests {
                 pose: [0.0; 9],
                 polygons: Vec::new(),
                 children: Vec::new(),
+                layer: None,
             }),
             layers: Default::default(),
             texture: String::new(),

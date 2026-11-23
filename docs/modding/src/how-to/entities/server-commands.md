@@ -1,7 +1,7 @@
 # Typed server commands
 
 In `register_commands`, push each server usage as
-`Command::new(usage).executes(|host, source, command| { /* ... */ Some(1) })`.
+`Command::new(usage).executes(|host, source, command| { /* ... */ Ok(1) })`.
 Use `Command::op(usage, level)` for a usage that requires operator permission.
 The executor receives a borrowed `CommandInvocation`, not a raw line to split
 or a command path to route. Read named values through `command.argument(name)`
@@ -10,9 +10,13 @@ a live `PlayerRef`, not selector text.
 
 Only the executor whose registration owns the parsed node runs, with its mod's
 identity. If the owner is disabled after registration, the command is refused.
-Return `Some(n)` for success with integer result `n` (zero is also success), or
-`None` for failure. Neither failure nor a disabled owner tries another executor.
+Return `Ok(n)` for success with integer result `n` (zero is also success), or
+`Err(message.into())` with a `Text` for failure. Failure text defaults to red and does
+not depend on `sendCommandFeedback`. It is not shown for forked commands, silent sources,
+or sources that do not accept failures. "Unknown or incomplete command" remains a parse error for input
+that matches no usage. Neither failure nor a disabled owner tries another executor.
 `execute store result` sees `n` on success; `execute store success` sees one.
+On a returned failure, both store zero.
 An executor can capture owned or shared state, such as an `Arc`, but it cannot
 borrow values from the registration call.
 
@@ -219,11 +223,13 @@ impl Hooks for MyMod {
     fn register_commands(&self, _: &mut dyn ServerHost, event: &mut RegisterCommandsEvent<'_>) {
         event.commands.push(Command::new("machine use <machine:mymod:machine>").executes(
             |host, _, command| {
-                let CommandArgumentValue::Custom { value, .. } = command.argument("machine")? else {
-                    return None;
+                let Some(CommandArgumentValue::Custom { value, .. }) = command.argument("machine") else {
+                    return Err(Text::translate("example.commands.machine.missing", vec![]).into());
                 };
-                host.commands().feedback(Text::literal(value.as_str())).ok()?;
-                Some(1)
+                host.commands()
+                    .feedback(Text::literal(value.as_str()))
+                    .map_err(|_| Text::translate("example.commands.machine.feedback_failed", vec![]))?;
+                Ok(1)
             },
         ));
     }

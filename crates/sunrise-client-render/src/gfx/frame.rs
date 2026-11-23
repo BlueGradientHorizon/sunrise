@@ -114,6 +114,8 @@ pub struct Frame<'a> {
     pub yaw: f32,
     pub pitch: f32,
     pub fov_degrees: f32,
+    /// `Camera.createProjectionMatrixForCulling`: `max(fov_degrees, option_fov)`.
+    pub cull_fov_degrees: f32,
     /// The camera entity's eye and view rotation (yaw, pitch): the camera's own except in a
     /// third-person view.
     pub eye: DVec3,
@@ -136,6 +138,9 @@ pub struct Frame<'a> {
     pub distance: f32,
     /// Full-detail terrain distance in blocks; distant LODs bypass the cave graph.
     pub detail_distance: f32,
+    /// Loaded full-detail streaming distance in blocks for shadow caster selection, separate from
+    /// the effective eye distance (`detail_distance`); defaults to `detail_distance` when `None`.
+    pub shadow_distance: Option<f32>,
     /// `Camera.depthFar`: the far plane (`crate::camera::depth_far`).
     pub depth_far: f32,
     pub underwater: bool,

@@ -108,6 +108,17 @@ pub fn loaded_motion(tag: &Tag) -> Vec3 {
 pub fn rotation(tag: &Tag) -> [f32; 2] {
     read_doubles::<2>(tag.get("Rotation")).map_or([0.0; 2], |r| [r[0] as f32, r[1] as f32])
 }
+/// `Entity.load`: the initial rotation on a new entity, before its subtype reads NBT.
+pub fn loaded_rotation(tag: &Tag) -> [f32; 2] {
+    let [yaw, pitch] = rotation(tag).map(|angle| {
+        if angle.is_finite() {
+            angle % 360.0
+        } else {
+            0.0
+        }
+    });
+    [yaw, pitch.clamp(-90.0, 90.0)]
+}
 /// `TagValueInput.getBooleanOr`: a numeric tag's byteValue is nonzero, with a false default.
 pub fn flag(tag: &Tag, key: &str) -> bool {
     flag_or(tag, key, false)
@@ -1303,11 +1314,8 @@ pub fn write_mob(
         | "minecraft:camel_husk" => {
             // AbstractHorse records these before any subclass fields.
             let camel = matches!(species, S::Camel | S::CamelHusk);
-            if camel {
-                map.insert("EatingHaystack".into(), Tag::Byte(i8::from(m.extra.flag)));
-            } else {
-                map.entry("EatingHaystack".into()).or_insert(Tag::Byte(0));
-            }
+            // AbstractHorse.addAdditionalSaveData: `putBoolean("EatingHaystack", isEating())`.
+            map.insert("EatingHaystack".into(), Tag::Byte(i8::from(m.extra.flag)));
             map.insert("Bred".into(), Tag::Byte(i8::from(m.extra.bred)));
             map.insert("Temper".into(), Tag::Int(m.extra.equine_temper));
             map.insert("Tame".into(), Tag::Byte(i8::from(m.extra.tame)));
@@ -1900,7 +1908,9 @@ fn home_block_pos(tag: Option<&Tag>) -> Option<[i32; 3]> {
     }
 }
 mod mob_load;
-pub use mob_load::{mob_from_nbt, mob_from_nbt_remote, mob_from_nbt_with_random};
+pub use mob_load::{
+    mob_from_nbt, mob_from_nbt_deferred, mob_from_nbt_remote, mob_from_nbt_with_random,
+};
 
 /// `LivingEntity.readAdditionalSaveData`'s `setHealth(getFloatOr("Health", getMaxHealth()))`:
 /// `Mth.clamp` to `[0, getMaxHealth()]`, the max health the loaded attributes and their
@@ -1919,14 +1929,13 @@ pub(crate) fn loaded_health(m: &Mob, health: Option<f64>) -> f32 {
 
 fn mob_from_nbt_at(
     tag: &Tag,
-    types: &HashMap<String, Arc<MobType>>,
+    kind: Arc<MobType>,
     id: u32,
     registry: Option<&BlockRegistry>,
     random: sunrise_core::random::LegacyRandom,
     position: Vec3,
     authoritative: bool,
-) -> Option<Mob> {
-    let kind = types.get(&self::kind(tag)?)?.clone();
+) -> Mob {
     let [yaw, pitch] = rotation(tag);
     let mut m = if authoritative {
         Mob::with_random(id, kind, position, yaw, random)
@@ -2302,6 +2311,8 @@ fn mob_from_nbt_at(
         // AbstractHorse.readAdditionalSaveData: the saved Int as is, camels included.
         m.extra.equine_temper = tag.get("Temper").and_then(int_value).unwrap_or(0);
         m.extra.bred = flag(tag, "Bred");
+        // `setEating(getBooleanOr("EatingHaystack", false))`, camels included.
+        m.extra.flag = flag(tag, "EatingHaystack");
         m.extra.owner = crate::save::uuid_from_tag(tag.get("Owner"));
         let v = number(tag.get("Variant")).unwrap_or(0) as i32;
         (m.extra.variant, m.extra.variant2) = crate::mobs::equine::horse_look(v);
@@ -2526,9 +2537,6 @@ fn mob_from_nbt_at(
         crate::mobs::frog::set_pregnant(&mut m, true);
     }
     if crate::mobs::camel::is_camel(m.species()) {
-        // AbstractHorse.readAdditionalSaveData: the eating state (Temper is
-        // read with the other equines' above).
-        m.extra.flag = flag(tag, "EatingHaystack");
         // The tick is a game time: `camel::finish_load` puts it on the mob's
         // clock once the world's time is known.
         let tick = match tag.get("LastPoseTick") {
@@ -2755,7 +2763,7 @@ fn mob_from_nbt_at(
     if m.health < 0.0 {
         m.health = 0.0;
     }
-    Some(m)
+    m
 }
 
 /// `ItemEntity`: Health, Age, PickupDelay, Item, Thrower.
@@ -2935,6 +2943,7 @@ pub fn item_entity_from_nbt(tag: &Tag, id: u32, bob_offset: f32) -> Option<ItemE
         other => number(other).unwrap_or(default) as i16,
     };
     Some(ItemEntity {
+        size_answer: None,
         attachment_lifetime: Default::default(),
         rotation: rotation(tag),
         join: Default::default(),
@@ -3050,6 +3059,7 @@ pub fn orbs_from_nbt(tag: &Tag) -> Vec<ExperienceOrb> {
     };
     let count = number(tag.get("Count")).unwrap_or(1).max(1) as u32;
     let orb = ExperienceOrb {
+        size_answer: None,
         fire_ticks: number(tag.get("Fire")).unwrap_or(0) as i16 as i32,
         attachment_lifetime: Default::default(),
         fall_distance: float(tag.get("fall_distance")).unwrap_or(0.0),
@@ -3803,21 +3813,6 @@ pub fn cushion_from_nbt(tag: &Tag, id: u32) -> Option<Cushion> {
 
 #[cfg(test)]
 mod cushion_tests;
-/// `ItemFrame.setDirection`: a frame on a wall turns to face away from it
-/// (`yRot` = the 2D data value times 90, `xRot` 0); one on a floor or a
-/// ceiling looks straight down or up (`xRot` = -90 times the axis step).
-/// `facing` is the 3D data value (down, up, north, south, west, east).
-fn frame_rotation(facing: u8) -> [f32; 2] {
-    match facing {
-        0 => [0.0, 90.0],
-        1 => [0.0, -90.0],
-        2 => [180.0, 0.0],
-        3 => [0.0, 0.0],
-        4 => [90.0, 0.0],
-        _ => [270.0, 0.0],
-    }
-}
-
 /// ItemFrame.addAdditionalSaveData.
 pub fn item_frame_to_nbt(
     f: &ItemFrame,
@@ -3835,7 +3830,7 @@ pub fn item_frame_to_nbt(
             (lo[2] + hi[2]) / 2.0,
         ),
         motion: raw.map_or(Vec3::ZERO, loaded_motion),
-        rotation: frame_rotation(f.facing),
+        rotation: f.entity_rotation(),
         on_ground: raw.is_some_and(|raw| flag(raw, "OnGround")),
         fall_distance: raw.map_or(0.0, |raw| ground_from_nbt(raw).1),
     };
@@ -4864,6 +4859,40 @@ mod tests {
         assert_eq!(saved(&m), Some(Tag::Byte(-2)));
     }
 
+    /// `AbstractHorse.readAdditionalSaveData` reads `EatingHaystack` with
+    /// `getBooleanOr` and `addAdditionalSaveData` writes `putBoolean(isEating())`:
+    /// a horse loaded with `2b` and a llama with `-1b` save `1b`, and a mule that
+    /// starts eating after loading without the key saves `1b`.
+    #[test]
+    fn a_horse_or_llama_saves_its_eating_state() {
+        let saved = |id: &str, species, loaded: Option<i8>, eat: bool| {
+            let mut kind = crate::mobs::sensor_scan_tests::kind();
+            let ty = Arc::make_mut(&mut kind);
+            ty.id = id.into();
+            ty.species = species;
+            let types = [(id.into(), kind)].into();
+            let raw = Tag::compound(
+                [("id", string(id)), ("Pos", doubles(&[4.5, 220.0, 4.5]))]
+                    .into_iter()
+                    .chain(loaded.map(|b| ("EatingHaystack", Tag::Byte(b)))),
+            );
+            let mut m = mob_from_nbt(&raw, &types, 1, None).unwrap();
+            m.extra.flag |= eat;
+            mob_to_nbt(&m, [0; 4], Some(&raw), None, |_| None, &Default::default())
+                .get("EatingHaystack")
+                .cloned()
+        };
+        use crate::mobs::Species as S;
+        let one = Some(Tag::Byte(1));
+        assert_eq!(saved("minecraft:horse", S::Horse, Some(2), false), one);
+        assert_eq!(saved("minecraft:llama", S::Llama, Some(-1), false), one);
+        assert_eq!(saved("minecraft:mule", S::Mule, None, true), one);
+        assert_eq!(
+            saved("minecraft:zombie_horse", S::ZombieHorse, None, false),
+            Some(Tag::Byte(0))
+        );
+    }
+
     /// A body item taken off (`/item replace entity <cube> armor.body with minecraft:air`)
     /// is not saved again from the entity's earlier save: vanilla writes `equipment.body` only
     /// while the slot holds something (#12038).
@@ -5134,6 +5163,48 @@ mod tests {
         let saved = mob_to_nbt(&mob, [0; 4], None, None, |_| None, &Default::default());
         let reloaded = mob_from_nbt(&saved, &types, 8, None).unwrap();
         assert_eq!(villager_data(&reloaded), data);
+    }
+
+    #[test]
+    fn loaded_minimum_restocks_today_wraps_only_on_a_new_day() {
+        let mut kind = crate::mobs::sensor_scan_tests::kind();
+        let def = Arc::make_mut(&mut kind);
+        def.id = "minecraft:villager".into();
+        def.species = crate::mobs::Species::Villager;
+        let stack = |id| Tag::compound([("id", string(id)), ("count", Tag::Int(1))]);
+        let offer = Tag::compound([
+            ("buy", stack("minecraft:coal")),
+            ("sell", stack("minecraft:emerald")),
+            ("uses", Tag::Int(1)),
+            ("demand", Tag::Int(7)),
+        ]);
+        let tag = Tag::compound([
+            ("id", string("minecraft:villager")),
+            ("Pos", doubles(&[0.0, 100.0, 0.0])),
+            (
+                "Offers",
+                Tag::compound([("Recipes", Tag::List(vec![offer]))]),
+            ),
+            ("LastRestock", Tag::Long(1000)),
+            ("RestocksToday", Tag::Int(i32::MIN)),
+        ]);
+        let types = [("minecraft:villager".into(), kind)].into();
+        let mut trader = mob_from_nbt(&tag, &types, 7, None)
+            .unwrap()
+            .extra
+            .trade
+            .unwrap();
+
+        assert!(!trader.should_restock(1001, 1));
+        assert_eq!(
+            (trader.last_restock, trader.restocks_today),
+            (1000, i32::MIN)
+        );
+        // Day rollover alone triggers catch-up, with only two ticks since LastRestock.
+        assert!(trader.should_restock(1002, 2));
+        assert_eq!((trader.last_restock, trader.restocks_today), (1002, 0));
+        // Java's 2 - MIN is negative, so catch-up does not reset uses or update demand.
+        assert_eq!((trader.offers[0].uses, trader.offers[0].demand), (1, 7));
     }
 
     #[test]
@@ -6535,6 +6606,7 @@ mod tests {
     #[test]
     fn orbs_save_and_load_their_fire() {
         let mut o = ExperienceOrb {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             rotation: [0.0, 0.0],
             join: Default::default(),

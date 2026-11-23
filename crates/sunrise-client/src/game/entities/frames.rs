@@ -264,13 +264,6 @@ impl Game<'_> {
     }
     /// The frame under the crosshair within reach and its distance.
     pub(super) fn frame_hit(&self) -> Option<(usize, f64)> {
-        let mut pick = crate::game::pick_accumulator::PickAccumulator::new(self.entity_reach);
-        self.frame_hit_with_pick(&mut pick)
-    }
-    pub(super) fn frame_hit_with_pick(
-        &self,
-        pick: &mut crate::game::pick_accumulator::PickAccumulator,
-    ) -> Option<(usize, f64)> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, _) = hit?;
             let index = self.item_frames.iter().position(|f| f.id == entity.id())?;
@@ -278,25 +271,17 @@ impl Game<'_> {
         }
         let (eye, dir) = self.aim()?;
         let reach: f64 = self.entity_reach;
+        let (from, to) = super::pick_accumulator::pick_ray_segment(eye, dir, reach);
+        let mut pick = super::pick_accumulator::PickAccumulator::new(reach * reach);
         let mut best: Option<(usize, f64)> = None;
         for (i, f) in self.item_frames.iter().enumerate() {
             let (lo, hi) = f.bounds();
-            let (mut t0, mut t1) = (0.0f64, reach);
-            let mut hit = true;
-            for a in 0..3 {
-                if dir[a].abs() < 1e-9 {
-                    hit &= eye[a] >= lo[a] && eye[a] <= hi[a];
-                    continue;
-                }
-                let (mut ta, mut tb) = ((lo[a] - eye[a]) / dir[a], (hi[a] - eye[a]) / dir[a]);
-                if ta > tb {
-                    std::mem::swap(&mut ta, &mut tb);
-                }
-                t0 = t0.max(ta);
-                t1 = t1.min(tb);
-            }
-            if hit && t0 <= t1 && pick.consider(self, f.id, t0) {
-                best = Some((i, t0));
+            let bb = Aabb::new(
+                Vec3::new(lo[0], lo[1], lo[2]),
+                Vec3::new(hi[0], hi[1], hi[2]),
+            );
+            if pick.consider_box(self, f.id, from, to, bb) {
+                best = Some((i, pick.hovered.unwrap().distance_sq.sqrt()));
             }
         }
         best
@@ -410,50 +395,71 @@ impl Game<'_> {
             self.attack_ticks = 0;
             return true;
         }
-        self.hit_frame(i, true, self.creative);
+        self.hit_frame_by(
+            i,
+            true,
+            self.creative,
+            Some(super::commands::Target::Player),
+            false,
+        );
         true
     }
-    /// `ItemFrame.hurtServer` from a projectile (`AbstractArrow.onHitEntity`,
-    /// `Snowball`, `ThrownEgg`, `ThrownEnderpearl`, `SmallFireball`...): the
-    /// damage source's entity is the projectile's owner. A fixed frame only
-    /// gives way to a creative player's shot (`canHurtWhenFixed`), and then
-    /// breaks whole (`BlockAttachedEntity.hurtServer`). `creative`: that player
-    /// has infinite materials. False when the frame refused the hit.
-    pub(super) fn projectile_hurts_frame(
+    /// `ItemFrame.hurtServer` from a projectile with full source attribution.
+    pub(super) fn projectile_hurts_frame_by(
         &mut self,
         id: u32,
         by_player: bool,
         creative: bool,
+        source: Option<super::commands::Target>,
+        damage_type: &str,
     ) -> bool {
         let Some(i) = self.item_frames.iter().position(|f| f.id == id) else {
             return false;
         };
-        if self.item_frames[i].fixed {
-            if !creative {
+        let bypasses = self
+            .health_resources
+            .damage
+            .id(damage_type)
+            .is_some_and(|k| {
+                self.health_resources
+                    .damage
+                    .in_tag(k, "minecraft:bypasses_invulnerability")
+            });
+        let mob_blocked = !self
+            .ui
+            .rules
+            .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING)
+            && matches!(source, Some(super::commands::Target::Mob(_)));
+        let fixed = self.item_frames[i].fixed;
+        if fixed {
+            if (!creative && !bypasses) || mob_blocked {
                 return false;
             }
-            self.item_frames[i].item = None;
+        } else if self.item_frames[i].item.is_none() && mob_blocked {
+            return false;
         }
-        self.hit_frame(i, by_player, creative);
+        self.hit_frame_by(i, by_player, creative, source, fixed);
         true
     }
-    /// The non-fixed part of `ItemFrame.hurtServer`: a filled frame gives its
-    /// item up (`shouldDamageDropItem`), an empty one breaks
-    /// (`BlockAttachedEntity.hurtServer`). `by_player`: the damage source's
-    /// entity is the acting player, `creative` when they have infinite
-    /// materials (no drops).
-    fn hit_frame(&mut self, mut i: usize, by_player: bool, creative: bool) {
-        let with_frame = self.item_frames[i].item.is_none();
+    /// Non-fixed part of `ItemFrame.hurtServer`: filled drops item, empty or fixed breaks.
+    fn hit_frame_by(
+        &mut self,
+        mut i: usize,
+        by_player: bool,
+        creative: bool,
+        source: Option<super::commands::Target>,
+        force_break: bool,
+    ) {
+        let with_frame = force_break || self.item_frames[i].item.is_none();
         let entity_id = self.item_frames[i].id;
         if with_frame {
             let (kind, pos) = (self.item_frames[i].kind(), self.item_frames[i].pos);
             if self.hanging_break_cancelled(kind, pos, by_player) {
                 return;
             }
-            // The listener had the game in its hands: find the frame again by
-            // its id, and it must still be empty. Otherwise nothing breaks.
+            // The listener had the game in its hands: find the frame again by id.
             match self.item_frames.iter().position(|f| f.id == entity_id) {
-                Some(now) if self.item_frames[now].item.is_none() => i = now,
+                Some(now) if force_break || self.item_frames[now].item.is_none() => i = now,
                 _ => return,
             }
         }
@@ -473,7 +479,7 @@ impl Game<'_> {
             self.item_frames[i].item = None;
         } else {
             // BlockAttachedEntity.kill precedes ItemFrame.dropItem's break sound.
-            self.entity_killed_event(at, true);
+            self.entity_killed_event_by(at, source);
             self.audio.play(&sound(&f, "break"), Some(at), 1.0, 1.0);
         }
         // ItemFrame.dropItem clears the item (updating comparators) before drops.
@@ -493,8 +499,25 @@ impl Game<'_> {
         }
         // BLOCK_CHANGE by the attacker after the drops: ItemFrame.hurtServer
         // for the item, ItemFrame.dropItem(level, causedBy) for the frame.
-        let who = by_player.then_some(sunrise_client::mobs::Who::Player);
-        let ctx = self.who_context(who, None);
+        let ctx = match source {
+            Some(super::commands::Target::Player) => {
+                self.who_context(Some(sunrise_client::mobs::Who::Player), None)
+            }
+            Some(super::commands::Target::Guest(conn)) => {
+                let who = self
+                    .command_guest(conn)
+                    .map(|g| sunrise_client::mobs::Who::Mob(g.entity_id as u32))
+                    .or(Some(sunrise_client::mobs::Who::Player));
+                self.who_context(who, None)
+            }
+            Some(super::commands::Target::Mob(id)) => {
+                self.who_context(Some(sunrise_client::mobs::Who::Mob(id)), None)
+            }
+            _ => {
+                let who = by_player.then_some(sunrise_client::mobs::Who::Player);
+                self.who_context(who, None)
+            }
+        };
         self.post_game_event("minecraft:block_change", at, ctx);
         if !with_frame {
             // ItemFrame.hurtServer plays this after the event.

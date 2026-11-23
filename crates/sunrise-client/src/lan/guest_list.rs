@@ -99,6 +99,21 @@ impl GuestList {
         Some(self.update(index, update))
     }
 
+    /// Move the inventory fields of a suspended guest between their own row and
+    /// the inner turn that is borrowing them. No indexed fields change.
+    pub fn swap_loaned_inventory(&mut self, guest: usize, inner: usize) {
+        let [g, i] = self
+            .rows
+            .get_disjoint_mut([guest, inner])
+            .expect("different guest turns");
+        std::mem::swap(&mut g.inventory, &mut i.inventory);
+        std::mem::swap(&mut g.armor, &mut i.armor);
+        std::mem::swap(&mut g.location_armor, &mut i.location_armor);
+        std::mem::swap(&mut g.offhand, &mut i.offhand);
+        std::mem::swap(&mut g.equipment, &mut i.equipment);
+        std::mem::swap(&mut g.carried, &mut i.carried);
+    }
+
     /// Edit rows in join order, through the same bounded mutation scope.
     pub fn update_all(&mut self, mut update: impl FnMut(&mut Guest)) {
         for index in 0..self.rows.len() {

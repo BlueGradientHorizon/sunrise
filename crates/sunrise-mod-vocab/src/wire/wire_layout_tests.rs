@@ -29,6 +29,10 @@ fn checked_records_have_declared_field_bytes() {
         ("example:moon".to_owned(),),
     );
     fields(JavaString(vec![65, 0xd800, 90]), (vec![65u16, 0xd800, 90],));
+    fields(
+        EnchantmentInfo::new("example:keen".to_owned(), 5, 10, 1, false),
+        ("example:keen".to_owned(), 5u32, 10u32, 1u32, false),
+    );
     let mut nbt = Compound::new();
     nbt.insert("answer".into(), Tag::Int(42));
     fields(Components::from(nbt.clone()), (nbt.clone(),));
@@ -261,6 +265,32 @@ fn snapshot_records_have_declared_field_bytes() {
     );
     let revision = crate::item::containers::ModRevision::from_snapshot(31, 47);
     fields(revision, (31u64, 47u64));
+    let player_source = PlacementSource::Player {
+        yaw: -45.0,
+        pitch: 30.0,
+        sneaking: true,
+    };
+    fields(player_source, (0u32, -45.0f32, 30.0f32, true));
+    let directional_source = PlacementSource::Directional {
+        direction: Direction::East,
+    };
+    fields(directional_source, (1u32, Direction::East));
+    let pos = BlockPos { x: 1, y: 2, z: 3 };
+    let hit_pos = BlockPos { x: 4, y: 5, z: 6 };
+    let item = ItemKey::from_slot(0).unwrap();
+    let mut ctx = PlacementContext::new(pos, Direction::Up, Some(item));
+    ctx.hit_pos = hit_pos;
+    ctx.hit = [4.25, 5.5, 6.75];
+    ctx.inside = true;
+    ctx.source = player_source;
+    ctx.replace_clicked = true;
+    fields(
+        ctx,
+        (
+            (pos, hit_pos, Direction::Up, [4.25f64, 5.5, 6.75], true),
+            (player_source, Some(item), true),
+        ),
+    );
 }
 
 fn decode<T: Wire, F: Wire>(value: T) -> F {

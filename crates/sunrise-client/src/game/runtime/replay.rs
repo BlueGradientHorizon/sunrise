@@ -10,10 +10,24 @@ use std::{
 };
 use sunrise_client::{
     Result,
-    packet_source::PacketSource,
+    packet_source::{PacketSource, TimestampedPacket},
     studio::{Metadata, ReplayDriver},
     text::Text,
 };
+use sunrise_protocol::{buf::Reader, packets::play::Clientbound, registry::SyncedNames};
+
+/// Decode a recorded play packet against the same registry view as live play.
+fn decode_recorded_packet(
+    packet: &TimestampedPacket,
+    names: Option<&SyncedNames<'_>>,
+) -> sunrise_protocol::Result<Clientbound> {
+    let reader = Reader::new(&packet.payload);
+    let reader = match names {
+        Some(names) => reader.with_names(names),
+        None => reader,
+    };
+    Clientbound::decode_reader(packet.id, reader)
+}
 
 /// The packet replay a `Game` plays, if any, and its playback clock.
 #[derive(Default)]
@@ -345,13 +359,14 @@ impl Game<'_> {
         Ok(())
     }
 
-    fn dispatch_studio_replay_packets(
-        &mut self,
-        packets: Vec<sunrise_client::studio::mcpr::TimestampedPacket>,
-    ) {
+    fn dispatch_studio_replay_packets(&mut self, packets: Vec<TimestampedPacket>) {
         for pkt in packets {
-            match sunrise_protocol::packets::play::Clientbound::decode(pkt.id, &pkt.payload) {
-                Ok(sunrise_protocol::packets::play::Clientbound::CustomPayload(payload))
+            let names = self.remote.as_ref().map(|remote| SyncedNames {
+                builtin: &remote.builtin,
+                dynamic: &remote.registries,
+            });
+            match decode_recorded_packet(&pkt, names.as_ref()) {
+                Ok(Clientbound::CustomPayload(payload))
                     if payload.channel == sunrise_protocol::attachment_sync::CHANNEL =>
                 {
                     match sunrise_protocol::attachment_sync::decode_staged(payload) {
@@ -680,9 +695,9 @@ impl Game<'_> {
         self.replay.driver = Some(Box::new(driver));
         self.camera_type = sunrise_client::camera::CameraType::FirstPerson;
         self.title = None;
-        self.activate_screen(Screen::Playing);
+        self.screen = Screen::Playing;
+        self.commit_screen_transition();
         self.capture(false);
-        self.dragging = false;
         // Apply timestamp-zero login, player pose, and chunk packets before the first rendered
         // frame so playback opens at the recorded player's viewpoint.
         let _ = self.advance_studio_replay();
@@ -859,6 +874,55 @@ impl Game<'_> {
         }
         log::info!(
             "Studio Recorder: Dumped initial world snapshot ({count} chunks) at timestamp 0ms"
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sunrise_core::nbt::Tag;
+    use sunrise_protocol::{
+        packets::play,
+        registry::{Builtin, Dynamic, Ids},
+    };
+
+    #[test]
+    fn recording_decodes_item_hover_using_the_replay_session_registry() {
+        let title = Clientbound::SetTitleText(play::Text {
+            text: Tag::compound([
+                ("text", Tag::String("Recorded item".into())),
+                (
+                    "hover_event",
+                    Tag::compound([
+                        ("action", Tag::String("show_item".into())),
+                        ("id", Tag::String("minecraft:stone".into())),
+                    ]),
+                ),
+            ]),
+        });
+        let encoded = title.encode();
+        let mut reader = Reader::new(&encoded);
+        let packet = TimestampedPacket {
+            timestamp_ms: 0,
+            id: reader.varint().unwrap(),
+            payload: reader.rest().to_vec(),
+        };
+        let builtin = Builtin {
+            registries: [(
+                "minecraft:item".into(),
+                Ids::from_names(vec!["minecraft:stone".into()]),
+            )]
+            .into(),
+        };
+        let names = SyncedNames {
+            builtin: &builtin,
+            dynamic: &Dynamic::default(),
+        };
+        assert!(decode_recorded_packet(&packet, None).is_err());
+        assert_eq!(
+            decode_recorded_packet(&packet, Some(&names)).unwrap(),
+            title
         );
     }
 }

@@ -77,55 +77,7 @@ second registration for the same item refuses startup; there is no last-writer-w
 This example traces the input for an existing `mymod:tool` without doing anything in the world:
 
 ```rust
-use std::sync::Arc;
-
-use mod_api::{
-    ClientHost, ClientItemUseBehavior, Hooks, ItemStack, JavaString, Registrar, RegistrationContext,
-};
-
-struct ToolMod;
-struct Behavior;
-
-#[mod_api::sunrise_mod]
-impl Hooks for ToolMod {
-    fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
-        let key = r.item_key("mymod:tool");
-        r.register_client_item_use(key, Arc::new(Behavior));
-    }
-}
-
-impl ClientItemUseBehavior for Behavior {
-    fn use_item(&self, _host: &mut dyn ClientHost, stack: &ItemStack, slot: u32) {
-        let data = stack
-            .components()
-            .and_then(|c| c.as_nbt().get(&JavaString::from("minecraft:custom_data")));
-        eprintln!(
-            "Tool input started in slot {slot}: {} item(s), custom data present: {}",
-            stack.count(),
-            data.is_some(),
-        );
-    }
-
-    fn release_using(
-        &self,
-        _host: &mut dyn ClientHost,
-        _stack: &ItemStack,
-        slot: u32,
-        ticks_held: u32,
-    ) {
-        eprintln!("Tool input released in slot {slot} after {ticks_held} ticks");
-    }
-
-    fn on_stop_using(
-        &self,
-        _host: &mut dyn ClientHost,
-        _stack: &ItemStack,
-        slot: u32,
-        _ticks_held: u32,
-    ) {
-        eprintln!("Tool input ended in slot {slot}");
-    }
-}
+{{#include ../../../examples/src/item_behaviors.rs:client_item_use}}
 ```
 
 An enabled owner consumes the input before crosshair handling. This applies to main-hand
@@ -250,8 +202,13 @@ held-stack queries. Each item's parts are asked once per registered enchantment 
 installed (server world open or `/reload`, or client tag packets), with the item's default stack. The
 engines read the stored answers until the next install or world close. Support resolves before the server
 resolves primary answers. Each snapshot owns its answers; publishing a fresh world-loot snapshot copies
-the current answers without asking listeners again. The client `Host::enchantment_supports` read is separate:
-it checks `supported_items` membership only.
+the current answers without asking listeners again.
+
+`enchantments()`, `enchantment_supports(id, item)` and `enchantment_min_cost(id, level)` on `ClientHost`
+and `ClientSetupContext` read the table built from the server's synced enchantment entries when available,
+and the local table otherwise. `enchantments()` lists `EnchantmentInfo` records in registry order, including
+`weight` (selection weight) and `anvil_cost` (base anvil fee per enchantment level).
+`enchantment_supports` checks only `supported_items` membership, not Item Part overrides.
 
 ## Hand, break and name on the client
 
@@ -376,3 +333,61 @@ need to keep it afterwards. The input views and staged edits are not Wire record
 
 `MenuPart::menu_slot_rules` answers per menu type and slot, including for a replacement from
 `item_stacked_on_other`.
+
+## Stacking onto another item in a menu
+
+`ItemPart::item_stacked_on_other` shares the `item_stacked_on_other` hook, event and
+decide/fire/apply transaction with `Hooks::item_stacked_on_other` (NeoForge's
+`ItemStackedOnOtherEvent`), covering vanilla 26.3's `Item.overrideStackedOnOther` and
+`Item.overrideOtherStackedOnMe` on both sides:
+
+- **Server (authoritative)**: single-player integrated server, LAN host and dedicated server
+  receive `HostSide::Server`.
+- **Client**: ordinary container/inventory click prediction and creative Survival Inventory tab or
+  Item Tab hotbar pickups receive `HostSide::Client`. During client prediction, server
+  reconciliation remains authoritative. Creative catalogue display slots are not pickup overrides.
+
+Dispatch runs at the resolved pickup moment: both a direct left/right `Pickup` when no drag is
+active and a one-slot left/right `QuickCraft` drag release (matching vanilla
+`AbstractContainerMenu.doClick`). Multi-slot drags, middle-button drags and direct pickups that
+only reset an active drag do not dispatch.
+
+On each resolved pickup, dispatch follows vanilla
+`AbstractContainerMenu.tryItemClickBehaviourOverride` order inside one transaction:
+
+1. Global `Hooks::item_stacked_on_other` listeners (`event.event.direction == StackedOnOtherDirection::Event`),
+   authoritative server side only.
+2. The carried (cursor) stack's `ItemPart::item_stacked_on_other` (`StackedOnOtherDirection::CarriedOnOther`).
+3. Vanilla's carried override (`BundleItem.overrideStackedOnOther`, dispatched by item type rather
+   than mere `bundle_contents` component presence), using its real outcome to decide whether to
+   stop before step 4.
+4. The clicked slot stack's `ItemPart::item_stacked_on_other` (`StackedOnOtherDirection::OtherStackedOnMe`).
+5. Vanilla's clicked override (`BundleItem.overrideOtherStackedOnMe`), then the plain pickup click.
+
+`ItemPart` overrides represent both vanilla outcomes inside the transaction:
+
+- **Handled (stop)**: set `event.result.handled = true`, set `event.result.carried` via
+  `StackResult::Set(...)` and/or `event.result.clicked` via `ClickedStackResult::Set(...)` or
+  `ClickedStackResult::Take(count)`, and return `Flow::Cancel`. Stops later overrides and plain
+  pickup.
+- **Not handled (continue, optionally with edits)**: leave `event.result.handled = false`,
+  optionally edit `event.result.carried` and/or `event.result.clicked`, and return
+  `Flow::Continue`. Later overrides and plain pickup observe the edited stacks.
+
+For `event.result.clicked`, direct writes and slot takes are distinct:
+
+- `ClickedStackResult::Set(stack)` writes the clicked slot directly (`Slot.set`), without running
+  `Slot.onTake` side effects — clearing an occupied furnace or crafting result slot with
+  `ClickedStackResult::Set(None)` produces no smelting experience, leaves `recipes_used` untouched,
+  and fires no take hooks.
+- `ClickedStackResult::Take(count)` takes `count` items from the clicked slot via `Slot.safeTake` /
+  `Slot.onTake` (spawning furnace XP, clearing `recipes_used`, consuming crafting inputs, and
+  firing take hooks such as `item_smelted` and `furnace_extract`). `ClickedStackResult::Take` is
+  refused for global listeners.
+
+Contradictory `ItemPart` answers (`Flow::Cancel` with `handled = false`, or `Flow::Continue` with
+`handled = true`), writing through the host to what the click read, returning an invalid stack,
+failing slot placement/pickup rules, or panicking refuses the click and rolls back every write.
+Global `Hooks::item_stacked_on_other` listeners preserve their separate contract (stacks may only
+be set on `Flow::Cancel` + `handled = true`, result/potion slots cannot be edited directly, and
+`Flow::Cancel` with `handled = false` skips vanilla bundle overrides and runs plain pickup).

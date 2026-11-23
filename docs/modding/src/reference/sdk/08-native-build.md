@@ -39,7 +39,7 @@ doesn't know is refused (exit 2).
 |---|---|
 | `contract` | `2`. A change to any field or event below takes a new number. |
 | `work` | The build's own folder: `build.log`, the horizon-mixins tool, the game source a mixin patch copies from, and kept compiles under `prebuilt-build/`. The launcher passes its `native/` folder, so the kept compiles are the ones its in-process build made. |
-| `toolchain` | `dir` (holding `bin/cargo` and `bin/rustc`), `target` (its host triple), `cargo_home`, `cargo_config` (`--config` values every cargo command gets; the launcher's Windows ARM64 flags) and `c_bin` (the folder of its C and link programs, when it brings them). The Rust release must be the SDK's (`sdk.json`'s `toolchain.rust`). |
+| `toolchain` | `dir` (holding `bin/cargo` and `bin/rustc`), `target` (its host triple), `cargo_home`, `cargo_config` (`--config` values every cargo command gets) and `c_bin` (the folder of its C and link programs, when it brings them). The Rust release must be the SDK's (`sdk.json`'s `toolchain.rust`). |
 | `package` | `runtime`, `api` and `engine`: the folders the SDK's three slices for this host and side are unpacked into. The API route reads only `runtime` and `api`. |
 | `mods` | A mod's folder, or a folder of mod folders, read in path order. Every mod in it is compiled: a caller leaves a mod out by not putting it there. |
 | `target` | `client` (the game) or `server` (the headless engine). |
@@ -57,11 +57,10 @@ Each line is an object whose `event` names it.
 | `built` | `route`, `binary`, `libraries`, `records`, `mods`, `internals`, `mixins`, `used` | The executable and the libraries to install beside it, in load order; `records` is each library's identity, the build record's `libraries`: one row per library, the patch library included, whose `identity` is `<build id> <mod id> <version> <rustc release> unwind` (the panic strategy the library's entry reports; the loader refuses `abort`); `route` is `prebuilt-api` or `prebuilt`, as the record names it; `mods` is the compiled mods in dependency order. `internals` has each compiled mod's `[[internals]]` by mod id, every absent `hash` taken from the SDK's catalog, as the build record keeps them; `mixins` is the horizon-mixins revision the build ran; `used` lists the kept folders and files under `work` it used, for a caller's cache to count as used. |
 | `failed` | `error`, `blame`, `used` | Why it did not build, as the build log ends with it. `blame` is `null`, or the mod the error is that mod's own and how: `{"mod": id, "kind": "compile" \| "build-script" \| "features"}`, the one a caller leaves out next time. `used` as for `built`. |
 
-For SDK downloads, registry release discovery and native-build downloads, the mod tool uses the first
+For SDK downloads and native-build downloads, the mod tool uses the first
 nonblank setting in this order: `HTTPS_PROXY`, `https_proxy`, `ALL_PROXY`, `all_proxy` for HTTPS, or
 `HTTP_PROXY`, `http_proxy`, `ALL_PROXY`, `all_proxy` for HTTP. A caller with a proxy setting of its own
-passes it in these variables. SDK and native-build downloads choose the route again at each redirect;
-registry release discovery does not follow redirects.
+passes it in these variables. Both choose the route again at each redirect.
 
 A proxy address without a scheme means HTTP. Supported schemes are `http://`, `socks4://`, `socks4a://`,
 `socks5://`, `socks5h://` and `socks://` (an alias for SOCKS5). An `https://` proxy address is not supported,
