@@ -101,7 +101,8 @@ operations, not block writes; at `living_incoming_damage`, `living_damage_pre` a
 (`host.victim()`, `host.causing()`), whose attachments it reads but never writes. The causing
 entity is the one the hit's source names, where the game has it at hand: a melee attacker, Thorns'
 wearer, a projectile's shooter or owner, an explosion's igniter, a stinging pufferfish, or a
-parked guest read from its hub record (read-only, no random). Random draws
+parked guest read from its hub record (read-only, no random). A victim that caused its own hit is
+read through `victim()`; `causing()` answers `None` then. Random draws
 from a live stream are not undone by an abort; see [Randomness](randomness.md#borrow-the-live-level-stream).
 
 Reads such as collision, light, signals and block entities use the owning side's available data.

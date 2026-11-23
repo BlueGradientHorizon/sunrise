@@ -1761,8 +1761,11 @@ pub trait LevelRandomHost: LevelHost {
 /// is lent from its hub record, for its reads only (no random, no sound); the integrated owner
 /// displaced by another player's turn is not lent. Other damage lends none: damage with no
 /// causing entity (environment, fall, fire, drowning) and the sites that do not lend theirs (a
-/// thrown potion's or an effect cloud's owner, among others). Any other entity, a stale handle
-/// and a call on a client answer `None` or `false`.
+/// thrown potion's or an effect cloud's owner, among others). When the victim caused its own
+/// hit (a player's own TNT hurting that player), the source names the victim and nothing else is
+/// lent: [`causing`](Self::causing) answers `None` and the listener reads the entity through
+/// [`victim`](Self::victim). Any other entity, a stale handle and a call on a client answer
+/// `None` or `false`.
 pub trait HitHost: LevelRandomHost {
     /// `Level.playSound(null, x, y, z, sound, source, volume, pitch)`: plays sound event
     /// `sound` at `at` for every player in this level within range (16 blocks, times the
@@ -1822,9 +1825,10 @@ pub trait HitHost: LevelRandomHost {
     /// The hit's causing entity (`DamageSource.getEntity`), at the same three hooks, when the
     /// hit lends that entity (see [`HitHost`]: a melee attacker, a projectile's shooter, an
     /// explosion's igniter, a parked guest's record...) and the source names it: None where the
-    /// source names another entity or none
-    /// (a wither skull whose shooter was removed), for a removed entity, at a damage site that
-    /// lends no entity, for a non-living causer and for a causer in another level.
+    /// source names another entity or none (a wither skull whose shooter was removed), where it
+    /// names the victim itself (read that through [`Self::victim`]), for a removed entity, at a
+    /// damage site that lends no entity, for a non-living causer and for a causer in another
+    /// level.
     fn causing(&self) -> Option<LivingView<'_>> {
         unimplemented!("HitHost::causing")
     }
