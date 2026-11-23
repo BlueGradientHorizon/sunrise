@@ -247,7 +247,6 @@ impl Game<'_> {
     /// the loot rolls and before the mods hear the item list
     /// (`living_drops`); the item entities still join the level before the
     /// orbs, which the caller spawns from the returned amount.
-    #[allow(clippy::too_many_arguments)]
     fn drop_death_loot_items(
         &mut self,
         m: &mut Mob,
