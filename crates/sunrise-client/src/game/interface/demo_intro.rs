@@ -204,11 +204,16 @@ impl Game<'_> {
         }
         true
     }
-    /// Closes the parentless popup to the HUD: `Gui.setScreen(null)` grabs the
-    /// mouse once the screen hooks let the close go ahead (`PopupScreen.onClose`
-    /// for Escape; Later's `MouseHandler.grabMouse` closes the screen the same way).
+    /// Closes the parentless popup to the HUD: `PopupScreen.onClose` is
+    /// `Gui.setScreen(null)` for a popup without a parent, whose tail is
+    /// `MouseHandler.grabMouse`, and Later's button calls `grabMouse` before
+    /// `onClose`. The grab is asked for once the screen hooks let the close go
+    /// ahead, as every other close to the HUD asks for it.
     pub(super) fn close_demo_intro(&mut self) {
         self.set_screen(Screen::Playing);
+        if self.screen == Screen::Playing {
+            self.capture(true);
+        }
     }
 }
 
