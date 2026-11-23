@@ -4,8 +4,9 @@ pub trait Hooks {
     /// Shears `entity` (NeoForge's `IShearable.onSheared`): called on the part whose
     /// [`EntityPart::is_shearable`] said `Some(true)`, once the shear hooks let it through.
     /// Change the entity and play its sound here, and append drops to `event.drops`: the game
-    /// spawns each as `spawnShearedDrop` does (one block above the entity's feet, with a small
-    /// random push), posts the shear game event and damages the shears. `shears` is a read-only
+    /// spawns each as `IShearable.spawnShearedDrop` does (a snow golem's at its eye height, a
+    /// bogged's and a mooshroom's at the top of its box, a mooshroom's with no pickup delay, any
+    /// other one block above its feet with a small random push drawn only once the item joined), posts the shear game event and damages the shears. `shears` is a read-only
     /// view over the resident stack; call `shears.project()` only when components or an owned
     /// snapshot are needed. Server-side.
     #[hook(

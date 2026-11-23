@@ -96,17 +96,43 @@ impl Game<'_> {
         let index = self.mobs.iter().position(|m| m.id == id && !m.removed);
         let at = index.map_or(at, |i| self.mobs[i].position);
         for stack in accepted.unwrap_or_default() {
-            self.spawn_at_location(at, 1.0, stack);
-            let Some(i) = index else { continue };
-            let r = &mut self.mobs[i].random;
-            let push = [
-                f64::from((r.next_float() - r.next_float()) * 0.1),
-                f64::from(r.next_float() * 0.05),
-                f64::from((r.next_float() - r.next_float()) * 0.1),
-            ];
-            if let Some(item) = self.just_spawned_item() {
-                let v = item.velocity;
-                item.velocity = Vec3::new(v.x + push[0], v.y + push[1], v.z + push[2]);
+            // `IShearable.spawnShearedDrop`: each species' own height; a mooshroom's drop has
+            // no pickup delay and the rest fall with `Sheep.shear`'s push, drawn from the mob's
+            // random only for an item that actually joined the level.
+            let species = index.map(|i| {
+                (
+                    self.mobs[i].species(),
+                    self.mobs[i].eye_height(),
+                    f64::from(self.mobs[i].height()),
+                )
+            });
+            match species {
+                Some((Species::SnowGolem, eye, _)) => {
+                    self.spawn_at_location(at, eye, stack);
+                }
+                Some((Species::Bogged, _, height)) => {
+                    self.spawn_at_location(at, height, stack);
+                }
+                Some((Species::Mooshroom, _, height)) => {
+                    self.spawn_item_own(stack, [at.x, at.y + height, at.z], 0);
+                }
+                _ => {
+                    self.spawn_at_location(at, 1.0, stack);
+                    let Some(i) = index else { continue };
+                    if self.just_spawned_item().is_none() {
+                        continue;
+                    }
+                    let r = &mut self.mobs[i].random;
+                    let push = [
+                        f64::from((r.next_float() - r.next_float()) * 0.1),
+                        f64::from(r.next_float() * 0.05),
+                        f64::from((r.next_float() - r.next_float()) * 0.1),
+                    ];
+                    if let Some(item) = self.just_spawned_item() {
+                        let v = item.velocity;
+                        item.velocity = Vec3::new(v.x + push[0], v.y + push[1], v.z + push[2]);
+                    }
+                }
             }
         }
         Ok(())
