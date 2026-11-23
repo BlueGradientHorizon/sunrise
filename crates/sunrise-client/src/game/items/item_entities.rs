@@ -108,7 +108,7 @@ impl Game<'_> {
                 continue;
             }
             if alone_pre || (alone && update_hook) {
-                let id = items[i].id;
+                let (id, join) = (items[i].id, items[i].join);
                 let given = self.give_items_back(items, &mut pass, i, round, |game, round| {
                     if native_ticks::place(&game.dropped, i, |item| item.id == id).is_some()
                         && (!alone_pre || game.native_tick_pre_one(round, id, native_ticks::ITEM))
@@ -117,6 +117,18 @@ impl Game<'_> {
                         && game.item_update_halts(k)
                     {
                         round.halt(id);
+                    }
+                    // `ServerLevel.tickNonPassenger` fires the Post after `tick()` even when the
+                    // tick removed the entity: a part that removed the item still hears it.
+                    if alone_post && !round.canceled(id) {
+                        game.native_item_removals_flush(|item| {
+                            if item.join > join {
+                                round.not_ticked(item.id);
+                            }
+                        });
+                        if !game.dropped.iter().any(|item| item.id == id) {
+                            game.native_tick_post_one(round, id, native_ticks::ITEM);
+                        }
                     }
                 });
                 (items, next) = (given.items, given.next);
