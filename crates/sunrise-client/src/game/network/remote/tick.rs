@@ -144,28 +144,12 @@ impl Game<'_> {
                 })
                 .unwrap_or_default()
         };
-        // Entity.commonTick's tickCount for each entity the level ticks: a passenger now
-        // (`tickPassenger` counts it before its own tick, whatever that tick's Pre answers), a
-        // root at its own visit, after its Pre (`count_client_tick`, or none when the Pre is
-        // canceled), and at the end of the pass a root no visit took (a kind told no Pre).
-        if let Some(r) = self.remote.as_mut() {
-            let mut admit = |t: &mut Tracked| {
-                if t.vehicle.is_some() {
-                    t.tick_count = t.tick_count.wrapping_add(1);
-                } else {
-                    t.tick_pending = true;
-                }
-            };
-            if running {
-                r.entities.values_mut().for_each(&mut admit);
-            } else {
-                for id in &frozen_ticking {
-                    if let Some(t) = r.entities.get_mut(id) {
-                        admit(t);
-                    }
-                }
-            }
-        }
+        // Entity.commonTick's tickCount, at each entity's own visit. The kinds a client tells
+        // their tick (mobs and players, projectiles, tridents, text displays) count in their own
+        // loops (`count_client_tick`): a root once its Pre let it through, a passenger at its
+        // ride visit whatever either Pre answers. The others are visited here, where their
+        // setOldPosAndRot runs.
+        self.count_untold_client_ticks(running, &frozen_ticking);
         self.tick_text_displays(running);
         if running {
             // Entity.commonTick's setOldPosAndRot for each entity the level ticks.
@@ -433,7 +417,20 @@ impl Game<'_> {
                         .remote
                         .as_ref()
                         .is_some_and(|r| self.entity_ticks_while_frozen(r, id)));
-            if (!running && !ticks_frozen) || driven == Some(id) || round.canceled(id) {
+            if !running && !ticks_frozen {
+                continue;
+            }
+            // The mount this client drives ticks in `remote_ride`, told nothing: its visit.
+            if driven == Some(id) {
+                self.count_client_tick(id);
+                continue;
+            }
+            // A passenger's ride visit counts it before its own Pre is told, whatever it answers.
+            let passenger = self.client_passenger(id);
+            if passenger {
+                self.count_client_tick(id);
+            }
+            if round.canceled(id) {
                 continue;
             }
             // Of a type a mod named: its own Pre, then its fluid step and its tick.
@@ -462,6 +459,10 @@ impl Game<'_> {
                     own,
                     &mut mob_fx,
                 );
+            }
+            // A root's own visit, once its Pre let it through.
+            if !passenger {
+                self.count_client_tick(id);
             }
             let animation = if player && self.mobs[i].extra.using_item > 0 {
                 let extra = &self.mobs[i].extra;
@@ -949,37 +950,70 @@ impl Game<'_> {
             for (id, l) in cart_lerps {
                 r.cart_lerps.entry(id).or_insert(l);
             }
-            // The roots no visit counted: the kinds a client tells no Pre, and every family
-            // while no mod listens.
-            for t in r.entities.values_mut() {
-                if std::mem::take(&mut t.tick_pending) {
+        }
+    }
+    /// The visit of each entity of the client level whose kind is told no tick
+    /// (`tick_remote_entities`): its `Entity.commonTick` counts it here. A frozen level visits
+    /// only the players and what carries them.
+    fn count_untold_client_ticks(&mut self, running: bool, frozen_ticking: &[i32]) {
+        let Some(mut r) = self.remote.take() else {
+            return;
+        };
+        let flying: sunrise_client::fast_hash::FxHashSet<u32> = self
+            .creatures
+            .projectiles
+            .iter()
+            .map(|p| p.id)
+            .chain(self.tridents.iter().map(|t| t.id))
+            .collect();
+        let told = |id: i32| {
+            let id = id as u32;
+            self.mob_index.get_ref(&self.mobs, id).is_some()
+                || self.text_displays.contains_key(&(id as i32))
+                || flying.contains(&id)
+        };
+        if running {
+            for (&id, t) in r.entities.iter_mut() {
+                if !told(id) {
+                    t.tick_count = t.tick_count.wrapping_add(1);
+                }
+            }
+        } else {
+            for &id in frozen_ticking {
+                if !told(id)
+                    && let Some(t) = r.entities.get_mut(&id)
+                {
                     t.tick_count = t.tick_count.wrapping_add(1);
                 }
             }
         }
+        self.remote = Some(r);
     }
-    /// `Entity.commonTick`'s tickCount for a root of the client level at its own visit, after
-    /// its `EntityTickEvent.Pre` let it through: once per pass, and nothing for a passenger,
-    /// which the pass counted first.
+    /// `Entity.commonTick`'s tickCount for an entity of the client level at its own visit: a
+    /// root once its `EntityTickEvent.Pre` let it through (`tickNonPassenger`), a passenger at
+    /// its ride visit whatever that Pre answered (`tickPassenger`).
     pub(in crate::game) fn count_client_tick(&mut self, id: u32) {
         if let Some(t) = self
             .remote
             .as_mut()
             .and_then(|r| r.entities.get_mut(&(id as i32)))
-            && std::mem::take(&mut t.tick_pending)
         {
             t.tick_count = t.tick_count.wrapping_add(1);
         }
     }
-    /// A root whose `EntityTickEvent.Pre` was canceled: its tick, `commonTick` included, does not
-    /// run, so it does not count this pass.
-    pub(in crate::game) fn skip_client_tick(&mut self, id: u32) {
-        if let Some(t) = self
-            .remote
-            .as_mut()
-            .and_then(|r| r.entities.get_mut(&(id as i32)))
-        {
-            t.tick_pending = false;
+    /// Whether entity `id` of the client level rides another (`Entity.vehicle`): its tick is a
+    /// ride visit, counted whatever its Pre answers.
+    pub(in crate::game) fn client_passenger(&self, id: u32) -> bool {
+        self.remote
+            .as_ref()
+            .and_then(|r| r.entities.get(&(id as i32)))
+            .is_some_and(|t| t.vehicle.is_some())
+    }
+    /// The visit of a told entity whose Pre answered `ticks`: a root counts only when it ticks,
+    /// a passenger always.
+    pub(in crate::game) fn count_told_client_tick(&mut self, id: u32, ticks: bool) {
+        if ticks || self.client_passenger(id) {
+            self.count_client_tick(id);
         }
     }
     /// `LocalPlayer.aiStep` (877-883): water vision reads the local body's `Entity.baseTick`

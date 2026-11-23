@@ -1,0 +1,2 @@
+# Client tick counts at each entity's own visit, as tick callbacks read them (#4771).
+sunrise-client game::remote::tests::client_vanilla_reads_tests::callbacks_read_other_entities_counts_as_their_visits_left_them lib daily resources

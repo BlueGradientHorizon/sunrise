@@ -297,15 +297,6 @@ impl Game<'_> {
         self.native_entity_tick_pre(self.dim.id(), &ids, &kinds, &mut round.call_canceled);
         self.creatures.tick_hooks = TickBuffers::emptied(ids, kinds, buffers.names);
         round.take_canceled();
-        if !self.is_logical_server() {
-            // A client's roots count their tick once their Pre let them through.
-            for n in 0..round.ticking.len() {
-                self.count_client_tick(round.ticking[n].0);
-            }
-            for n in 0..round.canceled.len() {
-                self.skip_client_tick(round.canceled[n]);
-            }
-        }
     }
 
     /// `native_entity_tick_post`, once for the family's entities the round let through, after
@@ -345,13 +336,6 @@ impl Game<'_> {
         round.call_canceled.clear();
         if canceled {
             round.canceled.push(id);
-        }
-        if !self.is_logical_server() {
-            if canceled {
-                self.skip_client_tick(id);
-            } else {
-                self.count_client_tick(id);
-            }
         }
         !canceled
     }

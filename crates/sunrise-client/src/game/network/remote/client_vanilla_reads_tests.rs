@@ -315,11 +315,103 @@ fn a_canceled_root_does_not_count_and_a_passenger_does() {
                             .map(|(_, count)| *count)
                             .collect::<Vec<_>>()
                     };
-                    // A root's Pre reads the count before its visit; a passenger's, after.
+                    // Told together, the family's Pre runs before any of its visits: each reads
+                    // the count its last tick left.
                     assert_eq!(of(20), [Some(0), Some(0)]);
                     assert_eq!(of(21), [Some(0), Some(1)]);
-                    assert_eq!(of(22), [Some(1), Some(2)]);
+                    assert_eq!(of(22), [Some(0), Some(1)]);
                     assert_eq!(of(23), [Some(0), Some(1)]);
+                });
+            });
+        },
+    );
+}
+
+/// Each entity counts at its own visit, so a callback reading another entity sees the count its
+/// visits so far left: told alone, a vehicle's Pre and Post read its passenger's old count (the
+/// passenger's ride visit comes after them, and counts it even when its own Pre is canceled),
+/// and the first root's callbacks read a later root's old count.
+#[test]
+#[ignore = "daily"]
+fn callbacks_read_other_entities_counts_as_their_visits_left_them() {
+    use mod_api::{EntityTickListenedEvent, EntityTickPostEvent, EntityTickPreEvent, HostSide};
+    use std::sync::{Arc, Mutex};
+    crate::game::in_own_process(
+        "game::remote::tests::client_vanilla_reads_tests::callbacks_read_other_entities_counts_as_their_visits_left_them",
+        || {
+            type Seen = Vec<(&'static str, u32, [Option<i32>; 3])>;
+            /// Pigs are told alone; each callback reads pigs 20, 21 and 22, and 21's Pre is
+            /// canceled.
+            struct Read(Arc<Mutex<Seen>>);
+            impl Read {
+                fn read(&self, host: HostSide<'_>, moment: &'static str, entities: &[u32]) {
+                    let HostSide::Client(host) = host else {
+                        return;
+                    };
+                    let counts =
+                        [20, 21, 22].map(|id| host.entity(id).and_then(|e| e.tick_count(host)));
+                    for &id in entities {
+                        self.0.lock().unwrap().push((moment, id, counts));
+                    }
+                }
+            }
+            #[mod_api::__subscriptions]
+            impl mod_api::Hooks for Read {
+                fn register(
+                    &self,
+                    registrar: &mut dyn mod_api::Registrar,
+                    _: &mod_api::RegistrationContext,
+                ) {
+                    registrar.entity_tick_each("minecraft:pig");
+                }
+                fn entity_tick_listened(
+                    &self,
+                    _: HostSide<'_>,
+                    event: &mut EntityTickListenedEvent,
+                ) {
+                    event.listened = true;
+                }
+                fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
+                    self.read(host, "pre", event.entities);
+                    if event.entities.contains(&21) {
+                        event.canceled.push(21);
+                    }
+                }
+                fn entity_tick_post(
+                    &self,
+                    host: HostSide<'_>,
+                    event: &mut EntityTickPostEvent<'_>,
+                ) {
+                    self.read(host, "post", event.entities);
+                }
+            }
+            let seen = Arc::new(Mutex::new(Vec::new()));
+            let mods = vec![mod_api::ModEntry::new("read", Box::new(Read(seen.clone())))].into();
+            mod_platform::testing::with_mods(mods, || {
+                with_client_game(|game| {
+                    let _connection = join(game);
+                    // Pig 20 carries pig 21; pig 22 is a later root.
+                    for id in [20, 21, 22] {
+                        add(game, id, "minecraft:pig");
+                    }
+                    game.handle_packet(C::SetPassengers(play::SetPassengers {
+                        vehicle: 20,
+                        passengers: vec![21],
+                    }))
+                    .unwrap();
+                    game.tick_remote().unwrap();
+                    let counts = [20, 21, 22].map(|id| tick_count(game, id));
+                    assert_eq!(counts, [Some(1), Some(1), Some(1)]);
+                    assert_eq!(
+                        *seen.lock().unwrap(),
+                        [
+                            ("pre", 20, [Some(0), Some(0), Some(0)]),
+                            ("post", 20, [Some(1), Some(0), Some(0)]),
+                            ("pre", 21, [Some(1), Some(1), Some(0)]),
+                            ("pre", 22, [Some(1), Some(1), Some(0)]),
+                            ("post", 22, [Some(1), Some(1), Some(1)]),
+                        ]
+                    );
                 });
             });
         },
