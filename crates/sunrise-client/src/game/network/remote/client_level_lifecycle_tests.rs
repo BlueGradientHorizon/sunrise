@@ -141,6 +141,8 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
                     sea_level: 63,
                 };
                 let _server = connect_play_test(game, |_, _| {});
+                game.wait_for_test_remote_event(|event| matches!(event, Event::Joined { .. }));
+                game.poll_remote_events(true).unwrap();
                 {
                     let remote = game.remote.as_mut().unwrap();
                     remote.logged_in = true;
