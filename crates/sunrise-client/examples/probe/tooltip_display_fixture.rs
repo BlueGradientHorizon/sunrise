@@ -9,14 +9,8 @@ use sunrise_client::{
 };
 use sunrise_core::{identifier::Identifier, nbt::Tag};
 
-fn gui_sprite_id(atlas_key: &str) -> Result<String, Box<dyn Error>> {
-    if let Some((namespace, rest)) = atlas_key.split_once(":gui/sprites/") {
-        Ok(format!("{namespace}:{rest}"))
-    } else if let Some(rest) = atlas_key.strip_prefix("gui/sprites/") {
-        Ok(format!("minecraft:{rest}"))
-    } else {
-        Err(format!("unexpected GUI atlas key: {atlas_key}").into())
-    }
+fn gui_sprite_id(gui_id: &str) -> Result<String, Box<dyn Error>> {
+    Ok(Identifier::parse(gui_id)?.to_string())
 }
 
 pub fn main() -> Result<(), Box<dyn Error>> {

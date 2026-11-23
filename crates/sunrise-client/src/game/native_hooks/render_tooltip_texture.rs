@@ -40,7 +40,7 @@ mod render_tooltip_texture_tests {
                 (0xf0100010, 0x505000ff, 0x5028007f)
             );
             match event.stack {
-                Some(stack) if stack.item().id(host) == "minecraft:stick" => {
+                Some(stack) if stack.item().id(host) == Some("minecraft:stick") => {
                     *event.texture = Some(Identifier::parse("lobby:gold").unwrap());
                 }
                 Some(_) => {}
@@ -142,7 +142,11 @@ mod render_tooltip_texture_tests {
 
                 let mut inserted = Vec::with_capacity(case.draws.len());
                 for (index, draw) in case.draws.iter().enumerate() {
-                    let key = sunrise_client::hud::atlas_key_of_gui_sprite(&draw.sprite);
+                    let key = draw
+                        .sprite
+                        .strip_prefix("minecraft:")
+                        .unwrap_or(&draw.sprite)
+                        .to_owned();
                     let rect = sprite(index as f32 * 0.25);
                     game.gui.atlas.sprites.insert(key.clone(), rect);
                     inserted.push((key, rect));
@@ -202,8 +206,8 @@ mod render_tooltip_texture_tests {
         let mods: mod_api::Mods = vec![ModEntry::new("gold", Box::new(Gold))].into();
         with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_game(|game| {
-                let names = ["background", "frame"]
-                    .map(|part| format!("lobby:gui/sprites/tooltip/gold_{part}"));
+                let names =
+                    ["background", "frame"].map(|part| format!("lobby:tooltip/gold_{part}"));
                 // No pack has the style: the stick keeps the fills.
                 assert_eq!(drawn(game, Some(&stick)), unheard[1]);
                 for (first, then) in [(0.0, 0.5), (0.25, 0.75)] {
