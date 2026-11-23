@@ -745,6 +745,9 @@ impl Game<'_> {
             .text_displays
             .get_mut(&id)
             .is_some_and(|d| d.apply_position_sync(position, rotation, is_ticking));
+        if !interpolating {
+            self.file_snapped_display(id);
+        }
         if !interpolating && self.display_has_indirect_local_player(id as u32) {
             self.seat_local_player_after_display_snap();
         }
@@ -766,10 +769,20 @@ impl Game<'_> {
         if let Some(r) = self.remote.as_mut() {
             r.set_tracked_position(id, resolved);
         }
+        if !interpolated {
+            self.file_snapped_display(id);
+        }
         if !interpolated && self.display_has_indirect_local_player(id as u32) {
             self.seat_local_player_after_display_snap();
         }
         Some(resolved)
+    }
+    /// A display a packet moved without interpolation changes section at once (`Entity.setPos`
+    /// through the level callback), before its riders are seated.
+    fn file_snapped_display(&mut self, id: i32) {
+        if let Some(at) = self.text_displays.get(&id).map(RemoteTextDisplay::position) {
+            self.pick_section_move(id as u32, [at.x, at.y, at.z]);
+        }
     }
     /// Re-seats the local player and snaps `previous_position` after a non-interpolated vehicle
     /// snap (`handleEntityPositionSync` / `handleTeleportEntity`).

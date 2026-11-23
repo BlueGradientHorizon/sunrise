@@ -5378,7 +5378,7 @@ pub(super) mod tests {
                     return;
                 }
                 let level = host.level("minecraft:overworld").unwrap();
-                let found = collect_entities_in(&*host, level, [20.0, 0.0, -0.5], [21.0, 1.8, 0.5])
+                let found = collect_entities_in(&*host, level, [30.0, 0.0, -0.5], [31.0, 1.8, 0.5])
                     .unwrap()
                     .into_iter()
                     .map(|e| e.id())
@@ -5502,8 +5502,9 @@ pub(super) mod tests {
                             data: 0,
                         }))
                         .unwrap();
-                        // One interpolation step carries it to x 20.5: section 1, beyond the
-                        // padded range of a box around its new position.
+                        // A tracked player's interpolation carries it halfway on this step, to
+                        // x 30.5: section 1, beyond the padded range of a box around its new
+                        // position.
                         sync(game, 18, [60.5, 0.0, 0.0]);
                         game.tick_remote_entities(true);
                         assert_eq!(*heard.lock().unwrap(), [vec![18]]);
