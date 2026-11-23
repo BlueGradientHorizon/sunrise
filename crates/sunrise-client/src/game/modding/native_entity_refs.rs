@@ -13,6 +13,9 @@ pub(in crate::game) mod dragon_parts_table;
 #[path = "native_entity_refs/dragon_query.rs"]
 mod dragon_query;
 #[cfg(test)]
+#[path = "native_entity_refs/level_uuid_tests.rs"]
+mod level_uuid_tests;
+#[cfg(test)]
 #[path = "native_entity_refs/roll_loot_tests.rs"]
 mod roll_loot_tests;
 #[path = "native_entity_refs/save_lending.rs"]
@@ -100,6 +103,16 @@ impl Game<'_> {
         &self,
         entity: EntityRef,
     ) -> Option<(Target, Option<Location>)> {
+        self.native_entity_target_in(entity, self.dim.key())
+    }
+
+    /// [`Self::native_entity_target_with_location`] for an entity resident in the open server
+    /// level `dimension`, the one in place or a parked one.
+    fn native_entity_target_in(
+        &self,
+        entity: EntityRef,
+        dimension: DimensionKey,
+    ) -> Option<(Target, Option<Location>)> {
         if self.held_out.contains(&entity.id())
             || !self.is_logical_server()
             || self.native_lifecycle.epoch() != Some(entity.epoch())
@@ -126,8 +139,8 @@ impl Game<'_> {
         // Players are server-wide records. Ordinary body operations retain
         // their existing current-level domain; source membership is global.
         (matches!(value, Target::Player | Target::Guest(_))
-            || location.owner.dimension == self.dim.key())
-        .then_some((value, Some(location)))
+            || location.owner.dimension == dimension)
+            .then_some((value, Some(location)))
     }
     /// What a handle names on a client: the local player, or an entity the
     /// server told this client of (`ClientLevel.getEntity`, whose entities are
@@ -165,12 +178,15 @@ impl Game<'_> {
             || self.native_client_tracked(entity).is_some())
         .then_some(entity)
     }
-    pub(super) fn entity_by_uuid(&self, uuid: mod_api::EntityUuid) -> Option<EntityRef> {
-        if !self.is_logical_server() {
-            return None;
-        }
-        let epoch = self.native_lifecycle.epoch()?;
-        let dimension = self.dim.key();
+    /// `ServerLevel.getEntity(UUID)` for [`LevelRef::entity_by_uuid`]: the level's UUID index,
+    /// in place or parked, then the same resolution and visibility as any handle of that level.
+    pub(super) fn level_entity_by_uuid(
+        &self,
+        level: LevelRef,
+        uuid: mod_api::EntityUuid,
+    ) -> Option<EntityRef> {
+        self.native_level_world(level)?;
+        let dimension = level.dimension();
         let uuid = sunrise_client::lan::playerdata::uuid_ints(uuid.0);
         let mut after = None;
         loop {
@@ -179,10 +195,10 @@ impl Game<'_> {
                 .table
                 .borrow_mut()
                 .level_uuid_candidate(dimension, uuid, after)?;
-            let entity = EntityRef::new(epoch, id.get());
+            let entity = EntityRef::new(level.epoch(), id.get());
             if self
-                .native_entity_target(entity)
-                .is_some_and(|target| self.resident_source_target_visible(dimension, target))
+                .native_entity_target_in(entity, dimension)
+                .is_some_and(|(target, _)| self.resident_source_target_visible(dimension, target))
             {
                 return Some(entity);
             }
