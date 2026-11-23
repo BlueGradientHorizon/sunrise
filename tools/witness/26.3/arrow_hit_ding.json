@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "minecraft_version": "26.3",
-  "java_version": "openjdk 27.0.1.0.3 2026-10-24",
+  "java_version": "openjdk 25.0.5.1 2026-11-17 LTS",
   "harness": "tools/test_arrow_hit_ding_parity.py",
   "oracle_client": "mods/sunrise/src/test/java/dev/sunriselab/parity/LocatorBarClient.java",
   "cases": [
