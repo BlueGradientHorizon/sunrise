@@ -951,7 +951,7 @@ impl Game<'_> {
             None
         } else {
             self.explosion_hurt_player(
-                &context,
+                context,
                 radius,
                 damage_type,
                 exploding,
@@ -973,7 +973,7 @@ impl Game<'_> {
             for conn in guests {
                 let push = self.as_guest(conn, |g| {
                     g.explosion_hurt_player(
-                        &context,
+                        context,
                         radius,
                         damage_type,
                         exploding,
