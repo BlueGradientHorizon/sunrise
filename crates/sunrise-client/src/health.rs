@@ -1272,6 +1272,8 @@ pub struct PlayerHealth {
     pub sync_velocity: bool,
     pub game_time: i64,
     pub tick_count: i32,
+    /// The living target and this player’s tick count at `setLastHurtMob`. Not saved.
+    pub last_hurt_mob: Option<(u32, i32)>,
     /// A death-protection item (totem) is in either hand.
     pub totem_ready: bool,
     /// The current hit used death protection; its game continuation applies the effects.
@@ -1330,6 +1332,7 @@ impl PlayerHealth {
             sync_velocity: false,
             game_time: 0,
             tick_count: 0,
+            last_hurt_mob: None,
             totem_ready: false,
             totem_used: false,
             totem_off_hand: false,
