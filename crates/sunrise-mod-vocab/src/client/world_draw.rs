@@ -186,8 +186,9 @@ pub enum RenderLevelStage {
     /// NeoForge's `RenderLevelStageEvent.AfterSky` in `LevelRenderer.addSkyPass`. Fires once
     /// immediately after the engine or classic pack's sky work, even if it draws nothing visible.
     /// Absent for a dimension without a skybox, lava or powder-snow camera fog, or a camera mob
-    /// effect that blocks the sky. A pack's replacement sky follows its world import. Provides
-    /// no active render pass.
+    /// effect that blocks the sky. A classic pack that owns the disc or celestial programs
+    /// completes the logical pass after its world import; the engine still draws unclaimed
+    /// portions. Provides no active render pass.
     AfterSky,
     /// After solid and cutout chunk geometry, before opaque entities and block entities
     /// (`RenderLevelStageEvent.AfterOpaqueBlocks`).

@@ -130,6 +130,10 @@ fn pack(renderer: &mut Renderer, folder: &Path, valid: bool, classic_sky_and_han
     std::fs::write(shaders.join("final.vsh"), vertex).unwrap();
     std::fs::write(shaders.join("final.fsh"), final_fragment).unwrap();
     std::fs::write(shaders.join("shaders.properties"), properties).unwrap();
+    load_pack(renderer, folder, valid);
+}
+
+fn load_pack(renderer: &mut Renderer, folder: &Path, valid: bool) {
     let pack = sunrise_shaders::Pack::open(folder).unwrap();
     let mut macros = sunrise_shaders::Macros::standard();
     renderer.define_pack_macros(&mut macros);
@@ -594,6 +598,98 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
         "ordinary path returns when the pack is dropped"
     );
     assert_eq!(renderer.skins_tagged(), unmodified_tagged);
+
+    // A pack can claim the sun without replacing the disc. Its marker must be drawn before
+    // the sole AfterSky notice, and the blue engine background must still reach the pack.
+    let folder = out.join("celestial-only-pack");
+    let shaders = folder.join("shaders");
+    std::fs::create_dir_all(&shaders)?;
+    // The fixture has no terrain; declare both programs to keep pack diagnostics about the sky.
+    for program in ["gbuffers_terrain", "gbuffers_water"] {
+        std::fs::write(
+            shaders.join(format!("{program}.vsh")),
+            "#version 120\nvoid main(){gl_Position=ftransform();}",
+        )?;
+        std::fs::write(
+            shaders.join(format!("{program}.fsh")),
+            "#version 120\nvoid main(){gl_FragData[0]=vec4(1.0);}",
+        )?;
+    }
+    for (file, source) in [
+        (
+            "gbuffers_skytextured.vsh",
+            "#version 120\nvoid main(){gl_Position=vec4(gl_Vertex.xy/100.0,0.9,1.0);}",
+        ),
+        (
+            "gbuffers_skytextured.fsh",
+            "#version 120\n/* DRAWBUFFERS:0 */\nvoid main(){gl_FragData[0]=vec4(0.0,1.0,0.0,1.0);}",
+        ),
+        (
+            "final.vsh",
+            "#version 120\nvarying vec2 uv; void main(){gl_Position=ftransform(); uv=gl_MultiTexCoord0.xy;}",
+        ),
+        (
+            "final.fsh",
+            "#version 120\nvarying vec2 uv; uniform sampler2D colortex0; void main(){gl_FragColor=texture2D(colortex0,uv);}",
+        ),
+        (
+            "shaders.properties",
+            "shadow.enabled=false\nblend.gbuffers_skytextured=off\n",
+        ),
+    ] {
+        std::fs::write(shaders.join(file), source)?;
+    }
+    load_pack(&mut renderer, &folder, true);
+    let celestial = [
+        [-25.0, -25.0, 100.0],
+        [25.0, -25.0, 100.0],
+        [25.0, 25.0, 100.0],
+        [-25.0, 25.0, 100.0],
+    ]
+    .map(|pos| Vertex { pos, ..hand[0] });
+    frame.sky.sky_color = [0.0, 0.0, 1.0];
+    frame.sky.fog_color = [0.0; 3];
+    let mut celestial_hooks = WorldStageProbe::default();
+    frame.celestial = &celestial;
+    frame.celestial_bodies = &[client::gfx::CelestialBody::Sun];
+    renderer.screenshot = Some(ScreenshotRequest {
+        path: out.join("celestial-only.png"),
+        size: None,
+        scaled: false,
+        background: false,
+    });
+    renderer.render(&frame, Some(&mut celestial_hooks))?;
+    renderer
+        .screenshot_result
+        .take()
+        .expect("celestial pack readback")?
+        .save()?;
+    let celestial_image = read(&out.join("celestial-only.png"));
+    let pixels = celestial_image.as_chunks::<4>().0;
+    assert_eq!(pixels[90 * 320 + 160][..3], [0, 255, 0]);
+    assert!(
+        pixels
+            .iter()
+            .any(|pixel| pixel[0] == 0 && pixel[1] == 0 && pixel[2] > 0),
+        "the engine disc was not drawn"
+    );
+    assert_eq!(celestial_hooks.prepared_after_sky, Some(false));
+    assert_eq!(
+        celestial_hooks
+            .stages
+            .iter()
+            .filter(|&&stage| stage == Stage::AfterSky)
+            .count(),
+        1
+    );
+    assert!(
+        celestial_hooks
+            .stages
+            .ends_with(&[Stage::AfterSky, Stage::AfterLevel])
+    );
+    frame.celestial = &[];
+    frame.celestial_bodies = &[];
+    renderer.drop_shader_packs();
 
     // A native sky uses the same no-pass notification boundary, even with its own timing pass.
     use sunrise_shader_api::{MANIFEST, Pack, check};

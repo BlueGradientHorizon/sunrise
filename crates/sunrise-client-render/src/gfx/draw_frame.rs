@@ -1386,16 +1386,20 @@ impl Renderer {
             pack_reads_world || fg,
         );
         let pack_world_runs = pack_post && scaled.is_some();
-        // Admission is independent of pixels. A classic pack leaves the End's cube inline,
-        // but owns the boundary when its dragon-fog sky draws instead.
+        // Notification follows the last owner of the logical sky pass, independent of
+        // whether any of that owner's geometry is visible. Drawing flags stay separate:
+        // a celestial-only pack leaves the engine's disc, sunset, and stars intact.
+        let pack_owns_sky_stage = pack_world_runs
+            && (pack_draws_sky || pack_draws_celestial)
+            && (!frame.end_sky || end_fog_sky(frame));
         let sky_stage = if !live_hooks || !frame.sky_pass {
             None
-        } else if !pack_draws_sky {
-            Some(SkyStageOwner::Engine)
-        } else if pack_world_runs && (!frame.end_sky || end_fog_sky(frame)) {
+        } else if pack_owns_sky_stage {
             Some(SkyStageOwner::ClassicPack)
-        } else {
+        } else if pack_draws_sky {
             Some(SkyStageOwner::Inline)
+        } else {
+            Some(SkyStageOwner::Engine)
         };
         let pack_sky_clear = pack_draws_sky
             .then(|| self.pack_post.as_ref().and_then(|p| p.1.as_ref()))

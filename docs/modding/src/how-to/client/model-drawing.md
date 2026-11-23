@@ -371,7 +371,8 @@ fn client_tick_pre(&self, host: &mut dyn ClientHost, _: &mut ClientTickPreEvent)
 - `group.destroy(host)` retires the handle and releases capacity and CPU caches.
   Copies already accepted for a view remain drawn; subsequent calls return `Stale`.
 - `Hooks::prepare_render_buffers` runs once per world view before any pass-bearing render stage.
-  With a classic pack's replacement sky, `RenderLevelStage::AfterSky` fires later. Preparation
+  If a classic pack owns the sky disc or celestial work, `RenderLevelStage::AfterSky` fires once
+  after that work, following the pack's world import. Preparation
   lends `&WorldRenderView<'_>` (camera, world partial tick, game time, improved-transparency state,
   and visible `RenderableSection`s) and `&dyn ClientHost` so mods can update retained
   `InstanceGroups` before the render passes execute.

@@ -41,8 +41,9 @@ primitive, entity, prepared-instance, and glyph uploads so group updates apply t
 `AfterSky` runs when `LevelRenderer.addSkyPass` adds a pass: the dimension has a skybox,
 there is no lava or powder-snow camera fog, and no camera mob effect blocks the sky. It fires
 once at the end of that pass's work even when no sky geometry is visible. Sunrise's sky setting
-and dragon boss fog affect drawing, not admission. If a classic pack owns the sky, the stage
-follows the pack's world import. Each active pass-bearing stage fires at its own render-pass
+and dragon boss fog affect drawing, not admission. A classic pack owning either the sky disc
+or the celestial work completes the logical sky after its world import, with the engine still
+drawing the unclaimed portions. Each active pass-bearing stage fires at its own render-pass
 boundary. `AfterLevel` follows the world and precedes the engine's first-person hand and other
 overlays. A classic pack's own hand remains inside its world passes for the pack's depth
 snapshots; `AfterLevel` runs before pack composition, not before that hand. These hooks never
