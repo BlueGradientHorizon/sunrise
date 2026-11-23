@@ -13,12 +13,18 @@ pub trait Hooks {
     /// the current tab. Different parameters are refused. Tag-only reloads do not rebuild.
     /// Unlike NeoForge, invalid edits return typed errors, and reads of the mutable lists give
     /// snapshots. Both-list edits check and change parent before search without undoing parent
-    /// on a search error. Named injections request `hook_version = 2`.
+    /// on a search error.
     #[hook(
+        dispatch = "flat",
         side = "both",
         contract = "listen",
-        version = 2,
+        version = 3,
         neoforge = "BuildCreativeModeTabContentsEvent"
     )]
-    fn build_creative_mode_tab_contents();
+    fn build_creative_mode_tab_contents(
+        tab: &str,
+        features: Vec<String>,
+        permissions: mod_api::CreativeTabPermissions,
+        edit: mod_api::CreativeTabEdit,
+    );
 }

@@ -41,6 +41,8 @@ pub(in crate::gfx) struct PostPassArgs<'a> {
     pub(in crate::gfx) gpu_frame: bool,
     pub(in crate::gfx) serial: u64,
     pub(in crate::gfx) cpu: [usize; 3],
+    pub(in crate::gfx) sourced_frame: bool,
+    pub(in crate::gfx) sourced_cpu: [usize; 3],
     pub(in crate::gfx) lifts_world: bool,
 }
 
@@ -55,7 +57,7 @@ impl Renderer {
         &mut self,
         mut encoder: wgpu::CommandEncoder,
         args: PostPassArgs<'_>,
-    ) -> (wgpu::CommandEncoder, PostPassResult) {
+    ) -> std::result::Result<(wgpu::CommandEncoder, PostPassResult), String> {
         let PostPassArgs {
             frame,
             scaled,
@@ -97,6 +99,8 @@ impl Renderer {
             gpu_frame,
             serial,
             cpu,
+            sourced_frame,
+            sourced_cpu,
             lifts_world,
         } = args;
 
@@ -114,7 +118,7 @@ impl Renderer {
                     .prepare(
                         &self.device,
                         &mut encoder,
-                        &mut self.uploads,
+                        |enc, buf, offset, data| self.uploads.buffer(enc, buf, offset, data),
                         atlas,
                         frame.weather,
                         frame.weather_time,
@@ -200,7 +204,8 @@ impl Renderer {
             // Both strokes of a high contrast outline, the black one first.
             post.set_lines(pack_draws_outline.then(|| pack_post::Lines {
                 edges: self.outline.clone(),
-                count: outline_edges as u32 * if frame.outline_high_contrast { 2 } else { 1 },
+                count: outline_edges as u32,
+                strokes: if frame.outline_high_contrast { 2 } else { 1 },
             }));
             post.set_clouds(pack_draws_clouds.then(|| pack_post::Clouds {
                 vertices: self.cloud_buffer.clone(),
@@ -208,7 +213,9 @@ impl Renderer {
                 indices: self.indices.clone(),
                 quads: cloud_quads,
             }));
-            post.run(
+            // Fails only on a wait that found the device lost: the frame stops here, with
+            // the pack kept for the next one and nothing more encoded.
+            let ran = post.run(
                 &self.device,
                 &self.queue,
                 &mut encoder,
@@ -221,11 +228,14 @@ impl Renderer {
                 [self.config.width, self.config.height],
                 pages,
                 &mut terrain,
+                &self.device_lost,
+                super::super::in_flight::poll_live,
             );
             // Keep the capacity, not the buffers: a page the arena frees must not stay alive
             // here until the next shader-pack frame (or forever once the pack is off).
             self.pack_pages.clear();
             self.pack_post = Some((dimension, Some(post)));
+            ran?;
         } else if let Some((color, depth)) = &scaled
             && native_post
             && let Some(native) = &mut self.native
@@ -349,21 +359,26 @@ impl Renderer {
         if culling && let Some(cull) = &mut self.cull {
             cull.end(&self.device, &mut encoder);
         }
-        // GPU culling's counts once its world passes are done (phase 2's too).
+        // GPU culling's counts once its world passes are done (phase 2's too), and sourced
+        // geometry's beside them; whether the frame drew sourced geometry rides the near
+        // copy, so its half waits for sourced geometry's (`in_flight::collect_stats`).
         if gpu_frame && let Some(gpu) = &mut self.gpu_culling {
-            gpu.copy_stats(&mut encoder, serial, cpu);
+            gpu.copy_stats(&mut encoder, serial, cpu, sourced_frame);
+        }
+        if sourced_frame {
+            self.sourced.copy_stats(&mut encoder, serial, sourced_cpu);
         }
         if let Some(timer) = &mut self.gpu_timer {
             timer.end(&self.device, &mut encoder, (&view_target, overlay_format));
         }
 
-        (
+        Ok((
             encoder,
             PostPassResult {
                 readback,
                 target_texture,
                 fg_made,
             },
-        )
+        ))
     }
 }

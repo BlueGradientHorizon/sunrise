@@ -1540,7 +1540,7 @@ impl Def {
             flying: matches!(s, S::Ghast | S::Phantom | S::HappyGhast),
             climber: matches!(s, S::Spider | S::CaveSpider),
             lava_walker: s == S::Strider,
-            powder_snow_walkable: false,
+            entity_tag_slot: None,
             omnidirectional: matches!(s, S::Bee | S::Parrot),
             fire_immune: fire_immune
                 || matches!(
@@ -1554,23 +1554,7 @@ impl Def {
                         | S::Zoglin
                         | S::Wither
                 ),
-            // The `burn_in_daylight` entity type tag.
-            burns_in_day: matches!(
-                s,
-                S::Zombie
-                    | S::ZombieHorse
-                    | S::Drowned
-                    | S::ZombieVillager
-                    | S::Skeleton
-                    | S::Stray
-                    | S::Bogged
-                    | S::WitherSkeleton
-                    | S::Phantom
-                    | S::ZombieNautilus
-            ),
             undead,
-            // EntityTypeTags.CAN_BREATHE_UNDER_WATER, resolved at load (`mobs.rs`).
-            breathes_water: false,
             // WaterAnimal.handleAirSupply: it dries out on land; Nautilus's
             // does the same. Dolphin.handleAirSupply is empty, so a dolphin
             // takes LivingEntity.baseTick's air like a land mob.
@@ -1583,6 +1567,48 @@ impl Def {
                     s,
                     S::Villager | S::WanderingTrader | S::IronGolem | S::SnowGolem | S::CopperGolem
                 ),
+            // `EntityType.Builder.notInPeaceful` on the vanilla type.
+            not_in_peaceful: matches!(
+                s,
+                S::Blaze
+                    | S::Bogged
+                    | S::Breeze
+                    | S::CaveSpider
+                    | S::Creaking
+                    | S::Creeper
+                    | S::Drowned
+                    | S::ElderGuardian
+                    | S::Enderman
+                    | S::Endermite
+                    | S::Evoker
+                    | S::Ghast
+                    | S::Giant
+                    | S::Guardian
+                    | S::Hoglin
+                    | S::Husk
+                    | S::Illusioner
+                    | S::MagmaCube
+                    | S::Parched
+                    | S::Phantom
+                    | S::PiglinBrute
+                    | S::Pillager
+                    | S::Ravager
+                    | S::Silverfish
+                    | S::Skeleton
+                    | S::Slime
+                    | S::Spider
+                    | S::Stray
+                    | S::Vex
+                    | S::Vindicator
+                    | S::Warden
+                    | S::Witch
+                    | S::Wither
+                    | S::WitherSkeleton
+                    | S::Zoglin
+                    | S::Zombie
+                    | S::ZombieVillager
+                    | S::ZombifiedPiglin
+            ),
             tick_alone: false,
         }
     }
