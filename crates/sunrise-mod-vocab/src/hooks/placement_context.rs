@@ -8,8 +8,9 @@ pub trait Hooks {
     /// scaffolding's column walk). The placing item cannot be changed.
     /// The actual pre-use `stack` supplies the item key and components. `context.source`
     /// distinguishes a player placement (`PlacementSource::Player { yaw, pitch, sneaking }`)
-    /// from a directional non-player placement (`PlacementSource::Directional { direction }`).
-    /// `placer` supplies the player's handle and eyes on this side, or is absent for a
+    /// from a directional non-player placement (`PlacementSource::Directional { direction }`):
+    /// the effective placement rules, which a rewrite can change independently of `placer`.
+    /// `placer` supplies the actual player's handle and eyes on this side, or is absent for a
     /// dispenser. A player's original destination may be occupied: a part can
     /// redirect the placement even when vanilla would refuse it there. A
     /// dispenser still needs a replaceable front cell before asking the part.
