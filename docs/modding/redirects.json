@@ -21,7 +21,6 @@
   "how-to/wasm-mods": "how-to/native-mods",
   "how-to/world/block-hit-sounds": "how-to/world/level-sounds",
   "how-to/world/check-biome-tags": "how-to/world/biomes",
-  "how-to/world/extinguishing-fire": "how-to/entities/extinguishing-fire",
   "how-to/world/refusing-dimension-travel": "how-to/world/portal-destination",
   "reference/container-loot": "how-to/items/loot-functions-and-conditions",
   "start/first-wasm-mod": "start/first-mod"

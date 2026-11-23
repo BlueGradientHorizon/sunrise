@@ -32,10 +32,11 @@ The game asks these abilities at the following action sites:
 ## Tool transformation previews
 
 Use `LevelRef::block_transform` to preview a tool's effect on a loaded block in the server's active level. Pass the
-live player, hand, stack, position and hit; the call returns an owned `BlockTransformPreview` (resulting block state,
-relative durability cost, sound, loot and particle) without applying it.
+live player, hand, stack, position and hit; the call returns an owned `BlockTransformPreview` holding the new block
+state, durability cost, sound, optional loot-table ID and particle or level-event ID without applying it.
 
-- The call fires `block_tool_modification` with `ToolUse::simulated` set to `true`. Your listener must not change the
-  level during a simulation; the real action fires the same hook with `simulated` set to `false`.
+- Supported tool abilities reach the global `block_tool_modification` hook after the block Part unless the Part
+  cancels, with `ToolUse::simulated` set to `true` for preview queries and `false` for actual use. Your listener must
+  not change the level during a simulation.
 - A stale or unavailable player or level, a player in another dimension, an inactive level, an unloaded position, an
   invalid face, or a tool with no transformation returns `None`.

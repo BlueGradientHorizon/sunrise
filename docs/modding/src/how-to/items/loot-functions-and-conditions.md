@@ -182,5 +182,6 @@ the existing 512-level NBT budget before creating any target parents.
 ## Container loot
 
 To inspect or edit rolled container loot after table-load changes and before shuffle, splitting and placement,
-implement the server-side `container_loot_filled` hook. Its full contract (opener rules, double-chest halves,
-stack trimming and error handling) lives in [Hook notes](../../reference/hook-notes.md#container-loot).
+implement the server-side `Hooks::container_loot_filled` hook. For opener rules, double-chest fills, stack
+trimming and refused edits, see `Hooks::container_loot_filled` in the
+[mod API reference](../../reference/api.md).
