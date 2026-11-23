@@ -37,7 +37,7 @@ impl LabelLayout {
         font: &Font,
         text: &mod_api::Text,
         visit: &mut dyn FnMut(TextLine<'_>),
-    ) -> TextLayoutSize {
+    ) -> Result<TextLayoutSize, TextLayoutError> {
         let local = sunrise_client_lib::api_text::to_local_engine(text);
         self.visit(font, local.engine(), |logical, _, [x, y], width| {
             visit(TextLine {
@@ -55,16 +55,13 @@ impl LabelLayout {
         font: &Font,
         text: &Text,
         mut visit: impl FnMut(&Text, &Text, [f32; 2], f32),
-    ) -> TextLayoutSize {
+    ) -> Result<TextLayoutSize, TextLayoutError> {
+        let lines = font.split_formatted(text, self.wrap_width);
+        let mut placed = Vec::with_capacity(lines.len());
         let mut size = TextLayoutSize::default();
-        for (i, line) in font
-            .split_formatted(text, self.wrap_width)
-            .into_iter()
-            .enumerate()
-        {
+        for (i, line) in lines.iter().enumerate() {
             let line = line.resolved();
-            let visual = bidi::visual(&line);
-            let width = font.width_visual(&visual);
+            let width = font.width_visual(&bidi::visual(&line));
             let x = match self.align {
                 TextAlign::Left => 0.0,
                 // TextAlignment.CENTER.calculateLeft floors half of the line's width.
@@ -72,10 +69,21 @@ impl LabelLayout {
                 TextAlign::Right => self.wrap_width - width,
             };
             let y = i as f32 * LINE_HEIGHT;
-            visit(&line, &visual, [x, y], width);
-            size.width = size.width.max(width * self.scale);
-            size.height = y * self.scale + LINE_HEIGHT * self.scale;
+            let [scaled_x, scaled_y, scaled_width] = [x, y, width].map(|v| v * self.scale);
+            let height = scaled_y + LINE_HEIGHT * self.scale;
+            if ![scaled_x, scaled_y, scaled_width, height]
+                .into_iter()
+                .all(f32::is_finite)
+            {
+                return Err(TextLayoutError::GeometryNotFinite);
+            }
+            size.width = size.width.max(scaled_width);
+            size.height = height;
+            placed.push((line, [x, y], width));
         }
-        size
+        for (line, at, width) in placed {
+            visit(&line, &bidi::visual(&line), at, width);
+        }
+        Ok(size)
     }
 }

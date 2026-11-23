@@ -31,7 +31,8 @@ pub trait ClientTextClientHost {
     /// logical order. Returns the laid-out dimensions, even outside a draw.
     /// The wrapping width and all line positions and returned dimensions are in
     /// scaled GUI pixels. Clone a line's text to keep it after the visitor returns.
-    /// Only invalid layout geometry refuses; no line or character output cap applies.
+    /// Invalid layout geometry (including a non-finite scaled result) refuses before visiting
+    /// any line; no line or character output cap applies.
     /// Use [`GuiCanvas::text_with_word_wrap`] for drawing a label without replaying its lines.
     #[forward_api_inputs]
     fn visit_text_lines(

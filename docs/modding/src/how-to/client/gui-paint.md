@@ -34,7 +34,9 @@ draws, with [`with_scissor`](screen-clipping.md) if you need to clip them.
 
 For a wrapped component, call `canvas.text_with_word_wrap`. It wraps and paints in the current
 scope and returns the [label dimensions](screens.md#labels-wrapped-text-without-a-widget); there
-is no list of line draws to replay.
+is no list of line draws to replay. If a scaled offset or dimension is not finite, the call
+returns `GuiDrawError::TextLayout(TextLayoutError::GeometryNotFinite)` without drawing, even
+for a blank or fully transparent label.
 
 ## Items
 

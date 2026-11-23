@@ -146,18 +146,18 @@ impl GameGuiCanvas<'_, '_> {
 
     /// An individual call can be refused even when the caller chooses to commit its group.
     fn paint(&mut self, emit: impl FnOnce(&mut HudBatch, &HudAtlas)) -> Result<(), GuiDrawError> {
-        self.paint_in_pose(self.pose, emit)
+        self.paint_in_pose(self.pose, |batch, atlas| Ok(emit(batch, atlas)))
     }
 
     fn paint_in_pose<T>(
         &mut self,
         pose: Pose,
-        emit: impl FnOnce(&mut HudBatch, &HudAtlas) -> T,
+        emit: impl FnOnce(&mut HudBatch, &HudAtlas) -> Result<T, GuiDrawError>,
     ) -> Result<T, GuiDrawError> {
         let atlas = self.atlas;
         self.batch.draw_scope(&atlas.font, |batch| {
             let start = batch.vertices.len();
-            let output = emit(batch, atlas);
+            let output = emit(batch, atlas)?;
             for vertex in &mut batch.vertices[start..] {
                 if pose != IDENTITY {
                     vertex.pos = pose_point(pose, vertex.pos);
@@ -307,11 +307,13 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
         }
         let text = text.try_into_engine(&()).map_err(GuiDrawError::Text)?;
         self.paint_in_pose(pose, |batch, atlas| {
-            layout.visit(&atlas.font, &text, |_, line, [x, y], _| {
-                if argb >> 24 != 0 {
-                    batch.text_visual(atlas, line, x, y, abgr(argb), shadow);
-                }
-            })
+            layout
+                .visit(&atlas.font, &text, |_, line, [x, y], _| {
+                    if argb >> 24 != 0 {
+                        batch.text_visual(atlas, line, x, y, abgr(argb), shadow);
+                    }
+                })
+                .map_err(GuiDrawError::TextLayout)
         })
     }
 
@@ -791,6 +793,48 @@ mod tests {
                 .iter()
                 .all(|vertex| vertex.color == 0xFF33_2211)
         );
+    }
+
+    #[test]
+    fn wrapped_text_refuses_nonfinite_scaled_geometry_without_visiting_or_painting() {
+        let atlas = HudAtlas::build(&ResourceSource::directory(
+            "/nonexistent/sunrise-test-assets".into(),
+        ))
+        .unwrap();
+        for (label, argb, scale) in [
+            ("\n", u32::MAX, f32::MAX),
+            ("A\nA", 0, f32::MAX / 16.0),
+            ("A\nA", u32::MAX, f32::MAX / 16.0),
+        ] {
+            let text = Text::literal(label);
+            let spec = TextLayoutSpec {
+                max_width: 100.0,
+                align: mod_api::TextAlign::Left,
+                scale,
+            };
+            let layout = LabelLayout::try_from(spec).unwrap();
+            assert_eq!(
+                layout.visit_components(&atlas.font, &text, &mut |_| {
+                    panic!("an invalid label must not publish even its first line")
+                }),
+                Err(mod_api::TextLayoutError::GeometryNotFinite)
+            );
+
+            let mut batch = HudBatch::scratch([320, 240]);
+            GameGuiCanvas::draw(&mut batch, &atlas, None, None, &mut |root| {
+                assert_eq!(
+                    root.text_with_word_wrap(&text, [0.0; 2], spec, argb, false),
+                    Err(GuiDrawError::TextLayout(
+                        mod_api::TextLayoutError::GeometryNotFinite
+                    ))
+                );
+                root.fill([1.0, 2.0, 3.0, 4.0], u32::MAX)
+            })
+            .unwrap();
+            assert_eq!(batch.vertices.len(), 6);
+            assert_eq!(batch.vertices[0].pos, [1.0, 2.0]);
+            assert!(batch.patches.is_empty());
+        }
     }
 
     #[test]

@@ -45,7 +45,7 @@ pub enum GuiDrawError {
     NotFinite,
     /// Text could not be represented by the game (for example, it contains non-finite metadata).
     Text(TextFormError),
-    /// The wrapping width or scale cannot place the label.
+    /// The wrapping width, scale or scaled geometry cannot place the label.
     TextLayout(TextLayoutError),
     /// The stack could not be read for rendering. Storage count and damage limits do not apply.
     Stack(StackWriteError),
@@ -136,6 +136,7 @@ pub trait GuiCanvas {
     /// vanilla's `GuiGraphicsExtractor.textWithWordWrap`. `at` is the label's top left
     /// in local GUI pixels. Returns its dimensions before the enclosing pose. Both
     /// text measurement and paint use the same layout; no replay list is produced.
+    /// Non-finite scaled layout geometry is refused even for blank or transparent text.
     /// For an off-draw layout, use `ClientHost::visit_text_lines`.
     fn text_with_word_wrap(
         &mut self,

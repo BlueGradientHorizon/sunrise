@@ -687,7 +687,7 @@ mod tests {
                 at: line.at,
                 width: line.width,
             })
-        });
+        })?;
         Ok(Measurement { lines, size })
     }
 
@@ -1068,10 +1068,12 @@ mod tests {
         let text = Text::literal("abcdefghijklmnop\n".repeat(600));
         let mut lines = 0;
         let mut characters = 0;
-        let size = layout.visit_components(&font, &text, &mut |line| {
-            lines += 1;
-            characters += engine(line.text).plain().len();
-        });
+        let size = layout
+            .visit_components(&font, &text, &mut |line| {
+                lines += 1;
+                characters += engine(line.text).plain().len();
+            })
+            .unwrap();
         assert_eq!(lines, 601);
         assert_eq!(characters, 9600);
         assert_eq!((size.width, size.height), (96.0, 5409.0));

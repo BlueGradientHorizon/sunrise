@@ -48,6 +48,6 @@ impl Game<'_> {
         spec: TextLayoutSpec,
         visit: &mut dyn FnMut(TextLine<'_>),
     ) -> Result<TextLayoutSize, TextLayoutError> {
-        Ok(LabelLayout::try_from(spec)?.visit_components(&self.gui.atlas.font, text, visit))
+        LabelLayout::try_from(spec)?.visit_components(&self.gui.atlas.font, text, visit)
     }
 }
