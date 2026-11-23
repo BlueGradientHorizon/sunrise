@@ -2742,14 +2742,19 @@ impl Streaming {
             return;
         }
         let job = entry.remove();
+        // The job that covers a resend publishes its light and releases it, though a newer
+        // request has queued a replacement meanwhile (`ThreadedLevelLightEngine.waitForPendingTasks`
+        // waits only for the tasks queued at the call).
+        let covered = matches!(
+            world.chunk_resends.get(&(x, z)),
+            Some(&ChunkResend::WaitingLight { from_seq }) if seq >= from_seq
+        );
         if let Some(snapshot) = job.snapshot
-            && !world.dirty_light.contains(&(x, z))
+            && (covered || !world.dirty_light.contains(&(x, z)))
         {
             self.apply_lit(world, x, z, sections, snapshot);
-            if let Some(resend) = world.chunk_resends.get_mut(&(x, z))
-                && *resend == ChunkResend::WaitingLight
-            {
-                *resend = ChunkResend::Ready;
+            if covered {
+                world.chunk_resends.insert((x, z), ChunkResend::Ready);
             }
         }
         match self.lighting.values().filter_map(|job| job.snapshot).min() {
@@ -2830,8 +2835,22 @@ impl Streaming {
     /// light work already queued or running for `key` (`ThreadedLevelLightEngine.waitForPendingTasks`).
     /// Later light checks or edits do not move this marker once recorded.
     pub fn queue_chunk_resend(&self, world: &mut World, key: (i32, i32)) {
-        let state = if world.dirty_light.contains(&key) || self.has_active_column_light_job(key) {
-            ChunkResend::WaitingLight
+        let queued = world.dirty_light.contains(&key);
+        let running = self
+            .lighting
+            .get(&key)
+            .filter(|job| job.snapshot.is_some())
+            .map(|job| job.seq);
+        let state = if queued || running.is_some() {
+            ChunkResend::WaitingLight {
+                // Light queued after the running job needs a later one; with none, the
+                // running job is the work to wait for.
+                from_seq: if queued {
+                    self.sequence + 1
+                } else {
+                    running.unwrap_or_default()
+                },
+            }
         } else if world.light_edits.iter().any(|&((ex, _, ez), _, _)| {
             (ex >> 4).abs_diff(key.0) <= 1 && (ez >> 4).abs_diff(key.1) <= 1
         }) {
@@ -2842,12 +2861,6 @@ impl Streaming {
             ChunkResend::Ready
         };
         world.chunk_resends.insert(key, state);
-    }
-
-    fn has_active_column_light_job(&self, key: (i32, i32)) -> bool {
-        self.lighting
-            .get(&key)
-            .is_some_and(|job| job.snapshot.is_some())
     }
 
     /// Whether a whole-column job for `key` was submitted and its result has not been taken.
@@ -2911,6 +2924,8 @@ impl Streaming {
             })
             .collect();
         markers.sort_unstable();
+        // Jobs this pass submits or queues come after this one.
+        let base_sequence = self.sequence;
         let mut required = FxHashSet::default();
         let mut start = 0;
         for (through, key) in markers {
@@ -2923,7 +2938,9 @@ impl Streaming {
             world.chunk_resends.insert(
                 key,
                 if required.contains(&key) {
-                    ChunkResend::WaitingLight
+                    ChunkResend::WaitingLight {
+                        from_seq: base_sequence + 1,
+                    }
                 } else {
                     ChunkResend::Ready
                 },
@@ -5064,7 +5081,7 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn resend_marker_waits_for_replacement_and_ignores_later_checks() {
+    fn resend_marker_is_released_by_its_covering_job_while_later_requests_pile_up() {
         use std::time::{Duration, Instant};
 
         let (mut world, mut streaming, _) = section_visibility::tests::fixture();
@@ -5075,40 +5092,38 @@ mod tests {
         }
         world.dirty_light.insert((0, 0));
         streaming.queue_chunk_resend(&mut world, (0, 0));
-        assert_eq!(
+        assert!(matches!(
             world.chunk_resends.get(&(0, 0)),
-            Some(&ChunkResend::WaitingLight)
-        );
+            Some(&ChunkResend::WaitingLight { .. })
+        ));
         streaming.update_light(&mut world);
         assert_eq!(streaming.order, 1);
         assert!(streaming.has_column_light_job((0, 0)));
 
-        // Re-dirty while the first job is still in flight so it must be discarded and replaced.
+        // Re-dirty while the covering job is still in flight: a relight added after the resend.
         let shared = Arc::clone(&streaming.shared);
         let mailbox = shared.done.done.lock().unwrap();
         world.dirty_light.insert((0, 0));
         streaming.update_light(&mut world);
         assert_eq!(streaming.order, 1);
-        assert_eq!(
+        assert!(matches!(
             world.chunk_resends.get(&(0, 0)),
-            Some(&ChunkResend::WaitingLight)
-        );
+            Some(&ChunkResend::WaitingLight { .. })
+        ));
         drop(mailbox);
 
+        // The covering job's light is published and the resend released, though the newer
+        // request has not run: later requests never extend the wait.
         let deadline = Instant::now() + Duration::from_secs(10);
         while streaming.order < 2 {
-            assert!(Instant::now() < deadline, "superseded job did not return");
+            assert!(Instant::now() < deadline, "covering job did not return");
             streaming.wait(Duration::from_millis(50));
             streaming.update_light(&mut world);
         }
-        assert!(!streaming.is_lit(0, 0), "superseded light was discarded");
-        assert_eq!(
-            world.chunk_resends.get(&(0, 0)),
-            Some(&ChunkResend::WaitingLight),
-            "resend waits until the replacement job applies"
-        );
+        assert!(streaming.is_lit(0, 0), "the covered light was published");
+        assert_eq!(world.chunk_resends.get(&(0, 0)), Some(&ChunkResend::Ready));
 
-        while streaming.has_column_light_job((0, 0)) {
+        while streaming.has_column_light_job((0, 0)) || world.dirty_light.contains(&(0, 0)) {
             assert!(Instant::now() < deadline, "replacement job did not finish");
             streaming.wait(Duration::from_millis(50));
             streaming.update_light(&mut world);
