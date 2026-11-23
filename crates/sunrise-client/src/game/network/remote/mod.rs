@@ -601,6 +601,10 @@ pub(super) struct Remote {
     pub(super) levels: Vec<String>,
     /// Player entities in the level: entity id to profile UUID.
     pub(super) level_players: HashMap<i32, u128>,
+    /// Authoritative entity UUID index scoped to the current client level (`EntityLookup.byUuid`).
+    pub(super) level_uuids: HashMap<u128, i32>,
+    /// Reverse entity-id-to-UUID index for O(1) removal and replacement in the current client level.
+    pub(super) level_entity_uuids: HashMap<i32, u128>,
     /// First resolved `PlayerInfo` game mode cell per remote `AbstractClientPlayer` entity.
     level_player_infos: HashMap<i32, std::cell::OnceCell<Arc<std::sync::atomic::AtomicI32>>>,
     /// The profile name each player entity was created with (`RemotePlayer.getGameProfile`): it outlives the
