@@ -2421,6 +2421,7 @@ mod pickup_xp_tests {
             game.lan.as_mut().unwrap().hub.guests.push(g);
             let p = Vec3::new(0.5, 70.0, 0.5);
             game.orbs.push(ExperienceOrb {
+                size_answer: None,
                 attachment_lifetime: Default::default(),
                 rotation: [0.0, 0.0],
                 join: Default::default(),

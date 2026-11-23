@@ -1396,6 +1396,7 @@ impl Game<'_> {
             .then(|| super::interactions::InteractionState::from_tag(tag));
         let rotation = entity_nbt::rotation(tag);
         Some(super::commands::OtherEntity {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             join: Default::default(),
             id,

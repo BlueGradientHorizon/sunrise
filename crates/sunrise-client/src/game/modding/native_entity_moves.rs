@@ -490,6 +490,7 @@ pub(in crate::game) mod tests {
             let stand = game.entity(13).unwrap();
             assert!(!stand.set_rotation(game, 30.0, 10.0));
             game.others.push(super::super::commands::OtherEntity {
+                size_answer: None,
                 attachment_lifetime: Default::default(),
                 knot_check: None,
                 eye: None,

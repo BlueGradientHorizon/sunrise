@@ -49,6 +49,9 @@ pub(super) struct PrimedTnt {
     pub used_portal: bool,
     /// PrimedTnt.DATA_BLOCK_STATE_ID; None is the default TNT state.
     pub block_state: Option<sunrise_world::registry::BlockStateId>,
+    /// What `entity_size` answered at its last size refresh (`EntityEvent.Size`): its box takes
+    /// the answer while it holds for its vanilla size.
+    pub(super) size_answer: Option<sunrise_client::pose::SizeAnswer>,
 }
 impl PrimedTnt {
     /// The live state encoded for each existing save view.
@@ -64,15 +67,23 @@ impl PrimedTnt {
 
     /// `EntityTypes.TNT`'s `sized(0.98F, 0.98F)`, widened from the float.
     pub(super) const SIZE: f64 = 0.98_f32 as f64;
+    /// `EntityTypes.TNT.getDimensions()`: width, height and eye height.
+    pub(super) const DIMENSIONS: [f32; 3] = [0.98, 0.98, 0.15];
     pub(super) fn bounds(&self) -> Aabb {
         let h = Self::SIZE / 2.0;
-        Aabb::new(
+        let vanilla = Aabb::new(
             Vec3::new(self.position.x - h, self.position.y, self.position.z - h),
             Vec3::new(
                 self.position.x + h,
                 self.position.y + Self::SIZE,
                 self.position.z + h,
             ),
+        );
+        sunrise_client::pose::SizeAnswer::sized_box(
+            self.size_answer,
+            Self::DIMENSIONS,
+            self.position,
+            vanilla,
         )
     }
     /// `Entity.move`: a pending stuck multiplier is used up by the next move,
@@ -429,6 +440,7 @@ impl Game<'_> {
             sunrise_client::save::insecure_uuid(&mut sunrise_client::random_source::entity());
         self.persist.uuids.insert(self.next_entity, uuid);
         self.tnts.push(PrimedTnt {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             rotation: [0.0, 0.0],
             join: Default::default(),
@@ -1082,6 +1094,7 @@ pub(in crate::game) mod tests {
         ]))
         .unwrap();
         let mut tnt = PrimedTnt {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             rotation: [0.0, 0.0],
             join: Default::default(),
@@ -1153,6 +1166,7 @@ pub(in crate::game) mod tests {
         use sunrise_core::geometry::Direction;
         use sunrise_world::piston_push::bounce_velocity;
         let mut tnt = PrimedTnt {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             rotation: [0.0, 0.0],
             join: Default::default(),
@@ -1206,6 +1220,7 @@ pub(in crate::game) mod tests {
         for bordered in [false, true] {
             let at = Vec3::new(24.0, 4.0, 20.5);
             let mut tnt = PrimedTnt {
+                size_answer: None,
                 attachment_lifetime: Default::default(),
                 rotation: [0.0, 0.0],
                 join: Default::default(),
@@ -1288,6 +1303,7 @@ pub(in crate::game) mod tests {
             }
             let at = Vec3::new(19.5, top, 20.5);
             let mut tnt = PrimedTnt {
+                size_answer: None,
                 attachment_lifetime: Default::default(),
                 rotation: [0.0, 0.0],
                 join: Default::default(),
@@ -1366,6 +1382,7 @@ pub(in crate::game) mod tests {
         world.set(21, 4, 20, flowing).unwrap();
         let at = Vec3::new(20.5, 4.0, 20.5);
         let mut tnt = PrimedTnt {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             rotation: [0.0, 0.0],
             join: Default::default(),
@@ -1531,6 +1548,7 @@ pub(in crate::game) mod tests {
         // (Entity.handleOnInsideBubbleColumn / handleOnAboveBubbleColumn).
         let at = Vec3::new(20.5, 6.0, 20.5);
         let mut tnt = PrimedTnt {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             rotation: [0.0, 0.0],
             join: Default::default(),
@@ -1642,6 +1660,7 @@ pub(in crate::game) mod tests {
         world.set(20, 2, 20, soul_sand).unwrap();
         let at = Vec3::new(20.5, 6.0, 20.5);
         let primed = || PrimedTnt {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             rotation: [0.0, 0.0],
             join: Default::default(),
