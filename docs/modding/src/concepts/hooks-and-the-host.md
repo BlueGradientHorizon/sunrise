@@ -45,8 +45,14 @@ events; a successful replacement still ends a first-answer-wins hook.
 [Staged registration](load-phases.md#registration-and-setup) discards the failed callback's pending
 entries and replacements. For a journaled action such as `farmland_trample`, a failed callback's
 writes do not join the action. A successful veto or stale landing state still aborts the whole
-trample action, and fall damage still runs. For [chunk-disk jobs](../how-to/chunk-data-load.md), later
-listeners can run after a panic or codec failure, but the failed job's changes cannot publish.
+trample action, and fall damage still runs. Direct effects outside a proposal or journal are not
+undone by the panic boundary: a draw already accepted into a render stage can still render.
+
+For [chunk-disk jobs](../how-to/chunk-data-load.md), a panic discards that listener's staged edits.
+An attachment codec refusal rejects only that operation without disabling the listener. In either
+case accepted edits from other listeners can still publish, as can other successful operations when
+a listener handles a refusal and completes. This is separate from an error encoding or writing the
+ordinary disk record, which can prevent that record from being saved.
 
 ## Player tick hooks
 
