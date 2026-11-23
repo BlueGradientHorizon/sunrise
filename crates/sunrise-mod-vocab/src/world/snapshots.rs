@@ -2,8 +2,9 @@
 use crate::{BlockPos, Direction, ItemKey, PlayerRef};
 use sunrise_core::nbt::Tag;
 
-/// Who initiated a block placement: a player (`BlockPlaceContext`) or a
-/// directional non-player source (`DirectionalPlaceContext`).
+/// The placement rules a block placement follows: a player's (`BlockPlaceContext`) or a
+/// directional non-player context's (`DirectionalPlaceContext`). A placement-context rewrite can
+/// change them; [`PlacementPlacer`] still names the actual placer, if there is one.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -40,8 +41,9 @@ pub struct PlacementContext {
     pub hit: [f64; 3],
     /// Whether the click originated inside the block's shape.
     pub inside: bool,
-    /// Who initiated the placement: a player's view and sneak state, or a
-    /// directional non-player source (`DirectionalPlaceContext`).
+    /// The placement rules in effect: a player's view and sneak state, or a
+    /// directional non-player context (`DirectionalPlaceContext`). A rewrite can change them
+    /// without changing who placed the block.
     pub source: PlacementSource,
     /// The resolved item in the placing hand; `None` for an empty hand.
     pub item: Option<ItemKey>,

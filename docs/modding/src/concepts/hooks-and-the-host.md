@@ -387,7 +387,9 @@ Before a block's placement state is selected, `ItemPart::placement_context` repl
 components. `context.source` distinguishes a player placement
 (`PlacementSource::Player { yaw, pitch, sneaking }`, vanilla's `BlockPlaceContext` with a non-null
 player) from a non-player directional placement (`PlacementSource::Directional { direction }`,
-vanilla's `DirectionalPlaceContext`, such as a dispenser placing a shulker box). `placer` gives
+vanilla's `DirectionalPlaceContext`, such as a dispenser placing a shulker box). `source` is the
+placement rules in effect, which a rewrite can change; `placer` still identifies the actual placer.
+`placer` gives
 the live player handle and eye position at the time of the click via `eye_position()`
 (the acting player on the server, the predicting player on the client) and is `None` for a dispenser.
 `Some(Some(context))` rewrites the target and click, even if the player's original destination is
