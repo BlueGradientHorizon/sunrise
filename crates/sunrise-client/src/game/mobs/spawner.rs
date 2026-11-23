@@ -2,11 +2,7 @@
 //! `clientTick` for every spawner (`mobs::spawner`), the mobs they add, a
 //! spawn egg used on one (`SpawnEggItem.useOn`), their events and the mob
 //! spinning inside (`SpawnerRenderer`).
-use super::{
-    Game,
-    creatures::{Finalized, SpawnReason},
-    persist::SpawnTree,
-};
+use super::{Game, creatures::SpawnReason, persist::SpawnTree};
 use std::collections::HashMap;
 use sunrise_client::{
     Result,
@@ -232,25 +228,25 @@ impl Game<'_> {
             // TrialSpawner.spawnMob: setPersistenceRequired.
             mob.persistent = r.trial;
             let mut group = None;
-            match self.finalize_spawn_event(&mut mob, reason, source, &mut group) {
-                (Finalized::Cancelled, _) => return None,
-                (outcome, difficulty) => {
-                    if outcome == Finalized::Done {
-                        let mut level = super::natural_spawning::PassLevel::new(l);
-                        let mut cx = sunrise_client::mobs::finalize::Ctx {
-                            level: &mut level,
-                            random,
-                            difficulty,
-                            created: Vec::new(),
-                            jockey_rider: None,
-                        };
-                        sunrise_client::mobs::finalize::finalize(&mut cx, &mut mob, reason, group);
-                        for m in cx.created {
-                            l.record_pending(&m);
-                            l.spawned.borrow_mut().push(m);
-                        }
-                    }
+            let (event, difficulty) =
+                self.finalize_spawn_event(&mut mob, reason, source, &mut group);
+            if !event.skip_initialization {
+                let mut level = super::natural_spawning::PassLevel::new(l);
+                let mut cx = sunrise_client::mobs::finalize::Ctx {
+                    level: &mut level,
+                    random,
+                    difficulty,
+                    created: Vec::new(),
+                    jockey_rider: None,
+                };
+                sunrise_client::mobs::finalize::finalize(&mut cx, &mut mob, reason, group);
+                for m in cx.created {
+                    l.record_pending(&m);
+                    l.spawned.borrow_mut().push(m);
                 }
+            }
+            if event.veto_admission {
+                return None;
             }
             // Shulker.finalizeSpawn faces it south.
             if mob.species() == sunrise_client::mobs::Species::Shulker {

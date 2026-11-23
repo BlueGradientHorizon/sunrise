@@ -103,17 +103,6 @@ pub(super) enum SpawnSite {
     Raw,
 }
 
-/// What a spawn site does with a mob after `finalize_spawn` was heard.
-#[derive(Debug, PartialEq)]
-pub(super) enum Finalized {
-    /// Finalized as vanilla does; the site goes on to the class's follow-ups.
-    Done,
-    /// A mod skipped finalization: the mob spawns uninitialised.
-    Skipped,
-    /// A mod stopped the spawn: the mob is not added.
-    Cancelled,
-}
-
 mod death_source;
 mod death_weapon;
 mod destroy_rules;
@@ -746,11 +735,11 @@ impl Game<'_> {
         mob.persistent = persistent;
         match site {
             SpawnSite::Raw => return Some(mob),
-            SpawnSite::Finalizing(reason) => match self.finalize_with(&mut mob, reason, None) {
-                Finalized::Cancelled => return self.discard_unjoined_mob(mob.id),
-                Finalized::Skipped => return Some(mob),
-                Finalized::Done => {}
-            },
+            SpawnSite::Finalizing(reason) => {
+                if !self.finalize_with(&mut mob, reason, None) {
+                    return self.discard_unjoined_mob(mob.id);
+                }
+            }
             // A plain spawn finalizes as a summoned one (vanilla's /summon
             // and egg path): its few reason-gated arms behave the same.
             SpawnSite::Plain => {
@@ -947,12 +936,6 @@ impl Game<'_> {
             self.lan_entity_event(id as i32, event, at);
         }
     }
-    /// Finalize a converted frog or witch before it joins the level.
-    fn finalize_converted(&mut self, mob: &mut Mob) {
-        // A mod that stops a conversion's finalization leaves the mob as converted.
-        self.finalize_with(mob, SpawnReason::Conversion, None);
-        mob.persistent = true;
-    }
     /// `Mob.convertTo(type, ConversionParams.single(...))`: a new mob of
     /// `kind`, made without spawn finalization unless its conversion asks, takes
     /// its place with what `conversion::single` carries over, and the old
@@ -1006,7 +989,11 @@ impl Game<'_> {
         }
         match (from.species(), kind) {
             (Species::Tadpole, "minecraft:frog") | (Species::Villager, "minecraft:witch") => {
-                self.finalize_converted(&mut mob);
+                if !self.finalize_with(&mut mob, SpawnReason::Conversion, None) {
+                    self.forget_entity(mob.id);
+                    return None;
+                }
+                mob.persistent = true;
             }
             (Species::Pig, "minecraft:zombified_piglin") => {
                 let old = self.mobs.iter_mut().find(|m| m.id == from.id)?;
@@ -1180,19 +1167,20 @@ impl Game<'_> {
     /// `Mob.finalizeSpawn` behind `FinalizeSpawnEvent`: the one fire point for
     /// the mobs the game spawns where vanilla calls `finalizeSpawn`. The class's
     /// follow-ups (raider flags and the like) are part of `finalizeSpawn`, so a
-    /// site skips them on [`Finalized::Skipped`].
+    /// site skips them when the listener cancels initialization. Returns whether
+    /// the mob may be admitted.
     pub(super) fn finalize_with(
         &mut self,
         mob: &mut Mob,
         reason: SpawnReason,
         spawner: Option<mod_api::SpawnSource>,
-    ) -> Finalized {
+    ) -> bool {
         let mut group = None;
         let (outcome, difficulty) = self.finalize_spawn_event(mob, reason, spawner, &mut group);
-        if outcome == Finalized::Done {
+        if !outcome.skip_initialization {
             self.finalize_grouped(mob, &difficulty, reason, group);
         }
-        outcome
+        !outcome.veto_admission
     }
     /// `Mob.finalizeSpawn`'s event, the half listeners own: they hear the
     /// spawn, cancel it, take it over, set its difficulty, edit the mob
@@ -1205,11 +1193,14 @@ impl Game<'_> {
         reason: SpawnReason,
         spawner: Option<mod_api::SpawnSource>,
         group: &mut Option<Group>,
-    ) -> (Finalized, spawning::LocalDifficulty) {
+    ) -> (
+        sunrise_client::mobs::finalize::SpawnEvent,
+        spawning::LocalDifficulty,
+    ) {
         let at = [mob.position.x, mob.position.y, mob.position.z];
         let difficulty = self.local_difficulty(at);
         if !mod_api::__private::listened(mod_api::HookId::FinalizeSpawn) {
-            return (Finalized::Done, difficulty);
+            return (Default::default(), difficulty);
         }
         let kind = mob.kind.id.clone();
         self.finalize_spawn_lent(&kind, at, reason, spawner, difficulty, Some(mob), group)
@@ -1258,10 +1249,13 @@ impl Game<'_> {
         at: [f64; 3],
         reason: SpawnReason,
         spawner: Option<mod_api::SpawnSource>,
-    ) -> (Finalized, spawning::LocalDifficulty) {
+    ) -> (
+        sunrise_client::mobs::finalize::SpawnEvent,
+        spawning::LocalDifficulty,
+    ) {
         let difficulty = self.local_difficulty(at);
         if !mod_api::__private::listened(mod_api::HookId::FinalizeSpawn) {
-            return (Finalized::Done, difficulty);
+            return (Default::default(), difficulty);
         }
         self.finalize_spawn_lent(kind, at, reason, spawner, difficulty, None, &mut None)
     }
@@ -1277,7 +1271,10 @@ impl Game<'_> {
         difficulty: spawning::LocalDifficulty,
         mob: Option<&mut Mob>,
         group: &mut Option<Group>,
-    ) -> (Finalized, spawning::LocalDifficulty) {
+    ) -> (
+        sunrise_client::mobs::finalize::SpawnEvent,
+        spawning::LocalDifficulty,
+    ) {
         let mut heard = mod_api::Difficulty::from(difficulty);
         let (mut spawn_cancelled, mut skip) = (false, false);
         let given = group
@@ -1302,13 +1299,13 @@ impl Game<'_> {
                 .as_ref()
                 .and_then(super::native_unspawned_mob::spawn_group);
         }
-        if spawn_cancelled {
-            return (Finalized::Cancelled, difficulty);
-        }
-        if skip {
-            return (Finalized::Skipped, difficulty);
-        }
-        (Finalized::Done, heard.into())
+        (
+            sunrise_client::mobs::finalize::SpawnEvent {
+                skip_initialization: skip,
+                veto_admission: spawn_cancelled,
+            },
+            heard.into(),
+        )
     }
     /// `ServerLevel.getCurrentDifficultyAt` in the level in place.
     pub(super) fn local_difficulty(&self, at: [f64; 3]) -> spawning::LocalDifficulty {

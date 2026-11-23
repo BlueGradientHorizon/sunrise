@@ -1,7 +1,7 @@
 //! The game's side of `NaturalSpawner` (`mobs::spawn_selection`): the level
 //! it reads, the spawning chunks and caps of `ServerChunkCache.tickChunks`,
 //! and the mobs it adds (finalized with the game's `finalizeSpawn`).
-use super::{Dim, Game, creatures::Finalized};
+use super::{Dim, Game};
 use mod_api::{SpawnCheck, SpawnFlags, SpawnLimits};
 use std::collections::HashMap;
 use sunrise_client::{
@@ -519,7 +519,11 @@ impl GameLevel<'_, '_> {
     /// Creates a mob the spawner accepted, finalized the game's way
     /// (`finalizeSpawn` on this pass's level, its draws on the spawner's own
     /// random, between its position draws, as vanilla interleaves them).
-    fn finalize_spawned<R: RandomSource>(&self, r: &SpawnRequest, random: &mut R) -> Option<Mob> {
+    fn finalize_spawned<R: RandomSource>(
+        &self,
+        r: &SpawnRequest,
+        random: &mut R,
+    ) -> Option<(Mob, bool)> {
         let mut mob = match self.take_checked(r.entity, r.position, r.yaw) {
             Some(mob) => mob,
             None => {
@@ -534,26 +538,22 @@ impl GameLevel<'_, '_> {
         let (outcome, difficulty) = self
             .game
             .finalize_spawn_event(&mut mob, r.reason, None, &mut group);
-        match outcome {
-            Finalized::Cancelled => return None,
-            Finalized::Skipped => {}
-            Finalized::Done => {
-                let mut level = PassLevel::new(self);
-                let mut cx = sunrise_client::mobs::finalize::Ctx {
-                    level: &mut level,
-                    random,
-                    difficulty,
-                    created: Vec::new(),
-                    jockey_rider: None,
-                };
-                sunrise_client::mobs::finalize::finalize(&mut cx, &mut mob, r.reason, group);
-                for m in cx.created {
-                    self.record_pending(&m);
-                    self.spawned.borrow_mut().push(m);
-                }
+        if !outcome.skip_initialization {
+            let mut level = PassLevel::new(self);
+            let mut cx = sunrise_client::mobs::finalize::Ctx {
+                level: &mut level,
+                random,
+                difficulty,
+                created: Vec::new(),
+                jockey_rider: None,
+            };
+            sunrise_client::mobs::finalize::finalize(&mut cx, &mut mob, r.reason, group);
+            for m in cx.created {
+                self.record_pending(&m);
+                self.spawned.borrow_mut().push(m);
             }
         }
-        Some(mob)
+        Some((mob, outcome.veto_admission))
     }
 }
 
@@ -1496,12 +1496,13 @@ impl<'a> Game<'a> {
         &mut self,
         cluster: &mut SpawnCluster,
         candidate: spawn_selection::SpawnCandidate,
-        mob: Mob,
+        primary: (Mob, bool),
         mut passengers: Vec<Mob>,
         rides: &[(u32, u32)],
         random: &mut LevelRandom,
         state: &mut SpawnState,
     ) {
+        let (mob, veto_admission) = primary;
         let mut primary = [mob];
         primary[0].persistent = false;
         let ids = self.resolve_spawn_ids([&mut primary, &mut passengers], &[]);
@@ -1516,6 +1517,11 @@ impl<'a> Game<'a> {
             // Until its turn, a passenger is only owned by this iterator.
             for body in std::iter::once(mob).chain(passengers) {
                 let body_id = body.id;
+                if body_id == id && veto_admission {
+                    self.creatures.natural_admission =
+                        Some(NaturalAdmission::Detached(Box::new(body)));
+                    continue;
+                }
                 let index = self.mobs.len();
                 self.mobs.push(body);
                 if body_id == id {
@@ -2393,7 +2399,7 @@ mod tests {
                 let mut state = SpawnState::new(&natural, 289, players, &[], |_, _| true);
                 let mut pending = Vec::new();
                 let mut spawn = |l: &GameLevel, r: &SpawnRequest, rng: &mut LegacyRandom| {
-                    let mob = l.finalize_spawned(r, rng)?;
+                    let (mob, _) = l.finalize_spawned(r, rng)?;
                     l.record_pending(&mob);
                     pending.push(mob);
                     Some(spawn_selection::Spawned {
@@ -2621,14 +2627,10 @@ mod tests {
         });
     }
 
-    /// Answers `finalize_spawn` the way a test asks.
-    #[derive(Clone, Copy)]
-    enum FinalizeAnswer {
-        Pass,
-        SkipFinalize,
-        StopSpawn,
+    struct FinalizeMod {
+        skip: bool,
+        veto: bool,
     }
-    struct FinalizeMod(FinalizeAnswer);
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for FinalizeMod {
         fn finalize_spawn(
@@ -2636,62 +2638,67 @@ mod tests {
             _: &dyn mod_api::Host,
             event: &mut mod_api::FinalizeSpawnEvent<'_>,
         ) -> mod_api::Flow {
-            match self.0 {
-                FinalizeAnswer::Pass => {}
-                FinalizeAnswer::SkipFinalize => return mod_api::Flow::Cancel,
-                FinalizeAnswer::StopSpawn => event.spawn_cancelled = true,
+            event.spawn_cancelled = self.veto;
+            if self.skip {
+                mod_api::Flow::Cancel
+            } else {
+                mod_api::Flow::Continue
             }
-            mod_api::Flow::Continue
         }
     }
 
-    /// No listener and a listener that changes nothing finalize and draw as vanilla; a cancel
-    /// skips finalization and its draws, the mob still spawning; `spawn_cancelled` adds no mob.
+    /// The veto is an admission decision, independent of the three draws and the
+    /// follow-range bonus from `Mob.finalizeSpawn` (the silverfish has no override).
     #[test]
     #[ignore = "daily"]
     fn finalize_spawn_cancels_pin_the_draws_and_the_outcome() {
-        use super::super::native_entity_refs::tests::with_game;
+        use super::super::creatures::SpawnSite;
+        use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
+        if run_fresh_cases(
+            "game::natural_spawning::tests::finalize_spawn_cancels_pin_the_draws_and_the_outcome",
+            "SUNRISE_FINALIZE_CANCEL_CASE",
+            &["independent"],
+        ) {
+            return;
+        }
         with_game(|game| {
-            let kind = game
-                .res
-                .mob_types()
-                .get("minecraft:zombie")
-                .cloned()
-                .unwrap();
-            let run = |game: &mut Game<'_>, answer: Option<FinalizeAnswer>| {
-                game.world.random.set_seed(5);
-                let mut mob = Mob::new(1, kind.clone(), Vec3::new(8.5, 64.0, 8.5), 0.0);
-                let go = |game: &mut Game<'_>, mob: &mut Mob| {
-                    game.finalize_with(mob, Reason::Natural, None)
-                };
-                let outcome = match answer {
-                    None => go(game, &mut mob),
-                    Some(a) => mod_platform::testing::with_mods(
-                        vec![mod_api::ModEntry::new("finalize", Box::new(FinalizeMod(a)))].into(),
-                        || go(game, &mut mob),
-                    ),
-                };
-                let tag = match outcome {
-                    Finalized::Done => "done",
-                    Finalized::Skipped => "skipped",
-                    Finalized::Cancelled => "cancelled",
-                };
-                (
-                    tag,
+            for (skip, veto) in [(false, true), (true, false), (true, true)] {
+                game.world.random = LevelRandom::for_level(LegacyRandom::new(5));
+                let mods = vec![mod_api::ModEntry::new(
+                    "finalize",
+                    Box::new(FinalizeMod { skip, veto }),
+                )];
+                let spawned = mod_platform::testing::with_mods(mods.into(), || {
+                    game.spawn_mob(
+                        "minecraft:silverfish",
+                        [8.5, 64.0, 8.5],
+                        false,
+                        SpawnSite::Finalizing(Reason::Command),
+                    )
+                });
+                assert_eq!(spawned.is_none(), veto);
+                let mut expected = LegacyRandom::new(5);
+                if !skip {
+                    let _ = (
+                        expected.next_double(),
+                        expected.next_double(),
+                        expected.next_float(),
+                    );
+                }
+                assert_eq!(
                     game.world.random.next_int(),
-                    mob.random.clone().next_int(),
-                )
-            };
-            let none = run(game, None);
-            assert_eq!(none.0, "done");
-            assert_eq!(run(game, Some(FinalizeAnswer::Pass)), none, "pass-through");
-            let fresh = LegacyRandom::new(5).next_int();
-            let skipped = run(game, Some(FinalizeAnswer::SkipFinalize));
-            assert_eq!(skipped.0, "skipped");
-            assert_eq!(skipped.1, fresh, "a skipped finalization draws nothing");
-            let stopped = run(game, Some(FinalizeAnswer::StopSpawn));
-            assert_eq!(stopped.0, "cancelled");
-            assert_eq!(stopped.1, fresh, "a stopped spawn draws nothing");
+                    expected.next_int(),
+                    "skip={skip}, veto={veto}"
+                );
+                if let Some(id) = spawned {
+                    let mob = game.mobs.iter().find(|mob| mob.id == id).unwrap();
+                    assert!(!mob.extra.attributes.as_ref().is_some_and(|a| {
+                        a.modifiers
+                            .iter()
+                            .any(|m| m.id == "minecraft:random_spawn_bonus")
+                    }));
+                }
+            }
         });
     }
 
@@ -3246,7 +3253,7 @@ mod tests {
                         chunk,
                         start,
                         &mut |level, request, random| {
-                            let mob = level.finalize_spawned(request, random)?;
+                            let (mob, _) = level.finalize_spawned(request, random)?;
                             reference.push((mob.position, mob.random.state()));
                             Some(spawn_selection::Spawned {
                                 cluster_size: None,

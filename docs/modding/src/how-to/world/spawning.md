@@ -271,7 +271,7 @@ check, and a spawner or trial spawner whose spawn data carries entity data, whic
 
 ## Stopping a spawn or leaving a mob plain
 
-`finalize_spawn` has two cancels. Returning `Flow::Cancel` skips finalization: the mob spawns, but with no equipment, attributes or class setup. Setting `event.spawn_cancelled = true` adds no mob at all.
+`finalize_spawn` has two cancels. Returning `Flow::Cancel` skips finalization: the mob spawns, but with no equipment, attributes or class setup. Setting `event.spawn_cancelled = true` vetoes admission but still runs initialization and its draws. Set both to skip initialization and veto admission.
 
 ```rust,ignore
 fn finalize_spawn(&self, _: &dyn mod_api::Host, event: &mut mod_api::FinalizeSpawnEvent<'_>) -> mod_api::Flow {
@@ -291,7 +291,7 @@ an explicit NBT compound follows the load route without finalization.
 
 ## Changing the mob before it is finalized
 
-In `finalize_spawn` (hook version 2), `event.mob` is a scoped `UnspawnedMobEditor<'_>` borrowing the mob directly: it is
+In `finalize_spawn` (hook version 3), `event.mob` is a scoped `UnspawnedMobEditor<'_>` borrowing the mob directly: it is
 not in a level, so it is not an `EntityRef`, and the borrow lasts only for this hook call. Read it directly without
 `host` (`kind`, `position`, `equipment`, `attribute_base`, `attribute_value`, `tags`, `custom_name`, or `as_view` for a
 read-only `UnspawnedMobView<'_>`) and edit it directly: equipment (an API-owned `ItemStack`), an attribute's base or a
