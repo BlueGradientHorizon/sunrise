@@ -155,11 +155,12 @@ side that calls it. An invalid stack is a `TextFormError`.
 
 ## A stack's use animation
 
-`stack.use_animation(host)` is `ItemStack.getUseAnimation` with the mods' `use_animation` answers
-applied, on either side: the animation the renderer draws while the stack is in use (`Bow`, `Drink`,
-`Block`, `Spear`...). It starts from the item's own answer (its consumable, shield or kinetic
-components included), then each `use_animation` listener and the item's Part may change it. A
-`Spear` answer for a stack without kinetic data reads `None`, as it draws.
+`stack.use_animation(host)` is `ItemStack.getUseAnimation` with the mods' answers applied, on
+either side: the animation the renderer draws while the stack is in use (`Bow`, `Drink`, `Block`,
+`Spear`...). It starts from the item's own answer (its consumable, shield or kinetic components
+included), then the item's Part may change it in `ItemPart::use_animation`, which is asked on both
+sides with a read-only `&dyn Host`: answer from the stack alone. There is no global listener; the
+Part is item-scoped. A `Spear` answer for a stack without kinetic data reads `None`, as it draws.
 
 ## The NBT escape
 

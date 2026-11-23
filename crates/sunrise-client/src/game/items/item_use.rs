@@ -701,16 +701,14 @@ mod tests {
     }
 
     /// `ItemStack::use_animation` (#4677): `ItemStack.getUseAnimation` with a mod's
-    /// `use_animation` answer applied, the value the renderer reads, through a client host and
-    /// a server host alike.
+    /// `ItemPart::use_animation` answer applied, the value the renderer reads, through a client
+    /// host and a server host alike; the Part is asked on both sides with a read-only `Host`.
     #[test]
     #[ignore = "daily"]
     fn a_stacks_use_animation_carries_the_mods_answer_on_both_sides() {
         use crate::game::execution_role::ExecutionRole;
         use crate::game::native_entity_refs::tests::{fixture_root, with_game_role};
-        use mod_api::{
-            ClientHost, Hooks, Host, ItemPart, ModEntry, Mods, Registrar, UseAnimationEvent,
-        };
+        use mod_api::{Hooks, Host, ItemPart, ModEntry, Mods, Registrar, UseAnimationEvent};
         crate::game::in_own_process(
             "game::item_use::tests::a_stacks_use_animation_carries_the_mods_answer_on_both_sides",
             || {
@@ -719,7 +717,7 @@ mod tests {
                 struct Part;
                 #[mod_api::sunrise_part]
                 impl ItemPart for Part {
-                    fn use_animation(&self, _: &dyn ClientHost, event: &mut UseAnimationEvent<'_>) {
+                    fn use_animation(&self, _: &dyn Host, event: &mut UseAnimationEvent<'_>) {
                         *event.animation = UseAnimation::Drink;
                     }
                 }
@@ -805,7 +803,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn item_animation_dispatches_vanilla_parts_and_refuses_invalid_spears() {
-        use mod_api::{ClientHost, Hooks, ItemPart, ModEntry, Mods, Registrar, UseAnimationEvent};
+        use mod_api::{Hooks, Host, ItemPart, ModEntry, Mods, Registrar, UseAnimationEvent};
         use std::sync::{
             Arc,
             atomic::{AtomicUsize, Ordering},
@@ -815,7 +813,7 @@ mod tests {
         struct Part(Arc<AtomicUsize>);
         #[mod_api::sunrise_part]
         impl ItemPart for Part {
-            fn use_animation(&self, _: &dyn ClientHost, event: &mut UseAnimationEvent<'_>) {
+            fn use_animation(&self, _: &dyn Host, event: &mut UseAnimationEvent<'_>) {
                 self.0.fetch_add(1, Ordering::Relaxed);
                 let expected = match mod_api::__private::item_key_id(event.stack.item()).unwrap() {
                     "minecraft:bow" => UseAnimation::Bow,
