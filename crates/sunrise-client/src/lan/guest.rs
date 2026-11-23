@@ -199,6 +199,10 @@ pub struct Guest {
     pub center_sent: Option<(i32, i32)>,
     /// Why the connection closed (the console's "lost connection").
     pub left_reason: String,
+    /// The connections listed ahead of this player when the hub took them out of its list
+    /// (`Hub::remove_guest`): the game lists them again in that place while the mods hear them
+    /// leave.
+    pub listed_behind: Vec<u32>,
     /// A validated movement report the mods have not ruled on yet (`player_move`).
     pub pending_move: Option<super::hub::PendingMove>,
     /// A disconnect was started ([`Guest::begin_disconnect`]); the connection closes when the
@@ -354,6 +358,9 @@ pub struct Guest {
     /// What the player's client last said about the age of its copy of the collider
     /// (`sunrise:carry_age`): the collider and the ticks. Used by the next report only.
     pub carry_hint: Option<(u32, u8)>,
+    /// `ServerPlayer.requestedDebugSubscriptions`: the `debug_subscription` registry ids the
+    /// client asked for, kept whoever the player is (the permission check comes when they are read).
+    pub debug_subscriptions: Vec<i32>,
     /// The tick a mod last displaced the player and how many ticks in a row it has (a development
     /// build warns at 20; a release build never reads it).
     pub displaced_streak: (u64, u32),
@@ -383,6 +390,7 @@ pub struct Guest {
     pub carried_tick_count: Option<i32>,
     /// The accepted hit follows the same living body through a full teleport restore.
     pub carried_hit: Option<std::sync::Arc<crate::health::AcceptedHit>>,
+    pub carried_last_hurt_mob: Option<(u32, i32)>,
     /// The vehicle the player's file names (`ServerPlayer.saveParentVehicle`'s
     /// "RootVehicle"), for the ride to come back on the next login.
     pub saved_vehicle: Option<[i32; 4]>,
@@ -795,6 +803,7 @@ impl Guest {
             last_reported: (position, [0.0, 0.0]),
             center_sent: None,
             left_reason: String::new(),
+            listed_behind: Vec::new(),
             pending_move: None,
             disconnect_pending: false,
             uuid: j.uuid,
@@ -870,6 +879,7 @@ impl Guest {
             collision_exclusions: Default::default(),
             on_collider: None,
             carry_hint: None,
+            debug_subscriptions: Vec::new(),
             displaced_streak: (0, 0),
             carry_correction: None,
             carry_commit: None,
@@ -879,6 +889,7 @@ impl Guest {
             loaded_body: None,
             carried_attributes: None,
             carried_tick_count: None,
+            carried_last_hurt_mob: None,
             carried_hit: None,
             saved_vehicle: None,
             logs_kept: None,
@@ -1195,6 +1206,7 @@ impl Guest {
         if !restore_all {
             self.carried_tick_count = None;
             self.carried_hit = None;
+            self.carried_last_hurt_mob = None;
             self.death_canceled = false;
             self.death_time = 0;
         }
@@ -1203,6 +1215,7 @@ impl Guest {
         if restore_all {
             self.carried_tick_count = Some(m.health.tick_count);
             self.carried_hit = m.health.accepted_hit.take();
+            self.carried_last_hurt_mob = m.health.last_hurt_mob.take();
         } else {
             self.carried_tick_count = None;
         }

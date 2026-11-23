@@ -126,7 +126,7 @@ impl Game<'_> {
             && self.creatures.projectiles[i].id != 0
         {
             self.remote_attack_entity(self.creatures.projectiles[i].id as i32, distance);
-        } else if let Some(hit) = self.remote_object_hit(true)
+        } else if let Some(hit) = self.remote_object_hit()
             && self.mob_hit().is_none_or(|(_, d, _)| hit.distance < d)
             && self.before_block(hit.distance)
         {
@@ -161,7 +161,7 @@ impl Game<'_> {
             {
                 self.native_left_click_empty();
             }
-            if !self.creative {
+            if self.has_miss_time() {
                 self.clicks.miss_time = 10;
             }
             self.reset_attack_strength();
@@ -249,7 +249,7 @@ impl Game<'_> {
     pub(super) fn hud_disconnected(&mut self) {
         self.tab_list.reset();
         self.boss_overlay.reset();
-        self.adv.toasts.clear();
+        self.toast_manager = Default::default();
         self.debug_charts.reset();
         self.titles.clear();
         self.titles.reset_times();
@@ -258,13 +258,15 @@ impl Game<'_> {
     /// hit (`CRIT`) or magic critical hit (`ENCHANTED_HIT`) emitter.
     pub(super) fn remote_animate(&mut self, id: i32, action: u8) {
         use sunrise_client::particles::{ParticleOptions, ParticleType};
-        let Some((target, body)) = self.remote_tracking_body(id) else {
-            return;
-        };
         let particle = match action {
             // Player.stopSleepInBed.
             0 => {
-                if target == TrackingTarget::LocalPlayer {
+                if self.player.is_some()
+                    && self
+                        .remote
+                        .as_ref()
+                        .is_some_and(|remote| remote.entity_id == id)
+                {
                     self.sleeping = None;
                     self.sleep_timer = 100;
                 }
@@ -273,6 +275,9 @@ impl Game<'_> {
             1 => ParticleType::Crit,
             2 => ParticleType::EnchantedHit,
             _ => return,
+        };
+        let Some((target, body)) = self.remote_tracking_body(id) else {
+            return;
         };
         self.particles
             .tracking_emitter(ParticleOptions::simple(particle), target, body);

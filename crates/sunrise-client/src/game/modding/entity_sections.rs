@@ -198,13 +198,24 @@ struct PlayerMoveState {
 /// reads from the current write; other operations retain their typed refusal.
 struct LiveSectionHost(Option<SectionWriter>);
 
-mod_api::impl_host_areas!(LiveSectionHost);
+mod_api::impl_host_areas!(LiveSectionHost, except(datafix));
 mod_api::impl_server_host_areas!(LiveSectionHost);
 mod_api::impl_client_host_areas!(LiveSectionHost, except(client_render, menus, services));
 mod_api::impl_backend_areas!(
     LiveSectionHost,
     partial(entity_position, entity_on_ground, entity_velocity)
 );
+
+impl mod_api::prelude::DatafixHost for LiveSectionHost {
+    fn upgrade_nbt(
+        &self,
+        kind: mod_api::NbtDataType,
+        data_version: i32,
+        nbt: mod_api::Compound,
+    ) -> Result<mod_api::Compound, mod_api::NbtUpgradeError> {
+        super::Game::upgrade_nbt(kind, data_version, nbt)
+    }
+}
 
 impl mod_api::prelude::ClientRenderClientHost for LiveSectionHost {
     fn biome_tint(
@@ -344,6 +355,7 @@ impl Game<'_> {
 
     /// Entity `id` was put from `from` (when known) at `to`; tell it immediately after filing.
     pub(super) fn entity_section_moved(&mut self, id: u32, from: Option<[f64; 3]>, to: [f64; 3]) {
+        self.pick_section_move(id, to);
         if let Some(from) = from {
             self.entity_section_entered(id, from, to);
         }
@@ -357,6 +369,7 @@ impl Game<'_> {
 
     /// Entity `id`'s position was written: it is wherever it is now (any kind, either side).
     pub(super) fn entity_section_moved_id(&mut self, id: u32) {
+        self.pick_section_sync_moved_id(id);
         let Some(scope) = self.entity_section_scope() else {
             return;
         };
@@ -370,6 +383,7 @@ impl Game<'_> {
 
     /// Entity `id` is gone, or replaced under the same id: it starts over untold.
     pub(super) fn entity_section_forget(&mut self, id: u32) {
+        self.pick_section_remove(id);
         self.native_lifecycle.entity_sections.forget(id);
         self.native_lifecycle
             .entity_sections
@@ -437,6 +451,9 @@ impl Game<'_> {
     /// Entity `id`'s position was written from `from` to `to` (`setPosRaw`) inside a family tick
     /// or while a rider is carried by a vehicle teleport. File and tell it at this write.
     pub(super) fn entity_section_step(&mut self, id: u32, from: [f64; 3], to: [f64; 3]) {
+        if crossed(from, to) {
+            self.pick_section_move(id, to);
+        }
         self.entity_section_entered(id, from, to);
         if id != 0
             && let Some(scope) = self.entity_section_scope()
@@ -534,8 +551,8 @@ impl Game<'_> {
     }
 
     /// A client handles one packet from its server ([`Game::apply_packet`]). A packet that adds,
-    /// moves or removes an entity is a position-update boundary: `handleAddEntity` files the
-    /// entity untold, a move (`handleMoveEntity`, `handleEntityPositionSync`,
+    /// moves or removes an entity is a position-update boundary. The add handler files an
+    /// admitted entity untold; a move (`handleMoveEntity`, `handleEntityPositionSync`,
     /// `handleTeleportEntity`, `handleMovePlayer`'s `PlayerPosition`, a vehicle's) is told when
     /// it put the entity in another section, and `handleRespawn`'s new player starts over.
     /// An entity a move only starts interpolating moves at the client's entity tick.
@@ -552,21 +569,8 @@ impl Game<'_> {
                 self.entity_section_forget(id as u32);
             }
         }
-        let packet_section = match &packet {
-            C::AddEntity(p) => Some((true, p.id as u32, p.position)),
-            _ => None,
-        };
         let respawned = matches!(packet, C::Respawn(_));
         let result = self.apply_packet(packet);
-        if result.is_ok()
-            && let Some((joined, id, at)) = packet_section
-        {
-            if joined {
-                self.entity_section_joined(id, at);
-            } else {
-                self.entity_section_moved_id(id);
-            }
-        }
         if respawned {
             self.entity_section_forget(self.own_entity_id() as u32);
         }

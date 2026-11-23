@@ -3,12 +3,12 @@
 //! `ProjectileDeflection.AIM_DEFLECT` instead of hurting anything. It flies on
 //! along the player's view and is the player's now (`Projectile.deflect`
 //! sets the owner), so a ghast it meets dies of it (`Ghast.isReflectedFireball`).
-use super::{Game, ray_box};
+use super::Game;
 use sunrise_client::{
     mobs::Who,
     projectiles::{Projectile, ProjectileKind, Turn},
 };
-use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_core::geometry::Vec3;
 
 /// `AbstractHurtingProjectile.getPickRadius`: the crosshair finds it a block
 /// round its box.
@@ -47,64 +47,88 @@ pub(super) fn aim_deflect(
     )
 }
 
-/// `Entity.getPickRadius`: only `AbstractHurtingProjectile` has one (1); a shulker
-/// bullet's is 0.
-fn pick_radius(p: &Projectile) -> f64 {
-    if matches!(p.kind, ProjectileKind::ShulkerBullet { .. }) {
-        0.0
-    } else {
-        PICK_RADIUS
-    }
-}
-
-/// A projectile a player's blow reaches: a redirectable one, or a shulker bullet
-/// (`isPickable` and `isAttackable`), which `ShulkerBullet.hurtServer` pops.
+/// A projectile a player's blow reaches under the vanilla default tag: a redirectable
+/// projectile or a shulker bullet (`ShulkerBullet.isPickable` is `true`).
 pub(super) fn attackable(p: &Projectile) -> bool {
-    redirectable(p) || (!p.stuck && matches!(p.kind, ProjectileKind::ShulkerBullet { .. }))
-}
-
-/// Its box for the crosshair: the entity's (a fireball 1 x 1, a wind charge or a
-/// shulker bullet 0.3125, a wind charge's 0.15 below its feet) grown by the pick
-/// radius, which only `AbstractHurtingProjectile` has (`getPickRadius`: 1; a
-/// shulker bullet's is 0).
-fn pick_box(p: &Projectile) -> Aabb {
-    let radius = pick_radius(p);
-    p.bounds().inflate(Vec3::new(radius, radius, radius))
+    redirectable(p) || matches!(p.kind, ProjectileKind::ShulkerBullet { .. })
 }
 
 impl Game<'_> {
-    /// The redirectable projectile under the crosshair within the attack
-    /// reach, and how far along the view it is.
-    pub(super) fn redirectable_hit(&self) -> Option<(usize, f64)> {
-        let mut pick = crate::game::pick_accumulator::PickAccumulator::new(self.entity_reach);
-        self.redirectable_hit_with_pick(&mut pick)
+    /// Whether `kind` belongs to `#minecraft:redirectable_projectile`, reading the server's synced
+    /// entity-type tags on a remote client when present, else the loaded entity tags.
+    pub(in crate::game) fn is_redirectable_projectile_type(&self, kind: &str) -> bool {
+        if let Some(remote) = &self.remote
+            && let Some(tags) = remote.registries.tags.get("minecraft:entity_type")
+            && let Some(ids) = remote.builtin.get("minecraft:entity_type")
+        {
+            return tags
+                .get("minecraft:redirectable_projectile")
+                .is_some_and(|members| ids.id(kind).is_some_and(|id| members.contains(&id)));
+        }
+        if let Some(members) = self
+            .items()
+            .entity_type_tags
+            .members()
+            .get("minecraft:redirectable_projectile")
+        {
+            return members.contains(kind);
+        }
+        matches!(
+            kind,
+            "minecraft:fireball" | "minecraft:wind_charge" | "minecraft:breeze_wind_charge"
+        )
     }
-    pub(super) fn redirectable_hit_with_pick(
-        &self,
-        pick: &mut crate::game::pick_accumulator::PickAccumulator,
-    ) -> Option<(usize, f64)> {
+
+    /// `Projectile.isPickable` (with `ShulkerBullet` and `AbstractArrow` overrides).
+    pub(in crate::game) fn projectile_is_pickable(&self, p: &Projectile) -> bool {
+        if matches!(p.kind, ProjectileKind::ShulkerBullet { .. }) {
+            return true;
+        }
+        if p.is_arrow() && p.stuck {
+            return false;
+        }
+        self.is_redirectable_projectile_type(p.entity_type())
+    }
+
+    /// `Projectile.getPickRadius`: `this.isPickable() ? 1.0F : 0.0F`.
+    pub(in crate::game) fn projectile_pick_radius(&self, p: &Projectile) -> f64 {
+        if self.projectile_is_pickable(p) {
+            PICK_RADIUS
+        } else {
+            0.0
+        }
+    }
+
+    /// `AbstractArrow.isPickable` for `ThrownTrident`.
+    pub(in crate::game) fn trident_is_pickable(&self, t: &super::trident::ThrownTrident) -> bool {
+        !t.in_ground && self.is_redirectable_projectile_type("minecraft:trident")
+    }
+
+    /// `Projectile.isPickable` for `FireworkRocketEntity`.
+    pub(in crate::game) fn rocket_is_pickable(&self) -> bool {
+        self.is_redirectable_projectile_type("minecraft:firework_rocket")
+    }
+    /// The pickable projectile under the crosshair within entity reach.
+    pub(super) fn redirectable_hit(&self) -> Option<(usize, f64)> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, _) = hit?;
             let index = self
                 .creatures
                 .projectiles
                 .iter()
-                .position(|f| f.id == entity.id())?;
+                .position(|f| f.id == entity.id() && self.projectile_is_pickable(f))?;
             return Some((index, distance));
         }
-        let (eye, dir) = self.aim()?;
-        let reach: f64 = self.entity_reach;
-        self.creatures
+        let super::pick_entity::CrosshairDecision::Entity(hit) = self.compute_crosshair_decision()
+        else {
+            return None;
+        };
+        let index = self
+            .creatures
             .projectiles
             .iter()
-            .enumerate()
-            .filter(|(_, p)| attackable(p))
-            .filter_map(|(i, p)| {
-                ray_box(eye, dir, reach, pick_box(p))
-                    .filter(|&t| pick.consider(self, p.id, t))
-                    .map(|t| (i, t))
-            })
-            .last()
+            .position(|f| f.id == hit.id && self.projectile_is_pickable(f))?;
+        Some((index, hit.distance_sq.sqrt()))
     }
 
     /// `Player.attack` on a redirectable projectile nearer than any mob or
@@ -145,7 +169,7 @@ impl Game<'_> {
     /// particles (`sendParticles`, spread 0.2) and `destroy`. The blow is
     /// `Player.attack` on a target that is not a mob: its sounds, then the swing.
     pub(super) fn hit_shulker_bullet(&mut self, i: usize) {
-        let (_, _, _, magic) = self.melee_damage(
+        let ((_, _, _, magic), admitted) = self.melee_damage_with_admission(
             "minecraft:shulker_bullet",
             false,
             Some(self.creatures.projectiles[i].id),
@@ -154,6 +178,9 @@ impl Game<'_> {
         let p = self.remove_projectile_at(i);
         self.shulker_bullet_hurt([p.position.x, p.position.y, p.position.z]);
         self.vehicle_attack_sounds(p.aabb(), sweep, magic.then_some(p.id as i32));
+        if admitted {
+            self.remember_player_target(None);
+        }
         self.reset_attack_strength();
         self.swing_arm();
     }
@@ -177,13 +204,9 @@ impl Game<'_> {
         let (Some(eye), Some(p)) = (self.eye_position(), self.creatures.projectiles.get(i)) else {
             return false;
         };
-        let b = pick_box(p);
+        let b = p.bounds();
         let (lo, hi) = (b.min_position(), b.max_position());
-        let r = pick_radius(&self.creatures.projectiles[i]);
-        let (lo, hi) = (
-            [lo.x + r, lo.y + r, lo.z + r],
-            [hi.x - r, hi.y - r, hi.z - r],
-        );
+        let (lo, hi) = ([lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]);
         let d2: f64 = (0..3)
             .map(|a| (eye[a] - eye[a].clamp(lo[a], hi[a])).powi(2))
             .sum();
@@ -267,6 +290,18 @@ fn attack_deflect(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sunrise_core::geometry::Aabb;
+
+    /// `Projectile.getPickRadius`: `isPickable() ? 1.0F : 0.0F` (`ShulkerBullet` inherits this).
+    fn pick_radius(p: &Projectile) -> f64 {
+        if attackable(p) { PICK_RADIUS } else { 0.0 }
+    }
+
+    /// Its box for the crosshair: the entity's box inflated by `Projectile.getPickRadius` (1.0 when pickable).
+    fn pick_box(p: &Projectile) -> Aabb {
+        let radius = pick_radius(p);
+        p.bounds().inflate(Vec3::new(radius, radius, radius))
+    }
 
     #[test]
     fn only_ghast_fireballs_and_wind_charges_are_redirectable() {
@@ -280,7 +315,7 @@ mod tests {
         let small = Projectile::fireball(ProjectileKind::SmallFireball, at, None, [1.0, 0.0, 0.0]);
         assert!(redirectable(&large));
         assert!(!redirectable(&small));
-        // A shulker bullet takes a blow, with no pick radius round its box.
+        // A shulker bullet is pickable (`ShulkerBullet.isPickable`) and inherits `Projectile.getPickRadius` (1.0).
         let bullet = Projectile::new(
             ProjectileKind::ShulkerBullet {
                 target: Some(Who::Player),
@@ -295,7 +330,8 @@ mod tests {
         assert!(attackable(&bullet) && !redirectable(&bullet));
         assert!(!attackable(&small));
         let b = pick_box(&bullet);
-        assert_eq!(b.max_position().y, 64.3125);
+        assert_eq!(b.min_position().y, 63.0);
+        assert_eq!(b.max_position().y, 65.3125);
         // The pick box: a block round the fireball's 1 x 1 box.
         let b = pick_box(&large);
         assert_eq!(b.min_position().x, -1.5);

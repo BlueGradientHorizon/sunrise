@@ -241,6 +241,7 @@ pub(super) struct Parked {
     pub(super) mobs: sunrise_client::join_seq::JoinList<Mob>,
     /// The entity ids of the level's fence knots (`knot_ids`).
     knot_ids: HashMap<[i32; 3], u32>,
+    broken_knots: Vec<[i32; 3]>,
     knots: sunrise_client::join_seq::JoinList<super::leads::Knot>,
     projectiles: sunrise_client::join_seq::JoinList<sunrise_client::projectiles::Projectile, false>,
     dropped: sunrise_client::join_seq::JoinList<ItemEntity>,
@@ -416,6 +417,31 @@ impl Game<'_> {
                 .map_or(SlotAccess::Missing, |parked| {
                     parked.with_resident_owner_slot(location, visit)
                 })
+        }
+    }
+
+    /// Whether the living entity `id` resident in a parked level is alive (`Entity.isAlive`):
+    /// a remembered target stays remembered while its holder is in another level.
+    pub(in crate::game) fn parked_living_alive(&self, id: u32) -> bool {
+        let EntityLookup::Found { location, value } = self.server_resident_entity(id) else {
+            return false;
+        };
+        let Some(parked) = (self.levels.parked.iter())
+            .find(|(dim, _)| dim.key() == location.owner.dimension)
+            .map(|(_, parked)| parked)
+        else {
+            return false;
+        };
+        match value {
+            Target::Mob(_) => {
+                (parked.mobs.locate(location.join)).is_some_and(|i| parked.mobs[i].alive())
+            }
+            Target::Stand(_) => (parked.armor_stands.locate(location.join))
+                .is_some_and(|i| parked.armor_stands[i].health > 0.0),
+            Target::Dragon(id) => {
+                (parked.dragon.as_ref()).is_some_and(|d| d.id == id && d.health > 0.0)
+            }
+            _ => false,
         }
     }
 
@@ -637,8 +663,11 @@ impl Levels {
                 continue;
             }
             let active = is_active(dim);
+            // A live `UNKNOWN` ticket keeps its column, so the level stays open (not ticking)
+            // until the ticket expires.
             if step_parked_idle(dim, &mut p.idle, active, false, saving_enabled)
                 == IdleAction::Close
+                && !p.streaming.has_unknown_tickets()
             {
                 close.push(dim);
             }
@@ -702,6 +731,16 @@ impl Levels {
             .iter_mut()
             .find(|(dim, _)| dim.id() == dimension)
             .map(|(_, level)| &mut level.streaming)
+    }
+
+    /// `TicketStorage.purgeStaleTickets` for the `UNKNOWN` tickets of the parked levels that
+    /// `purge` names.
+    pub(super) fn purge_unknown_tickets(&mut self, purge: impl Fn(Dim) -> bool) {
+        for (&dim, level) in &mut self.parked {
+            if purge(dim) {
+                level.streaming.purge_unknown_tickets();
+            }
+        }
     }
 
     /// `ServerLevel.setChunkForced`: force a column in an already open level without changing the acting
@@ -928,6 +967,7 @@ impl Game<'_> {
             hoppers: HashMap::new(),
             mobs: Default::default(),
             knot_ids: HashMap::new(),
+            broken_knots: Vec::new(),
             knots: Default::default(),
             projectiles: Default::default(),
             dropped: Default::default(),
@@ -1129,6 +1169,7 @@ impl Game<'_> {
         swap(&mut self.hoppers, &mut p.hoppers);
         swap(&mut self.mobs, &mut p.mobs);
         swap(&mut self.knot_ids, &mut p.knot_ids);
+        swap(&mut self.broken_knots, &mut p.broken_knots);
         swap(&mut self.resident_entities.knots, &mut p.knots);
         swap(&mut self.resident_entities.general, &mut p.general);
         swap(&mut self.creatures.projectiles, &mut p.projectiles);
@@ -1480,9 +1521,14 @@ impl Game<'_> {
             if observe_level && let Some(level) = self.level(dim.id()) {
                 self.native_level_tick_pre(level);
             }
+            // ServerChunkCache.tick's purge, before the update that may unload the columns.
+            if running == Some(true) {
+                self.streaming.purge_unknown_tickets();
+            }
             sunrise_client::spans::time("dedicated_streaming", || {
                 self.update_dedicated_streaming();
             });
+            self.tick_spawn_tickets(running == Some(true), true);
             sunrise_client::spans::time("update_world", || self.update_world());
             let tick_span = sunrise_client::spans::guard("level_tick");
             // This level's moving colliders, solid to its movers for this tick only.
@@ -1554,9 +1600,15 @@ impl Game<'_> {
                 }
             }
         }
-        // The levels only `Loaded` areas name: streamed and sent, never ticked.
+        // Vanilla ticks the chunk source of every level, ticked here or not: the levels left
+        // parked purge their tickets too.
+        if running == Some(true) {
+            self.levels
+                .purge_unknown_tickets(|dim| !order.contains(&dim));
+        }
+        // Levels held only by loading tickets: stream them without running the world tick.
         if result.is_ok() {
-            result = self.run_view_passes(&order);
+            result = self.run_view_passes(&order, running == Some(true));
         }
         if let Some(&first) = order.first()
             && self.dim != first
@@ -1591,15 +1643,16 @@ impl Game<'_> {
 
     /// `tick_server` as a server thread runs it, timed whenever spans are on.
     pub(super) fn tick_server_timed(&mut self, paused: bool) -> Result<()> {
-        self.tick_server_spans(paused, |_| {})
+        self.tick_server_spans(paused, |_| {}).map(|_| ())
     }
 
-    /// `tick_server_timed`, handing the tick's timing to `record` while spans are on.
+    /// Return the time in `tick_server` itself, and hand its detailed timing to `record`
+    /// while spans are on. The recording and thread-work bookkeeping are outside that time.
     pub(super) fn tick_server_spans(
         &mut self,
         paused: bool,
         record: impl FnOnce(TickTiming),
-    ) -> Result<()> {
+    ) -> Result<Duration> {
         let started = Instant::now();
         sunrise_threads::work::tick_start();
         let result = self.tick_server_recorded(paused, record);
@@ -1611,15 +1664,19 @@ impl Game<'_> {
         &mut self,
         paused: bool,
         record: impl FnOnce(TickTiming),
-    ) -> Result<()> {
+    ) -> Result<Duration> {
         if self.options.spikes.is_none() && !sunrise_client::spans::recording_here() {
-            return self.tick_server(paused);
+            let started = Instant::now();
+            self.tick_server(paused)?;
+            return Ok(started.elapsed());
         }
         // Discard between-tick work (such as the chunk pump) before timing this tick.
         sunrise_client::spans::take_raw();
-        let (started, cpu) = (Instant::now(), sunrise_client::spans::thread_cpu());
+        let cpu = sunrise_client::spans::thread_cpu();
+        let started = Instant::now();
         let result = self.tick_server(paused);
-        let wall = started.elapsed().as_secs_f32() * 1000.0;
+        let method = started.elapsed();
+        let wall = method.as_secs_f32() * 1000.0;
         let cpu = sunrise_client::spans::thread_cpu()
             .zip(cpu)
             .map(|(end, start)| (end - start).as_secs_f32() * 1000.0);
@@ -1641,39 +1698,42 @@ impl Game<'_> {
             cpu_ms: cpu,
             raw,
         });
-        result
+        result.map(|()| method)
     }
 
     /// The end of `MinecraftServer.runServer`'s loop for a server thread:
     /// the next tick starts one tick length after this one, or straight away
     /// while the sprint runs (`checkShouldSprintThisTick`). A server more
     /// than two seconds behind skips the ticks it missed: that returns how far
-    /// behind it was, for the overload warning.
+    /// behind it was, for the overload warning, and how long the thread blocked on
+    /// workers or slept (`MinecraftServer.waitForTasks`'s idle time).
     pub(super) fn wait_for_next_server_tick(
         &mut self,
         next: &mut Instant,
         paused: bool,
-    ) -> Option<Duration> {
+    ) -> (Option<Duration>, Duration) {
         let now = Instant::now();
+        let mut idle = Duration::ZERO;
         if !paused && self.clock.sprinting() {
             *next = now;
-            return None;
+            return (None, idle);
         }
         *next += self.clock.tick_duration();
         if *next > now {
             // The chunks loading (the players', force-loaded ones, a
             // `/pregen` task) keep the workers fed until the next tick.
-            self.pump_chunks(*next, paused);
+            idle = self.pump_chunks(*next, paused);
             let now = Instant::now();
             if *next > now {
                 std::thread::sleep(*next - now);
+                idle += now.elapsed();
             }
         } else if now - *next > Duration::from_secs(2) {
             let behind = now - *next;
             *next = now;
-            return Some(behind);
+            return (Some(behind), idle);
         }
-        None
+        (None, idle)
     }
 
     /// The levels this server tick runs, in `MinecraftServer.levels` order
@@ -1722,6 +1782,28 @@ impl Game<'_> {
         dims
     }
 
+    /// A loading-only ticket needs chunk work, not an active simulation.
+    pub(super) fn has_spawn_tickets(&self, dim: Dim) -> bool {
+        if self.lan.as_ref().is_some_and(|host| {
+            host.hub
+                .lan
+                .configuration_tasks
+                .loading_spawns(dim.id())
+                .next()
+                .is_some()
+        }) {
+            return true;
+        }
+        if dim == self.dim {
+            self.tickets.spawn_areas().next().is_some()
+        } else {
+            self.levels
+                .parked
+                .get(&dim)
+                .is_some_and(|p| p.tickets.spawn_areas().next().is_some())
+        }
+    }
+
     /// The portal tickets of `dim`'s level (`placePortalTicket`, or saved).
     pub(super) fn portal_tickets_in(&self, dim: Dim) -> &[PortalTicket] {
         if dim == self.dim {
@@ -1760,7 +1842,11 @@ impl Game<'_> {
     fn active_levels(&self) -> Vec<Dim> {
         let mut active = self.levels_to_tick();
         // A level a viewed area names, ticked or not, or one a client still holds chunks of.
-        active.extend(Dim::all().into_iter().filter(|d| self.needs_view_pass(*d)));
+        active.extend(
+            Dim::all()
+                .into_iter()
+                .filter(|d| self.needs_view_pass(*d) || self.has_spawn_tickets(*d)),
+        );
         // A vehicle waiting there for its rider's arrival in another level.
         active.extend(
             self.levels
@@ -1812,6 +1898,7 @@ impl Game<'_> {
             let now_active = self.active_levels().contains(&dim);
             let eligible = self.levels.parked.get_mut(&dim).is_some_and(|p| {
                 custom_close_still_eligible(dim, &mut p.idle, now_active, saving_enabled)
+                    && !p.streaming.has_unknown_tickets()
             });
             if eligible {
                 self.close_parked_level(dim)?;
@@ -1969,6 +2056,86 @@ fn slowest_steps(notes: &[(f32, String)]) -> String {
         .map(|(ms, what)| format!("{what} {ms:.1}"))
         .collect();
     list.join(", ")
+}
+
+impl Game<'_> {
+    /// `Level.getChunk(x, z)` (`ServerChunkCache.getChunk(x, z, FULL, true)`) on the server
+    /// thread: column `chunk` of the level in place (`parked: None`) or of the parked level
+    /// `parked`, without switching levels, loaded or generated to FULL (resident and lit) under
+    /// an `UNKNOWN` ticket (`Streaming::begin_full_column`). It blocks until then, with no
+    /// timeout, as vanilla's `managedBlock`. Each column the wait brings in is announced while
+    /// it is resident, before this returns: its `dynamic_light` cells asked (the light job
+    /// waits for them) and `chunk_load` fired, at the same point as vanilla's FULL task fires
+    /// NeoForge's `ChunkEvent.Load` inside `getChunk`. False when `begin_full_column` refuses,
+    /// when the level is gone, and when generation is aborted during the wait.
+    pub(in crate::game) fn load_full_chunk(
+        &mut self,
+        parked: Option<mod_api::LevelRef>,
+        chunk: (i32, i32),
+    ) -> bool {
+        use sunrise_client::streaming::{FullColumn, full_column_ready};
+        let id = parked.map(|level| level.dimension_id());
+        let Some((streaming, world)) = self.full_load_level(id) else {
+            return false;
+        };
+        match streaming.begin_full_column(world, chunk) {
+            FullColumn::Ready => return true,
+            FullColumn::Refused => return false,
+            FullColumn::Pending => {}
+        }
+        loop {
+            let Some((streaming, world)) = self.full_load_level(id) else {
+                return false;
+            };
+            let alive = streaming.pump_column(world);
+            self.announce_synchronous_loads(parked);
+            let Some((streaming, world)) = self.full_load_level(id) else {
+                return false;
+            };
+            if !alive || full_column_ready(world, chunk) {
+                return streaming.end_full_column(world, chunk);
+            }
+            streaming.wait(Duration::from_millis(5));
+        }
+    }
+
+    /// The streaming and world of the level in place, or of the parked level `parked`.
+    fn full_load_level(
+        &mut self,
+        parked: Option<&str>,
+    ) -> Option<(&mut sunrise_client::streaming::Streaming, &mut World)> {
+        match parked {
+            None => Some((&mut self.streaming, &mut self.world)),
+            Some(id) => {
+                let level = self.levels.parked_mut_of(id)?;
+                Some((&mut level.streaming, &mut level.world))
+            }
+        }
+    }
+
+    /// The columns a synchronous load brought into the level, told to the mods as the level's
+    /// own update tells them (`native_chunks_loaded`), their `dynamic_light` cells asked first.
+    fn announce_synchronous_loads(&mut self, parked: Option<mod_api::LevelRef>) {
+        let Some(level) = parked else {
+            self.ask_loaded_light_emission();
+            self.native_chunks_loaded();
+            return;
+        };
+        let id = level.dimension_id();
+        let Some(world) = self.levels.parked_world_mut_of(id) else {
+            return;
+        };
+        let loaded = std::mem::take(&mut world.loaded_chunks);
+        if self.pack.context.light.any_dynamic() {
+            let dimension = Self::light_emission_dimension(level);
+            for &(x, z, _) in &loaded {
+                self.ask_level_chunk_light_emission(Some(id), dimension, (x, z));
+            }
+        }
+        for (x, z, new) in loaded {
+            self.native_chunk_load(id, [x, z], new);
+        }
+    }
 }
 
 impl Game<'_> {

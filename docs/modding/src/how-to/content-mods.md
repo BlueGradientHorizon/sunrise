@@ -954,6 +954,34 @@ with the entity and sound slot in the error. These four slots cover ordinary amb
 hurt, death and footstep playback; additional events such as trading interactions or
 projectile attacks keep their existing sounds.
 
+`sounds.step` also takes an object, `{"sound": "<id>", "volume": v, "pitch": p}`: the mob plays its own step at that
+volume and pitch, as a Java mob overriding `playStepSound` with `playSound(step, v, p)` does. A plain step id plays at
+the block step's volume 0.15 and pitch 1.0. Three numbers take the place of what vanilla's sound methods return for the
+template:
+
+```json
+{
+  "template": "minecraft:zombie",
+  "sounds": {
+    "step": { "sound": "bird:step", "volume": 1.0, "pitch": 0.9 },
+    "volume": 0.6,
+    "voice_pitch": 0.8,
+    "ambient_interval": 160
+  }
+}
+```
+
+- `volume` is `LivingEntity.getSoundVolume()`, the volume of the ambient, hurt and death sounds.
+- `voice_pitch` is the base of `LivingEntity.getVoicePitch()` in place of 1.0: the random spread of ±0.2 still applies,
+  and a baby's pitch is still raised by the template's factor (1.5 for most mobs), now times the base.
+- `ambient_interval` is `Mob.getAmbientSoundInterval()`, in ticks: after each ambient or hurt sound, and after a
+  merchant's trade, the ambient sound's timer starts again from minus this value. Any int is accepted, as vanilla
+  accepts any; the arithmetic on it wraps as Java's does.
+
+Each omitted key keeps the template's value. `volume`, `voice_pitch` and the step's `volume` and `pitch` must be
+finite as a float; another number, or a step given in another form than an id, `"none"` or that object, stops
+content admission, with the file and the key in the error.
+
 A code mod can also register an attribute type of its own with `Registrar::declare_attribute(path, default,
 min, max, syncable, sentiment, tooltip)` (vanilla's `RangedAttribute` in the attribute registry). Only both-side
 packages may declare attributes; client-only packages refuse with `WrongSide` so extra
@@ -1114,8 +1142,11 @@ make it immune to ordinary fire.
 
 #### Block entity containers
 
-A code mod declares a block entity's `ModContainer` with `Registrar::block_container`. The
-container's `faces` say which slots each side reaches; `inputs` lists the slots insertion may use.
+A code mod declares a block entity's `ModContainer` with `Registrar::block_container`.
+Registration refuses more than 256 slots because the saved `Items` list uses an unsigned byte for
+each slot index (vanilla's `ItemStackWithSlot.CODEC`). Content files can declare menu layouts, not
+saved block container storage. The container's `faces` say which slots each side reaches; `inputs`
+lists the slots insertion may use.
 Per-slot `insert_rules` provide static admission, with missing entries treated as `Any`.
 
 For state-dependent admission, implement `BlockEntityPart::can_place_item`
@@ -1134,19 +1165,22 @@ before applying the stack limit.
 
 The query has no Host and may run for a slot that is never written. Seed a filter from the
 accepted write, not from the query. Default `ITEMS` and `STORAGE` writes to these slots emit
-`contents_changed` once per backing block on commit. During `menu_quick_move`, the notice waits
-for source settlement and only runs if the original backing container is still there. A write to
-the same block from its active notice still applies without a second notice. If your provider
+`contents_changed` once per backing block on commit. During a handled `menu_quick_move`, the notice
+waits for the clicked source to settle and only runs if the original backing container is still there.
+If the hook declines or its reply is refused, its tentative writes emit no notice. Ordinary click routing,
+if it runs, can still emit notices for its own writes. A write to the same block from its active notice
+still applies without a second notice. If your provider
 writes directly to storage it owns, issue `set_changed` explicitly or seed the filter in the
 provider. Menu clicks and quick-move still use the declared rules and `menu_slot_rules`
 (vanilla's `Slot.mayPlace`); they do not ask the block entity part.
 
 #### Menu types
 
-A mod menu type (vanilla's `MenuType`) is declared in `data/<id>/sunrise/menu/<name>.json`: its container's slot count
-(0 to 32,767, the 16-bit signed index limit of vanilla container packets), the data slots its menu syncs (`ContainerData`,
-0 to 32,767, 0 by default), and the slots players only take
-from (`results`, as a furnace's result slot):
+A mod menu type (vanilla's `MenuType`) is declared in `data/<id>/sunrise/menu/<name>.json`: its layout's slot count,
+the data slots its menu syncs (`ContainerData`, 0 by default), and the slots players only take from
+(`results`, as a furnace's result slot). The layout and any appended player inventory can total up to
+32,768 slots (indices 0 to 32,767 in vanilla's signed-short container packets). A menu type does not
+allocate a block's saved item slots.
 
 ```json
 { "slots": 9, "data_slots": 2, "results": [7, 8], "inputs": [0, 1] }

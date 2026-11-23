@@ -183,6 +183,14 @@ impl Game<'_> {
             let (lo, hi) = p.bounds();
             return Some((lo, hi, centre(p.pos)));
         }
+        if let Some(t) = self.tnts.iter().find(|t| t.id == id) {
+            let (lo, hi) = corners(t.bounds());
+            return Some((lo, hi, at(t.position)));
+        }
+        if let Some(f) = self.falling.iter().find(|f| f.id == id) {
+            let (lo, hi) = corners(sunrise_client::falling_block::bounds(f.position));
+            return Some((lo, hi, at(f.position)));
+        }
         let row = self.general_row(id)?;
         let (lo, hi) = corners(super::entity::Entity::bounds(row));
         Some((lo, hi, at(row.position)))
@@ -626,6 +634,7 @@ impl Game<'_> {
                 }
                 let mut m = self.mobs[i].clone();
                 let mut lent = sunrise_client::health::LentLevel::take(&mut self.world);
+                let mut paused_hurt = None;
                 let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     let w = self.mob_world_base(&[]);
                     let mut level = sunrise_client::health::DamageLevel::lent(
@@ -635,7 +644,8 @@ impl Game<'_> {
                         Some(self.items()),
                         Some(&self.pack.block_registries),
                         &self.damage_hooks,
-                    );
+                    )
+                    .with_mob_hurt_handoff(&mut paused_hurt);
                     if let Some(pause) = resume.take() {
                         m.resume_client_moved_fall(&w, &mut level, &mut events, pause)
                     } else {
@@ -651,6 +661,7 @@ impl Game<'_> {
                 lent.give_back(&mut self.world);
                 let pause = outcome.unwrap_or_else(|panic| std::panic::resume_unwind(panic));
                 self.mobs[i] = m;
+                self.paused_mob_hurt = paused_hurt;
                 // LivingEntity.checkFallDamage sends dust before Block.fallOn.
                 // Send it to every nearby player, including the driver.
                 for event in events.extract_if(.., |e| {

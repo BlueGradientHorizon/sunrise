@@ -451,6 +451,14 @@ impl PlayerSender {
     pub fn timed_out(&self) -> bool {
         matches!(&self.to, To::Pool(_, watch) if watch.timed_out())
     }
+    /// Whether the connection still accepts new packets.
+    pub(super) fn is_live(&self) -> bool {
+        match &self.to {
+            To::Pool(outbox, _) => outbox.alive(),
+            To::Channel(_) => true,
+            To::Disabled => false,
+        }
+    }
     /// Close the connection now, dropping what is still queued for it.
     pub fn close(&self) {
         self.payload_transport.close();
@@ -526,7 +534,7 @@ impl PlayerSender {
     pub fn send(&self, body: Vec<u8>) {
         self.send_body(body.into());
     }
-    fn send_body(&self, body: Body) {
+    pub(super) fn send_body(&self, body: Body) {
         if matches!(self.to, To::Disabled) {
             return;
         }
@@ -1239,6 +1247,7 @@ struct Parts {
     info: ClientInformation,
     brand: String,
     datapack_offer: Option<Vec<u8>>,
+    configured: Option<super::configuration_tasks::Configured>,
     channels: super::config_payloads::EngineChannels,
 }
 
@@ -1606,7 +1615,7 @@ fn login_and_configure(
         lost(shared, &format!("{name} ({})", uuid_string(uuid)), &text);
         return Ok(None);
     }
-    configuration_tasks::configure(
+    let configured = configuration_tasks::configure(
         c,
         shared,
         uuid,
@@ -1652,6 +1661,7 @@ fn login_and_configure(
         info,
         brand,
         datapack_offer,
+        configured,
     }))
 }
 
@@ -2123,7 +2133,7 @@ fn play(
     let mut session = Box::new(session);
     if shared
         .events
-        .send(NetEvent::Joined(Box::new(joined)))
+        .send(NetEvent::Joined(Box::new(joined), parts.configured))
         .is_err()
     {
         session.left("server closed".to_owned());
@@ -2310,7 +2320,11 @@ impl io_pool::Session for PlayConn {
         self.payload_tick(now)
     }
     fn left(&mut self, reason: String) {
-        let _ = self.shared.events.send(NetEvent::Left(self.conn, reason));
+        // Publish logout before releasing the profile, even if gameplay filled its queue.
+        let _ = self
+            .shared
+            .events
+            .send_terminal(NetEvent::Left(self.conn, reason));
         self.shared.closing.fetch_add(1, Ordering::AcqRel);
     }
     fn closed(&mut self) {

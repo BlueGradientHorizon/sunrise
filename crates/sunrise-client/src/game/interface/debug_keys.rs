@@ -750,7 +750,7 @@ impl Game<'_> {
             DebugAction::Spectate => {
                 if self.player.is_none() || !self.gamemaster() {
                     self.debug_translated("debug.creative_spectator.error");
-                } else if self.mode != GameMode::Spectator {
+                } else if !self.own_player_is_spectator() {
                     self.change_game_mode(GameMode::Spectator);
                 } else {
                     let back = self.previous_mode.unwrap_or(GameMode::Creative);
@@ -1074,12 +1074,12 @@ impl Game<'_> {
         self.bounding_box_gizmos(camera, &mut g);
         self.debug_renderer_gizmos(&mut g);
         if self.debug_entry("chunk_borders")
-            && let Some(p) = &self.player
+            && let Some(pos) = self.camera_entity_position()
         {
             let block = [
-                p.position.x.floor() as i32,
-                p.position.y.floor() as i32,
-                p.position.z.floor() as i32,
+                pos[0].floor() as i32,
+                pos[1].floor() as i32,
+                pos[2].floor() as i32,
             ];
             let min_y = self.world.bottom_y();
             g.chunk_borders(block, min_y, min_y + self.world.layout().height() - 1);
@@ -1087,10 +1087,21 @@ impl Game<'_> {
         if !self.debug_entry("entity_hitboxes") {
             return g;
         }
+        let hide_camera = self
+            .camera_type
+            .is_first_person()
+            .then(|| {
+                self.remote
+                    .as_ref()
+                    .filter(|r| r.detached_camera.is_none())
+                    .and_then(|r| r.camera)
+                    .map(|id| id as u32)
+            })
+            .flatten();
         let lerp = |a: f64, b: f64| a + f64::from(alpha) * (b - a);
         let lerpf = |a: f32, b: f32| a + alpha * (b - a);
         for m in self.mobs.iter() {
-            if m.removed || m.is_invisible() {
+            if m.removed || m.is_invisible() || hide_camera == Some(m.id) {
                 continue;
             }
             let pos = [
@@ -1111,6 +1122,9 @@ impl Game<'_> {
             );
         }
         for item in &self.dropped {
+            if hide_camera == Some(item.id) {
+                continue;
+            }
             let pos = [
                 lerp(item.previous.x, item.position.x),
                 lerp(item.previous.y, item.position.y),
@@ -1129,35 +1143,57 @@ impl Game<'_> {
             ]
         };
         for p in &self.paintings {
+            if hide_camera == Some(p.id) {
+                continue;
+            }
             let (min, max) = p.bounds();
             let centre = std::array::from_fn(|i| (min[i] + max[i]) / 2.0);
             g.entity_box(min, max, centre, 0.425, false, step_view(p.step()));
         }
-        for f in self.item_frames.iter().filter(|f| !f.invisible) {
+        for f in self
+            .item_frames
+            .iter()
+            .filter(|f| !f.invisible && hide_camera != Some(f.id))
+        {
             let (min, max) = f.bounds();
             let centre = std::array::from_fn(|i| (min[i] + max[i]) / 2.0);
             g.entity_box(min, max, centre, 0.0, false, step_view(f.step()));
         }
         for c in &self.cushions {
+            if hide_camera == Some(c.id) {
+                continue;
+            }
             let (min, max) = c.bounds();
             let p = c.position;
             g.entity_box(min, max, [p.x, p.y, p.z], 0.2125, false, (0.0, c.yaw));
         }
-        // Interaction: EntityDimensions.scalable(width, height), so its eyes
-        // are at 0.85 of the height. Its rotation is not kept here.
-        for i in self.interactions.values() {
-            let b = i.bounds();
-            let p = i.position;
+        for (&id, i) in &self.interactions {
+            if hide_camera == Some(id as u32) {
+                continue;
+            }
+            let pos = at(i.previous, i.position);
+            let half = f64::from(i.width) / 2.0;
+            let b = sunrise_core::geometry::Aabb::new(
+                Vec3::new(pos[0] - half, pos[1], pos[2] - half),
+                Vec3::new(pos[0] + half, pos[1] + f64::from(i.height), pos[2] + half),
+            );
             g.entity_box(
                 [b.min(Axis::X), b.min(Axis::Y), b.min(Axis::Z)],
                 [b.max(Axis::X), b.max(Axis::Y), b.max(Axis::Z)],
-                [p.x, p.y, p.z],
-                i.height.max(0.0) * 0.85,
+                pos,
+                i.eye_height(),
                 false,
-                (0.0, 0.0),
+                (
+                    lerpf(i.previous_pitch, i.pitch),
+                    lerpf(i.previous_yaw, i.yaw),
+                ),
             );
         }
-        for a in self.armor_stands.iter().filter(|a| !a.invisible) {
+        for a in self
+            .armor_stands
+            .iter()
+            .filter(|a| !a.invisible && hide_camera != Some(a.id))
+        {
             // ArmorStand.getDimensions: a marker has none, a small one is
             // half scale with its eyes at 0.9875.
             let (size, eye) = match (a.marker, a.small) {
@@ -1174,6 +1210,9 @@ impl Game<'_> {
             );
         }
         for b in &self.boats {
+            if hide_camera == Some(b.id) {
+                continue;
+            }
             let h = super::boats::HEIGHT as f32;
             g.hitbox(
                 at(b.previous, b.position),
@@ -1184,6 +1223,9 @@ impl Game<'_> {
             );
         }
         for c in &self.carts {
+            if hide_camera == Some(c.id) {
+                continue;
+            }
             let (w, h) = (
                 super::minecarts::WIDTH as f32,
                 super::minecarts::HEIGHT as f32,
@@ -1197,6 +1239,9 @@ impl Game<'_> {
             );
         }
         for o in &self.orbs {
+            if hide_camera == Some(o.id) {
+                continue;
+            }
             g.hitbox(
                 at(o.previous, o.position),
                 (0.5, 0.5),
@@ -1206,6 +1251,9 @@ impl Game<'_> {
             );
         }
         for f in &self.falling {
+            if hide_camera == Some(f.id) {
+                continue;
+            }
             g.hitbox(
                 at(f.previous, f.position),
                 (0.98, 0.98),
@@ -1215,6 +1263,9 @@ impl Game<'_> {
             );
         }
         for t in &self.tnts {
+            if hide_camera == Some(t.id) {
+                continue;
+            }
             g.hitbox(
                 at(t.previous, t.position),
                 (0.98, 0.98),
@@ -1224,10 +1275,16 @@ impl Game<'_> {
             );
         }
         for c in &self.crystals {
+            if hide_camera == Some(c.id) {
+                continue;
+            }
             let p = c.position;
             g.hitbox([p.x, p.y, p.z], (2.0, 2.0), 1.7, false, (0.0, 0.0));
         }
         for p in &self.creatures.projectiles {
+            if hide_camera == Some(p.id) {
+                continue;
+            }
             use sunrise_client::projectiles::ProjectileKind as K;
             let (size, eye) = match p.kind {
                 K::Arrow { .. } | K::Trident => (0.5, 0.13),
@@ -1253,6 +1310,9 @@ impl Game<'_> {
             );
         }
         for t in &self.tridents {
+            if hide_camera == Some(t.id) {
+                continue;
+            }
             g.hitbox(
                 at(t.previous, t.position),
                 (0.5, 0.5),
@@ -1273,6 +1333,9 @@ impl Game<'_> {
             );
         }
         for r in &self.rockets {
+            if hide_camera == Some(r.id) {
+                continue;
+            }
             // Projectile.updateRotation: the look follows the motion.
             let v = r.velocity;
             let yaw = v.x.atan2(v.z).to_degrees() as f32;
@@ -1302,7 +1365,7 @@ impl Game<'_> {
             g.hitbox(c.at, (c.radius * 2.0, 0.5), 0.425, false, (0.0, 0.0));
         }
         // The dragon: 16 by 8, a living entity; its parts follow.
-        if let Some(d) = self.dragon.as_ref() {
+        if let Some(d) = self.dragon.as_ref().filter(|d| hide_camera != Some(d.id)) {
             g.hitbox(
                 at(d.previous, d.position),
                 (16.0, 8.0),
@@ -1323,7 +1386,7 @@ impl Game<'_> {
             }
         }
         // The player's own, unless the camera is in its head.
-        if !self.camera_type.is_first_person()
+        if (!self.camera_type.is_first_person() || !self.controls_camera())
             && let Some(p) = &self.player
         {
             let d = p.dimensions;

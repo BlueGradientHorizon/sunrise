@@ -1270,6 +1270,9 @@ impl Game<'_> {
                             cause,
                             (amount, source),
                         );
+                        let hurt = self
+                            .complete_mob_hurt(i, hurt)
+                            .is_some_and(|(_, hurt)| hurt);
                         self.settle_mob_hurt(victim);
                         // The loan recorded the accepted hit's player credit
                         // (`resolvePlayerResponsibleForDamage`); a guest's also names its connection.
@@ -2707,6 +2710,7 @@ mod tests {
                 pose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
                 polygons: Vec::new(),
                 children: Vec::new(),
+                layer: None,
             }),
             layers: Default::default(),
             texture: String::new(),

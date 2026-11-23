@@ -263,13 +263,18 @@ impl Game<'_> {
                 let mut player = PlayerMotion::new(self.motion, position)?;
                 // The id the server gave, for the hooks the motion fires.
                 player.entity_id = self.own_entity_id();
-                // Player.tick derives noPhysics from the current game mode.
-                player.spectator = self.spectator();
+                // Entity.noPhysics starts false until Player.tick() resolves PlayerInfo;
+                // LocalPlayer.aiStep reads MultiPlayerGameMode.isSpectator().
+                player.local_spectator = self.spectator();
                 player.velocity = delta;
                 self.take_carried_attributes(&mut player)?;
                 self.hook.discard();
                 self.player_state.attachments.retire();
                 self.player = Some(player);
+                // A new LocalPlayer's tickCount starts at 0.
+                if let Some(r) = self.remote.as_mut() {
+                    r.own_tick_count = 0;
+                }
                 self.bind_local_player_residency();
                 self.input_player_replaced();
                 self.sway = Default::default();
@@ -581,7 +586,7 @@ impl Game<'_> {
                 .and_then(|uuid| r.tab_players.get(uuid));
             let mob_team =
                 listed.map_or_else(|| teams.of(Who::Mob(m.id)), |t| board.players_team(&t.name));
-            if listed.is_some_and(|t| t.game_mode == SPECTATOR)
+            if r.remote_player_info_game_mode(m.id as i32) == Some(SPECTATOR)
                 || !sunrise_client::scoreboard::pushable_by(mob_team, player_team, true)
             {
                 continue;

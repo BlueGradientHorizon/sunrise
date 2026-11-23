@@ -127,7 +127,7 @@ fn trade(host: &mut dyn ServerHost, event: &mut TradeWithVillagerEvent<'_>) {
     {
         let call = CALLS.get() + 1;
         CALLS.set(call);
-        IN_ACTION.with(|a| a.borrow_mut().push(host.transaction_current().is_some()));
+        IN_ACTION.with(|a| a.borrow_mut().push(!host.transaction_matches(None)));
         assert_eq!(event.merchant, 40);
         USES.with(|uses| uses.borrow_mut().push(event.offer.uses));
         let s = SCRIPT.with(|s| s.borrow().clone());
@@ -141,13 +141,18 @@ fn trade(host: &mut dyn ServerHost, event: &mut TradeWithVillagerEvent<'_>) {
                     PlayerWrite::ShiftDestination { .. } => 8,
                 },
             };
-            let tx = host
-                .transaction_current()
-                .expect("trade listener is inside the action");
-            assert_eq!(place.insert(host, &tx, &dirt, 2), 2);
-            if matches!(write, PlayerWrite::ShiftDestination { restore: true }) {
-                assert_eq!(place.extract(host, &tx, &dirt, 2), 2);
-            }
+            assert!(
+                !host.transaction_matches(None),
+                "trade listener is inside the action"
+            );
+            host.transaction(|host, tx| {
+                assert_eq!(place.insert(host, tx, &dirt, 2), Ok(2));
+                if matches!(write, PlayerWrite::ShiftDestination { restore: true }) {
+                    assert_eq!(place.extract(host, tx, &dirt, 2), Ok(2));
+                }
+                Ok::<_, ()>(())
+            })
+            .unwrap();
             STAGED_WRITES.set(true);
         }
         if s.raise_second_price && call == 2 {
@@ -630,6 +635,37 @@ fn an_offer_edit_after_the_work_step_survives_the_restock() {
 
 #[test]
 #[ignore = "daily"]
+fn a_silent_trade_edit_keeps_the_mob_clock_and_rng_when_the_threshold_wraps() {
+    super::in_own_process(
+        "game::lan_trade_decisions_tests::a_silent_trade_edit_keeps_the_mob_clock_and_rng_when_the_threshold_wraps",
+        || {
+            with_guests(|game| {
+                open(game, 1);
+                let mob = &mut game.mobs[0];
+                Arc::make_mut(&mut mob.kind).ambient_interval = -i32::MAX;
+                mob.ambient_timer = 17;
+                let random = <(u64, Option<f64>)>::from(&mob.random);
+                let rx = record_packets(game);
+
+                assert!(game.lan_trade_edit(12, |session| {
+                    session.offers[0].result = ItemStack::new("minecraft:diamond", 1);
+                }));
+
+                let result = work_screen(game).slots[2].as_ref().unwrap();
+                assert_eq!(result.item.as_ref(), "minecraft:diamond");
+                assert_eq!(game.mobs[0].ambient_timer, 17);
+                assert_eq!(<(u64, Option<f64>)>::from(&game.mobs[0].random), random);
+                assert!(!packets(&rx).iter().any(|packet| matches!(
+                    packet,
+                    Clientbound::Sound(_) | Clientbound::SoundEntity(_)
+                )));
+            });
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
 fn an_unused_offer_stays_unchanged_when_the_villager_starts_work() {
     super::in_own_process(
         "game::lan_trade_decisions_tests::an_unused_offer_stays_unchanged_when_the_villager_starts_work",
@@ -985,16 +1021,23 @@ fn exploration_trade_maps_share_nested_reservations() {
         let start = game.peek_map_id();
         let make = || MapData::fresh(0.0, 0.0, 0, "minecraft:overworld");
         for commit in [false, true] {
-            let outer = game.transaction_open();
-            assert_eq!(game.new_map_id(make()), start);
-            let take = game.transaction_open();
-            let trade_id = game.peek_map_id();
-            assert_eq!(trade_id, start + 1);
-            game.register_exploration_maps(vec![(trade_id, [640, 64, -640], 2, String::new())]);
-            game.transaction_close(&take, true);
-            assert_eq!(game.new_map_id(make()), start + 2);
-            assert!(!game.maps.data.contains_key(&trade_id));
-            game.transaction_close(&outer, commit);
+            let trade_id = game.storage_scope(|game, _| {
+                assert_eq!(game.new_map_id(make()), start);
+                let trade_id = game.storage_scope(|game, _| {
+                    let trade_id = game.peek_map_id();
+                    assert_eq!(trade_id, start + 1);
+                    game.register_exploration_maps(vec![(
+                        trade_id,
+                        [640, 64, -640],
+                        2,
+                        String::new(),
+                    )]);
+                    (trade_id, true)
+                });
+                assert_eq!(game.new_map_id(make()), start + 2);
+                assert!(!game.maps.data.contains_key(&trade_id));
+                (trade_id, commit)
+            });
             assert_eq!(game.peek_map_id(), if commit { start + 3 } else { start });
             if commit {
                 assert!(game.maps.data[&trade_id].unlimited);
@@ -1159,11 +1202,12 @@ fn a_panicking_completion_listener_cannot_drop_success_packets() {
                 panic_on_completion: true,
                 ..Script::default()
             });
-            let outer = game.transaction_open();
-            assert!(game.lan_merchant_click(12, &click));
-            assert_eq!(COMPLETED.get(), 0);
-            assert!(packets(&rx).is_empty());
-            game.transaction_close(&outer, true);
+            game.storage_scope(|game, _| {
+                assert!(game.lan_merchant_click(12, &click));
+                assert_eq!(COMPLETED.get(), 0);
+                assert!(packets(&rx).is_empty());
+                ((), true)
+            });
             assert_eq!(COMPLETED.get(), 1);
             assert_eq!((result(game), stat(game)), (1, 1));
             assert_eq!(game.lan_trade_session(12).unwrap().offers[0].uses, 6);
@@ -1241,13 +1285,14 @@ fn an_outer_abort_undoes_an_accepted_trade() {
             let click = open(game, 2);
             script(Script::default());
             let rx = record_packets(game);
-            let seal = game.transaction_open();
-            assert!(game.lan_merchant_click(12, &click));
-            assert_eq!((result(game), dirt(game), stat(game)), (1, 0, 1));
-            assert!(game.orbs.is_empty(), "orb creation waits for root commit");
-            assert_eq!(COMPLETED.get(), 0);
-            assert!(packets(&rx).is_empty());
-            game.transaction_close(&seal, false);
+            game.storage_scope(|game, _| {
+                assert!(game.lan_merchant_click(12, &click));
+                assert_eq!((result(game), dirt(game), stat(game)), (1, 0, 1));
+                assert!(game.orbs.is_empty(), "orb creation waits for root commit");
+                assert_eq!(COMPLETED.get(), 0);
+                assert!(packets(&rx).is_empty());
+                ((), false)
+            });
             assert_eq!(COMPLETED.get(), 0);
             corrected(&rx, click.container, 2);
             unchanged(game, 2);

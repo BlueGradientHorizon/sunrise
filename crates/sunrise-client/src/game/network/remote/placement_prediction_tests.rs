@@ -87,7 +87,7 @@ fn on_a_client(mods: mod_api::Mods, test: impl FnOnce(&mut Game<'_>)) {
                     .chunks
                     .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
                 game.sync_tick_chunks();
-                game.set_mode_id(0);
+                game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
                 test(game);
             },
         );
@@ -174,22 +174,22 @@ impl mod_api::ResourceHandler<mod_api::ItemResource> for StoragePort {
     fn insert_at(
         &self,
         _: &mut dyn mod_api::ServerHost,
-        _: &mod_api::Transaction,
+        _: &mod_api::TransactionContext,
         _: usize,
         _: &mod_api::ItemResource,
         _: u32,
-    ) -> u32 {
-        0
+    ) -> std::result::Result<u32, mod_api::TransactionError<mod_api::Overanswered>> {
+        Ok(0)
     }
     fn extract_at(
         &self,
         _: &mut dyn mod_api::ServerHost,
-        _: &mod_api::Transaction,
+        _: &mod_api::TransactionContext,
         _: usize,
         _: &mod_api::ItemResource,
         _: u32,
-    ) -> u32 {
-        0
+    ) -> std::result::Result<u32, mod_api::TransactionError<mod_api::Overanswered>> {
+        Ok(0)
     }
 }
 
@@ -217,7 +217,7 @@ fn placement_and_prediction_choose_from_their_local_item_providers() {
     };
     use mod_api::{Direction, LevelHost};
     use sunrise_core::position::BlockPos;
-    use sunrise_world::level::{PlaceContext, PlaceOutcome};
+    use sunrise_world::level::{PlaceContext, PlaceOutcome, PlacementSource};
 
     if run_fresh_cases(
         "game::remote::placement_prediction_tests::placement_and_prediction_choose_from_their_local_item_providers",
@@ -289,9 +289,11 @@ fn placement_and_prediction_choose_from_their_local_item_providers() {
                 face: Direction::Up,
                 hit: sunrise_core::geometry::Vec3::new(4.5, 65.0, 4.5),
                 inside: false,
-                yaw: 0.0,
-                pitch: 0.0,
-                sneaking: false,
+                source: PlacementSource::Player {
+                    yaw: 0.0,
+                    pitch: 0.0,
+                    sneaking: false,
+                },
                 item: "minecraft:oak_log".to_owned(),
                 can_use_game_master_blocks: false,
             };
@@ -1040,7 +1042,7 @@ fn an_active_vault_ends_a_held_item_s_click_on_the_client() {
         let (mut peer, _writer) = super::tests::connect_menu_test(game);
         peer.set_read_timeout(Some(std::time::Duration::from_millis(50)))
             .unwrap();
-        game.set_mode_id(0);
+        game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 3.5)).unwrap());
         game.world
             .chunks

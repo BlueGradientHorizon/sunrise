@@ -31,6 +31,8 @@ SUNRISE_CLIENT = [
     "docs/api/launch-reference.md", "docs/sunrise-ctl-commands.md", "docs/modding/examples/src/worldgen.rs",
     "docs/parity/block-entity-client-ticks.jsonl", "docs/parity/random-chance-seeded.jsonl",
     "research-lock.json", "tests/fixture_support/item_resource_properties.rs", "tests/fixtures",
+    # mobs::render's compile_part tests compile the fn-replace-check `lower` fixture's helpers (`include!`).
+    "tools/ci/fn-replace-check/lower/src",
 ]
 # The generator scans these to write the mod API and the host boundary: its own sources, the vocabulary, the
 # engine crates holding hook targets and their manifests.
@@ -46,6 +48,8 @@ READERS = {
     "cargo-sunrise-mod": [
         "Cargo.lock", "crates/sunrise-mod-api", "crates/sunrise-mod-package/src/sdk/fixture.tar.xz",
         "crates/sunrise-mod-package/tests/index", "docs/modding/src/how-to/native-mods.md", "tools/ci/rust-version",
+        # The installed-client daily builds and installs the fn-replace-check `lower` fixture.
+        "tools/ci/fn-replace-check/lower",
     ],
     # The pinned Rust, and the mods library's template its tests render.
     "sunrise-native-build": ["crates/sunrise-client/src/native_mod_entry.rs.template", "tools/ci/rust-version"],
@@ -111,6 +115,8 @@ NOT_READS = {
     "sunrise-mod-source": {"Cargo.lock"},
     # shader_fuzz's `..` path parts, in the packs it writes and reads, beside its own seed pack.
     "sunrise-render-shaderpack": {"crates"},
+    # Server init uses the filename as a checkout-root sentinel; only sunrise-prepare reads its contents.
+    "sunrise-server": {"research-lock.json"},
     # Paths inside a staged game source or a test's scratch folder, never this checkout's files.
     "sunrise-native-build": {
         "Cargo.lock", "crates/sunrise-client/Cargo.toml", "crates/sunrise-client/build.rs", "crates/sunrise-client/src",
