@@ -5131,7 +5131,7 @@ impl Game<'_> {
                     if let Some(at) = p.take_shoot_event() {
                         shoot_events.push((p.owner, p.guest, [at.x, at.y, at.z]));
                     }
-                    water_splashes.extend(p.water_splashes.drain(..));
+                    water_splashes.append(&mut p.water_splashes);
                     if p.take_lava_hurt() {
                         lava_hurt_bullets.push(p.position.components());
                     }
