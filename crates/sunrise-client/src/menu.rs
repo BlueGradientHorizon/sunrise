@@ -798,7 +798,7 @@ impl Menu {
                 data: vec![0; data],
                 creative: false,
                 on_client: false,
-                client_drops: None,
+                drop_spam: None,
                 selected: 0,
                 drops: Vec::new(),
                 dropped: Vec::new(),

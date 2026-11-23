@@ -517,12 +517,12 @@ impl Game<'_> {
             return;
         }
         let stack = stack.filter(|stack| !stack.is_empty());
-        if stack.as_ref().is_some_and(|stack| {
-            !self
-                .creative_screen
-                .catalog()
-                .is_item_enabled(&stack.item, self.enabled_feature_ids())
-        }) {
+        let item = stack.as_ref().map_or("minecraft:air", |stack| &*stack.item);
+        if !self
+            .creative_screen
+            .catalog()
+            .is_item_enabled(item, self.enabled_feature_ids())
+        {
             return;
         }
         self.send_play(S::SetCreativeModeSlot(play::SetCreativeModeSlot {

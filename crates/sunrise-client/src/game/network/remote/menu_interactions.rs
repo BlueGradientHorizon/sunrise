@@ -113,14 +113,7 @@ impl Game<'_> {
                     }
                     dropped |= m.dropped.len() > thrown;
                     let changed = changed_slots(&before, m);
-                    predicted.push((
-                        slot,
-                        button,
-                        input,
-                        m.take_predicted_creative_throws(),
-                        changed,
-                        m.carried.clone(),
-                    ));
+                    predicted.push((slot, button, input, changed, m.carried.clone()));
                 }
                 let packets = game.prepare_clicks(container, &predicted);
                 let commit = packets.is_ok();
@@ -203,7 +196,6 @@ impl Game<'_> {
         let outcome = self.storage_scope(|game, _| {
             let mut all_predicted: Vec<Predicted> = Vec::with_capacity(clicks.len());
             let mut threw = false;
-            let mut drop_spam = game.drop_spam_throttler;
 
             for gesture in gestures {
                 let mut found = None;
@@ -259,13 +251,11 @@ impl Game<'_> {
                             if let Some(key) = game.container {
                                 game.journal_block_entity(key);
                             }
-                            game.menu_session_with_game(|game, m, env, _| {
-                                game.predict_menu_drops(m, drop_spam);
+                            game.menu_session(|m, env, _| {
                                 let Some(predicted) = predict_clicks_with(m, env, gesture, answer)
                                 else {
                                     return Some(false);
                                 };
-                                drop_spam = m.predicted_drop_spam().unwrap_or(drop_spam);
                                 step_result = Some(predicted);
                                 Some(true)
                             });
@@ -293,12 +283,10 @@ impl Game<'_> {
                         game.journal_block_entity(key);
                     }
                     let mut step_result: Option<(Vec<Predicted>, bool)> = None;
-                    let modeled = game.menu_session_with_game(|game, m, env, _| {
-                        game.predict_menu_drops(m, drop_spam);
+                    let modeled = game.menu_session(|m, env, _| {
                         let Some(predicted) = predict_clicks(m, env, gesture) else {
                             return Some(false);
                         };
-                        drop_spam = m.predicted_drop_spam().unwrap_or(drop_spam);
                         step_result = Some(predicted);
                         Some(true)
                     });
@@ -387,14 +375,7 @@ impl Game<'_> {
                                 break;
                             }
                             let changed = changed_slots(&before, m);
-                            sent.push((
-                                t as i16,
-                                0,
-                                Input::QuickMove,
-                                Vec::new(),
-                                changed,
-                                m.carried.clone(),
-                            ));
+                            sent.push((t as i16, 0, Input::QuickMove, changed, m.carried.clone()));
                             before = menu_items(m);
                         }
                     }
@@ -410,14 +391,7 @@ impl Game<'_> {
                 let mut before = menu_items(m);
                 let mut each = |m: &sunrise_client::menu::Menu, t: usize| {
                     let changed = changed_slots(&before, m);
-                    sent.push((
-                        t as i16,
-                        0,
-                        Input::QuickMove,
-                        Vec::new(),
-                        changed,
-                        m.carried.clone(),
-                    ));
+                    sent.push((t as i16, 0, Input::QuickMove, changed, m.carried.clone()));
                     before = menu_items(m);
                 };
                 let modeled = m
@@ -478,7 +452,7 @@ impl Game<'_> {
         let state = self.remote.as_ref().map_or(0, |r| r.state_id);
         clicks
             .iter()
-            .map(|(slot, button, input, _, changed, carried)| {
+            .map(|(slot, button, input, changed, carried)| {
                 Ok(play::ContainerClick {
                     container,
                     state,
@@ -514,10 +488,7 @@ impl Game<'_> {
                 }
             }
         }
-        for ((_, _, _, throws, ..), packet) in clicks.into_iter().zip(packets) {
-            for stack in throws {
-                self.remote_creative_throw(stack);
-            }
+        for packet in packets {
             self.send(S::ContainerClick(packet));
         }
     }
@@ -620,27 +591,12 @@ impl Game<'_> {
             .then(|| self.enabled_feature_ids())
     }
 
-    pub(in crate::game) fn predict_menu_drops(
-        &self,
-        menu: &mut sunrise_client::menu::Menu,
-        throttle: sunrise_client::menu::DropSpamThrottler,
-    ) {
-        if self.remote.is_some() {
-            let creative = self.creative_drop_features().map(|flags| {
-                (
-                    Arc::clone(self.creative_screen.catalog()),
-                    Arc::clone(flags),
-                )
-            });
-            menu.predict_client_drops(throttle, creative);
-        }
-    }
-
-    /// `MultiPlayerGameMode.handleCreativeModeItemDrop`: the click site, not
-    /// this sender, checks the threshold. Only an accepted send incurs a charge.
-    pub(in crate::game) fn remote_creative_throw(&mut self, thrown: ItemStack) {
+    /// Single admission path for `MultiPlayerGameMode.handleCreativeModeItemDrop`:
+    /// resolves mode/screen/feature checks, `client_packet_send`, and transport acceptance
+    /// before charging `drop_spam_throttler`.
+    pub(in crate::game) fn try_send_creative_drop_packet(&self, thrown: &ItemStack) -> bool {
         let Some(flags) = self.creative_drop_features() else {
-            return;
+            return false;
         };
         if thrown.is_empty()
             || !self
@@ -648,15 +604,21 @@ impl Game<'_> {
                 .catalog()
                 .is_item_enabled(&thrown.item, flags)
         {
-            return;
+            return false;
         }
-        let Some(item) = self.to_network(&Some(thrown)) else {
-            return;
+        let Some(item) = self.to_network(&Some(thrown.clone())) else {
+            return false;
         };
-        if self.send_play(S::SetCreativeModeSlot(play::SetCreativeModeSlot {
+        self.send_play(S::SetCreativeModeSlot(play::SetCreativeModeSlot {
             slot: -1,
             item: Some(item),
-        })) {
+        }))
+    }
+
+    /// `MultiPlayerGameMode.handleCreativeModeItemDrop`: the click site, not
+    /// this sender, checks the threshold. Only an accepted send incurs a charge.
+    pub(in crate::game) fn remote_creative_throw(&mut self, thrown: ItemStack) {
+        if self.try_send_creative_drop_packet(&thrown) {
             self.drop_spam_throttler.increment();
         }
     }

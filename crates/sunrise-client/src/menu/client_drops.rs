@@ -1,5 +1,4 @@
 use super::*;
-use sunrise_items::creative_catalog::Catalog;
 
 /// The local player's `TickThrottler(20, 1280)`.
 #[derive(Clone, Copy, Default)]
@@ -21,62 +20,39 @@ impl DropSpamThrottler {
     }
 }
 
-/// `doClick` must see which takes would send a creative drop before trying the
-/// next take. Keep this state in the scratch menu so a discarded prediction
-/// sends nothing and never advances the live player's throttler.
-#[derive(Clone)]
-pub(super) struct ClientDropPrediction {
-    throttle: DropSpamThrottler,
-    creative: Option<(Arc<Catalog>, Arc<[String]>)>,
-    throws: Vec<ItemStack>,
-}
-
 impl Menu {
-    /// Predict against the local player's counter. The creative catalog and
-    /// flags are passed only when `handleCreativeModeItemDrop` may send.
-    pub fn predict_client_drops(
-        &mut self,
-        throttle: DropSpamThrottler,
-        creative: Option<(Arc<Catalog>, Arc<[String]>)>,
-    ) {
+    /// Attach the local player's `dropSpamThrottler` so `Input::Throw` checks
+    /// `LocalPlayer.canDropItems` and reflects accepted creative drops.
+    pub fn set_drop_spam_throttler(&mut self, throttle: DropSpamThrottler) {
         self.touch();
-        self.state.client_drops = Some(ClientDropPrediction {
-            throttle,
-            creative,
-            throws: Vec::new(),
-        });
+        self.state.drop_spam = Some(throttle);
     }
 
-    /// Carry the predicted counter across successive scratch menus in one batch.
-    pub fn predicted_drop_spam(&self) -> Option<DropSpamThrottler> {
-        self.state.client_drops.as_ref().map(|drops| drops.throttle)
-    }
-
-    /// Creative drops for this click, to send before that click's own packet.
-    pub fn take_predicted_creative_throws(&mut self) -> Vec<ItemStack> {
-        self.touch();
-        self.state
-            .client_drops
-            .as_mut()
-            .map_or_else(Vec::new, |drops| std::mem::take(&mut drops.throws))
+    /// Current drop throttler after running clicks on this menu.
+    pub fn drop_spam_throttler(&self) -> Option<DropSpamThrottler> {
+        self.state.drop_spam
     }
 
     pub(super) fn can_throw(&self) -> bool {
-        self.predicted_drop_spam()
+        self.state
+            .drop_spam
             .is_none_or(DropSpamThrottler::is_under_threshold)
     }
 
-    pub(super) fn throw_stack(&mut self, taken: &ItemStack, items: &Items) {
+    pub(super) fn throw_stack(
+        &mut self,
+        taken: &ItemStack,
+        items: &Items,
+        on_creative_drop: &mut dyn FnMut(&ItemStack) -> bool,
+    ) {
         if taken.is_empty() {
             return;
         }
         self.drop_stack(taken, items);
-        if let Some(drops) = &mut self.state.client_drops
-            && let Some((catalog, flags)) = &drops.creative
-            && catalog.is_item_enabled(&taken.item, flags)
+        if on_creative_drop(taken)
+            && let Some(throttle) = &mut self.state.drop_spam
         {
-            drops.throws.push(taken.clone());
-            drops.throttle.increment();
+            throttle.increment();
         }
     }
 }
@@ -136,27 +112,34 @@ mod tests {
             for _ in 0..62 {
                 throttle.increment();
             }
-            let catalog = Catalog::parse(&serde_json::json!({
-                "schema": 4, "tabs": [], "potion_features": {},
-                "item_features": {"minecraft:stone_slab": ["minecraft:vanilla"]}
-            }))
+            menu.set_drop_spam_throttler(throttle);
+            // First drop is refused/canceled (returns false), so it must not
+            // consume budget: two accepted drops still fit before hitting 1280.
+            let mut calls = 0usize;
+            let mut accepted = Vec::new();
+            menu.click_with_creative_drop(&env, 1, 1, Input::Throw, |stack| {
+                calls += 1;
+                if calls == 1 {
+                    return false;
+                }
+                accepted.push(stack.clone());
+                true
+            })
             .unwrap();
-            menu.predict_client_drops(
-                throttle,
-                Some((Arc::new(catalog), ["minecraft:vanilla".to_owned()].into())),
-            );
-            menu.click(&env, 1, 1, Input::Throw).unwrap();
-            assert_eq!(
-                menu.take_predicted_creative_throws(),
-                [result.clone(), result.clone()]
-            );
-            assert_eq!(menu.slot(0).map(|s| s.count), Some(3));
+            assert_eq!(calls, 3);
+            assert_eq!(accepted, [result.clone(), result.clone()]);
+            assert_eq!(menu.slot(0).map(|s| s.count), Some(2));
             assert_eq!(menu.slot(1), Some(&result));
 
-            menu.click(&env, 1, 0, Input::Throw).unwrap();
-            assert_eq!(menu.slot(0).map(|s| s.count), Some(3));
+            let mut after_cap = 0usize;
+            menu.click_with_creative_drop(&env, 1, 0, Input::Throw, |_| {
+                after_cap += 1;
+                true
+            })
+            .unwrap();
+            assert_eq!(menu.slot(0).map(|s| s.count), Some(2));
             assert_eq!(menu.slot(1), Some(&result));
-            assert!(menu.take_predicted_creative_throws().is_empty());
+            assert_eq!(after_cap, 0);
         });
     }
 }

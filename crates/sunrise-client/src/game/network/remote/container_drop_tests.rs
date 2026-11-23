@@ -1,9 +1,19 @@
 use super::super::*;
 use super::{connect_play_test, spawn_menu_test};
-use crate::game::native_entity_refs::tests::with_client_game;
-use crate::game::native_hotbar_slot::hotbar_slot_tests::{logged_in, sent};
-use sunrise_client::command::args::GameMode;
-use sunrise_protocol::packets::configuration as config;
+use crate::game::{
+    lan::LanHost,
+    lan_particles::tests::test_hub,
+    native_entity_refs::tests::{fixture_root, with_client_game, with_game},
+    native_hotbar_slot::hotbar_slot_tests::{logged_in, sent},
+};
+use mod_api::{ClientHost, ClientPacketSendEvent, Flow, Hooks, MenuClick, ModEntry};
+use mod_platform::testing::with_mods;
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
+use sunrise_client::{command::args::GameMode, lan::data::SyncData};
+use sunrise_protocol::{packets::configuration as config, registry::Builtin};
 
 #[test]
 #[ignore = "daily"]
@@ -78,9 +88,26 @@ fn creative_drop_guards_charge_only_sent_drops() {
                         _ => None,
                     })
                     .collect();
-                assert_eq!(packets, [(36, None)], "only an empty slot clear is sent");
+                assert!(
+                    packets.is_empty(),
+                    "AIR requires minecraft:vanilla so an empty slot clear is withheld too: {packets:?}"
+                );
 
                 game.remote.as_mut().unwrap().features = vanilla.into();
+                game.inventory[0] = None;
+                game.remote_creative_slot_add(0);
+                let clear_packets: Vec<_> = sent(&mut reader)
+                    .into_iter()
+                    .filter_map(|p| match p {
+                        S::SetCreativeModeSlot(p) => Some((p.slot, p.item)),
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(
+                    clear_packets,
+                    [(36, None)],
+                    "empty slot clear goes out once minecraft:vanilla is enabled"
+                );
                 game.set_local_mode(GameMode::Survival);
                 game.inventory[0] = Some(stone());
                 game.remote_creative_slot_add(0);
@@ -120,6 +147,21 @@ fn creative_drop_guards_charge_only_sent_drops() {
                 let mut expected = vec![(-1, 1); 65];
                 expected.push((36, 1));
                 assert_eq!(packets, expected);
+
+                // A refused publication (disconnected transport) must not charge the throttler.
+                let spawn = spawn_menu_test(game);
+                game.handle_packet(C::Respawn(play::Respawn { spawn, keep: 0 }))
+                    .unwrap();
+                for _ in 0..63 {
+                    game.drop_spam_throttler.increment();
+                }
+                assert!(game.drop_spam_throttler.is_under_threshold());
+                game.remote.as_mut().unwrap().session.disconnect();
+                game.remote_creative_throw(stone());
+                assert!(
+                    game.drop_spam_throttler.is_under_threshold(),
+                    "refused send must not charge the drop throttler"
+                );
             });
         },
     );
@@ -186,53 +228,160 @@ fn creative_screen_throws_wait_for_loaded_player_tick() {
 
 #[test]
 #[ignore = "daily"]
-fn creative_throw_packet_precedes_container_click_with_predicted_slots() {
+fn playing_menu_throw_uses_only_container_click_and_server_drops_once() {
     crate::game::in_own_process(
-        "game::remote::tests::container_drop_tests::creative_throw_packet_precedes_container_click_with_predicted_slots",
+        "game::remote::tests::container_drop_tests::playing_menu_throw_uses_only_container_click_and_server_drops_once",
         || {
+            let mut outgoing = Vec::new();
+            let mut sync = SyncData::empty();
+            sync.builtin = Builtin::load(&Builtin::find(&fixture_root()).unwrap()).unwrap();
             with_client_game(|game| {
                 let mut reader = logged_in(game);
                 game.set_local_mode(GameMode::Creative);
                 game.screen = Screen::Playing;
                 game.inventory[0] = Some(ItemStack::new("minecraft:stone", 3));
-                for _ in 0..63 {
-                    game.drop_spam_throttler.increment();
-                }
-                assert!(
-                    game.remote_menu_ops(&[(Some(0), 0, Input::Throw), (Some(0), 0, Input::Throw)])
-                );
+                let menu = game
+                    .local_player()
+                    .and_then(|player| game.player_container_menu(player))
+                    .unwrap();
+                assert!(game.menu_click(
+                    menu,
+                    &[MenuClick::Throw {
+                        slot: 36,
+                        whole_stack: false,
+                    }],
+                ));
                 assert_eq!(game.inventory[0].as_ref().unwrap().count, 2);
                 let stone = game.item_id("minecraft:stone");
-                let packets: Vec<_> = sent(&mut reader)
+                outgoing = sent(&mut reader)
                     .into_iter()
                     .filter(|p| matches!(p, S::SetCreativeModeSlot(_) | S::ContainerClick(_)))
                     .collect();
-                let [
-                    S::SetCreativeModeSlot(drop),
-                    S::ContainerClick(first),
-                    S::ContainerClick(blocked),
-                ] = packets.as_slice()
-                else {
+                let [S::ContainerClick(click)] = outgoing.as_slice() else {
                     panic!(
-                        "expected a creative drop before the first of two container clicks: {packets:?}"
+                        "normal MenuClick::Throw in Screen::Playing must send only ContainerClick: {outgoing:?}"
                     );
                 };
-                assert_eq!(drop.slot, -1);
-                let dropped = drop.item.as_ref().unwrap();
-                assert_eq!((dropped.item, dropped.count), (stone, 1));
-                assert_eq!((first.container, first.slot, first.input), (0, 36, 4));
-                let [(36, Some(changed))] = first.changed.as_slice() else {
+                assert_eq!(
+                    (click.container, click.slot, click.button, click.input),
+                    (0, 36, 0, 4)
+                );
+                let [(36, Some(changed))] = click.changed.as_slice() else {
                     panic!(
                         "only the clicked hotbar slot should change: {:?}",
-                        first.changed
+                        click.changed
                     );
                 };
                 assert_eq!((changed.item, changed.count), (stone, 2));
-                assert!(first.carried.is_none());
-                assert_eq!((blocked.container, blocked.slot, blocked.input), (0, 36, 4));
-                assert!(blocked.changed.is_empty());
-                assert!(blocked.carried.is_none());
+                assert!(click.carried.is_none());
             });
+
+            let (mut hub, _rx, _other) = test_hub("ThrowOnce", Vec::new(), Some(Arc::new(sync)));
+            hub.config.integrated = true;
+            let index = hub.guests.connection_index(1).unwrap();
+            hub.guests.update(index, |g| {
+                g.game_mode = 1;
+                g.inventory[0] = Some(ItemStack::new("minecraft:stone", 3));
+            });
+            with_game(|server| {
+                server.player = None;
+                server.build_registries();
+                server.lan = Some(LanHost::for_test(hub));
+                for packet in outgoing {
+                    server.lan_guest_packet(1, packet);
+                }
+                let guest = &server.lan.as_ref().unwrap().hub.guests[index];
+                assert_eq!(
+                    guest.inventory[0].as_ref().map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:stone", 2)),
+                    "server must remove exactly one item from the slot"
+                );
+                assert_eq!(
+                    server.dropped.len(),
+                    1,
+                    "server must spawn exactly one dropped stack"
+                );
+                assert_eq!(
+                    (
+                        &*server.dropped[0].stack.item,
+                        server.dropped[0].stack.count
+                    ),
+                    ("minecraft:stone", 1)
+                );
+            });
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn canceled_creative_drop_keeps_throttle_budget_for_next_take() {
+    struct CancelFirstCreativeSlot(Arc<AtomicUsize>);
+    #[mod_api::__subscriptions]
+    impl Hooks for CancelFirstCreativeSlot {
+        fn client_packet_send(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut ClientPacketSendEvent<'_>,
+        ) -> Flow {
+            if event.packet.id.path() == "set_creative_mode_slot"
+                && self.0.fetch_add(1, Ordering::SeqCst) == 0
+            {
+                return Flow::Cancel;
+            }
+            Flow::Continue
+        }
+    }
+
+    crate::game::in_own_process(
+        "game::remote::tests::container_drop_tests::canceled_creative_drop_keeps_throttle_budget_for_next_take",
+        || {
+            let seen = Arc::new(AtomicUsize::new(0));
+            with_mods(
+                vec![ModEntry::new(
+                    "test:cancel_first_drop",
+                    CancelFirstCreativeSlot(Arc::clone(&seen)),
+                )],
+                || {
+                    with_client_game(|game| {
+                        let mut reader = logged_in(game);
+                        game.set_local_mode(GameMode::Creative);
+                        game.screen = Screen::Creative;
+                        game.inventory[0] = Some(ItemStack::new("minecraft:stone", 3));
+                        game.send_creative_slots();
+                        sent(&mut reader);
+                        seen.store(0, Ordering::SeqCst);
+
+                        // Room for one accepted drop before the 1280 cap.
+                        for _ in 0..63 {
+                            game.drop_spam_throttler.increment();
+                        }
+                        assert!(
+                            game.menu_ops(&[
+                                (Some(0), 0, Input::Throw),
+                                (Some(0), 0, Input::Throw),
+                            ])
+                        );
+                        assert_eq!(
+                            game.inventory[0].as_ref().map(|s| s.count),
+                            Some(1),
+                            "second throw in the batch must still see available budget after the first drop is canceled"
+                        );
+                        assert!(!game.drop_spam_throttler.is_under_threshold());
+
+                        let packets: Vec<_> = sent(&mut reader)
+                            .into_iter()
+                            .filter_map(|p| match p {
+                                S::SetCreativeModeSlot(p) => {
+                                    Some((p.slot, p.item.map(|s| s.count)))
+                                }
+                                _ => None,
+                            })
+                            .collect();
+                        assert_eq!(packets, [(-1, Some(1)), (36, Some(1))]);
+                    });
+                },
+            );
         },
     );
 }

@@ -6,7 +6,6 @@ pub(super) type Predicted = (
     i16,
     i32,
     Input,
-    Vec<ItemStack>, // Creative drops sent during the click, before ContainerClick.
     Vec<(i16, Option<ItemStack>)>,
     Option<ItemStack>,
 );
@@ -97,14 +96,7 @@ pub(in crate::game) fn predict_clicks_with(
         m.click(&step_env, i32::from(slot), button, input).ok()?;
         dropped |= m.dropped.len() > thrown;
         let changed = changed_slots(&before, m);
-        predicted.push((
-            slot,
-            button,
-            input,
-            m.take_predicted_creative_throws(),
-            changed,
-            m.carried.clone(),
-        ));
+        predicted.push((slot, button, input, changed, m.carried.clone()));
     }
     Some((predicted, dropped))
 }

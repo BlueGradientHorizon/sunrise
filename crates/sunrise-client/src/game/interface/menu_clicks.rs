@@ -148,7 +148,8 @@ impl Game<'_> {
             return done;
         }
         let ops = ops.to_vec();
-        let done = self.menu_session(move |menu, env, to_menu| {
+        let creative_remote = self.remote.is_some() && self.screen == Screen::Creative;
+        let done = self.menu_session_with_game(move |game, menu, env, to_menu| {
             let mut clicks = Vec::new();
             for &(slot, button, input) in &ops {
                 let menu_slot = match slot {
@@ -166,7 +167,14 @@ impl Game<'_> {
                 clicks.push((menu_slot, button, input));
             }
             for (menu_slot, button, input) in clicks {
-                if menu.click(env, menu_slot, button, input).is_err() {
+                let result = if creative_remote {
+                    menu.click_with_creative_drop(env, menu_slot, button, input, |stack| {
+                        game.try_send_creative_drop_packet(stack)
+                    })
+                } else {
+                    menu.click(env, menu_slot, button, input)
+                };
+                if result.is_err() {
                     // Vanilla's server throws: nothing of this click is kept.
                     return Some(false);
                 }
@@ -451,7 +459,9 @@ impl Game<'_> {
             None => game_of.iter().position(|x| *x == Some(g)),
         };
         let mut menu = Menu::new(kind);
-        self.predict_menu_drops(&mut menu, self.drop_spam_throttler);
+        if self.remote.is_some() {
+            menu.set_drop_spam_throttler(self.drop_spam_throttler);
+        }
         let menu_id = if matches!(kind, Kind::Mount(_)) {
             Some("sunrise:mount_inventory")
         } else if matches!(kind, Kind::Inventory | Kind::ItemPicker) {
@@ -638,6 +648,14 @@ impl Game<'_> {
         // Clear any createResult flag raised while populating the menu before the click.
         let _ = menu.anvil_created();
         let outcome = run(self, &mut menu, &env, &to_menu);
+        // Any creative-screen drop sent live inside `run` already updated `menu`'s
+        // throttler; keep `self.drop_spam_throttler` in step even if a later click failed.
+        if self.remote.is_some()
+            && self.screen == Screen::Creative
+            && let Some(throttle) = menu.drop_spam_throttler()
+        {
+            self.drop_spam_throttler = throttle;
+        }
         let made = maps.made.take();
         match outcome {
             None => return false,
@@ -719,13 +737,11 @@ impl Game<'_> {
                 self.award_furnace_recipes(pos, at);
             }
         } else if self.screen == Screen::Creative {
-            // `Player.drop` swings even when the creative packet is suppressed. Only THROW's
-            // `handleCreativeModeItemDrop` requests go out, before the changed-slot sync.
+            // `Player.drop` swings even when the creative packet is suppressed. Creative-screen
+            // THROW packets already went out live inside `click_with_creative_drop`, before the
+            // changed-slot sync.
             for _ in dropped {
                 self.swing_hand(Hand::Main, SwingAnimation::DEFAULT);
-            }
-            for stack in menu.take_predicted_creative_throws() {
-                self.remote_creative_throw(stack);
             }
         }
         if kind == Kind::Loom {
@@ -900,7 +916,9 @@ impl Game<'_> {
         game_of.extend((9..36).chain(0..9).map(Some));
         let to_menu = |g: usize| game_of.iter().position(|x| *x == Some(g));
         let mut menu = Menu::new(Kind::Anvil);
-        self.predict_menu_drops(&mut menu, self.drop_spam_throttler);
+        if self.remote.is_some() {
+            menu.set_drop_spam_throttler(self.drop_spam_throttler);
+        }
         // Prediction must dispatch the result update between the two input writes in onTake.
         menu.anvil_hook = true;
         menu.set_registry_id(self.remote_menu_type());
