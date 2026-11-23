@@ -104,13 +104,24 @@ fn a_summoned_orb_keeps_the_position_it_was_asked_for() {
 
 /// Vanilla 26.3 witness: `/summon` replies with `Entity.getDisplayName` (team format, `show_entity` hover, UUID insertion, `click_event` stripped), validates `CustomName` as a text component, keeps selector `name=` plain, and `/execute summon` checks spawn bounds (#2694).
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_summon_custom_name_parity.py"]
 fn summon_replies_with_the_custom_name_of_every_kind() {
-    let witness: serde_json::Value = serde_json::from_str(include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tools/fixtures/26.3/summon_custom_name_replies.json"
-    )))
-    .unwrap();
+    run_summon_replies_with_the_custom_name_of_every_kind();
+}
+
+pub(in crate::game) fn run_summon_replies_with_the_custom_name_of_every_kind() {
+    let path = std::env::var_os("SUNRISE_SUMMON_CUSTOM_NAME_WITNESS").unwrap_or_else(|| {
+        panic!(
+            "SUNRISE_SUMMON_CUSTOM_NAME_WITNESS is unset; run tools/test_summon_custom_name_parity.py"
+        )
+    });
+    let raw = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        panic!(
+            "failed to read witness {} (record via tools/test_summon_custom_name_parity.py): {e}",
+            std::path::Path::new(&path).display()
+        )
+    });
+    let witness: serde_json::Value = serde_json::from_str(&raw).unwrap();
     assert_eq!(witness["minecraft"], "26.3");
     assert_eq!(
         witness["oracle"],
