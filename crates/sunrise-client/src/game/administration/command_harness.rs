@@ -515,6 +515,10 @@ impl Game<'_> {
                     self.harness_owner(|g| {
                         loop {
                             g.update_world();
+                            // The oracle's `wait_chunks` ticks the chunk source (even while
+                            // frozen, running `DistanceManager.runAllUpdates`); this poll runs
+                            // no level tick, and `/execute if loaded` reads the refreshed levels.
+                            g.update_chunk_tickets();
                             g.spawn_loaded_entities();
                             if targets.iter().all(|&(x, z)| {
                                 g.world.chunks.contains_key(&(x, z))
