@@ -7937,12 +7937,18 @@ mod burn_and_rose_tests {
         }
     }
 
-    /// Vanilla 26.3 witness (tools/witness/26.3/first_tick_lava_burn.tsv): a NoAI pig in lava or dry air on its first and later ticks.
+    /// Vanilla 26.3 witness recorded by `tools/test_first_tick_lava_burn_parity.py`: a NoAI pig in lava or dry air on its first and later ticks.
     #[test]
-    #[ignore = "daily"]
+    #[ignore = "run by tools/test_first_tick_lava_burn_parity.py"]
     fn a_mob_loaded_in_lava_burns_on_its_first_tick() {
-        const WITNESS: &str =
-            include_str!("../../../../tools/witness/26.3/first_tick_lava_burn.tsv");
+        let path = std::env::var("SUNRISE_FIRST_TICK_LAVA_BURN_WITNESS").expect(
+            "run through tools/test_first_tick_lava_burn_parity.py, which records the witness",
+        );
+        let witness = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+            panic!(
+                "missing witness {path} ({err}); run through tools/test_first_tick_lava_burn_parity.py"
+            )
+        });
         struct Row {
             in_lava: bool,
             initial_fire: i32,
@@ -7954,7 +7960,7 @@ mod burn_and_rose_tests {
             absorption_bits: u32,
         }
         let mut rows = Vec::new();
-        for line in WITNESS.lines() {
+        for line in witness.lines() {
             if line.is_empty() || line.starts_with('#') || line.starts_with("in_lava\t") {
                 continue;
             }

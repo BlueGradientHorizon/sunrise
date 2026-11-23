@@ -7,6 +7,12 @@ import struct
 import subprocess
 import sys
 
+try:
+    from . import lab, test_rust_parity as base
+except ImportError:
+    import lab
+    import test_rust_parity as base
+
 GROUP = 'mob first-tick lava burn'
 # (in_lava, initial_fire, initial_absorption)
 CASES = (
@@ -33,7 +39,9 @@ SPOTS = (
     (2, 10), (6, 10), (10, 10), (14, 10),
     (2, 14), (6, 14), (10, 14),
 )
-WITNESS = Path(__file__).resolve().parent / 'witness/26.3/first_tick_lava_burn.tsv'
+WITNESS_DIR = lab.LOCAL / 'witness' / lab.VERSION / 'first_tick_lava_burn'
+WITNESS = WITNESS_DIR / 'first_tick_lava_burn.tsv'
+WITNESS_ENV = 'SUNRISE_FIRST_TICK_LAVA_BURN_WITNESS'
 
 
 def first_tick_lava_burn(cmd, setup):
@@ -79,23 +87,31 @@ def _snbt_value(row):
     return text.split(': ', 1)[1]
 
 
-def record_witness(work_dir=None, out=WITNESS):
-    """Run VanillaCommandExecOracle on the 26.3 server jar and write the TSV witness."""
-    root = Path(__file__).resolve().parents[1]
-    scratch = Path(work_dir).resolve() if work_dir else root / '.local/first-tick-lava-burn-witness'
-    subprocess.run(
-        [sys.executable, str(root / 'tools/test_command_exec_parity.py'),
-         '--only', GROUP, '--reference-only', '--work-dir', str(scratch)],
-        cwd=root,
-        check=True,
-    )
+def _java_version():
+    result = subprocess.run(['java', '-version'], capture_output=True, text=True, check=True)
+    return (result.stderr or result.stdout).strip().splitlines()[0]
+
+
+def record_witness(work_dir=None, out=None, prepare=False, command=None):
+    """Run VanillaCommandExecOracle on the pinned server jar and write the TSV witness and meta.json into .local."""
+    root = lab.ROOT
+    scratch = Path(work_dir).resolve() if work_dir else lab.LOCAL / 'first-tick-lava-burn-parity'
+    cmd = [
+        sys.executable, str(root / 'tools/test_command_exec_parity.py'),
+        '--only', GROUP, '--reference-only', '--work-dir', str(scratch),
+    ]
+    if prepare:
+        cmd.append('--prepare')
+    subprocess.run(cmd, cwd=root, check=True)
+    lock, jars, _ = base.verify_artifacts()
+    version = lock['minecraft']['version']
     rows = [json.loads(line) for line in (scratch / 'vanilla.jsonl').read_text(encoding='utf-8').splitlines()]
     expected_count = len(CASES) + len(TICKS) * len(CASES) * 4
     if len(rows) != expected_count:
         raise RuntimeError(f'expected {expected_count} vanilla records, got {len(rows)}')
     idx = len(CASES)
     lines = [
-        '# vanilla 26.3 witness recorded via VanillaCommandExecOracle (python3 tools/first_tick_lava_burn_corpus.py --record)',
+        f'# vanilla {version} witness recorded via VanillaCommandExecOracle (python3 tools/test_first_tick_lava_burn_parity.py)',
         'in_lava\tinitial_fire\tinitial_absorption_bits\tticks\thurt_time\tfire\thealth_bits\tabsorption_bits',
     ]
     for target in TICKS:
@@ -121,21 +137,49 @@ def record_witness(work_dir=None, out=WITNESS):
                 f'{lava_flag}\t{initial_fire}\t{init_abs_bits}\t{target}\t'
                 f'{hurt_time}\t{fire}\t{health_bits}\t{abs_bits}'
             )
-    out = Path(out)
+    out = Path(out) if out is not None else lab.LOCAL / 'witness' / version / 'first_tick_lava_burn' / 'first_tick_lava_burn.tsv'
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text('\n'.join(lines) + '\n', encoding='utf-8')
-    print(f'Wrote {len(lines) - 2} 26.3 witness rows to {out}')
+    oracle_path = root / 'mods/sunrise/src/test/java/dev/sunriselab/parity/VanillaCommandExecOracle.java'
+    input_sources = (
+        oracle_path,
+        root / 'tools/first_tick_lava_burn_corpus.py',
+        root / 'tools/test_command_exec_parity.py',
+        root / 'tools/test_first_tick_lava_burn_parity.py',
+    )
+    input_hashes = {
+        'research-lock.json': lab.digest(lab.LOCK, 'sha256'),
+        'server.jar': lab.digest(jars['server'], 'sha256'),
+    }
+    for src in input_sources:
+        input_hashes[src.relative_to(root).as_posix()] = lab.digest(src, 'sha256')
+    lab.write_json(out.parent / 'meta.json', {
+        'game_version': version,
+        'java_major': lock['minecraft']['java_major'],
+        'java_version': _java_version(),
+        'harness': 'tools/test_first_tick_lava_burn_parity.py',
+        'witness_env': WITNESS_ENV,
+        'command': command or 'python3 tools/first_tick_lava_burn_corpus.py --record',
+        'oracle': oracle_path.relative_to(root).as_posix(),
+        'input_hashes': input_hashes,
+        'outputs': {
+            out.name: {'sha256': lab.digest(out, 'sha256'), 'bytes': out.stat().st_size},
+        },
+    })
+    print(f'Wrote {len(lines) - 2} {version} witness rows to {out}')
+    return out
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--record', action='store_true', help='record the 26.3 witness via VanillaCommandExecOracle')
+    parser.add_argument('--record', action='store_true', help='record the witness into .local via VanillaCommandExecOracle')
+    parser.add_argument('--prepare', action='store_true', help='prepare pinned vanilla artifacts first')
     parser.add_argument('--work-dir', type=Path, help='scratch directory for the Java oracle run')
-    parser.add_argument('--out', type=Path, default=WITNESS, help='output TSV path')
+    parser.add_argument('--out', type=Path, default=WITNESS, help='output TSV path (default under .local/witness/)')
     args = parser.parse_args()
     if not args.record:
-        parser.error('pass --record to generate the 26.3 witness')
-    record_witness(args.work_dir, args.out)
+        parser.error('pass --record to generate the witness')
+    record_witness(args.work_dir, args.out, prepare=args.prepare)
 
 
 if __name__ == '__main__':
