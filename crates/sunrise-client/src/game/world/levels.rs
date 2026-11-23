@@ -420,6 +420,31 @@ impl Game<'_> {
         }
     }
 
+    /// Whether the living entity `id` resident in a parked level is alive (`Entity.isAlive`):
+    /// a remembered target stays remembered while its holder is in another level.
+    pub(in crate::game) fn parked_living_alive(&self, id: u32) -> bool {
+        let EntityLookup::Found { location, value } = self.server_resident_entity(id) else {
+            return false;
+        };
+        let Some(parked) = (self.levels.parked.iter())
+            .find(|(dim, _)| dim.key() == location.owner.dimension)
+            .map(|(_, parked)| parked)
+        else {
+            return false;
+        };
+        match value {
+            Target::Mob(_) => {
+                (parked.mobs.locate(location.join)).is_some_and(|i| parked.mobs[i].alive())
+            }
+            Target::Stand(_) => (parked.armor_stands.locate(location.join))
+                .is_some_and(|i| parked.armor_stands[i].health > 0.0),
+            Target::Dragon(id) => {
+                (parked.dragon.as_ref()).is_some_and(|d| d.id == id && d.health > 0.0)
+            }
+            _ => false,
+        }
+    }
+
     pub(in crate::game) fn server_resident_entity(&self, id: u32) -> EntityLookup<Target> {
         let found = self
             .resident_entities
