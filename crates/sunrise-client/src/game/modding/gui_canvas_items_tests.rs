@@ -166,7 +166,7 @@ fn canvas_wraps_extreme_item_bar_endpoints_like_java() {
 }
 
 fn draw_decorated_paper(bar_width: i32) -> HudBatch {
-    let mods = vec![ModEntry::new(
+    let mods: mod_api::Mods = vec![ModEntry::new(
         "painter",
         Box::new(Painter {
             answers: Answers::default(),

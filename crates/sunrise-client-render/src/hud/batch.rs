@@ -123,12 +123,12 @@ impl HudPaintCheckpoint {
             for (run, _) in &mut batch.blends[first..] {
                 *run = move_endpoint(run.start)..move_endpoint(run.end);
             }
-            batch.blends.retain(|(run, _)| !run.is_empty());
+            batch.blends.retain(|(run, _)| run.start < run.end);
             let first = batch.scissors.partition_point(|(run, _)| run.end <= start);
             for (run, _) in &mut batch.scissors[first..] {
                 *run = move_endpoint(run.start)..move_endpoint(run.end);
             }
-            batch.scissors.retain(|(run, _)| !run.is_empty());
+            batch.scissors.retain(|(run, _)| run.start < run.end);
         }
         // Glyph atlas uploads are reusable by other painters. A delegated draw can also
         // share a picture or inline skin first seen by the wrapper. Picture references

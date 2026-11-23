@@ -1671,9 +1671,8 @@ one, where vanilla gives the `by` one.
 
 - `item_bar(stack, bar)`: the small bar `GuiGraphicsExtractor.itemDecorations` draws under an item,
   wherever the game shows one. `bar` arrives holding
-  vanilla's choice (the damage bar, or a bundle's fullness, already applied); set it to a signed pixel width and an
-  `rgb` colour, or to `None` to hide it. The endpoint uses Java integer wrapping (hook version 2).
-  Asked each frame a stack is drawn. Client-side (NeoForge has no event for
+  vanilla's choice (the damage bar, or a bundle's fullness, already applied); set it to a signed pixel width and an `rgb`
+  colour, or `None` to hide it; the endpoint wraps as a Java `int` (version 2). Asked each frame a stack is drawn. Client-side (NeoForge has no event for
   this; vanilla's `Item.isBarVisible`/`getBarWidth`/`getBarColor`).
 
 - Mods' own sound events in `play_sound`: an event of another namespace than `minecraft` (`mymod:machine_hum`) is sent to players by
