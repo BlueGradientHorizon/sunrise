@@ -886,8 +886,7 @@ impl Game<'_> {
     }
 
     /// The level a mount this client predicts is hurt in, with the client's hooks (`hooks`)
-    /// and the tags its server sent, so a both-sides hook's listener reads the same tags
-    /// as on the server.
+    /// and the tags its server sent, so its tag view answers the server's membership.
     pub(super) fn predicting_damage_level<'a>(
         &'a self,
         lent: &'a mut sunrise_client::health::LentLevel,

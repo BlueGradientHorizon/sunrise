@@ -241,8 +241,8 @@ its host's tags: `host.tags().damage_type_in_tag(event.source.damage_type, tag)`
 `TagKey` such as `minecraft:is_projectile` ([Registry keys](registry-keys.md)). It answers the
 tags as bound at the last data reload, `Some(false)` for a tag no data defines, and `None` for a
 damage type the registry doesn't have or while the damage type tags are unavailable. On a client,
-including the hit host of a mount it predicts, it reads the damage registry and tags its server
-sent, so a both-sides `entity_invulnerability_check` listener decides the same on both sides.
+including the hit host of a mount it predicts, it answers the damage registry and tags its server
+sent, the same membership the server's host answers.
 A custom loot function or condition reads the same through its context's `tags()`.
 
 The event is a generated struct named after the catalog hook, in CamelCase plus `Event`.
