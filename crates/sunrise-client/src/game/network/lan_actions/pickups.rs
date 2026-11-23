@@ -271,15 +271,12 @@ impl Game<'_> {
             0.1,
             pitch,
         );
-        if orb_value > 0 {
-            let value = orb_value as u32;
-            self.as_guest(conn, |game| {
-                let rest = game.mending(value);
-                if rest > 0 {
-                    game.give_experience_points(rest.min(i32::MAX as u32) as i32);
-                }
-            });
-        }
+        self.as_guest(conn, |game| {
+            let rest = game.mending(orb_value);
+            if rest > 0 {
+                game.give_experience_points(rest);
+            }
+        });
         if !live(self) {
             return;
         }
