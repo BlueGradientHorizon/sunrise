@@ -169,6 +169,7 @@ impl Game<'_> {
             Who::Mob(id) => id,
         };
         let victim = if victim >= crate::game::dragon::SPECIAL {
+            self.dragon.as_ref().map_or(victim, |dragon| dragon.id)
         } else {
             victim
         };

@@ -45,15 +45,6 @@ pub trait EntitiesServerHost {
 #[doc(hidden)]
 #[sunrise_mod_api_macros::host_area]
 pub trait EntitiesBackend {
-    /// Spawns an entity of `kind` (`minecraft:item_display`) at `pos` in the
-    /// level in place, `dimension`, from `nbt` (its compound, as `/summon
-    /// <kind> <pos> <nbt>` takes it; passengers included): its id. None on a
-    /// client's copy of the world, for another dimension, a position outside
-    /// `/summon`'s bounds, a chunk that isn't loaded, a kind Sunrise can't
-    /// load, or one a mod kept out (`entity_join_level`). Inside a transaction its join waits for
-    /// the root commit, so a mod keeping it out is not known at the call: the id is returned and
-    /// names nothing from the commit on.
-    fn summon(&mut self, dimension: &str, kind: &str, pos: [f64; 3], nbt: Compound) -> Option<u32>;
     /// Side: server.
     /// The orb's signed points value (`ExperienceOrb.getValue()`, `DATA_VALUE` int).
     /// Works across active and parked server levels. Returns

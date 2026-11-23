@@ -24,6 +24,7 @@ pub(in crate::game) struct Heard {
     projections: Vec<(Option<bool>, Option<bool>, Option<bool>)>,
     incoming_causing: Vec<i32>,
     cancel: bool,
+    record_projections: bool,
     set_strength: Option<f64>,
     sources: Vec<(String, i32, i32)>,
     pub(in crate::game) reduce_sword_credit: bool,

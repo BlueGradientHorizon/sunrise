@@ -51,9 +51,14 @@ impl Mob {
         if self.species() == Species::SulfurCube
             && sulfur_cube::has_body(self)
             && source.attacker.is_some()
-            && sulfur_cube::has_body(self)
-            && source.attacker.is_some()
         {
+            sulfur_cube::knockback(
+                self,
+                (xd, zd),
+                source.from,
+                damage,
+                comes_from_effect.then_some(power),
+            );
             return true;
         }
         if creaking::is_creaking(self) && !creaking::can_move(self) {

@@ -880,13 +880,6 @@ impl Game<'_> {
     pub(in crate::game) fn native_panel_event(&mut self, mod_id: &str, event: &PanelEvent) {
         self.fire_panel_event(mod_id, event);
     }
-    /// Whether block `block`'s block entity ticks (`EntityBlock.getTicker`):
-    /// set `ticks` when it is yours. Asked for each of the block's states
-    /// when a world opens.
-    /// Set `ticks` to true to make it tick, and never clear a value an earlier mod or mixin set.
-    pub(in crate::game) fn native_block_entity_ticks(&self, block: &str, ticks: &mut bool) {
-        self.fire_block_entity_ticks(block, ticks);
-    }
     /// Block `block`'s registered item slots (`WorldlyContainer`), read from
     /// its per-block declaration when the ticking table is built.
     /// Slot counts, face/input/output indices and `insert_rules` are validated

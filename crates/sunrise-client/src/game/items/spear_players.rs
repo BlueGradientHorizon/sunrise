@@ -269,12 +269,6 @@ impl Game<'_> {
                         );
                     }
                 }
-                if hurt
-                    && s.ignite > 0.0
-                    && let Some(p) = g.player.as_mut()
-                {
-                    let _ = p.ignite_for_ticks((s.ignite * 20.0) as i32);
-                }
                 // `Player.stabAttack`: a type in `cannot_be_dismounted_by_item_usage` stays seated.
                 let dismounted = s.dismounts
                     && g.riding.is_some()
