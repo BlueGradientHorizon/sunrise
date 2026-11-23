@@ -1613,6 +1613,8 @@ mod native_player_visibility;
 #[cfg(test)]
 #[path = "game/modding/native_player_visibility_tests.rs"]
 mod native_player_visibility_tests;
+#[path = "game/modding/native_pool_elements.rs"]
+mod native_pool_elements;
 #[path = "game/modding/native_portal_destination.rs"]
 mod native_portal_destination;
 #[path = "game/modding/native_profiles.rs"]
@@ -14432,6 +14434,14 @@ pub(crate) fn run_with(
         .is_err()
         {
             log::warn!("Mod structure types already installed; keeping the first table");
+        }
+        // Their pool element types, before any world decodes its template pools.
+        if sunrise_world::worldgen::structure::mod_elements::install_mod_pool_element_types(
+            native_pool_elements::installed_pool_element_types(),
+        )
+        .is_err()
+        {
+            log::warn!("Mod pool element types already installed; keeping the first table");
         }
         // Their feature types, before any world decodes its configured features.
         if sunrise_world::worldgen::mod_features::install_mod_feature_types(
