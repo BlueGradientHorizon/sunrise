@@ -501,18 +501,6 @@ impl Game<'_> {
                     use sunrise_client::clipboard::Clipboard;
                     self.clipboard.set(&text);
                 }
-                Event::BrowseMods => {
-                    let ui = &mut self.ui.options.mod_browser;
-                    self.mod_jobs.browse(ui, Self::game_dir());
-                }
-                Event::InstallMod(id) => {
-                    if self.player.is_none() {
-                        let ui = &mut self.ui.options.mod_browser;
-                        self.mod_jobs.install(ui, Self::game_dir(), id);
-                    }
-                }
-                // The website, through ConfirmLinkScreen as other links.
-                Event::OpenModPage(url) => self.confirm_trusted_link(&url, Screen::Options),
                 Event::ListShaderPacks => {
                     let (key, _) = sunrise_client::shader_pack_list::resolve(
                         &Self::shader_packs_dir(),

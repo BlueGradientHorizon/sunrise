@@ -33,10 +33,10 @@ pub use sunrise_client_render::{
     environment, extras, fast_hash, fluid_models, fluid_render, fog, font, gfx, graphics,
     graphics_style, graphics_ui, hdr_calibration, hud, hud_kit, hud_layout, hud_overlays,
     inventory_effects, java_text, jigsaw_block, json_folder, level_loading, light, lod, logging,
-    mark_sprite, menu_blur, menu_style, mesher, mipmap, mod_browser, mod_chunk_tickets, mod_list,
-    mod_pipelines, model_library, models, mods_screen, monitor, multiline_edit, native_emissive,
-    options_file, options_fixes, options_ui, overlay, pack_browser, pack_formats, pack_hooks,
-    pack_palette, pack_screen, packs, pad_cursor, pad_glyph, par, particles, poi_sections,
+    mark_sprite, menu_blur, menu_style, mesher, mipmap, mod_chunk_tickets, mod_list, mod_pipelines,
+    model_library, models, mods_screen, monitor, multiline_edit, native_emissive, options_file,
+    options_fixes, options_ui, overlay, pack_browser, pack_formats, pack_hooks, pack_palette,
+    pack_screen, packs, pad_cursor, pad_glyph, par, particles, poi_sections,
     polytone_creative_tabs, polytone_post, post_chain, potent_sulfur, preedit, providers, pvp,
     pvp_hud, random_source, resource_source, screen_draw, screen_effects, sculk, section_mask,
     server_terrain, settings, shader_options, shader_pack_list, signs, skins, social, sound_engine,
@@ -124,7 +124,6 @@ pub mod menu_extra_net;
 pub mod merchant;
 pub mod mobs;
 pub mod mod_content;
-pub mod mod_registry;
 pub mod modgen;
 pub mod motion;
 pub mod multiplayer;

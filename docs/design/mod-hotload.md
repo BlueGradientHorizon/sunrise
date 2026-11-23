@@ -1,9 +1,9 @@
 # Mods from inside the game, loaded and unloaded in seconds
 
 Asked by Ludovic on 2026-11-05: players add mods from inside the game, and turn them on and off in a few seconds,
-without a restart wherever one can be avoided. This note says what can change live, what needs a world reload or a
-restart, how the in-game browser installs, and which native-mod path gets a code change from "minutes, then
-restart" to seconds. It builds on the registry v2 ([registry-v2.md](registry-v2.md)), the content mods of
+without a restart wherever one can be avoided. Mods are found and installed in the launcher. This note says what can
+change live, what needs a world reload or a restart, and which native-mod path gets a code change from "minutes,
+then restart" to seconds. It builds on the registry v2 ([registry-v2.md](registry-v2.md)), the content mods of
 [mods.md](../mods.md), the native mods of [native-mods.md](../native-mods.md) and the plan in
 [#7386](https://github.com/horizon-rust/horizon/issues/7386).
 
@@ -109,38 +109,6 @@ So a switch lands in about 2 to 3 s, and the first time a mod set is used in abo
 the desktop (i7-13700KF, NVMe, under a load of 30 to 40), in #10217's test: built in 5.1 to 5.4 s, reused in 0 to
 19 ms, over three runs. Most of a first switch is building the root; a set used before costs only the reloads.
 
-## The in-game mod browser
-
-Options > Mods gets a **Browse mods** button beside **Open mod folder**. It opens Sunrise's own menu pages, drawn
-with the options screen's widgets (`options_ui`), every string through `Text::tr` keys in
-`assets/sunrise/lang/*.json`.
-
-- **The index.** The same file the launcher reads (`sunrise-mods` `index.json`, `SUNRISE_MOD_INDEX` for a test
-  registry), fetched on a worker with the game's `ureq` when the page opens (a Pages file, not the API: no rate
-  limit), kept in `mod-browser/sunrise-index.json` beside `options.txt`. The launcher and the game share that copy,
-  so an offline game still lists what the launcher saw last. Parsed with `sunrise_mod_package::index::Index::parse`, which
-  refuses an index with a bad entry as the launcher does.
-- **The list.** A search box and the projects this game can install, sorted by downloads: name, author, summary,
-  its categories, and **Installed**, **Update** or nothing. A search matches the name, id, summary, tags and
-  categories.
-- **A project's page.** Name, authors, licence, version and date, categories and tags, the summary and description
-  (the index's markdown read as plain text: headings, lists and links shown as text), its changelog, and buttons:
-  **Install** or **Update**, the mod's on and off switch once it is installed, and **Open page** (the site's page in
-  the browser). **Remove** stays in the launcher for now. Screenshots come in a second step: the registry mirrors
-  them as PNG and JPEG under its own Pages ([registry-v2.md](registry-v2.md)); the page will draw them through the
-  same dynamic-texture path as player skins (`skin_slots`), one at a time, loaded when the page opens.
-- **Install.** As the launcher's `install_version`: the newest version for this game that was not taken down, into
-  `mod-browser/downloads/`, then `sunrise_mod_package::index::check_file` (size, SHA-256, the author's signature, the
-  file's manifest against the index), then moved to `sunrise-mods/<id>.smod`, turned on in `sunrise-mods.txt`, and
-  recorded in `mod-browser.json` with the launcher's own fields, so the launcher lists it, updates it and removes
-  it. A file the index took down (`revoked.toml`) is refused. A `.smod` with code (`needs_port`) is not offered.
-- **Kinds.** Content mods first. Resource packs, shader packs and data packs follow with the same page; each installs
-  where the launcher puts it.
-- **Native mods.** Listed with the launcher's warning, word for word: they are native code with the player's rights,
-  not sandboxed, and the red **Install** button asks first, as the launcher's trust notice does. The game can't
-  compile, so it installs the native `.smod` into `sunrise-native-mods/`, and the launcher builds it before the next play
-  (#9901). The registry review stays the gate for every kind.
-
 ## Native mods: the fast path
 
 A native mod's code is in the game's binary. What can be made fast:
@@ -195,27 +163,19 @@ crate or code outside the game's binary (C) makes a change fast.
 
 Nothing in this note widens what a mod can do.
 
-- Content mods have no code. The game checks every downloaded file against the index exactly as the launcher does,
-  and keeps the content fence ([mods.md](../mods.md#namespaces-and-limits)).
-- Native mods stay full-trust native code. The in-game browser shows the launcher's trust notice and red warning
-  before installing one, and installing never builds or runs it: the launcher does, behind its own warning.
-- The registry review stays the gate for listing a project, `revoked.toml` turns off taken-down files in the game
-  as in the launcher, and SHA-256 pinning and signatures are checked before a file reaches `sunrise-mods/`.
-- The browser fetches only the index, the registry's release assets (`sunrise_mod_package::index::FILE_HOST`) and, later,
-  the registry's own mirrored images. It never follows a project's own links.
+- Content mods have no code. The game keeps the content fence ([mods.md](../mods.md#namespaces-and-limits)).
+- The registry review stays the gate for listing a project.
 
 ## Plan, small PRs
 
 1. This note.
-2. The in-game browser and install, for content mods (#10104).
-3. Live switching of content mods (#10217): a root per mod set, classification, the client and server reloads,
+2. Live switching of content mods (#10217): a root per mod set, classification, the client and server reloads,
    tests that load, unload and load again a fixture mod and check the recipes, tags and lang it adds. Measured in
    game on the ThinkPad, the root alone on the desktop.
-4. Native step A, first half (#10218): a trait mod built in turns off and on at run time through `Hooks` dispatch. Then
+3. Native step A, first half (#10218): a trait mod built in turns off and on at run time through `Hooks` dispatch. Then
    the launcher builds every installed mod, and `RenderHooks` get the same switch.
 
-Later: the world reload for registry changes (replaceable process-wide tables), screenshots on the project page,
-the other kinds in the browser, and B.
+Later: the world reload for registry changes (replaceable process-wide tables), and B.
 
 ## From the contributors' plans
 
