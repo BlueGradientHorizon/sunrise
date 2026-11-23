@@ -13,8 +13,9 @@ pub trait Hooks {
     /// ignore the anchor. `screen` is `[screen_width, screen_height]` in GUI pixels.
     /// `positioner` is the active `ClientTooltipPositioner` that places the
     /// tooltip box once measured. Text lines are wrapped only where
-    /// `render_tooltip_gather_components` ran: with no Gather listener, or for a stack
-    /// that can't be converted, each line arrives whole, as vanilla passes it. `font` is
+    /// `render_tooltip_gather_components` ran: with no Gather listener, each line arrives
+    /// whole, as vanilla passes it. A stack that can't be converted skips Gather and Pre,
+    /// and the engine's prepared tooltip is drawn as it is. `font` is
     /// the font identifier used for measurement and drawing (`minecraft:default`, or the
     /// item font, queried again before Pre); change it to measure and draw with a
     /// replacement font without rewrapping the lines. A prepared component's `width` and `height` return `None` on failure,
