@@ -264,11 +264,15 @@ pub(crate) fn stack_effects(
             } else {
                 // An unregistered kind keeps its saved NBT as written: bytes, floats and
                 // any UTF-16 string reach the hook unchanged, as a mod's own codec reads
-                // them. Only a non-finite number is refused, like a codec error: the
-                // entry is kept in the saved tag but does not run, and its siblings do.
-                if !finite_numbers(entry) {
+                // them. Only a non-finite number or a nested end tag (which the NBT
+                // writer refuses, so the stack could not be saved) is refused, like a
+                // codec error: the entry is kept in the saved tag but does not run, and
+                // its siblings do.
+                if !admissible_payload(entry) {
                     let Some(refused) = refused.as_deref_mut() else {
-                        return Err("non-finite number in consume effect payload".into());
+                        return Err(
+                            "non-finite number or nested end tag in consume effect payload".into(),
+                        );
                     };
                     *refused = true;
                     continue;
@@ -287,12 +291,14 @@ pub(crate) fn stack_effects(
     Ok(effects)
 }
 
-/// Whether every float and double in `tag` is finite (the one payload refusal
-/// left for an unregistered consume-effect kind).
-fn finite_numbers(tag: &sunrise_core::nbt::Tag) -> bool {
+/// Whether every float and double in `tag` is finite and no end tag is nested in
+/// it (the payload refusals left for an unregistered consume-effect kind; the NBT
+/// writer refuses a nested end tag).
+fn admissible_payload(tag: &sunrise_core::nbt::Tag) -> bool {
     let mut work = vec![tag];
     while let Some(tag) = work.pop() {
         match tag {
+            Tag::End => return false,
             Tag::Float(bits) => {
                 if !f32::from_bits(*bits).is_finite() {
                     return false;
