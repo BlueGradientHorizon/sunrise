@@ -437,8 +437,8 @@ impl Game<'_> {
                                 .collect(),
                         );
                         let folder = dimension_folder_named(&pack, self.dim.id(), dimension);
-                        // Its terrain programs read the section arena's pages where they still
-                        // fit the vertex stage with them.
+                        // Its terrain programs read the section arena's pages, or else the
+                        // normal stream, where they still fit the vertex stage with them.
                         renderer.set_pack_terrain_bindings(
                             sunrise_client::gfx::pack_atlas::TerrainBindings::of(
                                 &pack,

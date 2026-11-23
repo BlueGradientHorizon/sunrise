@@ -2,7 +2,9 @@
 //! through the real `Renderer`, with flat section draws on and off (`set_flat_draws`): a pack
 //! that writes one of them as its colour, inside a box of six quads, one facing the camera from
 //! each direction, solid (`gbuffers_terrain`) and translucent (`gbuffers_water`). Each face must
-//! read its own normal and tangent in both draw paths (#432). Asset-free; run with throwaway SUNRISE_HOME,
+//! read its own normal and tangent in both draw paths (#432), per-section draws reading their
+//! page or, where they read none (no storage in vertex shaders, or the pack's buffers leave no
+//! room), the normal stream. Asset-free; run with throwaway SUNRISE_HOME,
 //! SUNRISE_LAUNCHER_HOME, XDG_DATA_HOME and XDG_CONFIG_HOME (AGENTS.md):
 //! `cargo test -p sunrise-client-render --test pack_terrain_normals -- --ignored`
 //! (under `python3 tools/ci/with_xvfb.py` without a display) gives each its own. On a Wayland
@@ -36,6 +38,52 @@ fn pack_terrain_normals_without_flat_draws() {
         "pack_terrain_normals_without_flat_draws",
         &[("SUNRISE_FLAT_DRAWS", "0")],
         fixture_without_flat,
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn pack_terrain_normals_without_vertex_storage() {
+    run_daily(
+        "pack_terrain_normals_without_vertex_storage",
+        &[
+            ("SUNRISE_FLAT_DRAWS", "0"),
+            ("SUNRISE_SHADER_PACK_WITHOUT", "vertex-storage"),
+        ],
+        fixture_without_vertex_storage,
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn pack_terrain_normals_stream_from_start() {
+    run_daily(
+        "pack_terrain_normals_stream_from_start",
+        &[
+            ("SUNRISE_FLAT_DRAWS", "0"),
+            ("SUNRISE_SHADER_PACK_WITHOUT", "vertex-storage"),
+        ],
+        fixture_stream_from_start,
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn pack_terrain_normals_stream_after_flat_draws() {
+    run_daily(
+        "pack_terrain_normals_stream_after_flat_draws",
+        &[],
+        fixture_stream_after_flat,
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn pack_terrain_normals_stream_where_pages_dont_fit() {
+    run_daily(
+        "pack_terrain_normals_stream_where_pages_dont_fit",
+        &[("SUNRISE_FLAT_DRAWS", "0")],
+        fixture_pages_dont_fit,
     );
 }
 
@@ -284,6 +332,10 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
                     &mut result,
                 );
             }
+            assert!(
+                !renderer.section_arena_normals().0,
+                "{draws}: no normal stream where the pages are read"
+            );
         }
     }
     finish(out, result)
@@ -291,7 +343,7 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
 
 /// Without flat draws (`SUNRISE_FLAT_DRAWS=0`) and with no pack picked: the section arena's
 /// pages start as vertex buffers alone. A pack loaded after the renderer makes them storage for
-/// its per-section terrain programs (`follow_arena_storage`), which then read the real normals;
+/// its per-section terrain programs (`follow_arena_layout`), which then read the real normals;
 /// unloading it makes them vertex buffers again, as large as before. A pack whose buffer
 /// objects leave no room in the vertex stage for the pages still loads its terrain programs, and
 /// they get the constant normal, the pages staying vertex buffers.
@@ -348,6 +400,236 @@ fn fixture_without_flat(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn s
         );
     }
     assert_eq!(renderer.section_arena_pages(), (false, vertices));
+    finish(out, result)
+}
+
+/// Bytes of a section arena page as the renderer first makes it: 1 << 20 vertices of 24 bytes
+/// (`TerrainVertex`), with 8 bytes more a vertex (`pack_atlas::NORMAL_BYTES`) where it has a
+/// normal stream.
+const FIRST_PAGE: u64 = 25_165_824;
+const FIRST_PAGE_WITH_NORMALS: u64 = 33_554_432;
+
+/// Uploads the solid box on a settled frame, for the arenas' bytes.
+fn upload_box(renderer: &mut Renderer, hud: &HudBatch, out: &Path, name: &str) {
+    shoot(renderer, hud, 0.0, 0.0, &out.join(format!("{name}.png")));
+    renderer.take_dropped_sections();
+    renderer.upload(SECTION, &mesh(false));
+}
+
+/// Without flat draws (`SUNRISE_FLAT_DRAWS=0`), on a device taken to read no storage in vertex
+/// shaders (`SUNRISE_SHADER_PACK_WITHOUT=vertex-storage`): per-section draws read no pages, and
+/// a pack's terrain programs read their quad's normal and tangent from the normal stream, which
+/// the arenas (the translucent one too, with Translucent Batching) have exactly while such a
+/// pack runs. With no pack the section arena is as it was before the stream: vertex buffers
+/// alone, of the same page size and bytes.
+fn fixture_without_vertex_storage(
+    window: Arc<Window>,
+    out: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    std::fs::create_dir_all(out)?;
+    let mut renderer = renderer(window, (false, false))?;
+    assert!(!renderer.flat_draws(), "SUNRISE_FLAT_DRAWS=0");
+    let hud = HudBatch::scratch([320, 180]);
+    let mut result = serde_json::Map::new();
+    // No pack: vertex buffers alone, pages of 256 MiB of 24-byte vertices in whole blocks of
+    // 256 or the device's buffers, as before the stream.
+    upload_box(&mut renderer, &hud, out, "start");
+    let limits = renderer.device.limits();
+    let page_vertices = (limits.max_buffer_size.min(256 << 20) / 24) / 256 * 256;
+    assert_eq!(renderer.section_arena_pages(), (false, page_vertices));
+    assert_eq!(
+        renderer.section_arena_normals(),
+        (false, false, FIRST_PAGE),
+        "no pack: no normal stream"
+    );
+    for (written, input, want) in [
+        ("normal", "gl_Normal", normal as fn(_, _) -> _),
+        ("tangent", "at_tangent.xyz", tangent),
+    ] {
+        pack(&mut renderer, &out.join(format!("pack-{written}")), input);
+        for translucent in [false, true] {
+            check_views(
+                &mut renderer,
+                &hud,
+                out,
+                &format!("stream-{written}"),
+                translucent,
+                want,
+                &mut result,
+            );
+        }
+        let (section, translucent, _) = renderer.section_arena_normals();
+        assert!(section && translucent, "the pack reads the stream");
+        assert_eq!(renderer.section_arena_pages(), (false, page_vertices));
+    }
+    upload_box(&mut renderer, &hud, out, "loaded");
+    assert_eq!(
+        renderer.section_arena_normals(),
+        (true, true, FIRST_PAGE_WITH_NORMALS)
+    );
+    renderer.set_shader_pack(0, None, &[]).unwrap();
+    upload_box(&mut renderer, &hud, out, "unloaded");
+    assert_eq!(
+        renderer.section_arena_normals(),
+        (false, false, FIRST_PAGE),
+        "unloaded: the stream is dropped"
+    );
+    assert_eq!(renderer.section_arena_pages(), (false, page_vertices));
+    finish(out, result)
+}
+
+/// Without flat draws, on a device whose vertex shaders read and write storage: a pack whose
+/// buffer objects leave the vertex stage room for one buffer more than its per-section draws
+/// take without normals (2 uniform and 2 vertex buffers), and not for set 3's three storage
+/// buffers, reads the normal stream; one buffer object more and it reads neither, keeping the
+/// constant normal.
+fn fixture_pages_dont_fit(
+    window: Arc<Window>,
+    out: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    std::fs::create_dir_all(out)?;
+    let mut renderer = renderer(window, (false, false))?;
+    assert!(!renderer.flat_draws(), "SUNRISE_FLAT_DRAWS=0");
+    let room = room_for_the_stream(&renderer);
+    let hud = HudBatch::scratch([320, 180]);
+    let mut result = serde_json::Map::new();
+    for (name, buffer_objects, want, stream) in [
+        ("room", room, normal as fn(_, _) -> _, true),
+        ("full", room + 1, constant, false),
+    ] {
+        renderer.set_pack_terrain_bindings(client::gfx::pack_atlas::TerrainBindings {
+            buffer_objects,
+            geometry: false,
+        });
+        pack(
+            &mut renderer,
+            &out.join(format!("pack-{name}")),
+            "gl_Normal",
+        );
+        for translucent in [false, true] {
+            check_views(
+                &mut renderer,
+                &hud,
+                out,
+                name,
+                translucent,
+                want,
+                &mut result,
+            );
+        }
+        assert_eq!(renderer.section_arena_normals().0, stream, "{name}");
+        assert!(!renderer.section_arena_pages().0, "{name}: no pages read");
+    }
+    finish(out, result)
+}
+
+/// Buffer objects that leave the vertex stage room for the normal stream and none for set 3:
+/// the device's own limit of buffers in a stage, less the 2 uniform buffers, the 3 vertex
+/// buffers of a draw with the stream, and 0 to spare (`fixture_pages_dont_fit`).
+fn room_for_the_stream(renderer: &Renderer) -> u32 {
+    assert!(
+        renderer
+            .device
+            .features()
+            .contains(wgpu::Features::VERTEX_WRITABLE_STORAGE),
+        "the pack's buffer objects are in the vertex stage"
+    );
+    let buffers = renderer
+        .device
+        .limits()
+        .max_buffers_and_acceleration_structures_per_shader_stage;
+    buffers - 5
+}
+
+/// Without flat draws, on a device taken to read no storage in vertex shaders, a renderer made
+/// with a `shaders/` pack picked (`Renderer::new`'s `pack_starts_wide`) starts with the normal
+/// stream in both arenas, so the pack's loading keeps the sections uploaded before it: none is
+/// dropped, and both lists draw with the stream at once.
+fn fixture_stream_from_start(
+    window: Arc<Window>,
+    out: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    std::fs::create_dir_all(out)?;
+    let mut renderer = renderer(window, (true, true))?;
+    assert!(!renderer.flat_draws(), "SUNRISE_FLAT_DRAWS=0");
+    let hud = HudBatch::scratch([320, 180]);
+    let mut result = serde_json::Map::new();
+    assert_eq!(
+        renderer.section_arena_normals(),
+        (true, true, 0),
+        "a pack picked: both arenas start with the stream"
+    );
+    pack(&mut renderer, &out.join("pack-normal"), "gl_Normal");
+    let south = [channel(0), channel(0), channel(-1), 255];
+    for translucent in [false, true] {
+        let name = if translucent { "translucent" } else { "solid" };
+        renderer.upload(SECTION, &mesh(translucent));
+        let pixel = shoot(
+            &mut renderer,
+            &hud,
+            0.0,
+            0.0,
+            &out.join(format!("{name}.png")),
+        );
+        assert_eq!(
+            pixel, south,
+            "{name}: the south view's face reads [0, 0, -1]"
+        );
+        assert!(
+            !renderer.take_dropped_sections(),
+            "{name}: the pack's loading kept the sections"
+        );
+        result.insert(name.into(), format!("{pixel:?}").into());
+    }
+    let (section, translucent, _) = renderer.section_arena_normals();
+    assert!(section && translucent, "both arenas keep the stream");
+    finish(out, result)
+}
+
+/// On a device with flat draws and storage written in vertex shaders: a pack whose buffer
+/// objects leave room for the normal stream and not for set 3 draws flat with flat draws on,
+/// with no translucent arena and no stream; with flat draws off it draws per section from the
+/// stream, and the translucent arena, which Translucent Batching then splits off, has the stream
+/// too.
+fn fixture_stream_after_flat(
+    window: Arc<Window>,
+    out: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    std::fs::create_dir_all(out)?;
+    let mut renderer = renderer(window, (false, false))?;
+    let hud = HudBatch::scratch([320, 180]);
+    let mut result = serde_json::Map::new();
+    let room = room_for_the_stream(&renderer);
+    for flat in [true, false] {
+        renderer.set_flat_draws(flat)?;
+        renderer.set_pack_terrain_bindings(client::gfx::pack_atlas::TerrainBindings {
+            buffer_objects: room,
+            geometry: false,
+        });
+        let draws = if flat { "flat" } else { "stream" };
+        pack(
+            &mut renderer,
+            &out.join(format!("pack-{draws}")),
+            "gl_Normal",
+        );
+        for translucent in [false, true] {
+            check_views(
+                &mut renderer,
+                &hud,
+                out,
+                draws,
+                translucent,
+                normal,
+                &mut result,
+            );
+        }
+        let (section, translucent, _) = renderer.section_arena_normals();
+        assert_eq!(section, !flat, "{draws}: the section arena's stream");
+        assert_eq!(
+            translucent, !flat,
+            "{draws}: the translucent arena's stream"
+        );
+    }
     finish(out, result)
 }
 
