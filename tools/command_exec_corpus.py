@@ -605,6 +605,7 @@ def world_blocks():
 
 
 def entities():
+    enchant_target = '@e[type=minecraft:armor_stand,tag=enchant_target,limit=1]'
     return [
         cmd('/summon minecraft:pig 4.5 210 4.5 {NoAI:1b,NoGravity:1b,Tags:["a","h"]}'),
         cmd('/summon minecraft:cow 6.5 210 4.5 {NoAI:1b,NoGravity:1b,CustomName:"Daisy",Tags:["h"]}'),
@@ -772,6 +773,11 @@ def entities():
             cmd(f'/data get entity @e[type=minecraft:{kind},limit=1] Item.id'),
             cmd(f'/kill @e[type=minecraft:{kind}]'),
         )],
+        cmd('/summon minecraft:armor_stand 8.5 210 4.5 {NoGravity:1b,ShowArms:1b,Tags:["enchant_target"],'
+            'equipment:{mainhand:{id:"minecraft:trident",count:1}}}', expect_result=1),
+        cmd(f'/enchant {enchant_target} minecraft:riptide 3', expect_result=1),
+        cmd(f'/data get entity {enchant_target} equipment.mainhand.components."minecraft:enchantments"',
+            expect_result=1),
         *setup('/kill @e[type=minecraft:armor_stand]'),
         {'op': 'tick', 'n': 25},
         cmd('/execute if entity @e[tag=h]'),

@@ -476,9 +476,38 @@ pub fn discard_tag(root: Tag) {
     }
 }
 
-/// Whether recursive lists/compounds fit the supplied NBT container bound.
+// ListTag.identifyRawElementType and ListTag.wrapIfNeeded. Keep the writer
+// and its depth preflight on the same list layout, including literal wrappers.
+fn list_element_id(values: &[Tag]) -> u8 {
+    let first = values.first().map_or(0, Tag::id);
+    if values.iter().any(|v| v.id() != first) {
+        10
+    } else {
+        first
+    }
+}
+
+fn needs_list_wrapper(element_id: u8, value: &Tag) -> bool {
+    element_id == 10
+        && match value {
+            Tag::Compound(c) => c.len() == 1 && c.contains_key(&JavaString::default()),
+            _ => true,
+        }
+}
+
+/// Whether the materialized tag's recursive lists and compounds fit the bound.
 /// Scalars and primitive arrays consume no recursive nesting.
 pub fn within_depth(root: &Tag, limit: usize) -> bool {
+    fits_depth::<false>(root, limit)
+}
+
+/// Whether the lists and compounds emitted by the binary NBT writer fit the bound,
+/// including synthetic list wrappers.
+pub fn within_write_depth(root: &Tag, limit: usize) -> bool {
+    fits_depth::<true>(root, limit)
+}
+
+fn fits_depth<const BINARY: bool>(root: &Tag, limit: usize) -> bool {
     match root {
         Tag::List(values) if values.is_empty() => return limit > 0,
         Tag::Compound(values) if values.is_empty() => return limit > 0,
@@ -492,7 +521,14 @@ pub fn within_depth(root: &Tag, limit: usize) -> bool {
                 if depth >= limit {
                     return false;
                 }
-                work.extend(values.iter().map(|v| (v, depth + 1)));
+                let element_id = if BINARY { list_element_id(values) } else { 0 };
+                for value in values {
+                    let wrapped = BINARY && needs_list_wrapper(element_id, value);
+                    if wrapped && depth + 1 >= limit {
+                        return false;
+                    }
+                    work.push((value, depth + 1 + usize::from(wrapped)));
+                }
             }
             Tag::Compound(values) => {
                 if depth >= limit {
@@ -539,6 +575,16 @@ impl Limits {
         Self {
             max_bytes: 2_097_152,
             max_nodes: 2_097_152 / 8,
+            max_depth: 512,
+        }
+    }
+
+    /// Vanilla `NbtAccounter.unlimitedHeap()`: no effective NBT byte or node quota,
+    /// but at most 512 nested list and compound tags.
+    pub const fn unlimited_heap() -> Self {
+        Self {
+            max_bytes: usize::MAX,
+            max_nodes: usize::MAX,
             max_depth: 512,
         }
     }
@@ -1406,17 +1452,11 @@ impl Writer {
                 if values.iter().any(|v| matches!(v, Tag::End)) {
                     return Err(self.error("End cannot be a list element"));
                 }
-                let first = values.first().map_or(0, Tag::id);
-                let id = if values.iter().any(|v| v.id() != first) {
-                    10
-                } else {
-                    first
-                };
-                self.put(&[id])?;
+                let element_id = list_element_id(values);
+                self.put(&[element_id])?;
                 self.count(values.len())?;
                 for value in values {
-                    let wrapper = matches!(value, Tag::Compound(c) if c.len() == 1 && c.contains_key(&JavaString::default()));
-                    if id == 10 && (value.id() != 10 || wrapper) {
+                    if needs_list_wrapper(element_id, value) {
                         // Emit one synthetic compound layer without cloning the tree.
                         if depth + 1 >= self.limits.max_depth {
                             return Err(self.error("depth limit exceeded"));
@@ -1617,24 +1657,37 @@ impl Tag {
     /// bytes. Container nesting is limited to 512. End represents vanilla null.
     /// Malformed input, quota exhaustion and excessive depth return an Error.
     pub fn from_network_bytes(bytes: &[u8], quota: Option<u64>) -> Result<(Self, usize), Error> {
-        let mut reader = Reader {
-            bytes,
-            offset: 0,
-            limits: Limits {
-                max_bytes: usize::MAX,
-                max_nodes: usize::MAX,
-                max_depth: 512,
-            },
-            nodes: 0,
-            heap: Some((0, quota.unwrap_or(NETWORK_NBT_QUOTA))),
-            stream: None,
-            bounded: None,
-            strict: false,
-            entering: 0,
-            rejected: 0,
-        };
-        read_network_with_reader(&mut reader, &mut Tree)
+        read_network_accounted(bytes, quota.unwrap_or(NETWORK_NBT_QUOTA), 512)
     }
+}
+
+/// `NbtIo.readAnyTag` with `new NbtAccounter(quota, max_depth)`: one nameless
+/// network root and its consumed byte count, charging the heap as
+/// `NbtAccounter.accountBytes` does and nesting at most `max_depth` lists and
+/// compounds (`NbtAccounter.pushDepth`). Trailing bytes stay unread; `End` is
+/// vanilla's null.
+pub fn read_network_accounted(
+    bytes: &[u8],
+    quota: u64,
+    max_depth: usize,
+) -> Result<(Tag, usize), Error> {
+    let mut reader = Reader {
+        bytes,
+        offset: 0,
+        limits: Limits {
+            max_bytes: usize::MAX,
+            max_nodes: usize::MAX,
+            max_depth,
+        },
+        nodes: 0,
+        heap: Some((0, quota)),
+        stream: None,
+        bounded: None,
+        strict: false,
+        entering: 0,
+        rejected: 0,
+    };
+    read_network_with_reader(&mut reader, &mut Tree)
 }
 
 #[cfg(test)]

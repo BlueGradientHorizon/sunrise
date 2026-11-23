@@ -36,6 +36,7 @@ impl GameLevel<'_> {
                 seed,
                 except: None,
                 entity: None,
+                skip_hooks: false,
             });
         true
     }
@@ -244,11 +245,14 @@ pub(super) fn block_entity_for_block(
     initial: Compound,
 ) -> Option<BlockEntity> {
     if let Some(kind) = sunrise_client::block_entity_types::type_for(name) {
+        let slots = mod_api::__private::parts_installation::block_container(name)
+            .map_or(0, |container| container.slots);
         return Some(BlockEntity::Mod(Box::new(EngineBlockEntity::new(
             kind.to_owned(),
             ModBlockEntityFields {
                 nbt: initial,
-                ..Default::default()
+                items: vec![None; slots],
+                data: Vec::new(),
             },
         ))));
     }

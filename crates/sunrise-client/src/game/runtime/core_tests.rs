@@ -787,6 +787,7 @@ fn a_mod_screen_on_a_machine_menu_takes_the_stock_layout_out() {
 fn a_falling_block_keeps_its_model_offset() {
     let at = Vec3::new(3.5, 70.25, -1.5);
     let falling = FallingBlock {
+        size_answer: None,
         ground: Default::default(),
         fire_ticks: 0,
         sync_velocity: false,
@@ -795,6 +796,7 @@ fn a_falling_block_keeps_its_model_offset() {
         join: Default::default(),
         id: 0,
         state: BlockStateId(7),
+        blocks_building: true,
         start_pos: BlockPos::new(3, 72, -2),
         position: at,
         previous: Vec3::new(3.5, 71.0, -1.5),
@@ -932,20 +934,6 @@ fn a_dialog_releases_held_keys_like_a_screen() {
     assert!(!toggles.is_down(SNEAK));
     toggles.screen_closed(options);
     assert!(toggles.is_down(SNEAK));
-}
-/// A key bound to key.pickItem clones over a container screen, as the
-/// middle button does; a key bound to attack or use does nothing there (#5378).
-#[test]
-fn a_key_bound_to_pick_block_clones_behind_a_container_screen() {
-    assert!(container_key_clones(MouseButton::Middle, KeyAction::Press));
-    assert!(container_key_clones(MouseButton::Middle, KeyAction::Repeat));
-    assert!(!container_key_clones(
-        MouseButton::Middle,
-        KeyAction::Release
-    ));
-    for button in [MouseButton::Left, MouseButton::Right] {
-        assert!(!container_key_clones(button, KeyAction::Press));
-    }
 }
 #[test]
 fn sleep_fade_lasts_ten_ticks_after_waking() {

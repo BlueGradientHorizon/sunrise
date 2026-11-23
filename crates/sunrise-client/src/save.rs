@@ -703,7 +703,6 @@ pub fn decode_end_gateway(tag: &Tag) -> crate::containers::EndGateway {
 /// (when `decode_items` is true, i.e. container-backed or unknown-block loads)
 /// the `Items` rows that can be represented losslessly as modeled slots.
 /// Slotless holders loaded at a known block keep `Items` verbatim in `nbt`.
-/// The game sizes the modeled vector to its container when it uses it.
 fn decode_mod_block_entity(
     id: String,
     tag: &Tag,
@@ -785,13 +784,23 @@ pub fn decode_block_entity_replacing(
     block: &str,
     previous: Option<&crate::containers::BlockEntity>,
 ) -> Option<((i32, i32, i32), crate::containers::BlockEntity)> {
-    let decoded = decode_block_entity_with_history(tag, previous, block_has_mod_item_slots(block))?;
+    let slots = mod_api::__private::parts_installation::block_container(block)
+        .map_or(0, |container| container.slots);
+    let mut decoded = decode_block_entity_with_history(tag, previous, slots > 0)?;
     // Several vanilla types share a decoded representation (for example barrel
     // and chest). Membership belongs to the saved type, not that representation.
     let saved_id = text(tag.get("id"))?;
-    let valid = match &decoded.1 {
+    let valid = match &mut decoded.1 {
         crate::containers::BlockEntity::Mod(m) => {
-            crate::block_entity_types::valid(block, m.id()) == Some(true)
+            if crate::block_entity_types::valid(block, m.id()) != Some(true) {
+                return None;
+            }
+            // Missing saved stacks are empty slots, not a shorter container.
+            // Keep any saved stacks past the declared size out of the menu but on disk.
+            if m.items.len() < slots {
+                m.items.resize(slots, None);
+            }
+            true
         }
         _ => crate::block_entity_types::valid(block, &saved_id)
             .unwrap_or_else(|| decoded.1.fits(block)),
@@ -5287,6 +5296,9 @@ impl SaveDir {
 
 impl<G: ChunkGenerator> ChunkGenerator for Persistent<G> {
     type Worker = G::Worker;
+    fn spawn_height(&self) -> i32 {
+        self.inner.spawn_height()
+    }
     fn worker(&self) -> G::Worker {
         let save = self.save.clone();
         self.inner.set_saved_starts(Arc::new(move |pos| {
@@ -8007,6 +8019,37 @@ mod tests {
         assert_eq!(encode(&data).get("Items"), Some(&parse("{energy:5}")));
         data.nbt.remove(&"Items".into());
         assert_eq!(encode(&data).get("Items"), None);
+    }
+
+    #[test]
+    fn mod_block_entity_round_trips_the_first_and_last_byte_indexed_slots() {
+        use crate::{
+            containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields},
+            items::ItemStack,
+        };
+
+        let mut items = vec![None; 256];
+        items[0] = Some(ItemStack::new("minecraft:stone", 2));
+        items[255] = Some(ItemStack::new("minecraft:dirt", 3));
+        let entity = BlockEntity::Mod(Box::new(ModBlockEntity::new(
+            "test:machine".into(),
+            ModBlockEntityFields {
+                items: items.clone(),
+                ..Default::default()
+            },
+        )));
+        let saved =
+            block_entity_encode::encode((0, 64, 0), &entity, "test:machine", &Default::default());
+        let expected_rows = sunrise_core::nbt::parse_snbt(
+            r#"[{Slot:0b,id:"minecraft:stone",count:2},{Slot:-1b,id:"minecraft:dirt",count:3}]"#,
+        )
+        .unwrap()
+        .0;
+        assert_eq!(saved.get("Items"), Some(&expected_rows));
+        let (_, BlockEntity::Mod(reloaded)) = decode_block_entity(&saved).unwrap() else {
+            panic!("expected mod block entity")
+        };
+        assert_eq!(reloaded.items, items);
     }
 
     #[test]

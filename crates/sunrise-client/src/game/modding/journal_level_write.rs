@@ -10,9 +10,9 @@ use mod_api::{
     AttachmentBatch, AttachmentStore, BlockEntityRef, BlockKey, BlockPos, BlockSide, BlockState,
     BlockUpdateFlags, Compound, Direction, FeatureFlags, FluidState, ItemStack, LevelHost,
     LevelRandomHost, LevelRef, LevelTicksHost, LevelWriteHost, LightLayer, PartStateError,
-    ParticleOptions, RandomDraw, Tags,
+    ParticleOptions, PlayerRef, RandomDraw, Tags,
 };
-use sunrise_core::ticks::TickPriority;
+use sunrise_core::{random::RandomSource, ticks::TickPriority};
 use sunrise_world::{
     fluid::FluidKind,
     level::{FluidWrite, LevelAccess as _, flags, states::BlockId},
@@ -166,16 +166,18 @@ impl LevelTicksHost for JournalLevelWrite<'_, '_> {
         else {
             return false;
         };
+        let level = super::Dim::from_id(self.level.dimension_id());
         self.game.block_ticks.blocks.chunk(pos.chunk()).is_some()
-            && self.queue(PendingWrite::BlockTick(pos, block, delay))
+            && self.queue(PendingWrite::BlockTick(level, pos, block, delay))
     }
     fn schedule_fluid_tick(&mut self, [x, y, z]: [i32; 3], fluid: &str, delay: i32) -> bool {
         let pos = BlockPos::new(x, y, z);
         let Some(fluid) = FluidKind::from_name(fluid) else {
             return false;
         };
+        let level = super::Dim::from_id(self.level.dimension_id());
         self.game.block_ticks.fluids.chunk(pos.chunk()).is_some()
-            && self.queue(PendingWrite::FluidTick(pos, fluid, delay))
+            && self.queue(PendingWrite::FluidTick(level, pos, fluid, delay))
     }
 }
 
@@ -215,17 +217,20 @@ impl LevelWriteHost for JournalLevelWrite<'_, '_> {
         {
             return false;
         }
-        self.queue(PendingWrite::Sound(NativeSound {
-            dimension: self.level.dimension_id(),
-            sound: sound.to_owned(),
-            at,
-            source: source as i32,
-            volume,
-            pitch,
-            seed: 0,
-            except: None,
-            entity: None,
-        }))
+        self.game
+            .emit_level_effect(PendingWrite::Sound(NativeSound {
+                dimension: self.level.dimension_id(),
+                sound: sound.to_owned(),
+                at,
+                source: source as i32,
+                volume,
+                pitch,
+                seed: 0,
+                except: None,
+                entity: None,
+                skip_hooks: false,
+            }));
+        true
     }
     fn send_particles(
         &mut self,
@@ -269,16 +274,53 @@ impl LevelWriteHost for JournalLevelWrite<'_, '_> {
             id,
             data,
             self.game.res.facts().states.len(),
-        ) && self.queue(PendingWrite::Event(id, pos, data))
+        ) && self.queue(PendingWrite::Event {
+            level: super::Dim::from_id(self.level.dimension_id()),
+            id,
+            pos,
+            data,
+        })
     }
 }
 
 pub(super) enum PendingWrite {
-    BlockTick(BlockPos, BlockId, i32),
-    FluidTick(BlockPos, FluidKind, i32),
+    BlockTick(super::Dim, BlockPos, BlockId, i32),
+    FluidTick(super::Dim, BlockPos, FluidKind, i32),
     Sound(NativeSound),
     Particles(QueuedParticle),
-    Event(i32, [i32; 3], i32),
+    Event {
+        level: super::Dim,
+        id: i32,
+        pos: [i32; 3],
+        data: i32,
+    },
+    GlobalEvent {
+        level: super::Dim,
+        id: i32,
+        pos: [i32; 3],
+        data: i32,
+    },
+    EntityEvent {
+        level: super::Dim,
+        entity_id: i32,
+        event: i8,
+        at: [f64; 3],
+    },
+    PlayerSound {
+        level: super::Dim,
+        player: PlayerRef,
+        sound: String,
+        at: [f64; 3],
+        source: usize,
+        volume: f32,
+        pitch: f32,
+    },
+    PlayerStopSound {
+        level: super::Dim,
+        player: PlayerRef,
+        sound: Option<String>,
+        source: Option<usize>,
+    },
 }
 
 impl Game<'_> {
@@ -302,34 +344,188 @@ impl Game<'_> {
         (replacement, flags)
     }
 
-    pub(super) fn commit_level_write(&mut self, write: PendingWrite) {
-        match write {
-            PendingWrite::BlockTick(pos, block, delay) => {
-                self.block_ticks.schedule_block(
-                    self.world.game_time,
-                    pos,
-                    block,
-                    delay,
-                    TickPriority::Normal,
-                );
+    /// Run `f` with `level` in place, temporarily swapping in a parked level and restoring the
+    /// active level on exit (including unwind). Never opens an unloaded level from disk; returns
+    /// `None` if `level` is neither active nor parked.
+    pub(super) fn with_effect_level<R>(
+        &mut self,
+        level: super::Dim,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> Option<R> {
+        if self.dim == level {
+            return Some(f(self));
+        }
+        if self.options.execution_role.is_client() || !self.levels.parked.contains_key(&level) {
+            return None;
+        }
+        let back = self.dim;
+        if let Err(e) = self.enter_level(level) {
+            log::error!("could not switch to {} for effect replay: {e}", level.id());
+            return None;
+        }
+        struct Restore<'g, 'a> {
+            game: &'g mut Game<'a>,
+            back: super::Dim,
+        }
+        impl Drop for Restore<'_, '_> {
+            fn drop(&mut self) {
+                if self.game.dim != self.back
+                    && let Err(e) = self.game.enter_level(self.back)
+                {
+                    log::error!(
+                        "could not restore {} after effect replay: {e}",
+                        self.back.id()
+                    );
+                }
             }
-            PendingWrite::FluidTick(pos, fluid, delay) => {
-                self.block_ticks
-                    .schedule_fluid(self.world.game_time, pos, fluid, delay);
+        }
+        let guard = Restore { game: self, back };
+        Some(f(guard.game))
+    }
+
+    /// Queue a validated level, entity, or player effect immediately, or defer pure delivery to
+    /// root commit when a transaction is open in the active level so rolled-back transactions and
+    /// aborted savepoints never publish sounds, particles, or level/global/entity events.
+    ///
+    /// For transactional sounds, `play_level_sound_at_*` hooks run synchronously here inside the
+    /// open transaction so listeners can edit/cancel the sound and have their own writes journaled;
+    /// only the resolved packet record is deferred to commit.
+    pub(super) fn emit_level_effect(&mut self, write: PendingWrite) {
+        if self.has_level_transaction() {
+            let write = match write {
+                PendingWrite::Sound(sound) => match self.resolve_native_sound(sound) {
+                    Some(resolved) => PendingWrite::Sound(resolved),
+                    None => return,
+                },
+                other => other,
+            };
+            self.after_commit(super::transactions::After::LevelWrite(Box::new(write)));
+            return;
+        }
+        self.publish_level_effect(write, false);
+    }
+
+    pub(super) fn commit_level_write(&mut self, write: PendingWrite) {
+        self.publish_level_effect(write, true);
+    }
+
+    /// Shared publication path for immediate calls (`deliver_now = false`) and pure root-commit
+    /// replay (`deliver_now = true`). When `deliver_now` is true, each effect replays in its
+    /// recorded `Dim` and writes packets directly in journal order without running mod callbacks
+    /// or draining unrelated queued effects.
+    fn publish_level_effect(&mut self, write: PendingWrite, deliver_now: bool) {
+        match write {
+            PendingWrite::BlockTick(level, pos, block, delay) => {
+                let _ = self.with_effect_level(level, |game| {
+                    game.block_ticks.schedule_block(
+                        game.world.game_time,
+                        pos,
+                        block,
+                        delay,
+                        TickPriority::Normal,
+                    );
+                });
+            }
+            PendingWrite::FluidTick(level, pos, fluid, delay) => {
+                let _ = self.with_effect_level(level, |game| {
+                    game.block_ticks
+                        .schedule_fluid(game.world.game_time, pos, fluid, delay);
+                });
             }
             PendingWrite::Sound(mut sound) => {
                 // The network's sound seed advances only for a published sound.
                 if let Some(host) = &self.lan {
                     sound.seed = host.hub.next_sound_seed();
-                    self.creatures.lan_sounds.push(sound);
-                    self.flush_native_sounds();
+                    if deliver_now {
+                        self.send_resolved_native_sound(&sound);
+                    } else if self.creatures.asking_level_sound {
+                        if let Some(resolved) = self.resolve_native_sound(sound) {
+                            self.send_resolved_native_sound(&resolved);
+                        }
+                    } else {
+                        self.creatures.lan_sounds.push(sound);
+                    }
                 }
             }
             PendingWrite::Particles(particles) => {
-                self.creatures.lan_particles.push(particles);
-                self.flush_lan_particles();
+                if deliver_now {
+                    self.lan_send_particles(particles);
+                } else {
+                    self.creatures.lan_particles.push(particles);
+                }
             }
-            PendingWrite::Event(id, pos, data) => self.level_event_at(id, pos, data),
+            PendingWrite::Event {
+                level,
+                id,
+                pos,
+                data,
+            } => {
+                let _ = self.with_effect_level(level, |game| {
+                    if deliver_now {
+                        game.deliver_level_event(id, pos, data);
+                    } else {
+                        game.level_event_at(id, pos, data);
+                    }
+                });
+            }
+            PendingWrite::GlobalEvent {
+                level,
+                id,
+                pos,
+                data,
+            } => {
+                let _ = self.with_effect_level(level, |game| {
+                    if deliver_now {
+                        game.deliver_global_level_event(id, pos, data);
+                    } else {
+                        game.global_level_event(id, pos, data);
+                    }
+                });
+            }
+            PendingWrite::EntityEvent {
+                level,
+                entity_id,
+                event,
+                at,
+            } => {
+                let _ = self.with_effect_level(level, |game| {
+                    if deliver_now {
+                        game.deliver_entity_event(entity_id, event, at);
+                    } else {
+                        game.lan_entity_event(entity_id, event, at);
+                    }
+                });
+            }
+            PendingWrite::PlayerSound {
+                level,
+                player,
+                sound,
+                at,
+                source,
+                volume,
+                pitch,
+            } => {
+                let _ = self.with_effect_level(level, |game| {
+                    let Some(target) = game.native_player_sound_target(player) else {
+                        return;
+                    };
+                    let seed = game.world.random.next_long();
+                    game.deliver_player_sound(target, &sound, at, volume, pitch, source, seed);
+                });
+            }
+            PendingWrite::PlayerStopSound {
+                level,
+                player,
+                sound,
+                source,
+            } => {
+                let _ = self.with_effect_level(level, |game| {
+                    let Some(target) = game.native_player_sound_target(player) else {
+                        return;
+                    };
+                    game.deliver_player_stop_sound(target, sound.as_deref(), source);
+                });
+            }
         }
     }
 
@@ -349,22 +545,13 @@ impl Game<'_> {
         let mut answer = None;
         mod_api::dispatch_place_liquid_with(write.pos, state, fluid, &mut answer, |part, event| {
             // For a player bucket this can be the root scope; the fluid
-            // utility already has an outer transaction. `run_transaction`
-            // guarantees rollback if `part.place_liquid` unwinds before the
-            // dispatcher catches the panic.
-            let answer: Result<Option<bool>, Option<bool>> =
-                mod_api::run_transaction(self, |game, _| {
-                    let reply = JournalLevelWrite::new(game, level)
-                        .and_then(|mut host| part.place_liquid(&mut host, event));
-                    if reply == Some(true) {
-                        Ok(reply)
-                    } else {
-                        Err(reply)
-                    }
-                });
-            match answer {
-                Ok(reply) | Err(reply) => reply,
-            }
+            // utility already has an outer transaction. Unwinding aborts this
+            // scope before the owner dispatcher catches a Part panic.
+            self.storage_scope(|game, _| {
+                let reply = JournalLevelWrite::new(game, level)
+                    .and_then(|mut host| part.place_liquid(&mut host, event));
+                (reply, reply == Some(true))
+            })
         });
         answer
     }

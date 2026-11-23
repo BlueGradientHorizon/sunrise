@@ -110,10 +110,16 @@ jobs:
             curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal
           fi
           bash tools/ci/rustup_install.sh --profile minimal
+      # $RUNNER_TEMP and the tool cache are tmpfs counted against the runner's memory, which the sunrise-client lib
+      # test's rustc nearly fills: the JDK is kept on the slot's disk and reused by later jobs (tools/ci/keep_jdk_on_disk.sh).
+      - name: Link the JDK this slot kept
+        run: bash tools/ci/keep_jdk_on_disk.sh before "$DYNA_CI_BUILD/runner-temp-before-java"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '25'
+      - name: Move the JDK out of the runner's memory
+        run: bash tools/ci/keep_jdk_on_disk.sh after "$DYNA_CI_BUILD/runner-temp-before-java"
       # Every job that builds in this runner's persistent target keeps its source snapshot true: a
       # build of another tree without it left artifacts that a later job judged fresh (stale generated
       # sources, 2026-11-13). Only byte-identical Git objects regain their previous timestamps.
@@ -157,10 +163,24 @@ jobs:
           CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
           CARGO_PROFILE_RELEASE_INCREMENTAL: 'true'
           CARGO_PROFILE_DEV_OPT_LEVEL: '3'
+          # tools/parity.py PROFILE: the harnesses' own builds must match these, or they rebuild.
+          CARGO_PROFILE_TEST_DEBUG: 'false'
         run: |
           export CARGO_TARGET_DIR="$PWD/.local/parity-target"
-          exec > "$PARITY_LOG_DIR/game-probes.log" 2>&1
-          scripts=(tools/test_*_parity.py)
+          exec 3>&1 > "$PARITY_LOG_DIR/game-probes.log" 2>&1
+          # This share's harnesses, from the one plan (a shard NAME#N is NAME's script); a run with no plan scans all.
+          plan="$RUNNER_TEMP/plan/bucket-${BUCKET:-0}.json"
+          if [ -f "$plan" ]; then
+            listed=$(python3 -c 'import json, sys
+          for name in sorted({entry.split("#")[0] for entry in json.load(open(sys.argv[1]))}): print(f"tools/test_{name}_parity.py")' "$plan") || {
+              echo "::error::Could not read the game-probe plan for this parity share." >&3
+              exit 1
+            }
+            scripts=($listed)
+          else
+            scripts=(tools/test_*_parity.py)
+          fi
+          [ ${#scripts[@]} -gt 0 ] || exit 0
           if grep -q "'--example', 'client_probe'" "${scripts[@]}"; then
             cargo build --profile fast -p sunrise-client-lib --example client_probe
           fi
@@ -170,9 +190,8 @@ jobs:
           if grep -Eq "[\"']sunrise-game[\"'], [\"']--bin[\"'], [\"']sunrise-client[\"']" "${scripts[@]}"; then
             cargo build --profile fast -p sunrise-game --bin sunrise-client
           fi
-          # Every package's lib tests a harness runs as `cargo test -p <package> --lib` (default features, the dev
-          # profile as parity.py sets it), one at a time and before any oracle starts; a harness's own feature set
-          # or profile still compiles in its run. One rustc of up to 12 GiB each, which a 16 GiB runner killed
+          # Warm the lib-test variants the harnesses request one at a time before any oracle starts.
+          # One rustc of up to 12 GiB each, which a 16 GiB runner killed
           # beside the harnesses (signal 9: mount_control and damage_catalog on main, 2026-11-16). A package left
           # to the harness compiles inside the harness's own time limit (dragon_contacts gives cargo 240 s, and
           # its tests moved to sunrise-gameplay in 7127d19eae).
@@ -181,6 +200,15 @@ jobs:
           for package in $packages; do
             cargo test --locked --no-run -p "$package" --lib
           done
+          # sunrise-client's fixtures run from their own binary, built without the lib's other tests, whose one
+          # rustc a 16 GiB runner cannot hold (#4896): lab.parity_fixtures() builds the same commands.
+          if grep -q "lab.parity_fixtures()" "${scripts[@]}"; then
+            cargo build --locked --profile test -p sunrise-parity-fixtures --features fixtures,client-defaults \
+              --bin sunrise-parity-fixtures
+          fi
+          if grep -q "lab.parity_fixtures(default_features=False)" "${scripts[@]}"; then
+            cargo build --locked --profile test -p sunrise-parity-fixtures --features fixtures --bin sunrise-parity-fixtures
+          fi
       - name: Build parity probes
         id: probes
         run: |

@@ -124,7 +124,22 @@ receives the live typed `ItemStack` from its hotbar slot while the same item kin
 if the slot was emptied or replaced. These callbacks intercept local input without starting
 ordinary item use; see the linked example for registration and typed component reads.
 
-## A stack's name
+## A stack's names and lore
+
+On either side, `stack.custom_name(host)` and `stack.item_name(host)` return the effective
+name components as `Result<Option<Text>, TextFormError>`. `stack.lore(host)` returns
+`Result<Vec<Text>, TextFormError>`, with an empty vector if absent. A read takes the patch
+first, otherwise the item's prototype. An explicit removal hides the default; an invalid
+present value returns a `TextFormError`.
+
+On an owned stack, use `set_custom_name(host, Some(&name))`, `set_item_name(host, Some(&name))`,
+and `set_lore(host, &lines)`. To append lore, read `let mut lines = stack.lore(host)?`, push a
+`Text`, and write the slice back. Pass `None` for a name or `&[]` for lore to remove the component,
+including a prototype default. Writing the prototype value removes any override or explicit
+removal. If a text cannot be encoded or lore exceeds vanilla's 256 lines
+(`ItemLore.MAX_LINES`), the write leaves the stack unchanged. None of these methods add style:
+vanilla's styled hover name defaults to italics for a custom name unless the component overrides
+it, but not for `item_name`.
 
 `host.hover_name(&stack)` is `ItemStack.getHoverName()` as a component, on both sides. The
 custom name wins, then a written book's nonblank raw title. Otherwise the item's name is used:
@@ -137,6 +152,18 @@ translation key instead. Only a fallback written into a component is kept. The r
 no rarity colour or italics. Each player renders the component in their own language: put it into world
 text or a display as it is. Call `host.text_string(&name)` for a string in the language of the
 side that calls it. An invalid stack is a `TextFormError`.
+
+## A stack's use animation
+
+`stack.use_animation(host)` is `ItemStack.getUseAnimation` with the mods' answers applied, on
+either side: the animation the renderer draws while the stack is in use (`Bow`, `Drink`, `Block`,
+`Spear`...). It starts from the item's own answer (its consumable, shield or kinetic components
+included), then the item's Part may change it in `ItemPart::use_animation`, which is asked on both
+sides with a read-only `&dyn Host`: answer from the stack alone. There is no global listener; the
+Part is item-scoped. A `Spear` answer for a stack without kinetic data reads `None`, as it draws.
+Inside the Part, reading the effective animation of any stack of the item it is answering (a copy
+with another count or components included) gives the item's own answer: the Part is not asked
+again. Reading another item's stack asks that item's Parts.
 
 ## The NBT escape
 
