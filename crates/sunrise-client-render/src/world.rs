@@ -475,13 +475,30 @@ impl World {
     pub fn below_world_y(&self) -> f64 {
         f64::from(self.shape.min_y - 64)
     }
+    #[inline]
+    pub fn chunk_at(&self, cx: i32, cz: i32) -> Option<&Chunk> {
+        self.chunks.get(&(cx, cz)).map(Arc::as_ref)
+    }
+
     /// The biome table index of the noise cell at a block (`ChunkAccess.getNoiseBiome`): a
     /// cell above or below the level reads its top or bottom cells, not the cells the chunks'
     /// widened column holds there (vanilla's Nether and End save none, and read back they
     /// hold the table's first biome). `None` where the chunk isn't loaded.
     pub fn noise_biome(&self, x: i32, y: i32, z: i32) -> Option<u16> {
+        self.noise_biome_with_chunk(x, y, z, self.chunk_at(x >> 4, z >> 4))
+    }
+
+    /// Reads the noise biome with the caller's lookup result for this column.
+    #[inline]
+    pub fn noise_biome_with_chunk(
+        &self,
+        x: i32,
+        y: i32,
+        z: i32,
+        chunk: Option<&Chunk>,
+    ) -> Option<u16> {
         let y = y.clamp(self.shape.min_y, self.shape.max_y() - 1);
-        Some(self.chunks.get(&(x >> 4, z >> 4))?.biome(x, y, z))
+        Some(chunk?.biome(x, y, z))
     }
     /// One above the highest block Y the level's chunks hold.
     pub fn top_y(&self) -> i32 {
@@ -735,8 +752,19 @@ impl World {
     /// block that isn't `air`, or the column's minimum Y (also where the chunk
     /// isn't loaded).
     pub fn world_surface(&self, x: i32, z: i32, air: impl Fn(BlockStateId) -> bool) -> i32 {
-        let bottom = self.layout().min_y();
-        self.chunks.get(&(x >> 4, z >> 4)).map_or(bottom, |chunk| {
+        self.world_surface_with_chunk(x, z, self.chunk_at(x >> 4, z >> 4), air)
+    }
+
+    /// Reads WORLD_SURFACE with the caller's lookup result for this column.
+    #[inline]
+    pub fn world_surface_with_chunk(
+        &self,
+        x: i32,
+        z: i32,
+        chunk: Option<&Chunk>,
+        air: impl Fn(BlockStateId) -> bool,
+    ) -> i32 {
+        chunk.map_or(self.bottom_y(), |chunk| {
             chunk.world_surface(x, z, |v| air(BlockStateId(v)))
         })
     }
@@ -751,9 +779,13 @@ impl World {
     }
     #[inline]
     pub fn block(&self, x: i32, y: i32, z: i32) -> BlockStateId {
-        self.chunks
-            .get(&(x >> 4, z >> 4))
-            .map_or(self.air, |chunk| chunk.block(x & 15, y, z & 15))
+        self.block_with_chunk(x, y, z, self.chunk_at(x >> 4, z >> 4))
+    }
+
+    /// Reads a block with the caller's lookup result for this column.
+    #[inline]
+    pub fn block_with_chunk(&self, x: i32, y: i32, z: i32, chunk: Option<&Chunk>) -> BlockStateId {
+        chunk.map_or(self.air, |chunk| chunk.block(x & 15, y, z & 15))
     }
     /// Whether a block of the box `lo..=hi` may match, from the palettes of
     /// the sections it reaches (a palette of the whole registry may hold
@@ -807,23 +839,27 @@ impl World {
     /// no sky layer (`LevelLightEngine.getRawBrightness`). Never loads a chunk.
     #[inline]
     pub fn light(&self, x: i32, y: i32, z: i32) -> u8 {
-        match self.chunks.get(&(x >> 4, z >> 4)).and_then(|chunk| {
+        self.light_with_chunk(x, y, z, self.chunk_at(x >> 4, z >> 4))
+    }
+
+    /// Reads published light with the caller's lookup result for this column.
+    #[inline]
+    pub fn light_with_chunk(&self, x: i32, y: i32, z: i32, chunk: Option<&Chunk>) -> u8 {
+        match chunk.and_then(|chunk| {
             let s = chunk.section_index(y)?;
             Some(chunk.sections[s].light(crate::chunk::index(x, y, z)))
         }) {
             Some(light) => light,
-            None => self.light_outside(x, y, z),
+            None => self.light_outside(x, y, z, chunk),
         }
     }
     /// The light of a position no section holds: past a loaded column's sections, or in a column that
-    /// is not loaded ([`Self::border_light`]), without sky in a level without it. It takes the same
-    /// arguments as [`Self::light`] and looks the column up again, so the hot read keeps nothing live
-    /// for it; a read inside a column of a level without skylight is already without it (its
-    /// sections' sky is 0).
+    /// is not loaded ([`Self::border_light`]), without sky in a level without it. A read inside a
+    /// section of a level without skylight already has sky set to 0.
     #[cold]
     #[inline(never)]
-    fn light_outside(&self, x: i32, y: i32, z: i32) -> u8 {
-        let light = match self.chunks.get(&(x >> 4, z >> 4)) {
+    fn light_outside(&self, x: i32, y: i32, z: i32, chunk: Option<&Chunk>) -> u8 {
+        let light = match chunk {
             Some(chunk) => chunk.light(x & 15, y, z & 15),
             None => self.border_light((x >> 4, z >> 4), x, y, z),
         };
