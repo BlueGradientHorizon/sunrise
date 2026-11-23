@@ -1055,7 +1055,7 @@ fn the_lifecycle_moments_fire_once_each_in_order() {
 #[test]
 #[ignore = "daily"]
 fn an_arm_pose_answer_replaces_the_pose_the_item_gives() {
-    use crate::game::native_entity_refs::tests::with_game;
+    use crate::game::native_entity_refs::tests::with_client_game;
     use mod_api::{ArmPose, ClientHost, GetArmPoseEvent, Hand, Hooks, ModEntry};
     use mod_platform::testing::with_mods;
 
@@ -1072,7 +1072,7 @@ fn an_arm_pose_answer_replaces_the_pose_the_item_gives() {
     }
 
     let stick = sunrise_client::items::ItemStack::new("minecraft:stick", 1);
-    with_game(|game| {
+    with_client_game(|game| {
         let mut m = sunrise_client::mobs::Mob::new(
             1,
             game.res.player_type().clone().unwrap(),

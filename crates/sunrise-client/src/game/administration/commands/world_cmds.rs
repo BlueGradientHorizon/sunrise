@@ -236,6 +236,7 @@ impl Game<'_> {
                 .and_then(|target| self.network_entity_id(target))
                 .unwrap_or(0),
         );
+        attack.direct_type = direct.map(|target| self.target_type(target));
         match direct {
             Some(Target::Projectile(id)) => {
                 if let Some(shot) = self.creatures.projectiles.iter().find(|shot| shot.id == id) {
@@ -246,6 +247,7 @@ impl Game<'_> {
                 if let Some(shot) = self.tridents.iter().find(|shot| shot.id == id) {
                     attack.projectile = Some(id as i32);
                     attack.projectile_kind = DirectEntity::Arrow;
+                    attack.projectile_type = Some("minecraft:trident");
                     Self::set_projectile_weapon(&mut attack, Some(&shot.stack));
                 }
             }
@@ -488,22 +490,21 @@ impl Game<'_> {
         let plan = self.prepare_knockback_credit(id as i32, damage.attacker, self.combat.attack());
         let attack = self.combat.attack();
         let mut credit = plan.lend(&mut self.last_hurt_by_player);
-        let mut reinforcements = Vec::new();
-        let health_changed;
-        let hurt = {
-            let m = &mut self.mobs[index];
-            let queued = m.outbox.len();
-            let old_health = m.health;
-            let hurt = m.damage(
-                crate::game::entity::damage_level_of!(self, attack, &mut credit, None),
-                amount,
-                damage,
-            );
-            health_changed = hurt && m.health != old_health;
-            if hurt {
-                reinforcements = take_new_reinforcements(&mut m.outbox, queued);
-            }
-            hurt
+        let mob = &mut self.mobs[index];
+        let (queued, old_health) = (mob.outbox.len(), mob.health);
+        let hurt = mob.damage(
+            crate::game::entity::damage_level_of!(self, attack, &mut credit, None),
+            amount,
+            damage,
+        );
+        let Some((index, hurt)) = self.complete_mob_hurt(index, hurt) else {
+            return false;
+        };
+        let health_changed = hurt && self.mobs[index].health != old_health;
+        let reinforcements = if hurt {
+            take_new_reinforcements(&mut self.mobs[index].outbox, queued)
+        } else {
+            Vec::new()
         };
         if hurt {
             if damage.attacker == Some(Who::Player) {
@@ -2437,6 +2438,7 @@ mod datapack_damage_tests {
     }
 
     fn pig(game: &mut crate::game::Game<'_>, id: u32, at: Vec3) {
+        game.next_entity = game.next_entity.max(id);
         let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
         let mut pig = Mob::new(id, kind, at, 0.0);
         pig.no_ai = true;
@@ -2512,6 +2514,7 @@ mod datapack_damage_tests {
         with_game(|game| {
             with_pack(game);
             let crystal = |game: &mut crate::game::Game<'_>, id: u32| {
+                game.next_entity = game.next_entity.max(id);
                 game.crystals.push(crate::game::dragon::Crystal {
                     attachment_lifetime: Default::default(),
                     join: Default::default(),

@@ -194,6 +194,10 @@ pub(super) trait Entity: EntityRules {
     fn is_pickable(&self) -> bool {
         false
     }
+    /// `Entity.canBeHitByProjectile`: alive and pickable.
+    fn can_be_hit_by_projectile(&self) -> bool {
+        self.is_alive() && self.is_pickable()
+    }
     /// `instanceof LivingEntity`.
     fn is_living(&self) -> bool {
         false
@@ -2299,6 +2303,7 @@ macro_rules! damage_level_of {
         )
         .attacked_by($attack)
         .no_push()
+        .with_mob_hurt_handoff(&mut $game.paused_mob_hurt)
         .with_effects(crate::game::entity::hit_effects_of!($game, $lend))
         $(.with_player_equipment($equipment))?
     };
@@ -2312,6 +2317,7 @@ macro_rules! damage_level_of {
         )
         .attacked_by($attack)
         .with_knockback_credit($credit)
+        .with_mob_hurt_handoff(&mut $game.paused_mob_hurt)
         .with_effects(crate::game::entity::hit_effects_of!($game, $lend))
     };
 }
@@ -3058,7 +3064,7 @@ impl Entity for Minecart {
 }
 
 /// Width and height `EntityType.ARMOR_STAND` gives a stand.
-fn armor_stand_size(stand: &ArmorStand) -> (f64, f64) {
+pub(super) fn armor_stand_size(stand: &ArmorStand) -> (f64, f64) {
     if stand.marker {
         (0.0, 0.0)
     } else if stand.small {
