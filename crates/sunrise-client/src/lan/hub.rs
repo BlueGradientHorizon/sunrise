@@ -5129,6 +5129,12 @@ impl Hub {
             // ServerPlayer.initInventoryMenu.
         });
         self.send_inventory(i);
+        // PlayerList.sendAllPlayerInfo: the replacement's held slot, which a respawn without
+        // keep_inventory resets while the client still holds the old selection.
+        let g = &self.guests[i];
+        g.send(&C::SetHeldSlot(play::SetHeldSlot {
+            slot: g.selected as i32,
+        }));
     }
 
     /// The level the players are in: the server holds one at a time, and the
