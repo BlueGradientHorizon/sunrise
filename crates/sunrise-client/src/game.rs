@@ -10251,12 +10251,37 @@ impl Game<'_> {
         let (screenshot, screenshot_result) = (old.screenshot.take(), old.screenshot_result.take());
         let display = old.display_reading();
         drop(old);
+        // The new device may be smaller or larger than the lost one: stitch the GUI atlas for it
+        // and rebind its UV consumers before the renderer uploads pages and anything publishes.
+        let device = pollster::block_on(sunrise_client::gfx::Opened::for_window(
+            &window,
+            self.options.offscreen,
+            self.settings.sunrise.api,
+            self.pack.render.texture_layers,
+        ))?;
+        if self.gui.stitch_for_device(
+            &self.pack.source,
+            &self.vanilla_root(),
+            device.max_atlas_size(),
+        )? {
+            self.particles.reload(
+                &self.pack.source,
+                &self.gui.atlas.sprites,
+                &self.gui.atlas.translucent,
+            );
+            self.standalone_geometry =
+                native_block_entity_draw::StandaloneGeometry::new(&self.pack, &self.gui);
+            let (pool, mut names) = self.gui.atlas.dynamic_names();
+            self.dynamic_textures.rebind(pool, &mut names);
+            sunrise_client::ui_theme::reset_atlas();
+            self.native_texture_atlas_stitched(mod_api::TextureAtlas::Gui);
+        }
         let (mut renderer, clouds) = build_renderer(
             window,
             self.options.offscreen,
             &self.pack,
             &self.gui,
-            sunrise_client::gfx::RendererDevice::New,
+            sunrise_client::gfx::RendererDevice::Opened(Box::new(device)),
             None,
             self.settings.sunrise.api,
             self.settings.sunrise.translucent_batching,
