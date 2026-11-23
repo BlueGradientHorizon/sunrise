@@ -673,9 +673,10 @@ mod refusal_tests {
             .output()
             .unwrap();
         let sysroot = String::from_utf8(sysroot.stdout).unwrap();
+        use crate::rust::Toolchain as _;
         let rust = crate::rust::tests::system(sysroot.trim().into());
         let dir = tempfile::tempdir().unwrap();
-        fs::write(
+        std::fs::write(
             dir.path().join("sunrise-prebuilt.json"),
             serde_json::json!({
                 "package_format": sunrise_mod_package::sdk::PACKAGE_FORMAT,
