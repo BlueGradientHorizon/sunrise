@@ -1094,8 +1094,8 @@ mod sweep_tests {
         });
     }
 
-    /// Without a part the projectile's sweep costs one gate test and nothing else,
-    /// exactly what main's recorded route did with no listener.
+    /// Without a part, a projectile that takes no block effects of its own
+    /// (llama spit) costs its sweep one gate test and nothing else.
     #[test]
     #[ignore = "daily"]
     fn a_projectile_without_a_part_is_left_alone() {
@@ -1116,7 +1116,7 @@ mod sweep_tests {
             );
             game.world.set(1, 100, 0, stone).unwrap();
             let mut shot = sunrise_client::projectiles::Projectile::new(
-                sunrise_client::projectiles::ProjectileKind::Snowball,
+                sunrise_client::projectiles::ProjectileKind::LlamaSpit,
                 sunrise_core::geometry::Vec3::new(1.5, 100.0, 0.5),
                 None,
             );

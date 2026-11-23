@@ -620,10 +620,11 @@ impl RenderEntityBounds for Cushion {
 }
 
 /// Whether this projectile still lives its list's tick: an arrow's state was
-/// not removed. A thrown projectile leaves its list through the batch's own
-/// keep flags, not a field of its own.
+/// not removed, and no block effect destroyed it (a shulker bullet's
+/// `hurtServer`). A thrown projectile otherwise leaves its list through the
+/// batch's own keep flags, not a field of its own.
 pub(in crate::game) fn shot_alive(shot: &Projectile) -> bool {
-    shot.arrow.as_ref().is_none_or(|a| !a.removed)
+    !shot.destroyed && shot.arrow.as_ref().is_none_or(|a| !a.removed)
 }
 
 /// The item's contacts run in its own sweep: immediate cactus hurt and the
@@ -718,9 +719,14 @@ impl sunrise_client::block_contact::InsideWalk for ItemInside<'_, '_> {
 }
 
 /// The projectile's view of the shared inside walk, the item's shape of it.
+/// `builtins` is set for the kinds whose own tick applies block effects
+/// ([`Projectile::applies_block_effects`]): their fire, lava, water, cauldrons
+/// and powder snow queue here. An arrow's run in its own collector, and llama
+/// spit takes none, so the walk gives those only the parts' contacts.
 pub(in crate::game) struct ProjectileInside<'a, 'g> {
     pub(in crate::game) game: &'a mut Game<'g>,
     pub(in crate::game) shot: &'a mut Projectile,
+    pub(in crate::game) builtins: bool,
 }
 
 impl sunrise_client::block_contact::InsideWalk for ProjectileInside<'_, '_> {
@@ -750,10 +756,42 @@ impl sunrise_client::block_contact::InsideWalk for ProjectileInside<'_, '_> {
     }
     fn inside_shape(
         &mut self,
-        _state: sunrise_world::registry::BlockStateId,
-        _at: sunrise_core::position::BlockPos,
+        state: sunrise_world::registry::BlockStateId,
+        at: BlockPos,
     ) -> sunrise_client::block_contact::InsideShape {
-        sunrise_client::block_contact::InsideShape::Full
+        self.game.pack.assets.registry.state(state).map_or(
+            sunrise_client::block_contact::InsideShape::Full,
+            |def| {
+                sunrise_client::block_contact::cauldron_inside_shape(
+                    self.game.collision,
+                    state,
+                    def,
+                    at,
+                )
+            },
+        )
+    }
+    fn collided_with_fluid(&self, at: BlockPos, from: Vec3, to: Vec3) -> bool {
+        self.builtins
+            && sunrise_client::entities::swept_fluid_contact(
+                &self.game.world,
+                &self.game.res.motion().fluids,
+                at,
+                self.bounds_at(from),
+                to.subtract(from),
+            )
+    }
+    fn fluid_inside(
+        &mut self,
+        at: BlockPos,
+        _: i32,
+        effects: &mut mod_api::InsideEffects,
+    ) -> Result<(), ()> {
+        sunrise_client::block_contact::queue_fluid_effects(
+            effects,
+            self.game.res.motion().fluids.fluid(self.block(at)).kind(),
+        );
+        Ok(())
     }
     fn entity_inside(
         &mut self,
@@ -766,6 +804,10 @@ impl sunrise_client::block_contact::InsideWalk for ProjectileInside<'_, '_> {
         let (id, kind) = (self.shot.id, self.shot.entity_type());
         self.game
             .fire_batch_inside(id as i32, kind, state, at, precise, effects);
+        if self.builtins {
+            let block = &*self.game.res.facts().get(state).name;
+            sunrise_client::block_contact::queue_block_effects(effects, block, state, at);
+        }
         Ok(())
     }
 }
@@ -1047,7 +1089,7 @@ impl mod_api::InsideEntityAccess for ProjectileInsideAccess<'_, '_> {
     }
 
     fn is_on_fire(&self) -> bool {
-        self.shot.on_fire()
+        self.shot.burning()
     }
 
     fn fall_distance(&self) -> f64 {
@@ -1174,6 +1216,87 @@ impl mod_api::InsideEntityAccess for ProjectileInsideAccess<'_, '_> {
                 self.shot.fire_ticks = self.shot.fire_ticks.max(300);
             }
             mod_api::InsideEffect::Freeze | mod_api::InsideEffect::ClearFreeze => {}
+        }
+    }
+
+    fn apply_builtin(&mut self, action: mod_api::__private::BuiltinInsideAction) {
+        use mod_api::__private::BuiltinInsideAction as Action;
+        match action {
+            // PowderSnowBlock.entityInside: the `mob_griefing` rule (a projectile
+            // is no player) and the projectile's `mayInteract`.
+            Action::PowderSnowMelt([x, y, z]) => {
+                if self.shot.burning()
+                    && self.game.can_entity_grief(None)
+                    && self
+                        .game
+                        .projectile_may_interact(self.shot, BlockPos::new(x, y, z))
+                    && let Some(level) = self.game.level(self.game.dim.id())
+                {
+                    self.game
+                        .level_destroy_block(level, [x, y, z], false, None, false);
+                }
+            }
+            Action::LayeredCauldronExtinguish {
+                pos: [x, y, z],
+                state,
+            } => {
+                let pos = BlockPos::new(x, y, z);
+                if self.shot.burning() && self.game.projectile_may_interact(self.shot, pos) {
+                    self.game
+                        .cauldron_extinguish_at(pos, sunrise_world::registry::BlockStateId(state));
+                }
+            }
+            Action::FireHurt(_) => {
+                self.builtin_hurt("minecraft:in_fire");
+            }
+            Action::LavaHurt => {
+                // Entity.lavaHurt: the burn plays when `hurtServer` returned true,
+                // which only a shulker bullet's does.
+                if self.builtin_hurt("minecraft:lava") {
+                    let pitch = 2.0 + self.shot.random.0.next_float() * 0.4;
+                    self.game.audio.play(
+                        "minecraft:entity.generic.burn",
+                        Some([
+                            self.shot.position.x,
+                            self.shot.position.y,
+                            self.shot.position.z,
+                        ]),
+                        0.4,
+                        pitch,
+                    );
+                }
+            }
+        }
+    }
+}
+
+impl ProjectileInsideAccess<'_, '_> {
+    /// `hurtServer` from a block: `ShulkerBullet`'s plays its hurt, sends its
+    /// crits and destroys it (true); `AbstractHurtingProjectile`'s does nothing;
+    /// `Projectile`'s marks the thrown kinds hurt, whatever the damage. Only
+    /// the bullet's is true.
+    fn builtin_hurt(&mut self, damage_type: &str) -> bool {
+        match self.shot.kind {
+            ProjectileKind::ShulkerBullet { .. } => {
+                self.shot.destroyed = true;
+                self.game.shulker_bullet_hurt([
+                    self.shot.position.x,
+                    self.shot.position.y,
+                    self.shot.position.z,
+                ]);
+                true
+            }
+            _ if self.shot.is_fireball()
+                || matches!(
+                    self.shot.kind,
+                    ProjectileKind::WindCharge | ProjectileKind::BreezeWindCharge
+                ) =>
+            {
+                false
+            }
+            _ => self
+                .game
+                .hurt_lent_projectile(self.shot, damage_type, None, None, None),
         }
     }
 }
@@ -1525,22 +1648,34 @@ impl Game<'_> {
         }
     }
 
-    /// The projectile's `Entity.checkInsideBlocks`, the same batch sweep the
-    /// item's is: the shared walk over its move, the isolated fire over a lent
-    /// level, and the flush into this projectile's own tick.
+    /// The projectile's `Entity.applyEffectsFromBlocks`, the same batch sweep the
+    /// item's is: the shared walk over its move, the isolated parts over a lent
+    /// level, and the flush into this projectile's own tick. For the kinds whose
+    /// tick applies block effects the server's tail follows: rain, the
+    /// extinguish hiss, the fire reset and their base tick
+    /// ([`Projectile::finish_block_effects`]).
     pub(in crate::game) fn sweep_projectile_inside(
         &mut self,
         shot: &mut Projectile,
         sources: InsideSources<'_>,
     ) {
-        if !sunrise_client::block_contact::HOOKS
-            .get()
-            .is_some_and(|hooks| (hooks.any_inside)())
+        // A client's copy takes no block effects of its own: its fire is the
+        // server's flag, and the blocks are the server's.
+        let builtins = shot.applies_block_effects() && self.is_logical_server();
+        if !builtins
+            && !sunrise_client::block_contact::HOOKS
+                .get()
+                .is_some_and(|hooks| (hooks.any_inside)())
         {
             return;
         }
+        let (fire_before, was_on_fire) = (shot.fire_ticks, shot.burning());
         let mut effects = mod_api::InsideEffects::default();
-        let mut inside = ProjectileInside { game: self, shot };
+        let mut inside = ProjectileInside {
+            game: self,
+            shot,
+            builtins,
+        };
         let movement = sunrise_world::entity_move::MovementRecord {
             from: inside.shot.previous,
             to: inside.shot.position,
@@ -1553,13 +1688,54 @@ impl Game<'_> {
             &mut visited,
             &mut effects,
         );
-        let ProjectileInside { game, shot } = inside;
+        let ProjectileInside { game, shot, .. } = inside;
         let mut access = ProjectileInsideAccess {
             game,
             shot,
             sources,
         };
         effects.apply_and_clear(&mut access);
+        let ProjectileInsideAccess { game, shot, .. } = access;
+        if !builtins || !shot_alive(shot) {
+            return;
+        }
+        let in_rain = game.rain_falls_on(shot.position, shot.bounds().max_position().y);
+        if let Some(pitch) = shot.finish_block_effects(fire_before, was_on_fire, in_rain) {
+            game.audio.play(
+                "minecraft:entity.generic.extinguish_fire",
+                Some([shot.position.x, shot.position.y, shot.position.z]),
+                0.7,
+                pitch,
+            );
+        }
+    }
+
+    /// `Projectile.mayInteract` as NeoForge has it: a player owner's
+    /// `ServerPlayer.mayInteract` (inside the world border, not under spawn
+    /// protection), yes with no owner (or one that is gone), else
+    /// `canEntityGrief` for the owner.
+    pub(in crate::game) fn projectile_may_interact(
+        &self,
+        shot: &Projectile,
+        pos: BlockPos,
+    ) -> bool {
+        let guest = match self.resolved_projectile_owner(shot.owner, shot.guest) {
+            None => return true,
+            Some(sunrise_client::mobs::Who::Player) => shot.guest,
+            Some(sunrise_client::mobs::Who::Mob(id)) => match self.lan_guest_conn_by_id(id) {
+                Some(conn) => Some(conn),
+                None => return self.can_entity_grief(Some(id)),
+            },
+        };
+        let protection = guest
+            .zip(self.lan.as_ref())
+            .and_then(|(conn, host)| self.spawn_protection_for(host, host.hub.guest(conn)?.uuid));
+        self.border
+            .geometry()
+            .is_within_bounds(f64::from(pos.x), f64::from(pos.z), 0.0)
+            && !protection.is_some_and(|radius| {
+                self.spawn_protects(radius, self.dim.id(), [pos.x, pos.y, pos.z])
+            })
     }
 
     /// Resolve optional direct/causing source handles against the live level during
@@ -1634,14 +1810,6 @@ impl Game<'_> {
             shot.sync_velocity = true;
         }
         false
-    }
-
-    /// Lava uses the same `Projectile.hurtServer` path as explicit damage.
-    pub(in crate::game) fn lava_mark_hurt(&mut self, shot: &mut Projectile) {
-        if !shot.take_lava_marked() {
-            return;
-        }
-        let _ = self.hurt_lent_projectile(shot, "minecraft:lava", None, None, None);
     }
 
     /// An `entity_inside` part's contact for a kind the batch ticks, fired

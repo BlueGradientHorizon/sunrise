@@ -5018,12 +5018,15 @@ impl Game<'_> {
             return self.tick_projectiles_live(through, ticking, vanish, round);
         }
         let mut projectiles = self.creatures.projectiles.lift();
-        // The tick's own projectiles: what joins during it (a hook's spawn) ticks from the next.
-        let last_ticked_join = projectiles.iter().map(|p| p.join).max();
+        // The projectiles this tick really ticked: what joins during it (a hook's spawn) ticks
+        // from the next, and one a mod canceled, or whose chunk does not tick, stays as it is.
+        // `swept` holds those whose block effects are settled without a sweep: a wind charge
+        // that burst at the world's top instead of its tick.
+        let mut ticked = sunrise_client::fast_hash::FxHashSet::default();
+        let mut swept = sunrise_client::fast_hash::FxHashSet::default();
         let mut hits = Vec::new();
         let mut arrow_events = Vec::new();
         let mut shoot_events = Vec::new();
-        let mut lava_hurt_bullets = Vec::new();
         let mut trails = Vec::new();
         let mut bubble_tops = Vec::new();
         let mut snow_contacts = Vec::new();
@@ -5087,6 +5090,7 @@ impl Game<'_> {
             if round.canceled(projectiles[i].id) {
                 continue;
             }
+            ticked.insert(projectiles[i].id);
             let section_from = projectiles[i].position;
             let skip_wind = matches!(
                 projectiles[i].kind,
@@ -5184,9 +5188,6 @@ impl Game<'_> {
                     if let Some(at) = p.take_shoot_event() {
                         shoot_events.push((p.owner, p.guest, [at.x, at.y, at.z]));
                     }
-                    if p.take_lava_hurt() {
-                        lava_hurt_bullets.push(p.position.components());
-                    }
                     // AbstractHurtingProjectile.tick ends with createParticleTrail.
                     if super::remote_projectiles::has_smoke_trail(&p.kind) {
                         trails.push(p.position);
@@ -5231,6 +5232,7 @@ impl Game<'_> {
                         && keep
                         && let Some(hit) = self.wind_ceiling_contact(p)
                     {
+                        swept.insert(p.id);
                         hits.push(ProjectileHit {
                             projectile: p.clone(),
                             hit,
@@ -5345,11 +5347,6 @@ impl Game<'_> {
                 game.projectile_shoot_event(owner, guest, at);
             });
         }
-        // ShulkerBullet.hurtServer's sound and crits, then Entity.lavaHurt's burn.
-        for at in lava_hurt_bullets {
-            game.shulker_bullet_hurt(at);
-            game.lava_hurt_sound(at);
-        }
         game.smoke_trails(trails);
         game.dragon_breath_trails();
         for pos in bubble_tops {
@@ -5363,15 +5360,18 @@ impl Game<'_> {
                 game.arrow_event(at, event);
             }
         }
-        // `Entity.applyEffectsFromBlocks` sweeps the original cohort by join identity:
+        // `Entity.applyEffectsFromBlocks` sweeps the projectiles this tick ticked:
         // settlement can remove rows or append hook spawns. Contacts need the lent
         // level here, after the read-only borrow, each still in this batch's tick.
         for i in 0..projectiles.len() {
-            if last_ticked_join.is_none_or(|last| projectiles[i].join > last)
-                || hears_impact && game.projectile_removal_pending(projectiles[i].id)
+            let id = projectiles[i].id;
+            if !ticked.contains(&id)
+                || swept.contains(&id)
+                || hears_impact && game.projectile_removal_pending(id)
             {
                 continue;
             }
+            swept.insert(id);
             projectiles.update_with_rest(i, |shot, before, after| {
                 let sources = |id| {
                     before
@@ -5387,8 +5387,38 @@ impl Game<'_> {
                 };
                 game.sweep_projectile_inside(shot, Some(&sources));
             });
-            projectiles.update(i, |p| game.lava_mark_hurt(p));
         }
+        // `Projectile.tick` applies the blocks' effects before its hit: a hit
+        // carries its swept row, or, once that row retired, its own sweep. An
+        // arrow's effects are its own collector's.
+        for h in &mut hits {
+            let shot = &mut h.projectile;
+            if shot.arrow.is_some() || hears_impact && game.projectile_removal_pending(shot.id) {
+                continue;
+            }
+            if swept.contains(&shot.id) {
+                if let Some(row) = projectiles.iter().find(|p| p.join == shot.join) {
+                    shot.clone_from(row);
+                }
+                continue;
+            }
+            let sources = |id| {
+                projectiles
+                    .iter()
+                    .find(|p| p.id == id && crate::game::entity::shot_alive(p))
+                    .map(|p| {
+                        (
+                            crate::game::commands::Target::Projectile(id),
+                            p.position.components(),
+                        )
+                    })
+            };
+            game.sweep_projectile_inside(shot, Some(&sources));
+        }
+        // A block effect destroyed it (a shulker bullet in lava or fire): it
+        // leaves with no hit.
+        hits.retain(|h| !h.projectile.destroyed);
+        projectiles.retain(|p| !p.destroyed);
         game.creatures.projectiles.restore(
             projectiles,
             sunrise_client::join_seq::RestoreOrder::SpawnsFirst,
@@ -5527,11 +5557,6 @@ impl Game<'_> {
             if let Some(at) = p.take_shoot_event() {
                 self.projectile_shoot_event(p.owner, p.guest, [at.x, at.y, at.z]);
             }
-            if p.take_lava_hurt() {
-                let at = p.position.components();
-                self.shulker_bullet_hurt(at);
-                self.lava_hurt_sound(at);
-            }
             if super::remote_projectiles::has_smoke_trail(&p.kind) {
                 self.smoke_trails(vec![p.position]);
             }
@@ -5569,6 +5594,15 @@ impl Game<'_> {
                 self.apply_projectile_hit(&p, ceiling)?;
                 continue;
             }
+            // `Projectile.tick` applies the blocks' effects before its hit; one that
+            // left the tick with no hit had none. An arrow's own are its collector's.
+            if keep || hit != Hit::None && p.arrow.is_none() {
+                self.sweep_projectile_inside(&mut p, None);
+                if p.destroyed {
+                    self.creatures.projectiles.retire_extracted(pid, join);
+                    continue;
+                }
+            }
             if matches!(hit, Hit::Entity { .. }) && (!keep || p.arrow.is_some()) {
                 let followers: Vec<u32> = self
                     .creatures
@@ -5580,8 +5614,6 @@ impl Game<'_> {
                 self.creatures.bounced_followers.push((pid, followers));
             }
             if keep {
-                self.sweep_projectile_inside(&mut p, None);
-                self.lava_mark_hurt(&mut p);
                 let to = p.position;
                 let place = pos.min(self.creatures.projectiles.len());
                 if hit == Hit::None {
@@ -6653,7 +6685,6 @@ impl Game<'_> {
         self.flush_arrow_events(&mut arrow);
         if keep {
             self.sweep_projectile_inside(&mut arrow, None);
-            self.lava_mark_hurt(&mut arrow);
             let (aid, from, to) = (arrow.id, arrow.previous, arrow.position);
             self.reinsert_bounced_arrow(arrow);
             self.entity_section_step(aid, from.components(), to.components());
@@ -6864,8 +6895,7 @@ impl Game<'_> {
             if deflected.arrow.is_some() {
                 self.finish_arrow_hit(deflected, EntityHit::Deflected);
             } else {
-                self.sweep_projectile_inside(&mut deflected, None);
-                self.lava_mark_hurt(&mut deflected);
+                // Its blocks' effects were applied before the hit, in its tick.
                 let (pid, from, to) = (deflected.id, deflected.previous, deflected.position);
                 self.reinsert_bounced_arrow(deflected);
                 self.entity_section_step(pid, from.components(), to.components());
@@ -9871,6 +9901,9 @@ mod breeding_tests;
 
 #[cfg(test)]
 mod projectile_batch_tests;
+
+#[cfg(test)]
+mod projectile_block_effects_tests;
 
 #[cfg(test)]
 mod breeze_random_tests;
