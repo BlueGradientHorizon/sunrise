@@ -3,11 +3,6 @@ use crate::game::commands::Target;
 use crate::game::native_entity_refs::tests::{prepare_entity_ticking_neighborhood, with_game};
 use sunrise_core::nbt::parse_snbt;
 
-const WITNESS_26_3: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../tools/witness/26.3/moved_thrown_item_save.json"
-));
-
 struct WitnessCase {
     kind: String,
     uuid: String,
@@ -45,7 +40,14 @@ fn vec3_from_pos_tag(tag: &Tag) -> Vec3 {
 }
 
 fn load_witness_26_3() -> (i32, i32, Vec<WitnessCase>) {
-    let witness: serde_json::Value = serde_json::from_str(WITNESS_26_3).unwrap();
+    let path = std::env::var("SUNRISE_THROWN_ITEM_SAVE_WITNESS")
+        .expect("run through tools/test_thrown_item_save_parity.py, which records the witness");
+    let witness_text = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        panic!(
+            "failed to read thrown-item save witness {path:?} (run through tools/test_thrown_item_save_parity.py): {e}"
+        )
+    });
+    let witness: serde_json::Value = serde_json::from_str(&witness_text).unwrap();
     assert_eq!(witness["minecraft"].as_str(), Some("26.3"));
     let records = witness["records"].as_array().unwrap();
     let mut summoned: Vec<(String, String, u128, String, Vec3)> = Vec::new();
@@ -177,10 +179,15 @@ fn collect_projectile_uuids(game: &Game<'_>) -> HashMap<String, (usize, u32)> {
     by_uuid
 }
 
-/// #2691 (26.3): thrown-item projectiles match the vanilla 26.3 tick, unload, and reload witness.
+/// #2691 (26.3): thrown-item projectiles match the vanilla 26.3 tick, unload, and reload witness
+/// recorded by `tools/test_thrown_item_save_parity.py`.
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_thrown_item_save_parity.py"]
 fn a_moved_thrown_item_projectile_saves_its_loaded_item() {
+    run_a_moved_thrown_item_projectile_saves_its_loaded_item();
+}
+
+pub(in crate::game) fn run_a_moved_thrown_item_projectile_saves_its_loaded_item() {
     let (x0, z0, cases) = load_witness_26_3();
     let key = (x0 >> 4, z0 >> 4);
     let keys: HashSet<ChunkKey> = [key].into();

@@ -4341,7 +4341,7 @@ mod summon_uuid_conflict_tests;
 
 #[cfg(test)]
 #[path = "persist/thrown_item_tests.rs"]
-mod thrown_item_tests;
+pub(in crate::game) mod thrown_item_tests;
 
 #[cfg(test)]
 mod h262_enderman_absolute_anger_tests {
