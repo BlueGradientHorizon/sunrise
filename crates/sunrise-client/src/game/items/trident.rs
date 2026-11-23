@@ -418,16 +418,10 @@ impl Game<'_> {
         damage: f32,
         attack: sunrise_client::health::Attack,
     ) -> bool {
-        let Some(host) = self.lan.as_ref() else {
+        if self.lan.is_none() {
             return false;
-        };
-        let team_of = |game: &Self, name: &str| game.score.board.players_team(name).cloned();
-        let attacker = match t.guest {
-            Some(c) => host.hub.guest(c).and_then(|g| team_of(self, &g.name)),
-            None => self.player_team().cloned(),
-        };
-        let target = host.hub.guest(conn).and_then(|g| team_of(self, &g.name));
-        let refused = !self.player_may_harm(target.as_ref(), attacker.as_ref());
+        }
+        let refused = !self.guest_may_harm(t.guest, conn);
         let shooter = self.player_attacker(t.guest);
         let from = [t.previous.x, t.previous.y, t.previous.z];
         self.guest_hit_by(conn, |g| {

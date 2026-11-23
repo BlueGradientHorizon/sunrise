@@ -1,0 +1,2 @@
+# Daily test of the replaceable ServerPlayer.canHarmPlayer seam (#4854): every player-on-player rule takes its answer; it needs the prepared resources.
+sunrise-client game::lan_pvp::tests::every_player_on_player_rule_takes_can_harm_player lib daily resources

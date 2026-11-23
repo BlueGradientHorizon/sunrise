@@ -147,6 +147,26 @@ enum LentBody<'a> {
         equipment: PlayerEquipment<'a>,
     },
 }
+/// `ServerPlayer.canHarmPlayer`: whether the player `attacker` may hurt the player `victim`
+/// (entity ids). Never while the `pvp` game rule is off (`isPvpAllowed`), then
+/// `Player.canHarmPlayer`'s team check: allies hurt each other only when their team allows
+/// friendly fire. Vanilla asks it both ways round, with the same answer: the victim's
+/// `hurtServer` of the attacker, `AbstractArrow.canHitEntity` of the owner. Every
+/// player-on-player rule asks it here: a melee blow and its sweep, an arrow, another player's
+/// projectile, a trident, a spear's stab and the `PlayerRef::can_harm` read. NeoForge and
+/// Fabric have no event at this method, so a Java mod mixes into `ServerPlayer.canHarmPlayer`;
+/// a native mod answers here through `[[native.mixin]]` (#4854).
+#[sunrise_mod_api_macros::replaceable]
+pub fn can_harm_player(
+    attacker: i32,
+    victim: i32,
+    pvp: bool,
+    attacker_team: Option<&crate::scoreboard::Team>,
+    victim_team: Option<&crate::scoreboard::Team>,
+) -> bool {
+    let _ = (attacker, victim);
+    pvp && crate::scoreboard::teams_allow_damage(victim_team, attacker_team)
+}
 /// Whether any native mod listens to a hook whose host is a `HitHost`. A site looks up its
 /// attacker only then; without one nothing is looked up, borrowed or drawn.
 pub fn hit_host_listened() -> bool {
