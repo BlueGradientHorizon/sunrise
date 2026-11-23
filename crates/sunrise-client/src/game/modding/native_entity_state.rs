@@ -655,12 +655,14 @@ impl Game<'_> {
             _ => None,
         }
     }
-    /// Ticks the entity has lived (`Entity.tickCount`): players, mobs, item
-    /// entities, experience orbs and minecarts. Wraps as vanilla's `int` does.
-    /// On a client, its copies' own counters: the local player's and the lists
-    /// the client ticks (another player is one of its mobs).
+    /// Ticks the entity has lived (`Entity.tickCount`): on a server, players, mobs, item
+    /// entities, experience orbs and minecarts; on a client, every entity of the level it
+    /// shows ([`Self::client_entity_tick_count`]). Wraps as vanilla's `int` does.
     pub(super) fn entity_tick_count(&self, entity: EntityRef) -> Option<i32> {
-        Some(match self.native_entity_read_target(entity)? {
+        if !self.is_logical_server() {
+            return self.client_entity_tick_count(entity);
+        }
+        Some(match self.native_entity_target(entity)? {
             Target::Player => self.player.as_ref()?.health.tick_count,
             Target::Guest(conn) => {
                 let guest = self.command_guest(conn)?;
@@ -677,6 +679,20 @@ impl Game<'_> {
             Target::Cart(id) => self.carts.iter().find(|c| c.id == id)?.tick_count,
             _ => return None,
         })
+    }
+    /// `Entity.tickCount` of a client's own copy: the local player's, or that of an entity the
+    /// server added to the level the client shows, whatever its kind, counted by the client's
+    /// entity pass (`Entity.commonTick`) since the client added it.
+    fn client_entity_tick_count(&self, entity: EntityRef) -> Option<i32> {
+        let (remote, id) = self.native_client_entity_context(entity)?;
+        if id == remote.entity_id {
+            return self.player.as_ref().map(|_| remote.own_tick_count);
+        }
+        remote
+            .entities
+            .get(&id)
+            .map(|tracked| tracked.tick_count)
+            .or_else(|| remote.general.rows.get(&id).map(|row| row.age as i32))
     }
     /// Sets the mob's persistent glowing tag (`Entity.setGlowingTag`). Returns false for players and guests.
     pub(super) fn entity_set_glowing(&mut self, entity: EntityRef, glowing: bool) -> bool {

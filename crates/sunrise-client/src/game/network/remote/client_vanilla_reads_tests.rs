@@ -119,14 +119,26 @@ fn a_client_counts_its_copies_ticks_and_a_respawned_player_starts_at_zero() {
         || {
             with_client_game(|game| {
                 let _connection = join(game);
-                add(game, 20, "minecraft:pig");
-                add(game, 21, "minecraft:minecart");
-                let counts = |game: &Game<'_>| [PLAYER, 20, 21].map(|id| tick_count(game, id));
-                assert_eq!(counts(game), [Some(0); 3]);
+                // Every kind counts, not only those the server read covers.
+                let kinds = [
+                    (20, "minecraft:pig"),
+                    (21, "minecraft:minecart"),
+                    (22, "minecraft:oak_boat"),
+                    (23, "minecraft:arrow"),
+                    (24, "minecraft:armor_stand"),
+                    (25, "minecraft:item_display"),
+                ];
+                for (id, kind) in kinds {
+                    add(game, id, kind);
+                }
+                let counts = |game: &Game<'_>| {
+                    [PLAYER, 20, 21, 22, 23, 24, 25].map(|id| tick_count(game, id))
+                };
+                assert_eq!(counts(game), [Some(0); 7]);
                 for _ in 0..3 {
                     game.tick_remote().unwrap();
                 }
-                assert_eq!(counts(game), [Some(3); 3]);
+                assert_eq!(counts(game), [Some(3); 7]);
 
                 game.handle_packet(C::Respawn(play::Respawn {
                     spawn: spawn(),
@@ -134,9 +146,104 @@ fn a_client_counts_its_copies_ticks_and_a_respawned_player_starts_at_zero() {
                 }))
                 .unwrap();
                 stand(game, 2);
-                assert_eq!(counts(game), [Some(0), Some(3), Some(3)]);
+                let mut expected = [Some(3); 7];
+                expected[0] = Some(0);
+                assert_eq!(counts(game), expected);
                 game.tick_remote().unwrap();
-                assert_eq!(counts(game), [Some(1), Some(4), Some(4)]);
+                let mut expected = [Some(4); 7];
+                expected[0] = Some(1);
+                assert_eq!(counts(game), expected);
+            });
+        },
+    );
+}
+
+/// The count follows the client's entity pass, not the player's motion: an admitted local player
+/// counts before `LocalPlayer.tick`'s loaded-only update and while it sleeps, a frozen level
+/// still ticks the player and the cart carrying it (`TickRateManager.isEntityFrozen`), and the
+/// tick callbacks (`EntityTickEvent.Pre`, `PlayerTickEvent.Pre`) already see the new count.
+#[test]
+#[ignore = "daily"]
+fn the_client_count_follows_the_entity_tick_not_the_motion() {
+    use mod_api::{EntityTickListenedEvent, EntityTickPreEvent, HostSide, PlayerTickPreEvent};
+    use std::sync::{Arc, Mutex};
+    crate::game::in_own_process(
+        "game::remote::tests::client_vanilla_reads_tests::the_client_count_follows_the_entity_tick_not_the_motion",
+        || {
+            /// The counts each callback read, by entity id.
+            struct Seen(Arc<Mutex<Vec<(u32, Option<i32>)>>>);
+            #[mod_api::__subscriptions]
+            impl mod_api::Hooks for Seen {
+                fn entity_tick_listened(
+                    &self,
+                    _: HostSide<'_>,
+                    event: &mut EntityTickListenedEvent,
+                ) {
+                    event.listened = true;
+                }
+                fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
+                    let HostSide::Client(host) = host else {
+                        return;
+                    };
+                    for &id in event.entities {
+                        let count = host.entity(id).and_then(|e| e.tick_count(host));
+                        self.0.lock().unwrap().push((id, count));
+                    }
+                }
+                fn player_tick_pre(&self, host: HostSide<'_>, event: &mut PlayerTickPreEvent) {
+                    let HostSide::Client(host) = host else {
+                        return;
+                    };
+                    let count = event.player.entity().tick_count(host);
+                    self.0
+                        .lock()
+                        .unwrap()
+                        .push((event.player.entity().id(), count));
+                }
+            }
+            let seen = Arc::new(Mutex::new(Vec::new()));
+            let mods = vec![mod_api::ModEntry::new("seen", Box::new(Seen(seen.clone())))].into();
+            mod_platform::testing::with_mods(mods, || {
+                with_client_game(|game| {
+                    let _connection = join(game);
+                    add(game, 20, "minecraft:pig");
+                    add(game, 21, "minecraft:minecart");
+                    let counts = |game: &Game<'_>| [PLAYER, 20, 21].map(|id| tick_count(game, id));
+                    // Before the client has loaded: the player counts, its tick does not run.
+                    game.remote.as_mut().unwrap().loaded_sent = false;
+                    game.tick_remote().unwrap();
+                    assert_eq!(counts(game), [Some(1); 3]);
+                    game.remote.as_mut().unwrap().loaded_sent = true;
+                    // Asleep.
+                    game.sleeping = Some([0, 64, 0]);
+                    game.tick_remote().unwrap();
+                    assert_eq!(counts(game), [Some(2); 3]);
+                    game.sleeping = None;
+                    // A frozen level: the player and the cart it rides, not the pig.
+                    game.handle_packet(C::TickingState(play::TickingState {
+                        rate: 20.0,
+                        frozen: true,
+                    }))
+                    .unwrap();
+                    game.handle_packet(C::SetPassengers(play::SetPassengers {
+                        vehicle: 21,
+                        passengers: vec![PLAYER as i32],
+                    }))
+                    .unwrap();
+                    game.tick_remote().unwrap();
+                    assert_eq!(counts(game), [Some(3), Some(2), Some(3)]);
+
+                    let seen = seen.lock().unwrap();
+                    // The pig's Pre read 1 then 2, the player's (once loaded) 2 then 3.
+                    let of = |id: u32| {
+                        seen.iter()
+                            .filter(|(seen, _)| *seen == id)
+                            .map(|(_, count)| *count)
+                            .collect::<Vec<_>>()
+                    };
+                    assert_eq!(of(20), [Some(1), Some(2)]);
+                    assert_eq!(of(PLAYER), [Some(2), Some(3)]);
+                });
             });
         },
     );
