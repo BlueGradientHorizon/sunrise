@@ -293,10 +293,93 @@ mod git_fixtures {
         repo.put(release_workflow, OLD_RELEASE);
         let rebuild = ".github/workflows/rebuild.yml";
         repo.put(rebuild, "name: Rebuild reviewed native mod source\nuses: ./.github/actions/sunrise-release-tool\n");
+        // Uncommitted copies are left alone: only Git can restore a removal.
+        repo.release("mods/example", &["setup"], refused_check)
+            .unwrap();
+        assert!(repo.root.join(release_workflow).exists());
+        repo.commit();
         repo.release("mods/example", &["setup"], refused_check)
             .unwrap();
         assert!(!repo.root.join(release_workflow).exists());
         assert!(!repo.root.join(rebuild).exists());
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn setup_keeps_ignored_files_and_refuses_a_foreign_caller() {
+        let repo = Repo::new();
+        repo.put(MANIFEST, MOD);
+        repo.put(".gitignore", "/sunrise_release.py\n");
+        repo.commit();
+        let ignored = "\"\"\"Build, sign and stage a native mod release\"\"\" (local copy)";
+        repo.put("sunrise_release.py", ignored);
+        repo.release(".", &["setup"], refused_check).unwrap();
+        assert_eq!(
+            fs::read_to_string(repo.root.join("sunrise_release.py")).unwrap(),
+            ignored
+        );
+        repo.commit();
+        let foreign = "name: my own release\n";
+        repo.put(CALLER, foreign);
+        for args in [&["setup"][..], &["patch"]] {
+            let error = repo.release(".", args, refused_check).unwrap_err();
+            assert!(
+                error.contains("not written by cargo sunrise-mod"),
+                "{error}"
+            );
+            assert_eq!(fs::read_to_string(repo.root.join(CALLER)).unwrap(), foreign);
+        }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn release_refuses_old_copied_files_until_setup_is_committed() {
+        let repo = Repo::new();
+        repo.put(MANIFEST, MOD);
+        repo.put(".github/workflows/release.yml", OLD_RELEASE);
+        repo.commit();
+        repo.git(["push", "-u", "origin", "main"]);
+        let head = repo.git(["rev-parse", "HEAD"]);
+        let error = repo.release(".", &["patch"], refused_check).unwrap_err();
+        assert!(error.contains("release setup"), "{error}");
+        assert_eq!(repo.git(["rev-parse", "HEAD"]), head);
+        assert!(repo.git(["status", "--porcelain"]).is_empty());
+        assert!(repo.git(["tag", "--list"]).is_empty());
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn refuses_a_pending_merge_and_a_different_push_destination() {
+        let repo = Repo::new();
+        repo.put(MANIFEST, MOD);
+        repo.commit();
+        repo.git(["push", "-u", "origin", "main"]);
+        repo.git(["branch", "side"]);
+        repo.git(["merge", "--no-ff", "--no-commit", "side"]);
+        let error = repo.release(".", &["patch"], refused_check).unwrap_err();
+        assert!(error.contains("in progress"), "{error}");
+        repo.git(["merge", "--abort"]);
+
+        repo.git([
+            "remote",
+            "set-url",
+            "--push",
+            "origin",
+            "git@github.com:someone/fork.git",
+        ]);
+        let error = repo.release(".", &["patch"], refused_check).unwrap_err();
+        assert_eq!(error, NOT_REGISTERED);
+        repo.git([
+            "remote",
+            "set-url",
+            "--add",
+            "--push",
+            "origin",
+            "git@github.com:author/example.git",
+        ]);
+        let error = repo.release(".", &["patch"], refused_check).unwrap_err();
+        assert!(error.contains("more than one URL"), "{error}");
+        assert!(repo.git(["tag", "--list"]).is_empty());
     }
 
     #[test]
@@ -377,7 +460,6 @@ mod git_fixtures {
         repo.put("mods/example/sunrise-mod.toml", &format!("{MOD}{NATIVE}"));
         repo.put("mods/example/Cargo.toml", CARGO);
         repo.put("mods/example/Cargo.lock", LOCK);
-        repo.put(".github/workflows/release.yml", OLD_RELEASE);
         repo.commit();
         repo.git(["push", "-u", "origin", "main"]);
         repo.release("mods/example", &["minor"], |package, tag| {
@@ -409,7 +491,7 @@ mod git_fixtures {
         assert_eq!(repo.git(["log", "-1", "--format=%s"]), "Release 1.5.0");
         assert_eq!(
             repo.git(["show", "--pretty=format:", "--name-only", "HEAD"]),
-            ".github/workflows/release.yml\n.github/workflows/sunrise-release-example.yml\nmods/example/Cargo.lock\nmods/example/Cargo.toml\nmods/example/sunrise-mod.toml"
+            ".github/workflows/sunrise-release-example.yml\nmods/example/Cargo.lock\nmods/example/Cargo.toml\nmods/example/sunrise-mod.toml"
         );
         let head = repo.git(["rev-parse", "HEAD"]);
         for reference in ["refs/heads/main", "refs/tags/example/v1.5.0"] {

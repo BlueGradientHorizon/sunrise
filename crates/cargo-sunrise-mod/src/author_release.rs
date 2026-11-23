@@ -17,6 +17,8 @@ pub(crate) const USAGE: &str = "release [<version>|patch|minor|major] [--check] 
 const WORKFLOW: &str = "sunrise-org/sunrise-mods/.github/workflows/release.yml@release-v";
 const DEFAULT_WORKFLOW: &str = "sunrise-org/sunrise-mods/.github/workflows/release.yml@release-v1";
 const CALLER: &str = ".github/workflows/sunrise-release.yml";
+const CALLER_MARK: &str =
+    "# Written by `cargo sunrise-mod release`, which rewrites it: edits here are replaced.\n";
 const NOT_REGISTERED: &str =
     "This repository isn't registered yet: register it at https://playsunrise.net/mods/submit";
 
@@ -162,8 +164,7 @@ fn caller(prefix: &str, path: &str, uses: &str) -> String {
         serde_json::json!(path).to_string()
     };
     format!(
-        "\
-# Written by `cargo sunrise-mod release`, which rewrites it: edits here are replaced.
+        "{CALLER_MARK}\
 name: Sunrise release
 on:
   push:
@@ -238,10 +239,23 @@ impl Project {
         })
     }
 
-    fn workflow_changes(&self, uses: &str) -> Result<Vec<Change>, String> {
+    /// The caller to write and the old copied release files to remove. A file at the caller's path
+    /// that this tool did not write, tracked or not, is refused rather than replaced; only committed
+    /// old files are removed, so each removal can be restored from Git.
+    fn workflow_changes(&self, git: &Git, uses: &str) -> Result<Vec<Change>, String> {
         let root = &self.root;
         for folder in [".github", ".github/workflows"] {
             internals::check_output_dir(&root.join(folder))?;
+        }
+        let ours = |text: &str| text.starts_with(CALLER_MARK);
+        if metadata(&root.join(&self.caller))?.is_some()
+            && (!git.tracked(root, &self.caller)?
+                || !fs::read_to_string(root.join(&self.caller)).is_ok_and(|text| ours(&text)))
+        {
+            return Err(format!(
+                "{} exists and was not written by cargo sunrise-mod; move it aside before releasing",
+                self.caller.display()
+            ));
         }
         let mut changes = vec![Change::write(
             &self.caller,
@@ -260,7 +274,9 @@ impl Project {
             let path = Path::new(".github/workflows").join(file);
             let title = format!("name: {name}");
             if legacy_file(
-                &root.join(&path),
+                git,
+                root,
+                &path,
                 &[&title, "./.github/actions/sunrise-release-tool"],
             )? {
                 changes.push(Change::remove(path, false));
@@ -272,7 +288,9 @@ impl Project {
         if metadata(&root.join(actions))?.is_some_and(|meta| meta.is_dir())
             && metadata(&root.join(action))?.is_some_and(|meta| meta.is_dir())
             && legacy_file(
-                &root.join(&script),
+                git,
+                root,
+                &script,
                 &[
                     "Install the verified Sunrise release tool",
                     "SUNRISE_RELEASE_SCRIPTS",
@@ -295,7 +313,7 @@ impl Project {
             let nested_path =
                 (!self.package.as_os_str().is_empty()).then(|| self.package.join(file));
             for path in std::iter::once(repo_path).chain(nested_path) {
-                if legacy_file(&root.join(&path), &[signature])? {
+                if legacy_file(git, root, &path, &[signature])? {
                     changes.push(Change::remove(path, false));
                 }
             }
@@ -387,11 +405,19 @@ fn metadata(path: &Path) -> Result<Option<fs::Metadata>, String> {
     }
 }
 
-fn legacy_file(path: &Path, signatures: &[&str]) -> Result<bool, String> {
-    if !metadata(path)?.is_some_and(|m| m.is_file()) {
+/// A committed regular file carrying every one of an old template's `signatures`. Untracked and
+/// ignored files are never matched, so nothing that Git could not restore is removed.
+fn legacy_file(
+    git: &Git,
+    root: &Path,
+    relative: &Path,
+    signatures: &[&str],
+) -> Result<bool, String> {
+    let path = root.join(relative);
+    if !metadata(&path)?.is_some_and(|m| m.is_file()) || !git.tracked(root, relative)? {
         return Ok(false);
     }
-    let bytes = fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let bytes = fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(std::str::from_utf8(&bytes).is_ok_and(|text| signatures.iter().all(|&s| text.contains(s))))
 }
 
@@ -541,6 +567,27 @@ impl Git {
                     .into(),
             );
         }
+        // A pending merge, cherry-pick, revert, rebase or bisect can leave a clean status; the
+        // release commit would complete it.
+        for state in [
+            "MERGE_HEAD",
+            "CHERRY_PICK_HEAD",
+            "REVERT_HEAD",
+            "rebase-merge",
+            "rebase-apply",
+            "sequencer",
+            "BISECT_LOG",
+        ] {
+            let path = self.text(
+                root,
+                ["rev-parse", "--path-format=absolute", "--git-path", state],
+            )?;
+            if metadata(Path::new(&path))?.is_some() {
+                return Err(format!(
+                    "a Git operation is in progress ({state}); finish or abort it before releasing"
+                ));
+            }
+        }
         Ok(())
     }
 }
@@ -582,10 +629,13 @@ fn release(
     {
         Options::new("release setup", rest, &[]).finish()?;
         let project = Project::read(package, git)?;
-        for change in project.workflow_changes(&workflow(fetch)?)? {
+        for change in project.workflow_changes(git, &workflow(fetch)?)? {
             change.apply(&project.root)?;
             change.describe();
         }
+        println!(
+            "Review these changes and commit them; `git restore` brings back a removed file you had edited."
+        );
         return Ok(());
     }
     let mut options = Options::new("release", args, &[]);
@@ -599,7 +649,11 @@ fn release(
         .text(root, ["symbolic-ref", "--quiet", "HEAD"])
         .map_err(|_| "check out a branch before releasing")?;
     let head = git.text(root, ["rev-parse", "HEAD"])?;
-    let origin = git.text(root, ["remote", "get-url", "origin"])?;
+    // Registration, the existing-tag and branch checks and the push all use origin's one push URL.
+    let origin = git.text(root, ["remote", "get-url", "--push", "--all", "origin"])?;
+    if origin.lines().count() != 1 {
+        return Err("origin pushes to more than one URL; release needs exactly one".into());
+    }
     registered(fetch, &origin, &project.path)?;
     let version = next_version(&project.manifest.version, requested)?;
     let tag = format!("{}v{version}", project.prefix);
@@ -609,7 +663,7 @@ fn release(
     }
     let remote = git.text(
         root,
-        ["ls-remote", "--refs", "--", "origin", &branch, &tag_ref],
+        ["ls-remote", "--refs", "--", &origin, &branch, &tag_ref],
     )?;
     let find_ref = |name: &str| {
         remote
@@ -651,7 +705,13 @@ fn release(
         }
     }
 
-    let mut changes = project.workflow_changes(&workflow(fetch)?)?;
+    let mut changes = project.workflow_changes(git, &workflow(fetch)?)?;
+    if changes
+        .iter()
+        .any(|c| matches!(c.kind, Kind::Remove { .. }))
+    {
+        return Err("this repository still has the old copied release files: run `cargo sunrise-mod release setup`, review and commit its changes, then release".into());
+    }
     changes.extend(project.version_changes(git, &version)?);
 
     // The same check as CI sees the proposed version and tag, not the previous version.
@@ -694,26 +754,24 @@ fn release(
             "the checked-out branch changed during the release check; run release again".into(),
         );
     }
-    // Stage only explicit changes. Ignore paths whose only change was removing an ignored legacy file.
-    let mut tracked = Vec::new();
+    // A release only writes: the caller and the version files. Stage exactly those.
     for change in &changes {
-        let path = change.path.as_os_str();
-        if matches!(change.kind, Kind::Write(_)) || git.tracked(root, &change.path)? {
-            tracked.push(path);
-        }
         change.apply(root)?;
     }
     git.text(
         root,
-        ["--literal-pathspecs", "add", "-f", "-A", "--"]
+        ["--literal-pathspecs", "add", "--"]
             .map(OsStr::new)
             .into_iter()
-            .chain(tracked),
+            .chain(changes.iter().map(|c| c.path.as_os_str())),
     )?;
     git.text(root, ["commit", "-m", &format!("Release {version}")])?;
     git.text(root, ["tag", &tag])?;
     // Publish both refs together, or neither. In particular, a rejected branch must not release a tag.
-    git.text(root, ["push", "--atomic", "--no-follow-tags", "origin", &branch, &tag_ref])
+    // Explicit destinations, so no remote.origin.push mapping sends them elsewhere.
+    let branch_spec = format!("{branch}:{branch}");
+    let tag_spec = format!("{tag_ref}:{tag_ref}");
+    git.text(root, ["push", "--atomic", "--no-follow-tags", &origin, &branch_spec, &tag_spec])
         .map_err(|e| format!("{e}\nThe release commit and {tag} remain local. Resolve the push error, then push both refs to origin."))?;
     println!(
         "Released {version}: pushed {tag} to origin. GitHub Actions will build and attest the release."
