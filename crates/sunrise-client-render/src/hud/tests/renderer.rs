@@ -282,12 +282,12 @@ fn container_origins_use_java_integer_division() {
         let mut batch = HudBatch::scratch([width, height]);
         batch.width = width as f32;
         batch.height = height as f32;
-        for (image_width, image_height) in [(195, 136), (176, 166), (176, 222)] {
+        for (image_width, image_height) in [(195_i32, 136_i32), (176, 166), (176, 222)] {
             assert_eq!(
                 batch.centered_origin(image_width as f32, image_height as f32),
                 (
-                    ((width - image_width) / 2) as f32,
-                    ((height - image_height) / 2) as f32
+                    ((width as i32 - image_width) / 2) as f32,
+                    ((height as i32 - image_height) / 2) as f32
                 )
             );
         }

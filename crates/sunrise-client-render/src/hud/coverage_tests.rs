@@ -47,8 +47,8 @@ fn repeated_partial_scissors_preserve_the_unclipped_gradient_pixels() {
         &[0; 20],
         "entire first row and the second row's first pixel"
     );
-    for pixel in whole[20..].chunks_exact(4) {
-        assert_eq!(pixel, [2, 0, 0, 255]);
+    for pixel in whole[20..].as_chunks::<4>().0 {
+        assert_eq!(*pixel, [2, 0, 0, 255]);
     }
     assert_eq!(&clipped[20..], &whole[20..]);
 }

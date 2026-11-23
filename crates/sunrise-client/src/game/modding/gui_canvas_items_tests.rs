@@ -123,7 +123,9 @@ fn item_decorator_can_delegate_to_the_base_painter_without_recursion() {
     let batch = draw_decorated_paper(5);
     let bars: Vec<_> = batch
         .vertices
-        .chunks_exact(6)
+        .as_chunks::<6>()
+        .0
+        .iter()
         .filter(|quad| quad[0].color == BAR)
         .map(|quad| quad[0].pos)
         .collect();
@@ -294,8 +296,11 @@ fn scoped_items_keep_the_seed_and_draw_decorations_outside_the_squeeze() {
                 ([18.0, 32.0, 19.0, 34.0], 0xFF00_00FF, None),
             ];
             assert_eq!(canvas.vertices.len() - bar, expected.len() * 6);
-            for (quad, ([l, t, r, b], color, u)) in
-                canvas.vertices[bar..].chunks_exact(6).zip(expected)
+            for (quad, ([l, t, r, b], color, u)) in canvas.vertices[bar..]
+                .as_chunks::<6>()
+                .0
+                .iter()
+                .zip(expected)
             {
                 let corners = [[l, t], [r, t], [r, b], [l, b]];
                 for (v, corner) in quad.iter().zip([0, 1, 2, 0, 2, 3]) {

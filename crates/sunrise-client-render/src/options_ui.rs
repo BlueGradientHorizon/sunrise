@@ -7272,26 +7272,25 @@ mod tests {
             ui.scroll = row.y - row_y;
             let (x, width, height) = (row.x, row.w, row.h);
             ui.draw_test_frame(&s, NONE, &mut batch, &atlas, (-1.0, -1.0), &mut |_, _| {});
-            let vertices: Vec<_> = batch
-                .vertices
-                .iter()
-                .filter(|v| {
-                    (0.25..=0.5).contains(&v.uv[0])
-                        && (0.25..=0.5).contains(&v.uv[1])
-                        && v.pos[0] >= x
-                        && v.pos[0] <= x + width
-                        && v.pos[1] >= row_y
-                        && v.pos[1] <= row_y + height
+            // The button sprite's quads in the row's box, as far as their scissor lets them show.
+            let quads = batch.vertices.as_chunks::<6>().0.iter();
+            let visible: Vec<_> = quads
+                .zip(batch.quad_scissors().zip(batch.visible_quads()))
+                .filter(|(q, ((bounds, _), _))| {
+                    q.iter()
+                        .all(|v| (0.25..=0.5).contains(&v.uv[0]) && (0.25..=0.5).contains(&v.uv[1]))
+                        && bounds[0] >= x
+                        && bounds[2] <= x + width
+                        && bounds[1] >= row_y
+                        && bounds[3] <= row_y + height
                 })
+                .filter_map(|(_, (_, visible))| visible)
                 .collect();
-            assert!(!vertices.is_empty());
-            let lo = vertices
+            assert!(!visible.is_empty());
+            let lo = visible.iter().map(|q| q[1]).fold(f32::INFINITY, f32::min);
+            let hi = visible
                 .iter()
-                .map(|v| v.pos[1])
-                .fold(f32::INFINITY, f32::min);
-            let hi = vertices
-                .iter()
-                .map(|v| v.pos[1])
+                .map(|q| q[3])
                 .fold(f32::NEG_INFINITY, f32::max);
             assert_eq!(lo, row_y.max(top));
             assert_eq!(hi, (row_y + height).min(bottom));

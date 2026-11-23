@@ -1264,7 +1264,7 @@ mod tests {
         ];
         assert_eq!(actual.vertices.len(), glyphs.len() * 6);
         for (quad, ([l, t, r, b], [visible_r, visible_b], u, color)) in
-            actual.vertices.chunks_exact(6).zip(glyphs)
+            actual.vertices.as_chunks::<6>().0.iter().zip(glyphs)
         {
             let corners = [[l, t], [r, t], [r, b], [l, b]];
             let (min_u, max_u) = ((u + 0.01) / 32.0, (u + 4.0 - 0.01) / 32.0);

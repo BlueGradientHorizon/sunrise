@@ -617,6 +617,43 @@ impl HudBatch {
         })
     }
 
+    /// Each six-vertex quad's box `[x0, y0, x1, y1]` with the scissor the rasterizer gates it
+    /// by, if any.
+    pub fn quad_scissors(&self) -> impl Iterator<Item = ([f32; 4], Option<[f32; 4]>)> + '_ {
+        let quads = self.vertices.as_chunks::<6>().0;
+        quads.iter().enumerate().map(|(i, quad)| {
+            let first = (i * 6) as u32;
+            let clip = self.scissors[self.scissors.partition_point(|(r, _)| r.end <= first)..]
+                .first()
+                .filter(|(range, _)| range.start <= first)
+                .map(|(_, clip)| *clip);
+            let mut bounds = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
+            for v in quad {
+                bounds = [
+                    bounds[0].min(v.pos[0]),
+                    bounds[1].min(v.pos[1]),
+                    bounds[2].max(v.pos[0]),
+                    bounds[3].max(v.pos[1]),
+                ];
+            }
+            (bounds, clip)
+        })
+    }
+
+    /// The part of each quad's box its scissor lets through, `None` where it hides the quad.
+    pub fn visible_quads(&self) -> impl Iterator<Item = Option<[f32; 4]>> + '_ {
+        self.quad_scissors().map(|(bounds, clip)| {
+            let [l, t, r, b] = clip.unwrap_or(bounds);
+            let cut = [
+                bounds[0].max(l),
+                bounds[1].max(t),
+                bounds[2].min(r),
+                bounds[3].min(b),
+            ];
+            (cut[0] < cut[2] && cut[1] < cut[3]).then_some(cut)
+        })
+    }
+
     /// Discard appended vertices and their scissor state.
     pub fn truncate_vertices(&mut self, len: usize) {
         self.vertices.truncate(len);
