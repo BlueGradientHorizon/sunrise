@@ -205,7 +205,9 @@ impl Game<'_> {
         player_uuid: Option<[i32; 4]>,
         transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) {
-        if let Some(mut p) = entity_nbt::throwable_from_nbt(&tag, player_uuid) {
+        if let Some(mut p) =
+            entity_nbt::throwable_from_nbt_with_items(&tag, player_uuid, self.res.items())
+        {
             self.claim_owner(&mut p);
             // A projectile that came through a portal keeps its cooldown.
             self.next_entity += 1;

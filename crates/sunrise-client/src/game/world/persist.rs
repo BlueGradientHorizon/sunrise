@@ -2463,11 +2463,12 @@ impl Game<'_> {
             _ => None,
         };
         let owner = p.owner_uuid;
-        // The summon compound is found by type and exact position, so only
-        // while the projectile has not moved; after that, what its load kept
-        // by id (`remember_tags`: the `Item` it flies as, among others).
-        let raw = anon_raw(&self.persist, p.kind.id(), p.position)
-            .or_else(|| self.persist.raw.get(&p.id).cloned());
+        // Throwables own their typed Item and use id-keyed memory, never a position-keyed entry.
+        let raw = if p.kind.is_throwable_item() {
+            self.persist.raw.get(&p.id).cloned()
+        } else {
+            anon_raw(&self.persist, p.kind.id(), p.position)
+        };
         let uuid = saved_uuid(&self.persist, p.id);
         let in_block = p
             .arrow

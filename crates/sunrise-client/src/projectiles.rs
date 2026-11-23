@@ -255,6 +255,23 @@ impl ProjectileKind {
     pub fn is_item_fireball(&self) -> bool {
         matches!(self, Self::SmallFireball | Self::LargeFireball { .. })
     }
+    /// `ThrowableItemProjectile.getDefaultItem` for throwable kinds, else `None`.
+    pub fn default_thrown_item(&self) -> Option<&'static str> {
+        match self {
+            Self::Snowball => Some("minecraft:snowball"),
+            Self::Egg => Some("minecraft:egg"),
+            Self::EnderPearl => Some("minecraft:ender_pearl"),
+            Self::ExperienceBottle => Some("minecraft:experience_bottle"),
+            Self::Potion(_, true) => Some("minecraft:lingering_potion"),
+            Self::Potion(_, false) => Some("minecraft:splash_potion"),
+            Self::Thrown(t) => Some(t.item),
+            _ => None,
+        }
+    }
+    /// Whether the kind is a `ThrowableItemProjectile` that owns a saved `Item`.
+    pub fn is_throwable_item(&self) -> bool {
+        self.default_thrown_item().is_some()
+    }
     /// `EntityType.Builder.eyeHeight`: 0.13 for arrows and tridents, 0 for
     /// wind charges, else the default 0.85 of the box height.
     pub fn eye_height(&self) -> f64 {
@@ -427,6 +444,8 @@ pub struct Projectile {
     /// charge until [`Projectile::set_item`] gives it another. None for the
     /// kinds that are no `Fireball` (a wither skull, a wind charge).
     pub item: Option<crate::items::ItemStack>,
+    /// `ThrowableItemProjectile.DATA_ITEM_STACK` for non-potion throwables (count 1).
+    pub thrown_item: Option<Box<crate::items::ItemStack>>,
     /// `ThrownEgg`'s item `CHICKEN_VARIANT` component, as the chicken variant
     /// index its hatchlings get; None when no item was recorded.
     pub egg_variant: Option<u8>,
@@ -813,6 +832,7 @@ impl Projectile {
             attachment_lifetime: Default::default(),
             join: Default::default(),
             id: 0,
+            thrown_item: None,
             egg_variant: None,
             kind,
             owner,
@@ -1307,10 +1327,47 @@ impl Projectile {
         self.pitch = pitch;
         self
     }
+    /// `ThrowableItemProjectile.getItem`: typed stack at count 1 for throwables, else `None`.
+    pub fn thrown_item_stack(&self) -> Option<crate::items::ItemStack> {
+        let mut stack = match &self.kind {
+            ProjectileKind::Potion(stack, _) => (**stack).clone(),
+            _ => {
+                let default = self.kind.default_thrown_item()?;
+                self.thrown_item
+                    .as_deref()
+                    .cloned()
+                    .unwrap_or_else(|| crate::items::ItemStack::new(default, 1))
+            }
+        };
+        stack.count = 1;
+        Some(stack)
+    }
+    /// `ThrowableItemProjectile.setItem`: keeps a decoded stack at count 1 or restores the default.
+    pub fn set_thrown_item(&mut self, stack: Option<crate::items::ItemStack>) {
+        let Some(default) = self.kind.default_thrown_item() else {
+            return;
+        };
+        let mut stack = match stack {
+            Some(stack) if stack.count > 0 && &*stack.item != "minecraft:air" => stack,
+            _ => crate::items::ItemStack::new(default, 1),
+        };
+        stack.count = 1;
+        match &mut self.kind {
+            ProjectileKind::Potion(slot, _) => {
+                **slot = stack;
+            }
+            _ => {
+                if self.kind == ProjectileKind::Egg {
+                    self.egg_variant = Some(egg_chicken_variant(&stack));
+                }
+                self.thrown_item = Some(Box::new(stack));
+            }
+        }
+    }
     /// `ThrownEgg`'s item: what its hatchlings' variant comes from.
     pub fn set_egg_item(&mut self, stack: &crate::items::ItemStack) {
         if self.kind == ProjectileKind::Egg {
-            self.egg_variant = Some(egg_chicken_variant(stack));
+            self.set_thrown_item(Some(stack.clone()));
         }
     }
     /// `Fireball.setItem`: the item a fireball is drawn as. An empty stack

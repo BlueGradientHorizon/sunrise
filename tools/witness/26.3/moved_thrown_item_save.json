@@ -97,6 +97,296 @@
       ]
     },
     {
+      "cmd": "/summon snowball 5698.5 306 5570.5 {UUID:[I;2691,0,10,1],Item:{id:\"minecraft:diamond\",count:2},Motion:[0.0d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Snowball",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon snowball 5698.5 306 5570.5 {UUID:[I;2691,0,11,1],Item:{id:\"minecraft:emerald\",count:4},Motion:[0.0d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Snowball",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon snowball 5698.5 306 5573.5 {UUID:[I;2691,0,12,1],Item:{id:\"minecraft:gold_ingot\",count:3},Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Snowball",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon snowball 5698.5 306 5573.5 {UUID:[I;2691,0,13,1],Item:{id:\"minecraft:iron_ingot\",count:3},Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Snowball",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon snowball 5698.5 306 5576.5 {UUID:[I;2691,0,14,1],Item:{id:\"minecraft:stone\",count:5},Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Snowball",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/data modify entity 00000a83-0000-0000-0000-000e00000001 Item set value {id:\"minecraft:emerald\",count:3}",
+      "text": "Modified entity data of Snowball",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon snowball 5698.5 306 5579.5 {UUID:[I;2691,0,15,1],Item:{id:\"minecraft:stone\",count:5},Motion:[0.0d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Snowball",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/data modify entity 00000a83-0000-0000-0000-000f00000001 Item set value {id:\"minecraft:copper_ingot\",count:2}",
+      "text": "Modified entity data of Snowball",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon egg 5698.5 306 5582.5 {UUID:[I;2691,0,16,1],Item:{id:\"minecraft:stone\",count:5},Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Thrown Egg",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/data modify entity 00000a83-0000-0000-0000-001000000001 Item set value {count:5}",
+      "text": "Modified entity data of Thrown Egg",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon snowball 5698.5 308 5570.5 {UUID:[I;2691,0,17,1],Item:{count:5},Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Snowball",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon snowball 5698.5 308 5573.5 {UUID:[I;2691,0,18,1],Item:{id:\"minecraft:air\",count:1},Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Snowball",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon snowball 5698.5 308 5576.5 {UUID:[I;2691,0,19,1],Item:{id:\"minecraft:not_an_item\",count:1},Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Snowball",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon snowball 5698.5 308 5579.5 {UUID:[I;2691,0,20,1],Item:{id:\"minecraft:stone\",count:0},Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Snowball",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon snowball 5698.5 308 5582.5 {UUID:[I;2691,0,21,1],Item:{id:\"minecraft:stone\",count:100},Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Snowball",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon snowball 5698.5 310 5570.5 {UUID:[I;2691,0,22,1],Item:{id:\"minecraft:stone\",count:1,components:{\"minecraft:not_a_component\":1}},Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Snowball",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon snowball 5698.5 310 5573.5 {UUID:[I;2691,0,23,1],Item:{id:\"minecraft:stone\",count:1,components:{\"minecraft:damage\":\"bad\"}},Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Snowball",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon snowball 5698.5 310 5576.5 {UUID:[I;2691,0,24,1],Item:{id:\"minecraft:stone\",count:1,components:{\"minecraft:creative_slot_lock\":{}}},Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Snowball",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon snowball 5698.5 314 5570.5 {UUID:[I;2691,0,25,1],Item:{id:\"minecraft:stone\",count:1,components:{\"minecraft:custom_name\":\"pebble\",\"minecraft:damage\":\"bad\"}},Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Snowball",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon snowball 5698.5 314 5573.5 {UUID:[I;2691,0,26,1],Item:{id:\"minecraft:stone\",count:1,components:{\"minecraft:custom_name\":\"pebble\",\"minecraft:not_a_component\":1}},Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Snowball",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon snowball 5698.5 314 5576.5 {UUID:[I;2691,0,27,1],Item:{id:\"minecraft:stone\",count:1,components:123},Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Snowball",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon snowball 5698.5 314 5579.5 {UUID:[I;2691,0,28,1],Item:\"minecraft:stone\",Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Snowball",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon splash_potion 5698.5 310 5579.5 {UUID:[I;2691,0,29,1],Item:{id:\"splash_potion\",count:5},Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Splash Potion",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon snowball 5698.5 310 5582.5 {UUID:[I;2691,0,30,1],Item:{id:\"stone\",count:5},Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Snowball",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon splash_potion 5698.5 312 5570.5 {UUID:[I;2691,0,31,1],Item:{id:\"minecraft:splash_potion\",count:2,components:{\"minecraft:potion_contents\":{potion:\"minecraft:harming\"}}},Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Splash Potion",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon egg 5698.5 312 5573.5 {UUID:[I;2691,0,32,1],Item:{id:\"minecraft:stone\",count:5,components:{\"minecraft:custom_name\":\"pebble\",\"minecraft:custom_data\":{tag:1b}}},Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Thrown Egg",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon ender_pearl 5698.5 312 5576.5 {UUID:[I;2691,0,33,1],Item:{id:\"minecraft:diamond_sword\",count:1,components:{\"minecraft:damage\":7,\"minecraft:enchantments\":{\"minecraft:unbreaking\":2}}},Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Thrown Ender Pearl",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon snowball 5698.549500000477 316 5570.5 {UUID:[I;2691,0,34,1],Item:{id:\"minecraft:coal\",count:1},Motion:[0.0d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Snowball",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon snowball 5698.5 316 5570.5 {UUID:[I;2691,0,35,1],Item:{id:\"minecraft:quartz\",count:2},Motion:[0.05d,0.0d,0.0d],NoGravity:1b}",
+      "text": "Summoned new Snowball",
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
       "cmd": "/data get entity 00000a83-0000-0000-0000-000100000001 Pos",
       "text": "Thrown Egg has the following entity data: [5698.549500000477d, 302.0d, 5570.5d]",
       "results": [
@@ -277,6 +567,526 @@
       ]
     },
     {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000a00000001 Pos",
+      "text": "Snowball has the following entity data: [5698.5d, 306.0d, 5570.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000a00000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:diamond\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000b00000001 Pos",
+      "text": "Snowball has the following entity data: [5698.5d, 306.0d, 5570.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000b00000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:emerald\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000c00000001 Pos",
+      "text": "Snowball has the following entity data: [5698.549500000477d, 306.0d, 5573.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000c00000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:gold_ingot\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000d00000001 Pos",
+      "text": "Snowball has the following entity data: [5698.549500000477d, 306.0d, 5573.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000d00000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:iron_ingot\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000e00000001 Pos",
+      "text": "Snowball has the following entity data: [5698.549500000477d, 306.0d, 5576.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000e00000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:emerald\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000f00000001 Pos",
+      "text": "Snowball has the following entity data: [5698.5d, 306.0d, 5579.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000f00000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:copper_ingot\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001000000001 Pos",
+      "text": "Thrown Egg has the following entity data: [5698.549500000477d, 306.0d, 5582.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001000000001 Item",
+      "text": "Thrown Egg has the following entity data: {count: 1, id: \"minecraft:egg\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001100000001 Pos",
+      "text": "Snowball has the following entity data: [5698.549500000477d, 308.0d, 5570.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001100000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:snowball\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001200000001 Pos",
+      "text": "Snowball has the following entity data: [5698.549500000477d, 308.0d, 5573.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001200000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:snowball\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001300000001 Pos",
+      "text": "Snowball has the following entity data: [5698.549500000477d, 308.0d, 5576.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001300000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:snowball\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001400000001 Pos",
+      "text": "Snowball has the following entity data: [5698.549500000477d, 308.0d, 5579.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001400000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001500000001 Pos",
+      "text": "Snowball has the following entity data: [5698.549500000477d, 308.0d, 5582.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001500000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001600000001 Pos",
+      "text": "Snowball has the following entity data: [5698.549500000477d, 310.0d, 5570.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001600000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001700000001 Pos",
+      "text": "Snowball has the following entity data: [5698.549500000477d, 310.0d, 5573.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001700000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001800000001 Pos",
+      "text": "Snowball has the following entity data: [5698.549500000477d, 310.0d, 5576.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001800000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001900000001 Pos",
+      "text": "Snowball has the following entity data: [5698.549500000477d, 314.0d, 5570.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001900000001 Item",
+      "text": "Snowball has the following entity data: {components: {\"minecraft:custom_name\": \"pebble\"}, count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001a00000001 Pos",
+      "text": "Snowball has the following entity data: [5698.549500000477d, 314.0d, 5573.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001a00000001 Item",
+      "text": "Snowball has the following entity data: {components: {\"minecraft:custom_name\": \"pebble\"}, count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001b00000001 Pos",
+      "text": "Snowball has the following entity data: [5698.549500000477d, 314.0d, 5576.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001b00000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001c00000001 Pos",
+      "text": "Snowball has the following entity data: [5698.549500000477d, 314.0d, 5579.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001c00000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:snowball\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001d00000001 Pos",
+      "text": "Splash Potion has the following entity data: [5698.549500000477d, 310.0d, 5579.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001d00000001 Item",
+      "text": "Splash Potion has the following entity data: {count: 1, id: \"minecraft:splash_potion\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001e00000001 Pos",
+      "text": "Snowball has the following entity data: [5698.549500000477d, 310.0d, 5582.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001e00000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001f00000001 Pos",
+      "text": "Splash Potion has the following entity data: [5698.549500000477d, 312.0d, 5570.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001f00000001 Item",
+      "text": "Splash Potion has the following entity data: {components: {\"minecraft:potion_contents\": {potion: \"minecraft:harming\"}}, count: 1, id: \"minecraft:splash_potion\"}",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-002000000001 Pos",
+      "text": "Thrown Egg has the following entity data: [5698.549500000477d, 312.0d, 5573.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-002000000001 Item",
+      "text": "Thrown Egg has the following entity data: {components: {\"minecraft:custom_name\": \"pebble\", \"minecraft:custom_data\": {tag: 1b}}, count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-002100000001 Pos",
+      "text": "Thrown Ender Pearl has the following entity data: [5698.549500000477d, 312.0d, 5576.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-002100000001 Item",
+      "text": "Thrown Ender Pearl has the following entity data: {components: {\"minecraft:enchantments\": {\"minecraft:unbreaking\": 2}, \"minecraft:damage\": 7}, count: 1, id: \"minecraft:diamond_sword\"}",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-002200000001 Pos",
+      "text": "Snowball has the following entity data: [5698.549500000477d, 316.0d, 5570.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-002200000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:coal\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-002300000001 Pos",
+      "text": "Snowball has the following entity data: [5698.549500000477d, 316.0d, 5570.5d]",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-002300000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:quartz\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
       "cmd": "/execute unless loaded 5696 300 5568",
       "text": "Test passed",
       "results": [
@@ -369,6 +1179,266 @@
     {
       "cmd": "/data get entity 00000a83-0000-0000-0000-000900000001 Item",
       "text": "Thrown Bottle o' Enchanting has the following entity data: {count: 1, id: \"minecraft:experience_bottle\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000a00000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:diamond\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000b00000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:emerald\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000c00000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:gold_ingot\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000d00000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:iron_ingot\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000e00000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:emerald\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-000f00000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:copper_ingot\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001000000001 Item",
+      "text": "Thrown Egg has the following entity data: {count: 1, id: \"minecraft:egg\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001100000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:snowball\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001200000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:snowball\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001300000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:snowball\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001400000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001500000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001600000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001700000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001800000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001900000001 Item",
+      "text": "Snowball has the following entity data: {components: {\"minecraft:custom_name\": \"pebble\"}, count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001a00000001 Item",
+      "text": "Snowball has the following entity data: {components: {\"minecraft:custom_name\": \"pebble\"}, count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001b00000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001c00000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:snowball\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001d00000001 Item",
+      "text": "Splash Potion has the following entity data: {count: 1, id: \"minecraft:splash_potion\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001e00000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-001f00000001 Item",
+      "text": "Splash Potion has the following entity data: {components: {\"minecraft:potion_contents\": {potion: \"minecraft:harming\"}}, count: 1, id: \"minecraft:splash_potion\"}",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-002000000001 Item",
+      "text": "Thrown Egg has the following entity data: {components: {\"minecraft:custom_name\": \"pebble\", \"minecraft:custom_data\": {tag: 1b}}, count: 1, id: \"minecraft:stone\"}",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-002100000001 Item",
+      "text": "Thrown Ender Pearl has the following entity data: {components: {\"minecraft:enchantments\": {\"minecraft:unbreaking\": 2}, \"minecraft:damage\": 7}, count: 1, id: \"minecraft:diamond_sword\"}",
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-002200000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:coal\"}",
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "cmd": "/data get entity 00000a83-0000-0000-0000-002300000001 Item",
+      "text": "Snowball has the following entity data: {count: 1, id: \"minecraft:quartz\"}",
       "results": [
         [
           true,

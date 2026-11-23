@@ -1,6 +1,6 @@
 use super::*;
 use crate::game::commands::Target;
-use crate::game::native_entity_refs::tests::with_game;
+use crate::game::native_entity_refs::tests::{prepare_entity_ticking_neighborhood, with_game};
 use sunrise_core::nbt::parse_snbt;
 
 const WITNESS_26_3: &str = include_str!(concat!(
@@ -11,8 +11,10 @@ const WITNESS_26_3: &str = include_str!(concat!(
 struct WitnessCase {
     kind: String,
     uuid: String,
-    summon_pos: [f64; 3],
-    nbt: String,
+    uuid_u128: u128,
+    summon_cmd: String,
+    edit_cmds: Vec<String>,
+    summon_pos: Vec3,
     moved_pos: Vec3,
     moved_pos_tag: Tag,
     moved_item: Tag,
@@ -42,19 +44,22 @@ fn vec3_from_pos_tag(tag: &Tag) -> Vec3 {
     Vec3::new(f64::from_bits(*x), f64::from_bits(*y), f64::from_bits(*z))
 }
 
-fn load_witness_26_3() -> Vec<WitnessCase> {
+fn load_witness_26_3() -> (i32, i32, Vec<WitnessCase>) {
     let witness: serde_json::Value = serde_json::from_str(WITNESS_26_3).unwrap();
     assert_eq!(witness["minecraft"].as_str(), Some("26.3"));
     let records = witness["records"].as_array().unwrap();
-    let mut summoned: Vec<(String, String, [f64; 3], String)> = Vec::new();
+    let mut summoned: Vec<(String, String, u128, String, Vec3)> = Vec::new();
+    let mut seen_uuids: HashSet<String> = HashSet::new();
+    let mut edit_cmds: HashMap<String, Vec<String>> = HashMap::new();
     let mut moved_pos: HashMap<String, (Vec3, Tag)> = HashMap::new();
     let mut moved_item: HashMap<String, Tag> = HashMap::new();
     let mut reloaded_item: HashMap<String, Tag> = HashMap::new();
-    let mut unloaded = false;
+    let mut unload_xz: Option<(i32, i32)> = None;
     for rec in records {
         let cmd = rec["cmd"].as_str().unwrap();
         let text = rec["text"].as_str().unwrap();
         if let Some(rest) = cmd.strip_prefix("/summon ") {
+            assert_eq!(rec["results"], serde_json::json!([[true, 1]]), "{cmd}");
             let mut parts = rest.splitn(5, ' ');
             let kind = parts.next().unwrap().to_owned();
             let x: f64 = parts.next().unwrap().parse().unwrap();
@@ -62,122 +67,253 @@ fn load_witness_26_3() -> Vec<WitnessCase> {
             let z: f64 = parts.next().unwrap().parse().unwrap();
             let nbt = parts.next().unwrap().to_owned();
             let tag = parse_exact_snbt(&nbt);
-            let uuid = uuid_text(entity_nbt::uuid(&tag).unwrap());
-            summoned.push((kind, uuid, [x, y, z], nbt));
-        } else if cmd.starts_with("/execute unless loaded ") {
-            assert_eq!(rec["results"], serde_json::json!([[true, 1]]));
-            unloaded = true;
+            let ints = entity_nbt::uuid(&tag).unwrap();
+            let uuid = uuid_text(ints);
+            let uuid_u128 = sunrise_client::lan::playerdata::ints_uuid(ints);
+            assert!(
+                seen_uuids.insert(uuid.clone()),
+                "duplicate summon UUID in witness: {uuid}"
+            );
+            summoned.push((kind, uuid, uuid_u128, cmd.to_owned(), Vec3::new(x, y, z)));
+        } else if let Some(rest) = cmd
+            .strip_prefix("/data modify entity ")
+            .or_else(|| cmd.strip_prefix("/data merge entity "))
+        {
+            assert_eq!(rec["results"], serde_json::json!([[true, 1]]), "{cmd}");
+            let (uuid, _) = rest.split_once(' ').unwrap();
+            edit_cmds
+                .entry(uuid.to_owned())
+                .or_default()
+                .push(cmd.to_owned());
+        } else if let Some(rest) = cmd.strip_prefix("/execute unless loaded ") {
+            assert_eq!(rec["results"], serde_json::json!([[true, 1]]), "{cmd}");
+            let mut coords = rest.split_whitespace();
+            let x: i32 = coords.next().unwrap().parse().unwrap();
+            let _y: i32 = coords.next().unwrap().parse().unwrap();
+            let z: i32 = coords.next().unwrap().parse().unwrap();
+            assert!(
+                unload_xz.replace((x, z)).is_none(),
+                "duplicate unload check"
+            );
         } else if let Some(rest) = cmd.strip_prefix("/data get entity ") {
             let (uuid, field) = rest.split_once(' ').unwrap();
             let value = entity_data_snbt(text);
-            match (unloaded, field) {
+            match (unload_xz.is_some(), field) {
                 (false, "Pos") => {
                     let pos = vec3_from_pos_tag(&value);
-                    moved_pos.insert(uuid.to_owned(), (pos, value));
+                    assert!(
+                        moved_pos.insert(uuid.to_owned(), (pos, value)).is_none(),
+                        "duplicate pre-unload Pos for {uuid}"
+                    );
                 }
                 (false, "Item") => {
-                    moved_item.insert(uuid.to_owned(), value);
+                    assert!(
+                        moved_item.insert(uuid.to_owned(), value).is_none(),
+                        "duplicate pre-unload Item for {uuid}"
+                    );
                 }
                 (true, "Item") => {
-                    reloaded_item.insert(uuid.to_owned(), value);
+                    assert!(
+                        reloaded_item.insert(uuid.to_owned(), value).is_none(),
+                        "duplicate post-reload Item for {uuid}"
+                    );
                 }
                 _ => panic!("unexpected /data get record: {cmd:?}"),
             }
         }
     }
-    assert!(unloaded, "witness must record a chunk unload");
+    let (x0, z0) = unload_xz.expect("witness must verify chunk unload");
     assert!(!summoned.is_empty(), "witness must contain summon cases");
-    summoned
+    let cases: Vec<WitnessCase> = summoned
         .into_iter()
-        .map(|(kind, uuid, summon_pos, nbt)| {
-            let (moved_pos, moved_pos_tag) = moved_pos.remove(&uuid).unwrap();
-            let moved_item = moved_item.remove(&uuid).unwrap();
-            let reloaded_item = reloaded_item.remove(&uuid).unwrap();
+        .map(|(kind, uuid, uuid_u128, summon_cmd, summon_pos)| {
+            let (moved_pos, moved_pos_tag) = moved_pos
+                .remove(&uuid)
+                .unwrap_or_else(|| panic!("missing pre-unload Pos for {uuid}"));
+            let moved_item = moved_item
+                .remove(&uuid)
+                .unwrap_or_else(|| panic!("missing pre-unload Item for {uuid}"));
+            let reloaded_item = reloaded_item
+                .remove(&uuid)
+                .unwrap_or_else(|| panic!("missing post-reload Item for {uuid}"));
+            let edit_cmds = edit_cmds.remove(&uuid).unwrap_or_default();
             WitnessCase {
                 kind,
                 uuid,
+                uuid_u128,
+                summon_cmd,
+                edit_cmds,
                 summon_pos,
-                nbt,
                 moved_pos,
                 moved_pos_tag,
                 moved_item,
                 reloaded_item,
             }
         })
-        .collect()
+        .collect();
+    assert!(moved_pos.is_empty(), "extra pre-unload Pos observations");
+    assert!(moved_item.is_empty(), "extra pre-unload Item observations");
+    assert!(
+        reloaded_item.is_empty(),
+        "extra post-reload Item observations"
+    );
+    assert!(edit_cmds.is_empty(), "extra /data edit commands");
+    (x0, z0, cases)
 }
 
-/// #2691 (26.3): a moved thrown-item projectile matches the vanilla 26.3 save/reload witness.
+fn collect_projectile_uuids(game: &Game<'_>) -> HashMap<String, (usize, u32)> {
+    let mut by_uuid = HashMap::new();
+    for (idx, p) in game.creatures.projectiles.iter().enumerate() {
+        let ints = game
+            .persist
+            .uuid_of(p.id)
+            .unwrap_or_else(|| panic!("projectile {} missing persisted UUID", p.id));
+        let uuid = uuid_text(ints);
+        assert!(
+            by_uuid.insert(uuid.clone(), (idx, p.id)).is_none(),
+            "duplicate resident projectile UUID: {uuid}"
+        );
+    }
+    by_uuid
+}
+
+/// #2691 (26.3): thrown-item projectiles match the vanilla 26.3 tick, unload, and reload witness.
 #[test]
 #[ignore = "daily"]
 fn a_moved_thrown_item_projectile_saves_its_loaded_item() {
-    let cases = load_witness_26_3();
+    let (x0, z0, cases) = load_witness_26_3();
+    let key = (x0 >> 4, z0 >> 4);
+    let keys: HashSet<ChunkKey> = [key].into();
     with_game(|game| {
+        game.build_registries();
+        game.set_allow_commands(true);
+        prepare_entity_ticking_neighborhood(game, ChunkPos::new(key.0, key.1));
+        assert!(game.run_command(&format!("forceload add {x0} {z0}")));
+        game.update_chunk_tickets();
+        assert!(
+            game.entity_ticking_area()(x0 + 2, z0 + 2),
+            "target chunk must be entity-ticking before projectile tick"
+        );
+
+        // Summon every case and apply any pre-movement /data edits while stationary.
         for case in &cases {
-            game.summon_with_nbt(
-                &format!("minecraft:{}", case.kind),
-                case.summon_pos,
-                &case.nbt,
-            )
-            .unwrap();
-            let i = game.creatures.projectiles.len() - 1;
-            assert_ne!(
-                case.moved_pos,
-                Vec3::new(case.summon_pos[0], case.summon_pos[1], case.summon_pos[2]),
-                "{} {} must move from its summon position",
-                case.kind,
-                case.uuid
-            );
-            // Move the projectile to the exact post-tick position from the 26.3 witness.
-            game.creatures
-                .projectiles
-                .update(i, |p| p.position = case.moved_pos);
-            let at = game.creatures.projectiles[i].position;
-            let key = chunk_of(at);
-            let keys: HashSet<ChunkKey> = [key].into();
-            let (_, saved) = game.save_projectile(i, &keys).unwrap();
+            let summon = case.summon_cmd.strip_prefix('/').unwrap();
+            assert!(game.run_command(summon), "summon failed: {summon}");
+            for edit in &case.edit_cmds {
+                let edit_cmd = edit.strip_prefix('/').unwrap();
+                assert!(game.run_command(edit_cmd), "edit failed: {edit_cmd}");
+            }
+        }
+
+        // Run one real projectile tick so moving projectiles actually advance.
+        game.ticked_entities_through = game.next_entity;
+        game.tick_projectiles().unwrap();
+
+        let live_by_uuid = collect_projectile_uuids(game);
+        assert_eq!(
+            live_by_uuid.len(),
+            cases.len(),
+            "missing or extra resident projectiles before unload"
+        );
+        let mut confirmed_moved = 0usize;
+        for case in &cases {
+            let &(_, id) = live_by_uuid
+                .get(&case.uuid)
+                .unwrap_or_else(|| panic!("missing live projectile {} {}", case.kind, case.uuid));
+            let live = game.command_target_nbt(Target::Projectile(id)).unwrap();
             assert_eq!(
-                saved.get("Pos"),
+                live.get("Pos"),
                 Some(&case.moved_pos_tag),
-                "{} {} moved Pos",
+                "{} {} post-tick Pos",
                 case.kind,
                 case.uuid
             );
+            let live_pos = vec3_from_pos_tag(live.get("Pos").unwrap());
+            if case.moved_pos != case.summon_pos {
+                assert_ne!(
+                    live_pos, case.summon_pos,
+                    "{} {} must move during tick",
+                    case.kind, case.uuid
+                );
+                confirmed_moved += 1;
+            } else {
+                assert_eq!(
+                    live_pos, case.summon_pos,
+                    "{} {} stationary control must stay put",
+                    case.kind, case.uuid
+                );
+            }
             assert_eq!(
-                saved.get("Item"),
+                live.get("Item"),
                 Some(&case.moved_item),
-                "{} {} moved Item",
+                "{} {} live /data get Item before unload",
                 case.kind,
                 case.uuid
             );
-            // Unload and reload the saved compound through the chunk entity load path.
-            let id = game.creatures.projectiles[i].id;
-            game.creatures.projectiles.remove(i);
-            game.forget_entity(id);
-            game.world.queue_entity_nbt(key, vec![saved]);
-            game.spawn_loaded_entities();
-            let j = game.creatures.projectiles.len() - 1;
-            let reloaded_id = game.creatures.projectiles[j].id;
-            let reloaded_data = game
-                .command_target_nbt(Target::Projectile(reloaded_id))
-                .unwrap();
+        }
+        assert!(confirmed_moved > 0, "at least one projectile must move");
+
+        // Unload the chunk through the real chunk entity unload/save path and confirm removal.
+        let chunk = game.world.chunks.remove(&key).unwrap();
+        game.unload_entities(std::slice::from_ref(&chunk));
+        game.save.flush().unwrap();
+        assert!(
+            game.creatures.projectiles.is_empty(),
+            "chunk unload failed to remove resident projectiles"
+        );
+        for case in &cases {
+            assert!(
+                game.target_by_uuid(case.uuid_u128).is_none(),
+                "{} {} remained resident after chunk unload",
+                case.kind,
+                case.uuid
+            );
+        }
+
+        // Reload the chunk from disk and compare the full typed Item by UUID.
+        let records = game.save.load_entities(key.0, key.1).unwrap();
+        assert_eq!(
+            records.len(),
+            cases.len(),
+            "saved chunk has missing, duplicate, or extra entity records"
+        );
+        game.world.chunks.insert(key, chunk);
+        game.world.queue_entity_nbt(key, records);
+        game.spawn_loaded_entities();
+
+        let reloaded_by_uuid = collect_projectile_uuids(game);
+        assert_eq!(
+            reloaded_by_uuid.len(),
+            cases.len(),
+            "missing or extra projectiles after chunk reload"
+        );
+        for case in &cases {
+            let &(idx, id) = reloaded_by_uuid.get(&case.uuid).unwrap_or_else(|| {
+                panic!("missing reloaded projectile {} {}", case.kind, case.uuid)
+            });
+            let reloaded = game.command_target_nbt(Target::Projectile(id)).unwrap();
             assert_eq!(
-                reloaded_data.get("Item"),
+                reloaded.get("Pos"),
+                Some(&case.moved_pos_tag),
+                "{} {} reloaded Pos",
+                case.kind,
+                case.uuid
+            );
+            assert_eq!(
+                reloaded.get("Item"),
                 Some(&case.reloaded_item),
                 "{} {} reloaded /data get Item",
                 case.kind,
                 case.uuid
             );
-            let (_, resaved) = game.save_projectile(j, &keys).unwrap();
+            let (_, resaved) = game.save_projectile(idx, &keys).unwrap();
             assert_eq!(
                 resaved.get("Item"),
                 Some(&case.reloaded_item),
-                "{} {} reloaded save Item",
+                "{} {} reloaded chunk save Item",
                 case.kind,
                 case.uuid
             );
-            game.creatures.projectiles.remove(j);
-            game.forget_entity(reloaded_id);
         }
     });
 }
