@@ -143,7 +143,7 @@ pub(in crate::game) fn zombie(game: &mut super::super::Game<'_>, id: u32, at: [f
         .get("minecraft:zombie")
         .unwrap()
         .clone();
-    let mut m = Mob::new(id, kind, Vec3::new(at[0], at[1], at[2]), 0.0);
+    let mut m = game.new_mob(id, kind, Vec3::new(at[0], at[1], at[2]), 0.0);
     m.ground.on_ground = true;
     game.mobs.push(m);
 }
@@ -555,7 +555,7 @@ fn the_host_answers_without_panicking() {
 /// A mob of `kind` in the game's list, as `Mob::new` builds it.
 fn mob_of(game: &mut super::super::Game<'_>, id: u32, kind: &str, at: [f64; 3]) {
     let kind = game.res.mob_types().get(kind).unwrap().clone();
-    let mut m = Mob::new(id, kind, Vec3::new(at[0], at[1], at[2]), 0.0);
+    let mut m = game.new_mob(id, kind, Vec3::new(at[0], at[1], at[2]), 0.0);
     m.ground.on_ground = true;
     game.mobs.push(m);
 }
@@ -649,7 +649,7 @@ fn a_screens_entity_registers_no_mod_goals() {
     super::super::native_entity_refs::tests::with_client_game(|game| {
         let kind = game.res.mob_types().get("minecraft:husk").unwrap().clone();
         // The authoritative construction asks the part…
-        let _ = Mob::new(90, kind, Vec3::new(0.5, 65.0, 0.5), 0.0);
+        let _ = game.new_mob(90, kind, Vec3::new(0.5, 65.0, 0.5), 0.0);
         let before = asked();
         assert!(before >= 1, "the part is installed");
         // …a screen drawing the type, by type and from saved data, does not.

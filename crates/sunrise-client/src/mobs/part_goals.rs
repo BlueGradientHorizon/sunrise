@@ -93,6 +93,9 @@ pub trait GoalHost {
         actor: &Mob,
         world: &MobWorld<'_>,
     ) -> Option<bool>;
+    /// The game time and the day time a brain built now starts at (`makeBrain` in a mob's
+    /// constructor).
+    fn brain_times(&self) -> (i64, i64);
     /// `register_goals` of the mob's entity parts, asked with the game's read host
     /// (`Mob.registerGoals`).
     fn register_goals(&self, goals: &mut mod_api::GoalRegistrar<'_>);

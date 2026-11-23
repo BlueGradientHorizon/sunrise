@@ -3859,6 +3859,17 @@ impl Mob {
     /// can read geometry before taking an id.
     pub fn attach_mod_parts(&mut self, host: &dyn part_goals::GoalHost) {
         part_goals::attach(self, host);
+        // `LivingEntity.makeBrain` runs in the constructor: a villager's, a breeze's and a
+        // creaking's brain are built here, with the parts' behaviors, as the others' are.
+        let seed = i64::from(self.id);
+        match self.species() {
+            Species::Villager => {
+                let (game_time, day_time) = host.brain_times();
+                villager_brain::init(self, game_time, day_time, seed, Some(host));
+            }
+            Species::Breeze | Species::Creaking => monster_brain::init(self, seed),
+            _ => {}
+        }
         mod_behaviors::attach_at_construction(self, host);
     }
     /// The same construction without the mod parts' goals: a client's copy of

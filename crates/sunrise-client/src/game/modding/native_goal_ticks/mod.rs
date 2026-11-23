@@ -815,6 +815,10 @@ impl mobs::part_goals::GoalHost for Game<'_> {
         Some(sunrise_client::scoreboard::teams_allow_damage(own, other))
     }
 
+    fn brain_times(&self) -> (i64, i64) {
+        (self.world.game_time, self.world.day_time)
+    }
+
     fn register_goals(&self, goals: &mut mod_api::GoalRegistrar<'_>) {
         self.native_register_goals(goals);
     }

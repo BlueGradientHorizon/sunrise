@@ -82,8 +82,6 @@ impl HeartHost for Host<'_> {
         *self.next_entity += 1;
         // A new entity's random is its own (Mob::new seeds it).
         let mut m = Mob::new(*self.next_entity, kind, at, 0.0);
-        let seed = i64::from(m.id);
-        sunrise_client::mobs::monster_brain::init(&mut m, seed);
         m
     }
     fn add_mob(&mut self, m: Mob) {
