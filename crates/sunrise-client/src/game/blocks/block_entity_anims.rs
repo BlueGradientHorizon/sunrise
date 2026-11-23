@@ -32,8 +32,7 @@ pub(super) use sunrise_gameplay::container_openers::recheck_opener_count;
 
 /// What a client tick of the animated block entities shares between them.
 pub(super) struct AnimTick {
-    /// The tags of bells and conduits, copied when the first of them ticks.
-    raiders: Option<std::sync::Arc<sunrise_client::items::EntityTypeTags>>,
+    /// The conduits' frame blocks, copied when the first of them ticks.
     frames: Option<std::collections::HashSet<String>>,
 }
 
@@ -385,10 +384,7 @@ impl Game<'_> {
             |p, g| world.block_entities.generation(&(p[0], p[1], p[2])) == Some(g),
             |p| world.block(p[0], p[1], p[2]).0,
         );
-        AnimTick {
-            raiders: None,
-            frames: None,
-        }
+        AnimTick { frames: None }
     }
     /// The client ticker of the animated block entity at `pos` (`ClientLevel.tickBlockEntities`),
     /// in the ticker list's order with every other client ticker.
@@ -444,12 +440,8 @@ impl Game<'_> {
                     // Integrated servers already ticked this state above, independently
                     // of drawn block entities. Remote clients only animate their copy.
                     if self.remote.is_some() {
-                        let tags = match anim.raiders.take() {
-                            Some(tags) => tags,
-                            None => self.items().entity_type_tags.clone(),
-                        };
+                        let tags = self.items().entity_type_tags.clone();
                         self.tick_bell(pos, &tags);
-                        anim.raiders = Some(tags);
                     }
                 }
                 Ticker::Conduit => {

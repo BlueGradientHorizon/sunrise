@@ -406,6 +406,7 @@ pub(super) fn mob_effect_id(id: &str) -> Option<&'static str> {
 pub(super) fn mob_can_be_affected(
     tags: &sunrise_client::items::EntityTypeTags,
     kind: &str,
+    slot: Option<usize>,
     effect: &str,
 ) -> bool {
     use sunrise_client::items::EntityTypeTags;
@@ -419,7 +420,7 @@ pub(super) fn mob_can_be_affected(
     if overridden {
         return false;
     }
-    let in_tag = |flag| tags.has_flag(kind, flag);
+    let in_tag = |flag| tags.has_bit(slot, flag);
     if in_tag(EntityTypeTags::IMMUNE_TO_INFESTED) {
         effect != "infested"
     } else if in_tag(EntityTypeTags::IMMUNE_TO_OOZING) {
@@ -1460,7 +1461,10 @@ impl Game<'_> {
             Some(EffectApplicable::Deny) => false,
             // An unanswered hook, or a future variant, defers to the
             // vanilla tag check.
-            _ => mob_can_be_affected(&self.items().entity_type_tags, kind, effect),
+            _ => {
+                let tags = &self.items().entity_type_tags;
+                mob_can_be_affected(tags, kind, tags.slot(kind), effect)
+            }
         }
     }
     pub(super) fn add_player_effect(&mut self, effect: EffectInstance) -> bool {
@@ -3754,11 +3758,16 @@ pub(super) mod tests {
         let tags = sunrise_client::items::EntityTypeTags::default();
         for effect in ["strength", "instant_health"] {
             assert!(
-                mob_can_be_affected(&tags, "minecraft:wither", effect),
+                mob_can_be_affected(&tags, "minecraft:wither", None, effect),
                 "{effect}"
             );
         }
-        assert!(!mob_can_be_affected(&tags, "minecraft:wither", "wither"));
+        assert!(!mob_can_be_affected(
+            &tags,
+            "minecraft:wither",
+            None,
+            "wither"
+        ));
     }
 
     /// #5876: a potion thrown straight up from inside its thrower's box does

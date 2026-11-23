@@ -13,7 +13,7 @@ pub struct EntityTypeTags {
 
 /// The fixed vanilla tags gameplay asks about, each resolved to one bit per
 /// entity type whenever the membership is bound or reloaded.
-const FLAGS: [(&str, u32); 22] = [
+const FLAGS: [(&str, u32); 21] = [
     (
         "minecraft:burn_in_daylight",
         EntityTypeTags::BURN_IN_DAYLIGHT,
@@ -95,10 +95,6 @@ const FLAGS: [(&str, u32); 22] = [
         "minecraft:not_affected_by_geysers",
         EntityTypeTags::NOT_AFFECTED_BY_GEYSERS,
     ),
-    (
-        "minecraft:redirectable_projectile",
-        EntityTypeTags::REDIRECTABLE_PROJECTILE,
-    ),
 ];
 
 impl EntityTypeTags {
@@ -124,7 +120,6 @@ impl EntityTypeTags {
     pub const CANNOT_BE_DISMOUNTED_BY_ITEM_USAGE: u32 = 1 << 18;
     pub const RAIDERS: u32 = 1 << 19;
     pub const NOT_AFFECTED_BY_GEYSERS: u32 = 1 << 20;
-    pub const REDIRECTABLE_PROJECTILE: u32 = 1 << 21;
 
     /// The component registry's entity type index, including content-mod types.
     pub fn registry_ids(
@@ -193,15 +188,19 @@ impl EntityTypeTags {
             .is_some_and(|bits| bits & flag != 0)
     }
 
-    /// [`Self::has_bit`] for a type known only by its ID: the slot is its
-    /// place in the sorted registry IDs.
+    /// A type's slot for [`Self::has_bit`]: its place in the sorted registry
+    /// IDs, found by a binary search. A mob's type keeps its slot from load
+    /// (`MobType.flags.entity_tag_slot`); this is for a type known only by its ID.
+    pub fn slot(&self, id: &str) -> Option<usize> {
+        self.ids
+            .binary_search_by(|known| known.as_str().cmp(id))
+            .ok()
+    }
+
+    /// [`Self::has_bit`] for a type known only by its ID, through [`Self::slot`]:
+    /// for per-event reads, not per-tick ones.
     pub fn has_flag(&self, id: &str, flag: u32) -> bool {
-        self.has_bit(
-            self.ids
-                .binary_search_by(|known| known.as_str().cmp(id))
-                .ok(),
-            flag,
-        )
+        self.has_bit(self.slot(id), flag)
     }
 }
 
@@ -237,7 +236,7 @@ mod tests {
         assert!(!first.has_flag("test:unknown", EntityTypeTags::RAIDERS));
         assert_eq!(
             FLAGS.iter().fold(0, |all, (_, bit)| all | bit).count_ones(),
-            22
+            21
         );
     }
 }
