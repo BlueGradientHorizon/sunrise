@@ -3584,6 +3584,7 @@ struct Game<'a> {
     setting_overrides: std::cell::RefCell<std::collections::BTreeMap<(String, String), String>>,
     /// The native damage hooks every level of this game lends to its hits.
     damage_hooks: sunrise_client::health::DamageHooks,
+    paused_mob_hurt: Option<Box<sunrise_client::mobs::PausedMobHurt>>,
     music: sunrise_client::music::MusicManager,
     /// The tracks native mods play over the music (`native_music_layers`).
     music_layers: sunrise_client::music::MusicLayers,
@@ -13731,6 +13732,7 @@ impl<'a> Game<'a> {
             tick: sunrise_client::parallel::TickThread::mint(),
             setting_overrides: Default::default(),
             damage_hooks: native_hooks::DAMAGE_HOOKS,
+            paused_mob_hurt: None,
             music: {
                 // The manager starts with the saved option (MusicManager's constructor).
                 let mut music = sunrise_client::music::MusicManager::default();
