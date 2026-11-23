@@ -245,6 +245,15 @@ ticking is frozen, `None` on a client. A frozen server still runs the ticks `/ti
 `server_tick_start`'s `world_running` can be true while it is frozen; read this to tell a frozen server from a
 paused level.
 
+## Account profiles
+
+`host.profiles().resolve_name(name)` and `resolve_id(uuid)` look an account's profile up
+through the server's own resolver, the one `/fetchprofile` and dynamic player heads use, also on
+an offline-mode server. The first call starts the lookup and answers
+`ProfileResolution::Pending`; call again with the same name or UUID to poll it until it answers
+`Done`, with the `AccountProfile` (UUID, the account's own spelling of its name, and the signed
+properties such as `textures`) or `None`. As in vanilla, a failed request also answers `None`.
+
 ## Finding blocks in a chunk
 
 `chunk.sections_with_block(host, block)` names the sections of a loaded chunk whose block palette may hold any

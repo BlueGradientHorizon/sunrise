@@ -16,6 +16,9 @@ pub trait ServicesServerHost {
     /// The players service.
     #[service]
     fn players(&self) -> &dyn Players;
+    /// The profiles service.
+    #[service]
+    fn profiles(&self) -> &dyn Profiles;
     /// The runtime_levels service.
     #[service]
     fn runtime_levels(&mut self) -> &mut dyn RuntimeLevels;
@@ -181,6 +184,27 @@ pub trait Players {
     /// [`PlayerRef::is_singleplayer_owner`] matches a player to it by name.
     fn singleplayer_profile(&self) -> Option<GameProfile<'_>> {
         unimplemented!("Players::singleplayer_profile")
+    }
+}
+/// The profiles service, reached through its host: account profiles by name or UUID through
+/// the server's `ProfileResolver.Cached`, the one `/fetchprofile` and dynamic player heads use,
+/// also on an offline-mode server. Each name and each UUID is kept 10 minutes after its last
+/// lookup, at most 256 of each, so polling a lookup keeps its answer.
+pub trait Profiles {
+    /// Side: server.
+    /// The profile of the account named `name`, any case (`ProfileResolver.fetchByName`):
+    /// its UUID from the name lookup, then the session service's signed profile. A name
+    /// `StringUtil.isValidPlayerName` refuses (over 16 UTF-16 units, or anything but printable
+    /// ASCII other than a space) answers `Done(None)` without a request. `Done(None)` off a
+    /// server.
+    fn resolve_name(&self, name: &str) -> ProfileResolution {
+        unimplemented!("Profiles::resolve_name")
+    }
+    /// Side: server.
+    /// The session service's signed profile of the account `uuid`
+    /// (`ProfileResolver.fetchById`). `Done(None)` off a server.
+    fn resolve_id(&self, uuid: u128) -> ProfileResolution {
+        unimplemented!("Profiles::resolve_id")
     }
 }
 /// The runtime_levels service, reached through its host.
