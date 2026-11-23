@@ -127,6 +127,9 @@ pub struct GoalSelector {
     goals: Vec<Wrapped>,
     locked: [Option<usize>; 4],
     pub disabled: u8,
+    /// How many goals start on every tick ([`Goal::starts_every_tick`]): with none, a tick
+    /// that only ticks the running goals tries no start.
+    brain_starters: usize,
 }
 /// Where a goal tick paused for a game-owned move. Public, with
 /// [`GoalSelector::tick_until_movement_pause`], because `ai::server_ai_step`, a replaceable
@@ -144,6 +147,7 @@ impl GoalSelector {
     }
     /// `add` for a goal built at runtime (`Box<dyn Goal>`).
     pub fn add_boxed(&mut self, priority: i32, goal: Box<dyn Goal>) {
+        self.brain_starters += usize::from(goal.starts_every_tick());
         self.goals.push(Wrapped {
             priority,
             goal,
@@ -160,6 +164,7 @@ impl GoalSelector {
     }
     pub fn clear(&mut self) {
         self.goals.clear();
+        self.brain_starters = 0;
         self.locked = [None; 4];
     }
     pub fn running_names(&self) -> Vec<&'static str> {
@@ -208,6 +213,9 @@ impl GoalSelector {
     /// ([`Goal::starts_every_tick`]), on a tick the selector otherwise only ticks its running
     /// goals.
     fn start_goals(&mut self, m: &mut Mob, cx: &mut Cx, brain_only: bool) {
+        if brain_only && self.brain_starters == 0 {
+            return;
+        }
         for slot in &mut self.locked {
             if slot.is_some_and(|i| !self.goals[i].running) {
                 *slot = None;
@@ -336,7 +344,8 @@ impl GoalSelector {
         while i < self.goals.len() {
             if predicate(&*self.goals[i].goal) {
                 self.stop(i, m, cx);
-                self.goals.remove(i);
+                let goal = self.goals.remove(i);
+                self.brain_starters -= usize::from(goal.goal.starts_every_tick());
                 removed += 1;
                 for slot in &mut self.locked {
                     match *slot {
@@ -3432,6 +3441,7 @@ mod breeding_variant_tests {
                     }],
                     locked: [Some(0), Some(0), None, None],
                     disabled: 0,
+                    brain_starters: 0,
                 };
                 let mut events = Vec::new();
                 parent.tick(

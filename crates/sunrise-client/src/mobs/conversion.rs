@@ -71,10 +71,6 @@ pub fn pig_thunder_hit(from: &mut Mob, to: &mut Mob) {
     to.persistent = true;
 }
 
-/// `ConversionType.SINGLE.convert` and `ConversionType.convertCommon`: `to`
-/// is a fresh mob (`EntityType.create(level, CONVERSION)`, no spawn
-/// finalization) that takes `from`'s place, motion, ride, lead, equipment,
-/// effects, age, name and flags. Its health stays its own type's.
 /// The state [`single`] reads that the rest of a mob's tick changes after a conversion it made
 /// inside its AI step (`Mob.convertTo` runs then, before `travel`): `source` takes its
 /// position, rotation and motion from `at`, the mob as it was when it converted.
@@ -90,6 +86,10 @@ pub fn motion_at(source: &mut Mob, at: &Mob) {
     source.ground.on_ground = at.ground.on_ground;
 }
 
+/// `ConversionType.SINGLE.convert` and `ConversionType.convertCommon`: `to`
+/// is a fresh mob (`EntityType.create(level, CONVERSION)`, no spawn
+/// finalization) that takes `from`'s place, motion, ride, lead, equipment,
+/// effects, age, name and flags. Its health stays its own type's.
 pub fn single(from: &Mob, to: &mut Mob, params: Params) {
     // copyPosition, setDeltaMovement and the old mob's vehicle.
     to.position = from.position;

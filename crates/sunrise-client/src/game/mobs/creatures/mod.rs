@@ -3388,7 +3388,8 @@ impl Game<'_> {
                     kind,
                     params,
                     after,
-                } => self.convert_event(&from, kind, params, after),
+                    before_travel,
+                } => self.convert_event(&from, kind, params, after, before_travel),
                 MobEvent::ThrowItem {
                     mob,
                     stack,

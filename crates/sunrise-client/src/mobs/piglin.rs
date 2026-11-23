@@ -2115,6 +2115,8 @@ pub fn zombification_tick(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>)
                 kind,
                 params,
                 after: super::conversion::After::Nausea,
+                // `AbstractPiglin` and `Hoglin.customServerAiStep`, inside `Mob.serverAiStep`.
+                before_travel: true,
             });
             m.removed = true;
         }

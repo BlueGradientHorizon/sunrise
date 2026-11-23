@@ -16,15 +16,16 @@ impl Game<'_> {
         kind: &str,
         params: conversion::Params,
         after: conversion::After,
+        before_travel: bool,
     ) {
-        // A tick conversion is queued from inside the mob's AI step: the new mob takes the
-        // place the mob had then, before its travel.
+        // A conversion vanilla makes before the tick's travel takes the place the mob had then,
+        // which the event's snapshot holds; any other, the live mob's.
         self.convert_to_moved(
             from,
             kind,
             params,
             after.pre_checked(),
-            Some(from),
+            before_travel.then_some(from),
             |_, _| {},
         );
     }

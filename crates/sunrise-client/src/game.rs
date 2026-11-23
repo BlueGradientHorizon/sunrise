@@ -357,6 +357,9 @@ mod container_layout;
 mod container_loot;
 #[path = "game/runtime/control.rs"]
 mod control;
+#[cfg(test)]
+#[path = "game/mobs/conversion_place_tests.rs"]
+mod conversion_place_tests;
 #[path = "game/mobs/copper_golems.rs"]
 mod copper_golems;
 #[cfg(test)]

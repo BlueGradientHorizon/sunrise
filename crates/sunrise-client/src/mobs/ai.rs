@@ -4146,10 +4146,6 @@ mod server_ai_brain_tests {
         assert!(ran, "vanilla data is missing");
     }
 
-    /// `Brain.tick` runs the sensors before the behaviours: on the tick `PiglinSpecificSensor`
-    /// finds a soul lantern 3 blocks away, `PiglinAi.avoidRepellent` (the idle activity's
-    /// `SetWalkTargetAwayFrom.pos(NEAREST_REPELLENT, ..)`) already walks away from it, as
-    /// `HoglinSpecificSensor` and the hoglin's for a warped fungus.
     /// A stone floor wide enough to walk 16 blocks away on, and `block` at (0, 64, 0).
     fn repellent_floor(
         block: &'static str,
@@ -4174,8 +4170,8 @@ mod server_ai_brain_tests {
         }
     }
 
-    /// The same on a tick where `Mob.serverAiStep`'s goal selectors only tick the goals already
-    /// running (an odd `tickCount + id` past the first ticks): the avoid behaviour is the
+    /// As [`a_repellent_scanned_this_tick_is_avoided_this_tick`], on a tick where
+    /// `Mob.serverAiStep`'s goal selectors only tick the goals already running (an odd `tickCount + id` past the first ticks): the avoid behaviour is the
     /// brain's, which `Brain.startEachNonRunningBehavior` tries on every tick, so it still
     /// starts on the scan's tick.
     #[test]
@@ -4220,6 +4216,10 @@ mod server_ai_brain_tests {
         }
     }
 
+    /// `Brain.tick` runs the sensors before the behaviours: on the tick `PiglinSpecificSensor`
+    /// finds a soul lantern 3 blocks away, `PiglinAi.avoidRepellent` (the idle activity's
+    /// `SetWalkTargetAwayFrom.pos(NEAREST_REPELLENT, ..)`) already walks away from it, as
+    /// `HoglinSpecificSensor` and the hoglin's for a warped fungus.
     #[test]
     #[ignore = "daily"]
     fn a_repellent_scanned_this_tick_is_avoided_this_tick() {
