@@ -86,6 +86,7 @@ impl Music {
 /// `SoundEvent.CODEC`: a registered holder or an inline event with an optional
 /// fixed range. Client sound instances play by identifier; the fixed range is
 /// used when the server distributes a sound, not to resolve `sounds.json`.
+// hidden: engine sound-event parser shared with client/world crates; not a mod-facing API
 #[doc(hidden)]
 pub fn parse_sound_event(
     v: &Value,
