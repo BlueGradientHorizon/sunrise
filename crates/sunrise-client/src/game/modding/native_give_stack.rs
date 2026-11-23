@@ -40,9 +40,11 @@ impl Game<'_> {
             .remote
             .as_ref()
             .is_none_or(|remote| remote.registries.custom_components);
-        item_nbt::item_from_snbt_with(snbt, |id| {
-            allow_custom && sunrise_protocol::item::custom::id(id).is_some()
-        })
+        item_nbt::item_from_snbt_with(
+            snbt,
+            |id| allow_custom && sunrise_protocol::item::custom::id(id).is_some(),
+            |id| self.items().get(id).is_some(),
+        )
         .and_then(|stack| {
             self.items()
                 .get(&stack.item)
