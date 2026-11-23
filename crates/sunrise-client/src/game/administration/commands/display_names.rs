@@ -99,11 +99,19 @@ impl Game<'_> {
         team: Option<&sunrise_client::scoreboard::Team>,
         name: Text,
     ) -> Text {
+        Self::decorate_entity_display_name_with_uuid(kind, self.persist.uuid_of(id), team, name)
+    }
+    fn decorate_entity_display_name_with_uuid(
+        kind: &str,
+        uuid: Option<[i32; 4]>,
+        team: Option<&sunrise_client::scoreboard::Team>,
+        name: Text,
+    ) -> Text {
         let shown = match team {
             Some(team) => team.formatted_name(name.clone()),
             None => name.clone(),
         };
-        let Some(uuid) = self.persist.uuid_of(id) else {
+        let Some(uuid) = uuid else {
             return shown;
         };
         let uuid = sunrise_client::save::uuid_text(uuid);
@@ -137,4 +145,46 @@ impl Game<'_> {
         let kind = self.target_type(t);
         self.decorate_entity_display_name(id, &kind, self.entity_team(id), name)
     }
+    /// Capture enough of `t` before `/kill` removes its storage to build
+    /// `Entity.getDisplayName` afterwards (`KillCommand` calls `getDisplayName`
+    /// after `entity.kill`, when `Scoreboard.entityRemoved` has already left
+    /// any team for removed non-player entities).
+    pub(super) fn capture_kill_display(&self, t: Target) -> KillDisplay {
+        match t {
+            Target::Player | Target::Guest(_) | Target::Mob(_) => {
+                KillDisplay::Ready(self.target_name(t))
+            }
+            other => KillDisplay::Entity {
+                kind: self.target_type(other),
+                uuid: super::super::native_entities::target_id(other)
+                    .and_then(|id| self.persist.uuid_of(id)),
+                name: self.target_base_name(other),
+            },
+        }
+    }
+    /// Finish `Entity.getDisplayName` for a killed target against the post-kill
+    /// scoreboard team state.
+    pub(super) fn finish_kill_display(&self, captured: KillDisplay) -> Text {
+        match captured {
+            KillDisplay::Ready(text) => text,
+            KillDisplay::Entity { kind, uuid, name } => {
+                let holder = uuid.map(sunrise_client::save::uuid_text);
+                let team = holder
+                    .as_deref()
+                    .and_then(|holder| self.score.board.players_team(holder));
+                Self::decorate_entity_display_name_with_uuid(&kind, uuid, team, name)
+            }
+        }
+    }
+}
+
+/// Pre-kill identity snapshot so `KillCommand` can format `Entity.getDisplayName`
+/// after `entity.kill` removes the entity from its storage and team.
+pub(super) enum KillDisplay {
+    Ready(Text),
+    Entity {
+        kind: String,
+        uuid: Option<[i32; 4]>,
+        name: Text,
+    },
 }

@@ -2226,6 +2226,25 @@ impl Game<'_> {
                     .item_in_tag("minecraft:dampens_vibrations", &i.stack.item)
             });
         }
+        // `Entity.kill` (and `EnderDragon.kill`, `ArmorStand.kill`,
+        // `BlockAttachedEntity.kill`) removes the entity immediately with
+        // `RemovalReason.KILLED`, so `ServerLevel.EntityCallbacks.onDestroyed`
+        // runs `Scoreboard.entityRemoved` before `/kill` formats its reply.
+        // Players are never removed from teams, and living mobs stay in the
+        // level through `tickDeath`.
+        let destroyed_score = (!matches!(
+            t,
+            Target::Player
+                | Target::Guest(_)
+                | Target::Mob(_)
+                | Target::Knot(_)
+                | Target::DragonPart(_)
+        ))
+        .then(|| {
+            super::native_entities::target_id(t)
+                .and_then(|id| self.persist.uuid_of(id).map(|uuid| (id, uuid)))
+        })
+        .flatten();
         match t {
             Target::General(id) => {
                 let Some(entity) = self.entity(id) else {
@@ -2328,6 +2347,9 @@ impl Game<'_> {
             // No command names a part, and `kill` on one would not stop its dragon.
             Target::DragonPart(_) => {}
         }
+        if let Some((id, uuid)) = destroyed_score {
+            self.score_destroyed_entity_once(id, uuid);
+        }
         if let Some(at) = died {
             self.post_game_event("minecraft:entity_die", at, context);
         }
@@ -2339,20 +2361,21 @@ impl Game<'_> {
         } else {
             vec![self.implied_player()]
         };
-        let mut names: Vec<Text> = Vec::new();
-        for &t in &targets {
-            // The name of an entity in another level is read there.
-            let name = match self.in_target_level(t, |g| g.target_name(t)) {
-                Some(name) => name,
-                None => self.target_name(t),
-            };
-            names.push(name);
-        }
+        let single_display = (targets.len() == 1).then(|| {
+            let t = targets[0];
+            // The identity of an entity in another level is read there before
+            // `kill_target` removes it from that level.
+            match self.in_target_level(t, |g| g.capture_kill_display(t)) {
+                Some(captured) => captured,
+                None => self.capture_kill_display(t),
+            }
+        });
         for &t in &targets {
             self.kill_target(t);
         }
-        let message = if targets.len() == 1 {
-            Text::translate("commands.kill.success.single", &[names[0].clone()])
+        let message = if let Some(captured) = single_display {
+            let name = self.finish_kill_display(captured);
+            Text::translate("commands.kill.success.single", &[name])
         } else {
             Text::tr("commands.kill.success.multiple", &[&targets.len()])
         };

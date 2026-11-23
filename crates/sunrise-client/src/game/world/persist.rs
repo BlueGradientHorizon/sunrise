@@ -2253,6 +2253,15 @@ impl Game<'_> {
             self.score.board.entity_removed(&uuid_text(*uuid));
         }
     }
+    /// `ServerLevel.EntityCallbacks.onDestroyed` → `Scoreboard.entityRemoved`
+    /// for a non-player entity removed immediately (such as `Entity.kill`),
+    /// using its captured UUID so paths that call `forget_entity` still clear
+    /// its scores and team.
+    pub(super) fn score_destroyed_entity_once(&mut self, id: u32, uuid: [i32; 4]) {
+        if self.persist.score_destroyed.insert(id) {
+            self.score.board.entity_removed(&uuid_text(uuid));
+        }
+    }
 
     /// `ServerLevel.EntityCallbacks.onDestroyed` → `Scoreboard.entityRemoved`
     /// for every kind of entity: a mob's body once it is removed, an item
