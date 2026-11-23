@@ -3678,7 +3678,7 @@ pub(crate) mod tests {
 
     #[test]
     fn hosted_stacked_outcome_shares_result_slot_and_safe_take_rules() {
-        use crate::menu::{StackedClickedEdit, StackedEditPolicy, StackedOutcome, StackedResume};
+        use crate::menu::{StackedEdit, StackedEditPolicy, StackedOutcome, StackedResume};
         struct OutcomeRules<'a> {
             items: Items,
             may_pickup: bool,
@@ -3786,8 +3786,10 @@ pub(crate) mod tests {
             handled: true,
             policy: StackedEditPolicy::Global,
             resume: StackedResume::Done,
-            carried: Some(Some(ItemStack::new("minecraft:stick", 2))),
-            clicked: Some(StackedClickedEdit::Set(None)),
+            edits: vec![
+                StackedEdit::Clicked(None),
+                StackedEdit::Carried(Some(ItemStack::new("minecraft:stick", 2))),
+            ],
             ..Default::default()
         };
         let rules = OutcomeRules {
@@ -3819,8 +3821,10 @@ pub(crate) mod tests {
             handled: true,
             policy: StackedEditPolicy::Part,
             resume: StackedResume::Done,
-            carried: Some(Some(ItemStack::new("minecraft:stick", 5))),
-            clicked: Some(StackedClickedEdit::Take(4)),
+            edits: vec![
+                StackedEdit::Take(4),
+                StackedEdit::Carried(Some(ItemStack::new("minecraft:stick", 5))),
+            ],
             ..Default::default()
         };
         let blocked_rules = OutcomeRules {
@@ -3837,8 +3841,7 @@ pub(crate) mod tests {
             handled: true,
             policy: StackedEditPolicy::Part,
             resume: StackedResume::Done,
-            carried: None,
-            clicked: Some(StackedClickedEdit::Take(2)),
+            edits: vec![StackedEdit::Take(2)],
             ..Default::default()
         };
         let partial_rules = OutcomeRules {
@@ -3872,8 +3875,10 @@ pub(crate) mod tests {
             handled: true,
             policy: StackedEditPolicy::Part,
             resume: StackedResume::Done,
-            carried: Some(Some(ItemStack::new("minecraft:stick", 1))),
-            clicked: Some(StackedClickedEdit::Set(None)),
+            edits: vec![
+                StackedEdit::Clicked(None),
+                StackedEdit::Carried(Some(ItemStack::new("minecraft:stick", 1))),
+            ],
             ..Default::default()
         };
         let clear_blocked = OutcomeRules {
@@ -3902,11 +3907,10 @@ pub(crate) mod tests {
             handled: true,
             policy: StackedEditPolicy::Part,
             resume: StackedResume::Done,
-            carried: None,
-            clicked: Some(StackedClickedEdit::Set(Some(ItemStack::new(
+            edits: vec![StackedEdit::Clicked(Some(ItemStack::new(
                 "minecraft:snowball",
                 17,
-            )))),
+            )))],
             ..Default::default()
         };
         let oversize_rules = OutcomeRules {
@@ -3925,11 +3929,11 @@ pub(crate) mod tests {
             let outcome = StackedOutcome {
                 policy: StackedEditPolicy::Part,
                 resume: StackedResume::Done,
-                carried: Some(None),
-                clicked: Some(StackedClickedEdit::SetThenTake {
-                    set: ItemStack::new(replacement, 2),
-                    take: 2,
-                }),
+                edits: vec![
+                    StackedEdit::Clicked(Some(ItemStack::new(replacement, 2))),
+                    StackedEdit::Take(2),
+                    StackedEdit::Carried(None),
+                ],
                 ..Default::default()
             };
             let rules = OutcomeRules {

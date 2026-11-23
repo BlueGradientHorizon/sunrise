@@ -655,7 +655,9 @@ pub(super) fn emit<'a>(
             let task_registration =
                 event_type == "RegisterConfigurationTasksEvent" && name == "registration";
             let custom_spawners = event_type == "ModifyCustomSpawnersEvent" && name == "spawners";
-            if scalar || task_registration || custom_spawners {
+            // The lent click checkpoints its working stacks and edit log; it cannot be cloned.
+            let stacked_click = event_type == "ItemStackedOnOtherEvent" && name == "click";
+            if scalar || task_registration || custom_spawners || stacked_click {
                 rollback.push((name.clone(), false));
             } else if matches!(&field_ty, Type::Reference(reference) if reference.mutability.is_some())
             {
@@ -1303,6 +1305,7 @@ pub(super) fn emit<'a>(
             }
             if (event_type == "RegisterConfigurationTasksEvent" && field == "registration")
                 || (event_type == "ModifyCustomSpawnersEvent" && field == "spawners")
+                || (event_type == "ItemStackedOnOtherEvent" && field == "click")
             {
                 snaps.push(format!("{event}.{field}.checkpoint()"));
                 let restore = format!("{event}.{field}.rollback({saved}.{index});");

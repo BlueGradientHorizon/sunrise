@@ -24,7 +24,7 @@ mod models;
 pub use models::{
     AnvilCraftSnapshot, AnvilUpdateInputs, GrindstonePlaceEdits, GrindstoneTakeEdits,
     PendingGrindstoneTake, QuickCraftDrag, SlotContext, SlotRules, SlotView, StackedClick,
-    StackedClickedEdit, StackedEditPolicy, StackedOutcome, StackedResume, StackedSlotKind,
+    StackedEdit, StackedEditPolicy, StackedOutcome, StackedResume, StackedSlotKind,
     StackedSlotTarget,
 };
 mod slot_context;
@@ -3146,7 +3146,7 @@ pub(crate) mod tests {
                 canceled: true,
                 handled: true,
                 resume: StackedResume::Done,
-                clicked: Some(StackedClickedEdit::Set(clicked)),
+                edits: vec![StackedEdit::Clicked(clicked)],
                 ..StackedOutcome::default()
             };
             // The result slot's onTake would not run: nothing goes in, nothing is taken out.
@@ -3184,8 +3184,10 @@ pub(crate) mod tests {
                 canceled: true,
                 handled: true,
                 resume: StackedResume::Done,
-                clicked: Some(StackedClickedEdit::Set(None)),
-                carried: Some(potion.clone()),
+                edits: vec![
+                    StackedEdit::Clicked(None),
+                    StackedEdit::Carried(potion.clone()),
+                ],
                 ..StackedOutcome::default()
             };
             let handled = Env {
