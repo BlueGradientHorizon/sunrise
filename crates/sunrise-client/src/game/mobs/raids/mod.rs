@@ -202,7 +202,7 @@ impl PatrolLevel for PatrolCx<'_, '_, '_> {
     /// and every guest in the level.
     fn patrol_players(&self) -> Vec<([i32; 3], bool)> {
         self.level
-            .players
+            .players()
             .iter()
             .map(|p| (block_of(p.position), p.spectator))
             .collect()

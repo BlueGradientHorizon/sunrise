@@ -147,7 +147,7 @@ impl SpawnTree {
                                 "Tags".into(),
                                 Tag::List(
                                     tags.into_iter()
-                                        .map(|tag| Tag::String(tag.into()))
+                                        .map(|tag| Tag::String(tag.as_str().into()))
                                         .collect(),
                                 ),
                             );

@@ -466,6 +466,10 @@ impl MobBoxes {
     }
 }
 impl GameLevel<'_, '_> {
+    /// Every player in the level ([`Game::level_players`]).
+    pub(super) fn players(&self) -> &[LevelPlayer] {
+        &self.search.players
+    }
     /// The mobs not removed whose boxes may meet `area` (callers test them).
     fn mobs_near(&self, area: Aabb) -> Box<dyn Iterator<Item = MobBox> + '_> {
         let asked = self.box_queries.get() + 1;
@@ -2863,7 +2867,7 @@ mod tests {
                 .mob
                 .set_custom_name(Some(mod_api::Text::literal("edited")))
                 .unwrap();
-            *event.spawn_cancelled = self.veto;
+            event.spawn_cancelled = self.veto;
             mod_api::Flow::Continue
         }
     }
