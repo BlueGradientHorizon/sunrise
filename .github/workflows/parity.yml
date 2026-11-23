@@ -157,6 +157,8 @@ jobs:
           CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
           CARGO_PROFILE_RELEASE_INCREMENTAL: 'true'
           CARGO_PROFILE_DEV_OPT_LEVEL: '3'
+          # tools/parity.py PROFILE: the harnesses' own builds must match these, or they rebuild.
+          CARGO_PROFILE_TEST_DEBUG: 'false'
         run: |
           export CARGO_TARGET_DIR="$PWD/.local/parity-target"
           exec 3>&1 > "$PARITY_LOG_DIR/game-probes.log" 2>&1
