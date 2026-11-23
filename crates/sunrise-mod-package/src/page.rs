@@ -11,9 +11,9 @@ use url::Url;
 /// The page manifest beside `sunrise-mod.toml`.
 pub const PAGE_FILE: &str = "page.toml";
 /// The release format `cargo sunrise-mod` speaks: `check --release <tag>` and the `<id>.page.tar` bundle `build`
-/// writes. The rolling `mod-tool` release's `tool.json` carries it as `release_contract`
-/// (`tools/ci/mod_tool.py`), and the registry's release workflow refuses a tool without it. Raise it when either
-/// changes in a way that workflow must know.
+/// writes. The rolling `mod-tool` release's `tool.json` publishes it as `release_contract`
+/// (`tools/ci/mod_tool.py`), so the registry's release workflow can tell a tool that speaks it from an older
+/// one. Raise it when either changes in a way that workflow must know.
 pub const RELEASE_CONTRACT: u32 = 1;
 /// Modrinth's gallery upload limit (`apps/labrinth/src/routes/internal/globals.rs`).
 pub const MAX_SCREENSHOT_BYTES: u64 = 5 * 1024 * 1024;
@@ -44,7 +44,7 @@ pub struct Page {
 #[serde(deny_unknown_fields)]
 struct PageToml {
     summary: String,
-    description: String,
+    description: Option<String>,
     #[serde(default)]
     categories: Vec<String>,
     #[serde(default)]
@@ -79,7 +79,9 @@ impl Page {
         }
         Ok(Self {
             summary: page.summary,
-            description: page.description,
+            description: page
+                .description
+                .unwrap_or_else(|| manifest.description.clone()),
             categories: page.categories,
             screenshots: page.screenshots,
             name,
@@ -125,6 +127,25 @@ impl Page {
                 "{PAGE_FILE}: add at least one [[screenshots]] entry"
             ));
         }
+        // The registry publishes each screenshot at its path below `page/`, beside the package's
+        // `icon.png`: each needs a destination of its own that every host can create.
+        let mut destinations = HashSet::new();
+        for shot in &self.screenshots {
+            let destination = shot.path.strip_prefix("page/").unwrap_or(&shot.path);
+            if !destinations.insert(destination) {
+                problems.push(format!("{PAGE_FILE}: {} is listed twice", shot.path));
+            } else if destination == "icon.png" {
+                problems.push(format!(
+                    "{PAGE_FILE}: {} would replace the package icon on the page",
+                    shot.path
+                ));
+            } else if !portable_path(destination) {
+                problems.push(format!(
+                    "{PAGE_FILE}: {} is not a path Windows can create",
+                    shot.path
+                ));
+            }
+        }
         problems.extend(
             category_problems(
                 self.categories.iter().map(String::as_str),
@@ -148,6 +169,38 @@ pub fn valid_web_link(link: &str) -> bool {
     }
     Url::parse(link)
         .is_ok_and(|url| url.has_host() && url.username().is_empty() && url.password().is_none())
+}
+
+/// Whether every component of `path` is a name Windows can create: no reserved device name
+/// (`CON`, `COM1`...), no character Win32 refuses, no trailing dot or space, and no `.git`.
+/// The registry bot publishes page images under these rules.
+pub fn portable_path(path: &str) -> bool {
+    path.split('/').all(|part| {
+        if part.contains(['<', '>', '"', '|', '?', '*', ':'])
+            || part.ends_with(['.', ' '])
+            || part.eq_ignore_ascii_case(".git")
+        {
+            return false;
+        }
+        let stem = part
+            .split('.')
+            .next()
+            .unwrap_or(part)
+            .trim_end()
+            .to_ascii_uppercase();
+        !matches!(
+            stem.as_str(),
+            "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
+        ) && !stem
+            .strip_prefix("COM")
+            .or_else(|| stem.strip_prefix("LPT"))
+            .is_some_and(|n| {
+                matches!(
+                    n,
+                    "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+                )
+            })
+    })
 }
 
 /// One image for the registry page. The path uses forward slashes and stays below `page/`.

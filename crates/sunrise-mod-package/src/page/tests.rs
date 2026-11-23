@@ -254,3 +254,36 @@ fn release_checks_the_category_catalog_and_cap_but_allows_no_categories() {
         ["page.toml: add at least one [[screenshots]] entry",]
     );
 }
+
+#[test]
+fn each_screenshot_needs_its_own_portable_destination_beside_the_icon() {
+    let problems = |paths: &[&str]| {
+        let rows: String = paths
+            .iter()
+            .map(|path| format!("[[screenshots]]\npath = '{path}'\n"))
+            .collect();
+        let text = format!(
+            "summary = '{}'\ndescription = '{}'\n{rows}",
+            "a".repeat(25),
+            "a".repeat(125)
+        );
+        Page::parse(&text, &manifest())
+            .unwrap()
+            .release_problems(None)
+            .len()
+    };
+    assert_eq!(problems(&["page/a.png", "page/shots/b.jpg"]), 0);
+    assert_eq!(problems(&["page/a.png", "page/a.png"]), 1);
+    assert_eq!(problems(&["page/icon.png"]), 1);
+    assert_eq!(problems(&["page/aux.png"]), 1);
+    assert_eq!(problems(&["page/com1/a.png"]), 1);
+}
+
+#[test]
+fn the_description_defaults_to_the_manifest() {
+    let mut manifest = manifest();
+    manifest.description = "From the manifest".into();
+    let page = Page::parse("summary = 'Summary'\n", &manifest).unwrap();
+    assert_eq!(page.description, "From the manifest");
+    assert_eq!(Page::parse(TEXT, &manifest).unwrap().description, "Description");
+}

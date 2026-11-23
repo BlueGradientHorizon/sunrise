@@ -786,7 +786,7 @@ pub(crate) fn check_mod(
         );
     }
     crate::check::references(root, &package.manifest)?;
-    crate::page::check(root, &package.manifest, release)?;
+    crate::page::check(root, &package, release)?;
     let Some(native) = &package.manifest.native else {
         if !with.is_empty() {
             return Err("check --with supplies libraries to a native mod".into());
