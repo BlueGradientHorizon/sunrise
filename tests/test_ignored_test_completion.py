@@ -73,6 +73,19 @@ class IgnoredTests(unittest.TestCase):
         result, _ = self.run_output(output)
         self.assertEqual(result, {"synced": True})
 
+    def test_a_failed_runs_full_output_is_kept_privately_and_not_printed(self):
+        output = target(1, "test bad ... FAILED\n", summary(failed=1)) + "secret payload line\n"
+        with tempfile.TemporaryDirectory() as private:
+            with patch.dict(os.environ, {"IGNORED_TESTS_PRIVATE_LOGS": private}):
+                _, log = self.run_output(output, 101)
+                self.assertEqual((Path(private) / "example.log").read_text(), output)
+                self.assertIn("kept privately on the runner as example.log", log)
+                self.assertNotIn("secret payload line", log)
+                # A passing run keeps nothing.
+                (Path(private) / "example.log").unlink()
+                self.run_output(target(1, "test good ... ok\n", summary(passed=1)))
+                self.assertEqual(list(Path(private).iterdir()), [])
+
     def test_known_failure_is_still_available_to_policy(self):
         result, _ = self.run_output(target(2, "test good ... ok\ntest bad ... FAILED\n", summary(passed=1, failed=1)), 101)
         self.assertEqual(result, {"good": True, "bad": False})

@@ -1072,6 +1072,13 @@ def run(package, skip, number=None, count=None, only=None, binaries=None):
     ambiguous = set()
     max_name_length = max(map(len, expected), default=0)
     failure_diagnostics(process.stdout)
+    # The public log withholds free-form panic payloads; a failed run's full output goes to the CI host's private
+    # keep instead (ignored-tests.yml copies it there), so the payload stays readable without becoming public.
+    if (private := os.environ.get("IGNORED_TESTS_PRIVATE_LOGS")) and process.returncode != 0:
+        kept = Path(private) / f"{package if number is None else f'{package}#{number}of{count}'}.log"
+        kept.parent.mkdir(parents=True, exist_ok=True)
+        kept.write_text(process.stdout, errors="replace")
+        print(f"{package}: the full output, withheld payloads included, is kept privately on the runner as {kept.name}")
     # A target finished only if its LAST summary counts every test it started. Fixtures that rerun this test
     # executable print their own summaries first, from inside a parent test; the parent's comes after them.
     last_summary = None
