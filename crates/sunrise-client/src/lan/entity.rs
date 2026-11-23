@@ -936,6 +936,8 @@ pub struct TrackEvent {
     /// packet (`Hub::cut_tracking_out`). None for a stop without a packet of the pass: the caller
     /// removes the entities itself (`Tracker::clear`, `Tracker::forget`).
     pub at: Option<usize>,
+    /// The holder and exclusive watermark covered by this viewer's initial attachment state.
+    pub attachment_sync_from: Option<(AttachmentHolder, u64)>,
 }
 
 /// The entities one client tracks (`TrackedEntity.seenBy`, from the
@@ -969,6 +971,7 @@ impl Tracker {
             entity,
             tracked,
             at: None,
+            attachment_sync_from: None,
         }));
     }
     /// Stop tracking `id` without a packet: the caller removes it from the
@@ -982,6 +985,7 @@ impl Tracker {
             entity: id,
             tracked,
             at: None,
+            attachment_sync_from: None,
         });
         true
     }
@@ -1272,14 +1276,25 @@ pub fn report_attachment_sync_refusal(
     log::warn!("Sunrise: attachment sync for {holder:?} not sent: {error}");
 }
 
-fn capture_attachment_projection()
--> impl Fn(AttachmentHolder, &str, &str, AttachmentSyncInput<'_>) -> Option<mod_api::Compound> + Sync
-{
+fn capture_attachment_projection() -> impl Fn(
+    AttachmentHolder,
+    &mod_api::JavaString,
+    &mod_api::JavaString,
+    AttachmentSyncInput<'_>,
+) -> Option<mod_api::Compound>
++ Sync {
     let project = mod_api::__private::attachment_sync_projection();
     move |holder, namespace, name, input| match project(namespace, name, input) {
         Ok(value) => value,
         Err(error) => {
-            report_attachment_sync_refusal(holder, format_args!("{namespace}:{name}: {error}"));
+            report_attachment_sync_refusal(
+                holder,
+                format_args!(
+                    "{}:{}: {error}",
+                    namespace.to_string_lossy(),
+                    name.to_string_lossy()
+                ),
+            );
             None
         }
     }
@@ -1287,7 +1302,11 @@ fn capture_attachment_projection()
 
 pub fn project_attachment_sync(
     holder: AttachmentHolder,
-) -> impl FnMut(&str, &str, AttachmentSyncInput<'_>) -> Option<mod_api::Compound> {
+) -> impl FnMut(
+    &mod_api::JavaString,
+    &mod_api::JavaString,
+    AttachmentSyncInput<'_>,
+) -> Option<mod_api::Compound> {
     let project = capture_attachment_projection();
     move |namespace, name, input| project(holder, namespace, name, input)
 }
@@ -1297,8 +1316,8 @@ fn encode_initial_attachment_snapshot(
     attachments: Option<&InitialAttachmentLookup<'_>>,
     project: &impl Fn(
         AttachmentHolder,
-        &str,
-        &str,
+        &mod_api::JavaString,
+        &mod_api::JavaString,
         AttachmentSyncInput<'_>,
     ) -> Option<mod_api::Compound>,
 ) -> Option<EncodedAttachmentSnapshot> {
@@ -1383,9 +1402,11 @@ fn prepare_pairing_attachment_sync(
 /// starting to track it. The attachment snapshot is collected and encoded lazily
 /// on the first attachment-capable viewer and shared across all eligible recipients
 /// of the same pairing pass.
+type PairingAttachments = ((AttachmentHolder, u64), Option<EncodedAttachmentSnapshot>);
+
 struct PairingBodies {
     base: Bodies,
-    attachment_sync: std::sync::OnceLock<Option<EncodedAttachmentSnapshot>>,
+    attachment_sync: std::sync::OnceLock<PairingAttachments>,
 }
 
 impl PairingBodies {
@@ -1396,26 +1417,39 @@ impl PairingBodies {
         }
     }
 
-    fn write_to(
+    fn prepare_attachments(
         &self,
-        viewer: &mut Viewer,
         entity: &EntityState,
         attachments: Option<&InitialAttachmentLookup<'_>>,
         project: &impl Fn(
             AttachmentHolder,
-            &str,
-            &str,
+            &mod_api::JavaString,
+            &mod_api::JavaString,
             AttachmentSyncInput<'_>,
         ) -> Option<mod_api::Compound>,
     ) {
+        self.attachment_sync.get_or_init(|| {
+            let holder = if entity.kind == "minecraft:player" {
+                AttachmentHolder::Player(entity.uuid)
+            } else {
+                AttachmentHolder::Entity(entity.id as u32)
+            };
+            let from = sunrise_mod_runtime::attachments::attachment_sync_watermark();
+            (
+                (holder, from),
+                encode_initial_attachment_snapshot(entity, attachments, project),
+            )
+        });
+    }
+
+    fn write_to(&self, viewer: &mut Viewer) -> Option<(AttachmentHolder, u64)> {
         let delimiter = bundle_delimiter();
         let base = self.base.to(viewer);
+        let mut attachment_sync_from = None;
         let prepared_sync = viewer.attachment_sender.as_ref().and_then(|sender| {
-            let snapshot = self
-                .attachment_sync
-                .get_or_init(|| encode_initial_attachment_snapshot(entity, attachments, project))
-                .as_ref()?;
-            prepare_pairing_attachment_sync(sender, snapshot)
+            let (from, snapshot) = self.attachment_sync.get()?;
+            attachment_sync_from = Some(*from);
+            prepare_pairing_attachment_sync(sender, snapshot.as_ref()?)
         });
         viewer.out.push(delimiter.clone());
         viewer.out.extend(base.iter().cloned());
@@ -1423,6 +1457,7 @@ impl PairingBodies {
             viewer.out.push(sync);
         }
         viewer.out.push(delimiter);
+        attachment_sync_from
     }
 }
 
@@ -1494,13 +1529,17 @@ impl Entities {
                 let Some(bodies) = built else {
                     continue;
                 };
-                bodies.write_to(v, e, attachments, &project);
+                if v.attachment_sender.is_some() {
+                    bodies.prepare_attachments(e, attachments, &project);
+                }
+                let attachment_sync_from = bodies.write_to(v);
                 v.tracker.seen.insert(e.id, Arc::clone(&s.tracked));
                 v.tracker.events.push(TrackEvent {
                     start: true,
                     entity: e.id,
                     tracked: Arc::clone(&s.tracked),
                     at: Some(v.out.len()),
+                    attachment_sync_from,
                 });
             }
             self.states.insert(e.id, s);
@@ -1823,6 +1862,7 @@ impl Entities {
                                     tracked: Arc::clone(tracked),
                                     // Set once the removal below is in `out`.
                                     at: None,
+                                    attachment_sync_from: None,
                                 });
                                 false
                             }
@@ -1949,7 +1989,10 @@ impl Entities {
                             .then(|| PairingBodies::of(&packets))
                     })
                 {
-                    bodies.write_to(v, e, attachments, &project);
+                    if v.attachment_sender.is_some() {
+                        bodies.prepare_attachments(e, attachments, &project);
+                    }
+                    let attachment_sync_from = bodies.write_to(v);
                     // The bundle ends here: its changes follow (sendChanges), after
                     // what a mod sends for the pairing.
                     let at = v.out.len();
@@ -1970,6 +2013,7 @@ impl Entities {
                             entity: e.id,
                             tracked: Arc::clone(&s.tracked),
                             at: Some(at),
+                            attachment_sync_from,
                         });
                     }
                 }
@@ -2054,9 +2098,25 @@ impl Entities {
         });
         // Nothing to send and nobody to pair with.
         made.retain(|m| !m.changes.all.is_empty() || m.pairing.is_some());
+        // Only a new, eligible negotiated tracker causes an encode. Mod codecs
+        // run on the server owner; parallel packet assembly consumes only bytes.
+        if attachments.is_some() && viewers.iter().any(|v| v.attachment_sender.is_some()) {
+            let project = capture_attachment_projection();
+            for m in &made {
+                if let (Some(pairing), Some(kind)) = (&m.pairing, m.state.kind)
+                    && viewers.iter().zip(&*flags).any(|(v, flags)| {
+                        flags[m.index] & (TRACKS | SEES) == SEES
+                            && v.attachment_sender.is_some()
+                            && v.pairs_with(kind)
+                    })
+                {
+                    let entity = entities[probes[m.index].input as usize];
+                    pairing.prepare_attachments(entity, attachments, &project);
+                }
+            }
+        }
         let made = &made;
         let mut clients: Vec<(&mut Viewer, &Vec<u8>)> = viewers.iter_mut().zip(&*flags).collect();
-        let project = capture_attachment_projection();
         sunrise_threads::par_chunks_mut(&mut clients, 4, |part| {
             for (v, flags) in part {
                 for m in made {
@@ -2067,7 +2127,7 @@ impl Entities {
                         && let Some(pairing) = &m.pairing
                         && m.state.kind.is_some_and(|kind| v.pairs_with(kind))
                     {
-                        pairing.write_to(v, entities[m.index], attachments, &project);
+                        let attachment_sync_from = pairing.write_to(v);
                         // As `send_in_order`: the bundle ends before its changes.
                         let at = v.out.len();
                         if m.synced {
@@ -2084,6 +2144,7 @@ impl Entities {
                                 entity: id,
                                 tracked: Arc::clone(&m.state.tracked),
                                 at: Some(at),
+                                attachment_sync_from,
                             });
                         }
                     }
@@ -2105,7 +2166,26 @@ mod send_bench;
 
 #[cfg(test)]
 pub(super) fn with_synced_tags(names: &'static [&'static str], run: impl FnOnce()) {
-    struct Declare(&'static [&'static str]);
+    with_synced_tags_codec(
+        names,
+        mod_api::AttachmentCodec {
+            encode: |value| Ok(value.clone()),
+            decode: |value| Ok(value.clone()),
+        },
+        run,
+    );
+}
+
+#[cfg(test)]
+fn with_synced_tags_codec(
+    names: &'static [&'static str],
+    codec: mod_api::AttachmentCodec<mod_api::Compound>,
+    run: impl FnOnce(),
+) {
+    struct Declare(
+        &'static [&'static str],
+        mod_api::AttachmentCodec<mod_api::Compound>,
+    );
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for Declare {
         fn register(
@@ -2113,21 +2193,21 @@ pub(super) fn with_synced_tags(names: &'static [&'static str], run: impl FnOnce(
             registrar: &mut dyn mod_api::Registrar,
             _: &mod_api::RegistrationContext,
         ) {
-            let codec = mod_api::AttachmentCodec {
-                encode: |value: &mod_api::Compound| Ok(value.clone()),
-                decode: |value| Ok(value.clone()),
-            };
             for &name in self.0 {
                 registrar
                     .register_attachment_type(
                         mod_api::AttachmentDescriptor::new(name, mod_api::Compound::default)
-                            .sync(codec),
+                            .sync(self.1),
                     )
                     .unwrap();
             }
         }
     }
-    let mods: mod_api::Mods = vec![mod_api::ModEntry::new("test", Box::new(Declare(names)))].into();
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "test",
+        Box::new(Declare(names, codec)),
+    )]
+    .into();
     mod_platform::testing::with_mods(mods.clone(), || {
         mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
         run();
@@ -3608,10 +3688,22 @@ mod tests {
 
     #[test]
     fn pairing_prepares_attachment_sync_lazily_and_keeps_bundle_intact_on_tcp_oversize() {
-        with_synced_tags(
+        thread_local! { static OWNER: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
+        OWNER.set(true);
+        with_synced_tags_codec(
             &["test:fuel", "test:blob", "test:refused"],
+            mod_api::AttachmentCodec {
+                encode: |value| {
+                    OWNER
+                        .get()
+                        .then(|| value.clone())
+                        .ok_or(mod_api::AttachmentError::Encode)
+                },
+                decode: |value| Ok(value.clone()),
+            },
             assert_pairing_attachment_sync,
         );
+        OWNER.set(false);
     }
 
     fn assert_pairing_attachment_sync() {
@@ -3724,6 +3816,56 @@ mod tests {
                 0,
                 "apart={apart}: unchanged tracked entity must not clone or encode attachments"
             );
+        }
+
+        // Exercise more than one actual packet worker chunk with the thread-local
+        // codec above. Packets must still carry the owner's projected value.
+        {
+            let mut level = Entities {
+                send_apart_always: Some(true),
+                ..Entities::default()
+            };
+            let chunks = [(0, 0)].into_iter().collect();
+            let sender = negotiated_sender(Framing::Memory);
+            let mut clients: Vec<_> = (0..12).map(|_| (Tracker::default(), Vec::new())).collect();
+            let mut viewers: Vec<_> = clients
+                .iter_mut()
+                .enumerate()
+                .map(|(i, (tracker, out))| Viewer {
+                    entity_id: 100 + i as i32,
+                    spectator: false,
+                    permission: 0,
+                    sunrise: true,
+                    general_entity: true,
+                    attachment_sender: Some(sender.clone()),
+                    moved: false,
+                    position: [0.0, 64.0, 0.0],
+                    view_distance: 10,
+                    chunks: &chunks,
+                    sources: None,
+                    tracker,
+                    out,
+                })
+                .collect();
+            level.tick(
+                &[&state(0.0)],
+                &Riding::default(),
+                &mut viewers,
+                Some(&|_| Some((Holder::Entity(7), &small_map))),
+                |_| Some(100),
+            );
+            drop(viewers);
+            for (_, out) in clients {
+                let packets = decode_all(
+                    &out.into_iter()
+                        .map(|body| body.to_vec())
+                        .collect::<Vec<_>>(),
+                );
+                assert!(packets.iter().any(
+                    |packet| matches!(packet, play::Clientbound::CustomPayload(p)
+                    if p.channel == attachment_sync::CHANNEL && p.data == expected_entity_payload)
+                ));
+            }
         }
 
         // 2. Pairing only with a non-attachment viewer performs 0 lookups and omits CustomPayload.

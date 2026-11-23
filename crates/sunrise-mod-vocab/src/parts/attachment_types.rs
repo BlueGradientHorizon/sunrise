@@ -1,12 +1,12 @@
 //! Load-owned typed attachment descriptors, issued keys, and registration traits.
 use super::*;
 use crate::{
-    AttachmentCodec, AttachmentError, AttachmentPolicy, AttachmentStoreWrite, Compound, Holder,
-    Identifier, LevelRandomHost,
+    AttachmentCodec, AttachmentError, AttachmentPolicy, AttachmentStoreKey, Compound, Holder,
+    Identifier, JavaString, LevelRandomHost,
 };
 use std::{fmt, sync::atomic::AtomicBool};
 use sunrise_mod_runtime::attachments::{
-    AttachmentSyncInput, AttachmentType, CheckedAttachmentType,
+    AttachmentSyncInput, AttachmentType, CheckedAttachmentType, CloneAttachmentPolicy,
 };
 
 /// Builder for a typed attachment registered during [`Hooks::register`](crate::Hooks::register).
@@ -24,15 +24,17 @@ pub struct AttachmentDescriptor<T: 'static> {
     codec: Option<AttachmentCodec<T>>,
     copy_on_death: bool,
     sync_codec: Option<AttachmentCodec<T>>,
+    refusal: Option<AttachmentError>,
 }
 
 impl<T: 'static> AttachmentDescriptor<T> {
     /// Start a descriptor for the namespaced attachment `id` (`"namespace:name"`) with its
     /// default value constructor.
     ///
-    /// Any valid lowercase `namespace:name` not already registered is accepted when submitted to
-    /// [`Registrar::register_attachment_type`]; the registering package is recorded as the
-    /// attachment's owner.
+    /// Use a unique lowercase `namespace:name` in a namespace the registering package owns or
+    /// serves, not `minecraft`. [`Registrar::register_attachment_type`] records the registering
+    /// package as the owner. A dependent package obtains the issued key via
+    /// [`Registrar::attachment_key`], without declaring that ID again.
     pub const fn new(id: &'static str, default: fn() -> T) -> Self {
         Self {
             id,
@@ -40,12 +42,19 @@ impl<T: 'static> AttachmentDescriptor<T> {
             codec: None,
             copy_on_death: false,
             sync_codec: None,
+            refusal: None,
         }
     }
 
     /// Persist this attachment to disk with `codec`.
+    /// A second call leaves the first codec in place and makes registration fail.
     pub fn serialize(mut self, codec: AttachmentCodec<T>) -> Self {
-        self.codec = Some(codec);
+        if self.codec.is_some() {
+            self.refusal
+                .get_or_insert(AttachmentError::DuplicateSerializer);
+        } else {
+            self.codec = Some(codec);
+        }
         self
     }
 
@@ -55,9 +64,15 @@ impl<T: 'static> AttachmentDescriptor<T> {
         self
     }
 
-    /// Copy this attachment when a player respawns from death. Requires [`serialize`](Self::serialize).
-    pub const fn copy_on_death(mut self) -> Self {
-        self.copy_on_death = true;
+    /// Copy this attachment when a player respawns from death.
+    /// Calling this before [`serialize`](Self::serialize) makes registration fail.
+    pub fn copy_on_death(mut self) -> Self {
+        if self.codec.is_none() {
+            self.refusal
+                .get_or_insert(AttachmentError::InvalidCopyPolicy);
+        } else {
+            self.copy_on_death = true;
+        }
         self
     }
 
@@ -103,13 +118,43 @@ type BuildAttachmentRecord = Box<
         + Send,
 >;
 
+#[derive(Debug, PartialEq, Eq)]
+enum ProjectionFailure {
+    Refused(AttachmentError),
+    Panicked,
+}
+
+/// Engine diagnostic for an attachment that could not produce a sync value.
+// hidden: only the engine's sync projection reports it, to its own log.
+// exhaustive: its fields are private and only the projection builds it.
+#[doc(hidden)]
+// no wire: diagnostic for a local codec call.
+#[derive(Debug, PartialEq, Eq)]
+pub struct AttachmentSyncProjectionError {
+    owner: &'static str,
+    failure: ProjectionFailure,
+}
+
+impl fmt::Display for AttachmentSyncProjectionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.failure {
+            ProjectionFailure::Refused(error) => {
+                write!(f, "mod {}: attachment_sync refused: {error:?}", self.owner)
+            }
+            ProjectionFailure::Panicked => {
+                write!(f, "mod {}: attachment_sync panicked", self.owner)
+            }
+        }
+    }
+}
+
 type ProjectAttachmentSync = fn(
     &(dyn Any + Send + Sync),
     AttachmentSyncInput<'_>,
     &AtomicBool,
-) -> Result<Option<Compound>, String>;
+) -> Result<Option<Compound>, AttachmentSyncProjectionError>;
 
-type MatchAttachmentWrite = fn(&(dyn Any + Send + Sync), &AttachmentStoreWrite<'_>) -> bool;
+type MatchAttachmentKey = fn(&(dyn Any + Send + Sync), &AttachmentStoreKey<'_>) -> bool;
 
 /// Type-erased attachment descriptor accepted by [`AttachmentTypesRegistrar::submit_attachment`].
 ///
@@ -122,7 +167,7 @@ pub struct ErasedAttachmentDescriptor {
     policy: AttachmentPolicy,
     build: BuildAttachmentRecord,
     project_sync: ProjectAttachmentSync,
-    match_write: MatchAttachmentWrite,
+    match_key: MatchAttachmentKey,
 }
 
 impl<T: Send + Sync + 'static> From<AttachmentDescriptor<T>> for ErasedAttachmentDescriptor {
@@ -131,42 +176,43 @@ impl<T: Send + Sync + 'static> From<AttachmentDescriptor<T>> for ErasedAttachmen
             record: &(dyn Any + Send + Sync),
             input: AttachmentSyncInput<'_>,
             poisoned: &AtomicBool,
-        ) -> Result<Option<Compound>, String> {
+        ) -> Result<Option<Compound>, AttachmentSyncProjectionError> {
             let registration = record
                 .downcast_ref::<AttachmentRegistration<T>>()
                 .expect("sync projection supplied by this descriptor");
+            let owner = registration.owner;
+            let panicked = |_| AttachmentSyncProjectionError {
+                owner,
+                failure: ProjectionFailure::Panicked,
+            };
             let mut decoded_owner = None;
-            let result = crate::runtime::invoke_registered_codec(
-                registration.owner,
-                "attachment_sync",
-                poisoned,
-                || {
-                    registration
+            let result =
+                crate::runtime::invoke_registered_codec(owner, "attachment_sync", poisoned, || {
+                    Ok(registration
                         .checked
                         .as_type()
-                        .project_sync(input, &mut decoded_owner)
-                        .map_err(|error| format!("{error:?}"))
-                },
-            );
+                        .project_sync(input, &mut decoded_owner))
+                });
             // A saved value is owned outside the encoder's unwind. Release it even when
             // encoding already disabled the codec, without a second unwind crossing that fence.
             if let Some(value) = decoded_owner {
-                crate::runtime::finish_registered_codec(
-                    registration.owner,
-                    "attachment_sync",
-                    poisoned,
-                    || {
-                        drop(value);
-                        Ok(())
-                    },
-                )?;
+                crate::runtime::finish_registered_codec(owner, "attachment_sync", poisoned, || {
+                    drop(value);
+                    Ok(())
+                })
+                .map_err(panicked)?;
             }
             result
+                .map_err(panicked)?
+                .map_err(|error| AttachmentSyncProjectionError {
+                    owner,
+                    failure: ProjectionFailure::Refused(error),
+                })
         }
 
-        fn match_write<T: Send + Sync + 'static>(
+        fn match_key<T: Send + Sync + 'static>(
             record: &(dyn Any + Send + Sync),
-            write: &AttachmentStoreWrite<'_>,
+            write: &AttachmentStoreKey<'_>,
         ) -> bool {
             record
                 .downcast_ref::<AttachmentRegistration<T>>()
@@ -182,14 +228,39 @@ impl<T: Send + Sync + 'static> From<AttachmentDescriptor<T>> for ErasedAttachmen
             sync: descriptor.sync_codec.is_some(),
         };
         let build: BuildAttachmentRecord = Box::new(move |namespace, name, owner| {
-            let checked = CheckedAttachmentType::new(AttachmentType {
-                namespace,
-                name,
-                default: descriptor.default,
-                codec: descriptor.codec,
-                copy_on_death: descriptor.copy_on_death,
-                sync_codec: descriptor.sync_codec,
-            })?;
+            if let Some(error) = descriptor.refusal {
+                return Err(error);
+            }
+            let poisoned = AtomicBool::new(false);
+            let checked = CheckedAttachmentType::with_persistence_boundary(
+                AttachmentType {
+                    namespace,
+                    name,
+                    default: descriptor.default,
+                    codec: descriptor.codec,
+                    copy_on_death: descriptor.copy_on_death,
+                    sync_codec: descriptor.sync_codec,
+                },
+                move |encode| {
+                    crate::runtime::invoke_registered_codec(
+                        owner,
+                        "attachment_save",
+                        &poisoned,
+                        || encode().map_err(|error| format!("{id}: {error:?}")),
+                    )
+                    .map_err(|_| AttachmentError::Encode)
+                },
+            )?
+            .with_sync_release(move |entry| {
+                let operation = "attachment_sync_drop";
+                let _mod = crate::runtime::mark_mod(owner, operation);
+                crate::runtime::contain_callback(
+                    || drop(entry),
+                    |payload| {
+                        crate::runtime::log_and_queue_panic(operation, owner, payload);
+                    },
+                );
+            });
             Ok(Arc::new(AttachmentRegistration { id, owner, checked })
                 as Arc<dyn Any + Send + Sync>)
         });
@@ -199,7 +270,7 @@ impl<T: Send + Sync + 'static> From<AttachmentDescriptor<T>> for ErasedAttachmen
             policy,
             build,
             project_sync: project_sync::<T>,
-            match_write: match_write::<T>,
+            match_key: match_key::<T>,
         }
     }
 }
@@ -275,7 +346,7 @@ pub struct RegisteredAttachment {
     policy: AttachmentPolicy,
     record: Arc<dyn Any + Send + Sync>,
     project_sync: ProjectAttachmentSync,
-    match_write: MatchAttachmentWrite,
+    match_key: MatchAttachmentKey,
     sync_panicked: Arc<AtomicBool>,
 }
 
@@ -328,10 +399,20 @@ impl RegisteredAttachment {
             .map_err(|_| AttachmentError::TypeMismatch)
     }
 
+    fn key_for<T: Send + Sync + 'static>(
+        &self,
+        id: &str,
+    ) -> Result<AttachmentKey<T>, AttachmentError> {
+        if self.id != id {
+            return Err(AttachmentError::RegistrationMismatch);
+        }
+        self.downcast_key::<T>()
+    }
+
     pub(crate) fn project_sync(
         &self,
         input: AttachmentSyncInput<'_>,
-    ) -> Result<Option<Compound>, String> {
+    ) -> Result<Option<Compound>, AttachmentSyncProjectionError> {
         (self.project_sync)(self.record.as_ref(), input, &self.sync_panicked)
     }
 }
@@ -382,7 +463,7 @@ pub fn check_attachment_descriptor(
         policy: descriptor.policy,
         record,
         project_sync: descriptor.project_sync,
-        match_write: descriptor.match_write,
+        match_key: descriptor.match_key,
         sync_panicked: Default::default(),
     })
 }
@@ -557,6 +638,8 @@ impl<T: Send + Sync + 'static> AttachmentKey<T> {
     }
 
     /// Remove a value from `holder`, returning the previous value if one was present.
+    /// A server removal of an absent synced key from an allocated map still queues a removal
+    /// marker to clear any replica value.
     pub fn remove(&self, host: &mut dyn Host, holder: Holder) -> Result<Option<T>, AttachmentError>
     where
         T: Clone,
@@ -564,7 +647,8 @@ impl<T: Send + Sync + 'static> AttachmentKey<T> {
         self.live()?.remove(host.attachments(), holder)
     }
 
-    /// Queue the current value on `holder` for synchronization to clients that see it.
+    /// Queue the current value on `holder` for synchronization to clients that see it, or a
+    /// removal marker if the value is absent. A live key with no sync codec does nothing.
     pub fn sync_data(&self, host: &mut dyn Host, holder: Holder) -> Result<(), AttachmentError> {
         self.live()?.sync_data(host.attachments(), holder)
     }
@@ -608,7 +692,7 @@ impl<T: Send + Sync + 'static> AttachmentKey<T> {
         self.live()?.set(level.attachments(), holder, value)
     }
 
-    /// Remove a value from `holder` in `level`.
+    /// [`Self::remove`] through a [`LevelRandomHost`].
     pub fn remove_in(
         &self,
         level: &mut dyn LevelRandomHost,
@@ -620,7 +704,7 @@ impl<T: Send + Sync + 'static> AttachmentKey<T> {
         self.live()?.remove(level.attachments(), holder)
     }
 
-    /// Queue the current value on `holder` in `level` for synchronization to clients.
+    /// [`Self::sync_data`] through a [`LevelRandomHost`].
     pub fn sync_data_in(
         &self,
         level: &mut dyn LevelRandomHost,
@@ -662,10 +746,11 @@ impl dyn Registrar + '_ {
         &mut self,
         descriptor: AttachmentDescriptor<T>,
     ) -> Result<AttachmentKey<T>, String> {
+        let id = descriptor.id();
         let record = self.submit_attachment(descriptor.into())?;
-        Ok(record
-            .downcast_key::<T>()
-            .expect("submitted descriptor carries type T"))
+        record
+            .key_for::<T>(id)
+            .map_err(|error| format!("attachment {id}: {error:?}"))
     }
 
     /// Look up a typed [`AttachmentKey<T>`] registered earlier in this pass (for example by a
@@ -673,44 +758,73 @@ impl dyn Registrar + '_ {
     ///
     /// Returns [`AttachmentError::Undeclared`] if `id` has not been registered yet and
     /// [`AttachmentError::TypeMismatch`] if `id` was registered with a different Rust type `T`.
+    /// A custom registrar that returns a record for another ID is refused with
+    /// [`AttachmentError::RegistrationMismatch`].
     pub fn attachment_key<T: Send + Sync + 'static>(
         &self,
         id: &str,
     ) -> Result<AttachmentKey<T>, AttachmentError> {
-        self.lookup_attachment(id)?.downcast_key::<T>()
+        self.lookup_attachment(id)?.key_for::<T>(id)
     }
 }
 
-/// Capture the installed descriptors for a client sync send pass. Pairing workers
-/// may run this projection off the calling server thread.
+/// Capture the installed descriptors for a client sync send pass. Invoke mod
+/// codecs on the owning server thread before workers assemble pairing packets.
 // hidden: engine-owned client attachment sync projection; not an authoring method.
 #[doc(hidden)]
-pub fn attachment_sync_projection()
--> impl Fn(&str, &str, AttachmentSyncInput<'_>) -> Result<Option<Compound>, String> + Sync {
+pub fn attachment_sync_projection() -> impl Fn(
+    &JavaString,
+    &JavaString,
+    AttachmentSyncInput<'_>,
+)
+    -> Result<Option<Compound>, AttachmentSyncProjectionError>
++ Sync {
     let installed = installed();
     move |namespace, name, input| {
-        let Some(record) = installed
-            .and_then(|parts| parts.attachment_types.get(namespace))
-            .and_then(|types| types.get(name))
-            .filter(|record| {
-                record.is_synced()
-                    && !record
-                        .sync_panicked
-                        .load(std::sync::atomic::Ordering::Acquire)
-            })
-        else {
+        thread_local! {
+            static COMPONENTS: std::cell::RefCell<[String; 2]> = Default::default();
+        }
+        // Stored IDs are Java strings, the descriptor table uses Rust strings. Reuse
+        // conversion buffers and release them before invoking a possibly reentrant codec.
+        let record = COMPONENTS.with_borrow_mut(|[ns, nm]| {
+            for (out, source) in [(&mut *ns, namespace), (&mut *nm, name)] {
+                out.clear();
+                for c in char::decode_utf16(source.0.iter().copied()) {
+                    out.push(c.ok()?);
+                }
+            }
+            installed?
+                .attachment_types
+                .get(ns.as_str())?
+                .get(nm.as_str())
+        });
+        let Some(record) = record.filter(|record| {
+            record.is_synced()
+                && !record
+                    .sync_panicked
+                    .load(std::sync::atomic::Ordering::Acquire)
+        }) else {
             return Ok(None);
         };
         record.project_sync(input)
     }
 }
 
-/// Resolve an attachment's copy-on-death policy independently of its saved envelope.
+/// Resolve persistence and death-copy policy independently of a saved envelope.
 // hidden: engine-owned respawn copy policy lookup.
 #[doc(hidden)]
-pub fn registered_copy_on_death(namespace: &str, name: &str) -> Option<bool> {
+pub fn registered_clone_attachment_policy(
+    namespace: &str,
+    name: &str,
+) -> Option<CloneAttachmentPolicy> {
     let record = installed()?.attachment_types.get(namespace)?.get(name)?;
-    Some(record.policy().copy_on_death)
+    Some(if record.has_codec() {
+        CloneAttachmentPolicy::Persistent {
+            copy_on_death: record.policy().copy_on_death,
+        }
+    } else {
+        CloneAttachmentPolicy::MemoryOnly
+    })
 }
 
 /// Validate use against the installed owner's declaration.
@@ -735,34 +849,16 @@ pub fn validate_attachment_use(
     )
 }
 
-/// Resolve removal policy at the authoritative store, not in an adapter supplying the call.
-// hidden: engine-owned attachment removal sync lookup; not an authoring method.
+/// Require an operation prepared by this installation's exact typed descriptor.
+// hidden: engine-owned attachment store descriptor check; not an authoring method.
 #[doc(hidden)]
-pub fn attachment_removal_sync(
-    namespace: &str,
-    name: &str,
-    runtime_sync: bool,
-) -> Result<bool, AttachmentError> {
-    if let Some(record) = installed()
-        .and_then(|parts| parts.attachment_types.get(namespace))
-        .and_then(|types| types.get(name))
-    {
-        return Ok(record.is_synced());
-    }
-    validate_attachment_use(namespace, name, runtime_sync)?;
-    Ok(runtime_sync)
-}
-
-/// Require a write prepared by this installation's exact typed descriptor.
-// hidden: engine-owned attachment store write check; not an authoring method.
-#[doc(hidden)]
-pub fn validate_attachment_write(write: &AttachmentStoreWrite<'_>) -> Result<(), AttachmentError> {
+pub fn validate_attachment_key(write: &AttachmentStoreKey<'_>) -> Result<(), AttachmentError> {
     let (namespace, name) = write.id();
     let record = installed()
         .and_then(|parts| parts.attachment_types.get(namespace))
         .and_then(|types| types.get(name));
     match record {
-        Some(record) if (record.match_write)(record.record.as_ref(), write) => Ok(()),
+        Some(record) if (record.match_key)(record.record.as_ref(), write) => Ok(()),
         // Runtime-only attachments used by the engine are not mod declarations.
         None if write.engine_owned() && crate::content::crash::current_native_mod().is_none() => {
             Ok(())
@@ -857,6 +953,21 @@ mod tests {
     }
 
     #[test]
+    fn registrar_reply_must_match_both_requested_id_and_type() {
+        let (record, key) =
+            registered_attachment_fixture("demo", AttachmentDescriptor::new("demo:a", || 1u32));
+        assert_eq!(record.key_for::<u32>("demo:a"), Ok(key));
+        assert_eq!(
+            record.key_for::<i64>("demo:a"),
+            Err(AttachmentError::TypeMismatch)
+        );
+        assert_eq!(
+            record.key_for::<u32>("demo:b"),
+            Err(AttachmentError::RegistrationMismatch)
+        );
+    }
+
+    #[test]
     fn owner_declaration_allows_b_to_use_a_mana_and_names_missing_use() {
         let (record, _) =
             registered_attachment_fixture("a", AttachmentDescriptor::new("a:mana", || 0u32));
@@ -892,12 +1003,30 @@ mod tests {
         assert_eq!(record.owner(), "owner_mod");
         assert!(!record.has_codec());
         assert!(record.is_synced());
+    }
 
-        let bad_copy = AttachmentDescriptor::new("owner_mod:mana", || 0i32).copy_on_death();
+    #[test]
+    fn descriptor_refuses_duplicate_serializer_and_death_copy_before_serializer() {
+        let descriptor = || AttachmentDescriptor::new("owner_mod:mana", || 0i32);
+        let build = |descriptor: AttachmentDescriptor<i32>| {
+            let descriptor: ErasedAttachmentDescriptor = descriptor.into();
+            (descriptor.build)("owner_mod", "mana", "owner_mod").map(|_| ())
+        };
         assert_eq!(
-            check_attachment_descriptor(bad_copy.into(), "owner_mod").unwrap_err(),
-            "copy_on_death requires a serializer"
+            build(descriptor().serialize(i32_codec()).serialize(i32_codec())),
+            Err(AttachmentError::DuplicateSerializer)
         );
+        assert_eq!(
+            build(descriptor().copy_on_death().serialize(i32_codec())),
+            Err(AttachmentError::InvalidCopyPolicy)
+        );
+        let valid = check_attachment_descriptor(
+            descriptor().serialize(i32_codec()).copy_on_death().into(),
+            "owner_mod",
+        )
+        .unwrap();
+        assert!(valid.has_codec());
+        assert!(valid.policy().copy_on_death);
     }
 
     #[test]
@@ -1014,9 +1143,10 @@ mod tests {
             name: "dual".into(),
             value: Some([("net".into(), Tag::Int(107))].into()),
         }];
-        let project = |namespace: &str, name: &str, input: AttachmentSyncInput<'_>| {
-            attachment_sync_projection()(namespace, name, input).unwrap()
-        };
+        let project =
+            |namespace: &JavaString, name: &JavaString, input: AttachmentSyncInput<'_>| {
+                attachment_sync_projection()(namespace, name, input).unwrap()
+            };
         assert_eq!(reloaded.0.synced(project), expected_v1);
         key_v1.sync_data_in(&mut reloaded, Holder::Level).unwrap();
         assert_eq!(reloaded.0.take_sync_changes(project), expected_v1);
@@ -1077,11 +1207,11 @@ mod tests {
         good_key.set_in(&mut level, Holder::Level, 42).unwrap();
         level.0 = Attachments::from_nbt(level.0.to_nbt());
         let mut failures = Vec::new();
-        let mut project = |ns: &str, name: &str, input: AttachmentSyncInput<'_>| {
+        let mut project = |ns: &JavaString, name: &JavaString, input: AttachmentSyncInput<'_>| {
             match attachment_sync_projection()(ns, name, input) {
                 Ok(value) => value,
                 Err(error) => {
-                    failures.push(format!("{ns}:{name}: {error}"));
+                    failures.push((ns.clone(), name.clone(), error));
                     None
                 }
             }
@@ -1098,7 +1228,14 @@ mod tests {
         assert!(level.0.take_sync_changes(&mut project).is_empty());
         assert_eq!(
             failures,
-            ["shared:bad: mod disk_owner: attachment_sync refused: Decode"; 2]
+            [(); 2].map(|()| (
+                JavaString::from("shared"),
+                JavaString::from("bad"),
+                AttachmentSyncProjectionError {
+                    owner: "disk_owner",
+                    failure: ProjectionFailure::Refused(AttachmentError::Decode)
+                },
+            ))
         );
     }
 
@@ -1132,7 +1269,7 @@ mod tests {
         broken_key.set_in(&mut level, Holder::Level, 1).unwrap();
         healthy_key.set_in(&mut level, Holder::Level, 2).unwrap();
         let mut failures = Vec::new();
-        let mut project = |ns: &str, name: &str, input: AttachmentSyncInput<'_>| {
+        let mut project = |ns: &JavaString, name: &JavaString, input: AttachmentSyncInput<'_>| {
             attachment_sync_projection()(ns, name, input).unwrap_or_else(|error| {
                 failures.push(error);
                 None
@@ -1145,8 +1282,49 @@ mod tests {
         }];
         assert_eq!(level.0.synced(&mut project), expected);
         assert_eq!(level.0.take_sync_changes(&mut project), expected);
-        assert_eq!(failures.len(), 1);
-        assert!(failures[0].contains("panicked"));
+        assert_eq!(
+            failures,
+            [AttachmentSyncProjectionError {
+                owner: "demo",
+                failure: ProjectionFailure::Panicked
+            }]
+        );
+    }
+
+    #[test]
+    fn retiring_an_ordered_binding_cannot_unwind_the_sync_pass() {
+        struct RetiredValue(i32);
+        impl Drop for RetiredValue {
+            fn drop(&mut self) {
+                assert_ne!(self.0, 17, "the superseded binding panics on drop");
+            }
+        }
+        let key = install_attachment_fixture(
+            "demo",
+            AttachmentDescriptor::new("demo:retired", || RetiredValue(0)).sync(AttachmentCodec {
+                encode: |value| Ok([("v".into(), Tag::Int(value.0))].into()),
+                decode: |_| Err(AttachmentError::Decode),
+            }),
+        );
+        let mut level = FakeLevel(Attachments::default());
+        key.set_in(&mut level, Holder::Level, RetiredValue(17))
+            .unwrap();
+        key.set_in(&mut level, Holder::Level, RetiredValue(37))
+            .unwrap();
+        let project = attachment_sync_projection();
+        let changes = level
+            .0
+            .take_sync_changes(|ns, name, input| project(ns, name, input).unwrap());
+        assert_eq!(
+            changes
+                .into_iter()
+                .map(|change| change.value)
+                .collect::<Vec<_>>(),
+            [
+                Some([("v".into(), Tag::Int(17))].into()),
+                Some([("v".into(), Tag::Int(37))].into()),
+            ]
+        );
     }
 
     #[test]
@@ -1172,7 +1350,7 @@ mod tests {
             let fresh = install_attachment_fixture("owner", current);
             let expected = (!saved_copy).then_some(17);
             let read_copy = |level: &FakeLevel| {
-                let mut copy = FakeLevel(level.0.copy_on_death(registered_copy_on_death));
+                let mut copy = FakeLevel(level.0.copy_on_death(registered_clone_attachment_policy));
                 fresh.get_existing_in(&mut copy, Holder::Level, |value| value.cloned())
             };
             assert_eq!(read_copy(&level), Ok(expected));

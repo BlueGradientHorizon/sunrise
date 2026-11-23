@@ -80,8 +80,11 @@ exceptions, including these:
   `Host`. Generation must not depend on which worker reaches your code first.
 - **Rendering:** startup can register meshing and tint callbacks that later run on workers without
   a host. Answer from the inputs and immutable registration data, not mutable render state.
-- **Loading and chunk I/O:** data callbacks may run on a loader thread. Chunk-disk callbacks get a
-  restricted job-local view, not live chunks. See [Load phases and access](load-phases.md).
+- **Chunk-disk callbacks:** `chunk_data_load` and `chunk_data_save` run on the owning server
+  thread. `host.job()` borrows the captured `ChunkDiskContext`, and the restricted host edits only
+  its job-local [attachment store](../how-to/chunk-data-save.md), never the live chunk.
+- **Loading and chunk I/O:** data callbacks may run on a loader thread. See
+  [Load phases and access](load-phases.md).
 
 For ordinary shared state, use synchronized mod fields or publish immutable snapshots. A lock
 makes access safe; it does not make an order-dependent algorithm deterministic.

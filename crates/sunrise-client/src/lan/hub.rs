@@ -280,6 +280,8 @@ pub struct TrackingBatch {
 pub struct AttachmentSnapshot {
     pub player: u128,
     pub holder: Holder,
+    /// For an entity pairing already written, the holder and watermark its bundle covered.
+    pub paired_sync_from: Option<(Holder, u64)>,
 }
 
 /// Queues `holders` as snapshots for `player`.
@@ -288,11 +290,11 @@ fn queue_snapshots(
     player: u128,
     holders: impl IntoIterator<Item = Holder>,
 ) {
-    snapshots.extend(
-        holders
-            .into_iter()
-            .map(|holder| AttachmentSnapshot { player, holder }),
-    );
+    snapshots.extend(holders.into_iter().map(|holder| AttachmentSnapshot {
+        player,
+        holder,
+        paired_sync_from: None,
+    }));
 }
 
 /// Moves a guest's tracking events into `out`, one batch, and the entities it
@@ -314,12 +316,13 @@ fn take_tracking(
     }
     if !events.is_empty() {
         if sync_attachments {
-            let started = events.iter().filter(|e| e.start);
-            queue_snapshots(
-                snapshots,
-                g.uuid,
-                started.map(|e| Holder::Entity(e.entity as u32)),
-            );
+            snapshots.extend(events.iter().filter(|event| event.start).map(|event| {
+                AttachmentSnapshot {
+                    player: g.uuid,
+                    holder: Holder::Entity(event.entity as u32),
+                    paired_sync_from: event.attachment_sync_from,
+                }
+            }));
         }
         out.push(TrackingBatch {
             player: g.uuid,
@@ -1035,30 +1038,32 @@ impl Hub {
     /// Entity deltas follow the same tracker as pairing, including held viewers.
     /// Own-player, level, chunk and block-entity routing otherwise stays unchanged.
     pub fn attachment_recipients(&self, holder: Holder) -> Vec<super::PlayerSender> {
+        self.attachment_recipient_rows(holder)
+            .map(|guest| guest.sender.clone())
+            .collect()
+    }
+    /// The eligible guest rows, for per-pairing cutoffs on ordered updates.
+    pub fn attachment_recipient_rows(&self, holder: Holder) -> impl Iterator<Item = &Guest> {
         let owner = match holder {
             Holder::Player(uuid) => self.holder_guest(uuid, &self.config.dimension),
             _ => None,
         };
-        self.guests
-            .iter()
-            .filter(|g| {
-                let sees = match holder {
-                    Holder::Entity(id) => self.watches(g) && g.tracker.is_tracking(id as i32),
-                    Holder::Player(_) => owner.is_some_and(|o| {
-                        (g.conn == o.conn && g.participates_online())
-                            || (self.watches(g) && g.tracker.is_tracking(o.entity_id))
-                    }),
-                    Holder::Level => self.here(g),
-                    Holder::Chunk([x, z]) => self.here(g) && g.sent_chunks.contains(&(x, z)),
-                    Holder::BlockEntity([x, _, z]) => {
-                        self.here(g) && g.sent_chunks.contains(&(x >> 4, z >> 4))
-                    }
-                    _ => false,
-                };
-                sees && g.negotiated_attachment_sync()
-            })
-            .map(|g| g.sender.clone())
-            .collect()
+        self.guests.iter().filter(move |g| {
+            let sees = match holder {
+                Holder::Entity(id) => self.watches(g) && g.tracker.is_tracking(id as i32),
+                Holder::Player(_) => owner.is_some_and(|o| {
+                    (g.conn == o.conn && g.participates_online())
+                        || (self.watches(g) && g.tracker.is_tracking(o.entity_id))
+                }),
+                Holder::Level => self.here(g),
+                Holder::Chunk([x, z]) => self.here(g) && g.sent_chunks.contains(&(x, z)),
+                Holder::BlockEntity([x, _, z]) => {
+                    self.here(g) && g.sent_chunks.contains(&(x >> 4, z >> 4))
+                }
+                _ => false,
+            };
+            sees && g.negotiated_attachment_sync()
+        })
     }
 
     /// How many passes the level in place's entity tracking has run (None before its first).

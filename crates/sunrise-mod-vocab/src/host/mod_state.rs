@@ -5,16 +5,12 @@ use crate::*;
 #[sunrise_mod_api_macros::host_area]
 pub trait ModStateHost {
     /// Side: both.
-    /// Capture a SNAPSHOT of the current dimension's attachment residency and values.
-    /// Later changes require a fresh query. Removed-but-unswept entities may appear;
-    /// writes through stale holders fail. Values are neither cloned nor eagerly decoded.
-    /// The batch is local, not a save or sync record. In a transaction it can be used
-    /// only while the capturing frame is current. An undeclared id is refused with
-    /// the calling package and attachment id.
+    /// Engine capture adapter. Use `AttachmentQueries::capture` or `AttachmentQueries::query`.
+    // hidden: the game implements it; mods reach it only through `AttachmentQueries`.
+    #[doc(hidden)]
     fn attachment_query(
         &self,
-        namespace: &str,
-        name: &str,
+        key: &AttachmentCaptureKey<'_>,
     ) -> Result<AttachmentBatch, AttachmentError>;
     /// Side: both.
     /// Borrow this host for an attachment snapshot read in its transaction. Pass the

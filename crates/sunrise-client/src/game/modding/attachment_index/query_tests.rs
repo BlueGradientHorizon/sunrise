@@ -45,6 +45,44 @@ fn values(host: &dyn mod_api::Host, key: &AttachmentKey<u32>) -> Vec<u32> {
 
 #[test]
 #[ignore = "daily"]
+fn inspecting_a_loaded_chunk_does_not_create_or_dirty_attachment_storage() {
+    with_query_game(|game, key| {
+        let pos = [2, 3];
+        let holder = mod_api::Holder::Chunk(pos);
+        let coord = (pos[0], pos[1]);
+        let column = Arc::new(Chunk::with_layout(
+            pos[0],
+            pos[1],
+            game.world.shape.column(),
+        ));
+        game.world.chunks.insert(coord, column.clone());
+        game.world.modified.clear();
+        game.world.attachment_syncs.clear();
+        assert_eq!(key.has(game, holder), Ok(false));
+        assert_eq!(
+            key.get_existing(game, holder, |value| value.copied()),
+            Ok(None)
+        );
+        let kept = game.world.chunks.get(&coord).unwrap();
+        assert!(Arc::ptr_eq(kept, &column));
+        assert!(kept.saved.is_none());
+        assert!(!game.world.modified.contains(&coord));
+        assert!(game.world.attachment_syncs.is_empty());
+        key.set(game, holder, 37).unwrap();
+        assert!(game.world.modified.contains(&coord));
+        assert_eq!(
+            key.get_existing(game, holder, |value| value.copied()),
+            Ok(Some(37))
+        );
+        assert!(
+            game.world.attachment_syncs.is_empty(),
+            "the unsynced key has no packet"
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn query_snapshot_dimension_and_stale_writes() {
     with_query_game(|game, key| {
         game.options.dedicated = Some(Vec::new());

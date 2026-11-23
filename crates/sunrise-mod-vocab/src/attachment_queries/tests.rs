@@ -17,9 +17,9 @@ crate::impl_host_areas!(Store, except(mod_state));
 impl ModStateHost for Store {
     fn attachment_query(
         &self,
-        namespace: &str,
-        name: &str,
+        key: &AttachmentCaptureKey<'_>,
     ) -> Result<AttachmentBatch, AttachmentError> {
+        let (namespace, name) = key.id();
         Ok(runtime::AttachmentBatch::new(
             self.index.lock().unwrap().snapshot_named(namespace, name),
         )
@@ -49,11 +49,11 @@ impl AttachmentHost for Store {
         let _ = (namespace, name, sync);
         Ok(())
     }
-    fn validate_attachment_write(
+    fn validate_attachment_key(
         &self,
-        write: &AttachmentStoreWrite<'_>,
+        write: &AttachmentStoreKey<'_>,
     ) -> Result<(), AttachmentError> {
-        crate::__private::validate_attachment_write(write)
+        crate::__private::validate_attachment_key(write)
     }
     fn attachments(
         &mut self,
@@ -188,6 +188,37 @@ fn all_scoped_variants_write_and_remove_the_exact_storage_target() {
 }
 
 #[test]
+fn a_runtime_descriptor_cannot_read_or_discard_an_installed_keys_value() {
+    let key = crate::parts::install_attachment_fixture(
+        "mapping",
+        AttachmentDescriptor::new("mapping:protected", || 0u32),
+    );
+    let mut host = Store::default();
+    host.maps.insert(Holder::Level, Attachments::default());
+    key.set(&mut host, Holder::Level, 73).unwrap();
+    let forged = runtime::AttachmentType {
+        namespace: "mapping",
+        name: "protected",
+        default: || 0u32,
+        codec: None,
+        copy_on_death: false,
+        sync_codec: None,
+    };
+    assert_eq!(
+        forged.get_existing(&mut host, Holder::Level),
+        Err(AttachmentError::StaleKey)
+    );
+    assert_eq!(
+        forged.remove(&mut host, Holder::Level),
+        Err(AttachmentError::StaleKey)
+    );
+    assert_eq!(
+        key.get_existing(&mut host, Holder::Level, |value| value.copied()),
+        Ok(Some(73))
+    );
+}
+
+#[test]
 fn stale_key_is_refused_by_queries_and_retained_row_reads_and_writes() {
     let epoch = WorldEpoch::new(19);
     let level = LevelRef::new(epoch, DimensionKey::OVERWORLD);
@@ -224,13 +255,7 @@ fn stale_key_is_refused_by_queries_and_retained_row_reads_and_writes() {
         host.query_mut(&first).err(),
         Some(AttachmentError::StaleKey)
     );
-    assert_eq!(
-        host.attachment_query("mapping", "stale")
-            .unwrap()
-            .query(&first)
-            .err(),
-        Some(AttachmentError::StaleKey)
-    );
+    assert_eq!(host.capture(&first).err(), Some(AttachmentError::StaleKey));
     assert_eq!(
         row.set(&mut host, 99),
         Err(AttachmentRowError::Value(AttachmentError::StaleKey))
@@ -267,7 +292,7 @@ fn retained_raw_query_uses_the_current_installations_decoder() {
         value: Some(Compound::new()),
     });
     map.bind_index(&host.index, scoped);
-    let retained = host.attachment_query("mapping", "raw").unwrap();
+    let retained = host.capture(&first).unwrap();
     let stale = retained.clone().query(&first).unwrap();
     let mut cursor = stale.iter();
 
@@ -394,7 +419,7 @@ fn a_captured_bucket_refuses_another_live_key_of_the_same_type() {
         value: Some(Compound::new()),
     });
     values.bind_index(&host.index, holder);
-    let batch = host.attachment_query("mapping", "fuel").unwrap();
+    let batch = host.capture(&fuel_key).unwrap();
     assert_eq!(
         batch.query(&charge_key).err(),
         Some(AttachmentError::TypeMismatch)
@@ -407,11 +432,11 @@ fn a_captured_bucket_refuses_another_live_key_of_the_same_type() {
     );
 }
 
-fn counter_on_disk(n: i32) -> Attachments {
+fn counter_on_disk(n: i32) -> Compound {
     let payload = [("value".into(), Tag::Int(n))].into();
     let envelope = [("value".into(), Tag::Compound(payload))].into();
     let names = [("counter".into(), Tag::Compound(envelope))].into();
-    Attachments::from_nbt([("mapping".into(), Tag::Compound(names))].into())
+    [("mapping".into(), Tag::Compound(names))].into()
 }
 
 #[test]
@@ -430,7 +455,7 @@ fn read_loans_project_nonclone_values_from_the_live_holder_and_its_snapshot() {
     let level =
         AttachmentHolder::Level(LevelRef::new(WorldEpoch::new(19), DimensionKey::OVERWORLD));
     let mut host = Store::default();
-    let mut disk = counter_on_disk(11);
+    let mut disk = Attachments::from_nbt(counter_on_disk(11));
     disk.bind_index(&host.index, level);
     host.maps.insert(Holder::Level, disk);
     host.maps.insert(Holder::Entity(1), Attachments::default());
@@ -479,7 +504,10 @@ fn an_issued_promotion_cannot_retarget_a_binding_or_write_into_a_malformed_names
     );
     let (from, to) = (Holder::Entity(1), Holder::Entity(2));
     let mut host = Store {
-        maps: HashMap::from([(from, counter_on_disk(99)), (to, counter_on_disk(1))]),
+        maps: HashMap::from([
+            (from, Attachments::from_nbt(counter_on_disk(99))),
+            (to, Attachments::from_nbt(counter_on_disk(1))),
+        ]),
         read_from: Some(from),
         ..Default::default()
     };
@@ -487,7 +515,7 @@ fn an_issued_promotion_cannot_retarget_a_binding_or_write_into_a_malformed_names
         key.get_existing(&mut host, to, |value| value.cloned()),
         Err(AttachmentError::Decode)
     );
-    assert_eq!(host.maps[&to].to_nbt(), counter_on_disk(1).to_nbt());
+    assert_eq!(host.maps[&to].to_nbt(), counter_on_disk(1));
     host.read_from = None;
     assert_eq!(
         key.get_existing(&mut host, to, |value| value.cloned()),
@@ -508,27 +536,31 @@ fn an_issued_promotion_cannot_retarget_a_binding_or_write_into_a_malformed_names
 #[test]
 #[ignore = "daily"]
 fn a_refused_promotion_or_default_drops_only_one_value() {
-    use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
+    const NAME: &str =
+        "attachment_queries::tests::a_refused_promotion_or_default_drops_only_one_value";
     const CHILD: &str = "SUNRISE_ATTACHMENT_PROMOTION_DROP_CHILD";
-    if std::env::var_os(CHILD).is_none() {
-        let output = std::process::Command::new(std::env::current_exe().unwrap())
-            .args([
-                "--ignored",
-                "--exact",
-                "attachment_queries::tests::a_refused_promotion_or_default_drops_only_one_value",
-            ])
-            .env(CHILD, "1")
-            .output()
-            .unwrap();
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(
-            output.status.success() && stdout.contains("test result: ok. 1 passed;"),
-            "the isolated refusal test did not pass:\n{stdout}{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        return;
+    // libtest exits 0 even when --exact matched nothing. Only the child that
+    // completed its assertions, including drops, returns this code.
+    const ASSERTIONS_PASSED: i32 = 42;
+    if std::env::var_os(CHILD).is_some() {
+        assert_single_drop_after_attachment_refusals();
+        std::process::exit(ASSERTIONS_PASSED);
     }
+    let output = crate::testing::fresh_case_command(NAME, CHILD, "refusals")
+        .output()
+        .unwrap();
+    assert_eq!(
+        output.status.code(),
+        Some(ASSERTIONS_PASSED),
+        "{NAME}: {:?}\n{}{}",
+        output.status,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
 
+fn assert_single_drop_after_attachment_refusals() {
+    use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
     static CLONES: AtomicUsize = AtomicUsize::new(0);
     static DROPS: AtomicUsize = AtomicUsize::new(0);
     struct PanickingValue;
@@ -555,7 +587,10 @@ fn a_refused_promotion_or_default_drops_only_one_value() {
     );
     let (from, to) = (Holder::Entity(1), Holder::Entity(2));
     let mut host = Store {
-        maps: HashMap::from([(from, counter_on_disk(99)), (to, counter_on_disk(1))]),
+        maps: HashMap::from([
+            (from, Attachments::from_nbt(counter_on_disk(99))),
+            (to, Attachments::from_nbt(counter_on_disk(1))),
+        ]),
         read_from: Some(from),
         ..Default::default()
     };
@@ -577,7 +612,7 @@ fn a_refused_promotion_or_default_drops_only_one_value() {
     };
     run(&mut host, false);
     assert_eq!(DROPS.load(Relaxed), 1);
-    assert_eq!(host.maps[&to].to_nbt(), counter_on_disk(1).to_nbt());
+    assert_eq!(host.maps[&to].to_nbt(), counter_on_disk(1));
 
     // No entry is visible to the read adapter, but the real store must refuse the
     // default because its destination preserves a malformed namespace.

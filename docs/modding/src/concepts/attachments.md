@@ -27,8 +27,8 @@ belongs to the installation that issued it: one kept from an earlier installatio
 Reads and `set` need `T: Send + Sync + 'static`; `remove` also needs `Clone` to return the
 previous value. `get` inserts the default when no value is stored and lends `&T` to a read
 closure, which returns only what it projects; copy what you need beyond the call. To inspect
-without creating a default, use `has` or `get_existing`; `has` can report a saved entry even
-before it's decoded. `set` runs the persistence codec, if supplied, before changing the stored
+without creating a default, use `has` or `get_existing`; neither allocates a holder map, and
+`has` can report a saved entry even before it's decoded. `set` runs the persistence codec, if supplied, before changing the stored
 value. The same ID cannot be decoded as two different Rust types.
 
 ```rust,ignore
@@ -51,7 +51,8 @@ relevant storage scope. To retain a world-scoped identity, use `AttachmentHolder
 the typed handle; it does not keep the object loaded. Mutable level hosts can reach their level,
 loaded chunks and block entities. Read-only level hosts cannot access attachments.
 
-Call `.serialize(codec)` on the descriptor to persist the value as a compound. Without a codec the
+Call `.serialize(codec)` on the descriptor to persist the value as a compound: saving encodes the
+value as it is then, including changes made through its interior mutability. Without a codec the
 value is lost on unload or restart. Unknown mods' encoded entries survive load and save without
 being decoded. Holder data is stored under `sunrise:attachments`, by namespace and name; each level
 uses the dimension's `data/sunrise/attachments.dat` file rather than `level.dat`. See
@@ -75,11 +76,13 @@ batches, selectors or write tokens.
 ## Synchronization
 
 Persistence alone does not make a value synced. Set `.sync(codec)` on the descriptor: syncing
-uses that codec's compound, which can differ from the saved one. Defaults created by `get`, writes,
-removals and explicit `sync_data` requests are coalesced at the end of the tick; rolled-back
-changes are not sent. Clients receive the current value when they start tracking its holder. A
-sync codec that panics is disabled for the session, and the mod is reported in the log and in a
-local error toast.
+uses that codec's compound, which can differ from the saved one. Defaults created by `get`,
+writes, removals and explicit `sync_data` requests are sent at the end of the tick in the order
+accepted, with a block entity's changes coalesced to their final state; rolled-back changes are
+not sent. Removing an absent synced key, or syncing one that holds no value, sends a removal
+marker that also clears a client's local default. Clients receive the current value when they
+start tracking its holder. A sync codec that panics is disabled for the session, and the mod is
+reported in the log and in a local error toast.
 
 Recipients are the clients that track the entity or chunk, the player and their trackers for
 player data, or everyone in the level for level data. The connection must negotiate attachment

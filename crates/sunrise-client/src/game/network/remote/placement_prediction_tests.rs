@@ -674,11 +674,7 @@ fn a_denied_break_restores_wall_sign_text_and_synced_attachments() {
         let holder = Holder::BlockEntity([0, 65, 0]);
         let attachment_values = |game: &Game<'_>| {
             let host: &dyn Host = game;
-            let query = host
-                .attachment_query(value_key.namespace(), value_key.name())
-                .unwrap()
-                .query(&value_key)
-                .unwrap();
+            let query = mod_api::AttachmentQueries::query(host, &value_key).unwrap();
             let scope = host.attachment_read_scope().unwrap();
             let mut rows = query.iter();
             std::iter::from_fn(|| rows.try_next().unwrap())

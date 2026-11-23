@@ -249,26 +249,23 @@ macro_rules! host_attachment_store {
             fn read_only(&mut self, holder: Holder) -> AttachmentResult<bool> {
                 self.attachments().read_only(holder)
             }
-            fn validate_attachment(&mut self, namespace: &str, name: &str, sync: bool) -> AttachmentResult<()> {
-                crate::parts::validate_attachment_use(namespace, name, sync)
+            fn holds(&mut self, holder: Holder, key: &AttachmentStoreKey<'_>) -> AttachmentResult<bool> {
+                self.attachments().holds(holder, key)
             }
-            fn holds(&mut self, holder: Holder, namespace: &str, name: &str) -> AttachmentResult<bool> {
-                self.attachments().holds(holder, namespace, name)
+            fn lend_decoded(&mut self, holder: Holder, key: &AttachmentStoreKey<'_>, read: AttachmentLoan<'_>) -> AttachmentResult<()> {
+                self.attachments().lend_decoded(holder, key, read)
             }
-            fn decoded(&mut self, holder: Holder, namespace: &str, name: &str) -> AttachmentResult<Option<AttachmentValue>> {
-                self.attachments().decoded(holder, namespace, name)
-            }
-            fn raw(&mut self, holder: Holder, namespace: &str, name: &str) -> AttachmentResult<Option<RawAttachment>> {
-                self.attachments().raw(holder, namespace, name)
+            fn binding(&mut self, holder: Holder, key: &AttachmentStoreKey<'_>) -> AttachmentResult<Option<AttachmentBinding>> {
+                self.attachments().binding(holder, key)
             }
             fn store(&mut self, holder: Holder, write: AttachmentStoreWrite<'_>) -> AttachmentResult<()> {
                 self.attachments().store(holder, write)
             }
-            fn discard(&mut self, holder: Holder, namespace: &str, name: &str, sync: bool) -> AttachmentResult<()> {
-                self.attachments().discard(holder, namespace, name, sync)
+            fn discard(&mut self, holder: Holder, key: &AttachmentStoreKey<'_>) -> AttachmentResult<()> {
+                self.attachments().discard(holder, key)
             }
-            fn queue_sync(&mut self, holder: Holder, namespace: &str, name: &str) -> AttachmentResult<()> {
-                self.attachments().queue_sync(holder, namespace, name)
+            fn queue_sync(&mut self, holder: Holder, key: &AttachmentStoreKey<'_>) -> AttachmentResult<()> {
+                self.attachments().queue_sync(holder, key)
             }
         }
     )+ };

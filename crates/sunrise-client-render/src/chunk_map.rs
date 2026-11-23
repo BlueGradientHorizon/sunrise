@@ -195,6 +195,22 @@ impl ChunkMap {
         }
     }
 
+    /// Read an existing loaded column without creating saved extras or an index binding.
+    pub fn attachments(&self, key: &Key) -> Result<Option<&Attachments>, AttachmentError> {
+        use sunrise_core::nbt::JavaString;
+        static KEY: std::sync::LazyLock<JavaString> =
+            std::sync::LazyLock::new(|| ATTACHMENTS_KEY.into());
+        let column = self
+            .columns
+            .get(key)
+            .ok_or(AttachmentError::MissingHolder)?;
+        let Some(saved) = &column.saved else {
+            return Ok(None);
+        };
+        attachment_compound(saved.root.get(&*KEY))?;
+        Ok(Some(&saved.attachments))
+    }
+
     /// The live map, rebound after extras COW but never merely for lighting COW.
     pub fn attachments_mut(&mut self, key: &Key) -> Result<&mut Attachments, AttachmentError> {
         let chunk = self

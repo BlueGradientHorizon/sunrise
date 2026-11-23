@@ -1301,7 +1301,29 @@ pub fn encode_with(
     shape: LevelShape,
     items: &crate::items::Items,
 ) -> NamedTag {
-    encode_full(chunk, registry, biomes, tables, shape, items, true)
+    encode_full(
+        chunk,
+        registry,
+        biomes,
+        tables,
+        shape,
+        items,
+        ChunkEncodingEdits::default(),
+    )
+}
+
+struct ChunkEncodingEdits<'a> {
+    block_entities: bool,
+    attachments: Option<&'a Compound>,
+}
+
+impl Default for ChunkEncodingEdits<'_> {
+    fn default() -> Self {
+        Self {
+            block_entities: true,
+            attachments: None,
+        }
+    }
 }
 
 fn encode_full(
@@ -1311,7 +1333,7 @@ fn encode_full(
     tables: Option<&SaveTables>,
     shape: LevelShape,
     items: &crate::items::Items,
-    apply_block_entity_edits: bool,
+    edits: ChunkEncodingEdits<'_>,
 ) -> NamedTag {
     let sky_light = shape.sky_light;
     let mut sections = Vec::new();
@@ -1467,7 +1489,7 @@ fn encode_full(
                 },
                 items,
                 |_| {
-                    if apply_block_entity_edits {
+                    if edits.block_entities {
                         extras?.block_entity_save_edits.as_ref()?.get(p).cloned()
                     } else {
                         None
@@ -1608,10 +1630,11 @@ fn encode_full(
         put(&mut root, key, value);
     }
     if let Some(Tag::Compound(map)) = Some(&mut root) {
-        if let Some(extras) = extras
-            && attachment_compound(map.get(&ATTACHMENTS_KEY.into())).is_ok()
-        {
-            let attachments = extras.attachments.to_nbt();
+        if let Some(attachments) = edits.attachments.cloned().or_else(|| {
+            let extras = extras?;
+            attachment_compound(map.get(&ATTACHMENTS_KEY.into())).ok()?;
+            Some(extras.attachments.to_nbt())
+        }) {
             if attachments.is_empty() {
                 map.remove(&ATTACHMENTS_KEY.into());
             } else {
@@ -1884,7 +1907,30 @@ pub fn encode_proto(
     shape: LevelShape,
     items: &crate::items::Items,
 ) -> NamedTag {
-    let mut root = encode_with(&proto.column, registry, biomes, tables, shape, items);
+    encode_proto_with_attachments(proto, registry, biomes, tables, shape, items, None)
+}
+
+fn encode_proto_with_attachments(
+    proto: &SavedProto,
+    registry: &BlockRegistry,
+    biomes: &Biomes,
+    tables: Option<&SaveTables>,
+    shape: LevelShape,
+    items: &crate::items::Items,
+    attachments: Option<&Compound>,
+) -> NamedTag {
+    let mut root = encode_full(
+        &proto.column,
+        registry,
+        biomes,
+        tables,
+        shape,
+        items,
+        ChunkEncodingEdits {
+            block_entities: true,
+            attachments,
+        },
+    );
     let status = if proto.decorated {
         ChunkStatus::Features
     } else {
@@ -2977,7 +3023,9 @@ impl SaveDir {
     /// `ChunkMap.handleChunkLoadFailure`: once this chunk's read failure has been reported,
     /// let generation replace it, as `ChunkMap.createEmptyChunk` does.
     pub fn load(&self, x: i32, z: i32, registry: &BlockRegistry, biomes: &Biomes) -> Option<Chunk> {
-        self.try_load(x, z, registry, biomes).ok().flatten()
+        let mut chunk = self.try_load(x, z, registry, biomes).ok().flatten()?;
+        self.load_disk_attachments(&mut chunk, mod_api::ChunkDiskKind::Full);
+        Some(chunk)
     }
     /// `load`, telling a chunk that isn't saved as a full chunk (`Ok(None)`) from a read that
     /// failed (`Err`): a later read may succeed.
@@ -3004,9 +3052,6 @@ impl SaveDir {
         };
         load_light(&root.tag, &mut chunk, self.shape.sky_light);
         chunk.entities = sunrise_world::chunk::legacy_entities(&root.tag);
-        // A failing load listener does not fail the load: the chunk keeps its stored attachments.
-        self.load_disk_attachments(&mut chunk, mod_api::ChunkDiskKind::Full)
-            .map_err(|_| ())?;
         Ok(Some(chunk))
     }
     /// A proto chunk saved before it became final (`decode_proto`).
@@ -3017,12 +3062,21 @@ impl SaveDir {
         registry: &BlockRegistry,
         biomes: &Biomes,
     ) -> Option<SavedProto> {
+        let mut proto = self.decode_saved_proto(x, z, registry, biomes)?;
+        self.load_disk_attachments(&mut proto.column, mod_api::ChunkDiskKind::Proto);
+        Some(proto)
+    }
+
+    fn decode_saved_proto(
+        &self,
+        x: i32,
+        z: i32,
+        registry: &BlockRegistry,
+        biomes: &Biomes,
+    ) -> Option<SavedProto> {
         let root = self.read_record("region", x, z)?;
         let tables = self.tables.get().map(|t| &**t);
-        let mut proto = decode_proto(&root, registry, biomes, tables, self.shape.column())?;
-        self.load_disk_attachments(&mut proto.column, mod_api::ChunkDiskKind::Proto)
-            .ok()?;
-        Some(proto)
+        decode_proto(&root, registry, biomes, tables, self.shape.column())
     }
     /// Queue proto chunks for the writer thread; loads see them meanwhile.
     pub fn save_protos(
@@ -5343,7 +5397,11 @@ impl<G: ChunkGenerator> ChunkGenerator for Persistent<G> {
         self.save
             .tables
             .get_or_init(|| Arc::new(SaveTables::new(&self.registry)));
-        let mut chunk = self.save.load(x, z, self.registry.registry, &self.biomes)?;
+        let mut chunk = self
+            .save
+            .try_load(x, z, self.registry.registry, &self.biomes)
+            .ok()
+            .flatten()?;
         for s in &mut chunk.sections {
             Arc::make_mut(s).compact();
         }
@@ -5351,6 +5409,10 @@ impl<G: ChunkGenerator> ChunkGenerator for Persistent<G> {
             chunk.entities.extend(entities);
         }
         Some(chunk)
+    }
+    fn accept_loaded_chunk(&self, chunk: &mut Chunk) {
+        self.save
+            .load_disk_attachments(chunk, mod_api::ChunkDiskKind::Full);
     }
     fn lod_surface(
         &self,
@@ -5371,14 +5433,41 @@ impl<G: ChunkGenerator> ChunkGenerator for Persistent<G> {
         self.inner.idle(worker);
     }
     fn proto(&self, worker: &mut G::Worker, x: i32, z: i32) -> crate::streaming::Proto {
-        let mut proto = self.inner.proto(worker, x, z);
-        if let Some(saved) = self
-            .save
-            .load_proto(x, z, self.registry.registry, &self.biomes)
-        {
-            self.inner.restore_proto(&mut proto, saved);
+        let (mut proto, saved) = self.worker_proto(worker, x, z);
+        if let Some(saved) = saved {
+            self.accept_loaded_proto(&mut proto, *saved);
         }
         proto
+    }
+    fn worker_proto(
+        &self,
+        worker: &mut G::Worker,
+        x: i32,
+        z: i32,
+    ) -> (crate::streaming::Proto, Option<Box<SavedProto>>) {
+        let mut proto = self.inner.proto(worker, x, z);
+        let Some(saved) = self
+            .save
+            .decode_saved_proto(x, z, self.registry.registry, &self.biomes)
+        else {
+            return (proto, None);
+        };
+        if self.save.has_chunk_disk_hook(mod_api::ChunkDiskPhase::Load) {
+            (proto, Some(Box::new(saved)))
+        } else {
+            self.inner.restore_proto(&mut proto, saved);
+            (proto, None)
+        }
+    }
+    fn accept_loaded_proto(
+        &self,
+        proto: &mut crate::streaming::Proto,
+        mut saved: SavedProto,
+    ) -> bool {
+        self.save
+            .load_disk_attachments(&mut saved.column, mod_api::ChunkDiskKind::Proto);
+        self.inner.restore_proto(proto, saved);
+        self.inner.is_decorated(proto)
     }
     fn is_decorated(&self, proto: &crate::streaming::Proto) -> bool {
         self.inner.is_decorated(proto)
@@ -5406,6 +5495,9 @@ impl<G: ChunkGenerator> ChunkGenerator for Persistent<G> {
     }
     fn proto_heap_bytes(&self, proto: &crate::streaming::Proto) -> ([usize; 6], [usize; 16]) {
         self.inner.proto_heap_bytes(proto)
+    }
+    fn save_protos_on_owner(&self) -> bool {
+        self.save.has_chunk_disk_hook(mod_api::ChunkDiskPhase::Save)
     }
     fn save_protos(&self, protos: &[&crate::streaming::Proto]) {
         self.save

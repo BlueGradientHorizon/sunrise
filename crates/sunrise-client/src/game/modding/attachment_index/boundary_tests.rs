@@ -27,7 +27,7 @@ fn capture(
     game: &Game<'_>,
     key: &AttachmentKey<u32>,
 ) -> Vec<(AttachmentHolder, u32, AttachmentWriteToken)> {
-    let batch = game.attachment_query("boundary", "value").unwrap();
+    let batch = mod_api::AttachmentQueries::capture(game, key).unwrap();
     let query = batch.query(key).unwrap();
     let mut rows = query.iter();
     std::iter::from_fn(|| rows.try_next().unwrap())

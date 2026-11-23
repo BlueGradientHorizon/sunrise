@@ -1424,17 +1424,9 @@ pub(super) mod tests {
         let run = |case: &str| {
             let scratch = target.join(format!("fresh-case-{case}"));
             std::fs::create_dir(&scratch).unwrap();
-            let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+            let mut command = mod_platform::testing::fresh_case_command(name, flag, case);
             command
-                .args([
-                    "--ignored",
-                    "--exact",
-                    name,
-                    "--nocapture",
-                    "--test-threads=4",
-                ])
                 .current_dir(&scratch)
-                .env(flag, case)
                 .env("SUNRISE_TEST_RESOURCES", &resources)
                 .env("SUNRISE_NO_AUDIO", "1")
                 .env("SUNRISE_LAUNCHER_NO_SELF_UPDATE", "1");

@@ -33,10 +33,9 @@ mod saved_entity_tests;
 impl Game<'_> {
     pub(in crate::game) fn attachment_query(
         &self,
-        namespace: &str,
-        name: &str,
+        key: &mod_api::AttachmentCaptureKey<'_>,
     ) -> Result<mod_api::AttachmentBatch, mod_api::AttachmentError> {
-        mod_api::__private::validate_attachment_use(namespace, name, false)?;
+        let (namespace, name) = key.id();
         let batch = self
             .attachment_indexes
             .get(&self.dim)

@@ -176,8 +176,8 @@ impl SaveDir {
         wait: bool,
     ) -> Result<()> {
         if !records.is_empty() {
-            let mut writer = self.writer.lock().map_err(|_| "writer poisoned")?;
-            let records = if self.disk.get().is_some() {
+            // Run snapshot callbacks before publishing pending records or taking writer locks.
+            let records = if folder == Folder::Region {
                 records
                     .into_iter()
                     .map(|(key, record)| (key, self.capture_disk_record(record)))
@@ -185,6 +185,7 @@ impl SaveDir {
             } else {
                 records
             };
+            let mut writer = self.writer.lock().map_err(|_| "writer poisoned")?;
             let writer = writer.get_or_insert_with(|| {
                 self.start_writer(fs::File::sync_data, RegionFile::sync_all)
             });
@@ -253,7 +254,7 @@ impl SaveDir {
         Ok(receive)
     }
 
-    fn start_writer(
+    pub(super) fn start_writer(
         &self,
         sync_data: impl Fn(&fs::File) -> std::io::Result<()> + Send + 'static,
         mut force: impl FnMut(&RegionFile) -> std::io::Result<()> + Send + 'static,
@@ -268,7 +269,7 @@ impl SaveDir {
         );
         let pending = self.pending.clone();
         let outstanding = self.outstanding.clone();
-        // The writer runs chunk_data_save callbacks before handing records to compression.
+        // Callbacks have run before handoff; the writer owns region I/O and completion.
         let thread = std::thread::Builder::new()
             .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
             .name("sunrise-region-writer".into())
@@ -336,15 +337,12 @@ impl SaveDir {
                             .iter()
                             .filter_map(|job| {
                                 let newest = newest(&job.key, job.seq);
-                                // Coalescing skips the old write, not its captured disk callback.
-                                // For current records, compress_record sees the cached outcome.
-                                if job.record.disk_job().is_some()
-                                    && let Err(error) = chunk_disk::encode_record(&job.record)
-                                    && !newest
-                                {
-                                    reporting.report(kind, job.key, &error);
-                                }
+                                // The owner already ran the callback for every capture, even
+                                // when a newer write replaces this snapshot.
                                 if !newest {
+                                    if let Some(capture) = job.record.disk_job() {
+                                        capture.cancel();
+                                    }
                                     return None;
                                 }
                                 match compression_pool::catch_encoding_panic(|| {
@@ -820,7 +818,7 @@ mod tests {
                 .unwrap();
             reader.join().unwrap();
             assert_eq!(snapshot.tag.get("test:marker"), Some(&Tag::Int(42)));
-            assert_eq!(saves.load(Ordering::Relaxed), 0);
+            assert_eq!(saves.load(Ordering::Relaxed), 1);
         });
     }
 

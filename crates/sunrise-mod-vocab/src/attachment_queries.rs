@@ -3,8 +3,45 @@
 #[path = "attachment_queries/tests.rs"]
 mod tests;
 use crate::*;
+/// Engine-only proof of a live typed key for the requested capture bucket.
+// hidden: the engine builds it from a checked key inside `AttachmentQueries`; mods never name it.
+// exhaustive: its fields are private and `new` is crate-private.
+#[doc(hidden)]
+// no wire: a borrowed proof created only from a validated live key.
+pub struct AttachmentCaptureKey<'a> {
+    namespace: &'a str,
+    name: &'a str,
+}
+
+impl<'a> AttachmentCaptureKey<'a> {
+    pub(crate) fn new<T>(
+        checked: &'a sunrise_mod_runtime::attachments::CheckedAttachmentType<T>,
+    ) -> Self
+    where
+        T: Send + Sync + 'static,
+    {
+        Self {
+            namespace: checked.namespace(),
+            name: checked.name(),
+        }
+    }
+
+    pub fn id(&self) -> (&str, &str) {
+        (self.namespace, self.name)
+    }
+}
+
 /// Read queries available on either host side.
 pub trait AttachmentQueries: Host {
+    /// Capture an unbound batch with a live key. The batch can later be bound
+    /// to that attachment's currently issued key; the captured membership is unchanged.
+    fn capture<T: Send + Sync + 'static>(
+        &self,
+        key: &AttachmentKey<T>,
+    ) -> Result<AttachmentBatch, AttachmentError> {
+        self.attachment_query(&AttachmentCaptureKey::new(key.live()?))
+    }
+
     /// Capture a SNAPSHOT of membership and value bindings in the current dimension.
     /// Later changes appear only in fresh queries. This is a residency view: an
     /// entity removed but not yet swept may still appear; stale writes fail.
@@ -17,7 +54,7 @@ pub trait AttachmentQueries: Host {
         key: &'key AttachmentKey<T>,
     ) -> Result<AttachmentQuery<'key, T>, AttachmentError> {
         let (checked, epoch) = key.live_with_epoch()?;
-        self.attachment_query(checked.namespace(), checked.name())?
+        self.attachment_query(&AttachmentCaptureKey::new(checked))?
             .query_checked(checked, epoch)
     }
 }

@@ -447,7 +447,7 @@ fn unload_then_reload_reads_saved_8_in_a_fresh_holder() {
 }
 
 #[test]
-fn invalid_attachment_nbt_keeps_its_disk_record_without_skipping_its_neighbour() {
+fn invalid_attachment_edits_keep_prior_values_and_publish_terrain_and_siblings() {
     let (registry, biomes) = super::loot_tests::fixture();
     let registry = Box::leak(Box::new(registry));
     let biomes = Arc::new(biomes);
@@ -459,9 +459,21 @@ fn invalid_attachment_nbt_keeps_its_disk_record_without_skipping_its_neighbour()
             Some(Default::default()),
         )
     };
-    let old = Arc::new(chunk(7));
+    let mut original = chunk(7);
+    let saved_key = Tag::compound([("value", Tag::compound([("prior", Tag::Int(33))]))]);
+    let Tag::Compound(raw) = Tag::compound([(
+        "chunk_disk_fixture",
+        Tag::compound([("invalid", saved_key.clone())]),
+    )]) else {
+        unreachable!()
+    };
+    Arc::make_mut(original.saved.as_mut().unwrap())
+        .attachments
+        .read_saved_over(raw);
     mod_platform::testing::with_mods(Vec::new().into(), || {
-        open().save(&[old], registry, &biomes).unwrap();
+        open()
+            .save(&[Arc::new(original)], registry, &biomes)
+            .unwrap();
     });
     let read_disk = || {
         RegionFile::open(path.path().join("region/r.0.-1.mca"))
@@ -469,39 +481,59 @@ fn invalid_attachment_nbt_keeps_its_disk_record_without_skipping_its_neighbour()
             .read(ChunkPos::new(2, -3))
             .unwrap()
             .unwrap()
+            .nbt(Limits::saved())
+            .unwrap()
     };
-    let before = read_disk();
+    let check_prior = |record: &NamedTag| {
+        assert_eq!(
+            record
+                .tag
+                .get(ATTACHMENTS_KEY)
+                .unwrap()
+                .get("chunk_disk_fixture")
+                .unwrap()
+                .get("invalid"),
+            Some(&saved_key)
+        );
+    };
+    check_prior(&read_disk());
+    let seen = Arc::new(Mutex::new(Vec::new()));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "chunk_disk_fixture",
-        Box::new(invalid_nbt::InvalidNbt::default()),
+        Box::new(invalid_nbt::InvalidNbt::with_seen(seen.clone())),
     )]
     .into();
     mod_platform::testing::with_mods(mods.clone(), || {
         mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
-        for synchronous in [false, true] {
+        // A named End and a locally writable but unreadably deep payload both refuse in the
+        // callback; each proposed replacement is based on the previous readable region slot.
+        for (bad, synchronous, x) in [(9, false, 0), (10, true, 1)] {
             let save = open();
             context(&save);
-            let mut neighbour = chunk(if synchronous { 12 } else { 11 });
-            neighbour.x = 3;
-            let expected = value(&mut neighbour);
-            let chunks = [Arc::new(chunk(9)), Arc::new(neighbour)];
+            let mut replacement = save.load(2, -3, registry, &biomes).unwrap();
+            replacement.set(x, 0, 0, 1);
+            fixture::raw_value()
+                .set(
+                    &mut Arc::make_mut(replacement.saved.as_mut().unwrap()).attachments,
+                    mod_api::Holder::Level,
+                    bad,
+                )
+                .unwrap();
+            let chunks = [Arc::new(replacement)];
             if synchronous {
                 save.save(&chunks, registry, &biomes).unwrap();
             } else {
                 save.save_later(&chunks, registry, &biomes).unwrap();
                 save.flush().unwrap();
             }
-            let after = read_disk();
-            assert_eq!(after.compressed, before.compressed);
-            assert_eq!(after.timestamp, before.timestamp);
-            assert_eq!(
-                value(&mut open().load(3, -3, registry, &biomes).unwrap()),
-                expected
-            );
-            assert_eq!(value(&mut save.load(2, -3, registry, &biomes).unwrap()), 7);
-            assert_eq!(save.record_save_failures(), 1);
+            check_prior(&read_disk());
+            let mut reloaded = open().load(2, -3, registry, &biomes).unwrap();
+            assert_eq!(reloaded.get(x, 0, 0), 1);
+            assert_eq!(value(&mut reloaded), bad + 100);
+            assert_eq!(save.record_save_failures(), 0);
         }
     });
+    assert_eq!(*seen.lock().unwrap(), [9, 10]);
 }
 
 mod invalid_nbt {
@@ -511,7 +543,7 @@ mod invalid_nbt {
     pub struct InvalidNbt {
         pub seen: Arc<Mutex<Vec<i32>>>,
         value: Mutex<Option<mod_api::AttachmentKey<i32>>>,
-        invalid: Mutex<Option<mod_api::AttachmentKey<()>>>,
+        invalid: Mutex<Option<mod_api::AttachmentKey<i32>>>,
     }
 
     impl InvalidNbt {
@@ -527,22 +559,35 @@ mod invalid_nbt {
     impl Hooks for InvalidNbt {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
             *self.value.lock().unwrap() = Some(fixture::register(r));
-            let descriptor =
-                mod_api::AttachmentDescriptor::new("chunk_disk_fixture:invalid", || ()).serialize(
-                    mod_api::AttachmentCodec {
-                        encode: |_| Ok(Compound::from([("bad".into(), Tag::End)])),
-                        decode: |_| Ok(()),
+            let descriptor = mod_api::AttachmentDescriptor::new("chunk_disk_fixture:invalid", || 0)
+                .serialize(mod_api::AttachmentCodec {
+                    encode: |kind| {
+                        let mut payload = Tag::End;
+                        if *kind == 10 {
+                            payload = Tag::Int(1);
+                            for _ in 0..Limits::saved().max_depth {
+                                payload = Tag::List(vec![payload]);
+                            }
+                        }
+                        Ok(Compound::from([("bad".into(), payload)]))
                     },
-                );
+                    decode: |_| Ok(33),
+                });
             *self.invalid.lock().unwrap() = Some(r.register_attachment_type(descriptor).unwrap());
         }
         fn chunk_data_save(&self, _: &dyn ChunkDiskHost, event: &mut ChunkDataSaveEvent<'_>) {
             let key = self.value.lock().unwrap().clone().unwrap();
             let value = event.data.get(&key).unwrap();
             self.seen.lock().unwrap().push(value);
-            if value == 9 {
-                let key = self.invalid.lock().unwrap().clone().unwrap();
-                event.data.set(&key, ()).unwrap();
+            if matches!(value, 9 | 10) {
+                let invalid = self.invalid.lock().unwrap().clone().unwrap();
+                let refusal = event.data.set(&invalid, value).unwrap_err();
+                assert_eq!(refusal.key, "chunk_disk_fixture:invalid");
+                assert_eq!(
+                    refusal.reason,
+                    mod_api::ChunkDiskFailureKind::InvalidSavedNbt
+                );
+                event.data.set(&key, value + 100).unwrap();
             }
         }
     }

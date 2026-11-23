@@ -36,7 +36,9 @@ impl From<runtime::AttachmentBatch<AttachmentHolder>> for AttachmentBatch {
 }
 impl AttachmentBatch {
     /// Bind an issued attachment key without eagerly decoding or cloning any value.
-    /// This view borrows only the key, never the host.
+    /// This view borrows only the key, never the host. An unbound batch can be bound
+    /// after reinstallation with the current key for its captured bucket; a query that
+    /// was already bound remains tied to the installation that issued its key.
     /// Refuses keys from an earlier installation with [`AttachmentError::StaleKey`], or a key
     /// for a different captured bucket with [`AttachmentError::TypeMismatch`].
     pub fn query<'key, T: Send + Sync + 'static>(

@@ -337,7 +337,10 @@ fn type_without_persistence_codec_refuses_locally_naming_type_and_capability() {
     let mut data = ChunkDiskData::from_nbt(saved);
     let refusal = data.get(&unsaved).unwrap_err();
     assert_eq!(refusal.key, "disk_fixture:unsaved");
-    assert_eq!(refusal.reason, "missing persistence codec");
+    assert_eq!(
+        refusal.reason,
+        ChunkDiskFailureKind::MissingPersistenceCodec
+    );
     // The local refusal does not poison unrelated valid edits.
     data.set(&value, 10).unwrap();
     assert_eq!(read(&value, &data.finish()), 10);
@@ -366,7 +369,10 @@ fn stale_key_refuses_locally_without_poisoning_unrelated_edits() {
     let mut data = ChunkDiskData::from_nbt(saved);
     let refusal = data.get(&stale).unwrap_err();
     assert_eq!(refusal.key, "disk_fixture:value");
-    assert_eq!(refusal.reason, "StaleKey");
+    assert_eq!(
+        refusal.reason,
+        ChunkDiskFailureKind::Attachment(AttachmentError::StaleKey)
+    );
     assert_eq!(data.set(&stale, 8).unwrap_err(), refusal);
     assert_eq!(data.remove(&stale).unwrap_err(), refusal);
 
