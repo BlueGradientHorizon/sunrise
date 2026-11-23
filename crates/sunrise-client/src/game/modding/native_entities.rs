@@ -327,14 +327,18 @@ impl Game<'_> {
         let kind = kind.into_owned();
         let mut canceled = false;
         self.construct_joining(id, &kind);
-        self.native_entity_join_level(
-            self.dim.id(),
-            id,
-            &kind,
-            [at.x, at.y, at.z],
-            loaded_from_disk,
-            &mut canceled,
-        );
+        // No lifecycle epoch means no mod is loaded to hear it.
+        if let Some(epoch) = self.native_lifecycle.epoch() {
+            self.native_entity_join_level(
+                self.dim.id(),
+                id,
+                &kind,
+                [at.x, at.y, at.z],
+                loaded_from_disk,
+                mod_api::EntityRef::new(epoch, id),
+                &mut canceled,
+            );
+        }
         let spawn = self
             .native_lifecycle
             .pending_item_spawns

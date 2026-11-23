@@ -1015,6 +1015,59 @@ mod tests {
         );
     }
 
+    /// `EntityJoinLevelEvent.getEntity`: the join listener reads the joining entity through its
+    /// own handle even where `Host::entity` cannot find it (a hidden section).
+    #[test]
+    #[ignore = "daily"]
+    fn a_join_listener_reads_a_falling_block_entering_a_hidden_column_by_its_subject() {
+        crate::game::in_own_process(
+            "game::native_falling::tests::a_join_listener_reads_a_falling_block_entering_a_hidden_column_by_its_subject",
+            || {
+                use mod_api::{EntityJoinLevelEvent, Falling, Flow, Hooks, Host, ServerHost};
+
+                struct Listener(Arc<Mutex<Vec<(bool, Option<[f64; 3]>)>>>);
+                #[mod_api::__subscriptions]
+                impl Hooks for Listener {
+                    fn entity_join_level(
+                        &self,
+                        host: &mut dyn ServerHost,
+                        event: &mut EntityJoinLevelEvent<'_>,
+                    ) -> Flow {
+                        if event.kind == "minecraft:falling_block" {
+                            let host: &dyn Host = host;
+                            self.0.lock().unwrap().push((
+                                host.entity(event.entity).is_some(),
+                                event.subject.position(host),
+                            ));
+                        }
+                        Flow::Continue
+                    }
+                }
+
+                let heard = Arc::new(Mutex::new(Vec::new()));
+                let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+                    "hidden-join-subject",
+                    Box::new(Listener(heard.clone())),
+                )]
+                .into();
+                super::super::native_entity_refs::tests::with_game(|game| {
+                    mod_platform::testing::with_mods(mods, || {
+                        game.world_root = game.save.root.clone();
+                        let at = [1000.5, 70.0, 0.5];
+                        let level = game.level(game.dim.id()).unwrap();
+                        let host: &dyn mod_api::Host = game;
+                        let sand = host.block_state_id("minecraft:sand").unwrap();
+                        level
+                            .spawn_falling_block(game, sand, at, [0.0; 3], Falling::default())
+                            .unwrap()
+                            .unwrap();
+                    });
+                });
+                assert_eq!(*heard.lock().unwrap(), [(false, Some([1000.5, 70.0, 0.5]))]);
+            },
+        );
+    }
+
     #[test]
     #[ignore = "daily"]
     fn natural_falling_join_veto_runs_before_the_next_scheduled_tick() {

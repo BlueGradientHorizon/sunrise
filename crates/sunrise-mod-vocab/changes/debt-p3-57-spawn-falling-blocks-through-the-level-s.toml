@@ -35,6 +35,11 @@ Air is admitted and discarded on its first tick (`FallingBlockEntity.tick`).
 integrates their existing entity records before replacing the section on disk
 (`storeChunkSections`). Once owned, an emptied section replaces its old record
 as well, so a move or removal cannot leave behind a stale copy.
+
+NeoForge's `EntityJoinLevelEvent` carries the joining entity. `entity_join_level`
+(hook version 5) adds `subject`, that entity's handle, so a listener can read it
+before admission even into a hidden section; the numeric `entity` stays and
+`Host::entity` still finds only entities in accessible sections.
 """
 migrate = """
 Replace `host.spawn_falling_block(dimension, state, pos, velocity, falling)` with:
