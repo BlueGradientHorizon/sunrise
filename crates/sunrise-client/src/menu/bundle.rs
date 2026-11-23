@@ -22,7 +22,7 @@ pub fn vanilla_carried_override(
 ) -> bool {
     let Some(mut contents) = carried
         .as_ref()
-        .filter(|c| items.get(&c.item).is_some_and(ItemInfo::is_bundle_item))
+        .filter(|c| c.count == 1 && items.get(&c.item).is_some_and(ItemInfo::is_bundle_item))
         .and_then(|c| Contents::of(items, c))
     else {
         return false;
@@ -78,9 +78,11 @@ pub fn vanilla_clicked_override(
     let Some(mut bundle) = slot.item() else {
         return (false, None);
     };
-    if !items
-        .get(&bundle.item)
-        .is_some_and(ItemInfo::is_bundle_item)
+    // `BundleItem` refuses a stack of several bundles in both overrides (`getCount() != 1`).
+    if bundle.count != 1
+        || !items
+            .get(&bundle.item)
+            .is_some_and(ItemInfo::is_bundle_item)
     {
         return (false, None);
     }
