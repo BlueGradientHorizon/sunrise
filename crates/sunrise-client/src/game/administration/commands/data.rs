@@ -2509,7 +2509,7 @@ mod loot_table_tests {
 
 #[cfg(test)]
 #[path = "data/portal_cooldown_tests.rs"]
-mod portal_cooldown_tests;
+pub(in crate::game) mod portal_cooldown_tests;
 
 #[cfg(test)]
 mod compute_tests;
