@@ -2558,9 +2558,9 @@ mod tests {
         use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
         use sunrise_client::random_source::set_thread_uniquifier;
         if run_fresh_cases(
-            concat!(
-                module_path!(),
-                "::natural_spawn_checks_lend_the_mob_and_keep_the_draws"
+            &format!(
+                "{}::natural_spawn_checks_lend_the_mob_and_keep_the_draws",
+                module_path!().split_once("::").unwrap().1
             ),
             "SUNRISE_TEST_SEEDS",
             &["1"],
@@ -2672,9 +2672,9 @@ mod tests {
         use sunrise_client::chunk::block_entity::Next;
         use sunrise_client::mobs::spawner::{SpawnData, SpawnDataExt};
         if run_fresh_cases(
-            concat!(
-                module_path!(),
-                "::spawner_checks_tell_the_block_and_keep_the_draws"
+            &format!(
+                "{}::spawner_checks_tell_the_block_and_keep_the_draws",
+                module_path!().split_once("::").unwrap().1
             ),
             "SUNRISE_BLOCK_SPAWNER_CHECKS",
             &["checks"],
@@ -2769,9 +2769,9 @@ mod tests {
         use sunrise_client::mobs::spawner::{SpawnData, SpawnDataExt};
         use sunrise_client::mobs::trial_spawner::{TrialSpawner, TrialState};
         if run_fresh_cases(
-            concat!(
-                module_path!(),
-                "::trial_spawner_checks_tell_the_block_and_keep_the_draws"
+            &format!(
+                "{}::trial_spawner_checks_tell_the_block_and_keep_the_draws",
+                module_path!().split_once("::").unwrap().1
             ),
             "SUNRISE_TRIAL_SPAWNER_CHECKS",
             &["checks"],
@@ -2880,9 +2880,9 @@ mod tests {
         use sunrise_client::mobs::spawner::{SpawnData, SpawnDataExt};
         const FLAG: &str = "SUNRISE_CONFIGURED_SPAWNER_LEND";
         if run_fresh_cases(
-            concat!(
-                module_path!(),
-                "::configured_spawner_lends_and_finalizes_its_loaded_body"
+            &format!(
+                "{}::configured_spawner_lends_and_finalizes_its_loaded_body",
+                module_path!().split_once("::").unwrap().1
             ),
             FLAG,
             &["keep", "veto"],
@@ -3331,9 +3331,9 @@ mod tests {
     fn natural_admission_publishes_primary_and_passenger_constructor_uuids() {
         use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
         if run_fresh_cases(
-            concat!(
-                module_path!(),
-                "::natural_admission_publishes_primary_and_passenger_constructor_uuids"
+            &format!(
+                "{}::natural_admission_publishes_primary_and_passenger_constructor_uuids",
+                module_path!().split_once("::").unwrap().1
             ),
             "SUNRISE_TEST_SEEDS",
             &["1"],
@@ -3783,9 +3783,9 @@ mod tests {
             bind_local_player, run_fresh_cases, with_game,
         };
         if run_fresh_cases(
-            concat!(
-                module_path!(),
-                "::resuming_the_natural_spawn_pass_keeps_the_constructor_streams"
+            &format!(
+                "{}::resuming_the_natural_spawn_pass_keeps_the_constructor_streams",
+                module_path!().split_once("::").unwrap().1
             ),
             "SUNRISE_TEST_SEEDS",
             &["1"],

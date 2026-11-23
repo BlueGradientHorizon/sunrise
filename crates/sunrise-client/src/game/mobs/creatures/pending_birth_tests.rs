@@ -139,9 +139,9 @@ fn assert_vanilla_children(children: &[Mob], kind: &str, first_id: u32) {
 #[ignore = "daily"]
 fn size_four_slime_and_magma_split_three_children_and_draw_the_vanilla_yaws() {
     if crate::game::native_entity_refs::tests::run_fresh_cases(
-        concat!(
-            module_path!(),
-            "::size_four_slime_and_magma_split_three_children_and_draw_the_vanilla_yaws"
+        &format!(
+            "{}::size_four_slime_and_magma_split_three_children_and_draw_the_vanilla_yaws",
+            module_path!().split_once("::").unwrap().1
         ),
         "SUNRISE_SPLIT_COORDINATES",
         &["coordinates"],
@@ -204,7 +204,10 @@ fn cancelled_split_spawns_nothing_but_keeps_the_construction_draws() {
 #[ignore = "daily"]
 fn no_listener_split_is_exactly_vanilla() {
     if crate::game::native_entity_refs::tests::run_fresh_cases(
-        concat!(module_path!(), "::no_listener_split_is_exactly_vanilla"),
+        &format!(
+            "{}::no_listener_split_is_exactly_vanilla",
+            module_path!().split_once("::").unwrap().1
+        ),
         "SUNRISE_SPLIT_NO_LISTENER_COORDINATES",
         &["coordinates"],
     ) {
@@ -317,7 +320,10 @@ fn spec(kind: &str, at: [f64; 3], yaw: f32, size: Option<u32>, dimension: &str) 
 #[ignore = "daily"]
 fn edit_remove_push_commits_a_c_d_once() {
     if crate::game::native_entity_refs::tests::run_fresh_cases(
-        concat!(module_path!(), "::edit_remove_push_commits_a_c_d_once"),
+        &format!(
+            "{}::edit_remove_push_commits_a_c_d_once",
+            module_path!().split_once("::").unwrap().1
+        ),
         "SUNRISE_SPLIT_EDIT_COORDINATES",
         &["coordinates"],
     ) {
