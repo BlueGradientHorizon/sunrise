@@ -361,7 +361,7 @@ pub(super) fn mem_ref(m: &Mob) -> Option<&Memories> {
 }
 
 impl Brain {
-    fn new(mob_id: &str, baby: bool, shuffle_seed: i64, farmer: bool) -> Self {
+    fn new(baby: bool, shuffle_seed: i64, farmer: bool) -> Self {
         let mut b = Brain {
             mem: Memories::default(),
             sensors: [0; 9],
@@ -444,12 +444,7 @@ fn make_brain(
     w_times: (i64, i64),
     host: Option<&dyn super::part_goals::GoalHost>,
 ) -> Brain {
-    let mut b = Brain::new(
-        &m.kind.id,
-        m.is_baby(),
-        shuffle_seed,
-        super::villager::is_farmer(m),
-    );
+    let mut b = Brain::new(m.is_baby(), shuffle_seed, super::villager::is_farmer(m));
     for (i, rate) in SENSOR_RATES.iter().enumerate() {
         b.sensors[i] = i64::from(m.random.next_int_bound(*rate as i32).unwrap_or(0));
     }

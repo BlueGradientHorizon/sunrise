@@ -790,17 +790,23 @@ mod nested_spawn_tests {
                 .get("minecraft:villager")
                 .unwrap()
                 .clone();
-            game.mobs.push(sunrise_client::mobs::Mob::new(
+            let mut sleeper = sunrise_client::mobs::Mob::new(
                 99,
                 kind,
                 sunrise_core::geometry::Vec3::new(0.5, 80.0, 0.5),
                 0.0,
-            ));
+            );
+            // `Game::wake_villager` (damage) runs in place on the list; the API's
+            // `LivingEntity.stopSleeping` is the villager wake that lifts it.
+            sleeper.extra.ints[1] = 1;
+            game.mobs.push(sleeper);
+            let living =
+                mod_api::MobRef::new(mod_api::EntityRef::new(game.lend_epoch(), 99)).living();
             crate::game::entity::taken_pass_tests::assert_mob_spawn_survives(
                 game,
                 balance,
                 |game| {
-                    game.wake_villager(99);
+                    assert!(game.living_stop_sleeping(living));
                 },
             );
         });

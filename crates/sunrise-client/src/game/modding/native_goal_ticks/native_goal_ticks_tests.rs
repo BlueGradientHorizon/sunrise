@@ -288,6 +288,7 @@ fn reads_answer_the_tick_view_and_refuse_what_it_lacks() {
     READS.lock().unwrap().clear();
     install_game_mods();
     with_game(|game| {
+        fixture_resident_column(&mut game.world, (0, 0));
         zombie(game, 20, [3.5, 65.0, 3.5]);
         zombie(game, 21, [13.5, 65.0, 13.5]);
         game.mobs[1].health = 12.5;

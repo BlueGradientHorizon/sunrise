@@ -205,7 +205,7 @@ impl Game<'_> {
     /// entity slept; false for a fake player, another mob, an armor stand
     /// or the dragon. Normal server guests in the level in place use the
     /// same wake-up path; guests in another level are refused.
-    pub(super) fn living_stop_sleeping(&mut self, living: LivingRef) -> bool {
+    pub(in crate::game) fn living_stop_sleeping(&mut self, living: LivingRef) -> bool {
         match self.native_living_target(living) {
             Some(target @ (Target::Player | Target::Guest(_))) => {
                 self.native_player_sleep_write(target, |game| {

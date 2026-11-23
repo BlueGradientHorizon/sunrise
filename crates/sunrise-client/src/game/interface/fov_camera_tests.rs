@@ -169,7 +169,7 @@ fn the_world_angle_takes_valid_listener_values_and_ignores_the_rest() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_client_game(|game| {
-            let setting = game.settings.fov as f32;
+            let setting = game.settings.fov;
             for (value, expected) in [
                 (None, setting),
                 (Some(15.0), 15.0),

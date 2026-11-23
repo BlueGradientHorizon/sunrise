@@ -24,7 +24,7 @@ use sunrise_client::{
 use sunrise_core::{
     geometry::{Aabb, COLLISION_EPSILON, Vec3, VoxelShape},
     position::BlockPos,
-    random::{LegacyRandom, LevelRandom, RandomSource, WorldgenRandom, XoroshiroRandom},
+    random::{LegacyRandom, RandomSource, WorldgenRandom, XoroshiroRandom},
 };
 use sunrise_world::dimension_type::DimensionFacts;
 use {
@@ -1485,9 +1485,11 @@ impl<'a> Game<'a> {
                         while pass.advance(&level, &mut random, &mut state, &mut |_| {}) {
                             let attempt = pass.attempt();
                             let mut pending = Vec::new();
-                            let Some(spawned) =
-                                level.finalize_spawned(&attempt.request(), &mut pending, &mut random)
-                            else {
+                            let Some(spawned) = level.finalize_spawned(
+                                &attempt.request(),
+                                &mut pending,
+                                &mut random,
+                            ) else {
                                 continue;
                             };
                             // `addFreshEntityWithPassengers`: the mob joins the level before the
@@ -1503,7 +1505,10 @@ impl<'a> Game<'a> {
                             pass.joined(&level, &mut state, spawned.school, &mut |_| {});
                             let [id] = ids[..] else { unreachable!() };
                             let size = self.spawn_cluster_size(
-                                mod_api::MobRef::new(mod_api::EntityRef::new(self.lend_epoch(), id)),
+                                mod_api::MobRef::new(mod_api::EntityRef::new(
+                                    self.lend_epoch(),
+                                    id,
+                                )),
                                 &attempt.entity,
                                 pass.vanilla_limit(),
                             );
@@ -3256,7 +3261,10 @@ mod tests {
             host: &dyn mod_api::Host,
             event: &mut mod_api::SpawnClusterSizeEvent,
         ) {
-            assert!(event.mob.entity().kind(host).is_some(), "the mob is resident");
+            assert!(
+                event.mob.entity().kind(host).is_some(),
+                "the mob is resident"
+            );
             event.size = event.vanilla * 2;
         }
     }
@@ -3297,15 +3305,21 @@ mod tests {
         mod_platform::testing::with_mods(entries.into(), || {
             with_game(|game| {
                 game.resolve_parts().unwrap();
-                let ids: Vec<(&str, u32)> = ["minecraft:zombie", "minecraft:skeleton", "minecraft:cow"]
-                    .into_iter()
-                    .map(|kind| {
-                        let id = game
-                            .spawn_mob(kind, [8.5, 64.0, 8.5], false, super::super::creatures::SpawnSite::Plain)
-                            .unwrap();
-                        (kind, id)
-                    })
-                    .collect();
+                let ids: Vec<(&str, u32)> =
+                    ["minecraft:zombie", "minecraft:skeleton", "minecraft:cow"]
+                        .into_iter()
+                        .map(|kind| {
+                            let id = game
+                                .spawn_mob(
+                                    kind,
+                                    [8.5, 64.0, 8.5],
+                                    false,
+                                    super::super::creatures::SpawnSite::Plain,
+                                )
+                                .unwrap();
+                            (kind, id)
+                        })
+                        .collect();
                 let game: &Game<'_> = game;
                 let ask = |kind: &str| {
                     let (_, id) = ids.iter().find(|(k, _)| *k == kind).unwrap();

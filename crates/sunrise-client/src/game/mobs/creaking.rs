@@ -81,8 +81,7 @@ impl HeartHost for Host<'_> {
     fn create_mob(&mut self, kind: Arc<MobType>, at: Vec3) -> Mob {
         *self.next_entity += 1;
         // A new entity's random is its own (Mob::new seeds it).
-        let mut m = Mob::new(*self.next_entity, kind, at, 0.0);
-        m
+        Mob::new(*self.next_entity, kind, at, 0.0)
     }
     fn add_mob(&mut self, m: Mob) {
         self.added.push(m);

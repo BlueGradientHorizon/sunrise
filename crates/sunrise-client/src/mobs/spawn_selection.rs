@@ -1461,7 +1461,12 @@ impl PositionPass {
     }
     /// `Mob.getMaxSpawnClusterSize` of the mob `advance` stopped at.
     pub fn vanilla_limit(&self) -> i32 {
-        max_cluster_size(self.attempt.as_ref().unwrap_or_else(|| unreachable!()).species)
+        max_cluster_size(
+            self.attempt
+                .as_ref()
+                .unwrap_or_else(|| unreachable!())
+                .species,
+        )
     }
     fn close(&mut self, state: &mut SpawnState) {
         state.nearby = std::mem::take(&mut self.nearest.nearby);
@@ -1494,8 +1499,10 @@ impl PositionPass {
             }
             while self.ll < self.max {
                 self.ll += 1;
-                self.x += random.next_int_bound(6).unwrap_or(0) - random.next_int_bound(6).unwrap_or(0);
-                self.z += random.next_int_bound(6).unwrap_or(0) - random.next_int_bound(6).unwrap_or(0);
+                self.x +=
+                    random.next_int_bound(6).unwrap_or(0) - random.next_int_bound(6).unwrap_or(0);
+                self.z +=
+                    random.next_int_bound(6).unwrap_or(0) - random.next_int_bound(6).unwrap_or(0);
                 let (x, z) = (self.x, self.z);
                 let (xx, zz) = (f64::from(x) + 0.5, f64::from(z) + 0.5);
                 trace(Event::Try(x, z));

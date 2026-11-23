@@ -186,7 +186,7 @@ pub fn init(m: &mut Mob, shuffle_seed: i64) {
         .iter()
         .map(|&k| (k, i64::from(m.random.next_int_bound(20).unwrap_or(0))))
         .collect();
-    let (mut list, default_activity) = if breeze {
+    let (list, default_activity) = if breeze {
         (breeze_packages(shuffle_seed), Act::Fight)
     } else {
         (creaking_packages(shuffle_seed), Act::Idle)
