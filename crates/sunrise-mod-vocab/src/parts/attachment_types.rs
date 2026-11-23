@@ -723,8 +723,8 @@ impl dyn Registrar + '_ {
     }
 }
 
-/// Capture the installed descriptors for a client sync send pass. Pairing workers
-/// may run this projection off the calling server thread.
+/// Capture the installed descriptors for a client sync send pass. Invoke mod
+/// codecs on the owning server thread before workers assemble pairing packets.
 // hidden: engine-owned client attachment sync projection; not an authoring method.
 #[doc(hidden)]
 pub fn attachment_sync_projection()
