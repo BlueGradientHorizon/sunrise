@@ -142,7 +142,7 @@ fn infinite_replacement_pitch_and_volume_take_the_engines_calculations() {
     let full = backend.volume[&channel];
     assert!(full.is_finite() && full > 0.0, "clamped, not refused");
     engine.set_test_playback_hook(|_, _, pitch, _| *pitch = f32::NEG_INFINITY);
-    engine.tick(false, &TickContext::default(), &mut backend);
+    engine.update_category_volume(4, 0.5, &mut backend);
     assert!(!backend.stopped(channel), "a refresh is not stopped for it");
     assert_eq!(backend.pitch[&channel], SoundEngine::calculate_pitch(0.5));
 }

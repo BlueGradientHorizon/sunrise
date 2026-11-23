@@ -403,11 +403,18 @@ mod tests {
     #[test]
     fn a_half_turn_view_transform_keeps_what_is_behind_the_camera_in_the_cull_view() {
         let set = ViewSet::single(View::screen(0.0, 0.0, 70.0, 16.0 / 9.0, 512.0));
-        let behind = glam::Vec4::new(0.0, 0.0, 10.0, 1.0);
-        let visible = |matrix: Mat4| {
-            let clip = matrix * behind;
+        let seen = |matrix: Mat4, point: glam::Vec4| {
+            let clip = matrix * point;
             clip.w > 0.0 && clip.x.abs() <= clip.w && clip.y.abs() <= clip.w
         };
+        // The point on the side the untransformed view does not look at.
+        let ahead = glam::Vec4::new(0.0, 0.0, -10.0, 1.0);
+        let behind = if seen(set.cull_view_proj(Mat4::IDENTITY), ahead) {
+            glam::Vec4::new(0.0, 0.0, 10.0, 1.0)
+        } else {
+            ahead
+        };
+        let visible = |matrix: Mat4| seen(matrix, behind);
         assert!(!visible(set.cull_view_proj(Mat4::IDENTITY)));
         let half_turn = Mat4::from_rotation_y(std::f32::consts::PI);
         assert!(visible(set.cull_view_proj(half_turn)));
