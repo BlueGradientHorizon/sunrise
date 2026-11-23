@@ -109,10 +109,14 @@ pub fn suitable_hotbar_slot(
     not_replaceable: &mut dyn FnMut(&ItemStack, usize) -> bool,
 ) -> usize {
     let order = || (0..9).map(|i| (selected + i) % 9);
-    order()
+    let slot = order()
         .find(|&i| items[i].is_none())
         .or_else(|| order().find(|&i| items[i].as_ref().is_some_and(|s| !not_replaceable(s, i))))
-        .unwrap_or(selected)
+        .unwrap_or(selected);
+    #[cfg(test)]
+    let slot = crate::rule_replacements::suitable_hotbar_slot(items, selected).unwrap_or(slot);
+    let _ = selected;
+    slot
 }
 
 #[cfg(test)]

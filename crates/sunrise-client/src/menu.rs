@@ -2350,13 +2350,19 @@ pub fn slot_with_remaining_space(
     let has_space = |have: Option<&ItemStack>| {
         have.is_some_and(|have| have.same_item_same_components(stack) && have.count < max)
     };
-    if has_space(items[selected].as_ref()) {
+    let slot = if has_space(items[selected].as_ref()) {
         Some(selected)
     } else if has_space(offhand) {
         Some(OFFHAND)
     } else {
         items.iter().position(|have| has_space(have.as_ref()))
-    }
+    };
+    #[cfg(test)]
+    let slot =
+        crate::rule_replacements::slot_with_remaining_space(items, offhand, selected, stack, max)
+            .unwrap_or(slot);
+    let _ = items;
+    slot
 }
 
 /// `Inventory.getFreeSlot`: the first empty one of the 36 main slots `items`, never the off
@@ -2366,7 +2372,11 @@ pub fn slot_with_remaining_space(
 /// into `Inventory.getFreeSlot`; a native mod answers here through `[[native.mixin]]` (#4854).
 #[sunrise_mod_api_macros::replaceable]
 pub fn free_slot(items: &[Option<ItemStack>]) -> Option<usize> {
-    items.iter().position(Option::is_none)
+    let slot = items.iter().position(Option::is_none);
+    #[cfg(test)]
+    let slot = crate::rule_replacements::free_slot(items).unwrap_or(slot);
+    let _ = items;
+    slot
 }
 
 /// `Inventory.add`; leaves any remainder in `stack`.
@@ -5777,6 +5787,93 @@ pub(crate) mod tests {
         assert_eq!(
             (chosen, &main[hotbar], &main[free]),
             (hotbar, &Some(wood), &stack("stone", 5))
+        );
+    }
+    /// A mod's rows that keep hotbar slots 6 to 8 free (`getFreeSlot`,
+    /// `getSlotWithRemainingSpace` and `getSuitableHotbarSlot` answering past them, replaced on
+    /// this thread through `rule_replacements`) keep a stack out of them wherever a slot is
+    /// chosen: the menus' `Inventory.add` passes a stack in slot 6 with room and the selected
+    /// slot 7, and a creative pick takes slot 0 and moves its stack to slot 1.
+    #[test]
+    fn replaced_slot_pickers_keep_added_and_picked_stacks_out_of_locked_slots() {
+        use crate::pick_item::{apply, plan};
+        use crate::rule_replacements::{FREE_SLOT, HOTBAR_SLOT, REMAINING_SPACE, replaced};
+        fn open(i: usize) -> bool {
+            !(6..=8).contains(&i)
+        }
+        fn free(items: &[Option<ItemStack>]) -> Option<usize> {
+            (0..items.len()).find(|&i| open(i) && items[i].is_none())
+        }
+        fn space(
+            items: &[Option<ItemStack>],
+            offhand: Option<&ItemStack>,
+            selected: usize,
+            stack: &ItemStack,
+            max: u32,
+        ) -> Option<usize> {
+            let has = |have: Option<&ItemStack>| {
+                have.is_some_and(|have| have.same_item_same_components(stack) && have.count < max)
+            };
+            if open(selected) && has(items[selected].as_ref()) {
+                Some(selected)
+            } else if has(offhand) {
+                Some(OFFHAND)
+            } else {
+                (0..items.len()).find(|&i| open(i) && has(items[i].as_ref()))
+            }
+        }
+        fn hotbar(_: &[Option<ItemStack>], _: usize) -> usize {
+            0
+        }
+        let locked = |test: &mut dyn FnMut()| {
+            replaced(&FREE_SLOT, free, || {
+                replaced(&REMAINING_SPACE, space, || {
+                    replaced(&HOTBAR_SLOT, hotbar, test)
+                })
+            })
+        };
+
+        let items = Items::default();
+        let mut inventory = vec![None; 41];
+        inventory[6] = stack("dirt", 10);
+        let mut vanilla = inventory.clone();
+        let selected = 7;
+        let mut one = stack("dirt", 1).unwrap();
+        locked(&mut || {
+            assert!(inventory_add(
+                &mut inventory,
+                selected,
+                false,
+                &items,
+                &mut one
+            ));
+        });
+        assert_eq!(
+            (&inventory[0], &inventory[6], &inventory[7]),
+            (&stack("dirt", 1), &stack("dirt", 10), &None)
+        );
+        // Without the rows, vanilla's slot: the stack in slot 6 with room.
+        let mut one = stack("dirt", 1).unwrap();
+        assert!(inventory_add(
+            &mut vanilla,
+            selected,
+            false,
+            &items,
+            &mut one
+        ));
+        assert_eq!(vanilla[6], stack("dirt", 11));
+
+        let mut main = vec![None; 36];
+        main[0] = stack("stone", 5);
+        let wood = stack("oak_planks", 1).unwrap();
+        let mut chosen = selected;
+        locked(&mut || {
+            let picked = plan(&main, selected, &wood, true, &mut |_, _| false).unwrap();
+            apply(&mut main, &mut chosen, &wood, picked);
+        });
+        assert_eq!(
+            (chosen, &main[0], &main[1], &main[7]),
+            (0, &Some(wood.clone()), &stack("stone", 5), &None)
         );
     }
     #[path = "../dfa_tests.rs"]

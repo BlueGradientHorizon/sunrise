@@ -2020,6 +2020,9 @@ mod respawn_position;
 #[cfg(test)]
 #[path = "game/blocks/respawn_position_tests.rs"]
 mod respawn_position_tests;
+#[cfg(test)]
+#[path = "game/modding/rule_replacements.rs"]
+mod rule_replacements;
 #[path = "game/world/runtime_levels.rs"]
 mod runtime_levels;
 #[cfg(test)]
@@ -4542,8 +4545,8 @@ impl Dim {
 /// `max` the stack's own maximum, one slot at a time (`addResource`): onto an
 /// equal stack while there is one (`getSlotWithRemainingSpace`), else into an
 /// empty slot of the inventory (`getFreeSlot`, never the off hand), until the
-/// stack is used up or a slot takes none of it. What does not fit stays in
-/// `stack`; true when some of it is left.
+/// stack is used up, no slot is left or a slot takes none of it. What does
+/// not fit stays in `stack`; true when some of it is left.
 fn inventory_add(
     inventory: &mut [Option<ItemStack>],
     offhand: &mut Option<ItemStack>,
@@ -4553,9 +4556,17 @@ fn inventory_add(
 ) -> bool {
     use sunrise_client::menu::{OFFHAND, free_slot, slot_with_remaining_space};
     loop {
+        // `Inventory.add`: an empty stack adds nothing (`isEmpty`).
+        if stack.count == 0 {
+            return false;
+        }
         let slot =
             slot_with_remaining_space(&inventory[..36], offhand.as_ref(), selected, stack, max)
                 .or_else(|| free_slot(&inventory[..36]));
+        #[cfg(test)]
+        let slot =
+            rule_replacements::add_slot(&inventory[..36], offhand.as_ref(), selected, stack, max)
+                .unwrap_or(slot);
         let Some(slot) = slot else {
             return true;
         };
@@ -4564,28 +4575,25 @@ fn inventory_add(
         } else {
             &mut inventory[slot]
         };
-        let moved = match cell {
-            Some(cell) => {
-                let moved = max.saturating_sub(cell.count).min(stack.count);
-                cell.count += moved;
-                moved
-            }
-            None => {
-                let moved = stack.count.min(max);
-                *cell = Some(ItemStack {
-                    count: moved,
-                    ..stack.clone()
-                });
-                moved
-            }
-        };
-        stack.count -= moved;
-        if stack.count == 0 {
-            return false;
-        }
+        let moved = cell
+            .as_ref()
+            .map_or(max, |cell| max.saturating_sub(cell.count))
+            .min(stack.count);
+        // `Inventory.add`'s loop ends once an `addResource` moves nothing
+        // (`getCount() < lastSize`): a slot with no room for the stack.
         if moved == 0 {
             return true;
         }
+        match cell {
+            Some(cell) => cell.count += moved,
+            None => {
+                *cell = Some(ItemStack {
+                    count: moved,
+                    ..stack.clone()
+                })
+            }
+        }
+        stack.count -= moved;
     }
 }
 
