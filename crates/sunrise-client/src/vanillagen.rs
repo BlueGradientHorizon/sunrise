@@ -810,7 +810,8 @@ impl VanillaTerrain {
         const QUIET: u64 = 2_000;
         const LATEST: u64 = 60_000;
         let terrain = Arc::downgrade(self);
-        let spawned = sunrise_guest_stack::builder()
+        let spawned = std::thread::Builder::new()
+            .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
             .name("Ring search".into())
             .spawn(move || {
                 sunrise_threads::idle_current();
@@ -953,6 +954,9 @@ pub fn shared_data_with(
 }
 impl ChunkGenerator for VanillaTerrain {
     type Worker = GeneratorWorker;
+    fn spawn_height(&self) -> i32 {
+        self.generator.flat_spawn_height().unwrap_or(64)
+    }
     fn set_saved_starts(
         &self,
         source: Arc<sunrise_world::worldgen::generator::SavedStructureStarts>,

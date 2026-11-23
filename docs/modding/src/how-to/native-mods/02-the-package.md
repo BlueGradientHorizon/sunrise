@@ -11,14 +11,13 @@ my_mod/
   Cargo.toml             # one crate; Cargo metadata is not mod identity
   Cargo.lock             # registry dependency pins, when needed
   src/lib.rs             # impl Hooks
-  src/frame.rs           # optional injection callback module
 ```
 
 A native source package requires both `Cargo.toml` and `[native]`; inconsistent declarations
-are refused. A content-only package declares neither `[native]` nor `[wasm]`.
-[Wasm packages](../wasm-mods.md) declare `[wasm]` and contain `mod.wasm`. The mod's id and version come only from `sunrise-mod.toml`,
+are refused. A content-only package omits both. The mod's id and version come only from `sunrise-mod.toml`,
 not Cargo's package name or version. An id is a plain `[a-z0-9_]{1,64}` name, also used as its resource namespace.
-A native mod has no `rust-toolchain.toml`: the pinned Sunrise commit decides the toolchain that builds it.
+A `rust-toolchain.toml` in the folder is not packaged: the pinned Sunrise commit decides the toolchain that builds
+the mod. `cargo sunrise-mod check`, which runs Cargo in the folder, still reads it.
 There is no input `native/` or `rust/` directory, `sunrise-native.json` or hand-written `horizon-mixin.toml`.
 The launcher writes the tool's manifest and stages the crate itself; those internal paths are not package layouts.
 
@@ -32,7 +31,7 @@ sunrise = "<exact 40-character lowercase Sunrise commit>"
 ```
 
 Never write the commit by hand. `cargo sunrise-mod new <path> --template native` fills it in from the SDK of the
-build it pins, and `cargo sunrise-mod update` moves it when you pin a newer build ([Install the mod
+build it pins, and `cargo sunrise-mod pin` moves it when you pin a newer build ([Install the mod
 tool](../../start/install-tool.md), [In a mod project](../../reference/sdk/03-in-a-project.md#the-pin)).
 Leave `[native] mixins` out to use the horizon-mixins revision in the pinned SDK. For a mod that uses mixins,
 an explicit `mixins = "<exact 40-character lowercase horizon-mixins commit>"` must match that revision; it
@@ -41,9 +40,8 @@ Unknown fields are refused. `icon.png` has no manifest key: when present it must
 nonzero square PNG, at most 512 × 512 pixels and 256 KiB encoded. It is optional for both content
 and code mods; the scaffold does not create one.
 
-Injections belong in the same manifest as top-level `[[inject]]` tables. See [Injections](../../concepts/injections.md)
-for the available forms and fields. To change game code itself, add `[[native.mixin]]` to `sunrise-mod.toml` and
-run `cargo sunrise-mod build`. Neither `internals sync` nor `inject update` is a step of a mixin build.
+To change game code itself, add a [`[[native.mixin]]`](../../concepts/native-route/2-mixins.md) row to
+`sunrise-mod.toml` and run `cargo sunrise-mod build`.
 
 ## What a mixin cannot target
 
