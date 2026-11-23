@@ -144,7 +144,9 @@ impl Game<'_> {
             {
                 return None;
             }
-            let origin = self.entity_position(entity)?;
+            let origin = self
+                .pick_object_origin(entity.id())
+                .or_else(|| self.entity_position(entity))?;
             return Some(ObjectHit {
                 id: entity.id() as i32,
                 distance,

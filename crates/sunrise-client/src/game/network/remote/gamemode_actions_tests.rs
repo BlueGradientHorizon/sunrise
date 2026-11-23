@@ -234,7 +234,7 @@ fn spectator_entity_use_sends_both_hands_without_feeding_or_swinging() {
                             ids: vec![102],
                         }))
                         .unwrap();
-                        add_entity(game, id, "minecraft:leash_knot", [0.5, 66.0, 1.0]);
+                        add_entity(game, id, "minecraft:leash_knot", [0.0, 66.0, 1.0]);
                     }
                     game.refresh_client_pick(1.0);
                     assert_eq!(game.crosshair_entity_id(), Some(id));
@@ -302,6 +302,35 @@ fn spectator_entity_use_sends_both_hands_without_feeding_or_swinging() {
                     assert_eq!(game.inventory[game.selected], wheat);
                     assert_eq!(game.offhand, wheat);
                     assert!(game.using.is_none());
+                    if let Some(expected) = expected_loc {
+                        // Ordinary survival clicks on a remote knot spawned at fence block
+                        // coordinates must also subtract the canonical knot origin, not the
+                        // raw AddEntity block corner.
+                        game.handle_packet(C::GameEvent(play::GameEvent {
+                            event: 3,
+                            param: 0.0,
+                        }))
+                        .unwrap();
+                        game.refresh_client_pick(1.0);
+                        assert_eq!(game.crosshair_entity_id(), Some(103));
+                        game.remote_use(InteractionAttempt::Press);
+                        let survival_packets = outgoing(game, &mut reader);
+                        let survival_interactions: Vec<_> = survival_packets
+                            .iter()
+                            .filter_map(|packet| match packet {
+                                S::Interact(interact) => Some((interact.id, interact.location)),
+                                _ => None,
+                            })
+                            .collect();
+                        assert!(
+                            !survival_interactions.is_empty(),
+                            "expected survival Interact on knot 103, got {survival_packets:?}"
+                        );
+                        for (target_id, loc) in survival_interactions {
+                            assert_eq!(target_id, 103);
+                            assert_eq!(loc, expected);
+                        }
+                    }
                 }
 
                 // Minecraft.startUseItem: an entity whose blockPosition() is outside the world
