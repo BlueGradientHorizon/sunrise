@@ -718,23 +718,23 @@ mod tests {
     #[test]
     fn a_pack_biome_reads_its_own_file_over_the_dimension() {
         use serde_json::json;
-        let layer_of = |sound, volume| {
+        fn layer_of(sound: &str, volume: serde_json::Value) -> serde_json::Value {
             json!({"attributes": {
                 "minecraft:audio/background_music": {"default": {
                     "sound": {"sound_id": sound}, "min_delay": 1, "max_delay": 2
                 }},
                 "minecraft:audio/music_volume": volume
             }})
-        };
+        }
         let builtin = Arc::new(Builtin::default());
         let tables = MusicTables {
             dimensions: HashMap::from([(
                 "minecraft:overworld".to_owned(),
-                Layer::parse(&layer_of("test:game", 0.8), &builtin).unwrap(),
+                Layer::parse(&layer_of("test:game", 0.8.into()), &builtin).unwrap(),
             )]),
             biomes: HashMap::from([(
                 "minecraft:plains".to_owned(),
-                Layer::parse(&layer_of("test:meadow", 0.3), &builtin).unwrap(),
+                Layer::parse(&layer_of("test:meadow", 0.3.into()), &builtin).unwrap(),
             )]),
             builtin,
         };
@@ -742,7 +742,7 @@ mod tests {
             |(music, volume): (BackgroundMusic, f32)| (music.default.map(|m| m.sound), volume);
         let builtin = tables.at("minecraft:overworld", "minecraft:plains", None);
         assert_eq!(sound(builtin), (Some("test:meadow".to_owned()), 0.3));
-        let mut pack = layer_of("test:dunes", 0.7);
+        let mut pack = layer_of("test:dunes", 0.7.into());
         let packed = tables.at("minecraft:overworld", "minecraft:plains", Some(&pack));
         assert_eq!(sound(packed), (Some("test:dunes".to_owned()), 0.7));
         for bad in [json!(null), json!({"min_delay": 0, "max_delay": 5})] {
