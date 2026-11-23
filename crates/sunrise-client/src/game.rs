@@ -1722,6 +1722,9 @@ mod native_structure_placement;
 mod native_structure_types;
 #[path = "game/modding/native_structures.rs"]
 mod native_structures;
+#[cfg(test)]
+#[path = "game/modding/native_success_broadcast_tests.rs"]
+mod native_success_broadcast_tests;
 #[path = "game/modding/native_surface.rs"]
 pub(crate) mod native_surface;
 #[path = "game/modding/native_tags.rs"]
@@ -4413,10 +4416,9 @@ struct Game<'a> {
     guest_player_sounds: Vec<(String, [f64; 3], f32, f32)>,
     /// Sounds bound to an entity this tick, for the players (`game/interface/level_sounds.rs`).
     bound_sounds: Vec<level_sounds::BoundSound>,
-    /// `broadcastToAdmins` lines a guest's command queued, sent once it
-    /// returns: the line, whether operators get it and whether the console
-    /// logs it.
-    admin_feedback: Vec<(sunrise_client::text::Text, bool, bool)>,
+    /// `broadcastToAdmins` lines for the other operators that a command queued,
+    /// sent once it returns (`send_admin_feedback`).
+    admin_feedback: Vec<sunrise_client::text::Text>,
     /// The server console is running a command: whether its feedback goes to
     /// the operators (`DedicatedServer.shouldInformAdmins`,
     /// `broadcast-console-to-ops`).

@@ -416,20 +416,7 @@ impl Game<'_> {
     /// `sendSuccess(message, false)`: the source is told (when it takes
     /// success feedback), the operators are not.
     pub(super) fn feedback_unbroadcast(&mut self, message: Text) {
-        if self.command_source.is_some_and(|s| s.silent) {
-            return;
-        }
-        if let Some(block) = self.command_source.and_then(|s| s.block) {
-            self.command_block_success(block, message, false);
-            return;
-        }
-        if let Some(cart) = self.command_source.and_then(|s| s.cart) {
-            self.cart_command_success(cart, message, false);
-            return;
-        }
-        if self.accepts_success() {
-            self.system_message(message);
-        }
+        self.send_success(message, false);
     }
     /// `CommandSource.acceptsSuccess`: a player's source takes success feedback while
     /// `send_command_feedback` is on; the server console's and an RCON client's always do.
@@ -440,96 +427,107 @@ impl Game<'_> {
                 .rules
                 .bool_at(sunrise_client::gamerules::vanilla::SEND_COMMAND_FEEDBACK)
     }
-    /// sendSuccess honouring `send_command_feedback`.
+    /// A vanilla command's success line: `sendSuccess(message, true)`, except the
+    /// replies vanilla sends with `broadcast` false (`admin::QUIET`).
     pub(super) fn feedback(&mut self, message: Text) {
-        if self.command_source.is_some_and(|s| s.silent) {
-            return;
-        }
-        if let Some(block) = self.command_source.and_then(|s| s.block) {
-            self.command_block_success(block, message, true);
-            return;
-        }
-        if let Some(cart) = self.command_source.and_then(|s| s.cart) {
-            self.cart_command_success(cart, message, true);
-            return;
-        }
-        if self.accepts_success() {
-            self.system_message(message.clone());
-        }
-        self.broadcast_to_admins(message);
-    }
-    /// `CommandSourceStack.broadcastToAdmins` for a command block or a command
-    /// minecart called `name`: `[name: message]`, gray and italic, for every
-    /// operator when `send_command_feedback` and for a dedicated server's console when
-    /// `log_admin_commands`. Queued: `send_admin_feedback` sends it.
-    pub(super) fn broadcast_source_to_admins(&mut self, name: Text, message: Text) {
-        if message
+        let broadcast = !message
             .translation_key()
-            .is_some_and(|k| admin::QUIET.contains(&k))
-        {
+            .is_some_and(|k| admin::QUIET.contains(&k));
+        self.send_success(message, broadcast);
+    }
+    /// `CommandSourceStack.sendSuccess(message, broadcast)`, the success path of
+    /// vanilla's commands and of mods' (`Commands::feedback`). A silent source
+    /// sends nothing. The line goes to the origin when it accepts success: a
+    /// player under `send_command_feedback`, the console and RCON always, a
+    /// command block or minecart that tracks output under `send_command_feedback`;
+    /// never to the `execute as` entity. Independently, with `broadcast`,
+    /// `broadcastToAdmins` tells the other operators and the log.
+    pub(in crate::game) fn send_success(&mut self, message: Text, broadcast: bool) {
+        let source = self.command_source;
+        if source.is_some_and(|s| s.silent) {
             return;
         }
-        let line = Text::translate("chat.type.admin", &[name, message])
-            .with_color(text::GRAY)
-            .italic();
-        let ops = self
-            .ui
-            .rules
-            .bool_at(sunrise_client::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
-        let console = self.is_dedicated_server()
-            && self
-                .ui
-                .rules
-                .bool_at(sunrise_client::gamerules::vanilla::LOG_ADMIN_COMMANDS);
-        if ops || console {
-            self.admin_feedback.push((line, ops, console));
+        let admins = broadcast.then(|| message.clone());
+        if let Some(block) = source.and_then(|s| s.block) {
+            self.command_block_success(block, message);
+        } else if let Some(cart) = source.and_then(|s| s.cart) {
+            self.cart_command_success(cart, message);
+        } else if self.accepts_success() {
+            self.system_message(message);
+        }
+        if let Some(message) = admins {
+            self.broadcast_to_admins(message);
         }
     }
-    /// CommandSourceStack.broadcastToAdmins (`sendSuccess` with `broadcast`)
-    /// for a guest's command, the host's in a world open to LAN and the
-    /// dedicated server console's when `broadcast-console-to-ops` is on:
-    /// `[name: message]`, gray and italic, for the other operators when
-    /// `send_command_feedback`, and for a player's command on a dedicated
-    /// server the console when `log_admin_commands`. Queued while the
-    /// command runs; `send_admin_feedback` sends it.
-    pub(super) fn broadcast_to_admins(&mut self, message: Text) {
-        let informs = match self.console_broadcast {
-            Some(broadcast) => broadcast,
-            None => self.lan_acting.is_some() || self.lan.is_some(),
-        };
-        if !informs
-            || message
-                .translation_key()
-                .is_some_and(|k| admin::QUIET.contains(&k))
-        {
-            return;
-        }
-        let ops = self
-            .ui
-            .rules
-            .bool_at(sunrise_client::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
-        // MinecraftServer.sendSystemMessage, unless the server is the source.
-        let console = self.console_broadcast.is_none()
-            && self.lan_acting.is_some()
-            && self.is_dedicated_server()
-            && self
-                .ui
+    /// `CommandSource.shouldInformAdmins` of the command's origin: a player's
+    /// always (`ServerPlayer`); a command block's or minecart's while it tracks
+    /// output and `command_block_output` is on (`BaseCommandBlock`); the
+    /// console's `broadcast-console-to-ops` (`DedicatedServer`) and RCON's
+    /// `broadcast-rcon-to-ops` (`RconConsoleSource`).
+    fn should_inform_admins(&self) -> bool {
+        let source = self.command_source;
+        let block_output = || {
+            self.ui
                 .rules
-                .bool_at(sunrise_client::gamerules::vanilla::LOG_ADMIN_COMMANDS);
-        if !ops && !console {
+                .bool_at(sunrise_client::gamerules::vanilla::COMMAND_BLOCK_OUTPUT)
+        };
+        if let Some(pos) = source.and_then(|s| s.block) {
+            return self.command_block(pos).is_some_and(|c| c.track_output) && block_output();
+        }
+        if let Some(id) = source.and_then(|s| s.cart) {
+            return self.carts.iter().any(|c| {
+                c.id == id
+                    && c.kind == super::minecarts::CartKind::CommandBlock
+                    && c.command.track_output
+            }) && block_output();
+        }
+        self.console_broadcast.unwrap_or(true)
+    }
+    /// `CommandSourceStack.broadcastToAdmins` when the origin informs the
+    /// operators: `[name: message]` (`chat.type.admin`, gray and italic, with
+    /// the source's display name: the `execute as` entity's, else the block's,
+    /// minecart's or server's). Under `send_command_feedback` every other
+    /// operator gets it (`PlayerList.isOp`, queued while the command runs;
+    /// `send_admin_feedback` sends it). Under `log_admin_commands` the server's
+    /// log gets it, unless the server's console is the source. Neither rule
+    /// gates the other.
+    pub(super) fn broadcast_to_admins(&mut self, message: Text) {
+        if !self.should_inform_admins() {
             return;
         }
-        // getDisplayName: the entity the command runs as (`execute as`), or
-        // the server's own source, "Server".
-        let who = match self.command_source.and_then(|s| s.entity) {
-            Some(entity) => self.target_name(entity),
+        let rules = &self.ui.rules;
+        let ops = rules.bool_at(sunrise_client::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
+        // `source != server`: RCON is a source of its own and is logged.
+        let console_source = self.console_broadcast.is_some() && !self.rcon_source;
+        let log = !console_source
+            && rules.bool_at(sunrise_client::gamerules::vanilla::LOG_ADMIN_COMMANDS);
+        if !ops && !log {
+            return;
+        }
+        let who = match self.command_source {
             None if self.console_broadcast.is_some() => self.server_name(),
-            None => self.player_display_name(),
+            _ => self.source_display_name(),
         };
         let line = Text::translate("chat.type.admin", &[who, message])
             .with_color(text::GRAY)
             .italic();
-        self.admin_feedback.push((line, ops, console));
+        if log {
+            self.log_server_system_message(&line);
+        }
+        if ops {
+            self.admin_feedback.push(line);
+        }
+    }
+    /// `MinecraftServer.sendSystemMessage`: a line in the server's log, as the
+    /// console's replies are logged. Kept out of an RCON reply, which carries
+    /// only the source's own output.
+    pub(in crate::game) fn log_server_system_message(&self, line: &Text) {
+        let message = format!("System chat: {}", line.plain());
+        if self.is_dedicated_server() {
+            super::dedicated::log_outside_rcon_reply(self.rcon_source, &message);
+        } else {
+            log::info!("{message}");
+        }
     }
     /// Player.getDisplayName: the name (team-formatted), suggesting a
     /// `/tell`, showing the player on hover, inserting the name.

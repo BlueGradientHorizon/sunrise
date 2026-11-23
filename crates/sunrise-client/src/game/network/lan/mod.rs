@@ -2834,6 +2834,8 @@ impl Game<'_> {
         // Apply its packets before taking the snapshot too.
         self.tick_lan_packets();
         if self.lan.is_none() {
+            // No one else to tell: the host's `broadcastToAdmins` lines go.
+            self.admin_feedback.clear();
             if self.level_pass.running.is_none() {
                 self.level_pass.packets_drained = false;
             }

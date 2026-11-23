@@ -111,7 +111,10 @@ fn lan_game<'a>(
     guest.placed = true;
     guest.loaded = true;
     guest.permission = 2;
-    game.lan.as_mut().unwrap().hub.guests.push(guest);
+    let hub = &mut game.lan.as_mut().unwrap().hub;
+    // An operator (`PlayerList.isOp`): listed in ops.json.
+    hub.ops.insert(7, 2);
+    hub.guests.push(guest);
     (game, rx)
 }
 

@@ -172,31 +172,30 @@ impl Game<'_> {
 
     /// The `broadcastToAdmins` lines a command queued (`source`: the guest
     /// whose it was; none for the host's or the console's): every other
-    /// operator gets them, and the console logs them as the server's own
-    /// system messages (MinecraftServer.sendSystemMessage).
+    /// operator (`PlayerList.isOp`) gets them. The server's log already has
+    /// them (`broadcast_to_admins`). Without a server open to players they are
+    /// dropped: no one else can hear them.
     pub(in crate::game) fn send_admin_feedback(&mut self, source: Option<u32>) {
+        let lines = std::mem::take(&mut self.admin_feedback);
         let Some(host) = self.lan.as_ref() else {
             return;
         };
-        // server.toml's `admin_feedback_to_ops` off: the console's log only.
-        let to_ops = host.hub.admin_feedback_to_ops;
-        for (line, ops, console) in std::mem::take(&mut self.admin_feedback) {
-            if ops && to_ops {
-                let content = sunrise_client::lan::data::component_nbt(&line.component());
-                for g in host
-                    .hub
-                    .guests
-                    .iter()
-                    .filter(|g| Some(g.conn) != source && g.permission > 0)
-                {
-                    g.send(&C::SystemChat(play::SystemChat {
-                        content: content.clone(),
-                        overlay: false,
-                    }));
-                }
-            }
-            if console {
-                crate::game::dedicated::log("INFO", &format!("System chat: {}", line.plain()));
+        // server.toml's `admin_feedback_to_ops` off: the log only.
+        if !host.hub.admin_feedback_to_ops {
+            return;
+        }
+        for line in lines {
+            let content = sunrise_client::lan::data::component_nbt(&line.component());
+            for g in host
+                .hub
+                .guests
+                .iter()
+                .filter(|g| g.placed && Some(g.conn) != source && host.hub.is_op(g.uuid))
+            {
+                g.send(&C::SystemChat(play::SystemChat {
+                    content: content.clone(),
+                    overlay: false,
+                }));
             }
         }
     }
