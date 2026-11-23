@@ -31,8 +31,8 @@ const COMMANDS: &[Command] = &[
     Command {
         name: "check",
         everyday: true,
-        usage: "check [--release <tag>] [--uses] [--with <path>]… | check <file> [--kind <kind>] [--key <public key> --signature <file.minisig>] [--json] | check [<file.smod>] --build <name> [--build <name>]…",
-        summary: "Checks the mod in this folder or a file as the registry would, or reports fit for the builds named by --build. Folder checks report missing page requirements; --release requires a valid page and matching version tag, and compiles native code. The registry's category list is fetched only when the page selects categories. Repeat --with for local libraries; --uses lists what the mod uses of its pinned build. Fit mode takes no other options and exits 0 if all fit, 1 if one does not, or 2 if it cannot tell.",
+        usage: "check [--release <tag>] [--uses] [--with <path>]… | check <file> [--kind <kind>] [--attestation <bundle>] [--repository <id>] [--json] | check [<file.smod>] --build <name> [--build <name>]…",
+        summary: "Checks the mod in this folder, including native Rust code with the same libraries as build, or validates a release file, or reports fit for the builds named by --build. Folder checks report missing page requirements; --release requires a valid page and matching version tag, and compiles native code. A .smod must have its .sigstore.json bundle beside it unless --attestation names another path. --repository requires the attestation to name that GitHub repository ID. Repeat --with for local libraries; --uses lists what the mod uses of its pinned build. Fit mode takes no other options and exits 0 if all fit, 1 if one does not, or 2 if it cannot tell.",
     },
     Command {
         name: "pin",

@@ -14,9 +14,26 @@ folder.
 | `check [--uses] [--with <path>]…` | Checks the package rules and each [render pipeline shader](../../how-to/client/render-pipelines.md). For a native mod it then type-checks through the same SDK route and with the same libraries as `build`, without packaging or linking mod binaries, and reports what the project uses of its pinned build. `--uses` lists each item with the line that brought it in, and how the mod builds each struct it builds with a literal. [Page problems](../../how-to/publish.md#your-mods-page) are reported without failing the check. Only pages that select categories fetch the registry's list; if the list is unavailable, category IDs and their kinds cannot be checked. |
 | `check [<file.smod>] --build <name> [--build <name>]…` | Reports fit for each named build instead of running the ordinary check. Takes no other options. Name the build `nightly` to check the current Nightly. Exits 0 when all fit, 1 when one does not fit, and 2 when fit cannot be judged. |
 | `check --release <tag>` | Checks the project, compiles a native mod as `build` does, and fails on missing or invalid page data. If the page selects categories, the registry's list must be available and every selected ID must apply to the package kind. The tag must be `v<version>` at the Git repository root or `<id>/v<version>` for a mod in a subfolder. |
+| [`check <file.smod>`](#check-a-released-package) `[--attestation <bundle>] [--repository <id>] [--json]` | Checks the package and verifies its GitHub artifact attestation offline. |
 | `hooks <text> [--all]` | Searches the pinned build's hooks offline, by id, doc and their NeoForge, Fabric and Paper names; every word must match. `--all` searches every record. Matches in the id come first, then in a counterpart, then in the doc. |
 | `sdk diff <build> <build>` | What changed in the surface from the first build to the second, [classified](02-surface.md#what-a-change-is), with the second build's change notes (why, and what a mod does now) under the changes they name: the notes of the changes since the SDK published before it. It reads only the builds' small files, so it works for builds whose compiled files are pruned. |
 | `pin [<build>]` | Moves the pin to the current Nightly (or the build named). Reports API uses that would break before moving the pin. |
+
+## Check a released package
+
+```sh
+cargo sunrise-mod check my_mod-0.1.0.smod
+```
+
+Keep `my_mod-0.1.0.smod.sigstore.json` beside the downloaded package, or pass `--attestation <path>`.
+`check` validates the package without running its code. It verifies the signed SHA-256 and requires the
+signing workflow to be `sunrise-org/sunrise-mods/.github/workflows/release.yml` at a
+`refs/tags/release-v*` ref. An unsigned `.smod` fails this check; to check a local project before release,
+run `cargo sunrise-mod check` without a file from that project's folder.
+
+The report shows the GitHub repository name and numeric ID, the signing workflow ref, and the source
+commit. Use `--repository <id>` to require a known numeric repository ID, even if that repository was
+renamed. With `--json`, the verified claims are in `report.attestation`.
 
 ## `build` for a native mod
 

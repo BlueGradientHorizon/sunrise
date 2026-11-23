@@ -181,12 +181,13 @@ mod tests {
 
     #[test]
     fn an_options_value_is_never_also_an_option_whichever_is_read_first() {
-        let args = argv("--signature --native --key --kind");
-        let mut options = Options::new("check", &args, &["--signature", "--key", "--kind"]);
-        assert!(!options.switch("--native"));
-        assert_eq!(options.value("--kind").unwrap(), None);
-        assert_eq!(options.value("--signature").unwrap(), Some("--native"));
-        assert_eq!(options.value("--key").unwrap(), Some("--kind"));
+        let args = argv("--attestation --uses --kind --repository");
+        let mut options =
+            Options::new("check", &args, &["--attestation", "--kind", "--repository"]);
+        assert!(!options.switch("--uses"));
+        assert_eq!(options.value("--repository").unwrap(), None);
+        assert_eq!(options.value("--attestation").unwrap(), Some("--uses"));
+        assert_eq!(options.value("--kind").unwrap(), Some("--repository"));
         assert!(options.positional().is_empty());
         options.finish().unwrap();
     }
