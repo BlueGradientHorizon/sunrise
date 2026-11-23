@@ -552,14 +552,17 @@ impl GameLevel<'_, '_> {
                 }
             }
         }
-        let vanilla = spawn_selection::max_cluster_size(r.species);
-        let cluster_size = self.game.spawn_cluster_size(&mut mob, vanilla);
         self.record_pending(&mob);
         pending.push(mob);
-        Some(Spawned {
-            school: true,
-            cluster_size,
-        })
+        Some(Spawned { school: true })
+    }
+    /// The size limit of the group the mob just added to `pending` belongs to, asked at the
+    /// group comparison, after the spawn state counted it (`EventHooks.getMaxSpawnClusterSize`).
+    fn cluster_limit(&self, pending: &mut [Mob], vanilla: i32) -> i32 {
+        match pending.last_mut() {
+            Some(mob) => self.game.spawn_cluster_size(mob, vanilla),
+            None => vanilla,
+        }
     }
 }
 
@@ -1346,7 +1349,7 @@ impl<'a> Game<'a> {
             &mut self.world.random,
             sunrise_core::random::LevelRandom::for_level(LegacyRandom::new(0)),
         );
-        let mut pending = Vec::new();
+        let pending = std::cell::RefCell::new(Vec::new());
         let last_state;
         let extras = {
             let level = self.natural_level();
@@ -1395,7 +1398,10 @@ impl<'a> Game<'a> {
                         continue;
                     }
                     let mut spawn = |l: &GameLevel, r: &SpawnRequest, rng: &mut LevelRandom| {
-                        l.finalize_spawned(r, &mut pending, rng)
+                        l.finalize_spawned(r, &mut pending.borrow_mut(), rng)
+                    };
+                    let mut size = |l: &GameLevel, _: &SpawnRequest, vanilla: i32| {
+                        l.cluster_limit(&mut pending.borrow_mut(), vanilla)
                     };
                     sunrise_threads::work::set_chunk(chunk.0, chunk.1);
                     spawn_selection::spawn_for_chunk(
@@ -1405,6 +1411,7 @@ impl<'a> Game<'a> {
                         &categories,
                         chunk,
                         &mut spawn,
+                        &mut size,
                         &mut |_| {},
                     );
                 }
@@ -1421,7 +1428,7 @@ impl<'a> Game<'a> {
         // ServerChunkCache.lastSpawnState, for the debug overlay.
         self.spawn_counts.insert(self.dim, last_state);
         let (created, rides) = extras;
-        self.add_spawned(pending, created, rides, false);
+        self.add_spawned(pending.into_inner(), created, rides, false);
         self.spawn_scratch = scratch;
         laps.lap("sn_finalize");
     }
@@ -2264,6 +2271,7 @@ mod tests {
                     (2, 2),
                     [40, 64, 40],
                     &mut spawn,
+                    &mut |_, _, vanilla| vanilla,
                     &mut |_| {},
                 );
                 assert!(natural.checked.borrow().is_none(), "no created mob is left");
@@ -3133,7 +3141,7 @@ mod tests {
         });
     }
 
-    /// Answers the group size limit of a type, reading the mob it is lent.
+    /// Doubles the group size limit of a type, reading the mob it is lent.
     struct ZombieClusters;
     #[mod_api::sunrise_part]
     impl mod_api::EntityPart for ZombieClusters {
@@ -3141,27 +3149,27 @@ mod tests {
             &self,
             host: &dyn mod_api::Host,
             event: &mut mod_api::SpawnClusterSizeEvent,
-        ) -> Option<u32> {
+        ) {
             assert_eq!(
                 event.mob.kind(host).unwrap().to_string(),
                 "minecraft:zombie"
             );
-            Some(event.vanilla * 2)
+            event.size = event.vanilla * 2;
         }
     }
-    /// A second part on the same type: asked only when the first does not answer.
+    /// A second part on the same type: it sees the size the first left and adds one.
     struct LaterClusters;
     #[mod_api::sunrise_part]
     impl mod_api::EntityPart for LaterClusters {
         fn spawn_cluster_size(
             &self,
             _: &dyn mod_api::Host,
-            _: &mut mod_api::SpawnClusterSizeEvent,
-        ) -> Option<u32> {
-            Some(9)
+            event: &mut mod_api::SpawnClusterSizeEvent,
+        ) {
+            event.size += 1;
         }
     }
-    /// A part that leaves the limit to vanilla.
+    /// A part that leaves the size alone.
     struct SilentClusters;
     #[mod_api::sunrise_part]
     impl mod_api::EntityPart for SilentClusters {}
@@ -3175,12 +3183,12 @@ mod tests {
         }
     }
 
-    /// The parts of the new mob's type answer the natural-spawn group size limit: a part's answer
-    /// replaces vanilla's for its type (the first part to answer wins), a part that does not
-    /// answer, and a type with no part, leave it to vanilla.
+    /// The parts of the new mob's type edit one signed size in turn: the second sees the first's
+    /// answer (4 doubled, then one more), a part that leaves it alone and a type with no part
+    /// keep vanilla's.
     #[test]
     #[ignore = "daily"]
-    fn entity_parts_answer_the_spawn_cluster_size() {
+    fn entity_parts_compose_on_the_spawn_cluster_size() {
         use super::super::native_entity_refs::tests::with_game;
         let entries = vec![mod_api::ModEntry::new("clusters", Box::new(ClusterMod))];
         mod_platform::testing::with_mods(entries.into(), || {
@@ -3191,16 +3199,16 @@ mod tests {
                     Mob::new(1, kind, Vec3::ZERO, 0.0)
                 };
                 let ask = |id: &str| game.spawn_cluster_size(&mut mob(id), 4);
-                assert_eq!(ask("minecraft:zombie"), Some(8));
-                assert_eq!(ask("minecraft:skeleton"), None);
-                assert_eq!(ask("minecraft:cow"), None);
+                assert_eq!(ask("minecraft:zombie"), 9);
+                assert_eq!(ask("minecraft:skeleton"), 4);
+                assert_eq!(ask("minecraft:cow"), 4);
                 // Unsubscribed entity types must not lend the mob or expire an open standalone lend.
                 let mut cow = mob("minecraft:cow");
                 let mut skeleton = mob("minecraft:skeleton");
                 let host: &Game<'_> = game;
                 host.lend_unspawned("minecraft:pig", [0.0; 3], None, |outer, _| {
-                    assert_eq!(host.spawn_cluster_size(&mut cow, 4), None);
-                    assert_eq!(host.spawn_cluster_size(&mut skeleton, 4), None);
+                    assert_eq!(host.spawn_cluster_size(&mut cow, 4), 4);
+                    assert_eq!(host.spawn_cluster_size(&mut skeleton, 4), 4);
                     assert_eq!(
                         outer.kind(host).unwrap().to_string(),
                         "minecraft:pig",

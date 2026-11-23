@@ -305,7 +305,7 @@ fn is_animal(s: Species) -> bool {
         )
 }
 /// `Mob.getMaxSpawnClusterSize`.
-pub fn max_cluster_size(s: Species) -> u32 {
+pub fn max_cluster_size(s: Species) -> i32 {
     use Species as S;
     match s {
         S::Horse
@@ -322,11 +322,6 @@ pub fn max_cluster_size(s: Species) -> u32 {
         S::Ghast | S::HappyGhast | S::Pillager => 1,
         _ => 4,
     }
-}
-/// Whether a group of `size` mobs has reached its limit: `parts`, the limit the new mob's
-/// entity parts answered, else `Mob.getMaxSpawnClusterSize` of its species.
-fn cluster_full(size: u32, parts: Option<u32>, species: Species) -> bool {
-    size >= parts.unwrap_or_else(|| max_cluster_size(species))
 }
 /// `EntityType.canSpawnFarFromPlayer`: creatures, misc, pillagers, shulkers.
 fn spawns_far_from_player(s: Species, category: Category) -> bool {
@@ -1293,9 +1288,6 @@ pub struct SpawnRequest<'a> {
 pub struct Spawned {
     /// `TropicalFish.isSchool`.
     pub school: bool,
-    /// The group's size limit the new mob's entity parts answered; `None` leaves
-    /// `Mob.getMaxSpawnClusterSize` of its species.
-    pub cluster_size: Option<u32>,
 }
 
 /// `NaturalSpawner.spawnForChunk` for the categories already filtered.
@@ -1307,13 +1299,23 @@ pub fn spawn_for_chunk<L: NaturalLevel, R: RandomSource + Clone>(
     categories: &[Category],
     chunk: (i32, i32),
     spawn: &mut dyn FnMut(&L, &SpawnRequest, &mut R) -> Option<Spawned>,
+    cluster_size: &mut dyn FnMut(&L, &SpawnRequest, i32) -> i32,
     trace: &mut dyn FnMut(Event<'_>),
 ) {
     for &category in categories {
         let local = state.can_spawn_local(category, chunk.0, chunk.1);
         trace(Event::Local(category, local));
         if local {
-            spawn_category_for_chunk(l, random, state, category, chunk, spawn, trace);
+            spawn_category_for_chunk(
+                l,
+                random,
+                state,
+                category,
+                chunk,
+                spawn,
+                cluster_size,
+                trace,
+            );
         }
     }
 }
@@ -1326,6 +1328,7 @@ pub fn spawn_category_for_chunk<L: NaturalLevel, R: RandomSource + Clone>(
     category: Category,
     chunk: (i32, i32),
     spawn: &mut dyn FnMut(&L, &SpawnRequest, &mut R) -> Option<Spawned>,
+    cluster_size: &mut dyn FnMut(&L, &SpawnRequest, i32) -> i32,
     trace: &mut dyn FnMut(Event<'_>),
 ) {
     let x = chunk.0 * 16 + random.next_int_bound(16).unwrap_or(0);
@@ -1335,7 +1338,17 @@ pub fn spawn_category_for_chunk<L: NaturalLevel, R: RandomSource + Clone>(
     let y = min + random.next_int_bound(top - min + 1).unwrap_or(0);
     trace(Event::Start(category, [x, y, z]));
     if y > min {
-        spawn_category_for_position(l, random, state, category, chunk, [x, y, z], spawn, trace);
+        spawn_category_for_position(
+            l,
+            random,
+            state,
+            category,
+            chunk,
+            [x, y, z],
+            spawn,
+            cluster_size,
+            trace,
+        );
     }
 }
 /// `NaturalSpawner.spawnCategoryForPosition` with the spawn state's
@@ -1349,6 +1362,7 @@ pub fn spawn_category_for_position<L: NaturalLevel, R: RandomSource + Clone>(
     chunk: (i32, i32),
     start: [i32; 3],
     spawn: &mut dyn FnMut(&L, &SpawnRequest, &mut R) -> Option<Spawned>,
+    cluster_size: &mut dyn FnMut(&L, &SpawnRequest, i32) -> i32,
     trace: &mut dyn FnMut(Event<'_>),
 ) {
     let [x0, y, z0] = start;
@@ -1462,7 +1476,11 @@ pub fn spawn_category_for_position<L: NaturalLevel, R: RandomSource + Clone>(
             cluster += 1;
             state.after_spawn(l, &entry.entity, type_category, [x, y, z]);
             trace(Event::Spawn(&entry.entity, [xx, f64::from(y), zz], yaw));
-            if cluster_full(cluster, result.cluster_size, species) {
+            // `EventHooks.getMaxSpawnClusterSize`, asked once the mob is in the level and
+            // counted: the signed size the parts left, vanilla's `Mob.getMaxSpawnClusterSize`
+            // to start from.
+            if i64::from(cluster) >= i64::from(cluster_size(l, &request, max_cluster_size(species)))
+            {
                 break 'groups;
             }
             // TropicalFish.isMaxGroupSizeReached.
@@ -1887,27 +1905,6 @@ mod tests {
             max: 1,
             constant: true,
         }
-    }
-
-    /// Vanilla's limits stand until a part answers; an answer replaces them, higher or lower,
-    /// and a group stops growing at the size the answer names.
-    #[test]
-    fn a_parts_answer_moves_where_a_group_stops_growing() {
-        let stops_at = |parts: Option<u32>, species| {
-            (1..=64)
-                .find(|&size| cluster_full(size, parts, species))
-                .unwrap()
-        };
-        // `Mob.getMaxSpawnClusterSize`: 4 by default, 8 for wolves, 1 for ghasts.
-        assert_eq!(stops_at(None, Species::Zombie), 4);
-        assert_eq!(stops_at(None, Species::Wolf), 8);
-        assert_eq!(stops_at(None, Species::Ghast), 1);
-        assert_eq!(stops_at(Some(2), Species::Zombie), 2);
-        assert_eq!(stops_at(Some(7), Species::Zombie), 7);
-        assert_eq!(stops_at(Some(3), Species::Wolf), 3);
-        assert_eq!(stops_at(Some(5), Species::Ghast), 5);
-        // A limit of 0 ends the group with the mob just spawned, as vanilla's would.
-        assert!(cluster_full(1, Some(0), Species::Zombie));
     }
 
     /// A state over `chunks` spawnable chunks with one player standing in chunk (0, 0).

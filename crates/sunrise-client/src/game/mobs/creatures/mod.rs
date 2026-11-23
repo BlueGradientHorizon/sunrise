@@ -1289,11 +1289,13 @@ impl Game<'_> {
             (Finalized::Done, decision.difficulty)
         }
     }
-    /// `Mob.getMaxSpawnClusterSize` as the entity parts of the finalized `mob`'s type answer it
-    /// (`EntityPart::spawn_cluster_size`, NeoForge's `SpawnClusterSizeEvent`), asked only
-    /// for natural spawning. The first part in dispatch order to answer wins. With no answer,
-    /// the caller uses `vanilla`. Unsubscribed types do not lend the mob. Server-side.
-    pub(super) fn spawn_cluster_size(&self, mob: &mut Mob, vanilla: u32) -> Option<u32> {
+    /// The natural spawn group's size limit (`EventHooks.getMaxSpawnClusterSize`): one signed size
+    /// that starts at `vanilla` (`Mob.getMaxSpawnClusterSize`) and that the entity parts of the
+    /// mob's type edit in dispatch order (`EntityPart::spawn_cluster_size`, NeoForge's
+    /// `SpawnClusterSizeEvent`), each seeing the parts before it. Asked only for natural
+    /// spawning, once the mob is counted and recorded as pending. Unsubscribed types do not
+    /// lend the mob. Server-side.
+    pub(super) fn spawn_cluster_size(&self, mob: &mut Mob, vanilla: i32) -> i32 {
         if !mod_api::__private::has_scoped_hook(mod_api::HookId::SpawnClusterSize)
             || !mod_api::__private::entity_part_hooked(
                 mod_api::HookId::SpawnClusterSize,
@@ -1301,22 +1303,22 @@ impl Game<'_> {
                 &mob.kind.id,
             )
         {
-            return None;
+            return vanilla;
         }
         let kind = Arc::clone(&mob.kind);
         let at = [mob.position.x, mob.position.y, mob.position.z];
-        let mut limit = None;
+        let mut size = vanilla;
         self.lend_unspawned(&kind.id, at, Some(mob), |lent, _| {
             self.native_spawn_cluster_size(
                 mod_api::__private::SpawnClusterSizeCall {
                     mob: lent,
                     vanilla,
-                    limit: &mut limit,
+                    size: &mut size,
                 },
                 &kind.id,
             );
         });
-        limit
+        size
     }
     /// The shared finalization decision for a mob type the game keeps apart
     /// from mobs (the dragon), before the entity joins the level: its lend has
