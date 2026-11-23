@@ -1564,9 +1564,26 @@ pub(in crate::game) mod tests {
 
     /// Vanilla 26.3 client witness (`VanillaSulfurCubeFuseOracle`, `tools/test_sulfur_cube_fuse_parity.py`).
     #[test]
+    #[ignore = "run by tools/test_sulfur_cube_fuse_parity.py"]
     fn sulfur_cube_max_fuse_sets_the_client_fuse() {
+        run_sulfur_cube_max_fuse_sets_the_client_fuse();
+    }
+
+    pub(in crate::game) fn run_sulfur_cube_max_fuse_sets_the_client_fuse() {
         use sunrise_client::mobs::sulfur_cube::{client_tick, fuse, max_fuse, primed};
-        let witness = include_str!("../../../../../tools/witness/26.3/sulfur_cube_fuse_client.txt")
+        let dir = std::env::var_os("SUNRISE_SULFUR_CUBE_FUSE_WITNESS_DIR").unwrap_or_else(|| {
+            panic!(
+                "SUNRISE_SULFUR_CUBE_FUSE_WITNESS_DIR is unset; run tools/test_sulfur_cube_fuse_parity.py"
+            )
+        });
+        let path = std::path::PathBuf::from(dir).join("sulfur_cube_fuse_client.txt");
+        let witness = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| {
+                panic!(
+                    "failed to read witness {} (run tools/test_sulfur_cube_fuse_parity.py): {e}",
+                    path.display()
+                )
+            })
             .replace("\r\n", "\n");
         let root =
             std::env::temp_dir().join(format!("sunrise-sulfur-receive-{}", std::process::id()));

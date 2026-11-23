@@ -5838,7 +5838,7 @@ pub(in crate::game) mod tests {
 }
 
 #[cfg(test)]
-mod sources_tests {
+pub(in crate::game) mod sources_tests {
     use super::sync::overlay_key;
     use sunrise_world::loot::PackOverlay;
 

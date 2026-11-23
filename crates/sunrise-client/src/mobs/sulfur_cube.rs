@@ -1585,9 +1585,22 @@ mod tnt_rule_tests {
 
     /// Vanilla 26.3 server witness (`VanillaSulfurCubeFuseOracle`, `tools/test_sulfur_cube_fuse_parity.py`).
     #[test]
+    #[ignore = "run by tools/test_sulfur_cube_fuse_parity.py"]
     fn a_loaded_fuse_is_kept_as_it_is_and_leaves_invulnerable_alone() {
         use sunrise_core::nbt::{JavaString, Tag, parse_snbt};
-        let witness = include_str!("../../../../tools/witness/26.3/sulfur_cube_fuse_server.txt")
+        let dir = std::env::var_os("SUNRISE_SULFUR_CUBE_FUSE_WITNESS_DIR").unwrap_or_else(|| {
+            panic!(
+                "SUNRISE_SULFUR_CUBE_FUSE_WITNESS_DIR is unset; run tools/test_sulfur_cube_fuse_parity.py"
+            )
+        });
+        let path = std::path::PathBuf::from(dir).join("sulfur_cube_fuse_server.txt");
+        let witness = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| {
+                panic!(
+                    "failed to read witness {} (run tools/test_sulfur_cube_fuse_parity.py): {e}",
+                    path.display()
+                )
+            })
             .replace("\r\n", "\n");
         let mut checked = 0usize;
         for line in witness.lines().filter(|line| !line.starts_with('#')) {

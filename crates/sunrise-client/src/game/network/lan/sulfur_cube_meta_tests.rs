@@ -63,11 +63,28 @@ fn a_sulfur_cube_sends_its_fuse_at_19_and_from_bucket_at_20() {
 
 /// Vanilla 26.3 server witness (`VanillaSulfurCubeFuseOracle`, `tools/test_sulfur_cube_fuse_parity.py`).
 #[test]
+#[ignore = "run by tools/test_sulfur_cube_fuse_parity.py"]
 fn a_loaded_sulfur_cube_fuse_matches_the_pinned_oracle() {
+    run_a_loaded_sulfur_cube_fuse_matches_the_pinned_oracle();
+}
+
+pub(in crate::game) fn run_a_loaded_sulfur_cube_fuse_matches_the_pinned_oracle() {
     use sunrise_client::mobs::{Mob, sulfur_cube};
     use sunrise_core::nbt::{Tag, parse_snbt};
     use sunrise_protocol::entity_data::Value;
-    let witness = include_str!("../../../../../../tools/witness/26.3/sulfur_cube_fuse_server.txt")
+    let dir = std::env::var_os("SUNRISE_SULFUR_CUBE_FUSE_WITNESS_DIR").unwrap_or_else(|| {
+        panic!(
+            "SUNRISE_SULFUR_CUBE_FUSE_WITNESS_DIR is unset; run tools/test_sulfur_cube_fuse_parity.py"
+        )
+    });
+    let path = std::path::PathBuf::from(dir).join("sulfur_cube_fuse_server.txt");
+    let witness = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| {
+            panic!(
+                "failed to read witness {} (run tools/test_sulfur_cube_fuse_parity.py): {e}",
+                path.display()
+            )
+        })
         .replace("\r\n", "\n");
     let root = std::env::temp_dir().join(format!("sunrise-sulfur-fuse-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
