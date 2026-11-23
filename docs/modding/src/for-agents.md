@@ -29,7 +29,7 @@ cd greeter
 cargo sunrise-mod check
 ```
 
-`new` writes a complete project and fetches its SDK into `.sunrise/sdk/`. `check` compiles it for the project's own target (this computer for a native mod). Look for its closing summary naming the mod ID, its API usage summary, and the pinned build it was made for. Run `check` after every edit, and fix what it
+`new` writes a complete project and fetches its SDK into `.sunrise/sdk/`. `check` compiles it for the project's own target (this computer for a native mod). For a native mod, `check` prints the mod's name and the pinned build, and either summarizes API usage or says that the mod is made for one build and has no uses table. Run `check` after every edit, and fix what it
 reports before going on. Use another mod id by changing the folder name: `new` turns it into the id.
 
 To compile it against the prebuilt game, run `cargo sunrise-mod build`: it fetches the pinned SDK's compiled slices
@@ -56,8 +56,7 @@ the hooks use. A build server uses the plan contract in
   are refused.
 - Hook names follow NeoForge 26.3. An event is `&mut`. A write to the world needs a `ServerHost`; a client hook
   gets a `ClientHost`, so the wrong side does not compile.
-- `api`, `capabilities` and the horizon-mixins commit do not belong in the source manifest: `build` derives and
-  writes them into the packed `.smod` manifest. Do not add them to your source `sunrise-mod.toml`.
+- Leave `api` and `capabilities` out of the source manifest; `build` adds them to the packed `.smod` manifest. A native build also records the mixins revision it used. Normally omit `native.mixins` from the source manifest; see [The pin](reference/sdk/03-in-a-project.md#the-pin) for explicit pins.
 - Extra crates.io dependencies are allowed and are pinned by the mod's own `Cargo.lock`; a git or path dependency
   outside the mod is refused. The `sunrise-mod-api` path in `Cargo.toml` points at `.sunrise/sdk/` and stays as
   written.
