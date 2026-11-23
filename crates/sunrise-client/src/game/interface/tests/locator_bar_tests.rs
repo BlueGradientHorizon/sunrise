@@ -311,6 +311,11 @@ fn block_waypoints_use_live_non_player_eyes_within_manhattan_three() {
                 let (rebound_block, rebound_eyes) = game.waypoint_entity(3).unwrap();
                 assert_eq!(rebound_block, [120, 64, 5]);
                 assert_eq!(rebound_eyes.map(f64::to_bits), interpolated_eye);
+                // Re-place the local player in the replacement level (enter_remote_dimension clears it
+                // until the server's PlayerPosition packet arrives) so the locator bar has a camera entity.
+                let new_pos = Vec3::new(100.0, 64.0, 0.0);
+                game.player = Some(PlayerMotion::new(game.motion, new_pos).unwrap());
+                game.previous_position = new_pos;
                 track_block(game, 3, 3, [122, 64, 6]);
                 assert_eq!(
                     dot_x(game),
