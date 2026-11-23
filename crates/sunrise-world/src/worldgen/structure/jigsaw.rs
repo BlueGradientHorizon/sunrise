@@ -1658,4 +1658,125 @@ mod tests {
         assert_eq!(below[2..], [101, 100]);
         assert_eq!(tried(&target, &fallback, &counts, 0, false), [101, 100]);
     }
+
+    /// A pool entry of a registered mod type decodes through that type, after
+    /// the vanilla types, and saves its fields back beside `element_type`; a
+    /// pool with an entry of a type nobody registered is left out.
+    #[test]
+    fn mod_element_types_decode_and_unknown_ones_leave_the_pool_out() {
+        use super::super::mod_elements::{
+            ModPoolElement, ModPoolElementType, ModPoolElementTypes, with_test_pool_element_types,
+        };
+        #[derive(Debug)]
+        struct Post(i32);
+        impl ModPoolElement for Post {
+            fn shuffled_jigsaws(
+                &self,
+                _: &StructureResources,
+                _: [i32; 3],
+                _: Rotation,
+                _: &mut dyn PieceDraws,
+            ) -> Vec<Jigsaw<'static>> {
+                Vec::new()
+            }
+            fn bounding_box(
+                &self,
+                _: &StructureResources,
+                p: [i32; 3],
+                _: Rotation,
+            ) -> BoundingBox {
+                BoundingBox::new(p, [p[0], p[1] + self.0 - 1, p[2]])
+            }
+            fn place(
+                &self,
+                _: &mut super::super::legacy::PieceContext<'_>,
+                _: ElementAt,
+            ) -> super::super::legacy::Result<bool> {
+                Ok(false)
+            }
+            fn projection(&self) -> Projection {
+                Projection::Rigid
+            }
+            fn ground_level_delta(&self) -> i32 {
+                1
+            }
+            fn save(&self) -> Compound {
+                Compound::from_iter([("height".into(), Tag::Int(self.0))])
+            }
+        }
+        struct PostType;
+        impl ModPoolElementType for PostType {
+            fn decode(
+                &self,
+                config: &Value,
+                _: &StructureResources,
+                _: &FeatureBlockBindings<'_>,
+            ) -> Result<Arc<dyn ModPoolElement>, String> {
+                let height = config["height"].as_i64().ok_or("no height")?;
+                Ok(Arc::new(Post(height as i32)))
+            }
+        }
+        let names = ["minecraft:air", "minecraft:cave_air", "minecraft:void_air"];
+        let facts = json!({
+            "states": names.map(|name| json!([name, true, false, "", {"id": name, "properties": {}}])),
+            "defaults": names.iter().enumerate().map(|(i, name)| (name.to_string(), json!(i))).collect::<serde_json::Map<_, _>>(),
+        });
+        let registry: &'static _ = Box::leak(Box::new(
+            crate::registry::BlockRegistry::from_facts_json(facts.to_string().as_bytes()).unwrap(),
+        ));
+        let resources = StructureResources::new(
+            registry,
+            super::super::StateTransforms::default(),
+            std::path::Path::new("/nonexistent"),
+            BTreeMap::new(),
+            &BTreeMap::new(),
+        );
+        let bindings = FeatureBlockBindings::new(registry, Default::default()).unwrap();
+        let entry = |element: Value| json!({"weight": 2, "element": element}).to_string();
+        let pools = Pools::new(BTreeMap::from([
+            (
+                "test:posts".to_owned(),
+                format!(
+                    r#"{{"fallback":"minecraft:empty","elements":[{}]}}"#,
+                    entry(json!({"element_type": "test:post", "height": 4}))
+                ),
+            ),
+            (
+                "test:unknown".to_owned(),
+                format!(
+                    r#"{{"fallback":"minecraft:empty","elements":[{}]}}"#,
+                    entry(json!({"element_type": "test:missing"}))
+                ),
+            ),
+            (
+                "test:refused".to_owned(),
+                format!(
+                    r#"{{"fallback":"minecraft:empty","elements":[{}]}}"#,
+                    entry(json!({"element_type": "test:post"}))
+                ),
+            ),
+        ]));
+        let types: ModPoolElementTypes =
+            BTreeMap::from([("test:post".to_owned(), Arc::new(PostType) as _)]);
+        with_test_pool_element_types(&types, || {
+            let posts = pools.get("test:posts", &resources, &bindings).unwrap();
+            assert_eq!(posts.templates().len(), 2);
+            let element = &posts.templates()[0];
+            assert!(matches!(&**element, PoolElement::Mod { id, .. } if &**id == "test:post"));
+            assert_eq!(
+                element.bounding_box(&resources, [1, 2, 3], Rotation::None),
+                BoundingBox::new([1, 2, 3], [1, 5, 3])
+            );
+            assert_eq!(
+                element.save(),
+                Tag::compound([
+                    ("height", Tag::Int(4)),
+                    ("element_type", Tag::String("test:post".into())),
+                ])
+            );
+            assert_eq!(posts.max_size(&resources), 4);
+            assert!(pools.get("test:unknown", &resources, &bindings).is_none());
+            assert!(pools.get("test:refused", &resources, &bindings).is_none());
+        });
+    }
 }
