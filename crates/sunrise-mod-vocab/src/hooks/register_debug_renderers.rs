@@ -40,7 +40,7 @@ Output clears every view, and callbacks don't run on the title or connect screen
         context = "registration",
         answered_by = "mod",
         neoforge = "RegisterDebugRenderersEvent",
-        version = 3
+        version = 4
     )]
     fn register_debug_renderers(
         entries: &dyn mod_api::__private::DebugEntryStates,

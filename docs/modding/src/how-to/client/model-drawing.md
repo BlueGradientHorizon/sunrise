@@ -93,7 +93,7 @@ stack submitted during a frame. Rendering is not a source of combat state; see
 
 ## Entity model layers
 
-At client startup, implement `Hooks::register_layer_definitions` and call
+At client startup, implement `Hooks::register_layer_definitions` (hook version 5) and call
 `event.register("mymod:golem#main", create_golem_layer)`, where `create_golem_layer`
 returns a `LayerDefinition` built from a `MeshDefinition` and the texture size.
 The supplier is `Fn() -> LayerDefinition + Send + Sync + 'static`: capture owned
