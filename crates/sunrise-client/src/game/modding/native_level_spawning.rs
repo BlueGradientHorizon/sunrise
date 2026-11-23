@@ -63,8 +63,18 @@ impl Game<'_> {
                 if owner.is_some() {
                     return None;
                 }
+                let kind = sunrise_client::command::args::normalized(kind);
+                if self.difficulty_id() == 0
+                    && self
+                        .res
+                        .mob_types()
+                        .get(kind.as_ref())
+                        .is_some_and(|t| !t.allowed_in_peaceful())
+                {
+                    return None;
+                }
                 let site = SpawnSite::Finalizing(*reason);
-                self.spawn_mob_spawned_moving(kind, pos, site, velocity, spawn.rotation)?
+                self.spawn_mob_spawned_moving(&kind, pos, site, velocity, spawn.rotation)?
             }
             SpawnBody::General => {
                 let owner = match owner {
@@ -229,10 +239,13 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::super::Game;
+    use super::super::commands::peaceful_tests::{TRADER, with_types};
+    use super::super::execution_role::ExecutionRole;
     use super::super::native_entity_refs::tests::{with_client_game, with_game};
     use mod_api::{
-        EntityConstructingEvent, EntityRef, EntitySpawn, FinalizeSpawnEvent, Flow, Holder, Host,
-        HostSide, LevelRef, SpawnBody, SpawnFlags, SpawnLimits, WorldEpoch,
+        EntityConstructingEvent, EntityJoinLevelEvent, EntityRef, EntitySpawn, FinalizeSpawnEvent,
+        Flow, Holder, Host, HostSide, LevelRef, ServerHost, SpawnBody, SpawnFlags, SpawnLimits,
+        WorldEpoch,
     };
     use std::sync::{Arc, Mutex};
     use sunrise_client::chunk::Chunk;
@@ -259,6 +272,14 @@ mod tests {
                 .push(format!("finalize {} {:?}", event.kind, event.reason));
             Flow::Continue
         }
+        fn entity_join_level(
+            &self,
+            _: &mut dyn ServerHost,
+            event: &mut EntityJoinLevelEvent<'_>,
+        ) -> Flow {
+            self.0.lock().unwrap().push(format!("join {}", event.kind));
+            Flow::Continue
+        }
     }
 
     /// A cow (no jockey or rider rolls) spawns through the entity type's own path: constructed,
@@ -272,17 +293,16 @@ mod tests {
             "level-spawning",
             Box::new(Listener(heard.clone())),
         )];
-        mod_platform::testing::with_mods(mods.into(), || {
-            with_game(|game| {
-                game.world
-                    .chunks
-                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+        with_types(ExecutionRole::IntegratedServer, |game| {
+            mod_platform::testing::with_mods(mods.into(), || {
                 let level = game.level(game.dim.id()).unwrap();
                 let cow = game
                     .level_spawn_entity(level, "minecraft:cow", [8.5, 64.0, 8.25], &living())
                     .unwrap();
                 assert_eq!(
-                    game.entity_kind(cow).map(|kind| kind.id(game)).as_deref(),
+                    game.entity_kind(cow)
+                        .and_then(|kind| kind.id(game))
+                        .as_deref(),
                     Some("minecraft:cow")
                 );
                 assert_eq!(game.entity_position(cow), Some([8.5, 64.0, 8.25]));
@@ -290,7 +310,11 @@ mod tests {
                 assert!(!mob.persistent);
                 assert_eq!(
                     *heard.lock().unwrap(),
-                    ["construct minecraft:cow", "finalize minecraft:cow Command"]
+                    [
+                        "construct minecraft:cow",
+                        "finalize minecraft:cow Command",
+                        "join minecraft:cow"
+                    ]
                 );
 
                 let mobs = game.mobs.len();
@@ -336,8 +360,14 @@ mod tests {
                         "{spawn:?}"
                     );
                 }
+                let next_id = game.next_entity;
+                assert_eq!(
+                    game.level_spawn_mob(level, TRADER, at, mod_api::SpawnReason::Command),
+                    None
+                );
+                assert_eq!(game.next_entity, next_id);
                 assert_eq!(game.mobs.len(), mobs);
-                assert_eq!(heard.lock().unwrap().len(), 2, "no refusal told a mod");
+                assert_eq!(heard.lock().unwrap().len(), 3, "no refusal told a mod");
             });
         });
     }
@@ -379,7 +409,9 @@ mod tests {
                 .level_spawn_entity(level, "cow", [9.5, 64.0, 8.5], &living())
                 .unwrap();
             assert_eq!(
-                game.entity_kind(bare).map(|kind| kind.id(game)).as_deref(),
+                game.entity_kind(bare)
+                    .and_then(|kind| kind.id(game))
+                    .as_deref(),
                 Some("minecraft:cow")
             );
             // The ender dragon takes its own creation, facing the given yaw;

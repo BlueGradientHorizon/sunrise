@@ -2,7 +2,7 @@
   "minecraft": "26.3",
   "oracle": "VanillaCommandExecOracle",
   "group": "cloud and falling block loaded rotation",
-  "java": "openjdk 27.0.1.0.3 2026-10-24",
+  "java": "openjdk 25.0.5.1 2026-11-17 LTS",
   "java_release": 25,
   "server_jar_sha256": "a362163eec5d1612d520772bc16e5b39c09e3b234fdc045f56bf544284ee8ae6",
   "cases": [
