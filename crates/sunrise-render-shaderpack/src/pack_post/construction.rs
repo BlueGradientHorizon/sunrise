@@ -464,7 +464,8 @@ pub type TerrainDraw<'a> = dyn FnMut(
         Option<(u32, &wgpu::BindGroupLayout)>,
     ) + 'a;
 
-/// An arena page's key, native vertices and optional per-quad source records.
+/// An arena page's key, native vertices and optional source records (one per slot: a quad's at
+/// the slot that names it, `pack_atlas::PULL_FLAT`'s `hz_slot`).
 pub type TerrainPage = (u32, wgpu::Buffer, Option<wgpu::Buffer>);
 
 /// Header (sprite-rect words, state count), sprite rectangles, then model/fluid ids.
