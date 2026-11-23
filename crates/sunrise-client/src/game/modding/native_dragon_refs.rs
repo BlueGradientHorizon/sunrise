@@ -358,6 +358,7 @@ mod tests {
                 motion: [0.0; 3],
                 fall_distance: 0.0,
                 fire_ticks: 0,
+                first_tick: true,
                 radius: 5.0,
                 age: 0,
                 duration: 200,
@@ -456,7 +457,9 @@ mod tests {
                 ])
             );
             assert_eq!(
-                game.entity_kind(*part).map(|kind| kind.id(game)).as_deref(),
+                game.entity_kind(*part)
+                    .and_then(|kind| kind.id(game))
+                    .as_deref(),
                 Some("minecraft:ender_dragon")
             );
             assert_eq!(game.entity_rotation(*part), Some([0.0, 0.0]));
@@ -556,6 +559,13 @@ mod tests {
             let dragon = game.entity(15).unwrap();
             assert_parts_are_the_dragons_own(game, dragon);
             let parts = game.entity_parts(dragon).unwrap();
+            for part in &parts {
+                assert_eq!(part.vehicle(game), None);
+                assert_eq!(part.root_vehicle(game), Some(*part));
+                assert_eq!(part.is_passenger(game), Some(false));
+                assert_eq!(part.is_vehicle(game), Some(false));
+                assert_eq!(part.passengers(game), Some(Vec::new()));
+            }
             // The window's own player is not one, and a stale handle is none.
             assert_eq!(game.entity(7).map(|e| e.id()), Some(7));
             let stale = EntityRef::new(WorldEpoch::new(dragon.epoch().get() + 1), parts[3].id());

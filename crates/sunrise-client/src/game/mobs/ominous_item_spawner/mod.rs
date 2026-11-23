@@ -34,6 +34,10 @@ pub(super) struct OminousItemSpawner {
     tick_count: i64,
     /// `Entity.remainingFireTicks`, counted down by `baseTick`.
     pub(super) fire_ticks: i32,
+    /// `Entity.DATA_SHARED_FLAGS_ID` on-fire bit, set after `baseTick` fire processing.
+    pub(super) synced_fire: bool,
+    /// `Entity.hasVisualFire` (`HasVisualFire` in NBT).
+    pub(super) has_visual_fire: bool,
     /// Its UUID, and the compound it was loaded from (fields Sunrise doesn't
     /// model survive a save).
     pub(super) uuid: [i32; 4],
@@ -86,6 +90,8 @@ impl Game<'_> {
             spawn_item_after: i64::from(delay),
             tick_count: 0,
             fire_ticks: 0,
+            synced_fire: false,
+            has_visual_fire: false,
             uuid: sunrise_client::save::random_uuid(),
             raw: None,
         });
@@ -115,9 +121,8 @@ impl Game<'_> {
         self.remember_uuid(id, saved, &tag);
         // Entity.load's `setXRot` keeps the pitch in -90..90 and its `setRot`
         // takes both `% 360`; the save writes the rotation back from this tag.
-        let [yaw, pitch] = sunrise_client::entity_nbt::rotation(&tag);
-        let (yaw, pitch) = (yaw % 360.0, (pitch % 360.0).clamp(-90.0, 90.0));
-        let floats = [yaw, pitch].map(|v| sunrise_core::nbt::Tag::Float(v.to_bits()));
+        let floats = sunrise_client::entity_nbt::loaded_rotation(&tag)
+            .map(|v| sunrise_core::nbt::Tag::Float(v.to_bits()));
         if let sunrise_core::nbt::Tag::Compound(map) = &mut tag {
             map.insert(
                 "Rotation".into(),
@@ -125,6 +130,8 @@ impl Game<'_> {
             );
         }
         let uuid = self.uuid_for(id);
+        let fire_ticks = sunrise_client::entity_nbt::fire_ticks_from_nbt(&tag);
+        let has_visual_fire = sunrise_client::entity_nbt::flag(&tag, "HasVisualFire");
         self.ominous_spawners.push(OminousItemSpawner {
             attachment_lifetime: Default::default(),
             join: Default::default(),
@@ -133,7 +140,9 @@ impl Game<'_> {
             position: [at.x, at.y, at.z],
             spawn_item_after,
             tick_count: 0,
-            fire_ticks: i32::from(sunrise_client::save::number(tag.get("Fire")).unwrap_or(0) as i16),
+            fire_ticks,
+            synced_fire: false,
+            has_visual_fire,
             uuid,
             raw: Some(Box::new(tag)),
         });
@@ -142,14 +151,23 @@ impl Game<'_> {
     /// warning sound, then the item) and `tickClient` (particles every 5
     /// game ticks).
     pub(super) fn tick_ominous_item_spawners(&mut self) {
+        // ServerLevel.tick: only entities in entity-ticking chunks that joined before the pass tick.
+        let ticking = self.entity_ticking_area();
+        let through = self.ticked_entities_through;
         let mut spawners = self.ominous_spawners.lift();
         #[cfg(test)]
         super::entity::taken_pass_tests::after_take(self);
         spawners.retain_mut(|s| {
+            if s.id > through
+                || !ticking(s.position[0].floor() as i32, s.position[2].floor() as i32)
+            {
+                return true;
+            }
             // Entity.baseTick: the spawner burns down; its hurt does nothing.
             if s.fire_ticks > 0 {
                 s.fire_ticks -= 1;
             }
+            s.synced_fire = s.fire_ticks > 0 || s.has_visual_fire;
             s.tick_count += 1;
             let at = block(s.position);
             let center = at.map(|v| f64::from(v) + 0.5);
@@ -188,6 +206,8 @@ impl Game<'_> {
             spawn_item_after: 0,
             tick_count: 0,
             fire_ticks: 0,
+            synced_fire: false,
+            has_visual_fire: false,
             uuid: [0; 4],
             raw: None,
         });
@@ -252,6 +272,9 @@ impl Game<'_> {
         out: &mut Vec<Vertex>,
     ) {
         for s in &self.ominous_spawners {
+            if self.hides_as_camera(s.id) {
+                continue;
+            }
             let at = glam::DVec3::from_array(s.position);
             if at.distance_squared(camera) >= 64.0 * 64.0 {
                 continue;

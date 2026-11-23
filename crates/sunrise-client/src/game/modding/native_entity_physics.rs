@@ -128,7 +128,7 @@ impl Game<'_> {
                 use sunrise_core::nbt::Tag;
                 let mut compound = match self.persist.raw.get(&id) {
                     Some(Tag::Compound(map)) => map.clone(),
-                    _ => std::collections::BTreeMap::new(),
+                    _ => sunrise_core::nbt::Compound::new(),
                 };
                 if no_physics {
                     compound.insert("NoPhysics".into(), Tag::Byte(1));
@@ -226,8 +226,10 @@ mod tests {
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
             let player = game.entity(20).unwrap();
             game.player.as_mut().unwrap().spectator = false;
+            game.player.as_mut().unwrap().local_spectator = false;
             assert_eq!(player.no_physics(game), Some(false));
             game.player.as_mut().unwrap().spectator = true;
+            game.player.as_mut().unwrap().local_spectator = true;
             assert_eq!(player.no_physics(game), Some(true));
 
             let kind = game.res.mob_types().get("minecraft:vex").unwrap().clone();
@@ -330,6 +332,7 @@ mod tests {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
             game.others.push(OtherEntity {
+                size_answer: None,
                 attachment_lifetime: Default::default(),
                 join: Default::default(),
                 id: 14,
@@ -710,6 +713,7 @@ mod tests {
                 motion: [0.0; 3],
                 fall_distance: 0.0,
                 fire_ticks: 0,
+                first_tick: true,
                 radius: 3.0,
                 age: 20,
                 duration: 1,
@@ -754,6 +758,7 @@ mod tests {
                 motion: [0.0; 3],
                 fall_distance: 0.0,
                 fire_ticks: 0,
+                first_tick: true,
                 radius: 3.0,
                 age: 0,
                 duration: 600,

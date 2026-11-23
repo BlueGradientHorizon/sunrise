@@ -1,0 +1,768 @@
+{
+  "minecraft": "26.3",
+  "oracle": "dev.sunriselab.parity.VanillaCommandExecOracle",
+  "group": "area effect cloud water fall distance",
+  "record_cmd": "python3 tools/test_command_exec_parity.py --record-cloud-water",
+  "server_jar_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "water_offset": [
+    1,
+    0,
+    0
+  ],
+  "blocks": [
+    [
+      1,
+      0,
+      0,
+      "minecraft:water"
+    ],
+    [
+      0,
+      -1,
+      20,
+      "minecraft:stone"
+    ],
+    [
+      1,
+      -1,
+      20,
+      "minecraft:stone"
+    ],
+    [
+      2,
+      -1,
+      20,
+      "minecraft:stone"
+    ],
+    [
+      3,
+      -1,
+      20,
+      "minecraft:stone"
+    ],
+    [
+      -1,
+      0,
+      20,
+      "minecraft:stone"
+    ],
+    [
+      4,
+      0,
+      20,
+      "minecraft:stone"
+    ],
+    [
+      0,
+      0,
+      19,
+      "minecraft:stone"
+    ],
+    [
+      1,
+      0,
+      19,
+      "minecraft:stone"
+    ],
+    [
+      2,
+      0,
+      19,
+      "minecraft:stone"
+    ],
+    [
+      3,
+      0,
+      19,
+      "minecraft:stone"
+    ],
+    [
+      0,
+      0,
+      21,
+      "minecraft:stone"
+    ],
+    [
+      1,
+      0,
+      21,
+      "minecraft:stone"
+    ],
+    [
+      2,
+      0,
+      21,
+      "minecraft:stone"
+    ],
+    [
+      3,
+      0,
+      21,
+      "minecraft:stone"
+    ],
+    [
+      0,
+      0,
+      20,
+      "minecraft:water[level=0]"
+    ],
+    [
+      1,
+      0,
+      20,
+      "minecraft:water[level=1]"
+    ],
+    [
+      2,
+      0,
+      20,
+      "minecraft:water[level=2]"
+    ],
+    [
+      3,
+      0,
+      20,
+      "minecraft:water[level=3]"
+    ],
+    [
+      10,
+      -1,
+      20,
+      "minecraft:stone"
+    ],
+    [
+      11,
+      -1,
+      20,
+      "minecraft:stone"
+    ],
+    [
+      12,
+      -1,
+      20,
+      "minecraft:stone"
+    ],
+    [
+      13,
+      -1,
+      20,
+      "minecraft:stone"
+    ],
+    [
+      9,
+      0,
+      20,
+      "minecraft:stone"
+    ],
+    [
+      14,
+      0,
+      20,
+      "minecraft:stone"
+    ],
+    [
+      10,
+      0,
+      19,
+      "minecraft:stone"
+    ],
+    [
+      11,
+      0,
+      19,
+      "minecraft:stone"
+    ],
+    [
+      12,
+      0,
+      19,
+      "minecraft:stone"
+    ],
+    [
+      13,
+      0,
+      19,
+      "minecraft:stone"
+    ],
+    [
+      10,
+      0,
+      21,
+      "minecraft:stone"
+    ],
+    [
+      11,
+      0,
+      21,
+      "minecraft:stone"
+    ],
+    [
+      12,
+      0,
+      21,
+      "minecraft:stone"
+    ],
+    [
+      13,
+      0,
+      21,
+      "minecraft:stone"
+    ],
+    [
+      10,
+      0,
+      20,
+      "minecraft:lava[level=0]"
+    ],
+    [
+      11,
+      0,
+      20,
+      "minecraft:lava[level=2]"
+    ],
+    [
+      12,
+      0,
+      20,
+      "minecraft:lava[level=4]"
+    ],
+    [
+      13,
+      0,
+      20,
+      "minecraft:lava[level=6]"
+    ],
+    [
+      112,
+      0,
+      112,
+      "minecraft:stone"
+    ],
+    [
+      113,
+      0,
+      112,
+      "minecraft:stone"
+    ],
+    [
+      111,
+      1,
+      112,
+      "minecraft:stone"
+    ],
+    [
+      114,
+      1,
+      112,
+      "minecraft:stone"
+    ],
+    [
+      112,
+      1,
+      111,
+      "minecraft:stone"
+    ],
+    [
+      113,
+      1,
+      111,
+      "minecraft:stone"
+    ],
+    [
+      112,
+      1,
+      113,
+      "minecraft:stone"
+    ],
+    [
+      113,
+      1,
+      113,
+      "minecraft:stone"
+    ],
+    [
+      113,
+      1,
+      112,
+      "minecraft:water[level=0]"
+    ],
+    [
+      112,
+      1,
+      112,
+      "minecraft:water[level=1]"
+    ]
+  ],
+  "cases": [
+    {
+      "name": "beside_water",
+      "offset": [
+        "0.5",
+        "0",
+        "0.5"
+      ],
+      "radius": null,
+      "initial_fall_distance": "20.0",
+      "duration": 200,
+      "extra_nbt": "",
+      "observations": [
+        {
+          "tick": 0,
+          "fall_distance": "20.0d",
+          "fall_bits": "4034000000000000",
+          "motion": "[0.0d, 0.0d, 0.0d]",
+          "motion_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        },
+        {
+          "tick": 1,
+          "fall_distance": "0.0d",
+          "fall_bits": "0000000000000000",
+          "motion": "[0.0d, 0.0d, 0.0d]",
+          "motion_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        },
+        {
+          "tick": 2,
+          "fall_distance": "0.0d",
+          "fall_bits": "0000000000000000",
+          "motion": "[0.0d, 0.0d, 0.0d]",
+          "motion_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "dry",
+      "offset": [
+        "20.5",
+        "0",
+        "0.5"
+      ],
+      "radius": null,
+      "initial_fall_distance": "20.0",
+      "duration": 200,
+      "extra_nbt": "",
+      "observations": [
+        {
+          "tick": 0,
+          "fall_distance": "20.0d",
+          "fall_bits": "4034000000000000",
+          "motion": "[0.0d, 0.0d, 0.0d]",
+          "motion_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        },
+        {
+          "tick": 1,
+          "fall_distance": "20.0d",
+          "fall_bits": "4034000000000000",
+          "motion": "[0.0d, 0.0d, 0.0d]",
+          "motion_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        },
+        {
+          "tick": 2,
+          "fall_distance": "20.0d",
+          "fall_bits": "4034000000000000",
+          "motion": "[0.0d, 0.0d, 0.0d]",
+          "motion_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "small_radius_dry",
+      "offset": [
+        "0.5",
+        "0",
+        "0.5"
+      ],
+      "radius": "0.4",
+      "initial_fall_distance": "20.0",
+      "duration": 200,
+      "extra_nbt": "",
+      "observations": [
+        {
+          "tick": 0,
+          "fall_distance": "20.0d",
+          "fall_bits": "4034000000000000",
+          "motion": "[0.0d, 0.0d, 0.0d]",
+          "motion_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        },
+        {
+          "tick": 1,
+          "fall_distance": "20.0d",
+          "fall_bits": "4034000000000000",
+          "motion": "[0.0d, 0.0d, 0.0d]",
+          "motion_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        },
+        {
+          "tick": 2,
+          "fall_distance": "20.0d",
+          "fall_bits": "4034000000000000",
+          "motion": "[0.0d, 0.0d, 0.0d]",
+          "motion_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "edge_touching_water",
+      "offset": [
+        "4.5",
+        "0",
+        "0.5"
+      ],
+      "radius": "3.0",
+      "initial_fall_distance": "12.5",
+      "duration": 200,
+      "extra_nbt": "",
+      "observations": [
+        {
+          "tick": 0,
+          "fall_distance": "12.5d",
+          "fall_bits": "4029000000000000",
+          "motion": "[0.0d, 0.0d, 0.0d]",
+          "motion_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        },
+        {
+          "tick": 1,
+          "fall_distance": "0.0d",
+          "fall_bits": "0000000000000000",
+          "motion": "[0.0d, 0.0d, 0.0d]",
+          "motion_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        },
+        {
+          "tick": 2,
+          "fall_distance": "0.0d",
+          "fall_bits": "0000000000000000",
+          "motion": "[0.0d, 0.0d, 0.0d]",
+          "motion_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "edge_outside_water",
+      "offset": [
+        "5.0",
+        "0",
+        "0.5"
+      ],
+      "radius": "3.0",
+      "initial_fall_distance": "12.5",
+      "duration": 200,
+      "extra_nbt": "",
+      "observations": [
+        {
+          "tick": 0,
+          "fall_distance": "12.5d",
+          "fall_bits": "4029000000000000",
+          "motion": "[0.0d, 0.0d, 0.0d]",
+          "motion_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        },
+        {
+          "tick": 1,
+          "fall_distance": "12.5d",
+          "fall_bits": "4029000000000000",
+          "motion": "[0.0d, 0.0d, 0.0d]",
+          "motion_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        },
+        {
+          "tick": 2,
+          "fall_distance": "12.5d",
+          "fall_bits": "4029000000000000",
+          "motion": "[0.0d, 0.0d, 0.0d]",
+          "motion_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "above_water",
+      "offset": [
+        "0.5",
+        "1",
+        "0.5"
+      ],
+      "radius": "3.0",
+      "initial_fall_distance": "7.25",
+      "duration": 200,
+      "extra_nbt": "",
+      "observations": [
+        {
+          "tick": 0,
+          "fall_distance": "7.25d",
+          "fall_bits": "401d000000000000",
+          "motion": "[0.0d, 0.0d, 0.0d]",
+          "motion_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        },
+        {
+          "tick": 1,
+          "fall_distance": "7.25d",
+          "fall_bits": "401d000000000000",
+          "motion": "[0.0d, 0.0d, 0.0d]",
+          "motion_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        },
+        {
+          "tick": 2,
+          "fall_distance": "7.25d",
+          "fall_bits": "401d000000000000",
+          "motion": "[0.0d, 0.0d, 0.0d]",
+          "motion_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "flowing_water_nonzero_motion",
+      "offset": [
+        "1.5",
+        "0",
+        "20.5"
+      ],
+      "radius": "0.4",
+      "initial_fall_distance": "20.0",
+      "duration": 200,
+      "extra_nbt": "Motion:[0.05d,0.0d,-0.02d]",
+      "observations": [
+        {
+          "tick": 0,
+          "fall_distance": "20.0d",
+          "fall_bits": "4034000000000000",
+          "motion": "[0.05d, 0.0d, -0.02d]",
+          "motion_bits": [
+            "3fa999999999999a",
+            "0000000000000000",
+            "bf947ae147ae147b"
+          ]
+        },
+        {
+          "tick": 1,
+          "fall_distance": "0.0d",
+          "fall_bits": "0000000000000000",
+          "motion": "[0.064d, 0.0d, -0.02d]",
+          "motion_bits": [
+            "3fb0624dd2f1a9fc",
+            "0000000000000000",
+            "bf947ae147ae147b"
+          ]
+        },
+        {
+          "tick": 2,
+          "fall_distance": "0.0d",
+          "fall_bits": "0000000000000000",
+          "motion": "[0.078d, 0.0d, -0.02d]",
+          "motion_bits": [
+            "3fb3f7ced916872b",
+            "0000000000000000",
+            "bf947ae147ae147b"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "lava_nonzero_age",
+      "offset": [
+        "11.5",
+        "0",
+        "20.5"
+      ],
+      "radius": "0.4",
+      "initial_fall_distance": "20.0",
+      "duration": 200,
+      "extra_nbt": "Age:50",
+      "observations": [
+        {
+          "tick": 0,
+          "fall_distance": "20.0d",
+          "fall_bits": "4034000000000000",
+          "motion": "[0.0d, 0.0d, 0.0d]",
+          "motion_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        },
+        {
+          "tick": 1,
+          "fall_distance": "20.0d",
+          "fall_bits": "4034000000000000",
+          "motion": "[0.0045000000000000005d, 0.0d, 0.0d]",
+          "motion_bits": [
+            "3f726e978d4fdf3c",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        },
+        {
+          "tick": 2,
+          "fall_distance": "10.0d",
+          "fall_bits": "4024000000000000",
+          "motion": "[0.006833333333333334d, 0.0d, 0.0d]",
+          "motion_bits": [
+            "3f7bfd44f3078264",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "lava_neg_min_double",
+      "offset": [
+        "12.5",
+        "0",
+        "20.5"
+      ],
+      "radius": "0.4",
+      "initial_fall_distance": "-4.9E-324",
+      "duration": 200,
+      "extra_nbt": "Age:50",
+      "observations": [
+        {
+          "tick": 0,
+          "fall_distance": "-4.9E-324d",
+          "fall_bits": "8000000000000001",
+          "motion": "[0.0d, 0.0d, 0.0d]",
+          "motion_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        },
+        {
+          "tick": 1,
+          "fall_distance": "-4.9E-324d",
+          "fall_bits": "8000000000000001",
+          "motion": "[0.0045000000000000005d, 0.0d, 0.0d]",
+          "motion_bits": [
+            "3f726e978d4fdf3c",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        },
+        {
+          "tick": 2,
+          "fall_distance": "0.0d",
+          "fall_bits": "0000000000000000",
+          "motion": "[0.006833333333333334d, 0.0d, 0.0d]",
+          "motion_bits": [
+            "3f7bfd44f3078264",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "radius_32_far_corner",
+      "offset": [
+        "80.5",
+        "0.75",
+        "80.5"
+      ],
+      "radius": "32.0",
+      "initial_fall_distance": "18.0",
+      "duration": 200,
+      "extra_nbt": "",
+      "observations": [
+        {
+          "tick": 0,
+          "fall_distance": "18.0d",
+          "fall_bits": "4032000000000000",
+          "motion": "[0.0d, 0.0d, 0.0d]",
+          "motion_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        },
+        {
+          "tick": 1,
+          "fall_distance": "0.0d",
+          "fall_bits": "0000000000000000",
+          "motion": "[-0.014d, 0.0d, 0.0d]",
+          "motion_bits": [
+            "bf8cac083126e979",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        },
+        {
+          "tick": 2,
+          "fall_distance": "0.0d",
+          "fall_bits": "0000000000000000",
+          "motion": "[-0.028d, 0.0d, 0.0d]",
+          "motion_bits": [
+            "bf9cac083126e979",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        }
+      ]
+    }
+  ]
+}

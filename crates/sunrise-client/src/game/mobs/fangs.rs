@@ -24,6 +24,10 @@ pub(super) struct Fangs {
     pub started: bool,
     /// `Entity.remainingFireTicks`, counted down by `baseTick`.
     pub fire_ticks: i32,
+    /// `Entity.DATA_SHARED_FLAGS_ID` on-fire bit, set after `baseTick` fire processing.
+    pub synced_fire: bool,
+    /// `Entity.hasVisualFire` (`HasVisualFire` in NBT).
+    pub has_visual_fire: bool,
     /// `Entity.random`. The attack sound's pitch is its first draw.
     random: LegacyRandom,
 }
@@ -79,6 +83,8 @@ impl Game<'_> {
             owner,
             started: false,
             fire_ticks: 0,
+            synced_fire: false,
+            has_visual_fire: false,
             random: sunrise_client::mobs::entity_random(id, Vec3::new(at[0], at[1], at[2])),
         });
     }
@@ -158,15 +164,22 @@ impl Game<'_> {
     /// `EvokerFangs.tick`.
     pub(super) fn tick_fangs(&mut self) {
         sunrise_threads::work::clear_work();
+        // ServerLevel.tick: only entities in entity-ticking chunks that joined before the pass tick.
+        let ticking = self.entity_ticking_area();
+        let through = self.ticked_entities_through;
         let mut list = self.fangs.list.lift();
         #[cfg(test)]
         super::entity::taken_pass_tests::after_take(self);
         list.retain_mut(|f| {
+            if f.id > through || !ticking(f.pos[0].floor() as i32, f.pos[2].floor() as i32) {
+                return true;
+            }
             self.fangs_fluid_step(f);
             // Entity.baseTick: the fangs burn down; their hurt does nothing.
             if f.fire_ticks > 0 {
                 f.fire_ticks -= 1;
             }
+            f.synced_fire = f.fire_ticks > 0 || f.has_visual_fire;
             f.warmup = f.warmup.wrapping_sub(1);
             if f.warmup >= 0 {
                 return true;
@@ -192,13 +205,13 @@ impl Game<'_> {
             .list
             .restore(list, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
     }
-    /// `Entity.baseTick`'s `updateFluidInteraction` for fangs (0.5 x 0.8): the
+    /// `Entity.baseTick`'s `updateFluidInteraction` for fangs (0.5F x 0.8F): the
     /// currents of the water and lava the box touches add to the motion.
     fn fangs_fluid_step(&self, f: &mut Fangs) {
         let at = Vec3::new(f.pos[0], f.pos[1], f.pos[2]);
         let bounds = sunrise_core::geometry::Aabb::new(
             Vec3::new(at.x - 0.25, at.y, at.z - 0.25),
-            Vec3::new(at.x + 0.25, at.y + 0.8, at.z + 0.25),
+            Vec3::new(at.x + 0.25, at.y + f64::from(0.8_f32), at.z + 0.25),
         );
         // EntityDimensions.scalable: the eye at 0.85 of the height.
         let eye = at.y + f64::from(0.8_f32 * 0.85);
@@ -286,17 +299,26 @@ impl Game<'_> {
             Vec::new()
         };
         let attacker = owner.map(sunrise_client::mobs::Who::Mob);
-        for index in 0..self.mobs.len() {
-            let m = &self.mobs[index];
-            let id = m.id;
-            if id == f.owner || allies.contains(&id) || !m.alive() || !m.bounds().intersects(b) {
+        // A hurt can run server hooks that change the mob list. Keep the selected
+        // victims by identity, as `EvokerFangs.tick` does before `dealDamageTo`.
+        let victims: Vec<_> = self
+            .mobs
+            .iter()
+            .filter(|m| m.id != f.owner && !allies.contains(&m.id) && m.bounds().intersects(b))
+            .map(|m| m.id)
+            .collect();
+        for id in victims {
+            let Some(index) = self.mob_index.find(&self.mobs, id) else {
+                continue;
+            };
+            if !self.mobs[index].alive() {
                 continue;
             }
             // So `living_knockback` sees who the fangs' owner is and what they hold.
             let attack = self.attack_of_who(attacker);
             let plan = self.prepare_knockback_credit(id as i32, attacker, &attack);
             let mut credit = plan.lend(&mut self.last_hurt_by_player);
-            if self.mobs[index].damage(
+            let hurt = self.mobs[index].damage(
                 crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),
                 6.0,
                 sunrise_client::mobs::Damage {
@@ -309,8 +331,13 @@ impl Game<'_> {
                     from: Some(f.pos),
                     attacker_species: None,
                 },
-            ) && owner.is_some()
-            {
+            );
+            let Some((index, hurt)) = self.complete_mob_hurt(index, hurt) else {
+                continue;
+            };
+            self.finish_mob_damage_at(index);
+            self.settle_mob_hurt(id);
+            if hurt && owner.is_some() {
                 self.mob_post_attack(
                     id,
                     attacker,
@@ -341,7 +368,7 @@ impl Game<'_> {
         };
         let partial = alpha as f32;
         for f in &self.fangs.list {
-            if !f.started {
+            if !f.started || self.hides_as_camera(f.id) {
                 continue;
             }
             // getAnimationProgress.

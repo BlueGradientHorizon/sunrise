@@ -605,6 +605,7 @@ def world_blocks():
 
 
 def entities():
+    enchant_target = '@e[type=minecraft:armor_stand,tag=enchant_target,limit=1]'
     return [
         cmd('/summon minecraft:pig 4.5 210 4.5 {NoAI:1b,NoGravity:1b,Tags:["a","h"]}'),
         cmd('/summon minecraft:cow 6.5 210 4.5 {NoAI:1b,NoGravity:1b,CustomName:"Daisy",Tags:["h"]}'),
@@ -772,6 +773,11 @@ def entities():
             cmd(f'/data get entity @e[type=minecraft:{kind},limit=1] Item.id'),
             cmd(f'/kill @e[type=minecraft:{kind}]'),
         )],
+        cmd('/summon minecraft:armor_stand 8.5 210 4.5 {NoGravity:1b,ShowArms:1b,Tags:["enchant_target"],'
+            'equipment:{mainhand:{id:"minecraft:trident",count:1}}}', expect_result=1),
+        cmd(f'/enchant {enchant_target} minecraft:riptide 3', expect_result=1),
+        cmd(f'/data get entity {enchant_target} equipment.mainhand.components."minecraft:enchantments"',
+            expect_result=1),
         *setup('/kill @e[type=minecraft:armor_stand]'),
         {'op': 'tick', 'n': 25},
         cmd('/execute if entity @e[tag=h]'),
@@ -7303,6 +7309,41 @@ def loaded_dead_mob():
     return ops + setup(f'/kill @e[type=!player,x={x0},y={y0 - 8},z={z0},dx=16,dy=32,dz=16]',
                        f'/fill {x0} {y0 - 1} {z0} {x0 + 15} {y0 - 1} {z0 + 15} air',
                        f'/forceload remove {x0} {z0}')
+def dying_selector_candidates():
+    """`@e` and `@n` keep only `Entity.isAlive`: a pig `/damage` killed, and an armor stand loaded with no health,
+    stay in the level until `tickDeath` removes them, yet neither is selected. The dying pig is nearer the origin than
+    the living one, so `@n` shows which one it took."""
+    x0, y0, z0 = 4288, 260, 4288
+    ops = [cmd(f'/forceload add {x0} {z0}', False), {'op': 'wait_chunks', 'chunks': [[x0 >> 4, z0 >> 4]]},
+           cmd(f'/fill {x0} {y0 - 1} {z0} {x0 + 15} {y0 - 1} {z0 + 15} stone', False)]
+    dying, living, stand = (f'000010c0-0000-0000-0000-{n:012x}' for n in (1, 2, 3))
+    ops += [
+        cmd(f'/summon pig {x0 + 4}.5 {y0} {z0 + 4}.5 {{UUID:[I;4288,0,0,1],NoAI:1b}}', expect_result=1),
+        cmd(f'/summon pig {x0 + 10}.5 {y0} {z0 + 4}.5 {{UUID:[I;4288,0,0,2],NoAI:1b}}', expect_result=1),
+        cmd(f'/summon armor_stand {x0 + 2}.5 {y0} {z0 + 4}.5 {{UUID:[I;4288,0,0,3],Health:0.0f}}', expect_result=1),
+        cmd(f'/damage {dying} 100'),
+    ]
+    origin = f'x={x0 + 3}.5,y={y0},z={z0 + 4}.5,distance=..12'
+
+    def reads(*bodies):
+        for uuid in bodies:
+            ops.append(cmd(f'/data get entity {uuid} Health'))
+        ops.append(cmd(f'/execute if entity @e[type=!item,{origin}]'))
+        ops.append(cmd(f'/execute if entity @e[type=pig,{origin}]'))
+        ops.append(cmd(f'/execute if entity @e[type=armor_stand,{origin}]'))
+        ops.append(cmd(f'/data get entity @n[type=pig,{origin}] UUID'))
+        ops.append(cmd(f'/data get entity @n[type=!item,{origin}] UUID'))
+        ops.append(cmd(f'/data get entity @e[type=!item,{origin},sort=nearest,limit=1] UUID'))
+
+    # The stand is read only before it ticks: how long its body then stays (`tickDeath`) is not this group's.
+    reads(dying, living, stand)
+    ops.append({'op': 'tick', 'n': 1})
+    reads(dying, living)
+    ops.append({'op': 'tick', 'n': 20})
+    reads(dying, living)
+    return ops + setup(f'/kill @e[type=!player,x={x0},y={y0 - 8},z={z0},dx=16,dy=32,dz=16]',
+                       f'/fill {x0} {y0 - 1} {z0} {x0 + 15} {y0 - 1} {z0 + 15} air',
+                       f'/forceload remove {x0} {z0}')
 def falling_block_fall_float():
     """#13701: `Entity.checkFallDamage` adds each step down narrowed to a float (`fallDistance -= (float)ya`);
     a falling block never runs `baseTick`, so it is never in water and every step counts."""
@@ -7451,6 +7492,15 @@ def zombie_villager_summoned_data():
         else:
             ops.append(cmd(f'/execute if data entity {uuid} VillagerData{{profession:"minecraft:none"}}'))
             ops.append(cmd(f'/data get entity {uuid} VillagerData'))
+    # Compare the whole compound: IsBaby and ConversionPlayer collide in the
+    # Java map, so a path query would miss the inherited field's insertion order.
+    # Load an existing longer Strength effect: the cure does not replace it or
+    # instantiate attack_damage, leaving no identity-hash attribute order to compare.
+    ops += [cmd(f'/summon zombie_villager {x0 + 12}.5 {y0} {z0 + 4}.5 '
+                '{UUID:[I;13262,0,4,1],NoAI:1b,ConversionTime:2000,ConversionPlayer:[I;1,2,3,4],'
+                'active_effects:[{id:"minecraft:strength",duration:4000,show_icon:1b}],'
+                'VillagerData:{type:"minecraft:taiga",profession:"minecraft:cleric",level:2}}', expect_result=1),
+            cmd('/data get entity 000033ce-0000-0000-0000-000400000001')]
     return ops + setup('/tick unfreeze', f'/kill @e[type=!player,x={x0},y={y0 - 8},z={z0},dx=16,dy=32,dz=16]',
                        f'/forceload remove {x0} {z0}')
 
@@ -8283,6 +8333,122 @@ def explosion_creaking_heart_experience():
                        f'/forceload remove {x0} {z0}')
 
 
+def _cloud_water_coord(base, offset):
+    if '.' not in offset:
+        return str(base + int(offset))
+    whole, frac = offset.split('.', 1)
+    return f'{base + int(whole)}.{frac}'
+
+
+# #2359: AreaEffectCloud water/lava fall-distance and fluid-current cases (vanilla 26.3).
+CLOUD_WATER_ORIGIN = (4928, 260, 4928)
+CLOUD_WATER_BLOCK = (1, 0, 0)
+CLOUD_WATER_TICKS = (0, 1, 2)
+CLOUD_WATER_BLOCKS = (
+    # Single still water source for the wet/dry/edge/above controls.
+    (1, 0, 0, 'minecraft:water'),
+    # Walled flowing water channel along +X at z=20.
+    (0, -1, 20, 'minecraft:stone'),
+    (1, -1, 20, 'minecraft:stone'),
+    (2, -1, 20, 'minecraft:stone'),
+    (3, -1, 20, 'minecraft:stone'),
+    (-1, 0, 20, 'minecraft:stone'),
+    (4, 0, 20, 'minecraft:stone'),
+    (0, 0, 19, 'minecraft:stone'),
+    (1, 0, 19, 'minecraft:stone'),
+    (2, 0, 19, 'minecraft:stone'),
+    (3, 0, 19, 'minecraft:stone'),
+    (0, 0, 21, 'minecraft:stone'),
+    (1, 0, 21, 'minecraft:stone'),
+    (2, 0, 21, 'minecraft:stone'),
+    (3, 0, 21, 'minecraft:stone'),
+    (0, 0, 20, 'minecraft:water[level=0]'),
+    (1, 0, 20, 'minecraft:water[level=1]'),
+    (2, 0, 20, 'minecraft:water[level=2]'),
+    (3, 0, 20, 'minecraft:water[level=3]'),
+    # Walled flowing lava channel along +X at x=10..13, z=20.
+    (10, -1, 20, 'minecraft:stone'),
+    (11, -1, 20, 'minecraft:stone'),
+    (12, -1, 20, 'minecraft:stone'),
+    (13, -1, 20, 'minecraft:stone'),
+    (9, 0, 20, 'minecraft:stone'),
+    (14, 0, 20, 'minecraft:stone'),
+    (10, 0, 19, 'minecraft:stone'),
+    (11, 0, 19, 'minecraft:stone'),
+    (12, 0, 19, 'minecraft:stone'),
+    (13, 0, 19, 'minecraft:stone'),
+    (10, 0, 21, 'minecraft:stone'),
+    (11, 0, 21, 'minecraft:stone'),
+    (12, 0, 21, 'minecraft:stone'),
+    (13, 0, 21, 'minecraft:stone'),
+    (10, 0, 20, 'minecraft:lava[level=0]'),
+    (11, 0, 20, 'minecraft:lava[level=2]'),
+    (12, 0, 20, 'minecraft:lava[level=4]'),
+    (13, 0, 20, 'minecraft:lava[level=6]'),
+    # Flowing water at the far (high.x, high.y, high.z) cell of the radius-32 box.
+    (112, 0, 112, 'minecraft:stone'),
+    (113, 0, 112, 'minecraft:stone'),
+    (111, 1, 112, 'minecraft:stone'),
+    (114, 1, 112, 'minecraft:stone'),
+    (112, 1, 111, 'minecraft:stone'),
+    (113, 1, 111, 'minecraft:stone'),
+    (112, 1, 113, 'minecraft:stone'),
+    (113, 1, 113, 'minecraft:stone'),
+    (113, 1, 112, 'minecraft:water[level=0]'),
+    (112, 1, 112, 'minecraft:water[level=1]'),
+)
+CLOUD_WATER_CASES = (
+    ('beside_water', '0.5', '0', '0.5', None, '20.0', 200, ''),
+    ('dry', '20.5', '0', '0.5', None, '20.0', 200, ''),
+    ('small_radius_dry', '0.5', '0', '0.5', '0.4', '20.0', 200, ''),
+    ('edge_touching_water', '4.5', '0', '0.5', '3.0', '12.5', 200, ''),
+    ('edge_outside_water', '5.0', '0', '0.5', '3.0', '12.5', 200, ''),
+    ('above_water', '0.5', '1', '0.5', '3.0', '7.25', 200, ''),
+    ('flowing_water_nonzero_motion', '1.5', '0', '20.5', '0.4', '20.0', 200, 'Motion:[0.05d,0.0d,-0.02d]'),
+    ('lava_nonzero_age', '11.5', '0', '20.5', '0.4', '20.0', 200, 'Age:50'),
+    ('lava_neg_min_double', '12.5', '0', '20.5', '0.4', '-4.9E-324', 200, 'Age:50'),
+    ('radius_32_far_corner', '80.5', '0.75', '80.5', '32.0', '18.0', 200, ''),
+)
+
+
+def area_effect_cloud_water_fall():
+    """#2359 (vanilla 26.3): AreaEffectCloud fall_distance and Motion in water, lava, and radius-32 boundary."""
+    x0, y0, z0 = CLOUD_WATER_ORIGIN
+    chunks = [[(x0 >> 4) + dx, (z0 >> 4) + dz] for dx in range(-2, 9) for dz in range(-2, 9)]
+    ops = [cmd(f'/forceload add {x0 - 16} {z0 - 16} {x0 + 127} {z0 + 127}', False),
+           {'op': 'wait_chunks', 'chunks': chunks},
+           cmd('/tick freeze', False)]
+    for dx, dy, dz, block in CLOUD_WATER_BLOCKS:
+        ops.append(cmd(f'/setblock {x0 + dx} {y0 + dy} {z0 + dz} {block}', expect_result=1))
+    for n, (_, dx, dy, dz, radius, fall, duration, extra) in enumerate(CLOUD_WATER_CASES, 1):
+        x, y, z = _cloud_water_coord(x0, dx), _cloud_water_coord(y0, dy), _cloud_water_coord(z0, dz)
+        nbt = f'UUID:[I;2359,0,{n},1],fall_distance:{fall}d,Duration:{duration}'
+        if radius is not None:
+            nbt += f',Radius:{radius}f'
+        if extra:
+            nbt += f',{extra}'
+        ops.append(cmd(f'/summon minecraft:area_effect_cloud {x} {y} {z} {{{nbt}}}', expect_result=1))
+
+    def reads():
+        for n in range(1, len(CLOUD_WATER_CASES) + 1):
+            uid = f'00000937-0000-0000-0000-{n:04x}00000001'
+            ops.append(cmd(f'/data get entity {uid} fall_distance'))
+            ops.append(cmd(f'/data get entity {uid} Motion'))
+
+    reads()
+    for _ in CLOUD_WATER_TICKS[1:]:
+        ops += [cmd('/tick unfreeze', False), {'op': 'tick', 'n': 1}, cmd('/tick freeze', False)]
+        reads()
+    cleanup = [
+        '/tick unfreeze',
+        f'/kill @e[type=minecraft:area_effect_cloud,x={x0 - 16},y={y0 - 4},z={z0 - 16},dx=144,dy=16,dz=144]',
+    ]
+    for dx, dy, dz, _ in reversed(CLOUD_WATER_BLOCKS):
+        cleanup.append(f'/setblock {x0 + dx} {y0 + dy} {z0 + dz} air')
+    cleanup.append(f'/forceload remove {x0 - 16} {z0 - 16} {x0 + 127} {z0 + 127}')
+    return ops + setup(*cleanup)
+
+
 def groups():
     try:
         from .spectral_duration_corpus import cases as spectral_saved_duration
@@ -8501,6 +8667,7 @@ def groups():
         ('beacon levels load', beacon_levels_load()),
         ('zombie villager summoned data', zombie_villager_summoned_data()),
         ('loaded dead mob', loaded_dead_mob()),
+        ('dying selector candidates', dying_selector_candidates()),
         ('falling block fall float', falling_block_fall_float()),
         ('explosion infested blocks', explosion_infested_blocks()),
         ('jigsaw default joint', jigsaw_default_joint()),
@@ -8612,6 +8779,7 @@ def groups():
         ('vehicle ground and fall', vehicle_ground_and_fall()),
         ('vehicle saved ground and fall', vehicle_saved_ground_and_fall()),
         ('ravager saved movement speed', ravager_saved_movement_speed()),
+        ('area effect cloud water fall distance', area_effect_cloud_water_fall()),
         # Last: it leaves the player in other food than it found.
         (player_food.GROUP, player_food.cases(cmd, setup)),
     ]
