@@ -103,12 +103,13 @@ to save it back.
 | `shuffled_jigsaws` | `getShuffledJigsawBlocks`; shuffle with the random it gets |
 | `bounding_box` | `getBoundingBox` |
 | `place` | `place`, through the chunk's `PieceContext` and an `ElementPlacement` |
-| `projection` | `getProjection` |
+| `projection` | `getProjection`: the element's own |
 | `ground_level_delta` | `getGroundLevelDelta`, default 1 |
 | `save` | The codec's fields; the game adds `element_type` |
 
 Elements are decoded at load and used on worker threads: keep them immutable. A list element's
-projection is not passed down to a mod element inside it.
+projection replaces its children's, a mod element's included, as `ListPoolElement` sets it on each
+child; `place` reads the projection in effect from `ElementPlacement::projection`.
 
 ## Placing pieces
 

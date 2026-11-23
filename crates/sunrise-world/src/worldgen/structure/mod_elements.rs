@@ -51,9 +51,15 @@ pub trait ModPoolElement: Send + Sync + std::fmt::Debug + std::any::Any {
     ) -> BoundingBox;
     /// `place`: the element's blocks into the chunk of `context`, clipped to
     /// its box. False when it placed nothing (`StructurePoolElement.place`'s
-    /// result).
-    fn place(&self, context: &mut PieceContext<'_>, at: ElementAt) -> Result<bool>;
-    /// `getProjection`.
+    /// result). `projection` is the one in effect: the element's own, or the
+    /// list's that holds it.
+    fn place(
+        &self,
+        context: &mut PieceContext<'_>,
+        at: ElementAt,
+        projection: Projection,
+    ) -> Result<bool>;
+    /// `getProjection`: the element's own, as decoded.
     fn projection(&self) -> Projection;
     /// `getGroundLevelDelta`.
     fn ground_level_delta(&self) -> i32;

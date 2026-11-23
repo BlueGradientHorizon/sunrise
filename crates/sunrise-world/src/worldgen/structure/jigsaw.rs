@@ -83,6 +83,9 @@ pub enum PoolElement {
     Mod {
         id: Arc<str>,
         element: Arc<dyn super::mod_elements::ModPoolElement>,
+        /// The element's own projection, or the list's that holds it
+        /// (`ListPoolElement.setProjectionOnEachElement`).
+        projection: Projection,
     },
 }
 /// A feature a piece places: a configured feature
@@ -230,11 +233,13 @@ impl PoolElement {
                 let Some(kind_type) = super::mod_elements::mod_pool_element_type(kind) else {
                     return Err(DecodeError::Field("pool element type"));
                 };
+                let element = kind_type
+                    .decode(value, resources, bindings)
+                    .map_err(|e| DecodeError::Registry(format!("{kind}: {e}")))?;
                 Self::Mod {
                     id: kind.into(),
-                    element: kind_type
-                        .decode(value, resources, bindings)
-                        .map_err(|e| DecodeError::Registry(format!("{kind}: {e}")))?,
+                    projection: inherited.unwrap_or_else(|| element.projection()),
+                    element,
                 }
             }
         })
@@ -304,7 +309,7 @@ impl PoolElement {
                 ),
                 ("projection", text(projection.saved_name())),
             ]),
-            Self::Mod { id, element } => {
+            Self::Mod { id, element, .. } => {
                 let mut fields = element.save();
                 fields.insert("element_type".into(), text(id));
                 Tag::Compound(fields)
@@ -316,8 +321,8 @@ impl PoolElement {
             Self::Empty => Projection::TerrainMatching,
             Self::Single { projection, .. }
             | Self::Feature { projection, .. }
-            | Self::List { projection, .. } => *projection,
-            Self::Mod { element, .. } => element.projection(),
+            | Self::List { projection, .. }
+            | Self::Mod { projection, .. } => *projection,
         }
     }
     /// `StructurePoolElement.getBoundingBox`.
@@ -811,7 +816,11 @@ impl<W: FeatureWorld + PlacementContext, R: RandomSource + 'static> Site<'_, '_,
                 }
                 Ok(true)
             }
-            PoolElement::Mod { element, .. } => {
+            PoolElement::Mod {
+                element,
+                projection,
+                ..
+            } => {
                 let (resources, blocks, chunk_box) = (self.resources, self.blocks, self.chunk_box);
                 let mut context = PieceContext {
                     world: self,
@@ -822,7 +831,7 @@ impl<W: FeatureWorld + PlacementContext, R: RandomSource + 'static> Site<'_, '_,
                     chunk: ChunkPos::new(chunk_box.min[0] >> 4, chunk_box.min[2] >> 4),
                     reference: at.reference,
                 };
-                element.place(&mut context, at)
+                element.place(&mut context, at, *projection)
             }
             PoolElement::Single {
                 template,
@@ -956,7 +965,6 @@ impl<W: FeatureWorld + PlacementContext, R: RandomSource + 'static> PieceWorld
     fn biome(&mut self, pos: [i32; 3]) -> LegacyResult<BiomeId> {
         PieceWorld::biome(self.world, pos)
     }
-    #[allow(clippy::too_many_arguments)]
     fn place_template(
         &mut self,
         resources: &StructureResources,
@@ -1661,7 +1669,8 @@ mod tests {
 
     /// A pool entry of a registered mod type decodes through that type, after
     /// the vanilla types, and saves its fields back beside `element_type`; a
-    /// pool with an entry of a type nobody registered is left out.
+    /// pool with an entry of a type nobody registered is left out. Inside a
+    /// list, the list's projection is the one in effect.
     #[test]
     fn mod_element_types_decode_and_unknown_ones_leave_the_pool_out() {
         use super::super::mod_elements::{
@@ -1691,6 +1700,7 @@ mod tests {
                 &self,
                 _: &mut super::super::legacy::PieceContext<'_>,
                 _: ElementAt,
+                _: Projection,
             ) -> super::super::legacy::Result<bool> {
                 Ok(false)
             }
@@ -1742,6 +1752,15 @@ mod tests {
                 ),
             ),
             (
+                "test:listed".to_owned(),
+                format!(
+                    r#"{{"fallback":"minecraft:empty","elements":[{}]}}"#,
+                    entry(json!({"element_type": "minecraft:list_pool_element",
+                        "projection": "terrain_matching",
+                        "elements": [{"element_type": "test:post", "height": 2}]}))
+                ),
+            ),
+            (
                 "test:unknown".to_owned(),
                 format!(
                     r#"{{"fallback":"minecraft:empty","elements":[{}]}}"#,
@@ -1775,6 +1794,12 @@ mod tests {
                 ])
             );
             assert_eq!(posts.max_size(&resources), 4);
+            assert_eq!(element.projection(), Projection::Rigid);
+            let listed = pools.get("test:listed", &resources, &bindings).unwrap();
+            let PoolElement::List { elements, .. } = &*listed.templates()[0] else {
+                panic!("a list element");
+            };
+            assert_eq!(elements[0].projection(), Projection::TerrainMatching);
             assert!(pools.get("test:unknown", &resources, &bindings).is_none());
             assert!(pools.get("test:refused", &resources, &bindings).is_none());
         });

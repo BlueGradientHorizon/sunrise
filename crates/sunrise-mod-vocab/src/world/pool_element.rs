@@ -78,7 +78,9 @@ pub trait PoolElement: Any + Send + Sync + std::fmt::Debug {
         context: &mut dyn PieceContext,
         placement: &ElementPlacement,
     ) -> Result<bool, StructureError>;
-    /// `getProjection`.
+    /// `getProjection`: the element's own projection, as decoded. Inside a
+    /// list element the list's projection replaces it, and
+    /// [`ElementPlacement::projection`] gives the one in effect.
     fn projection(&self) -> Projection;
     /// `getGroundLevelDelta`: how far above the box's bottom the element's
     /// ground is. Vanilla's elements answer 1.
@@ -113,7 +115,7 @@ pub trait ElementContext {
 }
 
 /// `StructureTemplatePool.Projection`: how an element meets the terrain.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
 // exhaustive: vanilla's Projection has these two values.
 pub enum Projection {
     /// `rigid`: placed as laid out.
@@ -126,6 +128,7 @@ pub enum Projection {
 /// Clone it freely, since clones share one element.
 #[derive(Clone)]
 #[non_exhaustive]
+// no wire: a handle to an element the game holds; elements stay on the worldgen workers.
 pub struct PoolElementRef {
     engine: Arc<dyn Any + Send + Sync>,
     mod_element: Option<Arc<dyn PoolElement>>,
@@ -195,6 +198,7 @@ pub fn pool_element_payload(element: &PoolElementRef) -> &Arc<dyn Any + Send + S
 /// `StructureTemplatePool` holds it once loaded.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
+// no wire: holds element handles, which stay on the worldgen workers.
 pub struct TemplatePool {
     templates: Vec<PoolElementRef>,
     fallback: Identifier,
@@ -255,7 +259,7 @@ pub fn template_pool(
 
 /// `JigsawBlockEntity.JointType`: whether an attached piece may turn about
 /// the connection.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
 // exhaustive: vanilla's JointType has these two values.
 pub enum JigsawJoint {
     /// `rollable`: the attached piece's jigsaw may face any top.
@@ -266,7 +270,7 @@ pub enum JigsawJoint {
 
 /// A jigsaw block of an element, as vanilla's `StructureTemplate.JigsawBlockInfo`
 /// holds it once placed and turned.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
 #[non_exhaustive]
 pub struct JigsawBlock {
     /// Where the jigsaw sits, in world blocks.
@@ -331,7 +335,7 @@ impl JigsawBlock {
 
 /// `JigsawJunction`: where a child piece meets its parent, which the terrain
 /// around a rigid parent blends towards.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
 // exhaustive: vanilla's JigsawJunction has these five fields.
 pub struct JigsawJunction {
     /// The junction's X.
@@ -369,6 +373,7 @@ impl JigsawJunction {
 /// a `minecraft:jigsaw` structure's pieces.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
+// no wire: holds an element handle, which stays on the worldgen workers.
 pub struct PoolPiece {
     /// The element the piece places.
     pub element: PoolElementRef,
@@ -410,7 +415,7 @@ impl PoolPiece {
 /// Where and how an element is placed: the arguments of
 /// `StructurePoolElement.place`, besides the level, the random and the
 /// chunk's box.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
 #[non_exhaustive]
 pub struct ElementPlacement {
     /// Where the element is placed, in world blocks.
@@ -425,11 +430,20 @@ pub struct ElementPlacement {
     /// Leave jigsaw blocks in place rather than replace them with their
     /// final state (`/place jigsaw`'s `keepJigsaws`).
     pub keep_jigsaws: bool,
+    /// The projection the element is placed with: its own
+    /// [`PoolElement::projection`], or the projection of the list element
+    /// holding it, which replaces its children's
+    /// (`ListPoolElement.setProjectionOnEachElement`). A terrain-matching
+    /// template follows the surface, as vanilla's elements add the gravity
+    /// processor. An element placed through
+    /// [`PieceContext::place_element`](crate::PieceContext::place_element)
+    /// keeps its own projection, so this field is not read there.
+    pub projection: Projection,
 }
 impl ElementPlacement {
     /// A placement at `position`, turned by `rotation`. The reference point is
-    /// `position`, waterlogging is applied and jigsaws are replaced, as a pool
-    /// piece places its element. Set the fields to change any of that.
+    /// `position`, waterlogging is applied, jigsaws are replaced and the
+    /// projection is rigid. Set the fields to change any of that.
     pub fn new(position: [i32; 3], rotation: StructureRotation) -> Self {
         Self {
             position,
@@ -437,6 +451,7 @@ impl ElementPlacement {
             rotation,
             liquid: LiquidSettings::ApplyWaterlogging,
             keep_jigsaws: false,
+            projection: Projection::Rigid,
         }
     }
 }

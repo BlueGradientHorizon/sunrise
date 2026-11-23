@@ -139,7 +139,7 @@ pub struct DimensionPadding {
 }
 
 /// `LiquidSettings`: whether a placed piece's blocks take on the water there.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
 // exhaustive: vanilla's LiquidSettings has these two values.
 pub enum LiquidSettings {
     /// `apply_waterlogging`: waterloggable blocks placed in water are waterlogged.
@@ -474,14 +474,15 @@ pub trait PieceContext {
     /// (its `id` and fields).
     fn block_entity(&mut self, pos: [i32; 3], nbt: Compound);
     /// `ConfiguredFeature.place` of the data pack's configured feature
-    /// `feature` at `pos`, drawing from [`random`](Self::random), as a
-    /// `FeaturePoolElement` places its feature. Whether it placed anything;
+    /// `feature` at `pos`, drawing from [`random`](Self::random), with no
+    /// placement modifiers (as `/place feature` places one). Whether it placed anything;
     /// `Ok(false)` also for a feature the data pack lacks. The feature writes
     /// through the level, so its writes are not clipped to `chunk_box`.
     fn place_feature(&mut self, feature: &str, pos: [i32; 3]) -> Result<bool, StructureError>;
     /// `PlacedFeature.place` of the data pack's placed feature
     /// `placed_feature` at `pos`: its placement modifiers, then its feature,
-    /// drawing from [`random`](Self::random). Whether it placed anything;
+    /// drawing from [`random`](Self::random), as a `FeaturePoolElement`
+    /// places its feature. Whether it placed anything;
     /// `Ok(false)` also for a placed feature the data pack lacks.
     fn place_placed_feature(
         &mut self,

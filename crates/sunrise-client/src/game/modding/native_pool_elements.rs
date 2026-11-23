@@ -277,9 +277,11 @@ impl ModPoolElement for ModElement {
         &self,
         context: &mut PieceContext<'_>,
         at: ElementAt,
+        projection: Projection,
     ) -> Result<bool, PlacementQueryError> {
         let mut placement = ElementPlacement::new(at.position, api_rotation(at.rotation));
         placement.reference = at.reference;
+        placement.projection = api_projection(projection);
         placement.liquid = if at.waterlogging {
             mod_api::LiquidSettings::ApplyWaterlogging
         } else {

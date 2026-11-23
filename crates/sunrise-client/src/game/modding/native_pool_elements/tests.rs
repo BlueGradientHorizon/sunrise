@@ -34,6 +34,8 @@ fn link_element() -> serde_json::Value {
 struct Stilted {
     inner: PoolElementRef,
     inner_config: Tag,
+    /// The projection each `place` was handed.
+    placed_as: std::sync::Mutex<Vec<mod_api::Projection>>,
 }
 impl mod_api::PoolElement for Stilted {
     fn shuffled_jigsaws(
@@ -60,6 +62,7 @@ impl mod_api::PoolElement for Stilted {
     ) -> Result<bool, StructureError> {
         let stone = context.state(mod_api::__private::block_key("minecraft:stone").unwrap());
         let [x, y, z] = placement.position;
+        self.placed_as.lock().unwrap().push(placement.projection);
         context.set_block([x, y - 1, z], stone);
         context.place_element(&self.inner, placement)
     }
@@ -84,6 +87,7 @@ impl PoolElementType for StiltedType {
         Ok(Arc::new(Stilted {
             inner: context.element(&inner_config)?,
             inner_config,
+            placed_as: Default::default(),
         }))
     }
 }
@@ -91,8 +95,8 @@ impl PoolElementType for StiltedType {
 /// A mod element decoded through the adapter answers the assembly with the
 /// element it wraps: the same jigsaws in the same order for the same random,
 /// and the same box. Placed in a chunk, it writes its own block and places
-/// the wrapped element at the same spot; saved, it writes its fields beside
-/// its `element_type`.
+/// the wrapped element at the same spot, told the projection in effect (a
+/// list's, here); saved, it writes its fields beside its `element_type`.
 #[test]
 fn a_mod_element_wraps_another_through_the_adapter() {
     let inputs = link_inputs();
@@ -107,6 +111,7 @@ fn a_mod_element_wraps_another_through_the_adapter() {
     let element = PoolElement::Mod {
         id: "test:stilted".into(),
         element: decoded,
+        projection: Projection::TerrainMatching,
     };
     let inner = PoolElement::decode_element(&link_element(), resources, &bindings).unwrap();
     let jigsaws = |element: &PoolElement| {
@@ -176,9 +181,19 @@ fn a_mod_element_wraps_another_through_the_adapter() {
                 reference: [8, 64, 8],
             },
             at,
+            Projection::TerrainMatching,
         )
         .unwrap();
     assert!(placed);
+    assert_eq!(
+        *handle
+            .downcast_ref::<Stilted>()
+            .unwrap()
+            .placed_as
+            .lock()
+            .unwrap(),
+        [mod_api::Projection::TerrainMatching]
+    );
     assert_eq!(world.writes, [[5, 63, 5]]);
     assert_eq!(world.states, [stone]);
     assert_eq!(world.placed, [format!("test:link at {at:?}")]);
@@ -196,8 +211,10 @@ fn a_mod_element_wraps_another_through_the_adapter() {
 
 /// A structure type lays a jigsaw chain out by its own rules from the data
 /// pack's pool: the pool's elements, their jigsaws and boxes, and
-/// `can_attach` to put a second link on the first's head. The game keeps the
-/// two pool pieces it hands back as jigsaw pieces, in that order.
+/// `can_attach` to put a second link on the first's head. Its pieces are the
+/// ones `assemble_jigsaw` lays out from the same pool and start. The game
+/// keeps the assembled pieces and then the two pool pieces it hands back, as
+/// jigsaw pieces, in that order.
 #[test]
 fn a_mod_type_lays_a_chain_out_by_hand_from_a_pool() {
     struct Chain;
@@ -218,7 +235,10 @@ fn a_mod_type_lays_a_chain_out_by_hand_from_a_pool() {
             );
             let start = pool.random_template(context.random())?.clone();
             let child = pool.shuffled_templates(context.random())[0].clone();
-            let origin = [0, 64, 0];
+            // As `JigsawPlacement.addPieces` puts it: the start's ground
+            // level (its bottom plus `ground_level_delta`) at the start height.
+            let height = 64;
+            let origin = [0, height - start.ground_level_delta(), 0];
             let rotation = StructureRotation::None;
             let mut random = LegacyRandom::new(9);
             let mut draws = Draws(&mut random);
@@ -243,9 +263,19 @@ fn a_mod_type_lays_a_chain_out_by_hand_from_a_pool() {
                     mod_api::LiquidSettings::ApplyWaterlogging,
                 )
             };
+            let pool_pieces = vec![piece(start, origin), piece(child, at)];
+            let settings = mod_api::JigsawSettings::new(Identifier::parse("test:links").ok()?, 1);
+            let assembled = context.assemble_jigsaw(&settings, [0, height, 0])?;
+            assert_eq!(
+                assembled.pieces,
+                pool_pieces
+                    .iter()
+                    .map(|p| p.bounding_box)
+                    .collect::<Vec<_>>()
+            );
             Some(FoundStructure {
                 position: origin,
-                pool_pieces: vec![piece(start, origin), piece(child, at)],
+                pool_pieces,
                 pieces: Vec::new(),
             })
         }
@@ -277,13 +307,11 @@ fn a_mod_type_lays_a_chain_out_by_hand_from_a_pool() {
             Piece::Legacy(_) => panic!("only pool pieces"),
         })
         .collect();
-    assert_eq!(
-        boxes,
-        [
-            BoundingBox::new([0, 64, 0], [0, 66, 0]),
-            BoundingBox::new([0, 67, 0], [0, 69, 0]),
-        ]
-    );
+    let chain = [
+        BoundingBox::new([0, 63, 0], [0, 65, 0]),
+        BoundingBox::new([0, 66, 0], [0, 68, 0]),
+    ];
+    assert_eq!(boxes, [chain, chain].concat());
 }
 
 /// A piece places a configured feature and a placed feature through the
