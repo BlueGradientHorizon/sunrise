@@ -51,8 +51,8 @@ pub use options::{
 };
 pub use pack::{Pack, PackError};
 pub use post::{
-    Blend, BufferObject, BufferSize, CELESTIAL_BLEND, CustomImage, Factor, GameInputs, Group,
-    ImageSize,
+    Blend, BufferObject, BufferSize, CELESTIAL_BLEND, CustomImage, DEVICELESS_INTERFACE_LIMITS,
+    Factor, GameInputs, Group, ImageSize,
 };
 pub use post::{
     Post, PostProgram, STARS_BLEND, ShadowCulling, SkySwitches, TRANSLUCENT_BLEND,
