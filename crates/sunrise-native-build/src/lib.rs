@@ -18,24 +18,25 @@ pub mod contract;
 mod crates;
 mod diagnostics;
 pub mod discover;
+pub mod game_uses;
 pub mod host;
-mod inject;
 pub mod internals;
 pub mod library_record;
 mod mixins_patch;
 pub mod package;
 pub mod patch;
 pub mod prebuilt;
+pub mod present;
 pub mod registry_compile;
 pub mod registry_generate;
 mod registry_inventory;
 mod registry_lock;
 pub mod registry_plan;
+mod registry_resolve;
 mod registry_runtime;
 pub mod registry_rustc;
 mod registry_shared;
 pub mod rust;
-mod slots;
 
 pub use mixins_patch::MixinsIdentity;
 pub use prebuilt::{Refusal, compiling};
@@ -205,7 +206,7 @@ impl Bundle {
 
 /// The flat native project in `folder`, or the native projects directly inside it.
 pub fn bundles(folder: &Path) -> Result<Vec<Bundle>, String> {
-    let found = package::checked_bundles(folder)?;
+    let found = scan_bundles(folder)?;
     if found.is_empty() {
         return Err(format!(
             "{} holds no native mod ({NATIVE_MANIFEST} and Cargo.toml).",
@@ -238,21 +239,6 @@ pub fn scan_bundles(folder: &Path) -> Result<Vec<Bundle>, String> {
 
 pub fn bundle_in(dir: &Path) -> Result<Option<Bundle>, String> {
     package::read(dir)
-}
-
-pub fn is_revision(text: &str) -> bool {
-    text.len() == 40 && text.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
-}
-
-/// Appends `text` to the build log, the way a compiler warning reads.
-pub fn log_warning(text: &str) {
-    if let Ok(mut log) = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(log_path())
-    {
-        let _ = writeln!(log, "warning: {text}");
-    }
 }
 
 /// Every file under `dir`, by its path relative to `dir` (with `/`), sorted. A symlink is refused:
@@ -323,7 +309,13 @@ pub fn source_digest(bundle: &Bundle) -> Option<String> {
 /// An error ends with its first `error` lines and the last lines: a failed build script's output
 /// alone could push the line naming its crate out of the last ones.
 pub fn run(cmd: Command, what: &str, line: impl FnMut(&str)) -> Result<(), String> {
-    run_checked(cmd, what, line, None).map_err(|e| e.error)
+    run_checked(cmd, what, line, None, None).map_err(|e| e.error)
+}
+
+/// [`run`] for a compiler started with `--error-format=json`: a diagnostic it prints is shown at
+/// the author's files (`sources`), and the build log keeps what the compiler printed.
+pub fn run_diagnosed(cmd: Command, what: &str, sources: &present::Sources) -> Result<(), String> {
+    run_checked(cmd, what, |_| {}, None, Some(sources)).map_err(|e| e.error)
 }
 
 /// A failed command, with diagnostic ownership for build isolation.
@@ -336,6 +328,7 @@ fn run_checked(
     what: &str,
     mut line: impl FnMut(&str),
     stdout_file: Option<fs::File>,
+    sources: Option<&present::Sources>,
 ) -> Result<(), Ran> {
     let ran = |error: String| Ran { error };
     let mut log = fs::OpenOptions::new()
@@ -381,19 +374,31 @@ fn run_checked(
             .lines()
             .map_while(Result::ok)
         {
-            if let Some(kept) = log_text(&text) {
-                let _ = writeln!(log, "{kept}");
+            // A diagnostic is one line of JSON: its rendered text goes on as lines, each as the
+            // compiler printed it (for the log and the matchers) and as shown to the author.
+            let lines = match sources.zip(present::Diagnostic::parse(&text)) {
+                Some((sources, diagnostic)) => sources
+                    .lines(&diagnostic)
+                    .into_iter()
+                    .map(|(raw, shown)| (raw.to_owned(), shown))
+                    .collect(),
+                None => vec![(text.clone(), text)],
+            };
+            for (raw, shown) in lines {
+                if let Some(kept) = log_text(&raw) {
+                    let _ = writeln!(log, "{kept}");
+                }
+                line(&raw);
+                blocked |= rust::blocked_by_app_control(&raw);
+                libraries |= rust::missing_system_libraries(&raw);
+                if shown.starts_with("error") && errors.len() < 4 {
+                    errors.push(shown.clone());
+                }
+                if tail.len() == 12 {
+                    tail.pop_front();
+                }
+                tail.push_back(shown);
             }
-            line(&text);
-            blocked |= rust::blocked_by_app_control(&text);
-            libraries |= rust::missing_system_libraries(&text);
-            if text.starts_with("error") && errors.len() < 4 {
-                errors.push(text.clone());
-            }
-            if tail.len() == 12 {
-                tail.pop_front();
-            }
-            tail.push_back(text);
         }
         let status = child.wait();
         // Before the watcher's join, which can wait out its 100 ms poll.
@@ -429,15 +434,8 @@ fn run_checked(
         let tail: Vec<String> = tail.into();
         let error =
             diagnostics::with_internals_hint(failure(what, &status.to_string(), &errors, &tail));
-        let error = match libraries {
-            true => with_system_libraries(error),
-            false => error,
-        };
         Err(Ran {
-            error: match blocked {
-                true => with_app_control(error),
-                false => app_control(error),
-            },
+            error: advised(error, blocked, libraries),
         })
     })
 }
@@ -489,12 +487,31 @@ fn app_control(error: String) -> String {
 }
 
 fn with_app_control(error: String) -> String {
-    format!("{}\n\n{error}", rust::smart_app_control())
+    match error.starts_with(&*rust::smart_app_control()) {
+        true => error,
+        false => format!("{}\n\n{error}", rust::smart_app_control()),
+    }
 }
 
 /// `error` led by what to install when the build's link could not find udev or ALSA.
 fn with_system_libraries(error: String) -> String {
-    format!("{}\n\n{error}", rust::system_libraries())
+    match error.starts_with(&*rust::system_libraries()) {
+        true => error,
+        false => format!("{}\n\n{error}", rust::system_libraries()),
+    }
+}
+
+/// `error` led by the advice the build's output (`blocked`: Application Control refused a
+/// program, `libraries`: the link could not find udev or ALSA) and the error itself call for.
+pub(crate) fn advised(error: String, blocked: bool, libraries: bool) -> String {
+    let error = match libraries {
+        true => with_system_libraries(error),
+        false => error,
+    };
+    match blocked {
+        true => with_app_control(error),
+        false => app_control(error),
+    }
 }
 
 /// [`run`]'s error: the `errors` lines not already among the last ones (`tail`), then those.
@@ -563,16 +580,11 @@ fn diagnostic(text: &str) -> Option<String> {
     Some(line)
 }
 
-/// External mixins traverse ordinary module declarations, not generated OUT_DIR includes.
-/// Prepare their input separately so neither the downloaded source nor a cached snapshot changes.
+/// External mixins read source, not generated OUT_DIR includes: a copy of `source` with the
+/// generated host forwarders written in, so neither the download nor a cached snapshot changes.
 pub fn prepare_mixins_source(source: &Path, prepared: &Path) -> Result<(), String> {
-    // sync removes old files, not their directories. A leftover area directory without its
-    // marker would make module discovery refuse the next revision after an interrupted build.
-    if prepared.exists() {
-        fs::remove_dir_all(prepared).map_err(|e| format!("{}: {e}", prepared.display()))?;
-    }
     let result = sync(source, prepared)
-        .and_then(|()| sunrise_platform::mod_build::api_gen::materialize_game_modules(prepared));
+        .and_then(|()| sunrise_platform::mod_build::api_gen::materialize_generated_host(prepared));
     if result.is_err() {
         let _ = fs::remove_dir_all(prepared);
     }
@@ -786,65 +798,33 @@ mod tests {
     }
 
     #[test]
-    fn mixins_input_materializes_modules_without_changing_the_download() {
-        let root = dir("mixins-area-input");
+    fn mixins_input_copies_the_source_without_changing_the_download() {
+        let root = dir("mixins-input");
         let source = root.join("download");
         let prepared = root.join("prepared");
         let src = source.join("crates/sunrise-client/src");
         let area = src.join("game/items");
-        let hooks = src.join("game/native_hooks");
         fs::create_dir_all(&area).unwrap();
-        fs::create_dir_all(&hooks).unwrap();
-        let game = "struct Game; mod native_hooks;\ninclude!(concat!(env!(\"OUT_DIR\"), \"/game_modules.rs\"));\n";
-        let native = "include!(concat!(env!(\"OUT_DIR\"), \"/native_hook_modules.rs\"));\n";
+        let game = "struct Game;\n#[path = \"game/items/using_item.rs\"]\nmod using_item;\n";
         let helper = "use super::*; impl Game { fn area_helper(&mut self) {} }";
         fs::write(src.join("game.rs"), game).unwrap();
-        fs::write(area.join(".game-area"), "").unwrap();
         fs::write(area.join("using_item.rs"), helper).unwrap();
-        fs::write(hooks.join("mod.rs"), native).unwrap();
-        fs::write(
-            hooks.join("base.rs"),
-            "use super::super::*; impl Game { fn native_helper(&mut self) {} }",
-        )
-        .unwrap();
         prepare_mixins_source(&source, &prepared).unwrap();
-        // External tools parse ordinary mod declarations, without our expansion pass.
-        fn modules(path: &Path) -> Vec<String> {
-            syn::parse_file(&fs::read_to_string(path).unwrap())
-                .unwrap()
-                .items
-                .into_iter()
-                .filter_map(|item| match item {
-                    syn::Item::Mod(module) => Some(module.ident.to_string()),
-                    _ => None,
-                })
-                .collect()
-        }
         let output = prepared.join("crates/sunrise-client/src");
-        assert!(modules(&output.join("game.rs")).contains(&"using_item".into()));
-        assert_eq!(modules(&output.join("game/native_hooks/mod.rs")), ["base"]);
+        assert_eq!(fs::read_to_string(output.join("game.rs")).unwrap(), game);
         assert_eq!(
             fs::read_to_string(output.join("game/items/using_item.rs")).unwrap(),
             helper
         );
-        assert_eq!(fs::read_to_string(src.join("game.rs")).unwrap(), game);
-        assert_eq!(fs::read_to_string(hooks.join("mod.rs")).unwrap(), native);
-        let first = fs::read(output.join("game.rs")).unwrap();
-        // A failed older preparation may have left an area that the next source no longer has.
-        let stale_area = output.join("game/removed");
-        fs::create_dir_all(&stale_area).unwrap();
-        fs::write(stale_area.join(".game-area"), "").unwrap();
-        fs::write(stale_area.join("old.rs"), "fn old() {}").unwrap();
+        // A file the next source no longer has leaves the copy.
+        fs::remove_file(area.join("using_item.rs")).unwrap();
+        fs::write(src.join("game.rs"), "struct Game;\n").unwrap();
         prepare_mixins_source(&source, &prepared).unwrap();
-        assert!(!stale_area.exists());
-        assert_eq!(fs::read(output.join("game.rs")).unwrap(), first);
-        let invalid = src.join("game/unmarked");
-        fs::create_dir_all(&invalid).unwrap();
-        fs::write(invalid.join("misplaced.rs"), "fn misplaced() {}").unwrap();
-        let error = prepare_mixins_source(&source, &prepared).unwrap_err();
-        assert!(error.contains("missing .game-area marker"), "{error}");
-        assert!(!prepared.exists());
-        assert!(invalid.exists());
+        assert!(!output.join("game/items/using_item.rs").exists());
+        assert_eq!(
+            fs::read_to_string(src.join("game.rs")).unwrap(),
+            "struct Game;\n"
+        );
         fs::remove_dir_all(root).unwrap();
     }
 

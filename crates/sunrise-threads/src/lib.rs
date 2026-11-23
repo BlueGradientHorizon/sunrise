@@ -32,6 +32,10 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
+/// The pre-guest stack reservation for a worker that holds and ticks `Game` by value (#2430).
+/// Other gameplay workers use the same host stack without the retired guest allowance.
+pub const GAME_THREAD_STACK_BYTES: usize = 8 * 1024 * 1024;
+
 /// The worker threads the machine offers this process: `available_parallelism`'s
 /// answer (its share of the cores — CPU affinity, a container's quota), resolved
 /// once, since it doesn't change under a run and asking again on a later path
@@ -99,7 +103,8 @@ pub fn par_chunks_mut_with<T: Send>(
         let helpers = worker_count().saturating_sub(1).clamp(1, count - 1);
         let threads: Vec<_> = (0..helpers)
             .filter_map(|_| {
-                sunrise_guest_stack::builder()
+                std::thread::Builder::new()
+                    .stack_size(crate::GAME_THREAD_STACK_BYTES)
                     .spawn_scoped(scope, work)
                     .ok()
             })
@@ -315,31 +320,6 @@ pub fn thread_cpu() -> Option<std::time::Duration> {
 #[cfg(not(all(windows, target_arch = "x86_64")))]
 pub fn thread_cpu() -> Option<std::time::Duration> {
     None
-}
-
-/// Clones the file or the whole folder `from` as `to`, which must not exist, in one call
-/// that shares the data (APFS `clonefile`, folders included). `Unsupported` where there is
-/// no such call: the caller copies the files itself.
-pub fn clone_tree(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
-    #[cfg(target_vendor = "apple")]
-    {
-        use std::os::unix::ffi::OsStrExt;
-        let path = |p: &std::path::Path| {
-            std::ffi::CString::new(p.as_os_str().as_bytes())
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))
-        };
-        let (from, to) = (path(from)?, path(to)?);
-        // SAFETY: both paths are NUL-terminated strings that outlive the call.
-        if unsafe { libc::clonefile(from.as_ptr(), to.as_ptr(), 0) } == 0 {
-            return Ok(());
-        }
-        Err(std::io::Error::last_os_error())
-    }
-    #[cfg(not(target_vendor = "apple"))]
-    {
-        let _ = (from, to);
-        Err(std::io::ErrorKind::Unsupported.into())
-    }
 }
 
 /// Set once as the game starts, before its helper threads do: they then go

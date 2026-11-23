@@ -41,7 +41,10 @@
  "local_only": {
   "save_roundtrip": "runs the game on a virtual screen (vscreen) with a null ALSA device, or offscreen in the logged-in macOS session"
  },
- "linux_only": {},
+ "linux_only": {
+  "save_kill": "uses SIGKILL to stop the server at a save fixture point",
+  "save_corruption": "part of the Linux-only save-fault suite"
+ },
  "solo": {
   "remote_fireball": "two game windows (lan_e2e); on 4 CPUs beside other harnesses, screenshots and control requests take ticks the check needs",
   "remote_fireworks": "two game windows (lan_e2e); a screenshot took ~1.5 s beside 3 other harnesses on playsunrise's runner, past the sparks' life (2026-10-27)",
@@ -59,10 +62,5 @@
   "hoglin_repeat_attack": "has never passed on CI since #12823 added it, and fails whatever a pull request changes (#15158): the pig's HurtTime and health after repeated hits differ; take it off this list with the fix",
   "last_hurt_by_mob": "has never passed on CI since #12843 added it, and fails whatever a pull request changes (#15158): a pig summoned with last_hurt_by_mob loses it, and the saved key order differs; take it off this list with the fix",
   "mob_command_damage_vibration": "has never passed on CI since #11179 added it, and fails whatever a pull request changes (#15158): 25 of 184 records differ, mostly sensor messages; take it off this list with the fix"
- },
- "known_flaky": {
-  "world_reopen": "counted 4 minecarts instead of 3 once on a loaded Mac mini runner, then passed at the same head (10-26)",
-  "lunge_motion": "a loaded Mac mini runner: the server catches up with two ticks for one of the jump's moves (Alice falls a tick of gravity more, -0.3015 vs -0.2277; the harness now names it), and vanilla's own run once sent an extra motion while sprinting; the same trees pass alone (#5656, 11-01)",
-  "server_wool_vibration": "real-time dedicated servers: the player cases send one client position per 50 ms sleep, so on a loaded machine the sensor's phase check sometimes runs before or after the landing (shrieker-jump-stone, Sunrise's side, 1 of 4 runs on playsunrise at load 15-25, 11-07); the drop and corpse leaks between cow and item cases are cleared in the harness"
  }
 }
