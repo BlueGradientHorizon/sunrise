@@ -651,11 +651,8 @@ mod tests {
                         serde_json::to_vec(&invalid).unwrap(),
                     )
                     .unwrap();
-                    let stack = game.reload_datapacks(false, &[]).unwrap();
-                    let error = game
-                        .stage_world_tables(&stack, false, &resources)
-                        .err()
-                        .unwrap();
+                    // The reload decodes every enchantment's effects and refuses the pack.
+                    let error = game.reload_datapacks(false, &[]).err().unwrap();
                     assert!(error.to_string().contains("damage_test:force"));
                     assert!(error.to_string().contains("factor"));
                     assert_eq!(
@@ -693,11 +690,8 @@ mod tests {
                         serde_json::to_vec(&invalid).unwrap(),
                     )
                     .unwrap();
-                    let stack = game.reload_datapacks(false, &[]).unwrap();
-                    let error = game
-                        .stage_world_tables(&stack, false, &resources)
-                        .err()
-                        .unwrap();
+                    // The reload decodes every enchantment's effects and refuses the pack.
+                    let error = game.reload_datapacks(false, &[]).err().unwrap();
                     assert!(error.to_string().contains("codec fixture panic"));
                     assert_eq!(
                         mod_api::__private::take_hook_panics(),

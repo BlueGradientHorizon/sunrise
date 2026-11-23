@@ -783,10 +783,11 @@ fn exhausted_ids_refuse_every_mod_spawn() {
             game.player_drop_stack(player, stack, false).is_none()
         }),
         ("spawn_projectile_from_rotation", |game, f| {
+            // An egg: the observer keeps snowballs out, and a refused join gives no handle.
             let owner = game.living(f.mob).unwrap();
-            let snowball = mod_api::Identifier::parse("minecraft:snowball").unwrap();
-            let stack = ItemStack::new("minecraft:snowball", 1);
-            (game.spawn_projectile_from_rotation(owner, &snowball, &stack, 0.0, 1.5, 1.0)).is_some()
+            let egg = mod_api::Identifier::parse("minecraft:egg").unwrap();
+            let stack = ItemStack::new("minecraft:egg", 1);
+            (game.spawn_projectile_from_rotation(owner, &egg, &stack, 0.0, 1.5, 1.0)).is_some()
         }),
     ];
     with_observer(NAME, |game| {

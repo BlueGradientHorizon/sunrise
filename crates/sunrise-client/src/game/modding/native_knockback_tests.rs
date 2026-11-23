@@ -899,6 +899,10 @@ fn callable_knockback_reads_resistance_written_this_tick() {
     use super::living_attributes::AttributeWrite;
     use sunrise_items::equipment::CHEST;
     heard(|game, _| {
+        // A mod reaches an entity only in an accessible section.
+        game.world
+            .chunks
+            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
         zombie_at(game, 42, Vec3::ZERO);
         game.mobs[0].ground.on_ground = true;
         game.mobs[0].set_equipment_stack(
