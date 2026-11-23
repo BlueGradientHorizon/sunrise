@@ -9272,12 +9272,24 @@ mod noai_breather_air_tests {
     use super::*;
     use std::sync::Arc;
 
-    const WITNESS_26_3: &str = include_str!("../../../../tools/witness/26.3/noai_breather_air.txt");
-
-    fn witness_26_3_rows() -> Vec<&'static str> {
-        WITNESS_26_3
+    fn witness_26_3_rows() -> Vec<String> {
+        let raw = std::env::var("SUNRISE_NOAI_BREATHER_AIR_WITNESS").expect(
+            "run through tools/test_noai_breather_air_parity.py, which records the 26.3 witness",
+        );
+        let mut path = std::path::PathBuf::from(&raw);
+        if path.is_dir() {
+            path.push("noai_breather_air.txt");
+        }
+        let witness = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+            panic!(
+                "failed to read {} (run tools/test_noai_breather_air_parity.py to record the 26.3 witness): {err}",
+                path.display()
+            )
+        });
+        witness
             .lines()
             .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .map(str::to_owned)
             .collect()
     }
 
@@ -9347,11 +9359,11 @@ mod noai_breather_air_tests {
         }
     }
 
-    /// Vanilla 26.3 (`tools/witness/26.3/noai_breather_air.txt`): `LivingEntity.baseTick`
+    /// Vanilla 26.3 (witness recorded by `tools/test_noai_breather_air_parity.py`): `LivingEntity.baseTick`
     /// refills only while the air is below the maximum, so a NoAI axolotl or nautilus
     /// loaded above it keeps its air across full mob ticks, and one just below tops up to it.
     #[test]
-    #[ignore = "daily"]
+    #[ignore = "run by tools/test_noai_breather_air_parity.py"]
     fn noai_breathers_keep_air_above_their_maximum() {
         let rows = witness_26_3_rows();
         let mut checked = 0usize;
@@ -9398,12 +9410,12 @@ mod noai_breather_air_tests {
         check(true, false, 100, [300, 300]);
     }
 
-    /// Vanilla 26.3 (`VanillaNoAiBreatherAirOracle`, `tools/test_noai_breather_air_parity.py`,
-    /// `tools/witness/26.3/noai_breather_air.txt`): a NoAI axolotl or nautilus loaded with a
-    /// signed-short `Air`, ticked, saved, reloaded and ticked again, over dry air, water, bubble
-    /// columns at the eye and feet, the breathing effects and a lethal in-wall hurt.
+    /// Vanilla 26.3 (`VanillaNoAiBreatherAirOracle`, `tools/test_noai_breather_air_parity.py`):
+    /// a NoAI axolotl or nautilus loaded with a signed-short `Air`, ticked, saved, reloaded and
+    /// ticked again, over dry air, water, bubble columns at the eye and feet, the breathing
+    /// effects and a lethal in-wall hurt.
     #[test]
-    #[ignore = "daily"]
+    #[ignore = "run by tools/test_noai_breather_air_parity.py"]
     fn noai_breathers_match_the_pinned_oracle() {
         use std::collections::HashMap;
         use sunrise_core::nbt::Tag;
@@ -9524,7 +9536,7 @@ mod noai_breather_air_tests {
                 for (index, (actual, expected)) in rows.iter().zip(expected.iter()).enumerate() {
                     assert_eq!(
                         actual.as_str(),
-                        *expected,
+                        expected.as_str(),
                         "26.3 NoAI breather air row {index} diverged"
                     );
                 }
