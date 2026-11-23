@@ -2991,6 +2991,7 @@ mod tests {
     /// deflection with `last_deflected_by` while halving dragon-fireball acceleration, and loads
     /// saved `Rotation` via `Entity.load` / `setXRot` semantics.
     #[test]
+    #[ignore = "run by tools/test_fireball_hit_turn_parity.py"]
     fn a_fireball_turns_on_the_tick_it_hits() {
         use crate::entity_nbt::{fireball_from_nbt, fireball_to_nbt};
         use crate::save::{doubles, floats};
@@ -3074,8 +3075,15 @@ mod tests {
             overrides: Vec<(usize, Vec3, Vec3)>,
         }
 
-        const WITNESS: &str = include_str!("../../../tools/witness/26.3/fireball_hit_turn.json");
-        let doc: WitnessDoc = serde_json::from_str(WITNESS).expect("valid 26.3 witness JSON");
+        let path = std::env::var("SUNRISE_FIREBALL_HIT_TURN_WITNESS").expect(
+            "run through tools/test_fireball_hit_turn_parity.py, which records the witness",
+        );
+        let witness = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+            panic!(
+                "failed to read fireball hit-turn witness at {path} (run via tools/test_fireball_hit_turn_parity.py): {err}"
+            )
+        });
+        let doc: WitnessDoc = serde_json::from_str(&witness).expect("valid 26.3 witness JSON");
         assert_eq!(doc.game_version, "26.3", "witness must be pinned to 26.3");
 
         let mob_box = |x: f64, y: f64, z: f64, w: f32, h: f32| {

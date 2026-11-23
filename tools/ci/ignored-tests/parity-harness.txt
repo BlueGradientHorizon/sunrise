@@ -75,3 +75,4 @@ sunrise-client game::creatures::projectiles_120_124_tests::witness_trident_ender
 sunrise-client game::creatures::projectiles_120_124_tests::witness_piercing_arrow_multihit_123 tools/test_projectile_targets_parity.py harness
 sunrise-client game::creatures::projectiles_120_124_tests::witness_firework_rocket_targets_124 tools/test_projectile_targets_parity.py harness
 sunrise-client game::creatures::projectiles_120_124_tests::witness_review_round1_regressions tools/test_projectile_targets_parity.py harness
+sunrise-client-lib projectiles::tests::a_fireball_turns_on_the_tick_it_hits tools/test_fireball_hit_turn_parity.py harness

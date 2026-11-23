@@ -225,7 +225,7 @@ harnesses = [
   "*motion*", "*move*", "*collision*", "collision", "climbing", "swimming", "auto_jump", "boat_*", "*vehicle*",
   "mount_*", "passenger_relation", "mob_removal_order", "player_travel", "world_movement", "world_ray", "registry_fall_ray",
   "edge_backoff", "world_edge_backoff", "restitution", "stepped_interpolation", "view_direction", "projectile_*",
-  "arrow*", "client_arrow", "bounced_projectile_tick_order", "frame_projectile", "pearl_*", "trident",
+  "arrow*", "client_arrow", "bounced_projectile_tick_order", "fireball_hit_turn", "frame_projectile", "pearl_*", "trident",
   "lunge_motion", "fall_damage", "living_fall", "living_landing", "block_landing", "free_space", "entity_fluid*",
   "registered_entity_fluid", "registry_fluid", "fluid_box", "water_splash", "scaffolding_collision",
   "powder_snow_collision", "shulker_space", "local_input", "sprint_input", "leash_knot_uuid", "mob_quad_leash",
