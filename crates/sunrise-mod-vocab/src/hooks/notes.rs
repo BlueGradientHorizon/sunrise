@@ -1323,7 +1323,7 @@ stock client shows as a chest (`generic_9x1` to `generic_9x6`); nothing is insta
 - A display menu's default click moves nothing. `MenuPart::menu_clicked` v3 runs on parts registered for the
   menu type. It shares one transaction with the default click unless the part handles the click and returns
   `Flow::Cancel`. An override or refusal sends the committed menu, cursor and any omitted swap target.
-- `menu_closed` v2 names the player and window and passes any opening hand and detached owned slot values.
+- `menu_closed` v3 names the player and window and passes any opening hand and detached owned slot values.
 - A trade on these menus leaves the offered stacks in their owners' inventories until both sides are settled. Then,
   in one `host.transaction`, each offered inventory index is checked to still hold exactly what was offered, taken
   out of the player's [`ENTITY_ITEMS`](../concepts/capabilities/entity-items.md) handler and put into the other's with `insert`
@@ -1491,7 +1491,7 @@ mod mixin or use it replaces in its design or PR."#]
 - [A block's items](#a-blocks-items) are available to server mods through the item capability and
   `move_resources`, so a pipe or machine can move items transactionally.
 
-- What a server mod needs for a public server's screens: `native_sidebar(uuid, sidebar)` shows one
+- What a server mod needs for a public server's screens: `player.set_sidebar(host, sidebar)` shows one
   player a sidebar of up to 15 lines (a text, and one where the score would be) that only their client holds (the
   server's scoreboard never sees it; a mod sends it again when they rejoin), or takes it away with `None`;
   `player.tab_list(host, header, footer)` sets the lines over and under their Tab list; `native_tick_stats()` reads the
