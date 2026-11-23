@@ -173,7 +173,7 @@ impl GuestMenuEffects {
         }
     }
 
-    fn take(menu: &mut Menu) -> Self {
+    pub(super) fn take(menu: &mut Menu) -> Self {
         let dropped = std::mem::take(&mut menu.dropped);
         menu.drops.clear();
         Self {
@@ -252,7 +252,7 @@ impl Game<'_> {
 
     /// Run one edit with the guest's rules and storage, leaving effects in the menu until its
     /// caller accepts the action. No `Env` survives this call.
-    fn guest_menu_edit<R>(
+    pub(super) fn guest_menu_edit<R>(
         &mut self,
         gi: usize,
         menu: &mut Menu,
