@@ -4,6 +4,7 @@
 //! buffer is checked first and refused whole with the op it could not draw.
 use super::Game;
 use mod_api::GuiPaintError;
+use std::borrow::Cow;
 use sunrise_client::hud::HudBatch;
 use sunrise_client::hud_layout::{self, GuiDraw, GuiFaces, GuiItems, Undrawable};
 use sunrise_client::items::ItemStack;
@@ -55,13 +56,15 @@ impl GuiItems for HotbarItems<'_, '_> {
     }
 }
 
-/// The skins of `GuiDraw::PlayerFace`s ([`Game::player_face_skin`]).
+/// The skins of `GuiDraw::PlayerFace`s ([`Game::player_face_skin`]), borrowed; `name` holds a
+/// looked-up skin's name, reused from face to face.
 struct FaceSkins<'a, 'g> {
     game: &'a Game<'g>,
+    name: String,
 }
 impl GuiFaces for FaceSkins<'_, '_> {
-    fn skin(&mut self, uuid: u128) -> String {
-        self.game.player_face_skin(uuid)
+    fn skin(&mut self, uuid: u128) -> Cow<'_, str> {
+        Cow::Borrowed(self.game.player_face_skin(uuid, &mut self.name))
     }
 }
 
@@ -91,7 +94,10 @@ impl Game<'_> {
             game: self,
             source: HotbarSource::Own,
         };
-        let mut faces = FaceSkins { game: self };
+        let mut faces = FaceSkins {
+            game: self,
+            name: String::new(),
+        };
         hud_layout::paint_checked(batch, &self.gui.atlas, draws, &mut items, &mut faces)
             .map_err(paint_error)
     }

@@ -47,7 +47,7 @@ impl GuiItems for Items {
 /// These buffers hold no `PlayerFace`.
 struct NoFaces;
 impl GuiFaces for NoFaces {
-    fn skin(&mut self, uuid: u128) -> String {
+    fn skin(&mut self, uuid: u128) -> std::borrow::Cow<'_, str> {
         panic!("no face was painted, but {uuid:032x}'s skin was asked for")
     }
 }

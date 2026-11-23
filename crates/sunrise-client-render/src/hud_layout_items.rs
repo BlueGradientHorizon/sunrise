@@ -3,6 +3,7 @@
 //! cannot draw refuses the buffer, and nothing of it is drawn.
 use super::{Blend, GuiDraw, paint_with};
 use crate::hud::{GuiSprite, HudAtlas, HudBatch};
+use std::borrow::Cow;
 
 /// What draws a `GuiDraw::Item`: the stack of hotbar slot `slot` (0-8, 40 = the off hand).
 pub trait GuiItems {
@@ -18,8 +19,8 @@ pub trait GuiItems {
 pub trait GuiFaces {
     /// The skin texture to draw `uuid`'s face from now, as a `Blit` names it: the player's own
     /// once it is in the atlas, else the UUID's default skin. It never waits for a lookup or a
-    /// download.
-    fn skin(&mut self, uuid: u128) -> String;
+    /// download, and borrows the name where it can: it is asked for every face, every frame.
+    fn skin(&mut self, uuid: u128) -> Cow<'_, str>;
 }
 
 /// Why [`paint_checked`] drew nothing: the op it could not draw.

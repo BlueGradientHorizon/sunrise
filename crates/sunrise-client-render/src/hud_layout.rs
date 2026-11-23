@@ -989,17 +989,10 @@ fn paint_with<'a>(
                 tex,
                 color,
             } => {
-                let Some(mut r) = atlas.blit_rect(texture.as_ref()).copied() else {
+                let at = [*x, *y, *w, *h];
+                if !blit(batch, atlas, texture, at, *uv, *src, *tex, *color) {
                     continue;
-                };
-                let (du, dv) = (r.u1 - r.u0, r.v1 - r.v0);
-                let u0 = r.u0 + du * uv[0] / tex[0] as f32;
-                let v0 = r.v0 + dv * uv[1] / tex[1] as f32;
-                r.u1 = r.u0 + du * (uv[0] + src[0] as f32) / tex[0] as f32;
-                r.v1 = r.v0 + dv * (uv[1] + src[1] as f32) / tex[1] as f32;
-                r.u0 = u0;
-                r.v0 = v0;
-                batch.rect_uv(*x as f32, *y as f32, *w as f32, *h as f32, r, abgr(*color));
+                }
                 match blend {
                     Blend::Textured => {}
                     Blend::Vignette => batch.blend_since(start, crate::hud::Blend::Vignette),
@@ -1032,11 +1025,13 @@ fn paint_with<'a>(
                 color,
             } => {
                 if let Some(faces) = faces.as_deref_mut() {
-                    // The tab list's face: its blits, drawn here and then moved by this op's pose.
-                    let mut blits = Vec::with_capacity(2);
+                    // The tab list's face blits, each a `Blit` of the skin, moved by this op's pose.
                     let skin = faces.skin(*uuid);
-                    crate::tab_list::face(&mut blits, &skin, *x, *y, *size, *hat, *flip, *color);
-                    paint_with(batch, atlas, &blits[..], None, None);
+                    let at = [*x, *y, *size, *size];
+                    for (uv, src) in crate::tab_list::face_blits(*hat, *flip) {
+                        let tex = crate::tab_list::SKIN_TEX;
+                        blit(batch, atlas, &skin, at, uv, src, tex, *color);
+                    }
                 }
             }
             GuiDraw::Fill {
@@ -1101,6 +1096,33 @@ fn paint_with<'a>(
             }
         }
     }
+}
+
+/// A `Blit`'s quad: `texture`'s `src` texels from `uv` of its `tex` size, drawn at `at` (`x`,
+/// `y`, `w`, `h`) tinted `color`; `false`, drawing nothing, when the atlas lacks the texture.
+#[allow(clippy::too_many_arguments)]
+fn blit(
+    batch: &mut crate::hud::HudBatch,
+    atlas: &crate::hud::HudAtlas,
+    texture: &str,
+    [x, y, w, h]: [i32; 4],
+    uv: [f32; 2],
+    src: [i32; 2],
+    tex: [i32; 2],
+    color: u32,
+) -> bool {
+    let Some(mut r) = atlas.blit_rect(texture).copied() else {
+        return false;
+    };
+    let (du, dv) = (r.u1 - r.u0, r.v1 - r.v0);
+    let u0 = r.u0 + du * uv[0] / tex[0] as f32;
+    let v0 = r.v0 + dv * uv[1] / tex[1] as f32;
+    r.u1 = r.u0 + du * (uv[0] + src[0] as f32) / tex[0] as f32;
+    r.v1 = r.v0 + dv * (uv[1] + src[1] as f32) / tex[1] as f32;
+    r.u0 = u0;
+    r.v0 = v0;
+    batch.rect_uv(x as f32, y as f32, w as f32, h as f32, r, abgr(color));
+    true
 }
 
 /// An ARGB colour as the HUD batch's packed RGBA.

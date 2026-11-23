@@ -162,21 +162,37 @@ impl Game<'_> {
     /// the atlas, until then the profile's default (`DefaultPlayerSkin.get`),
     /// as `PlayerInfo.getSkin` gives before the texture has loaded.
     pub(super) fn drawn_skin(&self, uuid: u128, (skin, slim): (String, bool)) -> (String, bool) {
-        if (skin.starts_with("skins/") || skin == "sunrise/offline_skin") && !self.again_skin(&skin)
-        {
+        if self.skin_pending(&skin) {
             let skin = sunrise_client::tab_list::default_skin(uuid);
             return (skin.to_owned(), skin.contains("/slim/"));
         }
         (skin, slim)
     }
+    /// Whether `skin` is a downloaded skin not yet in the atlas ([`Self::again_skin`]).
+    fn skin_pending(&self, skin: &str) -> bool {
+        (skin.starts_with("skins/") || skin == "sunrise/offline_skin") && !self.again_skin(skin)
+    }
+    /// `drawn_skin` for a face in the player list or spectator menu, borrowed: `skin`, or the
+    /// UUID's default while it is pending.
+    fn shown_face<'s>(&self, uuid: u128, skin: &'s str) -> &'s str {
+        match self.skin_pending(skin) {
+            true => sunrise_client::tab_list::default_skin(uuid),
+            false => skin,
+        }
+    }
     /// `drawn_skin` for a face in the player list or spectator menu.
     pub(in crate::game) fn face_skin(&self, uuid: u128, skin: &str) -> String {
-        self.drawn_skin(uuid, (skin.to_owned(), false)).0
+        self.shown_face(uuid, skin).to_owned()
     }
     /// A mod's `GuiDraw::PlayerFace` skin (`skins::face_skin`): a player with a `PlayerInfo` on
     /// this connection draws its skin as the player list does; any other UUID its profile, looked
-    /// up as a head's is. Until uploaded, the UUID's default.
-    pub(in crate::game) fn player_face_skin(&self, uuid: u128) -> String {
+    /// up by id as a head's is. Until uploaded, the UUID's default. It borrows the name: a
+    /// looked-up skin's is copied into `name`, reused from face to face.
+    pub(in crate::game) fn player_face_skin<'a>(
+        &'a self,
+        uuid: u128,
+        name: &'a mut String,
+    ) -> &'a str {
         let listed = self
             .remote
             .as_ref()
@@ -186,7 +202,7 @@ impl Game<'_> {
                     || sunrise_client::tab_list::default_skin(uuid),
                     String::as_str,
                 );
-                self.face_skin(uuid, skin)
+                self.shown_face(uuid, skin)
             });
         sunrise_client::skins::face_skin(
             uuid,
@@ -194,6 +210,7 @@ impl Game<'_> {
             &mut self.skin_profiles.borrow_mut(),
             &mut self.skin_downloads.borrow_mut(),
             |location| self.gui.atlas.sprites.contains_key(location),
+            name,
         )
     }
 }
