@@ -105,24 +105,6 @@ mod menu_button_context_tests {
             assert_eq!(decoded.id, context.id);
         }
     }
-
-    #[test]
-    fn stacked_on_other_direction_round_trips_on_wire() {
-        use super::{StackedOnOther, StackedOnOtherDirection};
-        for direction in [
-            StackedOnOtherDirection::Event,
-            StackedOnOtherDirection::CarriedOnOther,
-            StackedOnOtherDirection::OtherStackedOnMe,
-        ] {
-            let click = StackedOnOther::new(Some(7), Some(9), 1, 2, 3, true, None, None)
-                .with_direction(direction);
-            let mut writer = Writer::new();
-            writer.put(&click);
-            let decoded = Reader::decode::<StackedOnOther>(writer.bytes()).unwrap();
-            assert_eq!(decoded, click);
-            assert_eq!(decoded.direction, direction);
-        }
-    }
 }
 
 /// The logical side on which a menu click runs.
@@ -137,7 +119,6 @@ pub enum LogicalSide {
 /// asking `item_stacked_on_other`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 // exhaustive: NeoForge's event, then vanilla's carried-on-other and other-on-me overrides
-#[derive(sunrise_mod_api_macros::Wire)]
 pub enum StackedOnOtherDirection {
     /// The global `Hooks::item_stacked_on_other` event, before either item override.
     #[default]
@@ -147,13 +128,79 @@ pub enum StackedOnOtherDirection {
     /// `Item.overrideOtherStackedOnMe`: the clicked slot stack's `ItemPart`, asked second.
     OtherStackedOnMe,
 }
-/// A pickup click on a menu slot, as `item_stacked_on_other` is asked about it: the stacks are the
-/// ones the click found, frozen before any listener ran. A listener answers through
-/// [`StackedOnOtherResult`]; it does not write these.
+/// Vanilla's `ClickAction`: which action a pickup click is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+// exhaustive: vanilla's two click actions
+pub enum ClickAction {
+    /// `ClickAction.PRIMARY`: with the default bindings, a left click.
+    Primary,
+    /// `ClickAction.SECONDARY`: with the default bindings, a right click.
+    Secondary,
+}
+/// One edit a listener made to a pickup click's cursor or clicked slot, in the order it made it.
 #[derive(Clone, Debug, PartialEq)]
+// exhaustive: a cursor write, a slot write, or a take from the slot
+// no wire: recorded and applied in-process within one click.
+pub enum StackedEdit {
+    /// `SlotAccess.set` on the cursor.
+    Carried(Option<ItemStack>),
+    /// `Slot.set` on the clicked slot.
+    Clicked(Option<ItemStack>),
+    /// `Slot.safeTake` of this many items from the clicked slot.
+    Take(u32),
+}
+/// The cursor and the clicked slot as one pickup click's listeners have left them so far, and
+/// the edits that put them there, in order. Every phase of the click shares it.
+#[derive(Debug, Default)]
+// exhaustive: the game builds it and reads it back
+// no wire: lent to listeners within one click.
+pub struct StackedEdits {
+    carried: Option<ItemStack>,
+    clicked: Option<ItemStack>,
+    edits: Vec<StackedEdit>,
+}
+impl StackedEdits {
+    /// The click's cursor and clicked slot before any listener ran.
+    // hidden: a game-side helper, not part of the mod surface
+    #[doc(hidden)]
+    pub fn new(carried: Option<ItemStack>, clicked: Option<ItemStack>) -> Self {
+        Self {
+            carried,
+            clicked,
+            edits: Vec::new(),
+        }
+    }
+    /// The cursor and clicked slot now, and how many edits have been made.
+    // hidden: a game-side helper, not part of the mod surface
+    #[doc(hidden)]
+    pub fn state(&self) -> (Option<&ItemStack>, Option<&ItemStack>, usize) {
+        (
+            self.carried.as_ref(),
+            self.clicked.as_ref(),
+            self.edits.len(),
+        )
+    }
+    /// The edits made since edit `from`.
+    // hidden: a game-side helper, not part of the mod surface
+    #[doc(hidden)]
+    pub fn since(&self, from: usize) -> &[StackedEdit] {
+        &self.edits[from..]
+    }
+    /// Every edit, in the order the listeners made them.
+    // hidden: a game-side helper, not part of the mod surface
+    #[doc(hidden)]
+    pub fn into_edits(self) -> Vec<StackedEdit> {
+        self.edits
+    }
+}
+/// A pickup click on a menu slot, as `item_stacked_on_other` is asked about it, with the cursor
+/// and the clicked slot lent for this call (NeoForge's `getCarriedSlotAccess` and `getSlot`).
+/// Reads see what earlier phases and this call already changed. Edits are applied to the menu in
+/// the order they were made, once the click is decided.
+#[derive(Debug)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct StackedOnOther {
+// no wire: borrows the click's working stacks for the hook call.
+pub struct StackedOnOther<'a> {
     /// The clicking player's UUID, when a player is clicking.
     pub player: Option<u128>,
     /// The clicking player's entity id, when a player is clicking.
@@ -164,19 +211,22 @@ pub struct StackedOnOther {
     pub container: usize,
     /// The slot's index in that container.
     pub container_slot: usize,
-    /// A left-button click (a right-button click is not primary).
-    pub primary: bool,
-    /// The stack on the cursor, `None` when it is empty.
-    pub carried: Option<ItemStack>,
-    /// The stack in the clicked slot, `None` when it is empty.
-    pub clicked: Option<ItemStack>,
+    /// The click action (`ItemStackedOnOtherEvent.getClickAction`).
+    pub action: ClickAction,
     /// Which phase of `tryItemClickBehaviourOverride` is firing: the global event, the carried
     /// stack's `ItemPart` (`CarriedOnOther`), or the clicked stack's `ItemPart`
     /// (`OtherStackedOnMe`).
     pub direction: StackedOnOtherDirection,
+    /// `ItemStackedOnOtherEvent.setCancellationResult`: on a cancelled click, `true` (the start
+    /// value, as in NeoForge) when the listener's work is all of it, `false` when plain pickup
+    /// still runs.
+    pub handled: bool,
+    edits: &'a mut StackedEdits,
 }
-impl StackedOnOther {
-    /// The click `slot` (menu index) of `container`'s slot `container_slot`, with the stacks it found.
+impl<'a> StackedOnOther<'a> {
+    /// The click `slot` (menu index) of `container`'s slot `container_slot`, lending `edits`.
+    // hidden: a game-side helper, not part of the mod surface
+    #[doc(hidden)]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         player: Option<u128>,
@@ -184,9 +234,9 @@ impl StackedOnOther {
         slot: usize,
         container: usize,
         container_slot: usize,
-        primary: bool,
-        carried: Option<ItemStack>,
-        clicked: Option<ItemStack>,
+        action: ClickAction,
+        direction: StackedOnOtherDirection,
+        edits: &'a mut StackedEdits,
     ) -> Self {
         Self {
             player,
@@ -194,17 +244,69 @@ impl StackedOnOther {
             slot,
             container,
             container_slot,
-            primary,
-            carried,
-            clicked,
-            direction: StackedOnOtherDirection::Event,
+            action,
+            direction,
+            handled: true,
+            edits,
         }
     }
-
-    /// This click in the given `direction` phase.
-    pub fn with_direction(mut self, direction: StackedOnOtherDirection) -> Self {
-        self.direction = direction;
-        self
+    /// The working stacks and the number of edits, for undoing a panicking listener's edits.
+    // hidden: the generated dispatch's unwind checkpoint, not part of the mod surface
+    #[doc(hidden)]
+    pub fn checkpoint(&self) -> (Option<ItemStack>, Option<ItemStack>, usize) {
+        let edits = &*self.edits;
+        (
+            edits.carried.clone(),
+            edits.clicked.clone(),
+            edits.edits.len(),
+        )
+    }
+    /// Undo the edits made since `checkpoint`.
+    // hidden: the generated dispatch's unwind restore, not part of the mod surface
+    #[doc(hidden)]
+    pub fn rollback(
+        &mut self,
+        (carried, clicked, len): (Option<ItemStack>, Option<ItemStack>, usize),
+    ) {
+        self.edits.carried = carried;
+        self.edits.clicked = clicked;
+        self.edits.edits.truncate(len);
+    }
+    /// The stack on the cursor, `None` when it is empty (`SlotAccess.get`).
+    pub fn carried(&self) -> Option<&ItemStack> {
+        self.edits.carried.as_ref()
+    }
+    /// Put `stack` on the cursor (`SlotAccess.set`). It must be a valid stack: a known item and
+    /// a count from 1 to the item's maximum, or the click is refused.
+    pub fn set_carried(&mut self, stack: Option<ItemStack>) {
+        self.edits.carried = stack.clone();
+        self.edits.edits.push(StackedEdit::Carried(stack));
+    }
+    /// The stack in the clicked slot, `None` when it is empty (`Slot.getItem`).
+    pub fn clicked(&self) -> Option<&ItemStack> {
+        self.edits.clicked.as_ref()
+    }
+    /// Write the clicked slot directly (`Slot.set`), without the slot's take side effects:
+    /// `None` clears it. The slot's rules still answer: a write they refuse, or an invalid
+    /// stack, refuses the click.
+    pub fn set_clicked(&mut self, stack: Option<ItemStack>) {
+        self.edits.clicked = stack.clone();
+        self.edits.edits.push(StackedEdit::Clicked(stack));
+    }
+    /// Take `count` items from the clicked slot through `Slot.safeTake`, which runs the slot's
+    /// take side effects (furnace experience, `recipes_used`, crafting remainders, take hooks)
+    /// when the click applies. Returns the stack taken, or `None` (nothing recorded) when the
+    /// slot is empty, `count` is 0 or more than it holds. Only `ItemPart` overrides may take: a
+    /// global listener's take refuses the click.
+    pub fn take_clicked(&mut self, count: u32) -> Option<ItemStack> {
+        let current = self
+            .edits
+            .clicked
+            .take_if(|current| (1..=current.count()).contains(&count))?;
+        let split = current.split(count);
+        self.edits.clicked = split.remainder;
+        self.edits.edits.push(StackedEdit::Take(count));
+        split.taken
     }
 }
 /// Whether a listener keeps the original stack or replaces it.
@@ -217,48 +319,6 @@ pub enum StackResult {
     Keep,
     /// Replace the stack: `None` empties it.
     Set(Option<ItemStack>),
-}
-/// What a listener does to the clicked slot's stack in [`StackedOnOtherResult`].
-#[derive(Clone, Debug, Default, PartialEq)]
-// exhaustive: a clicked slot is left alone, directly written, or taken from
-#[derive(sunrise_mod_api_macros::Wire)]
-pub enum ClickedStackResult {
-    /// Leave the clicked slot unchanged.
-    #[default]
-    Keep,
-    /// Directly write the clicked slot (`Slot.set`): `None` clears the slot without running
-    /// `Slot.onTake` side effects.
-    Set(Option<ItemStack>),
-    /// Take `count` items from the clicked slot via `Slot.safeTake` / `Slot.onTake`, running the
-    /// slot's take side effects (such as furnace smelting experience, `recipes_used`, crafting
-    /// remainders, or potion take hooks). Valid only in `ItemPart` overrides (refused for global
-    /// listeners); `count` must be at least `1` and at most the slot's current stack size.
-    /// Two accepted takes run their effects separately, in carried-then-clicked order.
-    Take(u32),
-}
-/// A listener's answer to [`StackedOnOther`], validated once and applied once.
-///
-/// For global `Hooks::item_stacked_on_other` listeners (`StackedOnOtherDirection::Event`), setting
-/// a stack is allowed only on a cancelled click that is also `handled` (and
-/// [`ClickedStackResult::Take`] is refused); on any other answer the click is refused and nothing
-/// changes.
-///
-/// For `ItemPart::item_stacked_on_other` overrides (`CarriedOnOther` / `OtherStackedOnMe`),
-/// [`ClickedStackResult::Set`] performs a direct write (without `Slot.onTake` side effects, even
-/// when clearing a result/output slot to `None`), while [`ClickedStackResult::Take`] takes from
-/// the clicked slot through `Slot.safeTake` / `Slot.onTake`. A replaced stack must be a valid
-/// stack (a known item, a count of at least one within the item's maximum).
-#[derive(Clone, Debug, Default, PartialEq)]
-#[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct StackedOnOtherResult {
-    /// `ItemStackedOnOtherEvent.setCancellationResult`: on a cancelled click, whether the click
-    /// is done (`true`: the listener's work is all of it) or the plain pickup still runs.
-    pub handled: bool,
-    /// The cursor after the click.
-    pub carried: StackResult,
-    /// The clicked slot edit after the click.
-    pub clicked: ClickedStackResult,
 }
 /// The inputs and vanilla result of `AnvilMenu.createResult`, borrowed for
 /// the `anvil_update` callback. Edits by earlier listeners do not change these values.
