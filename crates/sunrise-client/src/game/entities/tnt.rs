@@ -1833,6 +1833,10 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn portal_blast_sulfur_cube_uses_only_positive_cooldown() {
+        run_portal_blast_sulfur_cube_uses_only_positive_cooldown();
+    }
+
+    pub(in crate::game) fn run_portal_blast_sulfur_cube_uses_only_positive_cooldown() {
         use sunrise_client::mobs::Mob;
         use sunrise_client::nether_portal::PortalState;
         let mut resources = None;
@@ -2154,6 +2158,10 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn silent_potions_keep_the_splash_without_its_sound() {
+        run_silent_potions_keep_the_splash_without_its_sound();
+    }
+
+    pub(in crate::game) fn run_silent_potions_keep_the_splash_without_its_sound() {
         on_big_stack(|| {
             use sunrise_client::projectiles::{Hit, Projectile, ProjectileKind};
             let mut resources = None;
@@ -2265,6 +2273,10 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn silent_launched_potions_and_bottles_keep_their_impact() {
+        run_silent_launched_potions_and_bottles_keep_their_impact();
+    }
+
+    pub(in crate::game) fn run_silent_launched_potions_and_bottles_keep_their_impact() {
         on_big_stack(|| {
             let mut resources = None;
             let Some(mut game) = source_silence_game(&mut resources) else {
