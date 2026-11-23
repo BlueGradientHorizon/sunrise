@@ -32,11 +32,7 @@ enum ItemTarget {
 
 /// `Level.isInValidBounds` and the resident-only `getChunkNow` / `getChunk(..., false)` query.
 fn valid_resident_position(world: &sunrise_client::world::World, [x, y, z]: [i32; 3]) -> bool {
-    // `ChunkPyramid.MAX_CHUNK_COORDINATE_VALUE`: the packed BlockPos's 26-bit horizontal
-    // bound in chunks, less its safety margin. FULL's accumulated dependency list has size 12.
-    const MAX_CHUNK: u32 = (1 << 21) - 1 - (32 + 12 + 1) * 2;
-    ((x >> 4).unsigned_abs().max((z >> 4).unsigned_abs()) <= MAX_CHUNK)
-        && world.is_loaded_at(x, y, z)
+    sunrise_client::streaming::chunk_pos_is_valid((x >> 4, z >> 4)) && world.is_loaded_at(x, y, z)
 }
 
 impl super::Containers<'_> {

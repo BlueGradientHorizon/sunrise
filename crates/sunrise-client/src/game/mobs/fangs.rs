@@ -321,7 +321,7 @@ impl Game<'_> {
         };
         let partial = alpha as f32;
         for f in &self.fangs.list {
-            if !f.started {
+            if !f.started || self.hides_as_camera(f.id) {
                 continue;
             }
             // getAnimationProgress.

@@ -503,6 +503,8 @@ pub struct Attributes {
     pub name_tag_distance: Option<f64>,
     /// `BELOW_NAME_DISTANCE` from a server attribute update.
     pub below_name_distance: Option<f64>,
+    /// `CAMERA_DISTANCE` from a server attribute update; never saved.
+    pub camera_distance: Option<f64>,
     /// The transient minecraft:baby speed modifier was taken away
     /// (`/attribute ... modifier remove`) until the next setBaby. Not
     /// saved: a load runs setBaby again.

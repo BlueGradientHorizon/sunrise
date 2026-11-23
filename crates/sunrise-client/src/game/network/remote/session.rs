@@ -278,6 +278,7 @@ impl Game<'_> {
             entity_id: 0,
             local_entity_silent: false,
             camera: None,
+            detached_camera: None,
             use_item: None,
             dimension: DimensionType::vanilla("minecraft:overworld"),
             level: "minecraft:overworld".into(),
@@ -412,6 +413,7 @@ impl Game<'_> {
             backlog_since: None,
             server_links: Vec::new(),
             debug_query: Default::default(),
+            synced_attributes: HashMap::new(),
         });
         self.set_local_mode_with_previous(sunrise_client::command::args::GameMode::Survival, None);
         // The level's TickRateManager follows the server's ticking packets.
@@ -545,6 +547,7 @@ impl Game<'_> {
             local_entity_silent: false,
             entity_id: 0,
             camera: None,
+            detached_camera: None,
             use_item: None,
             dimension: DimensionType::vanilla("minecraft:overworld"),
             level: "minecraft:overworld".into(),
@@ -679,6 +682,7 @@ impl Game<'_> {
             backlog_since: None,
             server_links: Vec::new(),
             debug_query: Default::default(),
+            synced_attributes: HashMap::new(),
         });
         self.set_local_mode_with_previous(sunrise_client::command::args::GameMode::Survival, None);
         self.clock = sunrise_client::clock::FixedStep::client();
@@ -742,6 +746,7 @@ impl Game<'_> {
         self.native_net.holds.borrow_mut().clear();
         if let Some(mut r) = self.remote.take() {
             r.session.disconnect();
+            self.clear_spectated_entity_post_effect();
             self.reset_creative_contents();
             self.refresh_creative_search_tags();
         }
@@ -973,6 +978,7 @@ impl Game<'_> {
             self.clear_client_particles();
             if let Some(r) = self.remote.as_mut() {
                 r.entities.clear();
+                r.synced_attributes.clear();
                 r.passenger_vehicles.clear();
                 r.lerps.clear();
                 r.general.clear();

@@ -27,14 +27,15 @@ impl super::commands::OtherEntity {
             return None;
         }
         Some(if let Some(settings) = self.interaction {
-            super::interactions::RemoteInteraction {
-                position: self.position,
-                width: settings.width,
-                height: settings.height,
-                response: settings.response,
-                vehicle: None,
-            }
-            .bounds()
+            let mut interaction = super::interactions::RemoteInteraction::new([
+                self.position.x,
+                self.position.y,
+                self.position.z,
+            ]);
+            interaction.width = settings.width;
+            interaction.height = settings.height;
+            interaction.response = settings.response;
+            interaction.bounds()
         } else {
             // Display and Marker have zero-sized physical dimensions.
             sunrise_core::geometry::Aabb::new(self.position, self.position)

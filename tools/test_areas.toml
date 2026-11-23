@@ -262,7 +262,7 @@ harnesses = [
   "inline_loot_reference", "inline_trim_holders", "craft_map_take", "map_*", "exploration_map_command",
   "lore_tooltip", "tooltip_display", "firework_tooltip", "orb_*", "absorption_save_reload", "suffocation",
   "squid_damage_result", "server_knockback", "elder_curse", "pick_block_data", "hotbar", "slot_range_codec",
-  "creative_mining", "creative",
+  "creative_mining", "creative", "crosshair_pick",
 ]
 lan = [
   "damage", "hazards", "pvp", "deaths", "kills", "looting", "hurt", "eat*", "xp", "effects", "absorption", "breath",

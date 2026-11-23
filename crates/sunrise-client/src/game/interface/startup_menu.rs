@@ -159,10 +159,9 @@ impl StartupMenu {
         game.physical_keys = std::mem::take(&mut self.physical_keys);
         game.clipboard = std::mem::take(&mut self.clipboard);
         game.text_selection = std::mem::take(&mut self.selection);
-        game.narrator_toast = self
-            .pending_narrator_toast
-            .take()
-            .and_then(|toast| game.add_system_toast(toast));
+        if let Some(toast) = self.pending_narrator_toast.take() {
+            game.add_system_toast(Some(super::toast_manager::SystemToastId::Narrator), toast);
+        }
         game.narration = std::mem::take(&mut self.narration);
         // Preserve an existing resource-error screen opened by start_game.
         if self.options_open {
@@ -767,11 +766,7 @@ impl Loading {
                         self.menu.win = Some((screen, Instant::now()));
                     }
                 }
-                Event::Narrator => super::narrator::update_status(
-                    self.settings.narrator(),
-                    &mut self.menu.pending_narrator_toast,
-                    Some,
-                ),
+                Event::Narrator => self.menu_narrator_status_changed(),
                 // The startup menu has no screen stack for ConfirmLinkScreen;
                 // the link opens directly, as the menu's other links do.
                 Event::AccessibilityHelp => {
@@ -801,6 +796,15 @@ impl Loading {
                     self.menu.pending = Some(PendingWorldEntry::StudioReplay(path));
                 }
             }
+        }
+    }
+
+    fn menu_narrator_status_changed(&mut self) {
+        if let Some(toast) = super::narrator::update_status(
+            self.settings.narrator(),
+            self.menu.pending_narrator_toast.as_mut(),
+        ) {
+            self.menu.pending_narrator_toast = Some(toast);
         }
     }
 
@@ -838,11 +842,7 @@ impl Loading {
         }
         let was_disabled = super::narrator::cycle_status(&mut self.settings);
         self.menu.options.layout_changed();
-        super::narrator::update_status(
-            self.settings.narrator(),
-            &mut self.menu.pending_narrator_toast,
-            Some,
-        );
+        self.menu_narrator_status_changed();
         self.save_menu_settings();
         self.menu
             .narration
