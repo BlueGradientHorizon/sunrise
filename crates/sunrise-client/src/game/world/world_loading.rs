@@ -1587,7 +1587,7 @@ mod tests {
         );
         write(
             "data/test/worldgen/feature/decoration.json",
-            r#"{"type":"minecraft:fill_layer","height":4,"state":{"Name":"minecraft:gold_block"}}"#,
+            r#"{"type":"minecraft:fill_layer","height":4,"state":{"id":"minecraft:gold_block"}}"#,
         );
         write(
             "data/test/worldgen/placed_feature/decoration.json",
