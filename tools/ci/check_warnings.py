@@ -19,10 +19,16 @@ def forward_diagnostics(stream, structured: bool, members: set[str]) -> int:
     for line in stream:
         message = None
         if structured:
-            try:
-                message = json.loads(line)
-            except json.JSONDecodeError:
-                pass
+            if '"compiler-message"' in line:
+                try:
+                    message = json.loads(line)
+                except json.JSONDecodeError:
+                    pass
+            elif line.startswith("{"):
+                try:
+                    message = json.loads(line)
+                except json.JSONDecodeError:
+                    pass
         if isinstance(message, dict) and message.get("reason") == "compiler-message":
             diagnostic = message["message"]
             warnings += diagnostic["level"] == "warning" and message["package_id"] in members
