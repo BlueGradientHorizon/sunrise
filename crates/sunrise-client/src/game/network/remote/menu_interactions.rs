@@ -875,6 +875,23 @@ impl Game<'_> {
     /// open a menu. A missing or different entity leaves the current menu alone.
     pub(in crate::game) fn remote_open_mount(&mut self, p: play::MountScreenOpen) -> Result<()> {
         use crate::game::{inventory_slots::MOD_MENU_SLOT_BASE, mount_menu::CHEST};
+        // `new SimpleContainer(getInventorySize(inventoryColumns))` is built before
+        // the entity is looked at, so it throws for any entity: a size that comes
+        // out negative, as Java's `int` wraps, ends the connection. The chest is as
+        // wide as the server says; its slots must end below the mod menus' base,
+        // and a chest that does not fit ends the connection, as the exception does.
+        let size = p.columns.wrapping_mul(3);
+        if size < 0 {
+            return self.refuse_play_payload("the mount menu's chest has a negative size");
+        }
+        let columns = size as usize / 3;
+        if columns > (MOD_MENU_SLOT_BASE - CHEST) / 3 {
+            return self.refuse_play_payload("the mount menu's chest does not fit its slot range");
+        }
+        let mut items = Vec::new();
+        if items.try_reserve_exact(size as usize).is_err() {
+            return self.refuse_play_payload("the mount menu's chest does not fit its slot range");
+        }
         let entity = p.entity as u32;
         let Some(species) = self
             .mobs
@@ -888,22 +905,12 @@ impl Game<'_> {
         if self.mod_screen.is_some() {
             self.remote_close_local();
         }
-        let columns = if sunrise_client::mobs::nautilus::is_nautilus(species) {
+        let size = if sunrise_client::mobs::nautilus::is_nautilus(species) {
             0
         } else {
-            usize::try_from(p.columns).unwrap_or(0)
+            size as usize
         };
-        // `new SimpleContainer(getInventorySize(inventoryColumns))`: the chest is as
-        // wide as the server says. Its slots must end below the mod menus' base,
-        // and a chest that does not fit ends the connection, as the handler's own
-        // exception does.
-        let mut items = Vec::new();
-        if columns > (MOD_MENU_SLOT_BASE - CHEST) / 3
-            || items.try_reserve_exact(columns * 3).is_err()
-        {
-            return self.refuse_play_payload("the mount menu's chest does not fit its slot range");
-        }
-        items.resize(columns * 3, None);
+        items.resize(size, None);
         // Install the window before opening its screen, including when a mod
         // replaces the requested screen with the player's own inventory.
         self.remote_set_menu(Some((p.container, format!("{MOUNT_MENU}{columns}"))), None);

@@ -116,28 +116,40 @@ fn a_mount_chest_beyond_the_slot_range_ends_the_connection() {
     in_own_process(
         "game::remote::tests::menu_packets_tests::a_mount_chest_beyond_the_slot_range_ends_the_connection",
         || {
-            with_game(|game| {
-                let (_reader, _writer) = connect_menu_test(game);
-                spawn_menu_test(game);
-                let horse = game.res.mob_types().get("minecraft:horse").unwrap().clone();
-                game.mobs.push(Mob::new(41, horse, Vec3::ZERO, 0.0));
-                game.handle_packet(C::MountScreenOpen(MountScreenOpen {
-                    container: 8,
-                    columns: i32::MAX,
-                    entity: 41,
-                }))
-                .unwrap();
-                assert!(game.mount_menu.opened_mob().is_none());
-                let deadline = Instant::now() + Duration::from_secs(5);
-                while game.remote.is_some() && Instant::now() < deadline {
-                    game.poll_remote().unwrap();
-                    std::thread::yield_now();
-                }
-                assert!(
-                    game.remote.is_none(),
-                    "an oversized mount chest must disconnect"
-                );
-            });
+            // `new SimpleContainer(getInventorySize(inventoryColumns))` is built
+            // before the entity is looked at: a chest that cannot be built ends the
+            // connection for a horse, a nautilus and a missing entity alike.
+            for (species, columns) in [
+                (Some("minecraft:horse"), i32::MAX),
+                (Some("minecraft:horse"), -1),
+                (Some("minecraft:nautilus"), -1),
+                (None, i32::MAX),
+            ] {
+                with_game(|game| {
+                    let (_reader, _writer) = connect_menu_test(game);
+                    spawn_menu_test(game);
+                    if let Some(species) = species {
+                        let kind = game.res.mob_types().get(species).unwrap().clone();
+                        game.mobs.push(Mob::new(41, kind, Vec3::ZERO, 0.0));
+                    }
+                    game.handle_packet(C::MountScreenOpen(MountScreenOpen {
+                        container: 8,
+                        columns,
+                        entity: 41,
+                    }))
+                    .unwrap();
+                    assert!(game.mount_menu.opened_mob().is_none());
+                    let deadline = Instant::now() + Duration::from_secs(5);
+                    while game.remote.is_some() && Instant::now() < deadline {
+                        game.poll_remote().unwrap();
+                        std::thread::yield_now();
+                    }
+                    assert!(
+                        game.remote.is_none(),
+                        "a mount chest of {columns} columns for {species:?} must disconnect"
+                    );
+                });
+            }
         },
     );
 }
