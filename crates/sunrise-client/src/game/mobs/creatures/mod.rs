@@ -5458,7 +5458,7 @@ impl Game<'_> {
                 self.creatures.bounced_followers.push((pid, followers));
             }
             if keep {
-                self.sweep_projectile_inside(&mut p);
+                self.sweep_projectile_inside(&mut p, None);
                 self.lava_mark_hurt(&mut p);
                 let to = p.position;
                 let place = pos.min(self.creatures.projectiles.len());
@@ -6528,7 +6528,7 @@ impl Game<'_> {
         };
         self.flush_arrow_events(&mut arrow);
         if keep {
-            self.sweep_projectile_inside(&mut arrow);
+            self.sweep_projectile_inside(&mut arrow, None);
             self.lava_mark_hurt(&mut arrow);
             let (aid, from, to) = (arrow.id, arrow.previous, arrow.position);
             self.reinsert_bounced_arrow(arrow);
@@ -6686,7 +6686,7 @@ impl Game<'_> {
             if deflected.arrow.is_some() {
                 self.finish_arrow_hit(deflected, EntityHit::Deflected);
             } else {
-                self.sweep_projectile_inside(&mut deflected);
+                self.sweep_projectile_inside(&mut deflected, None);
                 self.lava_mark_hurt(&mut deflected);
                 let (pid, from, to) = (deflected.id, deflected.previous, deflected.position);
                 self.reinsert_bounced_arrow(deflected);

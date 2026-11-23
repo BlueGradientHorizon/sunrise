@@ -470,7 +470,9 @@ mod tests {
             let before = format!("{item:?}");
             assert!(
                 moves
-                    .take(0, &mut item, |_| panic!("invalidated move was verified"))
+                    .take(0, &mut item, game.world.revision, |_| {
+                        panic!("invalidated move was verified")
+                    })
                     .is_none()
             );
             assert_eq!(format!("{item:?}"), before);
