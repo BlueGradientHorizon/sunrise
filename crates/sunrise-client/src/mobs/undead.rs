@@ -759,7 +759,7 @@ impl Goal for SkeletonWeapon {
         }
     }
 }
-/// RangedBowAttackGoal for skeletons.
+/// RangedBowAttackGoal for skeletons and the illusioner.
 #[derive(Clone, Debug)]
 pub struct BowAttack {
     speed: f64,
@@ -871,7 +871,13 @@ impl Goal for BowAttack {
                 let pull = m.extra.using_item;
                 if pull >= 20 {
                     m.extra.using_item = 0;
-                    perform_ranged_attack(m, who, cx, bow_power(pull));
+                    // `RangedAttackMob.performRangedAttack`: the illusioner's own or the
+                    // skeleton family's.
+                    if m.species() == Species::Illusioner {
+                        super::illusioner::perform_ranged_attack(m, who, cx, bow_power(pull));
+                    } else {
+                        perform_ranged_attack(m, who, cx, bow_power(pull));
+                    }
                     self.attack_time = self.interval_min;
                 }
             }
@@ -931,12 +937,17 @@ pub fn bow_power(ticks: i32) -> f32 {
     let t = ticks as f32 / 20.0;
     ((t * t + t * 2.0) / 3.0).min(1.0)
 }
-/// AbstractSkeleton.performRangedAttack: aim 20% above the target's lower
-/// third, speed 1.6, uncertainty 14 - 4 * difficulty. A native mod takes the shot here
-/// through `[[native.mixin]]`, where a Java mod's mixin on
-/// `AbstractSkeleton.performRangedAttack` cancels or delays it (#4678).
+/// `AbstractSkeleton.performRangedAttack`: the skeleton family's [`bow_shot`]. A native mod
+/// takes the shot here through `[[native.mixin]]`, where a Java mod's mixin on
+/// `AbstractSkeleton.performRangedAttack` cancels or delays it (#4678). The illusioner shoots
+/// the same arrow through its own `performRangedAttack`, which doesn't come through here.
 #[sunrise_mod_api_macros::replaceable]
 pub fn perform_ranged_attack(m: &mut Mob, who: Who, cx: &mut Cx, power: f32) {
+    bow_shot(m, who, cx, power);
+}
+/// The bow shot of `AbstractSkeleton.performRangedAttack` and `Illusioner.performRangedAttack`:
+/// aim 20% above the target's lower third, speed 1.6, uncertainty 14 - 4 * difficulty.
+pub(super) fn bow_shot(m: &mut Mob, who: Who, cx: &mut Cx, power: f32) {
     let Some(t) = cx.w.target_info(who) else {
         return;
     };
