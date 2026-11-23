@@ -86,6 +86,23 @@ fn cells_key_on_their_corner_in_sections() {
     assert_eq!(cell(1 << 20, 0, 19).key(), None);
 }
 
+#[test]
+fn records_refuse_cells_narrower_than_a_section() {
+    let mesh = Mesh {
+        cell: Cell {
+            x: 0,
+            z: 0,
+            size_log2: 3,
+        },
+        page: 0,
+        start: 0,
+        quads: 1,
+        sides: &Sides::unsorted(1),
+        bounds: [Vec3::ZERO, Vec3::ONE],
+    };
+    assert!(SourcedGpu::record(&mesh, false).is_none());
+}
+
 /// A mesh's box is its bounds rounded outward in the cell's units.
 #[test]
 fn boxes_round_outward_in_the_cells_units() {

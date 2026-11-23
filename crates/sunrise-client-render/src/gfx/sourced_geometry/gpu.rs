@@ -48,7 +48,7 @@ use glam::{DVec3, Vec3};
 use std::{collections::BTreeMap, time::Instant};
 
 /// Cells are at least a section wide (a record's key is its corner in sections), and a box's
-/// unit is a sixteenth of one's width: `Record::units` holds 15 bits of shift.
+/// unit is a sixteenth of one's width: `Record::units` holds four bits of shift.
 const MIN_SIZE_LOG2: u8 = 4;
 const MAX_SIZE_LOG2: u8 = MIN_SIZE_LOG2 + 15;
 /// A box's step along y, in blocks, as a shift (`cell_box`): codes reach -128 to 368, past the
@@ -187,8 +187,9 @@ impl SourcedGpu {
     /// take (the CPU draws it).
     pub fn record(mesh: &Mesh, fading: bool) -> Option<Record> {
         let cell = mesh.cell;
+        let key = cell.key()?;
         let boxed = cell_box(mesh.bounds, cell);
-        let record = Record::new(cell.key()?, mesh.page, mesh.start, mesh.quads, boxed);
+        let record = Record::new(key, mesh.page, mesh.start, mesh.quads, boxed);
         Some(
             record
                 .facing(mesh.sides)
