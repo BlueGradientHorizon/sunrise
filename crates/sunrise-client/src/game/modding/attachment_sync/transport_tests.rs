@@ -498,6 +498,23 @@ fn attachment_sync_follows_the_negotiated_route() {
             discard(game, true);
             wait_window(game, &value_key, None);
 
+            // A replica may have a local default even though the server lost that key.
+            // The server's map still holds the other attachments from this route.
+            assert_eq!(value_key.get(game, Holder::Level, |value| *value), Ok(0));
+            assert_eq!(window_value(game, &value_key), Some(0));
+            let absent = value_key.clone();
+            game.integrated
+                .as_ref()
+                .unwrap()
+                .call(move |server| {
+                    server.storage_scope(|server, _| {
+                        assert_eq!(absent.remove(server, Holder::Level), Ok(None));
+                        ((), true)
+                    });
+                })
+                .unwrap();
+            wait_window(game, &value_key, None);
+
             let holder = game
                 .integrated
                 .as_ref()

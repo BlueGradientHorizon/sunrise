@@ -453,10 +453,18 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
         let Some(map) = self.read_attachments(holder)? else {
             return Ok(());
         };
-        if map.entry(namespace, name)?.is_some() {
-            let map = self.attachments(holder, AttachmentAccess::Existing)?;
-            Attachments::discard(map, holder, key);
+        let has_value = map.entry(namespace, name)?.is_some();
+        if has_value {
+            Attachments::discard(
+                self.attachments(holder, AttachmentAccess::Existing)?,
+                holder,
+                key,
+            );
             self.attachment_changed(holder, true, key.policy.sync);
+        } else if map.allocated && key.policy.sync {
+            self.attachments(holder, AttachmentAccess::Existing)?
+                .record_sync(holder, (namespace.into(), name.into()), key.sync_release);
+            self.attachment_changed(holder, false, true);
         }
         Ok(())
     }
@@ -467,11 +475,9 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
     ) -> Result<(), AttachmentError> {
         self.validate_attachment_key(key)?;
         let (namespace, name) = key.id();
-        if self.read_attachments(holder)?.is_some() {
-            self.attachments(holder, AttachmentAccess::Existing)?
-                .record_sync(holder, (namespace.into(), name.into()), key.sync_release);
-            self.attachment_changed(holder, false, true);
-        }
+        self.attachments(holder, AttachmentAccess::Existing)?
+            .record_sync(holder, (namespace.into(), name.into()), key.sync_release);
+        self.attachment_changed(holder, false, true);
         Ok(())
     }
 }
@@ -884,10 +890,11 @@ impl<T: Send + Sync + 'static> AttachmentOps<'_, T> {
     where
         T: Clone,
     {
-        if !self.has(store, holder)? {
-            return Ok(None);
-        }
-        let value = self.existing(store, holder, T::clone);
+        let value = if self.has(store, holder)? {
+            self.existing(store, holder, T::clone)
+        } else {
+            Ok(None)
+        };
         store.discard(holder, &self.key())?;
         value
     }
@@ -1359,6 +1366,8 @@ impl OrderedAttachmentSync {
 #[derive(Default)]
 // no wire: host-local canonical map and publication authority; only saved values cross the boundary.
 pub struct Attachments {
+    // An allocated holder map remains allocated even after removing its last value.
+    allocated: bool,
     entries: BTreeMap<index::AttachmentKey, Arc<AttachmentEntry>>,
     // Keep malformed or otherwise unrecognized NBT exactly as it was read.
     // Empty holders need no shared allocation.
@@ -1374,6 +1383,7 @@ pub struct Attachments {
 impl Clone for Attachments {
     fn clone(&self) -> Self {
         Self {
+            allocated: self.allocated,
             entries: self.entries.clone(),
             raw: self.raw.clone(),
             pending: self.pending.clone(),
@@ -1497,7 +1507,10 @@ impl Attachments {
     // replaced entry until after publication releases the index lock.
     fn write_entry(&mut self, key: &index::AttachmentKey, entry: Option<Arc<AttachmentEntry>>) {
         let previous = match entry {
-            Some(entry) => self.entries.insert(key.clone(), entry),
+            Some(entry) => {
+                self.allocated = true;
+                self.entries.insert(key.clone(), entry)
+            }
             None => self.entries.remove(key),
         };
         if let Some(registration) = &self.registration {
@@ -1524,6 +1537,7 @@ impl Attachments {
                 }
             }
         }
+        result.allocated = !result.entries.is_empty();
         result.raw = (!raw.is_empty()).then(|| Arc::new(raw));
         result
     }
@@ -1657,6 +1671,7 @@ impl Attachments {
                     .insert(key.clone(), Arc::new(AttachmentEntry::raw(encoded)));
             }
         }
+        copy.allocated = !copy.entries.is_empty();
         copy
     }
     /// Copy opted-in values through their disk encoding for a player respawn.
@@ -2706,6 +2721,39 @@ mod tests {
         );
         assert_eq!(SYNCED.get(&mut map, Holder::Level), Ok(7));
         assert!(map.take_sync_changes(project_standard).is_empty());
+    }
+    #[test]
+    fn removing_a_missing_synced_key_clears_a_replica_default_only_from_an_allocated_map() {
+        let holder = Holder::Level;
+        let mut server = Attachments::default();
+        let mut replica = Attachments::default();
+        assert_eq!(SYNCED.get(&mut replica, holder), Ok(7));
+        assert_eq!(SYNCED.remove(&mut server, holder), Ok(None));
+        assert!(server.take_sync_changes(project_standard).is_empty());
+
+        COUNTER.set(&mut server, holder, 4).unwrap();
+        assert_eq!(SYNCED.remove(&mut server, holder), Ok(None));
+        let changes = server.take_sync_changes(project_standard);
+        assert_eq!(
+            changes,
+            [AttachmentSync {
+                namespace: "test".into(),
+                name: "synced".into(),
+                value: None
+            }]
+        );
+        for change in changes {
+            replica.apply_sync(change);
+        }
+        assert_eq!(SYNCED.get_existing(&mut replica, holder), Ok(None));
+
+        // Removing the last unrelated value does not deallocate the server's map.
+        assert_eq!(COUNTER.remove(&mut server, holder), Ok(Some(4)));
+        assert_eq!(SYNCED.remove(&mut server, holder), Ok(None));
+        assert_eq!(
+            server.take_sync_changes(project_standard),
+            [change("synced", None)]
+        );
     }
     #[test]
     fn unsynced_types_report_no_changes() {
