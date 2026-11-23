@@ -1676,7 +1676,7 @@ impl MeleeAttack {
     }
     /// `FoxMeleeAttackGoal.checkAndPerformAttack`, which replaces the base method without
     /// calling it: when `canPerformAttack` holds, `resetAttackCooldown`, the strike, then
-    /// the bite `sound`. Sunrise's fox swings as well, as it did before this was split out.
+    /// the bite `sound`. It has no `swingForAttack`: a fox's strike doesn't swing (#4733).
     fn fox_check_and_perform_attack(
         &mut self,
         sound: &'static str,
@@ -1687,7 +1687,6 @@ impl MeleeAttack {
     ) {
         if self.can_perform_attack(m, who, t, cx.w) {
             self.reset_attack_cooldown(m);
-            m.swing();
             super::ai::do_hurt_target(m, who, cx);
             let at = [m.position.x, m.position.y, m.position.z];
             cx.events.push(MobEvent::Sound(sound, at, 1.0, 1.0));
@@ -4725,6 +4724,41 @@ mod check_and_perform_attack_tests {
         });
         assert!(ran, "vanilla data is missing");
         assert_eq!(bites, [1, 0]);
+    }
+
+    /// `FoxMeleeAttackGoal.checkAndPerformAttack` has no `swingForAttack`: a fox's strike
+    /// resets the cooldown, hurts its target and bites, but doesn't swing (#4733).
+    #[test]
+    #[ignore = "daily"]
+    fn a_foxs_strike_hurts_and_bites_without_a_swing() {
+        let mut outcome = None;
+        let ran = with_test_world(&[], |w, types| {
+            let kind = Arc::new(types.types["minecraft:fox"].clone());
+            let mut world = w.clone();
+            world.player = Some(test_player(Vec3::new(1.5, 64.0, 0.5)));
+            let mut m = Mob::new(1, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);
+            m.ai.target = Some(Who::Player);
+            let mut goal = MeleeAttack::new(1.2, true).bite("entity.fox.bite");
+            let mut fixture = crate::health::TestLevel::new(0);
+            let mut events = Vec::new();
+            let mut cx = Cx {
+                w: &world,
+                level: &mut fixture.level(),
+                events: &mut events,
+            };
+            goal.tick(&mut m, &mut cx);
+            let hits = events
+                .iter()
+                .filter(|e| matches!(e, MobEvent::AttackPlayer(..)))
+                .count();
+            let bites = events
+                .iter()
+                .filter(|e| matches!(e, MobEvent::Sound("entity.fox.bite", ..)))
+                .count();
+            outcome = Some((goal.until_attack, hits, bites, m.ai.swinging));
+        });
+        assert!(ran, "prepared mob resources required");
+        assert_eq!(outcome, Some((20, 1, 1, false)));
     }
 }
 
