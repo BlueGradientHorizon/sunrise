@@ -19,9 +19,11 @@ cargo doc -p sunrise-mod-api --no-deps --open
 | `Host`, `ServerHost`, `ClientHost` | What a hook can ask of the game, split by side |
 | `Registrar` | What a mod declares in `Hooks::register`: keys, Parts, settings |
 | `AttachmentType` | Data a mod keeps on objects ([Attachments](../concepts/attachments.md)) |
-| `Wire` | Values that cross between the game and a WebAssembly mod ([Wire types](../concepts/wire-types.md)) |
+| `Wire` | Encoding typed payloads and other API data ([Wire types](../concepts/wire-types.md)) |
 
-An item marked **Not on wasm** is unavailable to [WebAssembly mods](../how-to/wasm-mods.md).
 
-[Hook notes](hook-notes.md) holds longer explanations that go with groups of hooks, and
-[NeoForge counterparts](neoforge-counterparts.md) lists each hook's NeoForge event or method.
+[API reference](api-reference.md) indexes the catalog-backed `Hooks` and Part hooks and the
+area-declared `Host` / `ServerHost` / `ClientHost` methods; build the rustdoc above for the
+complete traits and types. [Hook notes](hook-notes.md) holds longer explanations that go with
+groups of hooks, and [NeoForge counterparts](neoforge-counterparts.md) lists each hook's NeoForge
+event or method.

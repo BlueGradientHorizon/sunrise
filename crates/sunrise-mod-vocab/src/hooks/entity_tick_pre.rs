@@ -18,8 +18,14 @@ pub trait Hooks {
     /// Push an ID from `entities` onto `canceled` to skip that entity's observed tick work and
     /// suppress its Post. IDs outside this call are ignored; repeated IDs count once. A mod
     /// using these hooks also opts in through `entity_tick_listened`.
+    /// Removing a general entity during its own Pre skips its tick and Post and dismounts its
+    /// passengers unless dismount is vetoed. An eligible former passenger can still tick as a
+    /// root in this pass if it has not ticked and its join-order slot is still ahead. An
+    /// already-passed slot is not revisited.
     /// Version 3 expands the version 2 coverage without changing the event signature.
     #[hook(
+        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_entity_tick_pre",
+        dispatch = "flat",
         side = "both",
         version = 3,
         contract = "collect",
@@ -27,5 +33,5 @@ pub trait Hooks {
         neoforge = "EntityTickEvent.Pre",
         cancellable = true
     )]
-    fn entity_tick_pre();
+    fn entity_tick_pre(dimension: &str, entities: &[u32], kinds: &[&str], canceled: &mut Vec<u32>);
 }

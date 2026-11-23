@@ -8,8 +8,11 @@ Registration happens once per mod load, with one handler per id and a read-only
 `RegistrationContext`. Any mod may register an unused ID in any namespace:
 mod B can register `a:x` while mod A registers `a:y`. Built-in IDs such as
 `neoforge:always`, `neoforge:never` and `neoforge:mod_loaded` cannot be replaced.
-A duplicate ID names both mods in the error. A registration error refuses
-admission even if you ignore it.
+A duplicate ID names both mods in the error. A completed listener's registration error
+refuses admission even if the listener ignores it. A
+[failed registration callback](../../concepts/load-phases.md#registration-and-setup) publishes
+neither handlers nor preparation errors.
+Later listeners can still register those IDs.
 
 ```rust,ignore
 struct Flag;
@@ -38,14 +41,12 @@ A recipe can use the registered name alongside the built-in conditions:
 The handler receives a borrowed raw JSON value: the condition's object without
 `type`. It reads and validates its own arguments, retaining JSON booleans,
 numbers, strings, lists and objects. Invalid mod input must return
-`ConditionError`; handlers must not panic while reading it. `ConditionError`
-has explicit Wire encoding. Native and WebAssembly registrants cross the same generated route.
+`ConditionError`; handlers must not panic while reading it.
 Startup data loaders and the server's candidate data reload both use registered
 handlers before entries become visible. Results are retained for each entry and
 condition payload in that load, so repeated readers do not call the handler
 again. A new load reevaluates the entry. Handlers must not mutate live data.
-A native handler panic becomes a named load error ("handler panicked"). A wasm
-trap follows the runtime's normal failure policy.
+A handler panic becomes a named load error ("handler panicked").
 
 `true` loads the entry; `false` omits it, without exposing a lower pack's
 version. The loader handles callback errors and unknown condition types as
