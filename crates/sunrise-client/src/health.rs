@@ -1361,6 +1361,8 @@ pub static NO_ATTACK: Attack = Attack {
     projectile_weapon: None,
     player_uuid: None,
     attacker_uuid: None,
+    enchantment_attacker: None,
+    enchantment_direct: None,
     held: [None, None],
 };
 /// Whether vanilla's factory for `damage_type` passes the projectile as
