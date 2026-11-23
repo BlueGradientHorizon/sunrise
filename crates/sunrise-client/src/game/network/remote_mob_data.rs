@@ -73,7 +73,11 @@ pub(super) fn apply(
             // LivingEntity.DATA_LIVING_ENTITY_FLAGS: using an item 1, in the
             // off hand 2. Bit 0 starts and stops the use; the client ticks the
             // count itself (a bow's pull follows it). stopUsingItem clears
-            // only bit 0, so a stopped off-hand use arrives as 2.
+            // only bit 0, so a stopped off-hand use arrives as 2. A witch's
+            // drink is not a use: its count is her own (Witch.DATA_USING_ITEM).
+            (8, Value::Byte(flags)) if species == Species::Witch => {
+                m.extra.using_off_hand = flags & 2 != 0;
+            }
             (8, Value::Byte(flags)) => {
                 m.extra.using_off_hand = flags & 2 != 0;
                 if flags & 1 == 0 {
@@ -354,6 +358,8 @@ pub(super) fn apply(
             // Pillager.IS_CHARGING_CROSSBOW: the charge pose (Raider's
             // IS_CELEBRATING takes 16).
             (Species::Pillager, 17, Value::Bool(charging)) => m.extra.flag = *charging,
+            // Witch.DATA_USING_ITEM: `isDrinkingPotion` (after Raider's IS_CELEBRATING).
+            (Species::Witch, 17, Value::Bool(drinking)) => m.extra.flag = *drinking,
             // HappyGhast.STAYS_STILL (after AgeableMob's two and IS_LEASH_HOLDER):
             // `isOnStillTimeout` on a client, which keeps the ghast solid to
             // the player (`canBeCollidedWith`).
@@ -880,10 +886,27 @@ pub(in crate::game) mod tests {
     }
 
     fn celebration_trace(kind: &str, sequence: &[bool]) -> Vec<(Vec<bool>, bool)> {
-        use sunrise_client::{
-            lan::entity::{Entities, EntityState, Riding, Tracker, Viewer},
-            mobs::raider,
-        };
+        use sunrise_client::mobs::raider;
+        raider_flag_trace(
+            kind,
+            16,
+            |m, on| raider::state_mut(m).celebrating = on,
+            |m| raider::state(m).is_some_and(|state| state.celebrating),
+            sequence,
+        )
+    }
+
+    /// A raider's boolean at `index`, set on the host by `set` for each step of `sequence`,
+    /// sent by `mob_raider_meta` through the tracker and the wire to a client copy: per step,
+    /// what went out at `index` and what the client then reads (`read`).
+    fn raider_flag_trace(
+        kind: &str,
+        index: u8,
+        set: impl Fn(&mut Mob, bool),
+        read: impl Fn(&Mob) -> bool,
+        sequence: &[bool],
+    ) -> Vec<(Vec<bool>, bool)> {
+        use sunrise_client::lan::entity::{Entities, EntityState, Riding, Tracker, Viewer};
         use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
         let name = format!("minecraft:{kind}");
         let mut server = fixture_mob(&name);
@@ -900,7 +923,7 @@ pub(in crate::game) mod tests {
         };
         let mut trace = Vec::new();
         for &on in sequence {
-            raider::state_mut(&mut server).celebrating = on;
+            set(&mut server, on);
             state.meta.clear();
             state.defaults.clear();
             super::super::lan::mob_raider_meta(&server, &mut state.meta, &mut state.defaults);
@@ -932,8 +955,8 @@ pub(in crate::game) mod tests {
                 let id = reader.varint().unwrap();
                 if let Ok(Clientbound::SetEntityData(data)) = Clientbound::decode(id, reader.rest())
                 {
-                    for (index, serializer, value) in &data.values {
-                        if *index == 16 {
+                    for (at, serializer, value) in &data.values {
+                        if *at == index {
                             assert_eq!(*serializer, s::BOOLEAN);
                             let Value::Bool(on) = value else {
                                 panic!("boolean metadata");
@@ -944,12 +967,51 @@ pub(in crate::game) mod tests {
                     let _ = super::apply(&mut client, &data.values, &Builtin::default(), 99);
                 }
             }
-            trace.push((
-                sent,
-                raider::state(&client).is_some_and(|state| state.celebrating),
-            ));
+            trace.push((sent, read(&client)));
         }
         trace
+    }
+
+    /// Witch.DATA_USING_ITEM (17): her drink goes out on her own flag, the end
+    /// of it too, and nothing repeats. Her living flags would start a use of
+    /// the potion on a client, so they don't change her count there.
+    #[test]
+    fn a_witchs_drink_crosses_the_tracker_on_her_own_flag() {
+        let drink = |m: &mut Mob, on: bool| {
+            m.extra.flag = on;
+            m.extra.using_item = if on { 32 } else { 0 };
+        };
+        let sequence = [false, true, true, false, true, false];
+        let expected = vec![
+            (vec![], false),
+            (vec![true], true),
+            (vec![], true),
+            (vec![false], false),
+            (vec![true], true),
+            (vec![false], false),
+        ];
+        let trace = raider_flag_trace("witch", 17, drink, |m| m.extra.flag, &sequence);
+        assert_eq!(trace, expected);
+
+        let mut client = fixture_mob("minecraft:witch");
+        for flags in [1, 0, 1] {
+            let _ = super::apply(
+                &mut client,
+                &[(8, s::BYTE, Value::Byte(flags))],
+                &Builtin::default(),
+                99,
+            );
+            assert_eq!(client.extra.using_item, 0, "living flags {flags}");
+        }
+        // A pillager's 17 is its crossbow charge, still.
+        let mut pillager = fixture_mob("minecraft:pillager");
+        let _ = super::apply(
+            &mut pillager,
+            &[(17, s::BOOLEAN, Value::Bool(true))],
+            &Builtin::default(),
+            99,
+        );
+        assert!(pillager.extra.flag);
     }
 
     #[test]
@@ -1668,3 +1730,6 @@ pub(in crate::game) mod tests {
 #[cfg(test)]
 #[path = "remote_mob_data/pet_pose_meta_tests.rs"]
 mod pet_pose_meta_tests;
+#[cfg(test)]
+#[path = "remote_mob_data/witch_drink_meta_tests.rs"]
+mod witch_drink_meta_tests;

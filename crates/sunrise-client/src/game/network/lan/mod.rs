@@ -370,8 +370,12 @@ pub(super) fn mob_meta(
     defaults.push((2, serializer::OPTIONAL_COMPONENT, Value::OptText(None)));
     defaults.push((3, serializer::BOOLEAN, Value::Bool(false)));
     // LivingEntity.DATA_LIVING_ENTITY_FLAGS: using an item 1, in the off
-    // hand 2 (a skeleton draws its bow, a witch raises her potion).
-    let using = i8::from(m.extra.using_item > 0) | i8::from(m.extra.using_off_hand) << 1;
+    // hand 2 (a skeleton draws its bow). Only startUsingItem and
+    // stopUsingItem write them: a witch's drink is her own count
+    // (`Witch.usingTime`) and flag (`Witch.DATA_USING_ITEM`, `mob_raider_meta`),
+    // so her living flags stay 0 while she drinks.
+    let uses_item = m.extra.using_item > 0 && m.species() != Species::Witch;
+    let using = i8::from(uses_item) | i8::from(m.extra.using_off_hand) << 1;
     if using != 0 {
         meta.push((8, serializer::BYTE, Value::Byte(using)));
     }
@@ -986,7 +990,9 @@ fn mob_effects(m: &Mob) -> impl Iterator<Item = ShownEffect> + '_ {
     })
 }
 
-/// Raider.IS_CELEBRATING: also list false so tracking sends the end of a celebration.
+/// Raider.IS_CELEBRATING, and a witch's Witch.DATA_USING_ITEM (17, after it):
+/// `isDrinkingPotion`, set for the drink and cleared when it is done. Both also
+/// list false, so tracking sends the end of a celebration or a drink.
 pub(super) fn mob_raider_meta(
     m: &Mob,
     meta: &mut Vec<(u8, i32, Value)>,
@@ -998,6 +1004,12 @@ pub(super) fn mob_raider_meta(
             meta.push((16, serializer::BOOLEAN, Value::Bool(true)));
         }
         defaults.push((16, serializer::BOOLEAN, Value::Bool(false)));
+    }
+    if m.species() == Species::Witch {
+        if m.extra.flag {
+            meta.push((17, serializer::BOOLEAN, Value::Bool(true)));
+        }
+        defaults.push((17, serializer::BOOLEAN, Value::Bool(false)));
     }
 }
 
