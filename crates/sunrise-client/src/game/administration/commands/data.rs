@@ -2546,7 +2546,7 @@ mod mod_block_entity_tests;
 
 #[cfg(test)]
 #[path = "data/fire_tests.rs"]
-mod fire_tests;
+pub(in crate::game) mod fire_tests;
 
 #[cfg(test)]
 mod residency_tests;

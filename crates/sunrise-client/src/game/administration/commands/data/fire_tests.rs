@@ -8,10 +8,25 @@ use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::ChunkPos;
 
-const WITNESS_26_3: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../tools/witness/26.3/entity_fire_ticks.tsv"
-));
+fn read_witness() -> String {
+    let raw = std::env::var_os("SUNRISE_ENTITY_FIRE_TICKS_WITNESS").unwrap_or_else(|| {
+        panic!(
+            "SUNRISE_ENTITY_FIRE_TICKS_WITNESS is unset; run through tools/test_entity_fire_ticks_parity.py, which records the 26.3 witness"
+        )
+    });
+    let path = std::path::PathBuf::from(raw);
+    let file = if path.is_dir() {
+        path.join("entity_fire_ticks.tsv")
+    } else {
+        path
+    };
+    std::fs::read_to_string(&file).unwrap_or_else(|err| {
+        panic!(
+            "failed to read {} (run through tools/test_entity_fire_ticks_parity.py): {err}",
+            file.display()
+        )
+    })
+}
 
 struct WitnessRow<'a> {
     kind: &'a str,
@@ -63,19 +78,19 @@ fn tick_fire_entities(game: &mut crate::game::Game<'_>) {
     game.tick_projectiles_now().unwrap();
 }
 
-fn parse_witness_26_3() -> Vec<WitnessRow<'static>> {
+fn parse_witness_26_3(witness: &str) -> Vec<WitnessRow<'_>> {
     assert!(
-        WITNESS_26_3.starts_with("# vanilla 26.3 witness "),
+        witness.starts_with("# vanilla 26.3 witness "),
         "witness must be tagged with vanilla 26.3"
     );
-    let mut lines = WITNESS_26_3
+    let mut lines = witness
         .lines()
         .filter(|line| !line.is_empty() && !line.starts_with('#'));
     assert_eq!(
         lines.next(),
         Some("kind\tinitial_fire\tnbt\tticks\tstate\tfire")
     );
-    let rows: Vec<WitnessRow<'static>> = lines
+    let rows: Vec<WitnessRow<'_>> = lines
         .map(|line| {
             let parts: Vec<&str> = line.split('\t').collect();
             assert_eq!(parts.len(), 6, "malformed 26.3 witness row: {line}");
@@ -99,11 +114,17 @@ fn parse_witness_26_3() -> Vec<WitnessRow<'static>> {
 
 /// Vanilla 26.3 witness parity (#2683): compare Fire ticks, numeric tag decoding,
 /// save/reload, swept fire contact, lava first-tick gating, silence/order, and
-/// tracked fire flags against the recorded 26.3 oracle output.
+/// tracked fire flags against the 26.3 oracle output recorded by
+/// `tools/test_entity_fire_ticks_parity.py`.
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_entity_fire_ticks_parity.py"]
 fn fire_changes_on_eyes_fangs_spawners_clouds_and_bullets() {
-    let rows = parse_witness_26_3();
+    run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullets();
+}
+
+pub(in crate::game) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullets() {
+    let witness = read_witness();
+    let rows = parse_witness_26_3(&witness);
     let total_rows = rows.len();
     with_game(|game| {
         prepare_entity_ticking_neighborhood(game, ChunkPos::new(0, 0));

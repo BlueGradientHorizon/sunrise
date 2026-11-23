@@ -2,18 +2,24 @@
 """Compare Fire ticking on eyes, fangs, ominous spawners, clouds and shulker bullets against vanilla 26.3."""
 import argparse
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
 
 try:
+    from . import lab, test_rust_parity as base
     from .command_exec_corpus import cmd, setup
 except ImportError:
+    import lab
+    import test_rust_parity as base
     from command_exec_corpus import cmd, setup
 
 
-WITNESS_PATH = Path('tools/witness/26.3/entity_fire_ticks.tsv')
+TEST = 'game::commands::data::fire_tests::fire_changes_on_eyes_fangs_spawners_clouds_and_bullets'
+ORACLE = lab.ROOT / 'mods/sunrise/src/test/java/dev/sunriselab/parity/VanillaCommandExecOracle.java'
 
 # (entity_type, extra_nbt) for each of the five #2683 entity types.
 ENTITIES = (
@@ -178,9 +184,14 @@ def parse_vanilla_rows(vanilla_jsonl: Path):
     return rows
 
 
-def format_witness(rows):
+def java_version_string():
+    result = subprocess.run(['java', '-version'], capture_output=True, text=True, check=True)
+    return (result.stderr or result.stdout).strip().splitlines()[0]
+
+
+def format_witness(rows, version='26.3'):
     lines = [
-        '# vanilla 26.3 witness recorded via tools/test_entity_fire_ticks_parity.py --record',
+        f'# vanilla {version} witness recorded via tools/test_entity_fire_ticks_parity.py',
         '# oracle: VanillaCommandExecOracle (tools/test_command_exec_parity.py --reference-only)',
         'kind\tinitial_fire\tnbt\tticks\tstate\tfire',
     ]
@@ -194,11 +205,14 @@ def main():
     parser.add_argument('--binary', type=Path)
     parser.add_argument('--prepare', action='store_true')
     parser.add_argument('--reference-only', action='store_true')
-    parser.add_argument('--record', action='store_true', help='run vanilla 26.3 oracle only and write the witness TSV')
+    parser.add_argument('--record', '--record-only', dest='record', action='store_true',
+                        help='run vanilla 26.3 oracle only and write the witness TSV into .local')
+    parser.add_argument('--resources', type=Path,
+                        default=Path(os.environ.get('SUNRISE_TEST_RESOURCES', lab.RESOURCES)))
     parser.add_argument('--work-dir', type=Path)
     args = parser.parse_args()
-    root = Path(__file__).resolve().parents[1]
-    work = (args.work_dir or root / '.local' / 'entity-fire-ticks-parity').resolve()
+    root = lab.ROOT
+    work = (args.work_dir or lab.LOCAL / 'entity-fire-ticks-parity').resolve()
     work.mkdir(parents=True, exist_ok=True)
     cases_path = work / 'groups.json'
     cases_path.write_text(json.dumps(groups()), encoding='utf-8')
@@ -213,16 +227,55 @@ def main():
     rc = subprocess.run(run, cwd=root).returncode
     if rc:
         return rc
-    rendered = format_witness(parse_vanilla_rows(work / 'vanilla.jsonl'))
-    target = root / WITNESS_PATH
-    if args.record:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(rendered, encoding='utf-8')
-        print(f'Recorded {len(rendered.splitlines()) - 3} vanilla 26.3 witness rows to {WITNESS_PATH}')
-    else:
-        recorded = target.read_text(encoding='utf-8')
-        if rendered != recorded:
-            sys.exit(f'Vanilla 26.3 output differs from committed witness {WITNESS_PATH}; re-run with --record')
+    lock, jars, _ = base.verify_artifacts()
+    version = lock['minecraft']['version']
+    witness_dir = lab.LOCAL / 'witness' / version / 'entity_fire_ticks'
+    witness_dir.mkdir(parents=True, exist_ok=True)
+    witness_path = witness_dir / 'entity_fire_ticks.tsv'
+    rendered = format_witness(parse_vanilla_rows(work / 'vanilla.jsonl'), version)
+    witness_path.write_text(rendered, encoding='utf-8')
+    harness_path = Path(__file__).resolve()
+    lab.write_json(witness_dir / 'meta.json', {
+        'game_version': version,
+        'java_major': lock['minecraft']['java_major'],
+        'java_version': java_version_string(),
+        'harness': 'tools/test_entity_fire_ticks_parity.py',
+        'oracle': 'dev.sunriselab.parity.VanillaCommandExecOracle',
+        'witness_env': 'SUNRISE_ENTITY_FIRE_TICKS_WITNESS',
+        'command': run,
+        'input_hashes': {
+            'research-lock.json': lab.digest(lab.LOCK, 'sha256'),
+            'server.jar': lab.digest(jars['server'], 'sha256'),
+            ORACLE.relative_to(root).as_posix(): lab.digest(ORACLE, 'sha256'),
+            harness_path.relative_to(root).as_posix(): lab.digest(harness_path, 'sha256'),
+        },
+        'outputs': {
+            witness_path.name: {
+                'sha256': lab.digest(witness_path, 'sha256'),
+                'bytes': witness_path.stat().st_size,
+            },
+        },
+    })
+    if args.record or args.reference_only:
+        print(f'Recorded {len(rendered.splitlines()) - 3} vanilla {version} witness rows to {witness_path}')
+        return 0
+    with tempfile.TemporaryDirectory(prefix='sunrise-entity-fire-ticks-') as tmp:
+        scratch = Path(tmp)
+        homes = {k: scratch / k for k in ('SUNRISE_HOME', 'SUNRISE_LAUNCHER_HOME', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME')}
+        env = lab.game_env(os.environ, **homes, RUST_MIN_STACK='16777216')
+        env['SUNRISE_TEST_RESOURCES'] = str(args.resources.resolve())
+        env['SUNRISE_ENTITY_FIRE_TICKS_WITNESS'] = str(witness_path.resolve())
+        binary = lab.parity_fixtures()
+        log_path = work / 'rust-fixture.log'
+        with log_path.open('w', encoding='utf-8') as log:
+            ran = subprocess.run(
+                [str(binary), TEST, '--exact', '--ignored', '--nocapture'],
+                cwd=scratch, env=env, timeout=3600, stdout=log, stderr=subprocess.STDOUT,
+            )
+        if ran.returncode or '1 passed; 0 failed' not in log_path.read_text(encoding='utf-8'):
+            tail = log_path.read_text(encoding='utf-8', errors='replace')[-3000:]
+            sys.exit(f'{TEST} failed against {witness_path}; see {log_path}\n{tail}')
+    print(f'Entity fire ticks parity passed ({len(rendered.splitlines()) - 3} witness rows against {witness_path})')
     return 0
 
 
