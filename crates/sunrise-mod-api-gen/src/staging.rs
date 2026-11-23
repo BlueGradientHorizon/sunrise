@@ -173,12 +173,19 @@ mod tests {
         let marked = format!(
             r#"
 {marker}
-fn listed(value: u32) -> u32 {{ imported(value) }}
+fn listed(value: u32) -> u32 {{ child::deep(imported(value)) - 1 + pick(0) }}
 include!("fragments/outer.rs");
 #[cfg(unix)]
 include!("fragments/unix.rs");
 #[cfg_attr(unix, cfg(not(unix)))]
 include!("fragments/other.rs");
+mod child {{ include!("fragments/child.rs"); }}
+#[cfg(feature = "fast")]
+include!("fragments/fast.rs");
+#[cfg(not(feature = "fast"))]
+include!("fragments/slow.rs");
+fn fast_impl(value: u32) -> u32 {{ value }}
+fn slow_impl(value: u32) -> u32 {{ value + 1000 }}
 "#
         );
         for root in [&pristine, &staged] {
@@ -205,6 +212,24 @@ include!("fragments/other.rs");
                 root,
                 &lower_src.join("fragments/nested/unix.rs"),
                 "fn unix_only() {}\nuse std::path::Path as PlatformPath;",
+            );
+            // A helper only the inline child's fragment declares, visible to its parent.
+            write(
+                root,
+                &lower_src.join("fragments/child.rs"),
+                "pub(super) fn deep(value: u32) -> u32 { value + 1 }",
+            );
+            // The lower crate is built with `fast`, the patch without: the copy must still
+            // call what the prebuilt crate's import chose.
+            write(
+                root,
+                &lower_src.join("fragments/fast.rs"),
+                "use self::fast_impl as pick;",
+            );
+            write(
+                root,
+                &lower_src.join("fragments/slow.rs"),
+                "use self::slow_impl as pick;",
             );
             write(
                 root,
@@ -255,7 +280,12 @@ include!("fragments/other.rs");
         };
         rustc(
             &staged.join(lower_src).join("lib.rs"),
-            &["--crate-type=rlib", "--crate-name=lower"],
+            &[
+                "--crate-type=rlib",
+                "--crate-name=lower",
+                "--cfg",
+                "feature=\"fast\"",
+            ],
         );
         let lower = format!("lower={}", out.join("liblower.rlib").display());
         let patch_file = out.join("patch.rs");

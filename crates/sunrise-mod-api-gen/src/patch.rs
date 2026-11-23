@@ -341,6 +341,17 @@ impl Source {
     pub(crate) fn module(&mut self, path: &str) -> Result<&Module, String> {
         if !self.parsed.contains_key(path) {
             let files = self.files.get(path).cloned().unwrap_or_default();
+            // The fragments the index followed; only their invocations are dropped below.
+            let fragments: BTreeSet<PathBuf> = files
+                .iter()
+                .filter(|file| file.include_cfg.is_some())
+                .map(|file| file.path.clone())
+                .collect();
+            let followed = |item: &Item, from: &Path| {
+                mod_source::modules::literal_include(item, false).is_some_and(|(relative, _)| {
+                    fragments.contains(&from.parent().unwrap_or(from).join(relative.value()))
+                })
+            };
             // An inline module can contribute its own items even when the index also lists
             // separate fragments for it. These files are not alternative `mod` declarations.
             let mut items = if files.iter().all(|file| file.include_cfg.is_some()) {
@@ -359,6 +370,15 @@ impl Source {
             } else {
                 Vec::new()
             };
+            let inline_from: Vec<PathBuf> = match path.rsplit_once("::") {
+                Some((parent, _)) if files.iter().all(|file| file.include_cfg.is_some()) => self
+                    .files
+                    .get(parent)
+                    .map(|parents| parents.iter().map(|file| file.path.clone()).collect())
+                    .unwrap_or_default(),
+                _ => Vec::new(),
+            };
+            items.retain(|item| !inline_from.iter().any(|from| followed(item, from)));
             for file in files {
                 let text = self.read(&file.path)?;
                 let mut parsed = syn::parse_file(&text).map_err(|e| {
@@ -368,6 +388,7 @@ impl Source {
                     }
                     why
                 })?;
+                parsed.items.retain(|item| !followed(item, &file.path));
                 if let Some(cfg) = file.include_cfg {
                     let attrs = cfg
                         .into_iter()
@@ -390,9 +411,8 @@ impl Source {
                 }
                 items.extend(parsed.items);
             }
-            // Their declarations are already in `items`. Leaving the invocations here would
-            // make both name resolution and the mirror treat them as opaque macros.
-            items.retain(|item| mod_source::modules::literal_include(item).is_none());
+            // The followed invocations' declarations are already in `items`; any other macro,
+            // a shadowing `include!` included, stays for the opaque-macro handling.
             self.parsed.insert(path.to_owned(), Module { items });
         }
         Ok(&self.parsed[path])
@@ -1723,21 +1743,32 @@ fn mirror(
         };
         quote!(#cfg pub use #original::#ident;)
     });
-    let uses = uses(&items).into_iter().filter_map(|item| {
-        let mut item = item.clone();
-        item.tree = filter_use_tree(item.tree, None, None, &|name, root| {
-            // A `use` naming a child mirror or a copy would collide with it. In a lower
-            // crate, only the listed functions' modules are widened: other private imports
-            // wouldn't resolve, so keep only names the copies and helpers refer to, and in a
-            // copy's module every import from std and the linked crates ([`Narrowing`]).
-            !reserved.contains(name)
-                && narrowing.is_none_or(|narrowing| {
-                    narrowing.used.contains(name)
-                        || (!tree.copies.is_empty() && narrowing.resolves(root))
-                })
-        })?;
-        Some(item)
-    });
+    // A lower crate's import under one of its features binds whatever that crate's build chose;
+    // staging made it public, so the glob re-exports that binding instead of a copy evaluated
+    // under the game's features.
+    let feature_import =
+        |item: &syn::ItemUse| lower && cfg_predicates(&item.attrs).any(|cfg| names_feature(&cfg));
+    if uses(&items).into_iter().any(feature_import) {
+        glob = true;
+    }
+    let uses = uses(&items)
+        .into_iter()
+        .filter(|item| !feature_import(item))
+        .filter_map(|item| {
+            let mut item = item.clone();
+            item.tree = filter_use_tree(item.tree, None, None, &|name, root| {
+                // A `use` naming a child mirror or a copy would collide with it. In a lower
+                // crate, only the listed functions' modules are widened: other private imports
+                // wouldn't resolve, so keep only names the copies and helpers refer to, and in a
+                // copy's module every import from std and the linked crates ([`Narrowing`]).
+                !reserved.contains(name)
+                    && narrowing.is_none_or(|narrowing| {
+                        narrowing.used.contains(name)
+                            || (!tree.copies.is_empty() && narrowing.resolves(root))
+                    })
+            })?;
+            Some(item)
+        });
     let mut children = Vec::new();
     for (name, child) in &tree.children {
         let ident = format_ident!("{name}");
@@ -1965,6 +1996,13 @@ fn macro_may_be_in_scope(source: &mut Source, path: &str, name: &str) -> bool {
     }
     let segments: Vec<&str> = path.split("::").collect();
     (1..=segments.len()).any(|end| within(source, &segments[..end].join("::"), name))
+}
+
+/// Whether a written cfg predicate reads a Cargo feature.
+pub(crate) fn names_feature_text(predicate: &str) -> bool {
+    predicate
+        .parse::<proc_macro2::TokenStream>()
+        .is_ok_and(|predicate| names_feature(&predicate))
 }
 
 /// Whether a cfg predicate reads a Cargo feature.

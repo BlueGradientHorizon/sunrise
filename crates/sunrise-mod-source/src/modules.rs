@@ -141,11 +141,20 @@ pub fn test_only(attrs: &[syn::Attribute]) -> bool {
         .any(|cfg| disabled_without_tests(cfg))
 }
 
-/// An item-position `include!` of one literal path, with the attributes on the invocation.
-/// The caller resolves the path relative to the physical file containing the item.
-pub fn literal_include(item: &Item) -> Option<(syn::LitStr, &[syn::Attribute])> {
+/// An item-position standard `include!` of one literal path, with the attributes on the
+/// invocation. The caller resolves the path relative to the physical file containing the item.
+/// A bare `include!` is the standard macro unless `shadowed` ([`include_shadowed`]); one written
+/// `std::include!` or `core::include!` always is. Any other invocation is an opaque macro.
+pub fn literal_include(item: &Item, shadowed: bool) -> Option<(syn::LitStr, &[syn::Attribute])> {
     let Item::Macro(item) = item else { return None };
-    if !item.mac.path.is_ident("include") {
+    let path = &item.mac.path;
+    let standard = if path.leading_colon.is_none() && path.is_ident("include") {
+        !shadowed
+    } else {
+        let segments: Vec<_> = path.segments.iter().map(|s| s.ident.to_string()).collect();
+        matches!(segments.as_slice(), [root, name] if (root == "std" || root == "core") && name == "include")
+    };
+    if !standard {
         return None;
     }
     let path = item
@@ -157,6 +166,75 @@ pub fn literal_include(item: &Item) -> Option<(syn::LitStr, &[syn::Attribute])> 
         })
         .ok()?;
     Some((path, &item.attrs))
+}
+
+/// Whether `items` define a `macro_rules! include` or import a name `include`. The tools then
+/// read a bare `include!` there, and in the modules inside, as that macro.
+pub fn include_shadowed(items: &[Item]) -> bool {
+    fn binds(tree: &syn::UseTree) -> bool {
+        match tree {
+            syn::UseTree::Path(path) => binds(&path.tree),
+            syn::UseTree::Name(name) => name.ident == "include",
+            syn::UseTree::Rename(rename) => rename.rename == "include",
+            syn::UseTree::Group(group) => group.items.iter().any(binds),
+            syn::UseTree::Glob(_) => false,
+        }
+    }
+    items.iter().any(|item| match item {
+        Item::Macro(defined) => {
+            defined.mac.path.is_ident("macro_rules")
+                && defined
+                    .ident
+                    .as_ref()
+                    .is_some_and(|ident| ident == "include")
+        }
+        Item::Use(used) => binds(&used.tree),
+        _ => false,
+    })
+}
+
+/// Whether some build can hold every predicate in `conditions` at once: an assignment of the
+/// atoms they test (a name or `key = "value"`) under which none of them is false. Atoms vary
+/// independently; `test` is false unless `include_tests`.
+pub fn may_compile(conditions: &[String], include_tests: bool) -> bool {
+    let mut atoms: Vec<String> = Vec::new();
+    for condition in conditions {
+        evaluate_cfg(condition, |atom| {
+            if !(atoms.iter().any(|known| known == atom) || (!include_tests && atom == "test")) {
+                atoms.push(atom.to_owned());
+            }
+            None
+        });
+    }
+    fn search(
+        conditions: &[String],
+        atoms: &[String],
+        values: &mut Vec<bool>,
+        include_tests: bool,
+    ) -> bool {
+        let refuted = conditions.iter().any(|condition| {
+            evaluate_cfg(condition, |atom| {
+                if !include_tests && atom == "test" {
+                    return Some(false);
+                }
+                let at = atoms.iter().position(|known| known == atom)?;
+                values.get(at).copied()
+            }) == Some(false)
+        });
+        if refuted {
+            return false;
+        }
+        if values.len() == atoms.len() {
+            return true;
+        }
+        [true, false].into_iter().any(|value| {
+            values.push(value);
+            let found = search(conditions, atoms, values, include_tests);
+            values.pop();
+            found
+        })
+    }
+    search(conditions, &atoms, &mut Vec::new(), include_tests)
 }
 
 /// The files of `module` read from `path`, with conventional children in `dir`. With `every_build`,
@@ -191,21 +269,32 @@ pub fn walk_module_variants(
     let mut walker = Walker {
         every_build,
         include_tests,
-        pending: vec![(
-            ModuleFile {
+        pending: vec![Pending {
+            file: ModuleFile {
                 module,
                 path,
                 cfg: Vec::new(),
                 included: false,
             },
             dir,
-            Vec::new(),
-        )],
+            ancestors: Vec::new(),
+            shadowed: false,
+        }],
         variants: Vec::new(),
     };
-    while let Some((mut file, dir, mut ancestors)) = walker.pending.pop() {
+    while let Some(Pending {
+        mut file,
+        dir,
+        mut ancestors,
+        shadowed,
+    }) = walker.pending.pop()
+    {
         // A target with only conditional paths need not have a conventional file. A literal
-        // include has no such fallback: a fragment that may be compiled must be readable.
+        // include has no such fallback: a fragment some build compiles must be readable, and
+        // one no build can compile is never opened.
+        if file.included && !may_compile(&file.cfg, include_tests) {
+            continue;
+        }
         if !file.included && !file.path.is_file() {
             continue;
         }
@@ -232,6 +321,7 @@ pub fn walk_module_variants(
             &dir,
             &mut Vec::new(),
             &ancestors,
+            shadowed,
         );
         walker.variants.push(ModuleVariant {
             file,
@@ -247,9 +337,17 @@ pub fn walk_module_variants(
 struct Walker {
     every_build: bool,
     include_tests: bool,
-    /// Each file, the directory Rust uses for conventional children and the physical ancestors.
-    pending: Vec<(ModuleFile, PathBuf, Vec<PathBuf>)>,
+    pending: Vec<Pending>,
     variants: Vec<ModuleVariant>,
+}
+
+/// A file to read, the directory Rust uses for its conventional children, its physical
+/// ancestors and whether a bare `include!` reaching it names a shadowing macro.
+struct Pending {
+    file: ModuleFile,
+    dir: PathBuf,
+    ancestors: Vec<PathBuf>,
+    shadowed: bool,
 }
 
 impl Walker {
@@ -274,9 +372,11 @@ impl Walker {
         dir: &Path,
         inline: &mut Vec<usize>,
         ancestors: &[PathBuf],
+        shadowed: bool,
     ) {
+        let shadowed = shadowed || include_shadowed(items);
         for (index, item) in items.iter().enumerate() {
-            if let Some((relative, attrs)) = literal_include(item)
+            if let Some((relative, attrs)) = literal_include(item, shadowed)
                 && self.keep(attrs)
             {
                 let mut included_file = file.clone();
@@ -287,8 +387,12 @@ impl Walker {
                     .join(relative.value());
                 included_file.cfg.extend(self.conditions(attrs));
                 included_file.included = true;
-                self.pending
-                    .push((included_file, dir.to_owned(), ancestors.to_vec()));
+                self.pending.push(Pending {
+                    file: included_file,
+                    dir: dir.to_owned(),
+                    ancestors: ancestors.to_vec(),
+                    shadowed,
+                });
             }
             let Item::Mod(declared) = item else { continue };
             if !self.keep(&declared.attrs) {
@@ -342,7 +446,9 @@ impl Walker {
                         included: file.included,
                     };
                     inline.push(index);
-                    self.children(&child, inner, &inner_dir, &inner_dir, inline, ancestors);
+                    self.children(
+                        &child, inner, &inner_dir, &inner_dir, inline, ancestors, shadowed,
+                    );
                     self.variants.push(ModuleVariant {
                         file: child,
                         inline: inline.clone(),
@@ -361,16 +467,17 @@ impl Walker {
                     } else {
                         (dir.join(&name).join("mod.rs"), dir.join(&name))
                     };
-                    self.pending.push((
-                        ModuleFile {
+                    self.pending.push(Pending {
+                        file: ModuleFile {
                             module: module.clone(),
                             path,
                             cfg,
                             included: false,
                         },
-                        child_dir,
-                        ancestors.to_vec(),
-                    ));
+                        dir: child_dir,
+                        ancestors: ancestors.to_vec(),
+                        shadowed,
+                    });
                 }
             }
         }
@@ -382,4 +489,67 @@ pub fn gated(attrs: &[syn::Attribute]) -> bool {
     attrs
         .iter()
         .any(|attr| attr.path().is_ident("cfg") || attr.path().is_ident("cfg_attr"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn walk(root: &Path, include_tests: bool) -> Result<Vec<String>, String> {
+        let files = walk_module_files(
+            "lower".into(),
+            root.join("lib.rs"),
+            root.to_owned(),
+            false,
+            include_tests,
+            |path, text| syn::parse_file(text).map_err(|e| format!("{}: {e}", path.display())),
+        )?;
+        Ok(files
+            .into_iter()
+            .map(|file| file.path.strip_prefix(root).unwrap().display().to_string())
+            .collect())
+    }
+
+    /// A fragment no build can compile under its gates is never opened, tests or not; only the
+    /// standard `include!` is followed, written bare or as `std::include!`.
+    #[test]
+    fn the_walk_opens_only_compilable_standard_includes() {
+        let root = tempfile::tempdir().unwrap();
+        let put = |name: &str, text: &str| fs::write(root.path().join(name), text).unwrap();
+        put(
+            "lib.rs",
+            r#"
+#[cfg(unix)]
+include!("unix.rs");
+#[cfg(false)]
+include!("never.rs");
+std::include!("qualified.rs");
+mod shadow {
+    macro_rules! include { ($($t:tt)*) => {}; }
+    include!("no such file");
+}
+"#,
+        );
+        put("unix.rs", "#[cfg(not(unix))]\ninclude!(\"gone.rs\");\n");
+        put("qualified.rs", "fn qualified() {}\n");
+        for include_tests in [false, true] {
+            let mut files = walk(root.path(), include_tests).unwrap();
+            files.sort();
+            assert_eq!(files, ["lib.rs", "qualified.rs", "unix.rs"]);
+        }
+    }
+
+    #[test]
+    fn contradictory_gates_cannot_compile() {
+        let gates = |gates: &[&str]| gates.iter().map(|g| (*g).to_owned()).collect::<Vec<_>>();
+        assert!(may_compile(&gates(&["unix", "feature = \"a\""]), false));
+        assert!(!may_compile(&gates(&["unix", "not(unix)"]), false));
+        assert!(!may_compile(&gates(&["false"]), true));
+        assert!(!may_compile(&gates(&["test"]), false));
+        assert!(may_compile(&gates(&["test"]), true));
+        assert!(!may_compile(
+            &gates(&["any(a, b)", "not(a)", "not(b)"]),
+            false
+        ));
+    }
 }

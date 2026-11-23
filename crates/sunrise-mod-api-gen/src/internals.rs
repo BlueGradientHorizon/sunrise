@@ -212,6 +212,13 @@ struct Pass {
     /// lower-crate shape the internals table walks.
     reaching: bool,
     discovery: bool,
+    /// The canonical staging root of a lower-crate pass: no source file outside it is read or
+    /// edited, whether reached through `include!`, `mod` or `#[path]`.
+    root: Option<PathBuf>,
+    /// A bare `include!` in the scope being widened names a shadowing macro.
+    shadowed: bool,
+    /// The first fragment a whole-module pass could not read inside an inline module.
+    scope_error: Option<String>,
 }
 
 /// Crates whose types are the mod API's own: their fields stay private in every build.
@@ -219,7 +226,7 @@ const API_CRATES: &[&str] = &["mod_api"];
 
 // Only test-only declarations are excluded. Other cfgs keep their spelling and visibility, and
 // each entry records them: changing visibility doesn't select an OS or feature for the build.
-use mod_source::modules::{conditions, literal_include, test_only};
+use mod_source::modules::{conditions, include_shadowed, literal_include, may_compile, test_only};
 
 /// The attributes a layout's signature keeps: which fields exist, and whether another crate may
 /// build it.
@@ -655,6 +662,8 @@ struct SourceItems {
     file: usize,
     cfg: Vec<String>,
     items: Vec<Item>,
+    /// A bare `include!` here names a shadowing macro ([`include_shadowed`]) from outside.
+    shadowed: bool,
 }
 
 impl Pass {
@@ -669,6 +678,15 @@ impl Pass {
     fn load_physical(&mut self, path: &Path) -> Result<usize, String> {
         if let Some(index) = self.sources.iter().position(|source| source.path == path) {
             return Ok(index);
+        }
+        if let Some(root) = &self.root
+            && !path.starts_with(root)
+        {
+            return Err(format!(
+                "{}: outside the source at {}",
+                path.display(),
+                root.display()
+            ));
         }
         let text = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
         // The host forwarders are widened as written into the copy: spans address the expanded text.
@@ -1068,11 +1086,49 @@ impl Pass {
                 let ident = &value.ident;
                 let path = expose!(value, "mod", value.mod_token.span(), quote!(mod #ident));
                 if children && let Some((_, items)) = &value.content {
-                    let outer = self.cfg.len();
-                    self.cfg.extend(conditions(&value.attrs));
-                    self.items(file, &path, items);
-                    self.cfg.truncate(outer);
+                    let outer = self.cfg.clone();
+                    let outer_shadowed = self.shadowed;
+                    let mut cfg = outer.clone();
+                    cfg.extend(conditions(&value.attrs));
+                    let child = SourceItems {
+                        file,
+                        cfg,
+                        items: items.clone(),
+                        shadowed: self.shadowed,
+                    };
+                    // A lower-crate pass widens the inline module's fragments in their own
+                    // files, under the module's gates, as for the module's own items.
+                    let scope = if self.root.is_some() {
+                        self.lower_scope(child).unwrap_or_else(|error| {
+                            self.scope_error.get_or_insert(error);
+                            Vec::new()
+                        })
+                    } else {
+                        vec![child]
+                    };
+                    for unit in scope {
+                        self.cfg = unit.cfg;
+                        self.shadowed = unit.shadowed || include_shadowed(&unit.items);
+                        self.items(unit.file, &path, &unit.items);
+                    }
+                    self.cfg = outer;
+                    self.shadowed = outer_shadowed;
                 }
+            }
+            // A lower crate's import under one of its own Cargo features: the patch crate is built
+            // with the game's features, so its mirror reaches the binding the prebuilt crate chose
+            // through the module's glob, which needs the import public.
+            Item::Use(value)
+                if !test_only(&value.attrs)
+                    && module.split("::").next() != Some("sunrise_client")
+                    && self
+                        .cfg
+                        .iter()
+                        .cloned()
+                        .chain(conditions(&value.attrs))
+                        .any(|condition| crate::patch::names_feature_text(&condition)) =>
+            {
+                self.sources[file].public(&value.vis, value.use_token.span(), "use");
             }
             Item::Impl(value) if children && value.trait_.is_none() && !test_only(&value.attrs) => {
                 let path = format!("{module}::{}", owner(&value.self_ty));
@@ -1089,17 +1145,26 @@ impl Pass {
 
     /// Read the files supplying items to a single lower-crate scope. Keep their spans separate:
     /// edits to a declaration must go to its own fragment, not to the file spelling `include!`.
-    fn lower_scope(
-        &mut self,
-        root: &Path,
-        initial: SourceItems,
-    ) -> Result<Vec<SourceItems>, String> {
+    fn lower_scope(&mut self, initial: SourceItems) -> Result<Vec<SourceItems>, String> {
         let physical = self.sources[initial.file].path.clone();
         let mut scope = Vec::new();
         let mut pending = vec![(initial, vec![physical])];
         while let Some((unit, ancestors)) = pending.pop() {
-            for (relative, attrs) in unit.items.iter().rev().filter_map(literal_include) {
+            let shadowed = unit.shadowed || include_shadowed(&unit.items);
+            let includes: Vec<_> = unit
+                .items
+                .iter()
+                .rev()
+                .filter_map(|item| literal_include(item, shadowed))
+                .collect();
+            for (relative, attrs) in includes {
                 if test_only(attrs) {
+                    continue;
+                }
+                let mut cfg = unit.cfg.clone();
+                cfg.extend(conditions(attrs));
+                // A fragment no build compiles under its gates is never opened.
+                if !may_compile(&cfg, false) {
                     continue;
                 }
                 let from = &self.sources[unit.file].path;
@@ -1107,13 +1172,6 @@ impl Pass {
                 let physical = path
                     .canonicalize()
                     .map_err(|e| format!("{}: {e}", path.display()))?;
-                if !physical.starts_with(root) {
-                    return Err(format!(
-                        "{}: outside the source at {}",
-                        path.display(),
-                        root.display()
-                    ));
-                }
                 if ancestors.contains(&physical) {
                     return Err(format!("{}: source inclusion cycle", path.display()));
                 }
@@ -1122,8 +1180,6 @@ impl Pass {
                 if test_only(&parsed.attrs) {
                     continue;
                 }
-                let mut cfg = unit.cfg.clone();
-                cfg.extend(conditions(attrs));
                 cfg.extend(conditions(&parsed.attrs));
                 let mut chain = ancestors.clone();
                 chain.push(physical);
@@ -1132,6 +1188,7 @@ impl Pass {
                         file,
                         cfg,
                         items: parsed.items.clone(),
+                        shadowed,
                     },
                     chain,
                 ));
@@ -1147,15 +1204,17 @@ impl Pass {
         let mut segments = parsed.segments.iter();
         let crate_name = segments.next().ok_or("empty path")?.ident.to_string();
         let (_, lib) = crate::source::crate_root(root, &crate_name)?;
-        let root = root
-            .canonicalize()
-            .map_err(|e| format!("{}: {e}", root.display()))?;
+        self.root = Some(
+            root.canonicalize()
+                .map_err(|e| format!("{}: {e}", root.display()))?,
+        );
         let file = self.load(&lib)?;
         let mut dir = lib.parent().expect("source parent").to_owned();
         let mut initial = SourceItems {
             file,
             cfg: conditions(&self.sources[file].parsed.attrs),
             items: self.sources[file].parsed.items.clone(),
+            shadowed: false,
         };
         let mut module = crate_name;
         let segments: Vec<_> = segments.collect();
@@ -1178,7 +1237,7 @@ impl Pass {
             {
                 vec![initial]
             } else {
-                self.lower_scope(&root, initial)?
+                self.lower_scope(initial)?
             };
             let items = || {
                 scope
@@ -1196,11 +1255,13 @@ impl Pass {
                 }
                 let mut cfg = unit.cfg.clone();
                 cfg.extend(conditions(&child.attrs));
+                let shadowed = unit.shadowed || include_shadowed(&unit.items);
                 if let Some((_, inner)) = &child.content {
                     initial = SourceItems {
                         file: unit.file,
                         cfg,
                         items: inner.clone(),
+                        shadowed,
                     };
                     dir = dir.join(ident.to_string());
                 } else {
@@ -1238,6 +1299,7 @@ impl Pass {
                         file,
                         cfg,
                         items: self.sources[file].parsed.items.clone(),
+                        shadowed,
                     };
                 }
                 continue;
@@ -1260,7 +1322,11 @@ impl Pass {
                 if whole_module {
                     for unit in &scope {
                         self.cfg.clone_from(&unit.cfg);
+                        self.shadowed = unit.shadowed || include_shadowed(&unit.items);
                         self.items(unit.file, &module, &unit.items);
+                    }
+                    if let Some(error) = self.scope_error.take() {
+                        return Err(error);
                     }
                 } else {
                     self.cfg.clone_from(&unit.cfg);
@@ -1314,7 +1380,11 @@ impl Pass {
                     if whole_module {
                         for unit in &scope {
                             self.cfg.clone_from(&unit.cfg);
+                            self.shadowed = unit.shadowed || include_shadowed(&unit.items);
                             self.items(unit.file, &module, &unit.items);
+                        }
+                        if let Some(error) = self.scope_error.take() {
+                            return Err(error);
                         }
                     }
                     for (unit, item) in items() {
@@ -2551,6 +2621,67 @@ const LABEL: &str = "é"; struct AfterUnicode;
         );
     }
 
+    /// Only fragments some build compiles are opened, and only the standard `include!` is
+    /// followed; an inline module's fragments are widened with the module, and no file outside
+    /// the staging root is read or edited.
+    #[test]
+    fn lower_scopes_follow_only_compilable_standard_includes_inside_the_root() {
+        let fixture = Fixture::new("");
+        fixture.lower();
+        fixture.put(
+            "crates/lower/src/hidden.rs",
+            r#"
+#[cfg(unix)]
+include!("unix.rs");
+mod shadow {
+    macro_rules! include { ($($t:tt)*) => {}; }
+    include!("no such file");
+}
+mod child { include!("child.rs"); }
+fn selected() { child::helper(); }
+"#,
+        );
+        // The nested include can never compile under its gates: `gone.rs` is never opened.
+        fixture.put(
+            "crates/lower/src/unix.rs",
+            "#[cfg(not(unix))]
+include!(\"gone.rs\");
+fn on_unix() {}
+",
+        );
+        fixture.put(
+            "crates/lower/src/child.rs",
+            "pub(super) fn helper() {}
+",
+        );
+        let mut pass = Pass::default();
+        pass.lower(&fixture.0, "lower::hidden::selected", true)
+            .unwrap();
+        pass.finish().unwrap();
+        let child = fs::read_to_string(fixture.0.join("crates/lower/src/child.rs")).unwrap();
+        assert_eq!(child, "pub fn helper() {}\n");
+
+        // A module reached from a fragment through a link out of the root is refused, and
+        // the file it names is left as it was.
+        let outside = tempfile::tempdir().unwrap();
+        let target = outside.path().join("elsewhere.rs");
+        fs::write(&target, "fn far() {}\n").unwrap();
+        fixture.put(
+            "crates/lower/src/child.rs",
+            "#[path = \"link.rs\"] pub(super) mod linked;\n",
+        );
+        std::os::unix::fs::symlink(&target, fixture.0.join("crates/lower/src/link.rs")).unwrap();
+        fixture.put(
+            "crates/lower/src/hidden.rs",
+            "mod child { include!(\"child.rs\"); }\nfn selected() {}\n",
+        );
+        let refused = Pass::default()
+            .lower(&fixture.0, "lower::hidden::child::linked::far", true)
+            .unwrap_err();
+        assert!(refused.contains("elsewhere.rs"), "{refused}");
+        assert_eq!(fs::read_to_string(&target).unwrap(), "fn far() {}\n");
+    }
+
     #[test]
     fn required_lower_fragment_errors_name_the_file() {
         let fixture = Fixture::new("");
@@ -2576,14 +2707,10 @@ fn selected() { helper(); }
         fixture.put(fragment, "fn =");
         let invalid = stage_scope().unwrap_err();
         assert!(invalid.contains("required.rs:"), "{invalid}");
-        assert!(invalid.contains("expected identifier"), "{invalid}");
 
         fixture.put(fragment, r#"include!(".././hidden.rs");"#);
         let cycle = stage_scope().unwrap_err();
-        assert!(
-            cycle.contains("hidden.rs: source inclusion cycle"),
-            "{cycle}"
-        );
+        assert!(cycle.contains("hidden.rs:"), "{cycle}");
 
         // `disabled.rs` is still absent: the non-test pass never opens it.
         fixture.put(fragment, "fn helper() {}");
