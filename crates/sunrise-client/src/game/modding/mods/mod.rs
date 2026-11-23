@@ -1496,15 +1496,28 @@ pub(in crate::game) fn content_root(
     }
     register_mob_effects(&overlay.mods, &sources.selected);
     resolve_particle_providers(overlay.root.source())?;
+    // A package whose content was refused is not admitted: an optional dependent's effect Part
+    // on it is dropped, while an admitted provider that lacks the effect is still refused.
+    let provider_admitted = |package: &str| {
+        package == "minecraft"
+            || overlay.mods.iter().any(|content| content.id == package)
+            || sources
+                .native
+                .built()
+                .iter()
+                .any(|native| native.id == package)
+    };
     mod_api::__private::resolve_effects(
         sunrise_client_core::potions::all_effects()
             .map(|def| sunrise_client_core::potions::namespaced(def.id)),
         |id| sunrise_client_core::potions::effect(id).map(|def| def.index),
+        provider_admitted,
     )
     .map_err(|errors| errors.join("\n"))?;
-    mod_api::__private::validate_effect_part_owners(|id| {
-        sunrise_client_core::potions::effect(id)?.owner
-    })
+    mod_api::__private::validate_effect_part_owners(
+        |id| sunrise_client_core::potions::effect(id)?.owner,
+        provider_admitted,
+    )
     .map_err(|errors| errors.join("\n"))?;
     let behavior: serde_json::Value =
         sunrise_world::json_file::read(&overlay.root.prepared().join("block-behaviours.json"))?;
@@ -4336,12 +4349,14 @@ pub(in crate::game) mod tests {
             || {
                 mod_platform::testing::with_mods(mods.clone(), || {
                     mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
-                    mod_api::__private::resolve_effects(["runes:ward"], |id| {
-                        (id == "runes:ward").then_some(0)
-                    })
+                    mod_api::__private::resolve_effects(
+                        ["runes:ward"],
+                        |id| (id == "runes:ward").then_some(0),
+                        |_| true,
+                    )
                     .unwrap();
                     let effect = mod_api::__private::effect_key("runes:ward").unwrap();
-                    mod_api::__private::validate_effect_part_owners(owner_of).expect(
+                    mod_api::__private::validate_effect_part_owners(owner_of, |_| true).expect(
                         "the serving host and its dependent may attach to the served effect",
                     );
 
@@ -4393,7 +4408,7 @@ pub(in crate::game) mod tests {
         let unrelated: mod_api::Mods = vec![WardTick::<2>::entry("third", &trace)].into();
         mod_platform::testing::with_mods(unrelated.clone(), || {
             mod_platform::__private::part_tests::install_parts_fixture(&unrelated).unwrap();
-            let refused = mod_api::__private::validate_effect_part_owners(owner_of)
+            let refused = mod_api::__private::validate_effect_part_owners(owner_of, |_| true)
                 .expect_err("unrelated mod without dependency on serving host must be refused");
             assert_eq!(refused.len(), 1, "{refused:?}");
             assert!(

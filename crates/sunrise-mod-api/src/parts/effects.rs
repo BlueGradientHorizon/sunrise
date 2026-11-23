@@ -71,12 +71,16 @@ pub mod tests {
             ("key_test:later", 0),
             ("minecraft:poison", 1),
         ];
-        mod_vocab::__private::resolve_effects(effects.iter().map(|(id, _)| *id), |id| {
-            effects
-                .iter()
-                .find(|(name, _)| *name == id)
-                .map(|(_, index)| *index)
-        })
+        mod_vocab::__private::resolve_effects(
+            effects.iter().map(|(id, _)| *id),
+            |id| {
+                effects
+                    .iter()
+                    .find(|(name, _)| *name == id)
+                    .map(|(_, index)| *index)
+            },
+            |_| true,
+        )
         .unwrap();
         let keys = requested.lock().unwrap();
         assert_eq!(keys[0], keys[2]);

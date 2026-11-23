@@ -89,13 +89,59 @@ fn optional_effect_parts_skip_only_when_the_package_is_absent() {
                 } else {
                     vec![]
                 };
-                mod_vocab::__private::resolve_effects(ids, |_| present.then_some(0)).unwrap();
-                mod_vocab::__private::validate_effect_part_owners(|_| present.then_some("owner"))
+                mod_vocab::__private::resolve_effects(ids, |_| present.then_some(0), |_| true)
                     .unwrap();
+                mod_vocab::__private::validate_effect_part_owners(
+                    |_| present.then_some("owner"),
+                    |_| true,
+                )
+                .unwrap();
                 assert_eq!(
                     mod_vocab::__private::effect_key_by_index(0).is_some(),
                     present
                 );
+            });
+        });
+    }
+}
+
+/// An optional provider that is listed when the Parts are installed but whose content layer was
+/// refused (an opened, refused package) is not admitted: the dependent's Part is dropped. A provider
+/// that is admitted and lacks the effect keeps the unknown-effect refusal.
+#[test]
+fn an_optional_effect_part_of_a_refused_provider_is_dropped_and_an_admitted_one_refused() {
+    for admitted in [false, true] {
+        let trace = Arc::new(Mutex::new(Vec::new()));
+        let mods: Mods = vec![ModEntry::new(
+            "behaviour",
+            Box::new(Cadence::<3> {
+                package: "behaviour",
+                trace,
+            }),
+        )]
+        .into();
+        let packages = vec![
+            package("behaviour", Some(DependencyKind::Optional)),
+            package("owner", None),
+        ];
+        crate::load_state::with_test_package_inventory(packages, || {
+            crate::testing::with_mods(mods.clone(), || {
+                install_parts(&mods, &crate::parts::tests::rule_schema(), |_| false).unwrap();
+                // The provider never registered the effect.
+                let resolved = mod_vocab::__private::resolve_effects(
+                    [],
+                    |_| None,
+                    |package| package == "owner" && admitted,
+                );
+                if admitted {
+                    assert_eq!(
+                        resolved.unwrap_err(),
+                        ["mod behaviour requested unknown effect owner:comfort"]
+                    );
+                } else {
+                    resolved.unwrap();
+                    mod_vocab::__private::validate_effect_part_owners(|_| None, |_| false).unwrap();
+                }
             });
         });
     }
@@ -118,7 +164,7 @@ fn unknown_required_effects_keep_the_key_resolution_diagnostic() {
             crate::testing::with_mods(mods.clone(), || {
                 install_parts(&mods, &crate::parts::tests::rule_schema(), |_| false).unwrap();
                 assert_eq!(
-                    mod_vocab::__private::resolve_effects([], |_| None).unwrap_err(),
+                    mod_vocab::__private::resolve_effects([], |_| None, |_| true).unwrap_err(),
                     ["mod behaviour requested unknown effect owner:comfort"]
                 );
             });
@@ -212,7 +258,7 @@ crate::impl_host_areas!(World);
 
 fn install(mods: &[ModEntry]) -> EffectKey {
     install_parts(mods, &crate::parts::tests::rule_schema(), |_| false).unwrap();
-    mod_vocab::__private::resolve_effects(["owner:comfort"], |_| Some(0)).unwrap();
+    mod_vocab::__private::resolve_effects(["owner:comfort"], |_| Some(0), |_| true).unwrap();
     mod_vocab::__private::effect_key_by_index(0).unwrap()
 }
 
@@ -254,7 +300,8 @@ fn effect_owner_runs_first_even_when_the_dependent_dispatches_first() {
             crate::testing::with_mods(mods.clone(), || {
                 let effect = install(&mods);
                 let active_effects = [effect];
-                mod_vocab::__private::validate_effect_part_owners(|_| Some("owner")).unwrap();
+                mod_vocab::__private::validate_effect_part_owners(|_| Some("owner"), |_| true)
+                    .unwrap();
                 for (ticks, amplifier, expected, expected_trace, expected_keep) in [
                     (1, 0, vec![], vec![], true),
                     (
@@ -354,9 +401,11 @@ fn a_removed_dependency_row_cannot_authorize_a_foreign_effect_part() {
             crate::load_state::with_test_dependencies(Default::default(), || {
                 crate::testing::with_mods(mods.clone(), || {
                     install(&mods);
-                    let errors =
-                        mod_vocab::__private::validate_effect_part_owners(|_| Some("owner"))
-                            .unwrap_err();
+                    let errors = mod_vocab::__private::validate_effect_part_owners(
+                        |_| Some("owner"),
+                        |_| true,
+                    )
+                    .unwrap_err();
                     assert_eq!(
                         errors,
                         [format!(
@@ -415,7 +464,8 @@ fn on_effect_added_part_runs_owner_first_and_only_after_validation() {
                 dispatch_on_effect_added(&mut NoHost, effect, living, 1);
                 assert!(seen.lock().unwrap().is_empty());
 
-                mod_vocab::__private::validate_effect_part_owners(|_| Some("owner")).unwrap();
+                mod_vocab::__private::validate_effect_part_owners(|_| Some("owner"), |_| true)
+                    .unwrap();
                 dispatch_on_effect_added(&mut NoHost, effect, living, 2);
                 assert_eq!(*seen.lock().unwrap(), vec![("owner", 2), ("behaviour", 2)]);
             });
