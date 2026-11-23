@@ -792,37 +792,10 @@ impl BlockBindings {
     }
 }
 
-/// Monotonic identity for an [`Items`] catalog instance so per-game caches
-/// (such as [`crate::bundle::BundleMetricsCache`]) invalidate whenever a catalog
-/// is loaded, cloned, or has its tags replaced.
-#[derive(Debug)]
-struct CatalogId(u64);
-
-impl CatalogId {
-    fn next() -> Self {
-        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
-    }
-}
-
-impl Default for CatalogId {
-    fn default() -> Self {
-        Self::next()
-    }
-}
-
-impl Clone for CatalogId {
-    fn clone(&self) -> Self {
-        Self::next()
-    }
-}
-
 /// An empty catalog is useful for synthetic worlds without registered items;
 /// normal worlds load their catalog from the resource snapshot.
 #[derive(Clone, Default)]
 pub struct Items {
-    /// Monotonic identity bumped on load, clone, and tag replacement for cache invalidation.
-    bundle_cache_id: CatalogId,
     pub items: HashMap<Arc<str>, ItemInfo>,
     /// Shared Block.getItem snapshot, including blocks sharing another block's item.
     pub block_items: Arc<HashMap<String, String>>,
@@ -876,12 +849,6 @@ pub struct Items {
     pub enchantments: Arc<crate::enchant::Enchantments>,
 }
 impl Items {
-    /// Monotonic catalog identity used to invalidate cached bundle metrics when
-    /// item prototypes or tags change.
-    pub(crate) fn bundle_cache_id(&self) -> u64 {
-        self.bundle_cache_id.0
-    }
-
     /// This table with a server's block and item tags in place of its own
     /// (`ClientboundUpdateTagsPacket`): each tag's members in the order sent,
     /// which is `TagLoader`'s. `None` keeps this table's tags of that kind.
@@ -1716,7 +1683,6 @@ impl Items {
             .collect();
         *order = tags;
         self.tags_loaded[registry as usize] = true;
-        self.bundle_cache_id = CatalogId::next();
         if registry == TagRegistry::Block {
             let names = self.block_state_names();
             self.rebuild_block_tag_flags(names);

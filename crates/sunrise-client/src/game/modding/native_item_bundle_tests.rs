@@ -369,6 +369,7 @@ mod custom_bundle_integration_tests {
                     .unwrap()
                     .unwrap();
                 assert!(metrics.is_full);
+                assert_eq!(metrics.fullness, 1.0);
                 assert_eq!(metrics.bar, Some((13, 0xFF5454)));
                 assert_eq!(metrics.stack_count, 4);
 
@@ -382,6 +383,7 @@ mod custom_bundle_integration_tests {
                 );
                 let half_metrics = game.bundle_metrics(&current, &m8).unwrap().unwrap();
                 assert!(!half_metrics.is_full);
+                assert_eq!(half_metrics.fullness, 0.5);
                 assert_eq!(half_metrics.bar, Some((7, 0x7087FF)));
 
                 // Nested occupancy: vanilla bundle + nested custom pouch inside an unfiltered pouch.
@@ -578,19 +580,56 @@ mod custom_bundle_integration_tests {
                     Err(mod_api::BundleReadError::UnsupportedFormat)
                 );
 
-                // Hot draw path: repeated metrics/slots queries on the same pouch hit the
-                // per-game BundleMetricsCache without recomputing weight.
-                let before_draws = game.bundle_metrics_cache.borrow().computations();
-                for _ in 0..8 {
-                    let _ = game
-                        .bundle_metrics(&with_both, &unfiltered)
-                        .unwrap()
-                        .unwrap();
-                    let _ = game.bundle_slots(&with_both, &unfiltered).unwrap().unwrap();
+                // Weights are vanilla's int `Fraction`: five arrows stacking to the coprime 97,
+                // 89, 83, 79 and 73 need a denominator past i32::MAX ("Excessive total bundle
+                // weight"), and a multiplier past i32::MAX has no capacity. Every operation
+                // refuses with ExcessiveWeight and nothing is written.
+                let arrow_stacking_to = |max: i32| {
+                    Tag::compound([
+                        ("id", Tag::String("minecraft:arrow".into())),
+                        ("count", Tag::Int(1)),
+                        (
+                            "components",
+                            Tag::compound([("minecraft:max_stack_size", Tag::Int(max))]),
+                        ),
+                    ])
+                };
+                let mut excessive = ItemStack::new("minecraft:paper", 1);
+                excessive.data_mut().set_other(
+                    POUCH_COMPONENT,
+                    Some(Tag::List(
+                        [97, 89, 83, 79, 73].map(arrow_stacking_to).to_vec(),
+                    )),
+                );
+                let huge = BundleConfig::custom(POUCH_COMPONENT, u32::MAX);
+                for (stack, config) in [(&excessive, &unfiltered), (&empty, &huge)] {
+                    let refused = Some(mod_api::BundleReadError::ExcessiveWeight);
+                    assert_eq!(game.bundle_slots(stack, config).err(), refused);
+                    assert_eq!(
+                        game.bundle_capacity(stack, 0, &arrow, config).err(),
+                        refused
+                    );
+                    assert_eq!(
+                        game.bundle_insert_slot(stack, 0, &arrow, config).err(),
+                        refused
+                    );
+                    assert_eq!(game.bundle_extract(stack, 0, 1, config).err(), refused);
+                    assert_eq!(game.bundle_metrics(stack, config).err(), refused);
                 }
-                assert!(
-                    game.bundle_metrics_cache.borrow().computations() <= before_draws + 1,
-                    "repeated metrics/slots draws on unchanged pouch must compute at most once"
+                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                    guest.inventory[0] = Some(excessive.clone());
+                });
+                let excessive_handler = place.capability(game, &ITEM_ITEMS).unwrap();
+                assert_eq!(excessive_handler.size(game), 0);
+                assert_eq!(
+                    game.storage_transaction(
+                        |host, tx| excessive_handler.insert_at(host, tx, 0, &arrow_res, 5)
+                    ),
+                    Ok(0)
+                );
+                assert_eq!(
+                    game.lan.as_ref().unwrap().hub.guests[0].inventory[0].as_ref(),
+                    Some(&excessive)
                 );
             });
         });

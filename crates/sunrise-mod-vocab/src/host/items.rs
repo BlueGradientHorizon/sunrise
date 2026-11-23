@@ -347,8 +347,8 @@ pub trait ItemsBackend {
     /// The stacks in one item of `stack`'s configured bundle component, front first (the
     /// stack the container gives back next is slot 0). `Ok(None)` for an item without the
     /// component; `Err(BundleReadError::UnsupportedFormat)` if the custom component (or a nested
-    /// container carrying the same component) is not a `Tag::List` of strict `ItemStack.CODEC`
-    /// entries.
+    /// container carrying the same component) is not a `Tag::List` of `ItemStack.CODEC` entries;
+    /// `Err(BundleReadError::ExcessiveWeight)` if its weight overflows vanilla's `Fraction`.
     fn bundle_slots(
         &self,
         stack: &ItemStack,
@@ -360,7 +360,8 @@ pub trait ItemsBackend {
     /// multiplier, nested occupancy, container-fit rules, and optional `filter_tag`; `Ok(0)` for
     /// an item refused or without the component; `Err(BundleReadError::UnsupportedFormat)` if
     /// `stack`, a nested container inside it, or `item` carries a malformed custom component
-    /// payload.
+    /// payload; `Err(BundleReadError::ExcessiveWeight)` if a weight or the room left overflows
+    /// vanilla's `Fraction`.
     fn bundle_capacity(
         &self,
         stack: &ItemStack,
@@ -373,7 +374,8 @@ pub trait ItemsBackend {
     /// the front under `config`. Gives how many went in and the changed single container stack;
     /// `Ok(None)` without the component; `Err(BundleReadError::UnsupportedFormat)` without
     /// modifying the stack if `stack`, a nested container inside it, or `item` carries a malformed
-    /// custom component payload.
+    /// custom component payload; `Err(BundleReadError::ExcessiveWeight)`, likewise, if a weight
+    /// overflows vanilla's `Fraction`.
     fn bundle_insert_slot(
         &self,
         stack: &ItemStack,
@@ -386,7 +388,8 @@ pub trait ItemsBackend {
     /// (slot 0 only) under `config`. Gives the taken stack, if any, and the changed single
     /// container stack; `Ok(None)` without the component; `Err(BundleReadError::UnsupportedFormat)`
     /// without modifying the stack if the custom component (or a nested container carrying the same
-    /// component) carries a malformed payload.
+    /// component) carries a malformed payload; `Err(BundleReadError::ExcessiveWeight)`, likewise,
+    /// if a weight overflows vanilla's `Fraction`.
     fn bundle_extract(
         &self,
         stack: &ItemStack,
@@ -398,7 +401,10 @@ pub trait ItemsBackend {
     /// Exact fullness, full flag, vanilla-style fullness bar `(width, rgb)`, and stored stack
     /// count for one item of `stack` under `config`; `Ok(None)` without the component;
     /// `Err(BundleReadError::UnsupportedFormat)` if the custom component (or a nested container
-    /// carrying the same component) carries a malformed payload. Memoized per component value.
+    /// carrying the same component) carries a malformed payload;
+    /// `Err(BundleReadError::ExcessiveWeight)` if its weight overflows vanilla's `Fraction`. All
+    /// four come from the one weight computed as the contents are read; nothing is cached
+    /// between calls.
     fn bundle_metrics(
         &self,
         stack: &ItemStack,

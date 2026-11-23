@@ -3604,8 +3604,6 @@ struct Game<'a> {
             sunrise_assets::item_model::LevelState,
         )>,
     >,
-    /// Bounded memoization cache for decoded bundle-like contents and exact weights on hot draw paths.
-    bundle_metrics_cache: std::cell::RefCell<sunrise_items::bundle::BundleMetricsCache>,
     /// Frames drawn with the player in the world, for `--world-frames`.
     world_frames: u64,
     fps: f32,
@@ -13852,7 +13850,6 @@ impl<'a> Game<'a> {
             mod_view_distances: Default::default(),
             block_entity_reach: Default::default(),
             item_level_cache: Default::default(),
-            bundle_metrics_cache: Default::default(),
             world_frames: 0,
             fps: 0.0,
             fps_frames: 0,

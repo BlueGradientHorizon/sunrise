@@ -11,8 +11,13 @@ pub enum BundleReadError {
     /// This Host has no active world item registry, or the stack could not be read.
     Unavailable,
     /// The stack (or a nested container carrying the same custom component) does not conform to
-    /// `Tag::List` of strict `ItemStack.CODEC` entries.
+    /// `Tag::List` of `ItemStack.CODEC` entries naming registered items.
     UnsupportedFormat,
+    /// Vanilla's `DataResult.error("Excessive total bundle weight")`: the stored weight, a
+    /// weight the operation needs (room left, the weight after an insert or extract), or the
+    /// capacity overflowed vanilla's `int` `Fraction` (commons-lang3 throws). A
+    /// `capacity_multiplier` above `i32::MAX` always does.
+    ExcessiveWeight,
 }
 
 impl std::fmt::Display for BundleReadError {
@@ -22,6 +27,7 @@ impl std::fmt::Display for BundleReadError {
             Self::UnsupportedFormat => {
                 f.write_str("bundle component value is not a list of valid item stacks")
             }
+            Self::ExcessiveWeight => f.write_str("Excessive total bundle weight"),
         }
     }
 }
@@ -80,6 +86,8 @@ pub struct BundleConfig {
     /// Namespaced data component id holding the stored stacks.
     pub component: String,
     /// Whole-number capacity multiplier relative to a vanilla bundle (`1` = 64 normal items).
+    /// The capacity is vanilla's `int` `Fraction` `capacity_multiplier / 1`: above `i32::MAX`
+    /// every helper answers [`BundleReadError::ExcessiveWeight`].
     pub capacity_multiplier: u32,
     /// Optional item tag id (without `#`, e.g. `"mymod:runes"`) restricting which items may enter.
     pub filter_tag: Option<String>,
@@ -121,10 +129,10 @@ impl BundleConfig {
     /// Read the stored stacks of `stack` in front-first order.
     ///
     /// Returns `Ok(None)` if `stack` does not carry this config's component,
-    /// `Err(BundleReadError::Unavailable)` when the host has no active world item registry, or
+    /// `Err(BundleReadError::Unavailable)` when the host has no active world item registry,
     /// `Err(BundleReadError::UnsupportedFormat)` when the component (or a nested container
-    /// carrying the same custom component) is not a `Tag::List` of strict `ItemStack.CODEC`
-    /// entries.
+    /// carrying the same custom component) is not a `Tag::List` of `ItemStack.CODEC` entries, or
+    /// `Err(BundleReadError::ExcessiveWeight)` when its weight overflows vanilla's `Fraction`.
     pub fn slots(
         &self,
         host: &dyn Host,
@@ -140,9 +148,11 @@ impl BundleConfig {
     /// container-fit rules, and optional `filter_tag`.
     ///
     /// Returns `Ok(0)` when `item` is refused or `stack` does not carry the component,
-    /// `Err(BundleReadError::Unavailable)` when the host has no active world item registry, or
+    /// `Err(BundleReadError::Unavailable)` when the host has no active world item registry,
     /// `Err(BundleReadError::UnsupportedFormat)` when `stack`, a nested container inside it, or
-    /// `item` carries a malformed custom component payload.
+    /// `item` carries a malformed custom component payload, or
+    /// `Err(BundleReadError::ExcessiveWeight)` when a weight or the room left overflows vanilla's
+    /// `Fraction`.
     pub fn room_for(
         &self,
         host: &dyn Host,
@@ -159,8 +169,9 @@ impl BundleConfig {
     ///
     /// Returns `Ok(None)` if `stack` does not carry this config's component,
     /// `Err(BundleReadError::Unavailable)` when the host has no active world item registry, or
-    /// `Err(BundleReadError::UnsupportedFormat)` without modifying the stack when `stack`, a
-    /// nested container inside it, or `item` carries a malformed custom component payload.
+    /// `Err(BundleReadError::UnsupportedFormat)` or `Err(BundleReadError::ExcessiveWeight)`
+    /// without modifying the stack when `stack`, a nested container inside it, or `item` carries
+    /// a malformed custom component payload, or a weight overflows vanilla's `Fraction`.
     pub fn try_insert(
         &self,
         host: &dyn Host,
@@ -178,8 +189,9 @@ impl BundleConfig {
     ///
     /// Returns `Ok(None)` if `stack` does not carry this config's component,
     /// `Err(BundleReadError::Unavailable)` when the host has no active world item registry, or
-    /// `Err(BundleReadError::UnsupportedFormat)` without modifying the stack when the component
-    /// (or a nested container carrying the same custom component) carries a malformed payload.
+    /// `Err(BundleReadError::UnsupportedFormat)` or `Err(BundleReadError::ExcessiveWeight)`
+    /// without modifying the stack when the component (or a nested container carrying the same
+    /// custom component) carries a malformed payload, or a weight overflows vanilla's `Fraction`.
     pub fn extract(
         &self,
         host: &dyn Host,
@@ -193,12 +205,15 @@ impl BundleConfig {
 
     /// Exact fullness, full flag, vanilla-style bar `(width, rgb)`, and stored stack count for
     /// `stack` under this config; `Ok(None)` when `stack` does not carry the component, or
-    /// `Err(BundleReadError::UnsupportedFormat)` when the component (or a nested container
-    /// carrying the same custom component) carries a malformed payload.
+    /// `Err(BundleReadError::UnsupportedFormat)` / `Err(BundleReadError::ExcessiveWeight)` when
+    /// the component (or a nested container carrying the same custom component) carries a
+    /// malformed payload or its weight overflows vanilla's `Fraction`.
     ///
-    /// Decoded contents and exact weight are memoized per component value in the host so repeated
-    /// draw calls (`item_bar`, `tooltip_image`, `item_model_range_property`) avoid re-walking
-    /// nested contents on every frame.
+    /// The four values come from one weight, computed as the contents are read, as vanilla
+    /// memoizes `BundleContents.weight` on the component value; the bar follows
+    /// `BundleItem.getBarWidth` / `getBarColor` over `weight / capacity_multiplier`. Each call
+    /// decodes the component and weighs it again (nothing is cached between calls), so a part
+    /// that draws many times a frame should ask once per frame and reuse the answer.
     pub fn metrics(
         &self,
         host: &dyn Host,
@@ -397,6 +412,7 @@ mod tests {
         for err in [
             BundleReadError::Unavailable,
             BundleReadError::UnsupportedFormat,
+            BundleReadError::ExcessiveWeight,
         ] {
             let mut writer = Writer::new();
             writer.put(&err);

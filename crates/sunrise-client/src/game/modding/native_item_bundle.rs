@@ -13,6 +13,7 @@ fn bundle_spec(config: &BundleConfig) -> BundleSpec<'_> {
 fn map_bundle_error(err: CustomBundleError) -> BundleReadError {
     match err {
         CustomBundleError::UnsupportedFormat => BundleReadError::UnsupportedFormat,
+        CustomBundleError::Weight(_) => BundleReadError::ExcessiveWeight,
     }
 }
 
@@ -39,15 +40,12 @@ impl Game<'_> {
         if stack.count == 0 {
             return Ok(None);
         }
-        let Some(items) = self
-            .bundle_metrics_cache
-            .borrow_mut()
-            .slots_for(self.items(), stack, bundle_spec(config))
+        let Some(contents) = CustomBundleContents::try_of(self.items(), stack, bundle_spec(config))
             .map_err(map_bundle_error)?
         else {
             return Ok(None);
         };
-        Ok(Some(items.iter().cloned().map(Some).collect()))
+        Ok(Some(contents.items().iter().cloned().map(Some).collect()))
     }
 
     pub(in crate::game) fn bundle_capacity(
@@ -60,11 +58,9 @@ impl Game<'_> {
         if stack.count == 0 {
             return Ok(0);
         }
-        let room = self
-            .bundle_metrics_cache
-            .borrow_mut()
-            .room_for(self.items(), stack, bundle_spec(config), item)
-            .map_err(map_bundle_error)?;
+        let room =
+            CustomBundleContents::try_room_in_stack(self.items(), stack, bundle_spec(config), item)
+                .map_err(map_bundle_error)?;
         if slot != 0 || !self.bundle_accepts(config, item) {
             return Ok(0);
         }
@@ -152,19 +148,18 @@ impl Game<'_> {
         if stack.count == 0 {
             return Ok(None);
         }
-        let Some(summary) = self
-            .bundle_metrics_cache
-            .borrow_mut()
-            .metrics_for(self.items(), stack, bundle_spec(config))
+        // The weight is computed once as the contents are read, as vanilla memoizes it on the
+        // `BundleContents` value; the fullness, flag and bar all read that one weight.
+        let Some(contents) = CustomBundleContents::try_of(self.items(), stack, bundle_spec(config))
             .map_err(map_bundle_error)?
         else {
             return Ok(None);
         };
         Ok(Some(BundleMetrics::new(
-            summary.weight_fraction,
-            summary.is_full,
-            summary.bar,
-            summary.stack_count,
+            contents.weight_fraction(),
+            contents.is_full(),
+            contents.bar(),
+            contents.items().len() as u32,
         )))
     }
 

@@ -12,6 +12,10 @@ The weight model follows vanilla 26.3's `BundleContents` and `BundleItem` rules:
 - Exact rational occupancy (`1 / max_stack_size`, non-empty `minecraft:bees` = `1`, nested
   vanilla bundles and nested containers sharing the same component = `contents + 1/16`, evaluated
   iteratively with no artificial nesting depth cutoff).
+- Vanilla's `Fraction` arithmetic: weights are commons-lang3 `Fraction`s with `int` parts, summed
+  in `BundleContents.computeContentWeight`'s order, and every operation is checked. Where vanilla
+  throws `ArithmeticException` (and answers `"Excessive total bundle weight"`), the helpers answer
+  `Err(BundleReadError::ExcessiveWeight)`; see below.
 - Front-first insertion and extraction order, fullness bar color/width (`0x7087FF` blue while
   partial, `0xFF5454` red at width `13` when full, hidden when empty), and tooltip grid layout.
 
@@ -26,21 +30,33 @@ The following behaviours are **Sunrise-specific extensions** beyond vanilla 26.3
 
 ## Storage schema, overfull, and malformed contents
 
-- **Single strict storage format**: custom bundle components must store a `Tag::List` of strict
-  `ItemStack.CODEC` compounds (`id` non-air identifier registered in the active item catalog,
-  optional integer `count` in `1..=99`, optional persistent `components` compound — matching
-  vanilla `BundleContents.CODEC` and registry-backed `Item.CODEC`). Unmentioned extra keys on an
-  entry compound are accepted on decode and dropped on re-encode, matching vanilla
-  `ItemStack.MAP_CODEC` and Sunrise's vanilla bundle path (`item_data::template_from` /
-  `template_tag`). Any non-list tag shape (such as a `Tag::Compound` or scalar tag) **or** any
-  malformed or unknown-item element (e.g. `mod:removed_item`) inside the list refuses the entire
-  payload with `Err(BundleReadError::UnsupportedFormat)` across all five `BundleConfig` helpers
-  (`slots`, `room_for`, `try_insert`, `extract`, `metrics`) and is never overwritten by
-  `BundleItems`, `CustomBundleContents::store`, or component destruction.
+- **Single storage format**: custom bundle components must store a `Tag::List` of
+  `ItemStack.CODEC` compounds, matching vanilla `BundleContents.CODEC`. Each entry is read by the
+  engine's one persistent-stack decoder, the one commands and data files use: a non-air `id`, which
+  must also be registered in the active item catalog (registry-backed `Item.CODEC`); an optional
+  numeric `count` read as Java's `Number.intValue` (so `2.7f` is `2`) and kept in `1..=99`; and an
+  optional `components` compound of persistent components. A stack whose consume effects the
+  decoder refuses is refused too. Unmentioned extra keys on an entry compound are accepted on
+  decode and dropped on re-encode, matching vanilla `ItemStack.MAP_CODEC`. Any non-list tag shape
+  (such as a `Tag::Compound` or scalar tag) **or** any element the decoder or the catalog refuses
+  (e.g. `mod:removed_item`) inside the list refuses the entire payload with
+  `Err(BundleReadError::UnsupportedFormat)` across all five `BundleConfig` helpers (`slots`,
+  `room_for`, `try_insert`, `extract`, `metrics`) and is never overwritten by `BundleItems`,
+  `CustomBundleContents::store`, or component destruction.
 - **Malformed nested containers**: if a stored item (at any nesting depth, including inside a
   nested vanilla bundle) or an offered stack carries the same custom component with an unsupported
   or malformed payload, weight evaluation propagates `Err(BundleReadError::UnsupportedFormat)`
   instead of weighing the malformed container as an ordinary leaf item.
+- **Excessive weight**: weights are vanilla's `int` `Fraction`s, so contents whose weight needs a
+  numerator or denominator past `i32::MAX` (for example five stacks whose `max_stack_size`s are the
+  coprime 97, 89, 83, 79 and 73) are refused with `Err(BundleReadError::ExcessiveWeight)`, as
+  vanilla's `ItemStack.validateComponents` refuses such a bundle with "Excessive total bundle
+  weight". The same error comes back, without changing anything, when the room left, the weight
+  after an insert or the weight after an extract overflows, and from every helper when
+  `capacity_multiplier` is above `i32::MAX` (the capacity is the `Fraction`
+  `capacity_multiplier / 1`). A refused payload is never overwritten. When the multiplier is large
+  enough that `weight / capacity_multiplier` itself overflows, `metrics` reads the container as
+  full, as vanilla's `BundleItem.getWeightSafe` reads an erroring weight as `Fraction.ONE`.
 - **Unavailable host**: calling any of the five `BundleConfig` helpers on a `Host` without an
   active world item registry returns `Err(BundleReadError::Unavailable)`.
 - **Overfull stored contents**: if a saved or command-created stack already exceeds capacity
@@ -48,11 +64,13 @@ The following behaviours are **Sunrise-specific extensions** beyond vanilla 26.3
   inserts `0`, `metrics.is_full` is `true`, `metrics.fullness > 1.0`, and `metrics.bar` clamps to
   `Some((13, 0xFF5454))`. `extract` still removes items from slot `0`, preserving any remainder at
   the front.
-- **Memoized hot draw path**: decoded contents and exact rational weight are memoized per component
-  value in a bounded host cache (invalidated whenever the item catalog reloads, mirroring vanilla
-  `BundleContents`'s memoized weight), so repeated `metrics` / `slots` calls during `item_bar`,
-  `tooltip_image`, and `item_model_range_property` avoid re-decoding NBT or re-walking nested
-  container trees on every frame.
+- **One weight per read, nothing cached between reads**: each helper decodes the component and
+  computes its weight once, and every answer it gives (fullness, full flag, bar, room) comes from
+  that one weight, as vanilla memoizes `BundleContents.weight` on the component value. A second
+  call decodes and weighs again, so the cost of `metrics` / `slots` grows with the number of
+  stacks inside (and inside nested containers). Draw hooks such as `item_bar`, `tooltip_image`
+  and `item_model_range_property` run every frame for every visible stack: ask once per hook call
+  and reuse the answer rather than calling a helper per value.
 
 ## 1. Register the component and default
 

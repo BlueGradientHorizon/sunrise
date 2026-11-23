@@ -1,72 +1,45 @@
 //! `BundleContents.Mutable`: what a bundle takes in and gives back, by
 //! weight. The menus (`menu`, `lan::menu`) run `BundleItem`'s click
 //! overrides on it.
+//!
+//! Weights are vanilla's commons-lang3 `Fraction`
+//! ([`sunrise_world::bundle_weight::Fraction`]): `int` parts, every operation checked, and an
+//! overflow is [`ExcessiveWeight`], the `ArithmeticException` that
+//! `BundleContents.computeContentWeight` turns into
+//! `DataResult.error("Excessive total bundle weight")`.
 use crate::item_data::BundleSelected;
 use crate::items::{ItemStack, Items};
-use std::collections::{HashMap, VecDeque, hash_map::DefaultHasher};
-use std::hash::{Hash, Hasher};
-use std::sync::Arc;
 use sunrise_core::nbt::Tag;
+use sunrise_world::bundle_weight::{ExcessiveWeight, Fraction};
 
-/// A bundle weight: vanilla's `Fraction`, exact and kept reduced.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Weight {
-    n: i128,
-    d: i128,
+/// `DataComponents.BUNDLE_CONTENTS`.
+const VANILLA_COMPONENT: &str = "minecraft:bundle_contents";
+
+/// `BundleContents.BUNDLE_IN_BUNDLE_WEIGHT`: `Fraction.getFraction(1, 16)`, what a nested
+/// bundle weighs on top of its contents.
+fn bundle_in_bundle_weight() -> Result<Fraction, ExcessiveWeight> {
+    Fraction::new(1, 16)
 }
 
-fn gcd(a: i128, b: i128) -> i128 {
-    let (mut a, mut b) = (a.abs(), b.abs());
-    while b != 0 {
-        (a, b) = (b, a % b);
-    }
-    a.max(1)
+/// `Mutable.getStackedWeight(Fraction, int)`: `weight.multiplyBy(Fraction.getFraction(count, 1))`.
+/// A count past `i32::MAX` has no `int`, so it overflows like the product would.
+fn stacked(weight: Fraction, count: u32) -> Result<Fraction, ExcessiveWeight> {
+    let count = i32::try_from(count).map_err(|_| ExcessiveWeight)?;
+    weight.checked_multiply(Fraction::new(count, 1)?)
 }
 
-impl Weight {
-    const ZERO: Self = Self { n: 0, d: 1 };
-    const ONE: Self = Self { n: 1, d: 1 };
+/// `Mutable.getMaxAmountToAdd`: `capacity.subtract(weight).divideBy(unit).intValue()`, at least
+/// 0. Vanilla's capacity is `Fraction.ONE`.
+fn room(capacity: Fraction, weight: Fraction, unit: Fraction) -> Result<u32, ExcessiveWeight> {
+    let left = capacity.checked_subtract(weight)?.checked_divide_by(unit)?;
+    Ok(left.int_value().max(0) as u32)
+}
 
-    fn new(n: i128, d: i128) -> Self {
-        let g = gcd(n, d);
-        Self { n: n / g, d: d / g }
-    }
-
-    fn add(self, o: Self) -> Self {
-        let g = gcd(self.d, o.d);
-        let d1 = self.d / g;
-        let d2 = o.d / g;
-        let n = self
-            .n
-            .saturating_mul(d2)
-            .saturating_add(o.n.saturating_mul(d1));
-        let d = self.d.saturating_mul(d2).max(1);
-        Self::new(n, d)
-    }
-
-    fn sub(self, o: Self) -> Self {
-        self.add(Self { n: -o.n, d: o.d })
-    }
-
-    fn times(self, count: u32) -> Self {
-        self.times_u128(u128::from(count))
-    }
-
-    fn times_u128(self, count: u128) -> Self {
-        let c = i128::try_from(count).unwrap_or(i128::MAX);
-        let g = gcd(c, self.d);
-        Self::new(self.n.saturating_mul(c / g), (self.d / g).max(1))
-    }
-
-    /// `this.divideBy(item).intValue()` (truncated), at least 0.
-    fn how_many(self, item: Self) -> u32 {
-        if self.n <= 0 || item.n <= 0 {
-            return 0;
-        }
-        let num = self.n.saturating_mul(item.d);
-        let den = self.d.saturating_mul(item.n).max(1);
-        u32::try_from((num / den).max(0)).unwrap_or(u32::MAX)
-    }
+/// `Mth.mulAndTruncate(Fraction, int)`: `getNumerator() * factor / getDenominator()` in `int`
+/// arithmetic. The product is Java's `imul`, which wraps rather than throws, so this wraps too
+/// (`wrapping_mul`) instead of panicking or saturating; the denominator is positive.
+fn mul_and_truncate(fraction: Fraction, factor: i32) -> i32 {
+    fraction.numerator().wrapping_mul(factor) / fraction.denominator()
 }
 
 /// The sounds of `BundleItem` (`Entity.playSound` at the player): insert
@@ -100,14 +73,16 @@ pub(crate) fn max_stack(items: &Items, stack: &ItemStack) -> u32 {
 pub struct BundleSpec<'a> {
     /// Namespaced data component id storing the container's items.
     pub component: &'a str,
-    /// Whole-number capacity multiplier relative to a vanilla bundle (clamped >= 1).
+    /// Whole-number capacity multiplier relative to a vanilla bundle (clamped >= 1). The capacity
+    /// is the `Fraction` `capacity_multiplier / 1`, so a multiplier above `i32::MAX` has no
+    /// capacity and every read refuses it with [`CustomBundleError::Weight`].
     pub capacity_multiplier: u32,
 }
 
 impl<'a> BundleSpec<'a> {
     /// Vanilla `minecraft:bundle_contents` with multiplier `1`.
     pub const VANILLA: Self = Self {
-        component: "minecraft:bundle_contents",
+        component: VANILLA_COMPONENT,
         capacity_multiplier: 1,
     };
 
@@ -125,24 +100,45 @@ impl<'a> BundleSpec<'a> {
 
     /// Whether this spec targets vanilla's `minecraft:bundle_contents` storage.
     pub fn is_vanilla(&self) -> bool {
-        self.component == "minecraft:bundle_contents"
+        self.component == VANILLA_COMPONENT
     }
 
     fn multiplier(&self) -> u32 {
         self.capacity_multiplier.max(1)
     }
 
-    fn capacity(&self) -> Weight {
-        Weight::new(i128::from(self.multiplier()), 1)
+    /// The capacity as a `Fraction`: `Fraction.ONE` for a vanilla bundle,
+    /// `getFraction(multiplier, 1)` for a custom container.
+    fn capacity(&self) -> Result<Fraction, ExcessiveWeight> {
+        let multiplier = i32::try_from(self.multiplier()).map_err(|_| ExcessiveWeight)?;
+        Fraction::new(multiplier, 1)
+    }
+
+    /// The component a nested container must carry to count as one inside this container:
+    /// vanilla bundles always do (`BundleContents.getWeight`), and a custom container also
+    /// counts others carrying its own component.
+    fn nested_component(&self) -> Option<&'a str> {
+        (!self.is_vanilla()).then_some(self.component)
     }
 }
 
-/// Why a custom bundle-like component on an item stack could not be decoded.
+/// Why a bundle-like component on an item stack could not be read or changed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CustomBundleError {
     /// The stack (or a nested container carrying the same custom component) does not conform to
-    /// `Tag::List` of strict `ItemStack.CODEC` entries.
+    /// `Tag::List` of `ItemStack.CODEC` entries, as
+    /// [`crate::item_nbt::item_from_persistent_nbt`] reads them, naming registered items.
     UnsupportedFormat,
+    /// `DataResult.error("Excessive total bundle weight")`: a weight, or the capacity, overflowed
+    /// vanilla's `int` `Fraction`. The same error as [`sunrise_world::bundle_weight`]'s vanilla
+    /// contents validation (`ContentsError::Weight`).
+    Weight(ExcessiveWeight),
+}
+
+impl From<ExcessiveWeight> for CustomBundleError {
+    fn from(error: ExcessiveWeight) -> Self {
+        Self::Weight(error)
+    }
 }
 
 impl std::fmt::Display for CustomBundleError {
@@ -151,6 +147,7 @@ impl std::fmt::Display for CustomBundleError {
             Self::UnsupportedFormat => {
                 f.write_str("custom bundle component value is not a list of valid item stacks")
             }
+            Self::Weight(error) => error.fmt(f),
         }
     }
 }
@@ -161,102 +158,40 @@ impl std::error::Error for CustomBundleError {}
 fn contents_of<'a>(items: &Items, stack: &'a ItemStack) -> Option<&'a [ItemStack]> {
     let inside = stack.data().map_or(&[][..], |d| &d.bundle_contents[..]);
     stack
-        .carries_component(items.get(&stack.item), "minecraft:bundle_contents")
+        .carries_component(items.get(&stack.item), VANILLA_COMPONENT)
         .then_some(inside)
 }
 
-/// Strictly decode one custom bundle entry matching vanilla 26.3 `ItemStack.CODEC`:
-/// a `Tag::Compound` carrying `id` (required valid non-air identifier present in `items`,
-/// matching registry-backed `Item.CODEC`), optional integer `count` in `1..=99` (default `1`),
-/// and optional `Tag::Compound` `components` passing persistent component validation (no
-/// transient components).
+/// Decode a custom bundle-like component tag as `BundleContents.CODEC` reads one: a `Tag::List`
+/// of `ItemStackTemplate.CODEC` entries.
 ///
-/// Extra unmentioned keys on the entry compound (e.g. `{id:"minecraft:stone", count:1, tier:3}`)
-/// are accepted and ignored on decode — and dropped on re-encode via `item_nbt::item_to_nbt` —
-/// matching vanilla `ItemStack.MAP_CODEC` (`RecordCodecBuilder`) as well as Sunrise's vanilla
-/// `minecraft:bundle_contents` path (`item_data::template_from` / `item_data::template_tag`) and
-/// `item_nbt::item_from_persistent_nbt` / `item_nbt::item_to_nbt`.
-///
-/// Any malformed entry, unknown/removed item id, out-of-range or non-integer `count`, or invalid
-/// `components` map refuses the entire payload with [`CustomBundleError::UnsupportedFormat`].
-fn try_decode_custom_stack(items: &Items, entry: &Tag) -> Result<ItemStack, CustomBundleError> {
-    if !matches!(entry, Tag::Compound(_)) {
-        return Err(CustomBundleError::UnsupportedFormat);
-    }
-    let Some(Tag::String(raw_id)) = entry.get("id") else {
-        return Err(CustomBundleError::UnsupportedFormat);
-    };
-    let raw_id = raw_id
-        .to_string()
-        .map_err(|_| CustomBundleError::UnsupportedFormat)?;
-    let (namespace, path) =
-        sunrise_world::datafix::identifier(&raw_id).ok_or(CustomBundleError::UnsupportedFormat)?;
-    if namespace == "minecraft" && path == "air" {
-        return Err(CustomBundleError::UnsupportedFormat);
-    }
-    let id = format!("{namespace}:{path}");
-    if items.get(&id).is_none() {
-        return Err(CustomBundleError::UnsupportedFormat);
-    }
-    let count = match entry.get("count") {
-        None => 1u32,
-        Some(value) => {
-            let n = match value {
-                Tag::Byte(n) => i32::from(*n),
-                Tag::Short(n) => i32::from(*n),
-                Tag::Int(n) => *n,
-                Tag::Long(n) => {
-                    i32::try_from(*n).map_err(|_| CustomBundleError::UnsupportedFormat)?
-                }
-                _ => return Err(CustomBundleError::UnsupportedFormat),
-            };
-            if !(1..=99).contains(&n) {
-                return Err(CustomBundleError::UnsupportedFormat);
-            }
-            n as u32
-        }
-    };
-    let components = match entry.get("components") {
-        None => None,
-        Some(value) => {
-            if !matches!(value, Tag::Compound(_)) {
-                return Err(CustomBundleError::UnsupportedFormat);
-            }
-            sunrise_world::item_defaults::validate_component_map_tag(value)
-                .map_err(|_| CustomBundleError::UnsupportedFormat)?;
-            Some(value)
-        }
-    };
-    let (damage, extra) = crate::item_data::decode_components(components);
-    Ok(ItemStack {
-        item: Arc::from(id.as_str()),
-        count,
-        damage,
-        extra,
-    })
-}
-
-/// Decode a custom bundle-like component tag.
-///
-/// The single supported custom storage format is `Tag::List` of strict `ItemStack.CODEC` entries
-/// (matching vanilla `BundleContents.CODEC`). Any non-list tag or any malformed or unknown-item
-/// entry inside the list refuses the entire payload with [`CustomBundleError::UnsupportedFormat`]
-/// rather than silently dropping entries on rewrite.
+/// Every entry goes through the one persistent-stack decoder,
+/// [`crate::item_nbt::item_from_persistent_nbt`] (a numeric `count` read through
+/// `Number.intValue` and kept in 1..=99, persistent components only, no refused consume
+/// effects), plus the item registry check of `Item.CODEC`, which that decoder leaves to its
+/// callers. Extra entry keys are ignored there and dropped on re-encode, as
+/// `ItemStackTemplate.MAP_CODEC` does. Any non-list tag or any entry the decoder or the registry
+/// refuses makes the whole payload [`CustomBundleError::UnsupportedFormat`] rather than silently
+/// dropping entries on rewrite.
 fn try_decode_custom_tag(items: &Items, tag: &Tag) -> Result<Vec<ItemStack>, CustomBundleError> {
     let Tag::List(entries) = tag else {
         return Err(CustomBundleError::UnsupportedFormat);
     };
     entries
         .iter()
-        .map(|entry| try_decode_custom_stack(items, entry))
+        .map(|entry| {
+            crate::item_nbt::item_from_persistent_nbt(entry)
+                .filter(|stack| items.get(&stack.item).is_some())
+                .ok_or(CustomBundleError::UnsupportedFormat)
+        })
         .collect()
 }
 
 /// The stack's decoded custom component contents when it carries `component`.
 ///
 /// Returns `Ok(None)` when `stack` does not carry `component`, `Ok(Some(items))` when the
-/// component is a `Tag::List` whose every element strictly decodes as `ItemStack.CODEC` against
-/// `items`, and `Err(CustomBundleError::UnsupportedFormat)` otherwise.
+/// component decodes (see [`try_decode_custom_tag`]), and
+/// `Err(CustomBundleError::UnsupportedFormat)` otherwise.
 fn try_custom_contents_of(
     items: &Items,
     stack: &ItemStack,
@@ -276,145 +211,147 @@ fn try_custom_contents_of(
     }
 }
 
-enum WeightEntry<'a> {
-    Borrowed(&'a ItemStack, u128),
-    Owned(ItemStack, u128),
+/// The stacks a container stack holds: its `minecraft:bundle_contents` (vanilla's
+/// `BundleContents.getWeight` looks for that first), borrowed, or the decoded contents of the
+/// custom component being weighed.
+enum Held<'a> {
+    Borrowed(&'a [ItemStack]),
+    Owned(Vec<ItemStack>),
 }
 
-/// Exact iterative evaluation of `BundleContents.getWeight`, generalized to recognize both nested
-/// vanilla bundles and nested containers sharing `custom_component`: a nested bundle weighs its
-/// contents plus 1/16, a beehive with bees 1, the rest 1 / max stack size.
-///
-/// Iterative traversal avoids call-stack limits and evaluates arbitrary NBT nesting depth without
-/// an artificial depth cutoff. Any nested stack carrying `custom_component` with a malformed
-/// payload propagates [`CustomBundleError::UnsupportedFormat`] rather than falling back to leaf
-/// weight.
-fn accumulate_weight(
-    items: &Items,
-    work: &mut Vec<WeightEntry<'_>>,
-    custom_component: Option<&str>,
-) -> Result<Weight, CustomBundleError> {
-    let mut total = Weight::ZERO;
-    while let Some(entry) = work.pop() {
-        match entry {
-            WeightEntry::Borrowed(stack, mult) => {
-                if mult == 0 {
-                    continue;
-                }
-                if let Some(inside) = contents_of(items, stack) {
-                    total = total.add(Weight::new(1, 16).times_u128(mult));
-                    for child in inside {
-                        work.push(WeightEntry::Borrowed(
-                            child,
-                            mult.saturating_mul(u128::from(child.count)),
-                        ));
-                    }
-                    continue;
-                }
-                if let Some(component) = custom_component
-                    && component != "minecraft:bundle_contents"
-                    && let Some(inside) = try_custom_contents_of(items, stack, component)?
-                {
-                    total = total.add(Weight::new(1, 16).times_u128(mult));
-                    for child in inside {
-                        let child_mult = mult.saturating_mul(u128::from(child.count));
-                        work.push(WeightEntry::Owned(child, child_mult));
-                    }
-                    continue;
-                }
-                total = total.add(leaf_weight(items, stack).times_u128(mult));
-            }
-            WeightEntry::Owned(stack, mult) => {
-                if mult == 0 {
-                    continue;
-                }
-                if let Some(inside) = contents_of(items, &stack) {
-                    total = total.add(Weight::new(1, 16).times_u128(mult));
-                    for child in inside {
-                        let child_mult = mult.saturating_mul(u128::from(child.count));
-                        work.push(WeightEntry::Owned(child.clone(), child_mult));
-                    }
-                    continue;
-                }
-                if let Some(component) = custom_component
-                    && component != "minecraft:bundle_contents"
-                    && let Some(inside) = try_custom_contents_of(items, &stack, component)?
-                {
-                    total = total.add(Weight::new(1, 16).times_u128(mult));
-                    for child in inside {
-                        let child_mult = mult.saturating_mul(u128::from(child.count));
-                        work.push(WeightEntry::Owned(child, child_mult));
-                    }
-                    continue;
-                }
-                total = total.add(leaf_weight(items, &stack).times_u128(mult));
-            }
+impl Held<'_> {
+    fn as_slice(&self) -> &[ItemStack] {
+        match self {
+            Self::Borrowed(stacks) => stacks,
+            Self::Owned(stacks) => stacks,
         }
     }
-    Ok(total)
 }
 
-fn leaf_weight(items: &Items, stack: &ItemStack) -> Weight {
+/// What `stack` holds when it is a container counted by the container being weighed: a vanilla
+/// bundle, or a stack carrying `nested` (the custom component being weighed). A malformed
+/// nested custom payload is [`CustomBundleError::UnsupportedFormat`].
+fn held<'a>(
+    items: &Items,
+    stack: &'a ItemStack,
+    nested: Option<&str>,
+) -> Result<Option<Held<'a>>, CustomBundleError> {
+    if let Some(inside) = contents_of(items, stack) {
+        return Ok(Some(Held::Borrowed(inside)));
+    }
+    match nested {
+        Some(component) if component != VANILLA_COMPONENT => {
+            Ok(try_custom_contents_of(items, stack, component)?.map(Held::Owned))
+        }
+        _ => Ok(None),
+    }
+}
+
+/// `BundleContents.getWeight` for a stack holding nothing: `BEEHIVE_WEIGHT` (`Fraction.ONE`)
+/// with bees, else `Fraction.getFraction(1, getMaxStackSize())`.
+fn leaf_weight(items: &Items, stack: &ItemStack) -> Result<Fraction, ExcessiveWeight> {
     let bees = stack
         .data()
         .and_then(|d| d.other("minecraft:bees"))
         .is_some_and(|b| matches!(b, Tag::List(l) if !l.is_empty()));
     if bees {
-        Weight::ONE
-    } else {
-        Weight::new(1, i128::from(max_stack(items, stack)))
+        return Ok(Fraction::ONE);
+    }
+    let max = i32::try_from(max_stack(items, stack)).map_err(|_| ExcessiveWeight)?;
+    Fraction::new(1, max)
+}
+
+/// One container being weighed: its stacks, the next to weigh, its total so far, and how many
+/// of it the container around it holds.
+struct Frame<'a> {
+    stacks: Held<'a>,
+    next: usize,
+    total: Fraction,
+    count: u32,
+}
+
+/// `BundleContents.computeContentWeight`, in vanilla's order: from `Fraction.ZERO`, each stack's
+/// `getWeight` is multiplied by its count (`getFraction(count, 1)`) and added to the total, and
+/// a nested container's `getWeight` is its own contents' weight plus `BUNDLE_IN_BUNDLE_WEIGHT`.
+/// Each overflow surfaces where commons-lang3 throws, as [`CustomBundleError::Weight`].
+///
+/// An explicit stack of [`Frame`]s replaces vanilla's recursion so nesting depth cannot exhaust
+/// the call stack; it keeps vanilla's grouping (a nested container is weighed whole, then
+/// multiplied by its count), so the overflow points are vanilla's. `nested` is
+/// [`BundleSpec::nested_component`].
+fn contents_weight<'a>(
+    items: &Items,
+    inside: &'a [ItemStack],
+    nested: Option<&str>,
+) -> Result<Fraction, CustomBundleError> {
+    // The containers around `current`, outermost first.
+    let mut around: Vec<Frame<'a>> = Vec::new();
+    let mut current = Frame {
+        stacks: Held::Borrowed(inside),
+        next: 0,
+        total: Fraction::ZERO,
+        count: 1,
+    };
+    loop {
+        let index = current.next;
+        if index == current.stacks.as_slice().len() {
+            let Some(mut parent) = around.pop() else {
+                return Ok(current.total);
+            };
+            let unit = current.total.checked_add(bundle_in_bundle_weight()?)?;
+            parent.total = parent.total.checked_add(stacked(unit, current.count)?)?;
+            parent.next += 1;
+            current = parent;
+            continue;
+        }
+        // A borrowed level hands its nested vanilla contents on as borrowed; stacks decoded
+        // from a custom component are owned by their frame, so what they hold is copied.
+        let (count, child) = match &current.stacks {
+            Held::Borrowed(stacks) => {
+                let stacks: &'a [ItemStack] = stacks;
+                let stack = &stacks[index];
+                (stack.count, held(items, stack, nested)?)
+            }
+            Held::Owned(stacks) => {
+                let stack = &stacks[index];
+                let child = held(items, stack, nested)?.map(|held| match held {
+                    Held::Borrowed(inside) => Held::Owned(inside.to_vec()),
+                    Held::Owned(inside) => Held::Owned(inside),
+                });
+                (stack.count, child)
+            }
+        };
+        match child {
+            Some(stacks) => {
+                let child = Frame {
+                    stacks,
+                    next: 0,
+                    total: Fraction::ZERO,
+                    count,
+                };
+                around.push(std::mem::replace(&mut current, child));
+            }
+            None => {
+                let unit = leaf_weight(items, &current.stacks.as_slice()[index])?;
+                current.total = current.total.checked_add(stacked(unit, count)?)?;
+                current.next += 1;
+            }
+        }
     }
 }
 
-fn item_weight_for(
+/// `BundleContents.getWeight(stack)`: a container weighs its contents plus
+/// `BUNDLE_IN_BUNDLE_WEIGHT`, anything else [`leaf_weight`].
+fn item_weight(
     items: &Items,
     stack: &ItemStack,
-    custom_component: Option<&str>,
-) -> Result<Weight, CustomBundleError> {
-    let mut work = vec![WeightEntry::Borrowed(stack, 1)];
-    accumulate_weight(items, &mut work, custom_component)
-}
-
-fn contents_weight_for(
-    items: &Items,
-    inside: &[ItemStack],
-    custom_component: Option<&str>,
-) -> Result<Weight, CustomBundleError> {
-    let mut work: Vec<WeightEntry<'_>> = inside
-        .iter()
-        .map(|s| WeightEntry::Borrowed(s, u128::from(s.count)))
-        .collect();
-    accumulate_weight(items, &mut work, custom_component)
-}
-
-/// Vanilla `BundleContents.computeContentWeight`: infallible because vanilla bundles only inspect
-/// `minecraft:bundle_contents`, `minecraft:bees`, and `max_stack_size`.
-fn contents_weight(items: &Items, inside: &[ItemStack]) -> Weight {
-    contents_weight_for(items, inside, None)
-        .expect("vanilla bundle contents cannot fail custom format validation")
-}
-
-fn weight_fraction_for(weight: Weight, capacity_multiplier: u32) -> f32 {
-    let cap_d = weight.d * i128::from(capacity_multiplier.max(1));
-    weight.n as f32 / cap_d as f32
-}
-
-fn is_full_for(weight: Weight, capacity_multiplier: u32) -> bool {
-    weight.n >= weight.d * i128::from(capacity_multiplier.max(1))
-}
-
-fn bar_for(weight: Weight, capacity_multiplier: u32) -> Option<(i32, u32)> {
-    if weight.n <= 0 {
-        return None;
+    nested: Option<&str>,
+) -> Result<Fraction, CustomBundleError> {
+    match held(items, stack, nested)? {
+        Some(inside) => Ok(contents_weight(items, inside.as_slice(), nested)?
+            .checked_add(bundle_in_bundle_weight()?)?),
+        None => Ok(leaf_weight(items, stack)?),
     }
-    let cap_d = weight.d * i128::from(capacity_multiplier.max(1));
-    let width = (1 + weight.n * 12 / cap_d).min(13) as i32;
-    let color = if is_full_for(weight, capacity_multiplier) {
-        0xFF5454
-    } else {
-        0x7087FF
-    };
-    Some((width, color))
 }
 
 /// `BundleItem.onDestroyed` (`ItemStack.onDestroyed` for a bundle): the stack
@@ -437,14 +374,14 @@ pub fn destroyed(stack: &mut ItemStack) -> Vec<ItemStack> {
 
 /// Generalized `BundleItem.onDestroyed` for any bundle-like component id: empties `component`
 /// on `stack` and returns the stored stacks for dropping. Delegates `"minecraft:bundle_contents"`
-/// to [`destroyed`]. Leaves stacks without `component` or carrying an unsupported non-list
-/// component payload untouched and returns an empty `Vec`.
+/// to [`destroyed`]. Leaves stacks without `component`, or whose payload cannot be read
+/// ([`CustomBundleContents::try_of`] fails), untouched and returns an empty `Vec`.
 pub fn destroyed_component(
     items: &Items,
     stack: &mut ItemStack,
     component: &str,
 ) -> Vec<ItemStack> {
-    if component == "minecraft:bundle_contents" {
+    if component == VANILLA_COMPONENT {
         return destroyed(stack);
     }
     let Ok(Some(mut contents)) =
@@ -456,7 +393,7 @@ pub fn destroyed_component(
         return Vec::new();
     }
     let spilled = std::mem::take(&mut contents.items);
-    contents.weight = Weight::ZERO;
+    contents.weight = Fraction::ZERO;
     contents.selected = -1;
     contents.store(items, stack);
     spilled
@@ -469,48 +406,63 @@ pub fn destroyed_component(
 /// bar, and tooltip geometry logic. Capacity multipliers above `1` and splitting merged/inserted
 /// stacks at each item's `max_stack` are Sunrise-specific extensions beyond vanilla 26.3's
 /// capacity-`1` `BundleContents`.
+///
+/// The weight is computed once, when the contents are read, and kept exact by every change, as
+/// vanilla memoizes `BundleContents.weight` in its constructor (`Suppliers.memoize`) and
+/// `Mutable` carries its `weight` field. Reading the same stack again reads it again; nothing is
+/// cached between reads.
 pub struct CustomBundleContents {
     component: String,
     capacity_multiplier: u32,
+    /// [`BundleSpec::capacity`]: `Fraction.ONE` for a vanilla bundle.
+    capacity: Fraction,
     items: Vec<ItemStack>,
-    weight: Weight,
+    weight: Fraction,
     /// `selectedItem`: an index into `items`, -1 for none.
     selected: i32,
 }
 
 impl CustomBundleContents {
-    fn custom_component(&self) -> Option<&str> {
-        (self.component != "minecraft:bundle_contents").then_some(self.component.as_str())
+    /// Contents of `spec` holding `items` that weigh `weight`.
+    fn with_weight(
+        spec: BundleSpec<'_>,
+        items: Vec<ItemStack>,
+        weight: Fraction,
+        selected: i32,
+    ) -> Result<Self, CustomBundleError> {
+        Ok(Self {
+            component: spec.component.to_owned(),
+            capacity_multiplier: spec.multiplier(),
+            capacity: spec.capacity()?,
+            items,
+            weight,
+            selected,
+        })
     }
 
-    fn capacity(&self) -> Weight {
-        Weight::new(i128::from(self.capacity_multiplier), 1)
+    fn nested_component(&self) -> Option<&str> {
+        (self.component != VANILLA_COMPONENT).then_some(self.component.as_str())
     }
 
     /// Build contents from an explicit item list under `spec`, validating any nested containers
-    /// sharing `spec.component`.
+    /// sharing `spec.component`. [`CustomBundleError::Weight`] when their weight, or the
+    /// capacity, overflows vanilla's `Fraction`.
     pub fn try_from_items(
         items: &Items,
         spec: BundleSpec<'_>,
         inside: Vec<ItemStack>,
     ) -> Result<Self, CustomBundleError> {
-        let custom = (!spec.is_vanilla()).then_some(spec.component);
-        let weight = contents_weight_for(items, &inside, custom)?;
-        Ok(Self {
-            component: spec.component.to_owned(),
-            capacity_multiplier: spec.multiplier(),
-            items: inside,
-            weight,
-            selected: -1,
-        })
+        let weight = contents_weight(items, &inside, spec.nested_component())?;
+        Self::with_weight(spec, inside, weight, -1)
     }
 
     /// Read the container's contents from `stack` under `spec`.
     ///
-    /// Returns `Ok(None)` when `stack` does not carry `spec.component`, or
+    /// Returns `Ok(None)` when `stack` does not carry `spec.component`,
     /// `Err(CustomBundleError::UnsupportedFormat)` when a custom component (on `stack` or any
-    /// nested container carrying `spec.component`) is not a `Tag::List` of strict
-    /// `ItemStack.CODEC` entries.
+    /// nested container carrying `spec.component`) does not decode, and
+    /// `Err(CustomBundleError::Weight)` when the contents' weight or the capacity overflows
+    /// vanilla's `Fraction` (`ItemStack.validateComponents` refuses such a vanilla bundle).
     pub fn try_of(
         items: &Items,
         stack: &ItemStack,
@@ -520,67 +472,48 @@ impl CustomBundleContents {
             let Some(inside) = contents_of(items, stack) else {
                 return Ok(None);
             };
-            let inside = inside.to_vec();
-            let weight = contents_weight(items, &inside);
+            let weight = contents_weight(items, inside, None)?;
             let selected = stack.data().map_or(-1, |d| d.bundle_selected.0);
-            return Ok(Some(Self {
-                component: spec.component.to_owned(),
-                capacity_multiplier: spec.multiplier(),
-                items: inside,
-                weight,
-                selected,
-            }));
+            return Self::with_weight(spec, inside.to_vec(), weight, selected).map(Some);
         }
         let Some(inside) = try_custom_contents_of(items, stack, spec.component)? else {
             return Ok(None);
         };
-        let weight = contents_weight_for(items, &inside, Some(spec.component))?;
-        Ok(Some(Self {
-            component: spec.component.to_owned(),
-            capacity_multiplier: spec.multiplier(),
-            items: inside,
-            weight,
-            selected: -1,
-        }))
+        let weight = contents_weight(items, &inside, spec.nested_component())?;
+        Self::with_weight(spec, inside, weight, -1).map(Some)
     }
 
     /// Read the container's contents from `stack` under `spec`; `None` when `stack` does not
-    /// carry `spec.component` or carries an unsupported payload.
+    /// carry `spec.component` or [`Self::try_of`] refuses it.
     pub fn of(items: &Items, stack: &ItemStack, spec: BundleSpec<'_>) -> Option<Self> {
         Self::try_of(items, stack, spec).ok().flatten()
     }
 
     /// Remaining capacity for `offered` in `bundle` under `spec`, distinguishing missing
-    /// components (`Ok(None)`) from unsupported custom payloads (either in `bundle` or nested
-    /// inside `offered`, returning `Err(CustomBundleError::UnsupportedFormat)`).
+    /// components (`Ok(None)`) from payloads that cannot be read (either in `bundle` or nested
+    /// inside `offered`) and weights that overflow, without copying the contents.
     pub fn try_room_in_stack(
         items: &Items,
         bundle: &ItemStack,
         spec: BundleSpec<'_>,
         offered: &ItemStack,
     ) -> Result<Option<u32>, CustomBundleError> {
-        if spec.is_vanilla() {
-            let Some(inside) = contents_of(items, bundle) else {
-                return Ok(None);
-            };
-            return Ok(Some(
-                spec.capacity()
-                    .sub(contents_weight(items, inside))
-                    .how_many(item_weight_for(items, offered, None)?),
-            ));
-        }
-        let Some(inside) = try_custom_contents_of(items, bundle, spec.component)? else {
+        let nested = spec.nested_component();
+        let held = if spec.is_vanilla() {
+            contents_of(items, bundle).map(Held::Borrowed)
+        } else {
+            try_custom_contents_of(items, bundle, spec.component)?.map(Held::Owned)
+        };
+        let Some(inside) = held else {
             return Ok(None);
         };
-        Ok(Some(
-            spec.capacity()
-                .sub(contents_weight_for(items, &inside, Some(spec.component))?)
-                .how_many(item_weight_for(items, offered, Some(spec.component))?),
-        ))
+        let weight = contents_weight(items, inside.as_slice(), nested)?;
+        let unit = item_weight(items, offered, nested)?;
+        Ok(Some(room(spec.capacity()?, weight, unit)?))
     }
 
-    /// Remaining capacity for `offered` in `bundle` under `spec`, avoiding cloning contents for
-    /// vanilla stacks.
+    /// Remaining capacity for `offered` in `bundle` under `spec`; `None` without the component
+    /// or when [`Self::try_room_in_stack`] refuses.
     pub fn room_in_stack(
         items: &Items,
         bundle: &ItemStack,
@@ -602,25 +535,23 @@ impl CustomBundleContents {
         self.capacity_multiplier
     }
 
-    /// Fallible `getMaxAmountToAdd` for `stack`'s kind of item, propagating
-    /// [`CustomBundleError::UnsupportedFormat`] if `stack` carries (or contains) a malformed
-    /// container of the same custom component.
+    /// Fallible `getMaxAmountToAdd` for `stack`'s kind of item: an error if `stack` carries (or
+    /// contains) a malformed container of the same custom component, or a weight overflows.
     pub fn try_room_for(&self, items: &Items, stack: &ItemStack) -> Result<u32, CustomBundleError> {
-        let weight = item_weight_for(items, stack, self.custom_component())?;
-        Ok(self.capacity().sub(self.weight).how_many(weight))
+        let unit = item_weight(items, stack, self.nested_component())?;
+        Ok(room(self.capacity, self.weight, unit)?)
     }
 
-    /// `getMaxAmountToAdd` for `stack`'s kind of item; returns `0` when `stack` carries a
-    /// malformed container of the same custom component.
+    /// `getMaxAmountToAdd` for `stack`'s kind of item; `0` when [`Self::try_room_for`] fails.
     pub fn room_for(&self, items: &Items, stack: &ItemStack) -> u32 {
         self.try_room_for(items, stack).unwrap_or(0)
     }
 
     /// Fallible `tryInsert`: what fits moves to the front, merged with its kind up to each stored
     /// stack's `max_stack` (splitting any overflow into new front entries when
-    /// `capacity_multiplier > 1`). Returns `Err(CustomBundleError::UnsupportedFormat)` without
-    /// modifying `self` or `stack` if `stack` carries (or contains) a malformed container of the
-    /// same custom component.
+    /// `capacity_multiplier > 1`). Returns an error without modifying `self` or `stack` if
+    /// `stack` carries (or contains) a malformed container of the same custom component, or the
+    /// weight overflows (where vanilla's `getMaxAmountToAdd` or `weight.add` would throw).
     pub fn try_insert_checked(
         &mut self,
         items: &Items,
@@ -631,19 +562,17 @@ impl CustomBundleContents {
             return Ok(0);
         }
         if !fits {
-            if self.custom_component().is_some() {
-                let _ = item_weight_for(items, stack, self.custom_component())?;
+            if self.nested_component().is_some() {
+                let _ = item_weight(items, stack, self.nested_component())?;
             }
             return Ok(0);
         }
-        let weight = item_weight_for(items, stack, self.custom_component())?;
-        let amount = stack
-            .count
-            .min(self.capacity().sub(self.weight).how_many(weight));
+        let unit = item_weight(items, stack, self.nested_component())?;
+        let amount = stack.count.min(room(self.capacity, self.weight, unit)?);
         if amount == 0 {
             return Ok(0);
         }
-        self.weight = self.weight.add(weight.times(amount));
+        self.weight = self.weight.checked_add(stacked(unit, amount)?)?;
         // ItemStack.isStackable: a damaged stack is damageable.
         let max = max_stack(items, stack);
         let stackable = max > 1 && stack.damage == 0;
@@ -673,28 +602,36 @@ impl CustomBundleContents {
 
     /// `tryInsert`: what fits moves to the front, merged with its kind up to each stored stack's
     /// `max_stack` (splitting any overflow into new front entries when `capacity_multiplier > 1`).
-    /// `fits` is the caller's container-fit and filter check; an empty or malformed nested stack
-    /// never goes in.
+    /// `fits` is the caller's container-fit and filter check; an empty stack, or one that
+    /// [`Self::try_insert_checked`] refuses, never goes in (vanilla returns 0 for an erroring
+    /// `getWeight`).
     pub fn try_insert(&mut self, items: &Items, stack: &mut ItemStack, fits: bool) -> u32 {
         self.try_insert_checked(items, stack, fits).unwrap_or(0)
     }
 
-    /// `removeOne`: the selected stack, else the first; nothing is selected after.
+    /// `removeOne`: the selected stack, else the first; nothing is selected after. `None`, with
+    /// nothing removed, when the stack's weight or the new total overflows (vanilla's
+    /// `getStackedWeight(..).getOrThrow()` and `weight.subtract` would throw).
     pub fn remove_one(&mut self, items: &Items) -> Option<ItemStack> {
         if self.items.is_empty() {
             return None;
         }
         let at =
             usize::try_from(self.selected).map_or(0, |i| if i < self.items.len() { i } else { 0 });
-        let unit = item_weight_for(items, &self.items[at], self.custom_component()).ok()?;
+        let taken = &self.items[at];
+        let unit = item_weight(items, taken, self.nested_component()).ok()?;
+        let weight = self
+            .weight
+            .checked_subtract(stacked(unit, taken.count).ok()?)
+            .ok()?;
         let stack = self.items.remove(at);
-        self.weight = self.weight.sub(unit.times(stack.count));
+        self.weight = weight;
         self.selected = -1;
         Some(stack)
     }
 
     /// Fallible front extraction (slot 0), ignoring UI selection and keeping any remainder at the
-    /// front even for overfull contents.
+    /// front even for overfull contents. An error leaves the contents unchanged.
     pub fn try_extract_front(
         &mut self,
         items: &Items,
@@ -703,8 +640,9 @@ impl CustomBundleContents {
         if max == 0 || self.items.is_empty() {
             return Ok(None);
         }
-        let unit = item_weight_for(items, &self.items[0], self.custom_component())?;
+        let unit = item_weight(items, &self.items[0], self.nested_component())?;
         let take = self.items[0].count.min(max);
+        let weight = self.weight.checked_subtract(stacked(unit, take)?)?;
         let out = if take < self.items[0].count {
             let mut taken = self.items[0].clone();
             taken.count = take;
@@ -713,7 +651,7 @@ impl CustomBundleContents {
         } else {
             self.items.remove(0)
         };
-        self.weight = self.weight.sub(unit.times(take));
+        self.weight = weight;
         self.selected = -1;
         Ok(Some(out))
     }
@@ -751,20 +689,46 @@ impl CustomBundleContents {
         (&self.items[..n], hidden)
     }
 
-    /// Stored weight divided by capacity (`weight / capacity_multiplier`), for bars and tooltips.
-    pub fn weight_fraction(&self) -> f32 {
-        weight_fraction_for(self.weight, self.capacity_multiplier)
+    /// The weight the bar and tooltip read, `BundleItem.getWeightSafe` over this container's
+    /// capacity: a vanilla bundle's is its weight (the capacity is `Fraction.ONE`), a larger
+    /// capacity divides it (`Fraction.divideBy`). A division that overflows reads as
+    /// `Fraction.ONE`, full, as `getWeightSafe` reads an erroring weight.
+    fn shown_weight(&self) -> Fraction {
+        if self.capacity == Fraction::ONE {
+            return self.weight;
+        }
+        self.weight
+            .checked_divide_by(self.capacity)
+            .unwrap_or(Fraction::ONE)
     }
 
-    /// Whether stored weight has reached or exceeded capacity (`capacity_multiplier`).
+    /// `BundleItem.getFullnessDisplay`: the shown weight's `floatValue` (stored weight over
+    /// capacity), for bars and tooltips.
+    pub fn weight_fraction(&self) -> f32 {
+        self.shown_weight().float_value()
+    }
+
+    /// Whether stored weight has reached or exceeded capacity: the shown weight's
+    /// `compareTo(Fraction.ONE) >= 0`, as `getBarColor` and the tooltip ask.
     pub fn is_full(&self) -> bool {
-        is_full_for(self.weight, self.capacity_multiplier)
+        self.shown_weight().compare_to(Fraction::ONE).is_ge()
     }
 
     /// `BundleItem.isBarVisible`, `getBarWidth` and `getBarColor`: the fullness bar
-    /// (width, RGB), blue until the container is full, then red.
+    /// (width, RGB), blue until the container is full, then red. Visible when the shown weight
+    /// is above `Fraction.ZERO`; `min(1 + Mth.mulAndTruncate(weight, 12), 13)` wide.
     pub fn bar(&self) -> Option<(i32, u32)> {
-        bar_for(self.weight, self.capacity_multiplier)
+        let shown = self.shown_weight();
+        if shown.compare_to(Fraction::ZERO).is_le() {
+            return None;
+        }
+        let width = 1i32.wrapping_add(mul_and_truncate(shown, 12)).min(13);
+        let color = if shown.compare_to(Fraction::ONE).is_ge() {
+            0xFF5454
+        } else {
+            0x7087FF
+        };
+        Some((width, color))
     }
 
     /// `ClientBundleTooltip.getHeight`: height of this container's tooltip component in GUI
@@ -857,10 +821,11 @@ impl CustomBundleContents {
     }
 
     /// `toImmutable`, written back into the container's component as a `Tag::List` of
-    /// `ItemStack.CODEC` entries. Leaves any existing unsupported custom payload (non-list,
-    /// malformed list entry, or malformed nested container) untouched.
+    /// `ItemStack.CODEC` entries. Leaves any existing custom payload that [`Self::try_of`]
+    /// refuses (non-list, malformed list entry, malformed nested container, or excessive weight)
+    /// untouched.
     pub fn store(self, items: &Items, bundle: &mut ItemStack) {
-        if self.component == "minecraft:bundle_contents" {
+        if self.component == VANILLA_COMPONENT {
             let data = bundle.data_mut();
             data.bundle_contents = self.items;
             data.bundle_selected = BundleSelected(self.selected);
@@ -892,340 +857,6 @@ impl CustomBundleContents {
             bundle.data_mut().set_other(&self.component, Some(tag));
         }
         bundle.tidy();
-    }
-}
-
-/// Summary metrics derived in O(1) from a cached `(decoded_items, exact_weight)` entry.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct BundleSummary {
-    pub weight_fraction: f32,
-    pub is_full: bool,
-    pub bar: Option<(i32, u32)>,
-    pub stack_count: u32,
-}
-
-#[derive(Clone, Debug)]
-struct CachedBundle {
-    items: Arc<[ItemStack]>,
-    weight: Weight,
-}
-
-enum EvictionKey {
-    Vanilla(u64, u64),
-    Prototype(u64, u64),
-    Custom(u64, u64),
-}
-
-struct VanillaCacheEntry {
-    seq: u64,
-    key: Vec<ItemStack>,
-    value: Arc<CachedBundle>,
-}
-
-struct PrototypeCacheEntry {
-    seq: u64,
-    component: String,
-    item: Arc<str>,
-    value: Result<Arc<CachedBundle>, CustomBundleError>,
-}
-
-struct CustomCacheEntry {
-    seq: u64,
-    component: String,
-    tag: Tag,
-    value: Result<Arc<CachedBundle>, CustomBundleError>,
-}
-
-/// Bounded per-game memoization cache for decoded bundle-like contents and exact rational weight,
-/// matching vanilla `BundleContents`'s memoized weight so hot draw paths (`item_bar`,
-/// `tooltip_image`, `item_model_range_property`) avoid re-decoding NBT and re-walking nested
-/// container trees on every frame.
-///
-/// Entries are keyed by exact component value (or `(component, item_id)` for prototype defaults)
-/// and invalidated automatically whenever the loaded [`Items`] catalog changes.
-#[derive(Default)]
-pub struct BundleMetricsCache {
-    catalog_id: u64,
-    next_seq: u64,
-    entry_count: usize,
-    computations: u64,
-    vanilla: HashMap<u64, Vec<VanillaCacheEntry>>,
-    prototypes: HashMap<u64, Vec<PrototypeCacheEntry>>,
-    custom: HashMap<u64, Vec<CustomCacheEntry>>,
-    eviction: VecDeque<EvictionKey>,
-}
-
-impl BundleMetricsCache {
-    const MAX_ENTRIES: usize = 512;
-
-    /// Empty cache with no retained entries.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Clear all cached entries while keeping the cumulative computation counter intact.
-    pub fn clear(&mut self) {
-        self.vanilla.clear();
-        self.prototypes.clear();
-        self.custom.clear();
-        self.eviction.clear();
-        self.entry_count = 0;
-    }
-
-    /// Total number of cache misses that decoded contents and evaluated exact weight.
-    pub fn computations(&self) -> u64 {
-        self.computations
-    }
-
-    fn sync_catalog(&mut self, items: &Items) {
-        let id = items.bundle_cache_id();
-        if self.catalog_id != id {
-            self.clear();
-            self.catalog_id = id;
-        }
-    }
-
-    fn evict_if_full(&mut self) {
-        while self.entry_count >= Self::MAX_ENTRIES {
-            let Some(oldest) = self.eviction.pop_front() else {
-                self.clear();
-                break;
-            };
-            let removed = match oldest {
-                EvictionKey::Vanilla(hash, seq) => {
-                    Self::remove_bucket(&mut self.vanilla, hash, |e| e.seq == seq)
-                }
-                EvictionKey::Prototype(hash, seq) => {
-                    Self::remove_bucket(&mut self.prototypes, hash, |e| e.seq == seq)
-                }
-                EvictionKey::Custom(hash, seq) => {
-                    Self::remove_bucket(&mut self.custom, hash, |e| e.seq == seq)
-                }
-            };
-            if removed {
-                self.entry_count -= 1;
-            }
-        }
-    }
-
-    fn remove_bucket<T>(
-        map: &mut HashMap<u64, Vec<T>>,
-        hash: u64,
-        pred: impl Fn(&T) -> bool,
-    ) -> bool {
-        let Some(bucket) = map.get_mut(&hash) else {
-            return false;
-        };
-        let Some(pos) = bucket.iter().position(pred) else {
-            return false;
-        };
-        bucket.swap_remove(pos);
-        if bucket.is_empty() {
-            map.remove(&hash);
-        }
-        true
-    }
-
-    fn empty_bundle() -> Arc<CachedBundle> {
-        Arc::new(CachedBundle {
-            items: Arc::from([]),
-            weight: Weight::ZERO,
-        })
-    }
-
-    fn hash_vanilla(inside: &[ItemStack]) -> u64 {
-        let mut hasher = DefaultHasher::new();
-        inside.hash(&mut hasher);
-        hasher.finish()
-    }
-
-    fn hash_prototype(component: &str, item: &str) -> u64 {
-        let mut hasher = DefaultHasher::new();
-        component.hash(&mut hasher);
-        item.hash(&mut hasher);
-        hasher.finish()
-    }
-
-    fn hash_custom(component: &str, tag: &Tag) -> u64 {
-        let mut hasher = DefaultHasher::new();
-        component.hash(&mut hasher);
-        tag.hash(&mut hasher);
-        hasher.finish()
-    }
-
-    fn resolve(
-        &mut self,
-        items: &Items,
-        stack: &ItemStack,
-        spec: BundleSpec<'_>,
-    ) -> Result<Option<Arc<CachedBundle>>, CustomBundleError> {
-        self.sync_catalog(items);
-        if spec.is_vanilla() {
-            let Some(inside) = contents_of(items, stack) else {
-                return Ok(None);
-            };
-            if inside.is_empty() {
-                return Ok(Some(Self::empty_bundle()));
-            }
-            let hash = Self::hash_vanilla(inside);
-            if let Some(bucket) = self.vanilla.get(&hash)
-                && let Some(hit) = bucket.iter().find(|entry| entry.key.as_slice() == inside)
-            {
-                return Ok(Some(Arc::clone(&hit.value)));
-            }
-            self.computations += 1;
-            let weight = contents_weight(items, inside);
-            let value = Arc::new(CachedBundle {
-                items: Arc::from(inside.to_vec()),
-                weight,
-            });
-            self.evict_if_full();
-            self.next_seq += 1;
-            let seq = self.next_seq;
-            self.vanilla
-                .entry(hash)
-                .or_default()
-                .push(VanillaCacheEntry {
-                    seq,
-                    key: inside.to_vec(),
-                    value: Arc::clone(&value),
-                });
-            self.eviction.push_back(EvictionKey::Vanilla(hash, seq));
-            self.entry_count += 1;
-            return Ok(Some(value));
-        }
-
-        let info = items.get(&stack.item);
-        if !stack.carries_component(info, spec.component) {
-            return Ok(None);
-        }
-        let override_tag = stack.data().and_then(|d| d.other(spec.component));
-        let Some(tag) = override_tag else {
-            let default_tag = info.and_then(|i| i.custom_components.get(spec.component));
-            match default_tag {
-                None => return Ok(Some(Self::empty_bundle())),
-                Some(Tag::List(entries)) if entries.is_empty() => {
-                    return Ok(Some(Self::empty_bundle()));
-                }
-                Some(default_tag) => {
-                    let hash = Self::hash_prototype(spec.component, &stack.item);
-                    if let Some(bucket) = self.prototypes.get(&hash)
-                        && let Some(hit) = bucket
-                            .iter()
-                            .find(|e| e.component == spec.component && e.item == stack.item)
-                    {
-                        return hit.value.clone().map(Some);
-                    }
-                    self.computations += 1;
-                    let computed = try_decode_custom_tag(items, default_tag).and_then(|decoded| {
-                        let weight = contents_weight_for(items, &decoded, Some(spec.component))?;
-                        Ok(Arc::new(CachedBundle {
-                            items: Arc::from(decoded),
-                            weight,
-                        }))
-                    });
-                    self.evict_if_full();
-                    self.next_seq += 1;
-                    let seq = self.next_seq;
-                    self.prototypes
-                        .entry(hash)
-                        .or_default()
-                        .push(PrototypeCacheEntry {
-                            seq,
-                            component: spec.component.to_owned(),
-                            item: Arc::clone(&stack.item),
-                            value: computed.clone(),
-                        });
-                    self.eviction.push_back(EvictionKey::Prototype(hash, seq));
-                    self.entry_count += 1;
-                    return computed.map(Some);
-                }
-            }
-        };
-
-        if matches!(tag, Tag::List(entries) if entries.is_empty()) {
-            return Ok(Some(Self::empty_bundle()));
-        }
-        let hash = Self::hash_custom(spec.component, tag);
-        if let Some(bucket) = self.custom.get(&hash)
-            && let Some(hit) = bucket
-                .iter()
-                .find(|entry| entry.component == spec.component && entry.tag == *tag)
-        {
-            return hit.value.clone().map(Some);
-        }
-        self.computations += 1;
-        let computed = try_decode_custom_tag(items, tag).and_then(|decoded| {
-            let weight = contents_weight_for(items, &decoded, Some(spec.component))?;
-            Ok(Arc::new(CachedBundle {
-                items: Arc::from(decoded),
-                weight,
-            }))
-        });
-        self.evict_if_full();
-        self.next_seq += 1;
-        let seq = self.next_seq;
-        self.custom.entry(hash).or_default().push(CustomCacheEntry {
-            seq,
-            component: spec.component.to_owned(),
-            tag: tag.clone(),
-            value: computed.clone(),
-        });
-        self.eviction.push_back(EvictionKey::Custom(hash, seq));
-        self.entry_count += 1;
-        computed.map(Some)
-    }
-
-    /// Cached fullness, full flag, vanilla-style bar `(width, rgb)`, and stored stack count for
-    /// `stack` under `spec`. Repeated calls for the same component value (even under different
-    /// capacity multipliers) reuse the cached exact weight without re-decoding NBT.
-    pub fn metrics_for(
-        &mut self,
-        items: &Items,
-        stack: &ItemStack,
-        spec: BundleSpec<'_>,
-    ) -> Result<Option<BundleSummary>, CustomBundleError> {
-        let Some(cached) = self.resolve(items, stack, spec)? else {
-            return Ok(None);
-        };
-        let mult = spec.multiplier();
-        Ok(Some(BundleSummary {
-            weight_fraction: weight_fraction_for(cached.weight, mult),
-            is_full: is_full_for(cached.weight, mult),
-            bar: bar_for(cached.weight, mult),
-            stack_count: cached.items.len() as u32,
-        }))
-    }
-
-    /// Cached front-first stored stacks of `stack` under `spec`.
-    pub fn slots_for(
-        &mut self,
-        items: &Items,
-        stack: &ItemStack,
-        spec: BundleSpec<'_>,
-    ) -> Result<Option<Arc<[ItemStack]>>, CustomBundleError> {
-        Ok(self
-            .resolve(items, stack, spec)?
-            .map(|c| Arc::clone(&c.items)))
-    }
-
-    /// Remaining capacity in `bundle` for `offered` under `spec`, reusing `bundle`'s cached exact
-    /// weight while still validating any nested custom container inside `offered`.
-    pub fn room_for(
-        &mut self,
-        items: &Items,
-        bundle: &ItemStack,
-        spec: BundleSpec<'_>,
-        offered: &ItemStack,
-    ) -> Result<Option<u32>, CustomBundleError> {
-        let Some(cached) = self.resolve(items, bundle, spec)? else {
-            return Ok(None);
-        };
-        let custom = (!spec.is_vanilla()).then_some(spec.component);
-        let offered_weight = item_weight_for(items, offered, custom)?;
-        Ok(Some(
-            spec.capacity().sub(cached.weight).how_many(offered_weight),
-        ))
     }
 }
 
@@ -1262,14 +893,16 @@ impl Contents {
     }
 
     /// A component collection may belong to any item, including an item with
-    /// no previous bundle_contents component. Reuse the same weight model.
-    pub fn from_items(items: &Items, inside: Vec<ItemStack>) -> Self {
-        Self(
-            CustomBundleContents::try_from_items(items, BundleSpec::VANILLA, inside)
-                .expect("vanilla bundle contents cannot fail custom format validation"),
-        )
+    /// no previous bundle_contents component. Reuse the same weight model. `None` when the
+    /// stacks' weight overflows vanilla's `Fraction` (`Excessive total bundle weight`).
+    pub fn from_items(items: &Items, inside: Vec<ItemStack>) -> Option<Self> {
+        CustomBundleContents::try_from_items(items, BundleSpec::VANILLA, inside)
+            .ok()
+            .map(Self)
     }
-    /// The bundle's contents; None when the stack is no bundle.
+    /// The bundle's contents; None when the stack is no bundle, or its weight overflows vanilla's
+    /// `Fraction` (`ItemStack.validateComponents` refuses such a stack in vanilla; reading it as
+    /// unreadable keeps its contents, where `asMutable`'s empty fallback would drop them).
     pub fn of(items: &Items, stack: &ItemStack) -> Option<Self> {
         CustomBundleContents::of(items, stack, BundleSpec::VANILLA).map(Self)
     }
@@ -1359,19 +992,61 @@ pub fn toggle_selected(bundle: &mut ItemStack, index: i32) {
 
 #[cfg(test)]
 mod tests {
-    use super::Weight;
+    use super::*;
+
+    fn f(numerator: i32, denominator: i32) -> Fraction {
+        Fraction::new(numerator, denominator).unwrap()
+    }
 
     #[test]
     fn weights_add_up_exactly() {
-        let w = Weight::new(1, 64)
-            .times(32)
-            .add(Weight::new(1, 16).times(4));
-        assert_eq!(w, Weight::new(3, 4));
-        assert_eq!(Weight::ONE.sub(w).how_many(Weight::new(1, 64)), 16);
-        assert_eq!(Weight::ONE.sub(Weight::ONE).how_many(Weight::ONE), 0);
+        let w = stacked(f(1, 64), 32)
+            .unwrap()
+            .checked_add(stacked(f(1, 16), 4).unwrap())
+            .unwrap();
+        assert_eq!(w, f(3, 4));
+        assert_eq!(room(Fraction::ONE, w, f(1, 64)), Ok(16));
+        assert_eq!(room(Fraction::ONE, Fraction::ONE, Fraction::ONE), Ok(0));
         // An over-full bundle (made by a command) has no room.
-        let over = Weight::ONE.sub(Weight::new(5, 4));
-        assert_eq!(over.how_many(Weight::new(1, 64)), 0);
+        assert_eq!(room(Fraction::ONE, f(5, 4), f(1, 64)), Ok(0));
+    }
+
+    /// Every weight helper surfaces commons-lang3's overflows as `ExcessiveWeight` instead of
+    /// panicking or saturating.
+    #[test]
+    fn weight_helpers_overflow_into_excessive_weight() {
+        // `getFraction(count, 1)` has no int count past i32::MAX; the product overflows
+        // `mulAndCheck` well before that.
+        assert_eq!(stacked(f(1, 1), u32::MAX), Err(ExcessiveWeight));
+        assert_eq!(stacked(f(i32::MAX, 1), 2), Err(ExcessiveWeight));
+        // `getMaxAmountToAdd`: `subtract` past i32::MIN, then `divideBy` past i32::MAX.
+        assert_eq!(
+            room(f(i32::MIN + 1, 1), f(2, 1), f(1, 64)),
+            Err(ExcessiveWeight)
+        );
+        assert_eq!(
+            room(f(i32::MAX, 1), Fraction::ZERO, f(1, 64)),
+            Err(ExcessiveWeight)
+        );
+        // A multiplier past i32::MAX has no capacity.
+        assert_eq!(
+            BundleSpec::custom("runes:pouch_contents", u32::MAX).capacity(),
+            Err(ExcessiveWeight)
+        );
+        assert_eq!(
+            BundleSpec::custom("runes:pouch_contents", i32::MAX as u32).capacity(),
+            Ok(f(i32::MAX, 1))
+        );
+    }
+
+    /// `Mth.mulAndTruncate` multiplies with `imul`, which wraps; vanilla's bar width wraps with it.
+    #[test]
+    fn mul_and_truncate_wraps_like_imul() {
+        assert_eq!(mul_and_truncate(f(9, 16), 12), 6);
+        assert_eq!(mul_and_truncate(f(-7, 2), 1), -3);
+        // 2^29 * 12 wraps to -2^31 in `int`; truncating division by 2^31 - 1 gives -1, where
+        // the exact product would give 3.
+        assert_eq!(mul_and_truncate(f(1 << 29, i32::MAX), 12), -1);
     }
 }
 
@@ -1595,8 +1270,8 @@ mod custom_bundle_tests {
                 ("minecraft:ender_pearl", 16),
             ]
         );
-        // 36/16 = 9/4 weight out of 4 => 9/16 fullness, partial blue bar.
-        assert!((contents.weight_fraction() - 9.0 / 16.0).abs() < 1e-6);
+        // 36/16 = 9/4 weight out of 4 => 9/16 fullness (exact in f32), partial blue bar.
+        assert_eq!(contents.weight_fraction(), 9.0 / 16.0);
         assert!(!contents.is_full());
         assert_eq!(contents.bar(), Some((1 + (9 * 12) / 16, 0x7087FF)));
 
@@ -1883,7 +1558,7 @@ mod custom_bundle_tests {
             .unwrap()
             .unwrap();
         assert!(overfull.is_full());
-        assert!((overfull.weight_fraction() - 1.5).abs() < 1e-6);
+        assert_eq!(overfull.weight_fraction(), 1.5);
         assert_eq!(overfull.bar(), Some((13, 0xFF5454)));
         assert_eq!(
             overfull.room_for(&items, &ItemStack::new("minecraft:stone", 1)),
@@ -1959,13 +1634,6 @@ mod custom_bundle_tests {
                 ]),
             ),
             (
-                "count_wrong_type_float",
-                Tag::compound([
-                    ("id", Tag::String("minecraft:stone".into())),
-                    ("count", Tag::Float(1.5f32.to_bits())),
-                ]),
-            ),
-            (
                 "components_non_compound",
                 Tag::compound([
                     ("id", Tag::String("minecraft:stone".into())),
@@ -2001,6 +1669,7 @@ mod custom_bundle_tests {
                     ("count", Tag::Int(2)),
                 ]),
             ),
+            ("refused_consume_effects", refused_consume_effects_entry()),
         ];
 
         for (case, bad_entry) in malformed_cases {
@@ -2269,146 +1938,329 @@ mod custom_bundle_tests {
         }
     }
 
-    #[test]
-    fn custom_component_metrics_cache_computes_once_per_value_and_invalidates_on_catalog_change() {
-        let items = test_catalog("metrics_cache");
+    /// A 40-deep pouch holding 16 stones at the bottom: its contents weigh
+    /// `1/4 + 40 * 1/16 = 11/4`.
+    fn deep_pouch(items: &Items) -> ItemStack {
         let spec4 = BundleSpec::custom("runes:pouch_contents", 4);
-        let spec2 = BundleSpec::custom("runes:pouch_contents", 2);
-
-        // Build a 40-deep nested pouch holding 16 stones inside the innermost pouch.
         let mut current = ItemStack::new("runes:pouch", 1);
-        let mut contents = CustomBundleContents::of(&items, &current, spec4).unwrap();
+        let mut contents = CustomBundleContents::of(items, &current, spec4).unwrap();
         let mut stones = ItemStack::new("minecraft:stone", 16);
-        assert_eq!(contents.try_insert(&items, &mut stones, true), 16);
-        contents.store(&items, &mut current);
+        assert_eq!(contents.try_insert(items, &mut stones, true), 16);
+        contents.store(items, &mut current);
         for _ in 0..40 {
             let mut outer = ItemStack::new("runes:pouch", 1);
-            let mut outer_contents = CustomBundleContents::of(&items, &outer, spec4).unwrap();
+            let mut outer_contents = CustomBundleContents::of(items, &outer, spec4).unwrap();
             let mut inner = current;
-            assert_eq!(outer_contents.try_insert(&items, &mut inner, true), 1);
-            outer_contents.store(&items, &mut outer);
+            assert_eq!(outer_contents.try_insert(items, &mut inner, true), 1);
+            outer_contents.store(items, &mut outer);
             current = outer;
         }
+        current
+    }
 
-        let mut cache = BundleMetricsCache::new();
+    /// The bar, fullness and full flag come from the weight computed once when the contents are
+    /// read (vanilla memoizes `BundleContents.weight` on the value); every read reads the stack
+    /// against the catalog it is given.
+    #[test]
+    fn custom_component_metrics_come_from_the_decoded_contents() {
+        let items = test_catalog("metrics");
+        let spec4 = BundleSpec::custom("runes:pouch_contents", 4);
+        let spec2 = BundleSpec::custom("runes:pouch_contents", 2);
+        let current = deep_pouch(&items);
 
-        // Missing component and empty pouch fast paths do zero weight computations.
-        assert_eq!(
-            cache
-                .metrics_for(&items, &ItemStack::new("minecraft:stone", 1), spec4)
-                .unwrap(),
-            None
-        );
-        let empty = ItemStack::new("runes:pouch", 1);
-        let empty_summary = cache.metrics_for(&items, &empty, spec4).unwrap().unwrap();
-        assert_eq!(empty_summary.weight_fraction, 0.0);
-        assert!(!empty_summary.is_full);
-        assert_eq!(empty_summary.bar, None);
-        assert_eq!(empty_summary.stack_count, 0);
-        assert_eq!(cache.computations(), 0);
-
-        // First query decodes and walks the 40-deep nested tree once.
-        let expected_m4 = CustomBundleContents::try_of(&items, &current, spec4)
+        // 11/4 of 4 is 11/16: a 1 + 132/16 = 9 pixel blue bar. Of 2 it is 11/8: full and red.
+        let m4 = CustomBundleContents::try_of(&items, &current, spec4)
             .unwrap()
             .unwrap();
-        let expected_m2 = CustomBundleContents::try_of(&items, &current, spec2)
+        assert_eq!(m4.weight_fraction(), 0.6875);
+        assert!(!m4.is_full());
+        assert_eq!(m4.bar(), Some((9, 0x7087FF)));
+        assert_eq!(m4.items().len(), 1);
+        let m2 = CustomBundleContents::try_of(&items, &current, spec2)
             .unwrap()
             .unwrap();
-        let m4 = cache.metrics_for(&items, &current, spec4).unwrap().unwrap();
-        assert_eq!(cache.computations(), 1);
-        assert!((m4.weight_fraction - expected_m4.weight_fraction()).abs() < 1e-6);
-        assert_eq!(m4.is_full, expected_m4.is_full());
-        assert_eq!(m4.bar, expected_m4.bar());
-        assert_eq!(m4.stack_count, 1);
-
-        // Repeated draws across multipliers, slots_for, and room_for reuse the single cached entry.
-        for _ in 0..20 {
-            let repeat_m4 = cache.metrics_for(&items, &current, spec4).unwrap().unwrap();
-            assert_eq!(repeat_m4, m4);
-            let repeat_m2 = cache.metrics_for(&items, &current, spec2).unwrap().unwrap();
-            assert!((repeat_m2.weight_fraction - expected_m2.weight_fraction()).abs() < 1e-6);
-            assert_eq!(repeat_m2.is_full, expected_m2.is_full());
-            assert_eq!(repeat_m2.bar, expected_m2.bar());
-            let slots = cache.slots_for(&items, &current, spec4).unwrap().unwrap();
-            assert_eq!(slots.len(), 1);
-            let room = cache
-                .room_for(
-                    &items,
-                    &current,
-                    spec4,
-                    &ItemStack::new("minecraft:stone", 1),
-                )
-                .unwrap()
-                .unwrap();
-            assert_eq!(
-                room,
-                expected_m4.room_for(&items, &ItemStack::new("minecraft:stone", 1))
-            );
-        }
+        assert_eq!(m2.weight_fraction(), 1.375);
+        assert!(m2.is_full());
+        assert_eq!(m2.bar(), Some((13, 0xFF5454)));
+        // Room is the same weight against the capacity: 4 - 11/4 = 5/4 = 80 stones.
         assert_eq!(
-            cache.computations(),
-            1,
-            "repeated metrics/slots/room queries on unchanged contents must compute weight only once"
+            CustomBundleContents::try_room_in_stack(
+                &items,
+                &current,
+                spec4,
+                &ItemStack::new("minecraft:stone", 1)
+            ),
+            Ok(Some(80))
         );
 
-        // Mutating the pouch produces a new component value and computes once more.
-        let mut mutated = current.clone();
-        let mut mc = CustomBundleContents::try_of(&items, &mutated, spec4)
+        // An empty pouch shows no bar.
+        let empty = CustomBundleContents::try_of(&items, &ItemStack::new("runes:pouch", 1), spec4)
             .unwrap()
             .unwrap();
-        assert_eq!(
-            mc.try_insert(&items, &mut ItemStack::new("minecraft:stone", 8), true),
-            8
-        );
-        mc.store(&items, &mut mutated);
-        let m4_mutated = cache.metrics_for(&items, &mutated, spec4).unwrap().unwrap();
-        assert_eq!(cache.computations(), 2);
-        assert!(m4_mutated.weight_fraction > m4.weight_fraction);
-        let _ = cache.metrics_for(&items, &mutated, spec4).unwrap().unwrap();
-        assert_eq!(cache.computations(), 2);
+        assert_eq!(empty.weight_fraction(), 0.0);
+        assert!(!empty.is_full());
+        assert_eq!(empty.bar(), None);
 
-        // Malformed payloads are also cached as UnsupportedFormat without re-parsing on every draw.
-        let mut malformed = ItemStack::new("runes:pouch", 1);
-        malformed
-            .data_mut()
-            .set_other("runes:pouch_contents", Some(Tag::List(vec![Tag::Int(42)])));
-        assert_eq!(
-            cache.metrics_for(&items, &malformed, spec4),
-            Err(CustomBundleError::UnsupportedFormat)
-        );
-        assert_eq!(cache.computations(), 3);
-        assert_eq!(
-            cache.metrics_for(&items, &malformed, spec4),
-            Err(CustomBundleError::UnsupportedFormat)
-        );
-        assert_eq!(cache.computations(), 3);
-
-        // Cloning/reloading the Items catalog invalidates the cache and recomputes under new rules.
+        // A catalog whose stone stacks to 16 weighs the 16 stones at 1: 1 + 40/16 = 7/2.
         let mut items_v2 = items.clone();
         items_v2.items.get_mut("minecraft:stone").unwrap().max_stack = 16;
-        let m4_v2 = cache
-            .metrics_for(&items_v2, &current, spec4)
+        let heavier = CustomBundleContents::try_of(&items_v2, &current, spec4)
             .unwrap()
             .unwrap();
-        assert_eq!(cache.computations(), 4);
-        assert!(
-            m4_v2.weight_fraction > m4.weight_fraction,
-            "reloaded catalog with smaller max_stack must recompute heavier weight"
-        );
-        let _ = cache
-            .metrics_for(&items_v2, &current, spec4)
-            .unwrap()
-            .unwrap();
-        assert_eq!(cache.computations(), 4);
+        assert_eq!(heavier.weight_fraction(), 0.875);
 
-        // Removing a stored item id from a reloaded catalog invalidates the cache and refuses the
-        // payload with UnsupportedFormat (matching registry-backed `Item.CODEC`).
+        // A catalog without the stored item refuses the payload, as registry-backed `Item.CODEC`.
         let mut items_v3 = items.clone();
         items_v3.items.remove("minecraft:stone");
         assert_eq!(
-            cache.metrics_for(&items_v3, &current, spec4),
+            CustomBundleContents::try_of(&items_v3, &current, spec4).err(),
+            Some(CustomBundleError::UnsupportedFormat)
+        );
+    }
+
+    /// Vanilla's `DataResult.error("Excessive total bundle weight")`, at any success type.
+    fn excessive<T>() -> Result<T, CustomBundleError> {
+        Err(CustomBundleError::Weight(ExcessiveWeight))
+    }
+
+    /// Stones stacking to `max` (a `minecraft:max_stack_size` patch), as an entry and as a stack.
+    fn stone_entry(max: i32) -> Tag {
+        Tag::compound([
+            ("id", Tag::String("minecraft:stone".into())),
+            ("count", Tag::Int(1)),
+            (
+                "components",
+                Tag::compound([("minecraft:max_stack_size", Tag::Int(max))]),
+            ),
+        ])
+    }
+    fn stone_stack(max: i32) -> ItemStack {
+        crate::item_nbt::item_from_persistent_nbt(&stone_entry(max)).unwrap()
+    }
+
+    /// Five stones stacking to the coprime 97, 89, 83, 79 and 73: in vanilla's order the fifth
+    /// `add` needs the denominator 56606581 * 73, past `i32::MAX`, so `mulPosAndCheck` throws and
+    /// `computeContentWeight` answers "Excessive total bundle weight". Four of them still fit.
+    const COPRIME_MAXES: [i32; 5] = [97, 89, 83, 79, 73];
+
+    #[test]
+    fn excessive_contents_weight_refuses_like_compute_content_weight() {
+        let items = test_catalog("excessive");
+        let spec = BundleSpec::custom("runes:pouch_contents", 2);
+        let entries = |n: usize| {
+            Tag::List(
+                COPRIME_MAXES[..n]
+                    .iter()
+                    .copied()
+                    .map(stone_entry)
+                    .collect(),
+            )
+        };
+
+        // Four kinds weigh 2618148/56606581 (`1/97 + 1/89 + 1/83 + 1/79`), still an int fraction.
+        let mut four = ItemStack::new("runes:pouch", 1);
+        four.data_mut()
+            .set_other("runes:pouch_contents", Some(entries(4)));
+        let contents = CustomBundleContents::try_of(&items, &four, spec)
+            .unwrap()
+            .unwrap();
+        assert_eq!(contents.items().len(), 4);
+
+        // The fifth overflows: every read refuses with the weight error and nothing is changed.
+        let mut five = ItemStack::new("runes:pouch", 1);
+        five.data_mut()
+            .set_other("runes:pouch_contents", Some(entries(5)));
+        let original = five.clone();
+        assert_eq!(
+            CustomBundleContents::try_of(&items, &five, spec).map(|c| c.is_some()),
+            excessive()
+        );
+        assert_eq!(
+            CustomBundleContents::try_room_in_stack(
+                &items,
+                &five,
+                spec,
+                &ItemStack::new("minecraft:stone", 1)
+            ),
+            excessive()
+        );
+        assert!(tooltip_layout_for(&items, &five, spec, 0.0, 0.0, 96.0, 2).is_none());
+        assert!(destroyed_component(&items, &mut five, "runes:pouch_contents").is_empty());
+        CustomBundleContents::try_from_items(&items, spec, Vec::new())
+            .unwrap()
+            .store(&items, &mut five);
+        assert!(five.same_item_same_components(&original));
+        let stacks: Vec<ItemStack> = COPRIME_MAXES.iter().copied().map(stone_stack).collect();
+        assert_eq!(
+            CustomBundleContents::try_from_items(&items, spec, stacks.clone()).map(|_| ()),
+            Err(CustomBundleError::Weight(ExcessiveWeight))
+        );
+
+        // The same five stacks in a vanilla bundle: vanilla's own weight refuses them, and
+        // offering that bundle to a valid pouch refuses the insert without changing anything.
+        let mut bundle = ItemStack::new("minecraft:bundle", 1);
+        bundle.data_mut().bundle_contents = stacks;
+        assert!(Contents::of(&items, &bundle).is_none());
+        assert_eq!(
+            CustomBundleContents::try_of(&items, &bundle, BundleSpec::VANILLA).map(|c| c.is_some()),
+            excessive()
+        );
+        let mut pouch = CustomBundleContents::try_of(&items, &four, spec)
+            .unwrap()
+            .unwrap();
+        assert_eq!(pouch.try_room_for(&items, &bundle), excessive());
+        let mut offered = bundle.clone();
+        assert_eq!(
+            pouch.try_insert_checked(&items, &mut offered, true),
+            excessive()
+        );
+        assert_eq!(pouch.try_insert(&items, &mut offered, true), 0);
+        assert_eq!(offered.count, 1);
+        assert_eq!(pouch.items().len(), 4);
+
+        // Room for a stone stacking to 41 in the four-kind pouch: `divideBy(1/41)` multiplies
+        // 2 - 2618148/56606581 = 110595014/56606581 by 41 past `i32::MAX` (`mulAndCheck`).
+        let mut forty_one = stone_stack(41);
+        assert_eq!(pouch.try_room_for(&items, &forty_one), excessive());
+        assert_eq!(
+            pouch.try_insert_checked(&items, &mut forty_one, true),
+            excessive()
+        );
+        assert_eq!(forty_one.count, 1);
+        assert_eq!(pouch.items().len(), 4);
+    }
+
+    /// A mod's capacity multiplier is the `Fraction` `multiplier / 1`: past `i32::MAX` it has no
+    /// capacity, and a large one overflows the room and shown-weight divisions.
+    #[test]
+    fn a_mod_multiplier_that_overflows_is_an_excessive_weight() {
+        let items = test_catalog("multiplier_overflow");
+        let empty = ItemStack::new("runes:pouch", 1);
+        let stone = ItemStack::new("minecraft:stone", 1);
+
+        // u32::MAX: every read refuses, before any weight is computed.
+        let huge = BundleSpec::custom("runes:pouch_contents", u32::MAX);
+        assert_eq!(
+            CustomBundleContents::try_of(&items, &empty, huge).map(|c| c.is_some()),
+            excessive()
+        );
+        assert_eq!(
+            CustomBundleContents::try_room_in_stack(&items, &empty, huge, &stone),
+            excessive()
+        );
+        assert_eq!(
+            CustomBundleContents::try_from_items(&items, huge, Vec::new()).map(|_| ()),
+            excessive()
+        );
+
+        // i32::MAX reads, but room for a stone is `i32::MAX * 64` (`mulAndCheck`), so nothing
+        // goes in and nothing changes; the empty pouch still shows no bar.
+        let max = BundleSpec::custom("runes:pouch_contents", i32::MAX as u32);
+        let mut contents = CustomBundleContents::try_of(&items, &empty, max)
+            .unwrap()
+            .unwrap();
+        assert_eq!(contents.try_room_for(&items, &stone), excessive());
+        assert_eq!(contents.room_for(&items, &stone), 0);
+        let mut offered = ItemStack::new("minecraft:stone", 5);
+        assert_eq!(
+            contents.try_insert_checked(&items, &mut offered, true),
+            excessive()
+        );
+        assert_eq!(offered.count, 5);
+        assert!(contents.items().is_empty());
+        assert_eq!(contents.weight_fraction(), 0.0);
+        assert_eq!(contents.bar(), None);
+
+        // 2^30 holds a stone made directly, but 1/64 divided by 2^30 needs the denominator
+        // 2^36 (`mulPosAndCheck`): that shown weight reads as `Fraction.ONE`, full, as
+        // `BundleItem.getWeightSafe` reads an erroring weight.
+        let large = BundleSpec::custom("runes:pouch_contents", 1 << 30);
+        let one_stone =
+            CustomBundleContents::try_from_items(&items, large, vec![stone.clone()]).unwrap();
+        assert_eq!(one_stone.weight_fraction(), 1.0);
+        assert!(one_stone.is_full());
+        assert_eq!(one_stone.bar(), Some((13, 0xFF5454)));
+    }
+
+    /// An entry the one persistent decoder refuses for its consume effects: an unregistered mod
+    /// effect whose payload holds a non-finite float stays in the saved patch but may not run.
+    fn stone_with_effect_strength(strength: f32) -> Tag {
+        Tag::compound([
+            ("id", Tag::String("minecraft:stone".into())),
+            ("count", Tag::Int(1)),
+            (
+                "components",
+                Tag::compound([(
+                    "minecraft:consumable",
+                    Tag::compound([(
+                        "on_consume_effects",
+                        Tag::List(vec![Tag::compound([
+                            ("type", Tag::String("runes:chill".into())),
+                            ("strength", Tag::Float(strength.to_bits())),
+                        ])]),
+                    )]),
+                )]),
+            ),
+        ])
+    }
+    fn refused_consume_effects_entry() -> Tag {
+        stone_with_effect_strength(f32::NAN)
+    }
+
+    /// Entries decode through `item_nbt::item_from_persistent_nbt`: a floating-point `count`
+    /// is read through `NbtOps.getNumberValue` and `Number.intValue`, and a stack with refused
+    /// consume effects is refused, so the whole payload is.
+    #[test]
+    fn custom_component_entries_use_the_persistent_stack_decoder() {
+        let items = test_catalog("persistent_decoder");
+        let spec = BundleSpec::custom("runes:pouch_contents", 2);
+        let read = |payload: Tag| {
+            let mut pouch = ItemStack::new("runes:pouch", 1);
+            pouch
+                .data_mut()
+                .set_other("runes:pouch_contents", Some(payload));
+            CustomBundleContents::try_of(&items, &pouch, spec)
+                .map(|c| c.map(|c| c.items().iter().map(|s| s.count).collect::<Vec<_>>()))
+        };
+
+        // 2.7f and 3.9d truncate to 2 and 3, as `Codec.INT` reads a boxed float or double.
+        assert_eq!(
+            read(Tag::List(vec![
+                Tag::compound([
+                    ("id", Tag::String("minecraft:stone".into())),
+                    ("count", Tag::Float(2.7f32.to_bits())),
+                ]),
+                Tag::compound([
+                    ("id", Tag::String("minecraft:stone".into())),
+                    ("count", Tag::Double(3.9f64.to_bits())),
+                ]),
+            ])),
+            Ok(Some(vec![2, 3]))
+        );
+
+        // The finite effect is admitted; the non-finite one is refused by the decoder itself,
+        // and with it the payload.
+        assert_eq!(
+            read(Tag::List(vec![stone_with_effect_strength(0.5)])),
+            Ok(Some(vec![1]))
+        );
+        let refused = refused_consume_effects_entry();
+        // The patch itself is valid; the stack is refused for its effect alone.
+        assert_eq!(
+            sunrise_world::item_defaults::validate_component_map_tag(
+                refused.get("components").unwrap()
+            ),
+            Ok(())
+        );
+        assert!(
+            crate::item_nbt::item_from_nbt(&refused)
+                .unwrap()
+                .has_refused_consume_effects()
+        );
+        assert!(crate::item_nbt::item_from_persistent_nbt(&refused).is_none());
+        assert_eq!(
+            read(Tag::List(vec![refused])),
             Err(CustomBundleError::UnsupportedFormat)
         );
-        assert_eq!(cache.computations(), 5);
     }
 }
