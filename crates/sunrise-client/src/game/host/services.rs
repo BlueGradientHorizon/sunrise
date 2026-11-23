@@ -43,8 +43,10 @@ impl Commands for Game<'_> {
         line: &str,
         output: Sender<Result<CommandFeedback, TextFormError>>,
     ) -> bool {
-        self.run_console_command(line, Some(Output::Stream(output)))
-            .success
+        CallbackOwner::call_host(|| {
+            self.run_console_command(line, Some(Output::Stream(output)))
+                .success
+        })
     }
 }
 impl Levels for Game<'_> {
