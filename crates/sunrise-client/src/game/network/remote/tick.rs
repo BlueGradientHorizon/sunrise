@@ -144,13 +144,33 @@ impl Game<'_> {
                 })
                 .unwrap_or_default()
         };
+        // Entity.commonTick's tickCount for each entity the level ticks: a passenger now
+        // (`tickPassenger` counts it before its own tick, whatever that tick's Pre answers), a
+        // root at its own visit, after its Pre (`count_client_tick`, or none when the Pre is
+        // canceled), and at the end of the pass a root no visit took (a kind told no Pre).
+        if let Some(r) = self.remote.as_mut() {
+            let mut admit = |t: &mut Tracked| {
+                if t.vehicle.is_some() {
+                    t.tick_count = t.tick_count.wrapping_add(1);
+                } else {
+                    t.tick_pending = true;
+                }
+            };
+            if running {
+                r.entities.values_mut().for_each(&mut admit);
+            } else {
+                for id in &frozen_ticking {
+                    if let Some(t) = r.entities.get_mut(id) {
+                        admit(t);
+                    }
+                }
+            }
+        }
         self.tick_text_displays(running);
         if running {
-            // Entity.commonTick for each entity the level ticks, before any of them is told
-            // (`EntityTickEvent.Pre`): setOldPosAndRot and its own tickCount.
+            // Entity.commonTick's setOldPosAndRot for each entity the level ticks.
             if let Some(r) = self.remote.as_mut() {
                 for t in r.entities.values_mut() {
-                    t.tick_count = t.tick_count.wrapping_add(1);
                     t.previous = t.position;
                     t.previous_yaw = t.yaw;
                     t.previous_pitch = t.pitch;
@@ -165,7 +185,6 @@ impl Game<'_> {
             if let Some(r) = self.remote.as_mut() {
                 for &id in &frozen_ticking {
                     if let Some(t) = r.entities.get_mut(&id) {
-                        t.tick_count = t.tick_count.wrapping_add(1);
                         t.previous = t.position;
                         t.previous_yaw = t.yaw;
                         t.previous_pitch = t.pitch;
@@ -930,6 +949,37 @@ impl Game<'_> {
             for (id, l) in cart_lerps {
                 r.cart_lerps.entry(id).or_insert(l);
             }
+            // The roots no visit counted: the kinds a client tells no Pre, and every family
+            // while no mod listens.
+            for t in r.entities.values_mut() {
+                if std::mem::take(&mut t.tick_pending) {
+                    t.tick_count = t.tick_count.wrapping_add(1);
+                }
+            }
+        }
+    }
+    /// `Entity.commonTick`'s tickCount for a root of the client level at its own visit, after
+    /// its `EntityTickEvent.Pre` let it through: once per pass, and nothing for a passenger,
+    /// which the pass counted first.
+    pub(in crate::game) fn count_client_tick(&mut self, id: u32) {
+        if let Some(t) = self
+            .remote
+            .as_mut()
+            .and_then(|r| r.entities.get_mut(&(id as i32)))
+            && std::mem::take(&mut t.tick_pending)
+        {
+            t.tick_count = t.tick_count.wrapping_add(1);
+        }
+    }
+    /// A root whose `EntityTickEvent.Pre` was canceled: its tick, `commonTick` included, does not
+    /// run, so it does not count this pass.
+    pub(in crate::game) fn skip_client_tick(&mut self, id: u32) {
+        if let Some(t) = self
+            .remote
+            .as_mut()
+            .and_then(|r| r.entities.get_mut(&(id as i32)))
+        {
+            t.tick_pending = false;
         }
     }
     /// `LocalPlayer.aiStep` (877-883): water vision reads the local body's `Entity.baseTick`

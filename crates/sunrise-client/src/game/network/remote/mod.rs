@@ -226,6 +226,9 @@ pub(super) struct Tracked {
     /// `Entity.tickCount` of this client's copy: the ticks the client level gave it since the
     /// server added it (`Entity.commonTick`), counted in `tick_remote_entities`.
     pub(in crate::game) tick_count: i32,
+    /// A root the running entity pass ticks and has not counted yet: its own visit counts it,
+    /// a canceled Pre drops it, and the end of the pass counts what no visit took.
+    pub(in crate::game) tick_pending: bool,
 }
 
 /// An item has joined the client level, but has no stack to draw yet.

@@ -160,8 +160,9 @@ fn a_client_counts_its_copies_ticks_and_a_respawned_player_starts_at_zero() {
 
 /// The count follows the client's entity pass, not the player's motion: an admitted local player
 /// counts before `LocalPlayer.tick`'s loaded-only update and while it sleeps, a frozen level
-/// still ticks the player and the cart carrying it (`TickRateManager.isEntityFrozen`), and the
-/// tick callbacks (`EntityTickEvent.Pre`, `PlayerTickEvent.Pre`) already see the new count.
+/// still ticks the player and the cart carrying it (`TickRateManager.isEntityFrozen`). A root
+/// counts at its own visit, after its `EntityTickEvent.Pre`; `PlayerTickEvent.Pre`, inside the
+/// player's tick, already sees the player's new count.
 #[test]
 #[ignore = "daily"]
 fn the_client_count_follows_the_entity_tick_not_the_motion() {
@@ -234,15 +235,91 @@ fn the_client_count_follows_the_entity_tick_not_the_motion() {
                     assert_eq!(counts(game), [Some(3), Some(2), Some(3)]);
 
                     let seen = seen.lock().unwrap();
-                    // The pig's Pre read 1 then 2, the player's (once loaded) 2 then 3.
+                    // The pig's Pre read 0 then 1 (before its visit counts it), the player's
+                    // (once loaded) 2 then 3.
                     let of = |id: u32| {
                         seen.iter()
                             .filter(|(seen, _)| *seen == id)
                             .map(|(_, count)| *count)
                             .collect::<Vec<_>>()
                     };
-                    assert_eq!(of(20), [Some(1), Some(2)]);
+                    assert_eq!(of(20), [Some(0), Some(1)]);
                     assert_eq!(of(PLAYER), [Some(2), Some(3)]);
+                });
+            });
+        },
+    );
+}
+
+/// A root counts at its own visit, after its `EntityTickEvent.Pre` let it through
+/// (`tickNonPassenger`), so a canceled root does not count; a passenger counts before its own
+/// tick whatever its Pre answers (`tickPassenger`).
+#[test]
+#[ignore = "daily"]
+fn a_canceled_root_does_not_count_and_a_passenger_does() {
+    use mod_api::{EntityTickListenedEvent, EntityTickPreEvent, HostSide};
+    use std::sync::{Arc, Mutex};
+    crate::game::in_own_process(
+        "game::remote::tests::client_vanilla_reads_tests::a_canceled_root_does_not_count_and_a_passenger_does",
+        || {
+            /// Cancels pigs 20 (a root) and 22 (a passenger), and records what each Pre read.
+            struct Cancel(Arc<Mutex<Vec<(u32, Option<i32>)>>>);
+            #[mod_api::__subscriptions]
+            impl mod_api::Hooks for Cancel {
+                fn entity_tick_listened(
+                    &self,
+                    _: HostSide<'_>,
+                    event: &mut EntityTickListenedEvent,
+                ) {
+                    event.listened = true;
+                }
+                fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
+                    let HostSide::Client(host) = host else {
+                        return;
+                    };
+                    for &id in event.entities {
+                        let count = host.entity(id).and_then(|e| e.tick_count(host));
+                        self.0.lock().unwrap().push((id, count));
+                        if id == 20 || id == 22 {
+                            event.canceled.push(id);
+                        }
+                    }
+                }
+            }
+            let seen = Arc::new(Mutex::new(Vec::new()));
+            let mods = vec![mod_api::ModEntry::new(
+                "cancel",
+                Box::new(Cancel(seen.clone())),
+            )]
+            .into();
+            mod_platform::testing::with_mods(mods, || {
+                with_client_game(|game| {
+                    let _connection = join(game);
+                    for id in [20, 21, 22, 23] {
+                        add(game, id, "minecraft:pig");
+                    }
+                    game.handle_packet(C::SetPassengers(play::SetPassengers {
+                        vehicle: 23,
+                        passengers: vec![22],
+                    }))
+                    .unwrap();
+                    for _ in 0..2 {
+                        game.tick_remote().unwrap();
+                    }
+                    let counts = [20, 21, 22, 23].map(|id| tick_count(game, id));
+                    assert_eq!(counts, [Some(0), Some(2), Some(2), Some(2)]);
+                    let seen = seen.lock().unwrap();
+                    let of = |id: u32| {
+                        seen.iter()
+                            .filter(|(seen, _)| *seen == id)
+                            .map(|(_, count)| *count)
+                            .collect::<Vec<_>>()
+                    };
+                    // A root's Pre reads the count before its visit; a passenger's, after.
+                    assert_eq!(of(20), [Some(0), Some(0)]);
+                    assert_eq!(of(21), [Some(0), Some(1)]);
+                    assert_eq!(of(22), [Some(1), Some(2)]);
+                    assert_eq!(of(23), [Some(0), Some(1)]);
                 });
             });
         },

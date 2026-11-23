@@ -104,7 +104,9 @@ On a client, the read answers for every entity of the level the client shows, wh
 own copy: as in vanilla, each copy counts the ticks the client level gives it from when the server added it
 (`Entity.commonTick` in `ClientLevel.tickNonPassenger` and `tickPassenger`), not the server's count. A frozen level
 ticks only the players and the entities carrying them. The local player counts before its own update, so also before
-it has loaded and while it sleeps, and an entity tick callback already reads the new count. The new local player that a
+it has loaded and while it sleeps. A root counts at its own visit, once its `entity_tick_pre` let it through (a
+canceled root does not count that tick), and a passenger counts before its own tick, whatever its Pre answers; a
+`player_tick_pre` callback already reads the player's new count. The new local player that a
 respawn or a dimension change makes starts again at 0 as soon as it is admitted, and counts from there, before the
 server's first teleport gives it a body.
 
