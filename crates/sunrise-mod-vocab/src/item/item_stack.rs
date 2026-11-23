@@ -923,6 +923,15 @@ impl ItemStack {
         }
         Some(value)
     }
+    /// `ItemStack.getUseAnimation` with the mods' `use_animation` answers applied: the
+    /// animation the renderer draws while this stack is in use. A `Spear` answer for a stack
+    /// without kinetic data reads `None`, as it draws. `None` for an item the host doesn't
+    /// know or a host without the engine backend.
+    pub fn use_animation(&self, host: &dyn crate::Host) -> crate::UseAnimation {
+        crate::backend_of(host)
+            .and_then(|backend| backend.item_stack_use_animation(self))
+            .unwrap_or(crate::UseAnimation::None)
+    }
 }
 
 pub(crate) fn unsigned_tag(value: u32) -> Tag {

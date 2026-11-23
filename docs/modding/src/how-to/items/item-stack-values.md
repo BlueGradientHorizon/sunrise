@@ -153,6 +153,14 @@ no rarity colour or italics. Each player renders the component in their own lang
 text or a display as it is. Call `host.text_string(&name)` for a string in the language of the
 side that calls it. An invalid stack is a `TextFormError`.
 
+## A stack's use animation
+
+`stack.use_animation(host)` is `ItemStack.getUseAnimation` with the mods' `use_animation` answers
+applied, on either side: the animation the renderer draws while the stack is in use (`Bow`, `Drink`,
+`Block`, `Spear`...). It starts from the item's own answer (its consumable, shield or kinetic
+components included), then each `use_animation` listener and the item's Part may change it. A
+`Spear` answer for a stack without kinetic data reads `None`, as it draws.
+
 ## The NBT escape
 
 `ItemStack::from_nbt(host, compound)` and `to_nbt(host)` are the NBT escape. They live on the

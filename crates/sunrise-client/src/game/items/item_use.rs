@@ -50,6 +50,14 @@ impl Game<'_> {
     pub(super) fn item_use_animation(&self, stack: &ItemStack) -> UseAnimation {
         self.item_use_state(stack).animation()
     }
+    /// `ItemStack::use_animation`: the renderer's own read, none for an unknown item.
+    pub(in crate::game) fn item_stack_use_animation(
+        &self,
+        stack: &ItemStack,
+    ) -> Option<UseAnimation> {
+        self.items().get(&stack.item)?;
+        Some(self.item_use_animation(stack))
+    }
 
     /// Select the animation and its already decoded spear timing together,
     /// before firing the scoped override. No stack view is built per frame.
@@ -690,6 +698,71 @@ mod tests {
             // Reading the ticks left back never overflows either.
             ticks_left(own, got.unsigned_abs() - 1);
         }
+    }
+
+    /// `ItemStack::use_animation` (#4677): `ItemStack.getUseAnimation` with a mod's
+    /// `use_animation` answer applied, the value the renderer reads, through a client host and
+    /// a server host alike.
+    #[test]
+    #[ignore = "daily"]
+    fn a_stacks_use_animation_carries_the_mods_answer_on_both_sides() {
+        use crate::game::execution_role::ExecutionRole;
+        use crate::game::native_entity_refs::tests::{fixture_root, with_game_role};
+        use mod_api::{
+            ClientHost, Hooks, Host, ItemPart, ModEntry, Mods, Registrar, UseAnimationEvent,
+        };
+        crate::game::in_own_process(
+            "game::item_use::tests::a_stacks_use_animation_carries_the_mods_answer_on_both_sides",
+            || {
+                /// A stick is drunk from.
+                #[derive(Clone)]
+                struct Part;
+                #[mod_api::sunrise_part]
+                impl ItemPart for Part {
+                    fn use_animation(&self, _: &dyn ClientHost, event: &mut UseAnimationEvent<'_>) {
+                        *event.animation = UseAnimation::Drink;
+                    }
+                }
+                struct Mod;
+                #[mod_api::__subscriptions]
+                impl Hooks for Mod {
+                    fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+                        let stick = r.item_key("minecraft:stick");
+                        r.item_part(stick, Part);
+                    }
+                }
+                let mods: Mods = vec![ModEntry::new("animation", Box::new(Mod))].into();
+                crate::game::api_values::install_parts(&mods).unwrap();
+                mod_platform::testing::with_mods(mods, || {
+                    for role in [ExecutionRole::Client, ExecutionRole::IntegratedServer] {
+                        with_game_role(fixture_root(), role, |game| {
+                            let stack = |id: &str| {
+                                mod_api::ItemStack::of(mod_api::__private::item_key(id).unwrap())
+                            };
+                            let host: &dyn Host = game;
+                            assert_eq!(
+                                stack("minecraft:bow").use_animation(host),
+                                UseAnimation::Bow,
+                                "{role:?}"
+                            );
+                            assert_eq!(
+                                stack("minecraft:stick").use_animation(host),
+                                UseAnimation::Drink,
+                                "{role:?}"
+                            );
+                            assert_eq!(
+                                game.item_use_animation(&sunrise_client::items::ItemStack::new(
+                                    "minecraft:stick",
+                                    1
+                                )),
+                                UseAnimation::Drink,
+                                "{role:?}"
+                            );
+                        });
+                    }
+                });
+            },
+        );
     }
 
     #[test]
