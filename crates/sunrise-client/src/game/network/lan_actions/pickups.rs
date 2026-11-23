@@ -235,6 +235,17 @@ impl Game<'_> {
                 return;
             }
         }
+        // A callback may have committed a discard: the row stays until removals flush.
+        let live = |game: &Self| {
+            !game.held_out.contains(&orb_id)
+                && game.resident_source_target_visible(
+                    game.dim.key(),
+                    crate::game::commands::Target::Orb(orb_id),
+                )
+        };
+        if !live(self) {
+            return;
+        }
         let Some(index) = self.orbs.locate(join) else {
             return;
         };
@@ -268,6 +279,9 @@ impl Game<'_> {
                     game.give_experience_points(rest.min(i32::MAX as u32) as i32);
                 }
             });
+        }
+        if !live(self) {
+            return;
         }
         if let Some(index) = self.orbs.locate(join) {
             if self.orbs[index].count <= 1 {
