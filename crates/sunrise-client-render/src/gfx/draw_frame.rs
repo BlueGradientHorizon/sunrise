@@ -507,9 +507,6 @@ impl Renderer {
         );
         self.gpu_frame = gpu_frame;
         self.gpu_sourced_frame = sourced_frame;
-        // Which serial's statistics wait for sourced geometry's half (`collect_stats`).
-        self.sourced_frames = self.sourced_frames & !(1 << (serial % u64::BITS as u64))
-            | u64::from(sourced_frame) << (serial % u64::BITS as u64);
         let reachable = &self.occlusion;
         let cutout = &self.lod_cutout;
         // Sections fading out (`leave_section`) are past the render distance:

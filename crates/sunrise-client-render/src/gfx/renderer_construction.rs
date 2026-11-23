@@ -2585,7 +2585,6 @@ impl Renderer {
             frame_serial: 0,
             stats_frame: 0,
             stats_halves: Default::default(),
-            sourced_frames: 0,
             uploaded_bytes: 0,
             started: Instant::now(),
             screenshot: None,

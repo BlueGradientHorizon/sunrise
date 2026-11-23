@@ -2,6 +2,7 @@
 //! submitted, keeping offscreen frames at most two ahead of the GPU, and a screenshot's copy.
 
 use super::{Renderer, ScreenshotRequest, copy_frame, submit};
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// The error of a wait that found the device lost.
@@ -67,7 +68,10 @@ impl Renderer {
         }
     }
     /// Frames between the last one drawn and the one whose statistics are shown: 0 after a
-    /// CPU frame, one to three in GPU frames, while their counts are on their way back.
+    /// CPU frame; in GPU frames, the age of the last sample published (`collect_stats`),
+    /// while its counts come back through the rings — a frame or a few, and longer when a
+    /// pass's ring held no readback free for a frame (`copy_stats`) and a complete sample
+    /// had to wait for a later one's.
     pub fn stats_lag(&self) -> u64 {
         self.frame_serial - self.stats_frame
     }
@@ -75,12 +79,10 @@ impl Renderer {
     /// statistics published, never half of one (`collect_stats`).
     pub(super) fn collect_stats(
         &mut self,
-        near: Option<(u64, [usize; 3])>,
-        sourced: Option<(u64, [usize; 3])>,
+        near: Vec<(u64, [usize; 3], bool)>,
+        sourced: Vec<(u64, [usize; 3])>,
     ) -> Option<(u64, [usize; 3])> {
-        collect_stats(&mut self.stats_halves, near, sourced, |frame| {
-            self.sourced_frames & (1 << (frame % u64::BITS as u64)) != 0
-        })
+        collect_stats(&mut self.stats_halves, near, sourced)
     }
     /// Take in the frame the submit thread submitted: start its readbacks and, offscreen,
     /// keep at most two frames ahead of the GPU, as a frame submitted in place does. Nothing
@@ -188,50 +190,84 @@ fn chain(
     }
 }
 
-/// The two halves of a GPU frame's statistics (`GpuCulling::collect`, `Sourced::collect`)
-/// waiting for each other (`collect_stats`).
+/// The held halves of GPU frames' statistics (`GpuCulling::collect`,
+/// `Sourced::collect`) waiting for each other (`collect_stats`).
 #[derive(Default)]
 pub(crate) struct StatsHalves {
-    /// The near table's half, with whether the frame also drew sourced geometry.
-    near: Option<(u64, [usize; 3], bool)>,
-    /// Sourced geometry's half.
-    sourced: Option<(u64, [usize; 3])>,
+    /// The near table's held halves by full frame serial, each with whether its
+    /// frame drew sourced geometry (the flag rides the readback, `copy_stats`).
+    near: BTreeMap<u64, ([usize; 3], bool)>,
+    /// Sourced geometry's held halves by full frame serial.
+    sourced: BTreeMap<u64, [usize; 3]>,
+    /// The newest frame serial each pass's ring has delivered: a held half at or
+    /// below it whose partner is missing can never be joined, because that
+    /// partner's copy was skipped (`copy_stats`) — a ring delivers in frame order.
+    near_delivered: u64,
+    sourced_delivered: u64,
 }
 
 /// One frame's statistics published from its two readback halves as they come back, never
 /// half of one: the near table's (`GpuCulling::collect`) and sourced geometry's
-/// (`Sourced::collect`) each wait in `halves` for the partner of its serial, as a half
-/// alone undercounts the frame — the other pass's ring held no readback free for it
-/// (`copy_stats`), or its counts land a poll later. `drew_sourced` says which frames drew
-/// sourced geometry: those frames' near halves wait for a sourced half, the others' are
-/// the whole frame and publish at once.
+/// (`Sourced::collect`) each wait in `halves`, by full frame serial, for the partner of
+/// its serial, as a half alone undercounts the frame — the other pass's ring held no
+/// readback free for it (`copy_stats`), or its counts land a poll later. Which frames
+/// drew sourced geometry rides the near half itself: those frames' near halves wait for
+/// a sourced half, the others' are the whole frame and publish at once. A held half is
+/// dropped once its partner can no longer come: the partner's pass has delivered a newer
+/// frame, so the partner's own copy was skipped.
 fn collect_stats(
     halves: &mut StatsHalves,
-    near: Option<(u64, [usize; 3])>,
-    sourced: Option<(u64, [usize; 3])>,
-    drew_sourced: impl Fn(u64) -> bool,
+    near: Vec<(u64, [usize; 3], bool)>,
+    sourced: Vec<(u64, [usize; 3])>,
 ) -> Option<(u64, [usize; 3])> {
-    if let Some((frame, counts)) = near {
-        if drew_sourced(frame) {
-            halves.near = Some((frame, counts, true));
+    let mut published: Option<(u64, [usize; 3])> = None;
+    for (frame, counts, drew_sourced) in near {
+        halves.near_delivered = halves.near_delivered.max(frame);
+        if frame <= halves.sourced_delivered && !halves.sourced.contains_key(&frame) {
+            continue;
+        }
+        if drew_sourced {
+            halves.near.insert(frame, (counts, true));
         } else {
             // The frame drew no sourced geometry, so it has no sourced half; no held
             // half pairs with it later. Its counts are the frame's: publish and clear.
-            *halves = StatsHalves::default();
-            return Some((frame, counts));
+            halves.near.remove(&frame);
+            published = Some((frame, counts));
         }
     }
-    if let Some((frame, counts)) = sourced {
-        halves.sourced = Some((frame, counts));
+    for (frame, counts) in sourced {
+        halves.sourced_delivered = halves.sourced_delivered.max(frame);
+        if frame <= halves.near_delivered && !halves.near.contains_key(&frame) {
+            continue;
+        }
+        halves.sourced.insert(frame, counts);
     }
-    let paired = match (halves.near, halves.sourced) {
-        (Some((f, [a, b, c], _)), Some((g, [d, e, _]))) if f == g => Some((f, [a + d, b + e, c])),
-        _ => None,
-    };
-    if paired.is_some() {
-        *halves = StatsHalves::default();
+    // The newest frame both halves delivered publishes; its counts sum, sourced
+    // geometry's sections and draws added to the near table's (the calls are the
+    // near pass's). A flag-false near half that published above stays ahead of it.
+    let joined = halves
+        .near
+        .keys()
+        .filter(|frame| halves.sourced.contains_key(*frame))
+        .max()
+        .copied();
+    if let Some(frame) = joined {
+        let ([a, b, c], _) = halves.near.remove(&frame).expect("the near half");
+        let [d, e, _] = halves.sourced.remove(&frame).expect("the sourced half");
+        if published.as_ref().is_none_or(|&(shown, _)| frame > shown) {
+            published = Some((frame, [a + d, b + e, c]));
+        }
     }
-    paired
+    // A held half whose frame the other pass's ring has passed without delivering
+    // can never be joined: that partner's copy was skipped. Rings deliver in frame
+    // order, so no half below a pass's newest delivery gets a partner any more.
+    halves
+        .near
+        .retain(|&frame, _| frame > halves.sourced_delivered);
+    halves
+        .sourced
+        .retain(|&frame, _| frame > halves.near_delivered);
+    published
 }
 
 #[cfg(test)]
@@ -260,56 +296,134 @@ mod stats_tests {
     use super::{StatsHalves, collect_stats};
 
     /// One frame's counts publish together: a half whose partner lands a poll later is
-    /// held, not published half; halves of different frames never publish alone, and the
-    /// stale one is dropped once the pass that skipped it copies a later frame.
+    /// held, not published half; halves of different frames never publish alone, and a
+    /// half whose partner's copy was skipped goes once the partner's pass passes it.
     #[test]
     fn halves_of_one_frame_publish_together() {
-        let all_sourced = |_: u64| true;
         let mut halves = StatsHalves::default();
         // Sourced geometry's half lands a poll before the near table's: held, then both.
         assert_eq!(
-            collect_stats(&mut halves, None, Some((5, [2, 0, 0])), all_sourced),
+            collect_stats(&mut halves, vec![], vec![(5, [2, 0, 0])]),
             None
         );
         assert_eq!(
-            collect_stats(&mut halves, Some((5, [7, 3, 1])), None, all_sourced),
+            collect_stats(&mut halves, vec![(5, [7, 3, 1], true)], vec![]),
             Some((5, [9, 3, 1]))
         );
         // The near table a frame behind (its ring held no readback free for 6): neither
-        // half publishes alone, and they pair once 7's are both in.
+        // half publishes alone. Sourced 7 proves sourced 6 was skipped, so near 6 goes
+        // instead of waiting forever, and 7's halves pair once both are in.
         assert_eq!(
             collect_stats(
                 &mut halves,
-                Some((6, [7, 3, 1])),
-                Some((7, [2, 0, 0])),
-                all_sourced
+                vec![(6, [7, 3, 1], true)],
+                vec![(7, [2, 0, 0])],
             ),
             None
         );
         assert_eq!(
-            collect_stats(&mut halves, Some((7, [7, 3, 1])), None, all_sourced),
+            collect_stats(&mut halves, vec![(7, [7, 3, 1], true)], vec![]),
             Some((7, [9, 3, 1]))
         );
-        assert_eq!(collect_stats(&mut halves, None, None, all_sourced), None);
+        assert_eq!(collect_stats(&mut halves, vec![], vec![]), None);
     }
 
     /// A frame the sourced pass did not draw has no sourced half: its near half is the
     /// whole frame and publishes at once; one that did draw it waits for its counts.
     #[test]
     fn a_frame_without_sourced_geometry_publishes_alone() {
-        let sourced_in = |frame: u64| frame == 7;
         let mut halves = StatsHalves::default();
         assert_eq!(
-            collect_stats(&mut halves, Some((6, [7, 3, 1])), None, sourced_in),
+            collect_stats(&mut halves, vec![(6, [7, 3, 1], false)], vec![]),
             Some((6, [7, 3, 1]))
         );
         assert_eq!(
-            collect_stats(&mut halves, Some((7, [7, 3, 1])), None, sourced_in),
+            collect_stats(&mut halves, vec![(7, [7, 3, 1], true)], vec![]),
             None
         );
         assert_eq!(
-            collect_stats(&mut halves, None, Some((7, [2, 0, 0])), sourced_in),
+            collect_stats(&mut halves, vec![], vec![(7, [2, 0, 0])]),
             Some((7, [9, 3, 1]))
+        );
+    }
+
+    /// A poll where one ring skipped a copy carries a complete older frame beside a
+    /// half of a newer one: near 20 publishes whole from the coalesced poll, sourced
+    /// 21 waits for near 21 (whose copy was skipped), and goes once the near ring
+    /// passes 21 without delivering it.
+    #[test]
+    fn a_coalesced_poll_still_publishes_the_older_complete_frame() {
+        let mut halves = StatsHalves::default();
+        assert_eq!(
+            collect_stats(
+                &mut halves,
+                vec![(20, [7, 3, 1], true)],
+                vec![(20, [2, 0, 0]), (21, [4, 0, 0])],
+            ),
+            Some((20, [9, 3, 1]))
+        );
+        assert_eq!(
+            collect_stats(&mut halves, vec![(22, [6, 2, 1], false)], vec![]),
+            Some((22, [6, 2, 1]))
+        );
+        assert_eq!(
+            collect_stats(&mut halves, vec![], vec![(21, [4, 0, 0])]),
+            None
+        );
+        assert_eq!(collect_stats(&mut halves, vec![], vec![]), None);
+    }
+
+    /// A newer unmatched half never displaces an older pairing: sourced 21 waits while
+    /// sourced 20 completes frame 20, then joins near 21 when it comes.
+    #[test]
+    fn a_newer_half_does_not_displace_an_older_pairing() {
+        let mut halves = StatsHalves::default();
+        // Frame 20's near half waits for its partner.
+        assert_eq!(
+            collect_stats(&mut halves, vec![(20, [7, 3, 1], true)], vec![]),
+            None
+        );
+        // One poll brings near 21 (its sourced counts still away) and sourced 20:
+        // 20 completes from the coalesced poll, 21 waits on.
+        assert_eq!(
+            collect_stats(
+                &mut halves,
+                vec![(21, [5, 2, 1], true)],
+                vec![(20, [2, 0, 0])],
+            ),
+            Some((20, [9, 3, 1]))
+        );
+        // Then sourced 21 joins near 21, not lost to the older pairing.
+        assert_eq!(
+            collect_stats(&mut halves, vec![], vec![(21, [4, 0, 0])]),
+            Some((21, [9, 2, 1]))
+        );
+    }
+
+    /// The sourced flag rides the readback, so a near half whose frame drew sourced
+    /// geometry still waits for its partner — and never publishes its counts alone —
+    /// after 64 and more newer frames' flags have been and gone.
+    #[test]
+    fn a_near_half_waits_for_its_partner_past_the_flag_cycles() {
+        let mut halves = StatsHalves::default();
+        // Frame 20 drew sourced geometry; its sourced counts come back much later.
+        assert_eq!(
+            collect_stats(&mut halves, vec![(20, [7, 3, 1], true)], vec![]),
+            None
+        );
+        // The frames after it drew none; each publishes by itself.
+        for frame in 21..=84_u64 {
+            let near = [(frame % 7) as usize + 1, 0, 0];
+            assert_eq!(
+                collect_stats(&mut halves, vec![(frame, near, false)], vec![]),
+                Some((frame, near))
+            );
+        }
+        // Frame 20's half is still held, its flag still says sourced: it joins its
+        // partner instead of publishing its near counts alone.
+        assert_eq!(
+            collect_stats(&mut halves, vec![], vec![(20, [2, 0, 0])]),
+            Some((20, [9, 3, 1]))
         );
     }
 }
