@@ -810,40 +810,58 @@ mod tests {
     /// Two levels that follow clocks of their own keep their own times through the clock
     /// handles' writes (`ServerClockManager`'s `setTotalTicks`, `setRate` and `setPaused`): the
     /// Overworld's clock paused at 6000 is a fixed time, and the End's set to 100 at a rate of 2.5
-    /// counts 10 in 4 ticks.
+    /// counts 10 in 4 ticks. A clock a mod registered and nothing touched counts too, from 0, as
+    /// `ServerClockManager.tick` advances every clock of the registry.
     #[test]
     #[ignore = "daily"]
     fn two_levels_with_clocks_of_their_own_keep_their_own_times() {
-        with_game(|game| {
-            let back = game.dim;
-            game.enter_level(super::Dim::End).unwrap();
-            game.enter_level(back).unwrap();
-            let overworld = game.level(super::Dim::Overworld.id()).unwrap();
-            let end = game.level(super::Dim::End.id()).unwrap();
-            let host: &mut dyn ServerHost = game;
-            let fixed = overworld.clock(&*host).unwrap();
-            let running = end.clock(&*host).unwrap();
-            assert_ne!(fixed, running);
-            assert!(fixed.set_total_ticks(host, 6_000));
-            assert!(fixed.set_paused(host, true));
-            assert!(running.set_total_ticks(host, 100));
-            assert!(running.set_rate(host, 2.5));
-            assert!(!running.set_rate(host, f32::NAN));
-            assert!(!running.set_rate(host, -1.0));
-            assert!(!fixed.set_total_ticks(host, -1));
-            for _ in 0..4 {
-                game.advance_clock();
+        use mod_api::Registrar;
+        struct Clocks;
+        #[mod_api::__subscriptions]
+        impl Hooks for Clocks {
+            fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+                r.register_world_clock("dungeon");
             }
-            assert_eq!(
-                game.level_clock_time(overworld),
-                Some(6_000),
-                "a fixed time"
-            );
-            assert_eq!(
-                game.level_clock_time(end),
-                Some(110),
-                "100 and 4 ticks at 2.5"
-            );
+        }
+        let mods: mod_api::Mods = vec![ModEntry::new("clocks", Box::new(Clocks))].into();
+        with_mods(mods.clone(), || {
+            crate::game::api_values::install_parts(&mods).unwrap();
+            with_game(|game| {
+                let back = game.dim;
+                game.enter_level(super::Dim::End).unwrap();
+                game.enter_level(back).unwrap();
+                let overworld = game.level(super::Dim::Overworld.id()).unwrap();
+                let end = game.level(super::Dim::End.id()).unwrap();
+                let host: &mut dyn ServerHost = game;
+                let fixed = overworld.clock(&*host).unwrap();
+                let running = end.clock(&*host).unwrap();
+                assert_ne!(fixed, running);
+                assert!(fixed.set_total_ticks(host, 6_000));
+                assert!(fixed.set_paused(host, true));
+                assert!(running.set_total_ticks(host, 100));
+                assert!(running.set_rate(host, 2.5));
+                assert!(!running.set_rate(host, f32::NAN));
+                assert!(!running.set_rate(host, -1.0));
+                assert!(!fixed.set_total_ticks(host, -1));
+                for _ in 0..4 {
+                    game.advance_clock();
+                }
+                assert_eq!(
+                    game.level_clock_time(overworld),
+                    Some(6_000),
+                    "a fixed time"
+                );
+                assert_eq!(
+                    game.level_clock_time(end),
+                    Some(110),
+                    "100 and 4 ticks at 2.5"
+                );
+                assert_eq!(
+                    game.command_clock_time("clocks:dungeon"),
+                    4,
+                    "an untouched registered clock counts"
+                );
+            });
         });
     }
 
