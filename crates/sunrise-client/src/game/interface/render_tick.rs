@@ -819,6 +819,7 @@ impl Game<'_> {
         // `ClientLevel.animateTick`, then the rain and the campfires. The sampling stops in each
         // pick whose block has a part, for the game to call it there (`mod_animate_tick`); the
         // context borrows the game, so it is made again for the rest of the tick.
+        let mut rain_sounds = Vec::new();
         loop {
             let marker_options = |state| {
                 // BlockMarker: the particle sprite, untinted.
@@ -987,7 +988,7 @@ impl Game<'_> {
                             let p = at.map(|c| f64::from(c) + 0.5);
                             // playLocalSound: guests make their own rain, so a host
                             // must not capture it for them.
-                            self.play_audio_unshared(name, Some(p), volume, pitch);
+                            rain_sounds.push((name, p, volume, pitch));
                         }
                     }
                 }
@@ -1007,6 +1008,9 @@ impl Game<'_> {
             }
             laps.lap("tp_rain_campfire");
             break;
+        }
+        for (name, p, volume, pitch) in rain_sounds {
+            self.play_audio_unshared(name, Some(p), volume, pitch);
         }
     }
 

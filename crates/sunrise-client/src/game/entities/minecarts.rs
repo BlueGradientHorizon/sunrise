@@ -27,7 +27,7 @@ use sunrise_client::{
     particles::{ParticleOptions, ParticleType},
     random_source,
     scoreboard::pushable_by,
-    sound_engine::{BLOCKS, CartSound, PlayResult, SoundInstance, Sounds},
+    sound_engine::{BLOCKS, CartSound, PlayResult, SoundInstance},
 };
 use sunrise_core::{
     geometry::{Aabb, Vec3, trig},

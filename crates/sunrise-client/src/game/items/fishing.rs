@@ -531,6 +531,7 @@ impl Game<'_> {
             return false;
         };
         let at = [p.position.x, p.position.y, p.position.z];
+        let (owner, eye_y) = (p.position, p.position.y + f64::from(p.dimensions.eye_height));
         if self.hook.is_some() {
             let damage = self.retrieve_hook(stack);
             self.damage_held(damage);
@@ -559,12 +560,11 @@ impl Game<'_> {
             let luck = stack.enchantment_level("minecraft:luck_of_the_sea") as i32;
             let (yaw, pitch) = (self.yaw, self.pitch);
             let (y_sin, y_cos, dir_y) = cast_direction(yaw, pitch);
-            let eye_y = p.position.y + f64::from(p.dimensions.eye_height);
             // snapTo(x, getEyeY(), z): the hook's feet start at the owner's eye.
             let start = Vec3::new(
-                p.position.x - f64::from(y_sin) * 0.3,
+                owner.x - f64::from(y_sin) * 0.3,
                 eye_y,
-                p.position.z - f64::from(y_cos) * 0.3,
+                owner.z - f64::from(y_cos) * 0.3,
             );
             // The hook's own random (`Entity.random`).
             let mut random = random_source::entity();

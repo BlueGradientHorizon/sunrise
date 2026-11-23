@@ -7909,6 +7909,7 @@ impl Game<'_> {
         let mut sound: Option<(&str, f32, f32)> = None;
         // Sounds played as vanilla plays them: (event, volume, pitch) at the feet.
         let mut eat: Option<(&'static str, f32, f32)> = None;
+        let mut shear: Option<sunrise_client::sound_engine::SoundEntity> = None;
         let feet = [m.position.x, m.position.y, m.position.z];
         let mut handled = true;
         let mut ignited_creeper = false;
@@ -7985,14 +7986,9 @@ impl Game<'_> {
                 }
             }
             Species::Sheep if shears && !m.extra.sheared && !m.is_baby() => {
-                self.play_audio_bound(
-                    "minecraft:entity.sheep.shear",
-                    7,
-                    1.0,
-                    1.0,
-                    sunrise_client::sound_engine::SoundEntity::new(m.id, feet, m.silent),
-                    None,
-                );
+                shear = Some(sunrise_client::sound_engine::SoundEntity::new(
+                    m.id, feet, m.silent,
+                ));
                 m.extra.sheared = true;
                 let color = sunrise_client::mobs::render::DYE_NAMES[m.extra.color as usize & 15];
                 drops_table = format!("minecraft:shearing/sheep/{color}");
@@ -8504,6 +8500,9 @@ impl Game<'_> {
                 self.play_audio(&full_id(s), Some(feet), volume, pitch);
             }
             None => {}
+        }
+        if let Some(entity) = shear {
+            self.play_audio_bound("minecraft:entity.sheep.shear", 7, 1.0, 1.0, entity, None);
         }
         if let Some((s, volume, pitch)) = eat {
             let name = full_id(s);

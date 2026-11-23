@@ -2079,11 +2079,6 @@ impl Game<'_> {
             // Mob.playHurtSound: the ambient sound clock starts again.
             d.ambient_time = -AMBIENT_INTERVAL;
             let at = [d.position.x, d.position.y, d.position.z];
-            let pitch = 0.8 + self.world.random.next_float() * 0.3;
-            self.play_audio("minecraft:entity.ender_dragon.hurt", Some(at), 5.0, pitch);
-            if kind == DamageKind::Thorns {
-                self.play_audio("minecraft:enchant.thorns.hit", Some(at), 1.0, 1.0);
-            }
             if let Some(s) = source {
                 d.last_source = Some((
                     s.damage_type,
@@ -2092,6 +2087,11 @@ impl Game<'_> {
                 ));
             } else {
                 d.last_source = Some(("minecraft:generic", None, None));
+            }
+            let pitch = 0.8 + self.world.random.next_float() * 0.3;
+            self.play_audio("minecraft:entity.ender_dragon.hurt", Some(at), 5.0, pitch);
+            if kind == DamageKind::Thorns {
+                self.play_audio("minecraft:enchant.thorns.hit", Some(at), 1.0, 1.0);
             }
         }
         hurt

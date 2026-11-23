@@ -588,8 +588,7 @@ impl MusicManager {
                 self.toast_shown = true;
             }
             PlayResult::StartedSilently => self.toast_shown = false,
-            // A pending start shows its toast later, through `show_now_playing_toast_if_needed`.
-            PlayResult::NotStarted | PlayResult::Pending => {}
+            PlayResult::NotStarted => {}
         }
         self.next_song_delay = i32::MAX;
         true

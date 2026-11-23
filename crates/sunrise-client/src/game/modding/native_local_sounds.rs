@@ -108,21 +108,23 @@ impl Game<'_> {
     /// never reaches the engine. Called from the audio update
     /// (`tick_sound_engine`), before the engine's own tick.
     pub(super) fn apply_mod_sounds(&mut self) {
-        let sounds = &mut self.mod_sounds;
-        let stopped: Vec<u64> = sounds
+        let stopped: Vec<u64> = self
+            .mod_sounds
             .changes
             .get_mut()
             .iter()
             .filter(|(_, change)| change.stops())
             .map(|&(id, _)| id)
             .collect();
-        for (id, sound, after) in sounds.queued.get_mut().drain(..) {
+        let queued: Vec<_> = self.mod_sounds.queued.get_mut().drain(..).collect();
+        for (id, sound, after) in queued {
             if stopped.contains(&id) {
                 continue;
             }
             let instance = self.play_audio_mod_sound(&sound, after);
-            sounds.started.insert(id, instance);
+            self.mod_sounds.started.insert(id, instance);
         }
+        let sounds = &mut self.mod_sounds;
         for (id, change) in sounds.changes.get_mut().drain(..) {
             let Some(&instance) = sounds.started.get(&id) else {
                 continue;

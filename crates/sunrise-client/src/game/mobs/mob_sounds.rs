@@ -7,7 +7,7 @@ use super::Game;
 use sunrise_client::{
     mobs::{Species, bee, guardian, sniffer},
     random_source,
-    sound_engine::{MobSound, RiddenSound, SoundInstance, Sounds},
+    sound_engine::{MobSound, RiddenSound, SoundInstance},
 };
 
 impl Game<'_> {

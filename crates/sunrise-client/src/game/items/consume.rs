@@ -93,14 +93,14 @@ impl Game<'_> {
             && let Some(player) = self.player.as_mut()
         {
             let at = Some([player.position.x, player.position.y, player.position.z]);
-            let pitch = player.random.triangle_float(1.0, 0.4);
-            self.play_audio(&consumable.sound, at, 1.0, pitch);
+            let eat_pitch = player.random.triangle_float(1.0, 0.4);
             // FoodData.eat(nutrition, saturation)
             let food = &mut player.health.food;
             food.food = (food.food + nutrition as i32).clamp(0, 20);
             food.saturation = (food.saturation + saturation).clamp(0.0, food.food as f32);
             // Mth.randomBetween(random, 0.9, 1.0)
             let pitch = player.random.next_float() * (1.0f32 - 0.9f32) + 0.9;
+            self.play_audio(&consumable.sound, at, 1.0, eat_pitch);
             self.play_audio("minecraft:entity.player.burp", at, 0.5, pitch);
         }
         // SuspiciousStewEffects.onConsume, a ConsumableListener: each entry is

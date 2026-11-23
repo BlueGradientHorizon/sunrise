@@ -65,9 +65,11 @@ impl Game<'_> {
                     .stack_can_be_hurt_by(&self.dropped[index].stack, "minecraft:in_fire")
                     == Some(false);
                 let item = &mut self.dropped[index];
-                if item.fire_ticks > 0 && !immune {
-                    let at = [item.position.x, item.position.y, item.position.z];
-                    let pitch = extinguish_pitch(&mut item.random);
+                let burning = item.fire_ticks > 0 && !immune;
+                let at = [item.position.x, item.position.y, item.position.z];
+                let pitch = burning.then(|| extinguish_pitch(&mut item.random));
+                item.fire_ticks = item.fire_ticks.min(0);
+                if let Some(pitch) = pitch {
                     self.play_audio_on(
                         SoundSource::Ambient.index(),
                         "minecraft:entity.generic.extinguish_fire",
@@ -76,7 +78,6 @@ impl Game<'_> {
                         pitch,
                     );
                 }
-                item.fire_ticks = item.fire_ticks.min(0);
                 true
             }
             _ => false,

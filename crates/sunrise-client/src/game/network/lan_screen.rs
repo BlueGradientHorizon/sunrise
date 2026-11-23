@@ -1225,13 +1225,15 @@ impl Game<'_> {
             View::Options => {}
             View::GameRules => {
                 let atlas = &self.gui.atlas;
-                let (exit, handled) = o.rules.as_mut().map_or((None, false), |rules| {
-                    if rules.clicks_button(atlas, self.cursor, (w, h)) {
-                        self.play_audio_button_click();
-                    }
-                    rules.click(atlas, self.cursor, (w, h))
+                let (clicked, exit, handled) = o.rules.as_mut().map_or((false, None, false), |rules| {
+                    let clicked = rules.clicks_button(atlas, self.cursor, (w, h));
+                    let (exit, handled) = rules.click(atlas, self.cursor, (w, h));
+                    (clicked, exit, handled)
                 });
                 self.world_options = Some(o);
+                if clicked {
+                    self.play_audio_button_click();
+                }
                 if let Some(exit) = exit {
                     self.close_game_rules(exit);
                 }
@@ -1406,8 +1408,8 @@ impl Game<'_> {
                 winit::keyboard::KeyCode::Enter
                 | winit::keyboard::KeyCode::NumpadEnter
                 | winit::keyboard::KeyCode::Space => {
-                    self.play_audio_button_click();
                     let yes = o.popup_focus == Some(0);
+                    self.play_audio_button_click();
                     let mut o = self.world_options.take().unwrap();
                     if yes {
                         self.apply_and_close_world_options(o);
@@ -1454,9 +1456,9 @@ impl Game<'_> {
                 winit::keyboard::KeyCode::Enter
                 | winit::keyboard::KeyCode::NumpadEnter
                 | winit::keyboard::KeyCode::Space => {
-                    self.play_audio_button_click();
                     let action = r.action.is_some() && o.popup_focus == Some(0);
                     o.view = View::Options;
+                    self.play_audio_button_click();
                     if action {
                         self.open_options_at(false, sunrise_client::options_ui::Page::Chat);
                         self.options_to_world_options = true;

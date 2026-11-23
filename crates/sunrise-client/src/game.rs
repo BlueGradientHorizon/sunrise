@@ -6471,10 +6471,11 @@ impl Game<'_> {
                     kind: "note_custom_sound",
                     ..
                 } => {
-                    if let Some(BlockEntity::Skull(skull)) =
-                        self.world.block_entities.get(&(pos.x, pos.y + 1, pos.z))
-                        && let Some(sound) = skull.note_block_sound.as_deref()
-                    {
+                    let sound = match self.world.block_entities.get(&(pos.x, pos.y + 1, pos.z)) {
+                        Some(BlockEntity::Skull(skull)) => skull.note_block_sound.clone(),
+                        _ => None,
+                    };
+                    if let Some(sound) = sound.as_deref() {
                         let at = [
                             f64::from(pos.x) + 0.5,
                             f64::from(pos.y) + 0.5,
@@ -12136,8 +12137,8 @@ impl Game<'_> {
                     let (w, h) = self.gui_size();
                     let (x, y) = sunrise_client::level_loading::file_fixer_cancel(w, h);
                     if sunrise_client::ui::hovered(self.cursor, x, y, 200.0, 20.0) {
-                        self.play_audio_button_click();
                         upgrade.set_canceled();
+                        self.play_audio_button_click();
                     }
                 }
                 _ => {}

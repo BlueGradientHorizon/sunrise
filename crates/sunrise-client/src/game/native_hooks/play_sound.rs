@@ -1,5 +1,7 @@
 use super::*;
-use sunrise_client::sound_engine::{InstanceId, PlayResult, PreparedPlay, SoundInstance};
+use sunrise_client::sound_engine::{
+    InstanceId, PlayResult, PreparedPlay, SoundEngine, SoundInstance, Sounds,
+};
 
 /// The game's one way to play a sound (vanilla's `SoundEngine.play`, where NeoForge's
 /// `PlaySoundEvent` fires inside the call): each method fires `play_sound` with the game's
@@ -24,6 +26,8 @@ macro_rules! play_audio_forwards {
 play_audio_forwards! {
     /// `Audio::play`.
     fn play_audio => play(event: &str, at: Option<[f64; 3]>, volume: f32, pitch: f32);
+    /// `Audio::play_distance_delayed`.
+    fn play_audio_distance_delayed => play_distance_delayed(event: &str, at: [f64; 3], volume: f32, pitch: f32, camera: [f64; 3]);
     /// `Audio::play_unshared`.
     fn play_audio_unshared => play_unshared(event: &str, at: Option<[f64; 3]>, volume: f32, pitch: f32);
     /// `Audio::play_seeded`.
@@ -66,7 +70,7 @@ impl Game<'_> {
     pub(in crate::game) fn start_sound(&mut self, id: InstanceId) -> PlayResult {
         match self.audio.begin_play(id) {
             Some(prepared) => self.fire_start(prepared),
-            None => self.play_audio_id(id),
+            None => self.audio.play_id(id),
         }
     }
 
@@ -103,5 +107,27 @@ impl Game<'_> {
             });
             self.audio.set_live_answer(prepared.instance, sound);
         }
+    }
+}
+
+/// The sound manager the music, its layers and the ambience play through: `play_sound` fires
+/// inside each start, with the game as its `ClientHost`.
+pub(in crate::game) struct HookedSounds<'g, 'a>(pub(in crate::game) &'g mut Game<'a>);
+
+impl Sounds for HookedSounds<'_, '_> {
+    fn engine(&mut self) -> &mut SoundEngine {
+        &mut self.0.audio.engine
+    }
+    fn play_instance(&mut self, instance: SoundInstance, retain: bool) -> (InstanceId, PlayResult) {
+        self.0.play_audio_instance(instance, retain)
+    }
+    fn play_id(&mut self, id: InstanceId) -> PlayResult {
+        self.0.start_sound(id)
+    }
+    fn stop_instance(&mut self, id: InstanceId) {
+        self.0.audio.stop_instance(id);
+    }
+    fn update_category_volume(&mut self, source: usize, gain: f32) {
+        self.0.audio.update_category_volume(source, gain);
     }
 }
