@@ -20,7 +20,7 @@ const COMMANDS: &[Command] = &[
         name: "build",
         everyday: true,
         usage: "build [--update-lock] [--with <path>]… | build [--update-lock] --binaries <dir> --sunrise-release <tag> --releases <file> [--server] | build --describe-binaries <dir> --sunrise-release <tag> --releases <file> --sdk-data <dir>",
-        summary: "Compiles a native mod with its required libraries and any optional libraries supplied with --with, then packs only the mod into target/sunrise-mod/<id>.smod. Use --with for local folders or .smod files; the Sunrise mod registry supplies other required libraries. --update-lock resolves its Cargo.lock again. --binaries writes an independent SDK host archive for a standalone mod; --describe-binaries assembles a descriptor without compiling.",
+        summary: "Compiles a native mod with its required libraries and any optional libraries supplied with --with, then packs only the mod into target/sunrise-mod/<id>.smod, and its page.toml and screenshots, if it has them, into target/sunrise-mod/<id>.page.tar. Use --with for local folders or .smod files; the Sunrise mod registry supplies other required libraries. --update-lock resolves its Cargo.lock again. --binaries writes an independent SDK host archive for a standalone mod; --describe-binaries assembles a descriptor without compiling.",
     },
     Command {
         name: "run",
@@ -31,8 +31,8 @@ const COMMANDS: &[Command] = &[
     Command {
         name: "check",
         everyday: true,
-        usage: "check [--uses] [--with <path>]… | check <file> [--kind <kind>] [--key <public key> --signature <file.minisig>] [--json]",
-        summary: "Checks the mod in this folder, including native Rust code with the same libraries as build, or a file as the registry would. Repeat --with for local libraries; --uses lists what the mod uses of its pinned build.",
+        usage: "check [--release <tag>] [--uses] [--with <path>]… | check <file> [--kind <kind>] [--key <public key> --signature <file.minisig>] [--json]",
+        summary: "Checks the mod in this folder or a file as the registry would. Folder checks report missing page requirements; --release requires a valid page and matching version tag, and compiles native code. The registry's category list is fetched only when the page selects categories. Repeat --with for local libraries; --uses lists what the mod uses of its pinned build.",
     },
     Command {
         name: "update",

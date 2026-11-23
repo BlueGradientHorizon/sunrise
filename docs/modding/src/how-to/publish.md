@@ -7,6 +7,30 @@ registry version row must name a stable Sunrise release in `sunrise`. A native m
 included, write the row by hand as [the registry reference](../reference/registry-index.md#the-entry) shows. The steps below show how to prepare and check
 a local draft, and what review does with a submission.
 
+## Your mod's page
+
+For a tagged registry release, edit `page.toml` beside `sunrise-mod.toml`:
+
+- `summary`: a short description of at least 25 characters.
+- `description`: a long description of at least 125 characters. You can use Markdown. Without it the page
+  uses the manifest's `description`.
+- `categories`: an optional list of up to eight distinct IDs from the registry's `registry/categories.toml`.
+  Each category must apply to your package kind (`mod` or `native-mod`).
+- `[[screenshots]]`: at least one entry, with a `path` such as `page/recipes.png` and an optional `caption`.
+  Put the images under `page/`. Use readable PNG (`.png`) or JPEG (`.jpg` or `.jpeg`) files, at most 5 MiB each.
+
+Text minimums count Unicode scalar values after trimming surrounding whitespace. `description`, `name`,
+`authors`, `homepage` and `issues` default to the values in `sunrise-mod.toml`; set them in `page.toml` to
+show different ones on the page. The name and each listed author must not be
+blank. Links must be absolute HTTP(S) URLs without credentials. The page uses the mod's own `icon.png`, which a release needs, as it needs a `license` in
+`sunrise-mod.toml`. Screenshot paths must be distinct, must not be `page/icon.png`, and must be names Windows
+can create, and the page bundle must fit the registry's 64 MiB for one release file.
+
+Run `cargo sunrise-mod check` to see what you still need before release. Run
+[`cargo sunrise-mod check --release <tag>`](../reference/sdk/05-commands.md) to require a complete page and
+check the tag against the manifest's version. `build` writes `target/sunrise-mod/<id>.page.tar` separately from the
+`.smod` whenever the project has a `page.toml`.
+
 ## 1. Build and write the submission
 
 Set `version` in `sunrise-mod.toml` to a SemVer without `+build` metadata, at most 64 characters after
