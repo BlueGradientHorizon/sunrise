@@ -1,7 +1,7 @@
 # Add a mod from source
 
-The registry lists only signed, reviewed releases. To install anything else, such as a mod you are writing
-or one a friend sent you, use **Add from source** on the launcher's Installed page. It offers two
+The registry lists only signed, reviewed releases. To install anything else, such as a mod a friend sent
+you, use **Add from source** on the **Installed** tab of the launcher's **Mods** page. It offers two
 sources:
 
 - **Repository:** a GitHub link or a mod folder on this computer. The launcher builds the mod, and it is
@@ -14,8 +14,11 @@ runs on your computer with your permissions, so the warning's default is Cancel,
 **Install unreviewed mod** to go on. Read the source first.
 
 Mods marked From source or Local never update automatically and are left out of **Update all**. To
-refresh one, add it from source again. A mod installed from the registry is not replaced by an unreviewed
-copy: remove it first.
+refresh one, add it from source again, or run `sunrise-launcher mods update-github` (below) for a GitHub
+install. A mod installed from the registry is not replaced by an unreviewed copy: remove it first.
+
+To try a mod you are writing, you need no launcher: `cargo sunrise-mod run` builds it and starts the game
+with it ([Your first native mod](../../start/first-mod.md)).
 
 ## From the command line
 

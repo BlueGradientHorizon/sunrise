@@ -13,7 +13,7 @@ file by hand into the game folder (the folder that holds `options.txt`):
 | Content mod (`.smod`, or a folder holding `sunrise-mod.toml`) | `sunrise-mods/` | Read when the game starts |
 | Native mod (`.smod` with Rust source) | `sunrise-native-mods/` | The launcher builds it for that instance ([Native mods](../how-to/native-mods.md)) |
 
-The launcher's **Discover** page lists the registry's signed, reviewed releases for the profile named in
+The **Discover** tab of the launcher's **Mods** page lists the registry's signed, reviewed releases for the profile named in
 **Showing mods for**, on every channel. A mod shows only when the registry lists a release that fits that
 profile's exact game build, and each card offers the newest such release. **Show all** adds the rest, greyed out
 and without Install, each saying whether it doesn't fit your build or hasn't been checked against it yet. A
