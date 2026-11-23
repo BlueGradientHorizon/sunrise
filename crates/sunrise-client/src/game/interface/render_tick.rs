@@ -814,7 +814,8 @@ impl Game<'_> {
         let parts = self.mod_animate_parts();
         let block = eye.map(|e| e.map(|v| v.floor() as i32));
         let mut sampling = block.map(AnimateSampling::new);
-        let sea_level = self.dim.sea_level();
+        let sea_level = self.weather_sea_level();
+        let biome_zoom = self.streaming.biome_zoom;
         // `ClientLevel.animateTick`, then the rain and the campfires. The sampling stops in each
         // pick whose block has a part, for the game to call it there (`mod_animate_tick`); the
         // context borrows the game, so it is made again for the rest of the tick.
@@ -836,8 +837,13 @@ impl Game<'_> {
             let raining_at = |p: [i32; 3]| {
                 raining
                     && motion_blocking_height(world, properties, p[0], p[2]) <= p[1]
-                    && precipitation_at(world, biomes, BlockPos::new(p[0], p[1], p[2]), sea_level)
-                        == Some(false)
+                    && precipitation_at(
+                        world,
+                        biomes,
+                        biome_zoom,
+                        BlockPos::new(p[0], p[1], p[2]),
+                        sea_level,
+                    ) == Some(false)
             };
             let height_no_leaves =
                 |p: [i32; 3]| motion_blocking_leaves(world, facts, p[0], p[2], i32::MAX, false);
@@ -909,8 +915,13 @@ impl Game<'_> {
                         else {
                             continue;
                         };
-                        if precipitation_at(world, biomes, BlockPos::new(x, top, z), sea_level)
-                            != Some(false)
+                        if precipitation_at(
+                            world,
+                            biomes,
+                            biome_zoom,
+                            BlockPos::new(x, top, z),
+                            sea_level,
+                        ) != Some(false)
                         {
                             continue;
                         }

@@ -292,6 +292,7 @@ impl Game<'_> {
             added_levels: Default::default(),
             viewed: Default::default(),
             hashed_seed: 0,
+            sea_level: 63,
             chunk_format: Arc::new(ChunkFormat::new(
                 &DimensionType::vanilla("minecraft:overworld"),
                 Vec::new(),
@@ -561,6 +562,7 @@ impl Game<'_> {
             added_levels: Default::default(),
             viewed: Default::default(),
             hashed_seed: 0,
+            sea_level: 63,
             chunk_format: Arc::new(ChunkFormat::new(
                 &DimensionType::vanilla("minecraft:overworld"),
                 Vec::new(),
@@ -867,11 +869,6 @@ impl Game<'_> {
             None
         };
         if !same {
-            // A new ClientLevel gets the sea level in CommonPlayerSpawnInfo. Respawning in
-            // the same level keeps the old ClientLevel, including its sea level.
-            if let Ok(key) = sunrise_core::LevelKey::parse(&spawn.dimension) {
-                sunrise_world::level::register_sea_level(key, spawn.sea_level);
-            }
             self.forget_all_remote_columns();
         }
         let adjust_mode = if matches!(
@@ -892,6 +889,9 @@ impl Game<'_> {
             !matches!(entry, RemoteDimensionEntry::Login) || !r.has_logical_player;
         if !same {
             r.collider_shove_start = None;
+            // A same-level respawn keeps the existing ClientLevel's seed and sea level.
+            r.hashed_seed = spawn.seed;
+            r.sea_level = spawn.sea_level;
         }
         // A Sunrise server's bulk edit sends whole columns with the light
         // from before its relight; any other server's packet light is final.
@@ -906,7 +906,6 @@ impl Game<'_> {
         self.world.day_time = r.clock_time(r.default_clock);
         r.level = spawn.dimension.clone();
         r.level_key = mod_api::__private::dimension_key(&spawn.dimension);
-        r.hashed_seed = spawn.seed;
         if new_logical_player {
             r.abilities = sunrise_client::lan::abilities::PlayerAbilities::default();
             r.own_player_info = std::cell::OnceCell::new();
@@ -951,6 +950,8 @@ impl Game<'_> {
             );
             streaming.remote = true;
             streaming.radius = self.streaming.radius;
+            // SpawnInfo already carries the hashed seed the client's BiomeManager holds.
+            streaming.biome_zoom = sunrise_core::biome::BiomeZoom::new(spawn.seed);
             self.streaming = streaming;
             let (time, day, weather) = (
                 self.world.game_time,
@@ -1020,8 +1021,6 @@ impl Game<'_> {
             .is_none_or(|r| r.dimension.has_skylight);
         self.streaming.sky_light = has_sky;
         self.streaming.nether_shading = self.nether_lighting();
-        // The seed in SpawnInfo is already the hashed one the client's BiomeManager holds.
-        self.streaming.biome_zoom = sunrise_core::biome::BiomeZoom::new(spawn.seed);
         let player = self.player.as_ref();
         self.particles
             .detach_tracking_target(TrackingTarget::LocalPlayer, || {

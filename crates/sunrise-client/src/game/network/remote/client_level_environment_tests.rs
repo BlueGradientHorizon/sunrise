@@ -275,12 +275,13 @@ fn client_clouds_fog_and_precipitation_follow_the_joined_level() {
     use sunrise_client::chunk::Chunk;
     use sunrise_core::position::BlockPos;
 
-    let precipitation_at = |game: &Game<'_>, x, y| {
+    let precipitation_at = |game: &Game<'_>, x, y, z| {
         crate::game::weather::precipitation_at(
             &game.world,
             world_biomes!(game),
-            BlockPos::new(x, y, 0),
-            game.dim.sea_level(),
+            game.streaming.biome_zoom,
+            BlockPos::new(x, y, z),
+            game.weather_sea_level(),
         )
     };
     crate::game::in_own_process(
@@ -318,7 +319,6 @@ fn client_clouds_fog_and_precipitation_follow_the_joined_level() {
                 let camera = DVec3::new(0.0, 64.0, 0.0);
                 let mut clouds = Vec::new();
                 let mut fog = Vec::new();
-                let mut precipitation = Vec::new();
 
                 for (index, (dimension, sea_level)) in [
                     ("minecraft:overworld", 0),
@@ -331,6 +331,7 @@ fn client_clouds_fog_and_precipitation_follow_the_joined_level() {
                 {
                     let mut entered = spawn(index as i32, dimension);
                     entered.sea_level = sea_level;
+                    entered.seed = 42;
                     if index == 0 {
                         login(game, entered);
                     } else {
@@ -368,26 +369,59 @@ fn client_clouds_fog_and_precipitation_follow_the_joined_level() {
                     ]);
 
                     if index < 3 {
-                        assert_eq!(precipitation_at(game, 16, 100), None);
+                        assert_eq!(game.weather_sea_level(), sea_level);
+                        assert_eq!(precipitation_at(game, 16, 100, 8), None);
                         let biomes = world_biomes!(game);
                         let taiga = biomes.id("minecraft:taiga");
                         let desert = biomes.id("minecraft:desert");
-                        let mut chunk = Chunk::with_layout(0, 0, game.world.layout());
-                        for y in [100, 170] {
-                            chunk.set_biome_cell(0, (y - game.world.bottom_y()) >> 2, 0, taiga);
+                        let layout = game.world.layout();
+                        let mut chunk = Chunk::with_layout(0, 0, layout);
+                        for qy in 0..(layout.max_y() - layout.min_y()) / 4 {
+                            for qz in 0..4 {
+                                for qx in 0..4 {
+                                    let biome = if index == 0 && qx == 1 { desert } else { taiga };
+                                    chunk.set_biome_cell(qx, qy, qz, biome);
+                                }
+                            }
                         }
-                        game.world.chunks.insert((0, 0), Arc::new(chunk.clone()));
-                        let taiga_100 = precipitation_at(game, 0, 100);
-                        let taiga_170 = precipitation_at(game, 0, 170);
-                        chunk.set_biome_cell(0, (100 - game.world.bottom_y()) >> 2, 0, desert);
+                        if index == 0 {
+                            // At this boundary 26.3 chooses desert (quart x=1 with seed 42),
+                            // not the raw quart's taiga (quart x=0).
+                            assert_eq!(chunk.biome(3, 100, 5), taiga);
+                        }
                         game.world.chunks.insert((0, 0), Arc::new(chunk));
-                        precipitation.push([taiga_100, taiga_170, precipitation_at(game, 0, 100)]);
+                        if index == 0 {
+                            assert_eq!(precipitation_at(game, 3, 100, 5), None);
+                        }
+
+                        // The same biome and two already sampled positions keep their first
+                        // temperature; new positions use the newly joined level's sea level.
+                        assert_eq!(
+                            [100, 170].map(|y| precipitation_at(game, 10, y, 10)),
+                            [Some(true), Some(true)],
+                            "cached at sea level {sea_level}"
+                        );
+                        let fresh = [[true, true], [false, true], [false, false]][index];
+                        assert_eq!(
+                            [100, 170].map(|y| precipitation_at(game, 10 + index as i32, y, 10)),
+                            fresh.map(Some),
+                            "fresh at sea level {sea_level}"
+                        );
                         if index == 2 {
-                            // A same-level respawn keeps the existing ClientLevel's sea level.
+                            // Only this test's child process sees the competing server table.
+                            sunrise_world::level::register_sea_level(
+                                sunrise_core::LevelKey::parse(dimension).unwrap(),
+                                0,
+                            );
+                            assert_eq!(game.dim.sea_level(), 0);
+                            assert_eq!(game.weather_sea_level(), sea_level);
+                            assert_eq!(precipitation_at(game, 13, 170, 10), Some(false));
+
                             let mut same_level = spawn(index as i32, dimension);
                             same_level.sea_level = 0;
                             respawn(game, same_level);
-                            assert_eq!(precipitation_at(game, 0, 170), taiga_170);
+                            assert_eq!(game.weather_sea_level(), sea_level);
+                            assert_eq!(precipitation_at(game, 9, 170, 10), Some(false));
                         }
                     }
                 }
@@ -401,16 +435,11 @@ fn client_clouds_fog_and_precipitation_follow_the_joined_level() {
                     assert_eq!(away, transparent);
                     assert_eq!(close, close_transparent);
                 }
-                assert_ne!(fog[0][0].0, fog[3][0].0, "sky fog distance changes the mix");
-                assert_eq!(fog[3][0].1, 64.0);
-                assert_eq!(
-                    precipitation,
-                    [
-                        [Some(true), Some(true), None],
-                        [Some(false), Some(true), None],
-                        [Some(false), Some(false), None],
-                    ]
-                );
+                // AtmosphericFogEnvironment.getBaseColor: first blend the synthetic fog
+                // toward sunrise at 153/255, then toward the sky by
+                // 1 - pow(lerp(min(distance / 16, 8) / 32, 0.25, 1), 0.25).
+                assert_eq!(fog[0][0].0, [0x3f05c604, 0x3eb3733e, 0x3ea575a1]);
+                assert_eq!(fog[3][0], ([0x3f0069df, 0x3eb07820, 0x3eadc0aa], 64.0));
             })
         },
     );

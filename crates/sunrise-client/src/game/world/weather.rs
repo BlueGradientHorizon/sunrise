@@ -8,16 +8,30 @@ use super::*;
 pub(super) fn precipitation_at(
     world: &World,
     biomes: &Biomes,
+    zoom: BiomeZoom,
     pos: BlockPos,
     sea_level: i32,
 ) -> Option<bool> {
-    let chunk = world.chunks.get(&(pos.x >> 4, pos.z >> 4))?;
-    biomes
-        .get(chunk.biome(pos.x, pos.y, pos.z))
-        .snows_at(pos, sea_level)
+    if !world.chunks.contains_key(&(pos.x >> 4, pos.z >> 4)) {
+        return None;
+    }
+    // `LevelReader.getBiome` zooms first. If that quart's chunk is missing,
+    // `ClientLevel.getUncachedNoiseBiome` supplies plains.
+    let [x, y, z] = zoom.quart_at_block(pos).map(|q| q << 2);
+    let id = world
+        .noise_biome(x, y, z)
+        .unwrap_or_else(|| biomes.id("minecraft:plains"));
+    biomes.get(id).snows_at(pos, sea_level)
 }
 
 impl Game<'_> {
+    /// The joined `ClientLevel`'s sea level, or the server level's generator setting.
+    pub(super) fn weather_sea_level(&self) -> i32 {
+        self.remote
+            .as_ref()
+            .map_or_else(|| self.dim.sea_level(), |remote| remote.sea_level)
+    }
+
     /// `Level.isDarkOutside`.
     pub(super) fn dark_outside(&self) -> bool {
         !self.dimension_type().has_fixed_time && self.sky_darken() >= 4
@@ -77,8 +91,13 @@ impl Game<'_> {
         self.weather_levels(1.0).0 > 0.2
             && self.world.light(p.x, p.y, p.z) >> 4 == 15
             && self.rain_height(p.x, p.z) <= p.y
-            && precipitation_at(&self.world, world_biomes!(self), p, self.dim.sea_level())
-                == Some(false)
+            && precipitation_at(
+                &self.world,
+                world_biomes!(self),
+                self.streaming.biome_zoom,
+                p,
+                self.weather_sea_level(),
+            ) == Some(false)
     }
 
     /// `getHeight(Heightmap.Types.MOTION_BLOCKING, x, z)`: one above the

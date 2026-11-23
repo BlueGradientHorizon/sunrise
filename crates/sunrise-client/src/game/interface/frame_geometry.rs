@@ -495,7 +495,8 @@ impl Game<'_> {
         // The 32x32 direction table supports at most a 15-block radius.
         let radius = self.settings.weather_radius.clamp(0, 15);
         let eye = camera.to_array();
-        let sea_level = self.dim.sea_level();
+        let sea_level = self.weather_sea_level();
+        let biome_zoom = self.streaming.biome_zoom;
         let biomes = world_biomes!(self);
         let mut rain = Vec::new();
         let mut snow_vertices = Vec::new();
@@ -508,9 +509,13 @@ impl Game<'_> {
                 if y1 == y0 {
                     continue;
                 }
-                let Some(snow) =
-                    precipitation_at(&self.world, biomes, BlockPos::new(x, cy, z), sea_level)
-                else {
+                let Some(snow) = precipitation_at(
+                    &self.world,
+                    biomes,
+                    biome_zoom,
+                    BlockPos::new(x, cy, z),
+                    sea_level,
+                ) else {
                     continue;
                 };
                 let parameters = self.weather_parameters.get(x, z);
