@@ -3726,6 +3726,8 @@ struct Game<'a> {
     /// The source of a command run through /execute (the player otherwise).
     command_source: Option<commands::execute::Source>,
     native_command_filter: bool,
+    /// Public chat broadcasts a `chat_recipient` listener's commands start while one runs.
+    chat_broadcasts: lan_chat::ChatBroadcasts,
     titles: titles::Titles,
     /// `Hud.toolHighlightTimer`: the selected item name.
     tool_highlight: sunrise_client::hud_overlays::ToolHighlight,
@@ -13933,6 +13935,7 @@ impl<'a> Game<'a> {
             cooldowns: Default::default(),
             command_source: None,
             native_command_filter: false,
+            chat_broadcasts: Default::default(),
             titles: Default::default(),
             tool_highlight: Default::default(),
             saving_indicator: Default::default(),

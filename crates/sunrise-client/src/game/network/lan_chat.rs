@@ -20,6 +20,35 @@ pub(super) enum ChatDelivery<'a> {
     Disguised(&'a Tag),
 }
 
+/// An owned [`ChatDelivery`], for a broadcast that waits its turn.
+enum QueuedDelivery {
+    Player(ChatMessage),
+    Disguised(Tag),
+}
+
+/// A public chat line, identified by its sender and the text shown.
+type ChatKey = (u128, String);
+
+struct QueuedBroadcast {
+    sender: u128,
+    name: String,
+    shown: String,
+    line: Text,
+    bound: play::ChatTypeBound,
+    delivery: QueuedDelivery,
+    /// The lines whose delivery led to this one, itself last.
+    path: Vec<ChatKey>,
+}
+
+/// Broadcasts started from inside a recipient listener: delivered one after another once the
+/// running broadcast finishes (no recursion), and dropped when a line repeats one of the lines
+/// that led to it (a relay answering its own answer).
+#[derive(Default)]
+pub(in crate::game) struct ChatBroadcasts {
+    active: Option<Vec<ChatKey>>,
+    queue: std::collections::VecDeque<QueuedBroadcast>,
+}
+
 /// The signing context of a command: each message argument as the chain
 /// let it through, by argument name (CommandSigningContext.SignedArguments).
 type Signed = Vec<(String, ChatMessage)>;
@@ -162,6 +191,58 @@ impl Game<'_> {
     /// `PlayerList.broadcastChatMessage`: log and check trust first, then ask and send
     /// each eligible copy together. Nested broadcasts use this same path independently.
     pub(super) fn lan_broadcast_chat(
+        &mut self,
+        (sender, name): (u128, &str),
+        shown: &str,
+        line: Text,
+        bound: &play::ChatTypeBound,
+        delivery: ChatDelivery<'_>,
+    ) {
+        let key = (sender, shown.to_owned());
+        if let Some(active) = &self.chat_broadcasts.active {
+            if active.contains(&key) {
+                log::warn!("chat broadcast cycle refused: {shown}");
+                return;
+            }
+            let mut path = active.clone();
+            path.push(key);
+            self.chat_broadcasts.queue.push_back(QueuedBroadcast {
+                sender,
+                name: name.to_owned(),
+                shown: shown.to_owned(),
+                line,
+                bound: bound.clone(),
+                delivery: match delivery {
+                    ChatDelivery::Player(message) => QueuedDelivery::Player(message.clone()),
+                    ChatDelivery::Disguised(content) => QueuedDelivery::Disguised(content.clone()),
+                },
+                path,
+            });
+            return;
+        }
+        self.chat_broadcasts.active = Some(vec![key]);
+        self.deliver_chat_broadcast((sender, name), shown, line, bound, delivery);
+        while let Some(next) = self.chat_broadcasts.queue.pop_front() {
+            let QueuedBroadcast {
+                sender,
+                name,
+                shown,
+                line,
+                bound,
+                delivery,
+                path,
+            } = next;
+            self.chat_broadcasts.active = Some(path);
+            let delivery = match &delivery {
+                QueuedDelivery::Player(message) => ChatDelivery::Player(message),
+                QueuedDelivery::Disguised(content) => ChatDelivery::Disguised(content),
+            };
+            self.deliver_chat_broadcast((sender, &name), &shown, line, &bound, delivery);
+        }
+        self.chat_broadcasts.active = None;
+    }
+
+    fn deliver_chat_broadcast(
         &mut self,
         (sender, name): (u128, &str),
         shown: &str,

@@ -636,3 +636,63 @@ fn guest_public_command_selectors_change_display_not_the_signed_body() {
         },
     );
 }
+
+/// Two lines that each make the listener say the other would reenter the broadcast without
+/// end: each nested line waits for the running one, and a line repeating one that led to it
+/// is dropped, so the exchange ends after each was said once.
+#[test]
+#[ignore = "daily"]
+fn a_relay_answering_its_own_answer_stops_at_the_repeat() {
+    struct Relay(Asked);
+    #[mod_api::__subscriptions]
+    impl Hooks for Relay {
+        fn chat_recipient(
+            &self,
+            host: &mut dyn ServerHost,
+            event: &mut ChatRecipientEvent<'_>,
+        ) -> Flow {
+            self.0.lock().unwrap().push((
+                event.sender,
+                event.sender_name.to_owned(),
+                event.message.to_owned(),
+                event.recipient,
+            ));
+            if event.recipient == 13 {
+                let answer = match event.message {
+                    "ping" => "execute run say pong",
+                    "pong" => "execute run say ping",
+                    _ => return Flow::Continue,
+                };
+                host.commands().run_command_with_output(answer);
+            }
+            Flow::Continue
+        }
+    }
+    let asked = Asked::default();
+    let mods = vec![mod_api::ModEntry::new(
+        "relay",
+        Box::new(Relay(asked.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            two_guests(game);
+            assert!(game.as_console_in_spawn_level(|game| game.run_command("say ping")));
+            let seen: Vec<_> = asked
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|row| (row.2.clone(), row.3))
+                .collect();
+            assert_eq!(
+                seen,
+                [
+                    ("ping".to_owned(), 12),
+                    ("ping".to_owned(), 13),
+                    ("pong".to_owned(), 12),
+                    ("pong".to_owned(), 13),
+                ]
+            );
+        });
+    });
+}
