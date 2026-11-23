@@ -19,7 +19,7 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod render_tooltip_texture_tests {
+pub(in crate::game) mod render_tooltip_texture_tests {
     use super::ItemStack;
     use mod_api::{ClientHost, Hooks, Identifier, ModEntry, RenderTooltipTextureEvent};
     use mod_platform::testing::with_mods;
@@ -68,10 +68,14 @@ mod render_tooltip_texture_tests {
         (r.u0..=r.u1).contains(&uv[0]) && (r.v0..=r.v1).contains(&uv[1])
     }
 
-    /// Vanilla 26.3 `TooltipRenderUtil.extractTooltipBackground` witness (`tools/witness/26.3/tooltip_style_sprites.json`): a stack's `minecraft:tooltip_style` draws exact sprites, bounds, and colours.
+    /// Vanilla 26.3 `TooltipRenderUtil.extractTooltipBackground` witness recorded by `tools/test_tooltip_display_parity.py`: a stack's `minecraft:tooltip_style` draws exact sprites, bounds, and colours.
     #[test]
-    #[ignore = "daily"]
+    #[ignore = "run by tools/test_tooltip_display_parity.py"]
     fn an_items_tooltip_style_draws_its_own_sprites() {
+        run_an_items_tooltip_style_draws_its_own_sprites();
+    }
+
+    pub(in crate::game) fn run_an_items_tooltip_style_draws_its_own_sprites() {
         #[derive(serde::Deserialize)]
         struct Witness {
             minecraft_version: String,
@@ -96,10 +100,19 @@ mod render_tooltip_texture_tests {
             color: u32,
         }
 
-        let witness: Witness = serde_json::from_str(include_str!(
-            "../../../../../tools/witness/26.3/tooltip_style_sprites.json"
-        ))
-        .unwrap();
+        let path =
+            std::env::var_os("SUNRISE_TOOLTIP_STYLE_SPRITES_WITNESS").unwrap_or_else(|| {
+                panic!(
+                    "SUNRISE_TOOLTIP_STYLE_SPRITES_WITNESS is unset; run tools/test_tooltip_display_parity.py"
+                )
+            });
+        let raw = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+            panic!(
+                "failed to read witness {} (record via tools/test_tooltip_display_parity.py): {e}",
+                std::path::Path::new(&path).display()
+            )
+        });
+        let witness: Witness = serde_json::from_str(&raw).unwrap();
         assert_eq!(witness.minecraft_version, "26.3");
         assert!(!witness.cases.is_empty());
 

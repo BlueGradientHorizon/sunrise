@@ -2281,8 +2281,9 @@ mod tests {
         );
     }
 
-    /// Vanilla 26.3 `ItemStack.OPTIONAL_STREAM_CODEC` witness (`tools/witness/26.3/tooltip_style_wire.json`) round-trips `minecraft:tooltip_style` byte-for-byte.
+    /// Vanilla 26.3 `ItemStack.OPTIONAL_STREAM_CODEC` witness recorded by `tools/test_item_wire_parity.py` round-trips `minecraft:tooltip_style` byte-for-byte.
     #[test]
+    #[ignore = "run by tools/test_item_wire_parity.py"]
     fn a_tooltip_style_crosses_the_wire() {
         #[derive(serde::Deserialize)]
         struct Witness {
@@ -2299,10 +2300,18 @@ mod tests {
             hex: String,
         }
 
-        let witness: Witness = serde_json::from_str(include_str!(
-            "../../../tools/witness/26.3/tooltip_style_wire.json"
-        ))
-        .unwrap();
+        let path = std::env::var_os("SUNRISE_TOOLTIP_STYLE_WIRE_WITNESS").unwrap_or_else(|| {
+            panic!(
+                "SUNRISE_TOOLTIP_STYLE_WIRE_WITNESS is unset; run tools/test_item_wire_parity.py"
+            )
+        });
+        let raw = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+            panic!(
+                "failed to read witness {} (record via tools/test_item_wire_parity.py): {e}",
+                Path::new(&path).display()
+            )
+        });
+        let witness: Witness = serde_json::from_str(&raw).unwrap();
         assert_eq!(witness.minecraft_version, "26.3");
         assert!(!witness.cases.is_empty());
 
