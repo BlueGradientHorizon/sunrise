@@ -57,7 +57,12 @@ impl Game<'_> {
         };
         if let Some(stack) = stack {
             self.draw_item_model(batch, stack, x, y, 0);
-            let text = capped.then(|| format!("\u{a7}e{}", stack.count));
+            let mut count = [0; 13];
+            let text = if capped {
+                Some(hud_overlays::item_count_text(stack.count, true, &mut count))
+            } else {
+                None
+            };
             self.draw_item_decorations(batch, stack, x, y, text);
         } else if let Some(icon) =
             container_slot_index(slot).and_then(|slot| self.native_screen_slot_icon(slot))
@@ -124,7 +129,7 @@ impl Game<'_> {
         stack: &ItemStack,
         x: f32,
         y: f32,
-        count_text: Option<String>,
+        count_text: Option<&str>,
     ) {
         self.draw_vanilla_item_decorations(batch, stack, x, y, count_text);
         let hook = mod_api::HookId::ItemDecorations;
@@ -142,7 +147,7 @@ impl Game<'_> {
         stack: &ItemStack,
         x: f32,
         y: f32,
-        count_text: Option<String>,
+        count_text: Option<&str>,
     ) {
         // GuiGraphicsExtractor.itemDecorations, laid out at the origin and
         // moved to (x, y): the damage bar, the cooldown shade and the count.
@@ -171,17 +176,7 @@ impl Game<'_> {
             bar,
             cooldown: self.cooldowns.percent(&cooldown, partial),
         };
-        let mut draws = vec![hud_layout::GuiDraw::Push(vec![
-            hud_layout::PoseOp::Translate(x, y),
-        ])];
-        draws.extend(hud_overlays::item_decorations(
-            0,
-            0,
-            &decorations,
-            &self.gui.atlas.font,
-        ));
-        draws.push(hud_layout::GuiDraw::Pop);
-        hud_layout::paint(batch, &self.gui.atlas, &draws);
+        hud_overlays::paint_item_decorations(batch, &self.gui.atlas, [x, y], &decorations);
     }
     /// The open container screen's player-inventory origin (`getXOrigin`/
     /// `getYOrigin`): the build's, or the frame's own arithmetic with no

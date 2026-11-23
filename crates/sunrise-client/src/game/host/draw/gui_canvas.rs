@@ -308,7 +308,7 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
         let text = text.try_into_engine(&()).map_err(GuiDrawError::Text)?;
         self.paint_in_pose(pose, |batch, atlas| {
             layout
-                .visit(&atlas.font, &text, |_, line, [x, y], _| {
+                .visit_visual(&atlas.font, &text, |line, [x, y]| {
                     if argb >> 24 != 0 {
                         batch.text_visual(atlas, line, x, y, abgr(argb), shadow);
                     }
@@ -343,7 +343,7 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
         self.check_item_geometry(at)?;
         let game = self.game.ok_or(GuiDrawError::Unavailable)?;
         self.paint(|batch, _| {
-            game.draw_vanilla_item_decorations(batch, &stack, x, y, count.map(str::to_owned));
+            game.draw_vanilla_item_decorations(batch, &stack, x, y, count);
         })?;
         // Its draws already use this pose and scissor. Only the vanilla suffix above needs
         // transforming, not the whole decorator call.

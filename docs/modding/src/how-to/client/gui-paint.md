@@ -33,8 +33,9 @@ independent host calls are not part of the transaction; use the ordinary `DrawCo
 draws, with [`with_scissor`](screen-clipping.md) if you need to clip them.
 
 For a wrapped component, call `canvas.text_with_word_wrap`. It wraps and paints in the current
-scope and returns the [label dimensions](screens.md#labels-wrapped-text-without-a-widget); there
-is no list of line draws to replay. If a scaled offset or dimension is not finite, the call
+scope and returns the [label dimensions](screens.md#labels-wrapped-text-without-a-widget). The
+canvas walks the wrapped ranges and paints each line using reusable scratch instead of
+building a replay list. If a scaled offset or dimension is not finite, the call
 returns `GuiDrawError::TextLayout(TextLayoutError::GeometryNotFinite)` without drawing, even
 for a blank or fully transparent label.
 

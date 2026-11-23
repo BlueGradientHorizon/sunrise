@@ -9,12 +9,15 @@
 use crate::{
     hud::Rect,
     resource_source::ResourceSource,
-    text::{Span, Style, Text, legacy_format},
+    text::{Style, Text},
     zip::Zip,
 };
 use ab_glyph::{Font as _, ScaleFont as _};
 use std::{cell::RefCell, collections::HashMap, sync::Arc};
 use sunrise_core::random::LegacyRandom;
+
+mod formatted_lines;
+pub use formatted_lines::{FormattedLine, FormattedLines};
 
 /// `FontDescription.DEFAULT`.
 pub const DEFAULT: &str = "minecraft:default";
@@ -1345,81 +1348,21 @@ impl Font {
         max_width: f32,
         default_font: &str,
     ) -> Vec<Text> {
-        let max_width = max_width.max(1.0);
-        let mut parts: Vec<(Vec<char>, Span)> = t
-            .spans
-            .iter()
-            .filter(|s| !s.text.is_empty())
-            .map(|s| (s.text.chars().collect(), s.with_text(String::new())))
-            .collect();
-        let mut flat: Vec<char> = parts.iter().flat_map(|p| p.0.iter().copied()).collect();
-        let mut out = Vec::new();
-        let mut force_new_line = false;
-        // One LineBreakFinder per line, over the parts left.
-        while let Some((at, split_style)) =
-            self.line_break_with_font(&parts, max_width, default_font)
-        {
-            let tail = flat[at];
-            let new_line = tail == '\n';
-            let skip = usize::from(new_line || tail == ' ');
-            force_new_line = new_line;
-            out.push(split_at(&mut parts, at, skip, &split_style));
-            flat.drain(..at + skip);
-        }
-        if !parts.is_empty() {
-            out.push(Text::from_spans(
-                parts
-                    .into_iter()
-                    .map(|(text, span)| span.with_text(text.into_iter().collect::<String>()))
-                    .collect(),
-            ));
-        } else if force_new_line {
-            out.push(Text::empty());
-        }
-        out
-    }
-    /// `StringSplitter.LineBreakFinder` fed by `StringDecomposer.iterateFormatted`:
-    /// where the parts break (a character index) and the style there.
-    fn line_break_with_font(
-        &self,
-        parts: &[(Vec<char>, Span)],
-        max_width: f32,
-        default_font: &str,
-    ) -> Option<(usize, Style)> {
-        let (mut width, mut had_visible, mut last_space) = (0.0f32, false, None);
-        let mut offset = 0;
-        for (contents, part_style) in parts {
-            let mut style = part_style.style.clone();
-            let mut i = 0;
-            while i < contents.len() {
-                let c = contents[i];
-                if c == '§' {
-                    // A `§` that ends its part ends only that part.
-                    let Some(&code) = contents.get(i + 1) else {
-                        break;
-                    };
-                    style = legacy_format(&style, code, &Style::default());
-                    i += 2;
-                    continue;
-                }
-                let at = offset + i;
-                if c == '\n' {
-                    return Some((at, style));
-                }
-                if c == ' ' {
-                    last_space = Some((at, style.clone()));
-                }
-                let advance = self.advance_with_default(c, &style, default_font);
-                width += advance;
-                if had_visible && width > max_width {
-                    return Some(last_space.unwrap_or((at, style)));
-                }
-                had_visible |= advance != 0.0;
-                i += 1;
-            }
-            offset += contents.len();
-        }
-        None
+        self.formatted_lines_with_font(t, max_width, default_font)
+            .map(|line| {
+                Text::from_spans(
+                    line.ranges()
+                        .map(|(part, text, style)| {
+                            let mut span = part.with_text(text);
+                            if !std::ptr::eq(style, &part.style) {
+                                span.style.clone_from(style);
+                            }
+                            span
+                        })
+                        .collect(),
+                )
+            })
+            .collect()
     }
     /// `ComponentRenderUtils.wrapComponents`: the split lines, wrapped ones
     /// indented by an unstyled space; one empty line for empty text.
@@ -1520,49 +1463,10 @@ impl Font {
     }
 }
 
-/// `StringSplitter.FlatComponents.splitAt`: the parts before `at` as a line,
-/// `skip` characters dropped, and the part it ends in restyled as `style`.
-fn split_at(parts: &mut Vec<(Vec<char>, Span)>, at: usize, skip: usize, style: &Style) -> Text {
-    let mut line = Vec::new();
-    let mut push = |text: &[char], span: &Span| {
-        line.push(span.with_text(text.iter().collect::<String>()));
-    };
-    // Each part done is removed, so the one at hand is always the first.
-    let (mut position, mut in_skip) = (at, false);
-    while let Some((text, part_style)) = parts.first() {
-        let size = text.len();
-        if !in_skip {
-            if position > size {
-                push(text, part_style);
-                parts.remove(0);
-                position -= size;
-                continue;
-            }
-            if position > 0 {
-                push(&text[..position], part_style);
-            }
-            position += skip;
-            in_skip = true;
-        }
-        if position <= size {
-            if position == size {
-                parts.remove(0);
-            } else {
-                let mut span = part_style.clone();
-                span.style = style.clone();
-                parts[0] = (text[position..].to_vec(), span);
-            }
-            break;
-        }
-        parts.remove(0);
-        position -= size;
-    }
-    Text::from_spans(line)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::text::Span;
     use std::path::{Path, PathBuf};
     #[test]
     fn unihex_rows_and_widths() {

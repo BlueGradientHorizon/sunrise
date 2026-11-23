@@ -1079,6 +1079,64 @@ mod tests {
         assert_eq!((size.width, size.height), (96.0, 5409.0));
     }
 
+    #[test]
+    fn warmed_wrapped_paint_lends_lines_without_allocating() {
+        let font = fake_font(6.0);
+        let text = crate::text::Text::literal("abcd ef  ghi\njkl");
+        let layout = text_layout::LabelLayout::try_from(TextLayoutSpec {
+            max_width: 24.0,
+            align: TextAlign::Left,
+            scale: 1.0,
+        })
+        .unwrap();
+        crate::lang::scoped(crate::lang::Language::of("en_us", []), || {
+            let spec = [("abcd", 0.0), ("ef ", 9.0), ("ghi", 18.0), ("jkl", 27.0)];
+            let paint = || {
+                let mut lines = 0;
+                let size = layout
+                    .visit_visual(&font, &text, |line, at| {
+                        let (expected, y) = spec[lines];
+                        assert!(line.chars().map(|(c, _)| c).eq(expected.chars()));
+                        assert_eq!(at, [0.0, y]);
+                        lines += 1;
+                    })
+                    .unwrap();
+                assert_eq!(lines, spec.len());
+                assert_eq!((size.width, size.height), (24.0, 36.0));
+            };
+            paint();
+            let (_, allocations) = sunrise_threads::allocation_count::measure(paint);
+            assert_eq!(allocations, 0);
+        });
+    }
+
+    #[test]
+    fn warm_item_count_and_empty_decorations_need_no_replay_allocations() {
+        use crate::hud_overlays::{ItemDecorations, paint_item_decorations};
+        let atlas =
+            crate::hud::HudAtlas::build(&crate::resource_source::ResourceSource::directory(
+                "/nonexistent/sunrise-test-assets".into(),
+            ))
+            .unwrap();
+        let mut batch = crate::hud::HudBatch::scratch([320, 240]);
+        for count in [1, 65] {
+            let decorations = ItemDecorations {
+                count,
+                count_text: None,
+                bar: None,
+                cooldown: 0.0,
+            };
+            paint_item_decorations(&mut batch, &atlas, [0.0; 2], &decorations);
+            let vertices = batch.vertices.len();
+            batch.vertices.clear();
+            let (_, allocations) = sunrise_threads::allocation_count::measure(|| {
+                paint_item_decorations(&mut batch, &atlas, [0.0; 2], &decorations);
+            });
+            assert_eq!(batch.vertices.len(), vertices);
+            assert_eq!(allocations, 0, "stack count {count}");
+        }
+    }
+
     /// The game's own font and GUI atlas, read from the prepared resources alone: a real font with
     /// its real advances and the atlas it draws from, with no game, no world and no process-wide
     /// state registered.

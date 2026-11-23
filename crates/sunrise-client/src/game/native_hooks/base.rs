@@ -3064,7 +3064,7 @@ impl Game<'_> {
     /// The small bar `GuiGraphicsExtractor.itemDecorations` draws under an
     /// item, wherever the game shows one: `bar` arrives holding vanilla's value
     /// (the damage bar, or a bundle's fullness already applied) and may be
-    /// replaced (width `0..=13`, colour `rgb`) or set to `None` to hide it.
+    /// replaced (signed pixel width and RGB colour) or set to `None` to hide it.
     /// Asked each frame a stack is drawn. Client-side.
     pub(in crate::game) fn native_item_bar(&self, stack: &ItemStack, bar: &mut Option<(i32, u32)>) {
         self.fire_item_bar(stack, bar);
@@ -4343,7 +4343,7 @@ impl Game<'_> {
         }
         let start = batch.vertices.len();
         self.draw_item_model(batch, stack, at[0], at[1], 0);
-        self.draw_item_decorations(batch, stack, at[0], at[1], Some(String::new()));
+        self.draw_item_decorations(batch, stack, at[0], at[1], Some(""));
         batch.scale_since(start, at[0], at[1], size / 16.0, size / 16.0);
         true
     }
