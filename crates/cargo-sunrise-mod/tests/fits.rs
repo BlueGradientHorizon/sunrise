@@ -45,30 +45,20 @@ impl Project {
         )
         .unwrap();
         let sdk = OfflineSdk::new(&dir);
-        let old = build_data(
+        // Each build's signed build data, as `build_data` below writes it: OLD's catalog holds
+        // STEADY 1111, RESHAPED 2222, DROPPED 3333 and BODILESS 4444; NEW's holds STEADY 1111,
+        // RESHAPED 2299 and BODILESS 4499. Packed as a `.tar.xz` (Python's `tarfile` and `lzma`,
+        // CRC64) since the tool has no xz encoder.
+        sdk.release(
             OLD,
-            &[
-                (STEADY, "struct", "1111"),
-                (RESHAPED, "struct", "2222"),
-                (DROPPED, "field", "3333"),
-                (BODILESS, "method", "4444"),
-            ],
+            MIXINS,
+            Some(include_bytes!("fixtures/build-data-old.tar.xz")),
         );
-        let new = build_data(
+        sdk.release(
             NEW,
-            &[
-                (STEADY, "struct", "1111"),
-                (RESHAPED, "struct", "2299"),
-                (BODILESS, "method", "4499"),
-            ],
+            MIXINS,
+            Some(include_bytes!("fixtures/build-data-new.tar.xz")),
         );
-        for (build, data) in [(OLD, &old), (NEW, &new)] {
-            let files: Vec<(&str, &[u8])> = data
-                .iter()
-                .map(|(name, bytes)| (*name, bytes.as_slice()))
-                .collect();
-            sdk.release(build, MIXINS, &files);
-        }
         sdk.prefetch(&dir, OLD, NEW);
         Self { dir, sdk }
     }
