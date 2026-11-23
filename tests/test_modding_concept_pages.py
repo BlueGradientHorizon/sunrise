@@ -160,7 +160,14 @@ class ConceptPages(unittest.TestCase):
             pages.check_html(output, self.src / "concepts/..")
 
     def test_links_in_code_are_not_checked(self):
-        text = "```markdown\n[example](missing.md)\n```\n\nInline `[x](gone.md)` code.\n"
+        text = (
+            "```markdown\n[example](missing.md)\n```\n\n"
+            "1. List item:\n\n"
+            "    ```markdown\n"
+            "    [x](not-a-book-page.md)\n"
+            "    ```\n\n"
+            "Inline `[x](gone.md)` code.\n"
+        )
         pages.validate(text, "concepts/parts/a-item.md", self.src, {})
 
     def test_explicit_heading_ids_are_anchors(self):
@@ -187,6 +194,59 @@ class ConceptPages(unittest.TestCase):
             path.write_text(f'<a href="{href}">x</a>')
             with self.assertRaisesRegex(AssertionError, error):
                 pages.check_html(output, self.src / "concepts/..")
+
+
+class BookSourceGuards(unittest.TestCase):
+    def setUp(self):
+        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.src = root / "src"
+        self.html = root / "html"
+
+    def write_rendered(self, name, body, *, write_source=True):
+        if write_source:
+            source = self.src / name
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_text("# Placeholder\n", encoding="utf-8")
+        rendered = (self.html / name).with_suffix(".html")
+        rendered.parent.mkdir(parents=True, exist_ok=True)
+        rendered.write_text(
+            f'<html><body><h1 class="menu-title">Sunrise Modding</h1><main>{body}</main></body></html>',
+            encoding="utf-8",
+        )
+
+    def test_duplicate_rendered_h1_is_case_insensitive_and_ignores_formatting_and_chrome(self):
+        self.write_rendered("concepts/parts.md", '<h1 id="registry-keys"><a class="header" href="#registry-keys">Registry <code>keys</code></a></h1>')
+        self.write_rendered("reference/keys.md", '<h1 id="registry-keys"><a class="header" href="#registry-keys">Registry   Keys</a></h1>')
+        with self.assertRaisesRegex(AssertionError, r"reference/keys\.md: duplicate H1 .*concepts/parts\.md"):
+            pages.check_html(self.html, self.src)
+
+    def test_duplicate_rendered_h1_catches_source_vs_generated_chapter(self):
+        self.write_rendered("concepts/hook-notes.md", '<h1 id="hook-notes"><a class="header" href="#hook-notes">Hook notes</a></h1>')
+        self.write_rendered("reference/hook-notes.md", '<h1 id="hook-notes"><a class="header" href="#hook-notes">Hook notes</a></h1>', write_source=False)
+        with self.assertRaisesRegex(AssertionError, r"reference/hook-notes\.md: duplicate H1 'Hook notes' \(also in concepts/hook-notes\.md\)"):
+            pages.check_html(self.html, self.src)
+
+    def test_menu_title_chrome_and_distinct_titles_pass(self):
+        self.write_rendered("concepts/parts.md", '<h1>Parts</h1>')
+        self.write_rendered("reference/keys.md", '<pre><code># Parts</code></pre><h1>Registry keys</h1>')
+        pages.check_html(self.html, self.src)
+
+    def test_nested_h1_does_not_mask_chapter_title_or_cause_false_duplicate(self):
+        self.write_rendered("concepts/parts.md", '<blockquote><h1>Example</h1></blockquote><h1>Parts</h1>')
+        self.write_rendered("concepts/example.md", '<h1>Example</h1>')
+        pages.check_html(self.html, self.src)
+
+    def test_nested_h1_does_not_hide_real_duplicate_chapter_title(self):
+        self.write_rendered("concepts/parts.md", '<blockquote><h1>Example</h1></blockquote><h1>Parts</h1>')
+        self.write_rendered("reference/parts.md", '<ul><li><h1>Item</h1></li></ul><h1>Parts</h1>')
+        with self.assertRaisesRegex(AssertionError, r"reference/parts\.md: duplicate H1 'Parts' \(also in concepts/parts\.md\)"):
+            pages.check_html(self.html, self.src)
+
+    def test_valueless_class_attribute_on_h1_does_not_crash_and_still_checks_duplicates(self):
+        self.write_rendered("concepts/parts.md", '<h1 class>Parts</h1>')
+        self.write_rendered("reference/parts.md", '<h1>Parts</h1>')
+        with self.assertRaisesRegex(AssertionError, r"reference/parts\.md: duplicate H1 'Parts' \(also in concepts/parts\.md\)"):
+            pages.check_html(self.html, self.src)
 
 
 if __name__ == "__main__":
