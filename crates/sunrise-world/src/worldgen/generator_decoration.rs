@@ -61,6 +61,8 @@ use {
     sunrise_core::bounding_box::BoundingBox,
 };
 
+type PieceFeatures = HashMap<String, Option<Arc<PlacedFeatureDefinition>>>;
+
 pub(super) struct Decoration {
     plan: FeatureDecorationPlan,
     names: Vec<String>,
@@ -73,8 +75,9 @@ pub(super) struct Decoration {
     weather: Option<BiomeWeatherBindings>,
     blocks: FeatureBlocks,
     catalog: FeatureCatalog,
-    /// Placed features referenced by name (feature pool elements), decoded lazily.
-    named: std::sync::Mutex<HashMap<String, Option<Arc<PlacedFeatureDefinition>>>>,
+    /// Features structure pieces place by id, decoded lazily: placed
+    /// features (feature pool elements), then configured ones.
+    named: std::sync::Mutex<(PieceFeatures, PieceFeatures)>,
     /// BlockBehaviour.Properties.postProcess: states whose worldgen writes mark
     /// their own position (mushrooms) or the one above (soul sand, magma).
     postprocess_self: Vec<BlockStateId>,
@@ -323,7 +326,7 @@ impl Decoration {
             blocks: FeatureBlocks::from_registry(registry)?,
             bindings,
             catalog,
-            named: std::sync::Mutex::new(HashMap::new()),
+            named: std::sync::Mutex::default(),
             top_layers: Vec::new(),
         }))
     }
@@ -331,23 +334,48 @@ impl Decoration {
     /// placed as one with no placement modifiers, which places it once at the
     /// origin, as `ConfiguredFeature.place` does. Cached by its JSON.
     fn piece_feature(&self, feature: FeatureKey<'_>) -> Option<Arc<PlacedFeatureDefinition>> {
+        let mut named = self.named.lock().unwrap();
+        let (cache, id) = match feature {
+            FeatureKey::Placed(id) => (&mut named.0, id),
+            FeatureKey::Configured(id) => (&mut named.1, id),
+        };
+        if let Some(found) = cache.get(id) {
+            return found.clone();
+        }
         let json = match feature {
             FeatureKey::Placed(id) => Value::from(id).to_string(),
             FeatureKey::Configured(id) => {
                 serde_json::json!({ "feature": id, "placement": [] }).to_string()
             }
         };
-        let mut named = self.named.lock().unwrap();
-        if let Some(found) = named.get(&json) {
-            return found.clone();
-        }
         let decoded = self
             .catalog
             .placed_feature_with_blocks(&json, &self.bindings)
             .ok()
             .map(Arc::new);
-        named.insert(json, decoded.clone());
+        cache.insert(id.to_owned(), decoded.clone());
         decoded
+    }
+    /// A structure piece's feature: a feature pool element's placed feature,
+    /// or what a mod piece's `place_feature` and `place_placed_feature` ask
+    /// for. Whether it placed anything; `Ok(false)` for an id the data pack
+    /// lacks.
+    pub(super) fn place_piece_feature<W: FeatureWorld + PlacementContext>(
+        &self,
+        world: &mut W,
+        random: &mut impl sunrise_core::random::RandomSource,
+        feature: FeatureKey<'_>,
+        pos: [i32; 3],
+    ) -> Result<bool, PlacementQueryError>
+    where
+        W::Error: std::fmt::Display,
+    {
+        match self.piece_feature(feature) {
+            Some(feature) => feature
+                .place(world, random, pos, self.blocks)
+                .map_err(|e| PlacementQueryError::Failed(e.to_string())),
+            None => Ok(false),
+        }
     }
     /// Vanilla's feature identity and the step-local index/step mixed into
     /// `set_feature_seed`.
@@ -492,12 +520,7 @@ impl Decoration {
                              random: &mut WorldgenRandom<XoroshiroRandom>,
                              feature: FeatureKey<'_>,
                              pos: [i32; 3]| {
-                                match self.piece_feature(feature) {
-                                    Some(feature) => feature
-                                        .place(world, random, pos, blocks)
-                                        .map_err(|e| PlacementQueryError::Failed(e.to_string())),
-                                    None => Ok(false),
-                                }
+                                self.place_piece_feature(world, random, feature, pos)
                             };
                         if place_in_chunk(
                             start,
