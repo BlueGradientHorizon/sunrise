@@ -2885,6 +2885,21 @@ fn continue_base_tick(
                             super::illager::cast_particles(m, events);
                         }
                         level.tick_player_memory(m);
+                        if let Some((id, _)) = m.last_hurt_mob {
+                            let alive = if id == m.id {
+                                m.alive()
+                            } else if let Some(other) = w.live_mobs.and_then(|live| live.find(id)) {
+                                other.alive()
+                            } else {
+                                w.target_info(Who::Mob(id)).map_or_else(
+                                    || w.side.living_target_alive(id),
+                                    |target| target.alive,
+                                )
+                            };
+                            if !alive {
+                                m.last_hurt_mob = None;
+                            }
+                        }
                         super::hurt_by::base_tick(m, w);
                         EffectPass::new(m)
                     }
@@ -7845,7 +7860,7 @@ mod iron_golem_push_tests {
                 got.push((
                     m.attrs.attack_damage,
                     events.iter().find_map(|e| match e {
-                        MobEvent::AttackPlayer(amount, _)
+                        MobEvent::AttackPlayer(amount, ..)
                         | MobEvent::AttackPlayerWithEffect { amount, .. } => Some(*amount),
                         _ => None,
                     }),
