@@ -1,5 +1,5 @@
-sunrise-client game::dedicated::tests::dedicated_checkpoints_continue_only_after_record_refusals lib daily resources
-sunrise-client game::levels::tests::an_idle_level_closes_after_reporting_a_record_failure lib daily resources
+sunrise-client game::dedicated::tests::dedicated_checkpoints_continue_only_after_record_refusals lib daily child-process
+sunrise-client game::levels::tests::an_idle_level_closes_after_reporting_a_record_failure lib daily child-process
 sunrise-client game::levels::tests::save_all_succeeds_after_reported_failures_in_multiple_levels lib daily resources
 sunrise-client game::native_chunk_save::tests::eager_ticks_do_not_retry_a_refused_snapshot_without_an_edit lib daily resources
 sunrise-client game::saving::tests::both_successful_save_paths_resolve_the_banner_in_the_active_language lib daily resources
