@@ -421,15 +421,16 @@ impl Game<'_> {
         Ok(())
     }
     /// Prepare a client session and remote state to receive packets from a studio replay.
+    /// A replayed or viewed world checks its players' signed properties as a joined
+    /// client does.
     pub(in crate::game) fn init_remote_for_replay(&mut self) -> Result<()> {
-        self.init_remote_for_replay_with(ServicesKeys::fetching())
-    }
-    /// `init_remote_for_replay` with the services' keys supplied: a replayed or viewed
-    /// world checks its players' signed properties as a joined client does.
-    pub(in crate::game) fn init_remote_for_replay_with(
-        &mut self,
-        services_keys: Arc<std::sync::Mutex<ServicesKeys>>,
-    ) -> Result<()> {
+        // Minecraft builds its `Services` once per client: a replay that opens a new
+        // session on every seek keeps the keys the session it replaces is fetching or
+        // has fetched.
+        let services_keys = match &self.remote {
+            Some(remote) => remote.services_keys.clone(),
+            None => ServicesKeys::fetching(),
+        };
         self.reset_client_item_use();
         self.realm_session = false;
         self.lan_session = false;

@@ -29,27 +29,32 @@ impl Game<'_> {
                 .iter()
                 .filter_map(|(uuid, property)| {
                     property
-                        .unpack(&keys, skins::texture_uris())
+                        .unpack(&keys, skins::texture_uris(), *uuid != local)
                         .map(|textures| (*uuid, textures))
                 })
                 .collect()
         };
         // Minecraft.profileFuture: the signed-in account's active skin and cape
-        // when the server sent no textures (single player), or a body without
-        // the equipped cape. A profile with only accessories keeps its default body.
+        // when the server sent none (single player), or only a skin without
+        // the equipped cape: the account's skin, with its model, where the server
+        // sent none, and its cape where the server sent none.
         let own = match &r.own_profile {
-            OwnProfile::Done(Some(own)) => Some(match entries.iter().find(|(u, _)| *u == local) {
+            OwnProfile::Done(Some(own)) => match entries.iter().find(|(u, _)| *u == local) {
                 Some((_, textures)) => {
                     let mut merged = (*textures).clone();
-                    if merged.skin.is_none() && merged.cape.is_none() && merged.elytra.is_none() {
-                        merged = own.clone();
-                    } else if merged.skin.is_some() && merged.cape.is_none() {
+                    if merged.skin.is_none() {
+                        merged.skin.clone_from(&own.skin);
+                        if own.skin.is_some() {
+                            merged.slim = own.slim;
+                        }
+                    }
+                    if merged.cape.is_none() {
                         merged.cape.clone_from(&own.cape);
                     }
-                    merged
+                    Some(merged)
                 }
-                None => own.clone(),
-            }),
+                None => (own.skin.is_some() || own.cape.is_some()).then(|| own.clone()),
+            },
             _ => None,
         };
         let mut skins = HashMap::new();

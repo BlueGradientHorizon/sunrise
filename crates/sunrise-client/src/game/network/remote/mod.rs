@@ -332,16 +332,20 @@ impl PlayerTextures {
         }
     }
 
+    /// `SkinManager.createLookup(profile, requireSecure)`: a secure lookup shows
+    /// only textures whose signature the keys verified, so it waits for keys that
+    /// are still pending; the local player's shows its textures unverified.
     fn unpack(
         &self,
         services_keys: &ServicesKeys,
         valid_uris: &[impl AsRef<str>],
+        require_secure: bool,
     ) -> Option<&sunrise_client::skins::Textures> {
         use sunrise_client::skins;
         let signature = self.property.signature.as_deref();
         let property_keys: &[RsaPublicKey] = match services_keys {
             // Never cache an invalid result for a signature the pending keys could verify.
-            ServicesKeys::Pending if signature.is_some() => return None,
+            ServicesKeys::Pending if signature.is_some() && require_secure => return None,
             ServicesKeys::Pending => &[],
             ServicesKeys::Ready(keys) => &keys.profile_property_keys,
         };
