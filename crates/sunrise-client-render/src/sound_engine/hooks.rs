@@ -79,13 +79,11 @@ pub fn native_sound_engine_load(context: &sunrise_world::native_load_context::Lo
     mod_api::dispatch_sound_engine_load(&crate::api_context::LoopReader(context).context());
 }
 
-// Validate a mod's changed parameters at the playback boundary, leaving vanilla
-// inputs alone. Starts and refreshes use the same contract.
+// Validate a mod's Sunrise-specific effects at the playback boundary. Volume and pitch go
+// through the engine's own calculations (`calculate_volume`, `calculate_pitch`) as any
+// replacement sound does (NeoForge `PlaySoundEvent`); starts and refreshes use one contract.
 fn valid_playback_edit(original: &SoundPlay, edited: &SoundPlay) -> bool {
-    super::readable_base_edit(
-        [original.volume, original.pitch],
-        [edited.volume, edited.pitch],
-    ) && (edited.effects == original.effects || edited.effects.valid())
+    edited.effects == original.effects || edited.effects.valid()
 }
 
 #[derive(Clone, Debug)]
@@ -666,7 +664,7 @@ mod tests {
             ) {
                 if event.starting == self.0 {
                     let sound = event.sound.as_mut().unwrap();
-                    sound.volume = f32::NAN;
+                    sound.effects.gain = f32::NAN;
                 }
             }
         }
