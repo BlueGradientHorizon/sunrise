@@ -119,7 +119,7 @@ impl Game<'_> {
     /// Marks the states whose parts answer `collision_shape` in the collision tables, so scans
     /// keep them in the cells around their own. Between ticks, after the parts are resolved.
     pub(in crate::game) fn mark_collision_shape_states(&self) {
-        mark_part_states(&self.collision);
+        mark_part_states(self.collision);
         DISABLED.with_borrow_mut(HashSet::clear);
     }
 
