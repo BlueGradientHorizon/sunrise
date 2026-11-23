@@ -109,14 +109,13 @@ pub struct PoseFlags {
 /// `Player.getDesiredPose` of the player `player` (entity id): sleeping, swimming, fall flying,
 /// Riptide's spin, crouching (shift held, not flying), else standing. `updatePlayerPose` then
 /// keeps it only where it fits ([`MotionWorld::update_player_pose`]: the client's prediction
-/// and the server's copy of every player), and the server shows the others the pose it gives
-/// (`Guest::pose`, the hub's player data). NeoForge and Fabric have no event that decides the
+/// and the server's copy of every player), and the server shows the others the pose that
+/// update took. NeoForge and Fabric have no event that decides the
 /// pose, so a Java mod mixes into `Player.getDesiredPose`; a native mod answers here through
 /// `[[native.mixin]]` (#4854).
 #[sunrise_mod_api_macros::replaceable]
 pub fn desired_pose(player: i32, flags: PoseFlags) -> Pose {
-    let _ = player;
-    if flags.sleeping {
+    let pose = if flags.sleeping {
         Pose::Sleeping
     } else if flags.swimming {
         Pose::Swimming
@@ -128,7 +127,11 @@ pub fn desired_pose(player: i32, flags: PoseFlags) -> Pose {
         Pose::Crouching
     } else {
         Pose::Standing
-    }
+    };
+    #[cfg(test)]
+    let pose = crate::rule_replacements::desired_pose(player, flags).unwrap_or(pose);
+    let _ = player;
+    pose
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Dimensions {
