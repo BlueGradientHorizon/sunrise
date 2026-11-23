@@ -619,7 +619,7 @@ mod tests {
             assert_eq!(score.score, 15 - i as i32);
             assert_eq!(
                 score.display,
-                Some(Tag::String(format!("Line {}", i + 1).into()))
+                Some(Tag::String(format!("Line {}", i + 1).as_str().into()))
             );
             let expected = if i == 0 {
                 play::NumberFormat::Fixed(Tag::String("3 pts".into()))
