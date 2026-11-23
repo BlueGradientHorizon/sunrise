@@ -75,9 +75,11 @@ mod inside_walk_tests {
     }
 
     fn reset(kill: usize, panic: usize, enabled: bool) {
-        mod_api::__private::resolve_effects(["minecraft:wither"], |id| {
-            sunrise_client_core::potions::effect(id).map(|e| e.index)
-        })
+        mod_api::__private::resolve_effects(
+            sunrise_client_core::potions::all_effects()
+                .map(|def| sunrise_client_core::potions::namespaced(def.id)),
+            |id| sunrise_client_core::potions::effect(id).map(|e| e.index),
+        )
         .unwrap();
         CONTACTS.lock().unwrap().clear();
         KILL_AFTER.store(kill, Ordering::SeqCst);

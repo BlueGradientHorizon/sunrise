@@ -1503,7 +1503,7 @@ mod sweep_tests {
         crate::game::api_values::install_parts(&make_entries()).unwrap();
         let mods: mod_api::Mods = make_entries().into();
         mod_platform::testing::with_mods(mods, || {
-            crate::game::native_entity_refs::tests::with_game(|game| {
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
                 let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
                 let mut item1 = single_stone_item(game);
                 sunrise_client::block_contact::in_level(

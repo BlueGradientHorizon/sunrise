@@ -792,166 +792,179 @@ fn dedicated_port_bind_failure_emits_only_stopped_without_touching_world() {
 #[test]
 #[ignore = "daily"]
 fn datapack_dimensions_open_prepare_save_and_close_in_creation_order() {
-    use crate::game::world_loading::WorldRequest;
-    use std::fs;
-    use sunrise_client::save::Level;
+    crate::game::in_own_process(
+        "game::server_lifecycle::tests::datapack_dimensions_open_prepare_save_and_close_in_creation_order",
+        || {
+            use crate::game::world_loading::WorldRequest;
+            use std::fs;
+            use sunrise_client::save::Level;
 
-    struct Log {
-        events: Arc<Mutex<Vec<String>>>,
-        listed_at_load: Arc<Mutex<Vec<Vec<String>>>>,
-    }
-    #[mod_api::__subscriptions]
-    impl Hooks for Log {
-        fn level_load(&self, host: &mut dyn ServerHost, e: &mut mod_api::LevelLoadEvent<'_>) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(format!("load:{}", e.dimension));
-            self.listed_at_load.lock().unwrap().push(
-                host.levels()
-                    .list_levels()
-                    .into_iter()
-                    .map(|level| level.dimension_id().to_owned())
-                    .collect(),
-            );
-        }
-        fn create_spawn_position(
-            &self,
-            _: &mut dyn ServerHost,
-            e: &mut mod_api::CreateSpawnPositionEvent<'_>,
-        ) -> mod_api::Flow {
-            self.events.lock().unwrap().push("initialize-spawn".into());
-            *e.position = [32, 73, 16];
-            mod_api::Flow::Cancel
-        }
-        fn level_save(&self, _: &mut dyn ServerHost, e: &mut mod_api::LevelSaveEvent<'_>) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(format!("save:{}", e.dimension));
-        }
-        fn level_unload(&self, _: &mut dyn ServerHost, e: &mut mod_api::LevelUnloadEvent<'_>) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(format!("unload:{}", e.dimension));
-        }
-    }
+            struct Log {
+                events: Arc<Mutex<Vec<String>>>,
+                listed_at_load: Arc<Mutex<Vec<Vec<String>>>>,
+            }
+            #[mod_api::__subscriptions]
+            impl Hooks for Log {
+                fn level_load(
+                    &self,
+                    host: &mut dyn ServerHost,
+                    e: &mut mod_api::LevelLoadEvent<'_>,
+                ) {
+                    self.events
+                        .lock()
+                        .unwrap()
+                        .push(format!("load:{}", e.dimension));
+                    self.listed_at_load.lock().unwrap().push(
+                        host.levels()
+                            .list_levels()
+                            .into_iter()
+                            .map(|level| level.dimension_id().to_owned())
+                            .collect(),
+                    );
+                }
+                fn create_spawn_position(
+                    &self,
+                    _: &mut dyn ServerHost,
+                    e: &mut mod_api::CreateSpawnPositionEvent<'_>,
+                ) -> mod_api::Flow {
+                    self.events.lock().unwrap().push("initialize-spawn".into());
+                    *e.position = [32, 73, 16];
+                    mod_api::Flow::Cancel
+                }
+                fn level_save(&self, _: &mut dyn ServerHost, e: &mut mod_api::LevelSaveEvent<'_>) {
+                    self.events
+                        .lock()
+                        .unwrap()
+                        .push(format!("save:{}", e.dimension));
+                }
+                fn level_unload(
+                    &self,
+                    _: &mut dyn ServerHost,
+                    e: &mut mod_api::LevelUnloadEvent<'_>,
+                ) {
+                    self.events
+                        .lock()
+                        .unwrap()
+                        .push(format!("unload:{}", e.dimension));
+                }
+            }
 
-    let root = tempfile::tempdir().unwrap();
-    let pack = root.path().join("datapacks/stems");
-    let dimensions = pack.join("data/test/dimension");
-    fs::create_dir_all(&dimensions).unwrap();
-    fs::write(
+            let root = tempfile::tempdir().unwrap();
+            let pack = root.path().join("datapacks/stems");
+            let dimensions = pack.join("data/test/dimension");
+            fs::create_dir_all(&dimensions).unwrap();
+            fs::write(
         pack.join("pack.mcmeta"),
         r#"{"pack":{"description":"Lifecycle fixture","min_format":[121,0],"max_format":[121,0]}}"#,
     )
     .unwrap();
-    fs::write(
-        root.path().join("datapacks.json"),
-        r#"{"enabled":["vanilla","file/stems"],"disabled":[]}"#,
-    )
-    .unwrap();
-    for name in ["last", "first"] {
-        fs::write(
+            fs::write(
+                root.path().join("datapacks.json"),
+                r#"{"enabled":["vanilla","file/stems"],"disabled":[]}"#,
+            )
+            .unwrap();
+            for name in ["last", "first"] {
+                fs::write(
             dimensions.join(format!("{name}.json")),
             r#"{"type":"minecraft:overworld","generator":{"type":"minecraft:flat","settings":{
                 "biome":"minecraft:plains","features":false,"lakes":false,"structure_overrides":[],
                 "layers":[{"height":1,"block":"minecraft:bedrock"}]}}}"#,
         )
         .unwrap();
-    }
-    let log = Arc::new(Mutex::new(Vec::new()));
-    let listed_at_load = Arc::new(Mutex::new(Vec::new()));
-    with_mods(
-        vec![ModEntry::new(
-            "log",
-            Box::new(Log {
-                events: log.clone(),
-                listed_at_load: listed_at_load.clone(),
-            }),
-        )]
-        .into(),
-        || {
-            with_game(|game| {
-                game.options.execution_role = ExecutionRole::DedicatedServer;
-                game.join_world_rest().unwrap();
-                let mut request = WorldRequest::new(
-                    "stems",
-                    Some("stems"),
-                    Some(1),
-                    false,
-                    None,
-                    Level::default().rule_registry,
-                )
-                .unwrap();
-                request.save_root = root.path().to_path_buf();
-                // Supply the effective registry's traversal before the normal prepare path
-                // projects its shapes. This is not a claim about Java's hash-bucket order.
-                request.stem_order = Some(&[
-                    "test:last",
-                    "minecraft:the_nether",
-                    "minecraft:overworld",
-                    "test:first",
-                    "minecraft:the_end",
-                ]);
-                let prepared = game.prepare_world_and_rules(request).unwrap();
-                assert!(prepared.level.world_spawn.is_none());
-                let order = [
-                    "minecraft:overworld",
-                    "test:last",
-                    "minecraft:the_nether",
-                    "test:first",
-                    "minecraft:the_end",
-                ];
-                game.native_lifecycle_open_started();
-                game.finish_open_world(prepared).unwrap();
-                game.prepare_levels().unwrap();
-                assert_eq!(game.level.world_spawn, Some([32, 73, 16]));
-                // Switching the active level must not put it first in saves or close.
-                game.enter_level(Dim::Nether).unwrap();
-                assert_eq!(
-                    game.native_list_levels()
-                        .into_iter()
-                        .map(|level| level.dimension_id())
-                        .collect::<Vec<_>>(),
-                    order
-                );
-                let listed = listed_at_load.lock().unwrap();
-                assert_eq!(listed.len(), order.len());
-                for (i, levels) in listed.iter().enumerate() {
-                    assert_eq!(
-                        levels.iter().map(String::as_str).collect::<Vec<_>>(),
-                        &order[..=i]
-                    );
-                }
-                // Set work on a mix of built-in and custom levels, including ones
-                // whose registry order crosses the built-in and filename order.
-                for id in order {
-                    game.enter_level(Dim::from_id(id)).unwrap();
-                    game.streaming.forced.insert((0, 0));
-                }
-                assert_eq!(
-                    game.levels_to_tick()
-                        .into_iter()
-                        .map(Dim::id)
-                        .collect::<Vec<_>>(),
-                    order
-                );
-                game.enter_level(Dim::Nether).unwrap();
-                game.save_game().unwrap();
-                assert_eq!(game.dim, Dim::Nether);
-                game.close_loaded_levels_for_stop();
-                game.native_lifecycle_world_closed();
-                Dim::set_extra(std::iter::empty());
+            }
+            let log = Arc::new(Mutex::new(Vec::new()));
+            let listed_at_load = Arc::new(Mutex::new(Vec::new()));
+            with_mods(
+                vec![ModEntry::new(
+                    "log",
+                    Box::new(Log {
+                        events: log.clone(),
+                        listed_at_load: listed_at_load.clone(),
+                    }),
+                )]
+                .into(),
+                || {
+                    with_game(|game| {
+                        game.options.execution_role = ExecutionRole::DedicatedServer;
+                        game.join_world_rest().unwrap();
+                        let mut request = WorldRequest::new(
+                            "stems",
+                            Some("stems"),
+                            Some(1),
+                            false,
+                            None,
+                            Level::default().rule_registry,
+                        )
+                        .unwrap();
+                        request.save_root = root.path().to_path_buf();
+                        // Supply the effective registry's traversal before the normal prepare path
+                        // projects its shapes. This is not a claim about Java's hash-bucket order.
+                        request.stem_order = Some(&[
+                            "test:last",
+                            "minecraft:the_nether",
+                            "minecraft:overworld",
+                            "test:first",
+                            "minecraft:the_end",
+                        ]);
+                        let prepared = game.prepare_world_and_rules(request).unwrap();
+                        assert!(prepared.level.world_spawn.is_none());
+                        let order = [
+                            "minecraft:overworld",
+                            "test:last",
+                            "minecraft:the_nether",
+                            "test:first",
+                            "minecraft:the_end",
+                        ];
+                        game.native_lifecycle_open_started();
+                        game.finish_open_world(prepared).unwrap();
+                        game.prepare_levels().unwrap();
+                        assert_eq!(game.level.world_spawn, Some([32, 73, 16]));
+                        // Switching the active level must not put it first in saves or close.
+                        game.enter_level(Dim::Nether).unwrap();
+                        assert_eq!(
+                            game.native_list_levels()
+                                .into_iter()
+                                .map(|level| level.dimension_id())
+                                .collect::<Vec<_>>(),
+                            order
+                        );
+                        let listed = listed_at_load.lock().unwrap();
+                        assert_eq!(listed.len(), order.len());
+                        for (i, levels) in listed.iter().enumerate() {
+                            assert_eq!(
+                                levels.iter().map(String::as_str).collect::<Vec<_>>(),
+                                &order[..=i]
+                            );
+                        }
+                        // Set work on a mix of built-in and custom levels, including ones
+                        // whose registry order crosses the built-in and filename order.
+                        for id in order {
+                            game.enter_level(Dim::from_id(id)).unwrap();
+                            game.streaming.forced.insert((0, 0));
+                        }
+                        assert_eq!(
+                            game.levels_to_tick()
+                                .into_iter()
+                                .map(Dim::id)
+                                .collect::<Vec<_>>(),
+                            order
+                        );
+                        game.enter_level(Dim::Nether).unwrap();
+                        game.save_game().unwrap();
+                        assert_eq!(game.dim, Dim::Nether);
+                        game.close_loaded_levels_for_stop();
+                        game.native_lifecycle_world_closed();
+                        Dim::set_extra(std::iter::empty());
 
-                let mut expected =
-                    vec!["load:minecraft:overworld".into(), "initialize-spawn".into()];
-                expected.extend(order[1..].iter().map(|id| format!("load:{id}")));
-                expected.extend(order.iter().map(|id| format!("save:{id}")));
-                expected.extend(order.iter().map(|id| format!("unload:{id}")));
-                assert_eq!(*log.lock().unwrap(), expected);
-            })
+                        let mut expected =
+                            vec!["load:minecraft:overworld".into(), "initialize-spawn".into()];
+                        expected.extend(order[1..].iter().map(|id| format!("load:{id}")));
+                        expected.extend(order.iter().map(|id| format!("save:{id}")));
+                        expected.extend(order.iter().map(|id| format!("unload:{id}")));
+                        assert_eq!(*log.lock().unwrap(), expected);
+                    })
+                },
+            );
         },
     );
 }
