@@ -1420,6 +1420,7 @@ impl NoBackend for OpenMenuError {
 /// Why [`PlayerRef::send_ping`] did not queue a play ping.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
+#[derive(sunrise_mod_api_macros::Wire)]
 pub enum PlayerPingRefusal {
     /// The handle no longer identifies a player on this server.
     Stale,

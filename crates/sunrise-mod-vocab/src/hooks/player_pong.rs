@@ -7,6 +7,7 @@ pub trait Hooks {
     /// Unsolicited and repeated IDs are reported as-is: an ID does not prove the client
     /// answered a particular `PlayerRef::send_ping`. This notice is not cancellable and
     /// does not affect keep-alive latency. Configuration and status traffic do not fire it.
-    #[hook(side = "server", contract = "listen")]
+    /// Each listener gets its own event.
+    #[hook(side = "server", contract = "listen", event_per_listener = true)]
     fn player_pong(player: PlayerRef, name: &str, id: i32);
 }

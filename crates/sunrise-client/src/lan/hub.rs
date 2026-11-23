@@ -2563,10 +2563,11 @@ impl Hub {
     /// here in arrival order: the client counts them as acknowledged, and its next
     /// message after the freeze would not validate otherwise.
     pub(crate) fn keep_acknowledgements(&mut self, i: usize, events: &mut Vec<HostEvent>) {
-        let inbox = self.guests.update(i, |g| std::mem::take(&mut g.inbox));
+        // Only the entries before the next callback boundary are filtered; the rest stay
+        // in the inbox untouched until the boundary's turn has finished in Game.
+        let mut kept = Vec::new();
         let mut credits = Vec::new();
-        let mut inbox = inbox.into_iter();
-        while let Some(entry) = inbox.next() {
+        while let Some(entry) = self.guests.inbox_mut(i).and_then(|inbox| inbox.pop_front()) {
             let (packet, credit) = match entry {
                 InboxItem::Packet(packet, credit)
                     if !matches!(&packet, S::Pong(_))
@@ -2575,10 +2576,9 @@ impl Hub {
                     (packet, credit)
                 }
                 boundary => {
-                    self.guests.update(i, |g| {
-                        g.inbox.push_back(boundary);
-                        g.inbox.extend(inbox);
-                    });
+                    if let Some(inbox) = self.guests.inbox_mut(i) {
+                        inbox.push_front(boundary);
+                    }
                     break;
                 }
             };
@@ -2598,19 +2598,22 @@ impl Hub {
                 | S::KeepAlive(_)
                 | S::DebugSubscriptionRequest(_)
                 | S::PingRequest(_) => {
-                    self.guests
-                        .update(i, |g| g.inbox.push_back(InboxItem::Packet(packet, credit)));
+                    kept.push(InboxItem::Packet(packet, credit));
                     continue;
                 }
                 // A player whose body was removed still controls the respawn button.
                 S::ClientCommand(c) if c.action == 0 && self.guests[i].respawning => {
-                    self.guests
-                        .update(i, |g| g.inbox.push_back(InboxItem::Packet(packet, credit)));
+                    kept.push(InboxItem::Packet(packet, credit));
                     continue;
                 }
                 _ => {}
             }
             credits.extend(credit);
+        }
+        if let Some(inbox) = self.guests.inbox_mut(i) {
+            for entry in kept.into_iter().rev() {
+                inbox.push_front(entry);
+            }
         }
         events.push(HostEvent::InputCredits(credits));
     }

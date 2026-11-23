@@ -33,7 +33,7 @@ impl Hub {
             movement_held: false,
         });
         while let Some(&conn) = pass.conns.get(pass.next) {
-            let Some(i) = self.guests.iter().position(|g| g.conn == conn) else {
+            let Some(i) = self.guests.connection_index(conn) else {
                 pass.next += 1;
                 pass.started = false;
                 pass.movement_held = false;

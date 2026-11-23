@@ -243,6 +243,8 @@ fn player_pong_observes_order_and_sends_typed_ping() {
                     S::Pong(Ping { id: i32::MIN }),
                     S::PingRequest(status::Ping { time: i64::MIN }),
                     S::ClientInformation(ClientInformation::new(2)),
+                    // An action between pong boundaries: a respawning player's is discarded.
+                    S::SetCarriedItem(sunrise_protocol::packets::play::SetCarriedItem { slot: 4 }),
                     S::Pong(Ping { id: i32::MIN }),
                     S::Pong(Ping { id: -7 }),
                 ]
@@ -269,7 +271,9 @@ fn player_pong_observes_order_and_sends_typed_ping() {
     assert!(output(&receivers[1]).is_empty());
     let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
     assert_eq!(guest.latency.load(Ordering::Relaxed), 37);
-    assert_eq!(guest.last_action_tick, 7);
+    let respawning = std::env::var(CHILD).as_deref() == Ok("respawning");
+    assert_eq!(guest.selected, if respawning { 0 } else { 4 });
+    assert_eq!(guest.last_action_tick, if respawning { 7 } else { 123 });
     assert!(guest.inbox.is_empty());
 }
 
