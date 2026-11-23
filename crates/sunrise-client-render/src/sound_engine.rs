@@ -605,8 +605,9 @@ impl SoundInstance {
         };
         s
     }
-    /// `new GuardianAttackSoundInstance(guardian)`: the guardian's own volume
-    /// and pitch until its first tick, heard everywhere.
+    /// `new GuardianAttackSoundInstance(guardian)`: starts at the origin
+    /// (`AbstractSoundInstance` leaves x, y, z at 0) until its first tick moves
+    /// it to the guardian, with volume and pitch 1, heard everywhere.
     pub fn guardian_attack(guardian: &MobSound, random: LegacyRandom) -> Self {
         let id = "minecraft:entity.guardian.attack";
         let mut s = Self::new(
@@ -618,7 +619,7 @@ impl SoundInstance {
             true,
             0,
             Attenuation::None,
-            guardian.position,
+            [0.0; 3],
             false,
         );
         s.ticking = Ticking::GuardianAttack {

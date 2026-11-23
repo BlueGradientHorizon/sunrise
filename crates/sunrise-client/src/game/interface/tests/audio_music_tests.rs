@@ -108,7 +108,7 @@ fn minecart_loops_gate_both_gains_on_live_interpolated_rails() {
 #[ignore = "daily"]
 fn guardian_and_elder_events_admit_two_independent_loops_each() {
     std::thread_local! {
-        static STARTS: std::cell::RefCell<Vec<(u64, f64)>> = const { std::cell::RefCell::new(Vec::new()) };
+        static STARTS: std::cell::RefCell<Vec<(u64, [f64; 3])>> = const { std::cell::RefCell::new(Vec::new()) };
     }
     in_own_process(
         "game::music::audio_music_tests::guardian_and_elder_events_admit_two_independent_loops_each",
@@ -125,7 +125,7 @@ fn guardian_and_elder_events_admit_two_independent_loops_each() {
                 game.audio.engine.set_test_playback_hook(|sound, _, _, _| {
                     if sound.starting && sound.identifier == "minecraft:entity.guardian.attack" {
                         STARTS.with_borrow_mut(|starts| {
-                            starts.push((sound.instance, sound.position[0]))
+                            starts.push((sound.instance, sound.position))
                         });
                     }
                 });
@@ -148,11 +148,27 @@ fn guardian_and_elder_events_admit_two_independent_loops_each() {
                     }
                 }
                 let starts = STARTS.take();
-                assert_eq!(
-                    starts.iter().map(|(_, x)| *x).collect::<Vec<_>>(),
-                    [1.0, 1.0, 3.0, 3.0]
-                );
+                assert_eq!(starts.len(), 4);
                 assert!(starts.windows(2).all(|w| w[0].0 < w[1].0));
+                assert_eq!(
+                    starts.iter().map(|(_, pos)| *pos).collect::<Vec<_>>(),
+                    [[0.0; 3]; 4]
+                );
+
+                game.tick_sound_engine();
+                let ticked: Vec<[f64; 3]> = starts
+                    .iter()
+                    .map(|(id, _)| game.audio.engine.instance(*id).unwrap().position)
+                    .collect();
+                assert_eq!(
+                    ticked,
+                    [
+                        [1.0, 64.0, 0.0],
+                        [1.0, 64.0, 0.0],
+                        [3.0, 64.0, 0.0],
+                        [3.0, 64.0, 0.0],
+                    ]
+                );
             })
         },
     );

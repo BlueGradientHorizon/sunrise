@@ -15,6 +15,13 @@ use std::{
 };
 use sunrise_core::random::{LegacyRandom, RandomSource};
 use sunrise_protocol::registry::Builtin;
+use sunrise_world::environment_attributes::{
+    Attribute, Entry as AttrEntry, Value as AttrValue, attribute as env_attribute,
+};
+
+fn music_volume_attribute() -> &'static Attribute {
+    env_attribute("audio/music_volume").expect("audio/music_volume attribute is registered")
+}
 
 /// Static `SOUND_EVENT` registry, not the resource pack's playable sound pools.
 pub(crate) fn registered_sound(builtin: &Builtin, name: &str) -> bool {
@@ -134,7 +141,7 @@ impl BackgroundMusic {
 #[derive(Clone, Debug, Default)]
 struct Layer {
     music: Option<BackgroundMusic>,
-    volume: Option<f32>,
+    volume: Option<AttrEntry>,
 }
 impl Layer {
     fn parse(json: &Value, builtin: &Builtin) -> Option<Self> {
@@ -150,10 +157,25 @@ impl Layer {
                 None => None,
             },
             volume: match attributes.get("minecraft:audio/music_volume") {
-                Some(volume) => Some(volume.as_f64()?.clamp(0.0, 1.0) as f32),
+                Some(volume) => Some(AttrEntry::parse(music_volume_attribute(), volume).ok()?),
                 None => None,
             },
         })
+    }
+}
+
+fn resolve_volume(dimension: Option<&Layer>, biome: Option<&Layer>) -> f32 {
+    let attr = music_volume_attribute();
+    let mut value = attr.default_value().expect("music_volume default");
+    if let Some(entry) = dimension.and_then(|l| l.volume.as_ref()) {
+        value = entry.apply(&value);
+    }
+    if let Some(entry) = biome.and_then(|l| l.volume.as_ref()) {
+        value = entry.apply(&value);
+    }
+    match attr.sanitize(value) {
+        AttrValue::Float(v) => v,
+        _ => 1.0,
     }
 }
 /// What `Minecraft.getSituationalMusic` and `getMusicVolume` read.
@@ -240,11 +262,7 @@ impl MusicTables {
     }
     /// `EnvironmentAttributes.MUSIC_VOLUME` at a position (default 1).
     pub fn volume(&self, dimension: &str, biome: &str) -> f32 {
-        self.biomes
-            .get(biome)
-            .and_then(|l| l.volume)
-            .or_else(|| self.dimensions.get(dimension).and_then(|l| l.volume))
-            .unwrap_or(1.0)
+        resolve_volume(self.dimensions.get(dimension), self.biomes.get(biome))
     }
     /// `background` and `volume` in a biome a data pack gave (`pack`, its
     /// file) or the built-in biome `biome`.
@@ -262,10 +280,7 @@ impl MusicTables {
                 .music
                 .or_else(|| dimension.and_then(|l| l.music.clone()))
                 .unwrap_or_default(),
-            layer
-                .volume
-                .or_else(|| dimension.and_then(|l| l.volume))
-                .unwrap_or(1.0),
+            resolve_volume(dimension, Some(&layer)),
         )
     }
 }
@@ -737,6 +752,26 @@ mod tests {
         let bare = json!({"temperature": 0.8});
         let packed = tables.at("minecraft:overworld", "minecraft:plains", Some(&bare));
         assert_eq!(sound(packed), (Some("test:game".to_owned()), 0.8));
+
+        // Valid float modifiers apply over the inherited dimension volume and
+        // sanitize the final result; out-of-range raw overrides are rejected.
+        let modified = layer_of(
+            "test:dunes",
+            json!({"modifier": "multiply", "argument": 0.5}),
+        );
+        let packed = tables.at("minecraft:overworld", "minecraft:plains", Some(&modified));
+        assert_eq!(sound(packed), (Some("test:dunes".to_owned()), 0.4));
+
+        let saturated = layer_of("test:dunes", json!({"modifier": "add", "argument": 0.5}));
+        let packed = tables.at("minecraft:overworld", "minecraft:plains", Some(&saturated));
+        assert_eq!(sound(packed), (Some("test:dunes".to_owned()), 1.0));
+
+        for raw_bad in [json!(1.5), json!(-0.1)] {
+            let bad = layer_of("test:dunes", raw_bad);
+            assert!(Layer::parse(&bad, &tables.builtin).is_none());
+            let packed = tables.at("minecraft:overworld", "minecraft:plains", Some(&bad));
+            assert_eq!(sound(packed), (Some("test:game".to_owned()), 0.8));
+        }
     }
 
     #[test]

@@ -1426,7 +1426,7 @@ the keys it leaves out stay:
       "additions": { "sound": "minecraft:ambient.warped_forest.additions", "tick_chance": 0.0111 },
       "mood": { "sound": "minecraft:ambient.warped_forest.mood", "tick_delay": 6000, "block_search_extent": 8, "offset": 2.0 }
     },
-    "minecraft:audio/background_music": { "default": { "sound": "zinc:music.dunes", "min_delay": 12000, "max_delay": 24000 } },
+    "minecraft:audio/background_music": { "default": { "sound": { "sound_id": "zinc:music.dunes" }, "min_delay": 12000, "max_delay": 24000 } },
     "minecraft:audio/music_volume": 0.5
   }
 }
@@ -1436,8 +1436,10 @@ The particle list also accepts `{ "argument": [...] }`.
 
 | Value | Validation |
 |---|---|
-| Particle or sound | Namespaced ID |
-| Particle `probability`, music volume | 0 to 1 |
+| Particle | Namespaced ID |
+| Sound | Registered vanilla sound ID string, or inline `{ "sound_id": "<ns>:<path>" }` (optional `"range"`) for any sound including custom mod sounds |
+| Particle `probability` | 0 to 1 |
+| Music volume | 0 to 1, or a float environment-attribute modifier object (e.g. `{ "modifier": "multiply", "argument": 0.5 }`) |
 | Ambient additions | One object or a list; any finite `tick_chance` |
 | Ambient mood | Requires sound, `tick_delay`, `block_search_extent` and `offset` |
 | Music `default`, `creative`, `underwater` | Requires sound and nonnegative `min_delay` and `max_delay`; delays need not be ordered |
