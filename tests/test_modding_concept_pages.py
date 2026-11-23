@@ -226,6 +226,12 @@ class BookSourceGuards(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, r"reference/hook-notes\.md: duplicate H1 'Hook notes' \(also in concepts/hook-notes\.md\)"):
             pages.check_html(self.html, self.src)
 
+    def test_duplicate_rendered_h1_discovers_any_generated_reference_chapter(self):
+        self.write_rendered("concepts/parts.md", '<h1 id="future-ref"><a class="header" href="#future-ref">Future reference</a></h1>')
+        self.write_rendered("reference/generated-future.md", '<h1 id="future-ref"><a class="header" href="#future-ref">Future reference</a></h1>', write_source=False)
+        with self.assertRaisesRegex(AssertionError, r"reference/generated-future\.md: duplicate H1 'Future reference' \(also in concepts/parts\.md\)"):
+            pages.check_html(self.html, self.src)
+
     def test_menu_title_chrome_and_distinct_titles_pass(self):
         self.write_rendered("concepts/parts.md", '<h1>Parts</h1>')
         self.write_rendered("reference/keys.md", '<pre><code># Parts</code></pre><h1>Registry keys</h1>')

@@ -1,9 +1,9 @@
 //! `docs/modding/src/reference/api-reference.md` from the hook catalog and host area traits.
 //!
 //! The complete rustdoc still lives in `cargo doc -p sunrise-mod-api --no-deps --open`; this
-//! generated Markdown chapter exposes every `Hooks` method, every Part hook, and every public
-//! `Host` / `ServerHost` / `ClientHost` method directly in the book and on `playsunrise.net`
-//! without checking generated Markdown into the repository.
+//! generated Markdown chapter indexes the catalog-backed `Hooks` and Part hooks and the
+//! area-declared `Host` / `ServerHost` / `ClientHost` methods directly in the book and on
+//! `playsunrise.net` without checking generated Markdown into the repository.
 use crate::catalog::{Catalog, Contract, Hook, PartKind, Side};
 use crate::host::{self, Tier};
 use quote::ToTokens;
@@ -16,6 +16,9 @@ pub(crate) fn render(catalog: &Catalog, areas: &[host::Area]) -> String {
     let mut global_hooks = Vec::new();
     let mut part_hooks: BTreeMap<&'static str, Vec<&Hook>> = BTreeMap::new();
     for hook in &catalog.hooks {
+        if crate::dispatch::is_render(hook) {
+            continue;
+        }
         if let Some(scope) = &hook.scope {
             part_hooks
                 .entry(part_trait(scope.kind))
@@ -35,9 +38,10 @@ pub(crate) fn render(catalog: &Catalog, areas: &[host::Area]) -> String {
 
     let mut page = String::from(
         "# Mod API reference\n\n\
-This reference is generated directly from the hook catalog (`crates/sunrise-mod-vocab/src/hooks/`) and\n\
-the host area declarations (`crates/sunrise-mod-vocab/src/host/`). For full type definitions, handles,\n\
-and cross-linked rustdoc, build the crate docs locally with `cargo doc -p sunrise-mod-api --no-deps --open`.\n\n\
+This page is a generated index of the catalog-backed trait hooks (`crates/sunrise-mod-vocab/src/hooks/`) and\n\
+area-declared host methods (`crates/sunrise-mod-vocab/src/host/`). For complete trait definitions (including\n\
+non-catalog methods), handles, and cross-linked rustdoc, build the crate docs locally with\n\
+`cargo doc -p sunrise-mod-api --no-deps --open`.\n\n\
 - [Hooks (`Hooks` trait)](#hooks-hooks-trait)\n\
 - [Part hooks](#part-hooks)\n\
 - [Host methods (`Host`, `ServerHost`, `ClientHost`)](#host-methods-host-serverhost-clienthost)\n",
@@ -123,13 +127,8 @@ fn write_hook_row(out: &mut String, hook: &Hook) {
 }
 
 fn hook_host_or_context(hook: &Hook) -> String {
-    if let Some(ctx) = crate::host_param::context_param(hook) {
-        return format!("`{}`", escape_cell(&ctx.ty));
-    }
-    if let Some(host) =
-        crate::host_param::host_param(hook, hook.receiver.mutability(), hook.engine_ticks)
-    {
-        return format!("`{}`", escape_cell(&host.ty));
+    if let Some(param) = crate::dispatch::listener_host_or_context(hook) {
+        return format!("`{}`", escape_cell(&param.ty));
     }
     "—".into()
 }
@@ -236,19 +235,9 @@ fn first_sentence(doc: &str) -> String {
         paragraph.push(trimmed);
     }
     let joined = paragraph.join(" ");
-    // Strip rustdoc intra-doc link targets like [`Foo`](crate::Foo) -> `Foo`.
-    let cleaned = strip_intra_doc_links(&joined);
-    if cleaned.len() <= 180 {
-        return cleaned;
-    }
-    let mut end = 177;
-    while !cleaned.is_char_boundary(end) {
-        end -= 1;
-    }
-    if let Some(space) = cleaned[..end].rfind(' ') {
-        end = space;
-    }
-    format!("{}...", &cleaned[..end])
+    // Strip rustdoc intra-doc link targets like [`Foo`](crate::Foo) -> `Foo`, keeping full
+    // first-paragraph Markdown intact so inline code spans are never cut mid-span.
+    strip_intra_doc_links(&joined)
 }
 
 fn strip_intra_doc_links(text: &str) -> String {
@@ -319,6 +308,53 @@ mod tests {
         assert!(
             !page.contains("__private"),
             "private items must not appear in the generated API reference"
+        );
+        // Catalog-backed trait hooks appear under Hooks, while native render targets do not.
+        let hooks_section = page
+            .split("## Hooks (`Hooks` trait)")
+            .nth(1)
+            .and_then(|rest| rest.split("## Part hooks").next())
+            .expect("Hooks section present");
+        assert!(
+            hooks_section.contains("| `anvil_update` |"),
+            "expected catalog trait hook row in Hooks table"
+        );
+        assert!(
+            !hooks_section.contains("| `world_drawn` |"),
+            "native render targets must not be listed in the Hooks trait table"
+        );
+        // Event-only non-game hooks (e.g. get_enchantment_level) take no Host parameter.
+        let enchant_row = hooks_section
+            .lines()
+            .find(|line| line.starts_with("| `get_enchantment_level` |"))
+            .expect("get_enchantment_level row present");
+        assert!(
+            enchant_row.contains("| — |"),
+            "expected event-only hook get_enchantment_level to document `—` for Host, got: {enchant_row}"
+        );
+        // MobEffectPart::apply_effect_tick uses the declaration-only effect target and takes &dyn Host.
+        let effect_section = page
+            .split("### `MobEffectPart`")
+            .nth(1)
+            .and_then(|rest| rest.split("\n### ").next())
+            .expect("MobEffectPart section present");
+        let effect_row = effect_section
+            .lines()
+            .find(|line| line.starts_with("| `apply_effect_tick` |"))
+            .expect("apply_effect_tick row present");
+        assert!(
+            effect_row.contains("| `&dyn Host` |"),
+            "expected MobEffectPart::apply_effect_tick to document `&dyn Host`, got: {effect_row}"
+        );
+        // Host summaries preserve their full first-paragraph Markdown without cutting inline code.
+        let edit_blocks_row = page
+            .lines()
+            .find(|line| line.starts_with("| `edit_blocks` |"))
+            .expect("edit_blocks host row present");
+        assert_eq!(
+            edit_blocks_row.matches('`').count() % 2,
+            0,
+            "inline code spans in edit_blocks summary must stay balanced: {edit_blocks_row}"
         );
         assert!(!path.exists(), "rendering must not write into book sources");
     }
