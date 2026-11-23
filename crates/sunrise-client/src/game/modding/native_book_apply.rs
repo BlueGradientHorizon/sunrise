@@ -267,12 +267,12 @@ impl Game<'_> {
         // The state the placement is calculated against is read before the listeners that may
         // write (`recipe_sources`), and must be the same after them: an opening or a backing slot
         // they changed without closing the window is not this placement's any more.
-        let state = self.block_book_state(&opening)?;
+        let state = self.block_book_state(opening)?;
         let raw_sources = self.lan_recipe_sources(opening.gi, opening.kind, pos);
         let current = self
             .mod_book_live_opening(conn, catalog)
             .map_err(|_| R::Changed)?;
-        if !same_opening(&current, &opening)
+        if !same_opening(&current, opening)
             || !matches!(self.world.block_entities.get(&pos), Some(BlockEntity::Mod(m)) if !m.id().is_empty())
         {
             return Err(R::Changed);
