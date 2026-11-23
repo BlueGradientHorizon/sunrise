@@ -46,7 +46,7 @@ _No response_"
 
 Leave `_No response_` under **Package folders** for a mod at the repository's root; otherwise list one folder per
 line, each holding a `sunrise-mod.toml`. Leave it under **Branch** unless the mod is not on the default branch.
-An agent then checks the repository, opens the registration pull request and answers on the issue. Registering
+The registry then checks that you administer the repository, opens the registration pull request and answers on the issue. Registering
 lists nothing: your project appears on Discover once its first release is reviewed and merged.
 
 ## Releasing
