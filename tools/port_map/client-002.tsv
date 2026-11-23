@@ -32,7 +32,7 @@ ClientPacketListener.handleSetExperience	port	crates/sunrise-client/src/game/net
 ClientPacketListener.determineLevelLoadingReason	port	crates/sunrise-client-render/src/level_loading.rs::reason_for_respawn	the reason of a Respawn packet: death, a Nether or an End crossing
 ClientPacketListener.handleOpenScreen	port	crates/sunrise-client/src/game/network/remote/mod.rs::Game::remote_open_screen
 ClientPacketListener.handleSetCursorItem	port	crates/sunrise-client/src/game/network/remote/packets_player.rs::Game::apply_set_cursor_item_packet	SetCursorItem arm; gap: minor: sets the carried stack even while the creative screen is open
-ClientPacketListener.handleSetPlayerInventory	port	crates/sunrise-client/src/game/network/remote/packets_player.rs::Game::apply_set_player_inventory_packet	SetPlayerInventory arm: slots 0-35, armour 36-39, off hand 40
+ClientPacketListener.handleSetPlayerInventory	port	crates/sunrise-client/src/game/network/remote/packets_player.rs::Game::apply_set_player_inventory_packet	SetPlayerInventory arm: slots 0-35, armour 36-39, off hand 40, body 41, saddle 42
 ClientPacketListener.handleContainerContent	port	crates/sunrise-client/src/game/network/remote/packets_player.rs::Game::apply_container_set_content_packet	ContainerSetContent arm: each slot, then the carried stack
 ClientPacketListener.handleBlockEntityData	port	crates/sunrise-client/src/game/network/remote/mod.rs::Game::remote_block_entity_data
 ClientPacketListener.handleContainerSetData	port	crates/sunrise-client/src/game/network/remote/packets_player.rs::Game::apply_container_set_data_packet	ContainerSetData arms (lectern, furnace, crafter, brewing); station containers go to remote_stations.rs::Game::remote_station_data

@@ -1310,6 +1310,24 @@ mod tests {
                         assert_eq!(q.vertices[2].pos[..2], [1.0, -1.0]);
                     }
 
+                    game.camera_type = CameraType::ThirdPersonBack;
+                    assert!(
+                        quads(game).is_empty(),
+                        "third-person suppresses equipment overlays"
+                    );
+                    game.camera_type = CameraType::FirstPerson;
+                    game.inventory[4] = Some(ItemStack::new("minecraft:spyglass", 1));
+                    assert_eq!(
+                        quads(game).len(),
+                        7,
+                        "remaining seven slots still draw before scoping"
+                    );
+                    assert!(game.start_using_item(), "spyglass use starts");
+                    assert!(
+                        quads(game).is_empty(),
+                        "scoping suppresses equipment overlays"
+                    );
+
                     // SetPlayerInventory slots 41 and 42 sync body armor and saddle.
                     game.init_remote_for_replay().unwrap();
                     let item_id = |name: &str| {
@@ -1352,16 +1370,6 @@ mod tests {
                             .get(sunrise_items::equipment::SADDLE)
                             .map(|s| s.item.as_ref()),
                         Some("minecraft:saddle")
-                    );
-
-                    game.camera_type = CameraType::ThirdPersonBack;
-                    assert!(quads(game).is_empty());
-                    game.camera_type = CameraType::FirstPerson;
-                    game.inventory[4] = Some(ItemStack::new("minecraft:spyglass", 1));
-                    assert!(game.start_using_item(), "spyglass use starts");
-                    assert!(
-                        quads(game).is_empty(),
-                        "scoping suppresses equipment overlays"
                     );
                 });
             },

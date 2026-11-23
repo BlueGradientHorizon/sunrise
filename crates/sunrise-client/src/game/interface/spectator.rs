@@ -32,11 +32,11 @@ impl Game<'_> {
             .iter()
             .map(|p| member(p, self.face_skin(p.uuid, &p.skin)))
             .collect();
-        let teams = &self.score.board.teams;
+        let teams = self.score.board.teams_streamed();
         let rosters: Vec<_> = self
             .remote
             .iter()
-            .flat_map(|remote| teams.iter().map(move |team| (remote, team)))
+            .flat_map(|remote| teams.iter().copied().map(move |team| (remote, team)))
             .filter_map(|(remote, team)| {
                 let members: Vec<_> = team
                     .players
@@ -169,6 +169,14 @@ mod tests {
                     for name in ["Unlisted", "Spectator", "Unknown"] {
                         board.add_to_team(name, "hidden");
                     }
+                    board.add_team("visible");
+                    board.add_to_team("Listed", "visible");
+                    let expected_teams: Vec<Text> = board
+                        .teams_streamed()
+                        .iter()
+                        .map(|t| comp_text(&t.display_name))
+                        .collect();
+                    assert_eq!(expected_teams.len(), 2);
 
                     let mut players = game.new_spectator_menu();
                     players.select_slot(0);
@@ -180,12 +188,28 @@ mod tests {
                     assert_eq!(teams.item(1), Item::TeleportToTeam { enabled: true });
                     teams.select_slot(1);
                     teams.select_slot(1);
-                    let Item::Team(team) = teams.item(0) else {
-                        panic!("team with only an unlisted eligible member is missing");
-                    };
-                    assert_eq!(team.icon, "entity/player/slim/ari");
-                    teams.select_slot(0);
-                    teams.select_slot(0);
+                    let shown_teams: Vec<_> = [0, 1]
+                        .into_iter()
+                        .map(|slot| match teams.item(slot) {
+                            Item::Team(team) => team,
+                            other => panic!("expected team at slot {slot}, got {other:?}"),
+                        })
+                        .collect();
+                    assert_eq!(
+                        shown_teams
+                            .iter()
+                            .map(|t| t.name.clone())
+                            .collect::<Vec<_>>(),
+                        expected_teams
+                    );
+                    assert_eq!(teams.item(2), Item::Empty);
+                    let hidden_slot = shown_teams
+                        .iter()
+                        .position(|t| t.name.plain() == "hidden")
+                        .expect("hidden team present");
+                    assert_eq!(shown_teams[hidden_slot].icon, "entity/player/slim/ari");
+                    teams.select_slot(hidden_slot);
+                    teams.select_slot(hidden_slot);
                     assert!(matches!(teams.item(0), Item::Player(p) if p.uuid == UNLISTED));
                     assert_eq!(teams.item(1), Item::Empty);
                     assert_eq!(teams.select_slot(0), Outcome::None);
