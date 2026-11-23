@@ -19,6 +19,33 @@ use sunrise_world::registry::BlockStateId;
 /// Charged outbound bytes, including queue overhead. Once the queue reaches this
 /// size, skip new bubble-column effects until the queue drains below it.
 const BUBBLE_PARTICLE_BACKLOG: usize = 16 << 10;
+/// Bound short bursts before socket backpressure reaches the application.
+const BUBBLE_PARTICLES_PER_TICK: u8 = 32;
+
+#[derive(Default)]
+pub(super) struct BubbleParticleBudget {
+    tick: i64,
+    sent: sunrise_client::fast_hash::FxHashMap<u32, u8>,
+}
+
+impl BubbleParticleBudget {
+    fn for_tick(&mut self, tick: i64) -> &mut Self {
+        if self.tick != tick {
+            self.tick = tick;
+            self.sent.clear();
+        }
+        self
+    }
+
+    fn admit(&mut self, conn: u32) -> bool {
+        let sent = self.sent.entry(conn).or_default();
+        if *sent == BUBBLE_PARTICLES_PER_TICK {
+            return false;
+        }
+        *sent += 1;
+        true
+    }
+}
 
 /// An explosion packet a guest's turn put off (`lan_explode`).
 pub(super) struct LanExplosion {
@@ -198,7 +225,11 @@ fn hub_level_particle_packet(
     })
 }
 
-fn broadcast_hub_level_particles(hub: &Hub, packet: play::LevelParticles, protect: bool) {
+fn broadcast_hub_level_particles(
+    hub: &Hub,
+    packet: play::LevelParticles,
+    mut budget: Option<&mut BubbleParticleBudget>,
+) {
     let at = packet.pos;
     let sunrise_only = packet.particle.sunrise_only();
     let mut recipients = hub
@@ -216,7 +247,10 @@ fn broadcast_hub_level_particles(hub: &Hub, packet: play::LevelParticles, protec
                 .map(|k| (guest.position[k].floor() + 0.5 - at[k]).powi(2))
                 .sum();
             distance < 32.0 * 32.0
-                && (!protect || !guest.sender.output_backlogged(BUBBLE_PARTICLE_BACKLOG))
+                && budget.as_deref_mut().is_none_or(|budget| {
+                    !guest.sender.output_backlogged(BUBBLE_PARTICLE_BACKLOG)
+                        && budget.admit(guest.conn)
+                })
         })
         .peekable();
     let Some(first) = recipients.next() else {
@@ -249,7 +283,7 @@ fn send_hub_level_particles(
     state: Option<BlockStateId>,
 ) {
     if let Some(packet) = hub_level_particle_packet(hub, options, at, spread, speed, count, state) {
-        broadcast_hub_level_particles(hub, packet, false);
+        broadcast_hub_level_particles(hub, packet, None);
     }
 }
 
@@ -300,19 +334,26 @@ impl Game<'_> {
     }
 
     /// The two surface effects from `Entity.sendBubbleColumnParticles` may be
-    /// dropped for a backlogged connection if the dedicated server opts in.
+    /// dropped for a backlogged connection or over the per-client tick budget.
     pub(super) fn lan_bubble_column_particles(
-        &self,
+        &mut self,
         options: &ParticleOptions,
         at: [f64; 3],
         spread: [f64; 3],
         speed: f64,
     ) {
-        let Some(hub) = self.lan.as_ref().map(|host| &host.hub) else {
+        let Some(host) = self.lan.as_mut() else {
             return;
         };
-        if let Some(packet) = hub_level_particle_packet(hub, options, at, spread, speed, 1, None) {
-            broadcast_hub_level_particles(hub, packet, hub.protect_bubble_particles);
+        if let Some(packet) =
+            hub_level_particle_packet(&host.hub, options, at, spread, speed, 1, None)
+        {
+            let budget = if host.hub.protect_bubble_particles {
+                Some(host.bubble_particle_budget.for_tick(self.world.game_time))
+            } else {
+                None
+            };
+            broadcast_hub_level_particles(&host.hub, packet, budget);
         }
     }
 
@@ -1156,25 +1197,38 @@ pub(in crate::game) mod tests {
         let pending = hub.guest(1).unwrap().sender.pending.clone();
         let at = [5.5, 64.0, 5.5];
         let options = ParticleOptions::simple(ParticleType::Splash);
-        let send_bubbles = |protect| {
+        let send_bubbles = |budget: Option<&mut BubbleParticleBudget>| {
             let packet =
                 hub_level_particle_packet(&hub, &options, at, [0.0; 3], 1.0, 1, None).unwrap();
-            broadcast_hub_level_particles(&hub, packet, protect);
+            broadcast_hub_level_particles(&hub, packet, budget);
         };
+        let mut budget = BubbleParticleBudget::default();
 
         pending.store(BUBBLE_PARTICLE_BACKLOG, Relaxed);
-        send_bubbles(true);
+        send_bubbles(Some(&mut budget));
         assert!(first.try_recv().is_err());
         assert_eq!(level_particles(&second).pos, at);
 
-        send_bubbles(false);
+        send_bubbles(None);
         assert_eq!(level_particles(&first).pos, at);
         assert_eq!(level_particles(&second).pos, at);
 
         pending.store(0, Relaxed);
-        send_bubbles(true);
+        send_bubbles(Some(&mut budget));
         assert_eq!(level_particles(&first).pos, at);
         assert_eq!(level_particles(&second).pos, at);
+    }
+
+    #[test]
+    fn bubble_particle_budget_resets_each_tick_and_is_per_connection() {
+        let mut budget = BubbleParticleBudget::default();
+        let budget = budget.for_tick(10);
+        for _ in 0..BUBBLE_PARTICLES_PER_TICK {
+            assert!(budget.admit(1));
+        }
+        assert!(!budget.for_tick(10).admit(1));
+        assert!(budget.admit(2));
+        assert!(budget.for_tick(11).admit(1));
     }
 
     thread_local! {
