@@ -47,7 +47,7 @@ pub struct DiscoverPlan {
     pub toolchain: Unpacked,
     /// The mod's folder.
     pub mods: PathBuf,
-    /// Where to copy the build data (`internals.json`, `points.json`), a folder that doesn't exist yet; absent, the reply lists the mod's internals.
+    /// Where to copy `internals.json`, a folder that doesn't exist yet; absent, the reply lists the mod's internals.
     #[serde(default)]
     pub catalog: Option<PathBuf>,
 }
@@ -291,18 +291,7 @@ pub fn run(plan: &Plan, input: &mut dyn BufRead, out: &mut dyn Write) -> Result<
     }
 }
 
-fn compile(
-    plan: &Plan,
-    say: &dyn Fn(Event) -> Result<(), String>,
-    input: &mut dyn BufRead,
-    ids: &std::cell::RefCell<Vec<String>>,
-) -> Result<Event, String> {
-    let work = crate::root();
-    std::fs::create_dir_all(&work).map_err(|e| format!("{}: {e}", work.display()))?;
-    let side = match Target::from(plan.target) {
-        Target::Client => sunrise_mod_package::manifest::Side::Client,
-        Target::Server => sunrise_mod_package::manifest::Side::Server,
-    };
+fn native_projects(plan: &Plan) -> Result<Vec<crate::Bundle>, String> {
     let mods: Vec<_> = scan_bundles(&plan.mods)?
         .into_iter()
         .filter(|bundle| bundle.manifest.native.is_some())
@@ -310,13 +299,24 @@ fn compile(
     if mods.is_empty() {
         return Err(format!("{} holds no native mod.", plan.mods.display()));
     }
-    *ids.borrow_mut() = mods
-        .iter()
-        .map(|bundle| bundle.manifest.id.clone())
-        .collect();
+    Ok(mods)
+}
+
+fn code_links(
+    mods: &[crate::Bundle],
+    target: Target,
+) -> Result<(Vec<Vec<dependencies::Dependency>>, dependencies::Resolution), String> {
+    let side = match target {
+        Target::Client => sunrise_mod_package::manifest::Side::Client,
+        Target::Server => sunrise_mod_package::manifest::Side::Server,
+    };
     let declared: Vec<Vec<dependencies::Dependency>> = mods
         .iter()
-        .map(|bundle| dependencies::from_manifest(&bundle.manifest.dependencies, side))
+        .map(|bundle| {
+            dependencies::build_dependencies(&bundle.manifest, side, |id| {
+                mods.iter().any(|project| project.manifest.id == id)
+            })
+        })
         .collect();
     let inputs: Vec<_> = mods
         .iter()
@@ -331,6 +331,53 @@ fn compile(
         .collect();
     let resolution = dependencies::resolve_links(&inputs)
         .map_err(|error| format!("code link requirements refused: {error}"))?;
+    Ok((declared, resolution))
+}
+
+/// Type-check a developer's staged native projects through the build's own route and SDK
+/// bindings, without producing or installing native libraries.
+pub fn check_rust(plan: &Plan) -> Result<(), String> {
+    let work = crate::root();
+    let mods = native_projects(plan)?;
+    let (declared, resolution) = code_links(&mods, plan.target.into())?;
+    let projects = mods
+        .iter()
+        .map(api::Project::read)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    if let Some(reason) = prebuilt::refusal(&projects) {
+        return Err(reason.to_string());
+    }
+    prebuilt::compile(
+        &plan.toolchain,
+        &plan.package,
+        &work.join("prebuilt-check"),
+        &plan.mods,
+        Route::of(&projects),
+        &projects,
+        &declared,
+        &resolution,
+        Some(&|_| plan.registry == Some(true)),
+        &|_, _, _| {},
+        true,
+    )
+    .map(drop)
+}
+
+fn compile(
+    plan: &Plan,
+    say: &dyn Fn(Event) -> Result<(), String>,
+    input: &mut dyn BufRead,
+    ids: &std::cell::RefCell<Vec<String>>,
+) -> Result<Event, String> {
+    let work = crate::root();
+    std::fs::create_dir_all(&work).map_err(|e| format!("{}: {e}", work.display()))?;
+    let mods = native_projects(plan)?;
+    *ids.borrow_mut() = mods
+        .iter()
+        .map(|bundle| bundle.manifest.id.clone())
+        .collect();
+    let (declared, resolution) = code_links(&mods, plan.target.into())?;
     let projects: Vec<_> = mods
         .iter()
         .map(api::Project::read)
@@ -368,7 +415,9 @@ fn compile(
                 total,
             });
         },
-    )?;
+        false,
+    )?
+    .expect("build mode returns artifacts");
     let catalog = crate::internals::Catalog::read(&plan.package.api)?;
     let mut internals = BTreeMap::new();
     for &index in &resolution.order {

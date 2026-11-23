@@ -13,13 +13,14 @@ pub trait Hooks {
     /// counts. Zero crossings post container_open/container_close game events:
     /// the opening or closing player is the source, none on a recheck.
     /// Server-side; open/close runs with the player's state in place.
-    /// Named injections request `hook_version = 2`.
     #[notes = "Version 2 follows ContainerOpenersCounter: synchronous open/close, five-tick rechecks, and game events on zero crossings instead of a per-tick recount."]
     #[hook(
+        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_mod_container_viewers",
+        dispatch = "flat",
         side = "server",
         contract = "listen",
         version = 2,
         neoforge = "none (vanilla ContainerOpenersCounter; NeoForge adds no event or extension for it); PlayerContainerEvent.Open and Close fire per player"
     )]
-    fn mod_container_viewers();
+    fn mod_container_viewers(dimension: &str, pos: [i32; 3], viewers: u32, previous: u32);
 }
