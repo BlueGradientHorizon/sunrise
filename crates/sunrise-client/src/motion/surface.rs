@@ -22,6 +22,10 @@ pub trait SideLevel {
     fn player_equipment(&self) -> crate::health::PlayerEquipment<'_> {
         [None; 8]
     }
+    /// Whether a living target not lent to the mob tick still has a live body.
+    fn living_target_alive(&self, _id: u32) -> bool {
+        false
+    }
     /// What a hit on that player needs to name and read the living entities it lends; none
     /// where this side has no open world, or while no `HitHost` hook listens. Only a hit's
     /// level asks, once.

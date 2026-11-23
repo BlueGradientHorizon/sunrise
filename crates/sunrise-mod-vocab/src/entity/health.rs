@@ -492,9 +492,9 @@ pub trait LivingReads {
 /// live state at the call, through the engine function the matching
 /// [`LivingRef`](crate::LivingRef) read uses, so the two agree at the same moment. It
 /// borrows the host, and no method writes; it is valid only during the listener's call.
-// exhaustive: its fields are private; only the engine constructs a view.
 // no wire: a call-scoped borrow of the hit's live entity state.
 #[derive(Clone, Copy)]
+#[non_exhaustive]
 pub struct LivingView<'h> {
     reads: &'h dyn LivingReads,
     party: LivingParty,
@@ -513,12 +513,14 @@ impl<'h> LivingView<'h> {
             entity,
         })
     }
-    /// The entity's handle, as [`LivingRef::entity`](crate::LivingRef::entity). It outlives
-    /// the view.
+    /// The entity's handle (NeoForge `LivingEvent.getEntity` for the victim, vanilla
+    /// `DamageSource.getEntity` for the causing entity), as
+    /// [`LivingRef::entity`](crate::LivingRef::entity). It outlives the view.
     pub fn entity(&self) -> crate::EntityRef {
         self.entity
     }
-    /// The entity's id (the network id events carry), as [`LivingRef::id`](crate::LivingRef::id).
+    /// The entity's id (`Entity.getId`, the network id events carry), as
+    /// [`LivingRef::id`](crate::LivingRef::id).
     pub fn id(&self) -> u32 {
         self.entity.id()
     }
@@ -526,8 +528,8 @@ impl<'h> LivingView<'h> {
     pub fn kind(&self) -> Option<crate::EntityTypeKey> {
         self.reads.living_kind(self.party)
     }
-    /// The holder of the entity's attachments, for `has` and `get_existing` through the hit's
-    /// host: a player's [`Holder::Player`](crate::Holder::Player) by UUID, any other
+    /// The holder of the entity's attachments, for `has` and `get_existing` (NeoForge
+    /// `IAttachmentHolder.hasData` and `getExistingData`) through the hit's host: a player's [`Holder::Player`](crate::Holder::Player) by UUID, any other
     /// entity's [`Holder::Entity`](crate::Holder::Entity) by id. The hit's host only reads
     /// them: a write, or a `get` that would store its default, refuses with
     /// [`AttachmentError::ReadOnlyHolder`](crate::AttachmentError::ReadOnlyHolder).
