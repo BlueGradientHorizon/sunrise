@@ -628,7 +628,7 @@ fn build(
         let scanned = uses_table::scan(entry, root, &package.manifest, &surface)?;
         match scanned {
             uses_table::Scanned::Uses(uses) => Some(
-                uses_table::table(&uses, root, &package.manifest, &sdk)?
+                uses_table::table(&uses, None, &package.manifest, &sdk)?
                     .to_json()
                     .into_bytes(),
             ),
@@ -1154,7 +1154,13 @@ mod tests {
         ];
         new(&new_args, &offline).unwrap();
         assert!(!path.join("Cargo.toml").exists());
-        assert!(!path.join(".github").exists());
+        // The only workflow is the release caller.
+        assert_eq!(
+            std::fs::read_dir(path.join(".github/workflows"))
+                .unwrap()
+                .count(),
+            1
+        );
         let smod = build_in(&path).unwrap();
         assert_eq!(smod, path.join("target/sunrise-mod/gems.smod"));
         let package = Package::read(&smod).unwrap();

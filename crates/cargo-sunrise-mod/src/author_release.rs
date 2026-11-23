@@ -280,6 +280,9 @@ impl Project {
             &self.caller,
             caller(&self.prefix, &self.path, uses),
         )];
+        // The old copied files at the repository's root served the root package: a package in a
+        // subfolder gets its own caller and leaves them to the package they serve.
+        let at_root = self.package.as_os_str().is_empty();
         // These names aren't reserved. Only remove files with the old templates' signatures.
         let workflows = [
             ("release.yml", "Release native mod"),
@@ -289,7 +292,7 @@ impl Project {
                 "Build and publish a planned mod release",
             ),
         ];
-        for (file, name) in workflows {
+        for (file, name) in workflows.into_iter().filter(|_| at_root) {
             let path = Path::new(".github/workflows").join(file);
             let title = format!("name: {name}");
             if legacy_file(
@@ -304,7 +307,8 @@ impl Project {
         let actions = Path::new(".github/actions");
         let action = actions.join("sunrise-release-tool");
         let script = action.join("action.yml");
-        if metadata(&root.join(actions))?.is_some_and(|meta| meta.is_dir())
+        if at_root
+            && metadata(&root.join(actions))?.is_some_and(|meta| meta.is_dir())
             && metadata(&root.join(action))?.is_some_and(|meta| meta.is_dir())
             && legacy_file(
                 git,
@@ -328,13 +332,9 @@ impl Project {
                 "from sunrise_release import Batch",
             ),
         ] {
-            let repo_path = PathBuf::from(file);
-            let nested_path =
-                (!self.package.as_os_str().is_empty()).then(|| self.package.join(file));
-            for path in std::iter::once(repo_path).chain(nested_path) {
-                if legacy_file(git, root, &path, &[signature])? {
-                    changes.push(Change::remove(path, false));
-                }
+            let path = self.package.join(file);
+            if legacy_file(git, root, &path, &[signature])? {
+                changes.push(Change::remove(path, false));
             }
         }
         Ok(changes)
@@ -767,6 +767,18 @@ fn release(
     for change in &changes {
         change.apply(&snapshot)?;
     }
+    let stage = |dir: &Path| {
+        git.text(
+            dir,
+            ["--literal-pathspecs", "add", "--"]
+                .map(OsStr::new)
+                .into_iter()
+                .chain(changes.iter().map(|c| c.path.as_os_str())),
+        )
+    };
+    // The tree the check is given: the release commit must have exactly this tree.
+    stage(&snapshot)?;
+    let checked = git.text(&snapshot, ["write-tree"])?;
     check(&snapshot.join(&project.package), &tag)?;
     if preview {
         println!("Would release {version}:");
@@ -791,25 +803,20 @@ fn release(
     for change in &changes {
         change.apply(root)?;
     }
-    git.text(
-        root,
-        ["--literal-pathspecs", "add", "--"]
-            .map(OsStr::new)
-            .into_iter()
-            .chain(changes.iter().map(|c| c.path.as_os_str())),
-    )?;
-    // A commit hook could change what is committed after the check: tag only the checked tree.
-    let checked = git.text(root, ["write-tree"])?;
+    stage(root)?;
     git.text(root, ["commit", "-m", &format!("Release {version}")])?;
-    if git.text(root, ["rev-parse", "HEAD^{tree}"])? != checked {
+    // A commit hook could change what is committed after the check: tag and push only a commit
+    // whose tree is the checked one, by its ID.
+    let commit = git.text(root, ["rev-parse", "HEAD"])?;
+    if git.text(root, ["rev-parse", &format!("{commit}^{{tree}}")])? != checked {
         return Err(format!(
-            "a Git hook changed the release commit after the check; the commit remains local and {tag} was not made"
+            "the release commit is not the tree that was checked (a Git hook changed it?); the commit remains local and {tag} was not made"
         ));
     }
-    git.text(root, ["tag", &tag])?;
+    git.text(root, ["tag", &tag, &commit])?;
     // Publish both refs together, or neither. In particular, a rejected branch must not release a tag.
     // Explicit destinations, so no remote.origin.push mapping sends them elsewhere.
-    let branch_spec = format!("{branch}:{branch}");
+    let branch_spec = format!("{commit}:{branch}");
     let tag_spec = format!("{tag_ref}:{tag_ref}");
     git.text(root, ["push", "--atomic", "--no-follow-tags", "origin", &branch_spec, &tag_spec])
         .map_err(|e| format!("{e}\nThe release commit and {tag} remain local. Resolve the push error, then push both refs to origin."))?;

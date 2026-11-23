@@ -265,7 +265,8 @@ mod git_fixtures {
             ("mods/example/sunrise_release.py", "print('author script')"),
             (".gitignore", "/target\n"),
         ];
-        let obsolete = [
+        // The root's old copied files serve the root package: a subfolder package leaves them.
+        let root_legacy = [
             (
                 ".github/workflows/sunrise-release-jobs.yml",
                 "name: Build and publish a planned mod release\nuses: ./.github/actions/sunrise-release-tool",
@@ -278,14 +279,12 @@ mod git_fixtures {
                 "sunrise_release.py",
                 "\"\"\"Build, sign and stage a native mod release\"\"\"",
             ),
-            (
-                "mods/example/sunrise_release_github.py",
-                "from sunrise_release import Batch",
-            ),
         ];
-        for (path, text) in preserved.into_iter().chain(obsolete) {
+        let nested_legacy = "mods/example/sunrise_release_github.py";
+        for (path, text) in preserved.into_iter().chain(root_legacy) {
             repo.put(path, text);
         }
+        repo.put(nested_legacy, "from sunrise_release import Batch");
         repo.commit();
         repo.git(["remote", "remove", "origin"]);
         let head = repo.git(["rev-parse", "HEAD"]);
@@ -293,12 +292,10 @@ mod git_fixtures {
             .unwrap();
         assert_eq!(repo.git(["rev-parse", "HEAD"]), head);
         assert!(repo.git(["tag", "--list"]).is_empty());
-        for (path, text) in preserved {
+        for (path, text) in preserved.into_iter().chain(root_legacy) {
             assert_eq!(fs::read_to_string(repo.root.join(path)).unwrap(), text);
         }
-        for (path, _) in obsolete {
-            assert!(!repo.root.join(path).exists(), "{path}");
-        }
+        assert!(!repo.root.join(nested_legacy).exists());
         assert!(
             fs::read_to_string(
                 repo.root
@@ -310,18 +307,20 @@ mod git_fixtures {
         repo.put(release_workflow, OLD_RELEASE);
         let rebuild = ".github/workflows/rebuild.yml";
         repo.put(rebuild, "name: Rebuild reviewed native mod source\nuses: ./.github/actions/sunrise-release-tool\n");
+        repo.put(MANIFEST, MOD);
         // Setup changes nothing in a tree with uncommitted changes: only Git can restore a removal.
-        let error = repo
-            .release("mods/example", &["setup"], refused_check)
-            .unwrap_err();
+        let error = repo.release(".", &["setup"], refused_check).unwrap_err();
         assert!(error.contains("uncommitted changes"), "{error}");
         assert_eq!(
             fs::read_to_string(repo.root.join(release_workflow)).unwrap(),
             OLD_RELEASE
         );
         repo.commit();
-        repo.release("mods/example", &["setup"], refused_check)
-            .unwrap();
+        // The root package's setup removes the root's old copied files.
+        repo.release(".", &["setup"], refused_check).unwrap();
+        for (path, _) in root_legacy {
+            assert!(!repo.root.join(path).exists(), "{path}");
+        }
         assert!(!repo.root.join(release_workflow).exists());
         assert!(!repo.root.join(rebuild).exists());
     }

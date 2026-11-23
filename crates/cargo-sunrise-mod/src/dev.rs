@@ -346,7 +346,7 @@ fn prepare(
     update_lock: bool,
     target: contract::TargetName,
     release_identity: Option<(&str, &str)>,
-    signed_libraries: bool,
+    release_check: bool,
 ) -> Result<Prepared, String> {
     let project =
         dunce::canonicalize(project).map_err(|e| format!("{}: {e}", project.display()))?;
@@ -397,7 +397,7 @@ fn prepare(
         .map_err(|e| format!("{}: {e}", lock_path.display()))?;
     let input = tempfile::tempdir_in(&work).map_err(|e| format!("{}: {e}", work.display()))?;
     let sdk = native_sdk(&cache, &build)?;
-    let mut origins = dependencies.stage(&bundle, &sdk, &cache, input.path(), signed_libraries)?;
+    let mut origins = dependencies.stage(&bundle, &sdk, &cache, input.path(), release_check)?;
     origins.insert(id.clone(), project.clone());
     let mixins = if bundle.needs_mixins() {
         sunrise_native_build::MixinsIdentity::resolve([&bundle], Some(&sdk.index.mixins))?
@@ -506,7 +506,7 @@ pub(crate) fn build(
     update_lock: bool,
     target: contract::TargetName,
     release_identity: Option<(&str, &str)>,
-    signed_libraries: bool,
+    release_check: bool,
 ) -> Result<Built, String> {
     let mut prepared = prepare(
         project,
@@ -515,7 +515,7 @@ pub(crate) fn build(
         update_lock,
         target,
         release_identity,
-        signed_libraries,
+        release_check,
     )?;
     let id = &prepared.id;
     let failed = |error| prepared.failed(error);
