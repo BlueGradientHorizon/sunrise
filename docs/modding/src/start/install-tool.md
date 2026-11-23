@@ -206,7 +206,7 @@ be deleted once the command exits.
 
 On `new`, `build`, `run`, `check` and `update`, such a copy checks the signed rolling release for a newer build once
 per day at most. It prints a reminder when one is available but never installs it automatically. The check is off
-in CI and when `CARGO_NET_OFFLINE` is `true`.
+in CI and when `CARGO_NET_OFFLINE` is set to anything but `false`.
 
 A copy installed from an SDK follows that SDK and is never replaced by `self-update`. If your copy does not know
 `self-update` yet, or you want to switch between an SDK's tool and the rolling release, rerun the appropriate
