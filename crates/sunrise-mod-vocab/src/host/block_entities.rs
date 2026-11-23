@@ -119,6 +119,28 @@ pub trait BlockEntitiesBackendMut {
         data: Compound,
     ) -> Result<bool, BlockEntityError>;
     /// Side: server.
+    /// [`Self::block_entity_merge_data`] without the send: the data is merged and loaded,
+    /// then `BlockEntity.setChanged` marks the chunk unsaved and notifies comparators, and no
+    /// `Level.sendBlockUpdated` follows. Clients keep what they last got until
+    /// `block_entity_sync`, so a machine whose state changes every tick sends when it
+    /// chooses, as a vanilla or NeoForge block entity calling `setChanged()` and
+    /// `Level.sendBlockUpdated` itself does. Same results, errors and transaction rules as
+    /// `merge_data`.
+    fn block_entity_merge_data_quiet(
+        &mut self,
+        entity: BlockEntityRef,
+        data: Compound,
+    ) -> Result<bool, BlockEntityError>;
+    /// Side: server.
+    /// [`Self::block_entity_replace_data`] without the send, as
+    /// [`Self::block_entity_merge_data_quiet`] is to `merge_data`: `setChanged` only, the
+    /// client update left to `block_entity_sync`.
+    fn block_entity_replace_data_quiet(
+        &mut self,
+        entity: BlockEntityRef,
+        data: Compound,
+    ) -> Result<bool, BlockEntityError>;
+    /// Side: server.
     /// `BlockEntity.setChanged`: mark the chunk and notify comparators immediately, even
     /// inside a transaction and for equal contents. Aborting storage does not undo an issued
     /// notification. Returns Stale for an invalidated handle or a level not writable here.

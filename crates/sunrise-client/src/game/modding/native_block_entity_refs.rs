@@ -391,7 +391,16 @@ impl Game<'_> {
         entity: BlockEntityRef,
         data: Compound,
     ) -> Result<bool, BlockEntityError> {
-        self.write_block_entity_data(entity, data, false)
+        self.write_block_entity_data(entity, data, false, true)
+    }
+
+    /// `merge_data` with `BlockEntity.setChanged` only: no `Level.sendBlockUpdated`.
+    pub(super) fn block_entity_merge_data_quiet(
+        &mut self,
+        entity: BlockEntityRef,
+        data: Compound,
+    ) -> Result<bool, BlockEntityError> {
+        self.write_block_entity_data(entity, data, false, false)
     }
 
     /// Replaces the saved payload, retaining identity and position metadata.
@@ -402,7 +411,16 @@ impl Game<'_> {
         entity: BlockEntityRef,
         data: Compound,
     ) -> Result<bool, BlockEntityError> {
-        self.write_block_entity_data(entity, data, true)
+        self.write_block_entity_data(entity, data, true, true)
+    }
+
+    /// `replace_data` with `BlockEntity.setChanged` only: no `Level.sendBlockUpdated`.
+    pub(super) fn block_entity_replace_data_quiet(
+        &mut self,
+        entity: BlockEntityRef,
+        data: Compound,
+    ) -> Result<bool, BlockEntityError> {
+        self.write_block_entity_data(entity, data, true, false)
     }
 
     fn write_block_entity_data(
@@ -410,6 +428,7 @@ impl Game<'_> {
         entity: BlockEntityRef,
         data: Compound,
         replace: bool,
+        send: bool,
     ) -> Result<bool, BlockEntityError> {
         let (key, block) = self
             .native_block_entity_write_target(entity)
@@ -444,7 +463,13 @@ impl Game<'_> {
         if cleared && let Some(BlockEntity::Mod(loaded)) = self.world.block_entities.get_mut(&key) {
             loaded.keep_shapes_cleared(true);
         }
-        self.block_entity_updated(key);
+        // `BlockDataAccessor.setData`: `setChanged`, then `sendBlockUpdated` unless the mod
+        // keeps the send for `block_entity_sync`.
+        if send {
+            self.block_entity_updated(key);
+        } else {
+            self.world.modified.insert((key.0 >> 4, key.2 >> 4));
+        }
         self.container_changed(key);
         Ok(true)
     }
@@ -687,6 +712,10 @@ pub(in crate::game) fn mod_payload(mut data: Compound) -> Compound {
     }
     data
 }
+
+#[cfg(test)]
+#[path = "quiet_write_tests.rs"]
+mod quiet_write_tests;
 
 #[cfg(test)]
 mod payload_tests {
