@@ -6,11 +6,6 @@ use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::parse_snbt;
 use sunrise_core::position::ChunkPos;
 
-const WITNESS: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../tools/witness/26.3/falling_block_moving_piston.jsonl"
-));
-
 fn message_text(row: &Value) -> String {
     row["messages"][0]
         .as_array()
@@ -37,9 +32,23 @@ fn parse_summon(cmd: &str) -> ([f64; 3], &str) {
 }
 
 /// #2363 (vanilla 26.3): a falling block resting in a `moving_piston` cell stays across ticks.
+/// Matches the witness `tools/test_falling_moving_piston_parity.py` records.
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_falling_moving_piston_parity.py"]
 fn a_falling_block_resting_in_a_moving_piston_cell_stays() {
+    run_a_falling_block_resting_in_a_moving_piston_cell_stays();
+}
+
+pub(in crate::game) fn run_a_falling_block_resting_in_a_moving_piston_cell_stays() {
+    let path = std::env::var("SUNRISE_FALLING_MOVING_PISTON_WITNESS").expect(
+        "run through tools/test_falling_moving_piston_parity.py, which records the witness",
+    );
+    let witness = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+        panic!(
+            "failed to read SUNRISE_FALLING_MOVING_PISTON_WITNESS={path} \
+             (run through tools/test_falling_moving_piston_parity.py): {err}"
+        )
+    });
     with_game(|game| {
         prepare_entity_ticking_neighborhood(game, ChunkPos::new(0, 0));
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
@@ -54,7 +63,7 @@ fn a_falling_block_resting_in_a_moving_piston_cell_stays() {
             assert!(game.run_command(command), "{command}");
         }
 
-        let mut lines = WITNESS.lines().filter(|line| !line.trim().is_empty());
+        let mut lines = witness.lines().filter(|line| !line.trim().is_empty());
         let header: Value = serde_json::from_str(lines.next().expect("witness header")).unwrap();
         assert_eq!(header["minecraft"].as_str(), Some("26.3"));
 

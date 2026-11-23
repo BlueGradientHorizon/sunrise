@@ -455,7 +455,7 @@ impl Game<'_> {
 
 #[cfg(test)]
 #[path = "falling_blocks/moving_piston_tests.rs"]
-mod moving_piston_tests;
+pub(in crate::game) mod moving_piston_tests;
 
 #[cfg(test)]
 mod geometry_tests {

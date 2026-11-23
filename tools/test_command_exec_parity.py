@@ -198,8 +198,9 @@ def main():
                         help='leave out the sync_randoms steps: the control in which their fields differ run to run')
     parser.add_argument('--groups-file', type=Path,
                         help='run these generated [name, ops] groups after the common setup instead of the corpus')
-    parser.add_argument('--record-moving-piston-witness', type=Path,
-                        help='write the validated Java reference records with a version header to this path and stop')
+    parser.add_argument('--record-moving-piston-witness', nargs='?', type=Path,
+                        const=lab.LOCAL / 'witness' / lab.VERSION / 'falling_moving_piston' / 'falling_block_moving_piston.jsonl',
+                        help='write the validated Java reference records with a version header and meta.json to this path (default under .local/witness/) and stop')
     args = parser.parse_args()
     build = args.work_dir.resolve() if args.work_dir else lab.LOCAL / 'command-exec-parity'
     build.mkdir(parents=True, exist_ok=True)
@@ -612,12 +613,35 @@ def main():
         if args.record_moving_piston_witness:
             target = args.record_moving_piston_witness if args.record_moving_piston_witness.is_absolute() else lab.ROOT / args.record_moving_piston_witness
             target.parent.mkdir(parents=True, exist_ok=True)
+            recorded_groups = [name for name, _ in groups if name != 'setup']
             header = json.dumps({
                 'minecraft': lock['minecraft']['version'],
                 'oracle': 'dev.sunriselab.parity.VanillaCommandExecOracle',
-                'groups': [name for name, _ in groups if name != 'setup'],
+                'groups': recorded_groups,
             }, ensure_ascii=False)
             target.write_text(header + '\n' + (build / 'vanilla.jsonl').read_text(encoding='utf-8'), encoding='utf-8')
+            java_ver_proc = subprocess.run(['java', '-version'], capture_output=True, text=True, check=True)
+            java_version = (java_ver_proc.stderr or java_ver_proc.stdout).strip().splitlines()[0]
+            lab.write_json(target.parent / 'meta.json', {
+                'game_version': lock['minecraft']['version'],
+                'java_major': lock['minecraft']['java_major'],
+                'java_version': java_version,
+                'harness': 'tools/test_falling_moving_piston_parity.py',
+                'oracle': 'dev.sunriselab.parity.VanillaCommandExecOracle',
+                'groups': recorded_groups,
+                'witness_env': 'SUNRISE_FALLING_MOVING_PISTON_WITNESS',
+                'command': [sys.executable, *sys.argv],
+                'input_hashes': {
+                    'research-lock.json': lab.digest(lab.LOCK, 'sha256'),
+                    'server.jar': lab.digest(jars['server'], 'sha256'),
+                    'mods/sunrise/src/test/java/dev/sunriselab/parity/VanillaCommandExecOracle.java': lab.digest(oracle, 'sha256'),
+                    'tools/command_exec_corpus.py': lab.digest(lab.ROOT / 'tools/command_exec_corpus.py', 'sha256'),
+                    'tools/test_command_exec_parity.py': lab.digest(Path(__file__), 'sha256'),
+                },
+                'outputs': {
+                    target.name: {'sha256': lab.digest(target, 'sha256'), 'bytes': target.stat().st_size},
+                },
+            })
             print(f'Recorded witness ({len(reference)} records): {target}')
         else:
             print(f'Java reference: {len(reference)} records, fixture guards passed')
