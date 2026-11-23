@@ -197,6 +197,19 @@ pub(crate) fn atomic_write_manifest(path: &Path, contents: String) -> Result<(),
     atomic_write(&referent, contents)
 }
 
+/// An output component may be missing, but an existing one must be a real directory.
+pub(crate) fn check_output_dir(dir: &Path) -> Result<(), String> {
+    match fs::symlink_metadata(dir) {
+        Ok(meta) if meta.is_dir() => Ok(()),
+        Ok(_) => Err(format!(
+            "{} is not a real directory: replace it with one",
+            dir.display()
+        )),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(format!("{}: {e}", dir.display())),
+    }
+}
+
 /// Attempts at an unused temporary name before `atomic_write` gives up.
 const TEMPORARY_ATTEMPTS: u64 = 16;
 
@@ -333,10 +346,7 @@ pub fn refresh(
     old: &[ListedInternal],
     new: &[ListedInternal],
 ) -> Result<String, String> {
-    manifest
-        .native
-        .as_ref()
-        .ok_or("update needs a [native] mod")?;
+    manifest.native.as_ref().ok_or("pin needs a [native] mod")?;
     let mut report = String::new();
     for (index, declared) in manifest.internals.iter().enumerate() {
         let path = &declared.path;
@@ -666,7 +676,9 @@ facade={package='sunrise-internals',path='.sunrise/sdk/api/crates/sunrise-intern
         let build = "0123456789abcdef0123456789abcdef01234567";
         let cache = project.join(".sunrise/cache").join(build);
         fs::create_dir_all(cache.join("build-data")).unwrap();
-        fs::write(cache.join("build"), build).unwrap();
+        crate::sdk_fetch::CacheStamp::new(build, &crate::sdk_fetch::keys())
+            .write(&cache)
+            .unwrap();
         fs::write(cache.join("build-data/internals.json"), format!(r#"{{"schema":1,"build":{{"commit":"{build}"}},"internals":[{{"path":"Used","kind":"struct","signature":"struct Used","hash":"1111"}}]}}"#)).unwrap();
         let before = format!(
             "id = 'example'\nname = 'Example'\nversion = '0.1.0'\napi = '0.2'\ncapabilities = ['registries']\n[native]\ngame = '26.3'\nsunrise = '{build}'\nmixins = '{}'\n",
@@ -762,7 +774,7 @@ facade={package='sunrise-internals',path='.sunrise/sdk/api/crates/sunrise-intern
             internals::check(&entries, "example", &declared)
                 .unwrap_err()
                 .to_string(),
-            "E_INTERNAL_CHANGED: example uses sunrise_client::game::Game<'_>::reach, whose signature is now impl Game<'_> { fn reach(&self, hand: Hand) -> f64 }; run cargo sunrise-mod update to see what changed."
+            "E_INTERNAL_CHANGED: example uses sunrise_client::game::Game<'_>::reach, whose signature is now impl Game<'_> { fn reach(&self, hand: Hand) -> f64 }; run cargo sunrise-mod pin to see what changed."
         );
         declared.hash = Some("abcd".into());
         internals::check(&entries, "example", &declared).unwrap();
