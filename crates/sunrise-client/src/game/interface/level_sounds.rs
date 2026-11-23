@@ -388,7 +388,7 @@ mod tests {
             seed: 0,
             max_players: 3,
             integrated: true,
-            levels: game.level_shapes,
+            levels: game.level_shapes.clone(),
             level_seeds: game.levels.runtime.seeds(),
         };
         let settings = LanSettings {
@@ -582,7 +582,7 @@ mod tests {
                     seed: 0,
                     max_players: 3,
                     integrated: true,
-                    levels: game.level_shapes,
+                    levels: game.level_shapes.clone(),
                     level_seeds: game.levels.runtime.seeds(),
                 };
                 let settings = LanSettings {

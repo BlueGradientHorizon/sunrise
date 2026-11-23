@@ -107,14 +107,36 @@ impl LevelShape {
 }
 
 /// The shapes of a world's levels, from its dimension types.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LevelShapes {
     pub overworld: LevelShape,
     pub nether: LevelShape,
     pub end: LevelShape,
-    /// The levels past vanilla's three that the world's data packs give, by id.
-    /// Leaked once per world opened, so the shapes stay `Copy`.
-    pub extra: &'static [ExtraLevel],
+    /// The levels past vanilla's three that the world's data packs give, by id: a snapshot its
+    /// readers share and the last one frees.
+    pub extra: ExtraLevels,
+}
+/// An immutable snapshot of the levels past vanilla's three. Publishing a change makes a new
+/// snapshot; a reader that holds the old one keeps it until it lets go.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ExtraLevels(Option<Arc<[ExtraLevel]>>);
+impl ExtraLevels {
+    /// No levels past vanilla's three.
+    pub const NONE: Self = Self(None);
+    /// The snapshot of `levels`.
+    pub fn new(levels: Vec<ExtraLevel>) -> Self {
+        if levels.is_empty() {
+            Self::NONE
+        } else {
+            Self(Some(levels.into()))
+        }
+    }
+}
+impl std::ops::Deref for ExtraLevels {
+    type Target = [ExtraLevel];
+    fn deref(&self) -> &[ExtraLevel] {
+        self.0.as_deref().unwrap_or(&[])
+    }
 }
 /// A level past vanilla's three.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -129,7 +151,7 @@ impl LevelShapes {
         overworld: LevelShape::OVERWORLD,
         nether: LevelShape::NETHER,
         end: LevelShape::END,
-        extra: &[],
+        extra: ExtraLevels::NONE,
     };
     /// The shape of the level `id` (`minecraft:overworld`,
     /// `minecraft:the_nether`, `minecraft:the_end`); others get the
@@ -1259,15 +1281,35 @@ pub struct ChunkExtras {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn a_published_level_snapshot_lives_as_long_as_its_last_reader() {
+        let level = |id| super::ExtraLevel {
+            id,
+            dimension_type: "minecraft:overworld",
+            shape: super::LevelShape::OVERWORLD,
+        };
+        let first = super::ExtraLevels::new(vec![level("a:one")]);
+        let reader = first.clone();
+        let weak = std::sync::Arc::downgrade(first.0.as_ref().unwrap());
+        // The world publishes a new snapshot; the reader still sees the old levels.
+        drop(first);
+        let published = super::ExtraLevels::new(vec![level("a:one"), level("a:two")]);
+        assert_eq!(reader.len(), 1);
+        assert_eq!(published.len(), 2);
+        assert!(weak.upgrade().is_some());
+        drop(reader);
+        assert!(weak.upgrade().is_none(), "the last reader freed it");
+        assert_eq!(published.len(), 2);
+    }
+
+    #[test]
     fn a_worlds_extra_levels_keep_their_shape_and_type() {
         let shape = super::LevelShape::new(-128, 448, 448, true, false).unwrap();
         let levels = super::LevelShapes {
-            extra: vec![super::ExtraLevel {
+            extra: super::ExtraLevels::new(vec![super::ExtraLevel {
                 id: "test:pocket",
                 dimension_type: "test:small",
                 shape,
-            }]
-            .leak(),
+            }]),
             ..super::LevelShapes::VANILLA
         };
         assert_eq!(levels.get("test:pocket"), shape);

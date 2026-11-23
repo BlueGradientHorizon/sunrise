@@ -378,7 +378,7 @@ impl Game<'_> {
             self.install_world_tables(world);
         } else if let Some((initial, wire)) = initial {
             if let Some(terrain) = &terrain {
-                self.level_shapes = terrain.shapes;
+                self.level_shapes = terrain.shapes.clone();
                 self.end.set_locator(terrain.locator.clone());
                 self.share_spawn_conditions();
             }

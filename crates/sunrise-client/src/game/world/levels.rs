@@ -3168,7 +3168,7 @@ mod tests {
                     seed: game.level.seed,
                     max_players: 2,
                     integrated: false,
-                    levels: game.level_shapes,
+                    levels: game.level_shapes.clone(),
                     level_seeds: game.levels.runtime.seeds(),
                 },
             )

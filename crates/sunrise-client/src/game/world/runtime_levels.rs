@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 use std::sync::{LazyLock, Mutex};
 use sunrise_client::{
-    chunk::{ExtraLevel, LevelShape},
+    chunk::{ExtraLevel, ExtraLevels, LevelShape},
     vanillagen::{TerrainResources, shared_biome_source_data, shared_resource_data},
 };
 use sunrise_core::{LevelKey, identifier::Identifier};
@@ -354,8 +354,6 @@ struct Leaked {
     /// A level's names and dimension type, by its id and the dimension type it was opened with.
     /// `resolve_type` reads only startup data, so the same pair always gives the same facts.
     levels: HashMap<(String, String), (&'static str, &'static str, &'static DimensionFacts)>,
-    /// Every table of extra levels an open or unload made, reused when the same set comes back.
-    tables: Vec<&'static [ExtraLevel]>,
 }
 
 static LEAKED: LazyLock<Mutex<Leaked>> = LazyLock::new(Mutex::default);
@@ -378,20 +376,6 @@ fn leaked_level(
                 Box::leak(Box::new(facts)),
             )
         })
-}
-
-/// `levels` as a `&'static` table: one leaked before with the same levels, or a new one.
-fn leaked_table(levels: Vec<ExtraLevel>) -> &'static [ExtraLevel] {
-    if levels.is_empty() {
-        return &[];
-    }
-    let mut leaked = LEAKED.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(table) = leaked.tables.iter().find(|table| ***table == levels[..]) {
-        return table;
-    }
-    let table: &'static [ExtraLevel] = levels.leak();
-    leaked.tables.push(table);
-    table
 }
 
 /// The shape and facts of `dimension_type` for the level `id`: a vanilla type,
@@ -958,9 +942,9 @@ impl Game<'_> {
             dimension_type,
             shape,
         });
-        self.level_shapes.extra = leaked_table(extras);
+        self.level_shapes.extra = ExtraLevels::new(extras);
         if let Some(host) = self.lan.as_mut() {
-            host.hub.config.levels = self.level_shapes;
+            host.hub.config.levels = self.level_shapes.clone();
             host.hub.config.level_seeds = self.levels.runtime.seeds();
         }
         if let Ok(key) = LevelKey::parse(id) {
@@ -1066,9 +1050,9 @@ impl Game<'_> {
             .copied()
             .filter(|level| level.id != id)
             .collect();
-        self.level_shapes.extra = leaked_table(extras);
+        self.level_shapes.extra = ExtraLevels::new(extras);
         if let Some(host) = self.lan.as_mut() {
-            host.hub.config.levels = self.level_shapes;
+            host.hub.config.levels = self.level_shapes.clone();
             host.hub.config.level_seeds = self.levels.runtime.seeds();
             host.hub.close_views_of(id);
         }

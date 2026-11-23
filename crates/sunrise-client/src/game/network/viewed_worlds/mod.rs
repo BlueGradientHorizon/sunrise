@@ -462,7 +462,7 @@ pub(in crate::game) mod tests {
         };
         use std::sync::mpsc::{Receiver, channel};
         use sunrise_client::{
-            chunk::{ExtraLevel, LevelShape},
+            chunk::{ExtraLevel, ExtraLevels, LevelShape},
             lan::{
                 Out, PlayerSender,
                 hub::game_event::{RAIN_LEVEL, START_RAINING, STOP_RAINING, THUNDER_LEVEL},
@@ -480,7 +480,7 @@ pub(in crate::game) mod tests {
                 with_guests(|server| {
                     let mut host = server.lan.take().unwrap();
                     let hub = &mut host.hub;
-                    hub.config.levels.extra = &[
+                    hub.config.levels.extra = ExtraLevels::new(vec![
                         ExtraLevel {
                             id: VIEWED,
                             dimension_type: OVERWORLD,
@@ -491,7 +491,7 @@ pub(in crate::game) mod tests {
                             dimension_type: OVERWORLD,
                             shape: LevelShape::OVERWORLD,
                         },
-                    ];
+                    ]);
                     let area = |level: &str| ChunkArea {
                         level: level.into(),
                         center: (0, 0),

@@ -979,7 +979,7 @@ fn shapes_of(
             })
         })
         .collect();
-    shapes.extra = extra.leak();
+    shapes.extra = sunrise_client::chunk::ExtraLevels::new(extra);
     set_level_types(overrides, &shapes);
     shapes
 }

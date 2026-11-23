@@ -1894,11 +1894,15 @@ fn reopening_one_id_with_any_seed_reuses_the_metadata_its_first_open_leaked() {
                 game.levels.runtime.seeds().get("cycle:a").copied(),
                 Some(seed)
             );
-            let table = game.level_shapes.extra;
-            let level = table.iter().find(|level| level.id == "cycle:a").unwrap();
+            let level = game
+                .level_shapes
+                .extra
+                .iter()
+                .find(|level| level.id == "cycle:a")
+                .copied()
+                .unwrap();
             let facts = sunrise_world::dimension_type::DimensionFacts::of_level(key);
             let leaked = (
-                table.as_ptr(),
                 level.id.as_ptr(),
                 level.dimension_type.as_ptr(),
                 std::ptr::from_ref(facts),

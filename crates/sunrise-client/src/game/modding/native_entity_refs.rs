@@ -1848,7 +1848,7 @@ pub(super) mod tests {
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.level_shapes,
+                levels: game.level_shapes.clone(),
                 level_seeds: game.levels.runtime.seeds(),
             },
         )
@@ -3303,7 +3303,7 @@ pub(super) mod tests {
                 seed: 0,
                 max_players: 2,
                 integrated: true,
-                levels: game.level_shapes,
+                levels: game.level_shapes.clone(),
                 level_seeds: game.levels.runtime.seeds(),
             };
             game.lan_host(settings, net, config).unwrap();
