@@ -331,6 +331,11 @@ See [the `finalize_spawn` contract](https://github.com/sunrise-org/sunrise/blob/
 
 ## Changing how large a spawn group grows
 
+`mob_spawned` (version 2) notifies after each body's join callback, if it still resides in the
+spawning level. Only the primary natural candidate reports `natural = true`; its new jockey or
+passenger reports `false`. A vetoed body or one moved to another level during admission does
+not fire the notice. The notice comes before natural spawn accounting and the cluster-size callback.
+
 A natural spawn adds mobs of one type to a group until the group reaches the type's limit (`Mob.getMaxSpawnClusterSize`: 4 by default, more for horses, wolves and schooling fish, 1 for ghasts and pillagers). The entity part of the type changes that limit with `EntityPart::spawn_cluster_size`, which gets the read-only host, the mob just spawned, why and from what it spawned, and the limit vanilla would use. Return `Some(limit)` to replace it, or `None` to leave it to the next part and then to vanilla. The first part to answer wins, and the group stops growing once its size reaches the limit.
 
 ```rust,ignore

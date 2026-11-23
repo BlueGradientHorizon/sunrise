@@ -1664,7 +1664,8 @@ impl<'a> Game<'a> {
             }
         }
         let id = mob.id;
-        let last = self.next_entity;
+        let source = self.dim;
+        let notify = mod_api::__private::listened(mod_api::HookId::MobSpawned);
         // A real Host callback reads and writes the level stream between selection draws.
         std::mem::swap(&mut self.world.random, random);
         let saved = self.creatures.natural_admission.take();
@@ -1681,11 +1682,12 @@ impl<'a> Game<'a> {
                 let index = self.mobs.len();
                 self.persist.uuids.insert(body_id, uuid);
                 self.mobs.push(body);
+                let join = self.mobs[index].join;
                 if body_id == id {
                     self.creatures.natural_admission = Some(NaturalAdmission::Placed {
                         level: self.dim,
                         id,
-                        join: self.mobs[index].join,
+                        join,
                     });
                 }
                 for &(chicken, rider) in rides {
@@ -1703,6 +1705,17 @@ impl<'a> Game<'a> {
                 }
                 self.join_spawn_tags(index);
                 self.native_joins_flush(false, 0);
+                // This notice is for birth in the source, not a transferred body or
+                // another entity a join listener happened to insert.
+                if notify
+                    && self.dim == source
+                    && let Some(mob) = self.mobs.locate(join).map(|index| &self.mobs[index])
+                    && !mob.removed
+                {
+                    let kind = super::native_hooks::mob_kind(mob);
+                    let at = [mob.position.x, mob.position.y, mob.position.z];
+                    self.native_mob_spawned(source.id(), &kind, at, body_id == id);
+                }
             }
             let outcome = self
                 .creatures
@@ -1747,26 +1760,6 @@ impl<'a> Game<'a> {
                 cluster.check_limit(candidate, limit, true);
             } else {
                 log::error!("natural spawn admission lost candidate {id}");
-            }
-            // MobSpawned is a notice of successful insertion, not of rejected attempts.
-            if mod_api::__private::listened(mod_api::HookId::MobSpawned) {
-                if let NaturalAdmission::Placed { level, .. } = &outcome
-                    && *level != self.dim
-                    && let Some((mob, _)) = view
-                    && mob.join.is_joined()
-                    && !mob.removed
-                {
-                    let kind = super::native_hooks::mob_kind(mob);
-                    let at = [mob.position.x, mob.position.y, mob.position.z];
-                    self.native_mob_spawned(level.id(), &kind, at, true);
-                }
-                for id in id..=last {
-                    if let Some(mob) = self.mobs.iter().find(|m| m.id == id && !m.removed) {
-                        let kind = super::native_hooks::mob_kind(mob);
-                        let at = [mob.position.x, mob.position.y, mob.position.z];
-                        self.native_mob_spawned(self.dim.id(), &kind, at, true);
-                    }
-                }
             }
         }));
         self.creatures.natural_admission = saved;
@@ -3256,7 +3249,10 @@ mod tests {
     struct HorseIdentityMod {
         veto: bool,
         joined: std::sync::Arc<std::sync::Mutex<Vec<(u32, Option<u32>)>>>,
+        notices: SpawnNoticeLog,
     }
+
+    type SpawnNoticeLog = std::sync::Arc<std::sync::Mutex<Vec<(String, String, bool)>>>;
 
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for HorseIdentityMod {
@@ -3313,6 +3309,17 @@ mod tests {
                 mod_api::Flow::Continue
             }
         }
+        fn mob_spawned(
+            &self,
+            _: &mut dyn mod_api::ServerHost,
+            event: &mut mod_api::MobSpawnedEvent<'_>,
+        ) {
+            self.notices.lock().unwrap().push((
+                event.dimension.to_owned(),
+                event.kind.to_owned(),
+                event.natural,
+            ));
+        }
     }
 
     #[test]
@@ -3344,11 +3351,13 @@ mod tests {
                     }
                 }
                 let joined = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+                let notices = SpawnNoticeLog::default();
                 let mods = vec![mod_api::ModEntry::new(
                     "natural-uuids",
                     Box::new(HorseIdentityMod {
                         veto,
                         joined: joined.clone(),
+                        notices: notices.clone(),
                     }),
                 )];
                 mod_platform::testing::with_mods(mods.into(), || {
@@ -3405,6 +3414,12 @@ mod tests {
                             .map(|r| r.id()),
                         (!veto).then_some(*rider)
                     );
+                    let dimension = "minecraft:overworld".to_owned();
+                    let mut expected = vec![(dimension.clone(), NATURAL_HORSE.to_owned(), true)];
+                    if !veto {
+                        expected.push((dimension, NATURAL_RIDER.to_owned(), false));
+                    }
+                    assert_eq!(*notices.lock().unwrap(), expected);
                     if !veto {
                         let mob = game.mobs.iter().find(|m| m.id == *rider).unwrap();
                         assert_eq!(mob.extra.mount, Some(*horse));
@@ -3457,6 +3472,10 @@ mod tests {
     const SPAWN_CLUSTER_CASE: &str = "SUNRISE_SPAWN_CLUSTER_CHILD";
     static JOINED_CANDIDATE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
     static CLUSTER_QUERIES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    static NOTICES_AT_CLUSTER_QUERY: std::sync::atomic::AtomicUsize =
+        std::sync::atomic::AtomicUsize::new(0);
+    static NATURAL_NOTICES: std::sync::Mutex<Vec<(String, bool)>> =
+        std::sync::Mutex::new(Vec::new());
     struct JoinedClusters;
     #[mod_api::sunrise_part]
     impl mod_api::EntityPart for JoinedClusters {
@@ -3479,6 +3498,10 @@ mod tests {
             assert_eq!(mob.position(), Ok(JOINED_POSITION));
             assert_eq!(mob.tags().unwrap(), ["after-admission"]);
             CLUSTER_QUERIES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            NOTICES_AT_CLUSTER_QUERY.store(
+                NATURAL_NOTICES.lock().unwrap().len(),
+                std::sync::atomic::Ordering::Relaxed,
+            );
             Some(1)
         }
     }
@@ -3521,6 +3544,18 @@ mod tests {
                 }
             }
             mod_api::Flow::Continue
+        }
+        fn mob_spawned(
+            &self,
+            _: &mut dyn mod_api::ServerHost,
+            event: &mut mod_api::MobSpawnedEvent<'_>,
+        ) {
+            if event.kind == SULFUR_CUBE {
+                NATURAL_NOTICES
+                    .lock()
+                    .unwrap()
+                    .push((event.dimension.to_owned(), event.natural));
+            }
         }
     }
 
@@ -3669,6 +3704,21 @@ mod tests {
                         && [m.position.x, m.position.y, m.position.z] == JOINED_POSITION
                 }));
             }
+            let notices = NATURAL_NOTICES.lock().unwrap();
+            if case == "valid" {
+                assert_eq!(*notices, [("minecraft:overworld".to_owned(), true)]);
+            } else {
+                assert!(
+                    notices.is_empty(),
+                    "a rejected or moved primary is not announced as spawned"
+                );
+            }
+            assert_eq!(
+                NOTICES_AT_CLUSTER_QUERY.load(std::sync::atomic::Ordering::Relaxed),
+                notices.len(),
+                "a notice precedes the cluster callback"
+            );
+            drop(notices);
             assert_eq!(
                 CLUSTER_QUERIES.load(std::sync::atomic::Ordering::Relaxed),
                 1
