@@ -154,10 +154,16 @@ impl Game<'_> {
     /// `EvokerFangs.tick`.
     pub(super) fn tick_fangs(&mut self) {
         sunrise_threads::work::clear_work();
+        // ServerLevel.tick: only entities in entity-ticking chunks that joined before the pass tick.
+        let ticking = self.entity_ticking_area();
+        let through = self.ticked_entities_through;
         let mut list = self.fangs.list.lift();
         #[cfg(test)]
         super::entity::taken_pass_tests::after_take(self);
         list.retain_mut(|f| {
+            if f.id > through || !ticking(f.pos[0].floor() as i32, f.pos[2].floor() as i32) {
+                return true;
+            }
             self.fangs_fluid_step(f);
             f.warmup = f.warmup.wrapping_sub(1);
             if f.warmup >= 0 {
@@ -184,13 +190,13 @@ impl Game<'_> {
             .list
             .restore(list, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
     }
-    /// `Entity.baseTick`'s `updateFluidInteraction` for fangs (0.5 x 0.8): the
+    /// `Entity.baseTick`'s `updateFluidInteraction` for fangs (0.5F x 0.8F): the
     /// currents of the water and lava the box touches add to the motion.
     fn fangs_fluid_step(&self, f: &mut Fangs) {
         let at = Vec3::new(f.pos[0], f.pos[1], f.pos[2]);
         let bounds = sunrise_core::geometry::Aabb::new(
             Vec3::new(at.x - 0.25, at.y, at.z - 0.25),
-            Vec3::new(at.x + 0.25, at.y + 0.8, at.z + 0.25),
+            Vec3::new(at.x + 0.25, at.y + f64::from(0.8_f32), at.z + 0.25),
         );
         // EntityDimensions.scalable: the eye at 0.85 of the height.
         let eye = at.y + f64::from(0.8_f32 * 0.85);

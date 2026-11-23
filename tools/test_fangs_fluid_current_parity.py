@@ -19,14 +19,20 @@ WITNESS = driver.lab.ROOT / 'tools/fixtures/26.3/fangs_fluid_current.tsv'
 TICKS = (0, 1, 2)
 MOTION_RE = re.compile(r'entity data: \[([^,\]]+)d, ([^,\]]+)d, ([^,\]]+)d\]$')
 
-# (name, uuid_tail, summon_pos, extra_nbt)
+# (name, uuid_tail, dimension, summon_pos, extra_nbt)
 CASES = (
-    ('lava_north', 1, '2.5 200 3.5', ''),
-    ('water_north', 2, '6.5 200 3.5', ''),
-    ('water_diagonal', 3, '10.5 200 3.5', ''),
-    ('still_water', 4, '2.5 200 10.5', ''),
-    ('still_water_loaded', 5, '6.5 200 10.5', ',Motion:[0.125d,-0.25d,0.5d]'),
-    ('dry_air_loaded', 6, '10.5 200 10.5', ',Motion:[-0.0625d,0.03125d,0.25d]'),
+    ('lava_north', 1, 'minecraft:overworld', '2.5 200 3.5', ''),
+    ('water_north', 2, 'minecraft:overworld', '6.5 200 3.5', ''),
+    ('water_diagonal', 3, 'minecraft:overworld', '10.5 200 3.5', ''),
+    ('still_water', 4, 'minecraft:overworld', '2.5 200 10.5', ''),
+    ('still_water_loaded', 5, 'minecraft:overworld', '6.5 200 10.5', ',Motion:[0.125d,-0.25d,0.5d]'),
+    ('dry_air_loaded', 6, 'minecraft:overworld', '10.5 200 10.5', ',Motion:[-0.0625d,0.03125d,0.25d]'),
+    ('water_north_loaded', 7, 'minecraft:overworld', '6.5 200 3.5', ',Motion:[0.05d,0.0d,-0.02d]'),
+    ('lava_north_loaded', 8, 'minecraft:overworld', '2.5 200 3.5', ',Motion:[0.05d,0.0d,-0.02d]'),
+    ('upper_cell_float_height', 9, 'minecraft:overworld', '13.5 200.20099999 3.5', ''),
+    ('upper_cell_just_below', 10, 'minecraft:overworld', '13.5 200.20099998 3.5', ''),
+    ('nether_fast_lava_north', 11, 'minecraft:the_nether', '2.5 200 3.5', ''),
+    ('nether_fast_lava_loaded', 12, 'minecraft:the_nether', '2.5 200 3.5', ',Motion:[0.05d,0.0d,-0.02d]'),
 )
 
 # Fluid arena at y=200 inside chunk (0, 0), well clear of terrain and chunk borders.
@@ -45,6 +51,19 @@ ARENA_COMMANDS = (
     ('still-water', '/setblock 2 200 10 minecraft:water', 1),
     ('loaded-wall', '/fill 5 200 9 7 200 11 minecraft:stone', 9),
     ('loaded-water', '/setblock 6 200 10 minecraft:water', 1),
+    # Upper-cell-only flowing water at y=201 (y=200 under it is air), testing widened 0.8F height.
+    ('upper-floor-south', '/setblock 13 200 4 minecraft:stone', 1),
+    ('upper-floor-north', '/setblock 13 200 2 minecraft:stone', 1),
+    ('upper-wall-west', '/setblock 12 201 3 minecraft:stone', 1),
+    ('upper-wall-east', '/setblock 14 201 3 minecraft:stone', 1),
+    ('upper-water-source', '/setblock 13 201 4 minecraft:water', 1),
+    ('upper-water-flow', '/setblock 13 201 3 minecraft:water[level=1]', 1),
+    # Fast lava (Nether) channel at y=200 inside Nether chunk (0, 0).
+    ('nether-floor', '/execute in minecraft:the_nether run fill 1 199 1 4 199 5 minecraft:stone', 20),
+    ('nether-clear-fill', '/execute in minecraft:the_nether run fill 1 200 1 4 202 5 minecraft:barrier', 60),
+    ('nether-clear-air', '/execute in minecraft:the_nether run fill 1 200 1 4 202 5 minecraft:air', 60),
+    ('nether-lava-source', '/execute in minecraft:the_nether run setblock 2 200 4 minecraft:lava', 1),
+    ('nether-lava-flow', '/execute in minecraft:the_nether run setblock 2 200 3 minecraft:lava[level=1]', 1),
 )
 
 BLOCK_GUARDS = (
@@ -60,6 +79,11 @@ BLOCK_GUARDS = (
     ('guard-still-water', '/execute if block 2 200 10 minecraft:water[level=0]'),
     ('guard-loaded-water', '/execute if block 6 200 10 minecraft:water[level=0]'),
     ('guard-dry-air', '/execute if block 10 200 10 minecraft:air'),
+    ('guard-upper-air', '/execute if block 13 200 3 minecraft:air'),
+    ('guard-upper-water-source', '/execute if block 13 201 4 minecraft:water[level=0]'),
+    ('guard-upper-water-flow', '/execute if block 13 201 3 minecraft:water[level=1]'),
+    ('guard-nether-lava-source', '/execute in minecraft:the_nether if block 2 200 4 minecraft:lava[level=0]'),
+    ('guard-nether-lava-flow', '/execute in minecraft:the_nether if block 2 200 3 minecraft:lava[level=1]'),
 )
 
 
@@ -81,12 +105,16 @@ def program():
         cmd(f'/gamerule {key} false', f'rule-{key}')
     cmd('/gamerule random_tick_speed 0', 'rule-random-tick-speed')
     cmd('/forceload add 0 0 15 15', 'forceload', 1)
+    cmd('/execute in minecraft:the_nether run forceload add -16 -16 31 31', 'nether-forceload', 9)
     ops.append(dict(op='settle', required_chunks=[[0, 0]]))
+    cmd('/tick step 2', 'nether-settle-step')
+    ops.append(dict(op='tick', n=2))
     for label, text, expected in ARENA_COMMANDS:
         cmd(text, label, expected)
-    for name, tail, pos, extra in CASES:
+    for name, tail, dim, pos, extra in CASES:
+        prefix = f'/execute in {dim} run ' if dim != 'minecraft:overworld' else '/'
         cmd(
-            f'/summon minecraft:evoker_fangs {pos} {{UUID:[I;2362,0,0,{tail}],Warmup:100{extra}}}',
+            f'{prefix}summon minecraft:evoker_fangs {pos} {{UUID:[I;2362,0,0,{tail}],Warmup:100{extra}}}',
             f'{name}-summon',
             1,
         )
@@ -97,8 +125,9 @@ def program():
             cmd(f'/tick step {delta}', f'step-{tick}')
             ops.append(dict(op='tick', n=delta))
         previous = tick
-        for name, tail, _, _ in CASES:
-            cmd(f'/data get entity {fangs_uuid(tail)} Motion', f'{name}-t{tick}-motion', 3, admission=False)
+        for name, tail, dim, _, _ in CASES:
+            prefix = f'/execute in {dim} run ' if dim != 'minecraft:overworld' else '/'
+            cmd(f'{prefix}data get entity {fangs_uuid(tail)} Motion', f'{name}-t{tick}-motion', 3, admission=False)
     for label, text in BLOCK_GUARDS:
         cmd(text, label, 1)
     return ops
@@ -111,7 +140,7 @@ def double_bits(text):
 def extract_rows(recorded, records):
     by_label = {op['label']: row for op, row in zip(recorded, records)}
     rows = []
-    for name, _, _, _ in CASES:
+    for name, _, _, _, _ in CASES:
         for tick in TICKS:
             row = by_label[f'{name}-t{tick}-motion']
             messages = row.get('messages') or []
