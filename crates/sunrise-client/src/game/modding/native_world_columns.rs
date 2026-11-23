@@ -56,7 +56,7 @@ impl Game<'_> {
     ) -> Result<ControlFlow<()>, mod_api::LevelReadError> {
         let world = self.native_level_world_result(level)?;
         let (below, above) = range;
-        let per = column_span(below, above, world.layout().height())
+        let per = column_span(below, above, world.shape.height)
             .ok_or(mod_api::LevelReadError::Unavailable)?;
         let index = super::native_worldgen::prepare(self.pack.assets.registry)
             .map_err(|_| mod_api::LevelReadError::Unavailable)?;
@@ -70,7 +70,17 @@ impl Game<'_> {
             let slice = if let Some(chunk) = world.chunks.get(&(x >> 4, z >> 4)) {
                 let base = self.world_column_height(world, heightmap, x, z);
                 raw.clear();
-                fill_column_blocks(world.air, chunk, x, z, base, below, above, &mut raw);
+                fill_column_blocks(
+                    world.air,
+                    chunk,
+                    world.shape,
+                    x,
+                    z,
+                    base,
+                    below,
+                    above,
+                    &mut raw,
+                );
                 states.clear();
                 for &state in &raw {
                     let api_state = index
