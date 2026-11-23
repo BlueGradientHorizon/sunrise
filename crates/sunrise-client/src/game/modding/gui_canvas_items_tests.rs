@@ -219,7 +219,10 @@ fn scoped_items_keep_the_seed_and_draw_decorations_outside_the_squeeze() {
                     game.inventory[7] = Some(ItemStack::new(ITEM, 7));
                     game.offhand = Some(ItemStack::new(ITEM, 10));
                     let mut hotbar = HudBatch::scratch([320, 240]);
-                    game.draw_item_hotbar(&mut hotbar, [320, 240], None);
+                    let (inputs, source) = game
+                        .camera_hotbar(crate::game::remote_camera::CameraPlayer::Own, None)
+                        .expect("local player hotbar inputs");
+                    game.draw_item_hotbar(&mut hotbar, [320, 240], &inputs, source);
                 });
             });
             assert_eq!(

@@ -1543,9 +1543,16 @@ mod sweep_tests {
 
                 // The client toast pass drains the shared queue even when F1 hides the HUD.
                 let mut batch = sunrise_client::hud::HudBatch::scratch([640, 480]);
-                game.draw_every_toast(&mut batch, true, false);
+                game.ui.player_hides_gui = true;
+                game.draw_every_toast(&mut batch);
                 assert!(mod_api::__private::take_hook_panics().is_empty());
-                let [(Some(toast), _)] = game.server_packs.hook_panics.as_slice() else {
+                let [
+                    crate::game::toast_manager::VisibleToast {
+                        toast: crate::game::toast_manager::Toast::Diagnostic { toast, .. },
+                        ..
+                    },
+                ] = game.toast_manager.visible.as_slice()
+                else {
                     panic!("expected exactly one shared error toast");
                 };
                 assert_eq!(

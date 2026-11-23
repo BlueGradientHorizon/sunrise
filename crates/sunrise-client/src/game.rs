@@ -10952,7 +10952,7 @@ impl Game<'_> {
                 .renderer
                 .as_mut()
                 .expect("renderer sized above")
-                .render(&loading_frame(&hud));
+                .render(&loading_frame(&hud), None);
         }
         pr.lap("pr_setup");
         let alpha = self.frame_world_partial_tick();
@@ -11570,15 +11570,6 @@ impl Game<'_> {
         use sunrise_world::dimension_type::Skybox;
         let skybox = self.dimension_type().skybox;
         let camera_fog = self.camera_fog_type(camera.to_array());
-        // Camera.extractRenderState asks the camera entity, not the local player.
-        let sky_effect_blocked = if self.controls_camera() {
-            self.potions.effects.get("blindness").is_some()
-                || self.potions.effects.get("darkness").is_some()
-        } else {
-            self.camera_mob().is_some_and(|mob| {
-                mob.has_effect("minecraft:blindness") || mob.has_effect("minecraft:darkness")
-            })
-        };
         let boss_world_fog = self.boss_overlay.should_create_world_fog();
         let frame = Frame {
             weather: &weather,
