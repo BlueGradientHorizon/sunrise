@@ -10,11 +10,6 @@ use sunrise_core::nbt::Tag;
 use sunrise_core::position::ChunkPos;
 use sunrise_core::random::RandomSource;
 
-const WITNESS_26_3: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../tools/witness/26.3/summon_bolt_nbt.json"
-));
-
 // `UUIDUtil.createOfflinePlayerUUID("Player")`, matching VanillaCommandExecOracle's single-player owner.
 const ORACLE_PLAYER_UUID: u128 = 0xa01e3843_e521_3998_958a_f459800e4d11;
 
@@ -28,10 +23,31 @@ fn tag_contains_bolt(tag: &Tag) -> bool {
     false
 }
 
-/// Replays the vanilla 26.3 witness for `/summon minecraft:lightning_bolt` with trailing NBT (#2690).
+/// Replays the vanilla 26.3 witness for `/summon minecraft:lightning_bolt` with trailing NBT (#2690),
+/// recorded into `.local` by `tools/test_summon_bolt_nbt_parity.py`.
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_summon_bolt_nbt_parity.py"]
 fn a_bolt_summoned_with_nbt_strikes_and_goes() {
+    run_a_bolt_summoned_with_nbt_strikes_and_goes();
+}
+
+pub(in crate::game) fn run_a_bolt_summoned_with_nbt_strikes_and_goes() {
+    let witness_path = std::env::var_os("SUNRISE_SUMMON_BOLT_NBT_WITNESS").unwrap_or_else(|| {
+        panic!("SUNRISE_SUMMON_BOLT_NBT_WITNESS is unset; run tools/test_summon_bolt_nbt_parity.py")
+    });
+    let witness_path = std::path::PathBuf::from(witness_path);
+    let witness_path = if witness_path.is_dir() {
+        witness_path.join("summon_bolt_nbt.json")
+    } else {
+        witness_path
+    };
+    let raw = std::fs::read_to_string(&witness_path).unwrap_or_else(|e| {
+        panic!(
+            "failed to read witness {} (run tools/test_summon_bolt_nbt_parity.py): {e}",
+            witness_path.display()
+        )
+    });
+
     // Opt in to deterministic thread seeds only in a fresh child process.
     if run_fresh_cases(
         "game::commands::summon_bolt_tests::a_bolt_summoned_with_nbt_strikes_and_goes",
@@ -41,7 +57,7 @@ fn a_bolt_summoned_with_nbt_strikes_and_goes() {
         return;
     }
 
-    let witness: Value = serde_json::from_str(WITNESS_26_3).unwrap();
+    let witness: Value = serde_json::from_str(&raw).expect("valid 26.3 witness JSON");
     assert_eq!(witness["minecraft"], "26.3");
     let steps = witness["steps"].as_array().unwrap();
     assert!(!steps.is_empty());

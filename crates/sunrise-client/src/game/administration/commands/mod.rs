@@ -4341,7 +4341,7 @@ mod summon_item_orb_tests;
 
 #[cfg(test)]
 #[path = "summon_bolt_tests.rs"]
-mod summon_bolt_tests;
+pub(in crate::game) mod summon_bolt_tests;
 
 #[cfg(test)]
 pub(in crate::game) mod peaceful_tests {
