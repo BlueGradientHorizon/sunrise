@@ -1586,7 +1586,7 @@ mod tnt_rule_tests {
     /// Vanilla 26.3 server witness (`VanillaSulfurCubeFuseOracle`, `tools/test_sulfur_cube_fuse_parity.py`).
     #[test]
     fn a_loaded_fuse_is_kept_as_it_is_and_leaves_invulnerable_alone() {
-        use sunrise_core::nbt::{Compound, JavaString, Tag, parse_snbt};
+        use sunrise_core::nbt::{JavaString, Tag, parse_snbt};
         let witness = include_str!("../../../../tools/witness/26.3/sulfur_cube_fuse_server.txt")
             .replace("\r\n", "\n");
         let mut checked = 0usize;
@@ -1613,7 +1613,7 @@ mod tnt_rule_tests {
             assert_eq!(max_fuse(&m), expected_max, "{line}");
             assert_eq!(m.invulnerable_flag, expected_inv, "{line}");
             assert_eq!(primed(&m), expected_primed, "{line}");
-            let mut saved = Compound::default();
+            let mut saved = crate::entity_nbt::EntityTagWriter::new(None);
             to_nbt(&m, &mut saved);
             assert_eq!(
                 saved.get(&JavaString::from("fuse")),
@@ -1777,7 +1777,6 @@ mod fuse_anim_tests {
             client_tick(&mut m);
         }
         // Stops at fuse 0 (primed until the server removes it).
-        assert_eq!(fuse(&m), 0);
         assert_eq!(fuse(&m), 0);
     }
 
