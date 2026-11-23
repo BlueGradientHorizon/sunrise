@@ -87,6 +87,10 @@ pub(super) trait Entity: EntityRules {
     /// `Entity.getDeltaMovement`.
     fn velocity(&self) -> Vec3;
     fn velocity_mut(&mut self) -> &mut Vec3;
+    /// The server's accumulated `Entity.fallDistance`. A kind that does not track it has zero.
+    fn fall_distance(&self) -> f64 {
+        self.body_fall_distance()
+    }
     /// `Entity.resetFallDistance`: how far it has fallen is forgotten, so its next landing
     /// hurts it as a step does. Required, so a new kind states whether it keeps a fall distance.
     fn reset_fall_distance(&mut self);
@@ -2097,6 +2101,9 @@ impl Entity for Mob {
     const SERIALIZES_ATTACHMENTS: bool = true;
     stored_ground!();
 
+    fn fall_distance(&self) -> f64 {
+        self.fall_distance
+    }
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
     }
@@ -2242,6 +2249,9 @@ impl Entity for Mob {
 
 impl Entity for ItemEntity {
     stored_ground!();
+    fn fall_distance(&self) -> f64 {
+        self.fall_distance
+    }
     fn support_collision(
         &self,
         _tags: &sunrise_items::items::EntityTypeTags,
@@ -2496,6 +2506,9 @@ impl Entity for Boat {
 
 impl Entity for Minecart {
     stored_ground!();
+    fn fall_distance(&self) -> f64 {
+        self.fall_distance
+    }
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
     }
@@ -2840,6 +2853,9 @@ impl Entity for PrimedTnt {
 
 impl Entity for FallingBlock {
     stored_ground!();
+    fn fall_distance(&self) -> f64 {
+        self.fall_distance
+    }
     fn support_collision(
         &self,
         _tags: &sunrise_items::items::EntityTypeTags,
@@ -2923,6 +2939,11 @@ impl Entity for FallingBlock {
 
 impl Entity for Projectile {
     stored_ground!();
+    fn fall_distance(&self) -> f64 {
+        self.arrow
+            .as_ref()
+            .map_or(self.fall_distance, |arrow| arrow.fall_distance)
+    }
     fn support_collision(
         &self,
         _tags: &sunrise_items::items::EntityTypeTags,
@@ -2930,10 +2951,7 @@ impl Entity for Projectile {
         (
             sunrise_client::motion::BodyMotion::entity_context(self.id, self.position),
             Some(PowderSnowSubject {
-                fall_distance: self
-                    .arrow
-                    .as_ref()
-                    .map_or(self.fall_distance, |arrow| arrow.fall_distance),
+                fall_distance: self.fall_distance(),
                 ..Default::default()
             }),
         )
