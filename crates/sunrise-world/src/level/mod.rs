@@ -43,7 +43,7 @@
 //! # Integration sketch
 //!
 //! ```ignore
-//! use sunrise_world::level::{self, Behaviours, LevelAccess, LevelEvent, PlaceContext, Ticks, flags};
+//! use sunrise_world::level::{self, Behaviours, LevelAccess, LevelEvent, PlaceContext, PlacementSource, Ticks, flags};
 //!
 //! struct GameLevel { chunks: Chunks, random: LegacyRandom, time: i64, events: Vec<LevelEvent> }
 //! impl level::BlockEntityNeighbors for GameLevel {}
@@ -79,7 +79,8 @@
 //!
 //! // Player actions:
 //! behaviours.place_block(&mut level, &mut ticks, &PlaceContext { clicked_pos, face, hit, inside: false,
-//!     yaw, pitch, sneaking, item: "minecraft:oak_stairs".into(), can_use_game_master_blocks: false });
+//!     source: PlacementSource::Player { yaw, pitch, sneaking }, item: "minecraft:oak_stairs".into(),
+//!     can_use_game_master_blocks: false });
 //! let state = level.block_state(pos);
 //! let block_hit = sunrise_core::geometry::BlockHit { block: pos, direction: face, location: hit, inside: false };
 //! behaviours.use_without_item(&mut level, &mut ticks, state, block_hit, player_context);
@@ -103,7 +104,7 @@ use sunrise_core::{
     connection_kind::ConnectionKind, dimension::Dimension, neighbour_update::NeighbourUpdate,
 };
 
-pub use block_maps::BlockMaps;
+pub use block_maps::{BlockMapValue, BlockMaps};
 pub mod classes;
 pub mod data;
 pub mod states;
@@ -141,6 +142,7 @@ mod survive;
 mod tick;
 mod timeline;
 mod update;
+pub use update::BlockWrite;
 mod weather;
 
 #[cfg(test)]
@@ -210,8 +212,8 @@ pub enum LandingWrite {
 pub use interact::{InteractionResult, PlayerContext, PlayerEffect, UseBranch, hit_slot};
 pub use pistons::{BlockEventData, MovingPiston};
 pub use place::{
-    AppliedPlacement, PlaceContext, PlaceOutcome, PlacementContext, PlacementPreview,
-    ResolvedPlacement,
+    AppliedPlacement, DirectionalRefusal, PlaceContext, PlaceOutcome, PlacementContext,
+    PlacementPreview, PlacementSource, ResolvedPlacement,
 };
 pub use portal::PortalShape;
 pub use states::{BlockId, PropKey, StateTable};
@@ -718,10 +720,14 @@ pub trait LevelAccess: BlockEntityNeighbors {
     }
     /// Observe `BlockState.handleNeighborChanged` before the block handles it,
     /// with the level's `ticks`, as vanilla's `neighborChanged` gets the level
-    /// itself (a diode schedules its tick there). The default does nothing;
-    /// implementations must not alter the update queue.
+    /// itself: a diode schedules its tick there, and `RedstoneLampBlock` sets its
+    /// own block. A write goes through `Behaviours::set_block` with these `ticks`,
+    /// so its neighbour updates run next, before the rest of the current update
+    /// (`CollectingNeighborUpdater`); the block's own handling then runs with the
+    /// state it was called with, as code after a `setBlock` in `neighborChanged`
+    /// does. The default does nothing.
     fn observe_neighbor_changed(
-        &self,
+        &mut self,
         _ticks: &mut Ticks,
         _pos: BlockPos,
         _state: BlockStateId,
@@ -844,15 +850,6 @@ pub trait LevelAccess: BlockEntityNeighbors {
         _fluid: FluidState,
         _answer: &mut Option<Option<BlockStateId>>,
     ) {
-    }
-    /// `BlockItem.updatePlacementContext`: replace or refuse the item context.
-    /// None retains the vanilla item rewrite, including scaffolding's walk.
-    fn placement_context(
-        &self,
-        _item: &str,
-        _context: &PlacementContext,
-    ) -> Option<Option<PlacementContext>> {
-        None
     }
     /// `BlockItem.mustSurvive`: None retains the item's vanilla requirement.
     fn must_survive(&self, _item: &str) -> Option<bool> {
@@ -1637,6 +1634,31 @@ impl Behaviours {
     ) -> bool {
         self.sim(level, ticks).set_block(pos, state, flags)
     }
+    /// Store a block and pause before removal. A server host uses this boundary to
+    /// run `preRemoveSideEffects` with the item-entity join API still available.
+    pub fn begin_block_write<L: LevelAccess + ?Sized>(
+        &self,
+        level: &mut L,
+        ticks: &mut Ticks,
+        pos: BlockPos,
+        state: BlockStateId,
+        flags: i32,
+    ) -> Option<BlockWrite> {
+        self.sim(level, ticks).begin_block_write(pos, state, flags)
+    }
+
+    /// Finish the paused write. If the host ran block-entity removal, pass its number of
+    /// jukebox neighbor updates; otherwise the ordinary removal runs here.
+    pub fn finish_block_write<L: LevelAccess + ?Sized>(
+        &self,
+        level: &mut L,
+        ticks: &mut Ticks,
+        write: BlockWrite,
+        removal_updates: Option<u8>,
+    ) -> bool {
+        self.sim(level, ticks)
+            .finish_block_write(write, removal_updates, flags::UPDATE_LIMIT)
+    }
     /// `CopperChestBlock.getFromCopperBlock(copperBlock, facing, level, pos)`.
     pub fn copper_chest_from_block<L: LevelAccess + ?Sized>(
         &self,
@@ -2099,8 +2121,13 @@ pub(crate) struct Sim<'a, L: LevelAccess + ?Sized> {
     pub b: &'a Behaviours,
     pub level: &'a mut L,
     pub ticks: &'a mut Ticks,
+    /// A dry placement keeps its effects in `ticks` but reads live signal inputs.
+    signal_reads: Option<&'a Ticks>,
     /// The carried block being settled, before it is written into the cell.
     landing_block: Option<(BlockPos, BlockStateId)>,
+    /// Why a placement rule had no answer for its context (vanilla throws), noted by the rule
+    /// and taken by `state_for_placement`, which returns it as its `Err`.
+    placement_refusal: Option<DirectionalRefusal>,
     /// `RedstoneWireBlock.shouldSignal` is false while a wire samples its
     /// neighbours (`getBlockSignal`).
     pub wire_signal_off: std::cell::Cell<bool>,
@@ -2128,22 +2155,21 @@ impl<'a, L: LevelAccess + ?Sized> Sim<'a, L> {
     /// Signal trees, which ask a wire's shape from every direction they probe,
     /// start at [`Self::query_signals`].
     pub(crate) fn signals(&self) -> Signals<'_, L> {
-        Signals {
-            b: self.b,
-            level: &*self.level,
-            ticks: &*self.ticks,
-            wire_signal_off: self.wire_signal_off.get(),
-            view: 0,
-            unknown_output: std::cell::Cell::new(false),
-        }
+        let mut signals = self
+            .b
+            .uncached_signals(&*self.level, self.signal_reads.unwrap_or(self.ticks));
+        signals.wire_signal_off = self.wire_signal_off.get();
+        signals
     }
     /// A view for one signal tree: the wire shapes it computes are memoized for
     /// as long as it lives. See [`redstone::WireConnections`].
     pub(crate) fn query_signals(&self) -> Signals<'_, L> {
-        Signals {
-            view: self.ticks.wire_connections.next_view(),
-            ..self.signals()
+        let mut signals = self.signals();
+        // A preview must not populate the live level's wire-shape cache.
+        if self.signal_reads.is_none() {
+            signals.view = self.ticks.wire_connections.next_view();
         }
+        signals
     }
 }
 impl Behaviours {
@@ -2153,14 +2179,45 @@ impl Behaviours {
         level: &'a L,
         ticks: &'a Ticks,
     ) -> Signals<'a, L> {
+        let mut signals = self.uncached_signals(level, ticks);
+        signals.view = ticks.wire_connections.next_view();
+        signals
+    }
+
+    /// Read signal inputs from `ticks` without touching its wire-shape cache.
+    pub fn uncached_signals<'a, L: signal_access::SignalAccess + ?Sized>(
+        &'a self,
+        level: &'a L,
+        ticks: &'a Ticks,
+    ) -> Signals<'a, L> {
         Signals {
             b: self,
             level,
             ticks,
             wire_signal_off: false,
-            view: ticks.wire_connections.next_view(),
+            view: 0,
             unknown_output: std::cell::Cell::new(false),
         }
+    }
+    /// Ask `Block.getStateForPlacement` with a resolved context, without placing the result.
+    /// Give it a scratch level to discard writes and random draws. Signals may read live ticks;
+    /// any ticks requested by the placement rule go into a separate, empty queue.
+    /// A player context is taken as written. A directional context's `replace_clicked` is
+    /// what `DirectionalPlaceContext.replacingClickedOnBlock()` reads from the clicked block
+    /// here, whatever the caller wrote; a question vanilla throws on is refused.
+    pub fn state_for_resolved_placement<L: LevelAccess + ?Sized>(
+        &self,
+        level: &mut L,
+        signal_reads: &Ticks,
+        block: BlockId,
+        context: &PlacementContext,
+    ) -> Result<Option<BlockStateId>, DirectionalRefusal> {
+        let mut ticks = Ticks::default();
+        let mut sim = self.sim(level, &mut ticks);
+        sim.signal_reads = Some(signal_reads);
+        let mut context = context.clone();
+        sim.settle_replacing_clicked(&mut context)?;
+        sim.state_for_placement(block, &context)
     }
     pub(crate) fn sim<'a, L: LevelAccess + ?Sized>(
         &'a self,
@@ -2171,7 +2228,9 @@ impl Behaviours {
             b: self,
             level,
             ticks,
+            signal_reads: None,
             landing_block: None,
+            placement_refusal: None,
             wire_signal_off: std::cell::Cell::new(false),
         }
     }
@@ -2418,6 +2477,42 @@ mod liquid_container_tests {
         b.scheduled_fluid_tick(&mut level, &mut Ticks::default(), source);
         assert_eq!(level.block_state(north), filled);
         assert_eq!(level.block_state(south), stone);
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn lateral_flow_still_spreads_to_a_target_changed_to_another_washable_block() {
+        let fixture = tests::fixture().expect("prepared block facts for daily fixture");
+        let b = &fixture.behaviours;
+        let state = |name| fixture.registry.default_state(name).unwrap();
+        let source = BlockPos::new(0, 65, 0);
+        let north = source.offset(0, 0, -1);
+        let south = source.offset(0, 0, 1);
+        let container = state("minecraft:dandelion");
+        let stone = state("minecraft:stone");
+        let wire = state("minecraft:redstone_wire");
+        let mut level = ContainerLevel {
+            base: TestLevel::new(b),
+            container,
+            accepts: Some(FluidKind::FlowingWater),
+            filled: state("minecraft:emerald_block"),
+            // Stands in for a neighbour update rewriting the target mid-spread,
+            // the way a wire's power recompute does in a real cascade.
+            replace_on_fill: Some((south, wire)),
+        };
+        level.set_raw(source, state("minecraft:water"));
+        level.set_raw(source.offset(0, -1, 0), stone);
+        level.set_raw(source.offset(-1, 0, 0), stone);
+        level.set_raw(source.offset(1, 0, 0), stone);
+        level.set_raw(north, container);
+        b.scheduled_fluid_tick(&mut level, &mut Ticks::default(), source);
+        // Vanilla's spreadTo acts on the live block: air tested, wire found, water
+        // still washes the wire away instead of skipping the target.
+        assert!(
+            b.fluid(level.block_state(south))
+                .kind()
+                .same_family(FluidKind::Water)
+        );
     }
 }
 

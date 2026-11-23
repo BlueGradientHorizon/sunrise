@@ -77,7 +77,7 @@ struct Draw {
     quads: u32,
 }
 
-pub(super) struct CoreParticles {
+pub(crate) struct CoreParticles {
     /// By shader: `None` for one that doesn't build, or can't draw into this frame (logged once).
     pipelines: Vec<(Arc<GpuShader>, Option<Pipeline>)>,
     /// The frame the pipelines draw into: its format, and whether it holds linear light.
@@ -219,14 +219,14 @@ impl CoreParticles {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         title: bool,
-        vanilla: impl FnOnce() -> Vec<u8>,
+        vanilla: impl FnOnce() -> [u8; 1024],
     ) {
         let mut batches = std::mem::take(&mut self.batches);
         if title {
             batches.clear();
         }
         let vanilla = if batches.is_empty() {
-            Vec::new()
+            [0; 1024]
         } else {
             vanilla()
         };

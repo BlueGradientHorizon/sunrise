@@ -1,0 +1,1425 @@
+{
+  "game_version": "26.3",
+  "java_version": "25.0.5.1",
+  "cases": [
+    {
+      "case": "dry_entity_hit_axis",
+      "kind": "small_fireball",
+      "scenario": "entity_hit",
+      "seed": 23880,
+      "loaded_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "loaded_old_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4021000000000000",
+            "4050900000000000",
+            "402119999a000000"
+          ],
+          "vel_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "3fe23d70a0000000"
+          ],
+          "rot_bits": [
+            "43a20000",
+            "b5cccccd"
+          ],
+          "old_rot_bits": [
+            "43b40000",
+            "00000000"
+          ],
+          "accel_bits": "3fb999999999999a",
+          "alive": false,
+          "in_water": false,
+          "rng_state": 25214892837,
+          "sounds": []
+        }
+      ]
+    },
+    {
+      "case": "dry_entity_hit_diag",
+      "kind": "fireball",
+      "scenario": "entity_hit",
+      "seed": 23881,
+      "loaded_rot_bits": [
+        "42340000",
+        "c1200000"
+      ],
+      "loaded_old_rot_bits": [
+        "42340000",
+        "c1200000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4020cccccd000000",
+            "405094ccccd00000",
+            "402119999a000000"
+          ],
+          "vel_bits": [
+            "3fd1da80e5c8e446",
+            "3fc1da80e5c8e446",
+            "3fe1da80e5c8e446"
+          ],
+          "rot_bits": [
+            "42855fc2",
+            "c128558e"
+          ],
+          "old_rot_bits": [
+            "42340000",
+            "c1200000"
+          ],
+          "accel_bits": "3fb999999999999a",
+          "alive": false,
+          "in_water": false,
+          "rng_state": 25214892836,
+          "sounds": []
+        }
+      ]
+    },
+    {
+      "case": "block_hit_axis",
+      "kind": "small_fireball",
+      "scenario": "block_hit",
+      "seed": 23882,
+      "loaded_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "loaded_old_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4021000000000000",
+            "4050a00000000000",
+            "4022000000000000"
+          ],
+          "vel_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "3fe23d70a0000000"
+          ],
+          "rot_bits": [
+            "43a20000",
+            "b5cccccd"
+          ],
+          "old_rot_bits": [
+            "43b40000",
+            "00000000"
+          ],
+          "accel_bits": "3fb999999999999a",
+          "alive": false,
+          "in_water": false,
+          "rng_state": 25214892839,
+          "sounds": []
+        }
+      ]
+    },
+    {
+      "case": "block_hit_diag",
+      "kind": "wither_skull",
+      "scenario": "block_hit",
+      "seed": 23883,
+      "loaded_rot_bits": [
+        "42340000",
+        "c1200000"
+      ],
+      "loaded_old_rot_bits": [
+        "42340000",
+        "c1200000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4020f33333333333",
+            "40509d999999999a",
+            "4022000000000000"
+          ],
+          "vel_bits": [
+            "3fd1da80e5c8e446",
+            "3fc1da80e5c8e446",
+            "3fe1da80e5c8e446"
+          ],
+          "rot_bits": [
+            "42855fc2",
+            "c128558e"
+          ],
+          "old_rot_bits": [
+            "42340000",
+            "c1200000"
+          ],
+          "accel_bits": "3fb999999999999a",
+          "alive": false,
+          "in_water": false,
+          "rng_state": 25214892838,
+          "sounds": []
+        }
+      ]
+    },
+    {
+      "case": "miss_axis",
+      "kind": "small_fireball",
+      "scenario": "miss",
+      "seed": 23884,
+      "loaded_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "loaded_old_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4021000000000000",
+            "4050a00000000000",
+            "4021a3d70a000000"
+          ],
+          "vel_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "3fe23d70a0000000"
+          ],
+          "rot_bits": [
+            "43a20000",
+            "b5cccccd"
+          ],
+          "old_rot_bits": [
+            "43b40000",
+            "00000000"
+          ],
+          "accel_bits": "3fb999999999999a",
+          "alive": true,
+          "in_water": false,
+          "rng_state": 25214892833,
+          "sounds": []
+        }
+      ]
+    },
+    {
+      "case": "miss_diag",
+      "kind": "fireball",
+      "scenario": "miss",
+      "seed": 23885,
+      "loaded_rot_bits": [
+        "42340000",
+        "c1200000"
+      ],
+      "loaded_old_rot_bits": [
+        "42340000",
+        "c1200000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "40210ed4072e4722",
+            "4050a8ed4072e472",
+            "40219da80e5c8e44"
+          ],
+          "vel_bits": [
+            "3fd1da80e5c8e446",
+            "3fc1da80e5c8e446",
+            "3fe1da80e5c8e446"
+          ],
+          "rot_bits": [
+            "42855fc2",
+            "c128558e"
+          ],
+          "old_rot_bits": [
+            "42340000",
+            "c1200000"
+          ],
+          "accel_bits": "3fb999999999999a",
+          "alive": true,
+          "in_water": false,
+          "rng_state": 25214892832,
+          "sounds": []
+        }
+      ]
+    },
+    {
+      "case": "dragon_owner_axis",
+      "kind": "dragon_fireball",
+      "scenario": "dragon_owner",
+      "seed": 23886,
+      "loaded_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "loaded_old_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4021000000000000",
+            "4050900000000000",
+            "402119999a000000"
+          ],
+          "vel_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "3fe23d70a0000000"
+          ],
+          "rot_bits": [
+            "43a20000",
+            "b5cccccd"
+          ],
+          "old_rot_bits": [
+            "43b40000",
+            "00000000"
+          ],
+          "accel_bits": "3fb999999999999a",
+          "alive": true,
+          "in_water": false,
+          "rng_state": 25214892835,
+          "sounds": []
+        }
+      ]
+    },
+    {
+      "case": "dragon_owner_diag",
+      "kind": "dragon_fireball",
+      "scenario": "dragon_owner",
+      "seed": 23887,
+      "loaded_rot_bits": [
+        "42340000",
+        "c1200000"
+      ],
+      "loaded_old_rot_bits": [
+        "42340000",
+        "c1200000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4020cccccd000000",
+            "405094ccccd00000",
+            "402119999a000000"
+          ],
+          "vel_bits": [
+            "3fd1da80e5c8e446",
+            "3fc1da80e5c8e446",
+            "3fe1da80e5c8e446"
+          ],
+          "rot_bits": [
+            "42855fc2",
+            "c128558e"
+          ],
+          "old_rot_bits": [
+            "42340000",
+            "c1200000"
+          ],
+          "accel_bits": "3fb999999999999a",
+          "alive": true,
+          "in_water": false,
+          "rng_state": 25214892834,
+          "sounds": []
+        }
+      ]
+    },
+    {
+      "case": "small_breeze_axis",
+      "kind": "small_fireball",
+      "scenario": "breeze_reflect",
+      "seed": 23888,
+      "loaded_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "loaded_old_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4021000000000000",
+            "4050a00000000000",
+            "4021666666000000"
+          ],
+          "vel_bits": [
+            "8000000000000000",
+            "8000000000000000",
+            "bfd23d70a0000000"
+          ],
+          "rot_bits": [
+            "43fe67d3",
+            "b5cccccd"
+          ],
+          "old_rot_bits": [
+            "440833ea",
+            "00000000"
+          ],
+          "accel_bits": "3fa999999999999a",
+          "alive": true,
+          "in_water": false,
+          "rng_state": 208448138544900,
+          "sounds": [
+            "minecraft:entity.breeze.deflect"
+          ]
+        }
+      ]
+    },
+    {
+      "case": "fireball_breeze_diag",
+      "kind": "fireball",
+      "scenario": "breeze_reflect",
+      "seed": 23889,
+      "loaded_rot_bits": [
+        "42340000",
+        "c1200000"
+      ],
+      "loaded_old_rot_bits": [
+        "42340000",
+        "c1200000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4020f33333000000",
+            "4050a73333300000",
+            "4021666666000000"
+          ],
+          "vel_bits": [
+            "bfc1da80e5c8e446",
+            "bfb1da80e5c8e446",
+            "bfd1da80e5c8e446"
+          ],
+          "rot_bits": [
+            "437b7f12",
+            "c128558e"
+          ],
+          "old_rot_bits": [
+            "4365cf31",
+            "c1200000"
+          ],
+          "accel_bits": "3fa999999999999a",
+          "alive": true,
+          "in_water": false,
+          "rng_state": 208422923640983,
+          "sounds": [
+            "minecraft:entity.breeze.deflect"
+          ]
+        }
+      ]
+    },
+    {
+      "case": "wither_skull_breeze_axis",
+      "kind": "wither_skull",
+      "scenario": "breeze_reflect",
+      "seed": 23890,
+      "loaded_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "loaded_old_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4021000000000000",
+            "4050a00000000000",
+            "4021666666000000"
+          ],
+          "vel_bits": [
+            "8000000000000000",
+            "8000000000000000",
+            "bfd23d70a0000000"
+          ],
+          "rot_bits": [
+            "43fe6848",
+            "b5cccccd"
+          ],
+          "old_rot_bits": [
+            "44083424",
+            "00000000"
+          ],
+          "accel_bits": "3fa999999999999a",
+          "alive": true,
+          "in_water": false,
+          "rng_state": 208498568352734,
+          "sounds": [
+            "minecraft:entity.breeze.deflect"
+          ]
+        }
+      ]
+    },
+    {
+      "case": "dragon_breeze_axis",
+      "kind": "dragon_fireball",
+      "scenario": "breeze_reflect",
+      "seed": 23891,
+      "loaded_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "loaded_old_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4021000000000000",
+            "4050a00000000000",
+            "4021666666000000"
+          ],
+          "vel_bits": [
+            "8000000000000000",
+            "8000000000000000",
+            "bfd23d70a0000000"
+          ],
+          "rot_bits": [
+            "43fe680e",
+            "b5cccccd"
+          ],
+          "old_rot_bits": [
+            "44083407",
+            "00000000"
+          ],
+          "accel_bits": "3fa999999999999a",
+          "alive": true,
+          "in_water": false,
+          "rng_state": 208473353448817,
+          "sounds": [
+            "minecraft:entity.breeze.deflect"
+          ]
+        }
+      ]
+    },
+    {
+      "case": "near_zero_below_cutoff_miss",
+      "kind": "small_fireball",
+      "scenario": "near_zero",
+      "seed": 23892,
+      "loaded_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "loaded_old_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4021000000000000",
+            "4050a00000000000",
+            "402100001fe07011"
+          ],
+          "vel_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "3eafe070110a137f"
+          ],
+          "rot_bits": [
+            "43a20000",
+            "b5cccccd"
+          ],
+          "old_rot_bits": [
+            "43b40000",
+            "00000000"
+          ],
+          "accel_bits": "bfb999999999999a",
+          "alive": true,
+          "in_water": false,
+          "rng_state": 25214892857,
+          "sounds": []
+        }
+      ]
+    },
+    {
+      "case": "near_zero_at_cutoff_miss",
+      "kind": "small_fireball",
+      "scenario": "near_zero",
+      "seed": 23893,
+      "loaded_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "loaded_old_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4021000000000000",
+            "4050a00000000000",
+            "4020cf5d67c46023"
+          ],
+          "vel_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "bfb8514c1dcfee5b"
+          ],
+          "rot_bits": [
+            "35cccccd",
+            "b5cccccd"
+          ],
+          "old_rot_bits": [
+            "00000000",
+            "00000000"
+          ],
+          "accel_bits": "bfb999999999999a",
+          "alive": true,
+          "in_water": false,
+          "rng_state": 25214892856,
+          "sounds": []
+        }
+      ]
+    },
+    {
+      "case": "near_zero_below_cutoff_entity_hit",
+      "kind": "small_fireball",
+      "scenario": "near_zero",
+      "seed": 23894,
+      "loaded_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "loaded_old_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4021000000000000",
+            "4050a00000000000",
+            "402119999a000000"
+          ],
+          "vel_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "3eafe070110a137f"
+          ],
+          "rot_bits": [
+            "43a20000",
+            "b5cccccd"
+          ],
+          "old_rot_bits": [
+            "43b40000",
+            "00000000"
+          ],
+          "accel_bits": "bfb999999999999a",
+          "alive": false,
+          "in_water": false,
+          "rng_state": 25214892859,
+          "sounds": []
+        }
+      ]
+    },
+    {
+      "case": "near_zero_at_cutoff_entity_hit",
+      "kind": "small_fireball",
+      "scenario": "near_zero",
+      "seed": 23895,
+      "loaded_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "loaded_old_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4021000000000000",
+            "4050a00000000000",
+            "4020e66666000000"
+          ],
+          "vel_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "bfb8514c1dcfee5b"
+          ],
+          "rot_bits": [
+            "35cccccd",
+            "b5cccccd"
+          ],
+          "old_rot_bits": [
+            "00000000",
+            "00000000"
+          ],
+          "accel_bits": "bfb999999999999a",
+          "alive": false,
+          "in_water": false,
+          "rng_state": 25214892858,
+          "sounds": []
+        }
+      ]
+    },
+    {
+      "case": "breeze_wet_entry_after_first_tick",
+      "kind": "small_fireball",
+      "scenario": "wet_breeze",
+      "seed": 23896,
+      "loaded_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "loaded_old_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4021000000000000",
+            "4050900000000000",
+            "40213d70a399999a"
+          ],
+          "vel_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "3fe23d70a0000000"
+          ],
+          "rot_bits": [
+            "43a20000",
+            "b5cccccd"
+          ],
+          "old_rot_bits": [
+            "43b40000",
+            "00000000"
+          ],
+          "accel_bits": "3fb999999999999a",
+          "alive": true,
+          "in_water": false,
+          "rng_state": 25214892853,
+          "sounds": []
+        },
+        {
+          "tick": 2,
+          "pos_bits": [
+            "4021000000000000",
+            "4050900000000000",
+            "4022666666000000"
+          ],
+          "vel_bits": [
+            "bf7cac083126e979",
+            "8000000000000000",
+            "bfd45e35378d4fe0"
+          ],
+          "rot_bits": [
+            "43f17d66",
+            "b63851ec"
+          ],
+          "old_rot_bits": [
+            "43ffe3cc",
+            "b5cccccd"
+          ],
+          "accel_bits": "3fa999999999999a",
+          "alive": true,
+          "in_water": true,
+          "rng_state": 250226642908422,
+          "sounds": [
+            "minecraft:entity.generic.splash",
+            "minecraft:entity.breeze.deflect"
+          ]
+        }
+      ]
+    },
+    {
+      "case": "breeze_wet_first_tick",
+      "kind": "small_fireball",
+      "scenario": "wet_breeze",
+      "seed": 23897,
+      "loaded_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "loaded_old_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4021000000000000",
+            "4050900000000000",
+            "4022666666000000"
+          ],
+          "vel_bits": [
+            "bf7cac083126e979",
+            "8000000000000000",
+            "bfd23d70a0000000"
+          ],
+          "rot_bits": [
+            "43fe65c3",
+            "b5cccccd"
+          ],
+          "old_rot_bits": [
+            "440832e2",
+            "00000000"
+          ],
+          "accel_bits": "3fa999999999999a",
+          "alive": true,
+          "in_water": true,
+          "rng_state": 208221204409647,
+          "sounds": [
+            "minecraft:entity.breeze.deflect"
+          ]
+        }
+      ]
+    },
+    {
+      "case": "dragon_owner_water_current",
+      "kind": "dragon_fireball",
+      "scenario": "wet_dragon_owner",
+      "seed": 23898,
+      "loaded_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "loaded_old_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4021000000000000",
+            "4050866666666666",
+            "40224ccccd333333"
+          ],
+          "vel_bits": [
+            "3f8cac083126e979",
+            "0000000000000000",
+            "3fe23d70a0000000"
+          ],
+          "rot_bits": [
+            "43a20000",
+            "b5cccccd"
+          ],
+          "old_rot_bits": [
+            "43b40000",
+            "00000000"
+          ],
+          "accel_bits": "3fb999999999999a",
+          "alive": true,
+          "in_water": true,
+          "rng_state": 25214892855,
+          "sounds": []
+        }
+      ]
+    },
+    {
+      "case": "dragon_owner_bubble_column",
+      "kind": "dragon_fireball",
+      "scenario": "wet_dragon_owner",
+      "seed": 23899,
+      "loaded_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "loaded_old_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4021000000000000",
+            "4050866666666666",
+            "40224ccccd333333"
+          ],
+          "vel_bits": [
+            "0000000000000000",
+            "3faeb851eb851eb8",
+            "3fe23d70a0000000"
+          ],
+          "rot_bits": [
+            "43a20000",
+            "b5cccccd"
+          ],
+          "old_rot_bits": [
+            "43b40000",
+            "00000000"
+          ],
+          "accel_bits": "3fb999999999999a",
+          "alive": true,
+          "in_water": true,
+          "rng_state": 25214892854,
+          "sounds": []
+        }
+      ]
+    },
+    {
+      "case": "breeze_bubble_column",
+      "kind": "small_fireball",
+      "scenario": "wet_breeze",
+      "seed": 23900,
+      "loaded_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "loaded_old_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4021000000000000",
+            "4050900000000000",
+            "4022666666000000"
+          ],
+          "vel_bits": [
+            "8000000000000000",
+            "bf9eb851eb851eb8",
+            "bfd23d70a0000000"
+          ],
+          "rot_bits": [
+            "43fe6512",
+            "b5cccccd"
+          ],
+          "old_rot_bits": [
+            "44083289",
+            "00000000"
+          ],
+          "accel_bits": "3fa999999999999a",
+          "alive": true,
+          "in_water": true,
+          "rng_state": 208145559697896,
+          "sounds": [
+            "minecraft:entity.breeze.deflect"
+          ]
+        }
+      ]
+    },
+    {
+      "case": "breeze_repeat_same",
+      "kind": "small_fireball",
+      "scenario": "breeze_repeat",
+      "seed": 23901,
+      "loaded_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4021000000000000",
+            "4050a00000000000",
+            "4022666666000000"
+          ],
+          "vel_bits": [
+            "8000000000000000",
+            "8000000000000000",
+            "bfd23d70a0000000"
+          ],
+          "rot_bits": [
+            "43fe64d8",
+            "b5cccccd"
+          ],
+          "old_rot_bits": [
+            "4408326c",
+            "00000000"
+          ],
+          "accel_bits": "3fa999999999999a",
+          "alive": true,
+          "in_water": false,
+          "rng_state": 208120344793979,
+          "sounds": [
+            "minecraft:entity.breeze.deflect"
+          ]
+        },
+        {
+          "tick": 2,
+          "pos_bits": [
+            "4021000000000000",
+            "4050a00000000000",
+            "4022666666000000"
+          ],
+          "vel_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "3fe0b851e8000000"
+          ],
+          "rot_bits": [
+            "431b07c0",
+            "b63851ec"
+          ],
+          "old_rot_bits": [
+            "4314c9b0",
+            "b5cccccd"
+          ],
+          "accel_bits": "3fa999999999999a",
+          "alive": true,
+          "in_water": false,
+          "rng_state": 208120344793979,
+          "sounds": []
+        }
+      ]
+    },
+    {
+      "case": "breeze_repeat_different",
+      "kind": "small_fireball",
+      "scenario": "breeze_repeat",
+      "seed": 23902,
+      "loaded_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "loaded_old_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4021000000000000",
+            "4050a00000000000",
+            "4022666666000000"
+          ],
+          "vel_bits": [
+            "8000000000000000",
+            "8000000000000000",
+            "bfd23d70a0000000"
+          ],
+          "rot_bits": [
+            "43fe6588",
+            "b5cccccd"
+          ],
+          "old_rot_bits": [
+            "440832c4",
+            "00000000"
+          ],
+          "accel_bits": "3fa999999999999a",
+          "alive": true,
+          "in_water": false,
+          "rng_state": 208195989505730,
+          "sounds": [
+            "minecraft:entity.breeze.deflect"
+          ]
+        },
+        {
+          "tick": 2,
+          "pos_bits": [
+            "4021000000000000",
+            "4050a00000000000",
+            "4022000000666666"
+          ],
+          "vel_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "3fc45e35378d4fe0"
+          ],
+          "rot_bits": [
+            "4399efd8",
+            "b63851ec"
+          ],
+          "old_rot_bits": [
+            "43a8d0f3",
+            "b5cccccd"
+          ],
+          "accel_bits": "3f9999999999999a",
+          "alive": true,
+          "in_water": false,
+          "rng_state": 265138292042917,
+          "sounds": [
+            "minecraft:entity.breeze.deflect"
+          ]
+        }
+      ]
+    },
+    {
+      "case": "dragon_breeze_repeat_same_then_different",
+      "kind": "dragon_fireball",
+      "scenario": "breeze_repeat",
+      "seed": 23903,
+      "loaded_rot_bits": [
+        "00000000",
+        "00000000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4021000000000000",
+            "4050a00000000000",
+            "4022666666000000"
+          ],
+          "vel_bits": [
+            "8000000000000000",
+            "8000000000000000",
+            "bfd23d70a0000000"
+          ],
+          "rot_bits": [
+            "43fe654e",
+            "b5cccccd"
+          ],
+          "old_rot_bits": [
+            "440832a7",
+            "00000000"
+          ],
+          "accel_bits": "3fa999999999999a",
+          "alive": true,
+          "in_water": false,
+          "rng_state": 208170774601813,
+          "sounds": [
+            "minecraft:entity.breeze.deflect"
+          ]
+        },
+        {
+          "tick": 2,
+          "pos_bits": [
+            "4021000000000000",
+            "4050a00000000000",
+            "4022666666000000"
+          ],
+          "vel_bits": [
+            "0000000000000000",
+            "0000000000000000",
+            "3fe0b851e8000000"
+          ],
+          "rot_bits": [
+            "431b087d",
+            "b63851ec"
+          ],
+          "old_rot_bits": [
+            "4314ca9c",
+            "b5cccccd"
+          ],
+          "accel_bits": "3fa999999999999a",
+          "alive": true,
+          "in_water": false,
+          "rng_state": 208170774601813,
+          "sounds": []
+        },
+        {
+          "tick": 3,
+          "pos_bits": [
+            "4021000000000000",
+            "4050a00000000000",
+            "402219999a066666"
+          ],
+          "vel_bits": [
+            "8000000000000000",
+            "8000000000000000",
+            "3fd0b851e8000000"
+          ],
+          "rot_bits": [
+            "43951f89",
+            "b679db24"
+          ],
+          "old_rot_bits": [
+            "43a4a062",
+            "b63851ec"
+          ],
+          "accel_bits": "3f9999999999999a",
+          "alive": true,
+          "in_water": false,
+          "rng_state": 59389152502332,
+          "sounds": [
+            "minecraft:entity.breeze.deflect"
+          ]
+        }
+      ]
+    },
+    {
+      "case": "saved_pitch_180_upward_miss",
+      "kind": "small_fireball",
+      "scenario": "saved_pitch",
+      "seed": 23904,
+      "loaded_rot_bits": [
+        "00000000",
+        "42b40000"
+      ],
+      "loaded_old_rot_bits": [
+        "00000000",
+        "42b40000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4021000000000000",
+            "4050c47ae1400000",
+            "4021000000000000"
+          ],
+          "vel_bits": [
+            "0000000000000000",
+            "3fe23d70a0000000",
+            "0000000000000000"
+          ],
+          "rot_bits": [
+            "41900000",
+            "42580000"
+          ],
+          "old_rot_bits": [
+            "00000000",
+            "42b40000"
+          ],
+          "accel_bits": "3fb999999999999a",
+          "alive": true,
+          "in_water": false,
+          "rng_state": 25214892813,
+          "sounds": []
+        }
+      ]
+    },
+    {
+      "case": "saved_pitch_180_upward_entity_hit",
+      "kind": "small_fireball",
+      "scenario": "saved_pitch",
+      "seed": 23905,
+      "loaded_rot_bits": [
+        "00000000",
+        "42b40000"
+      ],
+      "loaded_old_rot_bits": [
+        "00000000",
+        "42b40000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4021000000000000",
+            "4050c00000000000",
+            "4021000000000000"
+          ],
+          "vel_bits": [
+            "0000000000000000",
+            "3fe23d70a0000000",
+            "0000000000000000"
+          ],
+          "rot_bits": [
+            "41900000",
+            "42580000"
+          ],
+          "old_rot_bits": [
+            "00000000",
+            "42b40000"
+          ],
+          "accel_bits": "3fb999999999999a",
+          "alive": false,
+          "in_water": false,
+          "rng_state": 25214892812,
+          "sounds": []
+        }
+      ]
+    },
+    {
+      "case": "saved_pitch_180_upward_breeze",
+      "kind": "small_fireball",
+      "scenario": "saved_pitch",
+      "seed": 23906,
+      "loaded_rot_bits": [
+        "00000000",
+        "42b40000"
+      ],
+      "loaded_old_rot_bits": [
+        "00000000",
+        "42b40000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4021000000000000",
+            "4050c00000000000",
+            "4021000000000000"
+          ],
+          "vel_bits": [
+            "8000000000000000",
+            "bfd23d70a0000000",
+            "8000000000000000"
+          ],
+          "rot_bits": [
+            "434aba8d",
+            "42580000"
+          ],
+          "old_rot_bits": [
+            "4338ba8d",
+            "42b40000"
+          ],
+          "accel_bits": "3fa999999999999a",
+          "alive": true,
+          "in_water": false,
+          "rng_state": 207288252964718,
+          "sounds": [
+            "minecraft:entity.breeze.deflect"
+          ]
+        }
+      ]
+    },
+    {
+      "case": "saved_pitch_neg400_upward_miss",
+      "kind": "small_fireball",
+      "scenario": "saved_pitch",
+      "seed": 23907,
+      "loaded_rot_bits": [
+        "00000000",
+        "c2200000"
+      ],
+      "loaded_old_rot_bits": [
+        "00000000",
+        "c2200000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4021000000000000",
+            "4050c47ae1400000",
+            "4021000000000000"
+          ],
+          "vel_bits": [
+            "0000000000000000",
+            "3fe23d70a0000000",
+            "0000000000000000"
+          ],
+          "rot_bits": [
+            "41900000",
+            "c2480000"
+          ],
+          "old_rot_bits": [
+            "00000000",
+            "c2200000"
+          ],
+          "accel_bits": "3fb999999999999a",
+          "alive": true,
+          "in_water": false,
+          "rng_state": 25214892814,
+          "sounds": []
+        }
+      ]
+    },
+    {
+      "case": "saved_huge_rotation_wind_charge",
+      "kind": "wind_charge",
+      "scenario": "saved_pitch",
+      "seed": 23908,
+      "loaded_rot_bits": [
+        "42f00000",
+        "00000000"
+      ],
+      "loaded_old_rot_bits": [
+        "42f00000",
+        "00000000"
+      ],
+      "ticks": [
+        {
+          "tick": 1,
+          "pos_bits": [
+            "4022333333333333",
+            "4050a00000000000",
+            "4021000000000000"
+          ],
+          "vel_bits": [
+            "3fe3333333333333",
+            "0000000000000000",
+            "0000000000000000"
+          ],
+          "rot_bits": [
+            "42e40000",
+            "b5cccccd"
+          ],
+          "old_rot_bits": [
+            "42f00000",
+            "00000000"
+          ],
+          "accel_bits": "0000000000000000",
+          "alive": true,
+          "in_water": false,
+          "rng_state": 25214892809,
+          "sounds": []
+        },
+        {
+          "tick": 2,
+          "pos_bits": [
+            "4023666666666666",
+            "4050a00000000000",
+            "4021000000000000"
+          ],
+          "vel_bits": [
+            "3fe3333333333333",
+            "0000000000000000",
+            "0000000000000000"
+          ],
+          "rot_bits": [
+            "42da6666",
+            "b63851ec"
+          ],
+          "old_rot_bits": [
+            "42e40000",
+            "b5cccccd"
+          ],
+          "accel_bits": "0000000000000000",
+          "alive": true,
+          "in_water": false,
+          "rng_state": 25214892809,
+          "sounds": []
+        },
+        {
+          "tick": 3,
+          "pos_bits": [
+            "4024999999999999",
+            "4050a00000000000",
+            "4021000000000000"
+          ],
+          "vel_bits": [
+            "3fe3333333333333",
+            "0000000000000000",
+            "0000000000000000"
+          ],
+          "rot_bits": [
+            "42d2b852",
+            "b679db24"
+          ],
+          "old_rot_bits": [
+            "42da6666",
+            "b63851ec"
+          ],
+          "accel_bits": "0000000000000000",
+          "alive": true,
+          "in_water": false,
+          "rng_state": 25214892809,
+          "sounds": []
+        }
+      ]
+    }
+  ]
+}

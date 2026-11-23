@@ -29,11 +29,24 @@ impl Game<'_> {
                     position: Some([block.position.x, block.position.y, block.position.z]),
                     ..Default::default()
                 };
-                for index in 0..self.mobs.len() {
-                    if !self.mobs[index].alive()
-                        || !falling_block::bounds(block.position)
-                            .intersects(self.mobs[index].bounds())
-                    {
+                // FallingBlockEntity.causeFallDamage selects the entities first, then hurts
+                // them in order. Death listeners can spawn or remove rows between hits.
+                let bounds = block.bounds();
+                let victims: Vec<_> = self
+                    .mobs
+                    .iter()
+                    .filter(|mob| mob.alive() && !mob.removed && bounds.intersects(mob.bounds()))
+                    .map(|mob| mob.join)
+                    .collect();
+                let source = sunrise_client::mobs::Damage {
+                    from: attack.position,
+                    ..sunrise_client::mobs::Damage::of(mob_kind)
+                };
+                for join in victims {
+                    let Some(index) = self.mobs.locate(join) else {
+                        continue;
+                    };
+                    if self.mobs[index].removed {
                         continue;
                     }
                     let plan = self.prepare_knockback_credit(
@@ -42,13 +55,12 @@ impl Game<'_> {
                         self.combat.attack(),
                     );
                     let mut credit = plan.lend(&mut self.last_hurt_by_player);
-                    falling_block::hurt_mobs_with_kind(
+                    self.mobs[index].damage(
                         crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),
-                        [&mut self.mobs[index]],
-                        block.position,
                         impact.amount,
-                        mob_kind,
+                        source,
                     );
+                    self.finish_mob_damage_at(index);
                 }
                 // Enderman.hurtServer: a falling block is no living attacker.
                 if let Err(e) = self.settle_hurt_teleports() {
@@ -61,9 +73,9 @@ impl Game<'_> {
                 } else {
                     "minecraft:falling_block"
                 };
-                self.falling_hurt_player(block.id, block.position, impact.amount, kind);
+                let bounds = block.bounds();
+                self.falling_hurt_player(block.id, block.position, bounds, impact.amount, kind);
                 if let Some(host) = self.lan.as_ref() {
-                    let bounds = falling_block::bounds(block.position);
                     let conns = host
                         .hub
                         .guests
@@ -80,7 +92,13 @@ impl Game<'_> {
                         .collect::<Vec<_>>();
                     for conn in conns {
                         self.guest_hit_by(conn, |g| {
-                            g.falling_hurt_player(block.id, block.position, impact.amount, kind)
+                            g.falling_hurt_player(
+                                block.id,
+                                block.position,
+                                bounds,
+                                impact.amount,
+                                kind,
+                            )
                         });
                     }
                 }
@@ -218,13 +236,23 @@ impl Game<'_> {
             self.drop_falling_block(block.state, block.position);
         }
     }
-    fn falling_hurt_player(&mut self, entity: u32, position: Vec3, amount: f32, kind: &str) {
+    /// The falling block `entity` at `position`, whose box is `bounds`, hits the acting player.
+    fn falling_hurt_player(
+        &mut self,
+        entity: u32,
+        position: Vec3,
+        bounds: sunrise_core::geometry::Aabb,
+        amount: f32,
+        kind: &str,
+    ) {
         if self.creative || self.spectator() {
             return;
         }
-        if self.player.as_ref().is_none_or(|p| {
-            p.health.dead_or_dying() || !falling_block::bounds(position).intersects(p.bounds())
-        }) {
+        if self
+            .player
+            .as_ref()
+            .is_none_or(|p| p.health.dead_or_dying() || !bounds.intersects(p.bounds()))
+        {
             return;
         }
         let Some(id) = self.health_resources.damage.id(kind) else {
@@ -258,6 +286,7 @@ impl Game<'_> {
                 blocked: false,
             });
         }
+        self.finish_guest_damage();
     }
 }
 
@@ -360,7 +389,13 @@ mod tests {
         *log.lock().unwrap() = Log::default();
     }
     fn hit(game: &mut Game<'_>) {
-        game.falling_hurt_player(241, Vec3::ZERO, 8.0, ANVIL);
+        game.falling_hurt_player(
+            241,
+            Vec3::ZERO,
+            sunrise_client::falling_block::bounds(Vec3::ZERO),
+            8.0,
+            ANVIL,
+        );
     }
     fn health(game: &Game<'_>) -> f32 {
         game.player.as_ref().unwrap().health.health()
@@ -459,4 +494,4 @@ mod tests {
 
 #[cfg(test)]
 #[path = "falling_damage/helmet_tests.rs"]
-mod helmet_tests;
+pub(in crate::game) mod helmet_tests;
