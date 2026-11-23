@@ -171,19 +171,19 @@ impl<R: StackedResource> AttachedStacks<R> {
         }
         match self.write(host, index, Some((resource.clone(), have + went))) {
             Ok(()) => ControlFlow::Continue(went),
-            // A custom codec may refuse just this index. With a stock codec, an in-range
-            // top-up may be too large to encode even if the same offer fits an empty slot.
+            // A codec may refuse just this index, whether the slot is empty or holds a top-up
+            // too large to encode. Only the stock codec's `Slot` (an NBT Int) rules out the
+            // rest of the range: an index past `i32::MAX` has no suffix that can be written.
             Err(StackWriteError::Write(AttachmentError::Encode | AttachmentError::Decode)) => {
                 ControlFlow::Continue(0)
             }
             Err(StackWriteError::Write(AttachmentError::StackEncoding { index: failed }))
-                if failed == index && have > 0 && i32::try_from(index).is_ok() =>
+                if failed == index && i32::try_from(index).is_ok() =>
             {
                 ControlFlow::Continue(0)
             }
-            // A failed read or unavailable holder affects the whole attachment. The stock
-            // codec also rules out the suffix on a Slot beyond its NBT Int, an unencodable
-            // unchanged entry, or failure encoding this offer even in an empty slot.
+            // A failed read or unavailable holder affects the whole attachment, as does an
+            // unencodable unchanged entry or a stock-codec `Slot` beyond its NBT Int.
             Err(_) => ControlFlow::Break(()),
         }
     }
