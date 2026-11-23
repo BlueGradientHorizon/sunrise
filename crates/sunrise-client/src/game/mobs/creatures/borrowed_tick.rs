@@ -554,7 +554,8 @@ impl Game<'_> {
                     // A listener can redirect to any real player in this level. Keep
                     // immutable views during the borrow so changing selection
                     // never invalidates a view a goal already holds. No allocation
-                    // is made when nobody listens for target changes.
+                    // is made when nobody listens for target changes and no pet
+                    // needs a player other than the one it sees.
                     let selection = if resuming {
                         let mut selection = resume_selection.take();
                         if matches!(resume, Some(Pause::AfterDamage(_)))
@@ -578,7 +579,19 @@ impl Game<'_> {
                             });
                         }
                         selection
-                    } else if mod_api::__private::listened(mod_api::HookId::LivingChangeTarget) {
+                    } else if mod_api::__private::listened(mod_api::HookId::LivingChangeTarget)
+                        || pet_reads_another_player(
+                            m,
+                            active_player.as_ref(),
+                            seen_guest.and(base.player.as_ref()),
+                            guests
+                                .iter()
+                                .enumerate()
+                                .filter(|(k, _)| Some(*k) != lent)
+                                .map(|(_, (_, view))| view),
+                            &index,
+                        )
+                    {
                         let mut players = Vec::new();
                         if let (Some(view), Some((_, entity_id))) =
                             (&active_player, active_identity)
@@ -1308,6 +1321,34 @@ impl Game<'_> {
                 .map(|m| seen(m, uuid, self.items()))
                 .collect()
         }
+    }
+}
+
+/// Whether a pet's owner goals need a player other than the one its tick sees
+/// (`TamableAnimal.getOwner` and `OwnerHurtTargetGoal` resolve players by identity):
+/// its owner is another player of the level, or the owner it sees last hurt
+/// something that is no mob of the snapshot, which may be a player.
+fn pet_reads_another_player<'v>(
+    m: &sunrise_client::mobs::Mob,
+    seen: Option<&sunrise_client::mobs::PlayerView>,
+    host: Option<&sunrise_client::mobs::PlayerView>,
+    mut guests: impl Iterator<Item = &'v sunrise_client::mobs::PlayerView>,
+    mobs: &sunrise_client::fast_hash::FxHashMap<u32, u32>,
+) -> bool {
+    use sunrise_client::mobs::Species;
+    // The pets `player_for` binds to their owner: the ones with owner goals.
+    if !matches!(m.species(), Species::Wolf | Species::Cat | Species::Parrot) {
+        return false;
+    }
+    let Some(owner) = m.extra.owner.filter(|_| m.extra.tame) else {
+        return false;
+    };
+    match seen.filter(|p| p.uuid == owner) {
+        Some(p) => {
+            m.species() == Species::Wolf
+                && p.last_hurt.is_some_and(|(id, _)| !mobs.contains_key(&id))
+        }
+        None => host.is_some_and(|p| p.uuid == owner) || guests.any(|p| p.uuid == owner),
     }
 }
 
