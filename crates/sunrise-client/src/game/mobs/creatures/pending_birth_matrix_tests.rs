@@ -117,15 +117,17 @@ fn matrix(mods: mod_api::Mods) {
                     .any(|t| t == "replaced_pig")
             );
             assert_eq!(game.mobs.len(), 3);
-            // A grown replacement is Invalid (4); the cow baby stays with yaw 0 and the tag.
+            // A grown replacement is accepted: `Animal.spawnChildFromBreeding` calls
+            // `setBaby(true)` on whatever child the event leaves.
             let (_, _, child) = breed(game, 4);
             let baby = find(game, child.unwrap());
-            assert_eq!(baby.kind.id, "minecraft:cow");
+            assert_eq!(baby.kind.id, "minecraft:pig");
+            assert_eq!(baby.extra.age, -24000);
             assert_eq!(baby.yaw, 0.0);
             assert!(
                 game.tags_of(crate::game::commands::Target::Mob(baby.id))
                     .iter()
-                    .any(|t| t == "refused_4")
+                    .any(|t| t == "grown_pig")
             );
         });
     });
