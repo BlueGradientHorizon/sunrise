@@ -479,6 +479,8 @@ def prepare_entity_load(server, directory, bots, args, deadline):
 
     x, y, z = map(math.floor, players[names[0]]['position'])
     if args.spread_bots:
+        # Keep the idle survival bots alive and targetable throughout the run.
+        server.console('effect give @a minecraft:resistance infinite 4 true')
         server.console('time set midnight')
         server.console('gamerule advance_time false')
         width = math.isqrt(bots - 1) + 1
