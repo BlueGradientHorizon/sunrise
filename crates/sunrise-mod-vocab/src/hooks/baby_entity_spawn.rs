@@ -6,7 +6,8 @@ pub trait Hooks {
     /// and `Fox.FoxBreedGoal.breed`): `dimension` is the level they are in
     /// (a replacement baby's `PendingMobSpec` names it), `parent` and `partner` are entity
     /// ids, `player` and `player_entity_id` the UUID and entity id of the
-    /// player who fed them into love (`getCausedByPlayer`, None when none).
+    /// same player in this level who fed them into love (`getCausedByPlayer`): the
+    /// initiating parent's resolved feeder first, then the partner's, or both `None`.
     /// When breeding constructed a baby (a mule for a horse and a donkey), it already
     /// has its inheritance drawn, but is not finalized or in any level: it sits in
     /// the single optional breeding slot `child` (`BabyEntitySpawnChild<'_>`). If

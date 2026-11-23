@@ -2104,3 +2104,44 @@ fn split_listener_can_remove_the_live_parents_oozing() {
         },
     );
 }
+
+#[test]
+#[ignore = "daily"]
+fn baby_spawn_resolves_the_partners_feeder_when_the_first_left() {
+    if crate::game::native_entity_refs::tests::run_fresh_cases(
+        "game::creatures::pending_birth_tests::baby_spawn_resolves_the_partners_feeder_when_the_first_left",
+        "SUNRISE_BABY_FEEDER_CASE",
+        &["stale"],
+    ) {
+        return;
+    }
+    let heard = Arc::new(Mutex::new(Vec::new()));
+    let record = heard.clone();
+    let mods = vec![mod_api::ModEntry::new(
+        "baby_feeder",
+        Box::new(Baby(Box::new(move |_, event| {
+            record
+                .lock()
+                .unwrap()
+                .push((event.player, event.player_entity_id));
+            Flow::Cancel
+        }))),
+    )];
+    mod_platform::testing::with_mods(mods.into(), || {
+        crate::game::native_guest_turn_tests::with_guests(|game| {
+            let parent = add_ready_pair(game);
+            game.love_cause.insert(parent, Some(999)); // no longer connected
+            game.love_cause.insert(parent + 1, Some(12));
+            let _ = game.breed(
+                parent,
+                parent + 1,
+                None,
+                None,
+                None,
+                sunrise_client::mobs::BreedExperience::Drawn(None),
+                true,
+            );
+        });
+    });
+    assert_eq!(*heard.lock().unwrap(), [(Some(12), Some(12))]);
+}

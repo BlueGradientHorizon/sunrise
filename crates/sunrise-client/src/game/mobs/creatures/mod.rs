@@ -4248,15 +4248,23 @@ impl Game<'_> {
         // NeoForge's Animal.spawnChildFromBreeding and Fox.FoxBreedGoal.breed.
         let listened = mod_api::__private::listened(mod_api::HookId::BabyEntitySpawn);
         let accepted = if listened {
-            let conn = self
-                .love_cause
-                .get(&parent)
-                .or(self.love_cause.get(&partner))
-                .copied();
-            let player = (
-                conn.and_then(|c| self.killer_uuid(c)),
-                conn.and_then(|c| self.player_entity_id_by_connection(c)),
-            );
+            let feeders = [parent, partner].map(|id| self.love_cause.get(&id).copied());
+            let player = feeders
+                .into_iter()
+                .flatten()
+                .find_map(|conn| match conn {
+                    Some(conn) if self.lan_acting != Some(conn) => {
+                        let guest = self.lan.as_ref()?.hub.guest(conn)?;
+                        guest
+                            .placed_in(self.dim.id())
+                            .then_some((guest.uuid, guest.entity_id))
+                    }
+                    conn if conn == self.lan_acting && self.player.is_some() => {
+                        Some((self.native_acting_id(), self.own_entity_id()))
+                    }
+                    _ => None,
+                })
+                .map_or((None, None), |(uuid, id)| (Some(uuid), Some(id)));
             let constraint = if p.species() == Species::Fox {
                 super::native_pending_children::ChildConstraint::BreedingFox
             } else {
