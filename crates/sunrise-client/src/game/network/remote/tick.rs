@@ -572,10 +572,6 @@ impl Game<'_> {
                 m.extra.max_health_dirty = false;
                 m.health = m.health.min(m.attrs.max_health);
             }
-            super::super::potions::client_tick_effects(
-                &mut m.extra.client_effects,
-                &mut m.extra.darkness_blend,
-            );
             if !m.alive() {
                 m.death_time += 1;
             }
@@ -596,6 +592,12 @@ impl Game<'_> {
             }
             let head_lerps = &mut self.remote.as_mut().unwrap().head_lerps;
             let m = &mut self.mobs[i];
+            // LivingEntity.baseTick's tickEffects, inside this tick (after its Pre, and a
+            // player's tick Pre): its effects count down and fade.
+            super::super::potions::client_tick_effects(
+                &mut m.extra.client_effects,
+                &mut m.extra.darkness_blend,
+            );
             // LivingEntity.aiStep: the head's own interpolation.
             if let Some((yaw, steps)) = head_lerps.get_mut(&(m.id as i32))
                 && *steps > 0
@@ -887,6 +889,11 @@ impl Game<'_> {
                         let p = at.position;
                         (Vec3::new(p[0], p[1], p[2]), at.yaw, at.pitch)
                     }));
+                    // LivingEntity.baseTick's tickEffects.
+                    super::super::potions::client_tick_effects(
+                        &mut a.client_effects,
+                        &mut a.darkness_blend,
+                    );
                 }
             }
             // The yaw of a boat eases toward the server's over the same steps
@@ -942,6 +949,11 @@ impl Game<'_> {
                         let p = at.position;
                         (Vec3::new(p[0], p[1], p[2]), at.yaw, at.pitch)
                     }));
+                    // LivingEntity.baseTick's tickEffects.
+                    super::super::potions::client_tick_effects(
+                        &mut a.client_effects,
+                        &mut a.darkness_blend,
+                    );
                 }
             }
         }

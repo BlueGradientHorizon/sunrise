@@ -1843,6 +1843,10 @@ pub struct ArmorStand {
     pub speed_instance: bool,
     /// `NAME_TAG_DISTANCE` and `BELOW_NAME_DISTANCE` from server attribute updates.
     pub nameplate: crate::entities::nameplate::NameplateDistances,
+    /// Synced client-side effects from `UpdateMobEffect` / `RemoveMobEffect`, as a mob's.
+    pub client_effects: crate::effects::PlayerEffects,
+    /// `MobEffectInstance.BlendState` (previous, current) for its client-side darkness.
+    pub darkness_blend: (f32, f32),
 }
 /// The fluid a stand travels in (`LivingEntity.travelInFluid`: water first,
 /// then lava), from the heights `Entity::push_by_fluid` measured.
@@ -2108,6 +2112,8 @@ impl ArmorStand {
             ground: Default::default(),
             speed_instance: false,
             nameplate: Default::default(),
+            client_effects: Default::default(),
+            darkness_blend: (0.0, 0.0),
         }
     }
     /// `Entity.getOnPos(0.2)` (`getOnPosLegacy`): the supporting block's

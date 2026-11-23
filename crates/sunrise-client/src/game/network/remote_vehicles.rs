@@ -843,6 +843,11 @@ impl Game<'_> {
             let mut level = self.predicting_damage_level(&mut lent, &hooks);
             mob.tick(&world, &mut level, &mut events);
         }
+        // LivingEntity.baseTick's tickEffects, inside the mount's own tick (#3948).
+        super::potions::client_tick_effects(
+            &mut mob.extra.client_effects,
+            &mut mob.extra.darkness_blend,
+        );
         // Only the server's packets take the mount away.
         mob.removed = false;
         lent.give_back(&mut self.world);
