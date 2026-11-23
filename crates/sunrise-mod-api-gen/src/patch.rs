@@ -2245,7 +2245,13 @@ mod tests {
         let mut source = Source {
             root: dir.path().to_owned(),
             loaded: BTreeSet::new(),
-            files: BTreeMap::from([("fixture".to_owned(), vec![file])]),
+            files: BTreeMap::from([(
+                "fixture".to_owned(),
+                vec![SourceFile {
+                    path: file,
+                    include_cfg: None,
+                }],
+            )]),
             parsed: BTreeMap::new(),
             local_macros: BTreeSet::new(),
             libraries: BTreeMap::new(),
@@ -2291,7 +2297,19 @@ mod tests {
         let mut source = Source {
             root: dir.clone(),
             loaded: BTreeSet::new(),
-            files: BTreeMap::from([("fixture".to_owned(), vec![outer, included])]),
+            files: BTreeMap::from([(
+                "fixture".to_owned(),
+                vec![
+                    SourceFile {
+                        path: outer,
+                        include_cfg: None,
+                    },
+                    SourceFile {
+                        path: included,
+                        include_cfg: None,
+                    },
+                ],
+            )]),
             parsed: BTreeMap::new(),
             local_macros: BTreeSet::new(),
             libraries: BTreeMap::new(),
@@ -2319,7 +2337,13 @@ mod tests {
         let mut source = Source {
             root: dir.clone(),
             loaded: BTreeSet::new(),
-            files: BTreeMap::from([("fixture".to_owned(), vec![file])]),
+            files: BTreeMap::from([(
+                "fixture".to_owned(),
+                vec![SourceFile {
+                    path: file,
+                    include_cfg: None,
+                }],
+            )]),
             parsed: BTreeMap::new(),
             local_macros: BTreeSet::new(),
             libraries: BTreeMap::new(),
