@@ -191,7 +191,7 @@ A content mod (`.smod`) carries `assets/` and `data/` and no code:
 
 ```
 ruby.smod
-├── sunrise-mod.toml          id = "ruby", api = "0.2", side = "both", capabilities = ["registries"]
+├── sunrise-mod.toml          id = "ruby", side = "both" (the build adds api and capabilities)
 ├── data/ruby/sunrise/block/ruby_block.json
 ├── data/ruby/sunrise/item/ruby.json
 ├── data/ruby/recipe/ruby_block.json            (26.3 data-pack formats)
@@ -334,6 +334,16 @@ cargo run -p sunrise-port-pack -- port-work ~/.sunrise/ports/pack      # the por
 cargo run -p sunrise-port-pack -- status ~/.sunrise/ports/pack         # what the folder holds, as the launcher shows it
 cargo run -p sunrise-port-pack -- profile ~/.sunrise/ports/pack        # the staged resource packs into the profile's home
 ```
+
+### Versions of carried mods
+
+A manifest's `version` must be semver, and a Java jar's version often isn't. The carry drops a leading
+`<Minecraft version>-` when it equals the pack's own (`26.3-3.6.30+refabricated` becomes
+`3.6.30+refabricated`) and pads an omitted minor or patch. A version that is still not semver is written
+as `0.0.0+unresolved.<the jar's version, with characters outside [0-9A-Za-z-.] replaced by '-'>`. The jar's original
+string stays in the manifest's header comment. Dependency resolution never lets a
+`0.0.0+unresolved.…` version satisfy a requirement, `*` and `=0.0.0` included: the port report says that the mod's version couldn't be read, and it
+must be set by hand in the carried `sunrise-mod.toml` before anything can depend on the mod.
 
 ### Data packs in mod jars
 
@@ -775,20 +785,13 @@ Two cases the oracle fills in:
     `add_template_pool_elements` modifiers whose load conditions hold for the mods ported
     along, and from CTOV's Java registration: its 21 village types and 11 outposts join
     vanilla's `villages` and `pillager_outposts` with the mod's default weights.
-  - **YUNG's API** (#839, #846 in the game; #840, #847 in carry). `yungsapi:yung_jigsaw` and its
-    elements become vanilla's jigsaw and single element, with their rules under
-    `sunrise:yungsapi`. The game assembles them as YUNG's `JigsawManager` does: priority
-    pieces, caps by name, depth ranges, `ignore_bounds` and the conditions tree, with
-    `piece_in_range`. Dead-end pools swap a piece that got no child for one of its dead-end
-    pool, and once the layout is done each piece's modifiers can turn it into another template
-    (`transform`) or place it last (`delay_generation`). Better Fortresses' bridges need all
-    three: over seed 1234's Nether chunks -64..63 it goes from 3,765 to 4,106 pieces. YUNG's
-    placements become `sunrise:` keys on a random spread: `sunrise:exclusion_zone` for the
-    enhanced exclusion zone, `sunrise:avoid_biomes` for the temples' ocean and river search,
-    `sunrise:ring_sections` for Better Strongholds' rings. `sunrise:disables` on a YUNG
-    structure turns off the vanilla type its mod's mixin turns off. It is written only when
-    the game can start the replacement, so vanilla mineshafts stay while Better Mineshafts (a
-    Java type) can't.
+  - **YUNG's API.** The game names no mod's structure type: `yungsapi:yung_jigsaw` and its
+    `yungsapi:yung_single_element` elements need YUNG's API itself, a mod that registers that
+    structure type and lays its starts out from its pools through the engine's jigsaw assembly
+    with its own depth and reach. Carry lists them as unsupported. YUNG's placements become
+    `sunrise:` keys on a random spread: `sunrise:exclusion_zone` for the enhanced exclusion
+    zone, `sunrise:avoid_biomes` for the temples' ocean and river search, `sunrise:ring_sections`
+    for Better Strongholds' rings.
   - **Repurposed Structures' and Moog's own assembler** (#850 in the game, #851 in carry). Both
     lay out their jigsaws with `PieceLimitedJigsawManager`, not vanilla's. Their structures, the
     Nether variants too, get `sunrise:piece_limited`: `y_allowance`, burying, the pools whose

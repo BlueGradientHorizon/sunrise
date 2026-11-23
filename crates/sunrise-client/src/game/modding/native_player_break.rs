@@ -60,7 +60,11 @@ impl Game<'_> {
         };
         let mut broke = false;
         self.native_as_player_handle(player, |game| {
-            broke = game.break_as_acting_player(pos, into_inventory);
+            // The break is in the player's level: for a player in another level than the one
+            // in place, nothing is broken.
+            if game.acting_in_level_in_place() {
+                broke = game.break_as_acting_player(pos, into_inventory);
+            }
         });
         broke
     }
@@ -398,7 +402,14 @@ mod tests {
                 && self.vein.contains(&pos)
             {
                 let mut kept = self.kept.lock().unwrap();
-                kept.0.extend(event.drops.drain(..).map(|drop| drop.stack));
+                event.drops.retain(|drop| {
+                    if let Some(stack) = drop.stack().and_then(|stack| stack.project()) {
+                        kept.0.push(stack);
+                        false
+                    } else {
+                        true
+                    }
+                });
                 kept.1 += std::mem::take(&mut event.experience);
             }
             mod_api::Flow::Continue

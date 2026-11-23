@@ -14,9 +14,6 @@ To play, use [the launcher](https://github.com/sunrise-org/sunrise-launcher/blob
 - [Controllers](controllers.md): playing with PlayStation, Xbox and Nintendo Switch Pro controllers, Steam Deck built-in controls, analog movement, and the input layer.
 - [Host a server](hosting.md): install `sunrise-server`, prepare the game files, first run, `server.toml`, the commands, the web panel, backups, services and Docker; what works today and what doesn't yet.
 - [A server's levels](server-levels.md): how the dedicated server and single player's server thread tick, save and travel between dimensions.
-- [Velocity forwarding](velocity-forwarding.md): the player-information exchange behind a Velocity proxy and how it was checked.
-- [The anticheat](anticheat.md): the dedicated server's own checks, on by default (`combat` and `ground` act, `timer` and `prediction` only log) and set in `server.toml`'s `[anticheat]`: violation levels, setback, alerts, kicks, the log, and how to write a check.
-- [The chat filter](chat-filter.md): the dedicated server refuses hate slurs in chat, message commands, signs, anvil names and book titles: the list and its normalising, mutes, temporary bans, `[chat_filter]`.
 - [Nix and NixOS](nix.md): the flake's packages: server, engine, prepare, client and launcher, and the `services.sunrise-server` NixOS module.
 - [Hosting a server: design](server.md): `sunrise-server`, the design and the plan: install, `server.toml`, the CLI, the web panel, backups, services, Docker, and the bot benchmark against vanilla.
 - [The next server: design](server-next.md): Sunrise's dedicated server against vanilla and Pumpkin (measured), the targets, parallel ticking that keeps vanilla's order, the network front, the Sunrise fast path, the plugin API and the plan.
@@ -47,16 +44,16 @@ To play, use [the launcher](https://github.com/sunrise-org/sunrise-launcher/blob
 - [Security](security.md): how Sunrise protects code, CI and automatic releases against untrusted input while work is performed by AI agents.
 - [Known issues](known-issues.md): player-facing issues listed in each game release and removed as pull requests fix them.
 - [Sunrise APIs](api/README.md): every surface other programs build on (mods, shaders, agent control, servers, the launcher, data formats), each with its guide, generated reference, stability and changelog, and the [stability and versioning policy](api/stability.md).
-- Menus: every screen is vanilla's (title, world list, create world, multiplayer, options, pause), except Sunrise's graphics settings, drawn in the design system's Blocks palette. Sunrise's own settings hang off vanilla's Options the way mods add theirs, each in one place: **Video Settings...** opens Sunrise's graphics settings screen (every video option, the graphics extras and the shader packs), **Controls → Controller Settings...** the controller settings screen in the same style, **Mods...** and **Sunrise Settings...** take the last two slots of the Options grid (Sunrise Settings opens Extras, PvP & HUD, Replay Studio and AI Agent, each a vanilla options list). The title screen's and pause menu's Friends buttons open Join a Friend and Play with Friends ([play-with-friends.md](play-with-friends.md)).
+- Menus: every screen is vanilla's (title, world list, create world, multiplayer, options, pause), except Sunrise's graphics settings, drawn in the design system's Blocks palette. Sunrise's own settings hang off vanilla's Options the way mods add theirs, each in one place: **Video Settings...** is vanilla's, and Sunrise's graphics settings screen (every video option, the graphics extras and the shader packs) opens from **Extras → Sunrise Graphics...**, **Controls → Controller Settings...** the controller settings screen in the same style, **Mods...** and **Sunrise Settings...** take the last two slots of the Options grid (Sunrise Settings opens Extras, PvP & HUD, Replay Studio and AI Agent, each a vanilla options list). The title screen's and pause menu's Friends buttons open Join a Friend and Play with Friends ([play-with-friends.md](play-with-friends.md)).
 
 ## Launcher and platforms
 
 - [The launcher's mod browser](mod-browser.md): searching Modrinth and the Sunrise registry for mods, modpacks, resource packs and shader packs, compatibility checks before install, and checksum verification.
 - [Launcher commands](https://github.com/sunrise-org/sunrise-launcher/blob/main/docs/launcher-commands.md): every command of `sunrise-launcher`, CLI arguments, and the tools `sunrise-launcher mcp` offers for driving launcher actions.
+- [Install a local unsigned game build](developer-install.md): package a checkout as a developer base.
 - [Launcher resource preparation](launcher-preparation.md): compiling Java exporter classes into release bundles, verifying local Minecraft assets against `research-lock.json`, and multi-lane export workflows.
 - [Microsoft account sign-in](microsoft-account.md): signing players in with their Microsoft account in the launcher, joining online-mode servers, the owner gate, and the OAuth device-code flow.
 - [Windows allocators](windows-allocators.md): mimalloc defaults, the optional `windows-segment-heap` Cargo feature for Win32 heap APIs, and how to validate the executable manifest.
-- [Windows ARM64](windows-arm64.md): building and running native Windows ARM64 executables for `aarch64-pc-windows-msvc`, cross-compilation, and release packaging.
 
 ## Parity
 
@@ -78,9 +75,9 @@ To play, use [the launcher](https://github.com/sunrise-org/sunrise-launcher/blob
 - [Linear light for HDR and shader packs](design/hdr-linear-light.md): the proposed shader API 0.2 colour contract and frame format for HDR output.
 - [The shader API 0.2 frame](design/shader-api-frame.md): proposed: where a 0.2 pack's stages, post chain and tone curve run, who owns anti-aliasing and coverage, and room for clouds, mods, LabPBR and ray tracing.
 - [Live mod reloading](design/mod-hotload.md): loading, enabling and updating mods from inside the game without a restart.
-- [Wasm group faults](design/wasm-group-faults.md): what a wasm dependency group does after a trap or an interruption, and how interruption counts guest work.
 - [Mod registry v2](design/registry-v2.md): project kinds, metadata, installation locations and the registry rollout.
 - [Scoped whole-stack rollback](design/stack-snapshot.md): transaction-scoped, same-place savepoints for internals mods; the real transaction lifetime must be confirmed before implementation, and provider-owned places are initially refused.
+- [Modularizing gfx.rs](design/gfx-modularization.md): the move-only extractions out of the renderer's 13,837-line module, what each phase took, and the blocks still in `gfx.rs`.
 
 ## Architecture: world generation
 

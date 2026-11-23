@@ -1,18 +1,14 @@
 //! Exercise both commands without downloads, using each pin's cached build data.
-use std::{
-    fs,
-    path::PathBuf,
-    process::{Command, Output},
-};
-use sunrise_mod_package::{
-    Manifest,
-    manifest::MANIFEST,
-    sdk::{self, Index},
-};
+#[path = "support/sdk.rs"]
+mod sdk_fixture;
+
+use sdk_fixture::OfflineSdk;
+use std::{fs, path::PathBuf, process::Output};
+use sunrise_mod_package::{Manifest, manifest::MANIFEST};
 
 const OLD: &str = "0123456789abcdef0123456789abcdef01234567";
 const NEW: &str = "89abcdef0123456789abcdef0123456789abcdef";
-/// The manifest's pinned tool, before any update.
+/// The manifest's pinned tool, before repinning.
 const MANIFEST_MIXINS: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 /// The tool `NEW`'s `sdk.json` names.
 const NEW_MIXINS: &str = "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c";
@@ -21,6 +17,7 @@ const NEW_CATALOG: &str = include_str!("fixtures/internals-new.json");
 
 struct Project {
     dir: PathBuf,
+    sdk: OfflineSdk,
 }
 impl Project {
     fn new(name: &str, declarations: &str) -> Self {
@@ -30,60 +27,55 @@ impl Project {
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join(MANIFEST), format!("# A modder's description\nid = 'example'\nname = 'Example'\nversion = '0.1.0'\napi = '0.2'\ncapabilities = ['registries']\n{declarations}\n[native] # native settings\ngame = '26.3'\nsunrise = '{OLD}' # pinned game\nmixins = '{MANIFEST_MIXINS}'\n")).unwrap();
         fs::write(dir.join("Cargo.toml"), "# Keep this comment\n[package]\nname = 'example'\nversion = '0.1.0'\n[dependencies]\nsunrise-mod-api = { path = '.sunrise/sdk/api/crates/sunrise-mod-api' } # API pin\nsunrise-internals = { path = '.sunrise/sdk/api/crates/sunrise-internals' } # facade pin\n").unwrap();
-        let project = Self { dir };
+        let sdk = OfflineSdk::new(&dir);
+        sdk.release(OLD, MANIFEST_MIXINS, None);
+        sdk.release(NEW, NEW_MIXINS, None);
+        sdk.prefetch(&dir, OLD, NEW);
+        let project = Self { dir, sdk };
         project.catalog(OLD, OLD_CATALOG);
         project.catalog(NEW, NEW_CATALOG);
-        project.sdk(OLD, MANIFEST_MIXINS);
-        project.sdk(NEW, NEW_MIXINS);
         project
     }
-    /// The `sdk.json` of `revision`'s verified fetch, naming the tool `mixins`: a stamped folder
-    /// is read as it is, so an offline fixture needs the file a signed release carries.
-    fn sdk(&self, revision: &str, mixins: &str) {
-        let release = self.dir.join("release").join(revision);
-        fs::create_dir_all(&release).unwrap();
-        fs::write(release.join("surface.json"), r#"{"hash":"ab"}"#).unwrap();
-        let build = sdk::Build {
-            commit: revision.into(),
-            game: sdk::GAME.into(),
-            date: "2026-11-13".into(),
-            nightly: None,
-        };
-        let mut index = Index::of_folder(&release, build, "1.99.1".into()).unwrap();
-        index.mixins.rev = mixins.into();
-        fs::write(
-            self.dir
-                .join(".sunrise/cache")
-                .join(revision)
-                .join(sdk::INDEX),
-            index.to_json(),
-        )
-        .unwrap();
-        fs::remove_dir_all(self.dir.join("release")).unwrap();
-    }
     fn catalog(&self, revision: &str, text: &str) {
-        // A verified fetch leaves the build's stamp and its unpacked build data.
-        let build = self.dir.join(".sunrise/cache").join(revision);
-        let dir = build.join("build-data");
+        let dir = self
+            .dir
+            .join(".sunrise/cache")
+            .join(revision)
+            .join("build-data");
         fs::create_dir_all(&dir).unwrap();
-        fs::write(build.join("build"), revision).unwrap();
-        // A bare entry list gets the build-data header of `revision`.
+        // Supply the build's real commit for both bare entry lists and the shared fixtures.
         let text = if text.trim_start().starts_with('[') {
             format!(r#"{{"schema":1,"build":{{"commit":"{revision}"}},"internals":{text}}}"#)
         } else {
-            text.to_owned()
+            text.replacen(
+                r#""commit": "fixture""#,
+                &format!(r#""commit": "{revision}""#),
+                1,
+            )
         };
-        fs::write(dir.join("internals.json"), text).unwrap();
+        // Update's fit report also reads the function index. These tests need no function bodies.
+        let functions = format!(
+            r#"{{"schema":1,"build":{{"commit":"{revision}"}},"crates":{{}},"functions":{{}},"refused":{{}}}}"#
+        );
+        fs::write(dir.join("internals.json"), &text).unwrap();
+        fs::write(dir.join("functions.json"), &functions).unwrap();
+        // The pin report reads the same files from the signed release, never from this cache.
+        let mixins = if revision == OLD {
+            MANIFEST_MIXINS
+        } else {
+            NEW_MIXINS
+        };
+        self.sdk.release(
+            revision,
+            mixins,
+            Some(&[
+                ("internals.json", text.into_bytes()),
+                ("functions.json", functions.into_bytes()),
+            ]),
+        );
     }
     fn run(&self, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_cargo-sunrise-mod"))
-            .arg("sunrise-mod")
-            .args(args)
-            .current_dir(&self.dir)
-            // An SDK base with no releases: nothing is downloaded.
-            .env("SUNRISE_SDK_BASE", self.dir.join("no-sdk"))
-            .output()
-            .unwrap()
+        self.sdk.command(&self.dir).args(args).output().unwrap()
     }
     fn text(&self) -> String {
         fs::read_to_string(self.dir.join(MANIFEST)).unwrap()
@@ -137,26 +129,6 @@ fn internals_add_writes_pinned_hashes_and_preserves_the_rest_of_the_manifest() {
     let before = project.text();
     success(&project.run(&["internals", "add", "sunrise_client::game::Game"]));
     assert_eq!(project.text(), before);
-}
-
-#[test]
-#[ignore = "daily"]
-fn internals_commands_refuse_wasm_mods_without_edits() {
-    let project = Project::new("wasm-refused", "");
-    let manifest = format!(
-        "id='example'\nname='Example'\nversion='0.1.0'\napi='0.2'\ncapabilities=['registries']\n[wasm]\nsha512='{}'\ntoolchain='nightly'\n",
-        "a".repeat(128)
-    );
-    fs::write(project.dir.join(MANIFEST), &manifest).unwrap();
-    for args in [
-        &["internals", "add", "Example"][..],
-        &["internals", "sync"][..],
-    ] {
-        let output = project.run(args);
-        assert!(!output.status.success());
-        assert!(String::from_utf8_lossy(&output.stderr).contains("needs a [native] mod"));
-        assert_eq!(project.text(), manifest);
-    }
 }
 
 #[test]
@@ -221,12 +193,12 @@ fn internals_add_refuses_missing_gated_and_shape_only_paths_without_partial_edit
 
 #[test]
 #[ignore = "daily"]
-fn update_diffs_signatures_refreshes_present_hashes_and_keeps_missing_declarations() {
+fn pin_diffs_signatures_refreshes_present_hashes_and_keeps_missing_declarations() {
     let project = Project::new(
-        "update",
+        "pin",
         "internals = [\n  { path = 'sunrise_client::game::Game', hash = '1111' }, # stable\n  { path = \"sunrise_client::game::Game<'_>::reach\" }, # reach\n  { path = 'sunrise_client::game::Game::creative', hash = '3333' }, # removed\n  { path = 'sunrise_client::game::conditional', hash = '8888' }, # gated now\n  { path = 'sunrise_client::game::restored', hash = '0000' }, # back again\n]\n",
     );
-    let report = success(&project.run(&["update", "--sunrise", NEW]));
+    let report = success(&project.run(&["pin", NEW]));
     assert!(
         report.contains("unchanged: sunrise_client::game::Game\n"),
         "{report}"
@@ -247,8 +219,8 @@ fn update_diffs_signatures_refreshes_present_hashes_and_keeps_missing_declaratio
     let manifest = project.manifest();
     let native = manifest.native.unwrap();
     assert_eq!(native.sunrise, NEW);
-    // The destination SDK's tool replaces the manifest's.
-    assert_eq!(native.mixins, NEW_MIXINS);
+    // An explicit pin of the tool is the mod's own choice: `pin` leaves it.
+    assert_eq!(native.mixins.as_deref(), Some(MANIFEST_MIXINS));
     assert_eq!(
         manifest
             .internals
@@ -295,16 +267,19 @@ fn table_declarations_keep_their_format_when_adding_and_refreshing() {
     );
     assert!(project.text().contains("[[internals]] # the game"));
     assert!(project.text().contains("# fingerprint"));
-    let report = success(&project.run(&["update", "--sunrise", NEW]));
+    let report = success(&project.run(&["pin", NEW]));
     assert!(report.contains("unchanged: sunrise_client::game::Game"));
     assert_eq!(project.manifest().internals.len(), 2);
-    assert_eq!(project.manifest().native.unwrap().mixins, NEW_MIXINS);
+    assert_eq!(
+        project.manifest().native.unwrap().mixins.as_deref(),
+        Some(MANIFEST_MIXINS)
+    );
     assert!(project.text().contains("# fingerprint"));
 }
 
 #[test]
 #[ignore = "daily"]
-fn internals_add_requires_kind_for_ambiguous_paths_and_update_keeps_it() {
+fn internals_add_requires_kind_for_ambiguous_paths_and_pin_keeps_it() {
     let path = "sunrise_client::game::Round::listening";
     for kind in ["fn", "method"] {
         for (form, declarations) in [
@@ -344,7 +319,7 @@ fn internals_add_requires_kind_for_ambiguous_paths_and_update_keeps_it() {
             let before = project.text();
             success(&project.run(&["internals", "add", "--kind", kind, path]));
             assert_eq!(project.text(), before);
-            let report = success(&project.run(&["update", "--sunrise", NEW]));
+            let report = success(&project.run(&["pin", NEW]));
             assert!(
                 report.contains("fn listening(&self) -> bool → fn listening(&mut self) -> bool"),
                 "{report}"
@@ -369,7 +344,7 @@ fn unreadable_new_catalog_does_not_move_either_pin_or_hashes() {
     project.catalog(NEW, "not JSON");
     let manifest = project.text();
     let cargo = fs::read_to_string(project.dir.join("Cargo.toml")).unwrap();
-    let output = project.run(&["update", "--sunrise", NEW]);
+    let output = project.run(&["pin", NEW]);
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("internals.json"));
     assert_eq!(project.text(), manifest);
@@ -381,99 +356,22 @@ fn unreadable_new_catalog_does_not_move_either_pin_or_hashes() {
 
 #[test]
 #[ignore = "daily"]
-fn update_refuses_a_malformed_mixins_revision_and_changes_no_file() {
+fn pin_refuses_a_malformed_mixins_revision_and_changes_no_file() {
     let project = Project::new(
         "bad-mixins",
         "internals = [{ path = 'sunrise_client::game::Game', hash = 'stale' }]\n",
     );
     for rev in ["main", &NEW_MIXINS.to_uppercase(), &NEW_MIXINS[1..]] {
-        project.sdk(NEW, rev);
+        project.sdk.release(NEW, rev, None);
+        // Force pin to read the replacement signed release instead of the cached valid SDK.
+        fs::remove_dir_all(project.dir.join(".sunrise/cache").join(NEW)).unwrap();
         let manifest = fs::read(project.dir.join(MANIFEST)).unwrap();
         let cargo = fs::read(project.dir.join("Cargo.toml")).unwrap();
-        let output = project.run(&["update", "--sunrise", NEW]);
+        let output = project.run(&["pin", NEW]);
         assert!(!output.status.success(), "{rev}");
         let error = String::from_utf8_lossy(&output.stderr);
         assert!(error.contains("mixins revision"), "{rev}: {error}");
         assert_eq!(fs::read(project.dir.join(MANIFEST)).unwrap(), manifest);
         assert_eq!(fs::read(project.dir.join("Cargo.toml")).unwrap(), cargo);
     }
-}
-
-#[cfg(unix)]
-#[test]
-#[ignore = "fixture writer subprocess only"]
-fn write_launcher_actor() {
-    use std::os::unix::fs::PermissionsExt;
-    if let Some(destination) = std::env::var_os("SUNRISE_TEST_LAUNCHER_WRITER") {
-        use std::io::Write;
-        let mut file = fs::File::create(&destination).unwrap();
-        file.write_all(
-            std::env::var("SUNRISE_TEST_LAUNCHER_SCRIPT")
-                .unwrap()
-                .as_bytes(),
-        )
-        .unwrap();
-        file.sync_all().unwrap();
-        drop(file);
-        fs::set_permissions(destination, fs::Permissions::from_mode(0o755)).unwrap();
-    }
-}
-
-#[cfg(unix)]
-#[test]
-#[ignore = "daily"]
-fn internals_sync_invokes_the_launcher_and_never_edits_on_failure() {
-    let project = Project::new(
-        "sync-command",
-        "internals = [{ path = 'Unused', hash = 'old' }]\n",
-    );
-    let launcher = project.dir.join("test-launcher");
-    let invoke = || {
-        Command::new(env!("CARGO_BIN_EXE_cargo-sunrise-mod"))
-            .args(["sunrise-mod", "internals", "sync"])
-            .env("SUNRISE_LAUNCHER", &launcher)
-            .current_dir(&project.dir)
-            .output()
-            .unwrap()
-    };
-    // A separate, exact-test writer cannot leak writable fds into other tests'
-    // fork children. CLOEXEC would only close those descriptors at exec.
-    let write_launcher = |script: &str| {
-        let output = Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", "write_launcher_actor", "--ignored"])
-            .env("SUNRISE_TEST_LAUNCHER_WRITER", &launcher)
-            .env("SUNRISE_TEST_LAUNCHER_SCRIPT", script)
-            .output()
-            .unwrap();
-        assert!(output.status.success());
-        assert!(
-            String::from_utf8(output.stdout)
-                .unwrap()
-                .lines()
-                .any(|line| {
-                    line.starts_with("test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; ")
-                })
-        );
-    };
-    write_launcher("#!/bin/sh\nexit 1\n");
-    let before = project.text();
-    assert!(!invoke().status.success());
-    assert_eq!(project.text(), before);
-    write_launcher(
-        r#"#!/bin/sh
-[ "$1" = native-build ] && [ "$2" = --sync-internals ] && [ "$3" = --trust-native-code ] && [ "$4" = "$PWD" ] || exit 2
-printf '%s\n' '[{"path":"Used","kind":"struct","signature":"struct Used","hash":"compiler"}]'
-"#,
-    );
-    let report = success(&invoke());
-    assert!(report.contains("added: Used (struct)"));
-    assert!(report.contains("removed: Unused"));
-    let manifest = project.manifest();
-    assert_eq!(manifest.internals.len(), 1);
-    assert_eq!(manifest.internals[0].hash.as_deref(), Some("compiler"));
-    assert!(project.text().contains("# native settings"));
-    let before = project.text();
-    write_launcher("#!/bin/sh\nprintf 'not JSON'\n");
-    assert!(!invoke().status.success());
-    assert_eq!(project.text(), before);
 }

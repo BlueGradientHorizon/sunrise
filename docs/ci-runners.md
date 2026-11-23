@@ -8,7 +8,7 @@ we have to the max") every job that can runs on our own machines, and GitHub's p
 | Runner | Machine | Labels | Takes |
 | --- | --- | --- | --- |
 | `ludodesktop-checks-1`…`-3` | ludodesktop (the maintainer's desktop, 24 threads), isolated user `gha` | `sunrise-checks` | `checks`' `verify` and `launcher` for this repository's own pull requests whose number ends in 0 or 1 (never a fork's), `mod-registry`, `pack load bench` |
-| `playsunrise-light-1`…`-12` | playsunrise (partner's server, 8 vCPU) | `sunrise-light`, `playsunrise-light` | The bots that run main's own scripts: `pr labels`, `overlap note`, `cancel-on-close`, `claim command`, `triage command`, `mojang republish`, `nightly build`'s `answer` |
+| `playsunrise-light-1`…`-12` | playsunrise (partner's server, 8 vCPU) | `sunrise-light`, `playsunrise-light` | The bots that run main's own scripts: `pr labels`, `overlap note`, `cancel-on-close`, `triage command`, `mojang republish`, `nightly build`'s `answer` |
 | `playsunrise-ci-1`, `playsunrise-ci-2` | playsunrise | `playsunrise-ci` | Nothing routed since 2026-11-03 (they took `checks` of this repository's own pull requests with the old `SELF_HOSTED_CI=all`) |
 | `playsunrise-sunrise`, `ludodesktop-sunrise`, `ludodesktop-parity-2` | playsunrise, ludodesktop | `sunrise-game` | Parity ([release-flow.md](release-flow.md#the-parity-job)) |
 | `ludovics-mac-mini*` | Mac mini | `sunrise-game`, `sunrise-release`, `sunrise-nightly` | By-hand game tools, macOS builds, releases |
@@ -142,12 +142,16 @@ only the workflow token (`actions: read`, `issues: write`). What the Team and th
 GitHub reruns a failed job only after its whole run has ended: while another job of the run (often `lint`) is still
 going, "Re-run failed jobs" is refused ("already running"). Wait for the run to finish, then rerun the failed job.
 
+For daily parity, rerun the entire workflow ("Re-run all jobs"), or dispatch a fresh daily for the same commit.
+The merged verdict reads only the plan and share artifacts from the current attempt; an earlier attempt's
+artifacts cannot fill a gap.
+
 ## Rust version
 
-CI, the launcher's native-mod toolchain and the wasm mods' toolchain use one Rust release, written once in
+CI and the launcher's native-mod toolchain use one Rust release, written once in
 `tools/ci/rust-version`: the prebuilt game must be built by the compiler that builds native mods against it, and a
 floating `stable` changed the lints and the build layout under running jobs. `tools/ci/rustup_install.sh` installs it
-and makes it each job's toolchain; `https://github.com/sunrise-org/sunrise-launcher/blob/main/src/rust_toolchain.rs` and `crates/cargo-sunrise-mod/src/wasm.rs` read it
+and makes it each job's toolchain; `https://github.com/sunrise-org/sunrise-launcher/blob/main/src/rust_toolchain.rs` reads it
 at compile time; `tests/test_rust_pin.py` fails on a workflow that names a channel or a release of its own.
 
 To move to a new release, in one pull request:
@@ -164,10 +168,14 @@ counts as passed for a required check. Everything runs on main's pushes, on disp
 this repository's own branches (rollups, syncs, fast-path fixes, our sessions' work), which carry contributors'
 changes into one heavy run. The rule is `tools/ci/pr_gate.py`; `tests/test_pr_gate.py` keeps the workflows to it.
 
-A reviewer runs the heavy gate on one contributor's pull request with `gh workflow run dyna-ci.yml -f pr=<number>`.
-Main's workflow checks out that pull request's head commit on GitHub's runners (never ours) with a read-only token,
-and the `pr-status` job, which runs none of its code and alone may write commit statuses, posts `dispatched/lint`,
-`dispatched/verify` and `dispatched/verify-static` on that commit.
+A reviewer runs the heavy gate on one contributor's pull request with `gh workflow run dyna-ci.yml -f pr=<number>`. A rollup or
+sync pull request of this repository is refused: each push to it already runs the heavy gate.
+Main's workflow checks out that pull request's test merge with its base (GitHub's merge commit) with a read-only
+token. Its jobs take the same runners as any heavy run of that origin: a pull request of this repository runs on
+Dyna's pool when it is on, and a fork's on boat-large (for contributors on boat's list) or GitHub's runners, never
+Dyna's (`tools/ci/dyna_ci_runner.sh`). The `pr-status` job, which runs none of its code and alone may write commit
+statuses, posts `dispatched/lint`, `dispatched/verify` and `dispatched/verify-static` on the pull request's head
+commit, each naming the merge commit it tested.
 
 The daily's vanilla parity job uses Dyna's copy of the prepared vanilla data (`/cache/sunrise-local`). It runs
 only on the main head captured at dispatch. The public log shows harness names and outcomes; harness output

@@ -3,6 +3,7 @@ use super::native_level_signals::ReadLevel;
 use super::{Dim, Game};
 use mod_api::BlockKey;
 use mod_api::{FluidKey, FluidState, LevelRef, LifecycleContext, UnresolvedFluid};
+use std::cell::RefCell;
 use sunrise_client::{items::Items, world::World};
 use sunrise_core::{geometry::Direction, position::BlockPos};
 use sunrise_world::{
@@ -11,6 +12,62 @@ use sunrise_world::{
     level::{Behaviours, fluid_can_be_replaced_with, fluid_tick_delay},
     registry::{BlockRegistry, BlockStateId},
 };
+
+/// Kinds of contextual block provider dispatched by the game.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum BlockProviderQuery {
+    EnchantPower,
+    LightEmission,
+}
+
+#[derive(PartialEq, Eq)]
+struct BlockQueryKey {
+    game: *const (),
+    state: BlockStateId,
+    query: BlockProviderQuery,
+}
+
+thread_local! {
+    static ACTIVE_BLOCK_QUERIES: RefCell<Vec<BlockQueryKey>> = const { RefCell::new(Vec::new()) };
+}
+
+struct PopBlockQuery;
+
+impl Drop for PopBlockQuery {
+    fn drop(&mut self) {
+        ACTIVE_BLOCK_QUERIES.with(|active| {
+            active.borrow_mut().pop();
+        });
+    }
+}
+
+impl Game<'_> {
+    /// Refuse re-entry for the same state and query kind in this game, regardless of level and
+    /// position. A provider can delegate to another state. Only actual dispatch enters here;
+    /// the vector retains its capacity between calls.
+    pub(super) fn with_block_provider_query<R>(
+        &self,
+        state: BlockStateId,
+        query: BlockProviderQuery,
+        ask: impl FnOnce() -> R,
+    ) -> Option<R> {
+        let key = BlockQueryKey {
+            game: std::ptr::from_ref(self).cast(),
+            state,
+            query,
+        };
+        ACTIVE_BLOCK_QUERIES.with(|active| {
+            let mut active = active.borrow_mut();
+            if active.contains(&key) {
+                return None;
+            }
+            active.push(key);
+            drop(active);
+            let _pop = PopBlockQuery;
+            Some(ask())
+        })
+    }
+}
 
 /// Shared by the level handle and the restricted block-hook view.
 pub(super) fn block_face_sturdy(
@@ -58,11 +115,10 @@ pub(super) fn block_face_sturdy(
     })
 }
 
-/// Shared full-skylight query; never reads an unloaded chunk.
-pub(super) fn can_see_sky(world: &World, pos: [i32; 3]) -> Option<bool> {
-    world.is_loaded_at(pos[0], pos[1], pos[2]).then(|| {
-        super::native_level_refs::world_brightness(world, mod_api::LightLayer::Sky, pos) >= 15
-    })
+/// Read the published sky light without requiring a block or a resident column.
+pub(super) fn can_see_sky(world: &World, pos: [i32; 3]) -> bool {
+    world.shape.sky_light
+        && super::native_level_refs::world_brightness(world, mod_api::LightLayer::Sky, pos) >= 15
 }
 
 /// Why a server block cannot be read.
@@ -452,8 +508,28 @@ mod tests {
     use super::*;
     use mod_api::LevelHost;
     use std::sync::Arc;
-    use sunrise_client::chunk::Chunk;
+    use sunrise_client::chunk::{Chunk, Light};
     use sunrise_client::items::TagRegistry;
+
+    #[test]
+    fn sky_visibility_uses_the_published_sky_layer() {
+        let mut world = World::new(BlockStateId(0), 0);
+        let y = world.shape.min_y;
+        let above = world.shape.max_y() + 16;
+        let mut chunk = Chunk::empty(0, 0);
+        Arc::make_mut(&mut chunk.sections[0]).light = Light::Uniform(0xef);
+        world.chunks.insert((0, 0), Arc::new(chunk));
+        assert!(
+            !can_see_sky(&world, [0, y, 0]),
+            "block light is not sky light"
+        );
+        assert!(can_see_sky(&world, [0, above, 0]));
+        assert!(can_see_sky(&world, [32, y, 0]));
+        world.shape.sky_light = false;
+        assert!(!can_see_sky(&world, [0, above, 0]));
+        assert!(!can_see_sky(&world, [32, y, 0]));
+        assert!(!world.loaded(32, 0));
+    }
 
     #[test]
     fn a_fluid_shape_is_full_under_the_same_fluid_and_its_own_height_otherwise() {
@@ -674,11 +750,15 @@ mod tests {
                 let oak_tag = tags
                     .key(&mod_api::Identifier::parse("minecraft:oak_logs").unwrap())
                     .unwrap();
+                let mod_api::TagMembers::Members(keys) = tags.items(oak_tag) else {
+                    panic!("the oak logs tag is loaded");
+                };
                 assert_eq!(
-                    tags.items(oak_tag)
-                        .map(|keys| keys.into_iter().map(|key| key.id(host)).collect::<Vec<_>>())
+                    keys.into_iter()
+                        .map(|key| key.id(host))
+                        .collect::<Option<Vec<_>>>()
                         .as_deref(),
-                    Some(&oak[..])
+                    Some(&oak.each_ref().map(String::as_str)[..])
                 );
                 let item = host
                     .item_key(&mod_api::Identifier::parse("minecraft:oak_log").unwrap())
@@ -822,7 +902,7 @@ mod tests {
             use super::super::api_values::TryIntoApi;
             let stone = stone.try_into_api().unwrap();
             let slab = slab.try_into_api().unwrap();
-            let invalid = mod_api::BlockStateRecord::new(stone.block(), u16::MAX).into();
+            let invalid = mod_api::__private::block_state_from_ordinal(stone.block(), u16::MAX);
             let parsed = game
                 .block_state_id("minecraft:oak_slab[waterlogged=true]")
                 .try_into_api()
@@ -973,7 +1053,7 @@ mod tests {
             let item = host
                 .item_key(&mod_api::Identifier::parse("minecraft:oak_log").unwrap())
                 .unwrap();
-            assert_eq!(tags.items(oak_tag), None);
+            assert_eq!(tags.items(oak_tag), mod_api::TagMembers::Unavailable);
             assert_eq!(tags.is_in_tag(item, oak_tag), None);
             game.session_lock = None;
             let _ = std::fs::remove_dir_all(dir);
