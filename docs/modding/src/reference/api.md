@@ -51,5 +51,8 @@ panic disables that mod's `entity_inside` callback for the session, logs the mod
 error toast for the client. Other mods' callbacks and the built-in effects still run while the
 entity is alive.
 
-[Hook notes](hook-notes.md) holds longer explanations that go with groups of hooks, and
-[NeoForge counterparts](neoforge-counterparts.md) lists each hook's NeoForge event or method.
+[API reference](api-reference.md) indexes the catalog-backed `Hooks` and Part hooks and the
+area-declared `Host` / `ServerHost` / `ClientHost` methods; build the rustdoc above for the
+complete traits and types. [Hook notes](hook-notes.md) holds longer explanations that go with
+groups of hooks, and [NeoForge counterparts](neoforge-counterparts.md) lists each hook's NeoForge
+event or method.

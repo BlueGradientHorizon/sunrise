@@ -81,6 +81,12 @@ pub struct Renderer {
     /// for the settings in `graphics::gpu_culling_offer`), and whether the last frame drew
     /// them so (`gpu_frame`).
     pub(crate) gpu_culling: Option<gpu_culling::GpuCulling>,
+    /// Sourced geometry's residency beside them (`sourced_geometry::gpu::Sourced`): its
+    /// record table, made with the first recorded mesh and dropped with the last, each
+    /// mesh's record in it, and the meshes a GPU frame still lists the CPU. Whether the
+    /// last frame drew them so is `gpu_sourced_frame`.
+    pub(crate) sourced: sourced_geometry::gpu::Sourced,
+    pub(crate) gpu_sourced_frame: bool,
     pub(crate) gpu_culling_offer: crate::graphics::GpuCullingOffer,
     pub(crate) gpu_frame: bool,
     /// GPU frames since GPU culling was switched on: the first and every 64th after it
@@ -183,6 +189,7 @@ pub struct Renderer {
     pub(crate) world_primitives: Option<world_primitives::WorldPrimitives>,
     pub(crate) text_polygon_offset_pipeline: wgpu::RenderPipeline,
     pub(crate) world_text_pipeline: wgpu::RenderPipeline,
+    pub(crate) text_mark_pipelines: [wgpu::RenderPipeline; 2],
     pub(crate) fluid_pipeline: wgpu::RenderPipeline,
     pub(crate) terrain_model_pipelines: [wgpu::RenderPipeline; 4],
     pub(crate) celestial: celestial::Celestial,
@@ -349,6 +356,10 @@ pub struct Renderer {
     /// Reusable merge buffers when `FrameHooks` adds CPU entity / name-tag / see-through vertices.
     pub(crate) hook_entities_scratch: Vec<Vertex>,
     pub(crate) hook_see_through_scratch: Vec<Vertex>,
+    /// Every far tile in view, whether the GPU's solid draws own it or not: the water's
+    /// re-sort walks it (`draw_frame`), so its budget and rotation do not follow which
+    /// solid draws the sourced-geometry pass took over.
+    pub(crate) translucent_lods: Vec<lod::Visible>,
     /// The sections a shader pack's shadow camera sees (`external::ShadowView`).
     pub(crate) shadow_visible: Vec<resident::Visible>,
     /// The external shader pipeline world frames call (`external`); `None` draws vanilla's way.
@@ -520,6 +531,9 @@ pub struct Renderer {
     /// `draw_frame`'s frames past its early returns, and the one whose statistics are shown.
     pub(crate) frame_serial: u64,
     pub(crate) stats_frame: u64,
+    /// The readback halves a GPU frame's statistics wait for (`in_flight::collect_stats`):
+    /// a half alone undercounts the frame.
+    pub(crate) stats_halves: in_flight::StatsHalves,
     pub uploaded_bytes: u64,
     pub(crate) started: Instant,
     /// The next frame to write to a PNG path (control socket, F2, world icon).

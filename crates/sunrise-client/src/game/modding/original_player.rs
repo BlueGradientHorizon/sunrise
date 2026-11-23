@@ -757,8 +757,7 @@ mod tests {
                 if death {
                     game.guest_respawn(12);
                 } else {
-                    let play = host.play.entry(12).or_default();
-                    play.won_game = true;
+                    host.hub.update_guest(12, |guest| guest.won_game = true);
                     game.guest_respawn(12);
                 }
                 assert_eq!(*heard.lock().unwrap(), 1);
@@ -1012,7 +1011,7 @@ mod tests {
                             );
                         } else {
                             game.handle_server_portal(12);
-                            assert!(game.lan.as_ref().unwrap().play[&12].won_game);
+                            assert!(game.command_guest(12).unwrap().won_game);
                             assert_eq!(*closed.lock().unwrap(), 1, "menu closes at credits entry");
                             assert_eq!(*cloned.lock().unwrap(), 0);
                             let guest = game.command_guest(12).unwrap();
@@ -1185,8 +1184,7 @@ mod tests {
                     VALUE.set(attachments, Holder::Level, 73).unwrap();
                     SAVED.set(attachments, Holder::Level, 31).unwrap();
                     RETAINED.set(attachments, Holder::Level, 17).unwrap();
-                    let play = host.play.entry(12).or_default();
-                    play.won_game = true;
+                    host.hub.update_guest(12, |guest| guest.won_game = true);
                     game.guest_respawn(12);
 
                     let host: &mut dyn ServerHost = game;

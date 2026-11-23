@@ -10,6 +10,7 @@ pub(super) struct RemoteOpening {
     info: ClientInformation,
     user: (String, u128),
     local: bool,
+    list_name: Option<String>,
 }
 
 impl Game<'_> {
@@ -21,8 +22,10 @@ impl Game<'_> {
         cookies: Option<sunrise_client::net::Cookies>,
         lan: bool,
         realm: bool,
+        list_name: Option<&str>,
     ) -> Result<()> {
-        let opening = self.open_remote_session(address, name, local, cookies, lan, true)?;
+        let opening =
+            self.open_remote_session(address, name, local, cookies, lan, true, list_name)?;
         self.install_remote_session(opening, lan, realm)
     }
 
@@ -34,6 +37,7 @@ impl Game<'_> {
         cookies: Option<sunrise_client::net::Cookies>,
         lan: bool,
         announce: bool,
+        list_name: Option<&str>,
     ) -> Result<RemoteOpening> {
         let root = &self.options.resources;
         let item_data = Arc::clone(&self.res.core.item_data);
@@ -98,6 +102,7 @@ impl Game<'_> {
             info,
             user,
             local: is_local,
+            list_name: list_name.map(str::to_owned),
         })
     }
 
@@ -117,7 +122,7 @@ impl Game<'_> {
         let address = format!("{}:{}", transfer.host, transfer.port);
         let name = remote.session.name.clone();
         let cookies = remote.session.cookies.clone();
-        self.open_remote_session(&address, &name, None, Some(cookies), false, false)
+        self.open_remote_session(&address, &name, None, Some(cookies), false, false, None)
             .map(Some)
     }
 
@@ -141,6 +146,7 @@ impl Game<'_> {
             info,
             user,
             local,
+            list_name,
         } = opening;
         self.reset_client_item_use();
         self.realm_session = realm;
@@ -156,7 +162,11 @@ impl Game<'_> {
                 sunrise_client::net::shown_address(&session.address),
             );
         }
-        self.server_packs_connect((!local).then_some(&session.address), user);
+        self.server_packs_connect(
+            (!local).then_some(&session.address),
+            list_name.as_deref(),
+            user,
+        );
         let root = self.options.resources.clone();
         let player_type = super::super::perspective::player_type(&root);
         let mut streaming = Streaming::new(
@@ -279,7 +289,6 @@ impl Game<'_> {
             local_entity_silent: false,
             camera: None,
             detached_camera: None,
-            use_item: None,
             dimension: DimensionType::vanilla("minecraft:overworld"),
             level: "minecraft:overworld".into(),
             level_key: mod_api::DimensionKey::OVERWORLD,
@@ -348,6 +357,7 @@ impl Game<'_> {
             head_lerps: HashMap::new(),
             ghast_dismount: None,
             first_passenger: false,
+            own_tick_count: 0,
             passenger_index: 0,
             pending_items: HashMap::new(),
             health: (20.0, 20, 5.0),
@@ -452,7 +462,7 @@ impl Game<'_> {
             },
             |a| (a.name.clone(), a.uuid),
         );
-        self.server_packs_connect(None, user);
+        self.server_packs_connect(None, None, user);
         let session = Session::replay(name);
         let player_type = super::super::perspective::player_type(&root);
         let mut streaming = Streaming::new(
@@ -551,7 +561,6 @@ impl Game<'_> {
             entity_id: 0,
             camera: None,
             detached_camera: None,
-            use_item: None,
             dimension: DimensionType::vanilla("minecraft:overworld"),
             level: "minecraft:overworld".into(),
             level_key: mod_api::DimensionKey::OVERWORLD,
@@ -620,6 +629,7 @@ impl Game<'_> {
             head_lerps: HashMap::new(),
             ghast_dismount: None,
             first_passenger: false,
+            own_tick_count: 0,
             passenger_index: 0,
             pending_items: HashMap::new(),
             health: (20.0, 20, 5.0),
@@ -939,6 +949,8 @@ impl Game<'_> {
         if new_logical_player {
             r.abilities = sunrise_client::lan::abilities::PlayerAbilities::default();
             r.own_player_info = std::cell::OnceCell::new();
+            // The new LocalPlayer, admitted now, counts its ticks from 0.
+            r.own_tick_count = 0;
         } else if let Some((flying, flying_speed)) = body_flight {
             r.sync_body_flight(flying, flying_speed);
         }
