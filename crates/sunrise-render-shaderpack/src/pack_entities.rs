@@ -1272,29 +1272,19 @@ mod gpu_span_tests {
     #[test]
     #[ignore = "daily"]
     fn native_fluid_stays_native_while_model_uses_pack() {
-        assert_native_overlays([
-            FLUID_OVERLAY,
-            TERRAIN_MODEL_SOLID_OVERLAY,
-            TERRAIN_MODEL_CUTOUT_OVERLAY,
-            TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY,
-            TERRAIN_MODEL_TRANSLUCENT_OVERLAY,
-        ]);
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn sign_text_stays_native_while_model_uses_pack() {
-        assert_native_overlays([TEXT_NORMAL_SOLID_OVERLAY, TEXT_POLYGON_OFFSET_SOLID_OVERLAY]);
-    }
-
-    fn assert_native_overlays(overlays: impl IntoIterator<Item = u32>) {
         let _gpu = crate::test_gpu::lock();
         let adapter = crate::test_gpu::adapter().unwrap();
         let (device, queue) =
             pollster::block_on(adapter.request_device(&Default::default())).unwrap();
         let layout = crate::pack_draw::DrawUniforms::new(&device);
         let mut geometry = PackEntities::new(&device, &layout.layout);
-        for overlay in overlays {
+        for overlay in [
+            super::FLUID_OVERLAY,
+            super::TERRAIN_MODEL_SOLID_OVERLAY,
+            super::TERRAIN_MODEL_CUTOUT_OVERLAY,
+            super::TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY,
+            super::TERRAIN_MODEL_TRANSLUCENT_OVERLAY,
+        ] {
             let mut mixed = vec![
                 Vertex {
                     layer: 0,
@@ -1344,17 +1334,73 @@ mod gpu_span_tests {
                 if hidden {
                     assert!(
                         rest.is_empty(),
-                        "hidden native geometry must not leak into the visible pass"
+                        "hidden native fluid must not leak into the visible pass"
                     );
                 } else {
                     assert_eq!(
                         bytemuck::cast_slice::<_, u8>(&rest),
                         bytemuck::cast_slice::<_, u8>(&mixed[4..]),
-                        "native geometry must reach Sunrise with its UV and layer intact"
+                        "fluid UV/layer payload cannot be sampled from the entity atlas"
                     );
                 }
             }
         }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn sign_text_stays_native_while_model_uses_pack() {
+        let _gpu = crate::test_gpu::lock();
+        let adapter = crate::test_gpu::adapter().unwrap();
+        let (device, queue) =
+            pollster::block_on(adapter.request_device(&Default::default())).unwrap();
+        let layout = crate::pack_draw::DrawUniforms::new(&device);
+        let mut geometry = PackEntities::new(&device, &layout.layout);
+        // One sign span has a model quad, a normal outline quad and a biased face quad.
+        let mixed = [
+            0,
+            TEXT_NORMAL_SOLID_OVERLAY,
+            TEXT_POLYGON_OFFSET_SOLID_OVERLAY,
+        ]
+        .into_iter()
+        .flat_map(|overlay| {
+            [Vertex {
+                layer: overlay | 279 << 16,
+                uv: [0.25, 0.75],
+                ..bytemuck::Zeroable::zeroed()
+            }; 4]
+        })
+        .collect::<Vec<_>>();
+        let mut rest = Vec::new();
+        geometry.prepare(
+            &device,
+            &queue,
+            &layout.layout,
+            &mixed,
+            &[EntitySpan {
+                start: 0,
+                id: 77,
+                stage: render_stage("BLOCK_ENTITIES"),
+                ..Default::default()
+            }],
+            [true; PROGRAMS],
+            ([0.; 4], [1; 2]),
+            Casters {
+                blocks: true,
+                ..Default::default()
+            },
+            &mut rest,
+            None,
+            (&[], &[]),
+        );
+        assert_eq!(geometry.scratch.len(), 4, "only the model uses the pack");
+        assert_eq!(geometry.draws.len(), 1);
+        assert!(geometry.draws[0].pack);
+        assert_eq!(
+            bytemuck::cast_slice::<_, u8>(&rest),
+            bytemuck::cast_slice::<_, u8>(&mixed[4..]),
+            "both text modes reach the native draw in order, with UV and layer intact"
+        );
     }
 
     #[test]
