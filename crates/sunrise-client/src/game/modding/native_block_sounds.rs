@@ -84,45 +84,22 @@ impl Game<'_> {
 
 #[cfg(test)]
 pub(super) mod tests {
-    use super::super::native_entity_refs::tests::{fixture_root, with_game};
+    use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
     use mod_api::BlockSoundCause::{Break, Dig, Fall, Place, Step};
     use std::sync::Arc;
     use sunrise_client::mobs::{Mob, MobEvent, equine};
     use sunrise_core::{geometry::Vec3, position::BlockPos};
     use sunrise_world::level::LevelAccess;
 
-    // The executable installs its client callback table once per process.
+    // The executable installs its client callback table once per process, so the fixture runs
+    // in a fresh child: this returns true there, and false in the parent once the child passed.
     pub(in crate::game) fn install_sound_fixture_in_child(test: &str) -> bool {
         const CHILD: &str = "SUNRISE_BLOCK_SOUND_TEST_CHILD";
-        if std::env::var(CHILD).as_deref() == Ok(test) {
-            crate::entry::install_client_hooks();
-            return true;
+        if run_fresh_cases(test, CHILD, &["child"]) {
+            return false;
         }
-        let scratch = tempfile::tempdir().unwrap();
-        let root = scratch.path();
-        let output = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--include-ignored", "--exact", test, "--nocapture"])
-            .env(CHILD, test)
-            .env(
-                "SUNRISE_TEST_RESOURCES",
-                fixture_root().canonicalize().unwrap(),
-            )
-            .env("SUNRISE_HOME", root.join("home"))
-            .env("SUNRISE_LAUNCHER_HOME", root.join("launcher"))
-            .env("SUNRISE_LAUNCHER_NO_SELF_UPDATE", "1")
-            .env("SUNRISE_NO_AUDIO", "1")
-            .env("XDG_DATA_HOME", root.join("data"))
-            .env("XDG_CONFIG_HOME", root.join("config"))
-            .current_dir(root)
-            .output()
-            .unwrap();
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(
-            output.status.success() && stdout.contains("1 passed; 0 failed;"),
-            "{stdout}\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        false
+        crate::entry::install_client_hooks();
+        true
     }
 
     #[test]

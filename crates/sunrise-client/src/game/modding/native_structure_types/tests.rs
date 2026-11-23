@@ -1803,22 +1803,11 @@ fn piece_and_after_place_panics_poison_only_their_operation_with_toast_notices()
 
     // Run the worldgen fixture in its own process.
     const CHILD: &str = "SUNRISE_STRUCTURE_PANIC_TEST_CHILD";
-    if std::env::var_os(CHILD).is_none() {
-        let output = std::process::Command::new(std::env::current_exe().unwrap())
-            .args([
-                "--ignored",
-                "--exact",
-                "game::native_structure_types::tests::piece_and_after_place_panics_poison_only_their_operation_with_toast_notices",
-            ])
-            .env(CHILD, "1")
-            .output()
-            .unwrap();
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(
-            output.status.success() && stdout.contains("test result: ok. 1 passed;"),
-            "{stdout}{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+    if crate::game::native_entity_refs::tests::run_fresh_cases(
+        "game::native_structure_types::tests::piece_and_after_place_panics_poison_only_their_operation_with_toast_notices",
+        CHILD,
+        &["1"],
+    ) {
         return;
     }
 

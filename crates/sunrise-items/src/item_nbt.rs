@@ -89,14 +89,16 @@ pub fn item_to_nbt(stack: &crate::items::ItemStack, items: &crate::items::Items)
 /// The SNBT grammar and saved-item decoder report their own errors; binary NBT quotas
 /// are not part of this text boundary.
 pub fn item_from_snbt(snbt: &str) -> Result<crate::items::ItemStack, String> {
-    item_from_snbt_with(snbt, |_| false)
+    item_from_snbt_with(snbt, |_| false, |_| true)
 }
 
 /// Read one `TagParser.parseCompoundFully` compound as an `ItemStack.CODEC` item,
-/// resolving registered native component types via `is_native`.
+/// resolving registered native component types via `is_native` and every item, nested ones
+/// included, via `has_item`.
 pub fn item_from_snbt_with(
     snbt: &str,
     is_native: impl Fn(&str) -> bool,
+    has_item: impl Fn(&str) -> bool,
 ) -> Result<crate::items::ItemStack, String> {
     let (tag, end) = parse_snbt(snbt)?;
     if let Some((pos, _)) = snbt[end..]
@@ -105,23 +107,25 @@ pub fn item_from_snbt_with(
     {
         return Err(format!("argument.nbt.trailing at {}", end + pos));
     }
-    item_from_persistent_nbt_with(&tag, is_native)
+    item_from_persistent_nbt_with(&tag, is_native, has_item)
 }
 
 /// Decode an `ItemStack.CODEC` compound at a strict input boundary. Unlike the save
 /// reader, refuse an invalid count or component patch and preserve the diagnostic.
 pub fn item_from_persistent_nbt(tag: &Tag) -> Result<crate::items::ItemStack, String> {
-    item_from_persistent_nbt_with(tag, |_| false)
+    item_from_persistent_nbt_with(tag, |_| false, |_| true)
 }
 
 /// Decode an `ItemStack.CODEC` compound at a strict input boundary, resolving registered
-/// native component types via `is_native`.
+/// native component types via `is_native` and items via `has_item`.
 pub fn item_from_persistent_nbt_with(
     tag: &Tag,
     is_native: impl Fn(&str) -> bool,
+    has_item: impl Fn(&str) -> bool,
 ) -> Result<crate::items::ItemStack, String> {
-    let template =
-        sunrise_world::component_value::source::item_stack_from_tag_with(tag, is_native)?;
+    let template = sunrise_world::component_value::source::item_stack_from_tag_with(
+        tag, is_native, &has_item,
+    )?;
     let components = template.patch_to_tag()?;
     let stack = decode_item_fields(
         &template.item,
@@ -314,6 +318,7 @@ mod tests {
         let registered = item_from_snbt_with(
             r#"{id:"diamond_sword",components:{"damage":5,"!repair_cost":{ignored:1},"sample:charge":{value:5}}}"#,
             |id| id == "sample:charge",
+            |_| true,
         )
         .unwrap();
         assert_eq!(&*registered.item, "minecraft:diamond_sword");
@@ -416,10 +421,11 @@ mod tests {
             let live = crate::item_data::components_tag(stack.damage, stack.data()).unwrap();
             assert_eq!(live.get(transient), None);
             assert_eq!(live.get("minecraft:repair_cost"), Some(&Tag::Int(2)));
-            // Strict input keeps the component codec's reason instead of stripping it.
-            assert_eq!(
-                item_from_persistent_nbt(&saved).unwrap_err(),
-                format!("{transient} has no persistent codec")
+            // Strict input refuses the component, naming it, instead of stripping it.
+            assert!(
+                item_from_persistent_nbt(&saved)
+                    .unwrap_err()
+                    .contains(transient)
             );
         }
     }

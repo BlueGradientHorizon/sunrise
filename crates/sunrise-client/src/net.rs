@@ -4861,16 +4861,11 @@ mod tests {
         // Configuration clears the remembered datapack registries; keep that in a fresh process.
         const CHILD: &str = "SUNRISE_RECONFIG_HELD_PRESSURE_CHILD";
         if std::env::var_os(CHILD).is_none() {
-            let status = std::process::Command::new(std::env::current_exe().unwrap())
-                .args([
-                    "--ignored",
-                    "--exact",
-                    "net::tests::exhausted_held_play_credit_still_serves_replies_and_reconfiguration_ack",
-                ])
-                .env(CHILD, "1")
-                .status()
-                .unwrap();
-            assert!(status.success(), "held-pressure receiver fixture failed");
+            crate::fresh_process::run_in_fresh_process(
+                "net::tests::exhausted_held_play_credit_still_serves_replies_and_reconfiguration_ack",
+                CHILD,
+                "1",
+            );
             return;
         }
 
@@ -5519,20 +5514,7 @@ mod tests {
             return body(&case);
         }
         for &case in cases {
-            let out = std::process::Command::new(std::env::current_exe().unwrap())
-                .args([name, "--exact", "--include-ignored", "--test-threads=1"])
-                .env(flag, case)
-                .output()
-                .unwrap();
-            let report = format!(
-                "{}{}",
-                String::from_utf8_lossy(&out.stdout),
-                String::from_utf8_lossy(&out.stderr)
-            );
-            assert!(
-                out.status.success() && report.contains("test result: ok. 1 passed;"),
-                "{name} ({case}) failed in its own process:\n{report}"
-            );
+            crate::fresh_process::run_in_fresh_process(name, flag, case);
         }
     }
 

@@ -1085,7 +1085,6 @@ sunrise-client game::native_block_entity_refs::tests::retained_handles_reject_re
 sunrise-client game::native_block_entity_refs::tests::viewers_follow_open_menus_per_level_and_leave_out_fake_players lib daily resources
 sunrise-client game::native_block_entity_refs::tests::writes_merge_data_name_and_roll_back_with_a_transaction lib daily resources
 sunrise-client game::native_block_entity_transform_tests::structure_transform_survives_real_datapack_reload_with_its_registry lib daily resources
-sunrise-client game::native_block_sounds::tests::a_block_part_answers_the_sound_type_a_block_plays lib daily resources
 sunrise-client game::native_block_sprites::block_tint_color_tests::a_tinted_face_takes_its_colour_where_it_stands lib daily resources
 sunrise-client game::native_block_sprites::texture_atlas_stitched_tests::a_client_mod_finds_its_sprites_each_time_an_atlas_is_stitched lib daily resources
 sunrise-client game::native_block_states::crafting_remainder_tests::crafting_remainder_part_override_and_default lib daily resources
@@ -1437,7 +1436,6 @@ sunrise-client game::native_hooks::block_landing::landing_crossing_tests::landin
 sunrise-client game::native_hooks::book_screen::lifecycle_tests::authoritative_custom_book_rebuilds_cached_geometry_without_observe_screen lib daily resources
 sunrise-client game::native_hooks::book_screen::lifecycle_tests::entering_inventory_requests_catalogue_for_preinstalled_bound_screen lib daily resources
 sunrise-client game::native_hooks::camera_type::camera_type_tests::a_client_mod_picks_the_camera_type_f5_cycles_to lib daily resources
-sunrise-client game::native_hooks::camera_type::camera_type_tests::shared_camera_pose_requests_apply_before_frame_consumers lib daily resources
 sunrise-client game::native_hooks::can_be_connected_to_tests::the_block_beside_a_fence_answers_whether_it_connects lib daily resources
 sunrise-client game::native_hooks::client_chunk_hooks_tests::a_client_tells_a_chunk_packet_and_its_forget_once lib daily resources
 sunrise-client game::native_hooks::client_chunk_hooks_tests::every_route_that_frees_a_column_tells_its_unload lib daily resources
