@@ -94,21 +94,31 @@ def fangs_uuid(tail):
 def program():
     ops = []
 
-    def cmd(text, label, expected=None, admission=True):
+    def cmd(text, label, expected=None, admission=True, record=True):
         op = dict(op='cmd', cmd=text, label=label, admission=admission)
         if expected is not None:
             op['expect_result'] = expected
+        if not record:
+            op['record'] = False
         ops.append(op)
 
     cmd('/tick freeze', 'freeze')
     for key in ('spawn_mobs', 'advance_time', 'advance_weather', 'mob_griefing'):
         cmd(f'/gamerule {key} false', f'rule-{key}')
     cmd('/gamerule random_tick_speed 0', 'rule-random-tick-speed')
+    cmd('/gamerule show_advancement_messages false', 'rule-advancement-messages', record=False)
+    cmd('/gamemode spectator', 'spectator', record=False)
     cmd('/forceload add 0 0 15 15', 'forceload', 1)
     cmd('/execute in minecraft:the_nether run forceload add -16 -16 31 31', 'nether-forceload', 9)
+    # `settle` only waits for `player.level()`'s chunks to finish async loading and
+    # reach `ENTITY_TICKING` (`areEntitiesActuallyLoadedAndTicking`). Visit the
+    # Nether and settle there before returning to the Overworld so chunk (0, 0) in
+    # `minecraft:the_nether` is deterministically accessible and entity-ticking
+    # before summoning the Nether fangs.
+    cmd('/execute in minecraft:the_nether run tp @s 8.5 230 8.5', 'enter-nether', record=False)
     ops.append(dict(op='settle', required_chunks=[[0, 0]]))
-    cmd('/tick step 2', 'nether-settle-step')
-    ops.append(dict(op='tick', n=2))
+    cmd('/execute in minecraft:overworld run tp @s 8.5 230 8.5', 'return-overworld', record=False)
+    ops.append(dict(op='settle', required_chunks=[[0, 0]]))
     for label, text, expected in ARENA_COMMANDS:
         cmd(text, label, expected)
     for name, tail, dim, pos, extra in CASES:
