@@ -359,15 +359,21 @@ impl LevelRef {
     /// same vanilla method, which NeoForge does not extend. It reads the named open level
     /// whether it is the one in place for this hook or parked while the server ticks
     /// another, through the level's UUID index: it never switches, loads or scans a level.
-    /// To search every level, as Java's `for (ServerLevel level : server.getAllLevels())`
-    /// does, ask each level of [`Levels::list_levels`] in turn:
+    /// To search every level, as vanilla's `ServerLevel.getEntityInAnyDimension(UUID)`
+    /// does, ask the hook's own level first, then each other level of
+    /// [`Levels::list_levels`]:
     ///
     /// ```
     /// use mod_api::prelude::*;
-    /// use mod_api::{EntityRef, EntityUuid, ServerHost};
-    /// fn find_anywhere(host: &dyn ServerHost, uuid: EntityUuid) -> Option<EntityRef> {
-    ///     let levels = host.levels().list_levels();
-    ///     levels.into_iter().find_map(|level| level.entity_by_uuid(host, uuid))
+    /// use mod_api::{EntityRef, EntityUuid, LevelRef, ServerHost};
+    /// fn find_anywhere(host: &dyn ServerHost, own: LevelRef, uuid: EntityUuid) -> Option<EntityRef> {
+    ///     own.entity_by_uuid(host, uuid).or_else(|| {
+    ///         let levels = host.levels().list_levels();
+    ///         levels
+    ///             .into_iter()
+    ///             .filter(|level| *level != own)
+    ///             .find_map(|level| level.entity_by_uuid(host, uuid))
+    ///     })
     /// }
     /// ```
     ///

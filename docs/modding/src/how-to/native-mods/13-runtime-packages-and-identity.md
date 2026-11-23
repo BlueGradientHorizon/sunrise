@@ -62,7 +62,9 @@ return `MappingError::Label` if the text cannot be converted.
 In a server hook, wrap a saved `u128` in `EntityUuid` and ask the level that
 should hold the entity with `LevelRef::entity_by_uuid`. The level may be the one
 in place or a parked one; the lookup returns `None` if the entity is unloaded or
-in another level. To search every level, ask each one `host.levels()` lists.
+in another level. To search every level, do as vanilla's
+`ServerLevel.getEntityInAnyDimension` does: ask the hook's own level first, then
+each other level `host.levels()` lists.
 
 ```rust,ignore
 use mod_api::prelude::*;
@@ -72,11 +74,15 @@ fn find_saved_entity(host: &dyn ServerHost, level: LevelRef, saved_uuid: u128) -
     level.entity_by_uuid(host, EntityUuid(saved_uuid))
 }
 
-fn find_in_any_level(host: &dyn ServerHost, saved_uuid: u128) -> Option<EntityRef> {
-    let levels = host.levels().list_levels();
-    levels
-        .into_iter()
-        .find_map(|level| level.entity_by_uuid(host, EntityUuid(saved_uuid)))
+fn find_in_any_level(host: &dyn ServerHost, own: LevelRef, saved_uuid: u128) -> Option<EntityRef> {
+    let uuid = EntityUuid(saved_uuid);
+    own.entity_by_uuid(host, uuid).or_else(|| {
+        let levels = host.levels().list_levels();
+        levels
+            .into_iter()
+            .filter(|level| *level != own)
+            .find_map(|level| level.entity_by_uuid(host, uuid))
+    })
 }
 
 fn entity_identity(host: &mut dyn ServerHost, entity: EntityRef) -> Option<EntityUuid> {
