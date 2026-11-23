@@ -5,6 +5,24 @@ use mod_api::{
 };
 use std::sync::{Arc, Mutex};
 
+impl NativeConfigs {
+    /// Opens each registration of `kinds` in order and answers the snapshots.
+    pub(super) fn load(
+        &mut self,
+        configs: &'static [RegisteredConfig],
+        kinds: &[ConfigKind],
+        config_dir: &Path,
+        world: Option<&Path>,
+    ) -> Vec<(&'static RegisteredConfig, ConfigSnapshot)> {
+        self.started = true;
+        configs
+            .iter()
+            .filter(|c| kinds.contains(&c.kind))
+            .filter_map(|c| Some((c, self.open(c, config_dir, world)?)))
+            .collect()
+    }
+}
+
 pub(super) type ConfigDecl = (ConfigKind, Option<&'static str>, &'static str);
 
 pub(super) fn with_registered_configs(
@@ -84,17 +102,14 @@ fn panicking_config_hooks_keep_live_writes_and_do_not_stop_later_listeners() {
 
         fn setting_changed(
             &self,
-            host: HostSide<'_>,
+            host: &dyn mod_api::Host,
             event: &mut mod_api::SettingChangedEvent<'_>,
         ) {
-            let HostSide::Server(host) = host else {
-                panic!("expected server setting change")
-            };
-            let key = mod_api::__private::setting_key_by_name("fault", event.key).unwrap();
+            let _ = host;
             self.0
                 .lock()
                 .unwrap()
-                .push((event.key.to_owned(), host.setting(key).unwrap()));
+                .push((event.key.to_owned(), event.value));
         }
     }
 
@@ -814,4 +829,65 @@ fn files_are_looked_at_once_a_second_and_never_without_configs() {
         assert!(!configs.due(start + Duration::from_millis(999)));
         assert!(configs.due(start + CHECK_EVERY));
     });
+}
+
+/// A registration's initial callback that edits the next registration's file: the next one is
+/// read after that edit, as FML's `ConfigTracker.loadConfigs` opens each registration only
+/// when its turn comes.
+#[test]
+#[ignore = "daily"]
+fn an_initial_callback_that_edits_the_next_file_is_seen_by_it() {
+    use crate::game::native_entity_refs::tests::with_client_game;
+    let root = Folder::new("sequential");
+    let config = root.0.join("config");
+    fs::create_dir_all(&config).unwrap();
+    let target = config.join("b-common.toml");
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    struct First(PathBuf);
+    #[mod_api::__subscriptions]
+    impl Hooks for First {
+        fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+            let target = self.0.clone();
+            r.register_config(
+                ConfigSpec::new(Common, "a = 1\n"),
+                Some(Arc::new(move |_: ConfigEvent<'_>, _: &ConfigSnapshot| {
+                    fs::write(&target, "b = 2\n").unwrap();
+                    Ok(())
+                })),
+            )
+            .unwrap();
+        }
+    }
+    struct Second(Arc<Mutex<Vec<String>>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Second {
+        fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+            let seen = self.0.clone();
+            r.register_config(
+                ConfigSpec::new(Common, "b = 1\n"),
+                Some(Arc::new(
+                    move |_: ConfigEvent<'_>, snapshot: &ConfigSnapshot| {
+                        seen.lock().unwrap().push(snapshot.text.clone());
+                        Ok(())
+                    },
+                )),
+            )
+            .unwrap();
+        }
+    }
+    let mods: Mods = vec![
+        ModEntry::new("a", Box::new(First(target.clone()))),
+        ModEntry::new("b", Box::new(Second(seen.clone()))),
+    ]
+    .into();
+    fs::write(&target, "b = 1\n").unwrap();
+    mod_platform::testing::with_mods(mods.clone(), || {
+        mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
+        with_client_game(|game| {
+            game.config_root = std::sync::Arc::from(config.as_path());
+            game.native_configs = NativeConfigs::default();
+            game.native_configs_load(&[Common], None);
+        });
+    });
+    assert_eq!(*seen.lock().unwrap(), ["b = 2\n"]);
 }

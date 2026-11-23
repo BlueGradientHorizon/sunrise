@@ -76,47 +76,43 @@ fn locate(
 }
 
 impl NativeConfigs {
-    /// Reads registered `configs` of `kinds` in registration order and answers
-    /// each loaded registration with its initial snapshot. Actual I/O failures
-    /// are logged with owner and path without substituting another path,
-    /// retrying or latching.
-    fn load(
+    /// Resolves, reads and tracks one registration, answering its initial snapshot. An I/O
+    /// failure is logged with owner and path, without substituting another path, retrying or
+    /// latching, and the registration is skipped.
+    fn open(
         &mut self,
-        configs: &'static [RegisteredConfig],
-        kinds: &[ConfigKind],
+        config: &'static RegisteredConfig,
         config_dir: &Path,
         world: Option<&Path>,
-    ) -> Vec<(&'static RegisteredConfig, ConfigSnapshot)> {
-        self.started = true;
-        let mut loaded = Vec::new();
-        for config in configs.iter().filter(|c| kinds.contains(&c.kind)) {
-            let path = match locate(config, config_dir, world) {
-                Ok(path) => path,
-                Err((path, error)) => {
-                    log::warn!(
-                        "Sunrise: mod {} config {}: {error}",
-                        config.mod_id(),
-                        path.display()
-                    );
-                    continue;
-                }
-            };
-            let text = match fs::read_to_string(&path) {
-                Ok(text) => text,
-                Err(error) => {
-                    log::warn!(
-                        "Sunrise: mod {} config {}: {error}",
-                        config.mod_id(),
-                        path.display()
-                    );
-                    continue;
-                }
-            };
-            let snapshot = config.snapshot(path, text);
-            loaded.push((config, snapshot.clone()));
-            self.files.push(Tracked { config, snapshot });
-        }
-        loaded
+    ) -> Option<ConfigSnapshot> {
+        let path = match locate(config, config_dir, world) {
+            Ok(path) => path,
+            Err((path, error)) => {
+                log::warn!(
+                    "Sunrise: mod {} config {}: {error}",
+                    config.mod_id(),
+                    path.display()
+                );
+                return None;
+            }
+        };
+        let text = match fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(error) => {
+                log::warn!(
+                    "Sunrise: mod {} config {}: {error}",
+                    config.mod_id(),
+                    path.display()
+                );
+                return None;
+            }
+        };
+        let snapshot = config.snapshot(path, text);
+        self.files.push(Tracked {
+            config,
+            snapshot: snapshot.clone(),
+        });
+        Some(snapshot)
     }
 
     /// The tracked files whose text changed since they were read, read again;
@@ -171,15 +167,14 @@ impl Game<'_> {
     /// Loads the installed configs of `kinds` and notifies each registration's owner.
     fn native_configs_load(&mut self, kinds: &[ConfigKind], world: Option<&Path>) {
         let configs = registered_configs();
-        if configs.is_empty() {
-            self.native_configs.started = true;
-            return;
-        }
-        for (config, snapshot) in self
-            .native_configs
-            .load(configs, kinds, &self.config_root, world)
-        {
-            config.notify_snapshot(ConfigEvent::Loading(self), &snapshot);
+        self.native_configs.started = true;
+        // FML `ConfigTracker.loadConfigs` opens one registration, delivers its event, then
+        // opens the next, so a callback that edits a later file is seen by that file's own
+        // initial snapshot.
+        for config in configs.iter().filter(|c| kinds.contains(&c.kind)) {
+            if let Some(snapshot) = self.native_configs.open(config, &self.config_root, world) {
+                config.notify_snapshot(ConfigEvent::Loading(self), &snapshot);
+            }
         }
     }
 
