@@ -3586,6 +3586,7 @@ struct Game<'a> {
     setting_overrides: std::cell::RefCell<std::collections::BTreeMap<(String, String), String>>,
     /// The native damage hooks every level of this game lends to its hits.
     damage_hooks: sunrise_client::health::DamageHooks,
+    paused_mob_hurt: Option<Box<sunrise_client::mobs::PausedMobHurt>>,
     music: sunrise_client::music::MusicManager,
     /// The tracks native mods play over the music (`native_music_layers`).
     music_layers: sunrise_client::music::MusicLayers,
@@ -11646,22 +11647,19 @@ impl Game<'_> {
             hud: &hud,
             glint_alpha: self.glint_frame.alpha,
             glint_ticks: self.glint_frame.scroll_ticks(),
-            clouds: (!title
-                && self.overworld_skybox()
-                && sunrise_client::clouds::visible(&self.settings.clouds, sky.cloud_color[3]))
-            .then(|| self.gui.atlas.sprites.get("sunrise/white"))
-            .flatten()
-            .map(|white| sunrise_client::clouds::Input {
-                texture: &self.pack.clouds,
-                uv: [(white.u0 + white.u1) / 2.0, (white.v0 + white.v1) / 2.0],
-                camera,
-                time: self.world.game_time,
-                partial_tick: alpha,
-                range: self.settings.cloud_range,
-                fast: self.settings.clouds == "fast",
-                color: sky.cloud_color,
-                height: sky.cloud_height,
-            }),
+            clouds: self
+                .frame_cloud_uv(title, &sky)
+                .map(|uv| sunrise_client::clouds::Input {
+                    texture: &self.pack.clouds,
+                    uv,
+                    camera,
+                    time: self.world.game_time,
+                    partial_tick: alpha,
+                    range: self.settings.cloud_range,
+                    fast: self.settings.clouds == "fast",
+                    color: sky.cloud_color,
+                    height: sky.cloud_height,
+                }),
             entities: &entities,
             explicit_particles: Some(&explicit_particle_quads),
             static_block_entities: &static_block_entities,
@@ -13831,6 +13829,7 @@ impl<'a> Game<'a> {
             tick: sunrise_client::parallel::TickThread::mint(),
             setting_overrides: Default::default(),
             damage_hooks: native_hooks::DAMAGE_HOOKS,
+            paused_mob_hurt: None,
             music: {
                 // The manager starts with the saved option (MusicManager's constructor).
                 let mut music = sunrise_client::music::MusicManager::default();

@@ -424,6 +424,8 @@ pub(super) struct Remote {
     /// The level's hashed seed (login, respawn): the folder of its kept chunks
     /// (`server_terrain::level_dir`).
     pub(super) hashed_seed: i64,
+    /// `ClientLevel.getSeaLevel`: from the packet that created this level.
+    pub(in crate::game) sea_level: i32,
     /// What chunk packets decode with (the dimension's height and sky, the
     /// biome registry); replaced whenever one of them changes.
     pub(in crate::game) chunk_format: Arc<ChunkFormat>,
