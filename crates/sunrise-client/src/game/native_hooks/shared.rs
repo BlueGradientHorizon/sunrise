@@ -2349,8 +2349,10 @@ impl Game<'_> {
             held,
             projectile: None,
             projectile_kind: sunrise_client::health::DirectEntity::Other,
+            projectile_type: None,
             direct: None,
             direct_kind: None,
+            direct_type: None,
             position: None,
             projectile_weapon: None,
             attacker_uuid: (player_uuid.is_none() && attacker != 0)
