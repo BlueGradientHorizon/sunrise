@@ -80,11 +80,11 @@ impl LabelLayout {
             }
             for (line, at) in placed {
                 scratch.with_resolved(line.ranges(), |logical| {
-                    visit(TextLine {
-                        text: &local.text_to_api(logical),
-                        at: at.scaled,
-                        width: at.width,
-                    });
+                    visit(TextLine::new(
+                        &local.text_to_api(logical),
+                        at.scaled,
+                        at.width,
+                    ));
                 });
             }
             Ok(size)

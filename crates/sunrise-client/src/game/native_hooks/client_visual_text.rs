@@ -31,11 +31,11 @@ impl Game<'_> {
                 component = Text::literal("").with_style(local.style_to_api(effective));
                 previous = Some(effective);
             }
-            if !visit(VisualTextCharacterRef {
-                scalar: scalar as u32,
-                style: &component.style,
+            if !visit(VisualTextCharacterRef::new(
+                scalar as u32,
+                &component.style,
                 source_index,
-            }) {
+            )) {
                 return false;
             }
         }

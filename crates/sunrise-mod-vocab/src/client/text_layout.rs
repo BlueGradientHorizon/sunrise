@@ -30,7 +30,7 @@ pub struct TextLayoutSpec {
 /// A line lent to a visitor in top-to-bottom order.
 // no wire: borrowed component.
 #[derive(Clone, Copy, Debug)]
-// exhaustive: the layout visitor supplies these three line properties.
+#[non_exhaustive]
 pub struct TextLine<'a> {
     /// Logical-order component with effective styles and inline objects. Legacy formatting
     /// codes have been applied and dropped. Clone this component to retain it.
@@ -39,6 +39,14 @@ pub struct TextLine<'a> {
     pub at: [f32; 2],
     /// Line width in scaled GUI pixels.
     pub width: f32,
+}
+
+impl<'a> TextLine<'a> {
+    // hidden: the engine's layout builds the lines it lends; mods only receive them.
+    #[doc(hidden)]
+    pub fn new(text: &'a Text, at: [f32; 2], width: f32) -> Self {
+        Self { text, at, width }
+    }
 }
 
 /// The dimensions of the label's laid-out lines, in scaled GUI pixels.

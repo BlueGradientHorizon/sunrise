@@ -24,8 +24,8 @@ impl Drop for VisualTextCharacter {
 
 /// A character lent by `ClientHost::visit_text_visual_order`.
 // no wire: a borrow from an in-process visitor.
-// exhaustive: the three properties accepted by vanilla's FormattedCharSink.
 #[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
 pub struct VisualTextCharacterRef<'a> {
     /// The Unicode scalar in visual order, with shaping and mirroring already applied.
     pub scalar: u32,
@@ -35,7 +35,16 @@ pub struct VisualTextCharacterRef<'a> {
     pub source_index: u32,
 }
 
-impl VisualTextCharacterRef<'_> {
+impl<'a> VisualTextCharacterRef<'a> {
+    // hidden: the engine's visual-order walk builds the characters it lends; mods only receive them.
+    #[doc(hidden)]
+    pub fn new(scalar: u32, style: &'a TextStyle, source_index: u32) -> Self {
+        Self {
+            scalar,
+            style,
+            source_index,
+        }
+    }
     /// Retain this character and its style independently of the visitor.
     pub fn to_owned(self) -> VisualTextCharacter {
         VisualTextCharacter {
