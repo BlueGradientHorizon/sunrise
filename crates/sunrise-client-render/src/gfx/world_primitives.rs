@@ -118,7 +118,8 @@ pub trait FrameHooks {
         &mut self,
         sections: &[mod_api::RenderableSection],
         oit_on: bool,
-    ) -> PreparedHookGeometry;
+        out: &mut PreparedHookGeometry,
+    );
     fn on_render_stage(
         &mut self,
         stage: mod_api::RenderLevelStage,

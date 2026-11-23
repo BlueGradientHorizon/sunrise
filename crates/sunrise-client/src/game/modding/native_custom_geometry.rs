@@ -84,7 +84,8 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
         &mut self,
         sections: &[mod_api::RenderableSection],
         oit_on: bool,
-    ) -> sunrise_client::gfx::world_primitives::PreparedHookGeometry {
+        out: &mut sunrise_client::gfx::world_primitives::PreparedHookGeometry,
+    ) {
         let view = Self::view(
             self.frame_camera,
             self.alpha,
@@ -95,7 +96,6 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
         self.game.native_prepare_render_buffers(&view, self.draw);
         self.draw.finalize();
         self.game.resolve_submitted_groups(self.draw);
-        let mut out = sunrise_client::gfx::world_primitives::PreparedHookGeometry::default();
         let camera = DVec3::from(self.draw.camera());
         self.game
             .bake_model_instances(self.draw, camera, &mut out.entities, &mut out.entity_spans);
@@ -110,9 +110,10 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
         }
         out.entities.extend_from_slice(world);
         out.see_through.extend_from_slice(see_through);
-        out.prepared_draws = std::mem::take(&mut *self.game.prepared_model_draws.borrow_mut());
-        out.text_patches = std::mem::take(&mut *self.game.text_patches.borrow_mut());
-        out
+        out.prepared_draws
+            .append(&mut self.game.prepared_model_draws.borrow_mut());
+        out.text_patches
+            .append(&mut self.game.text_patches.borrow_mut());
     }
 
     fn on_render_stage(
@@ -2377,7 +2378,7 @@ mod tests {
                 draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
                 let mut driver = GameWorldStageDriver::new(game, &camera, 0.0, &mut draw);
                 driver.on_custom_geometry(&[], false);
-                driver.on_prepare_render_buffers(&[], false);
+                driver.on_prepare_render_buffers(&[], false, &mut Default::default());
                 let requests =
                     driver.on_render_stage(RenderLevelStage::AfterOpaqueBlocks, &[], false);
                 assert_eq!(

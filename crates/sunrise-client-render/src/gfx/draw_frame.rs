@@ -571,7 +571,6 @@ impl Renderer {
         );
         // Lend the primary selection made by the resident walk; submit before the world passes.
         let hook_oit = !frame.title && self.oit_active_for(self.improved_transparency);
-        let mut hook_geometry = world_primitives::PreparedHookGeometry::default();
         if !frame.title
             && let Some(hooks) = hooks.as_deref_mut()
         {
@@ -1542,14 +1541,22 @@ impl Renderer {
                 hdr_gain,
             );
         }
+        self.hook_geometry.entities.clear();
+        self.hook_geometry.entity_spans.clear();
+        self.hook_geometry.see_through.clear();
+        self.hook_geometry.prepared_draws.clear();
+        self.hook_geometry.text_patches.clear();
         if live_hooks && let Some(hooks) = hooks.as_deref_mut() {
             if sky_stage == Some(SkyStageOwner::Engine) {
                 hooks.on_after_sky(&self.visible_renderable_sections, hook_oit);
             }
-            hook_geometry =
-                hooks.on_prepare_render_buffers(&self.visible_renderable_sections, hook_oit);
+            hooks.on_prepare_render_buffers(
+                &self.visible_renderable_sections,
+                hook_oit,
+                &mut self.hook_geometry,
+            );
             self.prepared_draws
-                .extend_from_slice(&hook_geometry.prepared_draws);
+                .append(&mut self.hook_geometry.prepared_draws);
         }
         // Upload both mods' stage batches and deferred geometry through the same path, before
         // the first consuming pass. Stage listeners may only reference these prepared ranges.
@@ -1587,23 +1594,23 @@ impl Renderer {
                 .is_some_and(|post| post.skins_entities());
         // While a shader pack draws entities, the runs of `entity_spans` its programs draw are
         // left out of Sunrise's own entity draw.
-        let merged_entities: &[Vertex] = if hook_geometry.entities.is_empty() {
+        let merged_entities: &[Vertex] = if self.hook_geometry.entities.is_empty() {
             frame.entities
         } else {
             self.hook_entities_scratch.clear();
             self.hook_entities_scratch.extend_from_slice(frame.entities);
             self.hook_entities_scratch
-                .extend_from_slice(&hook_geometry.entities);
+                .append(&mut self.hook_geometry.entities);
             &self.hook_entities_scratch
         };
-        let merged_see_through: &[Vertex] = if hook_geometry.see_through.is_empty() {
+        let merged_see_through: &[Vertex] = if self.hook_geometry.see_through.is_empty() {
             frame.see_through
         } else {
             self.hook_see_through_scratch.clear();
             self.hook_see_through_scratch
                 .extend_from_slice(frame.see_through);
             self.hook_see_through_scratch
-                .extend_from_slice(&hook_geometry.see_through);
+                .append(&mut self.hook_geometry.see_through);
             &self.hook_see_through_scratch
         };
         let mut entities = merged_entities;
@@ -1613,21 +1620,21 @@ impl Renderer {
             && post.has_entities()
         {
             pack_entities = true;
-            let spans = if hook_geometry.entity_spans.is_empty() {
+            let spans = if self.hook_geometry.entity_spans.is_empty() {
                 frame.entity_spans
             } else {
-                for span in &mut hook_geometry.entity_spans {
+                for span in &mut self.hook_geometry.entity_spans {
                     span.start += frame.entities.len() as u32;
                 }
                 let before_hooks = frame
                     .entity_spans
                     .partition_point(|s| s.start < frame.entities.len() as u32);
                 drop(
-                    hook_geometry
+                    self.hook_geometry
                         .entity_spans
                         .splice(..0, frame.entity_spans[..before_hooks].iter().copied()),
                 );
-                &hook_geometry.entity_spans
+                &self.hook_geometry.entity_spans
             };
             post.prepare_entities(
                 &self.device,
@@ -1642,6 +1649,7 @@ impl Renderer {
             );
             entities = &self.pack_entity_rest;
         }
+        self.hook_geometry.entity_spans.clear();
         // GameRenderer.useImprovedTransparency. A shader pack keeps its own
         // path.
         let oit_on = !frame.title && self.oit_active_for(self.improved_transparency);
@@ -2150,12 +2158,13 @@ impl Renderer {
             frame.hud,
             [self.config.width, self.config.height],
         );
-        if !hook_geometry.text_patches.is_empty() {
+        if !self.hook_geometry.text_patches.is_empty() {
             self.hud.upload_glyph_patches(
                 &mut self.uploads,
                 &mut encoder,
-                &hook_geometry.text_patches,
+                &self.hook_geometry.text_patches,
             );
+            self.hook_geometry.text_patches.clear();
         }
         // The translucent terrain pass reads its draws from phase 2's buffer, where the tests of
         // the sections left to phase 2 give them their instance. Where it draws from

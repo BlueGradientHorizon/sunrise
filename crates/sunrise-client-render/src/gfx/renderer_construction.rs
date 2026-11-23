@@ -2488,6 +2488,7 @@ impl Renderer {
             visible_lods: Vec::new(),
             visible_renderable_sections: Vec::new(),
             visible_renderable_scratch: Vec::new(),
+            hook_geometry: Default::default(),
             hook_entities_scratch: Vec::new(),
             hook_see_through_scratch: Vec::new(),
             shadow_visible: Vec::new(),

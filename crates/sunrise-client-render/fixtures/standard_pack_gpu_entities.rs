@@ -172,13 +172,11 @@ impl FrameHooks for WorldStageProbe {
         &mut self,
         _: &[mod_api::RenderableSection],
         _: bool,
-    ) -> PreparedHookGeometry {
+        out: &mut PreparedHookGeometry,
+    ) {
         self.prepared_after_sky =
             Some(self.stages.last() == Some(&mod_api::RenderLevelStage::AfterSky));
-        let mut out = PreparedHookGeometry {
-            entities: std::mem::take(&mut self.copies),
-            ..Default::default()
-        };
+        out.entities.append(&mut self.copies);
         if !out.entities.is_empty() {
             out.entity_spans.push(EntitySpan {
                 start: 0,
@@ -187,7 +185,6 @@ impl FrameHooks for WorldStageProbe {
                 ..Default::default()
             });
         }
-        out
     }
     fn on_render_stage(
         &mut self,
@@ -431,6 +428,26 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
     assert!(hooks.stages.contains(&Stage::AfterTranslucentParticles));
     assert_eq!(hooks.stages.last(), Some(&Stage::AfterLevel));
     assert_eq!(hooks.prepared_after_sky, Some(false));
+    // Reuse the same renderer without submitting the extra model a second time.
+    renderer.screenshot = Some(ScreenshotRequest {
+        path: out.join("world-stage-pack-next.png"),
+        size: None,
+        scaled: false,
+        background: false,
+    });
+    renderer.render(&frame, Some(&mut WorldStageProbe::default()))?;
+    renderer
+        .screenshot_result
+        .take()
+        .expect("next frame readback")?
+        .save()?;
+    assert!(
+        !read(&out.join("world-stage-pack-next.png"))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .any(|p| p[2] == 123)
+    );
     frame.sky_pass = sky_pass_present(FogType::Atmospheric, false, Skybox::Overworld);
     for draw_sky in [true, false] {
         // The Sky option changes pixels, not the stage's admission.

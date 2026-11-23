@@ -11276,9 +11276,15 @@ impl Game<'_> {
         let distance = (terrain_distance * 16) as f32;
         let depth_far =
             sunrise_client::camera::depth_far(terrain_distance, self.settings.cloud_range);
-        let mods_read_camera = !mod_api::__private::mods().is_empty();
         self.screen_blur_requested.set(false);
-        let frame_camera = (!title).then(|| {
+        // GUI and world hooks read the same frame snapshot. Keep its dimension allocation
+        // between frames rather than formatting another copy for the world renderer.
+        let previous_camera = self.native_camera_frame.take();
+        self.native_camera_frame = (!title && !mod_api::__private::mods().is_empty()).then(|| {
+            let mut dimension =
+                previous_camera.map_or_else(String::new, |snapshot| snapshot.dimension);
+            dimension.clear();
+            dimension.push_str(self.dim.id());
             let partial = camera_alpha as f32;
             mod_api::Camera {
                 position: camera.to_array(),
@@ -11299,14 +11305,9 @@ impl Game<'_> {
                     0.05,
                 )
                 .to_cols_array(),
-                dimension: self.dim.id().to_string(),
+                dimension,
             }
         });
-        self.native_camera_frame = if mods_read_camera {
-            frame_camera.clone()
-        } else {
-            None
-        };
         let _projection_frame = (!title).then(|| self.activate_projection_frame());
         pr.lap("pr_projection");
         let vanilla_skin = self.apply_player_skin_override(title);
@@ -11542,7 +11543,6 @@ impl Game<'_> {
         // Seconds of game time, wrapping every hour (72,000 ticks) so f32 keeps sub-tick steps.
         world_geometry
             .set_time(((self.world.game_time.rem_euclid(72_000) as f64 + alpha) / 20.0) as f32);
-        let run_world_hooks = !title && frame_camera.is_some() && self.has_world_render_hooks();
         if let Some((skin, slim)) = vanilla_skin
             && let Some(avatar) = self.player_model.as_mut()
         {
@@ -11761,10 +11761,14 @@ impl Game<'_> {
                     max_buffer_size: renderer.max_buffer_size(),
                     staged_prepared_draws: prepared_draws.len() as u64,
                 }));
-                let mut driver = run_world_hooks.then(|| {
+                let world_camera = self
+                    .native_camera_frame
+                    .as_ref()
+                    .filter(|_| self.has_world_render_hooks());
+                let mut driver = world_camera.map(|camera| {
                     native_custom_geometry::GameWorldStageDriver::new(
                         self,
-                        frame_camera.as_ref().expect("world frame camera"),
+                        camera,
                         alpha,
                         &mut world_geometry,
                     )
