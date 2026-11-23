@@ -41,8 +41,9 @@ primitive, entity, prepared-instance, and glyph uploads so group updates apply t
 `AfterSky` runs when `LevelRenderer.addSkyPass` adds a pass: the dimension has a skybox,
 there is no lava or powder-snow camera fog, and no camera mob effect blocks the sky. It fires
 once at the end of that pass's work even when no sky geometry is visible. Sunrise's sky setting
-and dragon boss fog affect drawing, not admission. If a classic pack owns the sky, the stage
-follows the pack's world import. Each active pass-bearing stage fires at its own render-pass
+and dragon boss fog affect drawing, not admission. A classic pack owning either the sky disc
+or the celestial work completes the logical sky after its world import, with the engine still
+drawing the unclaimed portions. Each active pass-bearing stage fires at its own render-pass
 boundary. `AfterLevel` follows the world and precedes the engine's first-person hand and other
 overlays. A classic pack's own hand remains inside its world passes for the pack's depth
 snapshots; `AfterLevel` runs before pack composition, not before that hand. These hooks never
@@ -53,11 +54,14 @@ fire on title or connect screens.
 `StagePass::World(&mut dyn WorldPassDrawContext)`, and `OitTranslucent(oit)` returns
 `StagePass::Oit(oit, &mut dyn WorldOitPassDrawContext)`. Call `pass.draw(batch)` with a
 `PreparedWorldDraw` returned by `event.context` in `prepare_render_buffers` for this view and
-stage. Draws follow call order. Both pass kinds take prepared lines and quads; pipeline quads
-are standard-only because mod pipelines write to the world colour format, not OIT float targets.
+stage. Both pass kinds draw prepared engine lines and quads in call order. `RenderLevelStage`
+and `OitStage` are process-local selectors, not `Wire` values.
 
 Stages that do not run on the active route are not synthesized. Classic packs can replace engine
-terrain, water, and weather passes.
+terrain, water, and weather passes. If a pack owns feature drawing, the feature stages follow
+its opaque and translucent groups after world import, at the pack's before- or after-deferred
+position. These stages are available when the pack's world color buffer can blend the prepared
+engine lines and quads; there is no earlier substitute on an incompatible target.
 
 A panic disables that mod's listener for this hook for the session, with an error log and toast.
 Draws already accepted are not rolled back."#]

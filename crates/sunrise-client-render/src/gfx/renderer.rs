@@ -353,7 +353,8 @@ pub struct Renderer {
     /// Canonical primary-camera visible sections exposed to `FrameHooks` (reused across frames).
     pub(crate) visible_renderable_sections: Vec<mod_api::RenderableSection>,
     pub(crate) visible_renderable_scratch: Vec<(u64, SectionKey, Option<u32>)>,
-    /// Reusable merge buffers when `FrameHooks` adds CPU entity / name-tag / see-through vertices.
+    /// Reusable submission and merge buffers for `FrameHooks`' CPU models and name tags.
+    pub(crate) hook_geometry: world_primitives::PreparedHookGeometry,
     pub(crate) hook_entities_scratch: Vec<Vertex>,
     pub(crate) hook_see_through_scratch: Vec<Vertex>,
     /// Every far tile in view, whether the GPU's solid draws own it or not: the water's

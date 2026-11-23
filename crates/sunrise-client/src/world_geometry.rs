@@ -295,7 +295,6 @@ impl WorldGeometry {
         } else {
             self.counts()
         };
-        let first_pipeline_quad = (self.pipeline_quads.len() / 4) as u32;
         append(self)?;
         let end = if oit {
             self.oit_counts()
@@ -307,7 +306,6 @@ impl WorldGeometry {
             stage,
             DrawRanges {
                 primitives: std::array::from_fn(|i| start[i]..end[i]),
-                pipeline: first_pipeline_quad..(self.pipeline_quads.len() / 4) as u32,
             },
         ));
         // Issue one identity per view that actually prepares a batch. This also prevents

@@ -162,8 +162,9 @@ on the `DebugEntry` to keep it allowed under reduced debug info.
 
 ## Registering world-space debug renderers
 
-In `Hooks::register_debug_renderers`, push `DebugRenderer::new(draw)` for each renderer that
-should run until the next refresh. To gate a renderer on a debug options switch, register
+In `Hooks::register_debug_renderers` (hook version 4), push `DebugRenderer::new(draw)` for each
+renderer that should run until the next refresh. Callbacks run after `submit_custom_geometry` and
+share its deferred geometry and submission rules. To gate a renderer on a debug options switch, register
 `DebugEntry::renderer(id)` at startup in `Hooks::register_debug_entries` (or reference a
 built-in vanilla entry such as `"minecraft:chunk_borders"`) and check
 `event.is_debug_entry_enabled(id)` before pushing. Unconditional renderers require no switch

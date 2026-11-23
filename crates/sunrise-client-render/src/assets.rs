@@ -163,13 +163,12 @@ impl RenderAssets {
         self.mod_animations.get(id).cloned()
     }
 
-    /// The handle of the registered render pipeline `(id, kind)` in this published store.
+    /// The handle of the registered render pipeline `id` in this published store.
     pub fn render_pipeline(
         &self,
         id: &mod_api::Identifier,
-        kind: mod_api::PipelineKind,
     ) -> std::result::Result<mod_api::RenderPipelineRef, mod_api::RenderPipelineError> {
-        self.mod_pipelines.resolve(id, kind)
+        self.mod_pipelines.resolve(id)
     }
 
     /// Validate a handle for an API that only accepts registered standalone models.

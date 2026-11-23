@@ -11,7 +11,7 @@ pub trait DrawContexts {
 pub trait Hooks {
     /// Prepare geometry and update retained instance data before pass-bearing world stages execute
     /// (NeoForge 26.3's `PrepareRenderBuffersEvent`, vanilla `LevelRenderer.prepareTranslucents`).
-    /// Runs before a classic shader pack's replacement sky; `AfterSky` is not a preparation hook.
+    /// Runs before a classic shader pack's sky or celestial work; `AfterSky` is not a preparation hook.
     /// Client-only, noncancellable. `view` lends the frame's camera, world partial tick, game
     /// time, improved-transparency state and visible sections.
     #[notes = r#"## Preparing render buffers
@@ -19,11 +19,11 @@ pub trait Hooks {
 `Hooks::prepare_render_buffers` is the client counterpart of NeoForge 26.3's
 `PrepareRenderBuffersEvent`. It fires once per world view before any pass-bearing world render
 stages execute, whether or not the frame has an `AfterSky` stage. When a classic shader pack
-owns the sky pass, `AfterSky` follows preparation and the engine world import. Preparation never
+owns the sky or celestial work, `AfterSky` follows preparation and the engine world import. Preparation never
 fires on title or connect screens.
 
-Use `event.context.lines(stage, lines)`, `.quads(stage, quads)`, or
-`.pipeline_quads(stage, pipeline, quads)` to prepare a batch for a pass-bearing stage. Keep the
+Use `event.context.lines(stage, lines)` or `.quads(stage, quads)` to prepare a batch for a
+pass-bearing stage. Keep the
 returned `PreparedWorldDraw` until `render_level_stage`, then give it to the active pass's `draw`.
 A handle is valid only for its own view and stage. Nothing is uploaded from a stage callback.
 

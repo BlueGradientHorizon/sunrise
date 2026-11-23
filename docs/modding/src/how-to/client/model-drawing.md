@@ -93,7 +93,7 @@ stack submitted during a frame. Rendering is not a source of combat state; see
 
 ## Entity model layers
 
-At client startup, implement `Hooks::register_layer_definitions` and call
+At client startup, implement `Hooks::register_layer_definitions` (hook version 5) and call
 `event.register("mymod:golem#main", create_golem_layer)`, where `create_golem_layer`
 returns a `LayerDefinition` built from a `MeshDefinition` and the texture size.
 The supplier is `Fn() -> LayerDefinition + Send + Sync + 'static`: capture owned
@@ -371,12 +371,22 @@ fn client_tick_pre(&self, host: &mut dyn ClientHost, _: &mut ClientTickPreEvent)
 - `group.destroy(host)` retires the handle and releases capacity and CPU caches.
   Copies already accepted for a view remain drawn; subsequent calls return `Stale`.
 - `Hooks::prepare_render_buffers` runs once per world view before any pass-bearing render stage.
-  With a classic pack's replacement sky, `RenderLevelStage::AfterSky` fires later. Preparation
+  If a classic pack owns the sky disc or celestial work, `RenderLevelStage::AfterSky` fires once
+  after that work, following the pack's world import. Preparation
   lends `&WorldRenderView<'_>` (camera, world partial tick, game time, improved-transparency state,
   and visible `RenderableSection`s) and `&dyn ClientHost` so mods can update retained
   `InstanceGroups` before the render passes execute.
-  Its preparation context is also where to submit lines and quads that must draw at a
-  [specific stage](render-pipelines.md#what-a-pipeline-draws-and-when).
+  To draw at a specific stage, prepare engine lines or quads with `event.context.lines(stage, &lines)`
+  or `.quads(stage, &quads)`. Keep the returned `PreparedWorldDraw` for this view. At the matching
+  `render_level_stage` callback, call `draw(batch)` on `event.context.world_pass()` or
+  `event.context.oit_pass()` as appropriate. Draws run in call order, without uploading from the
+  pass; handles cannot be used in a different view or stage. With a classic pack that owns feature
+  drawing, the two feature stages follow the pack's own opaque and translucent groups. They run
+  only if the pack's world color buffer can blend engine geometry. `AfterSky` and `AfterLevel` lend no
+  pass, and stages skipped by the renderer are not replayed later.
+  Drawing values (`WorldLine`, `WorldQuad`, `WorldDepth`, `NameTagOptions`, and `DrawError`)
+  and stage selectors (`RenderLevelStage` and `OitStage`) are client-local. To synchronize a
+  draw effect, send only its data in your own typed payload and choose the stage on the client.
 
 Per-view draw storage grows dynamically without fixed per-view or per-mod copy caps,
 and copies past GPU instance buffer room fall back to CPU baking. Culled copies are

@@ -10,7 +10,7 @@ use crate::{Identifier, WorldDepth};
 // no wire: local client render-pipeline registration descriptor.
 pub struct RenderPipeline {
     owner: String,
-    /// The pipeline's own name (`mymod:glow`); any valid [`Identifier`] is accepted.
+    /// The pipeline's own name (`mymod:glow`), unique among mod pipelines.
     pub id: Identifier,
     /// The fragment shader (`mymod:glow` is `assets/mymod/shaders/pipeline/glow.wgsl`), as the
     /// mod's assets or a resource pack supply it.
@@ -56,15 +56,6 @@ impl RenderPipeline {
         &self.owner
     }
 
-    /// Whether this registration is required or optional.
-    pub fn kind(&self) -> PipelineKind {
-        if self.optional {
-            PipelineKind::Optional
-        } else {
-            PipelineKind::Required
-        }
-    }
-
     /// Let a resource load that cannot build this pipeline go on without it (NeoForge's
     /// `registerOptionalPipeline`).
     pub fn optional(mut self) -> Self {
@@ -81,19 +72,6 @@ impl RenderPipeline {
         self.texture = Some(texture);
         self
     }
-}
-
-/// Whether a registered render pipeline is required or optional (NeoForge's
-/// `registerPipeline` vs `registerOptionalPipeline`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-// exhaustive: a pipeline registration is either required or optional, matching vanilla's two maps
-// no wire: local client render-pipeline registration kind.
-pub enum PipelineKind {
-    /// A pipeline whose load failure fails startup or resource reload (`RenderPipeline::new`).
-    Required,
-    /// A pipeline whose load failure logs once and resolves to [`RenderPipelineError::Invalid`]
-    /// (`RenderPipeline::optional`).
-    Optional,
 }
 
 /// A texture a pipeline's shader samples ([`RenderPipeline::textured`]): always a rectangle of
@@ -230,12 +208,10 @@ impl PipelineQuad {
 pub enum PipelineDrawError {
     /// The handle is stale, or names no usable pipeline.
     Pipeline(RenderPipelineError),
-    /// The selected stage has no standard world pass (it is a notice or an OIT sub-pass).
-    NoWorldPass,
 }
 
 /// Attribute every pipeline `owner` added in `register_render_pipelines` to `owner`.
-/// Same-kind collisions against vanilla pipelines and earlier mod registrations are rejected
+/// Duplicate mod IDs and collisions with the matching vanilla table are rejected
 /// with a startup error when the collected registrations are frozen.
 pub(crate) fn validate_render_pipelines(
     owner: &str,
@@ -261,11 +237,8 @@ mod tests {
             WorldDepth::Tested,
         )
     }
-    fn ids_and_kinds(pipelines: &[RenderPipeline]) -> Vec<(String, PipelineKind)> {
-        pipelines
-            .iter()
-            .map(|p| (p.id.to_string(), p.kind()))
-            .collect()
+    fn ids(pipelines: &[RenderPipeline]) -> Vec<String> {
+        pipelines.iter().map(|p| p.id.to_string()).collect()
     }
 
     #[test]
@@ -279,12 +252,12 @@ mod tests {
         ]);
         validate_render_pipelines("owning_mod", &previous, &mut pipelines);
         assert_eq!(
-            ids_and_kinds(&pipelines),
+            ids(&pipelines),
             [
-                ("other:glow".to_owned(), PipelineKind::Required),
-                ("minecraft:glow".to_owned(), PipelineKind::Required),
-                ("other:beam".to_owned(), PipelineKind::Required),
-                ("minecraft:custom_beam".to_owned(), PipelineKind::Required),
+                "other:glow".to_owned(),
+                "minecraft:glow".to_owned(),
+                "other:beam".to_owned(),
+                "minecraft:custom_beam".to_owned(),
             ]
         );
         assert_eq!(pipelines[1].owner(), "owning_mod");
@@ -301,11 +274,11 @@ mod tests {
         ];
         validate_render_pipelines("first", &[], &mut pipelines);
         assert_eq!(
-            ids_and_kinds(&pipelines),
+            ids(&pipelines),
             [
-                ("shared:glow".to_owned(), PipelineKind::Required),
-                ("shared:glow".to_owned(), PipelineKind::Required),
-                ("shared:glow".to_owned(), PipelineKind::Optional),
+                "shared:glow".to_owned(),
+                "shared:glow".to_owned(),
+                "shared:glow".to_owned(),
             ]
         );
         assert!(pipelines.iter().all(|p| p.owner() == "first"));
@@ -315,7 +288,7 @@ mod tests {
         validate_render_pipelines("second", &previous, &mut pipelines);
         assert_eq!(pipelines.len(), 4);
         assert_eq!(pipelines[3].owner(), "second");
-        assert_eq!(pipelines[3].kind(), PipelineKind::Optional);
+        assert!(pipelines[3].optional);
     }
 
     #[test]

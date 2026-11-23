@@ -251,17 +251,12 @@ pub trait RenderAssets {
     }
     /// Side: client.
     /// Published asset/data read: available in Setup, Reloading and World.
-    /// Resolve a pipeline registered in `register_render_pipelines` by its `id` and `kind`
-    /// ([`PipelineKind::Required`] or [`PipelineKind::Optional`]) once in `client_setup` and
-    /// again in `client_resources_reloaded`, not each frame. `Unknown` for an `(id, kind)` pair
+    /// Resolve the handle of a registered render pipeline by ID once in `client_setup` and
+    /// again in `client_resources_reloaded`, not each frame. `Unknown` for an ID
     /// no mod registered, `Invalid` for one whose shader the current resources don't give or that
     /// didn't compile. Nothing is read or compiled here.
-    fn render_pipeline(
-        &self,
-        id: &Identifier,
-        kind: PipelineKind,
-    ) -> Result<RenderPipelineRef, RenderPipelineError> {
-        let _ = (id, kind);
+    fn render_pipeline(&self, id: &Identifier) -> Result<RenderPipelineRef, RenderPipelineError> {
+        let _ = id;
         unimplemented!("RenderAssets::render_pipeline")
     }
     /// Side: client.

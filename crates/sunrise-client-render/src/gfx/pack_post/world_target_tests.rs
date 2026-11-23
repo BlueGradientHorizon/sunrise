@@ -362,8 +362,8 @@ fn render(
         window,
         &[],
         &mut |_, _, _, _| {},
-        false,
-        |_| {},
+        Default::default(),
+        |_, _| false,
         &std::sync::atomic::AtomicBool::new(false),
         super::super::in_flight::poll_live,
     )

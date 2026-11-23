@@ -90,11 +90,10 @@ impl OitBatch<'_> {
 }
 
 /// Batch ranges in the shared frame upload, relative to each stream. Plain primitive ranges
-/// are in quads/lines, not bytes; the pipeline range is in quads.
+/// are in quads/lines, not bytes.
 #[derive(Clone, Debug, Default)]
 pub struct DrawRanges {
     pub primitives: [std::ops::Range<u32>; 4],
-    pub pipeline: std::ops::Range<u32>,
 }
 
 /// Extra frame data produced by `submit_custom_geometry`, debug renderers, and
@@ -119,7 +118,8 @@ pub trait FrameHooks {
         &mut self,
         sections: &[mod_api::RenderableSection],
         oit_on: bool,
-    ) -> PreparedHookGeometry;
+        out: &mut PreparedHookGeometry,
+    );
     fn on_render_stage(
         &mut self,
         stage: mod_api::RenderLevelStage,
@@ -168,7 +168,7 @@ struct Globals {
     viewport: [f32; 4],
 }
 
-struct OitStagePipelines {
+struct PrimitivePipelines {
     /// Depth tested, then seen through walls.
     quad_pipelines: [wgpu::RenderPipeline; 2],
     line_pipelines: [wgpu::RenderPipeline; 2],
@@ -176,11 +176,10 @@ struct OitStagePipelines {
 
 /// The pipelines and buffers that draw a [`Batch`].
 pub struct WorldPrimitives {
-    /// Depth tested, then seen through walls.
-    quad_pipelines: [wgpu::RenderPipeline; 2],
-    line_pipelines: [wgpu::RenderPipeline; 2],
+    pipelines_standard: PrimitivePipelines,
+    pack_pipelines: Option<((wgpu::TextureFormat, bool, bool), PrimitivePipelines)>,
     /// OIT pipelines for `DepthBounds`, `Transmittance`, and `Accumulate`, built when OIT is enabled.
-    oit_pipelines: Option<[OitStagePipelines; OIT_STAGES]>,
+    oit_pipelines: Option<[PrimitivePipelines; OIT_STAGES]>,
     layout: wgpu::BindGroupLayout,
     globals: wgpu::Buffer,
     sampler: wgpu::Sampler,
@@ -315,10 +314,6 @@ impl WorldPrimitives {
     /// Pipelines drawing into `color_format` over a reversed Depth32Float depth, decoding their
     /// colours where the frame holds linear light (`linear`).
     pub fn new(device: &wgpu::Device, (color_format, linear): (wgpu::TextureFormat, bool)) -> Self {
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("World primitives"),
-            source: wgpu::ShaderSource::Wgsl(shader().into()),
-        });
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("World primitives"),
             entries: &[
@@ -350,9 +345,97 @@ impl WorldPrimitives {
                 },
             ],
         });
+        let pipelines_standard = Self::standard_pipelines(
+            device,
+            &layout,
+            color_format,
+            linear,
+            false,
+            wgpu::ColorWrites::ALL,
+        );
+        let buffer = |label, size, usage| {
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(label),
+                size,
+                usage: usage | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            })
+        };
+        Self {
+            pipelines_standard,
+            pack_pipelines: None,
+            oit_pipelines: None,
+            globals: buffer(
+                "World primitive globals",
+                std::mem::size_of::<Globals>() as u64,
+                wgpu::BufferUsages::UNIFORM,
+            ),
+            sampler: device.create_sampler(&wgpu::SamplerDescriptor {
+                label: Some("World primitives"),
+                ..Default::default()
+            }),
+            layout,
+            quads: VertexPages::default(),
+            lines: VertexPages::default(),
+            oit_quads: VertexPages::default(),
+            oit_lines: VertexPages::default(),
+            indices: buffer("World primitive indices", 0, wgpu::BufferUsages::INDEX),
+            index_quads: 0,
+            group: None,
+            quad_vertices: Vec::new(),
+            line_instances: Vec::new(),
+            oit_quad_vertices: Vec::new(),
+            oit_line_instances: Vec::new(),
+            index_data: Vec::new(),
+            counts: [0; 4],
+            stage_ends: [[0; 4]; STAGES - 1],
+            oit_counts: [0; 4],
+            oit_stage_ends: [[0; 4]; OIT_STAGES - 1],
+            pipelines: super::mod_pipelines::ModPipelines::new(device, color_format),
+        }
+    }
+
+    /// Pipelines for the classic shader pack's active colortex0 and depthtex0 attachments.
+    pub(super) fn prepare_pack_pass(
+        &mut self,
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        rgb: bool,
+        linear: bool,
+    ) {
+        let key = (format, rgb, linear);
+        if self
+            .pack_pipelines
+            .as_ref()
+            .is_none_or(|(previous, _)| *previous != key)
+        {
+            let mask = if rgb {
+                wgpu::ColorWrites::COLOR
+            } else {
+                wgpu::ColorWrites::ALL
+            };
+            self.pack_pipelines = Some((
+                key,
+                Self::standard_pipelines(device, &self.layout, format, linear, true, mask),
+            ));
+        }
+    }
+
+    fn standard_pipelines(
+        device: &wgpu::Device,
+        layout: &wgpu::BindGroupLayout,
+        color_format: wgpu::TextureFormat,
+        linear: bool,
+        pack: bool,
+        write_mask: wgpu::ColorWrites,
+    ) -> PrimitivePipelines {
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("World primitives"),
+            source: wgpu::ShaderSource::Wgsl(shader().into()),
+        });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("World primitives"),
-            bind_group_layouts: &[Some(&layout)],
+            bind_group_layouts: &[Some(layout)],
             ..Default::default()
         });
         let quad_attributes =
@@ -380,7 +463,10 @@ impl WorldPrimitives {
                 vertex: wgpu::VertexState {
                     module: &shader,
                     entry_point: Some(entry[0]),
-                    compilation_options: Default::default(),
+                    compilation_options: wgpu::PipelineCompilationOptions {
+                        constants: &[("pack_coordinates", if pack { 1.0 } else { 0.0 })],
+                        ..Default::default()
+                    },
                     buffers,
                 },
                 primitive: wgpu::PrimitiveState {
@@ -396,6 +482,8 @@ impl WorldPrimitives {
                     depth_write_enabled: Some(false),
                     depth_compare: Some(if through {
                         wgpu::CompareFunction::Always
+                    } else if pack {
+                        wgpu::CompareFunction::LessEqual
                     } else {
                         wgpu::CompareFunction::GreaterEqual
                     }),
@@ -413,7 +501,7 @@ impl WorldPrimitives {
                     targets: &[Some(wgpu::ColorTargetState {
                         format: color_format,
                         blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                        write_mask: wgpu::ColorWrites::ALL,
+                        write_mask,
                     })],
                 }),
                 multiview_mask: None,
@@ -444,45 +532,9 @@ impl WorldPrimitives {
                 true,
             ),
         ];
-        let buffer = |label, size, usage| {
-            device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some(label),
-                size,
-                usage: usage | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            })
-        };
-        Self {
+        PrimitivePipelines {
             quad_pipelines,
             line_pipelines,
-            oit_pipelines: None,
-            globals: buffer(
-                "World primitive globals",
-                std::mem::size_of::<Globals>() as u64,
-                wgpu::BufferUsages::UNIFORM,
-            ),
-            sampler: device.create_sampler(&wgpu::SamplerDescriptor {
-                label: Some("World primitives"),
-                ..Default::default()
-            }),
-            layout,
-            quads: VertexPages::default(),
-            lines: VertexPages::default(),
-            oit_quads: VertexPages::default(),
-            oit_lines: VertexPages::default(),
-            indices: buffer("World primitive indices", 0, wgpu::BufferUsages::INDEX),
-            index_quads: 0,
-            group: None,
-            quad_vertices: Vec::new(),
-            line_instances: Vec::new(),
-            oit_quad_vertices: Vec::new(),
-            oit_line_instances: Vec::new(),
-            index_data: Vec::new(),
-            counts: [0; 4],
-            stage_ends: [[0; 4]; STAGES - 1],
-            oit_counts: [0; 4],
-            oit_stage_ends: [[0; 4]; OIT_STAGES - 1],
-            pipelines: super::mod_pipelines::ModPipelines::new(device, color_format),
         }
     }
 
@@ -565,7 +617,7 @@ impl WorldPrimitives {
             };
             let quad_frag = format!("fs_oit_quad_{suffix}");
             let line_frag = format!("fs_oit_line_{suffix}");
-            OitStagePipelines {
+            PrimitivePipelines {
                 quad_pipelines: [
                     make(
                         &format!("World primitives OIT quads {suffix}"),
@@ -806,31 +858,70 @@ impl WorldPrimitives {
         oit: Option<super::oit::Stage>,
         draws: &[DrawRanges],
     ) -> bool {
+        match oit {
+            Some(stage) => self.oit_pipelines.as_ref().is_some_and(|pipelines| {
+                self.draw_prepared_ranges(pass, &pipelines[stage as usize], true, draws)
+            }),
+            None => self.draw_prepared_ranges(pass, &self.pipelines_standard, false, draws),
+        }
+    }
+
+    pub(super) fn draw_pack_prepared(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        color: &wgpu::TextureView,
+        depth: &wgpu::TextureView,
+        draws: &[DrawRanges],
+    ) -> bool {
+        let Some((_, pipelines)) = &self.pack_pipelines else {
+            return false;
+        };
+        if draws.is_empty() || self.group.is_none() {
+            return false;
+        }
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Prepared classic pack world stage"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: color,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: depth,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
+            ..Default::default()
+        });
+        self.draw_prepared_ranges(&mut pass, pipelines, false, draws)
+    }
+
+    fn draw_prepared_ranges(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        pipelines: &PrimitivePipelines,
+        oit: bool,
+        draws: &[DrawRanges],
+    ) -> bool {
         let Some(AtlasGroup { group, .. }) = &self.group else {
             return false;
         };
-        let (quad_pipelines, line_pipelines, quads, lines, counts) = match oit {
-            Some(stage) => {
-                let Some(pipelines) = &self.oit_pipelines else {
-                    return false;
-                };
-                let p = &pipelines[stage as usize];
-                (
-                    &p.quad_pipelines,
-                    &p.line_pipelines,
-                    &self.oit_quads,
-                    &self.oit_lines,
-                    self.oit_counts,
-                )
-            }
-            None => (
-                &self.quad_pipelines,
-                &self.line_pipelines,
-                &self.quads,
-                &self.lines,
-                self.counts,
-            ),
+        let (quads, lines, counts) = if oit {
+            (&self.oit_quads, &self.oit_lines, self.oit_counts)
+        } else {
+            (&self.quads, &self.lines, self.counts)
         };
+        let PrimitivePipelines {
+            quad_pipelines,
+            line_pipelines,
+        } = pipelines;
         let mut drew = false;
         for draw in draws {
             let [q, qt, l, lt] = draw.primitives.clone();
@@ -855,11 +946,6 @@ impl WorldPrimitives {
                         (lines, 0, lr),
                     );
                 }
-            }
-            if oit.is_none() && !draw.pipeline.is_empty() {
-                self.pipelines
-                    .draw_range(pass, &self.indices, draw.pipeline.clone());
-                drew = true;
             }
         }
         drew
@@ -938,7 +1024,10 @@ impl WorldPrimitives {
             Self::draw_pages(
                 pass,
                 &self.indices,
-                (&self.quad_pipelines[through], &self.line_pipelines[through]),
+                (
+                    &self.pipelines_standard.quad_pipelines[through],
+                    &self.pipelines_standard.line_pipelines[through],
+                ),
                 (&self.quads, 0, quad_range),
                 (&self.lines, 0, line_range),
             );
@@ -1540,7 +1629,6 @@ mod tests {
                 None,
                 &[DrawRanges {
                     primitives: [0..2, 0..1, 0..2, 0..2],
-                    pipeline: 0..0,
                 }]
             ));
         }

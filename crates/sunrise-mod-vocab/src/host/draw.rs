@@ -601,15 +601,6 @@ pub trait PrepareRenderBuffersContext {
         stage: RenderLevelStage,
         quads: &[WorldQuad],
     ) -> Result<PreparedWorldDraw, DrawError>;
-
-    /// Prepare world quads for a mod pipeline. Only standard world passes support these;
-    /// OIT has different targets. On error, nothing from this call is prepared.
-    fn pipeline_quads(
-        &mut self,
-        stage: RenderLevelStage,
-        pipeline: RenderPipelineRef,
-        quads: &[PipelineQuad],
-    ) -> Result<PreparedWorldDraw, PipelineDrawError>;
 }
 
 /// Draw batches prepared for the active standard render stage, in call order.

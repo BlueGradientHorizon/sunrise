@@ -3,7 +3,7 @@
 /// Whether world geometry is hidden by nearer world surfaces.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local depth policy for world geometry.
 pub enum WorldDepth {
     /// Test against the world's depth, without writing depth.
     Tested,
@@ -14,7 +14,7 @@ pub enum WorldDepth {
 /// A world-space line, colored with 0xAARRGGBB and measured in screen pixels.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local world line submission.
 pub struct WorldLine {
     /// Starting position in blocks, before camera subtraction.
     pub from: [f64; 3],
@@ -44,7 +44,7 @@ impl WorldLine {
 /// top right as seen from the front; alpha blends without writing depth.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local world quad submission.
 pub struct WorldQuad {
     /// Four world-space corners in blocks, before camera subtraction.
     pub corners: [[f64; 3]; 4],
@@ -67,7 +67,7 @@ impl WorldQuad {
 /// Why a whole geometry batch or label was refused; nothing from that call was appended.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: refusal of an in-process draw submission.
 pub enum DrawError {
     /// A coordinate or width is not finite, or a camera-relative coordinate overflows f32.
     NonFinite,
@@ -109,7 +109,7 @@ pub struct PreparedWorldDrawError;
 /// How [`WorldDrawContext::name_tag`](crate::WorldDrawContext::name_tag) draws a label.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: local world label drawing options.
 pub struct NameTagOptions {
     /// Draw it as vanilla draws a name that is not sneaking: opaque text in the world and a
     /// faded copy over everything, walls included. Off, it is drawn once as a sneaking name:
@@ -166,7 +166,8 @@ impl NameTagOptions {
 /// Order-independent transparency (OIT) sub-passes in vanilla 26.3 (`OitStage`), in execution
 /// order.
 // exhaustive: vanilla 26.3's closed three-pass OitStage enum
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, sunrise_mod_api_macros::Wire)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+// no wire: local OIT sub-pass selector.
 pub enum OitStage {
     /// First OIT pass: records depth bounds for translucent fragments (`OitStage.DEPTH_BOUNDS`).
     DepthBounds,
@@ -178,23 +179,28 @@ pub enum OitStage {
 
 /// Where in the world's frame a stage runs: all 9 NeoForge 26.3
 /// `RenderLevelStageEvent` stages, listed in engine order.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, sunrise_mod_api_macros::Wire)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
+// no wire: local world render-stage selector.
 pub enum RenderLevelStage {
     /// NeoForge's `RenderLevelStageEvent.AfterSky` in `LevelRenderer.addSkyPass`. Fires once
     /// immediately after the engine or classic pack's sky work, even if it draws nothing visible.
     /// Absent for a dimension without a skybox, lava or powder-snow camera fog, or a camera mob
-    /// effect that blocks the sky. A pack's replacement sky follows its world import. Provides
-    /// no active render pass.
+    /// effect that blocks the sky. A classic pack that owns the disc or celestial programs
+    /// completes the logical pass after its world import; the engine still draws unclaimed
+    /// portions. Provides no active render pass.
     AfterSky,
     /// After solid and cutout chunk geometry, before opaque entities and block entities
     /// (`RenderLevelStageEvent.AfterOpaqueBlocks`).
     AfterOpaqueBlocks,
     /// After opaque entities, block entities and particles
-    /// (`RenderLevelStageEvent.AfterOpaqueFeatures`).
+    /// (`RenderLevelStageEvent.AfterOpaqueFeatures`). With a classic pack that owns
+    /// feature drawing, its opaque group owns this boundary.
     AfterOpaqueFeatures,
-    /// Classic transparency only: after translucent entities and block entities, before
-    /// translucent chunk geometry (`RenderLevelStageEvent.AfterTranslucentFeatures`).
+    /// Classic transparency only: after translucent entities and block entities
+    /// (`RenderLevelStageEvent.AfterTranslucentFeatures`). On the engine route this precedes
+    /// translucent chunk geometry. A classic pack supplies the boundary when its own
+    /// translucent feature drawing finishes.
     AfterTranslucentFeatures,
     /// Classic transparency only: after translucent chunk geometry such as water and stained
     /// glass, before translucent particles (`RenderLevelStageEvent.AfterTranslucentBlocks`).
@@ -217,7 +223,7 @@ pub enum RenderLevelStage {
 }
 impl RenderLevelStage {
     /// The engine's stage order when classic transparency is active (`!view.improved_transparency`).
-    /// A classic shader pack can skip engine stages or replace the sky boundary.
+    /// A classic shader pack can skip engine stages or provide its own sky and feature boundaries.
     pub const CLASSIC_ORDER: &[Self] = &[
         Self::AfterSky,
         Self::AfterOpaqueBlocks,
@@ -242,7 +248,7 @@ impl RenderLevelStage {
     ];
 
     /// The engine's stage order for the active transparency mode. Classic shader packs can
-    /// skip stages and can draw their replacement sky after the engine's main world pass.
+    /// skip stages or complete their sky and feature passes after the engine world pass.
     pub const fn frame_order(improved_transparency: bool) -> &'static [Self] {
         if improved_transparency {
             Self::OIT_ORDER
@@ -356,6 +362,26 @@ impl<'a> WorldRenderView<'a> {
 mod tests {
     use crate::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn world_draw_values_are_not_wire_values() {
+        // If a draw type implements Wire, there are two possible marker types for it
+        // and the compiler rejects the ambiguous assertion.
+        trait Local<Marker> {
+            fn assert_local() {}
+        }
+        impl<T> Local<()> for T {}
+        impl<T: crate::wire::Wire> Local<u8> for T {}
+
+        let _ = <DrawError as Local<_>>::assert_local;
+        let _ = <RenderLevelStage as Local<_>>::assert_local;
+        let _ = <OitStage as Local<_>>::assert_local;
+        let _ = <WorldDepth as Local<_>>::assert_local;
+        let _ = <WorldLine as Local<_>>::assert_local;
+        let _ = <WorldQuad as Local<_>>::assert_local;
+        let _ = <NameTagOptions as Local<_>>::assert_local;
+    }
+
     static CALLS: AtomicUsize = AtomicUsize::new(0);
     static PREPARE_CALLS: AtomicUsize = AtomicUsize::new(0);
     struct Listener;
@@ -408,14 +434,6 @@ mod tests {
             _: &[WorldQuad],
         ) -> Result<PreparedWorldDraw, DrawError> {
             Err(DrawError::NoRenderPass)
-        }
-        fn pipeline_quads(
-            &mut self,
-            _: RenderLevelStage,
-            _: RenderPipelineRef,
-            _: &[PipelineQuad],
-        ) -> Result<PreparedWorldDraw, PipelineDrawError> {
-            Err(PipelineDrawError::NoWorldPass)
         }
     }
     #[test]

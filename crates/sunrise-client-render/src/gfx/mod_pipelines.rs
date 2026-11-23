@@ -469,30 +469,6 @@ impl ModPipelines {
         );
     }
 
-    pub(super) fn draw_range(
-        &self,
-        pass: &mut wgpu::RenderPass<'_>,
-        indices: &wgpu::Buffer,
-        range: std::ops::Range<u32>,
-    ) {
-        let start = self
-            .runs
-            .partition_point(|run| run.quads.end <= range.start);
-        self.draw_runs(
-            pass,
-            indices,
-            self.runs[start..]
-                .iter()
-                .take_while(|run| run.quads.start < range.end)
-                .map(|run| {
-                    (
-                        run,
-                        run.quads.start.max(range.start)..run.quads.end.min(range.end),
-                    )
-                }),
-        );
-    }
-
     fn draw_runs<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'_>,
@@ -772,7 +748,7 @@ mod tests {
             &[(PASS, PipelineBlend::Translucent, WorldDepth::Tested)],
         );
         let id = Identifier::parse("test:p0").unwrap();
-        let handle = set.resolve(&id, mod_api::PipelineKind::Optional).unwrap();
+        let handle = set.resolve(&id).unwrap();
         let renderer = ModPipelines::new(&device, wgpu::TextureFormat::Rgba8Unorm);
         let mut broken = set.built()[0].clone().unwrap();
         broken.owner = "owning_mod".into();
@@ -783,10 +759,7 @@ mod tests {
         broken.shader = "not wgsl".into();
         assert!(renderer.pipeline(&device, &broken, None).is_err());
         assert!(set.invalidate(0));
-        assert_eq!(
-            set.resolve(&id, mod_api::PipelineKind::Optional),
-            Err(mod_api::RenderPipelineError::Invalid)
-        );
+        assert_eq!(set.resolve(&id), Err(mod_api::RenderPipelineError::Invalid));
         assert_eq!(set.slot(handle), Err(mod_api::RenderPipelineError::Invalid));
     }
 
@@ -802,7 +775,7 @@ mod tests {
             &[(PASS, PipelineBlend::Translucent, WorldDepth::Tested)],
         );
         let id = Identifier::parse("test:p0").unwrap();
-        let handle = set.resolve(&id, mod_api::PipelineKind::Optional).unwrap();
+        let handle = set.resolve(&id).unwrap();
         let mut renderer = ModPipelines::new(&device, wgpu::TextureFormat::Rgba8Unorm);
         renderer
             .build_with(&set, |_, _| Err("injected refusal".into()))
@@ -828,7 +801,7 @@ mod tests {
             &[(PASS, PipelineBlend::Translucent, WorldDepth::Tested)],
         );
         let id = Identifier::parse("test:p0").unwrap();
-        let handle = set.resolve(&id, mod_api::PipelineKind::Optional).unwrap();
+        let handle = set.resolve(&id).unwrap();
         let mut refusing = ModPipelines::new(&device, wgpu::TextureFormat::Rgba8Unorm);
         refusing
             .build_with(&set, |_, _| Err("injected refusal".into()))
@@ -838,7 +811,7 @@ mod tests {
         recovered.build(&device, &set, None).unwrap();
         assert!(recovered.pipelines[0].is_some());
         assert_eq!(set.slot(handle), Ok(0));
-        assert!(set.resolve(&id, mod_api::PipelineKind::Optional).is_ok());
+        assert!(set.resolve(&id).is_ok());
     }
 
     #[test]
@@ -867,7 +840,7 @@ mod tests {
         registered[0].optional = false;
         let next = Pipelines::build(&registered, 42, |_| Ok(PASS.to_owned())).unwrap();
         let id = Identifier::parse("test:p0").unwrap();
-        let handle = next.resolve(&id, mod_api::PipelineKind::Required).unwrap();
+        let handle = next.resolve(&id).unwrap();
         let error = renderer
             .build_with(&next, |_, _| Err("injected refusal".into()))
             .unwrap_err();
@@ -879,11 +852,8 @@ mod tests {
         assert_eq!(renderer.pipelines.len(), 1);
         assert_eq!(next.slot(handle), Ok(0));
         assert!(
-            next.resolve(
-                &Identifier::parse("test:p1").unwrap(),
-                mod_api::PipelineKind::Optional,
-            )
-            .is_ok()
+            next.resolve(&Identifier::parse("test:p1").unwrap(),)
+                .is_ok()
         );
         renderer.build(&device, &next, None).unwrap();
         assert_eq!(renderer.generation, 42);
@@ -1115,7 +1085,7 @@ mod tests {
             .build(device, &set, Some(sources))
             .unwrap();
         assert_eq!(
-            set.resolve(&id(2), mod_api::PipelineKind::Optional),
+            set.resolve(&id(2)),
             Err(mod_api::RenderPipelineError::Invalid),
             "a sprite the atlas lacks"
         );
@@ -1165,88 +1135,6 @@ mod tests {
         assert_near(pixel(8, 24), green, 1.0, "the sprite, not the atlas's red");
         assert_near(pixel(40, 24), green, 1.0, "the sprite repeated");
         assert_near(pixel(8, 40), [255.0; 4], 1.0, "the untextured pipeline");
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn shared_id_required_and_optional_pipelines_both_resolve_and_draw_in_either_order() {
-        let _gpu = crate::gfx::test_gpu::lock();
-        let Some(gpu) = device() else {
-            eprintln!("no GPU adapter: skipped");
-            return;
-        };
-        let red_shader = "fn pipeline_fragment(input: PipelineInput) -> vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }";
-        let green_shader = "fn pipeline_fragment(input: PipelineInput) -> vec4<f32> { return vec4<f32>(0.0, 1.0, 0.0, 1.0); }";
-        let shared = Identifier::parse("test:shared").unwrap();
-        let req_frag = Identifier::parse("test:red").unwrap();
-        let opt_frag = Identifier::parse("test:green").unwrap();
-        let required = RenderPipeline::new(
-            shared.clone(),
-            req_frag,
-            PipelineBlend::Translucent,
-            WorldDepth::Tested,
-        );
-        let optional = RenderPipeline::new(
-            shared.clone(),
-            opt_frag,
-            PipelineBlend::Translucent,
-            WorldDepth::Tested,
-        )
-        .optional();
-        let format = wgpu::TextureFormat::Rgba8Unorm;
-        let vertices = [
-            quad([0.0, 0.0, 32.0, 64.0], 2.0, [255; 4]),
-            quad([32.0, 0.0, 64.0, 64.0], 2.0, [255; 4]),
-        ]
-        .concat();
-        let mut primitives = WorldPrimitives::new(&gpu.0, (format, false));
-        for (generation, registered) in [
-            (101, [required.clone(), optional.clone()]),
-            (102, [optional, required]),
-        ] {
-            let set = Pipelines::build(&registered, generation, |file| {
-                Ok(if file.ends_with("red.wgsl") {
-                    red_shader
-                } else {
-                    green_shader
-                }
-                .to_owned())
-            })
-            .unwrap();
-            let req_handle = set
-                .resolve(&shared, mod_api::PipelineKind::Required)
-                .unwrap();
-            let opt_handle = set
-                .resolve(&shared, mod_api::PipelineKind::Optional)
-                .unwrap();
-            assert_ne!(req_handle, opt_handle);
-            let runs = [
-                PipelineRun {
-                    slot: set.slot(req_handle).unwrap(),
-                    stage: (STAGES - 1) as u32,
-                    quads: 1,
-                },
-                PipelineRun {
-                    slot: set.slot(opt_handle).unwrap(),
-                    stage: (STAGES - 1) as u32,
-                    quads: 1,
-                },
-            ];
-            let at = render(
-                &gpu,
-                &mut primitives,
-                format,
-                Batch {
-                    set: Some(&set),
-                    vertices: &vertices,
-                    runs: &runs,
-                    time: 0.0,
-                },
-                STAGES - 1,
-            );
-            assert_eq!(at(16, 32), [255.0, 0.0, 0.0, 255.0], "required pipeline");
-            assert_eq!(at(48, 32), [0.0, 255.0, 0.0, 255.0], "optional pipeline");
-        }
     }
 
     #[test]

@@ -1,14 +1,21 @@
 ids = [
   "type:WorldDrawUsage",
+  "type:WorldDrawUsage.lines",
+  "type:WorldDrawUsage.line_capacity",
+  "type:WorldDrawUsage.quads",
+  "type:WorldDrawUsage.quad_capacity",
+  "type:WorldDrawUsage.instances_used",
+  "type:WorldDrawUsage.instances_capacity",
   "handle:WorldDrawUsage::new",
   "method:WorldDrawContext::usage",
   "type:DrawError",
+  "type:NameTagOptions",
+  "type:WorldDepth",
+  "type:WorldLine",
+  "type:WorldQuad",
   "type:DrawError.CapacityExceeded",
   "type:DrawError.NoRenderPass",
   "type:DrawError.TextRefused",
-  "type:PipelineDrawError",
-  "type:PipelineDrawError.CapacityExceeded",
-  "type:PipelineDrawError.NoWorldPass",
   "type:InstanceError",
   "type:InstanceError.CapacityExceeded",
   "type:GroupError",
@@ -23,17 +30,20 @@ ids = [
   "handle:WorldRenderView::camera_position",
   "handle:WorldRenderView::model_view_matrix",
   "handle:WorldRenderView::projection_matrix",
+  "hook:register_layer_definitions",
+  "hook:register_debug_renderers",
   "handle:DebugRenderer::new",
   "handle:DebugRenderer::draw",
   "hook:prepare_render_buffers",
   "method:Hooks::prepare_render_buffers",
   "hook:prepare_render_buffers.context",
+  "hook:prepare_render_buffers.view",
   "type:PrepareRenderBuffersEvent",
   "type:PrepareRenderBuffersEvent.context",
+  "type:PrepareRenderBuffersEvent.view",
   "trait:PrepareRenderBuffersContext",
   "method:PrepareRenderBuffersContext::lines",
   "method:PrepareRenderBuffersContext::quads",
-  "method:PrepareRenderBuffersContext::pipeline_quads",
   "type:PreparedWorldDraw",
   "type:PreparedWorldDrawError",
   "hook:submit_custom_geometry",
@@ -71,88 +81,80 @@ ids = [
   "method:RenderLevelStageContext::oit_pass",
 ]
 why = """
-Align world geometry submission, buffer preparation, and stage rendering with vanilla 26.3
-(`LevelRenderer.addSkyPass`, `LevelRenderer.prepareTranslucents`, `LevelRenderer.executeSolid`,
-`GameRenderer.renderLevel`, `SectionOcclusionGraph.addSectionsInFrustum`, `SubmitNodeStorage`,
-`OitStage`, `NbtAccounter.MAX_STACK_DEPTH`)
-and NeoForge 26.3 (`SubmitCustomGeometryEvent`, `RenderLevelStageEvent`, `IRenderableSection`,
-`PrepareRenderBuffersEvent`), and resolve audits [89] and [90]:
+World drawing follows vanilla 26.3 `GameRenderer.renderLevel`, `LevelRenderer.addSkyPass`,
+`prepareTranslucents`, `executeSolid`, and `executeClassicTransparency`, and NeoForge's
+`SubmitCustomGeometryEvent`, `PrepareRenderBuffersEvent`, and `RenderLevelStageEvent`:
 
-- Borrow live frame state via `WorldRenderView<'a>` (`&'a Camera`, world `partial_tick`,
-  `game_time`, `improved_transparency`, and visible `&'a [RenderableSection]`) instead of copying a
-  3-field summary.
-- Add `Hooks::prepare_render_buffers` (`PrepareRenderBuffersEvent`) firing after `AfterSky` and
-  before entity/instance uploads and pass-bearing stages so mods can update retained GPU buffers
-  (`InstanceGroups`) and see those changes on the same frame. Stage geometry is submitted here,
-  paged at the device limits alongside deferred custom geometry, and drawn from the finished
-  upload. The stage callback cannot create, resize, or upload buffers.
-- Expand `RenderLevelStage` to all 9 NeoForge 26.3 stages (`AfterSky`, `AfterOpaqueBlocks`,
-  `AfterOpaqueFeatures`, `AfterTranslucentFeatures`, `AfterTranslucentBlocks`,
-  `AfterTranslucentParticles`, `AfterWeather`, `OitTranslucent(OitStage)`, `AfterLevel`) with
-  `RenderLevelStage::frame_order` (`CLASSIC_ORDER` / `OIT_ORDER`) and stage-scoped pass capability
-  via `RenderLevelStageContext` and `StagePass` (`None` on `AfterSky`/`AfterLevel`, `World` ->
-  `WorldPassDrawContext` on standard passes, `Oit` -> `WorldOitPassDrawContext` on OIT sub-passes),
-  dispatched live at each actual render-pass boundary (skipping stages whose pass does not run).
-  Route `submit_custom_geometry` and debug renderers into the deferred `STAGE_CUSTOM_GEOMETRY` tail.
-- Audit [89]: remove fixed per-view caps (4,096 lines/quads, 16,384 instances/groups, 65,536
-  per-mod group copies), `WorldDrawUsage`, `WorldDrawContext::usage`, `CapacityExceeded` across
-  `DrawError`/`PipelineDrawError`/`InstanceError`/`GroupError`, and `DrawError::TextTooDeep` on
-  in-memory `Text` name-tag rendering (retaining the 512-container limit only on NBT codec
-  boundaries via `Text::validate_payloads` and iterative `Drop`).
-- Audit [90]: replace whole-batch pre-cull validation and rollback in `draw_model_instances` with
-  frustum-first culling and per-copy skipping of invalid visible instances, matching vanilla's
-  `SubmitNodeStorage`.
-- Follow NeoForge's `RenderLevelStageEvent.AfterLevel` injection in `GameRenderer.renderLevel`:
-  dispatch at the world boundary, not after the classic pack's composite/final passes. Preserve
-  the classic pack's own hand within the world draws between the two depth snapshots; unlike the
-  engine hand overlay, it is an input to the pack's deferred passes. An engine `AfterSky` is not
-  synthesized when the pack replaces the early sky pass with a draw over the imported world.
-- Run retained debug renderers from vanilla's `DebugRenderer.emitGizmos` / NeoForge's
-  `RegisterDebugRenderersEvent` under the shared render-listener panic rule. A panic disables
-  only the failing callback and issues the shared log and toast naming its mod. Accepted draws
-  outside a journal are not undone.
-- Bump `submit_custom_geometry` and `render_level_stage` to version 2.
+- `WorldRenderView<'a>` lends the frame camera, partial tick, game time, active transparency mode,
+  and the visible renderable sections. The view and the stage selectors, draw values and refusal
+  types are process-local, not `Wire`.
+- `submit_custom_geometry` (v2) and debug renderers submit deferred world geometry;
+  `prepare_render_buffers` runs before uploads and active draw stages, updating same-frame
+  instance groups and preparing lines and quads. Stage listeners only draw prepared batches.
+- `render_level_stage` (v4) reports the actual stage, with a world or OIT pass where available.
+  `AfterSky` fires once for the admitted logical sky pass even if there are no visible pixels.
+  Lava or powder-snow fog, a sky-blocking camera effect and a dimension without a skybox exclude
+  the pass; Sunrise's sky setting and dragon fog don't. A classic pack that draws the disc or
+  celestial work finishes the logical sky after importing the engine world, while the engine
+  still draws the unclaimed parts. Pack-owned feature stages follow their opaque and translucent
+  draw groups on a compatible world target, not earlier in the imported engine passes.
+  `AfterLevel` follows world drawing, including the classic
+  pack's own hand, before composite/final and the engine hand overlay.
+- Remove the fixed per-view draw capacities and usage counter. As with vanilla's
+  `SubmitNodeStorage`, cull first and skip each invalid visible model copy individually; do
+  not reject or roll back otherwise valid copies. On a render-listener panic, disable just that
+  listener and report its mod without undoing submitted draws.
+- `register_layer_definitions` (v5), following `LayerDefinitions.createRoots`,
+  `EntityModelSet.bakeLayer` and NeoForge `ClientHooks.registerLayerDefinition` / `loadLayerDefinitions`:
+  reject malformed declarations and unavailable/invalid vanilla data at startup instead of
+  dropping declarations or accepting an incomplete table. Keep the last supplier for each mod
+  layer ID and realize it once when freezing. A panicking supplier reports its mod and produces
+  no layer; it does not prevent other winning suppliers from running. The internal registration
+  carrier no longer exposes its supplier field.
+- `register_debug_renderers` (v4), following `DebugRenderer.refreshRendererList` and `emitGizmos`:
+  retained callbacks collect after `submit_custom_geometry` and share its deferred drawing context
+  with the updated view, uncapped storage, and per-copy/per-pipeline-quad results.
 """
 migrate = """
-- Remove calls to `WorldDrawContext::usage()`, references to `WorldDrawUsage`, and match arms for
-  `DrawError::CapacityExceeded`, `DrawError::TextTooDeep`, `DrawError::TextRefused`,
-  `PipelineDrawError::CapacityExceeded`,
-  `InstanceError::CapacityExceeded`, and `GroupError::CapacityExceeded`.
-- For `draw_model_instances`, handle `Err(InstanceError::Model(_))` for stale/unknown model handles;
-  invalid visible copies are skipped individually without rolling back valid copies.
-- Because `Text` now implements `Drop`, replace by-value moves out of `Text` fields with `.take()`,
-  `std::mem::take`, `.clone()`, or borrowing.
-- Update `WorldRenderView` reads: replace `event.view.camera` (`[f64; 3]`) with
-  `event.view.camera_position()` or `event.view.camera.position`, and update explicit annotations or
-  `DebugRenderer` callbacks to `&WorldRenderView<'_>`. Replace
-  `WorldRenderView::new(camera_position, partial_tick, game_time)` with
-  `WorldRenderView::new(&camera, partial_tick, game_time, improved_transparency, sections)`.
-  The view no longer implements `Wire` or `PartialEq`; copy out the fields you own, compare those
-  fields directly, or encode them in your own payload type.
-- The native replacement target stays `sunrise_client_render::gfx::Renderer::render`. Change its
-  signature to `fn render(&mut self, frame: &Frame<'_>, hooks: Option<&mut dyn
-  sunrise_client_render::gfx::world_primitives::FrameHooks>) -> Result<bool>` and forward `hooks`
-  when delegating to the original. The `Result` is `sunrise_client_render::Result`.
-- `AfterTranslucentBlocks` and `AfterWeather` are classic-only. For improved transparency use
-  `OitTranslucent` sub-passes for lines/quads; mod pipeline quads are not compatible with OIT.
-  Submit those in `submit_custom_geometry` for the deferred world pass or choose an available
-  standard world stage that meets your ordering needs.
-- Implement `Hooks::prepare_render_buffers` to update retained `InstanceGroups`
-  before pass-bearing stages run.
-- Replace `RenderLevelStage::ALL` with `RenderLevelStage::frame_order(view.improved_transparency)`
-  (`CLASSIC_ORDER` or `OIT_ORDER`).
-- Move `event.draw.lines(&lines)`, `.quads(&quads)` and `.pipeline_quads(pipeline, &quads)`
-  for named stages to `prepare_render_buffers` as `event.context.lines(stage, &lines)`,
-  `.quads(stage, &quads)`, or `.pipeline_quads(stage, pipeline, &quads)`. Keep the returned
-  `PreparedWorldDraw` for this view only. In `render_level_stage`, call
-  `event.context.world_pass().unwrap().draw(batch)` for the matching standard stage, or
-  `event.context.oit_pass().unwrap().1.draw(batch)` for the matching OIT sub-pass.
-  A batch from a different stage or view returns `PreparedWorldDrawError` and draws nothing.
-- Move submission-only calls (`name_tag`, `draw_model_instances`, `draw_instance_group`) into
-  `Hooks::submit_custom_geometry`. Move drawing previously done in `AfterSky` or `AfterLevel`
-  (now `StagePass::None`) to `submit_custom_geometry` or prepare it for a pass-bearing stage.
-  Do not depend on `AfterSky` for work needed on classic packs that replace the engine sky;
-  use `prepare_render_buffers` to run on both routes. No call changes are needed for `AfterLevel`
-  or debug renderer failure handling. `AfterLevel` precedes pack composition, and a panicking
-  debug renderer remains disabled across renderer-list refreshes.
+- Pin `submit_custom_geometry` to version 2 and `render_level_stage` to version 4. A world view is
+  now borrowed: use `view.camera_position()` or `view.camera.position` instead of the former
+  `[f64; 3]` `view.camera`. Explicit annotations should use `&WorldRenderView<'_>`.
+  `WorldRenderView::new` takes `(&camera, partial_tick, game_time, improved_transparency, sections)`.
+  Copy out the fields you need to retain, compare or send; the view no longer implements `Wire`
+  or `PartialEq`. For `WorldDepth`, `WorldLine`, `WorldQuad`, `NameTagOptions`, `DrawError`,
+  `RenderLevelStage` and `OitStage`, keep in-process uses and move any transmitted data to owned
+  payload fields instead of using the local type's `Wire` implementation.
+- Remove `WorldDrawContext::usage()` and all references to `WorldDrawUsage`, including its
+  constructor and fields. Drop match arms for `DrawError::{CapacityExceeded, TextRefused}`,
+  `InstanceError::CapacityExceeded`, and `GroupError::CapacityExceeded`. `draw_model_instances`
+  returns a model error for invalid handles; invalid visible copies are skipped individually.
+- Replace `RenderLevelStage::ALL` with `frame_order(view.improved_transparency)` for nominal
+  engine order, not as a guarantee that a stage runs. `AfterTranslucentBlocks`,
+  `AfterTranslucentParticles`, and `AfterWeather` are classic-only; on the improved route use
+  `OitTranslucent` sub-passes where appropriate.
+- Move `event.draw.lines` / `event.draw.quads` to
+  `prepare_render_buffers` (`event.context.lines(stage, &lines)` / `.quads(stage, &quads)`).
+  In `render_level_stage`, draw the returned `PreparedWorldDraw` using the active
+  `event.context.world_pass()` or `event.context.oit_pass()` for its own view and stage.
+  A mismatched batch returns `PreparedWorldDrawError` without drawing. Move `name_tag`,
+  `draw_model_instances`, `draw_instance_group`, and `pipeline_quads` into deferred submission.
+- `AfterSky` and `AfterLevel` have no active pass. Move drawing from those arms to
+  `submit_custom_geometry` or prepare it for a pass-bearing stage. `AfterSky` on the engine
+  route precedes preparation; a classic pack's sky or celestial boundary follows preparation
+  and world import. Use `prepare_render_buffers` for work that must run before drawing, even
+  when no sky pass is admitted. Do not use `AfterLevel` to run before a classic pack's own hand.
+- The native `sunrise_client_render::gfx::Renderer::render` replacement now takes
+  `hooks: Option<&mut dyn sunrise_client_render::gfx::world_primitives::FrameHooks>` after
+  `frame: &Frame<'_>`. Forward it when delegating to the original.
+- Pin `register_layer_definitions` to version 5. Keep `event.register(id, supplier)` and pass
+  the identical `<namespace>:<path>#<layer>` ID to `ClientHost::bake_layer`. Preserve both
+  delimiters; the suffix after the first `#` is unrestricted. Fix malformed IDs, vanilla-key
+  collisions and missing or invalid `entity-models.json` before startup can proceed. Don't
+  access a staged registration's supplier field or run it manually. Fix any supplier reported
+  as `build_layer_definition` before expecting that layer to bake.
+- Pin `register_debug_renderers` to version 4. Keep pushing `DebugRenderer::new(draw)`;
+  `DebugRenderer::new` and `DebugRenderer::draw` now take the borrowed `WorldRenderView<'_>`
+  in the callback signature. These callbacks run after custom geometry collection and share
+  its draw context and result changes above. A panicking debug renderer remains disabled after
+  refresh; already accepted draws are not undone.
 """
