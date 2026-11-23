@@ -18,6 +18,7 @@ folder.
 | `hooks <text> [--all]` | Searches the pinned build's hooks offline, by id, doc and their NeoForge, Fabric and Paper names; every word must match. `--all` searches every record. Matches in the id come first, then in a counterpart, then in the doc. |
 | `sdk diff <build> <build>` | What changed in the surface from the first build to the second, [classified](02-surface.md#what-a-change-is), with the second build's change notes (why, and what a mod does now) under the changes they name: the notes of the changes since the SDK published before it. It reads only the builds' small files, so it works for builds whose compiled files are pruned. |
 | `pin [<build>]` | Moves the pin to the current Nightly (or the build named). Reports API uses that would break before moving the pin. |
+| [`self-update`](../../start/install-tool.md#updating-the-tool) | Replaces a standalone copy of the tool with the newest signed `mod-tool` build. Never changes a mod's pin. |
 
 ## Check a released package
 
