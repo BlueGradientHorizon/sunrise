@@ -145,6 +145,7 @@ pub fn enabled_listened(hook: HookId) -> bool {
 }
 
 /// A live listener query bound to the creating thread's installed dispatch table.
+// no wire: a process-local view of the installed dispatch table, never sent.
 pub struct EnabledListeners {
     installed: Option<&'static crate::runtime::Installed>,
     hook: HookId,

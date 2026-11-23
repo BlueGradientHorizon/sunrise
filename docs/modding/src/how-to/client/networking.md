@@ -88,13 +88,15 @@ fn player_handshake(
 }
 ```
 
-The requested host is untrusted text, including any suffix after a NUL.
-Each listener sees the last accepted rewrite, and later login code uses the
-final value as-is. The vanilla limit of 255 UTF-16 code units applies to
-decoding the packet, not to the rewrite. The requested port and protocol
-version are read-only. The peer IP is the numeric transport address without
-a port, or `None` for an integrated server's memory connection. A rewrite
-does not change the peer IP or bypass authentication or admission.
+The requested host is untrusted text, including any suffix after a NUL. Each
+listener sees the last accepted rewrite. Login doesn't route by host, so the
+final value only reaches later listeners. The vanilla limit of 255 UTF-16
+code units applies to decoding the packet, not to the rewrite. Each listener
+gets its own copy of the requested port, protocol version and peer IP, so no
+listener changes what the next one reads. The peer IP is the numeric
+transport address without a port, or `None` for an integrated server's
+memory connection. A rewrite does not change the peer IP or bypass
+authentication or admission.
 
 Cancellation sends a login disconnect and closes the connection without
 processing a login hello. The client gets the standard localized
