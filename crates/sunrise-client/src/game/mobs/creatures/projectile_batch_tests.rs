@@ -732,3 +732,70 @@ fn wind_charges_retrace_only_after_gameplay_breaks_a_vehicle() {
         }
     });
 }
+
+/// A subscriber that was off when the flight began and is turned on by a section callback of
+/// the same flight hears the contact that follows: the live loop asks `native_hears_impacts` at
+/// each contact, not once for the family.
+#[test]
+#[ignore = "daily"]
+fn a_subscriber_enabled_by_a_section_callback_hears_the_contact_after_it() {
+    struct Counter(Arc<Mutex<Vec<u32>>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Counter {
+        fn projectile_impact(
+            &self,
+            _: &mut dyn ServerHost,
+            event: &mut ProjectileImpactEvent<'_>,
+        ) -> Flow {
+            self.0.lock().unwrap().push(event.projectile);
+            Flow::Continue
+        }
+    }
+    struct Trigger;
+    #[mod_api::__subscriptions]
+    impl Hooks for Trigger {
+        fn entity_entering_section(
+            &self,
+            _: mod_api::HostSide<'_>,
+            _: &mut mod_api::EntityEnteringSectionEvent,
+        ) {
+            mod_api::__private::set_mod_enabled("reenabled-counter", true);
+        }
+    }
+    if run_fresh_cases(
+        "game::creatures::projectile_batch_tests::a_subscriber_enabled_by_a_section_callback_hears_the_contact_after_it",
+        "SUNRISE_PROJECTILE_REENABLE_CASE",
+        &["reenable"],
+    ) {
+        return;
+    }
+    let heard: Arc<Mutex<Vec<u32>>> = Arc::default();
+    let mods: mod_api::Mods = vec![
+        mod_api::ModEntry::new("reenabled-counter", Box::new(Counter(heard.clone()))),
+        mod_api::ModEntry::new("section-trigger", Box::new(Trigger)),
+    ]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        super::super::native_entity_refs::tests::with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
+            for chunk in [(0, 0), (1, 0)] {
+                game.world
+                    .chunks
+                    .insert(chunk, Arc::new(Chunk::empty(chunk.0, chunk.1)));
+                game.block_ticks
+                    .add_empty_chunk(sunrise_core::position::ChunkPos::new(chunk.0, chunk.1))
+                    .unwrap();
+            }
+            assert!(mod_api::__private::set_mod_enabled(
+                "reenabled-counter",
+                false
+            ));
+            shoot_arrow_at_wall(game, 16, 14.5);
+        });
+    });
+    assert_eq!(
+        *heard.lock().unwrap(),
+        [71],
+        "the contact after the callback is dispatched"
+    );
+}

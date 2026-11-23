@@ -2111,3 +2111,33 @@ fn reentrant_open_during_travel_close_opens_after_change_level() {
         assert_eq!(replacement.container_id(game), None);
     });
 }
+
+/// A replacement the closing listener asks for while the player's menus close for a save stays
+/// unpublished through the save: nothing real can reach a transient slot the save omits. A
+/// leaving player never gets it; otherwise it publishes once the save is done.
+#[test]
+#[ignore = "daily"]
+fn an_open_asked_during_a_save_close_publishes_only_after_the_save_if_the_player_stays() {
+    for leaving in [true, false] {
+        with_owned_menu(false, |game, rx, key| {
+            open(game, key);
+            sent(&rx);
+            REOPEN_ON_REMOVED.set(true);
+            let hold = game.guest_close_menus_for_save(1);
+            assert!(
+                !sent(&rx).iter().any(|p| matches!(p, C::OpenScreen(_))),
+                "the replacement stays unpublished through the save"
+            );
+            if leaving {
+                game.discard_menu_opens(hold);
+            } else {
+                game.resume_menu_opens(hold);
+            }
+            let opened = sent(&rx)
+                .iter()
+                .filter(|p| matches!(p, C::OpenScreen(_)))
+                .count();
+            assert_eq!(opened, usize::from(!leaving));
+        });
+    }
+}
