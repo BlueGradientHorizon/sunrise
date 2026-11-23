@@ -2338,7 +2338,10 @@ impl Game<'_> {
         }
     }
 
-    fn native_command_player_target(&self, target: super::commands::Target) -> Option<PlayerRef> {
+    pub(super) fn native_command_player_target(
+        &self,
+        target: super::commands::Target,
+    ) -> Option<PlayerRef> {
         use super::commands::Target;
         match target {
             Target::Player => self.native_acting_player(),

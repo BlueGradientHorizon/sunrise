@@ -158,23 +158,61 @@ pub struct CommandInvocation {
     /// The execution position, after `execute at` or `positioned`; the console's is the
     /// world spawn's block corner.
     pub position: [f64; 3],
+    /// The entity the command executes as (`CommandSourceStack.getEntity`), after `execute as`
+    /// or `on`: the submitting player or command-block minecart, or the entity `as` selected.
+    /// None for the console, a command block, or a target that no longer resolves.
+    pub entity: Option<EntityRef>,
+    /// The execution rotation in degrees as `[yaw, pitch]` (Java's `Vec2` holds pitch first),
+    /// after `execute at`, `rotated` or `facing`, like `CommandArgumentValue::Rotation`. The
+    /// console's is zero; a command block's yaw is the direction it faces.
+    pub rotation: [f32; 2],
+    player: Option<PlayerRef>,
 }
 
 impl CommandInvocation {
     /// Build an invocation from its parsed literal path, resolved arguments and execution
-    /// level and position.
+    /// level, position and `[yaw, pitch]` rotation, executing as no entity.
     pub fn new(
         literals: Vec<String>,
         arguments: Vec<CommandArgument>,
         dimension: DimensionKey,
         position: [f64; 3],
+        rotation: [f32; 2],
     ) -> Self {
         Self {
             literals,
             arguments,
             dimension,
             position,
+            entity: None,
+            rotation,
+            player: None,
         }
+    }
+
+    /// The same invocation executing as `entity`, which is not a player.
+    pub fn with_entity(self, entity: EntityRef) -> Self {
+        Self {
+            entity: Some(entity),
+            player: None,
+            ..self
+        }
+    }
+
+    /// The same invocation executing as `player`.
+    pub fn with_player(self, player: PlayerRef) -> Self {
+        Self {
+            entity: Some(player.entity()),
+            player: Some(player),
+            ..self
+        }
+    }
+
+    /// The entity the command executes as when it is a player (`CommandSourceStack.getPlayer`).
+    /// A command that needs one maps `None` to its own failure, such as
+    /// `permissions.requires.player`.
+    pub fn player(&self) -> Option<PlayerRef> {
+        self.player
     }
 
     /// The last argument registered under `name`, or `None` when it is absent.
