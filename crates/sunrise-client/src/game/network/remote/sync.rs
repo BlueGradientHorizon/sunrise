@@ -11,7 +11,7 @@ impl Remote {
     pub(in crate::game) fn player_info_skin(&self, uuid: u128) -> &str {
         self.skins
             .get(&uuid)
-            .map(String::as_str)
+            .map(|skin| skin.body(uuid).0)
             .unwrap_or_else(|| default_skin(uuid))
     }
 }
