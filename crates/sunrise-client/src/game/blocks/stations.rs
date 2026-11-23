@@ -1855,6 +1855,7 @@ impl Game<'_> {
         if let Some(text) = sunrise_client::item_tooltip::bees_line(stack, &display, &translate) {
             push(&mut lines, text, gray);
         }
+        details.start("minecraft:container_loot", lines.len());
         details.start("minecraft:container", lines.len());
         // ItemContainerContents.addToTooltip.
         if display.shows("minecraft:container") {
@@ -1878,6 +1879,7 @@ impl Game<'_> {
                 );
             }
         }
+        details.start("minecraft:pot_decorations", lines.len());
         details.start("minecraft:written_book_content", lines.len());
         // WrittenBookContent.addToTooltip.
         for text in sunrise_client::item_tooltip::written_book_lines(stack, &display, &translate) {
@@ -1928,9 +1930,15 @@ impl Game<'_> {
                 }
             }
         }
+        // Fireworks and FireworkExplosion.addToTooltip.
+        let (fireworks, explosion) =
+            sunrise_client::item_tooltip::firework_component_lines(stack, &translate);
         details.start("minecraft:fireworks", lines.len());
-        // Fireworks / FireworkExplosion.addToTooltip.
-        for text in sunrise_client::item_tooltip::firework_lines(stack, &translate) {
+        for text in fireworks {
+            push(&mut lines, text, rgba(170, 170, 170, 255));
+        }
+        details.start("minecraft:firework_explosion", lines.len());
+        for text in explosion {
             push(&mut lines, text, rgba(170, 170, 170, 255));
         }
         details.start("minecraft:potion_contents", lines.len());
@@ -2006,6 +2014,7 @@ impl Game<'_> {
             let text = sunrise_client::text::Text::legacy(&text);
             lines.push((if italic { text.italic() } else { text }, gray));
         }
+        details.start("minecraft:profile", lines.len());
         details.start("minecraft:lore", lines.len());
         // ItemLore.addToTooltip: after the enchantments, before the attributes
         // (ItemStack.addDetailsToTooltip).
@@ -2014,6 +2023,7 @@ impl Game<'_> {
                 lines.push((text, u32::MAX));
             }
         }
+        details.start("minecraft:sulfur_cube_content", lines.len());
         details.start("minecraft:attribute_modifiers", lines.len());
         let attributes_shown = display.shows("minecraft:attribute_modifiers");
         let (modifier_lines, added) = self.stack_attribute_tooltip(
@@ -2028,6 +2038,7 @@ impl Game<'_> {
             push(&mut lines, text, c);
         }
         lines.extend(added);
+        details.start("minecraft:intangible_projectile", lines.len());
         details.start("minecraft:unbreakable", lines.len());
         // ItemStack.UNBREAKABLE_TOOLTIP.
         if let Some(text) =
@@ -2035,6 +2046,8 @@ impl Game<'_> {
         {
             push(&mut lines, text, rgba(85, 85, 255, 255));
         }
+        details.start("minecraft:sign_text_front", lines.len());
+        details.start("minecraft:sign_text_back", lines.len());
         details.start("minecraft:ominous_bottle_amplifier", lines.len());
         // OminousBottleAmplifier.addToTooltip.
         if let Some((text, c)) =
@@ -2102,24 +2115,28 @@ impl Game<'_> {
         // AdventureModePredicate.addToTooltip under its header, for
         // can_break and then can_place_on. A block tag's blocks are listed by
         // id, as this side keeps tags unordered.
-        for (text, c) in sunrise_client::item_tooltip::adventure_lines(
-            stack,
-            &display,
-            &|tag| {
-                let mut blocks: Vec<String> = self
-                    .items()
-                    .block_tags
-                    .get(tag)
-                    .map(|s| s.iter().cloned().collect())
-                    .unwrap_or_default();
-                blocks.sort();
-                blocks
-            },
-            &translate,
-        ) {
-            push(&mut lines, text, c);
+        for component in ["minecraft:can_break", "minecraft:can_place_on"] {
+            details.start(component, lines.len());
+            for (text, c) in sunrise_client::item_tooltip::adventure_lines(
+                stack,
+                component,
+                &display,
+                &|tag| {
+                    let mut blocks: Vec<String> = self
+                        .items()
+                        .block_tags
+                        .get(tag)
+                        .map(|s| s.iter().cloned().collect())
+                        .unwrap_or_default();
+                    blocks.sort();
+                    blocks
+                },
+                &translate,
+            ) {
+                push(&mut lines, text, c);
+            }
         }
-        details.end(lines.len());
+        details.start("minecraft:damage", lines.len());
         if display.shows("minecraft:damage")
             && let Some(info) = item_info
             && info.max_damage > 0
@@ -2140,6 +2157,7 @@ impl Game<'_> {
                 u32::MAX,
             ));
         }
+        details.end(lines.len());
         // ItemStack.addDetailsToTooltipTail: with advanced tooltips the item id
         // and how many components the stack has.
         if advanced {
@@ -2188,7 +2206,7 @@ impl Game<'_> {
                 ));
             }
         }
-        // RegisterTooltipAppendersEvent: each registered appender's lines, where its placement puts them.
+        // ItemTooltipHandler: each registered appender's lines, in the sorted order.
         if !appenders.is_empty() {
             sunrise_client::item_tooltip::add_appender_lines(
                 &mut lines,
@@ -2209,7 +2227,7 @@ impl Game<'_> {
                 },
                 appenders
                     .iter()
-                    .map(|p| (p.component(), p.placement(), p.enabled(), p.appender())),
+                    .map(|p| (p.component(), p.slot(), p.enabled(), p.appender())),
             );
         }
         // ItemTooltipEvent, once the tooltip vanilla shows is complete.

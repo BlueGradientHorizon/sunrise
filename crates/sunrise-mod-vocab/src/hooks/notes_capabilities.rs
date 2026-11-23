@@ -53,11 +53,11 @@ pub trait Notes {
 
 - Data component tooltip lines: `Registrar::register_tooltip_appender(component, placement, appender)` (NeoForge's
   `RegisterTooltipAppendersEvent`) gives one component's `TooltipAppender` a `TooltipPlacement`: `BeforeAll`, `AfterAll`,
-  or `Before(id)` and `After(id)` for a component detail Sunrise lists (`minecraft:lore`, `minecraft:enchantments`...), where
-  the lines go among the other components' lines. The game asks only that appender, only for a stack that carries the
+  or `Before(id)` and `After(id)` for a vanilla tooltip component or one another appender is registered for, sorted as
+  `ItemTooltipHandler` sorts them. The game asks only that appender, only for a stack that carries the
   component (live, transient ones included) and whose `tooltip_display` shows it, and only while its mod is enabled. It gets
   the stack and a `TooltipAppendContext` (local player, `advanced`/`creative`/`nested` flags, and the client level's
-  `tick_rate`, or 20 without a level). Its lines go after the item's own and before durability and advanced lines.
+  `tick_rate`, or 20 without a level). Its lines go after the item's own and before the advanced lines.
   Creative search doesn't read these lines or `item_tooltip`; mods reacting to every item use `item_tooltip`.
   `Before`/`After` accept only the 23 vanilla anchors listed in `tooltip_appender.rs`, not other registered
   components. The `registerAppender(TooltipLocation, ...)` overload is not represented. Several appenders may register
