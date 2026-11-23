@@ -1,4 +1,4 @@
-sunrise-client game::creatures::pending_birth_tests::a_breeding_constructor_engine_fault_retires_only_the_unpublished_child lib daily game-boot
+sunrise-client game::creatures::pending_birth_tests::a_breeding_constructor_engine_fault_retires_only_the_unpublished_child lib daily child-process
 sunrise-client game::creatures::pending_birth_tests::split_edits_do_not_publish_on_engine_unwind lib daily child-process
 sunrise-client game::creatures::pending_birth_tests::baby_slot_replacement_does_not_publish_on_engine_unwind lib daily game-boot
 sunrise-client game::creatures::pending_birth_tests::panicking_spawn_listeners_lose_cancellation_but_keep_direct_child_edits lib daily game-boot

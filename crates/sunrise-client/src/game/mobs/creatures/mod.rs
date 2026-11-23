@@ -4239,7 +4239,7 @@ impl Game<'_> {
         // BabyEntitySpawnEvent: posted even if no proposed child was constructed, matching
         // NeoForge's Animal.spawnChildFromBreeding and Fox.FoxBreedGoal.breed.
         let listened = mod_api::__private::listened(mod_api::HookId::BabyEntitySpawn);
-        if listened {
+        let accepted = if listened {
             let conn = self
                 .love_cause
                 .get(&parent)
@@ -4255,7 +4255,7 @@ impl Game<'_> {
                 super::native_pending_children::ChildConstraint::BreedingAgeable
             };
             match self.breed_with_listeners(parent, partner, player, child, constraint) {
-                super::pending_births::BreedOutcome::Accepted(baby) => child = baby,
+                super::pending_births::BreedOutcome::Accepted(baby) => baby,
                 super::pending_births::BreedOutcome::Cancelled => {
                     // NeoForge Animal.spawnChildFromBreeding / Fox.FoxBreedGoal.breed:
                     // only cancellation resets both parents and skips finalization.
@@ -4269,8 +4269,11 @@ impl Game<'_> {
                     return None;
                 }
             }
-        }
-        let mut child = child?;
+        } else {
+            child.map(|child| self.stash_breeding_child(child))
+        };
+        let (mut pending, action) = accepted?;
+        let child = &mut pending.mob;
         // NeoForge Animal.spawnChildFromBreeding / Fox.FoxBreedGoal.breed:
         // apply post-event completion to the live initiating parent and selected child.
         let live_parent = self
@@ -4299,20 +4302,20 @@ impl Game<'_> {
                 .copied()
                 .and_then(|conn| self.killer_uuid(conn));
             sunrise_client::mobs::fox::trust_breeders(
-                &mut child,
+                child,
                 parent_cause.map(sunrise_client::lan::playerdata::uuid_ints),
                 partner_cause.map(sunrise_client::lan::playerdata::uuid_ints),
             );
             self.finalize_breeding(
                 &live_parent,
                 partner,
-                Some(&child),
+                Some(child),
                 order,
                 listened || at_tick_boundary,
             );
         }
-        sunrise_client::mobs::finalize::set_baby(&mut child, true);
-        sunrise_client::mobs::living::teleports::snap_to(&mut child, live_parent.position);
+        sunrise_client::mobs::finalize::set_baby(child, true);
+        sunrise_client::mobs::living::teleports::snap_to(child, live_parent.position);
         child.yaw = 0.0;
         child.previous_yaw = 0.0;
         child.body_yaw = 0.0;
@@ -4326,7 +4329,7 @@ impl Game<'_> {
             self.finalize_breeding(
                 &live_parent,
                 partner,
-                Some(&child),
+                Some(child),
                 order,
                 listened || at_tick_boundary,
             );
@@ -4336,18 +4339,16 @@ impl Game<'_> {
             live_parent.position.y,
             live_parent.position.z,
         ];
-        match order {
-            OrbOrder::AfterChild => {
-                let joined = self.insert_spawned_mob(child);
-                self.mob_event_particles(parent, 18);
-                self.breeding_orb(parent, at, experience);
-                joined
-            }
-            OrbOrder::BeforeChild => {
-                self.breeding_orb(parent, at, experience);
-                self.insert_spawned_mob(child)
-            }
+        if order == OrbOrder::BeforeChild {
+            self.breeding_orb(parent, at, experience);
         }
+        let child = self.issue_pending_child(pending, action);
+        let joined = self.insert_spawned_mob(child);
+        if order == OrbOrder::AfterChild {
+            self.mob_event_particles(parent, 18);
+            self.breeding_orb(parent, at, experience);
+        }
+        joined
     }
     /// `MobEffectUtil.addEffectToPlayersAround` for an elder guardian:
     /// mining fatigue III for five minutes unless a stronger or longer one

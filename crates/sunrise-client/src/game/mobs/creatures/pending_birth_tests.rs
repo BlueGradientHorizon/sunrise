@@ -1273,10 +1273,22 @@ fn baby_slot_replacement_does_not_publish_on_engine_unwind() {
 #[test]
 #[ignore = "daily"]
 fn a_breeding_constructor_engine_fault_retires_only_the_unpublished_child() {
+    use crate::game::native_entity_refs::tests::run_fresh_cases;
+    const CASE: &str = "SUNRISE_BREEDING_ADMISSION_FAULT";
+    if run_fresh_cases(
+        "game::creatures::pending_birth_tests::a_breeding_constructor_engine_fault_retires_only_the_unpublished_child",
+        CASE,
+        &["constructor", "orb"],
+    ) {
+        return;
+    }
+    let during_orb = std::env::var(CASE).unwrap() == "orb";
+
     use std::sync::atomic::{AtomicBool, Ordering};
 
     struct Constructor {
         baby_hook_ran: Arc<AtomicBool>,
+        orb_joined: Arc<AtomicBool>,
         marker: Arc<Mutex<Option<AttachmentKey<i32>>>>,
     }
     #[mod_api::__subscriptions]
@@ -1301,6 +1313,17 @@ fn a_breeding_constructor_engine_fault_retires_only_the_unpublished_child() {
             }
         }
 
+        fn entity_join_level(
+            &self,
+            _: &mut dyn ServerHost,
+            event: &mut EntityJoinLevelEvent<'_>,
+        ) -> Flow {
+            if event.kind == "minecraft:experience_orb" {
+                self.orb_joined.store(true, Ordering::Relaxed);
+            }
+            Flow::Continue
+        }
+
         fn baby_entity_spawn(
             &self,
             _: &mut dyn ServerHost,
@@ -1311,11 +1334,13 @@ fn a_breeding_constructor_engine_fault_retires_only_the_unpublished_child() {
         }
     }
     let baby_hook_ran = Arc::new(AtomicBool::new(false));
+    let orb_joined = Arc::new(AtomicBool::new(false));
     let marker = Arc::new(Mutex::new(None));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "pending_birth_constructor",
         Box::new(Constructor {
             baby_hook_ran: baby_hook_ran.clone(),
+            orb_joined: orb_joined.clone(),
             marker: marker.clone(),
         }),
     )]
@@ -1325,10 +1350,17 @@ fn a_breeding_constructor_engine_fault_retires_only_the_unpublished_child() {
         with_game(|game| {
             let marker = marker.lock().unwrap().clone().unwrap();
             let proposed_id = game.next_entity + 3;
-            escaping_fault::expect(At::Constructed, proposed_id, || {
+            let (checkpoint, fault_id) = if during_orb {
+                (At::Admission, proposed_id + 1)
+            } else {
+                (At::Constructed, proposed_id)
+            };
+            escaping_fault::expect(checkpoint, fault_id, || {
                 breed_pair(game, "minecraft:cow");
             });
-            assert!(!baby_hook_ran.load(Ordering::Relaxed));
+            assert_eq!(baby_hook_ran.load(Ordering::Relaxed), during_orb);
+            assert_eq!(orb_joined.load(Ordering::Relaxed), during_orb);
+            assert!(game.orbs.is_empty());
             assert_eq!(game.mobs.len(), 2);
             assert!(!game.persist.uuids.contains_key(&proposed_id));
             assert!(!game.entity_attachments.contains_key(&proposed_id));

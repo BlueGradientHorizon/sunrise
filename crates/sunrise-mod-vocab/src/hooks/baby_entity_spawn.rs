@@ -28,7 +28,8 @@ pub trait Hooks {
     /// initiating parent's live position with zero yaw and pitch before awarding credit.
     /// Foxes grant breeder trust and award credit using the child's pre-snap age and position,
     /// then reset the parents before setting baby age and snapping the child. Both paths
-    /// insert the selected child once.
+    /// insert the selected child once; its state remains unpublished through the ordinary
+    /// breeding experience orb's earlier admission.
     /// Set `cancel` (or return `Flow::Cancel`) to abort breeding: matching NeoForge's
     /// `Animal.spawnChildFromBreeding` and `Fox.FoxBreedGoal.breed`, both parents are
     /// reset to age 6000 and in-love 0, breeding credit is cleared, and there is no

@@ -18,7 +18,7 @@ static NEXT_CHILD_ACTION: AtomicU64 = AtomicU64::new(1);
 /// parents per NeoForge's `Animal.spawnChildFromBreeding` / `Fox.FoxBreedGoal.breed`) from
 /// an uncanceled empty slot (which skips breeding finalization without resetting parents).
 pub(super) enum BreedOutcome {
-    Accepted(Option<Mob>),
+    Accepted(Option<(PendingMob, u64)>),
     Cancelled,
 }
 
@@ -101,7 +101,7 @@ impl Game<'_> {
     }
 
     /// Publish one pending child's constructor state immediately before it is offered to the level.
-    fn issue_pending_child(&mut self, child: PendingMob, action: u64) -> Mob {
+    pub(super) fn issue_pending_child(&mut self, child: PendingMob, action: u64) -> Mob {
         let PendingMob {
             mut mob,
             uuid,
@@ -231,6 +231,12 @@ impl Game<'_> {
         }
     }
 
+    /// Hold the child off-table through breeding credit and any preceding admissions.
+    pub(super) fn stash_breeding_child(&mut self, child: Mob) -> (PendingMob, u64) {
+        let action = NEXT_CHILD_ACTION.fetch_add(1, Ordering::Relaxed);
+        (self.stash_pending_child(child, action), action)
+    }
+
     /// `Animal.spawnChildFromBreeding` / `Fox.FoxBreedGoal.breed` once the proposed `baby`
     /// (if any) is constructed: lends it in a stack-local optional slot to `baby_entity_spawn`
     /// listeners and distinguishes cancellation from an uncanceled empty slot.
@@ -272,7 +278,7 @@ impl Game<'_> {
         if cancel {
             return BreedOutcome::Cancelled;
         }
-        BreedOutcome::Accepted(slot.map(|kept| self.issue_pending_child(kept, action)))
+        BreedOutcome::Accepted(slot.map(|kept| (kept, action)))
     }
 }
 
