@@ -79,6 +79,8 @@ pub(super) struct ServerPackState {
     pub(super) prompt: Option<PackPrompt>,
     /// The server list entry the setting is saved to (none: a direct join).
     pub(super) address: Option<String>,
+    /// That entry's name, with `address`, so a pack answer updates only that row.
+    pub(super) name: Option<String>,
     /// The account the downloads are made for (the download headers).
     user: (String, u128),
     /// The packs loaded on top of the player's own, bottom first.
@@ -95,22 +97,21 @@ impl ServerPackState {
         for (id, url, hash) in prompt.requests {
             self.packs.push(id, &url, parse_sha1(&hash));
         }
-        // ServerList.saveSingleServer.
-        let Some(address) = &self.address else {
+        // ServerList.saveSingleServer: one row, matched by name and address.
+        let (Some(address), Some(name)) = (&self.address, &self.name) else {
             return;
         };
         let file = multiplayer::servers_file(&saves());
         let _guard = servers::lock();
         let (mut shown, mut hidden) = servers::load_all(&file);
         if let Some(setting) = policy_change {
-            let entries = if shown.iter().any(|s| &s.ip == address) {
-                &mut shown
-            } else {
-                &mut hidden
-            };
-            for entry in entries.iter_mut().filter(|s| &s.ip == address) {
-                entry.accept_textures = Some(setting);
-            }
+            servers::save_single_accept_textures(
+                &mut shown,
+                &mut hidden,
+                name,
+                address,
+                Some(setting),
+            );
         }
         if let Err(e) = servers::save_all(&file, &shown, &hidden) {
             log::warn!("Sunrise: could not save {}: {e}", file.display());
@@ -230,22 +231,29 @@ impl Game<'_> {
     /// `ConnectScreen`: the server's setting decides what its packs do
     /// (`configureForServerControl`); single player's own server takes them
     /// all, quietly (`configureForLocalWorld`).
-    pub(super) fn server_packs_connect(&mut self, address: Option<&str>, user: (String, u128)) {
+    pub(super) fn server_packs_connect(
+        &mut self,
+        address: Option<&str>,
+        list_name: Option<&str>,
+        user: (String, u128),
+    ) {
         let state = &mut self.server_packs;
         state.user = user;
         state.prompt = None;
         state.notifiers.clear();
         let Some(address) = address else {
             state.address = None;
+            state.name = None;
             state.packs.local_world();
             return;
         };
         let file = multiplayer::servers_file(&saves());
         // ServerList.get: the shown entries, then the hidden ones.
         let (shown, hidden) = servers::load_all(&file);
-        let entry = shown.into_iter().chain(hidden).find(|s| s.ip == address);
+        let entry = servers::find(&shown, &hidden, address, list_name).cloned();
         let setting = entry.as_ref().and_then(|e| e.accept_textures);
-        state.address = entry.map(|e| e.ip);
+        state.address = entry.as_ref().map(|e| e.ip.clone());
+        state.name = entry.map(|e| e.name);
         state.packs.connect(Prompt::for_server(setting));
         // GetServerDetailsTask.scheduleResourcePackDownload: the Realm's own pack, which the
         // player agreed to before connecting (`allowServerPacks`, then `pushPack`).
@@ -315,11 +323,7 @@ impl Game<'_> {
     fn server_setting(&self) -> Option<bool> {
         let address = self.server_packs.address.as_deref()?;
         let (shown, hidden) = servers::load_all(&multiplayer::servers_file(&saves()));
-        shown
-            .into_iter()
-            .chain(hidden)
-            .find(|s| s.ip == address)?
-            .accept_textures
+        servers::find(&shown, &hidden, address, self.server_packs.name.as_deref())?.accept_textures
     }
     fn send_pack_status(&self, id: u128, status: i32) {
         if let Some(r) = &self.remote {
@@ -646,7 +650,7 @@ mod tests {
                 .set_read_timeout(Some(Duration::from_secs(5)))
                 .unwrap();
             finish_login(game, &mut peer);
-            game.server_packs_connect(Some(ADDRESS), ("SessionReadTest".into(), 42));
+            game.server_packs_connect(Some(ADDRESS), None, ("SessionReadTest".into(), 42));
             for id in PACK_IDS {
                 game.handle_pack_push(ResourcePackPush {
                     id,
