@@ -58,6 +58,8 @@ fn registry(url: &str) -> Result<Option<String>, String> {
         {
             format!("uses = '{USES}'")
         }
+        // A repository the registry doesn't watch by name: GitHub's API answers not found.
+        url if url.starts_with("https://api.github.com/repos/") => return Ok(None),
         _ => panic!("unexpected URL: {url}"),
     }))
 }
@@ -293,10 +295,15 @@ mod git_fixtures {
         repo.put(release_workflow, OLD_RELEASE);
         let rebuild = ".github/workflows/rebuild.yml";
         repo.put(rebuild, "name: Rebuild reviewed native mod source\nuses: ./.github/actions/sunrise-release-tool\n");
-        // Uncommitted copies are left alone: only Git can restore a removal.
-        repo.release("mods/example", &["setup"], refused_check)
-            .unwrap();
-        assert!(repo.root.join(release_workflow).exists());
+        // Setup changes nothing in a tree with uncommitted changes: only Git can restore a removal.
+        let error = repo
+            .release("mods/example", &["setup"], refused_check)
+            .unwrap_err();
+        assert!(error.contains("uncommitted changes"), "{error}");
+        assert_eq!(
+            fs::read_to_string(repo.root.join(release_workflow)).unwrap(),
+            OLD_RELEASE
+        );
         repo.commit();
         repo.release("mods/example", &["setup"], refused_check)
             .unwrap();
@@ -321,6 +328,7 @@ mod git_fixtures {
         repo.commit();
         let foreign = "name: my own release\n";
         repo.put(CALLER, foreign);
+        repo.commit();
         for args in [&["setup"][..], &["patch"]] {
             let error = repo.release(".", args, refused_check).unwrap_err();
             assert!(
@@ -333,18 +341,22 @@ mod git_fixtures {
 
     #[test]
     #[ignore = "daily"]
-    fn release_refuses_old_copied_files_until_setup_is_committed() {
+    fn release_removes_old_copied_files_in_its_commit() {
         let repo = Repo::new();
         repo.put(MANIFEST, MOD);
         repo.put(".github/workflows/release.yml", OLD_RELEASE);
         repo.commit();
         repo.git(["push", "-u", "origin", "main"]);
-        let head = repo.git(["rev-parse", "HEAD"]);
-        let error = repo.release(".", &["patch"], refused_check).unwrap_err();
-        assert!(error.contains("release setup"), "{error}");
-        assert_eq!(repo.git(["rev-parse", "HEAD"]), head);
+        repo.release(".", &["patch"], |_, _| Ok(())).unwrap();
+        assert_eq!(
+            repo.git(["show", "--pretty=format:", "--name-status", "HEAD"]),
+            format!("D\t.github/workflows/release.yml\nA\t{CALLER}\nM\t{MANIFEST}")
+        );
+        assert_eq!(
+            repo.git(["show", "HEAD~:.github/workflows/release.yml"]),
+            OLD_RELEASE.trim_end()
+        );
         assert!(repo.git(["status", "--porcelain"]).is_empty());
-        assert!(repo.git(["tag", "--list"]).is_empty());
     }
 
     #[test]
@@ -354,7 +366,9 @@ mod git_fixtures {
         repo.put(MANIFEST, MOD);
         repo.commit();
         repo.git(["push", "-u", "origin", "main"]);
-        repo.git(["branch", "side"]);
+        repo.git(["switch", "-c", "side"]);
+        repo.git(["commit", "--allow-empty", "-m", "side"]);
+        repo.git(["switch", "main"]);
         repo.git(["merge", "--no-ff", "--no-commit", "side"]);
         let error = repo.release(".", &["patch"], refused_check).unwrap_err();
         assert!(error.contains("in progress"), "{error}");

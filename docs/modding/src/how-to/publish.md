@@ -3,10 +3,11 @@
 ## Releasing
 
 Commit your mod's source, [`page.toml` and screenshots](#your-mods-page), and `Cargo.lock` for a native mod.
-`cargo sunrise-mod new` includes a release workflow for a new repository. If you're setting up an existing
-repository or a package in a subfolder, run `cargo sunrise-mod release setup` from the mod's folder. It writes
-only the workflow and removes the old copied Sunrise release files. Review, commit and push those changes,
-then register the repository at [Submit a mod](https://playsunrise.net/mods/submit).
+`cargo sunrise-mod new` includes a release workflow for a new repository. For an existing repository or a
+package in a subfolder, the first release writes the workflow and removes the old copied Sunrise release files
+in its commit. To review those changes first, run `cargo sunrise-mod release setup` from the mod's folder on a
+clean tree, then commit and push them. Register the repository at
+[Submit a mod](https://playsunrise.net/mods/submit).
 
 From the mod's folder on a clean branch that is up to date with its upstream:
 

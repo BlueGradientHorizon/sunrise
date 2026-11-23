@@ -73,7 +73,9 @@ changing its pinned dependencies.
 
 `release --check` checks the proposed version and tag in a separate checkout. `release setup` reads the
 registry's current shared workflow reference and refreshes the caller without requiring registration. It
-removes old copied Sunrise release files, but leaves the manifest, commit history and tags alone. Follow
+removes old copied Sunrise release files, but leaves the manifest, commit history and tags alone; it needs a
+clean tree, so each file it replaces or removes can be restored from Git. Without `setup`, a release makes the
+same workflow changes in its own commit. Follow
 the [releasing guide](../../how-to/publish.md#releasing) to register and publish.
 
 ## `release plan`

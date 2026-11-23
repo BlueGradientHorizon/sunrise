@@ -629,12 +629,14 @@ fn release(
     {
         Options::new("release setup", rest, &[]).finish()?;
         let project = Project::read(package, git)?;
+        // A clean tree means every file setup replaces or removes is committed as it is on disk.
+        git.clean(&project.root)?;
         for change in project.workflow_changes(git, &workflow(fetch)?)? {
             change.apply(&project.root)?;
             change.describe();
         }
         println!(
-            "Review these changes and commit them; `git restore` brings back a removed file you had edited."
+            "Review these changes and commit them; `git restore <path>` brings back a file you want to keep."
         );
         return Ok(());
     }
@@ -649,7 +651,10 @@ fn release(
         .text(root, ["symbolic-ref", "--quiet", "HEAD"])
         .map_err(|_| "check out a branch before releasing")?;
     let head = git.text(root, ["rev-parse", "HEAD"])?;
-    // Registration, the existing-tag and branch checks and the push all use origin's one push URL.
+    // Registration and the existing-tag and branch preflight read origin's one push URL, with
+    // Git's insteadOf and pushInsteadOf rewriting already applied. The push goes through the named
+    // remote, which Git resolves to that same URL; its atomic update enforces the tag and branch
+    // checks again on the repository it actually reaches.
     let origin = git.text(root, ["remote", "get-url", "--push", "--all", "origin"])?;
     if origin.lines().count() != 1 {
         return Err("origin pushes to more than one URL; release needs exactly one".into());
@@ -705,13 +710,8 @@ fn release(
         }
     }
 
+    // The tree is clean, so each old copied file removed here stays in the previous commit.
     let mut changes = project.workflow_changes(git, &workflow(fetch)?)?;
-    if changes
-        .iter()
-        .any(|c| matches!(c.kind, Kind::Remove { .. }))
-    {
-        return Err("this repository still has the old copied release files: run `cargo sunrise-mod release setup`, review and commit its changes, then release".into());
-    }
     changes.extend(project.version_changes(git, &version)?);
 
     // The same check as CI sees the proposed version and tag, not the previous version.
@@ -771,7 +771,7 @@ fn release(
     // Explicit destinations, so no remote.origin.push mapping sends them elsewhere.
     let branch_spec = format!("{branch}:{branch}");
     let tag_spec = format!("{tag_ref}:{tag_ref}");
-    git.text(root, ["push", "--atomic", "--no-follow-tags", &origin, &branch_spec, &tag_spec])
+    git.text(root, ["push", "--atomic", "--no-follow-tags", "origin", &branch_spec, &tag_spec])
         .map_err(|e| format!("{e}\nThe release commit and {tag} remain local. Resolve the push error, then push both refs to origin."))?;
     println!(
         "Released {version}: pushed {tag} to origin. GitHub Actions will build and attest the release."
