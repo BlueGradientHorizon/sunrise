@@ -9807,7 +9807,7 @@ mod shulker_arrow_tests;
 mod breeding_tests;
 
 #[cfg(test)]
-mod projectile_batch_tests;
+pub(in crate::game) mod projectile_batch_tests;
 
 #[cfg(test)]
 mod breeze_random_tests;

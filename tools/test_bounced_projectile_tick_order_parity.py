@@ -15,14 +15,20 @@ frozen. Four isolated lanes run together:
 - Reversed-order control (`w6_rev`, `a2_rev`): `a2_rev` joins before `w6_rev`, so on tick 4 `a2_rev` bounces off and
   redirects `w6_rev`.
 
-Pass `--record-wind-witness` to record the vanilla 26.3 wind-charge continuation witness file without building Sunrise.
+The vanilla 26.3 wind-charge continuation witness and its `meta.json` are written into
+`.local/witness/<version>/wind_charge_continuation_tick_order/` (gitignored). Normal runs compare the dedicated servers
+and then run `game::creatures::projectile_batch_tests::continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass`
+via `lab.parity_fixtures()` with `SUNRISE_WIND_CONTINUATION_WITNESS` pointing at that witness. Pass `--record` (or
+`--record-wind-witness`) to record only the vanilla 26.3 witness without building Sunrise.
 """
+import argparse
 import os
 from pathlib import Path
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 
 try:
@@ -63,12 +69,18 @@ WIND_SETUP = [
     'summon minecraft:breeze_wind_charge 3.5 -59.7 40.5 {Motion:[1.5d,0.0d,0.0d],acceleration_power:0.0d,Tags:["w6_rev"]}',
 ]
 SETUP = ['time set 6000', *ARROW_SETUP, *WIND_SETUP]
-WIND_WITNESS = lab.ROOT / 'tools/witness/26.3/wind_charge_continuation_tick_order.txt'
+WIND_WITNESS_NAME = 'wind_charge_continuation_tick_order'
+WIND_WITNESS_FILE = f'{WIND_WITNESS_NAME}.txt'
+WIND_WITNESS_TAGS = {*WIND_TAGS, *(boat_tag for boat_tag, _pos in BOAT_SPECS)}
+WIND_TEST = (
+    'game::creatures::projectile_batch_tests::'
+    'continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass'
+)
 NUMBER = re.compile(r'(-?[0-9][0-9.E-]*)d')
 
 
 def compile_client(lock, jars, libraries, build):
-    """Compile LocatorBarClient without building Sunrise (used by --record-wind-witness)."""
+    """Compile LocatorBarClient without building Sunrise (used by --record)."""
     oracle = lab.ROOT / 'mods/sunrise/src/test/java/dev/sunriselab/parity/LocatorBarClient.java'
     classes = build / 'classes'
     shutil.rmtree(classes, ignore_errors=True)
@@ -240,6 +252,83 @@ def proves(vanilla):
     return proves_wind(vanilla)
 
 
+def java_version_string():
+    result = subprocess.run(['java', '-version'], capture_output=True, text=True, check=True)
+    return (result.stderr or result.stdout).strip().splitlines()[0]
+
+
+def wind_witness_lines(lines):
+    """The tick 0..=4 wind-charge continuation and boat rows from a vanilla transcript."""
+    selected = []
+    for line in lines:
+        parts = line.split()
+        if (len(parts) >= 3 and parts[0] == 'tick' and parts[1].isdigit()
+                and int(parts[1]) <= 4 and parts[2] in WIND_WITNESS_TAGS):
+            selected.append(line)
+    return selected
+
+
+def write_wind_witness(lock, jars, vanilla, command):
+    version = lock['minecraft']['version']
+    witness_dir = lab.LOCAL / 'witness' / version / WIND_WITNESS_NAME
+    witness_dir.mkdir(parents=True, exist_ok=True)
+    witness_file = witness_dir / WIND_WITNESS_FILE
+    rows = wind_witness_lines(vanilla)
+    header = [
+        f'# Vanilla {version} dedicated-server witness for wind-charge continuation tick order.',
+        '# Recorded by tools/test_bounced_projectile_tick_order_parity.py.',
+    ]
+    witness_file.write_text('\n'.join([*header, *rows]) + '\n', encoding='utf-8')
+    oracle_src = lab.ROOT / 'mods/sunrise/src/test/java/dev/sunriselab/parity/LocatorBarClient.java'
+    harness_src = Path(__file__).resolve()
+    lab.write_json(witness_dir / 'meta.json', {
+        'game_version': version,
+        'java_major': lock['minecraft']['java_major'],
+        'java_version': java_version_string(),
+        'harness': 'tools/test_bounced_projectile_tick_order_parity.py',
+        'witness_env': 'SUNRISE_WIND_CONTINUATION_WITNESS',
+        'command': command,
+        'input_hashes': {
+            'research-lock.json': lab.digest(lab.LOCK, 'sha256'),
+            'server.jar': lab.digest(jars['server'], 'sha256'),
+            'mods/sunrise/src/test/java/dev/sunriselab/parity/LocatorBarClient.java': lab.digest(oracle_src, 'sha256'),
+            'tools/test_bounced_projectile_tick_order_parity.py': lab.digest(harness_src, 'sha256'),
+        },
+        'outputs': {
+            witness_file.name: {
+                'sha256': lab.digest(witness_file, 'sha256'),
+                'bytes': witness_file.stat().st_size,
+            },
+        },
+    })
+    return witness_dir, witness_file, len(rows)
+
+
+def run_wind_batch_test(build, witness_file, resources):
+    with tempfile.TemporaryDirectory(prefix='sunrise-wind-continuation-') as tmp:
+        scratch = Path(tmp)
+        homes = {k: scratch / k for k in ('SUNRISE_HOME', 'SUNRISE_LAUNCHER_HOME', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME')}
+        env = lab.game_env(os.environ, **homes, RUST_MIN_STACK='16777216')
+        env['SUNRISE_TEST_RESOURCES'] = str(resources.resolve())
+        env['SUNRISE_WIND_CONTINUATION_WITNESS'] = str(witness_file.resolve())
+        binary = lab.parity_fixtures()
+        log_path = build / 'wind-continuation-test.log'
+        with log_path.open('w', encoding='utf-8') as log:
+            result = subprocess.run(
+                [str(binary), WIND_TEST, '--exact', '--ignored', '--nocapture'],
+                cwd=scratch,
+                env=env,
+                timeout=3600,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+            )
+        if result.returncode != 0:
+            raise AssertionError(f'{WIND_TEST} failed against {witness_file}; see {log_path}')
+        output = log_path.read_text(encoding='utf-8')
+        if '1 passed; 0 failed' not in output:
+            raise AssertionError(f'expected 1 passed; 0 failed for {WIND_TEST}; see {log_path}')
+
+
 def record_wind_witness():
     lock, jars, libraries = base.verify_artifacts()
     deps = os.pathsep.join(map(str, [jars['server'], *libraries]))
@@ -253,19 +342,36 @@ def record_wind_witness():
     why = proves_wind(vanilla)
     if why:
         raise AssertionError(f'vanilla is no proof: {why}:\n' + '\n'.join(vanilla))
-    header = [
-        f'# Vanilla {lock["minecraft"]["version"]} dedicated-server witness for wind-charge continuation tick order.',
-        '# Recorded by tools/test_bounced_projectile_tick_order_parity.py --record-wind-witness.',
-    ]
-    WIND_WITNESS.parent.mkdir(parents=True, exist_ok=True)
-    WIND_WITNESS.write_text('\n'.join([*header, *vanilla]) + '\n', encoding='utf-8')
-    print(f'recorded {len(vanilla)} lines to {WIND_WITNESS}')
+    _witness_dir, witness_file, count = write_wind_witness(
+        lock,
+        jars,
+        vanilla,
+        ['python3', 'tools/test_bounced_projectile_tick_order_parity.py', '--record'],
+    )
+    print(f'recorded {count} lines to {witness_file}')
 
 
 def main():
-    if '--record-wind-witness' in sys.argv[1:]:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--prepare', action='store_true')
+    parser.add_argument(
+        '--record', '--record-only', '--record-wind-witness',
+        dest='record',
+        action='store_true',
+        help='run only the vanilla 26.3 server and write the local wind-charge continuation witness into .local',
+    )
+    parser.add_argument(
+        '--resources',
+        type=Path,
+        default=Path(os.environ.get('SUNRISE_TEST_RESOURCES', lab.RESOURCES)),
+    )
+    args = parser.parse_args()
+    if args.prepare:
+        lab.prepare()
+    if args.record:
         record_wind_witness()
         return
+    lock, jars, _libraries = base.verify_artifacts()
     lock, build, vanilla_server, sunrise_server, client = locator.sides(NAME)
     world = locator.generate_world(vanilla_server, build)
     vanilla = run('vanilla', vanilla_server, client, world, build)
@@ -273,12 +379,19 @@ def main():
     why = proves(vanilla)
     if why:
         raise AssertionError(f'vanilla is no proof: {why}:\n' + '\n'.join(vanilla))
+    _witness_dir, witness_file, _count = write_wind_witness(
+        lock,
+        jars,
+        vanilla,
+        ['python3', 'tools/test_bounced_projectile_tick_order_parity.py'],
+    )
     sunrise = run('sunrise', sunrise_server, client, world, build)
     (build / 'sunrise.txt').write_text('\n'.join(sunrise) + '\n', encoding='utf-8')
     if vanilla != sunrise:
         differ = [f'- {v}\n+ {h}' for v, h in zip(vanilla, sunrise) if v != h]
         raise AssertionError(f'{len(differ)} lines differ from vanilla:\n' + '\n'.join(differ[:20]))
-    print(f'bounced projectile tick order: {len(vanilla)} lines identical')
+    run_wind_batch_test(build, witness_file, args.resources)
+    print(f'bounced projectile tick order: {len(vanilla)} lines identical, batched witness test passed against {witness_file}')
 
 
 if __name__ == '__main__':

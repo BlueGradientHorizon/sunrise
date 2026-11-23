@@ -808,20 +808,41 @@ impl Hooks for WindContinuationObserver {
     }
 }
 
-const WIND_CONTINUATION_WITNESS_26_3: &str =
-    include_str!("../../../../../../tools/witness/26.3/wind_charge_continuation_tick_order.txt");
+fn load_wind_continuation_witness_26_3() -> String {
+    let raw = std::env::var_os("SUNRISE_WIND_CONTINUATION_WITNESS").unwrap_or_else(|| {
+        panic!(
+            "SUNRISE_WIND_CONTINUATION_WITNESS is unset; run tools/test_bounced_projectile_tick_order_parity.py"
+        )
+    });
+    let path = std::path::PathBuf::from(raw);
+    let path = if path.is_dir() {
+        path.join("wind_charge_continuation_tick_order.txt")
+    } else {
+        path
+    };
+    std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        panic!(
+            "failed to read witness {} (run tools/test_bounced_projectile_tick_order_parity.py): {e}",
+            path.display()
+        )
+    })
+}
 
-fn wind_continuation_witness_row_26_3(tick: usize, tag: &str) -> &'static str {
+fn wind_continuation_witness_row_26_3<'a>(witness: &'a str, tick: usize, tag: &str) -> &'a str {
     let prefix = format!("tick {tick} {tag} ");
-    let line = WIND_CONTINUATION_WITNESS_26_3
+    let line = witness
         .lines()
         .find(|line| line.starts_with(&prefix))
         .unwrap_or_else(|| panic!("missing 26.3 witness row for {prefix}"));
     &line[prefix.len()..]
 }
 
-fn wind_continuation_witness_26_3(tick: usize, tag: &str) -> Option<([f64; 3], [f64; 3])> {
-    let rest = wind_continuation_witness_row_26_3(tick, tag);
+fn wind_continuation_witness_26_3(
+    witness: &str,
+    tick: usize,
+    tag: &str,
+) -> Option<([f64; 3], [f64; 3])> {
+    let rest = wind_continuation_witness_row_26_3(witness, tick, tag);
     if rest == "gone" {
         return None;
     }
@@ -836,8 +857,8 @@ fn wind_continuation_witness_26_3(tick: usize, tag: &str) -> Option<([f64; 3], [
     Some((parse3(pos_str), parse3(mot_str)))
 }
 
-fn wind_continuation_boat_witness_26_3(tick: usize, tag: &str) -> Option<f32> {
-    let rest = wind_continuation_witness_row_26_3(tick, tag);
+fn wind_continuation_boat_witness_26_3(witness: &str, tick: usize, tag: &str) -> Option<f32> {
+    let rest = wind_continuation_witness_row_26_3(witness, tick, tag);
     if rest == "gone" {
         return None;
     }
@@ -849,9 +870,9 @@ fn wind_continuation_boat_witness_26_3(tick: usize, tag: &str) -> Option<f32> {
     Some(damage)
 }
 
-fn assert_boat_matches_witness(game: &Game<'_>, tick: usize, tag: &str) {
+fn assert_boat_matches_witness(witness: &str, game: &Game<'_>, tick: usize, tag: &str) {
     let actual = game.boats.iter().find(|b| b.id == 71).map(|b| b.damage);
-    let expected = wind_continuation_boat_witness_26_3(tick, tag);
+    let expected = wind_continuation_boat_witness_26_3(witness, tick, tag);
     assert_eq!(
         actual.map(f32::to_bits),
         expected.map(f32::to_bits),
@@ -875,8 +896,14 @@ fn assert_vec3_bits(actual: Vec3, expected: [f64; 3], label: &str) {
 }
 
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_bounced_projectile_tick_order_parity.py"]
 fn continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass() {
+    run_continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass();
+}
+
+pub(in crate::game) fn run_continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass()
+ {
+    let witness = load_wind_continuation_witness_26_3();
     const CASE: &str = "SUNRISE_PROJECTILE_BATCH_CASE";
     if run_fresh_cases(
         "game::creatures::projectile_batch_tests::continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass",
@@ -971,7 +998,7 @@ fn continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass() 
                 (w6_join, a2_join)
             };
             game.native_joins_skip();
-            assert_boat_matches_witness(game, 0, boat_tag);
+            assert_boat_matches_witness(&witness, game, 0, boat_tag);
             game.ticked_entities_through = u32::MAX;
             game.tick_projectiles().unwrap();
             if case != "reversed" {
@@ -981,15 +1008,15 @@ fn continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass() 
                 );
             }
             if case == "ctrl4" {
-                assert!(wind_continuation_witness_26_3(1, w6_tag).is_none());
+                assert!(wind_continuation_witness_26_3(&witness, 1, w6_tag).is_none());
                 assert!(game.creatures.projectiles.is_empty());
-                assert_boat_matches_witness(game, 1, boat_tag);
+                assert_boat_matches_witness(&witness, game, 1, boat_tag);
                 for tick in 2..=4 {
                     game.ticked_entities_through = u32::MAX;
                     game.tick_projectiles().unwrap();
-                    assert!(wind_continuation_witness_26_3(tick, w6_tag).is_none());
+                    assert!(wind_continuation_witness_26_3(&witness, tick, w6_tag).is_none());
                     assert!(game.creatures.projectiles.is_empty());
-                    assert_boat_matches_witness(game, tick, boat_tag);
+                    assert_boat_matches_witness(&witness, game, tick, boat_tag);
                 }
                 assert!(observed.launches.lock().unwrap().is_empty());
                 return;
@@ -1028,11 +1055,11 @@ fn continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass() 
             assert_eq!(Some(a2_live.join), a2_join);
             let a2_tag = a2_tag.unwrap();
             let check_tick = |game: &Game<'_>, tick: usize| {
-                assert_boat_matches_witness(game, tick, boat_tag);
+                assert_boat_matches_witness(&witness, game, tick, boat_tag);
                 let (w6_pos, w6_mot) =
-                    wind_continuation_witness_26_3(tick, w6_tag).expect("w6 alive");
+                    wind_continuation_witness_26_3(&witness, tick, w6_tag).expect("w6 alive");
                 let (a2_pos, a2_mot) =
-                    wind_continuation_witness_26_3(tick, a2_tag).expect("a2 alive");
+                    wind_continuation_witness_26_3(&witness, tick, a2_tag).expect("a2 alive");
                 let w6 = game
                     .creatures
                     .projectiles

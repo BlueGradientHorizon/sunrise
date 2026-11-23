@@ -3,7 +3,6 @@ sunrise-client game::creatures::projectile_batch_tests::aborting_an_impact_disca
 sunrise-client game::creatures::projectile_batch_tests::an_arrow_does_not_stick_when_the_impact_listener_clears_its_block lib daily resources
 sunrise-client game::creatures::projectile_batch_tests::an_arrow_files_both_section_crossings_at_a_section_edge_wall lib daily resources
 sunrise-client game::creatures::projectile_batch_tests::an_arrow_lands_before_its_first_shot_event_at_the_backed_off_position lib daily resources
-sunrise-client game::creatures::projectile_batch_tests::continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass lib daily resources
 sunrise-client game::creatures::projectile_batch_tests::discarding_an_egg_during_impact_skips_the_hit_and_replay lib daily resources
 sunrise-client game::creatures::projectile_batch_tests::two_discarded_eggs_leave_once_without_dying lib daily resources
 sunrise-client game::creatures::projectile_batch_tests::wind_charges_retrace_only_after_gameplay_breaks_a_vehicle lib daily resources
