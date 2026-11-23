@@ -1317,6 +1317,14 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_mods_item_modifiers_reach_the_wearer() {
+        // The stack hooks are a process-wide table: install them in a child of its own.
+        if crate::game::native_entity_refs::tests::run_fresh_cases(
+            "game::living_attributes::tests::a_mods_item_modifiers_reach_the_wearer",
+            "SUNRISE_ITEM_MODIFIERS_WEARER_CHILD",
+            &["plated"],
+        ) {
+            return;
+        }
         // The game's stack snapshots, which the hook needs, as its startup installs them;
         // without this the test passes only after another test in the process installed them.
         crate::game::api_values::install_stack_hooks();

@@ -766,21 +766,15 @@ fn velocity_writes_send_only_the_owning_player_the_replacement_motion() {
             take_motion(&a_packets),
             [(12, [1.0, 0.0, -1.0]), (12, [1.0, 1.0, -1.0])]
         );
-        let pushed = game
-            .command_guest(13)
-            .unwrap()
-            .motion
-            .as_ref()
-            .unwrap()
-            .velocity;
+        // The zero-direction push sends B a third motion packet; its encoding rounds the
+        // random direction, so only the owner is compared.
+        let b_motion = take_motion(&b_packets);
+        assert_eq!(b_motion.len(), 3);
         assert_eq!(
-            take_motion(&b_packets),
-            [
-                (13, [-2.0, 0.0, 2.0]),
-                (13, [-1.0, 0.0, 0.0]),
-                (13, [pushed.x, pushed.y, pushed.z])
-            ]
+            b_motion[..2],
+            [(13, [-2.0, 0.0, 2.0]), (13, [-1.0, 0.0, 0.0])]
         );
+        assert_eq!(b_motion[2].0, 13);
     });
 }
 

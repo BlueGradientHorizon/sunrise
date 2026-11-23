@@ -2042,12 +2042,12 @@ impl Game<'_> {
             None,
             self.combat.attack(),
         );
-        let mut credit = plan.lend(&mut self.last_hurt_by_player);
         // `getAttributeValue(KNOCKBACK_RESISTANCE)` as the push reads it, before the hit.
         let push = origin.from.map(|from| Push {
             from,
             resistance: self.dragon_knockback_resistance(),
         });
+        let mut credit = plan.lend(&mut self.last_hurt_by_player);
         let Some(d) = self.dragon.as_mut() else {
             return Hurt::Refused;
         };
@@ -6293,6 +6293,49 @@ mod tests {
                 hit(game, true, None);
                 assert_eq!(heard.load(Ordering::SeqCst), 1);
             });
+        });
+    }
+
+    /// `dealDefaultKnockback` reads the dragon's `getAttributeValue(KNOCKBACK_RESISTANCE)` at the
+    /// hit: a netherite chestplate's `0.1F` (`ArmorMaterials.NETHERITE`, widened to the
+    /// modifier's double) shortens the push to `0.4F * (1 - 0.1F)`.
+    #[test]
+    #[ignore = "daily"]
+    fn a_hit_on_the_dragon_pushes_by_its_live_knockback_resistance() {
+        super::super::native_entity_refs::tests::with_game(|game| {
+            let mut d = dragon(flying());
+            d.velocity = Vec3::new(1.0, -0.3, 0.5);
+            d.equipment.set(
+                sunrise_items::equipment::CHEST,
+                Some(sunrise_client::items::ItemStack::new(
+                    "minecraft:netherite_chestplate",
+                    1,
+                )),
+            );
+            game.dragon.replace(d);
+            game.tick_equipment_attributes();
+            let resistance = f64::from(0.1_f32);
+            assert_eq!(game.dragon_knockback_resistance(), resistance);
+            let from = Vec3::new(3.0, 70.0, 4.0);
+            let hurt = game.hurt_dragon_part_at(
+                0,
+                9.0,
+                true,
+                None,
+                DamageKind::Generic,
+                DragonHitOrigin {
+                    direct: None,
+                    entity_id: None,
+                    from: Some(from),
+                    invulnerability_checked: false,
+                },
+            );
+            assert_eq!(hurt, Hurt::Landed { full: true });
+            let power = f64::from(0.4_f32) * (1.0 - resistance);
+            assert_eq!(
+                game.dragon.as_ref().unwrap().velocity,
+                Vec3::new(0.5 - 0.6 * power, -0.3, 0.25 - 0.8 * power)
+            );
         });
     }
 
