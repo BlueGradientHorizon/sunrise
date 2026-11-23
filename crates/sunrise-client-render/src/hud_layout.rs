@@ -1000,6 +1000,33 @@ pub fn paint_fill_gradient(
     batch.fill_gradient(atlas, rect, abgr(top), abgr(bottom));
 }
 
+/// Paint `PlayerFaceExtractor.extractRenderState` from `skin` at `dst = [x, y, w, h]`: the face,
+/// then the hat layer when `hat`, upside down when `flip`, tinted by ARGB `color`. Returns `false`
+/// without drawing if the atlas lacks `skin`.
+pub fn paint_player_face(
+    batch: &mut HudBatch,
+    atlas: &HudAtlas,
+    skin: &str,
+    dst: [f32; 4],
+    hat: bool,
+    flip: bool,
+    color: u32,
+) -> bool {
+    let Some(&rect) = atlas.blit_rect(skin) else {
+        return false;
+    };
+    for (uv, src) in crate::tab_list::face_blits(hat, flip) {
+        ResolvedGuiQuad { rect, dst, color }.paint_blit(
+            batch,
+            uv,
+            src,
+            crate::tab_list::SKIN_TEX,
+            Blend::Textured,
+        );
+    }
+    true
+}
+
 /// Draws the calls with the HUD batch under their poses; items are left to
 /// the caller (they need the item renderer) and so are the vignette and
 /// nausea blits (their blending needs the screen-effect pipeline).
@@ -1011,8 +1038,8 @@ pub fn paint(batch: &mut HudBatch, atlas: &HudAtlas, draws: &[GuiDraw]) {
 /// [`paint`], and with `items` also each `Item` (its stack, scaled about its pivot, then its
 /// decorations) and the blits of every blend. Without `items` those draw nothing, as `paint`.
 fn paint_with<'a>(
-    batch: &mut crate::hud::HudBatch,
-    atlas: &crate::hud::HudAtlas,
+    batch: &mut HudBatch,
+    atlas: &HudAtlas,
     draws: impl IntoIterator<Item = &'a GuiDraw>,
     mut items: Option<&mut dyn GuiItems>,
 ) {
@@ -1181,6 +1208,9 @@ fn opaque(color: u32) -> u32 {
 mod items;
 pub use items::{GuiItems, paint_items};
 
+#[cfg(test)]
+#[path = "hud_layout_face_tests.rs"]
+mod face_tests;
 #[cfg(test)]
 #[path = "hud_layout_gradient_tests.rs"]
 mod gradient_tests;

@@ -308,6 +308,35 @@ fn gui_render_post(&self, _: &dyn ClientHost, event: &mut GuiRenderPostEvent<'_>
   Zero-area calls are culled here; vanilla can retain their layering bounds without drawing pixels.
 - **Cost.** One quad on the GUI batch, as `fill`; nothing is drawn or kept when a mod doesn't call it.
 
+## Player faces
+
+`GuiCanvas::player_face(uuid, at, size, hat, flip, argb)` inside `DrawContext::draw_gui` draws a player's skin
+head as vanilla's `PlayerFaceExtractor` does, the head the player list, a team screen or a waystone's owner
+line shows: the face, then the hat layer when `hat`, each `size` GUI pixels square at `at`, tinted by the ARGB
+`argb` (`0xFFFF_FFFF` for none).
+
+```rust,ignore
+use mod_api::{DrawContext, GuiDrawError};
+
+fn draw_member(draw: &mut dyn DrawContext, member: u128, x: f32, y: f32) -> Result<(), GuiDrawError> {
+    draw.draw_gui(&mut |canvas| {
+        canvas.player_face(member, [x, y], 8.0, true, false, 0xFFFF_FFFF)
+    })
+}
+```
+
+- **Which skin.** A player with an entry on the connection's player list (`PlayerInfo`) draws the skin the
+  player list draws. Any other UUID, an offline team member say, draws its profile's skin, looked up by id the
+  way a player head's profile is: the lookup starts in the background the first time and is kept as heads keep
+  theirs. Until the skin is downloaded and in the atlas, and when the profile has none, the face is the UUID's
+  default skin (`DefaultPlayerSkin.get`). The call never waits, so draw it every frame and the real skin appears
+  when it is ready; new skin requests wait for the outer `draw_gui` group to commit.
+- **Upside down.** `flip` draws the face upside down. The call never guesses it from a name: vanilla's player
+  list flips Dinnerbone and Grumm only while their player is in the level, so set it yourself if you want that.
+- **Pose and clip.** The face follows the canvas's pose and scissor (`GuiCanvas::scope` and
+  `DrawContext::with_scissor`), as `blit` does; the hat layer is drawn under the same pose, scissor and tint as
+  the face.
+
 ## Scaled text
 
 `DrawContext::text_scaled(text, at, scale, argb, shadow)` draws `text` as `text` does, scaled by `scale` about

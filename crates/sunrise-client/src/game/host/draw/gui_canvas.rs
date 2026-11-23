@@ -12,8 +12,8 @@ use mod_api::{
 use sunrise_client::{
     hud::{GuiSprite, HudAtlas, HudBatch},
     hud_layout::{
-        Blend, IDENTITY, Pose, PoseOp, ResolvedGuiQuad, abgr, paint_fill_gradient, pose_apply,
-        pose_point,
+        Blend, IDENTITY, Pose, PoseOp, ResolvedGuiQuad, abgr, paint_fill_gradient,
+        paint_player_face, pose_apply, pose_point,
     },
     items::ItemStack as EngineStack,
     skins::HeadSkinJournal,
@@ -437,6 +437,28 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
             color: argb,
         };
         self.paint(|batch, _| quad.paint_blit(batch, uv, src, tex, blend))
+    }
+
+    fn player_face(
+        &mut self,
+        uuid: u128,
+        at: [f32; 2],
+        size: f32,
+        hat: bool,
+        flip: bool,
+        argb: u32,
+    ) -> Result<(), GuiDrawError> {
+        let dst = [at[0], at[1], size, size];
+        rect_end(dst)?;
+        let game = self.game.ok_or(GuiDrawError::Unavailable)?;
+        let head_skins = self.head_skins;
+        head_skins.scope(|| {
+            let mut skin_name = String::new();
+            let skin = game.player_face_skin_with_journal(uuid, Some(head_skins), &mut skin_name);
+            self.paint(|batch, atlas| {
+                paint_player_face(batch, atlas, skin, dst, hat, flip, argb);
+            })
+        })
     }
 }
 
@@ -905,5 +927,32 @@ mod tests {
             [(0..24, Some([0.0; 4]))]
         );
         assert!(batch.blends.is_empty());
+    }
+
+    #[test]
+    fn player_face_rejects_non_finite_geometry_and_missing_game() {
+        let atlas = HudAtlas::build(&ResourceSource::directory(
+            "/nonexistent/sunrise-test-assets".into(),
+        ))
+        .unwrap();
+        let mut batch = HudBatch::scratch([320, 240]);
+        let uuid = 0x853c_80ef_3c37_49fd_aa49_938b_674a_dae6;
+        GameGuiCanvas::draw(&mut batch, &atlas, None, None, &mut |root| {
+            assert_eq!(
+                root.player_face(uuid, [f32::NAN, 0.0], 8.0, true, false, 0xFFFF_FFFF),
+                Err(GuiDrawError::NotFinite)
+            );
+            assert_eq!(
+                root.player_face(uuid, [f32::MAX, 0.0], f32::MAX, true, false, 0xFFFF_FFFF),
+                Err(GuiDrawError::NotFinite)
+            );
+            assert_eq!(
+                root.player_face(uuid, [4.0, 4.0], 8.0, true, false, 0xFFFF_FFFF),
+                Err(GuiDrawError::Unavailable)
+            );
+            Ok(())
+        })
+        .unwrap();
+        assert!(batch.vertices.is_empty());
     }
 }

@@ -204,4 +204,22 @@ pub trait GuiCanvas {
         argb: u32,
         blend: Blend,
     ) -> Result<(), GuiDrawError>;
+
+    /// Draw the player `uuid`'s skin head (`PlayerFaceExtractor.extractRenderState`): the face,
+    /// then the hat layer when `hat`, `size` GUI pixels square at `at`, tinted by ARGB `argb`,
+    /// under the current pose and scissor. `flip` draws it upside down; nothing is read from a
+    /// name. A player on the connection's player list draws its `PlayerInfo` skin; any other UUID
+    /// its profile's, looked up once in the background as a player head's is. Until that skin is
+    /// downloaded and uploaded, and when there is none, the UUID's default skin is drawn
+    /// (`DefaultPlayerSkin.get`), so the call never waits. New skin requests wait for the outer
+    /// group to commit.
+    fn player_face(
+        &mut self,
+        uuid: u128,
+        at: [f32; 2],
+        size: f32,
+        hat: bool,
+        flip: bool,
+        argb: u32,
+    ) -> Result<(), GuiDrawError>;
 }
