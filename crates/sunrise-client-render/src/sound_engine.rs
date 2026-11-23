@@ -39,9 +39,6 @@ pub const HEARD_RESERVE: usize = 16;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PlayResult {
-    /// Prepared and waiting for the game's `play_sound` dispatch (`SoundEngine::next_prepared`);
-    /// it starts, or not, once the game answers (`SoundEngine::finish_prepared`).
-    Pending,
     Started,
     StartedSilently,
     NotStarted,
@@ -1069,8 +1066,10 @@ pub type PlaybackHook = fn(&SoundPlayback<'_>, &mut f32, &mut f32, &mut bool);
 pub struct SoundEngine {
     pub registry: SoundRegistry,
     playback_hook: Option<PlaybackHook>,
-    /// Starts prepared for the game's `play_sound` dispatch, in order, and the ones it is asking now.
-    prepared: Vec<InstanceId>,
+    /// Starts a caller made without the game (an audio helper, a delayed start due at the tick),
+    /// held for the game to fire `play_sound` for before it returns control (`next_deferred`).
+    deferred: Vec<InstanceId>,
+    /// The starts the game is firing `play_sound` for right now.
     inflight: Vec<InstanceId>,
     /// Starts the game answered: the next `play` of each goes ahead.
     decided: HashSet<InstanceId>,
@@ -1140,7 +1139,7 @@ impl SoundEngine {
             queued: Vec::new(),
             delete_time: HashMap::new(),
             queued_tickable: Vec::new(),
-            prepared: Vec::new(),
+            deferred: Vec::new(),
             inflight: Vec::new(),
             decided: HashSet::new(),
             live_answers: HashMap::new(),
@@ -1230,7 +1229,7 @@ impl SoundEngine {
             || self.queued.iter().any(|(i, _)| *i == id)
             || self.queued_tickable.contains(&id)
             || self.ticking.contains(&id)
-            || self.prepared.contains(&id)
+            || self.deferred.contains(&id)
             || self.inflight.contains(&id)
     }
     fn collect(&mut self, id: InstanceId) {
@@ -1524,13 +1523,15 @@ impl SoundEngine {
         if !self.instances.contains_key(&id) || !self.loaded {
             return PlayResult::NotStarted;
         }
-        // Decide, fire, apply: with a `play_sound` listener the engine only prepares the start.
-        // The game fires the hook with its `ClientHost` and starts it once it has an answer.
+        // Decide, fire, apply: with a `play_sound` listener the engine cannot fire the hook (it
+        // needs the game's `ClientHost`). The game fires it before this start, through
+        // `begin_play` and `finish_prepared`; a start that reaches here without it is held for the
+        // game's `next_deferred`, which runs before the game's call returns.
         if self.asks_play_sound() && !self.decided.remove(&id) {
-            if !self.prepared.contains(&id) && !self.inflight.contains(&id) {
-                self.prepared.push(id);
+            if !self.deferred.contains(&id) && !self.inflight.contains(&id) {
+                self.deferred.push(id);
             }
-            return PlayResult::Pending;
+            return PlayResult::NotStarted;
         }
         if !self.instances[&id].can_play_sound() {
             return PlayResult::NotStarted;

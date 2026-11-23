@@ -154,21 +154,32 @@ impl SoundEngine {
         self.loop_context.is_some() && mod_api::__private::listened(HookId::PlaySound)
     }
 
-    /// The next prepared start for the game to fire `play_sound` for (`starting`), in the order
-    /// they were prepared. The instance stays referenced until [`Self::finish_prepared`].
-    pub fn next_prepared(&mut self) -> Option<PreparedPlay> {
-        while !self.prepared.is_empty() {
-            let id = self.prepared.remove(0);
-            let Some(instance) = self.instances.get(&id) else {
-                continue;
-            };
-            let original = instance.play_settings();
-            self.inflight.push(id);
-            return Some(PreparedPlay {
-                instance: id,
-                starting: true,
-                original,
-            });
+    /// Prepares the start of `id` for the game to fire `play_sound` for (`starting`), when a
+    /// listener asks and the engine is loaded. The instance stays referenced until
+    /// [`Self::finish_prepared`]. `None`: nothing to fire, the caller plays it with `play`.
+    pub fn begin_play(&mut self, id: super::InstanceId) -> Option<PreparedPlay> {
+        if !self.loaded || !self.asks_play_sound() {
+            return None;
+        }
+        let original = self.instances.get(&id)?.play_settings();
+        self.deferred.retain(|i| *i != id);
+        self.inflight.push(id);
+        Some(PreparedPlay {
+            instance: id,
+            starting: true,
+            original,
+        })
+    }
+
+    /// The next start held without the game, to fire `play_sound` for, in the order they were
+    /// made.
+    pub fn next_deferred(&mut self) -> Option<PreparedPlay> {
+        while !self.deferred.is_empty() {
+            let id = self.deferred.remove(0);
+            if let Some(prepared) = self.begin_play(id) {
+                return Some(prepared);
+            }
+            self.collect(id);
         }
         None
     }
