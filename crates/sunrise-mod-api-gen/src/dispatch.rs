@@ -3033,6 +3033,30 @@ fn main() {{ game::run(std::env::args_os().nth(1).unwrap().into()); }}
     }
 
     #[test]
+    fn an_output_validated_listen_hook_needs_a_mutable_output() {
+        let emit_hook = |ty: &str| {
+            let hook = Hook {
+                name: "checked".into(),
+                output_validator: Some("crate::check".into()),
+                call: vec![("progress".into(), ty.into())],
+                dispatch: DispatchStyle::Flat,
+                ..Hook::sample(
+                    "sunrise_client::game::native_hooks::checked::Game<'_>::native_checked",
+                    Side::Client,
+                )
+            };
+            emit(std::iter::once(&hook), &[], false)
+        };
+        if let Err(error) = emit_hook("&mut f32") {
+            panic!("a listen hook validating a mutable output must generate: {error}");
+        }
+        assert_eq!(
+            emit_hook("&f32").err().as_deref(),
+            Some("checked: output_validator requires mutable outputs")
+        );
+    }
+
+    #[test]
     fn inert_guard_is_owned_by_the_hook_declaration() {
         let mut hook = Hook {
             name: "probe".into(),

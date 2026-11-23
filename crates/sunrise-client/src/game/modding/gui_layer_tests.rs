@@ -1023,6 +1023,7 @@ fn hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint() {
             type Quad = ([[f32; 2]; 2], [[i32; 2]; 2]);
             let assert_sprite = |sprite, expected: Option<Quad>| {
                 let r = *game.gui.atlas.gui_rect(sprite).unwrap();
+                // Integer atlas pixels come back exactly once the f32 UV quantisation is rounded off.
                 let source = |[u, v]: [f32; 2]| {
                     [
                         ((u - r.u0) / (r.u1 - r.u0) * r.w as f32).round() as i32,
