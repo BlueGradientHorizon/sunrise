@@ -1645,6 +1645,21 @@ impl Game<'_> {
         }
     }
 
+    /// Publish item entities and orbs already prepared by a block operation.
+    pub(super) fn publish_block_spawns(
+        &mut self,
+        spawns: Vec<Spawn>,
+        orbs: Vec<([f64; 3], u32, i32)>,
+    ) {
+        let _save_lease = sunrise_client::join_seq::visibility::PassLease::enter();
+        for s in spawns {
+            self.add_item_entity_prepared(s.stack, s.pos, s.motion, s.delay, s.random);
+        }
+        for (at, value, merge_id) in orbs {
+            self.award_orb(at, value, merge_id);
+        }
+    }
+
     /// Add the item entities the block behaviour spawned and follow up on the
     /// block entities it removed.
     pub(super) fn flush_spill(&mut self) {
@@ -1669,12 +1684,7 @@ impl Game<'_> {
                 drops,
             );
         });
-        for s in spill.spawns {
-            self.add_item_entity_prepared(s.stack, s.pos, s.motion, s.delay, s.random);
-        }
-        for (at, value, merge_id) in spill.orbs {
-            self.award_orb(at, value, merge_id);
-        }
+        self.publish_block_spawns(spill.spawns, spill.orbs);
         for (pos, entity) in spill.removed {
             let key = (pos[0], pos[1], pos[2]);
             if matches!(entity, BlockEntity::Jukebox(_)) {

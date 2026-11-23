@@ -495,9 +495,9 @@ pub(crate) fn invoke<T>(
     })
 }
 
-/// Uses the shared diagnostic fence but leaves the listener available for the next frame.
+/// Uses the shared diagnostic fence but leaves the listener available for the next call.
 #[inline]
-pub(crate) fn invoke_frame<T>(
+pub(crate) fn invoke_without_disabling<T>(
     hook: &'static str,
     mod_id: &'static str,
     call: impl FnOnce() -> T,

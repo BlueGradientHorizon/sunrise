@@ -1683,6 +1683,20 @@ impl Behaviours {
     ) -> bool {
         self.sim(level, ticks).remove_block(pos, moved_by_piston)
     }
+    /// `Block.spawnDestroyParticles`: fire has no event and straw beds use their own.
+    pub fn destroy_particle_event(&self, state: BlockStateId) -> Option<i32> {
+        let data = self.data(state);
+        if data.is(classes::Class::StrawBed) {
+            Some(2014)
+        } else if data.is(classes::Class::BaseFire)
+            || data.is(classes::Class::Fire)
+            || data.is(classes::Class::SoulFire)
+        {
+            None
+        } else {
+            Some(2001)
+        }
+    }
     /// `Level.destroyBlock(pos, dropResources)`: destroy particles (2001),
     /// optional drops, and replacement by the block's fluid.
     pub fn destroy_block<L: LevelAccess + ?Sized>(

@@ -18,9 +18,7 @@ use sunrise_core::{
     geometry::{Aabb, Axis, Vec3, VoxelShape},
     position::BlockPos,
 };
-use sunrise_world::{
-    collision_context::CollisionContext, level::data::state_flags, registry::BlockStateId,
-};
+use sunrise_world::{level::data::state_flags, registry::BlockStateId};
 
 /// `ServerPlayer.RespawnConfig`: a respawn point other than the world spawn
 /// that the game resolves through its block (a respawn anchor).
@@ -435,21 +433,12 @@ impl Game<'_> {
         world: &sunrise_client::world::World,
         p: [i32; 3],
     ) -> VoxelShape {
-        let state = world.block(p[0], p[1], p[2]);
-        let binding = self.collision;
-        let mut scene = SceneCollisions {
+        super::native_state_shapes::collision_shape(
+            self.collision,
             world,
-            binding,
-            subject: None,
-        };
-        binding
-            .collision_shape_with_context(
-                &mut scene,
-                state,
-                BlockPos::new(p[0], p[1], p[2]),
-                &CollisionContext::empty(false),
-            )
-            .unwrap_or_else(|_| VoxelShape::empty())
+            world.block(p[0], p[1], p[2]),
+            p,
+        )
     }
     /// `DismountHelper.canDismountTo(level, entity, box)`: no block collides
     /// with the box and it is inside the world border.

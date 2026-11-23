@@ -1398,11 +1398,14 @@ pub(super) fn emit<'a>(
         } else {
             ""
         };
-        // Camera extraction is per frame. Fail only the invocation, without quarantining
-        // the subscriber, while keeping the same scopes and output rollback as other hooks.
-        let camera_frame = matches!(
+        // Camera extraction and collision shape answers fail only the invocation, with
+        // the same per-listener scope and output rollback as other hooks.
+        let transient_answer = matches!(
             name,
-            "compute_camera_angles" | "camera_position" | "render_view_transform"
+            "compute_camera_angles"
+                | "camera_position"
+                | "render_view_transform"
+                | "collision_shape"
         );
         let callback = if hook.independent_listener {
             format!("super::runtime::Callback::IndependentHook(HookId::{hook_id})")
@@ -1410,8 +1413,10 @@ pub(super) fn emit<'a>(
             format!("HookId::{hook_id}")
         };
         let run = |mod_id_expr: &str, on_abort: &str, expression: &str| {
-            let invocation = if camera_frame {
-                format!("super::runtime::invoke_frame(\"{name}\", {mod_id_expr}, || {expression})")
+            let invocation = if transient_answer {
+                format!(
+                    "super::runtime::invoke_without_disabling(\"{name}\", {mod_id_expr}, || {expression})"
+                )
             } else {
                 format!(
                     "super::runtime::invoke({callback}, \"{name}\", {mod_id_expr}, || {expression})"
@@ -1508,14 +1513,8 @@ pub(super) fn emit<'a>(
                 expression
             }
         };
-        // Collision owns one answer for the whole block. Its enclosing adapter
-        // discards that answer and disables the block's Parts, not the mod's hook.
-        let collision_owns_panic = name == "collision_shape";
         // One callee's call: a mod's, or a scoped hook's part's.
         let call = |callee: &str, mod_id_expr: &str, on_abort: &str, exit: &str| {
-            if collision_owns_panic {
-                return format!("{callee}.{name}({invoke});");
-            }
             if let Some((field, stage, _)) = &staged {
                 let accepted = run(
                     mod_id_expr,
@@ -1854,11 +1853,6 @@ pub(super) fn emit<'a>(
                         "for {part_item}_registration in {part_list} {{ if let Some({replacement}) = super::client::tooltip_components::invoke_tooltip_image({part_item}_registration, |{part_item}| {part_item}.{name}({invoke})) {{ *{o} = Some({replacement}); break; }} }}"
                     )
                 } else {
-                    let part_owner = if collision_owns_panic {
-                        "_"
-                    } else {
-                        &listener_id
-                    };
                     // A live menu click can have committed edits before a listener panics.
                     // Continue dispatch, but do not run the default after such a failure.
                     let on_abort = if name == "menu_clicked" {
@@ -1867,7 +1861,7 @@ pub(super) fn emit<'a>(
                         "continue;".to_owned()
                     };
                     format!(
-                        "for ({part_owner}, {part_item}) in super::entered_parts(HookId::{hook_id}, {part_list}, \"{name}\") {{ {} }}",
+                        "for ({listener_id}, {part_item}) in super::entered_parts(HookId::{hook_id}, {part_list}, \"{name}\") {{ {} }}",
                         call(&part_item, &listener_id, &on_abort, "break"),
                     )
                 },

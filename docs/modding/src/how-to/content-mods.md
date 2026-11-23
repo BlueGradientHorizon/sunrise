@@ -590,8 +590,9 @@ Shapes that depend on the querying entity are not published: a part answers them
 
 A block part can give a block another collision shape for the entity that asks, as vanilla's
 `getCollisionShape(state, level, pos, context)` does: `BlockPart::collision_shape(context, event)`
-sets `event.shape = Some(boxes)` (block-local `[min_x, min_y, min_z, max_x, max_y, max_z]`, as in
-`shapes`) for the state `event.state` at `event.pos`. This is the one place the engine calls a
+sets `*event.shape = Some(shape)` for the state `event.state` at `event.pos`.
+Build the shape with `VoxelShape::try_from_boxes(&boxes)` using block-local
+`[min_x, min_y, min_z, max_x, max_y, max_z]`, or use `VoxelShape::empty()` to remove collision. This is the one place the engine calls a
 mod in the middle of physics, for the blocks whose parts opt in; everything else, and every
 published shape, is read without a call. It reverses the rule above for those blocks only.
 
@@ -622,11 +623,12 @@ was made: `entity()` (the entity's id, `None` for the empty, position and cache 
 - **The client must sync that state.** The client asks the same question for its own prediction,
   so a mod whose rule reads its own state must send it to the client. If the two disagree the
   server corrects the player's position (the usual "moved wrongly" correction), never a kick.
-- **Bounds**, as for a published shape: at most 64 boxes, every coordinate finite and each minimum
-  at most its maximum.
-- **Faults.** A panic, a trap or a refused shape keeps the normal shape, switches that block's
-  `collision_shape` off for the session, for every mod's part on that block, and logs once,
-  naming the mods and the block.
+- **Bounds.** The constructor rejects non-finite or inverted bounds and unions it cannot
+  represent as a voxel grid. These in-process answers have no box-count cap; this does not
+  change the separate saved and networked block-entity shape format.
+- **Faults.** If a Part panics, only that invocation's answer is discarded. The next Part sees
+  the previous answer, or `None` if no earlier Part answered. A failed shape construction
+  returns an error to its caller without changing the answer.
 - **Cost.** Nothing for a block without such a part. An opted-in block costs one call per
   distinct question in a tick.
 

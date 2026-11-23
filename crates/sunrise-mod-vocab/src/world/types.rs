@@ -1250,22 +1250,26 @@ pub enum ClipFluid {
     None,
 }
 
-/// Result of a block ray, including the vanilla miss result.
+/// Result of a block ray (`BlockGetter.clip`), including the vanilla miss result
+/// (`BlockHitResult.miss`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 // exhaustive: the game builds it with a literal; mods only read it
 #[derive(sunrise_mod_api_macros::Wire)]
 pub struct ClipHit {
-    /// Whether the ray hit nothing; the other fields are then the vanilla miss values.
+    /// Whether the ray hit nothing. On a miss, `location` is the ray's end point, `block` is
+    /// its floored block coordinates, `face` is the nearest direction toward `from - to`, and
+    /// `inside` is `false`.
     pub miss: bool,
-    /// The hit block's position.
+    /// The hit block's position, or the floored end point on a miss.
     pub block: [i32; 3],
-    /// The face the ray entered.
+    /// The face the ray entered (or the nearest direction toward `from - to` on a miss).
     pub face: BlockFace,
-    /// The exact hit point in blocks.
+    /// The exact hit point in blocks, or the ray's end point on a miss.
     pub location: [f64; 3],
-    /// Whether the ray started inside the block.
+    /// Whether the ray started inside the block (`false` on a miss).
     pub inside: bool,
-    /// Whether the hit is the world border.
+    /// Whether the hit is the world border (`false` for `LevelRef::clip`, which follows
+    /// `BlockGetter.clip`, not `CollisionGetter.clipIncludingBorder`).
     pub world_border: bool,
 }
 
@@ -1861,13 +1865,11 @@ pub trait LevelHost {
     fn has_neighbor_signal(&self, _pos: [i32; 3]) -> Option<bool> {
         None
     }
-    /// The collision shape of the block at `pos` (`BlockState.getCollisionShape(level, pos)`
-    /// with an empty context), as boxes `[minX, minY, minZ, maxX, maxY, maxZ]` in block units
-    /// relative to `pos`: a block entity's published shape where its block publishes one, else
-    /// the declared or vanilla shape. Empty for a block with no collision. None where `pos` is
-    /// not loaded or outside the build height (it never loads a chunk), and in a callback whose
-    /// level has no shape view. `LevelRef::block_shape` is the same read from a handle.
-    fn collision_shape(&self, _pos: [i32; 3]) -> Option<Vec<[f64; 6]>> {
+    /// The block-local shape (`BlockState.getCollisionShape` with an empty context), using a
+    /// block entity's published shape when present. `VoxelShape::boxes` visits the geometry
+    /// without copying it. Returns `None` for unloaded or out-of-height positions and a
+    /// callback that has no shape view. For a handle, use `LevelRef::visit_block_collision`.
+    fn collision_shape(&self, _pos: [i32; 3]) -> Option<VoxelShape> {
         None
     }
 }

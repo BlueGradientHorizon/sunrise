@@ -243,16 +243,18 @@ dead players, spectators, riders and invalid numeric input. The prediction inclu
 local player's ordinary wall-escape nudge, which checks solid collider boxes when a collision
 scene is in scope. A supplied velocity is input to the prediction, not a write to the player.
 
-`LevelRef::collision_boxes` reads block collision boxes within a finite, ordered
-axis-aligned box. It excludes entity and border collisions. A refused level or a
-query covering more than 1,000,000 cells returns `None`; a valid query with no
-collisions returns `Some` containing an empty vector. Keep queries bounded rather
-than scanning a whole level each tick.
+`LevelRef::visit_block_collisions` lends each intersecting, unclipped world-space `VoxelShape`
+for a finite, ordered axis-aligned box. It uses vanilla's `BlockCollisions` walk, skips missing
+chunks without loading them, and excludes entities and the world border. Use `shape.boxes()`
+to walk its occupied boxes without allocating a list, or clone the shape to retain it.
+Return `ControlFlow::Break(())` to stop the walk. `None` means invalid bounds, unavailable
+level access or a shape error, not a completed empty visit. `LevelRef::has_collisions`
+uses the same walk and stops at the first hit.
 
-`LevelRef::block_shape(host, state, pos, kind)` reads an explicit `BlockState`'s
-outline or collision boxes with an empty context at a position in that level.
-The supplied state can differ from the world's block, without changing it;
-level-dependent shape inputs come from the actual level. To query the
-stored block, first read `level.block_state(host, pos)` and pass that state.
-Returns block-local boxes for the current client level and for open server levels,
-including parked levels, or `None` for an unknown state, stale handle or unavailable level.
+`LevelRef::visit_block_shape(host, state, pos, kind, &mut visit)` visits an explicit
+`BlockState`'s block-local outline or collision boxes with an empty context. The supplied
+state can differ from the world's block without changing it; level-dependent inputs come
+from the actual level. First read `level.block_state(host, pos)` to query the stored block,
+or use `visit_block_collision` to visit only its collision boxes. The supplied-state read
+works in the current client level and in open server levels, including parked ones, and
+returns `None` for an unknown state, stale handle or unavailable level.

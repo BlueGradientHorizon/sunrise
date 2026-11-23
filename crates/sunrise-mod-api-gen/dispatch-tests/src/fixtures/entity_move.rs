@@ -170,7 +170,7 @@ mod root {
             }
         }
 
-        pub(super) fn invoke_frame<T>(
+        pub(super) fn invoke_without_disabling<T>(
             _: &'static str,
             _: &'static str,
             call: impl FnOnce() -> T,

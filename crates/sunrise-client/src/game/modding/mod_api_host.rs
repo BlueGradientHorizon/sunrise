@@ -482,7 +482,7 @@ impl mod_api::LevelHost for FireOddsLevel<'_> {
             .ok()
             .flatten()
     }
-    fn collision_shape(&self, pos: [i32; 3]) -> Option<Vec<[f64; 6]>> {
+    fn collision_shape(&self, pos: [i32; 3]) -> Option<mod_api::VoxelShape> {
         if !self.is_loaded(pos) {
             return None;
         }
@@ -494,8 +494,8 @@ impl mod_api::LevelHost for FireOddsLevel<'_> {
             && (world.block(x, y, z) == state || world.block_entities.contains_key(&(x, y, z)))
         {
             // Use the staged state but preserve the live entity's geometry when it survives.
-            return Some(super::native_state_shapes::collision_boxes(
-                binding, world, state, pos,
+            return Some(mod_api::__private::voxel_shape_from_core(
+                super::native_state_shapes::collision_shape(binding, world, state, pos),
             ));
         }
         let mut scene = sunrise_client::collisions::LookupCollisions {
@@ -508,19 +508,8 @@ impl mod_api::LevelHost for FireOddsLevel<'_> {
             BlockPos::new(x, y, z),
             &sunrise_world::collision_context::CollisionContext::empty(false),
         );
-        Some(shape.map_or_else(
-            |_| Vec::new(),
-            |shape| {
-                shape
-                    .boxes()
-                    .iter()
-                    .map(|bounds| {
-                        let min = bounds.min_position();
-                        let max = bounds.max_position();
-                        [min.x, min.y, min.z, max.x, max.y, max.z]
-                    })
-                    .collect()
-            },
+        Some(mod_api::__private::voxel_shape_from_core(
+            shape.unwrap_or_else(|_| sunrise_core::geometry::VoxelShape::empty()),
         ))
     }
     fn is_raining_at(&self, [x, y, z]: [i32; 3]) -> bool {
@@ -669,16 +658,18 @@ impl mod_api::LevelHost for super::GameLevel<'_> {
             .ok()
             .flatten()
     }
-    fn collision_shape(&self, pos: [i32; 3]) -> Option<Vec<[f64; 6]>> {
+    fn collision_shape(&self, pos: [i32; 3]) -> Option<mod_api::VoxelShape> {
         let [x, y, z] = pos;
         if !(self.world.shape.contains_y(y) && self.world.loaded(x, z)) {
             return None;
         }
-        Some(super::native_state_shapes::collision_boxes(
-            self.collision,
-            self.world,
-            self.world.block(x, y, z),
-            pos,
+        Some(mod_api::__private::voxel_shape_from_core(
+            super::native_state_shapes::collision_shape(
+                self.collision,
+                self.world,
+                self.world.block(x, y, z),
+                pos,
+            ),
         ))
     }
     fn state_with_property(
@@ -1241,15 +1232,17 @@ impl<
     fn has_neighbor_signal(&self, pos: [i32; 3]) -> Option<bool> {
         self.read_signals(|s| s.has_neighbor_signal(BlockPos::new(pos[0], pos[1], pos[2])))
     }
-    fn collision_shape(&self, pos: [i32; 3]) -> Option<Vec<[f64; 6]>> {
+    fn collision_shape(&self, pos: [i32; 3]) -> Option<mod_api::VoxelShape> {
         let Some(state) = self.previewed(BlockPos::new(pos[0], pos[1], pos[2])) else {
             return mod_api::LevelHost::collision_shape(&*self.level, pos);
         };
-        Some(super::native_state_shapes::collision_boxes(
-            self.level.collision,
-            self.level.world,
-            state,
-            pos,
+        Some(mod_api::__private::voxel_shape_from_core(
+            super::native_state_shapes::collision_shape(
+                self.level.collision,
+                self.level.world,
+                state,
+                pos,
+            ),
         ))
     }
 }

@@ -74,7 +74,7 @@ impl Game<'_> {
             self.after_commit(crate::game::transactions::After::BlockGameEvent(
                 "minecraft:block_change",
                 at,
-                who,
+                Some(who),
                 base,
             ));
         }
@@ -286,9 +286,8 @@ mod tests {
                     let crop = [FIELD[0], FIELD[1] + 1, FIELD[2]];
                     assert!(matches!(
                         level.destroy_block(host, crop, true, None, false),
-                        Ok(None)
+                        Ok(Some(stacks)) if stacks.is_empty()
                     ));
-                    assert!(level.remove_block(host, crop, false));
                     let state = level.block_state(host, crop).unwrap();
                     // The outer trace assertion distinguishes cancellation from a trapped assertion.
                     self.1.lock().unwrap().push(Moment::CropRemoved(state));

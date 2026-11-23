@@ -273,7 +273,10 @@ pub trait LevelBlocksBackendMut {
     /// spawning them. The one level drop path runs loot, block-drop hooks and experience
     /// once, in vanilla's random order. `drop` false suppresses resources entirely.
     /// `Ok(None)` means nothing broke: air, a refused write, a stale handle, a client, an
-    /// unloaded/out-of-height position, a parked level, or an open Host transaction.
+    /// unloaded/out-of-height position, or a parked level. In a transaction in the block's
+    /// level, loot is prepared against the old block, the new state is immediately readable,
+    /// and spawning and break effects are deferred to commit. Another level's transaction
+    /// alone does not defer the operation.
     fn level_destroy_block(
         &mut self,
         level: LevelRef,

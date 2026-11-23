@@ -449,6 +449,14 @@ fn reduction_side_dimension_and_neighbour_cases_keep_their_tags() {
 }
 
 #[test]
+fn collision_exclusion_errors_use_the_clean_break_tags() {
+    fields(CollisionExclusionsError::Stale, (0u32,));
+    fields(CollisionExclusionsError::NotAPlayer, (1u32,));
+    fields(CollisionExclusionsError::NotFinite, (2u32,));
+    fields(CollisionExclusionsError::Inverted, (3u32,));
+}
+
+#[test]
 fn every_game_mode_pose_animation_and_connection_case_has_declared_tag_type() {
     for (value, tag) in [
         (GameMode::Survival, 0u32),

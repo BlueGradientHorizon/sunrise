@@ -897,14 +897,14 @@ impl Game<'_> {
         tool: Option<&ItemStack>,
         collect: bool,
     ) -> Option<Vec<ItemStack>> {
-        // Loot and break effects cannot be rolled back by the level journal.
-        if self.has_open_transaction()
-            || !self.native_level_write_allowed(level, pos)
-            || self.dim.key() != level.dimension()
-        {
+        if !self.native_level_write_position(level, pos).ok()? {
             return None;
         }
-        let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
+        let [x, y, z] = pos;
+        let at = sunrise_core::position::BlockPos::new(x, y, z);
+        if let Some(mut write) = super::journal_level_write::JournalLevelWrite::new(self, level) {
+            return write.destroy_block(pos, drop, tool, collect);
+        }
         let (changed, drops) = self.with_level(|b, level, ticks| {
             level.drop_tool = Some(((pos[0], pos[1], pos[2]), tool.cloned()));
             level.drop_into = collect.then(Vec::new);
@@ -1030,16 +1030,18 @@ impl Game<'_> {
     /// position with an empty context. The world is never modified. Returns None
     /// for a stale or unavailable level. Unloaded neighbors
     /// read as air; collision errors return no boxes, like `visit_block_collision`.
-    pub(super) fn level_block_shape(
+    pub(super) fn level_visit_block_shape(
         &self,
         level: LevelRef,
         state: BlockStateId,
         pos: [i32; 3],
         kind: BlockShapeKind,
-    ) -> Option<Vec<[f64; 6]>> {
+        visit: &mut dyn FnMut([f64; 6]) -> std::ops::ControlFlow<()>,
+    ) -> Option<std::ops::ControlFlow<()>> {
         if !self.is_logical_server() {
-            return (self.native_client_level() == Some(level))
-                .then(|| self.state_shape_boxes(&self.world, &self.be_anims, state, pos, kind));
+            return (self.native_client_level() == Some(level)).then(|| {
+                self.visit_state_shape(&self.world, &self.be_anims, state, pos, kind, visit)
+            });
         }
         if !self.level_handle_current(level) {
             return None;
@@ -1057,7 +1059,23 @@ impl Game<'_> {
                 self.levels.parked_anims(dim)?,
             )
         };
-        Some(self.state_shape_boxes(world, anims, state, pos, kind))
+        Some(self.visit_state_shape(world, anims, state, pos, kind, visit))
+    }
+
+    #[cfg(test)]
+    pub(super) fn collect_level_block_shape(
+        &self,
+        level: LevelRef,
+        state: BlockStateId,
+        pos: [i32; 3],
+        kind: BlockShapeKind,
+    ) -> Option<Vec<[f64; 6]>> {
+        let mut boxes = Vec::new();
+        let _ = self.level_visit_block_shape(level, state, pos, kind, &mut |bounds| {
+            boxes.push(bounds);
+            std::ops::ControlFlow::Continue(())
+        })?;
+        Some(boxes)
     }
 
     /// The local face support in an open server level or the current client level,
@@ -1080,10 +1098,13 @@ impl Game<'_> {
         )
     }
 
-    /// Clip an empty-context ray against collider or outline shapes, without fluids, in the
-    /// world `native_level_view_world` reads. None on failed reads, dynamic shapes (unless
-    /// the block's entity published its shapes, which stand over them), invalid rays or
-    /// traversal limits.
+    /// Clip an empty-context ray against collider or outline shapes, without fluids or the
+    /// world border (`BlockGetter.clip` / `BlockGetter.clipWithInteractionOverride`), in the
+    /// resident world `native_level_view_world` reads, with no traversal cell cap. Out-of-height
+    /// cells and missing columns read as air without loading chunks. Collider mode uses
+    /// `SceneCollisions`'s full registry/context shapes; outline mode returns None when dynamic
+    /// outline geometry has no implementation. Also None for unavailable levels, non-finite
+    /// endpoints or shape query errors.
     pub(super) fn level_clip(
         &self,
         level: LevelRef,
@@ -1128,7 +1149,7 @@ impl Game<'_> {
             Vec3::new(to[0], to[1], to[2]),
             mode,
             fluid,
-            4096,
+            usize::MAX,
         )
         .ok()?;
         let h = result.hit;
@@ -2145,11 +2166,12 @@ pub(super) mod tests {
                 // A full block's collision box, none for air, nothing for an unloaded position.
                 for host in [&view as &dyn LevelHost, &*level] {
                     assert_eq!(
-                        host.collision_shape([9, 64, 5]),
+                        host.collision_shape([9, 64, 5])
+                            .map(|shape| shape.boxes().collect::<Vec<_>>()),
                         Some(vec![[0.0, 0.0, 0.0, 1.0, 1.0, 1.0]])
                     );
-                    assert_eq!(host.collision_shape([9, 70, 5]), Some(Vec::new()));
-                    assert_eq!(host.collision_shape([160, 64, 5]), None);
+                    assert!(host.collision_shape([9, 70, 5]).unwrap().is_empty());
+                    assert!(host.collision_shape([160, 64, 5]).is_none());
                 }
             });
         });
@@ -4643,7 +4665,7 @@ pub(super) mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn level_clip_reads_parked_world_and_refuses_unloaded() {
+    fn level_clip_reads_parked_world_and_empty_missing_columns() {
         use mod_api::{BlockFace as Face, ClipBlock as Block, ClipFluid as Fluid};
         use std::sync::Arc;
         use sunrise_client::chunk::Chunk;
@@ -4669,17 +4691,113 @@ pub(super) mod tests {
                 assert_eq!(hit.location, [1.0, 64.5, 0.5]);
                 assert!(!hit.inside && !hit.world_border);
             }
-            assert!(
-                level
+            let chunks_before_gap = game.world.chunks.len();
+            // Crossing into a missing column returns vanilla's end-derived miss without loading it.
+            let missing_miss = level
+                .clip(
+                    game,
+                    [15.5, 64.5, 0.5],
+                    [17.5, 64.5, 0.5],
+                    Block::Collider,
+                    Fluid::None,
+                )
+                .unwrap();
+            assert!(missing_miss.miss);
+            assert_eq!(missing_miss.block, [17, 64, 0]);
+            assert_eq!(missing_miss.face, Face::West);
+            assert_eq!(missing_miss.location, [17.5, 64.5, 0.5]);
+            assert!(!missing_miss.inside && !missing_miss.world_border);
+            // Out-of-height segments read as air (world.air), never as an error.
+            let above_miss = level
+                .clip(
+                    game,
+                    [0.5, 325.5, 0.5],
+                    [2.5, 325.5, 0.5],
+                    Block::Collider,
+                    Fluid::None,
+                )
+                .unwrap();
+            assert!(above_miss.miss);
+            assert_eq!(above_miss.block, [2, 325, 0]);
+            assert_eq!(above_miss.face, Face::West);
+            assert_eq!(above_miss.location, [2.5, 325.5, 0.5]);
+            let below_miss = level
+                .clip(
+                    game,
+                    [0.5, -70.5, 0.5],
+                    [0.5, -66.5, 0.5],
+                    Block::Outline,
+                    Fluid::None,
+                )
+                .unwrap();
+            assert!(below_miss.miss);
+            assert_eq!(below_miss.block, [0, -67, 0]);
+            assert_eq!(below_miss.face, Face::Down);
+            assert_eq!(below_miss.location, [0.5, -66.5, 0.5]);
+            assert!(!game.world.chunks.contains_key(&(1, 0)));
+            assert_eq!(game.world.chunks.len(), chunks_before_gap);
+            // A straight ray crossing missing columns hits a known block beyond 4096 cells,
+            // with world chunks left untouched.
+            game.world
+                .chunks
+                .insert((300, 0), Arc::new(Chunk::empty(300, 0)));
+            game.world.set(4805, 64, 0, stone).unwrap();
+            let chunks_with_far = game.world.chunks.len();
+            for mode in [Block::Collider, Block::Outline] {
+                let far_hit = level
                     .clip(
                         game,
                         [15.5, 64.5, 0.5],
-                        [17.5, 64.5, 0.5],
-                        Block::Collider,
-                        Fluid::None
+                        [4810.5, 64.5, 0.5],
+                        mode,
+                        Fluid::None,
                     )
-                    .is_none()
+                    .unwrap();
+                assert!(!far_hit.miss);
+                assert_eq!(far_hit.block, [4805, 64, 0]);
+                assert_eq!(far_hit.face, Face::West);
+                assert_eq!(far_hit.location, [4805.0, 64.5, 0.5]);
+                assert!(!far_hit.inside && !far_hit.world_border);
+            }
+            // Independent opposite hit face and a miss beyond 4096.
+            let east_hit = level
+                .clip(
+                    game,
+                    [4810.5, 64.5, 0.5],
+                    [4800.5, 64.5, 0.5],
+                    Block::Collider,
+                    Fluid::None,
+                )
+                .unwrap();
+            assert!(!east_hit.miss);
+            assert_eq!(east_hit.block, [4805, 64, 0]);
+            assert_eq!(east_hit.face, Face::East);
+            assert_eq!(east_hit.location, [4806.0, 64.5, 0.5]);
+            let far_miss = level
+                .clip(
+                    game,
+                    [15.5, 65.5, 0.5],
+                    [4810.5, 65.5, 0.5],
+                    Block::Collider,
+                    Fluid::None,
+                )
+                .unwrap();
+            assert!(far_miss.miss);
+            assert_eq!(far_miss.block, [4810, 65, 0]);
+            assert_eq!(far_miss.face, Face::West);
+            assert_eq!(far_miss.location, [4810.5, 65.5, 0.5]);
+            assert!(!far_miss.inside && !far_miss.world_border);
+            // `line_of_sight` delegates to the same segment clip with no 128-block entity cap.
+            assert_eq!(
+                level.line_of_sight(game, [15.5, 64.5, 0.5], [4810.5, 64.5, 0.5]),
+                Some(false)
             );
+            assert_eq!(
+                level.line_of_sight(game, [15.5, 65.5, 0.5], [4810.5, 65.5, 0.5]),
+                Some(true)
+            );
+            assert!(!game.world.chunks.contains_key(&(1, 0)));
+            assert_eq!(game.world.chunks.len(), chunks_with_far);
             let miss = level
                 .clip(
                     game,
@@ -4690,6 +4808,9 @@ pub(super) mod tests {
                 )
                 .unwrap();
             assert!(miss.miss);
+            assert_eq!(miss.block, [2, 67, 0]);
+            assert_eq!(miss.face, Face::West);
+            assert_eq!(miss.location, [2.5, 67.5, 0.5]);
             let inside = level
                 .clip(
                     game,
@@ -4739,6 +4860,40 @@ pub(super) mod tests {
                     .unwrap()
                     .is_empty()
             );
+            // Dynamic collision shapes (bamboo) work on the collider branch; outline reports
+            // an actual unsupported error instead of fabricating a miss.
+            let bamboo = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:bamboo")
+                .unwrap();
+            game.world.set(1, 64, 2, bamboo).unwrap();
+            let bx = 1.3833333402872086;
+            let bz = 2.3166666701436043;
+            let bamboo_hit = level
+                .clip(
+                    game,
+                    [bx, 66.0, bz],
+                    [bx, 62.0, bz],
+                    Block::Collider,
+                    Fluid::None,
+                )
+                .unwrap();
+            assert!(!bamboo_hit.miss);
+            assert_eq!(bamboo_hit.block, [1, 64, 2]);
+            assert_eq!(bamboo_hit.face, Face::Up);
+            assert_eq!(bamboo_hit.location, [bx, 65.0, bz]);
+            assert_eq!(
+                level.clip(
+                    game,
+                    [bx, 66.0, bz],
+                    [bx, 62.0, bz],
+                    Block::Outline,
+                    Fluid::None,
+                ),
+                None
+            );
             let plant = game
                 .pack
                 .assets
@@ -4787,6 +4942,19 @@ pub(super) mod tests {
                     .unwrap()
                     .block,
                 [1, 64, 0]
+            );
+            assert_eq!(
+                level
+                    .clip(
+                        game,
+                        [15.5, 64.5, 0.5],
+                        [4810.5, 64.5, 0.5],
+                        Block::Collider,
+                        Fluid::None,
+                    )
+                    .unwrap()
+                    .block,
+                [4805, 64, 0]
             );
         });
     }
@@ -4922,17 +5090,17 @@ pub(super) mod tests {
         );
         let cube = vec![[0.0, 0.0, 0.0, 1.0, 1.0, 1.0]];
         assert_eq!(
-            game.level_block_shape(nether, stone, [0, 64, 0], BlockShapeKind::Outline),
+            game.collect_level_block_shape(nether, stone, [0, 64, 0], BlockShapeKind::Outline),
             Some(cube.clone())
         );
         assert_eq!(
-            game.level_block_shape(nether, stone, [0, 64, 0], BlockShapeKind::Collision),
+            game.collect_level_block_shape(nether, stone, [0, 64, 0], BlockShapeKind::Collision),
             Some(cube)
         );
         let shape = |game: &mut Game<'_>, name: &str, kind| {
             let state = game.pack.assets.registry.default_state(name).unwrap();
             game.world.set(0, 64, 0, state).unwrap();
-            game.level_block_shape(level, state, [0, 64, 0], kind)
+            game.collect_level_block_shape(level, state, [0, 64, 0], kind)
                 .unwrap()
         };
         game.inventory[game.selected] = Some(sunrise_client::items::ItemStack {
@@ -5305,6 +5473,81 @@ pub(super) mod tests {
                 .is_none()
         );
         game.dropped.clear();
+        assert_eq!(
+            game.level_set_block(level, [0, 64, 0], chest, flags),
+            Ok(true)
+        );
+        fill_chest(&mut game);
+        let host: &mut dyn mod_api::ServerHost = &mut game;
+        let rolled_back: Result<(), ()> = host.transaction(|host, _| {
+            assert!(
+                level
+                    .destroy_block(host, [0, 64, 0], true, None, false)
+                    .unwrap()
+                    .is_some()
+            );
+            assert_eq!(
+                level.block_state(host, [0, 64, 0]),
+                Some(air.try_into_api().unwrap())
+            );
+            Err(())
+        });
+        assert_eq!(rolled_back, Err(()));
+        assert_eq!(game.world.block(0, 64, 0), chest);
+        assert!(game.dropped.is_empty());
+        let Some(super::super::BlockEntity::Chest(restored)) =
+            game.world.block_entities.get(&(0, 64, 0))
+        else {
+            panic!("transaction did not restore the chest");
+        };
+        assert_eq!(restored[0].as_ref().unwrap().count, 3);
+        let host: &mut dyn mod_api::ServerHost = &mut game;
+        host.transaction(|host, _| {
+            assert!(
+                level
+                    .destroy_block(host, [0, 64, 0], true, None, false)
+                    .unwrap()
+                    .is_some()
+            );
+            Ok::<_, ()>(())
+        })
+        .unwrap();
+        assert_eq!(game.world.block(0, 64, 0), air);
+        assert_eq!(
+            game.dropped
+                .iter()
+                .filter(|item| item.stack.item.as_ref() == "minecraft:chest")
+                .map(|item| item.stack.count)
+                .sum::<u32>(),
+            1
+        );
+        assert_eq!(
+            game.dropped
+                .iter()
+                .filter(|item| item.stack.item.as_ref() == "minecraft:diamond")
+                .map(|item| item.stack.count)
+                .sum::<u32>(),
+            3
+        );
+        game.dropped.clear();
+        assert_eq!(
+            game.level_set_block(level, [0, 64, 0], stone, flags),
+            Ok(true)
+        );
+        let host: &mut dyn mod_api::ServerHost = &mut game;
+        let collected = host
+            .transaction(|host, _| {
+                Ok::<_, ()>(
+                    level
+                        .destroy_block(host, [0, 64, 0], true, None, true)
+                        .unwrap()
+                        .unwrap(),
+                )
+            })
+            .unwrap();
+        assert_eq!(collected.len(), 1);
+        assert!(game.dropped.is_empty());
+        assert_eq!(game.world.block(0, 64, 0), air);
         let copper = game
             .pack
             .assets

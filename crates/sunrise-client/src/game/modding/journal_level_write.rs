@@ -37,27 +37,122 @@ impl<'g, 'a> JournalLevelWrite<'g, 'a> {
     }
 
     pub(super) fn write_block(&mut self, pos: [i32; 3], state: BlockStateId, flags: i32) -> bool {
+        let old = self.game.world.block(pos[0], pos[1], pos[2]);
+        self.can_replace_block(pos, old, state) && self.replace_block(pos, old, state, flags)
+    }
+
+    fn can_replace_block(&self, pos: [i32; 3], old: BlockStateId, state: BlockStateId) -> bool {
         let [x, y, z] = pos;
-        if self.game.world_debug
-            || !(-30_000_000..30_000_000).contains(&x)
-            || !(-30_000_000..30_000_000).contains(&z)
-            || !self.game.world.is_loaded_at(x, y, z)
-            || self.game.world.carrier_fences.locks_cell(&pos)
-            || self.game.pack.assets.registry.state(state).is_none()
-        {
+        old != state
+            && !self.game.world_debug
+            && (-30_000_000..30_000_000).contains(&x)
+            && (-30_000_000..30_000_000).contains(&z)
+            && self.game.world.shape.contains_y(y)
+            && self
+                .game
+                .world
+                .chunks
+                .get(&(x >> 4, z >> 4))
+                .is_some_and(|chunk| chunk.section_index(y).is_some())
+            && !self.game.world.carrier_fences.locks_cell(&pos)
+            && self.game.pack.assets.registry.state(state).is_some()
+    }
+
+    fn replace_block(
+        &mut self,
+        pos: [i32; 3],
+        old: BlockStateId,
+        state: BlockStateId,
+        flags: i32,
+    ) -> bool {
+        if !self.game.journal_set_block_flags(pos, state, flags, true) {
             return false;
         }
-        let old = self.game.world.block(x, y, z);
-        if old == state || !self.game.journal_set_block_flags(pos, state, flags, true) {
-            return false;
-        }
-        let b = self.game.res.behaviours();
-        if !b.keeps_block_entity(old, state)
-            && self.game.world.block_entities.get(&(x, y, z)).is_some()
+        let [x, y, z] = pos;
+        if !self.game.res.behaviours().keeps_block_entity(old, state)
+            && self.game.world.block_entities.contains_key(&(x, y, z))
         {
             self.game.journal_block_replacement((x, y, z));
         }
         true
+    }
+
+    /// `Level.destroyBlock` in this level's journal. Resolve the loot and experience while
+    /// the old state and block entity are still visible; publication follows vanilla order.
+    pub(super) fn destroy_block(
+        &mut self,
+        pos: [i32; 3],
+        drop: bool,
+        tool: Option<&sunrise_client::items::ItemStack>,
+        collect: bool,
+    ) -> Option<Vec<sunrise_client::items::ItemStack>> {
+        let [x, y, z] = pos;
+        let old = self.game.world.block(x, y, z);
+        let behaviours = self.game.res.behaviours();
+        let replacement = behaviours.legacy_block(behaviours.fluid(old));
+        if behaviours.is_air(old) || !self.can_replace_block(pos, old, replacement) {
+            return None;
+        }
+        if let Some(id) = behaviours.destroy_particle_event(old) {
+            self.queue(PendingWrite::Event {
+                level: self.game.dim,
+                id,
+                pos,
+                data: old.0 as i32,
+            });
+        }
+        let mut collected = Vec::new();
+        if drop && self.game.level_rules().block_drops {
+            self.game.journal_block_loot_random();
+            // First access to container loot can fill the inventory and consume its loot table.
+            let key = (x, y, z);
+            if self.game.world.block_entities.contains_key(&key)
+                && self
+                    .game
+                    .world
+                    .chunks
+                    .get(&(x >> 4, z >> 4))
+                    .and_then(|chunk| chunk.saved.as_ref())
+                    .is_some_and(|saved| saved.pending_loot.contains_key(&key))
+            {
+                self.game.journal_attachments(
+                    sunrise_mod_runtime::attachments::Holder::BlockEntity(pos),
+                );
+            }
+            self.game.ensure_stateful_entity_table();
+            let (kept, items, orbs) = self.game.with_level_access(false, |b, level, ticks| {
+                let items = level.spill.spawns.len();
+                let orbs = level.spill.orbs.len();
+                level.drop_tool = Some((key, tool.cloned()));
+                level.drop_into = collect.then(Vec::new);
+                b.drop_resources(
+                    level,
+                    ticks,
+                    sunrise_core::position::BlockPos::new(x, y, z),
+                    old,
+                );
+                (
+                    level.drop_into.take().unwrap_or_default(),
+                    level.spill.spawns.split_off(items),
+                    level.spill.orbs.split_off(orbs),
+                )
+            });
+            collected = kept;
+            if !items.is_empty() || !orbs.is_empty() {
+                self.game.after_commit(After::BlockDropSpawns(items, orbs));
+            }
+        }
+        // Only storage (not listeners) is touched by this already-validated write.
+        if !self.replace_block(pos, old, replacement, flags::UPDATE_ALL) {
+            return None;
+        }
+        self.game.after_commit(After::BlockGameEvent(
+            "minecraft:block_destroy",
+            pos,
+            None,
+            old,
+        ));
+        Some(collected)
     }
 
     fn queue(&mut self, write: PendingWrite) -> bool {
@@ -130,15 +225,15 @@ impl LevelHost for JournalLevelWrite<'_, '_> {
     fn has_neighbor_signal(&self, pos: [i32; 3]) -> Option<bool> {
         Some(self.game.level_has_neighbor_signal(self.level, pos))
     }
-    fn collision_shape(&self, pos: [i32; 3]) -> Option<Vec<[f64; 6]>> {
+    fn collision_shape(&self, pos: [i32; 3]) -> Option<mod_api::VoxelShape> {
         self.is_loaded(pos).then(|| {
             let [x, y, z] = pos;
-            super::native_state_shapes::collision_boxes(
+            mod_api::__private::voxel_shape_from_core(super::native_state_shapes::collision_shape(
                 self.game.collision,
                 &self.game.world,
                 self.game.world.block(x, y, z),
                 pos,
-            )
+            ))
         })
     }
 }

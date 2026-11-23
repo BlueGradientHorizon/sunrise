@@ -700,9 +700,10 @@ pub(super) enum After {
     BlockGameEvent(
         &'static str,
         [i32; 3],
-        sunrise_client::mobs::Who,
+        Option<sunrise_client::mobs::Who>,
         BlockStateId,
     ),
+    BlockDropSpawns(Vec<super::spill::Spawn>, Vec<([f64; 3], u32, i32)>),
     /// Save, remesh and resend a changed biome column.
     Biome((i32, i32)),
     /// Deferred interaction effects, replayed in the same root-commit order.
@@ -778,6 +779,7 @@ impl After {
                 | Self::DispenserDrop { .. }
                 | Self::DispenserFeedback { .. }
                 | Self::BlockGameEvent(..)
+                | Self::BlockDropSpawns(..)
                 | Self::Biome(_)
                 | Self::Drop(..)
                 | Self::Spawn(..)
@@ -1609,10 +1611,10 @@ impl<'g> Game<'g> {
         }
     }
 
-    /// An unseeded pot loot table may draw from either the level or a named stream.
+    /// Block or container loot may draw from either the level or a named stream.
     pub(super) fn journal_block_loot_random(&mut self) {
         self.journal_level_random();
-        if let Some(level) = self.transactions.last_mut() {
+        if let Some(level) = entities::open_in(&mut self.transactions, self.dim) {
             level
                 .loot_sequences
                 .get_or_insert_with(|| self.rand_sequences.clone());
@@ -2439,8 +2441,9 @@ impl<'g> Game<'g> {
             }
             After::LevelWrite(write) => self.commit_level_write(*write),
             After::BlockGameEvent(id, pos, who, state) => {
-                self.post_block_game_event(id, pos, Some(who), Some(state));
+                self.post_block_game_event(id, pos, who, Some(state));
             }
+            After::BlockDropSpawns(items, orbs) => self.publish_block_spawns(items, orbs),
             After::Changed(pos) => self.container_changed(pos),
             After::ChangedWithoutHook(pos) => self.container_changed_without_hook(pos),
             After::ChangedHolder { holder, silent } => {
