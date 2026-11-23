@@ -2141,3 +2141,38 @@ fn an_open_asked_during_a_save_close_publishes_only_after_the_save_if_the_player
         });
     }
 }
+
+/// A player leaves from a level the server cannot enter: owner cleanup still runs, and the
+/// listener that heard the menu open hears its matching close before the menu is forgotten.
+#[test]
+#[ignore = "daily"]
+fn a_departure_from_an_unenterable_level_still_closes_the_heard_menu() {
+    let previous_extra = crate::game::EXTRA_DIMS.read().unwrap().clone();
+    with_owned_menu(false, |game, rx, key| {
+        open(game, key);
+        sent(&rx);
+        crate::game::Dim::add_extra("test:unenterable");
+        let mut host = game.lan.take().unwrap();
+        let mut gone = host.hub.guests.remove(0);
+        gone.dimension = "test:unenterable".to_owned();
+        CLOSE_TRACE.with(|trace| trace.borrow_mut().clear());
+        RECORD_CLOSE.set(true);
+        game.lan = game.lan_process_events(
+            host,
+            [sunrise_client::lan::hub::HostEvent::Left(Box::new(gone))],
+            &[],
+            [0.5, 64.0, 0.5],
+        );
+        RECORD_CLOSE.set(false);
+        let trace = CLOSE_TRACE.with(|trace| trace.borrow().clone());
+        assert_eq!(
+            trace
+                .iter()
+                .filter(|t| **t == "player_container_close")
+                .count(),
+            1,
+            "one close for the open that was heard: {trace:?}"
+        );
+    });
+    *crate::game::EXTRA_DIMS.write().unwrap() = previous_extra;
+}
