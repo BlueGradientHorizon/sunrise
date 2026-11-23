@@ -2082,16 +2082,18 @@ pub(super) fn incoming_damage(
         return false;
     };
     let mut live = LiveDamageContainer(container);
-    HitLevel(level).native_living_incoming_damage(mod_api::__private::LivingIncomingDamageCall {
-        entity,
-        kind,
-        source: &source,
-        victim: &victim,
-        weapon: weapon.as_ref(),
-        causing_weapon: causing_weapon.as_ref(),
-        container: mod_api::DamageContainer::new(&mut live),
-        canceled: &mut canceled,
-    });
+    HitLevel(level.caused_by(source.causing)).native_living_incoming_damage(
+        mod_api::__private::LivingIncomingDamageCall {
+            entity,
+            kind,
+            source: &source,
+            victim: &victim,
+            weapon: weapon.as_ref(),
+            causing_weapon: causing_weapon.as_ref(),
+            container: mod_api::DamageContainer::new(&mut live),
+            canceled: &mut canceled,
+        },
+    );
     canceled
 }
 
@@ -2107,12 +2109,14 @@ pub(super) fn damage_pre(
     container.enable_live_reductions();
     let (entity, kind, source) = hurt_server_args(hurting, level.attack());
     let mut live = LiveDamageContainer(container);
-    HitLevel(level).native_living_damage_pre(mod_api::__private::LivingDamagePreCall {
-        entity,
-        kind,
-        source: &source,
-        container: mod_api::DamageContainer::new(&mut live),
-    });
+    HitLevel(level.caused_by(source.causing)).native_living_damage_pre(
+        mod_api::__private::LivingDamagePreCall {
+            entity,
+            kind,
+            source: &source,
+            container: mod_api::DamageContainer::new(&mut live),
+        },
+    );
 }
 
 /// `native_living_damage_post` for the damage code.
@@ -2126,7 +2130,7 @@ pub(super) fn damage_post(
     }
     let (entity, kind, source) = hurt_server_args(hurting, level.attack());
     let live = LiveDamageRead(container);
-    HitLevel(level).native_living_damage_post(
+    HitLevel(level.caused_by(source.causing)).native_living_damage_post(
         entity,
         kind,
         &source,
@@ -2167,8 +2171,8 @@ impl Game<'_> {
         // The victim as the death or protection callback left it, beside the lent attacker:
         // the player in place, or a mob split from the attacker in the same list.
         let victim_mob = self.mobs.iter().position(|m| m.id as i32 == entity);
+        let original_lend = original_lend.filter(|_| sunrise_client::health::hit_host_listened());
         let lend_mob = original_lend
-            .filter(|_| sunrise_client::health::hit_host_listened())
             .and_then(|id| self.mobs.iter().position(|m| m.id as i32 == id))
             .filter(|&index| Some(index) != victim_mob);
         let (victim_mob, lend_mob) = match (victim_mob, lend_mob) {
@@ -2220,7 +2224,7 @@ impl Game<'_> {
             None => level.reborrow(),
         };
         let live = LiveDamageRead(state);
-        HitLevel(level).native_living_damage_post(
+        HitLevel(level.caused_by(source.causing)).native_living_damage_post(
             entity,
             kind,
             &source,

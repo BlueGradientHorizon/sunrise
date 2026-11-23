@@ -143,16 +143,21 @@ pub(super) fn body_equipment(
     Some(EquipmentRead::resident(stack))
 }
 
-/// `Entity.getType` of a living body. The name is looked up on the call, which a listener
-/// makes.
-pub(super) fn body_kind(body: LivingBody<'_>) -> Option<mod_api::EntityTypeKey> {
-    mod_api::__private::resolved_entity_type_key(match body {
+/// The type a living body is of (`Entity.getType`), by name: the one mapping the full host's
+/// `entity_kind` and a hit's view both resolve.
+pub(super) fn body_kind_name<'a>(body: LivingBody<'a>) -> &'a str {
+    match body {
         LivingBody::Mob(m) => &m.kind.id,
-        LivingBody::Player(_) => "minecraft:player",
-        LivingBody::Stand(_) => "minecraft:armor_stand",
-        LivingBody::Dragon(_) => "minecraft:ender_dragon",
-    })
+        LivingBody::Player(_) => PLAYER,
+        LivingBody::Stand(_) => ARMOR_STAND,
+        LivingBody::Dragon(_) => ENDER_DRAGON,
+    }
 }
+
+/// A player's, an armor stand's and the dragon's type names.
+pub(super) const PLAYER: &str = "minecraft:player";
+pub(super) const ARMOR_STAND: &str = "minecraft:armor_stand";
+pub(super) const ENDER_DRAGON: &str = "minecraft:ender_dragon";
 
 /// The holder of a living body's attachments: a player's by UUID where its borrower knows it,
 /// any other entity's by id.

@@ -168,14 +168,15 @@ impl<'a> HitLend<'a> {
         })
     }
     /// `player`, if it is the attacker `attacker` (an entity id), with the `effects` and
-    /// `equipment` the game keeps beside the body in place.
+    /// `equipment` the game keeps beside the body in place. The caller builds it only while a
+    /// `HitHost` hook listens ([`hit_host_listened`]).
     pub fn attacking_player(
         player: Option<&'a mut PlayerMotion>,
         attacker: i32,
         effects: &'a crate::effects::PlayerEffects,
         equipment: PlayerEquipment<'a>,
     ) -> Option<Self> {
-        let motion = player.filter(|p| p.entity_id == attacker && hit_host_listened())?;
+        let motion = player.filter(|p| p.entity_id == attacker)?;
         Some(Self {
             body: LentBody::Player {
                 motion,
@@ -480,6 +481,9 @@ pub struct DamageLevel<'a> {
     reads: Option<HitReads<'a>>,
     /// The living body the hit lands on, where the hurt code lends it ([`Self::with_victim`]).
     victim: Option<LivingBody<'a>>,
+    /// The entity id the hook's source names as its causing entity (`DamageSource.getEntity`),
+    /// 0 for none: the lent attacker is the hit's causer only when it is that entity.
+    causing: i32,
 }
 impl<'a> DamageLevel<'a> {
     /// The level of `world`, whose blocks `registry` names.
@@ -520,6 +524,7 @@ impl<'a> DamageLevel<'a> {
             player_equipment: [None; 8],
             reads: None,
             victim: None,
+            causing: 0,
         }
     }
     /// The level of `world`, with the random and attachments `lent` took out of it.
@@ -552,6 +557,7 @@ impl<'a> DamageLevel<'a> {
             player_equipment: [None; 8],
             reads: None,
             victim: None,
+            causing: 0,
         }
     }
     /// Lend the UUID owner when mobs can start attacks inside this borrow.
@@ -588,6 +594,7 @@ impl<'a> DamageLevel<'a> {
             player_equipment: self.player_equipment,
             reads: self.reads,
             victim: self.victim,
+            causing: self.causing,
         }
     }
     /// Lend the stacks worn by this hit's player victim for enchantment immunity.
@@ -616,6 +623,31 @@ impl<'a> DamageLevel<'a> {
     /// The body the hit lands on, where the hurt code lends it.
     pub fn victim(&self) -> Option<LivingBody<'a>> {
         self.victim
+    }
+    /// The same level, for a hook whose source names `causing` (an entity id, 0 for none) as
+    /// its causing entity.
+    pub fn caused_by(self, causing: i32) -> Self {
+        Self { causing, ..self }
+    }
+    /// The body of the hit's causing entity: the entity the site lends, when it is the one the
+    /// hook's source names and it is not removed. None for any other.
+    pub fn causing_body(&self) -> Option<LivingBody<'_>> {
+        let body = self.effects.as_ref()?.lent_body()?;
+        let id = match body {
+            LivingBody::Mob(mob) if mob.removed => return None,
+            LivingBody::Mob(mob) => mob.id as i32,
+            LivingBody::Player(player) => player.id,
+            LivingBody::Stand(_) | LivingBody::Dragon(_) => return None,
+        };
+        (self.causing != 0 && id == self.causing).then_some(body)
+    }
+    /// The level for a hook that lends no living views (`living_shield_block`,
+    /// `living_use_totem`): no victim and no causing entity.
+    fn without_views(&mut self) -> DamageLevel<'_> {
+        let mut level = self.reborrow();
+        level.victim = None;
+        level.causing = 0;
+        level
     }
     /// The level for a hook on `hurting`: its victim is the body lent with
     /// [`Self::with_victim`], or the mob [`Hurting::Mob`] holds.
@@ -1030,7 +1062,7 @@ impl DamageLevel<'_> {
         let mut block = vanilla;
         if let Some(hook) = self.hooks.shield {
             hook(
-                self.for_victim(hurting),
+                self.without_views(),
                 hurting,
                 damage,
                 vanilla.blocked,
@@ -1053,7 +1085,7 @@ impl DamageLevel<'_> {
         let Some(hook) = self.hooks.totem else {
             return false;
         };
-        hook(self.for_victim(hurting), hurting, off_hand)
+        hook(self.without_views(), hurting, off_hand)
     }
 }
 /// The block an entity with no raised item is asked about: none, and one a mod forces

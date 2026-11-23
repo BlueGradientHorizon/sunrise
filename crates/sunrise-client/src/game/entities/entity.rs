@@ -1778,12 +1778,12 @@ macro_rules! hit_effects_of {
 }
 /// What a hit's listeners need from `$game` to name and read the living entities the hit lends
 /// ([`HitReads`](sunrise_client::health::HitReads)), as field-level borrows; none before the
-/// world has an epoch.
+/// world has an epoch, and none while no `HitHost` hook listens.
 macro_rules! hit_reads_of {
     ($game:expr) => {
-        $game
-            .native_lifecycle
-            .epoch()
+        sunrise_client::health::hit_host_listened()
+            .then(|| $game.native_lifecycle.epoch())
+            .flatten()
             .map(|epoch| sunrise_client::health::HitReads {
                 epoch,
                 attributes: &$game.motion.attributes,

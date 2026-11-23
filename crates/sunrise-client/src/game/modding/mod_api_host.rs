@@ -989,14 +989,15 @@ impl mod_api::HitHost for super::native_hooks::HitLevel<'_> {
 
 impl super::native_hooks::HitLevel<'_> {
     /// The body `party` names in this hit: the victim the hurt code lends, or the causer its
-    /// site lends ([`HitEffects::lent_body`](sunrise_client::health::HitEffects::lent_body)).
+    /// site lends when it is the hook's causing entity
+    /// ([`DamageLevel::causing_body`](sunrise_client::health::DamageLevel::causing_body)).
     fn party_body(
         &self,
         party: mod_api::__private::LivingParty,
     ) -> Option<sunrise_client::health::LivingBody<'_>> {
         let body = match party {
             mod_api::__private::LivingParty::Victim => self.0.victim(),
-            mod_api::__private::LivingParty::Causing => self.0.hit_effects_ref()?.lent_body(),
+            mod_api::__private::LivingParty::Causing => self.0.causing_body(),
             _ => None,
         }?;
         Some(match body {
@@ -1026,7 +1027,9 @@ impl mod_api::__private::LivingReads for super::native_hooks::HitLevel<'_> {
         &self,
         party: mod_api::__private::LivingParty,
     ) -> Option<mod_api::EntityTypeKey> {
-        super::native_living_body::body_kind(self.party_body(party)?)
+        mod_api::__private::resolved_entity_type_key(super::native_living_body::body_kind_name(
+            self.party_body(party)?,
+        ))
     }
     fn living_holder(&self, party: mod_api::__private::LivingParty) -> Option<mod_api::Holder> {
         super::native_living_body::body_holder(self.party_body(party)?)

@@ -2111,12 +2111,16 @@ impl Game<'_> {
                 }
                 None => (
                     &mut self.mobs[ti],
-                    sunrise_client::health::HitLend::attacking_player(
-                        self.player.as_mut(),
-                        attack.attacker,
-                        &self.potions.effects,
-                        acting_equipment!(self),
-                    ),
+                    sunrise_client::health::hit_host_listened()
+                        .then(|| {
+                            sunrise_client::health::HitLend::attacking_player(
+                                self.player.as_mut(),
+                                attack.attacker,
+                                &self.potions.effects,
+                                acting_equipment!(self),
+                            )
+                        })
+                        .flatten(),
                 ),
             };
             let previous_invulnerable = t.invulnerable;

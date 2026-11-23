@@ -1780,7 +1780,6 @@ impl MotionWorld<'_, '_, '_> {
             self.block_registries,
             self.damage_hooks,
         )
-        .with_player_equipment(self.side.player_equipment())
         .with_reads(self.side.hit_reads());
         if let Some(hooks) = crate::block_contact::HOOKS.get() {
             (hooks.inside_fire)(

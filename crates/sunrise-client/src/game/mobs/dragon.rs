@@ -885,15 +885,10 @@ impl Dragon {
         if damage > 0.0 {
             let hurting = sunrise_client::health::Hurting::Dragon(self.id as i32, source);
             let block = sunrise_client::health::no_block(damage);
-            let body = super::native_living_body::dragon_body(self);
-            let blocked = level
-                .reborrow()
-                .with_victim(body)
-                .shield_block(hurting, damage, block)
-                .map_or(0.0, |b| {
-                    container.record_shield_damage(b.shield_damage.max(0) as f32);
-                    b.blocked_damage
-                });
+            let blocked = level.shield_block(hurting, damage, block).map_or(0.0, |b| {
+                container.record_shield_damage(b.shield_damage.max(0) as f32);
+                b.blocked_damage
+            });
             damage -= blocked;
             container.record_block(blocked);
         }
