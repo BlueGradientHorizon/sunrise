@@ -32,7 +32,7 @@ SUNRISE_CLIENT = [
     "docs/parity/block-entity-client-ticks.jsonl", "docs/parity/random-chance-seeded.jsonl",
     "research-lock.json", "tests/fixture_support/item_resource_properties.rs", "tests/fixtures",
     # mobs::render's compile_part tests compile the fn-replace-check `lower` fixture's helpers (`include!`).
-    "tools/ci/fn-replace-check/lower/src", "tools/witness",
+    "tools/ci/fn-replace-check/lower/src",
 ]
 # The generator scans these to write the mod API and the host boundary: its own sources, the vocabulary, the
 # engine crates holding hook targets and their manifests.

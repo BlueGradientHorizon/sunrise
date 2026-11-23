@@ -9435,15 +9435,22 @@ mod oxygen_bonus_tests {
         out
     }
 
-    /// Saved `attributes` against the vanilla 26.3 VanillaCommandExecOracle witness (#2679).
+    /// Saved `attributes` against the vanilla 26.3 witness `tools/test_mob_oxygen_bonus_parity.py` records (#2679).
     #[test]
-    #[ignore = "daily"]
+    #[ignore = "run by tools/test_mob_oxygen_bonus_parity.py"]
     fn a_mob_losing_air_under_water_saves_oxygen_bonus() {
-        let witness: Witness = serde_json::from_str(include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../tools/witness/26.3/mob_oxygen_bonus_save.json"
-        )))
-        .unwrap();
+        let path = std::env::var_os("SUNRISE_MOB_OXYGEN_BONUS_WITNESS").unwrap_or_else(|| {
+            panic!(
+                "SUNRISE_MOB_OXYGEN_BONUS_WITNESS is unset; run tools/test_mob_oxygen_bonus_parity.py, which records the witness"
+            )
+        });
+        let raw = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+            panic!(
+                "failed to read SUNRISE_MOB_OXYGEN_BONUS_WITNESS ({}): {err}; run tools/test_mob_oxygen_bonus_parity.py",
+                std::path::Path::new(&path).display()
+            )
+        });
+        let witness: Witness = serde_json::from_str(&raw).unwrap();
         assert_eq!(witness.minecraft, "26.3");
         assert!(!witness.cases.is_empty());
         for case in &witness.cases {

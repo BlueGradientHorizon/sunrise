@@ -207,7 +207,7 @@ def record_oxygen_bonus_witness(reference, version, destination):
     witness = {
         'minecraft': version,
         'oracle': 'VanillaCommandExecOracle',
-        'harness': 'python3 tools/test_command_exec_parity.py --mob-attribute-save-fixture --reference-only --record-oxygen-bonus-witness tools/witness/26.3/mob_oxygen_bonus_save.json',
+        'harness': 'python3 tools/test_mob_oxygen_bonus_parity.py',
         'cases': cases,
     }
     destination.parent.mkdir(parents=True, exist_ok=True)
