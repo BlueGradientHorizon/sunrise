@@ -970,8 +970,8 @@ impl Game<'_> {
                         if yaw.is_finite() {
                             b.rotation[0] = yaw;
                         }
-                        if !pitch.is_nan() {
-                            b.rotation[1] = super::commands::entity_pitch(pitch);
+                        if let Some(pitch) = pitch {
+                            b.rotation[1] = pitch;
                         }
                     });
                 }
