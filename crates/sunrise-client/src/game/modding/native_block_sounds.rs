@@ -1,16 +1,18 @@
 //! The `sound_type` Part method (`IBlockExtension.getSoundType`). The client library asks through
 //! `native_client_hooks`; only a state whose block has a subscribing part is converted.
 use super::Game;
-use super::api_values::{TryIntoApi, block_state};
+use super::api_values::block_state;
+use super::native_surface::FrictionView;
 use mod_api::{BlockSoundCause, BlockSoundType, SoundSource};
+use sunrise_client::motion::FrictionLevel;
 use sunrise_core::position::BlockPos;
-use sunrise_world::{
-    level::data::BlockSound, native_load_context::LoopContext, registry::BlockStateId,
-};
+use sunrise_world::{level::data::BlockSound, registry::BlockStateId};
 
-/// The game's side of `sunrise_client::block_sounds::native_sound_type`.
+/// The game's side of `sunrise_client::block_sounds::native_sound_type`: the client library decides
+/// (the state's own sound type), the game fires the hook with the read-only level, and the
+/// answer comes back for the library to apply.
 pub(crate) fn sound_type(
-    context: &LoopContext,
+    level: FrictionLevel<'_>,
     pos: BlockPos,
     state: BlockStateId,
     entity: Option<(u32, &str)>,
@@ -20,16 +22,8 @@ pub(crate) fn sound_type(
     if !block_state::block_listens(mod_api::HookId::SoundType, state) {
         return None;
     }
-    let api_state = state.try_into_api().ok()?;
     let mut sound = own.clone();
-    mod_api::dispatch_sound_type(
-        &sunrise_client_render::api_context::LoopReader(context).context(),
-        pos,
-        api_state,
-        entity,
-        cause,
-        &mut sound,
-    );
+    FrictionView(level).native_sound_type(pos, state, entity, cause, &mut sound);
     Some(sound)
 }
 
@@ -44,8 +38,15 @@ impl Game<'_> {
         entity: Option<(u32, &str)>,
         cause: BlockSoundCause,
     ) -> BlockSound {
+        let level = FrictionLevel {
+            world: &self.world,
+            registry: self.pack.assets.registry,
+            context: &self.loop_context,
+            side: self,
+            coefficient: &|_| None,
+        };
         let sound = sunrise_client::block_sounds::sound_type(
-            &self.loop_context,
+            level,
             self.res.facts(),
             BlockPos::new(x, y, z),
             state,
@@ -261,7 +262,13 @@ pub(super) mod tests {
             let air = registry.default_state("minecraft:air").unwrap();
             let planks = registry.default_state("minecraft:oak_planks").unwrap();
             let answered = sunrise_client::block_sounds::sound_type(
-                &game.loop_context,
+                sunrise_client::motion::FrictionLevel {
+                    world: &game.world,
+                    registry: game.pack.assets.registry,
+                    context: &game.loop_context,
+                    side: &*game,
+                    coefficient: &|_| None,
+                },
                 game.res.facts(),
                 BlockPos::new(5, 64, 5),
                 planks,

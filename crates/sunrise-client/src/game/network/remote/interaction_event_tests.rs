@@ -1871,7 +1871,7 @@ fn powder_snow_placement_uses_the_bucket_event_and_contextual_levels() {
     struct PowderSound;
     #[mod_api::sunrise_part]
     impl BlockPart for PowderSound {
-        fn sound_type(&self, _: &dyn mod_api::LoopContext, event: &mut SoundTypeEvent<'_>) {
+        fn sound_type(&self, _: mod_api::LevelSide<'_>, event: &mut SoundTypeEvent<'_>) {
             if event.cause == BlockSoundCause::Place {
                 event.sound.volume = 3.0;
                 event.sound.pitch = -1.25;

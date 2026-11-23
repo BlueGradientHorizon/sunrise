@@ -2752,6 +2752,8 @@ struct GameLevel<'w> {
     debug: bool,
     native_sounds: &'w mut Vec<creatures::NativeSound>,
     loop_context: &'w sunrise_world::native_load_context::LoopContext,
+    /// This side's level data, for the read-only level a block's sound type is asked in.
+    side: native_surface::GameSide<'w>,
     native_particles: &'w mut Vec<lan_particles::QueuedParticle>,
     sound_seeds: Option<&'w sunrise_client::lan::hub::Hub>,
     drop_entity: Option<mod_api::EntityRef>,
@@ -5578,6 +5580,7 @@ impl Game<'_> {
             debug: self.world_debug,
             native_sounds: &mut self.creatures.lan_sounds,
             loop_context: &self.loop_context,
+            side: game_side!(self),
             native_particles: &mut self.creatures.lan_particles,
             sound_seeds: self.lan.as_ref().map(|host| &host.hub),
             drop_tool: None,
