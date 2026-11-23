@@ -692,6 +692,19 @@ pub(super) fn saved_entity(
         .cloned()
 }
 
+/// `BlockEntity.saveWithFullMetadata` of the block entity Sunrise keeps only as a saved row
+/// at `pos`: the row without the chunk's `keepPacked`.
+pub(in crate::game) fn saved_full_metadata(
+    world: &sunrise_client::world::World,
+    pos: [i32; 3],
+) -> Option<Tag> {
+    let mut tag = saved_entity(world, pos)?;
+    if let Tag::Compound(fields) = &mut tag {
+        fields.remove(&"keepPacked".into());
+    }
+    Some(tag)
+}
+
 /// The read-only payload of an entity kept in packed chunk data, not its loader metadata.
 pub(super) fn packed_block_entity_payload(tag: Tag) -> Option<Compound> {
     let Tag::Compound(mut data) = tag else {

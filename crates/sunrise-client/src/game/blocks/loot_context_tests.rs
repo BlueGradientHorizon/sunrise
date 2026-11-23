@@ -154,3 +154,75 @@ fn location_check_reads_the_level_at_the_roll_origin() {
         );
     });
 }
+
+/// A `location_check`'s block predicate reads the block entity at the offset position
+/// through the same `saveWithFullMetadata` as `match_block`: a chest loaded with a stored
+/// `custom_data` patch answers it, by components and by NBT, whether the table is rolled by
+/// the game (`/loot … fish`'s roll), by `LevelRef::roll_loot` or by `LevelRef::block_drops`
+/// of the stone beside it.
+#[test]
+#[ignore = "daily"]
+fn location_check_reads_the_offset_block_entitys_full_data() {
+    const POOLS: &str = r#"[
+        {"rolls":1,"entries":[{"type":"minecraft:item","name":"minecraft:diamond"}],
+         "condition":{"type":"minecraft:location_check","offsetX":-1,
+            "predicate":{"block":{"blocks":"minecraft:chest",
+                "predicates":{"minecraft:custom_data":"{k:1b}"}}}}},
+        {"rolls":1,"entries":[{"type":"minecraft:item","name":"minecraft:gold_ingot"}],
+         "condition":{"type":"minecraft:location_check","offsetX":-1,
+            "predicate":{"block":{
+                "nbt":"{components:{\"minecraft:custom_data\":{k:1b}}}"}}}}
+    ]"#;
+    let near = format!(r#"{{"pools":{POOLS}}}"#);
+    let stone = format!(r#"{{"type":"minecraft:block","pools":{POOLS}}}"#);
+    with_tables(
+        "offset",
+        &[("test/near", &near), ("minecraft/blocks/stone", &stone)],
+        |game| {
+            assert!(game.run_command("setblock 4 100 4 minecraft:chest"));
+            assert!(game.run_command("setblock 5 100 4 minecraft:stone"));
+            assert!(game.run_command("setblock 4 100 8 minecraft:chest"));
+            assert!(game.run_command("setblock 5 100 8 minecraft:stone"));
+            let stored = Tag::compound([
+                ("id", Tag::String("minecraft:chest".into())),
+                ("x", Tag::Int(4)),
+                ("y", Tag::Int(100)),
+                ("z", Tag::Int(4)),
+                ("Items", Tag::List(Vec::new())),
+                (
+                    "components",
+                    Tag::compound([(
+                        "minecraft:custom_data",
+                        Tag::compound([("k", Tag::Byte(1))]),
+                    )]),
+                ),
+            ]);
+            game.world.with_chunk_extras((4, 100, 4), |extras| {
+                extras.block_entity_sources.push(((4, 100, 4), stored))
+            });
+            let level = game.level("minecraft:overworld").unwrap();
+            let both = ["minecraft:diamond", "minecraft:gold_ingot"];
+            for (z, expected) in [(4, &both[..]), (8, &[][..])] {
+                let origin = [5.5, 100.5, f64::from(z) + 0.5];
+                let rolled = game.roll_table_at("test:near", Some(origin), None, None);
+                assert_eq!(
+                    names(&rolled.unwrap()),
+                    expected,
+                    "the game's roll at z {z}"
+                );
+                let rolled = game.level_roll_loot(level, "test:near", origin, None, None);
+                assert_eq!(
+                    names(&rolled.unwrap()),
+                    expected,
+                    "LevelRef::roll_loot at z {z}"
+                );
+                let dropped = game.level_block_drops(level, [5, 100, z], None, None);
+                assert_eq!(
+                    names(&dropped.unwrap()),
+                    expected,
+                    "LevelRef::block_drops at z {z}"
+                );
+            }
+        },
+    );
+}

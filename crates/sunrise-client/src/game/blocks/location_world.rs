@@ -135,14 +135,19 @@ impl World for LevelLocation<'_> {
             .get(self.world.block(p[0], p[1], p[2]))
             .name
             .clone();
-        let entity = self.world.block_entities.get(&key)?;
-        Some(super::commands::data::stored_block_entity_data(
+        let Some(entity) = self.world.block_entities.get(&key) else {
+            return super::spill::saved_full_metadata(self.world, p);
+        };
+        let current = super::commands::data::stored_block_entity_data(
             self.world,
             key,
             &name,
             entity,
             self.items,
             || super::machines::hopper_cooldown_in(self.hoppers, self.world, key),
+        );
+        Some(super::spill::live_full_metadata(
+            self.world, key, entity, &name, self.items, current,
         ))
     }
     fn in_tag(&self, registry: &str, tag: &str, id: &str) -> bool {
