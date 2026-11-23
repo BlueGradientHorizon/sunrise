@@ -73,7 +73,7 @@ impl Game<'_> {
             return;
         }
         let sound = self.selected_block_sound(pos, state, None, BlockSoundCause::Break);
-        self.audio.play_on(
+        self.play_audio_on(
             SoundSource::Blocks.index(),
             sound.event.as_str(),
             Some(pos.map(|v| f64::from(v) + 0.5)),

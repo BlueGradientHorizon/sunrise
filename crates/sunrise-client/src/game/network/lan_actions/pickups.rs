@@ -265,7 +265,7 @@ impl Game<'_> {
         // ClientPacketListener.handleTakeItemEntity's sound, at the orb.
         let mut random = sunrise_client::random_source::create(); // the listener's own stream
         let pitch = (random.next_float() - random.next_float()) * 0.35 + 0.9;
-        self.audio.play(
+        self.play_audio(
             "minecraft:entity.experience_orb.pickup",
             Some([orb_pos.x, orb_pos.y, orb_pos.z]),
             0.1,

@@ -192,7 +192,7 @@ impl Game<'_> {
         // elytra's flying sound.
         if player_fall_flying && !self.was_fall_flying {
             let instance = SoundInstance::elytra(player_position, random_source::create());
-            self.audio.play_instance(instance, false);
+            self.play_audio_instance(instance, false);
         }
         self.was_fall_flying = player_fall_flying;
         let ctx = TickContext {

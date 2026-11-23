@@ -158,7 +158,7 @@ impl Game<'_> {
             if &*self.res.facts().get(current).name != "minecraft:decorated_pot" {
                 return Some(Answer::Pass);
             }
-            self.audio.play(
+            self.play_audio(
                 "minecraft:block.decorated_pot.insert_fail",
                 Some(pos.map(|v| f64::from(v) + 0.5)),
                 1.0,
@@ -205,7 +205,7 @@ impl Game<'_> {
         // The sherds and item go to the guests (BlockEntityData).
         self.mark_block_entity_updated((pos[0], pos[1], pos[2]));
         self.consume_held();
-        self.audio.play(
+        self.play_audio(
             "minecraft:block.decorated_pot.insert",
             Some(center),
             1.0,

@@ -758,7 +758,7 @@ impl Game<'_> {
         self.lan_enchant_offers(gi, gs);
         let pitch = self.world.random.next_float() * 0.1 + 0.9;
         let at = gs.pos.map(|v| f64::from(v) + 0.5);
-        self.audio.play(
+        self.play_audio(
             "minecraft:block.enchantment_table.use",
             Some(at),
             1.0,
@@ -794,7 +794,7 @@ impl Game<'_> {
         let at = gs.pos.map(|v| f64::from(v) + 0.5);
         // The menu's `lastSoundTime` lets one sound through per tick, however
         // many results a shift-click took.
-        self.audio.play(sounds[0], Some(at), 1.0, 1.0);
+        self.play_audio(sounds[0], Some(at), 1.0, 1.0);
     }
 
     /// A click on the guest's station window; false for other windows.

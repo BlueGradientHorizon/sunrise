@@ -437,8 +437,7 @@ impl Game<'_> {
         // `ClientPacketListener.random`, the listener's own stream, never the level's.
         let mut random = sunrise_client::random_source::create();
         let pitch = ((random.next_float() - random.next_float()) * 0.7 + 1.0) * 2.0;
-        self.audio
-            .play("minecraft:entity.item.pickup", Some(feet), 0.2, pitch);
+        self.play_audio("minecraft:entity.item.pickup", Some(feet), 0.2, pitch);
     }
 
     /// Runs `notice` with the lifted `items[index]` lent back into `self.dropped`

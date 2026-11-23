@@ -1608,8 +1608,7 @@ impl Game<'_> {
         let id = c.id as i32;
         self.lan_entity_event(id, TNT_PRIME_EVENT, at);
         if !self.entity_silent(c.id) {
-            self.audio
-                .play_on(BLOCKS, "minecraft:entity.tnt.primed", Some(at), 1.0, 1.0);
+            self.play_audio_on(BLOCKS, "minecraft:entity.tnt.primed", Some(at), 1.0, 1.0);
         }
     }
     /// `MinecartTNT.handleEntityEvent`: event 70 calls `primeFuse`, which on a
@@ -2045,7 +2044,7 @@ impl Game<'_> {
         for cart in &carts {
             if !self.cart_sounds.contains(&cart.id) {
                 let instance = SoundInstance::minecart(cart, random_source::create());
-                let (_, res) = self.audio.play_instance(instance, false);
+                let (_, res) = self.play_audio_instance(instance, false);
                 if res != PlayResult::NotStarted {
                     self.cart_sounds.insert(cart.id);
                 }
@@ -2059,7 +2058,7 @@ impl Game<'_> {
             for underwater in [true, false] {
                 let instance =
                     SoundInstance::riding_minecart(cart, underwater, random_source::create());
-                let (_, res) = self.audio.play_instance(instance, false);
+                let (_, res) = self.play_audio_instance(instance, false);
                 if res == PlayResult::NotStarted {
                     started = false;
                 }

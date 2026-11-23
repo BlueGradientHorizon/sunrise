@@ -261,7 +261,7 @@ impl Game<'_> {
         let (x, z) = (at[0].floor() as i32 >> 4, at[2].floor() as i32 >> 4);
         self.world.modified.insert((x, z));
         if let Some(sound) = sound {
-            self.audio.play(&sound, Some(at), 1.0, 1.0);
+            self.play_audio(&sound, Some(at), 1.0, 1.0);
         }
         if saddle_put_on || body_on {
             self.mob_equip_event(id, [pos.x, pos.y, pos.z], true);

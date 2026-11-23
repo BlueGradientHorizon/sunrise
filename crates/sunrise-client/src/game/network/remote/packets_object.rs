@@ -210,7 +210,7 @@ impl Game<'_> {
         if let Some(o) = orb_at {
             let mut r = sunrise_client::random_source::create();
             let pitch = (r.next_float() - r.next_float()) * 0.35 + 0.9;
-            self.audio.play(
+            self.play_audio(
                 "minecraft:entity.experience_orb.pickup",
                 Some([o.x, o.y, o.z]),
                 0.1,
@@ -219,8 +219,7 @@ impl Game<'_> {
         } else if let Some(at) = at {
             let mut r = sunrise_client::random_source::create();
             let pitch = ((r.next_float() - r.next_float()) * 0.7 + 1.0) * 2.0;
-            self.audio
-                .play("minecraft:entity.item.pickup", Some(at), 0.2, pitch);
+            self.play_audio("minecraft:entity.item.pickup", Some(at), 0.2, pitch);
         }
         // ItemPickupParticle toward the collector (this player, another one or a mob).
         let collector = if self

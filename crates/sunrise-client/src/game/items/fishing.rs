@@ -535,7 +535,7 @@ impl Game<'_> {
             let damage = self.retrieve_hook(stack);
             self.damage_held(damage);
             let pitch = 0.4 / (self.world.random.next_float() * 0.4 + 0.8);
-            self.audio.play(
+            self.play_audio(
                 "minecraft:entity.fishing_bobber.retrieve",
                 Some(at),
                 1.0,
@@ -548,7 +548,7 @@ impl Game<'_> {
             }
         } else {
             let pitch = 0.4 / (self.world.random.next_float() * 0.4 + 0.8);
-            self.audio.play(
+            self.play_audio(
                 "minecraft:entity.fishing_bobber.throw",
                 Some(at),
                 0.5,
@@ -960,7 +960,7 @@ impl Game<'_> {
                     }
                 }
                 let pitch = 1.0 + (h.random.next_float() - h.random.next_float()) * 0.4;
-                self.audio.play(
+                self.play_audio(
                     "minecraft:entity.fishing_bobber.splash",
                     Some(at),
                     0.25,
@@ -1224,7 +1224,7 @@ impl Game<'_> {
                             EntityCollision::Deflected { first, rot } => {
                                 if first {
                                     old_yaw += rot;
-                                    self.audio.play(
+                                    self.play_audio(
                                         "minecraft:entity.breeze.deflect",
                                         breeze,
                                         1.0,

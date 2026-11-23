@@ -5254,8 +5254,7 @@ impl Game<'_> {
         let client = self.options.execution_role.is_client();
         match splash {
             ItemSplash::Sound { at, volume, pitch } if !client => {
-                self.audio
-                    .play("minecraft:entity.generic.splash", Some(at), volume, pitch);
+                self.play_audio("minecraft:entity.generic.splash", Some(at), volume, pitch);
             }
             ItemSplash::Particle {
                 bubble,
@@ -5976,8 +5975,7 @@ impl Game<'_> {
                 } => {
                     self.growth_particles(pos, data);
                     let at = [pos.x, pos.y, pos.z].map(|v| f64::from(v) + 0.5);
-                    self.audio
-                        .play("minecraft:item.bone_meal.use", Some(at), 1.0, 1.0);
+                    self.play_audio("minecraft:item.bone_meal.use", Some(at), 1.0, 1.0);
                 }
                 LevelEvent::LevelEvent {
                     id: 2015,
@@ -6085,7 +6083,7 @@ impl Game<'_> {
                     );
                     let random = self.particles.level_random();
                     let pitch = (1.0 + (random.next_float() - random.next_float()) * 0.2) * 0.7;
-                    self.audio.play_unshared(
+                    self.play_audio_unshared(
                         "minecraft:block.end_gateway.spawn",
                         Some(at),
                         10.0,
@@ -6111,7 +6109,7 @@ impl Game<'_> {
                 // relative sound, and it is not captured for other players.
                 LevelEvent::LevelEvent { id: 1032, .. } => {
                     let pitch = self.particles.level_random().next_float() * 0.4 + 0.8;
-                    self.audio.play_on(
+                    self.play_audio_on(
                         sunrise_client::sound_engine::AMBIENT,
                         "minecraft:block.portal.travel",
                         None,
@@ -6209,9 +6207,9 @@ impl Game<'_> {
                         ) {
                             // Clients play these sounds from their level events;
                             // capturing it also sends a duplicate sound packet.
-                            self.audio.play_unshared(name, c, volume, pitch);
+                            self.play_audio_unshared(name, c, volume, pitch);
                         } else {
-                            self.audio.play(name, c, volume, pitch);
+                            self.play_audio(name, c, volume, pitch);
                         }
                     }
                     // LevelEventHandler draws smoke after the sound.
@@ -6266,7 +6264,7 @@ impl Game<'_> {
                         &qualified
                     };
                     if source.is_some() {
-                        self.audio.play_on(
+                        self.play_audio_on(
                             mod_api::SoundSource::Blocks.index(),
                             name,
                             Some(c),
@@ -6285,7 +6283,7 @@ impl Game<'_> {
                             captured.except_entity = Some(placer);
                         }
                     } else {
-                        self.audio.play(name, Some(c), volume, pitch);
+                        self.play_audio(name, Some(c), volume, pitch);
                     }
                 }
                 // Handled as the behaviour emits it (GameLevel::emit).
@@ -6388,8 +6386,7 @@ impl Game<'_> {
                         f64::from(pos.y) + 0.5,
                         f64::from(pos.z) + 0.5,
                     ];
-                    self.audio
-                        .play("minecraft:block.frogspawn.hatch", Some(at), 1.0, 1.0);
+                    self.play_audio("minecraft:block.frogspawn.hatch", Some(at), 1.0, 1.0);
                     let count = 2 + self.world.random.next_int_bound(4).unwrap_or(0);
                     for _ in 0..count {
                         // getRandomTadpolePositionOffset: 0.2..0.8 inside the block.
@@ -6483,7 +6480,7 @@ impl Game<'_> {
                             f64::from(pos.y) + 0.5,
                             f64::from(pos.z) + 0.5,
                         ];
-                        self.audio.play(sound, Some(at), 3.0, 1.0);
+                        self.play_audio(sound, Some(at), 3.0, 1.0);
                     }
                 }
                 // `level.addParticle`: only the local player's own click draws it.
@@ -7688,8 +7685,7 @@ impl Game<'_> {
                         .position(|s| *s == "player")
                         .unwrap_or(0);
                     let capture = g.audio.capture.take();
-                    g.audio
-                        .play_on(players, "ui.hud.bubble_pop", Some(at), volume, pitch);
+                    g.play_audio_on(players, "ui.hud.bubble_pop", Some(at), volume, pitch);
                     g.audio.capture = capture;
                 }
             });
@@ -9758,10 +9754,10 @@ impl Game<'_> {
             f64::from(pos[2]) + 0.5,
         ];
         if self.lan_acting.is_some() {
-            self.audio.play_unshared(&sound, Some(at), 1.0, 1.0);
+            self.play_audio_unshared(&sound, Some(at), 1.0, 1.0);
             self.guest_player_sounds.push((sound.clone(), at, 1.0, 1.0));
         } else {
-            self.audio.play(&sound, Some(at), 1.0, 1.0);
+            self.play_audio(&sound, Some(at), 1.0, 1.0);
         }
         // ItemStack.useOn: a use that acted counts as one of the item.
         self.award_stat("used", &stack.item, 1);
@@ -9777,11 +9773,11 @@ impl Game<'_> {
     fn wax_on_sound(&mut self, at: [f64; 3]) {
         let sound = "minecraft:item.honeycomb.wax_on";
         if self.lan_acting.is_some() {
-            self.audio.play_unshared(sound, Some(at), 1.0, 1.0);
+            self.play_audio_unshared(sound, Some(at), 1.0, 1.0);
             self.guest_block_sounds
                 .push((sound.to_owned(), at, 1.0, 1.0));
         } else {
-            self.audio.play(sound, Some(at), 1.0, 1.0);
+            self.play_audio(sound, Some(at), 1.0, 1.0);
         }
     }
     /// `BlockTransformer.transformBlock`'s `COPPER_CHEST` extra: a double
@@ -9902,7 +9898,7 @@ impl Game<'_> {
             } else {
                 "minecraft:item.bucket.fill"
             };
-            self.audio.play(sound, Some(at(hit.pos)), 1.0, 1.0);
+            self.play_audio(sound, Some(at(hit.pos)), 1.0, 1.0);
             self.post_block_game_event(
                 "minecraft:fluid_pickup",
                 hit.pos,
@@ -12140,7 +12136,7 @@ impl Game<'_> {
                     let (w, h) = self.gui_size();
                     let (x, y) = sunrise_client::level_loading::file_fixer_cancel(w, h);
                     if sunrise_client::ui::hovered(self.cursor, x, y, 200.0, 20.0) {
-                        self.audio.play_button_click();
+                        self.play_audio_button_click();
                         upgrade.set_canceled();
                     }
                 }
@@ -12313,7 +12309,7 @@ impl Game<'_> {
             let handled = widget || self.preset_editor_mouse_clicked(code, double_click);
             self.save_title_options();
             if sound {
-                self.audio.play_button_click();
+                self.play_audio_button_click();
             }
             self.title_action(action)?;
             self.reopen_data_packs()?;
@@ -13476,7 +13472,7 @@ impl Game<'_> {
             .and_then(|t| t.tab_bar_key(key, ctrl, shift))
         {
             if sound {
-                self.audio.play_button_click();
+                self.play_audio_button_click();
             }
             return Ok(true);
         }
@@ -13494,7 +13490,7 @@ impl Game<'_> {
                 let handled = sound || !matches!(action, Action::None);
                 self.save_title_options();
                 if sound {
-                    self.audio.play_button_click();
+                    self.play_audio_button_click();
                 }
                 self.title_action(action)?;
                 Ok(handled)

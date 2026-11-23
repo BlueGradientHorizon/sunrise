@@ -387,7 +387,7 @@ fn packets_ask_client_level_before_playback_not_ui() {
                 );
                 assert_eq!(log.played.len(), 2, "absent emitter starts no playback");
             }
-            game.audio.play_button_click();
+            game.play_audio_button_click();
             game.dispatch_play_sounds();
             let log = log.lock().unwrap();
             assert_eq!(log.requests.len(), 3, "UI playback adds no level request");

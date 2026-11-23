@@ -1197,7 +1197,7 @@ impl Game<'_> {
             (0.8, 0.8 + self.world.random.next_float() * 0.4)
         };
         if self.is_logical_server() {
-            self.audio.play(sound, Some(at), volume, pitch);
+            self.play_audio(sound, Some(at), volume, pitch);
         } else {
             self.play_client_player_sound(sound, volume, pitch);
         }

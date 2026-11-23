@@ -598,7 +598,7 @@ impl Game<'_> {
             KeyCode::ArrowLeft | KeyCode::ArrowRight => choice.arrow(key == KeyCode::ArrowLeft),
             KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => {
                 if let Some(button) = choice.pressed() {
-                    self.audio.play_button_click();
+                    self.play_audio_button_click();
                     self.answer_command_prompt(button == 0);
                     return true;
                 }
@@ -621,7 +621,7 @@ impl Game<'_> {
             .command_prompt_layout(prompt, self.gui_size())
             .pressed_at(self.cursor);
         if let Some(button) = pressed {
-            self.audio.play_button_click();
+            self.play_audio_button_click();
             self.answer_command_prompt(button == 0);
         }
         pressed.is_some()

@@ -41,8 +41,7 @@ impl Game<'_> {
             && let Some(sunrise_client::mobs::MobEvent::Sound(name, at, volume, pitch)) =
                 zombie_villager::cure_sound(m)
         {
-            self.audio
-                .play_unshared(&format!("minecraft:{name}"), Some(at), volume, pitch);
+            self.play_audio_unshared(&format!("minecraft:{name}"), Some(at), volume, pitch);
         }
     }
 

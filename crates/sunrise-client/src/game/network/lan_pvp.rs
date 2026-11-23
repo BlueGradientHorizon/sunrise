@@ -371,7 +371,7 @@ impl Game<'_> {
         };
         let harm = self.player_may_harm(team, s.team.as_ref());
         if s.knockback_attack {
-            self.audio.play(
+            self.play_audio(
                 "minecraft:entity.player.attack.knockback",
                 Some(s.from),
                 1.0,
@@ -493,7 +493,7 @@ impl Game<'_> {
         }
         // A critical hit a mod let sweep has both sounds (attackVisualEffects).
         if swept.is_none() || s.crit {
-            self.audio.play(sound, Some(s.from), 1.0, 1.0);
+            self.play_audio(sound, Some(s.from), 1.0, 1.0);
         }
         hurt
     }

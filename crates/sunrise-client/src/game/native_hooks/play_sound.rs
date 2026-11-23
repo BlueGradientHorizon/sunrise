@@ -66,7 +66,7 @@ impl Game<'_> {
     pub(in crate::game) fn start_sound(&mut self, id: InstanceId) -> PlayResult {
         match self.audio.begin_play(id) {
             Some(prepared) => self.fire_start(prepared),
-            None => self.audio.play_id(id),
+            None => self.play_audio_id(id),
         }
     }
 

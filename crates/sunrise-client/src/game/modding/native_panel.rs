@@ -889,8 +889,7 @@ impl Game<'_> {
         };
         if let Some(to) = step {
             self.panel.page = to;
-            self.audio
-                .play("minecraft:ui.button.click", None, 0.25, 1.0);
+            self.play_audio("minecraft:ui.button.click", None, 0.25, 1.0);
             return true;
         }
         if let Some((index, _)) = self.browser_hovered(&layout) {

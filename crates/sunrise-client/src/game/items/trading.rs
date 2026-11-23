@@ -700,8 +700,7 @@ impl Game<'_> {
                 if let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut()) {
                     m.focused = Some(i);
                 }
-                self.audio
-                    .play("minecraft:ui.button.click", None, 0.25, 1.0);
+                self.play_audio("minecraft:ui.button.click", None, 0.25, 1.0);
                 self.try_move_items(index);
                 return true;
             }
@@ -728,8 +727,7 @@ impl Game<'_> {
         else {
             return false;
         };
-        self.audio
-            .play("minecraft:ui.button.click", None, 0.25, 1.0);
+        self.play_audio("minecraft:ui.button.click", None, 0.25, 1.0);
         self.try_move_items(index);
         true
     }

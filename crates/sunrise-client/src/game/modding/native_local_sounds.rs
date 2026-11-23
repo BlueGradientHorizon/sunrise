@@ -120,7 +120,7 @@ impl Game<'_> {
             if stopped.contains(&id) {
                 continue;
             }
-            let instance = self.audio.play_mod_sound(&sound, after);
+            let instance = self.play_audio_mod_sound(&sound, after);
             sounds.started.insert(id, instance);
         }
         for (id, change) in sounds.changes.get_mut().drain(..) {

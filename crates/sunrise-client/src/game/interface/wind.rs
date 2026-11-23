@@ -255,8 +255,7 @@ impl Game<'_> {
         proj.shoot_from_rotation(self.pitch, self.yaw, 0.0, 1.5, 1.0, velocity, on_ground);
         self.spawn_projectile(proj, stack);
         let pitch = 0.4 / (self.world.random.next_float() * 0.4 + 0.8);
-        self.audio
-            .play("minecraft:entity.wind_charge.throw", Some(eye), 0.5, pitch);
+        self.play_audio("minecraft:entity.wind_charge.throw", Some(eye), 0.5, pitch);
         self.award_stat("used", "minecraft:wind_charge", 1);
         self.swing_arm();
         if !self.creative
@@ -858,7 +857,7 @@ impl Game<'_> {
             let pitch = (1.0
                 + (super::explosion::client_float() - super::explosion::client_float()) * 0.2)
                 * 0.7;
-            self.audio.play(src.sound, Some(center), 4.0, pitch);
+            self.play_audio(src.sound, Some(center), 4.0, pitch);
         }
         // Explosion.isSmall: below a radius of 2.
         let ty = if radius < 2.0 {

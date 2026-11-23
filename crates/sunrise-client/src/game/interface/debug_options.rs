@@ -401,7 +401,7 @@ impl Game<'_> {
         self.debug_options = Some(s);
         if let Some((path, status)) = clicked {
             // OptionEntry.setValue.
-            self.audio.play_button_click();
+            self.play_audio_button_click();
             self.debug_entries.set_status(path, status);
             return true;
         }
@@ -421,15 +421,15 @@ impl Game<'_> {
                 if self.debug_entries.is_using_profile(profile) {
                     return search;
                 }
-                self.audio.play_button_click();
+                self.play_audio_button_click();
                 self.debug_entries.load_profile(profile);
             }
             2 => {
-                self.audio.play_button_click();
+                self.play_audio_button_click();
                 self.cycle_debug_gui_scale(shift);
             }
             _ => {
-                self.audio.play_button_click();
+                self.play_audio_button_click();
                 self.close_debug_options();
             }
         }

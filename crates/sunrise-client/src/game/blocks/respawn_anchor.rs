@@ -162,8 +162,7 @@ impl Game<'_> {
             f64::from(pos[1]) + 0.5,
             f64::from(pos[2]) + 0.5,
         ];
-        self.audio
-            .play("minecraft:block.respawn_anchor.charge", Some(at), 1.0, 1.0);
+        self.play_audio("minecraft:block.respawn_anchor.charge", Some(at), 1.0, 1.0);
         Ok(())
     }
     /// `RespawnAnchorBlock.useItemOn`'s test: `held` is glowstone
@@ -282,7 +281,7 @@ impl Game<'_> {
                 f64::from(pos[1]) + 0.5,
                 f64::from(pos[2]) + 0.5,
             ];
-            self.audio.play(
+            self.play_audio(
                 "minecraft:block.respawn_anchor.set_spawn",
                 Some(at),
                 1.0,
@@ -338,7 +337,7 @@ impl Game<'_> {
             f64::from(head[1]) + 0.5,
             f64::from(head[2]) + 0.5,
         ];
-        self.audio.play(
+        self.play_audio(
             "minecraft:block.straw_bed.break_leave",
             Some(center),
             1.0,

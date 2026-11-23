@@ -14,7 +14,7 @@ impl Game<'_> {
                     let at = [player.position.x, player.position.y, player.position.z];
                     if player.is_on_fire() {
                         let pitch = extinguish_pitch(game.particles.random());
-                        game.audio.play_on(
+                        game.play_audio_on(
                             SoundSource::Players.index(),
                             "minecraft:entity.generic.extinguish_fire",
                             Some(at),
@@ -46,7 +46,7 @@ impl Game<'_> {
                 let at = [stand.position.x, stand.position.y, stand.position.z];
                 if stand.is_on_fire() {
                     let pitch = extinguish_pitch(self.particles.random());
-                    self.audio.play_on(
+                    self.play_audio_on(
                         SoundSource::Neutral.index(),
                         "minecraft:entity.generic.extinguish_fire",
                         Some(at),
@@ -68,7 +68,7 @@ impl Game<'_> {
                 if item.fire_ticks > 0 && !immune {
                     let at = [item.position.x, item.position.y, item.position.z];
                     let pitch = extinguish_pitch(&mut item.random);
-                    self.audio.play_on(
+                    self.play_audio_on(
                         SoundSource::Ambient.index(),
                         "minecraft:entity.generic.extinguish_fire",
                         Some(at),

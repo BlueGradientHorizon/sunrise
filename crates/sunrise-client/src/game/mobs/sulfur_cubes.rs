@@ -80,8 +80,7 @@ impl Game<'_> {
 
     fn sulfur_sound(&mut self, index: usize, sound: &str) {
         let at = self.mobs[index].center();
-        self.audio
-            .play(&format!("minecraft:{sound}"), Some(at), 1.0, 1.0);
+        self.play_audio(&format!("minecraft:{sound}"), Some(at), 1.0, 1.0);
     }
     /// Spit the swallowed block out on top (`EntityAttachment.PASSENGER`).
     fn eject_sulfur_block(&mut self, index: usize) {
@@ -191,7 +190,7 @@ impl Game<'_> {
     fn bucket_sulfur_cube(&mut self, index: usize) {
         let held = self.held().cloned();
         let m = &self.mobs[index];
-        self.audio.play(
+        self.play_audio(
             "minecraft:item.bucket.fill_sulfur_cube",
             Some(m.center()),
             1.0,
