@@ -2005,7 +2005,7 @@ impl Game<'_> {
 impl Game<'_> {}
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::super::server_travel::TravelCause;
     use super::*;
     use std::sync::{
@@ -2573,6 +2573,11 @@ mod tests {
 
     #[test]
     fn portal_transfer_pending_arrival_does_not_save_transient_tnt_immunity() {
+        run_portal_transfer_pending_arrival_does_not_save_transient_tnt_immunity();
+    }
+
+    pub(in crate::game) fn run_portal_transfer_pending_arrival_does_not_save_transient_tnt_immunity()
+     {
         let arrival = Arrival {
             plan: Plan::end_portal(
                 Dim::End,

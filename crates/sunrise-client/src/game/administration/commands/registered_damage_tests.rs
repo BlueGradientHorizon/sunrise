@@ -619,6 +619,10 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
 #[test]
 #[ignore = "daily"]
 fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
+    run_live_damage_and_blast_creaking_reactions_and_timed_player_credit();
+}
+
+pub(in crate::game) fn run_live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
     use crate::game::{
         combat::PlayerCredit,
         commands::Target,
