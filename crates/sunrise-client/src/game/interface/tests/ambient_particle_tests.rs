@@ -28,8 +28,10 @@ fn an_ambient_block_or_item_particle_needs_a_name_of_the_level() {
                 },
             )
         };
-        // At the camera, where every particle setting admits a particle.
+        // At the camera, at `ParticleStatus.ALL`: the minimal setting admits none here.
         let at = game.particles.camera;
+        game.settings.particles = 0;
+        game.particles.particle_level = 0;
         game.particles.requested = Some(Vec::new());
         game.emit_model_ambient(&item("minecraft:apple"), at);
         game.emit_model_ambient(&block("minecraft:stone"), at);
