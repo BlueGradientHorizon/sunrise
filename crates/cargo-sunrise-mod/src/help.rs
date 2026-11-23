@@ -113,10 +113,11 @@ pub fn short() -> String {
     out
 }
 
-/// Every command's usage, one per line: `help all`.
+/// Author-facing commands' usage, one per line: `help all`.
 pub fn all() -> String {
     COMMANDS
         .iter()
+        .filter(|c| !c.name.starts_with("native-"))
         .map(|c| format!("cargo sunrise-mod {}\n", c.usage))
         .collect()
 }

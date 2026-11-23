@@ -147,7 +147,7 @@ cargo sunrise-mod --help
 ```
 
 It prints a short list of the everyday commands, which shows it is installed (`cargo sunrise-mod help all`
-lists every command's usage, and `cargo sunrise-mod <command> --help` says one command's):
+lists the author-facing commands, and `cargo sunrise-mod <command> --help` shows the usage for one command):
 
 ```text
 usage: cargo sunrise-mod <command> [options]
@@ -186,11 +186,9 @@ Which to take:
 naming one (`cargo install`); a tool older than that option answers with its usage instead. The newest tool's commit is `commit` in
 [`tool.json`](https://github.com/sunrise-org/sunrise/releases/download/mod-tool/tool.json).
 
-For [tagged native releases](../how-to/publish.md#tagged-native-releases-in-github-actions), use a signed `mod-tool`
-that supports both `cargo sunrise-mod release plan` and `cargo sunrise-mod release scripts`. The generated workflow
-verifies the tool and `tool.json` against the signed sums before running it, pins the same tool commit across all
-jobs and extracts the release scripts shipped in that tool. The mod's stable SDK is a separate pin, even if that
-SDK ships an older tool.
+For [registry releases](../how-to/publish.md#releasing), use the signed `mod-tool` release. The shared workflow
+verifies the tool before running it and records its commit in the job summary. A native mod's SDK pin is
+separate from the tool version.
 
 ## With `cargo install`
 
