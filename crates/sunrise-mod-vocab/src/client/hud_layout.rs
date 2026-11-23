@@ -1,5 +1,18 @@
 //! Vocabulary for GUI poses, texture blits and heart sprites.
 // no wire: a pose operation is passed directly to an in-process canvas scope.
+
+/// Keep a listener's replacement within `Player.getAttackStrengthScale`'s output range.
+pub(crate) fn validate_hotbar_attack_indicator_progress(
+    _accepted: &f32,
+    proposed: &f32,
+) -> Result<(), &'static str> {
+    if (0.0..=1.0).contains(proposed) {
+        Ok(())
+    } else {
+        Err("progress")
+    }
+}
+
 /// A `Matrix3x2fStack` operation applied in [`crate::GuiCanvas::scope`] to a copy of the current pose.
 #[derive(Clone, Copy, Debug, PartialEq)]
 // exhaustive: a closed set the game matches without a wildcard

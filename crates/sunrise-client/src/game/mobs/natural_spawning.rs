@@ -3304,7 +3304,8 @@ mod tests {
                 _ => return mod_api::Flow::Continue,
             };
             let resolved = host
-                .entity_by_uuid(mod_api::EntityUuid(expected))
+                .level(event.dimension)
+                .and_then(|level| level.entity_by_uuid(host, mod_api::EntityUuid(expected)))
                 .map(|entity| entity.id());
             self.joined.lock().unwrap().push((event.entity, resolved));
             if self.veto && event.kind == NATURAL_RIDER {
@@ -3413,8 +3414,10 @@ mod tests {
                         game.persist.uuids.get(rider),
                         (!veto).then_some(&rider_uuid)
                     );
+                    let level = game.level_ref(game.lend_epoch(), game.dim.key());
                     assert_eq!(
-                        game.entity_by_uuid(mod_api::EntityUuid(RIDER_UUID))
+                        level
+                            .entity_by_uuid(game, mod_api::EntityUuid(RIDER_UUID))
                             .map(|r| r.id()),
                         (!veto).then_some(*rider)
                     );

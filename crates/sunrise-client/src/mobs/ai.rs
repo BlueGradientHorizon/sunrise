@@ -4342,6 +4342,76 @@ mod server_ai_brain_tests {
         assert!(ran, "vanilla data is missing");
     }
 
+    /// A stone floor wide enough to walk 16 blocks away on, and `block` at (0, 64, 0).
+    fn repellent_floor(
+        block: &'static str,
+    ) -> impl FnOnce(&mut crate::world::World, &sunrise_world::registry::BlockRegistry) {
+        move |world, registry| {
+            let stone = registry.default_state("minecraft:stone").unwrap();
+            for cx in -3..3 {
+                for cz in -3..3 {
+                    world
+                        .chunks
+                        .insert((cx, cz), Arc::new(crate::chunk::Chunk::empty(cx, cz)));
+                }
+            }
+            for x in -48..48 {
+                for z in -48..48 {
+                    world.set(x, 63, z, stone).unwrap();
+                }
+            }
+            world
+                .set(0, 64, 0, registry.default_state(block).unwrap())
+                .unwrap();
+        }
+    }
+
+    /// As [`a_repellent_scanned_this_tick_is_avoided_this_tick`], on a tick where
+    /// `Mob.serverAiStep`'s goal selectors only tick the goals already running (an odd `tickCount + id` past the first ticks): the avoid behaviour is the
+    /// brain's, which `Brain.startEachNonRunningBehavior` tries on every tick, so it still
+    /// starts on the scan's tick.
+    #[test]
+    #[ignore = "daily"]
+    fn a_repellent_scanned_on_a_running_goals_only_tick_is_avoided_that_tick() {
+        for (name, block, goal) in [
+            (
+                "minecraft:piglin",
+                "minecraft:soul_lantern",
+                "PiglinAvoidRepellent",
+            ),
+            (
+                "minecraft:hoglin",
+                "minecraft:warped_fungus",
+                "HoglinAvoidRepellent",
+            ),
+        ] {
+            let ran = with_built_test_world(&[], repellent_floor(block), |w, types| {
+                let mut world = w.clone();
+                world.player = None;
+                let mut level = crate::health::TestLevel::new(0);
+                let mut events = Vec::new();
+                let mut m = Mob::new(
+                    2,
+                    Arc::new(types.types[name].clone()),
+                    Vec3::new(3.5, 64.0, 0.5),
+                    0.0,
+                );
+                // `tickCount` 5, id 2: 7 is odd, so only the running goals tick.
+                m.age = 5;
+                m.extra.piglin.sensor_wait = 1;
+                m.ground.on_ground = true;
+                let _ = server_ai_step(&mut m, &world, &mut level.level(), &mut events, false);
+                assert_eq!(m.extra.repellent, Some([0, 64, 0]), "{name} scans");
+                assert!(
+                    m.ai.goals.is_running(goal),
+                    "{name}: {:?}",
+                    m.ai.goals.running_names()
+                );
+            });
+            assert!(ran, "vanilla data is missing");
+        }
+    }
+
     /// `Brain.tick` runs the sensors before the behaviours: on the tick `PiglinSpecificSensor`
     /// finds a soul lantern 3 blocks away, `PiglinAi.avoidRepellent` (the idle activity's
     /// `SetWalkTargetAwayFrom.pos(NEAREST_REPELLENT, ..)`) already walks away from it, as
@@ -4543,14 +4613,8 @@ mod server_ai_brain_tests {
                     .any(|e| matches!(e, MobEvent::DropItem { .. })),
                 "the ingot is not dropped: {events:?}"
             );
-            let MobEvent::Convert { from, .. } = &events[convert] else {
-                unreachable!()
-            };
-            assert_eq!(
-                from.extra.off_hand_id(),
-                None,
-                "the zombified piglin carries nothing"
-            );
+            // What the zombified piglin carries is the game's to settle, once it has handled
+            // the `FinishAdmiring` (`game::piglin_conversion_tests`).
         });
         assert!(ran, "vanilla data is missing");
     }
@@ -8054,7 +8118,14 @@ mod burn_and_rose_tests {
     fn a_mob_in_a_lava_cauldron_burns() {
         let ran = crate::mobs::world::with_built_test_world(
             &[],
-            build_with("minecraft:lava_cauldron"),
+            |world, registry| {
+                build_with("minecraft:lava_cauldron")(world, registry);
+                // A second cauldron with powder snow on top of it.
+                let cauldron = registry.default_state("minecraft:lava_cauldron").unwrap();
+                let snow = registry.default_state("minecraft:powder_snow").unwrap();
+                world.set(-3, 64, -3, cauldron).unwrap();
+                world.set(-3, 65, -3, snow).unwrap();
+            },
             |w, types| {
                 for (y, hurt) in [(64.25, true), (65.0, false)] {
                     let kind = Arc::new(types.types["minecraft:pig"].clone());
@@ -8069,6 +8140,71 @@ mod burn_and_rose_tests {
                     assert_eq!(m.health, expected, "at y {y}");
                     assert_eq!(m.fire_ticks > 0, hurt, "at y {y}");
                 }
+
+                let kind = Arc::new(types.types["minecraft:pig"].clone());
+                let mut m = Mob::new(1, kind, Vec3::new(0.5, 64.96875, 0.5), 0.0);
+                register(&mut m);
+                crate::mobs::finalize::set_baby(&mut m, true);
+                m.previous = m.position;
+                let start = m.health;
+                let (mut lr, mut events) = (crate::health::TestLevel::new(0), Vec::new());
+                // A baby fits between the walls: above the fill but within
+                // the block bounds is still outside the inside shape.
+                effects_from_blocks(&mut m, w, &mut lr.level(), &mut events);
+                assert_eq!(m.fire_ticks, 0);
+                assert_eq!(m.health, start);
+
+                // Neither box overlaps the cauldron at the ends of the move,
+                // but the sweep crosses it and ignites, thaws and hurts once.
+                m.previous = Vec3::new(-0.5, 64.5, 0.5);
+                m.position = Vec3::new(1.5, 64.5, 0.5);
+                m.ticks_frozen = 100;
+                effects_from_blocks(&mut m, w, &mut lr.level(), &mut events);
+                assert_eq!(m.fire_ticks, 300);
+                assert_eq!(m.health, start - 4.0);
+                assert_eq!(m.ticks_frozen, 0);
+
+                // The hurt runs after the ignition: a pig the lava kills is
+                // already burning when it dies.
+                let kind = Arc::new(types.types["minecraft:pig"].clone());
+                let mut m = Mob::new(1, kind, Vec3::new(0.5, 64.25, 0.5), 0.0);
+                register(&mut m);
+                m.previous = m.position;
+                m.health = 1.0;
+                effects_from_blocks(&mut m, w, &mut lr.level(), &mut events);
+                assert!(!m.alive());
+                assert_eq!(m.fire_ticks, 300);
+
+                // CLEAR_FREEZE thaws a fire-immune mob, which the lava neither
+                // lights nor hurts.
+                let kind = Arc::new(types.types["minecraft:blaze"].clone());
+                let mut m = Mob::new(1, kind, Vec3::new(0.5, 64.25, 0.5), 0.0);
+                register(&mut m);
+                m.previous = m.position;
+                m.ticks_frozen = 100;
+                let (start, fire) = (m.health, m.fire_ticks);
+                effects_from_blocks(&mut m, w, &mut lr.level(), &mut events);
+                assert_eq!((m.ticks_frozen, m.fire_ticks, m.health), (0, fire, start));
+
+                // Feet in the lava and back in the powder snow above, in one
+                // step: the ignition comes first, so the burning pig melts the
+                // snow before EXTINGUISH puts it out.
+                let kind = Arc::new(types.types["minecraft:pig"].clone());
+                let mut m = Mob::new(1, kind, Vec3::new(-2.5, 64.25, -2.5), 0.0);
+                register(&mut m);
+                m.previous = m.position;
+                let start = m.health;
+                events.clear();
+                effects_from_blocks(&mut m, w, &mut lr.level(), &mut events);
+                assert_eq!(m.health, start - 4.0);
+                assert!(!m.is_on_fire());
+                assert!(events.iter().any(|event| matches!(
+                    event,
+                    MobEvent::BreakBlock {
+                        pos: [-3, 65, -3],
+                        ..
+                    }
+                )));
             },
         );
         assert!(ran, "vanilla data is missing");
