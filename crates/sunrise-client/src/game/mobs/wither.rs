@@ -208,24 +208,14 @@ impl Game<'_> {
                 // WitherSkull.onHitEntity's source: the wither launched
                 // it, and `magic` names no entity and no position.
                 self.combat.projectile_owner = owner;
-                // EnchantmentHelper.doPostAttackEffects runs only on a
-                // target that lived.
-                self.combat.post_attack_if_alive = true;
                 if skull.from.is_none() {
                     self.combat.projectile_direct = None;
                 }
-                let hit = self.hurt_player_from(
-                    amount,
-                    skull.from,
-                    super::creatures::damage_type(kind, false),
-                    Some(owner),
-                    false,
-                );
-                if hit && wither_ticks > 0 {
-                    self.give_player_effect("minecraft:wither", wither_ticks, 1);
-                }
+                let damage_type = super::creatures::damage_type(kind, false);
+                let hit =
+                    self.hurt_player_from(amount, skull.from, damage_type, Some(owner), false);
                 // A totem that fired saves the player inside hurtServer:
-                // still alive, so no heal.
+                // still alive, so run the enchantments instead of healing the owner.
                 let killed = self.player.as_ref().is_some_and(|pl| {
                     killed(
                         hit,
@@ -235,6 +225,11 @@ impl Game<'_> {
                 });
                 if killed {
                     self.heal_skull_owner(p, live_owner);
+                } else if hit && live_owner.is_some() {
+                    self.shot_post_attack(p, Who::Player, damage_type);
+                }
+                if hit && wither_ticks > 0 {
+                    self.give_player_effect("minecraft:wither", wither_ticks, 1);
                 }
             }
             // EnderDragonPart.hurtServer / EndCrystal.hurtServer: skull with live owner uses wither_skull, else magic.
@@ -313,7 +308,7 @@ impl Game<'_> {
                     self.mob_post_attack(
                         id,
                         live_owner,
-                        Some("minecraft:wither_skull"),
+                        Some((p.id, "minecraft:wither_skull")),
                         Some("minecraft:wither_skull"),
                     );
                 }

@@ -39,13 +39,13 @@ use mod_api::{
     self, Answered, BlockPlacement, BlockTintSources, CauldronFluidContents, CauldronInteractions,
     ClientAudioOptions, ClientChatOptions, ClientGraphicsOptions, ClientGuiOptions,
     ClientInputOptions, ClientMiningPrediction, ClientModifiers, ClientReloadListeners,
-    ColorResolvers, EnchantmentDamageEffects, EnchantmentInfo, EntityLayers, EntityRef,
-    EntityRenderers, ExperienceOrbRef, GameRuleActor, GuiLayerRegistrar, HandDrawContext,
-    HandRender, InsideEffects, InteractionAttempt, InteractionKey, ItemEntityRef, LifecycleContext,
-    LivingRef, LoadConditions, NoteBlockChange, ParticleProviders, PathComputationType, Placement,
-    PlayerRef, PoiTypeExtensions, RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget,
-    ScreenWidgets, ScreenshotImage, ServerReloadListeners, ServerTickPhase, SpecialModelRenderers,
-    ToolUse, VillagerProfessions, WorldPhase,
+    ColorResolvers, EnchantmentEffects, EnchantmentInfo, EntityLayers, EntityRef, EntityRenderers,
+    ExperienceOrbRef, GameRuleActor, GuiLayerRegistrar, HandDrawContext, HandRender, InsideEffects,
+    InteractionAttempt, InteractionKey, ItemEntityRef, LifecycleContext, LivingRef, LoadConditions,
+    NoteBlockChange, ParticleProviders, PathComputationType, Placement, PlayerRef,
+    PoiTypeExtensions, RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget, ScreenWidgets,
+    ScreenshotImage, ServerReloadListeners, ServerTickPhase, SpecialModelRenderers, ToolUse,
+    VillagerProfessions, WorldPhase,
 };
 use mod_api::{
     ActiveEffect, AttachmentStore, BlockClick, BlockUpdateFlags, BonemealSource, ChunkRef,
@@ -469,7 +469,7 @@ mod register_configuration_tasks;
 mod register_debug_entries;
 mod register_debug_renderers;
 mod register_dimension_transition_screen;
-mod register_enchantment_damage_effects;
+mod register_enchantment_effects;
 mod register_entity_layers;
 mod register_entity_renderers;
 mod register_entity_spectator_shaders;

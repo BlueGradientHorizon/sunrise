@@ -294,7 +294,7 @@ impl Game<'_> {
                 self.mob_post_attack(
                     id,
                     attacker,
-                    Some("minecraft:evoker_fangs"),
+                    Some((f.id, "minecraft:evoker_fangs")),
                     Some("minecraft:indirect_magic"),
                 );
             }

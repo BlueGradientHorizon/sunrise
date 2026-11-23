@@ -1816,6 +1816,30 @@ pub fn after_break(events: &mut Vec<MobEvent>, asks: bool, mob: u32, start: usiz
     }
 }
 
+/// A weapon hit queued by the borrowed tick and resolved against the live victim.
+#[derive(Clone, Debug)]
+pub struct WeaponHit {
+    pub target: Who,
+    pub source: Damage,
+    pub weapon: crate::items::ItemStack,
+    pub amount: f32,
+    pub knockback: f32,
+    pub direction: [f64; 2],
+    pub attack: WeaponAttack,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum WeaponAttack {
+    Melee {
+        effect: Option<(&'static str, i32, i32)>,
+    },
+    Stab {
+        deals_damage: bool,
+        deals_knockback: bool,
+        dismounts: bool,
+    },
+}
+
 /// Events a mob tick asks the game to act on.
 #[derive(Clone, Debug)]
 pub enum MobEvent {
@@ -2039,6 +2063,7 @@ pub enum MobEvent {
     },
     /// A player hit. The last field names the attacker only for `Mob.doHurtTarget`.
     AttackPlayer(f32, [f64; 3], Option<u32>),
+    WeaponAttack(WeaponHit),
     /// `Bee.doHurtTarget`: a sting that lands leaves its stinger and poisons.
     Sting {
         target: Who,
@@ -2715,6 +2740,7 @@ impl MobEvent {
             Self::SonicBoom { target, .. }
             | Self::Push { target, .. }
             | Self::Knockback { target, .. }
+            | Self::WeaponAttack(WeaponHit { target, .. })
             | Self::Sting { target, .. }
             | Self::StabDismount { target }
             | Self::StabMemory { target, .. }
@@ -4183,7 +4209,7 @@ impl Mob {
     /// `LivingEntity.hurtServer`'s partial mob adapter, with health reductions inline.
     /// `damage` by a source with a weapon: `armor_effectiveness` runs the
     /// weapon's armor-effectiveness enchantments (breach) over the armor fraction, with the
-    /// level's random.
+    /// victim's random. Requirements draw from the level.
     pub fn damage_with(
         &mut self,
         level: &mut DamageLevel<'_>,
@@ -4427,24 +4453,26 @@ impl Mob {
             let entered = amount;
             if !source.bypasses_armor() {
                 let (armor, armor_toughness) = armor::values(self);
-                if armor > 0.0 {
-                    // CombatRules.getDamageAfterAbsorb
-                    let toughness = 2.0 + armor_toughness / 4.0;
-                    let effective = sunrise_world::living_damage::java_clamp_f32(
-                        armor - amount / toughness,
-                        armor * 0.2,
-                        20.0,
-                    );
-                    let mut fraction = effective / 25.0;
-                    if let Some(modify) = armor_effectiveness {
-                        fraction = sunrise_world::living_damage::java_clamp_f32(
-                            modify(fraction, level.random()),
-                            0.0,
-                            1.0,
-                        );
-                    }
-                    amount *= 1.0 - fraction;
-                }
+                let toughness = 2.0 + armor_toughness / 4.0;
+                let effective = sunrise_world::living_damage::java_clamp_f32(
+                    armor - amount / toughness,
+                    armor * 0.2,
+                    20.0,
+                );
+                let fraction = effective / 25.0;
+                let fraction = if let Some(modify) = armor_effectiveness {
+                    modify(fraction, level.random())
+                } else {
+                    let attack = level.attack();
+                    level.armor_effectiveness(
+                        crate::health::mob_source(&source, attack),
+                        &self.kind.id,
+                        (self.fall_distance, self.extra.fall_flying),
+                        &mut self.random,
+                        fraction,
+                    )
+                };
+                amount *= 1.0 - sunrise_world::living_damage::java_clamp_f32(fraction, 0.0, 1.0);
             }
             // LivingEntity.actuallyHurt always sets Reduction::Armor (with 0.0 on #bypasses_armor).
             amount = container.reduce(Reduction::Armor, entered, entered - amount, amount);
@@ -4527,9 +4555,39 @@ impl Mob {
                 if local_magic <= 0.0 {
                     local_magic = 0.0;
                 } else if !source.kind.bypasses_enchantments() {
-                    let epf = gear::protection(self, source.kind);
+                    let epf = if let Some(items) = level.tags() {
+                        let attack = level.attack();
+                        let mut ctx = attack.enchantment_context(
+                            crate::health::mob_source(&source, attack),
+                            &self.kind.id,
+                        );
+                        ctx.this_motion = Some((self.fall_distance, self.extra.fall_flying));
+                        let mut value = 0.0;
+                        let equipment =
+                            sunrise_core::equipment_slot::EquipmentSlot::ALL.map(|slot| {
+                                finalize::equipment_slot(self, slot)
+                                    .map(|piece| piece.project().into_owned())
+                            });
+                        for (piece, slot) in
+                            equipment.iter().zip(sunrise_items::equipment::SLOT_NAMES)
+                        {
+                            if let Some(piece) = piece {
+                                value = items.enchantments.equipment_protection(
+                                    piece,
+                                    slot,
+                                    &ctx,
+                                    level.random(),
+                                    &mut self.random,
+                                    value,
+                                );
+                            }
+                        }
+                        value
+                    } else {
+                        gear::protection(self, source.kind)
+                    };
                     if epf > 0.0 {
-                        local_magic *= 1.0 - epf / 25.0;
+                        local_magic *= 1.0 - epf.min(20.0) / 25.0;
                         amount = container.reduce(
                             Reduction::Enchantments,
                             amount,

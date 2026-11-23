@@ -1188,7 +1188,7 @@ mod combat_query_tests {
                 Some(18.0)
             );
             game.inventory[game.selected] = Some(mace.clone());
-            assert_eq!(game.smash_damage_bonus("minecraft:player"), 18.0);
+            assert_eq!(game.smash_damage_bonus("minecraft:player", None), 18.0);
             patch(
                 &mut mace,
                 "minecraft:damage_type",

@@ -452,7 +452,7 @@ fn a_guest_blow_on_a_guest_names_the_attacker_and_the_sword() {
             let strike = super::lan_pvp::Strike::test_blow(12);
             let hurt = game.pvp_land(super::lan_pvp::Victim::Guest(13), &strike);
             let seen = log.lock().unwrap().incoming_causing.clone();
-            assert!(hurt, "not hurt; damage heard from {seen:?}");
+            assert!(hurt.is_some(), "not hurt; damage heard from {seen:?}");
             assert_eq!(game.current_attack(), NO_ATTACK);
         });
     });

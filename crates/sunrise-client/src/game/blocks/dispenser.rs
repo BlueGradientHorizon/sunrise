@@ -1296,10 +1296,12 @@ impl Game<'_> {
         // EntityType.create rolls a yaw from the level random before the stack config turns it.
         let _ = self.world.random.next_float();
         self.next_entity += 1;
-        let (_, uuid) = sunrise_client::mobs::living_random();
+        let (stand, uuid) = sunrise_client::entities::ArmorStand::new_with_uuid(
+            self.next_entity,
+            foot,
+            y_rot(facing),
+        );
         self.persist.uuids.insert(self.next_entity, uuid);
-        let stand =
-            sunrise_client::entities::ArmorStand::new(self.next_entity, foot, y_rot(facing));
         self.world.modified.insert((front.0 >> 4, front.2 >> 4));
         self.armor_stands.push(stand);
         // EntityType.appendDefaultStackConfig: the dispenser's yaw first, then

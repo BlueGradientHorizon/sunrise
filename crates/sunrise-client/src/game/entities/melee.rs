@@ -273,7 +273,7 @@ impl Game<'_> {
         // Player.onAttack: the blow starts the attack strength again, hurt or not.
         self.attack_ticks = 0;
         if admitted {
-            if self.extra_knockback(kind, scale).1 {
+            if scale > 0.9 && self.player.as_ref().is_some_and(|p| p.sprinting) {
                 self.play_at_feet("minecraft:entity.player.attack.knockback");
             }
             self.sweep_decision(scale, false, kind);
@@ -302,7 +302,7 @@ impl Game<'_> {
             return;
         }
         let sweep = self.sweep_attack_position(scale, crit, &target_kind);
-        let (knockback, knockback_attack) = self.extra_knockback(&target_kind, scale);
+        let knockback_attack = scale > 0.9 && self.player.as_ref().is_some_and(|p| p.sprinting);
         let player = self.player.as_ref();
         let from = player.map(|p| [p.position.x, p.position.y, p.position.z]);
         if knockback_attack {
@@ -352,6 +352,7 @@ impl Game<'_> {
             });
         }
         if landed {
+            let (knockback, _) = self.extra_knockback(&target_kind, id, scale, None);
             if knockback > 0.0 {
                 let (xd, zd) = self.extra_knockback_direction();
                 let aim = self.attacker_aim(source.attacker);
@@ -479,7 +480,7 @@ impl Game<'_> {
                 && self.mobs[i].join == join
                 && !self.mobs[i].removed
             {
-                self.weapon_hit(i);
+                self.weapon_hit(i, source);
             }
             // Player.attack: causeFoodExhaustion(0.1F) only when the hit hurt
             // (inside `if (wasHurt)`), after damageStatsAndHearts.
@@ -527,7 +528,7 @@ impl Game<'_> {
         // enchantment damage: checked before the mace's smash bonus is added.
         let damaging = amount > 0.0 || enchant_bonus * scale > 0.0;
         // Item.getAttackDamageBonus (a mace's smash), before the critical hit.
-        amount += self.smash_damage_bonus(target_kind);
+        amount += self.smash_damage_bonus(target_kind, victim);
         let vanilla_crit = living && self.critical_attack(scale);
         let mut crit = vanilla_crit;
         let mut multiplier = if vanilla_crit { 1.5 } else { 1.0 };

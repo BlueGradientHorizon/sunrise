@@ -1094,6 +1094,10 @@ impl Game<'_> {
         let mut blast_attack = self.combat.attack().clone();
         blast_attack.direct = Some(blast_direct_id);
         blast_attack.direct_kind = Some(blast_direct_kind);
+        if let Some(actor) = self.enchantment_actor(blast_direct_id) {
+            blast_attack.enchantment_direct = Some(actor);
+        }
+
         if blast_attack.attacker == 0
             && let Some(Some(cause)) = &self.combat.explicit_explosion_cause
             && cause.player

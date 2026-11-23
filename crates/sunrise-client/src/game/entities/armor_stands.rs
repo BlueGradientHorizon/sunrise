@@ -451,7 +451,7 @@ impl Game<'_> {
         &self,
         hit: &super::Hit,
         stack: &ItemStack,
-    ) -> Option<([i32; 3], ArmorStand)> {
+    ) -> Option<([i32; 3], ArmorStand, [i32; 4])> {
         if hit.face == [0, -1, 0] {
             return None;
         }
@@ -472,7 +472,7 @@ impl Game<'_> {
         );
         let yaw =
             (((self.yaw - 180.0 + 180.0).rem_euclid(360.0) - 180.0 + 22.5) / 45.0).floor() * 45.0;
-        let mut stand = ArmorStand::new(self.next_entity + 1, foot, yaw);
+        let (mut stand, uuid) = ArmorStand::new_with_uuid(self.next_entity + 1, foot, yaw);
         // Entity.applyImplicitComponents: a name from an anvil names the stand.
         if let Some(name) = stack.custom_name() {
             stand.custom_name = Some(sunrise_client::text::Text::literal(name));
@@ -498,13 +498,13 @@ impl Game<'_> {
         {
             return None;
         }
-        Some((pos, stand))
+        Some((pos, stand, uuid))
     }
     pub(super) fn place_armor_stand(&mut self, hit: &super::Hit, stack: &ItemStack) -> bool {
         if &*stack.item != "minecraft:armor_stand" {
             return false;
         }
-        let Some((pos, mut stand)) = self.armor_stand_spawn(hit, stack) else {
+        let Some((pos, mut stand, uuid)) = self.armor_stand_spawn(hit, stack) else {
             return false;
         };
         // EntityType.create(.., tryMoveDown, movedUp): the new stand falls onto what is under it,
@@ -524,6 +524,7 @@ impl Game<'_> {
         );
         if let Some(mut loaded) = sunrise_client::entity_nbt::armor_stand_from_nbt(&raw, stand.id) {
             loaded.first_tick = stand.first_tick;
+            loaded.random = stand.random;
             loaded.yaw = stand.yaw;
             loaded.previous_yaw = stand.previous_yaw;
             loaded.pitch = 0.0;
@@ -539,7 +540,6 @@ impl Game<'_> {
         // ArmorStandItem.useOn turns the stand to face the player.
         self.world.random.next_float();
         self.next_entity += 1;
-        let (_, uuid) = sunrise_client::mobs::living_random();
         self.persist.uuids.insert(stand.id, uuid);
         self.audio.play(
             "minecraft:entity.armor_stand.place",
@@ -786,7 +786,8 @@ impl Game<'_> {
         let sweep = self.sweep_before_hit("minecraft:armor_stand", crit);
         let hurt = self.hit_armor_stand(i, |g, area, id| {
             let knockback = if admitted {
-                g.extra_knockback("minecraft:armor_stand", scale).0
+                g.extra_knockback("minecraft:armor_stand", id, scale, None)
+                    .0
             } else {
                 0.0
             };
@@ -1047,6 +1048,15 @@ impl Game<'_> {
                 self.armor_stands[i].previous_yaw = self.armor_stands[i].yaw;
                 continue;
             }
+            let id = self.armor_stands[i].id;
+            self.armor_stands[i].enchantment_tick =
+                self.armor_stands[i].enchantment_tick.wrapping_add(1);
+            if !self.armor_stands[i].equipment.is_empty() {
+                self.tick_equipment_enchantments(super::commands::Target::Stand(id), id);
+            }
+            let Some(i) = self.armor_stands.locate(join) else {
+                continue;
+            };
             let target_dead = self.armor_stands[i]
                 .last_hurt_mob
                 .is_some_and(|(id, _)| !self.last_hurt_target_alive(id));
@@ -1636,7 +1646,6 @@ impl Game<'_> {
         damage_type: &str,
         causing: Option<super::commands::Target>,
     ) -> bool {
-        use super::commands::Target;
         let mut checks = Vec::new();
         let equipment = &self.armor_stands[i].equipment;
         for (stack, slot) in equipment.iter().zip(ArmorStand::SLOTS) {
@@ -1661,30 +1670,12 @@ impl Game<'_> {
         if checks.is_empty() {
             return false;
         }
-        let attacker = match causing {
-            Some(Target::Player | Target::Guest(_)) => Some("minecraft:player".to_owned()),
-            Some(Target::Mob(m_id)) => self
-                .mobs
-                .iter()
-                .find(|m| m.id == m_id)
-                .map(|m| m.kind.id.clone()),
-            Some(Target::Stand(_)) => Some("minecraft:armor_stand".to_owned()),
-            _ => None,
-        };
-        let canonical = if damage_type.contains(':') {
-            damage_type.to_owned()
-        } else {
-            format!("minecraft:{damage_type}")
-        };
-        let ctx = sunrise_client::enchant::EffectContext {
-            items: Some(self.res.items()),
-            damage_type: Some(&canonical),
-            is_direct: attacker.is_some(),
-            this: Some("minecraft:armor_stand"),
-            attacker: attacker.as_deref(),
-            direct_attacker: attacker.as_deref(),
-            ..Default::default()
-        };
+        let attack = self.current_attack();
+        let causing = causing
+            .and_then(|target| self.network_entity_id(target))
+            .unwrap_or(0);
+        let source = attack.player_source(damage_type, causing);
+        let ctx = attack.enchantment_context(source, "minecraft:armor_stand");
         let ench = &self.res.stations().enchantments;
         let rng = &mut self.world.random;
         for (req, level) in checks {

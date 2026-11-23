@@ -2296,35 +2296,47 @@ impl Game<'_> {
 
     /// The [`Attack`] of `attacker` (an entity id, 0 for none) for the level a hit lands in
     /// ([`DamageLevel::attacked_by`]). Record the attacker's hand state only if a
-    /// subscribed hit, death or loot hook may read it. Capture before the level borrows
-    /// the game so nested damage can't substitute a different attacker's hands.
+    /// subscribed hit, death or loot hook may read it, or when the main hand carries
+    /// `minecraft:armor_effectiveness`, which the hit reads as its weapon. Capture before
+    /// the level borrows the game so nested damage can't substitute a different attacker's
+    /// hands.
     pub(super) fn attack_of(&self, attacker: i32) -> Attack {
-        let held = if ![
+        let listens = [
             mod_api::HookId::LivingIncomingDamage,
             mod_api::HookId::LivingKnockback,
             mod_api::HookId::LivingDeath,
             mod_api::HookId::LootDrops,
         ]
         .into_iter()
-        .any(mod_api::__private::listened)
-        {
-            [None, None]
-        } else if self
+        .any(mod_api::__private::listened);
+        let enchantments = &world_stations!(self).enchantments;
+        let main = |stack: Option<&sunrise_client::items::ItemStack>| {
+            stack
+                .filter(|stack| {
+                    listens || enchantments.has_component(stack, "minecraft:armor_effectiveness")
+                })
+                .cloned()
+        };
+        let held = if self
             .player
             .as_ref()
             .is_some_and(|p| p.entity_id == attacker)
         {
-            [self.stack_in(self.selected).cloned(), self.offhand.clone()]
-        } else if let Some(mob) = self.mobs.iter().find(|m| m.id as i32 == attacker) {
-            [mob.extra.main_hand_stack().cloned(), None]
+            [
+                main(self.stack_in(self.selected)),
+                listens.then(|| self.offhand.clone()).flatten(),
+            ]
+        } else if let Some(index) = self.mob_index.find(&self.mobs, attacker as u32) {
+            let mob = &self.mobs[index];
+            [main(mob.extra.main_hand_stack()), None]
         } else if let Some(guest) = self
             .lan
             .as_ref()
             .and_then(|host| host.hub.guests.iter().find(|g| g.entity_id == attacker))
         {
             [
-                guest.inventory.get(guest.selected).cloned().flatten(),
-                guest.offhand.clone(),
+                main(guest.inventory.get(guest.selected).and_then(Option::as_ref)),
+                listens.then(|| guest.offhand.clone()).flatten(),
             ]
         } else {
             [None, None]
@@ -2356,6 +2368,8 @@ impl Game<'_> {
                 .then(|| self.known_attacker_uuid(attacker as u32))
                 .flatten(),
             player_uuid,
+            enchantment_attacker: self.enchantment_actor(attacker),
+            enchantment_direct: None,
         }
     }
     /// [`Self::attack_of`] for the attacker a damage source names: the player, a mob, or (none)

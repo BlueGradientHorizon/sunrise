@@ -1383,9 +1383,9 @@ Enchantments use vanilla files at `data/<namespace>/enchantment/<name>.json` (su
 table, the anvil, loot, commands and the registry a server sends its players, whose data no client knows, so it is
 always sent. An enchantment reaches the enchanting table through vanilla's tags (`data/minecraft/tags/enchantment/
 in_enchanting_table.json` and the others), which a mod adds to as any tag. A world's data pack replaces a mod's
-enchantment of the same id. What an enchantment does beyond vanilla's effect components is the mod's code: a native
-hook reads the held stack's enchantments, or claims a `post_attack` effect of its own kind
-([enchantment effect kinds](items/enchantment-effect-kinds.md)).
+enchantment of the same id. A native mod can register a codec for a custom value or entity effect kind, then use
+that kind in a vanilla effect component in the enchantment definition. See
+[enchantment effect kinds](items/enchantment-effect-kinds.md).
 
 A mod adds to structure sets, template pools and processor lists that are not its own (vanilla's villages, another
 mod's houses) with a set, pool or processor list file in its own namespace holding `sunrise:add_to`, a key vanilla data

@@ -6,7 +6,6 @@
 //! finds the ammo for bows and crossbows.
 use super::{Game, shield::OFFHAND_SLOT, view_vector};
 use sunrise_client::{
-    enchant::EffectContext,
     items::{ItemStack, Items},
     mobs::Who,
     projectiles::{Projectile, ProjectileKind},
@@ -268,11 +267,6 @@ impl Game<'_> {
         let charged = stack.data().is_some_and(|d| !d.charged.is_empty());
         if now >= 1.0 && !charged {
             // tryLoadProjectiles / ProjectileWeaponItem.draw.
-            let shots = if stack.enchantment_level("minecraft:multishot") > 0 {
-                3
-            } else {
-                1
-            };
             let Some(ammo) = self.get_projectile(stack) else {
                 return;
             };
@@ -282,7 +276,16 @@ impl Game<'_> {
             {
                 return;
             }
-            let creative = self.creative;
+            let (drawn, debit) = self.draw_weapon_ammo(
+                stack,
+                &ammo.stack,
+                self.own_entity_id() as u32,
+                "minecraft:player",
+                self.creative,
+            );
+            if drawn.is_empty() {
+                return;
+            }
             let Some(bow) = self
                 .stack_in_mut(slot)
                 .as_mut()
@@ -292,18 +295,18 @@ impl Game<'_> {
             };
             // A pack can make the weapon its own ammo. Debit it without
             // charging it, so the destruction notice sees the original stack.
-            if !creative && ammo.slot == Some(slot) {
-                self.consume_player_slot(slot, 1);
+            if debit > 0 && ammo.slot == Some(slot) {
+                self.consume_player_slot(slot, debit);
                 return;
             }
             // Store the projectile before debiting the ammo slot: its destruction
             // listener can now move the loaded bow without losing the projectile.
             // useAmmo: the extra multishot arrows and creative's are intangible.
-            bow.data_mut().charged = (0..shots)
-                .map(|i| sunrise_client::arrows::drawn_ammo(&ammo.stack, creative || i > 0))
-                .collect();
-            if !creative && let Some(i) = ammo.slot {
-                self.consume_player_slot(i, 1);
+            bow.data_mut().charged = drawn;
+            if debit > 0
+                && let Some(i) = ammo.slot
+            {
+                self.consume_player_slot(i, debit);
             }
             let pitch = 1.0 / (self.world.random.next_float() * 0.5 + 1.0) + 0.2;
             self.audio.play(sounds[2], at, 1.0, pitch);
@@ -335,43 +338,39 @@ impl Game<'_> {
         let charged = std::mem::take(&mut bow.data_mut().charged);
         bow.tidy();
         let weapon = bow.clone();
-        // AbstractArrow's constructor: `getPiercingCount` of the weapon.
-        let pierce = self
-            .res
-            .stations()
-            .enchantments
-            .modify_value(
-                Some(&weapon),
-                "minecraft:projectile_piercing",
-                &EffectContext::default(),
-                &mut self.world.random,
-                0.0,
-            )
-            .clamp(0.0, 127.0) as u8;
         let count = charged.len();
+        if count == 0 {
+            return;
+        }
         // getShootingPower: a rocket among them slows every shot.
         let power = if charged.iter().any(|s| &*s.item == FIREWORK_ROCKET) {
             1.6
         } else {
             3.15
         };
-        // ProjectileWeaponItem.shoot: angles fanned 10 degrees apart.
-        let spread = if count > 1 { 10.0 } else { 0.0 };
+        let spread = self.entity_enchantment_value(
+            &weapon,
+            self.own_entity_id() as u32,
+            "minecraft:player",
+            "minecraft:projectile_spread",
+            0.0,
+        );
+        let spread = if spread < 0.0 { 0.0 } else { spread };
+        let step = if count == 1 {
+            0.0
+        } else {
+            2.0 * spread / (count - 1) as f32
+        };
+        let offset = ((count - 1) % 2) as f32 * step / 2.0;
         let view = glam::DVec3::from_array(view_vector(self.yaw, self.pitch));
         let up = glam::DVec3::from_array(view_vector(self.yaw, self.pitch - 90.0));
+        let mut direction = 1.0;
         for (index, ammo) in charged.iter().enumerate() {
-            let angle = if count > 1 {
-                -spread + 2.0 * spread * index as f64 / (count - 1) as f64
-            } else {
-                0.0
-            };
-            let angle = if count == 3 {
-                [0.0, -spread, spread][index]
-            } else {
-                angle
-            };
+            let angle = offset + direction * index.div_ceil(2) as f32 * step;
+            direction = -direction;
             let dir =
-                glam::DQuat::from_axis_angle(up.normalize_or_zero(), angle.to_radians()) * view;
+                glam::DQuat::from_axis_angle(up.normalize_or_zero(), f64::from(angle.to_radians()))
+                    * view;
             // createProjectile: a rocket shot at an angle from 0.15 under the
             // eyes, spread by its own random; three durability.
             let rocket = &*ammo.item == FIREWORK_ROCKET;
@@ -399,6 +398,7 @@ impl Game<'_> {
                     Vec3::new(eye[0], eye[1] - 0.1, eye[2]),
                     Some(Who::Player),
                 );
+                let pierce = self.projectile_pierce(&weapon, ammo);
                 if let Some(a) = arrow.arrow.as_mut() {
                     a.set_item(ammo);
                     a.set_owner(Some(Who::Player));

@@ -1526,7 +1526,6 @@ sunrise-client game::native_hooks::player_game_mode_changed::player_game_mode_ch
 sunrise-client game::native_hooks::player_game_mode_changed::player_game_mode_changed_tests::a_redirect_sends_its_mode_and_a_redirect_to_the_current_mode_sends_none lib daily resources
 sunrise-client game::native_hooks::player_game_mode_changed::player_game_mode_changed_tests::the_second_listener_sees_the_first_listeners_write lib daily resources
 sunrise-client game::native_hooks::player_heart_type::player_heart_type_tests::a_client_mod_changes_the_health_bars_hearts lib daily resources
-sunrise-client game::native_hooks::register_enchantment_damage_effects::tests::custom_enchantment_changes_real_hit_damage_and_observes_hit_context lib daily resources
 sunrise-client game::native_hooks::render_frame_pre::tests::frame_interpolation_matches_draw_and_holds_while_paused_or_frozen lib daily resources
 sunrise-client game::native_hooks::render_gui_pre::local_sound_tests::a_screen_hooks_sound_reaches_audio_at_the_next_update lib daily resources
 sunrise-client game::native_hooks::render_tooltip_texture::render_tooltip_texture_tests::a_mod_gives_a_tooltip_its_own_texture_or_colours lib daily resources

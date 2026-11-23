@@ -1173,6 +1173,11 @@ impl Game<'_> {
     ) {
         let mut attack = self.attack_of_who(attacker);
         attack.projectile = Some(rocket_id as i32);
+        attack.enchantment_direct = Some(sunrise_client::health::EnchantmentActor {
+            id: rocket_id as i32,
+            kind: "minecraft:firework_rocket".into(),
+            motion: None,
+        });
         attack.projectile_kind = sunrise_client::health::DirectEntity::Projectile;
         attack.projectile_type = Some("minecraft:firework_rocket");
         for &(id, amount) in hits {

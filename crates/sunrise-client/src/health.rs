@@ -859,6 +859,45 @@ impl<'a> DamageLevel<'a> {
     pub fn block_registries(&self) -> Option<&crate::command::args::Registries> {
         self.block_registries
     }
+    /// `CombatRules.getDamageAfterAbsorb`: resolve the weapon of the actual direct entity.
+    pub fn armor_effectiveness(
+        &mut self,
+        source: HurtSource<'_>,
+        victim: &str,
+        motion: (f64, bool),
+        random: &mut sunrise_core::random::LegacyRandom,
+        value: f32,
+    ) -> f32 {
+        let Some(stack) = self.attack.weapon_of(source.direct) else {
+            return value;
+        };
+        self.enchanted_armor(stack, source, victim, motion, random, value)
+    }
+
+    fn enchanted_armor(
+        &mut self,
+        stack: &ItemStack,
+        source: HurtSource<'_>,
+        victim: &str,
+        motion: (f64, bool),
+        random: &mut sunrise_core::random::LegacyRandom,
+        value: f32,
+    ) -> f32 {
+        let Some(items) = self.tags.filter(|_| !self.client_side) else {
+            return value;
+        };
+        let mut ctx = self.attack.enchantment_context(source, victim);
+        ctx.this_motion = Some(motion);
+        items.enchantments.modify_entity_value(
+            &stack.all_enchantments(),
+            "minecraft:armor_effectiveness",
+            &ctx,
+            self.random,
+            random,
+            value,
+        )
+    }
+
     /// The build range of the level whose damage hook is running.
     pub fn shape(&self) -> crate::chunk::LevelShape {
         self.shape
@@ -1147,21 +1186,15 @@ impl Knock {
 
 /// `CombatRules.getDamageAfterAbsorb`'s weapon: the stack
 /// `DamageSource.getWeaponItem` names, the registry its `armor_effectiveness`
-/// enchantments (Breach) are read from, and the entity that swung it.
+/// enchantments (Breach) are read from.
 pub struct ArmorWeapon {
     pub stack: crate::items::ItemStack,
     pub enchantments: std::sync::Arc<crate::enchant::Enchantments>,
-    /// The causing and direct entity's type id: one entity swung.
-    pub attacker: String,
-    /// `DamageSource.isDirect`: the causing entity swung itself.
-    pub is_direct: bool,
 }
 impl std::fmt::Debug for ArmorWeapon {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ArmorWeapon")
             .field("stack", &self.stack)
-            .field("attacker", &self.attacker)
-            .field("is_direct", &self.is_direct)
             .finish_non_exhaustive()
     }
 }
@@ -1299,10 +1332,22 @@ pub struct Attack {
     pub player_uuid: Option<[i32; 4]>,
     /// The causing mob's UUID for `Villager.setLastHurtByMob`'s gossip.
     pub attacker_uuid: Option<[i32; 4]>,
+    /// Type and movement of the causing entity, bound before the hit borrows its victim.
+    pub enchantment_attacker: Option<EnchantmentActor>,
+    /// The explicit direct entity or projectile, distinct from the causing entity.
+    pub enchantment_direct: Option<EnchantmentActor>,
     /// What it holds, or none when it is not known (no native mod listens: the game only
     /// records it then).
     pub held: Held,
 }
+/// The identity and predicate view of one entity named by a damage source.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EnchantmentActor {
+    pub id: i32,
+    pub kind: std::borrow::Cow<'static, str>,
+    pub motion: Option<(f64, bool)>,
+}
+
 /// The attack of a hit nobody started: environment damage, falls, a level built outside a hit.
 pub static NO_ATTACK: Attack = Attack {
     attacker: 0,
@@ -1986,6 +2031,7 @@ impl PlayerMotion {
             can_harm_player: hit.can_harm_player,
             entity: self.entity_id,
             victim,
+            victim_motion: (self.fall_distance, self.fall_flying || self.flying),
             causing: hit.causing,
             invulnerable: hit.invulnerable,
             permanently_invulnerable: hit.permanently_invulnerable,
@@ -2065,6 +2111,7 @@ pub(crate) struct Environment<'a> {
     pub(crate) entity: i32,
     /// Where the player stands and looks, for the incoming-damage hook.
     pub(crate) victim: Victim,
+    victim_motion: (f64, bool),
     pub(crate) causing: i32,
     /// `Abilities.invulnerable`, the game mode (`Player.hurtServer`'s own
     /// gate answers it, which no creative hit passes).
@@ -2085,10 +2132,7 @@ pub(crate) struct Environment<'a> {
     /// `DamageSource.getWeaponItem` with the registry of its
     /// `armor_effectiveness` enchantments, for `getDamageAfterArmorAbsorb`.
     pub(crate) weapon: Option<&'a ArmorWeapon>,
-    /// The victim's own random. `Enchantment.modifyDamageFilteredValue` gives
-    /// its value effects `victim.getRandom()`; `Enchantments::modify_value`
-    /// takes one random for those and for the requirements, which vanilla
-    /// draws from the level's.
+    /// The victim's own random for the damage-filtered enchantment effects.
     pub(crate) random: &'a mut sunrise_core::random::EntityRandom,
     /// The causing entity is a living non-player (a mob, or its projectile's owner).
     pub(crate) living_cause: bool,
@@ -2299,23 +2343,16 @@ impl<'a> ArmorWorld for Environment<'a> {
         weapon: &'a ArmorWeapon,
         value: f32,
     ) -> io::Result<f32> {
-        let ctx = crate::enchant::EffectContext {
-            // `Enchantment.damageContext` carries no tool, so `match_tool`
-            // matches nothing and never reads the item tables.
-            items: None,
-            tool: None,
-            damage_type: Some(&self.source.definition().name),
-            is_direct: weapon.is_direct,
-            this: Some("minecraft:player"),
-            attacker: Some(&weapon.attacker),
-            direct_attacker: Some(&weapon.attacker),
-            direct_motion: None,
-        };
-        Ok(weapon.enchantments.modify_value(
-            Some(&weapon.stack),
+        let attack = self.level.attack();
+        let source = attack.player_source(&self.source.definition().name, self.causing);
+        let mut ctx = attack.enchantment_context(source, "minecraft:player");
+        ctx.this_motion = Some(self.victim_motion);
+        Ok(weapon.enchantments.modify_entity_value(
+            &weapon.stack.all_enchantments(),
             "minecraft:armor_effectiveness",
             &ctx,
-            &mut *self.random,
+            self.level.random(),
+            &mut self.random,
             value,
         ))
     }
@@ -2361,7 +2398,31 @@ impl ServerDamageEnvironment<Attributes> for Environment<'_> {
         Err(io::Error::other("no damage attacker"))
     }
     fn damage_protection(&mut self, _: ()) -> io::Result<f32> {
-        Ok(self.status.protection(&self.source.definition().name))
+        let Some(items) = self.level.tags() else {
+            return Ok(self.status.protection(&self.source.definition().name));
+        };
+        let attack = self.level.attack();
+        let source = attack.player_source(&self.source.definition().name, self.causing);
+        let mut ctx = attack.enchantment_context(source, "minecraft:player");
+        ctx.this_motion = Some(self.victim_motion);
+        let mut protection = 0.0;
+        for (stack, slot) in self
+            .level
+            .player_equipment
+            .into_iter()
+            .zip(sunrise_items::equipment::SLOT_NAMES)
+        {
+            let Some(stack) = stack else { continue };
+            protection = items.enchantments.equipment_protection(
+                stack,
+                slot,
+                &ctx,
+                self.level.random(),
+                &mut self.random,
+                protection,
+            );
+        }
+        Ok(protection)
     }
     fn award_self(&mut self, stat: DamageStat, value: i32) -> io::Result<()> {
         self.stat(
@@ -2552,13 +2613,10 @@ impl ImmunityWorld for Environment<'_> {
             .level
             .attack()
             .player_source(&self.source.definition().name, self.causing);
-        let context = crate::enchant::EffectContext {
-            items: Some(items),
-            damage_type: Some(source.damage_type),
-            is_direct: source.causing == source.direct,
-            this: Some("minecraft:player"),
-            ..Default::default()
-        };
+        let context = self
+            .level
+            .attack()
+            .enchantment_context(source, "minecraft:player");
         Ok(items.enchantments.is_damage_immune(
             items.enchantments.damage_immunities(equipment),
             &context,

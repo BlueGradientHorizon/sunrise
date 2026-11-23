@@ -2549,27 +2549,11 @@ pub(in crate::game) fn collect_cauldron_fluid_contents(
     (contents, refusals)
 }
 
-/// Registered callbacks indexed directly by the slots resolved in enchantment content.
-pub(in crate::game) static ENCHANTMENT_DAMAGE_EFFECTS: std::sync::OnceLock<
-    Vec<std::sync::Arc<dyn mod_api::EnchantmentDamageEffect>>,
-> = std::sync::OnceLock::new();
-
-pub(super) fn register_enchantment_damage_effects() {
-    let mut effects = mod_api::EnchantmentDamageRegistry::default();
-    Game::native_register_enchantment_damage_effects(
-        &mod_api::RegistrationContext::new(),
-        &mut effects,
-    );
-    let (ids, callbacks): (Vec<_>, Vec<_>) = effects
-        .into_entries()
-        .into_iter()
-        .map(|(id, effect)| (id.to_string(), effect))
-        .unzip();
-    sunrise_items::enchant::register_damage_effects(ids);
-    assert!(
-        ENCHANTMENT_DAMAGE_EFFECTS.set(callbacks).is_ok(),
-        "damage effects already registered"
-    );
+/// Install the frozen type registries before selected enchantment definitions are loaded.
+pub(super) fn register_enchantment_effects() {
+    let mut effects = mod_api::__private::EnchantmentEffectRegistry::default();
+    Game::native_register_enchantment_effects(&mod_api::RegistrationContext::new(), &mut effects);
+    sunrise_items::enchant::install_effect_types(effects);
 }
 
 #[cfg(test)]

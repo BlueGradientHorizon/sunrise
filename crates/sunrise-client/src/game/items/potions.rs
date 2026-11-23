@@ -1976,15 +1976,7 @@ impl Game<'_> {
                 let total: f32 = armor
                     .iter()
                     .flatten()
-                    .map(|s| {
-                        e.modify_value(
-                            Some(s),
-                            "minecraft:damage_protection",
-                            &ctx,
-                            &mut random,
-                            0.0,
-                        )
-                    })
+                    .map(|s| e.preview_value(s, "minecraft:damage_protection", &ctx, &mut random))
                     .sum();
                 if total > 0.0 {
                     table.push((def.name.clone(), total));
@@ -2840,6 +2832,7 @@ impl Game<'_> {
                     attack.projectile = self.combat.attack().projectile;
                     attack.projectile_kind = self.combat.attack().projectile_kind;
                     attack.projectile_type = self.combat.attack().projectile_type;
+                    attack.enchantment_direct = self.combat.attack().enchantment_direct.clone();
                     let plan = self.prepare_knockback_credit(id as i32, owner.who(), &attack);
                     let mut credit = plan.lend(&mut self.last_hurt_by_player);
                     self.mobs[i].damage_by(

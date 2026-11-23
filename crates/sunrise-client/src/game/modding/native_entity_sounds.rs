@@ -36,7 +36,11 @@ impl Game<'_> {
     /// phantoms, shulkers, slimes and a killer bunny are `Hostile`; dropped
     /// items and experience orbs `Ambient`; every other entity `Neutral`.
     pub(super) fn entity_sound_source(&self, entity: EntityRef) -> Option<SoundSource> {
-        Some(match self.native_entity_target(entity)? {
+        self.target_sound_source(self.native_entity_target(entity)?)
+    }
+
+    pub(super) fn target_sound_source(&self, target: Target) -> Option<SoundSource> {
+        Some(match target {
             Target::Player | Target::Guest(_) => SoundSource::Players,
             Target::Mob(id) => {
                 let m = self.mobs.iter().find(|m| m.id == id)?;

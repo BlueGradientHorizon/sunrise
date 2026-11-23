@@ -2974,7 +2974,7 @@ pub fn block_jump_factor_at(
     )
 }
 /// `Entity.getOnPos(float)` with the world's bound fence and wall tags.
-pub(crate) fn block_support_at(
+pub fn block_support_at(
     world: &World,
     properties: Option<&BoundMovementProperties>,
     position: Vec3,

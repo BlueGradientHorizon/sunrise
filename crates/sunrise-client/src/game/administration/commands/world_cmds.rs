@@ -289,10 +289,17 @@ impl Game<'_> {
                 .unwrap_or(0),
         );
         attack.direct_type = direct.map(|target| self.target_type(target));
+        attack.enchantment_direct = direct.zip(attack.direct).map(|(target, id)| {
+            sunrise_client::health::EnchantmentActor {
+                id,
+                kind: self.target_type(target).into(),
+                motion: None,
+            }
+        });
         match direct {
             Some(Target::Projectile(id)) => {
                 if let Some(shot) = self.creatures.projectiles.iter().find(|shot| shot.id == id) {
-                    Self::set_projectile_attack(&mut attack, shot);
+                    self.set_projectile_attack(&mut attack, shot);
                 }
             }
             Some(Target::Trident(id)) => {
@@ -300,7 +307,7 @@ impl Game<'_> {
                     attack.projectile = Some(id as i32);
                     attack.projectile_kind = DirectEntity::Arrow;
                     attack.projectile_type = Some("minecraft:trident");
-                    Self::set_projectile_weapon(&mut attack, Some(&shot.stack));
+                    self.set_projectile_weapon(&mut attack, Some(&shot.stack));
                 }
             }
             _ => {}

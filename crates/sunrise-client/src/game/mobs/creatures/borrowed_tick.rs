@@ -213,6 +213,7 @@ impl Game<'_> {
         // The turn of the mob whose own Pre was just told (a type a mod named): it resumes
         // there with its checks done.
         let mut told_at: Option<usize> = None;
+        let mut enchantment_tick_at = None;
         // Whether a mob still in the lifted list has left the pass (`keep` false) since the list
         // was last given back: a told-alone yield then takes it out before the call.
         let mut gone_rows = false;
@@ -237,6 +238,7 @@ impl Game<'_> {
             // stop there, restore the list, tell it while the live rows are readable, and resume.
             let mut tell_pre: Option<(u32, std::sync::Arc<sunrise_client::mobs::MobType>, usize)> =
                 None;
+            let mut tick_enchantments = None;
             let mut views_dirty = false;
             {
                 let ticking = self.entity_ticking_area();
@@ -523,6 +525,22 @@ impl Game<'_> {
                         })
                     {
                         retry_rider = Some(m.id);
+                        break;
+                    }
+                    if !resuming
+                        && enchantment_tick_at != Some(slot)
+                        && entries
+                        && mod_api::EquipmentSlot::ALL.into_iter().any(|slot| {
+                            sunrise_client::mobs::finalize::equipment_slot(m, slot).is_some_and(
+                                |stack| {
+                                    world_stations!(self)
+                                        .enchantments
+                                        .has_component(&stack.project(), "minecraft:tick")
+                                },
+                            )
+                        })
+                    {
+                        tick_enchantments = Some((m.id, m.join));
                         break;
                     }
                     // getCurrentDifficultyAt(blockPosition()): the mob's own chunk,
@@ -983,6 +1001,7 @@ impl Game<'_> {
                 && stand_cut.is_none()
                 && lid_push.is_none()
                 && tell_pre.is_none()
+                && tick_enchantments.is_none()
                 && tell_post.is_none()
                 && pending_effects.is_empty()
             {
@@ -1184,6 +1203,15 @@ impl Game<'_> {
                 if !stinging && let Some((id, kind)) = &tell_post {
                     self.native_tick_post_one(round, *id, &kind.id);
                 }
+                if let Some((id, join)) = tick_enchantments
+                    && self
+                        .mob_object(id)
+                        .is_some_and(|mob| mob.join == join && !mob.removed)
+                {
+                    self.tick_equipment_enchantments(crate::game::commands::Target::Mob(id), id);
+                    // A tick effect may move its actor or change state without changing list membership.
+                    views_dirty = true;
+                }
                 // Let through, it checks its sleep as a mob told with its family does.
                 if let Some((id, kind, at)) = &tell_pre
                     && self.native_tick_pre_one(round, *id, &kind.id)
@@ -1202,8 +1230,11 @@ impl Game<'_> {
                 );
             }
             let unchanged = same_rows && !views_dirty && restored == Some(self.mobs.stamp());
-            if tell_pre.is_some() {
+            if tell_pre.is_some() || tick_enchantments.is_some() {
                 told_at = Some(cursor);
+            }
+            if tick_enchantments.is_some() {
+                enchantment_tick_at = Some(cursor);
             }
             tell_post = None;
             if retry_rider.is_some() || removing_vehicle.is_some() {

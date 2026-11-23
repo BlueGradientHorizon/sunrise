@@ -202,8 +202,14 @@ impl Game<'_> {
     /// `Player.itemAttackInteraction` applies trigger-only held-item effects
     /// after an EnderDragonPart is successfully hit.
     pub(super) fn post_attack_dragon_burst(&mut self) {
-        if let Some(held) = self.held().cloned() {
-            self.post_attack_bursts(&held, "minecraft:ender_dragon");
+        if let Some(id) = self.dragon.as_ref().map(|dragon| dragon.id) {
+            let held = self.held().cloned();
+            let motion = self
+                .player
+                .as_ref()
+                .map_or((0.0, false), |p| (p.fall_distance, p.fall_flying));
+            let damage_type = self.stack_melee_damage_type(held.as_ref(), motion, true);
+            self.post_player_melee(id, "minecraft:ender_dragon", &damage_type, held.as_ref());
         }
     }
 
@@ -375,11 +381,13 @@ impl Game<'_> {
             if self.mobs.iter().any(|m| m.id == id && m.species() == Species::Breeze));
         match who {
             Who::Player => {
-                self.mob_hits_player_kind(
+                if self.mob_hits_player(
                     1.0,
                     [p.previous.x, p.previous.y, p.previous.z],
                     "minecraft:wind_charge",
-                );
+                ) {
+                    self.shot_post_attack(p, who, "minecraft:wind_charge");
+                }
             }
             // An ender dragon part takes the point of damage too; a crystal is
             // not hit (`AbstractWindCharge.canHitEntity`).
@@ -449,7 +457,7 @@ impl Game<'_> {
                 self.finish_mob_damage_at(index);
                 self.settle_mob_hurt(id);
                 if hurt {
-                    self.shot_post_attack(p, who, p.kind.id(), "minecraft:wind_charge");
+                    self.shot_post_attack(p, who, "minecraft:wind_charge");
                 }
             }
         }

@@ -87,6 +87,13 @@ use sunrise_core::{
     random::RandomSource,
 };
 
+/// The accepted arrow and its source, held until a guest turn restores the shooter.
+pub(super) struct LandedPlayerArrow {
+    victim: u32,
+    attack: Attack,
+    arrow: Projectile,
+}
+
 /// `AbstractArrow.onHitEntity` when `hurtOrSimulate` returned false.
 /// An enderman that teleported (`projectileReceivesSideEffectsOnHit` is
 /// false) leaves the arrow in flight. Every other refusal, including
@@ -1956,9 +1963,11 @@ impl Game<'_> {
         self.sculk_mob_died(m);
         let mut catalyst_xp = 0;
         let consumed =
-            self.catalyst_takes_experience([m.position.x, m.position.y, m.position.z], |_| {
+            self.catalyst_takes_experience([m.position.x, m.position.y, m.position.z], |game| {
+                let base = sunrise_client::mobs::drops::base_experience(&mut dying);
+                let reward = game.mob_kill_experience(&mut dying, base);
                 catalyst_xp = if sunrise_client::mobs::drops::drops_experience(&dying) {
-                    sunrise_client::mobs::drops::base_experience(&mut dying).max(0) as u32
+                    reward.max(0) as u32
                 } else {
                     0
                 };
@@ -2241,6 +2250,159 @@ impl Game<'_> {
             }
         }
     }
+    /// Settle `Mob.doHurtTarget` / `LivingEntity.stabAttack` after the borrowed tick.
+    fn mob_weapon_attack(&mut self, hit: sunrise_client::mobs::WeaponHit) -> bool {
+        use sunrise_client::mobs::{WeaponAttack, WeaponHit};
+        let WeaponHit {
+            target,
+            source,
+            weapon,
+            amount,
+            knockback,
+            direction,
+            attack: action,
+        } = hit;
+        let (victim, kind) = match target {
+            Who::Player => (self.own_entity_id() as u32, Arc::from("minecraft:player")),
+            Who::Mob(id) => {
+                let Some(mob) = self.mob_object(id).filter(|mob| !mob.removed) else {
+                    return false;
+                };
+                (id, Arc::<str>::from(mob.kind.id.as_str()))
+            }
+        };
+        let attack = self.attack_of_who(source.attacker);
+        let damage_type = source_damage_type(source);
+        let hurt_source = HurtSource {
+            damage_type,
+            causing: attack.attacker,
+            direct: attack.attacker,
+            position: source.from,
+        };
+        let ctx = attack.enchantment_context(hurt_source, &kind);
+        let amount = self.evaluate_weapon_damage(&weapon, Some(victim), ctx, amount);
+        let hurt = !matches!(
+            action,
+            WeaponAttack::Stab {
+                deals_damage: false,
+                ..
+            }
+        ) && match target {
+            Who::Player => self.hurt_player_from_inner(
+                amount,
+                source.from,
+                damage_type,
+                Some(match source.attacker {
+                    Some(Who::Mob(id)) => Some(id),
+                    _ => None,
+                }),
+                false,
+                false,
+            ),
+            Who::Mob(id) => self.mob_hits_mob(id, amount, source),
+        };
+        let push = |game: &mut Self, power: f32, apply_blocking| {
+            if power > 0.0 {
+                game.mob_event_knockback(
+                    target,
+                    f64::from(power),
+                    direction,
+                    source,
+                    apply_blocking,
+                );
+                if let Some(Who::Mob(id)) = source.attacker
+                    && let Some(attacker) = game.mob_object_mut(id)
+                {
+                    attacker.velocity.x *= 0.6;
+                    attacker.velocity.z *= 0.6;
+                }
+            }
+        };
+        let stab_push = matches!(
+            action,
+            WeaponAttack::Stab {
+                deals_knockback: true,
+                ..
+            }
+        );
+        if stab_push {
+            push(self, 0.4, None);
+        }
+        if stab_push || (hurt && matches!(action, WeaponAttack::Melee { .. })) {
+            let power = self.evaluate_weapon_value(
+                &weapon,
+                "minecraft:knockback",
+                Some(victim),
+                ctx,
+                knockback,
+            ) / 2.0;
+            push(self, power, stab_push.then_some(amount));
+        }
+        if matches!(
+            action,
+            WeaponAttack::Stab {
+                dismounts: true,
+                ..
+            }
+        ) {
+            self.mount_event(&MobEvent::StabDismount { target });
+        }
+        if hurt {
+            self.post_attack_from_hand(victim, &kind, &attack, hurt_source);
+            if let WeaponAttack::Melee {
+                effect: Some((effect, ticks, amplifier)),
+            } = action
+            {
+                let cause = source.attacker.and_then(|who| match who {
+                    Who::Mob(id) => self.entity(id),
+                    Who::Player => self.entity(self.own_entity_id() as u32),
+                });
+                match target {
+                    Who::Player => self.give_player_effect_from(effect, ticks, amplifier, cause),
+                    Who::Mob(id) => {
+                        if let Some(def) = sunrise_client::brewing::effect(effect) {
+                            self.add_mob_effect(
+                                id,
+                                sunrise_client::effects::EffectInstance::from_def(
+                                    def, ticks, amplifier,
+                                ),
+                                cause,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        hurt
+    }
+
+    fn mob_event_knockback(
+        &mut self,
+        target: Who,
+        power: f64,
+        [x, z]: [f64; 2],
+        source: Damage,
+        apply_blocking: Option<f32>,
+    ) {
+        match target {
+            // Ram knockback checks blocking independently of the hurt call.
+            Who::Player => self.mob_pushes_player(power, x, z, source, apply_blocking),
+            Who::Mob(id) => {
+                let aim = self.attacker_aim(source.attacker);
+                let attack = self.attack_of_who(source.attacker);
+                let plan = self.prepare_knockback_credit(id as i32, None, self.combat.attack());
+                let mut credit = plan.lend(&mut self.last_hurt_by_player);
+                if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+                    m.attacker_aim = aim;
+                    let level =
+                        crate::game::entity::damage_level_of!(self, &attack, &mut credit, None);
+                    m.knockback(level, power, x, z, &source, 0.0);
+                    m.attacker_aim = None;
+                }
+            }
+        }
+    }
+
     /// Melee or ranged damage to another mob; whether the hit landed.
     pub(in crate::game) fn mob_hits_mob(
         &mut self,
@@ -2882,6 +3044,9 @@ impl Game<'_> {
                 // (`entity_motion_events`, `tick_mob_sculk_events`). Birds
                 // above use their movement's flyDist/nextFlap threshold.
                 MobEvent::GameEvent { .. } => {}
+                MobEvent::WeaponAttack(hit) => {
+                    self.combat.hit_landed = self.mob_weapon_attack(hit);
+                }
                 MobEvent::AttackPlayer(amount, from, attacker) => {
                     self.combat.hit_landed =
                         self.mob_hits_player(amount, from, "minecraft:mob_attack");
@@ -2992,28 +3157,7 @@ impl Game<'_> {
                     z,
                     source,
                     apply_blocking,
-                } => match target {
-                    // Ram knockback checks blocking independently of the hurt call.
-                    Who::Player => self.mob_pushes_player(power, x, z, source, apply_blocking),
-                    Who::Mob(id) => {
-                        let aim = self.attacker_aim(source.attacker);
-                        let attack = self.attack_of_who(source.attacker);
-                        let plan =
-                            self.prepare_knockback_credit(id as i32, None, self.combat.attack());
-                        let mut credit = plan.lend(&mut self.last_hurt_by_player);
-                        if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
-                            m.attacker_aim = aim;
-                            let level = crate::game::entity::damage_level_of!(
-                                self,
-                                &attack,
-                                &mut credit,
-                                None
-                            );
-                            m.knockback(level, power, x, z, &source, 0.0);
-                            m.attacker_aim = None;
-                        }
-                    }
-                },
+                } => self.mob_event_knockback(target, power, [x, z], source, apply_blocking),
                 MobEvent::LidPush {
                     shulker,
                     area,
@@ -4672,8 +4816,8 @@ impl Game<'_> {
         true
     }
     /// `hurtServer` on the player. `from` is the source's position (none: no
-    /// direction), `known`: the causing mob when it is given (`/damage`),
-    /// else the melee attacker is the mob nearest to `from`.
+    /// direction), `known`: the causing mob when it is given (`/damage`).
+    /// A caller's player attack keeps its own source, even with a custom damage type.
     pub(super) fn hurt_player_from(
         &mut self,
         amount: f32,
@@ -4682,7 +4826,18 @@ impl Game<'_> {
         known: Option<Option<u32>>,
         by_creative_player: bool,
     ) -> bool {
-        let post_attack_if_alive = std::mem::take(&mut self.combat.post_attack_if_alive);
+        self.hurt_player_from_inner(amount, from, damage_type, known, by_creative_player, true)
+    }
+
+    fn hurt_player_from_inner(
+        &mut self,
+        amount: f32,
+        from: Option<[f64; 3]>,
+        damage_type: &str,
+        known: Option<Option<u32>>,
+        by_creative_player: bool,
+        post_attack: bool,
+    ) -> bool {
         let rocket = std::mem::take(&mut self.combat.rocket_hit);
         let pierce = std::mem::take(&mut self.combat.piercing_hit);
         let melee = self.combat.melee_mob.take();
@@ -4696,10 +4851,22 @@ impl Game<'_> {
                 .is_some_and(|t| t.contains(damage_type));
         let blocking = self.player_blocking(from, damage_type, pierce);
         let raised = blocking.is_some();
-        // Melee: the attacker stands at `from` (another player's hit has no mob behind it).
+        // The causing entity for the death message.
+        let owner = self.combat.projectile_owner.take();
+        let current = self.combat.attack();
+        let player_melee = known.is_none()
+            && melee.is_none()
+            && current.projectile.is_none()
+            && current.direct.is_none()
+            && current
+                .enchantment_attacker
+                .as_ref()
+                .is_some_and(|actor| actor.kind.as_ref() == "minecraft:player");
+        // Only an unrecorded mob swing is inferred from the source position.
         let attacker = match known {
             Some(known) => known,
             None if melee.is_some() => melee,
+            None if player_melee => None,
             None => from
                 .filter(|_| !projectile && damage_type != "minecraft:player_attack")
                 .and_then(|from| {
@@ -4715,24 +4882,26 @@ impl Game<'_> {
                         .map(|m| m.id)
                 }),
         };
-        // The causing entity for the death message.
-        let owner = self.combat.projectile_owner.take();
         // The mob that caused the hit, else the attack the caller landed it in (a projectile's
         // owner, another player's blow): `combat.attack`, read through `current_attack`.
         let mut attack = match attacker.or(owner) {
             Some(id) => self.attack_of(id as i32),
             None => self.current_attack(),
         };
-        attack.projectile = self.combat.attack().projectile;
-        attack.projectile_kind = self.combat.attack().projectile_kind;
-        attack.projectile_type = self.combat.attack().projectile_type;
-        attack.direct = self.combat.attack().direct;
-        attack.direct_kind = self.combat.attack().direct_kind;
-        attack
-            .direct_type
-            .clone_from(&self.combat.attack().direct_type);
+        attack.projectile = current.projectile;
+        attack.projectile_kind = current.projectile_kind;
+        attack.projectile_type = current.projectile_type;
+        attack.enchantment_direct = current.enchantment_direct.clone();
+        attack.direct = if player_melee {
+            // The player swings the weapon directly, regardless of the damage type it names.
+            Some(attack.attacker)
+        } else {
+            current.direct
+        };
+        attack.direct_kind = current.direct_kind;
+        attack.direct_type.clone_from(&current.direct_type);
         attack.position = from;
-        attack.projectile_weapon = self.combat.attack().projectile_weapon.clone();
+        attack.projectile_weapon = current.projectile_weapon.clone();
         if let Some(a) = attacker.or(owner) {
             self.note_attacker(damage_type, a);
         }
@@ -4760,7 +4929,8 @@ impl Game<'_> {
         let mut default_push: Option<([f64; 2], HurtSource<'_>)> = None;
         let events_before = self.player.as_ref().map_or(0, |p| p.events.len());
         let damage_outcome = if let Some(id) = self.health_resources.damage.id(damage_type) {
-            let weapon = self.player_armor_weapon(attacker, projectile);
+            let weapon =
+                self.player_armor_weapon(&attack, attack.player_source(damage_type, causing));
             self.hurt_player_equipment(
                 id,
                 amount,
@@ -4884,19 +5054,19 @@ impl Game<'_> {
         }
         self.finish_guest_damage();
         // The attack runs `EnchantmentHelper.doPostAttackEffects` after `hurtServer` returns.
-        let killed = self.player.as_ref().is_some_and(|p| {
-            super::wither::killed(
-                true,
-                p.health.dead_or_dying(),
-                p.health.has_pending_protection(),
-            )
-        });
-        if outcome.hurt
-            && let Some(a) = attacker.or(owner)
-            && !(post_attack_if_alive && killed)
+        if post_attack
+            && outcome.hurt
+            && attack.projectile.is_none()
+            && attacker.or(owner).is_some()
             && damage_type != "minecraft:thorns"
         {
-            self.thorns(a);
+            let source = attack.player_source(damage_type, causing);
+            self.post_attack_from_hand(
+                self.own_entity_id() as u32,
+                "minecraft:player",
+                &attack,
+                source,
+            );
         }
         outcome.hurt
     }
@@ -5847,18 +6017,42 @@ impl Game<'_> {
             None => self.projectile_hit(p, hit),
         }
     }
-    /// `EnchantmentHelper.doPostAttackEffects` after the player's shot `p`
-    /// (its `direct` entity, a hit of `damage_type`) hurt the mob `who`: the
-    /// victim's own post-attack enchantments answer the player (Thorns).
-    pub(super) fn shot_post_attack(
+    /// Continue a landed hit with the projectile's recorded weapon and entity roles.
+    pub(super) fn shot_post_attack(&mut self, p: &Projectile, who: Who, damage_type: &str) {
+        let attack = self.current_attack();
+        let (victim, kind) = match who {
+            Who::Player => (self.own_entity_id() as u32, "minecraft:player".into()),
+            Who::Mob(id) => {
+                let Some(target) = self.level_entity(id as i32) else {
+                    return;
+                };
+                (id, self.target_type(target))
+            }
+        };
+        self.shot_post_attack_against(p, victim, &kind, &attack, damage_type);
+    }
+
+    fn shot_post_attack_against(
         &mut self,
         p: &Projectile,
-        who: Who,
-        direct: &str,
+        victim: u32,
+        kind: &str,
+        attack: &Attack,
         damage_type: &str,
     ) {
-        if let Who::Mob(id) = who {
-            self.mob_post_attack(id, p.owner, Some(direct), Some(damage_type));
+        let source = attack.player_source(damage_type, attack.attacker);
+        let trident = matches!(p.kind, ProjectileKind::Trident);
+        let weapon = p.arrow.as_ref().and_then(|arrow| {
+            if trident {
+                Some(&arrow.pickup_item)
+            } else {
+                arrow.fired_from_weapon.as_ref()
+            }
+        });
+        if p.arrow.is_some() {
+            self.post_attack(victim, kind, attack, source, weapon, trident);
+        } else {
+            self.post_attack_from_hand(victim, kind, attack, source);
         }
     }
     /// `BellBlock.onProjectileHit`: a projectile that strikes the bell proper
@@ -6169,7 +6363,12 @@ impl Game<'_> {
     }
 
     /// Dispatch one arrow entity hit onto the host player with guest-shooter attribution.
-    fn arrow_hit_host_victim(&mut self, arrow: &mut Projectile, amount: f32) -> Result<EntityHit> {
+    fn arrow_hit_host_victim(
+        &mut self,
+        arrow: &mut Projectile,
+        amount: f32,
+        deferred: Option<&mut Option<LandedPlayerArrow>>,
+    ) -> Result<EntityHit> {
         let shooter = arrow
             .guest
             .filter(|_| arrow.owner == Some(Who::Player))
@@ -6182,7 +6381,7 @@ impl Game<'_> {
         let prev_effect = self.combat.enchantment_projectile_attacker.take();
         self.combat.projectile_attacker = shooter;
         self.combat.enchantment_projectile_attacker = effect_attacker;
-        let outcome = self.arrow_hit_one_entity(arrow, Who::Player, amount);
+        let outcome = self.arrow_hit_one_entity(arrow, Who::Player, amount, deferred);
         self.combat.projectile_attacker = prev_attacker;
         self.combat.enchantment_projectile_attacker = prev_effect;
         outcome
@@ -6221,7 +6420,7 @@ impl Game<'_> {
                 .combat
                 .enchantment_projectile_attacker
                 .replace(effect_attacker);
-            let res = g.arrow_hit_one_entity(arrow, Who::Player, amount);
+            let res = g.arrow_hit_one_entity(arrow, Who::Player, amount, None);
             g.combat.refuse_player_hit = false;
             g.combat.projectile_attacker = None;
             g.combat.enchantment_projectile_attacker = saved_effect_attacker;
@@ -6286,11 +6485,14 @@ impl Game<'_> {
     }
 
     /// Apply one arrow entity hit (`AbstractArrow.onHitEntity`), returning the hit outcome.
+    /// With `deferred`, a hit that hurt the player in place hands its post-attack enchantments and its
+    /// potion to the caller instead of running them here.
     fn arrow_hit_one_entity(
         &mut self,
         arrow: &mut Projectile,
         who: Who,
         amount: f32,
+        deferred: Option<&mut Option<LandedPlayerArrow>>,
     ) -> Result<EntityHit> {
         self.combat.projectile_owner = match arrow.owner {
             Some(Who::Mob(id)) => Some(id),
@@ -6321,12 +6523,7 @@ impl Game<'_> {
             match self.projectile_hurts_non_mob(&info, id) {
                 NonMobHit::Hurt => {
                     if was_stand {
-                        let direct = if arrow.is_spectral_arrow() {
-                            "minecraft:spectral_arrow"
-                        } else {
-                            "minecraft:arrow"
-                        };
-                        self.shot_post_attack(arrow, who, direct, "minecraft:arrow");
+                        self.shot_post_attack(arrow, who, "minecraft:arrow");
                         self.arrow_post_hurt_effects(arrow, who);
                     }
                     return Ok(EntityHit::Hurt);
@@ -6454,28 +6651,20 @@ impl Game<'_> {
             .as_ref()
             .and_then(|a| a.fired_from_weapon.as_ref())
         {
-            let victim = self.entity_kind_for_who(who);
-            let owner = arrow.owner.and_then(|o| self.entity_kind_for_who(o));
-            let arrow_type = if arrow.is_spectral_arrow() {
-                "minecraft:spectral_arrow"
-            } else {
-                "minecraft:arrow"
+            let (victim, kind) = match who {
+                Who::Player => (self.own_entity_id() as u32, "minecraft:player".to_owned()),
+                Who::Mob(id) => (
+                    id,
+                    self.mobs
+                        .iter()
+                        .find(|m| m.id == id)
+                        .map_or_else(String::new, |m| m.kind.id.clone()),
+                ),
             };
-            let ctx = sunrise_client::enchant::EffectContext {
-                this: victim.as_deref(),
-                attacker: owner.as_deref(),
-                direct_attacker: Some(arrow_type),
-                damage_type: Some("minecraft:arrow"),
-                items: Some(self.res.items()),
-                ..Default::default()
-            };
-            self.res.stations().enchantments.modify_value(
-                Some(weapon),
-                "minecraft:knockback",
-                &ctx,
-                &mut self.world.random,
-                0.0,
-            )
+            let attack = self.projectile_attack(arrow);
+            let source = sunrise_client::health::mob_source(&source, &attack);
+            let ctx = attack.enchantment_context(source, &kind);
+            self.evaluate_weapon_value(weapon, "minecraft:knockback", Some(victim), ctx, 0.0)
         } else {
             arrow.bonus.punch as f32
         };
@@ -6493,13 +6682,18 @@ impl Game<'_> {
         }
         if hurt {
             if target_present {
-                let direct = if arrow.is_spectral_arrow() {
-                    "minecraft:spectral_arrow"
+                if let Some(deferred) = deferred {
+                    // The shooter is displaced in the victim's turn: the caller resumes the
+                    // enchantments once restored, before the arrow's potion.
+                    *deferred = Some(LandedPlayerArrow {
+                        victim: self.own_entity_id() as u32,
+                        attack: self.current_attack(),
+                        arrow: arrow.clone(),
+                    });
                 } else {
-                    "minecraft:arrow"
-                };
-                self.shot_post_attack(arrow, who, direct, "minecraft:arrow");
-                self.arrow_post_hurt_effects(arrow, who);
+                    self.shot_post_attack(arrow, who, "minecraft:arrow");
+                    self.arrow_post_hurt_effects(arrow, who);
+                }
             }
             return Ok(EntityHit::Hurt);
         }
@@ -6531,6 +6725,7 @@ impl Game<'_> {
         mut arrow: Projectile,
         first_who: Who,
         first_at: Vec3,
+        deferred: Option<&mut Option<LandedPlayerArrow>>,
     ) -> Result<()> {
         let step = arrow.arrow.as_mut().and_then(|a| a.pierce_step.take());
         let (step_end, step_block, remaining) = match step {
@@ -6592,12 +6787,12 @@ impl Game<'_> {
                 {
                     self.arrow_hit_guest_victim(&mut arrow, victim_conn, amount)?
                 } else if hit_who == Who::Player {
-                    self.arrow_hit_host_victim(&mut arrow, amount)?
+                    self.arrow_hit_host_victim(&mut arrow, amount, deferred.as_deref_mut())?
                 } else if let Some(shooter_conn) =
                     arrow.guest.filter(|&c| self.lan_acting != Some(c))
                 {
                     let res = self.as_guest(shooter_conn, |g| {
-                        g.arrow_hit_one_entity(&mut arrow, hit_who, amount)
+                        g.arrow_hit_one_entity(&mut arrow, hit_who, amount, None)
                     });
                     if res.is_some()
                         && self
@@ -6613,10 +6808,10 @@ impl Game<'_> {
                     }
                     match res {
                         Some(r) => r?,
-                        None => self.arrow_hit_one_entity(&mut arrow, hit_who, amount)?,
+                        None => self.arrow_hit_one_entity(&mut arrow, hit_who, amount, None)?,
                     }
                 } else {
-                    self.arrow_hit_one_entity(&mut arrow, hit_who, amount)?
+                    self.arrow_hit_one_entity(&mut arrow, hit_who, amount, None)?
                 };
                 sunrise_client::arrows::apply_pierce_hit(&mut arrow, outcome);
                 self.flush_arrow_events(&mut arrow);
@@ -6856,8 +7051,19 @@ impl Game<'_> {
 
     /// A projectile's hit, landed in the attack of its owner.
     pub(super) fn projectile_hit(&mut self, p: &Projectile, hit: Hit) -> Result<()> {
+        self.projectile_hit_deferring_player_arrow(p, hit, None)
+    }
+
+    /// A guest hit can hand the accepted arrow back to its caller so enchantments
+    /// run after the guest turn restores the shooter.
+    pub(super) fn projectile_hit_deferring_player_arrow(
+        &mut self,
+        p: &Projectile,
+        hit: Hit,
+        deferred: Option<&mut Option<LandedPlayerArrow>>,
+    ) -> Result<()> {
         let attack = self.projectile_attack(p);
-        let result = self.with_attack(attack, |g| g.projectile_hit_landed(p, hit));
+        let result = self.with_attack(attack, |g| g.projectile_hit_landed(p, hit, deferred));
         self.settle_dealt_absorbed(p.owner == Some(Who::Player));
         result?;
         if let Hit::Entity {
@@ -6869,7 +7075,32 @@ impl Game<'_> {
         // The hit's hurt teleports an enderman or a shulker now (`hurtServer`).
         self.settle_hurt_teleports()
     }
-    fn projectile_hit_landed(&mut self, p: &Projectile, hit: Hit) -> Result<()> {
+    pub(super) fn resume_guest_arrow_hit(&mut self, conn: u32, landed: LandedPlayerArrow) {
+        let LandedPlayerArrow {
+            victim,
+            attack,
+            arrow,
+        } = landed;
+        self.shot_post_attack_against(
+            &arrow,
+            victim,
+            "minecraft:player",
+            &attack,
+            "minecraft:arrow",
+        );
+        // AbstractArrow.onHitEntity applies the arrow's potion after the enchantments. The arrow
+        // itself was finished by its step.
+        self.guest_hit_by(conn, |g| {
+            g.with_attack(attack, |g| g.arrow_post_hurt_effects(&arrow, Who::Player));
+        });
+    }
+
+    fn projectile_hit_landed(
+        &mut self,
+        p: &Projectile,
+        hit: Hit,
+        deferred: Option<&mut Option<LandedPlayerArrow>>,
+    ) -> Result<()> {
         // Projectile.onHitBlock: BlockState.onProjectileHit, for every
         // projectile (a wind charge out of the world's top has no face).
         if let Hit::Block { pos, at, face } = hit
@@ -6900,7 +7131,7 @@ impl Game<'_> {
             self.target_block_hit(&ProjectileHitter::of(p), pos, at, face);
         }
         if let (ProjectileKind::Arrow { .. }, Hit::Entity { who, at }) = (&p.kind, hit) {
-            return self.finish_arrow_step(p.clone(), who, at);
+            return self.finish_arrow_step(p.clone(), who, at, deferred);
         }
         let wind = matches!(
             p.kind,
@@ -7094,7 +7325,7 @@ impl Game<'_> {
                 };
                 let outcome = if hurt {
                     if living_hit {
-                        self.shot_post_attack(p, who, "minecraft:trident", "minecraft:trident");
+                        self.shot_post_attack(p, who, "minecraft:trident");
                     }
                     EntityHit::Hurt
                 } else {
@@ -7106,11 +7337,32 @@ impl Game<'_> {
                 self.projectile_hit_landed_event(p.id, p.owner, hit);
             }
             // AbstractArrow.onHitBlock plays its sound itself (ArrowEvent).
-            (ProjectileKind::Trident, Hit::Block { .. }) => {
-                self.projectile_hit_landed_event(p.id, p.owner, hit);
-            }
-            // AbstractArrow.onHitBlock plays its sound itself (ArrowEvent).
-            (ProjectileKind::Arrow { .. }, Hit::Block { .. }) => {
+            (ProjectileKind::Trident | ProjectileKind::Arrow { .. }, Hit::Block { pos, .. }) => {
+                // The weapon's enchantments of a block hit run for its holder.
+                let weapon = p.arrow.as_ref().and_then(|arrow| {
+                    if matches!(p.kind, ProjectileKind::Trident) {
+                        Some(&arrow.pickup_item)
+                    } else {
+                        arrow.fired_from_weapon.as_ref()
+                    }
+                });
+                if let Some(weapon) = weapon {
+                    let holder = match p.owner {
+                        Some(Who::Mob(id)) => Some(id),
+                        Some(Who::Player) => self
+                            .player_entity_id_by_connection(p.guest)
+                            .map(|id| id as u32),
+                        None => None,
+                    };
+                    self.hit_block_enchantment_effects(
+                        weapon,
+                        holder,
+                        p.id,
+                        p.entity_type(),
+                        at,
+                        pos,
+                    );
+                }
                 self.projectile_hit_landed_event(p.id, p.owner, hit);
             }
             (ProjectileKind::Snowball, hit) => {
@@ -7344,8 +7596,9 @@ impl Game<'_> {
                                 [p.previous.x, p.previous.y, p.previous.z],
                                 self.projectile_damage_type(p),
                             );
-                            if !hurt
-                                && let Some(remaining) = remaining
+                            if hurt {
+                                self.shot_post_attack(p, who, "minecraft:fireball");
+                            } else if let Some(remaining) = remaining
                                 && let Some(pl) = self.player.as_mut()
                             {
                                 pl.set_remaining_fire_ticks(remaining);
@@ -7359,12 +7612,7 @@ impl Game<'_> {
                                     m.ignite_for_ticks(100);
                                 }
                                 if self.damage_projectile_with_weapon(p, id, 5.0, source, aim) {
-                                    self.shot_post_attack(
-                                        p,
-                                        who,
-                                        "minecraft:small_fireball",
-                                        self.projectile_damage_type(p),
-                                    );
+                                    self.shot_post_attack(p, who, "minecraft:fireball");
                                 } else if let Some(i) = self.mob_index.find(&self.mobs, id)
                                     && self.mobs[i].join == join
                                     && !self.mobs[i].removed
@@ -7419,17 +7667,18 @@ impl Game<'_> {
                                 [p.previous.x, p.previous.y, p.previous.z],
                                 dmg_type,
                             );
+                            self.shot_post_attack(p, who, "minecraft:fireball");
                         }
                         Who::Mob(id) => {
                             if self.mob_index.find(&self.mobs, id).is_some() {
                                 self.damage_projectile_with_weapon(p, id, 6.0, source, aim);
-                                self.shot_post_attack(p, who, "minecraft:fireball", dmg_type);
+                                self.shot_post_attack(p, who, "minecraft:fireball");
                             } else {
                                 let info =
                                     ProjectileHitInfo::from_projectile(p, dmg_type, 6.0, None);
                                 let _ = self.projectile_hurts_non_mob(&info, id);
                                 // LargeFireball.onHitEntity runs doPostAttackEffects unconditionally.
-                                self.shot_post_attack(p, who, "minecraft:fireball", dmg_type);
+                                self.shot_post_attack(p, who, "minecraft:fireball");
                             }
                         }
                     }
@@ -7513,21 +7762,18 @@ impl Game<'_> {
             (ProjectileKind::LlamaSpit, Hit::Entity { who, .. }) => {
                 match who {
                     Who::Player => {
-                        self.mob_hits_player(
+                        if self.mob_hits_player(
                             1.0,
                             [p.previous.x, p.previous.y, p.previous.z],
                             "minecraft:spit",
-                        );
+                        ) {
+                            self.shot_post_attack(p, who, "minecraft:spit");
+                        }
                     }
                     Who::Mob(id) => {
                         if self.mob_index.find(&self.mobs, id).is_some() {
                             if self.damage_projectile_with_weapon(p, id, 1.0, source, aim) {
-                                self.shot_post_attack(
-                                    p,
-                                    who,
-                                    "minecraft:llama_spit",
-                                    "minecraft:spit",
-                                );
+                                self.shot_post_attack(p, who, "minecraft:spit");
                             }
                         } else {
                             let info = ProjectileHitInfo::from_projectile(
@@ -7561,6 +7807,7 @@ impl Game<'_> {
                             [p.previous.x, p.previous.y, p.previous.z],
                             "minecraft:mob_projectile",
                         ) {
+                            self.shot_post_attack(p, who, "minecraft:mob_projectile");
                             self.give_player_effect_from(
                                 "minecraft:levitation",
                                 200,
@@ -7581,12 +7828,7 @@ impl Game<'_> {
                                 // The hurt's teleport (`teleportSomewhere`,
                                 // `hitByShulkerBullet`) comes before the levitation.
                                 self.settle_hurt_teleports()?;
-                                self.shot_post_attack(
-                                    p,
-                                    who,
-                                    "minecraft:shulker_bullet",
-                                    "minecraft:mob_projectile",
-                                );
+                                self.shot_post_attack(p, who, "minecraft:mob_projectile");
                                 if self.mob_object(id).is_some_and(same_target) {
                                     self.add_mob_effect(
                                         id,

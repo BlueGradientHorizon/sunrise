@@ -829,20 +829,31 @@ impl Game<'_> {
         };
         // BowItem.shootProjectile: shootFromRotation(power * 3, inaccuracy 1).
         let p = Vec3::new(eye[0], eye[1] - 0.1, eye[2]);
-        let ammo = ammo.stack;
-        let (power_bonus, infinity) = self.bow_enchantments(&ammo.item);
-        let effect = dispenser::tipped_effect(&ammo).or_else(|| {
-            (&*ammo.item == "minecraft:spectral_arrow").then_some(("minecraft:glowing", 200))
-        });
-        let kind = sunrise_client::projectiles::ProjectileKind::Arrow {
-            base_damage: 2.0 + power_bonus,
-            critical: power >= 1.0,
-            effect,
-        };
-        // ProjectileWeaponItem.draw and shoot: the weapon's enchantments decide
-        // how many arrows leave and how far apart they fan (Multishot: two more
-        // arrows, ten degrees of spread).
-        let (count, spread) = self.bow_volley(stack);
+        let shooter = self.own_entity_id() as u32;
+        let (drawn, debit) = self.draw_weapon_ammo(
+            stack,
+            &ammo.stack,
+            shooter,
+            "minecraft:player",
+            self.creative,
+        );
+        if drawn.is_empty() {
+            return;
+        }
+        if debit > 0
+            && let Some(i) = arrow_slot
+        {
+            self.consume_player_slot(i, debit);
+        }
+        let count = drawn.len();
+        let spread = self.entity_enchantment_value(
+            stack,
+            shooter,
+            "minecraft:player",
+            "minecraft:projectile_spread",
+            0.0,
+        );
+        let spread = if spread < 0.0 { 0.0 } else { spread };
         let (velocity, on_ground) = self.player.as_ref().map_or((Vec3::ZERO, true), |pl| {
             (self.known_player_movement(), pl.ground.on_ground)
         });
@@ -856,25 +867,26 @@ impl Game<'_> {
         };
         let offset = (count.saturating_sub(1) % 2) as f32 * step / 2.0;
         let mut direction = 1.0f32;
-        for index in 0..count {
+        for (index, ammo) in drawn.iter().enumerate() {
+            let effect = dispenser::tipped_effect(ammo).or_else(|| {
+                (&*ammo.item == "minecraft:spectral_arrow").then_some(("minecraft:glowing", 200))
+            });
+            let kind = sunrise_client::projectiles::ProjectileKind::Arrow {
+                base_damage: 2.0,
+                critical: power >= 1.0,
+                effect,
+            };
             let angle = offset + direction * index.div_ceil(2) as f32 * step;
             direction = -direction;
             let mut arrow = sunrise_client::projectiles::Projectile::new(
-                kind.clone(),
+                kind,
                 p,
                 Some(sunrise_client::mobs::Who::Player),
             );
             // AbstractArrow's constructor asks the weapon for its piercing count.
-            let pierce = self.bow_pierce(stack, &ammo);
-            // ProjectileWeaponItem.useAmmo: creative and Infinity draw without
-            // using the ammo, so the arrow is CREATIVE_ONLY, and only the first
-            // of a volley is the player's to take; else setOwner(player) lets
-            // it be picked up.
+            let pierce = self.projectile_pierce(stack, ammo);
             if let Some(a) = arrow.arrow.as_mut() {
-                a.set_item(&sunrise_client::arrows::drawn_ammo(
-                    &ammo,
-                    self.creative || infinity || index > 0,
-                ));
+                a.set_item(ammo);
                 a.set_owner(Some(sunrise_client::mobs::Who::Player));
                 a.fired_from_weapon = weapon.clone();
                 a.pierce = pierce;
@@ -891,7 +903,7 @@ impl Game<'_> {
                 velocity,
                 on_ground,
             );
-            self.spawn_projectile(arrow, &ammo);
+            self.spawn_projectile(arrow, ammo);
             // ProjectileWeaponItem.shoot: one point of wear per arrow, and a
             // bow that breaks mid-volley shoots no more.
             let held = self.held().is_some();
@@ -911,58 +923,6 @@ impl Game<'_> {
         self.audio
             .play("minecraft:entity.arrow.shoot", Some(feet), 1.0, pitch);
         self.award_stat("used", "minecraft:bow", 1);
-        // useAmmo takes one arrow for the first drawn projectile and none for
-        // the rest, and none at all when the weapon draws none.
-        if count > 0
-            && !self.creative
-            && !infinity
-            && let Some(i) = arrow_slot
-        {
-            self.consume_player_slot(i, 1);
-        }
-    }
-    /// `EnchantmentHelper.processProjectileCount` and `processProjectileSpread`
-    /// for `weapon`: the arrows a shot draws (1, plus Multishot's 2) and the
-    /// spread they fan over (0, plus Multishot's 10 degrees).
-    fn bow_volley(&mut self, weapon: &ItemStack) -> (usize, f32) {
-        let ctx = sunrise_client::enchant::EffectContext {
-            this: Some("minecraft:player"),
-            items: Some(world_items!(self)),
-            ..Default::default()
-        };
-        let enchantments = &world_stations!(self).enchantments;
-        let count = enchantments.modify_value(
-            Some(weapon),
-            "minecraft:projectile_count",
-            &ctx,
-            &mut self.world.random,
-            1.0,
-        );
-        let spread = enchantments.modify_value(
-            Some(weapon),
-            "minecraft:projectile_spread",
-            &ctx,
-            &mut self.world.random,
-            0.0,
-        );
-        (count.floor().max(0.0) as usize, spread.max(0.0))
-    }
-    /// `EnchantmentHelper.getPiercingCount` for `ammo`: the weapon's
-    /// `projectile_piercing` (Piercing, one entity per level).
-    fn bow_pierce(&mut self, weapon: &ItemStack, ammo: &ItemStack) -> u8 {
-        let ctx = sunrise_client::enchant::EffectContext {
-            tool: Some(&ammo.item),
-            items: Some(world_items!(self)),
-            ..Default::default()
-        };
-        let pierce = world_stations!(self).enchantments.modify_value(
-            Some(weapon),
-            "minecraft:projectile_piercing",
-            &ctx,
-            &mut self.world.random,
-            0.0,
-        );
-        pierce.floor().clamp(0.0, 127.0) as u8
     }
 }
 

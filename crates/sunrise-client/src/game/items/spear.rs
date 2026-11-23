@@ -297,7 +297,7 @@ impl Game<'_> {
             let level = crate::game::entity::damage_level_of!(self, &attack, &mut credit, None);
             self.mobs[index].knockback_full(level, 0.4, xd, zd, &source, total, false);
             self.mobs[index].attacker_aim = None;
-            let (strength, _) = self.extra_knockback(&kind, 0.0);
+            let (strength, _) = self.extra_knockback(&kind, id, 0.0, Some("minecraft:spear"));
             if strength > 0.0 {
                 let plan = self.prepare_knockback_credit(id as i32, None, &attack);
                 let mut credit = plan.lend(&mut self.last_hurt_by_player);
@@ -341,7 +341,7 @@ impl Game<'_> {
         if let Some(stack) = self.held().cloned() {
             self.award_stat("used", &stack.item, 1);
             if hurt {
-                self.post_attack(index);
+                self.post_player_melee(id, &kind, "minecraft:spear", Some(&stack));
             }
             self.weapon_wear(&stack);
         }

@@ -875,24 +875,12 @@ impl Game<'_> {
     pub(in crate::game) fn native_panel_event(&mut self, mod_id: &str, event: &PanelEvent) {
         self.fire_panel_event(mod_id, event);
     }
-    /// A `minecraft:post_attack` effect of a mod's own kind, on a mob a
-    /// player's weapon hit: the entry says `enchanted` attacker and `affected`
-    /// victim, its `requirements` passed, and its `effect` names a `type` in a
-    /// namespace outside `minecraft:`. Told the enchantment id, the kind, the
-    /// `effect` payload as a borrowed `Tag`, the level and the mob's id (it may have just died). The
-    /// acting player is the one whose weapon carries the enchantment. Each
-    /// such entry is told once a hit, and once for each mob a sweep lands on.
-    /// A hit on a player, and an entry inside `minecraft:all_of`, aren't told
-    /// yet. An unclaimed kind does nothing.
-    pub(in crate::game) fn native_enchant_effect(
-        &mut self,
-        enchantment: &str,
-        kind: &str,
-        data: &sunrise_core::nbt::Tag,
-        level: u32,
-        victim: u32,
-    ) {
-        self.fire_enchant_effect(enchantment, kind, data, level, victim);
+    /// Whether block `block`'s block entity ticks (`EntityBlock.getTicker`):
+    /// set `ticks` when it is yours. Asked for each of the block's states
+    /// when a world opens.
+    /// Set `ticks` to true to make it tick, and never clear a value an earlier mod or mixin set.
+    pub(in crate::game) fn native_block_entity_ticks(&self, block: &str, ticks: &mut bool) {
+        self.fire_block_entity_ticks(block, ticks);
     }
     /// Block `block`'s registered item slots (`WorldlyContainer`), read from
     /// its per-block declaration when the ticking table is built.

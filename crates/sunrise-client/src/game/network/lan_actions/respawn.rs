@@ -320,6 +320,28 @@ impl Game<'_> {
         }
     }
 
+    /// `LivingEntity.getExperienceReward` uses the killed player's random, not the killer's.
+    fn guest_kill_experience(&mut self, conn: u32, killer: Option<u32>, amount: i32) -> i32 {
+        let Some(killer) = killer else { return amount };
+        let mut value = amount;
+        self.with_dying_guest(conn, |game| {
+            let Some(victim) = game.player.as_ref() else {
+                return;
+            };
+            let ctx = sunrise_items::enchant::EffectContext {
+                this: Some("minecraft:player"),
+                this_motion: Some((victim.fall_distance, victim.fall_flying || victim.flying)),
+                ..Default::default()
+            };
+            let mut random = victim.random.clone();
+            value = game.kill_experience(killer, ctx, &mut random, amount);
+            if let Some(victim) = game.player.as_mut() {
+                victim.random = random;
+            }
+        });
+        value
+    }
+
     /// `ServerPlayer.die` for a guest whose health has run out: the death
     /// message, the loot and experience, the death screen.
     pub(in crate::game) fn guest_die(&mut self, gi: usize, conn: u32) {
@@ -506,9 +528,12 @@ impl Game<'_> {
             // LivingEntity.die: the death is heard, and a sculk catalyst
             // nearby takes the experience (before the loot is dropped), as it
             // does for a mob.
+            let killing_entity = killing.as_ref().and_then(|(_, attacker)| *attacker);
             let mut catalyst_xp = 0;
-            let consumed = self.catalyst_takes_experience(at, |_| {
-                catalyst_xp = reward;
+            let consumed = self.catalyst_takes_experience(at, |game| {
+                catalyst_xp = game
+                    .guest_kill_experience(conn, killing_entity, reward as i32)
+                    .max(0) as u32;
                 catalyst_xp
             });
             // CatalystListener: with experience to take, the player who last
@@ -546,13 +571,14 @@ impl Game<'_> {
                     };
                     credit.and_then(|c| self.resolve_player_credit(c).map(|_| c.0))
                 };
-                let reward = self.living_experience_drop(
-                    id as u32,
-                    "minecraft:player",
-                    attacker,
-                    reward as i32,
-                );
                 if !consumed {
+                    let reward = self.guest_kill_experience(conn, killing_entity, reward as i32);
+                    let reward = self.living_experience_drop(
+                        id as u32,
+                        "minecraft:player",
+                        attacker,
+                        reward,
+                    );
                     self.spawn_orbs(at, reward as u32);
                 }
             }
