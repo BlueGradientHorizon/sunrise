@@ -1,12 +1,27 @@
 use super::{DataRef, Target};
 use crate::game::native_entity_refs::tests::with_game;
+use std::path::PathBuf;
 use sunrise_core::nbt::{Tag, parse_snbt};
 
-// Recorded from real vanilla 26.3 via `tools/test_command_exec_parity.py --record-eye-item-witness`.
-const WITNESS_26_3: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../tools/fixtures/26.3/eye_item.tsv"
-));
+fn load_witness() -> String {
+    let raw = std::env::var_os("SUNRISE_EYE_ITEM_WITNESS").unwrap_or_else(|| {
+        panic!(
+            "SUNRISE_EYE_ITEM_WITNESS is unset; run tools/test_eye_item_parity.py, which records the witness"
+        )
+    });
+    let path = PathBuf::from(raw);
+    let path = if path.is_dir() {
+        path.join("eye_item.tsv")
+    } else {
+        path
+    };
+    std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        panic!(
+            "failed to read eye_item witness {} (run tools/test_eye_item_parity.py): {e}",
+            path.display()
+        )
+    })
+}
 
 fn parse_exact_snbt(text: &str) -> Tag {
     let (tag, used) = parse_snbt(text).expect("valid recorded 26.3 SNBT");
@@ -25,17 +40,22 @@ fn saved_item(game: &mut crate::game::Game<'_>, id: u32) -> Tag {
         .expect("an eye of ender always saves Item")
 }
 
-/// Matches the real vanilla 26.3 witness (`tools/fixtures/26.3/eye_item.tsv`).
+/// Matches the real vanilla 26.3 witness recorded by `tools/test_eye_item_parity.py`.
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_eye_item_parity.py"]
 fn a_summoned_eye_saves_its_normalised_item_live_and_after_a_reload() {
+    run_a_summoned_eye_saves_its_normalised_item_live_and_after_a_reload();
+}
+
+pub(in crate::game) fn run_a_summoned_eye_saves_its_normalised_item_live_and_after_a_reload() {
+    let witness = load_witness();
     assert!(
-        WITNESS_26_3.contains("# minecraft_version\t26.3"),
+        witness.contains("# minecraft_version\t26.3"),
         "witness must be tagged with 26.3"
     );
     with_game(|game| {
         let mut checked = 0usize;
-        for line in WITNESS_26_3.lines() {
+        for line in witness.lines() {
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }

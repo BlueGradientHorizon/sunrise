@@ -1158,5 +1158,13 @@
     "path": "crates/sunrise-client/src/game/mobs/creatures/projectiles_120_124_tests.rs",
     "reason": "run by tools/test_projectile_targets_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_projectile_targets_parity.py records the vanilla 26.3 projectile witnesses into .local and runs this test against them through SUNRISE_PROJECTILE_WITNESS_DIR, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::commands::data::eye_item_tests::a_summoned_eye_saves_its_normalised_item_live_and_after_a_reload",
+    "path": "crates/sunrise-client/src/game/administration/commands/data/eye_item_tests.rs",
+    "reason": "run by tools/test_eye_item_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_eye_item_parity.py records the vanilla 26.3 eye_of_ender Item witness into .local and runs this test against it through SUNRISE_EYE_ITEM_WITNESS, so no recorded vanilla data is committed."
   }
 ]

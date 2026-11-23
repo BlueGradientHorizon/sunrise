@@ -2092,7 +2092,7 @@ mod orb_uuid_tests;
 
 #[cfg(test)]
 #[path = "data/eye_item_tests.rs"]
-mod eye_item_tests;
+pub(in crate::game) mod eye_item_tests;
 
 #[cfg(test)]
 mod wolf_live_anger_tests {

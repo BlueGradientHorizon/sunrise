@@ -199,8 +199,8 @@ def main():
     parser.add_argument('--groups-file', type=Path,
                         help='run these generated [name, ops] groups after the common setup instead of the corpus')
     parser.add_argument('--record-eye-item-witness', nargs='?',
-                        const=str(lab.ROOT / 'tools/fixtures/26.3/eye_item.tsv'),
-                        help='run the 26.3 Java oracle on summoned eye of ender and write the eye Item witness TSV')
+                        const=str(lab.LOCAL / 'witness' / lab.VERSION / 'eye_item' / 'eye_item.tsv'),
+                        help='run the 26.3 Java oracle on summoned eye of ender and write the eye Item witness TSV into .local')
     args = parser.parse_args()
     if args.record_eye_item_witness:
         args.reference_only = True
@@ -934,7 +934,7 @@ def write_eye_item_witness(path, version, reference):
     prefix = ' has the following entity data: '
     rows = [
         f'# Recorded from real vanilla {version} (VanillaCommandExecOracle).',
-        '# Command: python3 tools/test_command_exec_parity.py --record-eye-item-witness',
+        '# Command: python3 tools/test_eye_item_parity.py --record',
         f'# minecraft_version\t{version}',
         '# case\tsummon_nbt\tlive_item_snbt\treloaded_item_snbt',
     ]
