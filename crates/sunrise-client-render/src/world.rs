@@ -500,6 +500,20 @@ impl World {
         let y = y.clamp(self.shape.min_y, self.shape.max_y() - 1);
         Some(chunk?.biome(x, y, z))
     }
+    /// `LevelReader.getBiome` (`BiomeManager.getBiome`): the biome table index of the noise cell
+    /// `zoom` picks for the block, one of the eight quarts around it and perhaps in a
+    /// neighbouring chunk, read as [`noise_biome`](Self::noise_biome) reads it. `None` where that
+    /// cell's chunk isn't loaded.
+    pub fn biome_at(
+        &self,
+        zoom: sunrise_core::biome::BiomeZoom,
+        x: i32,
+        y: i32,
+        z: i32,
+    ) -> Option<u16> {
+        let [qx, qy, qz] = zoom.quart_at_block(sunrise_core::position::BlockPos::new(x, y, z));
+        self.noise_biome(qx << 2, qy << 2, qz << 2)
+    }
     /// One above the highest block Y the level's chunks hold.
     pub fn top_y(&self) -> i32 {
         self.layout().max_y()
@@ -1243,6 +1257,31 @@ mod tests {
             assert_eq!(world.noise_biome(9, y, 9), Some(biome), "y {y}");
         }
         assert_eq!(world.noise_biome(16, 0, 0), None);
+    }
+
+    /// `BiomeManager.getBiome` reads the noise cell the zoom picks, not the block's own: at world
+    /// seed 12345, block (16, 64, 8) lies in chunk 1 0's quart 4 16 2, but the zoom picks quart
+    /// 3 15 1, which chunk 0 0 holds; block (17, 64, 8) keeps to chunk 1 0 (quart 4 15 1).
+    #[test]
+    fn biome_at_reads_the_quart_the_zoom_picks() {
+        use sunrise_core::biome::{BiomeZoom, obfuscate_seed};
+        let mut world = World::new(BlockStateId(0), 12345);
+        for (cx, biome) in [(0, 1), (1, 2)] {
+            let mut chunk = Chunk::empty(cx, 0);
+            for qy in 0..SECTIONS as i32 * 4 {
+                for qz in 0..4 {
+                    for qx in 0..4 {
+                        chunk.set_biome_cell(qx, qy, qz, biome);
+                    }
+                }
+            }
+            world.chunks.insert((cx, 0), Arc::new(chunk));
+        }
+        let zoom = BiomeZoom::new(obfuscate_seed(12345));
+        assert_eq!(world.noise_biome(16, 64, 8), Some(2));
+        assert_eq!(world.biome_at(zoom, 16, 64, 8), Some(1));
+        assert_eq!(world.biome_at(zoom, 17, 64, 8), Some(2));
+        assert_eq!(world.biome_at(zoom, 40, 64, 8), None);
     }
 
     /// A box misses a state only where no section it reaches lists it, and

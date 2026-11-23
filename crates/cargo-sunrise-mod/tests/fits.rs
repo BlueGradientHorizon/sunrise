@@ -244,7 +244,7 @@ fn pin_without_a_build_moves_to_the_current_nightly() {
 #[test]
 #[ignore = "daily"]
 fn pin_moves_a_mod_off_a_build_whose_surface_schema_the_tool_does_not_read() {
-    let project = Project::made("pin-old-schema", &[], mod_surface::SCHEMA - 1);
+    let project = Project::made("pin-old-schema", &[], 1);
     let check = project.run(&["check", "--build", OLD]);
     let stderr = String::from_utf8_lossy(&check.stderr);
     assert!(
