@@ -1791,6 +1791,7 @@ impl Game<'_> {
                 world_items!(self),
                 &world_stations!(self).enchantments,
             );
+            // The paused hit carries its setup's decision: an attacker id only if it was lent then.
             let lent_index = paused
                 .lent_attacker
                 .and_then(|id| self.mob_index.find(&self.mobs, id as u32));
@@ -1803,17 +1804,14 @@ impl Game<'_> {
             } else {
                 (
                     &mut self.mobs[index],
-                    paused
-                        .lent_attacker
-                        .filter(|_| sunrise_client::health::hit_host_listened())
-                        .and_then(|id| {
-                            HitLend::attacking_player(
-                                self.player.as_mut(),
-                                id,
-                                &self.potions.effects,
-                                acting_equipment!(self),
-                            )
-                        }),
+                    paused.lent_attacker.and_then(|id| {
+                        HitLend::attacking_player(
+                            self.player.as_mut(),
+                            id,
+                            &self.potions.effects,
+                            acting_equipment!(self),
+                        )
+                    }),
                 )
             };
             hurt = mob.resume_hurt(
@@ -2191,10 +2189,10 @@ impl Game<'_> {
         let plan = self.prepare_knockback_credit(target as i32, source.attacker, &attack);
         let mut credit = plan.lend(&mut self.last_hurt_by_player);
         let mut target_index = self.mobs.iter().position(|m| m.id == target);
+        // One subscription decision for the hit's attacker loan.
+        let listened = sunrise_client::health::hit_host_listened();
         let attacker_index = match source.attacker {
-            Some(Who::Mob(id)) if sunrise_client::health::hit_host_listened() => {
-                self.mobs.iter().position(|m| m.id == id)
-            }
+            Some(Who::Mob(id)) if listened => self.mobs.iter().position(|m| m.id == id),
             _ => None,
         };
         if let Some(ti) = target_index {
@@ -2210,7 +2208,7 @@ impl Game<'_> {
                 }
                 None => (
                     &mut self.mobs[ti],
-                    sunrise_client::health::hit_host_listened()
+                    listened
                         .then(|| {
                             sunrise_client::health::HitLend::attacking_player(
                                 self.player.as_mut(),
@@ -3144,7 +3142,7 @@ impl Game<'_> {
                                 .mobs
                                 .iter()
                                 .find(|m| m.id == id)
-                                .map_or(0.0, super::lan_attributes::mob_knockback_resistance);
+                                .map_or(0.0, Mob::knockback_resistance);
                             (hurt, resistance)
                         }
                     };
@@ -3208,11 +3206,11 @@ impl Game<'_> {
                             Who::Player => self.player.as_mut().map_or(0.0, |p| {
                                 p.attribute("minecraft:knockback_resistance").unwrap_or(0.0)
                             }),
-                            Who::Mob(id) => {
-                                self.mobs.iter().find(|m| m.id == id).map_or(0.0, |m| {
-                                    super::lan_attributes::mob_knockback_resistance(m)
-                                })
-                            }
+                            Who::Mob(id) => self
+                                .mobs
+                                .iter()
+                                .find(|m| m.id == id)
+                                .map_or(0.0, Mob::knockback_resistance),
                         };
                         let up = f64::from(0.4f32) * (1.0 - resistance).max(0.0);
                         match target {
@@ -9879,7 +9877,7 @@ mod leash_without_item_postbaseline_controls;
 #[path = "../tests/revenge_home_tests.rs"]
 mod revenge_home_tests;
 
-mod knockback;
+pub(super) mod knockback;
 
 #[cfg(test)]
 mod death_loot_context_tests;

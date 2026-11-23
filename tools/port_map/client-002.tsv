@@ -30,6 +30,7 @@ ClientPacketListener.handleAddTransientBlockPacket	port	crates/sunrise-client/sr
 ClientPacketListener.findTotem	port	crates/sunrise-client/src/game/items/totem.rs::Game::find_totem	the first hand's item with death_protection, else a new totem, then LocalPlayer.displayItemActivation
 ClientPacketListener.handleSetExperience	port	crates/sunrise-client/src/game/network/remote/packets_player.rs::Game::apply_set_experience_packet	SetExperience arm
 ClientPacketListener.determineLevelLoadingReason	port	crates/sunrise-client-render/src/level_loading.rs::reason_for_respawn	the reason of a Respawn packet: death, a Nether or an End crossing
+ClientPacketListener.handleExplosion	port	crates/sunrise-client/src/game/network/lan_particles.rs::Game::remote_explode	plays sound, queues burst and debris, then applies a finite impulse with an atomic finite velocity write
 ClientPacketListener.handleOpenScreen	port	crates/sunrise-client/src/game/network/remote/mod.rs::Game::remote_open_screen
 ClientPacketListener.handleSetCursorItem	port	crates/sunrise-client/src/game/network/remote/packets_player.rs::Game::apply_set_cursor_item_packet	SetCursorItem arm; gap: minor: sets the carried stack even while the creative screen is open
 ClientPacketListener.handleSetPlayerInventory	port	crates/sunrise-client/src/game/network/remote/packets_player.rs::Game::apply_set_player_inventory_packet	SetPlayerInventory arm: slots 0-35, armour 36-39, off hand 40

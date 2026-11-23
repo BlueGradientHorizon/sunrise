@@ -281,6 +281,10 @@ pub struct MobType {
     /// TemptGoal items when they differ from the food.
     pub tempt: Arc<[String]>,
     pub passenger_attachments: Vec<[f32; 3]>,
+    /// The type's key in the entity-type registry the accepted resources were loaded with
+    /// (`Entity.getType`): set when the game accepts its type table, none in a table built
+    /// without one.
+    pub type_key: Option<mod_api::EntityTypeKey>,
 }
 impl MobType {
     /// `EntityType.isAllowedInPeaceful`, including a living mod type's override.
@@ -576,6 +580,7 @@ impl MobTypes {
                         .or(def.food_tag())
                         .map_or_else(|| Arc::from(Vec::new()), tag),
                     passenger_attachments,
+                    type_key: None,
                     category,
                     id,
                 },
@@ -1630,11 +1635,6 @@ pub struct Mob {
     pub sync_position: bool,
     /// Footstep, splash and landing bookkeeping, retained across teleports.
     pub movement_emission: Option<MovementEmission>,
-    /// `getAttributeValue(KNOCKBACK_RESISTANCE)` with the modifiers of the
-    /// items it wears or holds (`Extra::gear_knockback`), which the game
-    /// works out each tick for a mob that has any (the mob itself knows no
-    /// item): `None` for the rest.
-    pub gear_knockback_resistance: Option<f64>,
     pub health: f32,
     pub hurt_time: i32,
     /// `LivingEntity.damageCooldownTime`: 20 after a hit, counting down;
@@ -3879,7 +3879,6 @@ impl Mob {
             needs_sync: false,
             sync_position: false,
             movement_emission: None,
-            gear_knockback_resistance: None,
             hurt_time: 0,
             invulnerable: 0,
             invulnerable_time: 0,
@@ -5808,6 +5807,7 @@ pub mod sensor_scan_tests {
             food: Arc::default(),
             tempt: Arc::default(),
             passenger_attachments: Vec::new(),
+            type_key: None,
         })
     }
     #[test]
