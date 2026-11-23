@@ -5,15 +5,16 @@ use crate::*;
 #[sunrise_mod_api_macros::host_area]
 pub trait LevelsHost {
     /// Side: both.
+    /// Read a loaded, light-emitting block. No implicit chunk loading.
+    fn lit_block_name(&self, pos: [i32; 3]) -> Option<BlockKey>;
+    /// Side: both.
     /// Whether a mod with the `sunrise-mod.toml` id `id` is installed: a
-    /// native, wasm or content package (Fabric's `FabricLoader.isModLoaded`,
+    /// native or content-only package (Fabric's `FabricLoader.isModLoaded`,
     /// NeoForge's `ModList.isLoaded`). The list is fixed at startup.
-    #[access(Metadata)]
     #[static_call]
     fn is_loaded(&self, id: &str) -> bool;
     /// Side: both.
     /// Find a loaded chunk in an open server level.
-    #[access(WorldOnly)]
     fn chunk(&self, level: LevelRef, pos: [i32; 2]) -> Option<ChunkRef>;
 }
 /// The handles' client writes of the `levels` area, implemented by the game and reached through [`ClientBackendMut`].
@@ -33,7 +34,6 @@ pub trait LevelsClientBackendMut {
     ///     level.set_client_break_progress(host, -1, [0, 64, 0], 3);
     /// }
     /// ```
-    #[access(WorldOnly)]
     fn level_set_client_break_progress(
         &mut self,
         level: LevelRef,

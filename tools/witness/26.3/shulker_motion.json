@@ -5,7 +5,7 @@
   "group": "shulker motion and yaw",
   "command": "python3 tools/test_command_exec_parity.py --record-shulker-motion",
   "server_jar_sha256": "a362163eec5d1612d520772bc16e5b39c09e3b234fdc045f56bf544284ee8ae6",
-  "java": "openjdk 27.0.1.0.3 2026-10-24",
+  "java": "openjdk 25.0.5.1 2026-11-17 LTS",
   "loaded_cases": [
     {
       "name": "loaded_noai_default",
