@@ -49,7 +49,7 @@ a known connection gives `Some("")` for address and brand.
 
 `player.virtual_host(host)` returns `Option<&VirtualHost>` on the server. Its
 `host` and `port` are the destination sent in this connection's login handshake,
-not the peer IP. The host keeps its original case and punctuation up to the
+not the peer IP, after any `player_handshake` listener's rewrite. The host keeps its original case and punctuation up to the
 first NUL; any suffix is discarded. A transfer uses the new login handshake.
 The value comes from the client, so it is not a verified name or necessarily
 what the player originally typed. Clone it only if you need it after the host

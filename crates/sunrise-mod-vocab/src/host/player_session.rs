@@ -14,7 +14,8 @@ pub trait PlayerSessionBackend {
     fn player_address(&self, player: PlayerRef) -> Option<&str>;
     /// Side: server.
     /// The client-supplied host and port from this connection's login handshake,
-    /// distinct from the peer IP. Only the host text before the first NUL is kept.
+    /// distinct from the peer IP, after any `player_handshake` rewrite. Only the host text
+    /// before the first NUL is kept.
     /// A transfer uses the new connection's handshake. Displaced online players
     /// keep this value. It borrows the host; clone it if it must outlive that
     /// borrow. This is not a verified destination or necessarily the name the
