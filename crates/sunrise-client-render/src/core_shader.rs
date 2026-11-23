@@ -176,8 +176,8 @@ impl CoreProgram {
                         .as_ref()
                         .is_some_and(|b| b.group == 0 && b.binding == binding)
                 })
-                .all(|(_, g)| match &module.types[g.ty].inner {
-                    naga::TypeInner::Struct { members, .. } => {
+                .all(|(_, g)| match (g.space, &module.types[g.ty].inner) {
+                    (naga::AddressSpace::Uniform, naga::TypeInner::Struct { members, .. }) => {
                         matches!(
                             members.as_slice(),
                             [member] if matches!(

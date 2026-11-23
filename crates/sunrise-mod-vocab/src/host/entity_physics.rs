@@ -13,6 +13,11 @@ pub trait EntityPhysicsBackend {
     /// zero. On a client, another entity's is the motion the server last
     /// sent it (`Entity.lerpMotion`). API 379.
     fn entity_velocity(&self, entity: EntityRef) -> Option<[f64; 3]>;
+    /// Side: server.
+    /// The server's accumulated `Entity.fallDistance`, in blocks. For a player this is
+    /// the distance tracked from accepted moves. Zero for a kind that does not keep a fall
+    /// distance; None when the handle is stale or its body is unavailable.
+    fn entity_fall_distance(&self, entity: EntityRef) -> Option<f64>;
     /// Side: both.
     /// How the entity reacts to a piston (`Entity.getPistonPushReaction`), including
     /// the current marker flag of an armor stand. `Ok(None)` for a stale handle;
@@ -64,10 +69,10 @@ pub trait EntityPhysicsBackendMut {
     /// the level in place; true for a kind that keeps no fall distance, which has none to forget.
     fn entity_reset_fall_distance(&mut self, entity: EntityRef) -> bool;
     /// Side: server.
-    /// Sets the entity's velocity (`Entity.setDeltaMovement`); clients see it
-    /// as they see the entity move. False for a player (its client moves
-    /// it), an entity Sunrise doesn't simulate, a value that isn't finite,
-    /// or on a client. API 379.
+    /// Replaces the entity's velocity in blocks per tick (`Entity.setDeltaMovement`).
+    /// A player's own client receives a motion packet and replaces its velocity too.
+    /// False without changing motion for an unavailable body (including a player whose turn
+    /// is suspended), a stale handle, an entity Sunrise doesn't simulate, or a non-finite value.
     fn entity_set_velocity(&mut self, entity: EntityRef, velocity: [f64; 3]) -> bool;
     /// Side: server.
     /// Adds `delta` to the entity's velocity (`Entity.push`,

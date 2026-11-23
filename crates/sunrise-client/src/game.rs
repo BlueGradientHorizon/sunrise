@@ -99,7 +99,14 @@ macro_rules! game_side {
             items: $s.res.items(),
             damage_types: &$s.health_resources.damage,
             player_equipment: acting_equipment!($s),
-            hit_reads: $crate::game::entity::hit_reads_of!($s),
+            hit_borrows: $crate::game::native_surface::HitBorrows {
+                living_types: $s.res.living_type_keys(),
+                attributes: &$s.motion.attributes,
+                player_effects: &$s.potions.effects,
+                player_uuid: $s.lan_acting_uuid,
+                player_attachments: &$s.player_state.attachments,
+                entity_attachments: &*$s.entity_attachments,
+            },
             tag_items: if $s.options.execution_role.is_client() {
                 $s.remote.as_ref().and_then(|remote| remote.tags.as_ref())
             } else {
@@ -3026,6 +3033,9 @@ struct WorldRest {
     recipes: Recipes,
     transformers: sunrise_client::block_transform::Transformers,
     mob_types: HashMap<String, Arc<MobType>>,
+    /// The registry keys of the player, the armor stand and the dragon, resolved with these
+    /// resources as each mob type's own key is ([`MobType::type_key`]).
+    living_type_keys: sunrise_client::health::LivingTypeKeys,
     mob_data: sunrise_client::mobs::MobData,
     /// Complete pre-creation facts for the registered entity types.
     spawner_types: HashMap<String, sunrise_client::mobs::spawner::SpawnerTypeFacts>,
@@ -4230,6 +4240,8 @@ struct Game<'a> {
     user_input: std::cell::Cell<bool>,
     /// Select All in the append-only text fields.
     text_selection: sunrise_client::clipboard::AppendSelection,
+    /// The client loop consumes a mod's quit request outside the calling hook.
+    client_quit: std::cell::Cell<saving::ClientQuit>,
     /// The world was saved for the application ending (`save_for_exit`).
     saved_for_exit: bool,
     pending_save: Option<saving::ClosingSave>,
@@ -7288,6 +7300,22 @@ impl Game<'_> {
     #[cfg(test)]
     fn hud(&mut self, size: [u32; 2]) -> HudBatch {
         self.hud_with_reload(size, None)
+    }
+
+    /// Aligns `locator_camera` with this frame's render camera before HUD extraction
+    /// (`GameRenderer.renderLevel` sets `mainCamera` before `Gui.render`).
+    pub(in crate::game) fn extract_frame_hud(
+        &mut self,
+        size: [u32; 2],
+        reload_overlay: Option<(f32, sunrise_client::level_loading::OverlayFade)>,
+        title: bool,
+        camera: [f64; 3],
+        view_yaw: f32,
+        view_pitch: f32,
+        fov_degrees: f32,
+    ) -> HudBatch {
+        self.locator_camera = (!title).then_some((camera, view_yaw, view_pitch, fov_degrees));
+        self.hud_with_reload(size, reload_overlay)
     }
 
     fn hud_with_reload(
@@ -11333,16 +11361,23 @@ impl Game<'_> {
         pr.lap("pr_projection");
         let vanilla_skin = self.apply_player_skin_override(title);
         // GUI hooks project against this frame's camera, including its bob/spin and FOV.
-        let mut hud =
-            sunrise_client::spans::time("hud", || self.hud_with_reload(size, reload_overlay));
+        let mut hud = sunrise_client::spans::time("hud", || {
+            self.extract_frame_hud(
+                size,
+                reload_overlay,
+                title,
+                camera.to_array(),
+                view_yaw,
+                view_pitch,
+                fov_degrees,
+            )
+        });
         if reload_overlay.is_none() {
             self.flush_ime(&mut hud);
             self.native_gui_render_post(&mut hud, self.ui.hide_gui, self.focused);
         }
         self.resolve_inline_profiles(&hud.inline_profiles);
         pr.lap("pr_hud");
-        self.locator_camera =
-            (!title).then_some((camera.to_array(), view_yaw, view_pitch, fov_degrees));
         // The packs' Polytone post chains, after vanilla's (#11486).
         let game_ticks = self.world.game_time as f64 + alpha;
         let delta_ticks = (game_ticks - self.polytone_post_ticks).clamp(0.0, 20.0) as f32;
@@ -14118,6 +14153,7 @@ impl<'a> Game<'a> {
             clipboard: Default::default(),
             user_input: Default::default(),
             text_selection: Default::default(),
+            client_quit: std::cell::Cell::new(saving::ClientQuit::Running),
             saved_for_exit: false,
             pending_save: None,
             server_tick_deadline: None,
