@@ -90,8 +90,8 @@ impl Game<'_> {
 
     /// The server's entities other than mobs whose vanilla size changed since they were last
     /// asked, or that were never asked (the constructor's call), standing: those of the shared
-    /// entity lists that keep an answer (`Entity::vanilla_dimensions`), then displays, markers,
-    /// interactions and eyes of ender, then end crystals.
+    /// entity lists that keep an answer (`Entity::vanilla_dimensions`), then displays, markers
+    /// and interactions (`OtherEntity::vanilla_dimensions`), then end crystals.
     pub(super) fn native_entity_sizes(&mut self) {
         if !mod_api::__private::listened(mod_api::HookId::EntitySize) {
             return;
@@ -109,7 +109,10 @@ impl Game<'_> {
         }
         for i in 0..self.others.len() {
             let e = &self.others[i];
-            let (id, vanilla, previous) = (e.id, e.vanilla_dimensions(), e.size_answer);
+            let (id, previous) = (e.id, e.size_answer);
+            let Some(vanilla) = e.vanilla_dimensions() else {
+                continue;
+            };
             if let Some(answer) = self.ask_entity_size(id, Pose::Standing, vanilla, previous) {
                 self.others.update(i, |e| e.size_answer = Some(answer));
             }
@@ -1185,8 +1188,9 @@ mod tests {
     }
 
     /// The server asks for every family, not only mobs (`EntityEvent.Size` from each
-    /// constructor): an item, two minecarts, an armor stand and a snowball, each from its type's
-    /// size, standing. Their boxes take the answer, and so does what a minecart collides with
+    /// constructor): an item, two minecarts, an armor stand, a snowball and a block display,
+    /// each from its type's size, standing; a leash knot, whose box doesn't follow its size,
+    /// isn't asked. Their boxes take the answer, and so does what a minecart collides with
     /// (another cart's box, `Mover::Cart`). An armor stand turned small asks again; nothing
     /// asks twice for a size already answered.
     #[test]
@@ -1219,6 +1223,25 @@ mod tests {
             let mut shot = Projectile::new(ProjectileKind::Snowball, shot_at, None);
             shot.id = 9003;
             game.creatures.projectiles.push(shot);
+            for (id, kind) in [
+                (9005, "minecraft:leash_knot"),
+                (9006, "minecraft:block_display"),
+            ] {
+                game.others.push(crate::game::commands::OtherEntity {
+                    size_answer: None,
+                    attachment_lifetime: Default::default(),
+                    knot_check: None,
+                    eye: None,
+                    join: Default::default(),
+                    id,
+                    kind: kind.into(),
+                    position: Vec3::new(6.5, 70.0, 2.5),
+                    yaw: 0.0,
+                    pitch: 0.0,
+                    item_transformation: None,
+                    interaction: None,
+                });
+            }
             game.native_entity_sizes();
             // EntityType.ITEM: 0.25 by 0.25, eyes 0.2125; MINECART: 0.98 by 0.7, eyes 0.595;
             // ARMOR_STAND: 0.5 by 1.975, eyes 1.7775; SNOWBALL: 0.25 by 0.25, eyes 0.2125.
@@ -1236,6 +1259,8 @@ mod tests {
                     standing(9002, cart),
                     standing(9004, stand),
                     standing(9003, item_size),
+                    // EntityType.BLOCK_DISPLAY: none. The knot (9005) isn't asked.
+                    standing(9006, [0.0; 3]),
                 ]
             );
             let cart_box = made_box(cart_at, doubled(cart));
@@ -1259,13 +1284,74 @@ mod tests {
             assert!(solids.iter().any(|b| corners(*b) == cart_box), "{solids:?}");
             // The same sizes again: nothing to ask. ArmorStand.setSmall refreshes its size.
             game.native_entity_sizes();
-            assert_eq!(seen.lock().unwrap().sizes.len(), 5);
+            assert_eq!(seen.lock().unwrap().sizes.len(), 6);
             game.armor_stands.update(0, |a| a.small = true);
             game.native_entity_sizes();
             assert_eq!(
                 seen.lock().unwrap().sizes.last(),
                 Some(&(9004, Pose::Standing, doubled(stand), [0.25, 0.9875, 0.9875]))
             );
+        });
+    }
+
+    /// A falling block's landing hurts what its box covers (`FallingBlockEntity.causeFallDamage`
+    /// selects by `getBoundingBox`): an anvil whose answer doubled it hits a pig a block away,
+    /// which its vanilla 0.98-wide box doesn't reach.
+    #[test]
+    #[ignore = "daily"]
+    fn a_resized_falling_anvil_hits_what_its_answer_covers() {
+        use sunrise_core::geometry::Vec3;
+        if in_fresh_process("a_resized_falling_anvil_hits_what_its_answer_covers") {
+            return;
+        }
+        with_server(true, |game, _| {
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            let at = Vec3::new(8.5, 64.0, 8.5);
+            let pig = game
+                .spawn_mob_spawned(
+                    "pig",
+                    [9.5, 64.0, 8.5],
+                    crate::game::creatures::SpawnSite::Plain,
+                )
+                .unwrap();
+            let health = game.mobs.iter().find(|m| m.id == pig).unwrap().health;
+            game.falling.push(crate::game::FallingBlock {
+                size_answer: None,
+                attachment_lifetime: Default::default(),
+                rotation: [0.0; 2],
+                join: Default::default(),
+                id: 9101,
+                blocks_building: true,
+                state: game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:anvil")
+                    .unwrap(),
+                start_pos: sunrise_core::position::BlockPos::containing(at),
+                position: at,
+                previous: at,
+                velocity: Vec3::ZERO,
+                age: 1,
+                no_gravity: false,
+                portal: Default::default(),
+                drop_item: true,
+                fall_distance: 2.0,
+                ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
+                fire_ticks: 0,
+                sync_velocity: false,
+                stuck: Vec3::ZERO,
+                damage: sunrise_client::falling_block::Damage::anvil(),
+                saved: None,
+            });
+            game.native_entity_sizes();
+            let mut anvil = game.falling[0].clone();
+            game.falling.remove(0);
+            game.falling_block_impact(&mut anvil);
+            let hurt = game.mobs.iter().find(|m| m.id == pig).unwrap().health;
+            assert!(hurt < health, "{hurt} < {health}");
         });
     }
 

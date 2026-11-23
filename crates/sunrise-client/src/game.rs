@@ -2909,7 +2909,7 @@ impl<'w> entity::EntityLists<'w> {
                 self.falling
                     .iter()
                     .filter(|f| f.blocks_building)
-                    .map(|f| sunrise_client::falling_block::bounds(f.position)),
+                    .map(FallingBlock::bounds),
             )
     }
 }

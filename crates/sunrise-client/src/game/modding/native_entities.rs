@@ -16,16 +16,7 @@ impl super::commands::OtherEntity {
     pub(in crate::game) fn display_marker_or_interaction_bounds(
         &self,
     ) -> Option<sunrise_core::geometry::Aabb> {
-        if !matches!(
-            self.kind.as_str(),
-            "minecraft:block_display"
-                | "minecraft:item_display"
-                | "minecraft:text_display"
-                | "minecraft:marker"
-                | "minecraft:interaction"
-        ) {
-            return None;
-        }
+        let dimensions = self.vanilla_dimensions()?;
         let vanilla = if let Some(settings) = self.interaction {
             let mut interaction = super::interactions::RemoteInteraction::new([
                 self.position.x,
@@ -42,24 +33,32 @@ impl super::commands::OtherEntity {
         };
         Some(sunrise_client::pose::SizeAnswer::sized_box(
             self.size_answer,
-            self.vanilla_dimensions(),
+            dimensions,
             self.position,
             vanilla,
         ))
     }
 
-    /// `Entity.getDimensions(pose)` of an entity this list holds: an interaction's
-    /// `EntityDimensions.scalable(width, height)`, else its type's (a display or a marker
-    /// has none; an eye of ender is 0.25 by 0.25, its eyes at 0.2125). None for a kind whose
-    /// box doesn't follow its dimensions (a leash knot).
-    pub(in crate::game) fn vanilla_dimensions(&self) -> [f32; 3] {
-        if let Some(settings) = self.interaction {
-            return [settings.width, settings.height, settings.height * 0.85];
+    /// `Entity.getDimensions(pose)` of a display, a marker or an interaction this list holds,
+    /// the kinds whose box follows their size here: an interaction's
+    /// `EntityDimensions.scalable(width, height)`, none for a display or a marker. None for
+    /// every other kind the list keeps without simulating it (a leash knot, an eye of ender),
+    /// which isn't asked.
+    pub(in crate::game) fn vanilla_dimensions(&self) -> Option<[f32; 3]> {
+        if !matches!(
+            self.kind.as_str(),
+            "minecraft:block_display"
+                | "minecraft:item_display"
+                | "minecraft:text_display"
+                | "minecraft:marker"
+                | "minecraft:interaction"
+        ) {
+            return None;
         }
-        match self.kind.as_str() {
-            "minecraft:eye_of_ender" => [0.25, 0.25, 0.2125],
-            _ => [0.0; 3],
-        }
+        Some(match self.interaction {
+            Some(settings) => [settings.width, settings.height, settings.height * 0.85],
+            None => [0.0; 3],
+        })
     }
 }
 
