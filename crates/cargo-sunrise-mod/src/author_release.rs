@@ -51,7 +51,9 @@ struct Watched {
 #[serde(deny_unknown_fields)]
 struct Repository {
     id: u64,
-    name: String,
+    // A name can be reused after a rename: the ID is the identity.
+    #[serde(rename = "name")]
+    _name: String,
     package: Vec<WatchedPackage>,
 }
 
@@ -59,8 +61,15 @@ struct Repository {
 #[serde(deny_unknown_fields)]
 struct WatchedPackage {
     path: String,
-    #[serde(rename = "project")]
-    _project: String,
+    project: String,
+}
+
+/// The fields of `registry/projects/<project>/project.toml` a release must agree with.
+#[derive(Deserialize)]
+struct ProjectRecord {
+    #[serde(rename = "mod")]
+    mod_id: String,
+    kind: String,
 }
 
 #[derive(Deserialize)]
@@ -102,29 +111,38 @@ fn github_name(origin: &str) -> Option<String> {
     (valid(owner) && valid(repo)).then(|| path.to_owned())
 }
 
-fn registered(fetch: Fetch<'_>, origin: &str, path: &str) -> Result<(), String> {
+/// The registered package this release is for: origin's repository, found by its numeric GitHub ID
+/// (a name can be reused after a rename), at exactly this package path, with the project record's
+/// mod ID and kind.
+fn registered(
+    fetch: Fetch<'_>,
+    origin: &str,
+    path: &str,
+    mod_id: &str,
+    kind: &str,
+) -> Result<(), String> {
     let name = github_name(origin).ok_or(NOT_REGISTERED)?;
     let watched: Watched = toml::from_str(&registry_file(fetch, "watched.toml")?)
         .map_err(|e| format!("registry/watched.toml: {e}"))?;
-    let repo = if let Some(repo) = watched
+    let url = format!("https://api.github.com/repos/{name}");
+    let text = fetch(&url)?.ok_or(NOT_REGISTERED)?;
+    let GitHubRepository { id } = serde_json::from_str(&text).map_err(|e| format!("{url}: {e}"))?;
+    let package = watched
         .repository
         .iter()
-        .find(|r| r.name.eq_ignore_ascii_case(&name))
-    {
-        repo
-    } else {
-        let url = format!("https://api.github.com/repos/{name}");
-        let text = fetch(&url)?.ok_or(NOT_REGISTERED)?;
-        let GitHubRepository { id } =
-            serde_json::from_str(&text).map_err(|e| format!("{url}: {e}"))?;
-        watched
-            .repository
-            .iter()
-            .find(|r| r.id == id)
-            .ok_or(NOT_REGISTERED)?
-    };
-    if !repo.package.iter().any(|p| p.path == path) {
-        return Err(NOT_REGISTERED.into());
+        .find(|r| r.id == id)
+        .and_then(|repo| repo.package.iter().find(|p| p.path == path))
+        .ok_or(NOT_REGISTERED)?;
+    let record = format!("projects/{}/project.toml", package.project);
+    let ProjectRecord {
+        mod_id: registered_id,
+        kind: registered_kind,
+    } = toml::from_str(&registry_file(fetch, &record)?)
+        .map_err(|e| format!("registry/{record}: {e}"))?;
+    if registered_id != mod_id || registered_kind != kind {
+        return Err(format!(
+            "this package is registered as {registered_kind} `{registered_id}`, but its manifest makes it {kind} `{mod_id}`"
+        ));
     }
     Ok(())
 }
@@ -248,8 +266,9 @@ impl Project {
             internals::check_output_dir(&root.join(folder))?;
         }
         let ours = |text: &str| text.starts_with(CALLER_MARK);
-        if metadata(&root.join(&self.caller))?.is_some()
-            && (!git.tracked(root, &self.caller)?
+        if let Some(meta) = metadata(&root.join(&self.caller))?
+            && (!meta.is_file()
+                || !git.tracked(root, &self.caller)?
                 || !fs::read_to_string(root.join(&self.caller)).is_ok_and(|text| ours(&text)))
         {
             return Err(format!(
@@ -659,7 +678,19 @@ fn release(
     if origin.lines().count() != 1 {
         return Err("origin pushes to more than one URL; release needs exactly one".into());
     }
-    registered(fetch, &origin, &project.path)?;
+    // Git would pass a token embedded in the URL on to every command line that names it.
+    if url::Url::parse(&origin).is_ok_and(|url| {
+        matches!(url.scheme(), "http" | "https")
+            && (!url.username().is_empty() || url.password().is_some())
+    }) {
+        return Err("origin's push URL carries credentials; remove them and use a Git credential helper or SSH".into());
+    }
+    let kind = if project.manifest.native.is_some() {
+        "native-mod"
+    } else {
+        "mod"
+    };
+    registered(fetch, &origin, &project.path, &project.manifest.id, kind)?;
     let version = next_version(&project.manifest.version, requested)?;
     let tag = format!("{}v{version}", project.prefix);
     let tag_ref = format!("refs/tags/{tag}");
@@ -691,7 +722,9 @@ fn release(
         Some((name, reference))
             if !name.is_empty()
                 && !reference.is_empty()
-                && (name != "origin" || reference != branch) =>
+                && (name != "origin"
+                    || reference != branch
+                    || git.text(root, ["remote", "get-url", "origin"])? != origin) =>
         {
             git.text(root, ["ls-remote", "--refs", "--", name, reference])?
         }
@@ -765,7 +798,14 @@ fn release(
             .into_iter()
             .chain(changes.iter().map(|c| c.path.as_os_str())),
     )?;
+    // A commit hook could change what is committed after the check: tag only the checked tree.
+    let checked = git.text(root, ["write-tree"])?;
     git.text(root, ["commit", "-m", &format!("Release {version}")])?;
+    if git.text(root, ["rev-parse", "HEAD^{tree}"])? != checked {
+        return Err(format!(
+            "a Git hook changed the release commit after the check; the commit remains local and {tag} was not made"
+        ));
+    }
     git.text(root, ["tag", &tag])?;
     // Publish both refs together, or neither. In particular, a rejected branch must not release a tag.
     // Explicit destinations, so no remote.origin.push mapping sends them elsewhere.

@@ -794,6 +794,14 @@ pub(crate) fn check_mod(
         println!("{}: the package rules hold.", package.manifest.name);
         return Ok(());
     };
+    // A release builds from the tagged source with its committed lockfile, as the registry does.
+    if release.is_some()
+        && !std::fs::symlink_metadata(root.join("Cargo.lock")).is_ok_and(|m| m.is_file())
+    {
+        return Err(
+            "a native mod releases with its Cargo.lock committed beside sunrise-mod.toml".into(),
+        );
+    }
     // The mod's `sunrise-mod-api` is a path into `.sunrise/sdk/`: fetch it before Cargo looks.
     let sdk = fetch_pinned(root, &native.sunrise)?;
     let surface = surface_of(&sdk)?;
@@ -805,6 +813,7 @@ pub(crate) fn check_mod(
             false,
             sunrise_native_build::contract::TargetName::Client,
             None,
+            true,
         )?;
     } else {
         crate::dev::check(root, &package, with)?;

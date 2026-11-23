@@ -49,69 +49,84 @@ source = \"registry+https://github.com/rust-lang/crates.io-index\"
 checksum = \"543210\"
 ";
 
+const METADATA: &str = "https://raw.githubusercontent.com/sunrise-org/sunrise-mods/main/registry";
+
 fn registry(url: &str) -> Result<Option<String>, String> {
-    Ok(Some(match url {
-        "https://raw.githubusercontent.com/sunrise-org/sunrise-mods/main/registry/watched.toml" => {
-            WATCHED.into()
-        }
-        "https://raw.githubusercontent.com/sunrise-org/sunrise-mods/main/registry/release-workflow.toml" =>
-        {
-            format!("uses = '{USES}'")
-        }
-        // A repository the registry doesn't watch by name: GitHub's API answers not found.
-        url if url.starts_with("https://api.github.com/repos/") => return Ok(None),
-        _ => panic!("unexpected URL: {url}"),
+    let file = url.strip_prefix(METADATA).and_then(|f| f.strip_prefix('/'));
+    Ok(Some(match file {
+        Some("watched.toml") => WATCHED.into(),
+        Some("release-workflow.toml") => format!("uses = '{USES}'"),
+        Some("projects/Ab3dE9xQ/project.toml") => "mod = 'example'\nkind = 'mod'\n".into(),
+        Some("projects/Ab3dE9xY/project.toml") => "mod = 'example'\nkind = 'native-mod'\n".into(),
+        _ => match url.strip_prefix("https://api.github.com/repos/") {
+            Some(name) if name.eq_ignore_ascii_case("author/example") => r#"{"id":101}"#.into(),
+            // GitHub's API answers not found for any other repository.
+            Some(_) => return Ok(None),
+            None => panic!("unexpected URL: {url}"),
+        },
     }))
 }
 
 #[test]
-fn registration_uses_name_then_repository_id_and_exact_package_path() {
+fn registration_is_the_repository_id_package_path_mod_id_and_kind() {
     for remote in [
         "https://github.com/Author/example.git",
         "ssh://git@github.com/author/example.git",
         "git@github.com:author/example.git",
     ] {
-        registered(&registry, remote, "mods/example").unwrap();
-        assert_eq!(
-            registered(&registry, remote, "mods").unwrap_err(),
-            NOT_REGISTERED
-        );
+        registered(&registry, remote, "mods/example", "example", "native-mod").unwrap();
+        assert!(registered(&registry, remote, "mods", "example", "native-mod").is_err());
+        assert!(registered(&registry, remote, "mods/example", "other", "native-mod").is_err());
+        assert!(registered(&registry, remote, ".", "example", "native-mod").is_err());
     }
-    assert_eq!(
-        registered(&registry, "https://github.com.example/author/example", ".").unwrap_err(),
-        NOT_REGISTERED
-    );
-    let api_calls = std::cell::Cell::new(0);
-    let fetch = |url: &str| {
-        if url == "https://api.github.com/repos/author/renamed" {
-            api_calls.set(api_calls.get() + 1);
-            Ok(Some(r#"{"id":101,"full_name":"author/renamed"}"#.into()))
-        } else {
-            registry(url)
-        }
-    };
-    registered(&fetch, "git@github.com:author/renamed.git", ".").unwrap();
-    assert_eq!(api_calls.get(), 1);
-    let fetch = |url: &str| {
-        if url == "https://api.github.com/repos/author/unregistered" {
-            Ok(Some(r#"{"id":102}"#.into()))
-        } else {
-            registry(url)
-        }
-    };
-    assert_eq!(
-        registered(&fetch, "git@github.com:author/unregistered.git", ".").unwrap_err(),
-        NOT_REGISTERED
-    );
-    let unknown = format!("unknown = true\n{WATCHED}");
     assert!(
         registered(
-            &|_| Ok(Some(unknown.clone())),
-            "git@github.com:author/example.git",
-            "."
+            &registry,
+            "https://github.com.example/author/example",
+            ".",
+            "example",
+            "mod"
         )
-        .unwrap_err()
-        .contains("unknown field")
+        .is_err()
+    );
+    // A repository listed under another name is found by its ID; a reused name is not trusted.
+    let fetch = |url: &str| match url {
+        "https://api.github.com/repos/author/renamed" => Ok(Some(r#"{"id":101}"#.into())),
+        "https://api.github.com/repos/author/example" => Ok(Some(r#"{"id":102}"#.into())),
+        _ => registry(url),
+    };
+    registered(
+        &fetch,
+        "git@github.com:author/renamed.git",
+        ".",
+        "example",
+        "mod",
+    )
+    .unwrap();
+    assert!(
+        registered(
+            &fetch,
+            "git@github.com:author/example.git",
+            ".",
+            "example",
+            "mod"
+        )
+        .is_err()
+    );
+    let unknown = format!("unknown = true\n{WATCHED}");
+    let fetch = |url: &str| match url.ends_with("watched.toml") {
+        true => Ok(Some(unknown.clone())),
+        false => registry(url),
+    };
+    assert!(
+        registered(
+            &fetch,
+            "git@github.com:author/example.git",
+            ".",
+            "example",
+            "mod"
+        )
+        .is_err()
     );
 }
 
@@ -393,7 +408,42 @@ mod git_fixtures {
         ]);
         let error = repo.release(".", &["patch"], refused_check).unwrap_err();
         assert!(error.contains("more than one URL"), "{error}");
+        repo.git(["config", "--unset-all", "remote.origin.pushurl"]);
+        repo.git([
+            "remote",
+            "set-url",
+            "--push",
+            "origin",
+            "https://author:secret-token@github.com/author/example.git",
+        ]);
+        let error = repo.release(".", &["patch"], refused_check).unwrap_err();
+        assert!(!error.contains("secret-token"), "{error}");
         assert!(repo.git(["tag", "--list"]).is_empty());
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_hook_that_changes_the_checked_tree_stops_the_tag() {
+        let repo = Repo::new();
+        repo.put(MANIFEST, MOD);
+        repo.commit();
+        repo.git(["push", "-u", "origin", "main"]);
+        repo.put(
+            ".git/hooks/pre-commit",
+            "#!/bin/sh\necho 'description = \"changed by a hook\"' >> sunrise-mod.toml\ngit add sunrise-mod.toml\n",
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(
+                repo.root.join(".git/hooks/pre-commit"),
+                fs::Permissions::from_mode(0o755),
+            )
+            .unwrap();
+        }
+        assert!(repo.release(".", &["patch"], |_, _| Ok(())).is_err());
+        assert!(repo.git(["tag", "--list"]).is_empty());
+        assert!(repo.git.text(&repo.bare, ["show-ref", "--tags"]).is_err());
     }
 
     #[test]
@@ -521,15 +571,17 @@ mod git_fixtures {
     #[ignore = "daily"]
     fn release_refuses_an_ignored_native_lock() {
         let repo = Repo::new();
-        repo.put(MANIFEST, &format!("{MOD}{NATIVE}"));
-        repo.put("Cargo.toml", CARGO);
-        repo.put(".gitignore", "/Cargo.lock\n");
-        repo.put("Cargo.lock", LOCK);
+        repo.put("mods/example/sunrise-mod.toml", &format!("{MOD}{NATIVE}"));
+        repo.put("mods/example/Cargo.toml", CARGO);
+        repo.put(".gitignore", "/mods/example/Cargo.lock\n");
+        repo.put("mods/example/Cargo.lock", LOCK);
         repo.commit();
-        let error = repo.release(".", &["--check"], refused_check).unwrap_err();
-        assert_eq!(
-            error,
-            "Cargo.lock must be a committed regular file before releasing"
+        let error = repo
+            .release("mods/example", &["--check"], refused_check)
+            .unwrap_err();
+        assert!(
+            error.contains("Cargo.lock must be a committed regular file"),
+            "{error}"
         );
         assert!(repo.git(["status", "--porcelain"]).is_empty());
     }

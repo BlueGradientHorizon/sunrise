@@ -308,6 +308,7 @@ fn build_command(
                 archive
                     .as_ref()
                     .map(|(_, tag, _, version)| (*tag, version.as_str())),
+                archive.is_some(),
             )
         })
         .transpose()?;

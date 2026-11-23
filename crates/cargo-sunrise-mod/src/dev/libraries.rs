@@ -99,8 +99,13 @@ impl Libraries {
         sdk: &super::NativeSdk,
         cache: &Path,
         root: &Path,
+        signed_only: bool,
     ) -> Result<BTreeMap<String, PathBuf>, String> {
-        let registry = Registry::default();
+        // A release compiles only libraries their authors signed, never a reviewed unsigned row.
+        let registry = Registry {
+            signed_only,
+            ..Registry::default()
+        };
         let build_data = RefCell::new(None);
         let rejected = RefCell::new(Vec::new());
         let unavailable = RefCell::new(None);
