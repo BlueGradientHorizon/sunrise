@@ -438,9 +438,22 @@ class HtmlLinks(HTMLParser):
 
 def check_html(directory, src=SRC):
     pages = sorted(p.relative_to(src).as_posix() for p in src.rglob("*.md") if p.name != "SUMMARY.md")
-    # The generated chapters have no source page.
-    pages += [p for p in ("reference/hook-notes.md", "reference/neoforge-counterparts.md")
-              if (directory / p).with_suffix(".html").is_file()]
+    seen = set(pages)
+    # Discover generated reference chapters that have no checked-in source Markdown file,
+    # skipping non-chapter redirect/index HTML files.
+    ref_dir = directory / "reference"
+    if ref_dir.is_dir():
+        for html_file in sorted(ref_dir.glob("*.html")):
+            if html_file.name == "index.html":
+                continue
+            rel = html_file.relative_to(directory).with_suffix(".md").as_posix()
+            if rel in seen:
+                continue
+            raw = html_file.read_text(encoding="utf-8")
+            if "http-equiv=\"refresh\"" in raw.lower() or "http-equiv='refresh'" in raw.lower():
+                continue
+            pages.append(rel)
+            seen.add(rel)
     titles, title_errors = {}, []
     for page in pages:
         path = directory / Path(page).with_suffix(".html")
