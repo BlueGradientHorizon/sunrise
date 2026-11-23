@@ -8,7 +8,9 @@ Alice or Bob fall into Bob under five conditions: another player's non-silent
 arrow, another player's silent arrow, Bob's own arrow, another player's arrow
 with the pvp game rule disabled, and another player's arrow hitting a creative
 victim. Every ClientboundGameEventPacket either player receives during each
-step is recorded from the wire and compared exact.
+step is recorded from the wire into .local/witness/<version>/arrow_hit_ding/
+alongside meta.json, compared exact with Sunrise, and replayed against the
+Rust LAN PvP fixture through SUNRISE_ARROW_HIT_DING_WITNESS.
 """
 import argparse
 import hashlib
@@ -21,6 +23,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 
@@ -34,8 +37,9 @@ except ImportError:
     from test_dedicated_server_parity import Server, game_time
 
 NAME = 'arrow-hit-ding-parity'
-WITNESS_PATH = 'tools/witness/26.3/arrow_hit_ding.json'
 ORACLE_SOURCE = 'mods/sunrise/src/test/java/dev/sunriselab/parity/LocatorBarClient.java'
+WITNESS_ENV = 'SUNRISE_ARROW_HIT_DING_WITNESS'
+TEST = 'game::lan_pvp::arrow_hit_sound_tests::an_arrow_that_hurts_another_player_dings_its_shooter'
 PLAYERS = ['Alice', 'Bob']
 # (case name, shooter player name, Silent flag, pvp game rule, victim game mode)
 CASES = [
@@ -75,7 +79,83 @@ def compile_java_sides(build):
     )
     vanilla_server = ['java', '-Xmx2g', '-Duser.timezone=UTC', '-cp', dependencies, 'net.minecraft.server.Main', 'nogui']
     client = ['java', '-Xmx1g', '-cp', str(classes) + os.pathsep + dependencies, 'dev.sunriselab.parity.LocatorBarClient']
-    return lock, vanilla_server, client
+    return lock, jars, vanilla_server, client
+
+
+def java_version_string():
+    result = subprocess.run(['java', '-version'], capture_output=True, text=True, check=True)
+    return (result.stderr or result.stdout).strip().splitlines()[0]
+
+
+def default_witness_path(version):
+    return lab.LOCAL / 'witness' / version / 'arrow_hit_ding' / 'arrow_hit_ding.json'
+
+
+def write_witness(witness_path, lock, jars, vanilla, command):
+    version = lock['minecraft']['version']
+    java_ver = java_version_string()
+    witness = {
+        'schema': 1,
+        'minecraft_version': version,
+        'java_version': java_ver,
+        'harness': 'tools/test_arrow_hit_ding_parity.py',
+        'oracle_client': ORACLE_SOURCE,
+        'cases': vanilla,
+    }
+    witness_path.parent.mkdir(parents=True, exist_ok=True)
+    witness_path.write_text(json.dumps(witness, indent=2) + '\n', encoding='utf-8')
+    lab.write_json(
+        witness_path.parent / 'meta.json',
+        {
+            'game_version': version,
+            'java_major': lock['minecraft']['java_major'],
+            'java_version': java_ver,
+            'harness': 'tools/test_arrow_hit_ding_parity.py',
+            'oracle_client': ORACLE_SOURCE,
+            'witness_env': WITNESS_ENV,
+            'command': command,
+            'input_hashes': {
+                'research-lock.json': lab.digest(lab.LOCK, 'sha256'),
+                'server.jar': lab.digest(jars['server'], 'sha256'),
+                ORACLE_SOURCE: lab.digest(lab.ROOT / ORACLE_SOURCE, 'sha256'),
+                'tools/test_arrow_hit_ding_parity.py': lab.digest(Path(__file__), 'sha256'),
+            },
+            'outputs': {
+                witness_path.name: {
+                    'sha256': lab.digest(witness_path, 'sha256'),
+                    'bytes': witness_path.stat().st_size,
+                },
+            },
+        },
+    )
+    return java_ver
+
+
+def run_rust_witness_test(build, witness_path, resources):
+    with tempfile.TemporaryDirectory(prefix='sunrise-arrow-hit-ding-') as tmp:
+        scratch = Path(tmp)
+        homes = {k: scratch / k for k in ('SUNRISE_HOME', 'SUNRISE_LAUNCHER_HOME', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME')}
+        env = lab.game_env(os.environ, **homes, RUST_MIN_STACK='16777216')
+        binary = lab.parity_fixtures()
+        env['SUNRISE_TEST_RESOURCES'] = str(resources.resolve())
+        env[WITNESS_ENV] = str(witness_path.resolve())
+        log_path = build / 'rust-witness-test.log'
+        with log_path.open('w', encoding='utf-8') as log:
+            result = subprocess.run(
+                [str(binary), TEST, '--exact', '--ignored', '--nocapture'],
+                cwd=scratch,
+                env=env,
+                timeout=3600,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+            )
+        output = log_path.read_text(encoding='utf-8', errors='replace')
+        if result.returncode != 0:
+            tail = output.splitlines()[-40:]
+            print('\n'.join(tail), file=sys.stderr, flush=True)
+            raise AssertionError(f'{TEST} failed against recorded witness {witness_path}; see {log_path}')
+        if '1 passed; 0 failed' not in output:
+            raise AssertionError(f'expected 1 passed; 0 failed for {TEST} in {log_path}')
 
 
 def configure_net():
@@ -270,31 +350,37 @@ def comparable(records):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--record', action='store_true', help='run vanilla 26.3 only and write the witness JSON')
+    parser.add_argument(
+        '--record', '--record-only', action='store_true', dest='record',
+        help='run vanilla 26.3 only and write the witness JSON and meta.json into .local',
+    )
     parser.add_argument('--binary', type=Path, help='prebuilt Sunrise server binary')
-    parser.add_argument('--witness', type=Path, default=lab.ROOT / WITNESS_PATH, help='witness JSON path')
+    parser.add_argument(
+        '--witness', type=Path,
+        help='witness JSON path (default: .local/witness/<version>/arrow_hit_ding/arrow_hit_ding.json)',
+    )
+    parser.add_argument(
+        '--resources', type=Path,
+        default=Path(os.environ.get('SUNRISE_TEST_RESOURCES', lab.RESOURCES)),
+        help='prepared Sunrise resources directory for the Rust witness fixture',
+    )
     args = parser.parse_args()
     configure_net()
     build = lab.LOCAL / NAME
     if args.record:
-        lock, vanilla_server, client = compile_java_sides(build)
+        lock, jars, vanilla_server, client = compile_java_sides(build)
         world = net.generate_world(vanilla_server, build)
         vanilla = run_side('vanilla', vanilla_server, client, build, world)
-        witness = {
-            'schema': 1,
-            'minecraft_version': lock['minecraft']['version'],
-            'java_version': subprocess.check_output(['java', '--version'], text=True).splitlines()[0],
-            'harness': 'tools/test_arrow_hit_ding_parity.py',
-            'oracle_client': ORACLE_SOURCE,
-            'cases': vanilla,
-        }
-        args.witness.parent.mkdir(parents=True, exist_ok=True)
-        args.witness.write_text(json.dumps(witness, indent=2) + '\n', encoding='utf-8')
-        print(f'Recorded {len(vanilla)} vanilla {lock["minecraft"]["version"]} cases to {args.witness}')
+        witness_path = args.witness or default_witness_path(lock['minecraft']['version'])
+        write_witness(witness_path, lock, jars, vanilla, 'python3 tools/test_arrow_hit_ding_parity.py --record')
+        print(f'Recorded {len(vanilla)} vanilla {lock["minecraft"]["version"]} cases to {witness_path}')
         return 0
     lock, build, vanilla_server, sunrise_server, client = net.sides(NAME, args.binary)
+    _, jars, _ = base.verify_artifacts()
     world = net.generate_world(vanilla_server, build)
     vanilla = run_side('vanilla', vanilla_server, client, build, world)
+    witness_path = args.witness or default_witness_path(lock['minecraft']['version'])
+    java_ver = write_witness(witness_path, lock, jars, vanilla, 'python3 tools/test_arrow_hit_ding_parity.py')
     sunrise = run_side('sunrise', sunrise_server, client, build, world)
     if comparable(vanilla) != comparable(sunrise):
         raise AssertionError(
@@ -302,23 +388,20 @@ def main():
             f'vanilla={json.dumps(comparable(vanilla), indent=2)}\n'
             f'sunrise={json.dumps(comparable(sunrise), indent=2)}'
         )
-    if args.witness.exists():
-        stored = json.loads(args.witness.read_text(encoding='utf-8'))
-        if comparable(vanilla) != comparable(stored['cases']):
-            raise AssertionError(f'committed witness {args.witness} disagrees with fresh vanilla run')
+    run_rust_witness_test(build, witness_path, args.resources)
     lab.write_json(
         build / 'report.json',
         {
             'schema': 1,
             'minecraft': lock['minecraft']['version'],
             'platform': platform.platform(),
-            'java': subprocess.check_output(['java', '--version'], text=True).splitlines()[0],
+            'java': java_ver,
             'cases': len(vanilla),
             'output_sha256': lab.digest(build / 'sunrise.txt', 'sha256'),
             'scope': 'ClientboundGameEventPacket sent to shooter and victim on a player-owned arrow hit.',
         },
     )
-    print(f'arrow hit ding: {len(vanilla)} cases identical to vanilla {lock["minecraft"]["version"]}')
+    print(f'arrow hit ding: {len(vanilla)} cases identical to vanilla {lock["minecraft"]["version"]} (witness: {witness_path})')
     return 0
 
 

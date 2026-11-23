@@ -766,9 +766,10 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod arrow_hit_sound_tests {
+pub(in crate::game) mod arrow_hit_sound_tests {
     use super::{Victim, Who};
     use std::fmt::Write as _;
+    use std::path::PathBuf;
     use std::sync::{Arc, atomic::AtomicUsize, mpsc};
     use sunrise_client::{
         command::args::GameMode,
@@ -780,10 +781,26 @@ mod arrow_hit_sound_tests {
     use sunrise_core::geometry::Vec3;
     use sunrise_protocol::packets::play::Clientbound;
 
-    const WITNESS_26_3: &str = include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tools/witness/26.3/arrow_hit_ding.json"
-    ));
+    fn load_witness() -> Witness {
+        let value = std::env::var_os("SUNRISE_ARROW_HIT_DING_WITNESS").unwrap_or_else(|| {
+            panic!(
+                "SUNRISE_ARROW_HIT_DING_WITNESS is unset; run tools/test_arrow_hit_ding_parity.py, which records the witness"
+            )
+        });
+        let raw_path = PathBuf::from(value);
+        let path = if raw_path.is_dir() {
+            raw_path.join("arrow_hit_ding.json")
+        } else {
+            raw_path
+        };
+        let raw = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+            panic!(
+                "failed to read witness {} (record via tools/test_arrow_hit_ding_parity.py): {e}",
+                path.display()
+            )
+        });
+        serde_json::from_str(&raw).expect("valid 26.3 arrow-hit witness JSON")
+    }
 
     #[derive(serde::Deserialize)]
     struct Witness {
@@ -954,11 +971,15 @@ mod arrow_hit_sound_tests {
         outcome.unwrap()
     }
 
-    /// Vanilla 26.3 witness (`tools/witness/26.3/arrow_hit_ding.json`): exact wire `ClientboundGameEventPacket` and victim health bits on player arrow hits.
+    /// Vanilla 26.3 witness recorded by `tools/test_arrow_hit_ding_parity.py`: exact wire `ClientboundGameEventPacket` and victim health bits on player arrow hits.
     #[test]
-    #[ignore = "daily"]
+    #[ignore = "run by tools/test_arrow_hit_ding_parity.py"]
     fn an_arrow_that_hurts_another_player_dings_its_shooter() {
-        let witness: Witness = serde_json::from_str(WITNESS_26_3).unwrap();
+        run_an_arrow_that_hurts_another_player_dings_its_shooter();
+    }
+
+    pub(in crate::game) fn run_an_arrow_that_hurts_another_player_dings_its_shooter() {
+        let witness = load_witness();
         assert_eq!(witness.minecraft_version, "26.3");
         assert!(!witness.cases.is_empty());
         for case in witness.cases {
