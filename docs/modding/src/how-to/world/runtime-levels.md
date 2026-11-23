@@ -52,13 +52,13 @@ A folder that exists under the id is reopened as it was saved, a persistent leve
 unload or a restart. Nothing reopens a runtime level by itself at the next start: the mod
 reopens what it keeps, and a player saved in a level that was not reopened keeps the usual
 fallback. At server startup every configured level (including datapack dimensions) fires
-`level_load` before the next is available. The Overworld opens first and, if needed, selects the
+`level_load` (v4) before the next is available. The Overworld opens first and, if needed, selects the
 initial world spawn before the other levels open. `create_spawn_position` runs there for normal
 fresh worlds; the Debug preset uses its fixed spawn without that hook. The remaining levels follow
 the `LEVEL_STEM` registry traversal; mods must not assume a particular order among them.
 `host.levels().list_levels()`, ticks of eligible levels, saves and shutdown use that creation order.
 A player's saved dimension does not add to the registry. The server then validates and activates
-saved tickets and waits for the ticketed chunks before `server_started`, even if no player visits
+saved tickets and waits for the ticketed chunks before `server_started` (v2), even if no player visits
 those levels. In `Hooks::validate_tickets`, a controller's owning mod can remove saved tickets
 through `event.validation`. The callback sees its removals immediately. As with
 [staged registration](../../concepts/load-phases.md#registration-and-setup), a panic or phase
@@ -66,8 +66,9 @@ refusal discards those edits before the saved tickets take hold. Other controlle
 
 On a full server save, `player_save_to_file` notifications for successfully saved placed players
 come before `level_save`, then `world_saved` follows the world metadata write. Startup's integrated
-save before `server_starting` writes levels and world metadata, naming a known profile for a new
-world without creating or overwriting the owner's player file.
+save completes before `server_starting` and `server_started`. It writes levels and world metadata,
+naming a known profile for a new world without creating or overwriting the owner's player file.
+The initial save is outside the `server_started` listener's transaction journal.
 
 Lifecycle hooks follow the [shared failure rules](../../concepts/hooks-and-the-host.md#failures-and-panics).
 A panicking listener does not fail a successful save or skip another listener's level close
