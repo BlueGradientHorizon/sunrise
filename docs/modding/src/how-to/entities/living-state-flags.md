@@ -160,10 +160,7 @@ For an Allay, the expiring liked-player memory, liked-note-block cooldown and it
 stop during the pause. Passive healing, the duplication countdown, dancing and animation continue.
 
 ```rust
-// A spawner's movable no-AI mob: paused once, and still paused after a reload.
-if let Some(mob) = host.mob(entity) {
-    let _ = mob.set_ai_paused(host, true);
-}
+{{#include ../../../examples/src/entity_and_native.rs:pause_mob_ai}}
 ```
 
 The persistence pair `persistence_required`/`set_persistence_required` reads and sets `Mob.isPersistenceRequired`;
