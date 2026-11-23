@@ -16,7 +16,7 @@
 //! struct ZombieGoals;
 //! #[mod_api::sunrise_part]
 //! impl EntityPart for ZombieGoals {
-//!     fn register_goals(&self, event: &mut RegisterGoalsEvent<'_, '_>) {
+//!     fn register_goals(&self, _host: &dyn Host, event: &mut RegisterGoalsEvent<'_, '_>) {
 //!         event.goals.add_goal(7, Stare::default());
 //!     }
 //! }

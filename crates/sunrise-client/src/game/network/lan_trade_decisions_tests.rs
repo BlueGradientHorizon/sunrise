@@ -328,7 +328,7 @@ fn prepare_work(game: &mut Game<'_>, save: &std::path::Path) {
     mob.previous = mob.position;
     mob.no_gravity = true;
     mob.extra.home = Some(site);
-    villager_brain::init(mob, WORK_TICK, WORK_TICK, 40);
+    villager_brain::init(mob, WORK_TICK, WORK_TICK, 40, None);
 }
 
 fn tick_work(game: &mut Game<'_>) {

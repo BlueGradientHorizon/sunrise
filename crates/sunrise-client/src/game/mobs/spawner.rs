@@ -243,7 +243,7 @@ impl Game<'_> {
             // The mob a listened position check created, else a new one.
             let mob = l.take_checked(r.id, r.position, r.yaw).unwrap_or_else(|| {
                 let [x, y, z] = r.position;
-                Mob::new(l.provisional_id(), kind.clone(), Vec3::new(x, y, z), r.yaw)
+                self.new_mob(l.provisional_id(), kind.clone(), Vec3::new(x, y, z), r.yaw)
             });
             Planned::Finalized(mob)
         } else {

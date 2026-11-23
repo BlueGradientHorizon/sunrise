@@ -549,7 +549,8 @@ impl GameLevel<'_, '_> {
             None => {
                 let kind = self.game.res.mob_types().get(r.entity)?.clone();
                 let [x, y, z] = r.position;
-                Mob::new(self.provisional_id(), kind, Vec3::new(x, y, z), r.yaw)
+                self.game
+                    .new_mob(self.provisional_id(), kind, Vec3::new(x, y, z), r.yaw)
             }
         };
         // No group data is threaded through the pack yet: each member starts
@@ -658,7 +659,7 @@ impl sunrise_client::mobs::finalize::FinalizeLevel for PassLevel<'_, '_, '_> {
             return None;
         }
         let t = t.clone();
-        Some(Mob::new(
+        Some(self.l.game.new_mob(
             self.l.provisional_id(),
             t,
             sunrise_core::geometry::Vec3::ZERO,
@@ -817,7 +818,7 @@ impl NaturalLevel for GameLevel<'_, '_> {
             .flatten()
             .map(|kind| {
                 let [x, y, z] = at;
-                Mob::new(
+                self.game.new_mob(
                     self.provisional_id(),
                     kind.clone(),
                     Vec3::new(x, y, z),

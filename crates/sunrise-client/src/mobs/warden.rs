@@ -418,11 +418,10 @@ impl Warden {
 }
 
 pub fn register(m: &mut Mob) {
-    // The brain at construction, with the mob's own type id so a mod part's
-    // behaviors join it (#824).
-    let id = m.kind.id.clone();
+    // The brain at construction; a mod part's behaviors join it where the game constructs
+    // the mob (`join_mod_behaviors`, #824).
     let st = Warden {
-        brain: Brain::new(&id, 0),
+        brain: Brain::new(0),
         ..Warden::default()
     };
     m.extra.warden = Some(Box::new(st));
@@ -445,14 +444,23 @@ pub fn delay_sensors(m: &mut Mob) {
 }
 /// A brain whose `RunOne` shuffles with `seed` (vanilla seeds it from the
 /// clock; harnesses seed both sides alike), its sensors delayed again.
-pub fn init_brain(m: &mut Mob, seed: i64) {
+pub fn init_brain(m: &mut Mob, seed: i64, host: Option<&dyn super::part_goals::GoalHost>) {
     if let Some(st) = m.extra.warden.as_mut() {
         let mem = std::mem::take(&mut st.brain.mem);
-        let id = m.kind.id.clone();
-        st.brain = Brain::new(&id, seed);
+        st.brain = Brain::new(seed);
         st.brain.mem = mem;
     }
     delay_sensors(m);
+    if let Some(host) = host {
+        join_mod_behaviors(m, host);
+    }
+}
+/// The parts' behaviors join the warden's brain (#824), asked with the game's read host.
+pub fn join_mod_behaviors(m: &mut Mob, host: &dyn super::part_goals::GoalHost) {
+    let id = m.kind.id.clone();
+    if let Some(st) = m.extra.warden.as_mut() {
+        st.brain.join_mod_behaviors(&id, host);
+    }
 }
 /// `Warden.finalizeSpawn`: a minute until it digs back down; a summoned
 /// warden climbs out of the ground first.

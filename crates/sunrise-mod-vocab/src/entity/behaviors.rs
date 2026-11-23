@@ -16,7 +16,7 @@
 //! struct VillagerBehaviors;
 //! #[mod_api::sunrise_part]
 //! impl EntityPart for VillagerBehaviors {
-//!     fn register_behaviors(&self, event: &mut RegisterBehaviorsEvent<'_, '_>) {
+//!     fn register_behaviors(&self, _host: &dyn Host, event: &mut RegisterBehaviorsEvent<'_, '_>) {
 //!         let _ = event.behaviors.add(Activity::Idle, 5, 40, 80, &[], Stroll::default());
 //!     }
 //! }

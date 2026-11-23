@@ -387,6 +387,34 @@ fn kind_for_species(species: Species) -> Option<Kind> {
 /// `Brain.Provider.makeBrain`: a new brain whose sensors' first scans are
 /// delayed by draws from the mob's random, on its default activity (idle).
 /// The gates shuffle with a random seeded with `shuffle_seed`.
+/// The parts' behaviors join the brain before its sort, so each lands after vanilla's of its
+/// priority (#824); the stable sort keeps vanilla's own hand-written order. Nothing joins a
+/// type no part attached to, and nothing is asked or built then.
+pub fn join_mod_behaviors(m: &mut Mob, host: &dyn super::part_goals::GoalHost) {
+    let id = m.kind.id.clone();
+    let Some(b) = m.extra.animal_brain.as_deref_mut() else {
+        return;
+    };
+    let before = b.list.len();
+    attach_behaviors(&id, &mut b.list, host);
+    if b.list.len() > before {
+        b.list.sort_by_key(|e| {
+            (
+                e.prio,
+                match e.act {
+                    Act::Core => 1,
+                    Act::Dig => 3,
+                    Act::Idle => 5,
+                    Act::Sniff => 6,
+                    Act::Fight => 14,
+                    Act::PlayDead => 15,
+                    Act::Panic => 15,
+                },
+            )
+        });
+    }
+}
+
 pub fn init(m: &mut Mob, shuffle_seed: i64) {
     let Some(kind) = kind_of(m) else { return };
     // The copper golem's constructor: TRANSPORT_ITEMS_COOLDOWN_TICKS of
@@ -412,28 +440,6 @@ pub fn init(m: &mut Mob, shuffle_seed: i64) {
         Kind::CopperGolem => copper_golem_package(shuffle_seed),
         Kind::Tadpole => tadpole_package(shuffle_seed),
     };
-    // The parts' behaviors join before the sort, so each lands after
-    // vanilla's of its priority (#824); the stable sort keeps vanilla's own
-    // hand-written order. Nothing joins a type no part attached to, and
-    // nothing is asked or built then.
-    let before = b.list.len();
-    attach_behaviors(&m.kind.id, &mut b.list);
-    if b.list.len() > before {
-        b.list.sort_by_key(|e| {
-            (
-                e.prio,
-                match e.act {
-                    Act::Core => 1,
-                    Act::Dig => 3,
-                    Act::Idle => 5,
-                    Act::Sniff => 6,
-                    Act::Fight => 14,
-                    Act::PlayDead => 15,
-                    Act::Panic => 15,
-                },
-            )
-        });
-    }
     if let Some(c) = cooldown {
         b.mem.transport_items_cooldown_ticks.set(c);
     }
@@ -539,6 +545,9 @@ pub fn tick(m: &mut Mob, w: &MobWorld, level: &mut DamageLevel<'_>, events: &mut
         init(m, seed);
         if brain(m).is_none() {
             return;
+        }
+        if let Some(host) = w.goal_host {
+            join_mod_behaviors(m, host);
         }
     }
     // forgetOutdatedMemories
@@ -2794,7 +2803,7 @@ fn tadpole_package(seed: i64) -> Vec<Entry> {
 
 /// The parts' behaviors for this brain (#824): each joins the list with its
 /// activity and priority, refused where this brain has no such activity.
-fn attach_behaviors(mob_id: &str, list: &mut Vec<Entry>) {
+fn attach_behaviors(mob_id: &str, list: &mut Vec<Entry>, host: &dyn super::part_goals::GoalHost) {
     struct Reg<'a> {
         list: &'a mut Vec<Entry>,
         mob_id: &'a str,
@@ -2816,7 +2825,7 @@ fn attach_behaviors(mob_id: &str, list: &mut Vec<Entry>) {
             self.mob_id
         }
     }
-    super::mod_behaviors::attach(mob_id, &mut Reg { list, mob_id });
+    super::mod_behaviors::attach(mob_id, &mut Reg { list, mob_id }, host);
 }
 
 /// This brain's slot for a mod-api activity.

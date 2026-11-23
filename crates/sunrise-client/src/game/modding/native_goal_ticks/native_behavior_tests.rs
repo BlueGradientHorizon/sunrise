@@ -138,7 +138,11 @@ fn random_of(level: &mut DamageLevel<'_>) -> (u64, Option<f64>) {
 struct ZombieBehaviors;
 #[mod_api::sunrise_part]
 impl EntityPart for ZombieBehaviors {
-    fn register_behaviors(&self, event: &mut RegisterBehaviorsEvent<'_, '_>) {
+    fn register_behaviors(
+        &self,
+        _: &dyn mod_api::Host,
+        event: &mut RegisterBehaviorsEvent<'_, '_>,
+    ) {
         if let Err(e) = event
             .behaviors
             .add(Activity::Idle, 5, 40, 80, &[], Probe::still_for(1))
@@ -161,7 +165,11 @@ macro_rules! plan_part {
         struct $name;
         #[mod_api::sunrise_part]
         impl EntityPart for $name {
-            fn register_behaviors(&self, event: &mut RegisterBehaviorsEvent<'_, '_>) {
+            fn register_behaviors(
+                &self,
+                _: &dyn mod_api::Host,
+                event: &mut RegisterBehaviorsEvent<'_, '_>,
+            ) {
                 for (id, add) in ADDS.lock().unwrap().iter() {
                     if *id == $id {
                         add(event.behaviors);

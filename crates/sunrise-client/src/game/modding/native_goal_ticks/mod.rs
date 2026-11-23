@@ -815,6 +815,14 @@ impl mobs::part_goals::GoalHost for Game<'_> {
         Some(sunrise_client::scoreboard::teams_allow_damage(own, other))
     }
 
+    fn register_goals(&self, goals: &mut mod_api::GoalRegistrar<'_>) {
+        self.native_register_goals(goals);
+    }
+
+    fn register_behaviors(&self, behaviors: &mut mod_api::BehaviorRegistrar<'_>) {
+        self.native_register_behaviors(behaviors);
+    }
+
     fn run_goal(
         &self,
         goal: &mut Box<dyn mod_api::Goal>,

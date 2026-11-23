@@ -1382,7 +1382,7 @@ mod tests {
 
     fn memory_fixture() -> Mob {
         let mut m = villager();
-        super::super::villager_brain::init(&mut m, 0, 0, 1);
+        super::super::villager_brain::init(&mut m, 0, 0, 1, None);
         let mm = &mut ext_mut(&mut m).brain.as_mut().unwrap().mem;
         mm.golem_detected_recently.set_ttl(true, 42);
         mm.last_slept.set_ttl(101, 17);
@@ -1461,7 +1461,7 @@ mod tests {
         )]);
         let mut loaded = villager();
         read_nbt(&mut loaded, &tag);
-        super::super::villager_brain::init(&mut loaded, 500, 0, 1);
+        super::super::villager_brain::init(&mut loaded, 500, 0, 1, None);
         let mm = &mut ext_mut(&mut loaded).brain.as_mut().unwrap().mem;
         assert_eq!(
             (

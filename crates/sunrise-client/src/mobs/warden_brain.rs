@@ -220,27 +220,28 @@ impl Default for Brain {
     fn default() -> Self {
         // No mob id: nothing attaches (a default brain is the empty shell a
         // warden's state starts from; `init_brain` builds the real one).
-        Self::new("", 0)
+        Self::new(0)
     }
 }
 impl Brain {
-    pub fn new(mob_id: &str, shuffle_seed: i64) -> Self {
-        let mut list = activities(shuffle_seed);
-        // The parts' behaviors join before the sort, so each lands after
-        // vanilla's of its priority (#824); the stable sort keeps vanilla's
-        // own order. Nothing joins a type no part attached to, and nothing
-        // is asked or built then.
-        let before = list.len();
-        attach_behaviors(mob_id, &mut list);
-        if list.len() > before {
-            list.sort_by_key(|e| (e.prio, e.act.slot(), e.act.order()));
-        }
+    pub fn new(shuffle_seed: i64) -> Self {
         Self {
             mem: Memories::default(),
             sensors: [0; 2],
             activity: Act::Idle,
-            list,
+            list: activities(shuffle_seed),
             shuffle_seed,
+        }
+    }
+    /// The parts' behaviors join before the sort, so each lands after vanilla's of its
+    /// priority (#824); the stable sort keeps vanilla's own order. Nothing joins a type no
+    /// part attached to, and nothing is asked or built then.
+    pub fn join_mod_behaviors(&mut self, mob_id: &str, host: &dyn super::part_goals::GoalHost) {
+        let before = self.list.len();
+        attach_behaviors(mob_id, &mut self.list, host);
+        if self.list.len() > before {
+            self.list
+                .sort_by_key(|e| (e.prio, e.act.slot(), e.act.order()));
         }
     }
     pub fn is_active(&self, a: Act) -> bool {
@@ -659,7 +660,7 @@ fn sound(m: &Mob, name: &'static str, volume: f32, pitch: f32, events: &mut Vec<
 
 /// The parts' behaviors for this brain (#824): each joins the list with its
 /// activity and priority, refused where this brain has no such activity.
-fn attach_behaviors(mob_id: &str, list: &mut Vec<Entry>) {
+fn attach_behaviors(mob_id: &str, list: &mut Vec<Entry>, host: &dyn super::part_goals::GoalHost) {
     struct Reg<'a> {
         list: &'a mut Vec<Entry>,
         mob_id: &'a str,
@@ -681,7 +682,7 @@ fn attach_behaviors(mob_id: &str, list: &mut Vec<Entry>) {
             self.mob_id
         }
     }
-    super::mod_behaviors::attach(mob_id, &mut Reg { list, mob_id });
+    super::mod_behaviors::attach(mob_id, &mut Reg { list, mob_id }, host);
 }
 
 /// This brain's slot for a mod-api activity.

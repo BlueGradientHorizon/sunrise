@@ -155,6 +155,21 @@ pub fn has_brain(s: Species) -> bool {
 
 /// `Brain.Provider.makeBrain`: the sensors' first scans are delayed by draws
 /// from the mob's random; `RunOne` shuffles with `shuffle_seed`.
+/// The parts' behaviors join the brain before its sort, so each lands after vanilla's of its
+/// priority (#824); the stable sort keeps vanilla's own order. Nothing joins a type no part
+/// attached to, and nothing is asked or built then.
+pub fn join_mod_behaviors(m: &mut Mob, host: &dyn super::part_goals::GoalHost) {
+    let id = m.kind.id.clone();
+    let Some(b) = m.extra.brain.as_deref_mut() else {
+        return;
+    };
+    let before = b.list.len();
+    attach_behaviors(&id, &mut b.list, host);
+    if b.list.len() > before {
+        b.list.sort_by_key(|e| (e.prio, e.act.slot()));
+    }
+}
+
 pub fn init(m: &mut Mob, shuffle_seed: i64) {
     let breeze = m.species() == Species::Breeze;
     let kinds: &[Sensor] = if breeze {
@@ -176,15 +191,6 @@ pub fn init(m: &mut Mob, shuffle_seed: i64) {
     } else {
         (creaking_packages(shuffle_seed), Act::Idle)
     };
-    // The parts' behaviors join before the sort, so each lands after
-    // vanilla's of its priority (#824); the stable sort keeps vanilla's own
-    // order. Nothing joins a type no part attached to, and nothing is asked
-    // or built then.
-    let before = list.len();
-    attach_behaviors(&m.kind.id, &mut list);
-    if list.len() > before {
-        list.sort_by_key(|e| (e.prio, e.act.slot()));
-    }
     m.extra.brain = Some(Box::new(Brain {
         mem: Memories::default(),
         sensors,
@@ -208,6 +214,9 @@ pub fn tick(m: &mut Mob, w: &MobWorld, level: &mut DamageLevel<'_>, events: &mut
     if brain(m).is_none() {
         let seed = i64::from(m.id);
         init(m, seed);
+        if let Some(host) = w.goal_host {
+            join_mod_behaviors(m, host);
+        }
     }
     mem(m).tick();
     tick_sensors(m, w);
@@ -1408,7 +1417,7 @@ fn sorted(mut v: Vec<(i32, Act, B)>) -> Vec<Entry> {
 
 /// The parts' behaviors for this brain (#824): each joins the list with its
 /// activity and priority, refused where this brain has no such activity.
-fn attach_behaviors(mob_id: &str, list: &mut Vec<Entry>) {
+fn attach_behaviors(mob_id: &str, list: &mut Vec<Entry>, host: &dyn super::part_goals::GoalHost) {
     struct Reg<'a> {
         list: &'a mut Vec<Entry>,
         mob_id: &'a str,
@@ -1430,7 +1439,7 @@ fn attach_behaviors(mob_id: &str, list: &mut Vec<Entry>) {
             self.mob_id
         }
     }
-    super::mod_behaviors::attach(mob_id, &mut Reg { list, mob_id });
+    super::mod_behaviors::attach(mob_id, &mut Reg { list, mob_id }, host);
 }
 
 /// This brain's slot for a mod-api activity.

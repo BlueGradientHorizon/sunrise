@@ -881,7 +881,11 @@ mod tests {
     struct KeptGoal;
     #[mod_api::sunrise_part]
     impl mod_api::EntityPart for KeptGoal {
-        fn register_goals(&self, event: &mut mod_api::RegisterGoalsEvent<'_, '_>) {
+        fn register_goals(
+            &self,
+            _: &dyn mod_api::Host,
+            event: &mut mod_api::RegisterGoalsEvent<'_, '_>,
+        ) {
             event.goals.add_goal(7, Kept);
         }
     }

@@ -108,7 +108,7 @@ fn brainless_villager_wakes_before_damage_listeners() {
             assert!(!villager::sleeping(mob));
             assert!(villager::ext(mob).unwrap().brain.is_none());
 
-            villager_brain::init(mob, 89, 14000, i64::from(id));
+            villager_brain::init(mob, 89, 14000, i64::from(id), None);
             let mut written = Vec::new();
             villager::write_memories(mob, &mut written);
             let memories = Tag::compound(written);

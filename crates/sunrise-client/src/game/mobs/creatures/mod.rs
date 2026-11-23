@@ -3434,6 +3434,7 @@ impl Game<'_> {
                 MobEvent::Spawn(mut m) => {
                     self.next_entity += 1;
                     m.id = self.next_entity;
+                    m.attach_mod_parts(&*self);
                     self.mobs.push(*m);
                     self.native_mobs_joined(self.mobs.len() - 1, false);
                 }
