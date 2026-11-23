@@ -54,7 +54,7 @@ first NUL; any suffix is discarded. A transfer uses the new login handshake.
 The value comes from the client, so it is not a verified name or necessarily
 what the player originally typed. Clone it only if you need it after the host
 borrow ends. The host may be empty. The window's own player on an integrated server
-reports its memory connection's handshake: the address `local` and port 0. It is `None`
+reports its memory connection's handshake: the host `local`, standing for the local address, and port 0. It is `None`
 on a client, for stale or unavailable players, and for fake players.
 
 `player.announced_channels(host)` returns `Option<Arc<[String]>>` in announcement

@@ -22,8 +22,9 @@ pub trait PlayerSessionBackend {
     /// player originally entered.
     ///
     /// The host may be empty, as `ClientIntentionPacket` allows. The window's own player on an
-    /// integrated server reports its memory connection's handshake, the address `local` and
-    /// port 0, as vanilla's `Minecraft.doWorldLoad` handshake names its local address.
+    /// integrated server reports its memory connection's handshake: port 0, as in vanilla's
+    /// `Minecraft.doWorldLoad`, and the host `local`, which stands for the local address
+    /// (vanilla sends `LocalAddress.toString()`, `local:` plus a channel id; Sunrise has no such id).
     ///
     /// `None` on a client, for a stale or unavailable player, or for a fake player.
     fn player_virtual_host(&self, player: PlayerRef) -> Option<&VirtualHost>;
