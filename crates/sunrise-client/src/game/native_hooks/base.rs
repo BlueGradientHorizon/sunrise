@@ -1644,9 +1644,8 @@ impl Game<'_> {
     /// the fluid goes into and the player may build there, right before it is
     /// placed. Set `cancel` and nothing is poured and the bucket stays full.
     /// The player's state is swapped in, so `native_tell` answers them. Only
-    /// for guests of a server. `native_fill_bucket` hears this click too (and
-    /// the filling one) without the player and the fluid. Not heard: a
-    /// dispenser, a cauldron, and a fluid a block places itself.
+    /// for guests of a server. Not heard: a dispenser, a cauldron, and a fluid
+    /// a block places itself.
     pub(in crate::game) fn native_bucket_empty(
         &mut self,
         player: u128,
@@ -3193,10 +3192,10 @@ impl Game<'_> {
     ) {
         self.fire_right_click_block(click, use_block, use_item, cancellation_result, canceled);
     }
-    /// A player fills (`stack` an empty bucket) or empties a bucket at `pos`:
-    /// `BucketItem.use`, where it asks `Level.mayInteract`. Set `canceled`
-    /// and the bucket does nothing. Server-side, for every player of the
-    /// world (`native_acting_player` says who).
+    /// A player fills an empty bucket (`stack`) at `pos`: `BucketItem.use`'s
+    /// pickup branch, before `BucketPickup.pickupBlock`. Set `canceled` and the
+    /// bucket does nothing. Server-side, for every player of the world
+    /// (`native_acting_player` says who).
     pub(in crate::game) fn native_fill_bucket(
         &mut self,
         stack: &ItemStack,

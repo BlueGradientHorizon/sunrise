@@ -166,8 +166,8 @@ pub trait Notes {
 
 - What a server mod needs to keep the world itself out of guarded land. `block_spread` hears a
   fluid flow or fire spread into a block, `native_piston_pre` a piston's push or pull, `explosion_detonate` the
-  blocks an explosion is about to break (a mod takes out those it spares), `fill_bucket` a bucket filled or
-  emptied, and `attack_entity` a player's blow on an entity (an item frame, an armor stand, an animal, a
+  blocks an explosion is about to break (a mod takes out those it spares), `fill_bucket` a bucket filled,
+  `bucket_empty` one emptied, and `attack_entity` a player's blow on an entity (an item frame, an armor stand, an animal, a
   player). Each may cancel, and nothing happens.
 
 - `level_tick_pre` and `level_tick_post`, both-sided observations around each

@@ -141,7 +141,19 @@ slot_keys!(registries;
         crate::client::particle_keys::particle_key(id).map(|key| key.0)
     };
 );
-slot_keys!(u64; UnresolvedFluid);
+impl Wire for UnresolvedFluid {
+    layout_fields!("unresolved-fluid:v2"; "id" => crate::Identifier);
+    const MIN: usize = <crate::Identifier as Wire>::MIN;
+    fn put(&self, out: &mut Writer) {
+        out.put(&self.0);
+    }
+    fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
+        let id = input.take::<crate::Identifier>()?;
+        UnresolvedFluid::new(id).ok_or(WireError::Invalid(
+            "an unresolved fluid names a registered or empty fluid",
+        ))
+    }
+}
 
 impl Wire for crate::Identifier {
     layout_fields!("validated-identifier:v1"; "namespace" => String, "path" => String);

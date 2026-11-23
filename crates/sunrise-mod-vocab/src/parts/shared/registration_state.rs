@@ -30,7 +30,7 @@ pub(crate) struct Installed {
         HashMap<String, crate::parts::block_entities::RegisteredBlockEntityTransform>,
     pub(crate) entity_attributes: Vec<EntityAttributeDeclaration>,
     pub(crate) world_fluids: Vec<(&'static str, (String, crate::WorldFluid))>,
-    pub(crate) fluid_interactions: Vec<crate::FluidInteraction>,
+    pub(crate) fluid_interactions: Vec<crate::__private::RegisteredFluidInteraction>,
     pub(crate) entity_attribute_modifications: Vec<EntityAttributeModification>,
     pub(crate) attributes: Vec<super::attributes::AttributeDeclaration>,
     pub(crate) attribute_widenings: Vec<super::attributes::AttributeBoundsWidening>,

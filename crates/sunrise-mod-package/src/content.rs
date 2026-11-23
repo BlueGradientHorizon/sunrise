@@ -767,11 +767,11 @@ impl Default for FluidMeasures {
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct WorldFluid {
-    /// Game ticks between two flow steps (`Fluid.getTickDelay`), 1 or more.
+    /// Game ticks between two flow steps (`Fluid.getTickDelay`).
     pub tick_delay: i32,
-    /// What it loses per block it flows (`FlowingFluid.getDropOff`), 1 to 7.
+    /// What it loses per block it flows (`FlowingFluid.getDropOff`), 0 or more.
     pub drop_off: i32,
-    /// How far it looks for a way down (`FlowingFluid.getSlopeFindDistance`), 1 to 4.
+    /// How far it looks for a way down (`FlowingFluid.getSlopeFindDistance`).
     pub slope_find_distance: i32,
     /// Whether two sources make a third (`FlowingFluid.canConvertToSource`). Off by default:
     /// water's comes from a game rule, which a mod's fluid does not read.
@@ -791,16 +791,12 @@ impl Default for WorldFluid {
     }
 }
 impl WorldFluid {
-    /// Refuses values the simulation cannot run: no step, no spread, or an unbounded search.
+    /// Refuses a negative `drop_off`: the level a spread computes (`FlowingFluid.getNewLiquid`,
+    /// the highest neighbour less the drop-off) must stay within `FlowingFluid.LEVEL`'s 1 to 8.
+    /// Every other value is NeoForge's `BaseFlowingFluid.Properties` domain, any `int`.
     pub fn check(&self) -> Result<(), String> {
-        if self.tick_delay < 1 {
-            return Err("tick_delay is 1 or more".into());
-        }
-        if !(1..=7).contains(&self.drop_off) {
-            return Err("drop_off is 1 to 7".into());
-        }
-        if !(1..=4).contains(&self.slope_find_distance) {
-            return Err("slope_find_distance is 1 to 4".into());
+        if self.drop_off < 0 {
+            return Err("drop_off is 0 or more".into());
         }
         Ok(())
     }
@@ -4330,6 +4326,22 @@ capabilities = ["registries"]
             let error = load(file("bad", body)).unwrap_err();
             assert!(error.contains(refusal), "{body}: {error}");
         }
+    }
+
+    #[test]
+    fn a_world_fluid_takes_neoforges_property_domain_but_no_negative_drop_off() {
+        let fluid = |tick_delay, drop_off, slope_find_distance| WorldFluid {
+            tick_delay,
+            drop_off,
+            slope_find_distance,
+            ..WorldFluid::default()
+        };
+        assert_eq!(fluid(0, 0, 0).check(), Ok(()));
+        assert_eq!(fluid(-3, 8, 12).check(), Ok(()));
+        assert_eq!(
+            fluid(5, -1, 4).check(),
+            Err("drop_off is 0 or more".to_owned())
+        );
     }
 
     #[test]

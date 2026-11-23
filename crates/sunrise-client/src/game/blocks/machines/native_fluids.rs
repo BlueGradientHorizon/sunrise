@@ -104,13 +104,7 @@ fn fluid_identity(id: &[u16]) -> Option<mod_api::FluidIdentity> {
     if let Some(key) = mod_api::__private::fluid_key_utf16(id) {
         return Some(mod_api::FluidIdentity::Resolved(key));
     }
-    mod_api::__private::lookup_unresolved_fluid_utf16(id)
-        .map(mod_api::FluidIdentity::Unresolved)
-        .or_else(|| {
-            static WARNED: std::sync::Once = std::sync::Once::new();
-            WARNED.call_once(|| log::warn!("An unrecognized live fluid id is unavailable"));
-            None
-        })
+    mod_api::FluidIdentity::of_name(&String::from_utf16_lossy(id))
 }
 
 /// A capability amount in the fluid helpers' millibuckets.
@@ -380,7 +374,7 @@ impl Game<'_> {
                 };
                 if current > 0
                     && !held.is_some_and(|held| {
-                        mod_api::__private::fluid_identity_matches_utf16(fluid.fluid, &held.0)
+                        mod_api::__private::fluid_identity_matches_utf16(&fluid.fluid, &held.0)
                     })
                 {
                     return Some(fluid);
@@ -392,7 +386,7 @@ impl Game<'_> {
                         return Some(fluid);
                     };
                     state[real] = (
-                        Some(mod_api::__private::fluid_identity_name(fluid.fluid)),
+                        Some(mod_api::__private::fluid_identity_name(&fluid.fluid)),
                         current + add,
                     );
                     self.set_tank_state(at.pos, &state);
@@ -1140,30 +1134,28 @@ mod tests {
                     Ok(0)
                 );
                 assert_eq!(source.resource(game, 0), None);
-                for id in ["mystery", "minecraft:mystery"] {
-                    game.set_tank_state(from, &tanks(&[(Some(id), 1000), (None, 0)]));
-                    assert!(source.resource(game, 0).is_none());
-                    assert_eq!(
-                        game.tank_state(from, 2).unwrap()[0],
-                        (Some(id.to_owned()), 1000)
-                    );
-                }
-                assert!(mod_api::__private::intern_unresolved_fluid("minecraft:empty").is_none());
-                assert!(mod_api::__private::intern_unresolved_fluid("minecraft:water").is_none());
-                assert!(mod_api::__private::intern_unresolved_fluid("water").is_none());
-                let mc_handle =
-                    mod_api::__private::intern_unresolved_fluid("minecraft:unavailable_native")
-                        .unwrap();
+                assert_eq!(mod_api::FluidIdentity::of_name("minecraft:empty"), None);
+                let water_identity = mod_api::FluidIdentity::Resolved(
+                    mod_api::__private::fluid_key("minecraft:water").unwrap(),
+                );
+                assert_eq!(
+                    mod_api::FluidIdentity::of_name("minecraft:water"),
+                    Some(water_identity.clone())
+                );
+                assert_eq!(
+                    mod_api::FluidIdentity::of_name("water"),
+                    Some(water_identity)
+                );
                 for id in ["minecraft:unavailable_native", "unavailable_native"] {
                     game.set_tank_state(from, &tanks(&[(Some(id), 1000), (None, 0)]));
-                    let mc_unresolved = source.resource(game, 0).unwrap();
-                    assert_eq!(
-                        *mc_unresolved.fluid(),
-                        mod_api::FluidIdentity::Unresolved(mc_handle)
-                    );
+                    let unresolved = source.resource(game, 0).unwrap();
+                    let mod_api::FluidIdentity::Unresolved(name) = unresolved.fluid() else {
+                        panic!("an unregistered saved name stays unresolved");
+                    };
+                    assert_eq!(name.id().as_str(), "minecraft:unavailable_native");
                     assert_eq!(source.amount(game, 0), 1000);
                 }
-                let handle = mod_api::__private::intern_unresolved_fluid("othermod:fluid").unwrap();
+                let handle = mod_api::FluidIdentity::of_name("othermod:fluid").unwrap();
                 game.set_tank_state(from, &tanks(&[(Some("othermod:fluid"), 1000), (None, 0)]));
                 let pipe_target = [4, 64, 0];
                 assert_eq!(
@@ -1205,7 +1197,7 @@ mod tests {
                     sunrise_client::save::LevelShape::OVERWORLD,
                     Some(Default::default()),
                 );
-                disk.enable_trusted_fluid_load();
+                disk.mark_server_owned();
                 disk.save(
                     &[Arc::new(saved)],
                     game.pack.assets.registry,
@@ -1223,10 +1215,7 @@ mod tests {
                     (Some("othermod:fluid".into()), 300)
                 );
                 let unresolved = source.resource(game, 0).unwrap();
-                assert_eq!(
-                    *unresolved.fluid(),
-                    mod_api::FluidIdentity::Unresolved(handle)
-                );
+                assert_eq!(*unresolved.fluid(), handle);
                 assert_eq!(source.amount(game, 0), 700);
                 assert_eq!(
                     game.storage_transaction(|host, tx| source.extract_at(

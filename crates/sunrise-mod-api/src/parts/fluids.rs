@@ -812,7 +812,23 @@ impl FluidsRegistrar for PartRegistrar {
     }
 
     fn fluid_interaction(&mut self, interaction: crate::FluidInteraction) {
-        self.fluid_interactions.push(interaction);
+        self.fluid_interactions
+            .push(mod_vocab::__private::RegisteredFluidInteraction::Declared(
+                interaction,
+            ));
+    }
+
+    fn fluid_interaction_handler(
+        &mut self,
+        source: crate::FluidKey,
+        handler: Arc<dyn crate::FluidInteractionHandler>,
+    ) {
+        self.fluid_interactions
+            .push(mod_vocab::__private::RegisteredFluidInteraction::Handler {
+                owner: mod_vocab::__private::game::CallbackOwner::for_mod(self.mod_id),
+                source,
+                handler,
+            });
     }
 
     fn attach_fluid_part(&mut self, fluid: &str, kind: &'static str, part: Arc<dyn FluidPart>) {

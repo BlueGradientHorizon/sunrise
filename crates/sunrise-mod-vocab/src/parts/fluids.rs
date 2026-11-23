@@ -5,7 +5,7 @@ pub fn declared_world_fluids() -> &'static [(&'static str, (String, crate::World
 }
 
 /// The fluid interactions the mods declared, in registration order.
-pub fn declared_fluid_interactions() -> &'static [crate::FluidInteraction] {
+pub fn declared_fluid_interactions() -> &'static [crate::__private::RegisteredFluidInteraction] {
     installed().map_or(&[], |installed| &installed.fluid_interactions)
 }
 
@@ -57,6 +57,16 @@ pub trait FluidsRegistrar {
     /// and when a neighbour changes. Mods' interactions follow vanilla's two lava rules, in load
     /// order; the first match wins. The source may be another mod's fluid or `minecraft:lava`.
     fn fluid_interaction(&mut self, interaction: crate::FluidInteraction);
+
+    /// Register an interaction of `source`'s liquid block that `handler` tests and carries out
+    /// itself (NeoForge's `FluidInteractionRegistry.addInteraction` with its own
+    /// `HasFluidInteraction` and `FluidInteraction`). It keeps its place in registration order
+    /// among `source`'s interactions, after vanilla's two lava rules.
+    fn fluid_interaction_handler(
+        &mut self,
+        source: crate::FluidKey,
+        handler: Arc<dyn crate::FluidInteractionHandler>,
+    );
 
     /// Attach `part`, of kind `kind`, to the world fluid `fluid`.
     fn attach_fluid_part(&mut self, fluid: &str, kind: &'static str, part: Arc<dyn FluidPart>);

@@ -303,7 +303,7 @@ struct Well {
 
 impl Well {
     fn new(fluid: &mod_api::FluidStack) -> Self {
-        let id = mod_api::__private::fluid_identity_name(fluid.fluid);
+        let id = mod_api::__private::fluid_identity_name(&fluid.fluid);
         let look = sunrise_client::mod_content::fluid_look(&id);
         let tint = fluid_tint(&id, look.as_ref().and_then(|l| l.tint));
         let amount = format!("{} mB", fluid.amount);
@@ -953,10 +953,8 @@ mod tests {
 
     #[test]
     fn an_unresolved_fluid_uses_the_unknown_label() {
-        mod_platform::__private::initialize().unwrap();
-        let handle = mod_api::__private::intern_unresolved_fluid("missing:panel_fluid").unwrap();
         let well = Well::new(&mod_api::FluidStack {
-            fluid: mod_api::FluidIdentity::Unresolved(handle),
+            fluid: mod_api::FluidIdentity::of_name("missing:panel_fluid").unwrap(),
             amount: 250,
             components: None,
         });

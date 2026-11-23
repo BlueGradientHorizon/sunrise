@@ -215,7 +215,7 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
 - **`bucket_empty(player, name, pos, fluid, cancel)`**: a server player empties a bucket (`fluid` is
   `minecraft:water`, `minecraft:lava` or `minecraft:powder_snow`; fish and axolotl buckets pour water) into `pos`,
   right before the fluid is placed. Set `cancel` and nothing is poured. The player's state is swapped in, so
-  `PlayerRef::tell` answers them. `fill_bucket` hears the same click without the player and the fluid; dispensers
+  `PlayerRef::tell` answers them. Filling a bucket is `fill_bucket`'s moment (version 2); dispensers
   and cauldrons are not heard. A fluid or mob bucket is also heard at the block beside the clicked face whenever that
   block is not `pos`, since a block that refuses the fluid passes it there; the fluid may still go into `pos`.
 - **`player_bed_enter(player, name, pos, cancel)`**: a server player passed the sleep checks and is about to
@@ -489,10 +489,9 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
   `entity` is None for a player, whom `host.players().acting_player` names. The player packet uses the same replacement. Wind bursts are heard too.
 
 - **`fill_bucket(stack, pos, canceled)`** and **`attack_entity(entity, kind, pos, canceled)`**:
-  a player's bucket at a block, and their blow on an entity, with the acting player swapped in. Canceled, the bucket
-  does nothing and the blow does no harm. A fluid or mob bucket also asks about the block beside the clicked face
-  whenever that block is not its target, since a block that refuses the fluid passes it there; the fluid may still
-  stay in the target.
+  a player filling an empty bucket at a block (version 2: before `BucketPickup.pickupBlock`; emptying is
+  `bucket_empty`), and their blow on an entity, with the acting player swapped in. Canceled, the bucket does nothing
+  and the blow does no harm.
 
 ### Mobs
 
@@ -2387,7 +2386,7 @@ registration path.
 
 - A boat or minecart moving: `vehicle_moved(player, kind, from, to)` is heard once a tick for each boat or minecart that carries a server player (and for one a server player left, for ten seconds after it stood still), with the vehicle's type and its position before and after (`VehicleMoveEvent`), on a server, with the rider's state swapped in. `player` is the rider's UUID, none for a vehicle that carries nobody now. It only hears.
 
-- A server player emptying a bucket: `bucket_empty(player, name, pos, fluid, cancel)` is heard right before the fluid is placed, once the player may build there. A mod sets `cancel` and nothing is poured. The player's state is swapped in, so the helpers reach them. `fill_bucket` hears the same click without the player and the fluid; dispensers and cauldrons are not heard.
+- A server player emptying a bucket: `bucket_empty(player, name, pos, fluid, cancel)` is heard right before the fluid is placed, once the player may build there. A mod sets `cancel` and nothing is poured. The player's state is swapped in, so the helpers reach them. Filling a bucket is `fill_bucket`'s moment; dispensers and cauldrons are not heard.
 
 - A server player placing a hanging entity: `hanging_place(player, name, kind, pos, cancel)` is heard for an item frame, a glow item frame, a painting and a leash knot (a lead tied to a fence that has none), once it fits and before it is placed or the item used. A mod sets `cancel` and nothing is placed. The player's state is swapped in, so `PlayerRef::tell` answers them.
 

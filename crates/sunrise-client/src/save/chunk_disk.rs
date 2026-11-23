@@ -186,7 +186,7 @@ impl SaveDir {
         }
         admit_disk_save()?;
         let Some(runtime) = self.disk.get() else {
-            if !self.trusted_fluid_load {
+            if !self.server_owned {
                 return Ok(record);
             }
             return Err("chunk disk worker context is not bound".into());

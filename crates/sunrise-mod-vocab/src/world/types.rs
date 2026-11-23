@@ -1,11 +1,11 @@
 // Types that lived in the API root before the domain split.
 use crate::*;
 
-/// A saved fluid name retained for the lifetime of the process.
-// no wire: decoding validates the u64 slot with UnresolvedFluid::from_slot on the host.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-// exhaustive: only trusted engine boundaries create handles
-pub struct UnresolvedFluid(pub(crate) u64);
+/// A saved fluid name no registered fluid has, kept verbatim until its declaring mod returns.
+/// `Wire` sends the name; decoding refuses a name the receiving game has registered.
+#[derive(Clone, Debug, PartialEq, Eq)]
+// exhaustive: its field is private, so only a validated unregistered name makes one
+pub struct UnresolvedFluid(pub(crate) Identifier);
 
 /// A dimension (`minecraft:the_nether`), as the game's table numbers it: a `LevelRef`'s identity.
 /// A key stays the same dimension until the game exits; `key.id(host)` borrows the name.
