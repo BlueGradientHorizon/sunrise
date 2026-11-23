@@ -500,7 +500,7 @@ impl Game<'_> {
     }
     fn block_slot_set(&mut self, p: [i32; 3], i: usize, stack: Option<ItemStack>) -> bool {
         let key = (p[0], p[1], p[2]);
-        let Some(size) = self.block_container_size(p).filter(|&size| i < size) else {
+        let Some(_) = self.block_container_size(p).filter(|&size| i < size) else {
             return false;
         };
         self.unpack_loot(crate::game::container_loot::LootTarget::Block(key), None);
@@ -542,10 +542,7 @@ impl Game<'_> {
                 c.items[i] = stack;
             }
             Some(BlockEntity::Mod(m)) => {
-                if m.items.len() < size {
-                    m.items.resize(size, None);
-                }
-                *m.item_slot_mut(i).unwrap() = stack;
+                *m.item_slot_mut(i) = stack;
             }
             Some(entity) => entity.slots_mut()[i] = stack,
             None => return false,

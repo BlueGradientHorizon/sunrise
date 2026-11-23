@@ -393,7 +393,7 @@ impl Game<'_> {
         let block_entity = self
             .mod_block_entity_write_target(key)
             .ok_or(BlockEntityItemError::Unavailable)?;
-        let slots = mod_item_slots(&self.world, key, slot)?;
+        mod_item_slots(&self.world, key, slot)?;
         if let Some(stack) = &stack {
             if stack.count == 0
                 || stack.item.as_ref() == "minecraft:air"
@@ -420,12 +420,11 @@ impl Game<'_> {
         if index < block_entity.items.len() {
             self.journal_block_entity_slot(key, index);
             self.edit_mod_block_entity(key, |block_entity| {
-                *block_entity.item_slot_mut(index).unwrap() = stack;
+                *block_entity.item_slot_mut(index) = stack;
             });
         } else {
             self.write_mod_block_entity(key, |block_entity| {
-                block_entity.items.resize(slots, None);
-                *block_entity.item_slot_mut(index).unwrap() = stack;
+                *block_entity.item_slot_mut(index) = stack;
             });
         }
         self.journal_chunk_save((key.0 >> 4, key.2 >> 4));

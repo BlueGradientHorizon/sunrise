@@ -389,6 +389,7 @@ static MOD_DETAILS: Mutex<(Vec<(String, String)>, Vec<(String, String)>)> =
     Mutex::new((Vec::new(), Vec::new()));
 
 /// How often the diagnostics thread reads the mods' crash sections again.
+#[cfg(not(test))]
 const MOD_DETAILS_REFRESH: Duration = Duration::from_secs(1);
 
 /// Read every mod crash header and section now and keep what they said for a report. It waits

@@ -552,7 +552,7 @@ fn native_admission_allocates_only_when_preparing_subscribed_snapshots() {
         assert_eq!(next, Some(true));
         assert_eq!(reuse_allocs, 0);
 
-        *filtered.item_slot_mut(1).unwrap() = Some(ItemStack::new("minecraft:stone", 1));
+        *filtered.item_slot_mut(1) = Some(ItemStack::new("minecraft:stone", 1));
         attempt.wrote_entity();
         let (refreshed, refresh_allocs) =
             measure(|| black_box(attempt.ask(&world, TARGET, &filtered, 2, &stack)));
