@@ -282,8 +282,10 @@ impl Game<'_> {
             return false;
         };
         let previous = std::mem::take(&mut **map);
-        let replacement =
-            previous.copy_for_clone(was_death, mod_api::__private::registered_copy_on_death);
+        let replacement = previous.copy_for_clone(
+            was_death,
+            mod_api::__private::registered_clone_attachment_policy,
+        );
         let mut original = self.retain_original_player(conn, previous);
         // NeoForge's clone keeps only the `PlayerPersisted` part of a mod's saved compound.
         self.keep_only_player_persisted(conn);
@@ -406,6 +408,11 @@ mod tests {
         ..RETAINED
     };
 
+    const MEMORY_NOW: AttachmentType<i32> = AttachmentType {
+        name: "memory_now",
+        ..VALUE
+    };
+
     fn issued(raw: &AttachmentType<i32>) -> AttachmentKey<i32> {
         mod_api::testing::attachment_key("clone", raw.name)
     }
@@ -437,6 +444,8 @@ mod tests {
             r.register_attachment_type(describe("clone:retained", &RETAINED))
                 .unwrap();
             r.register_attachment_type(describe("clone:saved", &SAVED))
+                .unwrap();
+            r.register_attachment_type(describe("clone:memory_now", &MEMORY_NOW))
                 .unwrap();
         }
 
@@ -573,6 +582,19 @@ mod tests {
             assert_eq!(
                 issued(&SAVED).get(host, Holder::Player(event.player), Clone::clone),
                 Ok(if self.death { 0 } else { 31 })
+            );
+
+            // Its old serialized envelope still exists on the retained original, but
+            // the installed descriptor no longer allows either respawn route to copy it.
+            let memory_now = issued(&MEMORY_NOW);
+            assert_eq!(event.original.has_attachment(&memory_now), Ok(true));
+            assert_eq!(
+                memory_now.has(host, Holder::Player(event.player)),
+                Ok(false)
+            );
+            assert_eq!(
+                memory_now.get_existing(host, Holder::Player(event.player), |value| value.copied()),
+                Ok(None)
             );
 
             // Codec-less attachment exists only on original until explicitly written to replacement,
@@ -748,10 +770,32 @@ mod tests {
                     )]));
                 });
                 let attachments = host.hub.guests.attachments_mut(12).unwrap();
-                RETAINED.set(attachments, Holder::Level, 17).unwrap();
-                SAVED.set(attachments, Holder::Level, 31).unwrap();
-                // Keep codec-backed entries undecoded, beside an unserialized binding.
-                let saved = Attachments::from_nbt(attachments.to_nbt());
+                let envelope = |value, copied| {
+                    let mut fields: Compound =
+                        [("value".into(), Tag::compound([("value", Tag::Int(value))]))].into();
+                    if copied {
+                        fields.insert("copy_on_death".into(), Tag::Byte(1));
+                    }
+                    Tag::Compound(fields)
+                };
+                let opaque = envelope(59, true);
+                let saved = Attachments::from_nbt(
+                    [
+                        (
+                            "clone".into(),
+                            Tag::compound([
+                                ("retained", envelope(17, false)),
+                                ("saved", envelope(31, true)),
+                                ("memory_now", envelope(44, true)),
+                            ]),
+                        ),
+                        (
+                            "removed_package".into(),
+                            Tag::compound([("opaque", opaque.clone())]),
+                        ),
+                    ]
+                    .into(),
+                );
                 attachments.replace_contents(saved);
                 VALUE.set(attachments, Holder::Level, 73).unwrap();
                 if death {
@@ -761,6 +805,20 @@ mod tests {
                     play.won_game = true;
                     game.guest_respawn(12);
                 }
+                let saved = Tag::Compound(
+                    game.lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .guests
+                        .attachments_mut(12)
+                        .unwrap()
+                        .to_nbt(),
+                );
+                assert_eq!(
+                    saved.get("removed_package").unwrap().get("opaque"),
+                    Some(&opaque)
+                );
                 assert_eq!(*heard.lock().unwrap(), 1);
                 assert_eq!(*observer_heard.lock().unwrap(), 1);
                 assert!(game.player_state.cloning_players.is_empty());
@@ -771,18 +829,31 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn death_clone_retains_original_and_expires_after_dispatch() {
-        crate::game::native_entity_refs::tests::run_with_game_stack(|| {
-            clone_case(true, false);
-            clone_case(true, true);
-        });
+        use crate::game::native_entity_refs::tests::{run_fresh_cases, run_with_game_stack};
+        const FLAG: &str = "SUNRISE_DEATH_CLONE_CASE";
+        if run_fresh_cases(
+            "game::original_player::tests::death_clone_retains_original_and_expires_after_dispatch",
+            FLAG,
+            &["drop", "keep"],
+        ) {
+            return;
+        }
+        let keep = std::env::var(FLAG).unwrap() == "keep";
+        run_with_game_stack(move || clone_case(true, keep));
     }
 
     #[test]
     #[ignore = "daily"]
     fn end_return_clone_retains_end_state_and_expires_after_dispatch() {
-        crate::game::native_entity_refs::tests::run_with_game_stack(|| {
-            clone_case(false, true);
-        });
+        use crate::game::native_entity_refs::tests::{run_fresh_cases, run_with_game_stack};
+        if run_fresh_cases(
+            "game::original_player::tests::end_return_clone_retains_end_state_and_expires_after_dispatch",
+            "SUNRISE_END_CLONE_CASE",
+            &["end"],
+        ) {
+            return;
+        }
+        run_with_game_stack(|| clone_case(false, true));
     }
 
     #[test]

@@ -215,6 +215,14 @@ pub struct AttachmentPolicy {
     pub sync: bool,
 }
 
+/// The installed clone policy; an absent registration is distinct from a memory-only one.
+#[derive(Clone, Copy)]
+// no wire: a runtime lookup result, not a field of the saved attachment envelope.
+pub enum CloneAttachmentPolicy {
+    MemoryOnly,
+    Persistent { copy_on_death: bool },
+}
+
 /// What comes with a stored value: its optional persistence encoding, any original sync
 /// bytes retained when a client replica is decoded, its type's policy, and why it is stored.
 #[derive(Clone, Debug, PartialEq)]
@@ -1437,7 +1445,7 @@ impl Attachments {
     pub fn copy_for_clone(
         &self,
         is_death: bool,
-        copy_on_death: impl Fn(&str, &str) -> Option<bool>,
+        policy: impl Fn(&str, &str) -> Option<CloneAttachmentPolicy>,
     ) -> Self {
         let mut copy = Self::default();
         let flag = JavaString::from("copy_on_death");
@@ -1447,7 +1455,12 @@ impl Attachments {
                 .to_string()
                 .ok()
                 .zip(key.1.to_string().ok())
-                .and_then(|(namespace, name)| copy_on_death(&namespace, &name));
+                .and_then(|(namespace, name)| policy(&namespace, &name));
+            let current = match current {
+                Some(CloneAttachmentPolicy::MemoryOnly) => continue,
+                Some(CloneAttachmentPolicy::Persistent { copy_on_death }) => Some(copy_on_death),
+                None => None,
+            };
             let encoded = match &entry.state {
                 Entry::Raw {
                     saved,
@@ -1473,8 +1486,11 @@ impl Attachments {
         copy
     }
     /// Copy opted-in values through their disk encoding for a player respawn.
-    pub fn copy_on_death(&self, copy_on_death: impl Fn(&str, &str) -> Option<bool>) -> Self {
-        self.copy_for_clone(true, copy_on_death)
+    pub fn copy_on_death(
+        &self,
+        policy: impl Fn(&str, &str) -> Option<CloneAttachmentPolicy>,
+    ) -> Self {
+        self.copy_for_clone(true, policy)
     }
     /// The shared immutable binding, without decoding or inserting a value.
     #[doc(hidden)]

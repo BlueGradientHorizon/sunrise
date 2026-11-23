@@ -210,14 +210,13 @@ published whole generation rather than consulting the client holder.
 
 ## Copying on respawn and conversion
 
-`copy_on_death` requires a codec. On death respawn, only opted-in (`copy_on_death`)
-entries with a codec are copied to the replacement via their encoded representation.
-The installed descriptor decides for a registered entry; an absent mod's raw entry uses
-the flag stored in its envelope. Other entries stay only on the retained old player. On return from the End after credits (`was_death = false`), every serializable
-entry (any entry with a codec, including raw entries of an absent mod) is copied to the
-replacement via its encoded representation, while entries without a codec stay only on
-the retained old player. In both cases the copy runs even when no mod subscribes to
-`player_clone`, and the replacement starts from fresh encoded entries rather than sharing
+On death respawn, the installed descriptor must have a persistence codec and opt in
+with `.copy_on_death()` for its attachment to reach the replacement. On return from
+the End credits (`was_death = false`), the installed descriptor still needs a persistence
+codec, even if an older save contains data for that key. Raw entries for absent mods stay
+opaque and are copied on End return; on death, they use the flag stored in the envelope.
+In both cases the copy runs before `player_clone` (version 3), even without a listener,
+and the replacement starts from fresh encoded entries rather than sharing
 decoded instances with the old player. A mob's conversion (a villager struck into a witch,
 a zombie villager cured, a piglin zombified, a tadpole grown) copies every entry with a
 codec, raw entries of an absent mod included, to the new mob through its encoded form,

@@ -6,7 +6,7 @@ use crate::{
 };
 use std::{fmt, sync::atomic::AtomicBool};
 use sunrise_mod_runtime::attachments::{
-    AttachmentSyncInput, AttachmentType, CheckedAttachmentType,
+    AttachmentSyncInput, AttachmentType, CheckedAttachmentType, CloneAttachmentPolicy,
 };
 
 /// Builder for a typed attachment registered during [`Hooks::register`](crate::Hooks::register).
@@ -735,12 +735,21 @@ pub fn attachment_sync_projection()
     }
 }
 
-/// Resolve an attachment's copy-on-death policy independently of its saved envelope.
+/// Resolve persistence and death-copy policy independently of a saved envelope.
 // hidden: engine-owned respawn copy policy lookup.
 #[doc(hidden)]
-pub fn registered_copy_on_death(namespace: &str, name: &str) -> Option<bool> {
+pub fn registered_clone_attachment_policy(
+    namespace: &str,
+    name: &str,
+) -> Option<CloneAttachmentPolicy> {
     let record = installed()?.attachment_types.get(namespace)?.get(name)?;
-    Some(record.policy().copy_on_death)
+    Some(if record.has_codec() {
+        CloneAttachmentPolicy::Persistent {
+            copy_on_death: record.policy().copy_on_death,
+        }
+    } else {
+        CloneAttachmentPolicy::MemoryOnly
+    })
 }
 
 /// Validate use against the installed owner's declaration.
@@ -1235,7 +1244,7 @@ mod tests {
             let fresh = install_attachment_fixture("owner", current);
             let expected = (!saved_copy).then_some(17);
             let read_copy = |level: &FakeLevel| {
-                let mut copy = FakeLevel(level.0.copy_on_death(registered_copy_on_death));
+                let mut copy = FakeLevel(level.0.copy_on_death(registered_clone_attachment_policy));
                 fresh.get_existing_in(&mut copy, Holder::Level, |value| value.cloned())
             };
             assert_eq!(read_copy(&level), Ok(expected));
