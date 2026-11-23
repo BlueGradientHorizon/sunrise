@@ -431,8 +431,9 @@ For `event.result.clicked`, direct writes and slot takes are distinct:
   and fires no take hooks.
 - `ClickedStackResult::Take(count)` takes `count` items from the clicked slot via `Slot.safeTake` /
   `Slot.onTake` (spawning furnace XP, clearing `recipes_used`, consuming crafting inputs, and
-  firing take hooks such as `item_smelted` and `furnace_extract`). `ClickedStackResult::Take` is
-  refused for global listeners.
+  firing `item_smelted` when the removed count is nonzero: a take that removes nothing, such as a
+  hotbar swap with a zero `removeCount`, spawns the experience and grants the recipes but does not fire it).
+  `ClickedStackResult::Take` is refused for global listeners.
 
 Contradictory `ItemPart` answers (`Flow::Cancel` with `handled = false`, or `Flow::Continue` with
 `handled = true`), writing through the host to what the click read, returning an invalid stack,
