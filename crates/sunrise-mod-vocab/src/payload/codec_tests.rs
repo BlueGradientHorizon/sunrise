@@ -137,6 +137,34 @@ fn identifier_payloads_charge_for_both_the_text_and_its_shared_storage() {
 }
 
 #[test]
+fn identifier_payload_budget_includes_the_separator_byte() {
+    use crate::Identifier;
+
+    // The owned `namespace:path` text is one byte longer than the two wire strings, and the
+    // shared storage is a 48-byte allocation (two counts, a boxed string, a colon index, a hash).
+    let id = Identifier::from_parts("test", "path").unwrap();
+    let exact = 48 + "test".len() + "path".len() + 1;
+    let mut ordinary = Writer::new();
+    ordinary.put(&id);
+
+    for (spare, fits) in [(exact, true), (exact - 1, false)] {
+        let mut input = Reader::for_payload(ordinary.bytes());
+        input.charge::<u8>(PAYLOAD_DECODE_BUDGET - spare).unwrap();
+        let expected = if fits {
+            Ok(id.clone())
+        } else {
+            Err(WireError::Budget)
+        };
+        assert_eq!(input.take::<Identifier>(), expected);
+
+        let mut out = Writer::for_payload(PAYLOAD_DECODE_BUDGET);
+        assert!(out.charge::<u8>(PAYLOAD_DECODE_BUDGET - spare));
+        out.put(&id);
+        assert_eq!(out.finish_payload().is_ok(), fits);
+    }
+}
+
+#[test]
 fn typed_caps_do_not_cap_ordinary_wire() {
     let value = "a".repeat(4097);
     let mut writer = Writer::new();
