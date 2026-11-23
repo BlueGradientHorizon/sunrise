@@ -360,7 +360,8 @@ Each menu the server opens for a player takes the next id of that player's conta
 the id the last open took, so the next one is `counter % 100 + 1`: the id to hand a menu built before the open,
 as Java's `MenuProvider.createMenu(containerId, ...)` is. `player.next_container_counter(host)` advances the
 counter as an open does without opening anything, for an open that decides after the advance that no window
-follows (a `createMenu` that answers `null`).
+follows (a `createMenu` that answers `null`). A mod modelling `ServerPlayer.openMenu` from inside the player's
+own action closes the open menu first with `menu.close_container(host)`, which closes at the call there.
 
 ## The menu's screen
 
