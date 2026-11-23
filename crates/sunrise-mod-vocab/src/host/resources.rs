@@ -20,10 +20,12 @@ pub trait ResourcesHost {
 
     /// Side: both.
     /// Every selected pack's copy of resource `identifier` in `pack_type`'s stack, lowest first
-    /// and the winning one last, as `ResourceManager.getResourceStack` answers it; empty where no
-    /// pack supplies it. The stack and the names are those of [`resource`](Self::resource), which
-    /// reads the last copy. A copy that can't be read or is above
-    /// [`MAX_RESOURCE_BYTES`](crate::MAX_RESOURCE_BYTES) is left out. This read never reloads packs.
+    /// and the highest pack's last, as `ResourceManager.getResourceStack` answers it; empty where
+    /// no pack supplies it. The stack and the names are those of [`resource`](Self::resource),
+    /// which reads the highest pack's copy. A copy that can't be read or is above
+    /// [`MAX_RESOURCE_BYTES`](crate::MAX_RESOURCE_BYTES) is left out: when that is the highest
+    /// pack's copy, the last entry is a lower pack's while `resource` returns `None`. This read
+    /// never reloads packs.
     fn resource_stack(&self, pack_type: PackType, identifier: &Identifier) -> Vec<Vec<u8>>;
 
     /// Side: both.
