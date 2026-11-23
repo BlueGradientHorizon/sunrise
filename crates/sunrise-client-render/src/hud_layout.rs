@@ -1097,11 +1097,15 @@ fn paint_with<'a>(
                 y1,
                 color,
             } => {
-                // `GuiGraphics.fill` orders the corners; a wrapped bar end can be past the
-                // other by more than an `int` holds, so the span is taken in floats.
+                // Keep the endpoints themselves: a wrapped bar can be too wide for a float
+                // extent to reconstruct the second corner accurately.
                 let (x0, x1) = ((*x0).min(*x1) as f32, (*x0).max(*x1) as f32);
                 let (y0, y1) = ((*y0).min(*y1) as f32, (*y0).max(*y1) as f32);
-                batch.fill(atlas, x0, y0, x1 - x0, y1 - y0, abgr(*color));
+                batch.fill_quad(
+                    atlas,
+                    [[x0, y0], [x1, y0], [x1, y1], [x0, y1]],
+                    abgr(*color),
+                );
             }
             GuiDraw::FillGradient {
                 x0,

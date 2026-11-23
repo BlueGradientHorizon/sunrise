@@ -813,9 +813,22 @@ pub fn damage_bar(damage: i32, max_damage: i32) -> Option<(i32, u32)> {
 pub fn item_decorations(x: i32, y: i32, d: &ItemDecorations, font: &Font) -> Vec<GuiDraw> {
     let mut out = vec![GuiDraw::Push(Vec::new())];
     if let Some((width, color)) = d.bar {
-        let (left, top) = (x + 2, y + 13);
-        out.push(fill(left, top, left + 13, top + 2, 0xFF00_0000));
-        out.push(fill(left, top, left + width, top + 1, color | 0xFF00_0000));
+        // GuiGraphicsExtractor.itemBar forms its endpoints with Java int arithmetic.
+        let (left, top) = (x.wrapping_add(2), y.wrapping_add(13));
+        out.push(fill(
+            left,
+            top,
+            left.wrapping_add(13),
+            top.wrapping_add(2),
+            0xFF00_0000,
+        ));
+        out.push(fill(
+            left,
+            top,
+            left.wrapping_add(width),
+            top.wrapping_add(1),
+            color | 0xFF00_0000,
+        ));
     }
     if d.cooldown > 0.0 {
         let top = y + crate::hud_layout::floor(16.0 * (1.0 - d.cooldown));

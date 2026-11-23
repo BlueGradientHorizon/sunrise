@@ -1,5 +1,6 @@
 #![cfg(test)]
 //! Seeded item models and decorations through a mod's GUI canvas and real dispatch.
+use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 use mod_api::{
     ClientHost, ComponentHoverEvent, GuiCanvas, GuiDrawError, Hooks, ItemBarEvent,
     ItemDecorationsEvent, ItemDisplayContext, ItemModelLayer, ItemModelUpdateInput, ItemPart,
@@ -19,13 +20,14 @@ type Resolves = Arc<Mutex<Vec<(i32, u32, ItemDisplayContext)>>>;
 struct Painter {
     answers: Answers,
     resolves: Resolves,
+    bar_width: i32,
 }
 
 #[mod_api::__subscriptions]
 impl Hooks for Painter {
     fn register(&self, r: &mut dyn mod_api::Registrar, _: &RegistrationContext) {
         let key = r.item_key(ITEM);
-        r.item_part(key, Decorator);
+        r.item_part(key, Decorator(self.bar_width));
     }
 
     fn register_item_models(
@@ -87,11 +89,11 @@ impl Hooks for Painter {
 }
 
 #[derive(Clone)]
-struct Decorator;
+struct Decorator(i32);
 #[mod_api::sunrise_part]
 impl ItemPart for Decorator {
     fn item_bar(&self, _: &dyn ClientHost, event: &mut ItemBarEvent<'_>) {
-        *event.bar = Some((5, BAR));
+        *event.bar = Some((self.0, BAR));
     }
 
     fn item_decorations(&self, _: &dyn ClientHost, event: &mut ItemDecorationsEvent<'_>) {
@@ -114,46 +116,78 @@ impl ItemPart for Decorator {
 #[test]
 #[ignore = "daily"]
 fn item_decorator_can_delegate_to_the_base_painter_without_recursion() {
-    use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
     const NAME: &str = "game::gui_canvas_items_tests::item_decorator_can_delegate_to_the_base_painter_without_recursion";
     if run_fresh_cases(NAME, "SUNRISE_GUI_DECORATION_DELEGATION", &["run"]) {
         return;
     }
+    let batch = draw_decorated_paper(5);
+    let bars: Vec<_> = batch
+        .vertices
+        .chunks_exact(6)
+        .filter(|quad| quad[0].color == BAR)
+        .map(|quad| quad[0].pos)
+        .collect();
+    assert_eq!(bars, [[10.0, 29.0], [30.0, 29.0]]);
+    assert_eq!(
+        batch
+            .vertices
+            .iter()
+            .filter(|v| v.color == 0xFF00_00FF)
+            .count(),
+        6
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn canvas_wraps_extreme_item_bar_endpoints_like_java() {
+    const NAME: &str =
+        "game::gui_canvas_items_tests::canvas_wraps_extreme_item_bar_endpoints_like_java";
+    if run_fresh_cases(NAME, "SUNRISE_GUI_EXTREME_BAR", &["run"]) {
+        return;
+    }
+    let batch = draw_decorated_paper(i32::MAX);
+    // In the slot-local pose, Java int addition wraps (2 + MAX) to -2147483647.
+    // Converting that endpoint to f32 and translating by eight rounds to -2147483648.
+    assert_eq!(
+        batch.vertices[6..12]
+            .iter()
+            .map(|v| (v.pos, v.color))
+            .collect::<Vec<_>>(),
+        [
+            ([-2_147_483_648.0, 29.0], BAR),
+            ([10.0, 29.0], BAR),
+            ([10.0, 30.0], BAR),
+            ([-2_147_483_648.0, 29.0], BAR),
+            ([10.0, 30.0], BAR),
+            ([-2_147_483_648.0, 30.0], BAR),
+        ]
+    );
+}
+
+fn draw_decorated_paper(bar_width: i32) -> HudBatch {
     let mods = vec![ModEntry::new(
         "painter",
         Box::new(Painter {
             answers: Answers::default(),
             resolves: Resolves::default(),
+            bar_width,
         }),
     )]
     .into();
     crate::game::api_values::install_parts(&mods).unwrap();
+    let mut batch = HudBatch::scratch([320, 240]);
     with_mods(mods, || {
         with_client_game(|game| {
             let stack =
                 mod_api::ItemStack::new(mod_api::__private::item_key(ITEM).unwrap(), 1).unwrap();
-            let mut batch = HudBatch::scratch([320, 240]);
             game.draw_gui_canvas(&mut batch, None, &mut |canvas| {
                 canvas.item_decorations(&stack, [8.0, 16.0], None)
             })
             .unwrap();
-            let bars: Vec<_> = batch
-                .vertices
-                .chunks_exact(6)
-                .filter(|quad| quad[0].color == BAR)
-                .map(|quad| quad[0].pos)
-                .collect();
-            assert_eq!(bars, [[10.0, 29.0], [30.0, 29.0]]);
-            assert_eq!(
-                batch
-                    .vertices
-                    .iter()
-                    .filter(|v| v.color == 0xFF00_00FF)
-                    .count(),
-                6
-            );
         });
     });
+    batch
 }
 
 #[test]
@@ -162,10 +196,7 @@ fn scoped_items_keep_the_seed_and_draw_decorations_outside_the_squeeze() {
     crate::game::in_own_process(
         "game::gui_canvas_items_tests::scoped_items_keep_the_seed_and_draw_decorations_outside_the_squeeze",
         || {
-            use crate::game::{
-                Game, native_client_session::tests::logged_client,
-                native_entity_refs::tests::with_client_game,
-            };
+            use crate::game::{Game, native_client_session::tests::logged_client};
 
             use mod_api::__private::game::RegistrationContextNew;
             use sunrise_client::item_render::{bind_item_model_factories, decode_item_model};
@@ -177,6 +208,7 @@ fn scoped_items_keep_the_seed_and_draw_decorations_outside_the_squeeze() {
                 Box::new(Painter {
                     answers: answers.clone(),
                     resolves: resolves.clone(),
+                    bar_width: 5,
                 }),
             )]
             .into();

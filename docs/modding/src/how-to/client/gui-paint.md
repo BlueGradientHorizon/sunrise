@@ -40,6 +40,8 @@ is no list of line draws to replay.
 Call `canvas.item(&stack, at, seed)` to draw a stack's model in a 16-pixel slot, passing the seed to
 its model resolver. Call `canvas.item_decorations(&stack, at, None)` to add its bar, cooldown,
 count and custom decoration, in that order. An optional `Some(label)` replaces the count text.
+An `item_bar` override supplies a signed width in pixels. As in vanilla, the bar's foreground
+endpoint is formed with wrapping integer addition.
 The stack is read for display, not written to a slot: it keeps its components and can be over the
 storage limit. Empty stacks draw nothing. Head-skin fetches and atlas requests caused by the draw
 wait until the outer group commits.
