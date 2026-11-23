@@ -1,0 +1,1 @@
+sunrise-client game::native_damage_tag_tests::a_hit_listener_reads_its_damage_type_tags_as_bound lib daily child-process
