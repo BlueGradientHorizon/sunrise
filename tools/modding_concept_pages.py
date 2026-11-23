@@ -294,8 +294,10 @@ class HtmlLinks(HTMLParser):
 def check_html(directory, src=SRC):
     pages = sorted(p.relative_to(src).as_posix() for p in src.rglob("*.md") if p.name != "SUMMARY.md")
     # The generated chapters have no source page.
-    pages += [p for p in ("reference/hook-notes.md", "reference/neoforge-counterparts.md")
-              if (directory / p).with_suffix(".html").is_file()]
+    pages += [
+        p for p in ("reference/api-reference.md", "reference/hook-notes.md", "reference/neoforge-counterparts.md")
+        if (directory / p).with_suffix(".html").is_file()
+    ]
     titles, dup_errors = {}, []
     for page in pages:
         path = directory / Path(page).with_suffix(".html")
