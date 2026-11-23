@@ -12028,6 +12028,7 @@ impl Game<'_> {
             self.physical_buttons.clear();
             self.drag_button = None;
             self.container_buttons.clear();
+            self.mod_browser_focus_lost();
         }
         if let WindowEvent::ModifiersChanged(m) = event {
             self.update_modifiers(m.state());
@@ -12568,13 +12569,17 @@ impl Game<'_> {
                         if delta != [0.0; 2]
                             && let Some(button) = button
                         {
-                            let handled = self.observed_screen_view().is_some()
-                                && self.mounted_widget_mouse_dragged(
-                                    self.cursor(),
-                                    glfw_button(button),
-                                    delta,
-                                    glfw_modifiers(self.modifiers),
-                                );
+                            // A press on the item panel's list is the panel's until its
+                            // release: no widget, menu or slot hears the drag.
+                            let panel = self.mod_browser_drag_move();
+                            let handled = panel
+                                || (self.observed_screen_view().is_some()
+                                    && self.mounted_widget_mouse_dragged(
+                                        self.cursor(),
+                                        glfw_button(button),
+                                        delta,
+                                        glfw_modifiers(self.modifiers),
+                                    ));
                             let handled = handled
                                 || (self.screen_state.screen_instance == initial_instance
                                     && self.screen_drag_response(overlay, button, size, (w, h))?);
@@ -12796,6 +12801,9 @@ impl Game<'_> {
                     if !synthetic {
                         self.track_drag_button(button, pressed);
                     }
+                    if pressed {
+                        self.mod_browser_other_press(button == MouseButton::Left);
+                    }
                     if let Some(receiver) = &receiver {
                         let mut canceled = false;
                         if pressed {
@@ -12815,6 +12823,11 @@ impl Game<'_> {
                             );
                         }
                         if canceled {
+                            // A vetoed release of a press on the item panel
+                            // drops its item, sending nothing.
+                            if !pressed && button == MouseButton::Left {
+                                self.mod_browser_release_vetoed();
+                            }
                             if self.screen_state.screen_instance == initial_instance
                                 && let Some(millis) = press_millis
                             {
@@ -12828,8 +12841,13 @@ impl Game<'_> {
                             return Ok(());
                         }
                     }
-                    let mut handled = owned_release;
-                    if self.screen_state.screen_instance == initial_instance {
+                    // The left release of a press on the item panel's list is
+                    // the panel's, even once its menu closed or was replaced:
+                    // no screen, mounted widget or container hook hears it.
+                    let panel_release =
+                        !pressed && button == MouseButton::Left && self.mod_browser_release();
+                    let mut handled = owned_release || panel_release;
+                    if !panel_release && self.screen_state.screen_instance == initial_instance {
                         let inventory_release = !pressed
                             && matches!(self.screen, Screen::Inventory | Screen::Creative)
                             && self.observed_overlay_now().is_none()
