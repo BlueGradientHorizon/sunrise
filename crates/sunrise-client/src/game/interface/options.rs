@@ -988,10 +988,19 @@ mod resize_state_tests {
                 self.0.lock().unwrap().push([event.width, event.height]);
             }
         }
-        /// The resize request is the test's own; its events need no handling.
-        struct Idle;
-        impl winit::application::ApplicationHandler for Idle {
-            fn resumed(&mut self, _: &winit::event_loop::ActiveEventLoop) {}
+        /// Creates the hidden window when the loop resumes; the resize request is the
+        /// test's own, so its events need no handling.
+        #[derive(Default)]
+        struct Hidden(Option<Arc<winit::window::Window>>);
+        impl winit::application::ApplicationHandler for Hidden {
+            fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+                if self.0.is_none() {
+                    let attributes = winit::window::Window::default_attributes()
+                        .with_visible(false)
+                        .with_inner_size(PhysicalSize::new(1920, 1080));
+                    self.0 = Some(Arc::new(event_loop.create_window(attributes).unwrap()));
+                }
+            }
             fn window_event(
                 &mut self,
                 _: &winit::event_loop::ActiveEventLoop,
@@ -1014,16 +1023,15 @@ mod resize_state_tests {
             builder.with_any_thread(true);
         }
         let mut event_loop = builder.build().unwrap();
-        #[allow(deprecated)]
-        let window = Arc::new(
-            event_loop
-                .create_window(
-                    winit::window::Window::default_attributes()
-                        .with_visible(false)
-                        .with_inner_size(PhysicalSize::new(1920, 1080)),
-                )
-                .unwrap(),
-        );
+        let mut app = Hidden::default();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while app.0.is_none() && std::time::Instant::now() < deadline {
+            event_loop.pump_app_events(Some(std::time::Duration::from_millis(10)), &mut app);
+        }
+        let window = app
+            .0
+            .clone()
+            .expect("the event loop resumed and made the window");
         let mods = vec![ModEntry::new("size", Box::new(Listener(reported.clone())))].into();
         with_mods(mods, || {
             super::super::native_entity_refs::tests::with_client_game(|game| {
@@ -1043,7 +1051,7 @@ mod resize_state_tests {
                     && std::time::Instant::now() < deadline
                 {
                     event_loop
-                        .pump_app_events(Some(std::time::Duration::from_millis(10)), &mut Idle);
+                        .pump_app_events(Some(std::time::Duration::from_millis(10)), &mut app);
                 }
                 assert_eq!((&*game as &dyn ClientHost).window_size(), Some([1280, 720]));
                 game.notify_window_resize();
