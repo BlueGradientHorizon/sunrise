@@ -33,7 +33,7 @@ impl Game<'_> {
                     self,
                     attack,
                     no_push,
-                    crate::game::entity::player_victim_causer!(self, attack.attacker, decision),
+                    crate::game::entity::player_victim_causer!(self, decision),
                     acting_equipment!(self)
                 ),
                 &self.health_resources,
@@ -62,7 +62,7 @@ impl Game<'_> {
                     self,
                     attack,
                     no_push,
-                    crate::game::entity::player_victim_causer!(self, attack.attacker, decision)
+                    crate::game::entity::player_victim_causer!(self, decision)
                 ),
                 &self.health_resources,
                 rules,
@@ -81,7 +81,7 @@ impl Game<'_> {
                     self,
                     attack,
                     no_push,
-                    crate::game::entity::player_victim_causer!(self, attack.attacker, decision)
+                    crate::game::entity::player_victim_causer!(self, decision)
                 ),
                 &self.health_resources,
                 rules,

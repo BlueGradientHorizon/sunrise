@@ -880,7 +880,7 @@ impl Game<'_> {
                         self,
                         self.combat.attack(),
                         no_push,
-                        crate::game::entity::player_victim_causer!(self, causing, decision),
+                        crate::game::entity::player_victim_causer!(self, decision),
                         acting_equipment!(self)
                     ),
                     &self.health_resources,

@@ -194,16 +194,6 @@ impl<'a> HitLend<'a> {
             body: LentBody::Parked(hub?.guest(conn)?),
         })
     }
-    /// The mob among `mobs` with id `attacker`, if it is there to borrow and the hit's
-    /// subscription decision (`listened`, [`hit_host_listened`]) is to lend.
-    pub fn attacking_mob(
-        listened: bool,
-        mut mobs: impl Iterator<Item = &'a mut crate::mobs::Mob>,
-        attacker: i32,
-    ) -> Option<Self> {
-        listened.then_some(())?;
-        Self::mob(mobs.find(|m| m.id as i32 == attacker)?)
-    }
     fn id(&self) -> i32 {
         match &self.body {
             LentBody::Mob(mob) => mob.id as i32,

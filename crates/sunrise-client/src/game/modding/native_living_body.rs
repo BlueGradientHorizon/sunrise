@@ -264,6 +264,10 @@ impl Game<'_> {
                 // guest's effects are the game's.
                 let mut body = PlayerBody::of_record(self.command_guest(conn)?);
                 body.effects = self.native_living_player_effects(target);
+                // The holder and its map are a hit's own loan; outside one the record names
+                // none, as before.
+                body.uuid = None;
+                body.attachments = None;
                 LivingBody::Player(body)
             }
             Target::Mob(id) => {

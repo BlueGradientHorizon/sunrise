@@ -910,8 +910,12 @@ impl mod_api::AttachmentHost for super::native_hooks::HitLevel<'_> {
                 reads.entity_attachments.and_then(|maps| maps.get(&id))
             }
             // A parked guest's map is its hub row's; the player in place's is the game's.
-            (mod_api::Holder::Player(_), sunrise_client::health::LivingBody::Player(player)) => {
-                player.attachments.or(reads.player_attachments)
+            (mod_api::Holder::Player(uuid), sunrise_client::health::LivingBody::Player(player)) => {
+                match player.attachments {
+                    Some(map) => Some(map),
+                    None if reads.player_uuid == Some(uuid) => reads.player_attachments,
+                    None => None,
+                }
             }
             _ => None,
         }))
