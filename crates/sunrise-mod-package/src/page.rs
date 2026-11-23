@@ -281,14 +281,14 @@ pub fn check_screenshot(path: &Path, bytes: &[u8]) -> Result<(), String> {
         decoder
             .decode_headers()
             .map_err(|e| format!("unreadable JPEG screenshot: {e}"))?;
-        // The decoder allocates the whole picture before it reads the scan, and a progressive
-        // picture's coefficients as well, so refuse what would not fit the decoding budget from
+        // The decoder allocates the whole picture before it reads the scan, and may allocate its
+        // coefficients as well, so refuse what would not fit the decoding budget from
         // its header alone, before decoding it.
         let output = decoder.output_buffer_size().unwrap_or(usize::MAX) as u64;
         let info = decoder
             .info()
             .ok_or("unreadable JPEG screenshot: no frame header")?;
-        let decoded = output.saturating_add(progressive_planes(&info));
+        let decoded = output.saturating_add(coefficient_planes(&info));
         if decoded > MAX_DECODED_SCREENSHOT_BYTES {
             return Err(format!(
                 "JPEG screenshot needs {decoded} bytes to decode, over {MAX_DECODED_SCREENSHOT_BYTES}"
@@ -302,14 +302,12 @@ pub fn check_screenshot(path: &Path, bytes: &[u8]) -> Result<(), String> {
     Err("not a PNG or JPEG screenshot".into())
 }
 
-/// The bytes a progressive JPEG decoder holds besides the picture: an `i16` coefficient for
-/// every sample of every component, over the frame padded to whole MCUs (zune-jpeg 0.4.21
-/// `mcu_prog.rs:98-105`). JPEG allows sampling factors up to 4 (ITU T.81 B.2.2), so an MCU is
-/// at most 32 samples on a side. A sequential JPEG decodes MCU row by MCU row and holds none.
-fn progressive_planes(info: &zune_jpeg::ImageInfo) -> u64 {
-    if !info.sof.is_progressive() {
-        return 0;
-    }
+/// The most a JPEG decoder holds besides the picture: an `i16` coefficient for every sample of
+/// every component, over the frame padded to whole MCUs. zune-jpeg 0.4.21 holds these for a
+/// progressive JPEG (`mcu_prog.rs:98-105`) and for a sequential one whose first scan lacks a
+/// component (`mcu.rs:172-183`), which the header cannot tell, so every JPEG is counted. JPEG
+/// allows sampling factors up to 4 (ITU T.81 B.2.2), so an MCU is at most 32 samples on a side.
+fn coefficient_planes(info: &zune_jpeg::ImageInfo) -> u64 {
     let padded = |side: u16| u64::from(side).div_ceil(32) * 32;
     padded(info.width) * padded(info.height) * u64::from(info.components) * 2
 }
