@@ -50,7 +50,8 @@ will be `glowing_blocks:glowing_amethyst`, distinct from vanilla's `minecraft:am
 
 `name` is what players see in the Mods screen and `version` identifies this release. Try filling in `description`
 and `authors`, for example `authors = ["Your name"]`. Keep `side = "both"`: when you play on a server,
-a block mod needs the same mod ID and version on the server and the joining client.
+the join handshake checks registered content separately from the mod ID and version, so a block mod needs the
+same mod ID, version and registered content on both the server and the joining client.
 
 ### Define the block
 
