@@ -2445,6 +2445,7 @@ mod item_part_tests {
                     Some(("minecraft:flint", 1))
                 );
                 assert!(game.score.board.objective("part_pickup").is_some());
+                game.score.board.remove_objective("part_pickup");
 
                 // 3. Handled direct edit and full take on a Furnace output slot (`Role::Output`)
                 //    succeed inside the transaction and roll back on outer abort.
