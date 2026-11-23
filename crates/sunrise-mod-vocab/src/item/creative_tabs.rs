@@ -1,5 +1,5 @@
 //! The creative catalog and build-scoped ordered tab edits.
-use crate::{Host, ItemStack, StackWriteError, backend_of};
+use crate::{Host, ItemStack, StackWriteError, Text, backend_of};
 use sunrise_mod_api_macros::Wire;
 
 /// The creative catalog's permission parameter, not permission to use any item.
@@ -36,6 +36,10 @@ pub struct CreativeModeTabInfo {
     pub id: String,
     /// Whether this is an item tab, rather than Search, Hotbar or Inventory.
     pub category: bool,
+    /// `CreativeModeTab.getDisplayName`: the tab's title, still a translatable component.
+    /// A vanilla tab's key is its `itemGroup.*` one; a mod tab's is `itemGroup.<mod id>.<name>`
+    /// from its id. Both carry the tab's title text as the fallback.
+    pub display_name: Text,
     /// `getDisplayItems`: what this tab shows, in order.
     pub display_items: Vec<ItemStack>,
     /// `getSearchTabDisplayItems`: this tab's contribution to search, in order.
@@ -47,12 +51,14 @@ impl CreativeModeTabInfo {
     pub fn new(
         id: String,
         category: bool,
+        display_name: Text,
         display_items: Vec<ItemStack>,
         search_items: Vec<ItemStack>,
     ) -> Self {
         Self {
             id,
             category,
+            display_name,
             display_items,
             search_items,
         }

@@ -11,6 +11,7 @@ case is a fresh observation on both sides; a missing row fails the comparison.
 import argparse
 import os
 from pathlib import Path
+import subprocess
 import tempfile
 try:
     from . import lab, oracle_harness as harness, test_rust_parity as base, integration_env
@@ -18,15 +19,23 @@ except ImportError:
     import lab, oracle_harness as harness, test_rust_parity as base, integration_env
 
 CASES = 2 * (5 * 8 + 1) * 6
+WITNESS = lab.ROOT / 'tools/witness/26.3/noai_breather_air.txt'
+
+
+def java_version():
+    out = subprocess.run(['java', '-version'], capture_output=True, text=True, check=True)
+    return (out.stderr or out.stdout).splitlines()[0].strip()
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--resources', type=Path,
                         default=Path(os.environ.get('SUNRISE_TEST_RESOURCES', lab.RESOURCES)))
+    parser.add_argument('--record', action='store_true',
+                        help='record the 26.3 vanilla oracle witness to tools/witness/26.3/noai_breather_air.txt')
     args = parser.parse_args()
     resources = args.resources.resolve()
-    if not (resources / 'entity-types.json').is_file():
+    if not args.record and not (resources / 'entity-types.json').is_file():
         raise SystemExit('prepared resources required; pass --resources PATH')
     lock, jars, libraries = base.verify_artifacts()
     build = lab.LOCAL / 'rust-noai-breather-air-parity'
@@ -37,18 +46,19 @@ def main():
         (build / name).unlink(missing_ok=True)
     java_root = lab.ROOT / 'mods/sunrise/src/test/java'
     oracle = java_root / 'dev/sunriselab/parity/VanillaNoAiBreatherAirOracle.java'
-    sources = [Path(__file__), oracle, lab.ROOT / 'tools/lab.py',
+    sources = [Path(__file__), oracle, WITNESS, lab.ROOT / 'tools/lab.py',
                lab.ROOT / 'tools/oracle_harness.py', lab.ROOT / 'tools/test_rust_parity.py',
                lab.ROOT / 'tools/integration_env.py', lab.ROOT / 'Cargo.toml', lab.ROOT / 'Cargo.lock',
                lab.ROOT / 'crates/sunrise-client/src/mobs.rs',
                lab.ROOT / 'crates/sunrise-client/src/breathing.rs',
                lab.ROOT / 'crates/sunrise-client/src/entity_nbt.rs',
+               lab.ROOT / 'crates/sunrise-client/src/entity_nbt/mob_load.rs',
                lab.ROOT / 'crates/sunrise-client/src/mobs/ai.rs',
                lab.ROOT / 'crates/sunrise-client/src/mobs/living.rs',
                lab.ROOT / 'crates/sunrise-client/src/mobs/world.rs',
                java_root / 'dev/sunriselab/parity/ParityData.java',
                java_root / 'dev/sunriselab/parity/VanillaBlockUpdateOracle.java']
-    hashes = base.source_hashes(sources)
+    hashes = None if args.record else base.source_hashes(sources)
     classes = build / 'classes'
     classes.mkdir(exist_ok=True)
     dependencies = os.pathsep.join(map(str, [jars['server'], *libraries]))
@@ -59,6 +69,21 @@ def main():
                         str(classes) + os.pathsep + dependencies,
                         'dev.sunriselab.parity.VanillaNoAiBreatherAirOracle', build / 'server.txt'],
                        build, 'server')
+    if args.record:
+        rows = (build / 'server.txt').read_text(encoding='utf-8').splitlines()
+        if len(rows) != CASES:
+            raise AssertionError(f'expected {CASES} oracle rows, got {len(rows)}')
+        WITNESS.parent.mkdir(parents=True, exist_ok=True)
+        header = [
+            f"# minecraft {lock['minecraft']['version']} VanillaNoAiBreatherAirOracle witness",
+            f"# recorded by: python3 tools/test_noai_breather_air_parity.py --record",
+            f"# server_jar_sha256: {lab.digest(jars['server'], 'sha256')}",
+            f"# java: {java_version()}",
+            "# columns: species scene mask air y_bits loaded ticked saved reloaded again health_bits",
+        ]
+        WITNESS.write_text('\n'.join(header + rows) + '\n', encoding='utf-8')
+        print(f'Recorded {len(rows)} rows to {WITNESS}', flush=True)
+        return
     with tempfile.TemporaryDirectory(prefix='sunrise-noai-breather-air-') as scratch:
         env = integration_env.game_environment(os.environ, scratch)
         env.update(SUNRISE_TEST_RESOURCES=str(resources),
