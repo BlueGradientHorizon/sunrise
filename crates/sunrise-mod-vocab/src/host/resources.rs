@@ -31,10 +31,9 @@ pub trait ResourcesHost {
     /// Every selected pack's copy of resource `identifier` in `pack_type`'s stack, lowest first
     /// and the highest pack's last, as `ResourceManager.getResourceStack` answers it; empty where
     /// no pack supplies it. The stack and the names are those of the selected packs;
-    /// [`open_resource`](Self::open_resource) opens the highest pack's own file, with no size
-    /// limit. A copy that can't be read or is above
-    /// [`MAX_RESOURCE_BYTES`](crate::MAX_RESOURCE_BYTES) is left out, so the last entry can be
-    /// a lower pack's copy than the one `open_resource` opens. This read never reloads packs.
+    /// [`open_resource`](Self::open_resource) opens the highest pack's own file. A copy that
+    /// can't be read is left out, so the last entry can be a lower pack's copy than the one
+    /// `open_resource` opens. This read never reloads packs.
     fn resource_stack(&self, pack_type: PackType, identifier: &Identifier) -> Vec<Vec<u8>>;
 
     /// Side: both.
