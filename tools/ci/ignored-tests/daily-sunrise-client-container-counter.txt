@@ -1,0 +1,2 @@
+# PlayerRef::container_counter and next_container_counter (ServerPlayer.containerCounter, nextContainerCounter): with_game loads prepared resources, so each runs in its own process.
+sunrise-client game::native_menus::container_counter_tests::the_container_counter_is_the_last_window_and_advances_as_an_open_does lib daily child-process
