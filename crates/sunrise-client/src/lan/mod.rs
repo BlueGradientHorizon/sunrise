@@ -350,9 +350,9 @@ impl NetConfig {
 /// `IntegratedServer.getSingleplayerProfile` (`Minecraft.getGameProfile`):
 /// the signed-in account's profile properties, its signed `textures` among
 /// them, which the player list gives the owner so that LAN guests see the
-/// owner's skin. Fetched in the background from the world's start; nothing
-/// waits for it: until it answers (or when it fails) the owner is listed
-/// without properties, as before.
+/// owner's skin. The fetch starts in the background when the world opens.
+/// Integrated-server creation waits for the result; callers of `properties()`
+/// do not. A failed fetch yields no properties.
 pub struct OwnerProfile {
     properties: std::sync::OnceLock<Vec<sunrise_core::profile::AccountProperty>>,
     fetch: Mutex<Receiver<Vec<sunrise_core::profile::AccountProperty>>>,

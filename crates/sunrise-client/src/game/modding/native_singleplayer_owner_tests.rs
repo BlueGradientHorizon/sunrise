@@ -25,17 +25,9 @@ const CHILD: &str = "SUNRISE_SINGLEPLAYER_OWNER_CHILD";
 
 /// Runs `test` (this module's test of that name) in a fresh process, and false there.
 fn in_child(test: &str) -> bool {
-    if std::env::var_os(CHILD).is_some() {
-        return false;
-    }
+    // The shared helper checks that exactly this test ran and gives the child a scratch home.
     let name = format!("game::native_singleplayer_owner_tests::{test}");
-    let status = std::process::Command::new(std::env::current_exe().unwrap())
-        .args(["--exact", &name, "--include-ignored", "--nocapture"])
-        .env(CHILD, "1")
-        .status()
-        .unwrap();
-    assert!(status.success(), "{name} failed in its child process");
-    true
+    super::native_entity_refs::tests::run_fresh_cases(&name, CHILD, &["owner"])
 }
 
 /// A profile as a mod reads it: name, UUID and each property.
