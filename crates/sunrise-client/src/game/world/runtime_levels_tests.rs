@@ -607,6 +607,11 @@ fn load_chunk_fails_where_a_mods_generator_panics() {
             "at once when asked again"
         );
         assert_eq!(
+            level.load_chunk(host, [1, 0]),
+            Err(ChunkLoadError::Failed),
+            "a neighbour whose wait needs the failed column generated"
+        );
+        assert_eq!(
             level.load_chunk(host, [20, 20]),
             Ok(()),
             "the level generates elsewhere"

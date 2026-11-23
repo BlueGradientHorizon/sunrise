@@ -836,16 +836,16 @@ impl Game<'_> {
         Ok(light.emission(state.0))
     }
 
-    /// The stored light of one layer at `pos` (`BlockAndLightGetter.getBrightness`), 0 to 15,
-    /// of the server's level or the one a client shows. None as for `block_state`: a position
-    /// that isn't loaded has no light to read.
+    /// The stored light of one layer at `pos` (`BlockAndLightGetter.getBrightness`), 0 to 15.
+    /// As with `block_state`, a client reads the named level, shown or open for viewing.
+    /// Returns None if the level is unavailable or the position isn't loaded.
     pub(super) fn level_brightness(
         &self,
         level: LevelRef,
         layer: LightLayer,
         pos: [i32; 3],
     ) -> Option<i32> {
-        let world = self.native_level_read_world(level)?;
+        let world = self.native_level_view_world(level)?;
         world
             .is_loaded_at(pos[0], pos[1], pos[2])
             .then(|| world_brightness(world, layer, pos))

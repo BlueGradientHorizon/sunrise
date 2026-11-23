@@ -112,6 +112,17 @@ pub struct ChannelRef {
     pub id: u64,
 }
 
+/// The client-supplied login destination returned by [`PlayerRef::virtual_host`].
+/// This is neither the peer address nor a verified server name.
+#[derive(Clone, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
+// exhaustive: the destination consists of exactly a host and a port.
+pub struct VirtualHost {
+    /// The host string from the handshake, before its first NUL character.
+    pub host: String,
+    /// The unsigned port from the same handshake.
+    pub port: u16,
+}
+
 /// A player on the server, as a server hook sees them.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
@@ -1387,8 +1398,8 @@ pub struct ProfileProperty<'a> {
 pub enum OpenMenuError {
     /// The menu type is not a content mod's (`data/<id>/sunrise/menu/`).
     NotModMenu,
-    /// A menu with `owned_slots` also declares a take-only or crafting result.
-    OwnedSlotsWithResults,
+    /// A menu with `owned_slots` also declares a crafting grid.
+    OwnedSlotsWithCrafting,
     /// Opening a new window is not possible during the active menu click action.
     ClickInProgress,
     /// The player is stale, dead, disconnecting, has no supported client, or their turn
@@ -1467,7 +1478,7 @@ impl NoBackend for RespawnRefusal {
 /// Where a player would respawn now, as [`PlayerRef::respawn_target`] finds it: the transition
 /// `ServerPlayer.findRespawnPositionAndUseSpawnBlock(false, DO_NOTHING)` gives.
 #[derive(Clone, Copy, Debug, PartialEq)]
-// exhaustive: the game builds it with a literal; mods only read it
+#[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
 pub struct RespawnTarget {
     /// The level: the respawn point's, or the world spawn's (`MinecraftServer.findRespawnDimension`).
