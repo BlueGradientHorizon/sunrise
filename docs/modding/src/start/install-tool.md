@@ -178,7 +178,7 @@ Which to take:
   usage instead of a commit, that tool cannot yet `build` or `run` a native mod on its own, so take `mod-tool` for
   [Your first native mod](first-mod.md). The project still pins the Nightly's SDK either way. It builds against a
   pinned SDK as long as that SDK has what the tool needs; when it does not, `build` stops and names both ways out:
-  `cargo sunrise-mod update --sunrise nightly`, or the tool in that SDK's own release.
+  `cargo sunrise-mod pin nightly`, or the tool in that SDK's own release.
 
 `cargo sunrise-mod --version` prints the commit a tool is built from, or `commit local` for a tool you built yourself without
 naming one (`cargo install`); a tool older than that option answers with its usage instead. The newest tool's commit is `commit` in
@@ -202,7 +202,7 @@ update, it also verifies the archive's checksum and prints the old and new commi
 pinned SDK. On Windows, the previous executable is kept as `.cargo-sunrise-mod.exe.old` beside the new one and can
 be deleted once the command exits.
 
-On `new`, `build`, `run`, `check` and `update`, such a copy checks the signed rolling release for a newer build once
+On `new`, `build`, `run`, `check` and `pin`, such a copy checks the signed rolling release for a newer build once
 per day at most. It prints a reminder when one is available but never installs it automatically. The check is off
 in CI and when `CARGO_NET_OFFLINE` is set to anything but `false`.
 
@@ -222,8 +222,8 @@ cargo install --locked --git https://github.com/sunrise-org/sunrise cargo-sunris
 
 This compiles the tool and the crates it needs from the game repository, and puts it in
 `~/.cargo/bin`, where `cargo` finds it. It builds the tool from the repository's newest commit, which can be newer
-than the Nightly. A mod pinned to the Nightly still builds against the Nightly's SDK, and `new` and `update` write
-the pins from that SDK, not from the tool.
+than the Nightly. A mod pinned to the Nightly still builds against the Nightly's SDK, and `new` and `pin` write
+the build pin from that SDK, not from the tool.
 
 ## On NixOS
 

@@ -174,7 +174,7 @@ pub(crate) fn resolve(
     if nightly || stable || build.is_some() {
         let missing = |e: String| {
             format!(
-                "Release {text} has no SDK ({e}). Pin a build that has one: --sunrise <full sha>"
+                "Release {text} has no SDK ({e}). Choose a build that has one, using its full SHA."
             )
         };
         let bytes = base.read(text, sdk::INDEX, SMALL).map_err(missing)?;
@@ -553,6 +553,10 @@ fn pinned(index: &Index, dir: &Path) -> PinnedSdk {
 /// `text` (a release tag or a sha)'s build, its small files only (`sdk.json`, `surface.json`),
 /// in the project's `.sunrise/cache/<build>/`, verified as the pinned SDK is, without repinning.
 pub(crate) fn fetch_build(project: &Path, text: &str) -> Result<PinnedSdk, String> {
+    // A linked `.sunrise` or `.sunrise/cache` would send the cache's writes outside the project.
+    for folder in [project.join(".sunrise"), project.join(CACHE)] {
+        crate::internals::check_output_dir(&folder)?;
+    }
     let base = Base::from_env();
     let build = resolve(&base, &release_keys(), text)?;
     fetch(
