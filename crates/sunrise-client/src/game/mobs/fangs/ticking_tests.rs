@@ -1,5 +1,6 @@
 use crate::game::native_entity_refs::tests::with_game;
 use serde::Deserialize;
+use std::path::PathBuf;
 use std::sync::Arc;
 use sunrise_client::chunk::Chunk;
 use sunrise_client::containers::BlockEntity;
@@ -8,8 +9,21 @@ use sunrise_client::motion::PlayerMotion;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::ChunkPos;
 
-const WITNESS_26_3: &str =
-    include_str!("../../../../../../tools/witness/26.3/fangs_ominous_spawner_ticking_gate.json");
+fn load_witness() -> TickingGateWitness {
+    let path = std::env::var_os("SUNRISE_FANGS_TICKING_GATE_WITNESS").unwrap_or_else(|| {
+        panic!(
+            "SUNRISE_FANGS_TICKING_GATE_WITNESS is unset; run tools/test_fangs_ticking_gate_parity.py"
+        )
+    });
+    let path = PathBuf::from(path);
+    let raw = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        panic!(
+            "failed to read witness {} (record via tools/test_fangs_ticking_gate_parity.py): {e}",
+            path.display()
+        )
+    });
+    serde_json::from_str(&raw).expect("parse 26.3 ticking-gate witness")
+}
 
 #[derive(Deserialize)]
 struct TickingGateWitness {
@@ -78,12 +92,16 @@ struct ScheduledTicketPauseStage {
     expected_control_items: usize,
 }
 
-/// #2361 (vanilla 26.3): evoker fangs and ominous item spawners match the recorded ticking-chunk gate witness.
+/// #2361 (vanilla 26.3): evoker fangs and ominous item spawners match the ticking-chunk gate witness `tools/test_fangs_ticking_gate_parity.py` records.
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_fangs_ticking_gate_parity.py"]
 fn fangs_and_an_ominous_item_spawner_outside_the_ticking_chunks_do_not_tick() {
-    let witness: TickingGateWitness =
-        serde_json::from_str(WITNESS_26_3).expect("parse 26.3 ticking-gate witness");
+    run_fangs_and_an_ominous_item_spawner_outside_the_ticking_chunks_do_not_tick();
+}
+
+pub(in crate::game) fn run_fangs_and_an_ominous_item_spawner_outside_the_ticking_chunks_do_not_tick()
+ {
+    let witness = load_witness();
     assert_eq!(witness.game_version, "26.3");
     assert!(!witness.cases.is_empty());
 
@@ -191,10 +209,14 @@ fn fangs_and_an_ominous_item_spawner_outside_the_ticking_chunks_do_not_tick() {
 
 /// #2361 (vanilla 26.3): removing a resident chunk's forced ticket in a scheduled block tick pauses fangs and spawners on that same tick until resumed.
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_fangs_ticking_gate_parity.py"]
 fn fangs_and_an_ominous_item_spawner_pause_on_scheduled_ticket_removal_and_resume_26_3() {
-    let witness: TickingGateWitness =
-        serde_json::from_str(WITNESS_26_3).expect("parse 26.3 ticking-gate witness");
+    run_fangs_and_an_ominous_item_spawner_pause_on_scheduled_ticket_removal_and_resume_26_3();
+}
+
+pub(in crate::game) fn run_fangs_and_an_ominous_item_spawner_pause_on_scheduled_ticket_removal_and_resume_26_3()
+ {
+    let witness = load_witness();
     assert_eq!(witness.game_version, "26.3");
     let pause = &witness.scheduled_ticket_pause;
     assert!(!pause.stages.is_empty());

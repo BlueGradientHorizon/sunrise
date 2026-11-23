@@ -521,4 +521,4 @@ mod tests {
 
 #[cfg(test)]
 #[path = "fangs/ticking_tests.rs"]
-mod ticking_tests;
+pub(in crate::game) mod ticking_tests;

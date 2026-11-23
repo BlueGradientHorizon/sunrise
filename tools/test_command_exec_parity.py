@@ -199,9 +199,9 @@ def main():
     parser.add_argument('--groups-file', type=Path,
                         help='run these generated [name, ops] groups after the common setup instead of the corpus')
     parser.add_argument('--record-fangs-ticking-witness', nargs='?',
-                        const=lab.ROOT / 'tools/witness/26.3/fangs_ominous_spawner_ticking_gate.json',
+                        const=lab.LOCAL / 'witness' / lab.VERSION / 'fangs_ticking_gate' / 'fangs_ominous_spawner_ticking_gate.json',
                         type=Path,
-                        help='record the 26.3 vanilla ticking-gate witness JSON for fangs and ominous item spawners (Java only)')
+                        help='record the 26.3 vanilla ticking-gate witness JSON into .local (Java only)')
     args = parser.parse_args()
     build = args.work_dir.resolve() if args.work_dir else lab.LOCAL / 'command-exec-parity'
     build.mkdir(parents=True, exist_ok=True)
@@ -585,18 +585,47 @@ def main():
         java_options.append('-Dsunrise.functionAdmissionFixture=true')
     if synced:
         java_options.append(seed_agent.java_option(build, lock['minecraft']['java_major']))
-    run(['java', '-Xmx3G', '-Duser.timezone=UTC', *(['-Dsunrise.loadedFixture=true'] if args.loaded_fixture or args.record_fangs_ticking_witness else []), *java_options, '-cp', os.pathsep.join([str(classes), str(jars['server']), dependency_path]),
-         'dev.sunriselab.parity.VanillaCommandExecOracle', vanilla_dir / 'universe', script_path, build / 'vanilla.jsonl', SEED], 'java', cwd=vanilla_dir)
+    if args.record_fangs_ticking_witness:
+        (build / 'vanilla.jsonl').unlink(missing_ok=True)
+    java_cmd = [
+        'java', '-Xmx3G', '-Duser.timezone=UTC',
+        *(['-Dsunrise.loadedFixture=true'] if args.loaded_fixture or args.record_fangs_ticking_witness else []),
+        *java_options, '-cp', os.pathsep.join([str(classes), str(jars['server']), dependency_path]),
+        'dev.sunriselab.parity.VanillaCommandExecOracle', vanilla_dir / 'universe', script_path, build / 'vanilla.jsonl', SEED,
+    ]
+    run(java_cmd, 'java', cwd=vanilla_dir)
 
     if args.record_fangs_ticking_witness:
+        witness_path = args.record_fangs_ticking_witness.resolve()
         write_fangs_ticking_witness(
-            args.record_fangs_ticking_witness,
+            witness_path,
             lock['minecraft']['version'],
             witness_cases,
             pause_spec,
             [json.loads(line) for line in (build / 'vanilla.jsonl').read_text(encoding='utf-8').splitlines()],
         )
-        print(f'Recorded 26.3 fangs/spawner ticking witness: {args.record_fangs_ticking_witness}')
+        java_ver_proc = subprocess.run(['java', '-version'], capture_output=True, text=True, check=True)
+        java_ver = (java_ver_proc.stderr or java_ver_proc.stdout).strip().splitlines()[0]
+        lab.write_json(witness_path.with_name('meta.json'), {
+            'game_version': lock['minecraft']['version'],
+            'java_major': lock['minecraft']['java_major'],
+            'java_version': java_ver,
+            'harness': 'tools/test_fangs_ticking_gate_parity.py',
+            'witness_env': 'SUNRISE_FANGS_TICKING_GATE_WITNESS',
+            'oracle': oracle.relative_to(lab.ROOT).as_posix(),
+            'command': [str(part) for part in java_cmd],
+            'input_hashes': {
+                'research-lock.json': lab.digest(lab.LOCK, 'sha256'),
+                'server.jar': lab.digest(jars['server'], 'sha256'),
+                oracle.relative_to(lab.ROOT).as_posix(): lab.digest(oracle, 'sha256'),
+                'tools/command_exec_corpus.py': lab.digest(lab.ROOT / 'tools/command_exec_corpus.py', 'sha256'),
+                'script.jsonl': lab.digest(script_path, 'sha256'),
+            },
+            'outputs': {
+                witness_path.name: {'sha256': lab.digest(witness_path, 'sha256'), 'bytes': witness_path.stat().st_size},
+            },
+        })
+        print(f'Recorded {lock["minecraft"]["version"]} fangs/spawner ticking witness: {witness_path}')
         return
 
     if any(op['op'] == 'raid_state' for op in script):
@@ -1003,7 +1032,7 @@ def write_fangs_ticking_witness(path, game_version, cases, pause_spec, records):
     payload = {
         'game_version': game_version,
         'oracle': 'VanillaCommandExecOracle',
-        'command': 'python3 tools/test_command_exec_parity.py --record-fangs-ticking-witness',
+        'command': 'python3 tools/test_fangs_ticking_gate_parity.py --record',
         'player_pos': [8.5, 230.0, 8.5],
         'view_distance': view_distance,
         'simulation_distance': simulation_distance,
