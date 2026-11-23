@@ -395,10 +395,32 @@ jobs:
         id: formatting
         run: |
           python3 tools/ci/format_scan.py
-      - name: Lint native targets
+      - name: Lint native targets and server build
         if: ${{ !cancelled() && steps.setup.outcome == 'success' && (needs.changes.outputs.rust_required != 'false') }}
         id: native-lint
-        run: python3 tools/ci/check_warnings.py cargo clippy $JOBS --keep-going --workspace --all-targets
+        run: |
+          # Run the server lint in parallel with the workspace native lint under isolated target-dir,
+          # utilizing available runner vCPUs without cache cross-invalidation.
+          half=${JOBS:+-j$(( (${JOBS#-j} + 1) / 2 ))}
+          status_server=0
+          python3 tools/ci/check_warnings.py cargo clippy $half --keep-going --target-dir target/server-lint \
+            -p sunrise-client -p sunrise-game -p sunrise-mod-host --all-targets --no-default-features \
+            > "$RUNNER_TEMP/server-lint.log" 2>&1 || status_server=$? &
+          server_pid=$!
+
+          status_native=0
+          python3 tools/ci/check_warnings.py cargo clippy $half --keep-going --workspace --all-targets || status_native=$?
+
+          wait "$server_pid" || true
+          if [ "$status_server" -ne 0 ]; then
+            echo "::group::Server lint output"
+            cat "$RUNNER_TEMP/server-lint.log"
+            echo "::endgroup::"
+          fi
+
+          if [ "$status_native" -ne 0 ] || [ "$status_server" -ne 0 ]; then
+            exit 1
+          fi
       # The full boundary audit: the mod API's generated signatures (mod_api_generated*.rs, written by sunrise-mod-vocab's
       # build script during the lint above), which the source-only check cannot see. Only Cargo's build-script outputs
       # are scanned: the persistent target holds far more.
@@ -406,10 +428,6 @@ jobs:
         id: generated_api_boundary
         if: ${{ !cancelled() && steps.setup.outcome == 'success' && needs.changes.outputs.rust_required != 'false' && steps.native-lint.outcome == 'success' }}
         run: python3 tools/ci/check_api_boundary.py --generated-root target/debug/build
-      - name: Lint the server build without sound or controllers
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' && (needs.changes.outputs.rust_required != 'false') }}
-        id: server-lint
-        run: python3 tools/ci/check_warnings.py cargo clippy $JOBS --keep-going -p sunrise-client -p sunrise-game -p sunrise-mod-host --all-targets --no-default-features
       # The prebuilt SDK's own feature graph: a release --lib build with prefer-dynamic and warnings rejected, as
       # tools/prebuilt_game.py builds it, for the host and for the Windows archive (system-allocator there,
       # cargo_features). The checks above unify test and dev features (test-support) into one host build, which hid
