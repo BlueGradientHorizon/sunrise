@@ -8,7 +8,7 @@
 use super::{Bundle, MixinsIdentity, api, game_uses, prebuilt::Identity};
 use crate::host::trf;
 use crate::rust::Toolchain;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 use sunrise_platform::mod_build::api_gen;
@@ -148,7 +148,7 @@ pub fn build(
     rustc: impl Fn(&str) -> std::process::Command,
     check_only: bool,
 ) -> Result<Option<Patch>, String> {
-    let Some(prepared) = prepare(rust, game, out, projects, sdk, mixins)? else {
+    let Some(prepared) = prepare(rust, game, out, projects, sdk, mixins, check_only)? else {
         return Ok(None);
     };
     // The patched crates, against the prebuilt game and the mods.
@@ -366,6 +366,7 @@ pub fn prepare<'a>(
     projects: &[api::Project<'a>],
     sdk: &Identity,
     mixins: &MixinsIdentity,
+    check_only: bool,
 ) -> Result<Option<Prepared<'a>>, String> {
     let bundles: Vec<&Bundle> = projects
         .iter()
@@ -422,7 +423,21 @@ pub fn prepare<'a>(
     let mut extras = extras(&bundles)?;
     extras.loops = loops;
     extras.linked = sdk_extern_names(sdk).map(str::to_owned).collect();
-    extras.lower_crate_cfg = Some(sdk.lower_crate_cfg().cloned().unwrap_or_default());
+    extras.lower_crate_cfg = Some(match sdk.lower_crate_cfg() {
+        Some(recorded) => recorded.clone(),
+        // A check only types the mods against the SDK, so an SDK that predates the lower
+        // crates' records takes the pinned compiler's cfg for each of them, as `build` does
+        // through the SDK's own tool.
+        None if check_only => {
+            let atoms = printed_cfg(rust, sdk)?;
+            index
+                .crates
+                .keys()
+                .map(|krate| (krate.clone(), atoms.clone()))
+                .collect()
+        }
+        None => BTreeMap::new(),
+    });
     let generated = api_gen::patch::generate(&source, CRATE, &targets, &extras, &index);
     let refusals: Vec<String> = match &generated {
         Ok(_) => Vec::new(),
@@ -531,15 +546,8 @@ pub fn prepare<'a>(
         // The tool plans against what the patch library compiles: this computer's cfg set under the
         // flags it is compiled with (the prebuilt game's target is this computer's,
         // `check_identity`), and the features the game was built with.
-        let mut print = super::prebuilt::rustc_with(rust, &[], "2024");
-        game_cfg(&mut print, sdk);
-        print.args(["--print", "cfg"]);
-        let printed = print.output().map_err(|e| e.to_string())?;
-        if !printed.status.success() {
-            return Err(String::from_utf8_lossy(&printed.stderr).into_owned());
-        }
         let mut cmd = super::apply(rust, tool, &workspace, &mods, &patched);
-        for option in build_cfg(&String::from_utf8_lossy(&printed.stdout)) {
+        for option in printed_cfg(rust, sdk)? {
             cmd.arg("--cfg").arg(option);
         }
         // The features are the game crate's: the tool decides `feature` predicates only in its
@@ -625,6 +633,18 @@ fn game_cfg(cmd: &mut std::process::Command, sdk: &Identity) {
     for feature in sdk.game_features() {
         cmd.arg("--cfg").arg(format!("feature=\"{feature}\""));
     }
+}
+
+/// The pinned compiler's `--print cfg` for the SDK's target under the game's features.
+fn printed_cfg(rust: &dyn Toolchain, sdk: &Identity) -> Result<Vec<String>, String> {
+    let mut print = super::prebuilt::rustc_with(rust, &[], "2024");
+    game_cfg(&mut print, sdk);
+    print.args(["--print", "cfg", "--target", rust.target()]);
+    let printed = print.output().map_err(|e| e.to_string())?;
+    if !printed.status.success() {
+        return Err(String::from_utf8_lossy(&printed.stderr).into_owned());
+    }
+    Ok(build_cfg(&String::from_utf8_lossy(&printed.stdout)))
 }
 
 /// The cfg options of the build the patch library is compiled into, in rustc's `--cfg` spelling:

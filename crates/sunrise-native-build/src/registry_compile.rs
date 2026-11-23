@@ -303,7 +303,15 @@ pub(super) fn stage_and_cargo(
     }
     // `[[native.mixin]]` rows: the patched crates join the workspace beside the mods, whose
     // crates their helpers call, and compile against the SDK like a mod.
-    let patch = super::patch::prepare(rust, game, &out.join("fnr"), projects, sdk, options.mixins)?;
+    let patch = super::patch::prepare(
+        rust,
+        game,
+        &out.join("fnr"),
+        projects,
+        sdk,
+        options.mixins,
+        check_only,
+    )?;
     if let Some(patch) = &patch {
         for name in &patch.names {
             let dir = patch.dir.join(name);
