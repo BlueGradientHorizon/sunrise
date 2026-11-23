@@ -267,6 +267,34 @@ impl fmt::Debug for LivingAttributes {
 /// One slot delta. Its previous value is still in the history until application.
 pub type EquipmentDelta = (EquipmentSlot, Option<ItemStack>);
 
+/// The deltas one body tick found, held by slot: the slot set is fixed, so collecting them
+/// allocates nothing, and reading them back is in `EquipmentSlot` order.
+#[derive(Default)]
+pub struct EquipmentDeltas([Option<Option<ItemStack>>; EquipmentSlot::ALL.len()]);
+
+impl EquipmentDeltas {
+    pub fn set(&mut self, slot: EquipmentSlot, now: Option<ItemStack>) {
+        self.0[slot as usize] = Some(now);
+    }
+    fn take(&mut self, slot: EquipmentSlot) -> Option<Option<ItemStack>> {
+        self.0[slot as usize].take()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.0.iter().all(Option::is_none)
+    }
+    fn slots(&self) -> impl Iterator<Item = EquipmentSlot> + '_ {
+        EquipmentSlot::ALL
+            .into_iter()
+            .filter(|slot| self.0[*slot as usize].is_some())
+    }
+    fn into_deltas(self) -> impl Iterator<Item = EquipmentDelta> {
+        EquipmentSlot::ALL
+            .into_iter()
+            .zip(self.0)
+            .filter_map(|(slot, now)| Some((slot, now?)))
+    }
+}
+
 #[derive(Clone, Default, PartialEq)]
 struct WornEquipment {
     /// The items whose modifiers the map holds. Normally also `lastEquipmentItems`.
@@ -690,7 +718,7 @@ impl LivingAttributes {
         catalog: &Arc<Catalog>,
         entity: &str,
         items: &Items,
-        mut changes: Vec<EquipmentDelta>,
+        mut changes: EquipmentDeltas,
         read: impl Fn(EquipmentSlot) -> Option<EquipmentRead<'a>>,
         seed: impl FnOnce() -> Vec<Tag>,
     ) -> Result<()> {
@@ -698,10 +726,7 @@ impl LivingAttributes {
             && !worn.before_tick.is_empty()
         {
             for (slot, previous) in std::mem::take(&mut worn.before_tick) {
-                let mut observed = changes
-                    .iter()
-                    .position(|(changed, _)| *changed == slot)
-                    .map_or(previous, |i| changes.swap_remove(i).1);
+                let mut observed = changes.take(slot).unwrap_or(previous);
                 let now = read(slot);
                 let matches_observed =
                     EquipmentRead::matches_previous(now.as_ref(), observed.as_ref());
@@ -711,13 +736,12 @@ impl LivingAttributes {
                     } else {
                         now.map(|read| read.project().into_owned())
                     };
-                    changes.push((slot, current));
+                    changes.set(slot, current);
                 }
                 if !matches_observed {
                     worn.before_tick.push((slot, observed));
                 }
             }
-            changes.sort_unstable_by_key(|(slot, _)| *slot as usize);
         }
         self.apply_equipment_deltas(catalog, entity, items, changes, false, seed)
     }
@@ -730,19 +754,19 @@ impl LivingAttributes {
         catalog: &Arc<Catalog>,
         entity: &str,
         items: &Items,
-        changes: Vec<EquipmentDelta>,
+        changes: EquipmentDeltas,
         early: bool,
         seed: impl FnOnce() -> Vec<Tag>,
     ) -> Result<()> {
         let mut seed = Some(seed);
         if let (Some(worn), Some(map)) = (&self.worn, self.map.get_mut()) {
-            for &(slot, _) in &changes {
+            for slot in changes.slots() {
                 if let Some(old) = worn.applied.get(slot as usize) {
                     apply_item(map, old, slot as usize, items, false)?;
                 }
             }
         }
-        for (slot, new) in changes {
+        for (slot, new) in changes.into_deltas() {
             if let Some(stack) = new.as_ref()
                 && !crate::item_attributes::attribute_modifiers(stack, items).is_empty()
             {
@@ -900,15 +924,15 @@ impl LivingAttributes {
 fn equipment_deltas<'a, 'b>(
     read: impl Fn(EquipmentSlot) -> Option<EquipmentRead<'a>>,
     previous: impl Fn(EquipmentSlot) -> Option<&'b ItemStack>,
-) -> Vec<EquipmentDelta> {
-    EquipmentSlot::ALL
-        .into_iter()
-        .filter_map(|slot| {
-            let now = read(slot);
-            (!EquipmentRead::matches_previous(now.as_ref(), previous(slot)))
-                .then(|| (slot, now.map(|read| read.project().into_owned())))
-        })
-        .collect()
+) -> EquipmentDeltas {
+    let mut deltas = EquipmentDeltas::default();
+    for slot in EquipmentSlot::ALL {
+        let now = read(slot);
+        if !EquipmentRead::matches_previous(now.as_ref(), previous(slot)) {
+            deltas.set(slot, now.map(|read| read.project().into_owned()));
+        }
+    }
+    deltas
 }
 
 fn apply_item(
