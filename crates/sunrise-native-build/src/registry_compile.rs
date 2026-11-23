@@ -151,6 +151,7 @@ pub(super) fn stage_and_cargo(
     // Each mod's staged folder and library root, for the shared registry library.
     let mut mod_dirs = BTreeMap::new();
     let mut mod_roots = BTreeMap::new();
+    let mut identities = super::library_record::Identities::default();
     let packages: BTreeMap<_, _> = projects
         .iter()
         .map(|project| {
@@ -222,18 +223,23 @@ pub(super) fn stage_and_cargo(
                     );
                 }
                 wrapper_deps.insert(format!("mod_{position}"), dependency.into());
+                let source =
+                    super::source_digest(bundle).ok_or(tr("Could not hash native mod inputs"))?;
+                let identity = identities.next(
+                    sdk.commit(),
+                    id,
+                    &bundle.manifest.version.to_string(),
+                    &source,
+                    targets
+                        .iter()
+                        .filter(|target| target.package.is_some())
+                        .map(|target| target.dependency.id.as_str()),
+                );
                 let root = stage_library(
                     &dest,
                     &mut manifest,
                     id,
-                    &prebuilt::library_entry(
-                        &template,
-                        &[&bundle.manifest],
-                        sdk.commit(),
-                        id,
-                        &bundle.manifest.version.to_string(),
-                        &[],
-                    ),
+                    &prebuilt::library_entry(&template, &[&bundle.manifest], &identity, &[]),
                 )?;
                 mod_dirs.insert(id.clone(), dest.clone());
                 mod_roots.insert(id.clone(), root);
@@ -387,8 +393,17 @@ pub(super) fn stage_and_cargo(
         .as_ref()
         .map(|patch| patch.installs.as_slice())
         .unwrap_or(&[]);
-    let mut entry =
-        prebuilt::library_entry(&template, &[], sdk.commit(), "sunrise_patch", "0", installs);
+    let identity = identities.next(
+        sdk.commit(),
+        "sunrise_patch",
+        "0",
+        "none",
+        patch
+            .iter()
+            .flat_map(|patch| &patch.bundles)
+            .map(|bundle| bundle.manifest.id.as_str()),
+    );
+    let mut entry = prebuilt::library_entry(&template, &[], &identity, installs);
     entry.push_str(prebuilt::PATCH_HOST_LINK);
     fs::write(out.join("src/lib.rs"), entry).map_err(|e| e.to_string())?;
     let mut manifest = toml::toml! { [package] name = "sunrise_patch" version = "0.0.0" edition = "2024" [lib] crate-type = ["dylib"] [workspace] resolver = "2" };
@@ -619,13 +634,8 @@ pub(super) fn stage_and_cargo(
         let project = &projects[index];
         let library = release.join(prebuilt::dylib_name(&project.crate_name()));
         super::library_record::validate_exports(&library, &project.bundle.manifest.id)?;
-        super::library_record::stamp(
-            &library,
-            sdk.commit(),
-            &project.bundle.manifest.id,
-            &project.bundle.manifest.version.to_string(),
-            false,
-        )?;
+        let id = &project.bundle.manifest.id;
+        super::library_record::stamp(&library, id, identities.recorded(id), false)?;
         runtime.push(library);
     }
     if shared.is_some() {
@@ -636,7 +646,12 @@ pub(super) fn stage_and_cargo(
     }
     let library = release.join(prebuilt::dylib_name("sunrise_patch"));
     super::library_record::validate_exports(&library, "sunrise_patch")?;
-    super::library_record::stamp(&library, sdk.commit(), "sunrise_patch", "0", true)?;
+    super::library_record::stamp(
+        &library,
+        "sunrise_patch",
+        identities.recorded("sunrise_patch"),
+        true,
+    )?;
     runtime.push(library);
     for library in outputs.runtime(
         &metadata.runtime_packages()?,
