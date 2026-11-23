@@ -32,7 +32,7 @@ impl OverworldGenerator {
         self.pipeline.flat_spawn_height()
     }
 
-    /// A superflat overworld (`FlatLevelSource`): the layers where the terrain would be, a
+    /// A superflat level (`FlatLevelSource`): the layers where the terrain would be, a
     /// fixed biome, and the structure sets `structure_overrides` allows (every one when it
     /// names none) generating on the flat ground, with or without structures.
     pub fn flat(
@@ -40,13 +40,16 @@ impl OverworldGenerator {
         seed: i64,
         flat: &FlatSettings,
         structures: bool,
+        level: Option<(i32, i32)>,
     ) -> Result<Self, GeneratorError> {
         let registry = data.registry;
-        let (level_min_y, level_height) = overrides::LevelHeight::of_type(
-            &Value::from("minecraft:overworld"),
-            &data.dimension_types,
-        )
-        .map_or((-64, 384), |h| (h.min_y, h.height));
+        let (level_min_y, level_height) = level.unwrap_or_else(|| {
+            overrides::LevelHeight::of_type(
+                &Value::from("minecraft:overworld"),
+                &data.dimension_types,
+            )
+            .map_or((-64, 384), |h| (h.min_y, h.height))
+        });
         // The overworld's own noise settings give the level its sea level and the rest of
         // the generator its data; no noise is ever sampled.
         let settings_json: Value = serde_json::from_str(

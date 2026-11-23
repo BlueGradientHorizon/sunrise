@@ -9,3 +9,4 @@ sunrise-client game::server_lifecycle::tests::per_level_close_failure_skips_only
 sunrise-client game::server_lifecycle::tests::debug_world_uses_fixed_spawn_without_create_spawn_position lib daily resources
 sunrise-client game::server_lifecycle::tests::full_saves_write_live_players_before_saving_levels lib daily resources
 sunrise-client game::server_lifecycle::tests::shutdown_notifies_only_for_replaced_player_files lib daily child-process
+sunrise-client game::world_loading::tests::custom_flat_stems_validate_and_generate_pack_decoration lib daily child-process
