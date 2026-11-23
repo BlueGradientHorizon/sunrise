@@ -98,7 +98,7 @@ impl Hooks for Both {
     fn item_stacked_on_other(
         &self,
         host: HostSide,
-        event: &mut ItemStackedOnOtherEvent<'_>,
+        event: &mut ItemStackedOnOtherEvent<'_, '_>,
     ) -> Flow {
         Stacked.item_stacked_on_other(host, event)
     }
@@ -107,7 +107,11 @@ impl Hooks for Both {
 struct Stacked;
 #[mod_api::__subscriptions]
 impl Hooks for Stacked {
-    fn item_stacked_on_other(&self, _: HostSide, event: &mut ItemStackedOnOtherEvent<'_>) -> Flow {
+    fn item_stacked_on_other(
+        &self,
+        _: HostSide,
+        event: &mut ItemStackedOnOtherEvent<'_, '_>,
+    ) -> Flow {
         STACKED.set(STACKED.get() + 1);
         let (refuse, replace) = SCRIPT.with(|s| {
             let s = s.borrow();
@@ -115,8 +119,7 @@ impl Hooks for Stacked {
         });
         assert!(!refuse, "stacked listener failed");
         if replace {
-            event.result.handled = true;
-            event.result.clicked = mod_api::ClickedStackResult::Set(None);
+            event.click.set_clicked(None);
             event.cancelled = true;
             return Flow::Cancel;
         }
