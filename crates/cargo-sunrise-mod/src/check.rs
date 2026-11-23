@@ -1,7 +1,8 @@
 //! Package inspection and the release attestation policy for `cargo sunrise-mod check <file>`.
+use crate::bounded::{self, Symlinks};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
-use std::io::ErrorKind;
 use std::path::Path;
 use sunrise_attestation::{Attested, PUBLIC_GOOD_TRUSTED_ROOT};
 use sunrise_mod_package::Package;
@@ -131,20 +132,29 @@ pub fn kind_of(path: &Path) -> Option<Kind> {
     }
 }
 
-/// Inspect a downloaded package and require an attestation for mods.
+/// Inspect a downloaded package and require an attestation for mods. A mod is read once into a
+/// private copy, and that copy is hashed and verified before anything opens it as an archive:
+/// the facts reported are those of the attested bytes.
 pub fn check_release(
     path: &Path,
-    kind: Kind,
+    kind: Option<Kind>,
     attestation: Option<&Path>,
     repository: Option<u64>,
 ) -> Result<Report, String> {
-    if !matches!(kind, Kind::Mod | Kind::NativeMod) {
-        if path.extension().is_some_and(|ext| ext == "smod") {
+    let smod = path.extension().is_some_and(|ext| ext == "smod");
+    if !kind
+        .as_ref()
+        .map_or(smod, |kind| matches!(kind, Kind::Mod | Kind::NativeMod))
+    {
+        if smod {
             return Err("a .smod must be checked as a mod or native-mod".into());
         }
         if attestation.is_some() || repository.is_some() {
             return Err("--attestation and --repository apply only to .smod packages".into());
         }
+        let kind = kind
+            .or_else(|| kind_of(path))
+            .ok_or("pass --kind mod|modpack|resourcepack: the extension doesn't say")?;
         return inspect(path, kind, true);
     }
     let default_sidecar;
@@ -155,22 +165,39 @@ pub fn check_release(
             &default_sidecar
         }
     };
-    let bundle = std::fs::read(sidecar).map_err(|e| match e.kind() {
-        ErrorKind::NotFound => format!(
-            "not signed: the release workflow attests each .smod; bundle not found: {}",
-            sidecar.display()
-        ),
-        _ => format!("{}: {e}", sidecar.display()),
-    })?;
-    let mut report = inspect(path, kind, true)?;
-    let mut sha256 = [0; 32];
-    hex::decode_to_slice(&report.sha256, &mut sha256).map_err(|e| e.to_string())?;
-    report.attestation = Some(
-        sunrise_attestation::verify(&bundle, sha256, PUBLIC_GOOD_TRUSTED_ROOT)
-            .map_err(|e| e.to_string())
-            .and_then(|attested| require_release_signer(attested, repository))
-            .map_err(|e| format!("{}: {e}", sidecar.display()))?,
-    );
+    let bundle =
+        bounded::read_bytes(sidecar, crate::sdk_fetch::SMALL, Symlinks::Follow).map_err(|e| {
+            if e.is_not_found() {
+                format!(
+                    "not signed: the release workflow attests each .smod; bundle not found: {}",
+                    sidecar.display()
+                )
+            } else {
+                e.to_string()
+            }
+        })?;
+    let bytes =
+        bounded::read_bytes(path, index::MAX_FILE, Symlinks::Follow).map_err(|e| e.to_string())?;
+    let attested = sunrise_attestation::verify(
+        &bundle,
+        Sha256::digest(&bytes).into(),
+        PUBLIC_GOOD_TRUSTED_ROOT,
+    )
+    .map_err(|e| e.to_string())
+    .and_then(|attested| require_release_signer(attested, repository))
+    .map_err(|e| format!("{}: {e}", sidecar.display()))?;
+    let private = tempfile::tempdir().map_err(|e| format!("check: {e}"))?;
+    let copy = private
+        .path()
+        .join(path.file_name().ok_or("the package path names no file")?);
+    std::fs::write(&copy, &bytes).map_err(|e| format!("{}: {e}", copy.display()))?;
+    let kind = kind.unwrap_or(if index::native::holds(&copy) {
+        Kind::NativeMod
+    } else {
+        Kind::Mod
+    });
+    let mut report = inspect(&copy, kind, true)?;
+    report.attestation = Some(attested);
     report.signed = true;
     Ok(report)
 }
@@ -371,25 +398,38 @@ mod tests {
     #[test]
     fn unsigned_smod_is_refused_and_an_explicit_bundle_is_read() {
         let smod = fixture("coords_hud-0.1.0.smod");
-        let missing = check_release(&smod, Kind::Mod, None, None).err().unwrap();
+        let missing = check_release(&smod, Some(Kind::Mod), None, None)
+            .err()
+            .unwrap();
         assert!(missing.starts_with("not signed: the release workflow attests each .smod"));
         assert!(missing.ends_with("coords_hud-0.1.0.smod.sigstore.json"));
 
         let bundle = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../sunrise-attestation/tests/fixtures/ruff-source.sigstore.json");
-        let mismatch = check_release(&smod, Kind::Mod, Some(&bundle), None)
+        let mismatch = check_release(&smod, None, Some(&bundle), None)
             .err()
             .unwrap();
         assert!(
             mismatch.contains("artifact hash does not match"),
             "{mismatch}"
         );
+        // A file that isn't even an archive fails on its attestation, before anything parses it.
+        let dir = tempfile::tempdir().unwrap();
+        let junk = dir.path().join("junk.smod");
+        std::fs::write(&junk, b"not an archive").unwrap();
+        let refused = check_release(&junk, None, Some(&bundle), None)
+            .err()
+            .unwrap();
+        assert!(
+            refused.contains("artifact hash does not match"),
+            "{refused}"
+        );
     }
 
     #[test]
     fn a_mod_extension_cannot_be_checked_as_a_different_package_format() {
         let smod = fixture("coords_hud-0.1.0.smod");
-        let error = check_release(&smod, Kind::ResourcePack, None, None)
+        let error = check_release(&smod, Some(Kind::ResourcePack), None, None)
             .err()
             .unwrap();
         assert_eq!(error, "a .smod must be checked as a mod or native-mod");

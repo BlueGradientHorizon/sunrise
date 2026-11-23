@@ -798,11 +798,7 @@ fn check(wanted: CheckFile<'_>) -> Result<(), String> {
         json,
     } = wanted;
     let path = Path::new(file);
-    let kind = match kind {
-        Some(k) => sunrise_mod_package::index::Kind::from(k.to_string()),
-        None => check::kind_of(path)
-            .ok_or("pass --kind mod|modpack|resourcepack: the extension doesn't say")?,
-    };
+    let kind = kind.map(|k| sunrise_mod_package::index::Kind::from(k.to_string()));
     let report = check::check_release(path, kind, attestation, repository);
     if json {
         let json = match &report {
