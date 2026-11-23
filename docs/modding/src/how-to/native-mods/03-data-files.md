@@ -91,6 +91,13 @@ the winner fails.
 - `Ok(None)` means no matching resource or pack stack, including a resource hidden by a pack filter.
 - `Err(error)` means lookup or opening failed. `ResourceOpenError::Io` preserves the original error.
 
+`host.resource_stack(pack_type, &identifier)` gives every selected pack's copy of a file instead,
+lowest first and the highest pack's last (`ResourceManager.getResourceStack`), as bytes: a copy that
+cannot be read or is over 64 MiB is left out. `host.list_resources(pack_type, "textures/item", ".png")`
+names the files under that folder of every namespace that end in the suffix, in identifier order
+(`ResourceManager.listResources`); metadata files (`.mcmeta`) are never listed. Use a reload
+listener for parsing at reload time; these reads never reload packs.
+
 Use a reload listener to process a whole folder or parse resources when the packs change. Directory
 packs follow vanilla's symlink behavior: linked resource files are read through the pack.
 

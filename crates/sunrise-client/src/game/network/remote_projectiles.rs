@@ -213,6 +213,7 @@ impl Game<'_> {
         match kind {
             "minecraft:evoker_fangs" => self.insert_fangs(id, position, yaw, 0, 0),
             "minecraft:tnt" => self.tnts.push(super::tnt::PrimedTnt {
+                size_answer: None,
                 attachment_lifetime: Default::default(),
                 rotation: [0.0, 0.0],
                 join: Default::default(),
@@ -235,6 +236,7 @@ impl Game<'_> {
             }),
             // FallingBlockEntity.recreateFromPacket: the block state is the data.
             "minecraft:falling_block" => self.falling.push(FallingBlock {
+                size_answer: None,
                 attachment_lifetime: Default::default(),
                 rotation: [0.0, 0.0],
                 join: Default::default(),
@@ -559,6 +561,7 @@ impl Game<'_> {
         nested_spawn_tests::after_lift(self, nested_spawn_tests::Point::OwnRocket);
         for r in rockets.iter_mut().filter(|r| r.attached_to == Some(me)) {
             self.follow_own_player(r);
+            self.pick_section_move(r.id, r.position.components());
             self.rocket_spark(r);
         }
         self.rockets.restore(
@@ -584,6 +587,7 @@ impl Game<'_> {
             Some(&self.res.motion().blocks),
         );
         let side = game_side!(self);
+        let sections = self.client_pick.sections.get_mut();
         self.tnts.retain_mut(|t| {
             // A fluid lookup that fails leaves it where its move put it.
             let _ = t.tick_among(
@@ -598,7 +602,13 @@ impl Game<'_> {
                 Some(&side),
                 &[],
             );
-            t.fuse > 0
+            let kept = t.fuse > 0;
+            if kept {
+                sections.move_id(t.id, t.position.components());
+            } else {
+                sections.remove(t.id);
+            }
+            kept
         });
         // PrimedTnt.tick: while the fuse is still lit, a client adds one SMOKE
         // particle at (x, y + 0.5, z). The server's Level.addParticle never
@@ -614,6 +624,7 @@ impl Game<'_> {
         nested_spawn_tests::after_lift(self, nested_spawn_tests::Point::Falling);
         falling.for_each_mut(|f| {
             let _ = self.fall_step(f, false, &[]);
+            self.pick_section_move(f.id, f.position.components());
         });
         self.falling.restore(
             falling,
@@ -684,6 +695,7 @@ impl Game<'_> {
                     }
                     if ticks {
                         remote_projectile_step(p, &arrow_scene, &world, &mut arrow_events);
+                        self.pick_section_move(p.id, p.position.components());
                     }
                 });
                 for t in &mut tridents {
@@ -693,6 +705,7 @@ impl Game<'_> {
                     }
                     if ticks {
                         super::trident::remote_tick(t, &world, self.remote_eye(t.owner));
+                        self.pick_section_move(t.id, t.position.components());
                     }
                 }
             }
@@ -735,6 +748,7 @@ impl Game<'_> {
             r.remote_step(self.body_motion(&game_side!(self)));
             if let Some(target) = r.attached_to {
                 if me == Some(target) {
+                    self.pick_section_move(r.id, r.position.components());
                     continue;
                 }
                 if let Some(m) = self.mobs.iter().find(|m| m.id == target) {
@@ -747,6 +761,7 @@ impl Game<'_> {
                     r.position = m.position;
                 }
             }
+            self.pick_section_move(r.id, r.position.components());
             self.rocket_spark(r);
         }
         self.rockets.restore(
@@ -907,7 +922,8 @@ impl Game<'_> {
                     }
                     if ticks {
                         projectiles.update(i, |p| {
-                            remote_projectile_step(p, &scene, &world, arrow_events)
+                            remote_projectile_step(p, &scene, &world, arrow_events);
+                            self.pick_section_move(p.id, p.position.components());
                         });
                     }
                     slot += 1;
@@ -956,7 +972,8 @@ impl Game<'_> {
                     border: Some(self.border.bounds()),
                 };
                 projectiles.update(i, |p| {
-                    remote_projectile_step(p, &scene, &world, arrow_events)
+                    remote_projectile_step(p, &scene, &world, arrow_events);
+                    self.pick_section_move(p.id, p.position.components());
                 });
             }
             if round.post() {
@@ -992,6 +1009,7 @@ impl Game<'_> {
                 }
                 if ticks {
                     super::trident::remote_tick(t, &world, self.remote_eye(t.owner));
+                    self.pick_section_move(t.id, t.position.components());
                 }
             }
             for id in visited {
@@ -1033,7 +1051,9 @@ impl Game<'_> {
                     border: Some(self.border.bounds()),
                 };
                 let eye = self.remote_eye(tridents[i].owner);
-                super::trident::remote_tick(&mut tridents[i], &world, eye);
+                let t = &mut tridents[i];
+                super::trident::remote_tick(t, &world, eye);
+                self.pick_section_move(t.id, t.position.components());
             }
             if round.post() {
                 let changed;

@@ -10,6 +10,7 @@ use sunrise_core::nbt::Tag;
 fn orb(id: u32, value: i32, count: u32) -> ExperienceOrb {
     let at = Vec3::new(0.5, 70.0, 0.5);
     ExperienceOrb {
+        size_answer: None,
         attachment_lifetime: Default::default(),
         fall_distance: 0.0,
         rotation: [0.0, 0.0],

@@ -251,8 +251,7 @@ impl Game<'_> {
                     {
                         events = true;
                         let f = &self.falling[i];
-                        let area = sunrise_client::falling_block::bounds(f.position)
-                            .expand_towards(f.velocity);
+                        let area = f.bounds().expand_towards(f.velocity);
                         obstacles
                             .get_or_insert_with(|| {
                                 sunrise_client::entities::ObstacleGrid::new(

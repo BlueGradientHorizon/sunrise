@@ -959,7 +959,7 @@ impl TeleportConsumeWorld for MobTeleporter<'_, '_> {
 }
 
 #[cfg(test)]
-mod teleport_hook_tests {
+pub(in crate::game) mod teleport_hook_tests {
     use super::*;
     use crate::game::api_values::test_snapshot;
     use crate::game::native_entity_refs::tests::with_game;
@@ -1025,6 +1025,11 @@ mod teleport_hook_tests {
     #[test]
     #[ignore = "daily"]
     fn consumption_hook_keeps_the_stack_before_use_and_cancellation_stops_attempts() {
+        run_consumption_hook_keeps_the_stack_before_use_and_cancellation_stops_attempts();
+    }
+
+    pub(in crate::game) fn run_consumption_hook_keeps_the_stack_before_use_and_cancellation_stops_attempts()
+     {
         let heard = Arc::new(Mutex::new(Vec::new()));
         let moved = Arc::new(AtomicBool::new(false));
         let mods: mod_api::Mods = vec![ModEntry::new(
@@ -1116,7 +1121,7 @@ mod teleport_hook_tests {
 }
 
 #[cfg(test)]
-mod fox_consumption_hook_tests {
+pub(in crate::game) mod fox_consumption_hook_tests {
     use super::*;
     use crate::game::api_values::test_snapshot;
     use crate::game::native_entity_refs::tests::with_game;
@@ -1241,6 +1246,11 @@ mod fox_consumption_hook_tests {
     #[test]
     #[ignore = "daily"]
     fn fox_consumption_adapter_uses_full_host_and_preserves_listener_writes() {
+        run_fox_consumption_adapter_uses_full_host_and_preserves_listener_writes();
+    }
+
+    pub(in crate::game) fn run_fox_consumption_adapter_uses_full_host_and_preserves_listener_writes()
+     {
         let mode = Arc::new(AtomicU8::new(0));
         let heard = Arc::new(Mutex::new(Vec::new()));
         let mods: mod_api::Mods = vec![ModEntry::new(
@@ -1359,6 +1369,11 @@ mod fox_consumption_hook_tests {
     #[test]
     #[ignore = "daily"]
     fn fox_tick_pauses_before_movement_and_next_actor_and_preserves_full_host_writes() {
+        run_fox_tick_pauses_before_movement_and_next_actor_and_preserves_full_host_writes();
+    }
+
+    pub(in crate::game) fn run_fox_tick_pauses_before_movement_and_next_actor_and_preserves_full_host_writes()
+     {
         let heard = Arc::new(Mutex::new(Vec::new()));
         let spawned = Arc::new(Mutex::new(Vec::new()));
         let mods: mod_api::Mods = vec![ModEntry::new(

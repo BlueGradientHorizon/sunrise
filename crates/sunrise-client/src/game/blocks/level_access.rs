@@ -96,7 +96,7 @@ impl LevelAccess for GameLevel<'_> {
         cancel
     }
     fn observe_neighbor_changed(
-        &self,
+        &mut self,
         ticks: &mut Ticks,
         pos: BlockPos,
         state: BlockStateId,

@@ -1059,6 +1059,7 @@ fn a_falling_block_finishes_each_hit_before_the_next_victim() {
             game.mobs.push(first);
             game.mobs.push(second);
             let mut anvil = super::FallingBlock {
+                size_answer: None,
                 attachment_lifetime: Default::default(),
                 rotation: [0.0; 2],
                 join: Default::default(),

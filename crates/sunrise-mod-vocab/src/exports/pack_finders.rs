@@ -1,4 +1,4 @@
 pub use client::pack_finders::{
-    PackDiscoveryContext, PackFinderError, PackFinders, PackPosition, PackRegistration, PackSource,
+    MAX_RESOURCE_BYTES, PackDiscoveryContext, PackFinderError, PackFinders, PackPosition, PackRegistration, PackSource,
     PackType, ResourceOpenError,
 };

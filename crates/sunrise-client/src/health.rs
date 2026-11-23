@@ -2591,9 +2591,10 @@ impl EntityImmunityWorld for Environment<'_> {
     }
     fn fall_immune(&mut self) -> io::Result<bool> {
         Ok(self.level.tags().is_some_and(|items| {
-            items
-                .enchantments
-                .entity_in_tag("minecraft:player", "minecraft:fall_damage_immune")
+            items.entity_type_tags.has_flag(
+                "minecraft:player",
+                crate::items::EntityTypeTags::FALL_DAMAGE_IMMUNE,
+            )
         }))
     }
     fn invulnerability_check(&mut self, vanilla: bool) -> io::Result<bool> {

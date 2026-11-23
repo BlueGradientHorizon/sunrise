@@ -8,6 +8,10 @@ use crate::*;
 pub trait EntityPositionBackend {
     /// Side: both.
     /// The entity's position (`Entity.position`): its feet, the middle of
+    /// its box for a painting or an item frame. A client display uses its current tick
+    /// position after movement interpolation, not the packet destination or draw-frame
+    /// pose. Returns `None` for an unresolved handle.
+
     /// its box for a painting or an item frame. An experience orb visited in
     /// a parked level can be read without putting its level in place.
     fn entity_position(&self, entity: EntityRef) -> Option<[f64; 3]>;

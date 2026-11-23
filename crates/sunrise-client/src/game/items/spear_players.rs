@@ -269,7 +269,19 @@ impl Game<'_> {
                         );
                     }
                 }
-                let dismounted = s.dismounts && g.riding.is_some();
+                if hurt
+                    && s.ignite > 0.0
+                    && let Some(p) = g.player.as_mut()
+                {
+                    let _ = p.ignite_for_ticks((s.ignite * 20.0) as i32);
+                }
+                // `Player.stabAttack`: a type in `cannot_be_dismounted_by_item_usage` stays seated.
+                let dismounted = s.dismounts
+                    && g.riding.is_some()
+                    && !g.items().entity_type_tags.has_flag(
+                        "minecraft:player",
+                        sunrise_client::items::EntityTypeTags::CANNOT_BE_DISMOUNTED_BY_ITEM_USAGE,
+                    );
                 if dismounted {
                     g.stop_riding();
                 }

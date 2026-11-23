@@ -190,6 +190,7 @@ impl Game<'_> {
         self.inventory = vec![None; 36];
         self.offhand = None;
         self.armor = [None, None, None, None];
+        self.equipment = Default::default();
         self.craft_grid = vec![None; 9];
         self.craft_size = 2;
         self.remove_local_player_body();
@@ -487,6 +488,7 @@ impl Game<'_> {
         self.inventory = vec![None; 36];
         self.offhand = None;
         self.armor = [None, None, None, None];
+        self.equipment = Default::default();
         self.craft_grid = vec![None; 9];
         self.craft_size = 2;
         self.remove_local_player_body();

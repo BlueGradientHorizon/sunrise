@@ -1482,3 +1482,4 @@ pub mod registry;
 pub mod resolve;
 #[cfg(test)]
 mod tests;
+pub mod v2;

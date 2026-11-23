@@ -416,6 +416,7 @@ mod tests {
             .read_display_nbt(kind, &Tag::Compound(Default::default()))
             .map(Arc::new);
         game.others.push(OtherEntity {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             knot_check: None,
             eye: None,
@@ -445,6 +446,7 @@ mod tests {
             assert_eq!(item.kind(game), Some(DisplayKind::Item));
             assert_eq!(text.entity(), game.entity(21).unwrap());
             game.others.push(OtherEntity {
+                size_answer: None,
                 attachment_lifetime: Default::default(),
                 knot_check: None,
                 eye: None,

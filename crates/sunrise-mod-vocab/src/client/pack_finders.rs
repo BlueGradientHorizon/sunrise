@@ -2,6 +2,10 @@
 //! and reload listeners (`AddPackFindersEvent`).
 use crate::{Identifier, Text};
 
+/// The largest copy [`ResourcesHost::resource_stack`](crate::prelude::ResourcesHost::resource_stack)
+/// returns, in bytes. A larger copy is left out of the stack.
+pub const MAX_RESOURCE_BYTES: u64 = 64 * 1024 * 1024;
+
 // no wire: native I/O errors stay in the calling process.
 /// Failure to open a pack resource. A missing resource is `Ok(None)`, not an error.
 #[derive(Debug)]

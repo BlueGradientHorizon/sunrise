@@ -23,6 +23,7 @@ impl Game<'_> {
         let id = self.take_entity_id();
         let slot = EntityHandle::Falling(self.falling.len());
         self.falling.push(FallingBlock {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             rotation: [0.0, 0.0],
             join: Default::default(),
@@ -280,6 +281,7 @@ mod tests {
                 .unwrap();
             let at = Vec3::new(0.5, 70.0, 0.5);
             game.falling.push(FallingBlock {
+                size_answer: None,
                 ground: Default::default(),
                 fire_ticks: 0,
                 sync_velocity: false,

@@ -921,6 +921,21 @@ mod tests {
         w.data
     }
 
+    /// `Identifier.STREAM_CODEC` parses with `Identifier.parse`, whose `isValidNamespace`
+    /// refuses the namespace `..`; a `..` path and a `.` namespace are valid identifiers.
+    #[test]
+    fn an_identifier_with_the_namespace_dot_dot_is_refused() {
+        let read = |text: &str| {
+            let mut w = Writer::new();
+            w.string(text);
+            Ident::read(&mut Reader::new(&w.data))
+        };
+        assert!(read("..:stone").is_err());
+        assert_eq!(read(".:stone").unwrap(), ".:stone");
+        assert_eq!(read("minecraft:..").unwrap(), "minecraft:..");
+        assert_eq!(read("stone").unwrap(), "minecraft:stone");
+    }
+
     #[test]
     fn varint_matches_vanilla_examples() {
         // wiki.vg / VarInt.java examples.

@@ -126,7 +126,14 @@ impl Game<'_> {
         self.guardian_look_scratch = looks;
     }
 
+    /// `ClientLevel.tickEntities`: the section index takes each crossing at its entity's turn.
     pub(in crate::game) fn tick_remote_entities(&mut self, running: bool) {
+        self.client_pick.sections.get_mut().begin_entity_ticks();
+        self.tick_remote_entity_turns(running);
+        self.client_pick.sections.get_mut().end_entity_ticks();
+    }
+
+    fn tick_remote_entity_turns(&mut self, running: bool) {
         use crate::game::native_ticks::{PLAYER, TickKind};
 
         let frozen_ticking: Vec<i32> = if running {
@@ -574,10 +581,6 @@ impl Game<'_> {
                 m.extra.max_health_dirty = false;
                 m.health = m.health.min(m.attrs.max_health);
             }
-            super::super::potions::client_tick_effects(
-                &mut m.extra.client_effects,
-                &mut m.extra.darkness_blend,
-            );
             if !m.alive() {
                 m.death_time += 1;
             }
@@ -598,6 +601,12 @@ impl Game<'_> {
             }
             let head_lerps = &mut self.remote.as_mut().unwrap().head_lerps;
             let m = &mut self.mobs[i];
+            // LivingEntity.baseTick's tickEffects, inside this tick (after its Pre, and a
+            // player's tick Pre): its effects count down and fade.
+            super::super::potions::client_tick_effects(
+                &mut m.extra.client_effects,
+                &mut m.extra.darkness_blend,
+            );
             // LivingEntity.aiStep: the head's own interpolation.
             if let Some((yaw, steps)) = head_lerps.get_mut(&(m.id as i32))
                 && *steps > 0
@@ -722,6 +731,9 @@ impl Game<'_> {
             }
             let section_id = m.id;
             let section_to = m.position;
+            // The committed body is where the index finds it before any hook reads it; the
+            // section events stay at their own turn below.
+            self.pick_section_move(section_id, section_to.components());
             // `refreshDimensions` from its tick: a `minecraft:scale` the server sent since
             // (`LivingEntity.refreshDirtyAttributes`), a shulker's lid (`onPeekAmountChange`).
             self.native_client_copy_size(section_id, None);
@@ -758,6 +770,7 @@ impl Game<'_> {
                 .next_float()
         };
         if running {
+            let sections = self.client_pick.sections.get_mut();
             self.orbs.retain_mut(|o| {
                 let distance = |feet: &[f64; 3]| -> f64 {
                     (feet[0] - o.position.x).powi(2)
@@ -787,6 +800,7 @@ impl Game<'_> {
                         o.position.z + (l.target[2] - o.position.z) * alpha,
                     );
                     l.steps -= 1;
+                    sections.move_id(o.id, o.position.components());
                 }
                 let before = o.position;
                 let side = game_side!(self);
@@ -819,6 +833,11 @@ impl Game<'_> {
                     l.target[0] += o.position.x - before.x;
                     l.target[1] += o.position.y - before.y;
                     l.target[2] += o.position.z - before.z;
+                }
+                if kept {
+                    sections.move_id(o.id, o.position.components());
+                } else {
+                    sections.remove(o.id);
                 }
                 kept
             });
@@ -875,6 +894,9 @@ impl Game<'_> {
                     (l.target, l.rotation.map(|r| r.0), steps)
                 });
             self.tick_remote_dragon(dragon_lerp);
+            if let Some(dragon) = self.dragon.as_ref() {
+                self.pick_section_move(dragon.id, dragon.position.components());
+            }
             // A mod's general rows: the non-living interpolation, and no mod code.
             if let Some(r) = self.remote.as_mut() {
                 general::tick_remote_general(&mut r.general.rows, &mut lerps);
@@ -891,6 +913,15 @@ impl Game<'_> {
                         let p = at.position;
                         (Vec3::new(p[0], p[1], p[2]), at.yaw, at.pitch)
                     }));
+                    // LivingEntity.baseTick's tickEffects.
+                    super::super::potions::client_tick_effects(
+                        &mut a.client_effects,
+                        &mut a.darkness_blend,
+                    );
+                    self.client_pick
+                        .sections
+                        .get_mut()
+                        .move_id(a.id, a.position.components());
                 }
             }
             // The yaw of a boat eases toward the server's over the same steps
@@ -946,6 +977,15 @@ impl Game<'_> {
                         let p = at.position;
                         (Vec3::new(p[0], p[1], p[2]), at.yaw, at.pitch)
                     }));
+                    // LivingEntity.baseTick's tickEffects.
+                    super::super::potions::client_tick_effects(
+                        &mut a.client_effects,
+                        &mut a.darkness_blend,
+                    );
+                    self.client_pick
+                        .sections
+                        .get_mut()
+                        .move_id(a.id, a.position.components());
                 }
             }
         }
@@ -1284,6 +1324,10 @@ impl Game<'_> {
         let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
             return Ok(None);
         };
+        self.client_pick
+            .sections
+            .get_mut()
+            .move_id(body as u32, player.position.components());
         // The server decides fire the window cannot predict (blaze fireballs,
         // fire aspect, lightning): Entity.isOnFire reads the synched flag, so
         // the predicted tick's countdown must not end it while it is set.
