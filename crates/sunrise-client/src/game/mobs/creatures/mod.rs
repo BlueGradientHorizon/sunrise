@@ -2492,8 +2492,9 @@ impl Game<'_> {
             target_index = Some(ti);
             let t = &mut self.mobs[ti];
             hurt = hit;
-            // Squid.hurtServer can report false after its superclass accepted a lethal hit.
-            settle = t.damage_completion.is_some();
+            // Squid.hurtServer can report false after its superclass accepted a lethal hit, and a
+            // death protection holds the hit until its stack is used up.
+            settle = t.damage_completion.is_some() || t.has_protected_hurt();
             if hit && catch_up && t.invulnerable > previous_invulnerable {
                 t.hurt_time = (t.hurt_time - 1).max(0);
                 t.invulnerable = (t.invulnerable - 1).max(0);

@@ -253,7 +253,12 @@ fn reload_command_prepares_world_before_applying_listeners_and_preserves_tables_
                     game.items().block_tags["reload_order:derived"]
                         .contains("minecraft:diamond_block")
                 );
-                assert_eq!(fence.is_in_tag(&*game, class), Some(true));
+                // The second install replaced the installed parts and their keys, so ask by name:
+                // the world's tags are the ones the refused reload left in place.
+                assert!(
+                    game.items()
+                        .block_in_tag("sunrise:class/fence", "minecraft:oak_fence")
+                );
                 let selected = game
                     .native_tag_items()
                     .expect("selected world tag snapshot");

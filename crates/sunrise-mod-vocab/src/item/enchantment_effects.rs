@@ -89,6 +89,8 @@ struct Codec<T: ?Sized> {
 
 // no wire: process-local map codecs.
 /// Engine-owned table of effect types.
+// hidden: the engine decodes effect types through it; mods register through the registrar.
+// exhaustive: the fields are private.
 #[doc(hidden)]
 #[derive(Default)]
 pub struct EnchantmentEffectRegistry {
@@ -97,6 +99,7 @@ pub struct EnchantmentEffectRegistry {
 }
 
 /// The value kinds registered by vanilla, under their canonical IDs.
+// hidden: the engine's decoder tells vanilla's kinds from mods' kinds by it.
 #[doc(hidden)]
 pub fn builtin_enchantment_value_kind(id: &str) -> bool {
     matches!(
@@ -111,6 +114,7 @@ pub fn builtin_enchantment_value_kind(id: &str) -> bool {
 }
 
 /// The entity kinds registered by vanilla, under their canonical IDs.
+// hidden: the engine's decoder tells vanilla's kinds from mods' kinds by it.
 #[doc(hidden)]
 pub fn builtin_enchantment_entity_kind(id: &str) -> bool {
     matches!(
@@ -282,6 +286,8 @@ fn effect_codec_fields(effect: &Value) -> Result<Value, String> {
 
 // no wire: process-local decoded behavior.
 /// Bound value effect with its native callback owner.
+// hidden: the engine holds decoded effects; mods implement `EnchantmentValueEffect`.
+// exhaustive: the field is private.
 #[doc(hidden)]
 #[derive(Clone)]
 pub struct BoundEnchantmentValueEffect(Arc<CallbackValue<Arc<dyn EnchantmentValueEffect>>>);
@@ -299,6 +305,8 @@ impl BoundEnchantmentValueEffect {
 
 // no wire: process-local decoded behavior.
 /// Bound entity effect with its native callback owner.
+// hidden: the engine holds decoded effects; mods implement `EnchantmentEntityEffect`.
+// exhaustive: the field is private.
 #[doc(hidden)]
 #[derive(Clone)]
 pub struct BoundEnchantmentEntityEffect(Arc<CallbackValue<Arc<dyn EnchantmentEntityEffect>>>);

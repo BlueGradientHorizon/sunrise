@@ -846,6 +846,10 @@ fn callable_knockback_respects_the_hook_and_resistance_without_dealing_damage() 
         return;
     }
     let heard = heard(|game, log| {
+        // A mod reaches an entity only in an accessible section.
+        game.world
+            .chunks
+            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
         zombie_at(game, 42, Vec3::ZERO);
         let living = game.living(game.entity(42).unwrap()).unwrap();
         game.mobs[0].attrs.knockback_resistance = 0.5;

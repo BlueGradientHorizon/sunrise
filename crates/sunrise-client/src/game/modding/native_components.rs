@@ -1218,6 +1218,11 @@ mod combat_query_tests {
                 .get("minecraft:zombie")
                 .unwrap()
                 .clone();
+            // A mod reaches an entity only in an accessible section.
+            game.world.chunks.insert(
+                (0, 0),
+                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            );
             game.mobs
                 .push(sunrise_client::mobs::Mob::new(21, kind, Vec3::ZERO, 0.0));
             let zombie = mod_api::LivingRef::new(game.entity(21).unwrap());

@@ -218,6 +218,10 @@ mod tests {
                     let root = tempfile::tempdir().unwrap();
                     game.world_root = root.path().to_owned();
                     game.enter_level(crate::game::Dim::Overworld).unwrap();
+                    // A mod reaches an entity only in an accessible section.
+                    game.world
+                        .chunks
+                        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
                     game.options.dedicated = Some(Vec::new());
                     let pack = root.path().join("datapacks/effects");
                     let entries = pack.join("data/damage_test/enchantment");
@@ -484,6 +488,10 @@ mod tests {
                             .get("damage_test:force")
                             .is_some()
                     );
+                    // A mod reaches an entity only in an accessible section.
+                    game.world
+                        .chunks
+                        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
                     let mut player =
                         PlayerMotion::new(game.motion, Vec3::new(0.0, 64.0, 0.0)).unwrap();
                     player.entity_id = 7;

@@ -55,12 +55,15 @@ pub struct RegisteredBlockEntityTransform {
 
 /// The state-only selection supplied by the owning type builder.
 // no wire: native registration callback.
+// hidden: mods give the selector through the type builder; the engine stores this form.
 #[doc(hidden)]
 pub type BlockEntityTickerSelector =
     dyn Fn(&dyn crate::BlockMetadata, BlockState, crate::LogicalSide) -> bool + Send + Sync;
 
 /// One retained native selector, dispatched through its registering mod's callback owner.
 // no wire: process-local registration.
+// hidden: the engine's installed selectors.
+// exhaustive: only installation builds it, and the engine reads every field.
 #[doc(hidden)]
 pub struct RegisteredBlockEntityTickerSelector {
     pub kind: crate::BlockEntityTypeKey,
@@ -68,6 +71,7 @@ pub struct RegisteredBlockEntityTickerSelector {
     pub select: Arc<BlockEntityTickerSelector>,
 }
 
+// hidden: the engine reads the installed selectors.
 #[doc(hidden)]
 pub fn block_entity_ticker_selectors() -> &'static [RegisteredBlockEntityTickerSelector] {
     installed().map_or(&[], |parts| &parts.block_entity_ticker_selectors)
@@ -365,6 +369,7 @@ pub trait BlockEntitiesRegistrar {
         key: crate::BlockEntityTypeKey,
         step: Arc<dyn crate::BlockEntityTransform>,
     );
+    // hidden: the type builder calls it; mods select tickers on the builder.
     #[doc(hidden)]
     fn set_block_entity_ticker_selector(
         &mut self,

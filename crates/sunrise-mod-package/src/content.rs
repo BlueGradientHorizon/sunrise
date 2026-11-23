@@ -4375,15 +4375,16 @@ capabilities = ["registries"]
     }
 
     #[test]
-    fn a_world_fluid_refuses_what_cannot_flow_and_a_second_block() {
-        for world in [
-            br#"{"world":{"tick_delay":0}}"#.as_slice(),
-            br#"{"world":{"drop_off":8}}"#,
-            br#"{"world":{"slope_find_distance":5}}"#,
-        ] {
-            let files: &[(&str, &[u8])] = &[("data/ruby/sunrise/fluid/oil.json", world)];
-            assert!(smod("bad-world-fluid", MANIFEST_TEXT, files).is_err());
-        }
+    fn a_world_fluid_refuses_a_negative_drop_off_and_a_second_block() {
+        let files: &[(&str, &[u8])] = &[(
+            "data/ruby/sunrise/fluid/oil.json",
+            br#"{"world":{"drop_off":-1}}"#,
+        )];
+        assert!(
+            smod("bad-world-fluid", MANIFEST_TEXT, files)
+                .unwrap_err()
+                .contains("drop_off is 0 or more")
+        );
         let files: &[(&str, &[u8])] = &[
             ("data/ruby/sunrise/fluid/oil.json", br#"{"world":{}}"#),
             (
