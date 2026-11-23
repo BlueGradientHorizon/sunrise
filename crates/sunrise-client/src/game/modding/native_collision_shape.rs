@@ -92,9 +92,10 @@ mod tests {
         Refuse,
         Observe,
     }
-    struct Part(Mode, Arc<AtomicUsize>);
+    /// One Part type per mod: a block takes a Part type once (`insert_part`).
+    struct Part<const MOD: u8>(Mode, Arc<AtomicUsize>);
     #[mod_api::sunrise_part]
-    impl mod_api::BlockPart for Part {
+    impl<const MOD: u8> mod_api::BlockPart for Part<MOD> {
         fn collision_shape(
             &self,
             _: &dyn mod_api::LoopContext,
@@ -135,7 +136,13 @@ mod tests {
                 _: &mod_api::RegistrationContext,
             ) {
                 let key = registrar.block_key("minecraft:stone");
-                registrar.block_part(key, Part(self.0, self.1.clone()));
+                let calls = self.1.clone();
+                match self.0 {
+                    Mode::Answer => registrar.block_part(key, Part::<0>(self.0, calls)),
+                    Mode::Panic => registrar.block_part(key, Part::<1>(self.0, calls)),
+                    Mode::Refuse => registrar.block_part(key, Part::<2>(self.0, calls)),
+                    Mode::Observe => registrar.block_part(key, Part::<3>(self.0, calls)),
+                }
             }
         }
         let mods: mod_api::Mods = [
