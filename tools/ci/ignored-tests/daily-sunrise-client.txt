@@ -39,7 +39,6 @@ sunrise-client game::fishing::impact::tests::misses_water_and_the_closed_gate_em
 sunrise-client game::fishing::impact::tests::removing_a_bobber_in_its_impact_clears_the_line_without_rewards lib daily resources
 sunrise-client game::gui_clips::dispatch_tests::a_hook_call_clips_scoped_draws_and_restores_on_unwind lib daily child-process
 sunrise-client game::gui_entity::tests::a_screen_draws_a_mob_by_type_once_and_refuses_what_it_cant_draw lib daily game-boot
-sunrise-client game::host::draw::tests::a_wrapped_label_measures_and_draws_its_own_height lib daily resources
 sunrise-client game::host::draw::tests::scaled_text_is_the_text_scaled_about_its_corner lib daily game-boot
 sunrise-client game::lan_actions::tick::equipment_tick_tests::a_new_slot_takes_its_items_attributes_at_the_guests_tick lib daily resources
 sunrise-client game::lan_actions::tick::equipment_tick_tests::gear_swapped_and_swapped_back_before_the_tick_keeps_its_modifiers lib daily resources

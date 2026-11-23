@@ -28,6 +28,30 @@ pub(super) struct GameGuiCanvas<'a, 'g> {
     pose: Pose,
     /// Screen-space edges, not affected by future changes of pose.
     scissor: Option<[f32; 4]>,
+    /// A decorator may paint the standard suffix, but never enter the decorator walk again.
+    decorating: bool,
+}
+
+impl Game<'_> {
+    pub(in crate::game) fn draw_item_decorator(
+        &self,
+        batch: &mut HudBatch,
+        stack: &EngineStack,
+        x: f32,
+        y: f32,
+    ) {
+        let _ = GameGuiCanvas::draw_root(
+            batch,
+            &self.gui.atlas,
+            Some(self),
+            None,
+            true,
+            &mut |draw| {
+                self.native_item_decorations(stack, x, y, draw);
+                Ok(())
+            },
+        );
+    }
 }
 
 impl GameGuiCanvas<'_, '_> {
@@ -38,8 +62,28 @@ impl GameGuiCanvas<'_, '_> {
         scissor: Option<[f32; 4]>,
         draw: &mut dyn FnMut(&mut dyn GuiCanvas) -> Result<(), GuiDrawError>,
     ) -> Result<(), GuiDrawError> {
+        Self::draw_root(batch, atlas, game, scissor, false, draw)
+    }
+
+    fn draw_root(
+        batch: &mut HudBatch,
+        atlas: &HudAtlas,
+        game: Option<&Game<'_>>,
+        scissor: Option<[f32; 4]>,
+        decorating: bool,
+        draw: &mut dyn FnMut(&mut dyn GuiCanvas) -> Result<(), GuiDrawError>,
+    ) -> Result<(), GuiDrawError> {
         let head_skins = HeadSkinJournal::default();
-        Self::group(batch, atlas, game, &head_skins, IDENTITY, scissor, draw)?;
+        GameGuiCanvas {
+            batch,
+            atlas,
+            game,
+            head_skins: &head_skins,
+            pose: IDENTITY,
+            scissor,
+            decorating,
+        }
+        .group(draw)?;
         if let Some(game) = game
             && !head_skins.is_empty()
         {
@@ -52,16 +96,21 @@ impl GameGuiCanvas<'_, '_> {
     }
 
     fn group(
-        batch: &mut HudBatch,
-        atlas: &HudAtlas,
-        game: Option<&Game<'_>>,
-        head_skins: &HeadSkinJournal,
-        pose: Pose,
-        scissor: Option<[f32; 4]>,
+        self,
         draw: &mut dyn FnMut(&mut dyn GuiCanvas) -> Result<(), GuiDrawError>,
     ) -> Result<(), GuiDrawError> {
+        let GameGuiCanvas {
+            batch,
+            atlas,
+            game,
+            head_skins,
+            pose,
+            scissor,
+            decorating,
+        } = self;
         head_skins.scope(|| {
             batch.draw_scope(&atlas.font, |batch| {
+                let start = batch.vertices.len();
                 draw(&mut GameGuiCanvas {
                     batch,
                     atlas,
@@ -69,7 +118,12 @@ impl GameGuiCanvas<'_, '_> {
                     head_skins,
                     pose,
                     scissor,
-                })
+                    decorating,
+                })?;
+                if let Some([left, top, right, bottom]) = scissor {
+                    batch.clip_since(start, left, top, right, bottom);
+                }
+                Ok(())
             })
         })
     }
@@ -92,41 +146,23 @@ impl GameGuiCanvas<'_, '_> {
 
     /// An individual call can be refused even when the caller chooses to commit its group.
     fn paint(&mut self, emit: impl FnOnce(&mut HudBatch, &HudAtlas)) -> Result<(), GuiDrawError> {
-        self.paint_in_pose(self.pose, emit)
+        self.paint_in_pose(self.pose, |batch, atlas| Ok(emit(batch, atlas)))
     }
 
     fn paint_in_pose<T>(
         &mut self,
         pose: Pose,
-        emit: impl FnOnce(&mut HudBatch, &HudAtlas) -> T,
+        emit: impl FnOnce(&mut HudBatch, &HudAtlas) -> Result<T, GuiDrawError>,
     ) -> Result<T, GuiDrawError> {
-        let (atlas, scissor) = (self.atlas, self.scissor);
+        let atlas = self.atlas;
         self.batch.draw_scope(&atlas.font, |batch| {
             let start = batch.vertices.len();
-            let output = emit(batch, atlas);
-            let mut needs_clip =
-                scissor.is_some_and(|[left, top, right, bottom]| left == right || top == bottom);
+            let output = emit(batch, atlas)?;
             for vertex in &mut batch.vertices[start..] {
                 if pose != IDENTITY {
                     vertex.pos = pose_point(pose, vertex.pos);
                 }
-                let [x, y] = vertex.pos;
                 if !vertex.pos.into_iter().chain(vertex.uv).all(f32::is_finite) {
-                    return Err(GuiDrawError::NotFinite);
-                }
-                if let Some([left, top, right, bottom]) = scissor {
-                    needs_clip |= x < left || y < top || x > right || y > bottom;
-                }
-            }
-            if let Some([left, top, right, bottom]) = scissor
-                && needs_clip
-                && start < batch.vertices.len()
-            {
-                batch.clip_since(start, left, top, right, bottom);
-                if !batch.vertices[start..]
-                    .iter()
-                    .all(|v| v.pos.into_iter().chain(v.uv).all(f32::is_finite))
-                {
                     return Err(GuiDrawError::NotFinite);
                 }
             }
@@ -204,15 +240,13 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
         } else {
             self.scissor
         };
-        Self::group(
-            self.batch,
-            self.atlas,
-            self.game,
-            self.head_skins,
+        GameGuiCanvas {
+            batch: &mut *self.batch,
             pose,
-            clip,
-            draw,
-        )
+            scissor: clip,
+            ..*self
+        }
+        .group(draw)
     }
 
     fn fill(&mut self, rect @ [x, y, ..]: [f32; 4], argb: u32) -> Result<(), GuiDrawError> {
@@ -273,11 +307,13 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
         }
         let text = text.try_into_engine(&()).map_err(GuiDrawError::Text)?;
         self.paint_in_pose(pose, |batch, atlas| {
-            layout.visit(&atlas.font, &text, |_, line, [x, y], _| {
-                if argb >> 24 != 0 {
-                    batch.text_visual(atlas, line, x, y, abgr(argb), shadow);
-                }
-            })
+            layout
+                .visit_visual(&atlas.font, &text, |line, [x, y]| {
+                    if argb >> 24 != 0 {
+                        batch.text_visual(atlas, line, x, y, abgr(argb), shadow);
+                    }
+                })
+                .map_err(GuiDrawError::TextLayout)
         })
     }
 
@@ -307,11 +343,22 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
         self.check_item_geometry(at)?;
         let game = self.game.ok_or(GuiDrawError::Unavailable)?;
         self.paint(|batch, _| {
-            game.draw_vanilla_item_decorations(batch, &stack, x, y, count.map(str::to_owned));
+            game.draw_vanilla_item_decorations(batch, &stack, x, y, count);
         })?;
         // Its draws already use this pose and scissor. Only the vanilla suffix above needs
         // transforming, not the whole decorator call.
-        game.native_item_decorations(&stack, x, y, self);
+        if !self.decorating {
+            game.native_item_decorations(
+                &stack,
+                x,
+                y,
+                &mut GameGuiCanvas {
+                    batch: &mut *self.batch,
+                    decorating: true,
+                    ..*self
+                },
+            );
+        }
         Ok(())
     }
 
@@ -377,7 +424,7 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
         if !uv.into_iter().all(f32::is_finite) {
             return Err(GuiDrawError::NotFinite);
         }
-        if src.into_iter().chain(tex).any(|extent| extent <= 0) {
+        if tex.contains(&0) {
             return Err(GuiDrawError::BadBlitRegion);
         }
         let rect = *self
@@ -506,9 +553,9 @@ mod tests {
         .unwrap();
         assert_eq!(batch.vertices.len(), 24);
         assert_eq!(batch.vertices[0].pos, [2.0, 3.0]);
-        assert_eq!(batch.vertices[6].pos, [12.0, 22.0]);
-        assert_eq!(batch.vertices[8].pos, [15.0, 25.0]);
-        assert_eq!(batch.vertices[6].uv, [0.265625, 0.15625]);
+        assert_eq!(batch.vertices[6].pos, [11.75, 21.25]);
+        assert_eq!(batch.vertices[8].pos, [19.75, 33.25]);
+        assert_eq!(batch.vertices[6].uv, [0.25, 0.125]);
         assert_eq!(batch.vertices[6].color, 0x8033_2211);
         assert_eq!(batch.vertices[12].pos, [12.75, 22.25]);
         assert_eq!(batch.vertices[12].color, 0x8034_12AA);
@@ -516,10 +563,17 @@ mod tests {
         assert_eq!(batch.vertices[18].pos, [30.0, 40.0]);
         assert_eq!(batch.blends, [(0..12, HudBlend::Invert)]);
 
+        let scissors = [
+            (0..6, None),
+            (6..12, Some([12.0, 22.0, 15.0, 25.0])),
+            (12..18, Some([10.0, 20.0, 15.0, 25.0])),
+            (18..24, None),
+        ];
+        assert_eq!(batch.scissors_in(0..24).collect::<Vec<_>>(), scissors);
         let before = bytemuck::cast_slice::<_, u8>(&batch.vertices).to_vec();
         assert_eq!(
             GameGuiCanvas::draw(&mut batch, &atlas, None, None, &mut |root| {
-                root.scope(&[], None, &mut |child| {
+                root.scope(&[], Some([4.0, 7.0, 1.0, 1.0]), &mut |child| {
                     crosshair(child, [4.0, 7.0, 1.0, 1.0])
                 })?;
                 Err(GuiDrawError::Abort)
@@ -531,6 +585,7 @@ mod tests {
             before.as_slice()
         );
         assert_eq!(batch.blends, [(0..12, HudBlend::Invert)]);
+        assert_eq!(batch.scissors_in(0..24).collect::<Vec<_>>(), scissors);
     }
 
     #[test]
@@ -643,13 +698,6 @@ mod tests {
             ),
             (
                 GuiBlitRegion {
-                    src: [4, -1],
-                    ..REGION
-                },
-                GuiDrawError::BadBlitRegion,
-            ),
-            (
-                GuiBlitRegion {
                     uv: [f32::NAN, 0.0],
                     ..REGION
                 },
@@ -661,6 +709,55 @@ mod tests {
                 error,
             );
         }
+    }
+
+    #[test]
+    fn raw_blit_negative_source_extent_mirrors_the_texture_region() {
+        let mut atlas = HudAtlas::build(&ResourceSource::directory(
+            "/nonexistent/sunrise-test-assets".into(),
+        ))
+        .unwrap();
+        atlas.live.insert(
+            "test:mirror".into(),
+            Rect {
+                u0: 0.25,
+                v0: 0.125,
+                u1: 0.75,
+                v1: 0.625,
+                w: 8,
+                h: 8,
+            },
+        );
+        let mut batch = HudBatch::scratch([320, 240]);
+        GameGuiCanvas::draw(&mut batch, &atlas, None, None, &mut |canvas| {
+            canvas.blit(
+                "test:mirror",
+                [10.0, 20.0, 4.0, 4.0],
+                GuiBlitRegion {
+                    uv: [4.0, 0.0],
+                    src: [-4, 4],
+                    tex: [8, 8],
+                },
+                u32::MAX,
+                Blend::Textured,
+            )
+        })
+        .unwrap();
+        assert_eq!(
+            batch
+                .vertices
+                .iter()
+                .map(|v| (v.pos, v.uv))
+                .collect::<Vec<_>>(),
+            [
+                ([10.0, 20.0], [0.50, 0.125]),
+                ([14.0, 20.0], [0.25, 0.125]),
+                ([14.0, 24.0], [0.25, 0.375]),
+                ([10.0, 20.0], [0.50, 0.125]),
+                ([14.0, 24.0], [0.25, 0.375]),
+                ([10.0, 24.0], [0.50, 0.375]),
+            ]
+        );
     }
 
     #[test]
@@ -696,6 +793,48 @@ mod tests {
                 .iter()
                 .all(|vertex| vertex.color == 0xFF33_2211)
         );
+    }
+
+    #[test]
+    fn wrapped_text_refuses_nonfinite_scaled_geometry_without_visiting_or_painting() {
+        let atlas = HudAtlas::build(&ResourceSource::directory(
+            "/nonexistent/sunrise-test-assets".into(),
+        ))
+        .unwrap();
+        for (label, argb, scale) in [
+            ("\n", u32::MAX, f32::MAX),
+            ("A\nA", 0, f32::MAX / 16.0),
+            ("A\nA", u32::MAX, f32::MAX / 16.0),
+        ] {
+            let text = Text::literal(label);
+            let spec = TextLayoutSpec {
+                max_width: 100.0,
+                align: mod_api::TextAlign::Left,
+                scale,
+            };
+            let layout = LabelLayout::try_from(spec).unwrap();
+            assert_eq!(
+                layout.visit_components(&atlas.font, &text, &mut |_| {
+                    panic!("an invalid label must not publish even its first line")
+                }),
+                Err(mod_api::TextLayoutError::GeometryNotFinite)
+            );
+
+            let mut batch = HudBatch::scratch([320, 240]);
+            GameGuiCanvas::draw(&mut batch, &atlas, None, None, &mut |root| {
+                assert_eq!(
+                    root.text_with_word_wrap(&text, [0.0; 2], spec, argb, false),
+                    Err(GuiDrawError::TextLayout(
+                        mod_api::TextLayoutError::GeometryNotFinite
+                    ))
+                );
+                root.fill([1.0, 2.0, 3.0, 4.0], u32::MAX)
+            })
+            .unwrap();
+            assert_eq!(batch.vertices.len(), 6);
+            assert_eq!(batch.vertices[0].pos, [1.0, 2.0]);
+            assert!(batch.patches.is_empty());
+        }
     }
 
     #[test]
@@ -760,7 +899,11 @@ mod tests {
             )
         })
         .unwrap();
-        assert!(batch.vertices.is_empty());
+        assert_eq!(batch.vertices.len(), 24);
+        assert_eq!(
+            batch.scissors_in(0..24).collect::<Vec<_>>(),
+            [(0..24, Some([0.0; 4]))]
+        );
         assert!(batch.blends.is_empty());
     }
 }

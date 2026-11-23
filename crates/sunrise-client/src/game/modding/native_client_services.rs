@@ -62,7 +62,7 @@ impl Game<'_> {
         text: Option<&str>,
     ) {
         self.draw_item_model(batch, stack, at[0], at[1], 0);
-        self.draw_item_decorations(batch, stack, at[0], at[1], text.map(str::to_owned));
+        self.draw_item_decorations(batch, stack, at[0], at[1], text);
     }
     /// Whether a specific key is currently held down.
     /// `key` is the vanilla physical key or mouse button name (`key.keyboard.left.shift`,

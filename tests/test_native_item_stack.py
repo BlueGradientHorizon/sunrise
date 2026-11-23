@@ -31,8 +31,8 @@ impl Game {
         batch.vertices.push(1);
     }
     fn draw_item_decorations(&self, batch: &mut HudBatch, stack: &ItemStack,
-                             x: f32, y: f32, count: Option<String>) {
-        assert_eq!((stack.count, stack.damage, x, y, count.as_deref()), (42, 13, 2.0, 3.0, Some("")));
+                             x: f32, y: f32, count: Option<&str>) {
+        assert_eq!((stack.count, stack.damage, x, y, count), (42, 13, 2.0, 3.0, Some("")));
         batch.vertices.push(2);
     }
     METHOD

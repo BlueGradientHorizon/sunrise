@@ -1,4 +1,4 @@
-//! One full-context scissor scope, cut on the batch like the game's own screens.
+//! One full-context scissor scope, restricting its range of HUD draws.
 use crate::hud::HudBatch;
 use mod_api::GuiClipRefusal;
 
@@ -54,25 +54,6 @@ mod tests {
             u32::MAX,
         );
     }
-    fn bounds(batch: &HudBatch) -> [f32; 4] {
-        batch.vertices.iter().fold(
-            [
-                f32::INFINITY,
-                f32::INFINITY,
-                f32::NEG_INFINITY,
-                f32::NEG_INFINITY,
-            ],
-            |[a, b, c, d], v| {
-                [
-                    a.min(v.pos[0]),
-                    b.min(v.pos[1]),
-                    c.max(v.pos[0]),
-                    d.max(v.pos[1]),
-                ]
-            },
-        )
-    }
-
     #[test]
     fn a_clip_cuts_only_what_was_drawn_inside_it() {
         let mut batch = HudBatch::scratch([640, 480]);
@@ -86,14 +67,21 @@ mod tests {
             .map(|v| v.pos)
             .collect();
         assert_eq!(kept, before, "drawn before the clip");
-        let mut inside = HudBatch::scratch([640, 480]);
-        inside.vertices = batch.vertices[before.len()..].to_vec();
-        assert_eq!(bounds(&inside), [10.0, 10.0, 110.0, 110.0]);
+        assert_eq!(
+            batch.vertices[6..]
+                .iter()
+                .map(|v| v.pos)
+                .collect::<Vec<_>>(),
+            before
+        );
+        assert_eq!(
+            batch.scissors_in(0..12).collect::<Vec<_>>(),
+            [(0..6, None), (6..12, Some([10.0, 10.0, 110.0, 110.0])),]
+        );
     }
 
     #[test]
     fn nested_clips_intersect_and_a_disjoint_one_clips_everything() {
-        let mut batch = HudBatch::scratch([640, 480]);
         for (outer, inner, expected) in [
             (
                 [0.0, 0.0, 100.0, 100.0],
@@ -103,16 +91,15 @@ mod tests {
             ([0.0, 0.0, 10.0, 10.0], [20.0, 20.0, 10.0, 10.0], None),
             ([0.0, 0.0, 10.0, 10.0], [0.0, 0.0, -5.0, 10.0], None),
         ] {
-            batch.vertices.clear();
+            let mut batch = HudBatch::scratch([640, 480]);
             let outer = GuiClip::open(&batch, outer, None).unwrap();
             let inner = GuiClip::open(&batch, inner, Some(&outer)).unwrap();
             square(&mut batch, 0.0, 0.0, 300.0);
             inner.close(&mut batch);
             outer.close(&mut batch);
-            assert_eq!(
-                (!batch.vertices.is_empty()).then(|| bounds(&batch)),
-                expected
-            );
+            let clip = batch.scissors_in(0..6).next().unwrap().1.unwrap();
+            let [l, t, r, b] = clip;
+            assert_eq!((r > l && b > t).then_some(clip), expected);
         }
     }
 
@@ -224,21 +211,24 @@ mod dispatch_tests {
                     });
                 });
                 assert_eq!(batch.vertices.len(), 30);
-                for (quad, (color, [x0, y0, x1, y1])) in
-                    batch.vertices.as_chunks::<6>().0.iter().zip([
-                        (0xFF00_FF00, [12.0, 12.0, 17.0, 17.0]),
-                        (0xFFFF_0000, [15.0, 15.0, 20.0, 20.0]),
-                        (0xFF00_00FF, [10.0, 10.0, 20.0, 20.0]),
-                        (0xFF00_FFFF, [8.0, 8.0, 9.0, 9.0]),
-                        (u32::MAX, [24.0, 24.0, 28.0, 28.0]),
-                    ])
-                {
+                for (quad, color) in batch.vertices.as_chunks::<6>().0.iter().zip([
+                    0xFF00_FF00,
+                    0xFFFF_0000,
+                    0xFF00_00FF,
+                    0xFF00_FFFF,
+                    u32::MAX,
+                ]) {
                     assert_eq!(quad.each_ref().map(|v| v.color), [color; 6]);
-                    assert_eq!(
-                        quad.each_ref().map(|v| v.pos),
-                        [[x0, y0], [x1, y0], [x1, y1], [x0, y0], [x1, y1], [x0, y1],]
-                    );
                 }
+                assert_eq!(
+                    batch.scissors_in(0..30).collect::<Vec<_>>(),
+                    [
+                        (0..6, Some([12.0, 12.0, 17.0, 17.0])),
+                        (6..12, Some([15.0, 15.0, 20.0, 20.0])),
+                        (12..18, Some([10.0, 10.0, 20.0, 20.0])),
+                        (18..30, None),
+                    ]
+                );
             },
         );
     }

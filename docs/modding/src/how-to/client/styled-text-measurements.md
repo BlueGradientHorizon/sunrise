@@ -15,8 +15,8 @@ in client setup.
 The font wraps at `max_width / scale`. The visitor receives a borrowed `Text` with applied styles
 and inline objects, and the line's `at` and `width` in scaled GUI pixels. Clone `line.text` to
 keep a line after the call. The result gives the label's width and height even when the visitor
-only reads those dimensions. Invalid width or scale returns `TextLayoutError` without visiting
-any lines. To paint a label, use [the canvas's wrapped draw](screens.md#labels-wrapped-text-without-a-widget)
+only reads those dimensions. Invalid width, scale or non-finite scaled geometry returns
+`TextLayoutError` without visiting any lines. To paint a label, use [the canvas's wrapped draw](screens.md#labels-wrapped-text-without-a-widget)
 rather than retaining and redrawing the lines.
 
 Build an owned `Text` directly with `Text::literal`, `Text::translate` or
@@ -96,7 +96,8 @@ For vanilla `Component.getVisualOrderText()` behavior, use
 `ClientHost::visit_text_visual_order(&Text, &mut |character| { … })`. It lends each character's
 Unicode scalar (`scalar`), effective `TextStyle` and sink `source_index` for that call. Return
 `true` to continue or `false` to stop; the host returns `false` if stopped. Call
-`character.to_owned()` only for characters you need to retain. Characters already include Arabic
+`character.to_owned()` only for characters you need to retain. The owned character keeps its
+full style and releases deep opaque style data iteratively. Characters already include Arabic
 shaping, bidi reordering and mirrored punctuation. This read is available outside drawing,
 including client setup.
 

@@ -1,7 +1,8 @@
 //! Styled characters obtained from the client's visual text sequence.
-use crate::text::TextStyle;
+use crate::text::{TextStyle, discard_style_tags};
 
 /// One character accepted by vanilla's `FormattedCharSink` in visual order.
+/// Deep opaque style data is released iteratively when the character is dropped.
 // exhaustive: the three values supplied by FormattedCharSink form this record.
 // no wire: explicit retention of an in-process visitor value.
 #[derive(Clone, Debug, PartialEq)]
@@ -13,6 +14,12 @@ pub struct VisualTextCharacter {
     /// UTF-16 offset within the sink's current directional/style run.
     /// This is not a global component offset; it restarts for each run.
     pub source_index: u32,
+}
+
+impl Drop for VisualTextCharacter {
+    fn drop(&mut self) {
+        discard_style_tags(&mut self.style);
+    }
 }
 
 /// A character lent by `ClientHost::visit_text_visual_order`.

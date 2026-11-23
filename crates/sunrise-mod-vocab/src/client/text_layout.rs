@@ -52,7 +52,7 @@ pub struct TextLayoutSize {
     pub height: f32,
 }
 
-/// A wrapping width or scale that cannot place a label. No lines were visited.
+/// A wrapping width, scale or scaled result that cannot place a label. No lines were visited.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 // no wire: local label layout.
 #[non_exhaustive]
@@ -61,6 +61,8 @@ pub enum TextLayoutError {
     WidthNotFinite,
     /// The scale is not finite or is not positive.
     ScaleInvalid,
+    /// A scaled line offset, width or total height is not finite.
+    GeometryNotFinite,
 }
 
 impl std::fmt::Display for TextLayoutError {
@@ -68,6 +70,7 @@ impl std::fmt::Display for TextLayoutError {
         f.write_str(match self {
             Self::WidthNotFinite => "text layout: max_width or max_width / scale is not finite",
             Self::ScaleInvalid => "text layout: scale is not finite or is not positive",
+            Self::GeometryNotFinite => "text layout: scaled line geometry is not finite",
         })
     }
 }

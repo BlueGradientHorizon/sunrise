@@ -266,6 +266,7 @@ sunrise-client-render hud::coverage_tests::coverage_follows_hud_blends_discard_s
 sunrise-client-render hud::coverage_tests::coverage_preserves_each_cit_blend_and_its_destination_alpha lib daily gpu
 sunrise-client-render hud::coverage_tests::coverage_uses_pack_texts_final_alpha_and_discard lib daily gpu
 sunrise-client-render hud::coverage_tests::each_hud_draw_clips_at_white_as_on_an_8_bit_frame lib daily gpu
+sunrise-client-render hud::coverage_tests::repeated_partial_scissors_preserve_the_unclipped_gradient_pixels lib daily gpu
 sunrise-client-render hud::coverage_tests::standalone_picture_draw_order_and_screen_exit_release lib daily gpu
 sunrise-client-render menu_blur::tests::blurs_the_same_after_its_targets_were_released lib daily gpu
 sunrise-client-render menu_blur::tests::the_half_size_blur_blurs_like_the_full_size_one lib daily gpu

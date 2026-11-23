@@ -177,13 +177,24 @@ fn check_visual_reads(host: &dyn ClientHost) {
     payload.style.metadata = mod_api::Tag::compound([("deep", nested)]);
     let payload = Text::literal("").append(payload).append(Text::literal("Y"));
     let mut count = 0;
+    let mut retained = None;
     assert!(!host.visit_text_visual_order(&payload, &mut |v| {
         count += 1;
-        assert_eq!(v.scalar, 'X' as u32);
-        assert!(v.style.metadata.get("deep").is_some());
+        retained = Some(v.to_owned());
         false
     }));
     assert_eq!(count, 1);
+    let retained = retained.unwrap();
+    assert_eq!(retained.scalar, 'X' as u32);
+    let mut inner = retained.style.metadata.get("deep").unwrap();
+    for _ in 0..32_768 {
+        let mod_api::Tag::List(layer) = inner else {
+            panic!("retained style lost a list layer");
+        };
+        inner = &layer[0];
+    }
+    assert_eq!(inner, &mod_api::Tag::Int(7));
+    drop(retained);
     assert!(host.visit_text_visual_order(&payload, &mut |_| {
         count += 1;
         true

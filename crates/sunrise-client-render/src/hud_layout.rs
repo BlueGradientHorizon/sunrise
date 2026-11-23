@@ -193,6 +193,17 @@ pub fn fill(x0: i32, y0: i32, x1: i32, y1: i32, color: u32) -> GuiDraw {
         color,
     }
 }
+/// Paint a vanilla fill with the signed integer endpoints intact until the float conversion.
+pub(crate) fn paint_fill_endpoints(
+    batch: &mut HudBatch,
+    atlas: &HudAtlas,
+    [x0, y0, x1, y1]: [i32; 4],
+    color: u32,
+) {
+    let (l, r) = (x0.min(x1) as f32, x0.max(x1) as f32);
+    let (t, b) = (y0.min(y1) as f32, y0.max(y1) as f32);
+    batch.fill_quad(atlas, [[l, t], [r, t], [r, b], [l, b]], abgr(color));
+}
 /// `graphics.text`: dropped when fully transparent.
 fn text(out: &mut Vec<GuiDraw>, text: Text, x: i32, y: i32, color: u32, shadow: bool) {
     if color >> 24 != 0 {
@@ -1096,13 +1107,7 @@ fn paint_with<'a>(
                 x1,
                 y1,
                 color,
-            } => {
-                // `GuiGraphics.fill` orders the corners; a wrapped bar end can be past the
-                // other by more than an `int` holds, so the span is taken in floats.
-                let (x0, x1) = ((*x0).min(*x1) as f32, (*x0).max(*x1) as f32);
-                let (y0, y1) = ((*y0).min(*y1) as f32, (*y0).max(*y1) as f32);
-                batch.fill(atlas, x0, y0, x1 - x0, y1 - y0, abgr(*color));
-            }
+            } => paint_fill_endpoints(batch, atlas, [*x0, *y0, *x1, *y1], *color),
             GuiDraw::FillGradient {
                 x0,
                 y0,

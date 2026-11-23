@@ -7,6 +7,8 @@ pub trait Hooks {
     /// top-left `(x, y)` is in the caller's local GUI pixels, outside the model-only squeeze.
     /// Inventory, hotbar and tooltip draws lend an identity pose. Appended draws belong to
     /// the enclosing group; use `draw.scope` to make just your decoration draws all-or-nothing.
+    /// `draw.item_decorations` on this canvas or its children paints only the standard suffix,
+    /// including the `item_bar` override. It does not invoke item decorators again.
     /// Use ordinary HUD or screen hooks for widgets, scenes, focus and narration.
     /// The NeoForge counterpart is `IItemDecorator.render`; registration through
     /// `RegisterItemDecorationsEvent` is a separate moment.
@@ -19,7 +21,7 @@ pub trait Hooks {
         scope = "item",
         key = "stack",
         neoforge = "IItemDecorator.render",
-        version = 2
+        version = 3
     )]
     fn item_decorations(stack: &ItemStack, x: f32, y: f32, draw: &mut dyn GuiCanvas);
 }

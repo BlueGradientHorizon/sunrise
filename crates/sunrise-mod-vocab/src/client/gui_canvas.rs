@@ -25,9 +25,9 @@ pub struct GuiSpriteRegion {
 pub struct GuiBlitRegion {
     /// Source `u, v` offset, which must be finite.
     pub uv: [f32; 2],
-    /// Positive source width and height.
+    /// Signed source extents. A negative extent reverses its UV axis.
     pub src: [i32; 2],
-    /// Positive width and height of the whole texture.
+    /// Nonzero divisors for the two source axes, normally the whole texture's pixel size.
     pub tex: [i32; 2],
 }
 
@@ -45,7 +45,7 @@ pub enum GuiDrawError {
     NotFinite,
     /// Text could not be represented by the game (for example, it contains non-finite metadata).
     Text(TextFormError),
-    /// The wrapping width or scale cannot place the label.
+    /// The wrapping width, scale or scaled geometry cannot place the label.
     TextLayout(TextLayoutError),
     /// The stack could not be read for rendering. Storage count and damage limits do not apply.
     Stack(StackWriteError),
@@ -57,7 +57,7 @@ pub enum GuiDrawError {
     BadSpriteRegion,
     /// No raw texture is present at the requested id.
     UnknownTexture,
-    /// The source or texture size was not positive on both axes.
+    /// A texture-axis divisor was zero.
     BadBlitRegion,
 }
 
@@ -74,7 +74,7 @@ impl std::fmt::Display for GuiDrawError {
             Self::UnsupportedSpriteBlend => "this blend is not supported for GUI sprites",
             Self::BadSpriteRegion => "GUI sprite size must be positive",
             Self::UnknownTexture => "unknown GUI draw texture",
-            Self::BadBlitRegion => "GUI blit source and texture sizes must be positive",
+            Self::BadBlitRegion => "GUI blit texture-axis divisors must be nonzero",
         })
     }
 }
@@ -104,7 +104,8 @@ pub trait GuiCanvas {
     /// scissor (or the viewport if there is none). The two ordered corners are transformed, flooring the resulting origin and
     /// extents separately. `None` inherits the enclosing scissor unchanged. Empty, inverted or
     /// reflected scissor axes draw nothing. The clip does not move when a descendant changes its
-    /// pose. Non-finite geometry refuses the scope before calling `draw`; zero scale is allowed.
+    /// pose, and only restricts visible pixels, not interpolation inside the clip. Non-finite
+    /// geometry refuses the scope before calling `draw`; zero scale is allowed.
     /// On `Err` or unwind, discard the child's draws. On success they stay in order, but are
     /// still discarded if an enclosing group fails. The parent's pose and scissor never change.
     fn scope(
@@ -135,6 +136,7 @@ pub trait GuiCanvas {
     /// vanilla's `GuiGraphicsExtractor.textWithWordWrap`. `at` is the label's top left
     /// in local GUI pixels. Returns its dimensions before the enclosing pose. Both
     /// text measurement and paint use the same layout; no replay list is produced.
+    /// Non-finite scaled layout geometry is refused even for blank or transparent text.
     /// For an off-draw layout, use `ClientHost::visit_text_lines`.
     fn text_with_word_wrap(
         &mut self,
@@ -152,6 +154,8 @@ pub trait GuiCanvas {
     fn item(&mut self, stack: &ItemStack, at: [f32; 2], seed: i32) -> Result<(), GuiDrawError>;
 
     /// Draw the stack's bar, cooldown, count and custom item decorations at `at`, in that order.
+    /// In an item decorator's canvas or its children, this paints only the standard bar, cooldown
+    /// and count, without invoking item decorators again.
     /// `count` replaces the normal count label; `Some("")` hides it. An empty stack draws nothing.
     /// Call this in the surrounding scope after drawing a squeezed model in a child
     /// [`Self::scope`], so the decorations follow the surrounding pose, not the squeeze.

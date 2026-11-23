@@ -6,8 +6,9 @@
 clip. Call its methods directly inside the callback, in draw order. A nested `scope` applies
 pose operations in order to a copy of the current pose and optionally scissors to
 `[x, y, w, h]` in the resulting local coordinates. That clip stays fixed in screen space even
-when a descendant changes pose. Returning from a child scope leaves the parent pose and clip
-as they were.
+when a descendant changes pose. The scissor restricts the pixels drawn, not the original vertices
+or their colour and texture interpolation. Returning from a child scope leaves the parent pose
+and clip as they were.
 
 ```rust,ignore
 use mod_api::{GuiDrawError, Text, client::hud_layout::PoseOp};
@@ -32,14 +33,19 @@ independent host calls are not part of the transaction; use the ordinary `DrawCo
 draws, with [`with_scissor`](screen-clipping.md) if you need to clip them.
 
 For a wrapped component, call `canvas.text_with_word_wrap`. It wraps and paints in the current
-scope and returns the [label dimensions](screens.md#labels-wrapped-text-without-a-widget); there
-is no list of line draws to replay.
+scope and returns the [label dimensions](screens.md#labels-wrapped-text-without-a-widget). The
+canvas walks the wrapped ranges and paints each line using reusable scratch instead of
+building a replay list. If a scaled offset or dimension is not finite, the call
+returns `GuiDrawError::TextLayout(TextLayoutError::GeometryNotFinite)` without drawing, even
+for a blank or fully transparent label.
 
 ## Items
 
 Call `canvas.item(&stack, at, seed)` to draw a stack's model in a 16-pixel slot, passing the seed to
 its model resolver. Call `canvas.item_decorations(&stack, at, None)` to add its bar, cooldown,
 count and custom decoration, in that order. An optional `Some(label)` replaces the count text.
+An `item_bar` override supplies a signed width in pixels. As in vanilla, the bar's foreground
+endpoint is formed with wrapping integer addition.
 The stack is read for display, not written to a slot: it keeps its components and can be over the
 storage limit. Empty stacks draw nothing. Head-skin fetches and atlas requests caused by the draw
 wait until the outer group commits.
@@ -77,8 +83,10 @@ if let Some(stack) = stack {
 `ItemPart::item_decorations` receives a `GuiCanvas` as `event.draw` after the standard
 bar, cooldown and count. Use the icon's local `event.x` and `event.y` for drawing. The canvas
 already has the caller's pose and scissor (identity for ordinary inventory, hotbar and tooltip
-calls). A decorator returns `()`, so use `event.draw.scope` if you want to roll back its own
-primitives together on failure. Move any widgets, focus, narration or live scenes to ordinary
+calls). On this canvas and its child scopes, `item_decorations` paints only the standard bar,
+cooldown and count; it does not invoke any item decorators, even for a different stack. A
+decorator returns `()`, so use `event.draw.scope` to roll back its own primitives together on
+failure. Move any widgets, focus, narration or live scenes to ordinary
 HUD or screen draw hooks.
 
 For replacing or wrapping a HUD status layer, see [HUD drawing](hud-drawing.md).
@@ -91,8 +99,9 @@ For replacing or wrapping a HUD status layer, see [HUD drawing](hud-drawing.md).
   work on this path. A removed GUI sprite is refused, not drawn as a missing texture.
 - `canvas.atlas_sprite` looks up the exact packed atlas name, independently of the GUI lookup.
 - `canvas.blit` draws part of a raw texture (a path under `textures/`, without `.png`, or a live
-  or registered texture id). `GuiBlitRegion { uv, src, tex }` gives the source offset, source size
-  and whole texture size in its pixels. `Textured` blends normally, `Vignette` darkens what is under
+  or registered texture id). `GuiBlitRegion { uv, src, tex }` gives the source offset, signed source
+  extents and texture-axis divisors in pixels. A negative source extent mirrors that axis; a zero
+  divisor is refused. `Textured` blends normally, `Vignette` darkens what is under
   it (`dst * (1 - src)`), `Nausea` is additive and `Crosshair` inverts it.
 
 ## Refusals

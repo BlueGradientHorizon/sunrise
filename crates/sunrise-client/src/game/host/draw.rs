@@ -95,7 +95,7 @@ impl<'a, 'g> GameDrawContext<'a, 'g> {
         let last_blend_end = surface.blends.last().map(|(range, _)| range.end);
         let accepted = listen(&mut GameDrawContext::new(game, surface));
         if !accepted {
-            surface.vertices.truncate(counts.0);
+            surface.truncate_vertices(counts.0);
             surface.pictures.truncate(counts.1);
             surface.blends.truncate(counts.2);
             surface.inline_profiles.truncate(counts.3);
@@ -626,6 +626,60 @@ impl RenderLevelStageContext for GameRenderLevelStageContext<'_, '_> {
 }
 
 #[cfg(test)]
+pub(in crate::game) fn canvas_test_font() -> crate::font::Font {
+    use crate::{
+        hud::Rect,
+        resource_source::{Resource, ResourceSource},
+    };
+
+    // A 24×8 sheet in a 32×16 bitmap, six fixed-size cells. Ink widths of
+    // 3, 2, 2, 2, 2, 3 give advances of 4, 3, 3, 3, 3, 4 respectively.
+    let definition = r#"{"providers":[{"type":"space","advances":{" ":2}},{"type":"bitmap","file":"test:font/fixture.png","ascent":7,"chars":["mאבג65"]}]}"#;
+    let source = ResourceSource::indexed(
+        [(
+            "assets/minecraft/font/default.json".into(),
+            Resource::bytes(definition.as_bytes().to_vec()),
+        )]
+        .into(),
+    );
+    let mut pixels = vec![0; 32 * 16 * 4];
+    for (cell, width) in [3, 2, 2, 2, 2, 3].into_iter().enumerate() {
+        for y in 0..8 {
+            let offset = (y * 32 + cell * 4) * 4;
+            pixels[offset..offset + width * 4].fill(255);
+        }
+    }
+    let pixel = Rect {
+        u0: 0.0,
+        v0: 0.0,
+        u1: 1.0 / 32.0,
+        v1: 1.0 / 16.0,
+        w: 1,
+        h: 1,
+    };
+    let sheet = Rect {
+        u0: 0.0,
+        v0: 0.0,
+        u1: 24.0 / 32.0,
+        v1: 8.0 / 16.0,
+        w: 24,
+        h: 8,
+    };
+    crate::font::Font::load(
+        &source,
+        &[
+            ("test:font/fixture".into(), sheet),
+            ("sunrise/missing_glyph".into(), pixel),
+        ]
+        .into(),
+        &pixels,
+        (32, 16),
+        (0, 0),
+        pixel,
+    )
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
@@ -687,7 +741,7 @@ mod tests {
                 at: line.at,
                 width: line.width,
             })
-        });
+        })?;
         Ok(Measurement { lines, size })
     }
 
@@ -1068,33 +1122,69 @@ mod tests {
         let text = Text::literal("abcdefghijklmnop\n".repeat(600));
         let mut lines = 0;
         let mut characters = 0;
-        let size = layout.visit_components(&font, &text, &mut |line| {
-            lines += 1;
-            characters += engine(line.text).plain().len();
-        });
+        let size = layout
+            .visit_components(&font, &text, &mut |line| {
+                lines += 1;
+                characters += engine(line.text).plain().len();
+            })
+            .unwrap();
         assert_eq!(lines, 601);
         assert_eq!(characters, 9600);
         assert_eq!((size.width, size.height), (96.0, 5409.0));
     }
 
-    /// The game's own font and GUI atlas, read from the prepared resources alone: a real font with
-    /// its real advances and the atlas it draws from, with no game, no world and no process-wide
-    /// state registered.
-    fn prepared_atlas() -> crate::hud::HudAtlas {
-        let root = std::env::var_os("SUNRISE_TEST_RESOURCES")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| {
-                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("../../.local/sunrise-client")
-                    .join(sunrise_core::VANILLA_VERSION)
+    #[test]
+    fn warmed_wrapped_paint_lends_lines_without_allocating() {
+        let font = fake_font(6.0);
+        let text = crate::text::Text::literal("abcd ef  ghi\njkl");
+        let layout = text_layout::LabelLayout::try_from(TextLayoutSpec {
+            max_width: 24.0,
+            align: TextAlign::Left,
+            scale: 1.0,
+        })
+        .unwrap();
+        crate::lang::scoped(crate::lang::Language::of("en_us", []), || {
+            let spec = [("abcd", 0.0), ("ef ", 9.0), ("ghi", 18.0), ("jkl", 27.0)];
+            let paint = || {
+                let mut lines = 0;
+                let size = layout
+                    .visit_visual(&font, &text, |line, at| {
+                        let (expected, y) = spec[lines];
+                        assert!(line.chars().map(|(c, _)| c).eq(expected.chars()));
+                        assert_eq!(at, [0.0, y]);
+                        lines += 1;
+                    })
+                    .unwrap();
+                assert_eq!(lines, spec.len());
+                assert_eq!((size.width, size.height), (24.0, 36.0));
+            };
+            paint();
+            let (_, allocations) = sunrise_threads::allocation_count::measure(paint);
+            assert_eq!(allocations, 0);
+        });
+    }
+
+    #[test]
+    fn warm_item_count_and_empty_decorations_need_no_replay_allocations() {
+        use crate::hud_overlays::{ItemDecorations, paint_item_decorations};
+        let mut atlas = crate::hud::HudAtlas::boot();
+        atlas.font = canvas_test_font();
+        let mut batch = crate::hud::HudBatch::scratch([320, 240]);
+        for (count, vertices) in [(1, 0), (65, 24)] {
+            let decorations = ItemDecorations {
+                count,
+                count_text: None,
+                bar: None,
+                cooldown: 0.0,
+            };
+            paint_item_decorations(&mut batch, &atlas, [0.0; 2], &decorations);
+            batch.vertices.clear();
+            let (_, allocations) = sunrise_threads::allocation_count::measure(|| {
+                paint_item_decorations(&mut batch, &atlas, [0.0; 2], &decorations);
             });
-        assert!(
-            root.join("assets/minecraft/font/default.json").is_file(),
-            "the prepared resources are not at {}",
-            root.display()
-        );
-        crate::hud::HudAtlas::build(&crate::resource_source::ResourceSource::directory(root))
-            .expect("the prepared resources' font and atlas")
+            assert_eq!(batch.vertices.len(), vertices);
+            assert_eq!(allocations, 0, "stack count {count}");
+        }
     }
 
     #[test]
@@ -1124,53 +1214,27 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "daily"]
     fn a_wrapped_label_measures_and_draws_its_own_height() {
-        let atlas = prepared_atlas();
-        let font = &atlas.font;
-        // The prepared font, not the fallback one whose every character is six pixels wide.
-        assert!(
-            font.width("i") < font.width("m"),
-            "an {} wide i and {} wide m",
-            font.width("i"),
-            font.width("m")
-        );
-        let width = font.width("mmmm");
-        let scale = 2.0;
+        let mut atlas = crate::hud::HudAtlas::boot();
+        atlas.font = canvas_test_font();
         let spec = TextLayoutSpec {
-            max_width: width * scale,
+            max_width: 32.0,
             align: TextAlign::Left,
-            scale,
+            scale: 2.0,
         };
-        let at = [10.0, 20.0];
         let text = Text::literal("§cmmmm §aאבג §bmmmm");
-        let mut expected = crate::hud::HudBatch::scratch([320, 240]);
-        // Known line breaks and carried colours. The normal painter shapes the Hebrew line
-        // without exercising the wrapped canvas path or its style conversions.
-        for (line, y) in [("§cmmmm", 0.0), ("§aאבג", 9.0), ("§bmmmm", 18.0)] {
-            expected.text(&atlas, line, 0.0, y, u32::MAX, false);
-        }
-        for v in &mut expected.vertices {
-            v.pos = [14.0 + v.pos[0] * scale, 26.0 + v.pos[1] * scale];
-        }
-        let original_vertices = expected.vertices.len();
-        expected.clip_since(0, 9.0, 16.0, 43.0, 69.0);
-        assert!(expected.vertices.len() < original_vertices);
-        for colour in [0xFF55_55FF, 0xFF55_FF55, 0xFFFF_FF55] {
-            assert!(expected.vertices.iter().any(|v| v.color == colour));
-        }
-
         let mut actual = crate::hud::HudBatch::scratch([320, 240]);
         gui_canvas::GameGuiCanvas::draw(&mut actual, &atlas, None, None, &mut |canvas| {
             canvas.scope(
                 &[mod_api::client::hud_layout::PoseOp::Translate(4.0, 6.0)],
                 Some([5.0, 10.0, 34.0, 53.0]),
                 &mut |scoped| {
-                    let size = scoped.text_with_word_wrap(&text, at, spec, u32::MAX, false)?;
+                    let size =
+                        scoped.text_with_word_wrap(&text, [10.0, 20.0], spec, u32::MAX, false)?;
                     assert_eq!(
                         size,
                         TextLayoutSize {
-                            width: width * scale,
+                            width: 32.0,
                             height: 54.0
                         }
                     );
@@ -1179,10 +1243,54 @@ mod tests {
             )
         })
         .unwrap();
-        assert_eq!(
-            bytemuck::cast_slice::<_, u8>(&actual.vertices),
-            bytemuck::cast_slice::<_, u8>(&expected.vertices),
-        );
+
+        let runs: Vec<_> = actual.scissors_in(0..66).collect();
+        assert_eq!(runs, [(0..66, Some([9.0, 16.0, 43.0, 69.0]))]);
+        let clip = runs[0].1.unwrap();
+        // The final column and row are partly clipped, but the glyph UVs still
+        // address the original cells. The Hebrew line's first glyph is gimel.
+        let glyphs = [
+            ([14.0, 26.0, 22.0, 42.0], [22.0, 42.0], 0.0, 0xFF55_55FF),
+            ([22.0, 26.0, 30.0, 42.0], [30.0, 42.0], 0.0, 0xFF55_55FF),
+            ([30.0, 26.0, 38.0, 42.0], [38.0, 42.0], 0.0, 0xFF55_55FF),
+            ([38.0, 26.0, 46.0, 42.0], [43.0, 42.0], 0.0, 0xFF55_55FF),
+            ([14.0, 44.0, 22.0, 60.0], [22.0, 60.0], 12.0, 0xFF55_FF55),
+            ([20.0, 44.0, 28.0, 60.0], [28.0, 60.0], 8.0, 0xFF55_FF55),
+            ([26.0, 44.0, 34.0, 60.0], [34.0, 60.0], 4.0, 0xFF55_FF55),
+            ([14.0, 62.0, 22.0, 78.0], [22.0, 69.0], 0.0, 0xFFFF_FF55),
+            ([22.0, 62.0, 30.0, 78.0], [30.0, 69.0], 0.0, 0xFFFF_FF55),
+            ([30.0, 62.0, 38.0, 78.0], [38.0, 69.0], 0.0, 0xFFFF_FF55),
+            ([38.0, 62.0, 46.0, 78.0], [43.0, 69.0], 0.0, 0xFFFF_FF55),
+        ];
+        assert_eq!(actual.vertices.len(), glyphs.len() * 6);
+        for (quad, ([l, t, r, b], [visible_r, visible_b], u, color)) in
+            actual.vertices.as_chunks::<6>().0.iter().zip(glyphs)
+        {
+            let corners = [[l, t], [r, t], [r, b], [l, b]];
+            let (min_u, max_u) = ((u + 0.01) / 32.0, (u + 4.0 - 0.01) / 32.0);
+            let (min_v, max_v) = (0.01 / 16.0, 7.99 / 16.0);
+            let uvs = [
+                [min_u, min_v],
+                [max_u, min_v],
+                [max_u, max_v],
+                [min_u, max_v],
+            ];
+            for (v, corner) in quad.iter().zip([0, 1, 2, 0, 2, 3]) {
+                assert_eq!(
+                    (v.pos, v.uv, v.color, v.text),
+                    (corners[corner], uvs[corner], color, 1)
+                );
+            }
+            assert_eq!(
+                [
+                    quad[0].pos[0].max(clip[0]),
+                    quad[0].pos[1].max(clip[1]),
+                    quad[2].pos[0].min(clip[2]),
+                    quad[2].pos[1].min(clip[3])
+                ],
+                [l, t, visible_r, visible_b],
+            );
+        }
     }
 
     #[test]
