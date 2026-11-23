@@ -1,4 +1,6 @@
 //! The standalone tool updates independently of any project's pinned game or SDK.
+mod cargo_config;
+
 use crate::{dev, options::Options, sdk_fetch};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -9,7 +11,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 use sunrise_addresses::SDK_RELEASES;
-use sunrise_release_sign::{self as release, MOD_TOOL, SIGNATURE, SUMS};
+use sunrise_release_sign::{self as release, MOD_TOOL, PublicKey, SIGNATURE, SUMS};
 use tempfile::NamedTempFile;
 
 const BUILD: &str = env!("SUNRISE_TOOL_BUILT_FROM");
@@ -19,9 +21,8 @@ const EXE: &str = "cargo-sunrise-mod";
 #[cfg(windows)]
 const EXE: &str = "cargo-sunrise-mod.exe";
 const NOTICE_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
-const NOTICE_TIMEOUT: Duration = Duration::from_secs(2);
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct Tool {
     commit: String,
 }
@@ -68,24 +69,26 @@ fn standalone_exe() -> Result<PathBuf, String> {
 pub(crate) fn run(args: &[String]) -> Result<(), String> {
     Options::new("self-update", args, &[]).finish()?;
     let exe = standalone_exe()?;
-    let dir = exe.parent().ok_or("the tool has no install folder")?;
     let asset = format!("tool-{}.tar.xz", dev::computer()?);
     let base = sdk_fetch::Base::Url(SDK_RELEASES.to_owned());
-    let info = base.read(MOD_TOOL, INFO, sdk_fetch::SMALL)?;
-    let tool = Tool::read(&info)?;
-    if !tool.differs_from(BUILD) {
-        println!("cargo sunrise-mod is already the newest ({BUILD}).");
-        return Ok(());
+    match update(&base, &sdk_fetch::release_keys(), &asset, &exe, BUILD)? {
+        Some(tool) => println!("Updated cargo sunrise-mod: {BUILD} -> {}", tool.commit),
+        None => println!("cargo sunrise-mod is already the newest ({BUILD})."),
     }
+    Ok(())
+}
 
+/// Return the verified build that replaced `exe`, or `None` when it already matches.
+fn update(
+    base: &sdk_fetch::Base,
+    keys: &[PublicKey],
+    asset: &str,
+    exe: &Path,
+    current: &str,
+) -> Result<Option<Tool>, String> {
     let sums = base.read(MOD_TOOL, SUMS, sdk_fetch::SMALL)?;
     let signature = base.read(MOD_TOOL, SIGNATURE, sdk_fetch::SMALL)?;
-    let listed = release::verify(
-        MOD_TOOL,
-        &sums,
-        &String::from_utf8_lossy(&signature),
-        &sdk_fetch::release_keys(),
-    )?;
+    let listed = release::verify(MOD_TOOL, &sums, &String::from_utf8_lossy(&signature), keys)?;
     let expected = |asset: &str| {
         listed
             .iter()
@@ -93,17 +96,24 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
             .map(|(_, sha)| sha.as_str())
             .ok_or_else(|| format!("{MOD_TOOL}/{SUMS} does not list {asset}"))
     };
-    // `tool.json` and the archive must belong to the same signed release, including during a publish.
+    let info = base.read(MOD_TOOL, INFO, sdk_fetch::SMALL)?;
+    // The decision to do nothing also needs authenticated metadata from this release.
     release::check(INFO, expected(INFO)?, &release::sha256_hex(&info))?;
-    let want = expected(&asset)?;
-    let mut body = base.open(MOD_TOOL, &asset)?;
+    let tool = Tool::read(&info)?;
+    if !tool.differs_from(current) {
+        return Ok(None);
+    }
+
+    let dir = exe.parent().ok_or("the tool has no install folder")?;
+    let want = expected(asset)?;
+    let mut body = base.open(MOD_TOOL, asset)?;
     let mut archive = tempfile::tempfile_in(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let archive_error = |e| format!("{MOD_TOOL}/{asset}: {e}");
     io::copy(&mut body, &mut archive).map_err(archive_error)?;
     archive.rewind().map_err(archive_error)?;
     let mut hash = Sha256::new();
     io::copy(&mut archive, &mut hash).map_err(archive_error)?;
-    release::check(&asset, want, &format!("{:x}", hash.finalize()))?;
+    release::check(asset, want, &format!("{:x}", hash.finalize()))?;
     archive.rewind().map_err(archive_error)?;
 
     let mut staged = NamedTempFile::new_in(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
@@ -117,9 +127,8 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
             .map_err(archive_error)?;
     }
     staged.as_file().sync_all().map_err(archive_error)?;
-    install(staged, &exe)?;
-    println!("Updated cargo sunrise-mod: {BUILD} -> {}", tool.commit);
-    Ok(())
+    install(staged, exe)?;
+    Ok(Some(tool))
 }
 
 /// Only copy the root executable from the already verified archive. No archive paths go to disk.
@@ -168,43 +177,23 @@ fn install(staged: NamedTempFile, exe: &Path) -> Result<(), String> {
 }
 
 pub(crate) fn notice() {
-    if !checks_allowed(
-        env::var_os("CI").is_some(),
-        env::var_os("CARGO_NET_OFFLINE").is_some_and(|v| v == "true"),
-        BUILD,
-    ) || standalone_exe().is_err()
-    {
+    if !checks_allowed(env::var_os("CI").is_some(), BUILD, || {
+        standalone_exe().is_ok() && cargo_config::online()
+    }) {
         return;
     }
-    // Claim the day's attempt before the GET, so offline or concurrent invocations don't
+    // Claim the day's attempt before the GET, so failures and concurrent invocations don't
     // keep hitting the network. The lock is released before any network I/O.
     let Ok(cache) = dev::cache_dir() else { return };
     if claim_notice_attempt(&cache, SystemTime::now()).is_none() {
         return;
     }
-    let url = format!("{SDK_RELEASES}/{MOD_TOOL}/{INFO}");
-    let check = || -> Option<Tool> {
-        let agent = sunrise_proxy::agent("mod-tool-notice", &url, |builder| {
-            builder
-                .timeout_connect(NOTICE_TIMEOUT)
-                .timeout(NOTICE_TIMEOUT)
-        })
-        .ok()?;
-        let mut bytes = Vec::new();
-        agent
-            .get(&url)
-            .call()
-            .ok()?
-            .into_reader()
-            .take(sdk_fetch::SMALL + 1)
-            .read_to_end(&mut bytes)
-            .ok()?;
-        if bytes.len() as u64 > sdk_fetch::SMALL {
-            return None;
-        }
-        Tool::read(&bytes).ok()
-    };
-    if check().is_some_and(|tool| tool.differs_from(BUILD)) {
+    let base = sdk_fetch::Base::Url(SDK_RELEASES.to_owned());
+    if base
+        .read(MOD_TOOL, INFO, sdk_fetch::SMALL)
+        .and_then(|bytes| Tool::read(&bytes))
+        .is_ok_and(|tool| tool.differs_from(BUILD))
+    {
         eprintln!("A newer cargo sunrise-mod is out: run cargo sunrise-mod self-update");
     }
 }
@@ -230,8 +219,8 @@ fn claim_notice_attempt(cache: &Path, now: SystemTime) -> Option<()> {
     stamp.set_modified(now).ok()
 }
 
-fn checks_allowed(ci: bool, offline: bool, build: &str) -> bool {
-    !ci && !offline && build != "local"
+fn checks_allowed(ci: bool, build: &str, online: impl FnOnce() -> bool) -> bool {
+    !ci && build != "local" && online()
 }
 
 #[cfg(test)]

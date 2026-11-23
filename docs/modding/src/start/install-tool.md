@@ -198,13 +198,15 @@ cargo sunrise-mod self-update
 ```
 
 This replaces the standalone copy installed by the blocks above in `~/.local/bin` (Linux and macOS) or
-`%USERPROFILE%\.sunrise\bin` (Windows) with the rolling `mod-tool` release. It verifies Sunrise's signature and the
-archive's checksum before replacing the executable, and prints the old and new commits. It never changes a mod's
+`%USERPROFILE%\.sunrise\bin` (Windows) with the rolling `mod-tool` release. It verifies Sunrise's signature and
+the checksum of the release's commit metadata before deciding whether the tool is current. If it installs an
+update, it also verifies the archive's checksum and prints the old and new commits. It never changes a mod's
 pinned SDK. On Windows, the previous executable is kept as `.cargo-sunrise-mod.exe.old` beside the new one and can
 be deleted once the command exits.
 
 On everyday commands the standalone tool checks for a different rolling release once per day at most. It prints a
-reminder when one is available but never installs it automatically. The check stays quiet offline and in CI.
+reminder when one is available but never installs it automatically. The notice is off in CI and honors
+`CARGO_NET_OFFLINE` and Cargo's `net.offline` configuration files.
 
 If your copy does not know `self-update` yet, or you want the tool from a particular SDK instead of the rolling
 release, rerun the appropriate install block above. Copies run from an SDK folder or managed by `cargo install` or
