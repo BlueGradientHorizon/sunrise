@@ -116,7 +116,7 @@ impl Game<'_> {
             .filter(|(_, change)| change.stops())
             .map(|&(id, _)| id)
             .collect();
-        let queued: Vec<_> = self.mod_sounds.queued.get_mut().drain(..).collect();
+        let queued = std::mem::take(self.mod_sounds.queued.get_mut());
         for (id, sound, after) in queued {
             if stopped.contains(&id) {
                 continue;
