@@ -719,6 +719,46 @@ mod sweep_tests {
         });
     }
 
+    #[test]
+    #[ignore = "daily"]
+    fn item_tick_sweeps_once_and_keeps_the_single_hit() {
+        if fresh("item_tick_sweeps_once_and_keeps_the_single_hit") {
+            return;
+        }
+        use sunrise_core::geometry::Vec3;
+        let part = InsidePart {
+            hurt_after: Some((0, 1.0)),
+            ..InsidePart::default()
+        };
+        let mods = install_inside_mod("inside-item-tick", &part);
+        mod_platform::testing::with_mods(mods, || {
+            crate::game::native_entity_refs::tests::with_game(|game| {
+                let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                let mut item = single_stone_item(game);
+                let grass = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:short_grass")
+                    .unwrap();
+                game.world.set(1, 100, 0, grass).unwrap();
+                item.position = Vec3::new(1.5, 100.25, 0.5);
+                let outcome = sunrise_client::block_contact::in_level(
+                    sunrise_client::parallel::TickThread::mint(),
+                    Some("minecraft:overworld"),
+                    || game.tick_item_with_block_contacts(&mut item, None, &[], false, &mut |_| {}),
+                );
+                assert_eq!(outcome, (true, false));
+                assert_eq!(*part.contacts.lock().unwrap(), [[1, 100, 0]]);
+                assert_eq!(item.health, 4);
+                assert_eq!(
+                    item.velocity.x.to_bits(),
+                    (0.5 * f64::from(0.98_f32)).to_bits()
+                );
+            });
+        });
+    }
+
     /// A killing write stops the item's flush: the walk still reaches both blocks,
     /// the writes after the destruction never apply.
     #[test]
