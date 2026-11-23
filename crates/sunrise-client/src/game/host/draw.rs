@@ -561,21 +561,6 @@ impl PrepareRenderBuffersContext for GamePrepareRenderBuffersContext<'_, '_> {
             self.game.native_world_draw_quads(surface, quads)
         })
     }
-
-    fn pipeline_quads(
-        &mut self,
-        stage: RenderLevelStage,
-        pipeline: RenderPipelineRef,
-        quads: &[PipelineQuad],
-    ) -> Result<PreparedWorldDraw, PipelineDrawError> {
-        if !stage.has_render_pass() || stage.oit_stage().is_some() {
-            return Err(PipelineDrawError::NoWorldPass);
-        }
-        self.surface.prepare_draw(stage, |surface| {
-            self.game
-                .native_world_draw_pipeline_quads(surface, pipeline, quads)
-        })
-    }
 }
 
 /// A stage borrows only its prepared draw command surface, never the upload path.

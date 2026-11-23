@@ -5663,8 +5663,8 @@ mod startup_registration_tests {
     use super::*;
     use mod_api::{
         CubeListBuilder, Hooks, Identifier, LayerDefinition, MeshDefinition, ModEntry, PartPose,
-        PipelineBlend, PipelineKind, RegisterLayerDefinitionsEvent, RegisterRenderPipelinesEvent,
-        RenderPipeline, WorldDepth,
+        PipelineBlend, RegisterLayerDefinitionsEvent, RegisterRenderPipelinesEvent, RenderPipeline,
+        WorldDepth,
     };
     use std::sync::OnceLock;
 
@@ -5909,14 +5909,14 @@ mod startup_registration_tests {
                     register_render_pipelines_into(ExecutionRole::Client, &dir, &slot).unwrap_err();
                 assert!(
                     err.to_string()
-                        .contains("collides with earlier required registration"),
+                        .contains("collides with earlier registration"),
                     "{err}"
                 );
                 assert!(slot.get().is_none());
             },
         );
 
-        // Cross-kind registrations sharing an ID (including opposite vanilla map) publish cleanly.
+        // A mod ID may match the opposite vanilla table, but cannot name two mod pipelines.
         mod_platform::testing::with_mods(
             vec![
                 ModEntry::new(
@@ -5929,7 +5929,7 @@ mod startup_registration_tests {
                 ModEntry::new(
                     "second",
                     Box::new(PipeMod(&[
-                        ("shared:glow", true),
+                        ("shared:other_glow", true),
                         ("minecraft:pipeline/solid_block", true),
                     ])),
                 ),
@@ -5939,8 +5939,8 @@ mod startup_registration_tests {
                 register_render_pipelines_into(ExecutionRole::Client, &dir, &slot).unwrap();
                 let published = slot.get().unwrap();
                 assert_eq!(published.len(), 4);
-                assert_eq!(published[0].kind(), PipelineKind::Required);
-                assert_eq!(published[2].kind(), PipelineKind::Optional);
+                assert!(!published[0].optional);
+                assert!(published[2].optional);
             },
         );
         std::fs::remove_dir_all(dir).unwrap();

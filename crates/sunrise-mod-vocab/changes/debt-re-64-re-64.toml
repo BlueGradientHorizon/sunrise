@@ -8,7 +8,6 @@ ids = [
   "type:DrawError.TextRefused",
   "type:PipelineDrawError",
   "type:PipelineDrawError.CapacityExceeded",
-  "type:PipelineDrawError.NoWorldPass",
   "type:InstanceError",
   "type:InstanceError.CapacityExceeded",
   "type:GroupError",
@@ -33,7 +32,6 @@ ids = [
   "trait:PrepareRenderBuffersContext",
   "method:PrepareRenderBuffersContext::lines",
   "method:PrepareRenderBuffersContext::quads",
-  "method:PrepareRenderBuffersContext::pipeline_quads",
   "type:PreparedWorldDraw",
   "type:PreparedWorldDrawError",
   "hook:submit_custom_geometry",
@@ -141,9 +139,8 @@ migrate = """
   before pass-bearing stages run.
 - Replace `RenderLevelStage::ALL` with `RenderLevelStage::frame_order(view.improved_transparency)`
   (`CLASSIC_ORDER` or `OIT_ORDER`).
-- Move `event.draw.lines(&lines)`, `.quads(&quads)` and `.pipeline_quads(pipeline, &quads)`
-  for named stages to `prepare_render_buffers` as `event.context.lines(stage, &lines)`,
-  `.quads(stage, &quads)`, or `.pipeline_quads(stage, pipeline, &quads)`. Keep the returned
+- Move `event.draw.lines(&lines)` and `.quads(&quads)` into `prepare_render_buffers` as
+  `.lines(stage, &lines)` or `.quads(stage, &quads)`. Keep the returned
   `PreparedWorldDraw` for this view only. In `render_level_stage`, call
   `event.context.world_pass().unwrap().draw(batch)` for the matching standard stage, or
   `event.context.oit_pass().unwrap().1.draw(batch)` for the matching OIT sub-pass.

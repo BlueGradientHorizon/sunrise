@@ -375,8 +375,12 @@ fn client_tick_pre(&self, host: &mut dyn ClientHost, _: &mut ClientTickPreEvent)
   lends `&WorldRenderView<'_>` (camera, world partial tick, game time, improved-transparency state,
   and visible `RenderableSection`s) and `&dyn ClientHost` so mods can update retained
   `InstanceGroups` before the render passes execute.
-  Its preparation context is also where to submit lines and quads that must draw at a
-  [specific stage](render-pipelines.md#what-a-pipeline-draws-and-when).
+  To draw at a specific stage, prepare engine lines or quads with `event.context.lines(stage, &lines)`
+  or `.quads(stage, &quads)`. Keep the returned `PreparedWorldDraw` for this view. At the matching
+  `render_level_stage` callback, call `draw(batch)` on `event.context.world_pass()` or
+  `event.context.oit_pass()` as appropriate. Draws run in call order, without uploading from the
+  pass; handles cannot be used in a different view or stage. `AfterSky` and `AfterLevel` lend no
+  pass, and stages skipped by the renderer are not replayed later.
 
 Per-view draw storage grows dynamically without fixed per-view or per-mod copy caps,
 and copies past GPU instance buffer room fall back to CPU baking. Culled copies are

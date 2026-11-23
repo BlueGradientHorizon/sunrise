@@ -409,14 +409,6 @@ mod tests {
         ) -> Result<PreparedWorldDraw, DrawError> {
             Err(DrawError::NoRenderPass)
         }
-        fn pipeline_quads(
-            &mut self,
-            _: RenderLevelStage,
-            _: RenderPipelineRef,
-            _: &[PipelineQuad],
-        ) -> Result<PreparedWorldDraw, PipelineDrawError> {
-            Err(PipelineDrawError::NoWorldPass)
-        }
     }
     #[test]
     fn render_level_stage_orders_and_capabilities_match_neoforge() {

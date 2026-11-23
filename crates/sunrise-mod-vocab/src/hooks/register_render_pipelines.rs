@@ -5,10 +5,9 @@ pub trait Hooks {
     /// `RegisterRenderPipelinesEvent`; 1.21.1 mods used `RegisterShadersEvent`): call
     /// `event.register(pipeline)` with each [`RenderPipeline`]. The game builds them with its own
     /// at startup and again on every resource reload. Any valid [`Identifier`] is accepted, and
-    /// duplicate IDs are checked separately for required and optional pipelines against both
-    /// vanilla's built-in pipelines and earlier mod registrations of the same kind: a same-kind
-    /// collision or an unavailable vanilla pipeline table fails startup registration cleanly. A required and an optional pipeline may
-    /// share an ID and are resolved separately by [`PipelineKind`]. A required pipeline whose
+    /// duplicate mod IDs fail startup, regardless of required or optional policy. Collisions
+    /// with vanilla are checked in the corresponding required or optional table. An unavailable
+    /// vanilla pipeline table fails startup registration. A required pipeline whose
     /// shader is missing or doesn't build fails the load: the game does not start, and a reload
     /// fails and keeps the previous resources. An [optional](RenderPipeline::optional()) one is
     /// logged and resolves to [`RenderPipelineError::Invalid`].
@@ -55,30 +54,22 @@ bytes or with an expression chaining more than 200 binary operators, member acce
 (`a + b + c + ...`: split it with `let`), which would overflow the parser's stack. A refusal with a
 place in the file reads `<file>:<line>:<column>: <reason>`.
 
-Resolve the pipeline with `host.render_assets().render_pipeline(&id, PipelineKind::Required)`
-(or `PipelineKind::Optional`) in `client_setup` and again in `client_resources_reloaded`, then
-draw with `WorldDrawContext::pipeline_quads` from `submit_custom_geometry` (or a debug renderer).
-To draw at a particular standard stage, call `PrepareRenderBuffersContext::pipeline_quads` in
-`prepare_render_buffers`, then pass the returned batch to `WorldPassDrawContext::draw` in the
-matching `render_level_stage` callback. No-pass and OIT stages do not accept pipeline quads. A
-resource reload builds every registered pipeline again, so a resource pack can replace a shader;
+Resolve the pipeline with `host.render_assets().render_pipeline(&id)` in `client_setup`
+and again in `client_resources_reloaded`, then draw with `WorldDrawContext::pipeline_quads` from `submit_custom_geometry` (or a debug renderer).
+A resource reload builds every registered pipeline again, so a resource pack can replace a shader;
 a handle from before the reload is `Stale`.
 
 A pipeline is required unless it is registered with `.optional()` (NeoForge's
 `registerPipeline` and `registerOptionalPipeline`). Any valid `Identifier` is accepted, and
-collisions are checked separately for required and optional pipelines against both vanilla's
-built-in pipelines and earlier mod registrations of the same kind: a same-kind collision fails
-startup registration, while a required and an optional registration may share an ID and resolve
-independently via `PipelineKind`. When a load cannot build a required pipeline,
-because its file is missing, refused or turned down by the GPU, the whole load fails and names it:
+a mod pipeline ID must be unique across both policies, because mod lookups are by ID. A
+collision with vanilla is checked in the corresponding required or optional table. When a load
+cannot build a required pipeline because its file is missing, refused or turned down by the GPU, the whole load fails and names it:
 the game does not start, and a reload keeps the previous resources and handles, then drops the
 selected resource packs and tries again, as vanilla does with any failed reload. An optional
 pipeline that cannot be built is logged once with its id and resolves to `Invalid`, and the other
 pipelines draw. Pipeline quads grow dynamically into the GPU buffers with no fixed per-view cap
 (skipping any quad with non-finite coordinates or UVs individually); in the deferred world pass,
-pipeline quads draw after the plain quads and lines, in submission order. Standard stage callbacks
-draw their prepared batches in draw call order. A stage skipped by a shader pack does not run or
-replay at a later stage."#]
+pipeline quads draw after the plain quads and lines, in submission order."#]
     #[hook(
         receiver = "associated",
         dispatch = "flat",

@@ -22,8 +22,8 @@ stages execute, whether or not the frame has an `AfterSky` stage. When a classic
 owns the sky pass, `AfterSky` follows preparation and the engine world import. Preparation never
 fires on title or connect screens.
 
-Use `event.context.lines(stage, lines)`, `.quads(stage, quads)`, or
-`.pipeline_quads(stage, pipeline, quads)` to prepare a batch for a pass-bearing stage. Keep the
+Use `event.context.lines(stage, lines)` or `.quads(stage, quads)` to prepare a batch for a
+pass-bearing stage. Keep the
 returned `PreparedWorldDraw` until `render_level_stage`, then give it to the active pass's `draw`.
 A handle is valid only for its own view and stage. Nothing is uploaded from a stage callback.
 

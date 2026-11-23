@@ -2,8 +2,7 @@
 
 Draw world quads with your own fragment shader. Register a `RenderPipeline`, resolve
 its handle, and submit quads through a `WorldDrawContext` (in `submit_custom_geometry` or
-a debug renderer). To draw at a specific stage, prepare the batch in `prepare_render_buffers`
-and issue its draw in `render_level_stage`. This is the restricted counterpart of NeoForge's
+a debug renderer). This is the restricted counterpart of NeoForge's
 `RegisterRenderPipelinesEvent`: you supply the fragment stage; the game fixes the vertex
 stage, primitive type and bindings.
 
@@ -64,12 +63,10 @@ fn register_render_pipelines(
 scaled by its alpha. `WorldDepth::Tested` hides the quads behind nearer world surfaces, and
 `ThroughWalls` draws them over everything. No pipeline writes depth.
 
-Any valid `Identifier` is accepted, and there is no per-mod pipeline count cap. Collisions are
-checked separately for required and optional pipelines against both vanilla's built-in pipelines
-and earlier mod registrations of the same kind: a same-kind collision fails startup registration,
-while a required and an optional registration may share an id and are resolved separately via
-`PipelineKind`. If startup reports missing or invalid `render-pipelines.json`, prepare the client
-resources again.
+Any valid `Identifier` is accepted. Use a unique ID for every mod pipeline, regardless of its
+required or optional policy. A mod ID collision fails startup. Collisions with vanilla are checked
+in the corresponding required or optional table. If startup reports missing or invalid
+`render-pipelines.json`, prepare the client resources again.
 
 ### Required or optional
 
@@ -132,7 +129,7 @@ fn client_setup(&self, context: &mut dyn ClientSetupContext, _event: &mut Client
     let id = Identifier::parse("example:glow").unwrap();
     *self.glow.lock().unwrap() = context
         .render_assets()
-        .render_pipeline(&id, PipelineKind::Required)
+        .render_pipeline(&id)
         .ok();
 }
 
@@ -141,34 +138,6 @@ fn submit_custom_geometry(&self, _host: &dyn ClientHost, event: &mut SubmitCusto
     let quad = PipelineQuad::spanning(corners, 0xFFFF_C040);
     if let Err(error) = event.draw.pipeline_quads(glow, &[quad]) {
         log::warn!("glow not drawn: {error:?}");
-    }
-}
-```
-
-To draw at a specific stage instead, replace `submit_custom_geometry` with these two callbacks.
-Store `prepared_glow` in a `Mutex<Option<PreparedWorldDraw>>` on your mod:
-
-```rust,ignore
-fn prepare_render_buffers(&self, _host: &dyn ClientHost, event: &mut PrepareRenderBuffersEvent<'_>) {
-    let mut prepared = self.prepared_glow.lock().unwrap();
-    *prepared = None;
-    let Some(glow) = *self.glow.lock().unwrap() else { return };
-    let quad = PipelineQuad::spanning(corners, 0xFFFF_C040);
-    match event.context.pipeline_quads(RenderLevelStage::AfterOpaqueBlocks, glow, &[quad]) {
-        Ok(batch) => *prepared = Some(batch),
-        Err(error) => log::warn!("glow not prepared: {error:?}"),
-    }
-}
-
-fn render_level_stage(&self, _host: &dyn ClientHost, event: &mut RenderLevelStageEvent<'_>) {
-    if event.stage != RenderLevelStage::AfterOpaqueBlocks {
-        return;
-    }
-    let Some(batch) = self.prepared_glow.lock().unwrap().take() else { return };
-    if let Some(pass) = event.context.world_pass() {
-        if let Err(error) = pass.draw(batch) {
-            log::warn!("glow not drawn: {error:?}");
-        }
     }
 }
 ```
@@ -182,7 +151,6 @@ reload answers `Stale`.
 | `RenderPipelineError::Unknown` | No mod registered that id. |
 | `RenderPipelineError::Invalid` | The pipeline is optional and its shader file is missing, was refused or was rejected by the GPU. The log has a line `render pipeline <id> from mod <owner> refused: <file>: <reason>`, with the file's line number for a syntax or type error, or `render pipeline <id> from mod <owner> refused by the GPU: <reason>`. |
 | `RenderPipelineError::Stale` | The handle is from before a resource reload. |
-| `PipelineDrawError::NoWorldPass` | The requested stage has no standard world pass. |
 
 `pipeline_quads` returns `PipelineDrawError::Pipeline(...)` when the handle is invalid or stale, drawing nothing for that call. Any quad with a non-finite corner, camera-relative `f32` overflow, or non-finite texture coordinate is ignored while the valid quads in the batch still draw, and quad storage grows dynamically into the GPU buffers without a 4,096 cap. An `Invalid` pipeline never stops the game from starting; a required pipeline that cannot be built does.
 
@@ -192,35 +160,6 @@ reload answers `Stale`.
 for the deferred world pass. Quads with non-finite coordinates or UVs are skipped individually
 without rejecting valid quads in the same slice; accepted pipeline quads draw after the pass's
 plain quads and lines, in submission order.
-
-For an exact stage, prepare the geometry before the pass:
-
-1. In `prepare_render_buffers`, call `event.context.pipeline_quads(stage, pipeline, &quads)`.
-   Keep the returned `PreparedWorldDraw` for this view.
-2. At that stage in `render_level_stage`, get `event.context.world_pass()` and call
-   `pass.draw(batch)`. The handle cannot be used in another view or stage, and no upload takes
-   place in the active pass. If you draw several batches, they draw in call order.
-
-`AfterSky` and `AfterLevel` lend no pass. OIT sub-passes can draw batches from
-`event.context.lines(stage, &lines)` and `event.context.quads(stage, &quads)`, but not pipeline
-quads because OIT writes different attachments. The renderer pages uploads at its device's
-buffer limits rather than capping the number of mod quads. A stage skipped by the render route
-is not replayed later.
-
-`AfterSky` follows NeoForge's `RenderLevelStageEvent.AfterSky` in `LevelRenderer.addSkyPass`.
-It fires once at the end of the sky pass's work, even if no geometry is visible. There is no
-stage if the dimension has no skybox, the camera has lava or powder-snow fog, or a camera mob
-effect (Blindness or Darkness) blocks the sky. Sunrise's sky setting and dragon boss fog affect
-drawing, not admission to the stage.
-
-A classic shader pack that keeps the engine sky leaves `AfterSky` at the engine's sky boundary.
-If the pack owns the sky pass, `AfterSky` runs after the pack imports the engine world and
-finishes its sky work, so `prepare_render_buffers` has already run. Use preparation, not
-`AfterSky`, for work that needs to precede the main world passes.
-
-A classic pack's `AfterLevel` runs after it finishes drawing the world and before composition and
-the engine's hand overlay. If the pack draws its own hand, it stays inside the pack's world passes
-so that `depthtex1` contains the opaque hand and `depthtex2` does not.
 
 ## Sampling a texture
 

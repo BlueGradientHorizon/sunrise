@@ -90,11 +90,10 @@ impl OitBatch<'_> {
 }
 
 /// Batch ranges in the shared frame upload, relative to each stream. Plain primitive ranges
-/// are in quads/lines, not bytes; the pipeline range is in quads.
+/// are in quads/lines, not bytes.
 #[derive(Clone, Debug, Default)]
 pub struct DrawRanges {
     pub primitives: [std::ops::Range<u32>; 4],
-    pub pipeline: std::ops::Range<u32>,
 }
 
 /// Extra frame data produced by `submit_custom_geometry`, debug renderers, and
@@ -856,11 +855,6 @@ impl WorldPrimitives {
                     );
                 }
             }
-            if oit.is_none() && !draw.pipeline.is_empty() {
-                self.pipelines
-                    .draw_range(pass, &self.indices, draw.pipeline.clone());
-                drew = true;
-            }
         }
         drew
     }
@@ -1540,7 +1534,6 @@ mod tests {
                 None,
                 &[DrawRanges {
                     primitives: [0..2, 0..1, 0..2, 0..2],
-                    pipeline: 0..0,
                 }]
             ));
         }
