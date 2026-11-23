@@ -662,6 +662,50 @@ fn build_cfg(printed: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod refusal_tests {
+    /// A retained SDK that predates the lower crates' cfg records is checked against the pinned
+    /// compiler's own cfg for its target and the game's features, so a lower-crate mixin target
+    /// is not refused for an empty cfg. Needs a real rustc.
+    #[test]
+    #[ignore = "daily"]
+    fn the_checks_lower_crate_cfg_is_the_pinned_compilers_for_the_sdks_features() {
+        let sysroot = std::process::Command::new("rustc")
+            .args(["--print", "sysroot"])
+            .output()
+            .unwrap();
+        let sysroot = String::from_utf8(sysroot.stdout).unwrap();
+        let rust = crate::rust::tests::system(sysroot.trim().into());
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("sunrise-prebuilt.json"),
+            serde_json::json!({
+                "package_format": sunrise_mod_package::sdk::PACKAGE_FORMAT,
+                "commit": "0123456789abcdef0123456789abcdef01234567",
+                "rustc": "release: 1",
+                "side": "client",
+                "target": rust.target(),
+                "registry_lock": "version = 4\n",
+                "registry_patches": {},
+                "native_links": [],
+                "facade_crates": [],
+                "game_features": ["audio"],
+                "slices": { "runtime": [], "api": [] }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let sdk = crate::prebuilt::identity(dir.path()).unwrap();
+        assert!(sdk.lower_crate_cfg().is_none());
+        let printed = super::printed_cfg(&rust, &sdk).unwrap();
+        assert!(
+            printed.contains(&"feature=\"audio\"".to_owned()),
+            "{printed:?}"
+        );
+        assert!(
+            printed.iter().any(|atom| atom.starts_with("target_os=")),
+            "{printed:?}"
+        );
+    }
+
     /// A rebuild in the same folder starts with no applied-patch output, whether the last build
     /// left a folder, a file or a link there; a link's target is untouched.
     #[test]

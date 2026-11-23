@@ -5459,6 +5459,65 @@ pub(in crate::game) mod tests {
         std::env::set_current_dir(std::env::temp_dir()).unwrap();
     }
 
+    /// A built native package whose own content declares a remainder that is not an item is
+    /// refused with the package: its code and Parts never start without the content it declared.
+    #[test]
+    #[ignore = "daily"]
+    fn a_built_native_package_with_a_missing_remainder_is_refused_whole() {
+        const MODE: &str = "SUNRISE_NATIVE_REMAINDER_TEST";
+        if std::env::var_os(MODE).is_none() {
+            run_in_child(
+                "game::mods::tests::a_built_native_package_with_a_missing_remainder_is_refused_whole",
+                MODE,
+            );
+            return;
+        }
+        let f = Fixture::new("native-missing-remainder");
+        let text = format!(
+            "id='machine_sample'\nname='machine_sample'\nversion='0.3.0'\napi='0.2'\nside='both'\ncapabilities=['registries']\n[native]\ngame='26.3'\nsunrise='{}'\nmixins='{}'\n",
+            "a".repeat(40),
+            "b".repeat(40)
+        );
+        let code: &[(&str, &[u8])] = &[
+            ("Cargo.toml", b"[package]\nname='example'\nversion='1'\n"),
+            ("src/lib.rs", b"pub fn hooks() {}"),
+            (
+                "data/machine_sample/sunrise/item/stew.json",
+                br#"{"template":"minecraft:mushroom_stew","crafting_remainder":"machine_sample:missing_bowl"}"#,
+            ),
+        ];
+        let path = f.0.join("machine_sample.smod");
+        std::fs::write(
+            &path,
+            sunrise_mod_package::Package::write_files(&text, code).unwrap(),
+        )
+        .unwrap();
+        let selected: Arc<[sunrise_mod_package::selection::SelectedPackage]> =
+            vec![sunrise_mod_package::selection::SelectedPackage {
+                package: sunrise_mod_package::Package::read(&path).unwrap(),
+                path,
+            }]
+            .into();
+        let sources = ModsState {
+            native: Arc::new(f.runtime()),
+            selected,
+            ..Default::default()
+        };
+        let base = f.0.join("vanilla");
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join("sunrise-resources.json"), "{}").unwrap();
+        std::fs::write(base.join("facts.json"), r#"{"states":[],"defaults":{}}"#).unwrap();
+        std::fs::write(base.join("gameplay-facts.json"), r#"{"states":[]}"#).unwrap();
+        std::fs::write(base.join("items.json"), r#"{"minecraft:mushroom_stew":{}}"#).unwrap();
+        let error = content_overlay(&base, &sources, &f.0.join("jars"))
+            .err()
+            .unwrap();
+        assert_eq!(
+            error.to_string(),
+            r#"machine_sample: native content refused at admission: machine_sample:stew: crafting_remainder "machine_sample:missing_bowl" is not an item"#
+        );
+    }
+
     #[test]
     #[ignore = "daily"]
     fn a_shared_missing_jar_stops_native_load_and_refuses_each_content_mod_row() {

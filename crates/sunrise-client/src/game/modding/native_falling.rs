@@ -1068,6 +1068,48 @@ mod tests {
         );
     }
 
+    /// `PersistentEntitySectionManager.storeChunkSections`: a column whose old entity record
+    /// cannot be read is left untouched, and the save says it was incomplete.
+    #[test]
+    #[ignore = "daily"]
+    fn a_save_with_an_unreadable_old_entity_record_reports_the_incomplete_column() {
+        crate::game::in_own_process(
+            "game::native_falling::tests::a_save_with_an_unreadable_old_entity_record_reports_the_incomplete_column",
+            || {
+                use mod_api::{Falling, Host};
+                super::super::native_entity_refs::tests::with_game(|game| {
+                    let root = tempfile::tempdir().unwrap();
+                    game.world_root = root.path().to_path_buf();
+                    let level = game.level(game.dim.id()).unwrap();
+                    let host: &dyn Host = game;
+                    let sand = host.block_state_id("minecraft:sand").unwrap();
+                    // Column (62, 0), outside the kept terrain; its region file's entry for it
+                    // holds a record that cannot be decoded.
+                    let region = game.save.root.join("entities");
+                    std::fs::create_dir_all(&region).unwrap();
+                    // One sector at offset 2: a length, an unknown compression type, garbage.
+                    let mut file = vec![0u8; 8192 + 4096];
+                    file[120..124].copy_from_slice(&[0, 0, 2, 1]);
+                    file[8192..8197].copy_from_slice(&[0, 0, 0, 64, 99]);
+                    std::fs::write(region.join("r.1.0.mca"), file).unwrap();
+                    level
+                        .spawn_falling_block(
+                            game,
+                            sand,
+                            [1000.5, 70.0, 0.5],
+                            [0.0; 3],
+                            Falling::default(),
+                        )
+                        .unwrap()
+                        .unwrap();
+                    let error = game.save_entities(true).unwrap_err();
+                    assert!(error.to_string().contains("1 column"), "{error}");
+                    assert!(game.entity_save_complete().is_err());
+                });
+            },
+        );
+    }
+
     #[test]
     #[ignore = "daily"]
     fn natural_falling_join_veto_runs_before_the_next_scheduled_tick() {
