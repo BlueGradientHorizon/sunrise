@@ -54,8 +54,8 @@ impl CacheStamp {
 }
 pub(crate) const SURFACE: &str = "surface.json";
 const API_SOURCE: &str = "api-source.tar.xz";
-/// The most a small file (`sdk.json`, the sums, the signature, `surface.json`) may be.
-const SMALL: u64 = 16 << 20;
+/// The most a small release file (`sdk.json`, the sums, the signature, `surface.json`) may be.
+pub(crate) const SMALL: u64 = 16 << 20;
 /// The most the API source may unpack to.
 const API_LIMIT: u64 = 512 << 20;
 /// The most one compiled slice may unpack to.
@@ -275,7 +275,7 @@ pub(crate) fn named(text: &str, build: &str, error: String) -> String {
     }
 }
 
-/// The keys a game release (a Stable or Dev tag) must be signed with.
+/// The built-in release signing keys, with no debug SDK keys.
 pub(crate) fn release_keys() -> Vec<PublicKey> {
     sunrise_release_sign::trusted_keys_for(native::PREBUILT_REPO)
 }
@@ -305,7 +305,7 @@ impl Base {
         }
     }
 
-    fn open(&self, release: &str, file: &str) -> Result<Box<dyn Read>, String> {
+    pub(crate) fn open(&self, release: &str, file: &str) -> Result<Box<dyn Read>, String> {
         match self {
             Self::Url(base) => {
                 let url = format!("{base}/{release}/{file}");
@@ -322,7 +322,7 @@ impl Base {
     }
 
     /// The release's file, refused past `limit` bytes.
-    fn read(&self, release: &str, file: &str, limit: u64) -> Result<Vec<u8>, String> {
+    pub(crate) fn read(&self, release: &str, file: &str, limit: u64) -> Result<Vec<u8>, String> {
         let mut bytes = Vec::new();
         self.open(release, file)?
             .take(limit + 1)
@@ -466,15 +466,13 @@ fn verified(
 }
 
 /// The compiled slices (`runtime`, `api`, `engine`) of the build `index` describes, for `target`,
-/// verified and unpacked into the folders `native-build`'s plan names. Independent release
-/// builds need only the runtime and API for one SDK host; the full client cache is unchanged.
+/// verified and unpacked into the folders `native-build`'s plan names.
 pub(crate) fn fetch_slices(
     base: &Base,
     index: &Index,
     target: &str,
     side: sdk::Side,
     route: sunrise_native_build::prebuilt::Route,
-    release: bool,
     dir: &Path,
     stamp: &CacheStamp,
 ) -> Result<sunrise_native_build::prebuilt::Package, String> {
@@ -483,9 +481,7 @@ pub(crate) fn fetch_slices(
     let names = index
         .route_assets(route.inputs(), target, side)
         .map_err(|e| format!("sdk-{build} has no slices for this computer ({target}): {e}"))?;
-    let into = if release {
-        dir.join("release-slices").join(host)
-    } else if route == sunrise_native_build::prebuilt::Route::Api {
+    let into = if route == sunrise_native_build::prebuilt::Route::Api {
         dir.join("api-slices").join(host)
     } else {
         dir.join(host)

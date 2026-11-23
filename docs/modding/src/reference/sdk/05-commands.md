@@ -8,15 +8,8 @@ folder.
 |---|---|
 | `new <path> --template native [--sunrise <build>]` | Makes a code mod pinned to the current Nightly's build, or the one named, and fetches its SDK. Without `--template` it makes a content mod, which has no SDK. Both templates scaffold [`page.toml` and `page/`](../../how-to/publish.md#your-mods-page) and the [release workflow caller](#release). |
 | `build [--with <path>]…` | Compiles a native mod and its [declared libraries](../../concepts/dependencies.md) against the pinned SDK, then packs only the project into a `.smod` with its [`uses.json`](04-fit.md#usesjson). For content-only mods it just packs the project. If the project has `page.toml`, writes the page and its named images separately to `target/sunrise-mod/<id>.page.tar`. See [`build` for a native mod](#build-for-a-native-mod). |
-| `build --binaries <dir> --sunrise-release <tag> --releases <file> [--server]` | Builds and packs a standalone API native mod pinned to that stable SDK. Writes the unsigned archive for this computer's SDK host; `--server` selects the dedicated-server host. |
-| `build --describe-binaries <dir> --sunrise-release <tag> --releases <file> --sdk-data <dir>` | Reads the SDK host list, checks each signed archive's structure and identity, and writes the unsigned descriptor. Does not compile or sign. |
 | [`release [<version>\|patch\|minor\|major] [--check]`](#release) | Checks a registered mod, commits the version bump, and pushes the branch and tag. `--check` previews without changing the checkout. |
 | [`release setup`](#release) | Updates only the shared workflow caller and removes old release files. No registration or commit required. |
-| [`release plan`](#release-plan) | Writes a native release or rebuild plan and fetches the SDK metadata it needs, without building or publishing. |
-| [`release scripts`](#release-scripts) | Writes the workflow scripts embedded in this tool. |
-| [`release prepare-rebuild`](#release-prepare-rebuild) | Checks the exact reviewed package and prepares a disposable project or manifest. |
-| `keygen [--out <dir>] [--no-password]` | Makes a Minisign pair in the [mod’s per-user key folder](../../how-to/publish.md#signing) or the named folder. Prints the public key; the private key is passphrase-encrypted by default and always on Windows. Refuses to overwrite either file. |
-| `sign <file> [--key <path>] [--no-password]` or `sign <file> --key-env` | Writes the detached `<file>.minisig`, without overwriting an existing signature. Uses the current mod’s per-user signing key by default. For CI, `--key-env` reads `SUNRISE_MOD_SIGNING_KEY` and optional `SUNRISE_MOD_SIGNING_PASSPHRASE` with no prompt; see [Signing](../../how-to/publish.md#signing). |
 | `run [--resources <folder>] [--jars <dir>] [--with <path>]… [-- <game args>]` | For a native mod, builds, stages the game with the mod and its libraries in `target/sunrise-mod/run/` and starts it. |
 | `check [--uses] [--with <path>]…` | Checks the package rules and each [render pipeline shader](../../how-to/client/render-pipelines.md). For a native mod it then type-checks through the same SDK route and with the same libraries as `build`, without packaging or linking mod binaries, and reports what the project uses of its pinned build. `--uses` lists each item with the line that brought it in, and how the mod builds each struct it builds with a literal. [Page problems](../../how-to/publish.md#your-mods-page) are reported without failing the check. Only pages that select categories fetch the registry's list; if the list is unavailable, category IDs and their kinds cannot be checked. |
 | `check --release <tag>` | Checks the project, compiles a native mod as `build` does, and fails on missing or invalid page data. If the page selects categories, the registry's list must be available and every selected ID must apply to the package kind. The tag must be `v<version>` at the Git repository root or `<id>/v<version>` for a mod in a subfolder. |
@@ -45,11 +38,6 @@ files against the index and caches their unpacked source in `registry/<id>/<vers
 cache. An archive taken down from the registry is refused even if already cached. A different Sunrise pin must
 pass the native fit check before the library can be used.
 
-In `--binaries` mode, `build` uses the same compiler but fetches only the verified `runtime` and `api` slices
-for the selected host. It refuses mod dependencies and routes other than the standalone API route. It creates a
-`Cargo.lock` if absent, or resolves it again only with `--update-lock`, then includes it in the `.smod`. See
-[Publishing native binaries](../../how-to/publish.md#publishing-native-binaries) for signing and combining the outputs.
-
 `run` additionally needs `--resources <folder>`, prepared resources made from your own Minecraft (`sunrise-prepare
 --prepare --output <folder>`). It copies the built game program, its libraries, the `native-mods.json` record naming
 the mod libraries and their package files into `target/sunrise-mod/run/app/`, keeps the game folder and `SUNRISE_HOME`
@@ -77,59 +65,6 @@ removes old copied Sunrise release files, but leaves the manifest, commit histor
 clean tree, so each file it replaces or removes can be restored from Git. Without `setup`, a release makes the
 same workflow changes in its own commit. Follow
 the [releasing guide](../../how-to/publish.md#releasing) to register and publish.
-
-## `release plan`
-
-For a tagged release, run from the checked-out mod project. The tag must be `v` followed by the manifest's
-full version, and its native pin must match exactly one stable release for its game:
-
-```sh
-cargo sunrise-mod registry releases --out releases.json
-cargo sunrise-mod release plan --tag v0.1.0 --releases releases.json --sdk-data sdk-data --out plan.json
-```
-
-For a rebuild, supply a checkout of the reviewed registry and its published `index.json`:
-
-```sh
-cargo sunrise-mod release plan --registry sunrise-mods --index index.json --id my_mod --repo you/my_mod \
-  --releases releases.json --sdk-data sdk-data --out plan.json
-```
-
-Without a requested pair, the newest eligible reviewed mod version wins, and only the newest stable release of its
-source line is considered for each version. An older target is not backfilled automatically. Pass `--version <version>`
-and `--target <stable-tag>` together for another pair; a requested pair that is unavailable, already covered, on a
-different line or otherwise ineligible is an error. Versions without published binaries and taken-down source are not
-rebuild candidates. Planning does not prove that the source fits the target: verify the reviewed package's bytes and
-signature, then use `publish` to check fit before submitting a build.
-
-The JSON output has `schema: 1`, `tool_commit` (the planning tool's commit) and `plan`. A scheduled rebuild with no
-candidate has `plan: null` and writes no SDK data. Otherwise `plan` has the mod `id`, `version`, `author_tag`, stable
-`source` and `target` records (`tag`, `commit`, `line`), the target SDK's `rust` release and `mixins` revision, and `hosts`.
-Each host records its `name`, Rust `triple`, Actions `runner`, `side`, optional `archive`, and whether it is the
-`source_producer`. The plan names the `source_asset` and, when making binaries, the `descriptor`. `mode` is `initial`
-for a release with binaries, `source-only` for a release with just one client job and a `reason`, or `rebuild` for a
-binary append with `reviewed_source` (author asset URL, size, SHA-256, key, signature and owners).
-
-`--sdk-data` must be a new directory under an existing parent. `--out` must also have an existing parent, outside
-that SDK-data directory. Release discovery supplies tags and commits; it does not authenticate an SDK. The command checks the signature for each `sdk-<commit>` tag, its SDK index, and the assets
-it fetches. It writes `sdk.json` and `surface.json` under `sdk-data/<commit>/` and extracts `build-data/` there for each
-SDK needed by a binary plan. It does not fetch compiled SDK slices. Failed verification leaves any existing plan
-file unchanged.
-
-## `release scripts`
-
-`cargo sunrise-mod release scripts --out <new-dir>` extracts the native release workflow scripts from this tool
-into a new directory under an existing parent. It never overwrites an existing directory. The generated workflows
-first authenticate the tool, then use the scripts from that same tool commit rather than checking copies into the
-mod repository.
-
-## `release prepare-rebuild`
-
-`cargo sunrise-mod release prepare-rebuild --plan <plan.json> --package <original.smod> --out <new-dir> [--build]`
-checks that a signed native package is the exact reviewed source named by the rebuild plan. It reads the same
-standalone eligibility and lock rules as the registry. With `--build` it unpacks into a new directory and repins
-that directory's manifest to the plan's target SDK. Without `--build` it writes only the original manifest so
-signing and publication can read metadata without unpacking source. Neither mode runs Cargo or modifies the input.
 
 ## `fits`
 
