@@ -350,7 +350,9 @@ fn feature_stage_order(
         );
         assert!(
             pixels
-                .chunks_exact(320)
+                .as_chunks::<320>()
+                .0
+                .iter()
                 .skip(70)
                 .take(20)
                 .any(|row| row[160][..3] == [0, 0, 255]),
