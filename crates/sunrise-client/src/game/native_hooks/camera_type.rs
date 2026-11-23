@@ -223,6 +223,12 @@ mod camera_type_tests {
                         "an explicit Z equal to the detached placement stays pinned"
                     );
 
+                    // The render-only X override never reaches what streaming and entry
+                    // readiness read.
+                    let placed = game.visual_camera_position().unwrap();
+                    assert_ne!(placed[0], 12.0);
+                    assert_eq!(placed[2], 4.0);
+
                     let custom = glam::DVec3::new(2.0, 31.0, 5.0);
                     game.studio.freecam.activate(custom, 180.0, 0.0, 70.0);
                     game.studio.freecam.roll = 90.0;
