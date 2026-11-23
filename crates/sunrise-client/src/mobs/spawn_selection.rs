@@ -1238,18 +1238,16 @@ impl SpawnState {
         change * charge
     }
     /// `SpawnState.afterSpawn`.
-    fn after_spawn<L: NaturalLevel>(
+    fn after_spawn(
         &mut self,
-        l: &L,
+        spawn_cost: impl FnOnce(&str, [i32; 3]) -> Option<SpawnCost>,
         entity: &str,
         category: Category,
         pos: [i32; 3],
     ) {
         let charge = match &self.last_checked {
             Some((p, c)) if *p == pos => *c,
-            _ => l
-                .spawn_cost(entity, pos[0], pos[1], pos[2])
-                .map_or(0.0, |c| c.charge),
+            _ => spawn_cost(entity, pos).map_or(0.0, |c| c.charge),
         };
         self.add_charge(pos, charge);
         self.counts[category.index()] += 1;
@@ -1366,7 +1364,13 @@ pub fn spawn_category_for_position<L: NaturalLevel, R: RandomSource + Clone>(
         let Some(result) = spawn(l, &request, random) else {
             continue;
         };
-        cluster.after_spawn(l, state, candidate, candidate.block, trace);
+        cluster.after_spawn(
+            |entity, [x, y, z]| l.spawn_cost(entity, x, y, z),
+            state,
+            candidate,
+            candidate.block,
+            trace,
+        );
         cluster.check_limit(candidate, result.cluster_size, result.school);
     }
     cluster.finish(state);
@@ -1558,7 +1562,7 @@ impl SpawnCluster {
     /// Account for an attempted insertion, even if the level declined admission.
     pub fn after_spawn(
         &mut self,
-        l: &impl NaturalLevel,
+        spawn_cost: impl FnOnce(&str, [i32; 3]) -> Option<SpawnCost>,
         state: &mut SpawnState,
         candidate: SpawnCandidate,
         block: [i32; 3],
@@ -1572,7 +1576,7 @@ impl SpawnCluster {
             .current
             .as_ref()
             .expect("candidate belongs to the selected spawn group");
-        state.after_spawn(l, &entry.entity, candidate.category, block);
+        state.after_spawn(spawn_cost, &entry.entity, candidate.category, block);
         trace(Event::Spawn(
             &entry.entity,
             candidate.position,

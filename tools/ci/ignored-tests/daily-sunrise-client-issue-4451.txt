@@ -1978,7 +1978,7 @@ sunrise-client game::natural_spawning::tests::finalize_spawn_is_told_only_where_
 sunrise-client game::natural_spawning::tests::jockeys_finalize_with_the_parents_reason lib daily resources
 sunrise-client game::natural_spawning::tests::mob_despawn_answers_override_vanilla_and_default_passes_through lib daily resources
 sunrise-client game::natural_spawning::tests::mob_despawn_with_no_listener_draws_as_vanilla lib daily resources
-sunrise-client game::natural_spawning::tests::natural_spawn_checks_lend_the_mob_and_keep_the_draws lib daily resources
+sunrise-client game::natural_spawning::tests::natural_spawn_checks_lend_the_mob_and_keep_the_draws lib daily child-process
 sunrise-client game::natural_spawning::tests::raids_tick_before_natural_and_custom_spawning lib daily resources
 sunrise-client game::natural_spawning::tests::spawn_checks_pin_the_random_draws_of_both_halves lib daily resources
 sunrise-client game::natural_spawning::tests::spawner_checks_tell_the_block_and_keep_the_draws lib daily child-process

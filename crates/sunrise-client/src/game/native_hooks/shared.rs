@@ -2859,8 +2859,8 @@ impl Game<'_> {
     }
     /// The mobs from index `from` on are new in the world.
     pub(super) fn native_mobs_joined(&mut self, from: usize, natural: bool) {
-        // Preserve saved/constructed UUIDs. Natural spawns built with provisional
-        // IDs get their persistent identity when admitted, not on their first hit.
+        // Preserve saved or constructed UUIDs. Insertion paths without an
+        // identity still need one before their join listeners run.
         for mob in self.mobs.iter().skip(from) {
             self.persist
                 .uuids

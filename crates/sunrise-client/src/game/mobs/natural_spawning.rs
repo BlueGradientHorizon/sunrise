@@ -75,7 +75,16 @@ pub(super) struct SpawnScratch {
     stale: Vec<bool>,
     /// The spawn state's allocations, reused across passes.
     spawn_buffers: SpawnBuffers,
+    pass: NaturalPassScratch,
 }
+
+#[derive(Default)]
+struct NaturalPassScratch {
+    players: SearchPlayers,
+    costed: Vec<String>,
+    ids: HashMap<u32, u32>,
+}
+
 impl SpawnScratch {
     fn chunk(p: &LevelPlayer) -> (i32, i32) {
         (
@@ -331,17 +340,37 @@ impl<'p> NearestPlayers<'p> {
 
 /// Up to this many players, a spawn start measures to every one.
 const PLAYERS_SCANNED: usize = 8;
+/// Owned search data that survives the world's immutable borrow being released
+/// for each admission. A mod may move players during admission.
+#[derive(Default)]
+struct SearchPlayers {
+    players: Vec<LevelPlayer>,
+    nearest: Vec<[f64; 3]>,
+    squares: std::cell::OnceCell<PlayerSquares>,
+}
+
+impl SearchPlayers {
+    fn refresh(&mut self, game: &Game<'_>) {
+        self.players.clear();
+        self.players.extend(game.level_players_iter());
+        let positions = self
+            .players
+            .iter()
+            .filter(|p| !p.spectator)
+            .map(|p| [p.position.x, p.position.y, p.position.z]);
+        if !self.nearest.iter().copied().eq(positions.clone()) {
+            self.nearest.clear();
+            self.nearest.extend(positions);
+            self.squares.take();
+        }
+    }
+}
+
 /// The game level as natural spawning reads it.
 pub(super) struct GameLevel<'g, 'a> {
     pub(super) game: &'g Game<'a>,
     pub(super) w: MobWorld<'g>,
-    /// Every player in the level ([`Game::level_players`]).
-    pub(super) players: Vec<LevelPlayer>,
-    /// Where the non-spectators among them are (`getNearestPlayer`).
-    pub(super) nearest: Vec<[f64; 3]>,
-    /// `nearest` by square, built when a spawn start first asks with more
-    /// than [`PLAYERS_SCANNED`] players.
-    pub(super) player_squares: std::cell::OnceCell<PlayerSquares>,
+    search: SearchPlayers,
     /// Mobs accepted during this pass, not yet inserted in the game's lists.
     pending: std::cell::RefCell<Vec<PendingMob>>,
     /// UUIDs reserved by configured spawner trees in this pass (both families).
@@ -362,7 +391,7 @@ pub(super) struct GameLevel<'g, 'a> {
     /// The entity types some biome of the level gives a spawn cost (the
     /// nether's few): for any other the cost is none wherever it stands, and
     /// spawning asks for one for every loaded mob each tick.
-    pub(super) costed: Vec<&'g str>,
+    costed: Option<&'g [String]>,
     /// The spawner block whose tick this pass is, told to the spawn checks;
     /// None for natural spawning and the other passes.
     pub(super) spawner: Option<mod_api::Spawner>,
@@ -380,9 +409,15 @@ struct Checked {
 }
 enum CheckedBody {
     Fresh(Mob),
-    Generated(Mob, [i32; 4]),
+    Identified(Mob, [i32; 4]),
     Configured(super::persist::SpawnTree),
 }
+struct NaturalSpawn {
+    primary: (Mob, [i32; 4]),
+    passengers: Vec<(Mob, [i32; 4])>,
+    veto_admission: bool,
+}
+
 const SCANNED_QUERIES: u32 = 8;
 struct PendingMob {
     kind: std::sync::Arc<MobType>,
@@ -489,17 +524,10 @@ impl GameLevel<'_, '_> {
         true
     }
     fn biome(&self, x: i32, y: i32, z: i32) -> Option<&BiomeInfo> {
-        Some(world_biomes!(self.game).get(self.game.world.noise_biome(x, y, z)?))
-    }
-    /// The block whose noise cell `BiomeManager.getBiome` reads.
-    fn zoomed(&self, x: i32, y: i32, z: i32) -> [i32; 3] {
-        let zoom = self.game.streaming.biome_zoom;
-        let [qx, qy, qz] = zoom.quart_at_block(sunrise_core::position::BlockPos::new(x, y, z));
-        [qx << 2, qy << 2, qz << 2]
+        self.game.spawn_biome([x, y, z])
     }
     fn zoomed_biome(&self, x: i32, y: i32, z: i32) -> Option<&BiomeInfo> {
-        let [x, y, z] = self.zoomed(x, y, z);
-        self.biome(x, y, z)
+        self.game.zoomed_spawn_biome([x, y, z])
     }
     /// A provisional id, distinct within the pass and mapped to a real one
     /// by [`Game::add_spawned`].
@@ -529,7 +557,7 @@ impl GameLevel<'_, '_> {
             _ => None,
         }
     }
-    fn generated_candidate(
+    fn identified_candidate(
         &self,
         entity: &str,
         [x, y, z]: [f64; 3],
@@ -540,30 +568,26 @@ impl GameLevel<'_, '_> {
         let mob = Mob::with_random(self.provisional_id(), kind, Vec3::new(x, y, z), yaw, random);
         Some((mob, uuid))
     }
-    /// Creates a mob the spawner accepted, finalized the game's way
-    /// (`finalizeSpawn` on this pass's level, its draws on the spawner's own
-    /// random, between its position draws, as vanilla interleaves them).
+    /// Finalize the actual natural candidate and keep every admitted body's
+    /// constructor identity with it until the level accepts that body.
     fn finalize_spawned<R: RandomSource>(
         &self,
         r: &SpawnRequest,
         random: &mut R,
-    ) -> Option<(Mob, bool)> {
-        let mut mob = match self.take_checked(r.entity, r.position, r.yaw) {
-            Some(mob) => mob,
-            None => {
-                let kind = self.game.res.mob_types().get(r.entity)?.clone();
-                let [x, y, z] = r.position;
-                Mob::new(self.provisional_id(), kind, Vec3::new(x, y, z), r.yaw)
-            }
+    ) -> Option<NaturalSpawn> {
+        let (mut mob, uuid) = match self.checked.take().map(|checked| checked.body) {
+            Some(CheckedBody::Identified(mob, uuid)) => (mob, uuid),
+            _ => self.identified_candidate(r.entity, r.position, r.yaw)?,
         };
-        // No group data is threaded through the pack yet: each member starts
-        // without, and finalization reads what a listener leaves.
+        // Live packs do not yet thread group data through their members.
         let mut group = None;
         let (outcome, difficulty) = self
             .game
             .finalize_spawn_event(&mut mob, r.reason, None, &mut group);
+        let mut passengers = Vec::new();
         if !outcome.skip_initialization {
             let mut level = PassLevel::new(self);
+            level.constructor_uuids = Some(Vec::new());
             let mut cx = sunrise_client::mobs::finalize::Ctx {
                 level: &mut level,
                 random,
@@ -572,12 +596,19 @@ impl GameLevel<'_, '_> {
                 jockey_rider: None,
             };
             sunrise_client::mobs::finalize::finalize(&mut cx, &mut mob, r.reason, group);
-            for m in cx.created {
-                self.record_pending(&m);
-                self.spawned.borrow_mut().push(m);
-            }
+            let created = cx.created;
+            let constructed = level.constructor_uuids.unwrap();
+            passengers.extend(created.into_iter().map(|body| {
+                // Finalization can discard a proposal or admit it as a vehicle.
+                let uuid = constructed.iter().find(|(id, _)| *id == body.id).unwrap().1;
+                (body, uuid)
+            }));
         }
-        Some((mob, outcome.veto_admission))
+        Some(NaturalSpawn {
+            primary: (mob, uuid),
+            passengers,
+            veto_admission: outcome.veto_admission,
+        })
     }
 }
 
@@ -586,10 +617,15 @@ impl GameLevel<'_, '_> {
 /// for [`Game::add_spawned`], as the pass holds the game immutably.
 pub(super) struct PassLevel<'a, 'g, 'h> {
     l: &'a GameLevel<'g, 'h>,
+    /// Only an admission path consuming constructor identities needs this list.
+    constructor_uuids: Option<Vec<(u32, [i32; 4])>>,
 }
 impl<'a, 'g, 'h> PassLevel<'a, 'g, 'h> {
     pub(super) fn new(l: &'a GameLevel<'g, 'h>) -> Self {
-        Self { l }
+        Self {
+            l,
+            constructor_uuids: None,
+        }
     }
 }
 impl sunrise_client::mobs::finalize::FinalizeLevel for PassLevel<'_, '_, '_> {
@@ -648,12 +684,14 @@ impl sunrise_client::mobs::finalize::FinalizeLevel for PassLevel<'_, '_, '_> {
             return None;
         }
         let t = t.clone();
-        Some(Mob::new(
-            self.l.provisional_id(),
-            t,
-            sunrise_core::geometry::Vec3::ZERO,
-            0.0,
-        ))
+        let id = self.l.provisional_id();
+        Some(if let Some(uuids) = &mut self.constructor_uuids {
+            let (random, uuid) = sunrise_client::mobs::living_random();
+            uuids.push((id, uuid));
+            Mob::with_random(id, t, Vec3::ZERO, 0.0, random)
+        } else {
+            Mob::new(id, t, Vec3::ZERO, 0.0)
+        })
     }
     fn spawn_data(&self) -> sunrise_client::mobs::finalize::SpawnData<'_> {
         self.l.game.finalize_spawn_data()
@@ -711,7 +749,7 @@ impl SpawnLevel for GameLevel<'_, '_> {
     }
     // Level.getBiome: the zoomed biome.
     fn biome_tag(&self, tag: &str, x: i32, y: i32, z: i32) -> bool {
-        let [x, y, z] = self.zoomed(x, y, z);
+        let [x, y, z] = self.game.zoomed_spawn_cell([x, y, z]);
         self.w.biome_tag(tag, x, y, z)
     }
     fn sky_light(&self, x: i32, y: i32, z: i32) -> i32 {
@@ -746,7 +784,7 @@ impl SpawnLevel for GameLevel<'_, '_> {
     }
     /// `getNearestPlayer(x, y, z, distance, true)`, over every player.
     fn player_near(&self, x: f64, y: f64, z: f64, distance: f64) -> bool {
-        self.players.iter().any(|p| {
+        self.search.players.iter().any(|p| {
             p.alive && !p.creative && !p.spectator && p.distance_sqr(x, y, z) < distance * distance
         })
     }
@@ -765,7 +803,9 @@ impl NaturalLevel for GameLevel<'_, '_> {
         pending: spawn_selection::Pending<'_>,
     ) -> SpawnCheck {
         let mut result = SpawnCheck::Default;
-        if !mod_api::__private::listened(mod_api::HookId::MobSpawnPositionCheck) {
+        let listened = mod_api::__private::listened(mod_api::HookId::MobSpawnPositionCheck);
+        let identified = matches!(reason, Reason::Natural | Reason::ChunkGeneration);
+        if !listened && !identified {
             return result;
         }
         // An earlier check's mob that no spawn took is not this one.
@@ -775,9 +815,9 @@ impl NaturalLevel for GameLevel<'_, '_> {
             self.game
                 .decode_spawner_tree(tag, at, pending.yaw)
                 .map(CheckedBody::Configured)
-        } else if reason == Reason::ChunkGeneration {
-            self.generated_candidate(entity, at, pending.yaw)
-                .map(|(mob, uuid)| CheckedBody::Generated(mob, uuid))
+        } else if identified {
+            self.identified_candidate(entity, at, pending.yaw)
+                .map(|(mob, uuid)| CheckedBody::Identified(mob, uuid))
         } else {
             self.game.res.mob_types().get(entity).map(|kind| {
                 let [x, y, z] = at;
@@ -792,8 +832,12 @@ impl NaturalLevel for GameLevel<'_, '_> {
         let Some(mut body) = body else {
             return SpawnCheck::Fail;
         };
+        if !listened {
+            *self.checked.borrow_mut() = Some(Checked { body, provisional });
+            return result;
+        }
         let mob = match &mut body {
-            CheckedBody::Fresh(mob) | CheckedBody::Generated(mob, _) => mob,
+            CheckedBody::Fresh(mob) | CheckedBody::Identified(mob, _) => mob,
             CheckedBody::Configured(tree) => match tree.root_mob() {
                 Some(mob) => mob,
                 None => return SpawnCheck::Fail,
@@ -857,10 +901,7 @@ impl NaturalLevel for GameLevel<'_, '_> {
         self.zoomed_biome(x, y, z).map(|b| &b.spawns)
     }
     fn spawn_cost(&self, entity: &str, x: i32, y: i32, z: i32) -> Option<SpawnCost> {
-        if !self.costed.contains(&entity) {
-            return None;
-        }
-        self.zoomed_biome(x, y, z)?.spawn_costs.get(entity).copied()
+        self.game.spawn_cost_at(self.costed, entity, [x, y, z])
     }
     fn creature_probability(&self, x: i32, y: i32, z: i32) -> f32 {
         self.biome(x, y, z).map_or(0.1, |b| b.creature_probability)
@@ -886,14 +927,17 @@ impl NaturalLevel for GameLevel<'_, '_> {
         &self.game.structure_spawns
     }
     fn nearest_player_positions(&self) -> &[[f64; 3]] {
-        &self.nearest
+        &self.search.nearest
     }
     fn player_positions_near(&self, x: f64, z: f64, extent: f64, out: &mut Vec<[f64; 3]>) {
-        if self.nearest.len() <= PLAYERS_SCANNED {
-            out.extend_from_slice(&self.nearest);
+        let search = &self.search;
+        if search.nearest.len() <= PLAYERS_SCANNED {
+            out.extend_from_slice(&search.nearest);
             return;
         }
-        let squares = (self.player_squares).get_or_init(|| PlayerSquares::new(&self.nearest));
+        let squares = search
+            .squares
+            .get_or_init(|| PlayerSquares::new(&search.nearest));
         squares.near(x, z, extent, out);
     }
     fn respawn(&self) -> Option<[i32; 3]> {
@@ -938,6 +982,7 @@ impl NaturalLevel for GameLevel<'_, '_> {
         let obstructs = |bounds| spawn_selection::blocks_spawn_shape(&shape, query, bounds);
         let entities = crate::game::entity::entity_lists_of!(self.game);
         !self
+            .search
             .players
             .iter()
             .any(|p| !p.spectator && obstructs(p.bounds))
@@ -995,7 +1040,10 @@ impl NaturalLevel for GameLevel<'_, '_> {
 impl sunrise_client::mobs::spawner::SpawnerLevel for GameLevel<'_, '_> {
     /// `Level.hasNearbyAlivePlayer`, over every player.
     fn alive_player_near(&self, x: f64, y: f64, z: f64, range: f64) -> bool {
-        self.players.iter().any(|p| p.alive_near(x, y, z, range))
+        self.search
+            .players
+            .iter()
+            .any(|p| p.alive_near(x, y, z, range))
     }
     fn spawner_blocks_work(&self) -> bool {
         self.game
@@ -1020,16 +1068,19 @@ impl sunrise_client::mobs::spawner::SpawnerLevel for GameLevel<'_, '_> {
         mobs + pending
     }
 }
-/// Every entity type with a spawn cost in some biome, each once.
-fn spawn_cost_types(biomes: &sunrise_client::biome::Biomes) -> Vec<&str> {
-    let mut types: Vec<&str> = Vec::new();
-    for t in biomes.list.iter().flat_map(|b| b.spawn_costs.keys()) {
-        if !types.contains(&t.as_str()) {
-            types.push(t);
-        }
+fn remap_spawn_links(mob: &mut Mob, links: &HashMap<u32, u32>) {
+    if let Some(mount) = mob.extra.mount.as_mut()
+        && let Some(&id) = links.get(mount)
+    {
+        *mount = id;
     }
-    types
+    if let Some(rider) = mob.extra.rider.as_mut()
+        && let Some(&id) = links.get(rider)
+    {
+        *rider = id;
+    }
 }
+
 impl<'a> Game<'a> {
     /// `CollisionGetter.noCollision(AABB)`: with no source there is no border
     /// shape. `EntityGetter.getEntityCollisions` queries the inflated area.
@@ -1075,19 +1126,53 @@ impl<'a> Game<'a> {
             .copied()
             .unwrap_or_default()
     }
+    fn spawn_biome(&self, [x, y, z]: [i32; 3]) -> Option<&BiomeInfo> {
+        Some(world_biomes!(self).get(self.world.noise_biome(x, y, z)?))
+    }
+
+    /// The block whose noise cell `BiomeManager.getBiome` reads.
+    fn zoomed_spawn_cell(&self, [x, y, z]: [i32; 3]) -> [i32; 3] {
+        let [qx, qy, qz] = self
+            .streaming
+            .biome_zoom
+            .quart_at_block(BlockPos::new(x, y, z));
+        [qx << 2, qy << 2, qz << 2]
+    }
+
+    fn zoomed_spawn_biome(&self, block: [i32; 3]) -> Option<&BiomeInfo> {
+        self.spawn_biome(self.zoomed_spawn_cell(block))
+    }
+
+    fn spawn_cost_at(
+        &self,
+        costed: Option<&[String]>,
+        entity: &str,
+        block: [i32; 3],
+    ) -> Option<SpawnCost> {
+        if costed.is_some_and(|types| !types.iter().any(|kind| kind == entity)) {
+            return None;
+        }
+        self.zoomed_spawn_biome(block)?
+            .spawn_costs
+            .get(entity)
+            .copied()
+    }
+
     pub(super) fn natural_level(&self) -> GameLevel<'_, 'a> {
-        let players = self.level_players();
-        let nearest = players
-            .iter()
-            .filter(|p| !p.spectator)
-            .map(|p| [p.position.x, p.position.y, p.position.z])
-            .collect();
+        let mut search = SearchPlayers::default();
+        search.refresh(self);
+        self.natural_search_level(search, None)
+    }
+
+    fn natural_search_level<'g>(
+        &'g self,
+        search: SearchPlayers,
+        costed: Option<&'g [String]>,
+    ) -> GameLevel<'g, 'a> {
         GameLevel {
             game: self,
             w: self.mob_world_base(&[]),
-            players,
-            nearest,
-            player_squares: Default::default(),
+            search,
             pending: Default::default(),
             pending_uuids: Default::default(),
             spawned: Default::default(),
@@ -1095,7 +1180,7 @@ impl<'a> Game<'a> {
             provisional: Default::default(),
             boxes: Default::default(),
             box_queries: Default::default(),
-            costed: spawn_cost_types(world_biomes!(self)),
+            costed,
             spawner: None,
             checked: Default::default(),
         }
@@ -1111,26 +1196,12 @@ impl<'a> Game<'a> {
         rides: &[(u32, u32)],
     ) -> HashMap<u32, u32> {
         let mut links: HashMap<u32, u32> = HashMap::new();
-        for group in groups.iter_mut() {
-            for mob in group.iter_mut() {
-                self.next_entity += 1;
-                links.insert(mob.id, self.next_entity);
-                mob.id = self.next_entity;
-            }
-        }
-        for group in groups.iter_mut() {
-            for mob in group.iter_mut() {
-                if let Some(m) = mob.extra.mount.as_mut()
-                    && let Some(&id) = links.get(m)
-                {
-                    *m = id;
-                }
-                if let Some(m) = mob.extra.rider.as_mut()
-                    && let Some(&id) = links.get(m)
-                {
-                    *m = id;
-                }
-            }
+        self.assign_spawn_ids(
+            groups.iter_mut().flat_map(|group| group.iter_mut()),
+            &mut links,
+        );
+        for mob in groups.iter_mut().flat_map(|group| group.iter_mut()) {
+            remap_spawn_links(mob, &links);
         }
         for (chicken, rider) in rides {
             let rider = links.get(rider).copied().unwrap_or(*rider);
@@ -1141,6 +1212,18 @@ impl<'a> Game<'a> {
         }
         links
     }
+    fn assign_spawn_ids<'m>(
+        &mut self,
+        bodies: impl Iterator<Item = &'m mut Mob>,
+        links: &mut HashMap<u32, u32>,
+    ) {
+        for body in bodies {
+            self.next_entity += 1;
+            links.insert(body.id, self.next_entity);
+            body.id = self.next_entity;
+        }
+    }
+
     /// Adds the mobs a spawn pass created: ids and the links that need them
     /// (finalizeSpawn's mounts ride by id, and its chickens carry their
     /// zombie). Every mob arrives with a provisional id; real ones are
@@ -1367,8 +1450,22 @@ impl<'a> Game<'a> {
             &mut self.world.random,
             sunrise_core::random::LevelRandom::for_level(LegacyRandom::new(0)),
         );
+        scratch.pass.players.refresh(self);
+        scratch.pass.costed.clear();
+        for kind in world_biomes!(self)
+            .list
+            .iter()
+            .flat_map(|b| b.spawn_costs.keys())
+        {
+            if !scratch.pass.costed.contains(kind) {
+                scratch.pass.costed.push(kind.clone());
+            }
+        }
         let (mut state, categories) = {
-            let level = self.natural_level();
+            let level = self.natural_search_level(
+                std::mem::take(&mut scratch.pass.players),
+                Some(&scratch.pass.costed),
+            );
             laps.lap("sn_level");
             let counted: Vec<Counted> = self
                 .mobs
@@ -1396,6 +1493,7 @@ impl<'a> Game<'a> {
             laps.lap("sn_materialize");
             let buffers = std::mem::take(&mut scratch.spawn_buffers);
             let state = self.natural_spawn_state(&level, spawnable, players, buffers, &counted);
+            scratch.pass.players = level.search;
             laps.lap("sn_state");
             let categories = self.natural_categories(&state);
             laps.lap("sn_categories");
@@ -1417,6 +1515,7 @@ impl<'a> Game<'a> {
                     scratch.candidates.drain(..),
                     &mut random,
                     &mut state,
+                    &mut scratch.pass,
                 );
             }
         }));
@@ -1441,32 +1540,32 @@ impl<'a> Game<'a> {
         mut chunks: impl Iterator<Item = (i32, i32)>,
         random: &mut LevelRandom,
         state: &mut SpawnState,
+        scratch: &mut NaturalPassScratch,
     ) {
         let mut chunk = (0, 0);
         let mut category_index = categories.len();
         let mut cluster: Option<SpawnCluster> = None;
         let mut provisional = 0;
+        let may_edit_players = !mod_api::__private::mods().is_empty();
         let mut trace = |_: spawn_selection::Event<'_>| {};
         let _save_lease = sunrise_client::join_seq::visibility::PassLease::enter();
         loop {
             let next = {
-                let level = self.natural_level();
+                let level = self.natural_search_level(
+                    std::mem::take(&mut scratch.players),
+                    Some(&scratch.costed),
+                );
                 level.provisional.set(provisional);
-                loop {
+                let next = loop {
                     if let Some(search) = cluster.as_mut() {
                         if let Some(candidate) =
                             search.next_candidate(&level, random, state, &mut trace)
                         {
-                            if let Some(mob) =
+                            if let Some(spawn) =
                                 level.finalize_spawned(&search.request(candidate), random)
                             {
                                 provisional = level.provisional.get();
-                                break Some((
-                                    candidate,
-                                    mob,
-                                    level.spawned.into_inner(),
-                                    level.rides.into_inner(),
-                                ));
+                                break Some((candidate, spawn));
                             }
                             continue;
                         }
@@ -1489,20 +1588,27 @@ impl<'a> Game<'a> {
                         category_index = 0;
                         sunrise_threads::work::set_chunk(chunk.0, chunk.1);
                     }
-                }
+                };
+                scratch.players = level.search;
+                let rides = level.rides.into_inner();
+                next.map(|(candidate, spawn)| (candidate, spawn, rides))
             };
-            let Some((candidate, mob, passengers, rides)) = next else {
+            let Some((candidate, spawn, rides)) = next else {
                 break;
             };
             self.complete_natural_spawn(
                 cluster.as_mut().unwrap(),
                 candidate,
-                mob,
-                passengers,
+                spawn,
                 &rides,
+                &mut scratch.ids,
                 random,
                 state,
+                &scratch.costed,
             );
+            if may_edit_players {
+                scratch.players.refresh(self);
+            }
         }
     }
 
@@ -1524,21 +1630,39 @@ impl<'a> Game<'a> {
 
     /// NaturalSpawner.spawnCategoryForPosition: perform admission, then the spawn state's
     /// callback, then ask the actual candidate for the cluster limit before resuming the search.
+    #[allow(clippy::too_many_arguments)]
     fn complete_natural_spawn(
         &mut self,
         cluster: &mut SpawnCluster,
         candidate: spawn_selection::SpawnCandidate,
-        primary: (Mob, bool),
-        mut passengers: Vec<Mob>,
+        spawn: NaturalSpawn,
         rides: &[(u32, u32)],
+        ids: &mut HashMap<u32, u32>,
         random: &mut LevelRandom,
         state: &mut SpawnState,
+        costed: &[String],
     ) {
-        let (mob, veto_admission) = primary;
-        let mut primary = [mob];
-        primary[0].persistent = false;
-        let ids = self.resolve_spawn_ids([&mut primary, &mut passengers], &[]);
-        let [mob] = primary;
+        let NaturalSpawn {
+            primary: (mut mob, uuid),
+            mut passengers,
+            veto_admission,
+        } = spawn;
+        mob.persistent = false;
+        let provisional = mob.id;
+        ids.clear();
+        if passengers.is_empty() {
+            self.next_entity += 1;
+            mob.id = self.next_entity;
+        } else {
+            self.assign_spawn_ids(
+                std::iter::once(&mut mob).chain(passengers.iter_mut().map(|(body, _)| body)),
+                ids,
+            );
+            for body in std::iter::once(&mut mob).chain(passengers.iter_mut().map(|(body, _)| body))
+            {
+                remap_spawn_links(body, ids);
+            }
+        }
         let id = mob.id;
         let last = self.next_entity;
         // A real Host callback reads and writes the level stream between selection draws.
@@ -1547,7 +1671,7 @@ impl<'a> Game<'a> {
         let admitted = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             // ServerLevelAccessor.addFreshEntityWithPassengers inserts one body at a time.
             // Until its turn, a passenger is only owned by this iterator.
-            for body in std::iter::once(mob).chain(passengers) {
+            for (body, uuid) in std::iter::once((mob, uuid)).chain(passengers) {
                 let body_id = body.id;
                 if body_id == id && veto_admission {
                     self.creatures.natural_admission =
@@ -1555,6 +1679,7 @@ impl<'a> Game<'a> {
                     continue;
                 }
                 let index = self.mobs.len();
+                self.persist.uuids.insert(body_id, uuid);
                 self.mobs.push(body);
                 if body_id == id {
                     self.creatures.natural_admission = Some(NaturalAdmission::Placed {
@@ -1564,7 +1689,12 @@ impl<'a> Game<'a> {
                     });
                 }
                 for &(chicken, rider) in rides {
-                    if ids.get(&rider) == Some(&body_id)
+                    let resolved = if rider == provisional {
+                        Some(id)
+                    } else {
+                        ids.get(&rider).copied()
+                    };
+                    if resolved == Some(body_id)
                         && let Some(chicken) = self.mobs.iter_mut().find(|m| m.id == chicken)
                     {
                         chicken.extra.jockey = true;
@@ -1606,7 +1736,7 @@ impl<'a> Game<'a> {
             if let Some((mob, tags)) = view {
                 let at = [mob.position.x, mob.position.y, mob.position.z];
                 cluster.after_spawn(
-                    &self.natural_level(),
+                    |entity, block| self.spawn_cost_at(Some(costed), entity, block),
                     state,
                     candidate,
                     at.map(|x| x.floor() as i32),
@@ -1704,8 +1834,8 @@ impl<'a> Game<'a> {
             let (bx, by, bz) = (x.floor() as i32, y.floor() as i32, z.floor() as i32);
             let biome = l.zoomed_biome(bx, by, bz).map_or("", |b| b.name.as_str());
             let Some((mob, uuid)) = (match l.checked.take().map(|c| c.body) {
-                Some(CheckedBody::Generated(mob, uuid)) => Some((mob, uuid)),
-                _ => l.generated_candidate(r.entity, r.position, r.yaw),
+                Some(CheckedBody::Identified(mob, uuid)) => Some((mob, uuid)),
+                _ => l.identified_candidate(r.entity, r.position, r.yaw),
             }) else {
                 return false;
             };
@@ -2428,7 +2558,18 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn natural_spawn_checks_lend_the_mob_and_keep_the_draws() {
-        use super::super::native_entity_refs::tests::with_game;
+        use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
+        use sunrise_client::random_source::set_thread_uniquifier;
+        if run_fresh_cases(
+            concat!(
+                module_path!(),
+                "::natural_spawn_checks_lend_the_mob_and_keep_the_draws"
+            ),
+            "SUNRISE_TEST_SEEDS",
+            &["1"],
+        ) {
+            return;
+        }
         with_game(|game| {
             spawn_check_world(game, Vec3::new(0.5, 64.0, 0.5));
             let stone = game.pack.assets.registry.default_state("minecraft:stone");
@@ -2439,9 +2580,11 @@ mod tests {
             }
             let level = level_of(game);
             let attempt = |game: &mut Game<'_>| {
+                set_thread_uniquifier(12345).unwrap();
                 let mut random = LegacyRandom::new(42);
                 let natural = game.natural_level();
                 let players = natural
+                    .search
                     .players
                     .iter()
                     .map(|p| SpawnPlayer {
@@ -2452,7 +2595,7 @@ mod tests {
                 let mut state = SpawnState::new(&natural, 289, players, &[], |_, _| true);
                 let mut pending = Vec::new();
                 let mut spawn = |l: &GameLevel, r: &SpawnRequest, rng: &mut LegacyRandom| {
-                    let (mob, _) = l.finalize_spawned(r, rng)?;
+                    let (mob, _) = l.finalize_spawned(r, rng)?.primary;
                     l.record_pending(&mob);
                     pending.push(mob);
                     Some(spawn_selection::Spawned {
@@ -3103,6 +3246,174 @@ mod tests {
         });
     }
 
+    const NATURAL_HORSE: &str = "minecraft:zombie_horse";
+    const NATURAL_RIDER: &str = "minecraft:zombie";
+    // Independent Java LCG calculation: successive wrapping seed-uniquifier steps
+    // from 12345, followed by Entity.<init>'s two nextLongs and UUID masks.
+    const HORSE_UUID: u128 = 0x5725645a0d694163_8ea9477e028e0fc3;
+    const RIDER_UUID: u128 = 0xd5f0a5e475f54728_8649f20043164fd8;
+
+    struct HorseIdentityMod {
+        veto: bool,
+        joined: std::sync::Arc<std::sync::Mutex<Vec<(u32, Option<u32>)>>>,
+    }
+
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for HorseIdentityMod {
+        fn potential_spawns(
+            &self,
+            _: &dyn mod_api::Host,
+            event: &mut mod_api::PotentialSpawnsEvent<'_>,
+        ) -> mod_api::Flow {
+            if event.category == "monster" {
+                *event.entries = vec![SpawnEntry {
+                    entity: NATURAL_HORSE.into(),
+                    weight: 1,
+                    min: 1,
+                    max: 1,
+                    constant: true,
+                }];
+            }
+            mod_api::Flow::Continue
+        }
+
+        fn mob_spawn_placement_check(
+            &self,
+            _: &dyn mod_api::Host,
+            event: &mut mod_api::MobSpawnPlacementCheckEvent<'_>,
+        ) {
+            *event.result = SpawnCheck::Succeed;
+        }
+
+        fn mob_spawn_position_check(
+            &self,
+            _: &dyn mod_api::Host,
+            event: &mut mod_api::MobSpawnPositionCheckEvent<'_>,
+        ) {
+            *event.result = SpawnCheck::Succeed;
+        }
+
+        fn entity_join_level(
+            &self,
+            host: &mut dyn mod_api::ServerHost,
+            event: &mut mod_api::EntityJoinLevelEvent<'_>,
+        ) -> mod_api::Flow {
+            let expected = match event.kind {
+                NATURAL_HORSE => HORSE_UUID,
+                NATURAL_RIDER => RIDER_UUID,
+                _ => return mod_api::Flow::Continue,
+            };
+            let resolved = host
+                .entity_by_uuid(mod_api::EntityUuid(expected))
+                .map(|entity| entity.id());
+            self.joined.lock().unwrap().push((event.entity, resolved));
+            if self.veto && event.kind == NATURAL_RIDER {
+                mod_api::Flow::Cancel
+            } else {
+                mod_api::Flow::Continue
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn natural_admission_publishes_primary_and_passenger_constructor_uuids() {
+        use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
+        if run_fresh_cases(
+            concat!(
+                module_path!(),
+                "::natural_admission_publishes_primary_and_passenger_constructor_uuids"
+            ),
+            "SUNRISE_TEST_SEEDS",
+            &["1"],
+        ) {
+            return;
+        }
+        for veto in [false, true] {
+            with_game(|game| {
+                spawn_check_world(game, Vec3::new(0.5, 64.0, 0.5));
+                let stone = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:stone")
+                    .unwrap();
+                for x in 32..48 {
+                    for z in 32..48 {
+                        game.world.set(x, 63, z, stone).unwrap();
+                    }
+                }
+                let joined = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+                let mods = vec![mod_api::ModEntry::new(
+                    "natural-uuids",
+                    Box::new(HorseIdentityMod {
+                        veto,
+                        joined: joined.clone(),
+                    }),
+                )];
+                mod_platform::testing::with_mods(mods.into(), || {
+                    use sunrise_client::lan::playerdata::uuid_ints;
+                    sunrise_client::random_source::set_thread_uniquifier(12345).unwrap();
+                    let mut random = LevelRandom::for_level(LegacyRandom::new(42));
+                    let (mut cluster, mut state, candidate, spawn) = {
+                        let level = game.natural_level();
+                        let players = vec![SpawnPlayer {
+                            position: [0.5, 64.0, 0.5],
+                            spectator: false,
+                        }];
+                        let mut state = SpawnState::new(&level, 289, players, &[], |_, _| true);
+                        let mut cluster = SpawnCluster::new(
+                            &level,
+                            &mut state,
+                            Category::Monster,
+                            (2, 2),
+                            [40, 64, 40],
+                        )
+                        .unwrap();
+                        let candidate = cluster
+                            .next_candidate(&level, &mut random, &mut state, &mut |_| {})
+                            .unwrap();
+                        let spawn = level
+                            .finalize_spawned(&cluster.request(candidate), &mut random)
+                            .unwrap();
+                        (cluster, state, candidate, spawn)
+                    };
+                    game.complete_natural_spawn(
+                        &mut cluster,
+                        candidate,
+                        spawn,
+                        &[],
+                        &mut HashMap::new(),
+                        &mut random,
+                        &mut state,
+                        &[],
+                    );
+                    let seen = joined.lock().unwrap();
+                    let [(horse, visible_horse), (rider, visible_rider)] = seen.as_slice() else {
+                        panic!("expected one horse and its rider, saw {seen:?}");
+                    };
+                    assert_eq!(*visible_horse, Some(*horse));
+                    assert_eq!(*visible_rider, Some(*rider));
+                    assert_eq!(game.persist.uuids.get(horse), Some(&uuid_ints(HORSE_UUID)));
+                    let rider_uuid = uuid_ints(RIDER_UUID);
+                    assert_eq!(
+                        game.persist.uuids.get(rider),
+                        (!veto).then_some(&rider_uuid)
+                    );
+                    assert_eq!(
+                        game.entity_by_uuid(mod_api::EntityUuid(RIDER_UUID))
+                            .map(|r| r.id()),
+                        (!veto).then_some(*rider)
+                    );
+                    if !veto {
+                        let mob = game.mobs.iter().find(|m| m.id == *rider).unwrap();
+                        assert_eq!(mob.extra.mount, Some(*horse));
+                    }
+                });
+            });
+        }
+    }
+
     /// Answers the group size limit of a type, reading the mob it is lent.
     struct ZombieClusters;
     #[mod_api::sunrise_part]
@@ -3291,12 +3602,23 @@ mod tests {
             let case = std::env::var(SPAWN_CLUSTER_CASE).unwrap();
             if case == "unwind" {
                 let first = game.next_entity + 1;
-                let passengers = ["minecraft:cow", "minecraft:pig"]
+                let mut primary = primary;
+                primary.passengers = ["minecraft:cow", "minecraft:pig"]
                     .into_iter()
                     .enumerate()
                     .map(|(index, name)| {
                         let kind = game.res.mob_types().get(name).unwrap().clone();
-                        Mob::new(u32::MAX - 1 - index as u32, kind, Vec3::ZERO, 0.0)
+                        let (random, uuid) = sunrise_client::mobs::living_random();
+                        (
+                            Mob::with_random(
+                                u32::MAX - 1 - index as u32,
+                                kind,
+                                Vec3::ZERO,
+                                0.0,
+                                random,
+                            ),
+                            uuid,
+                        )
                     })
                     .collect();
                 use crate::game::pending_births::escaping_fault::{self, At};
@@ -3305,10 +3627,11 @@ mod tests {
                         &mut cluster,
                         candidate,
                         primary,
-                        passengers,
                         &[],
+                        &mut HashMap::new(),
                         &mut random,
                         &mut state,
+                        &[],
                     );
                 });
                 assert_eq!(
@@ -3329,10 +3652,11 @@ mod tests {
                 &mut cluster,
                 candidate,
                 primary,
-                Vec::new(),
                 &[],
+                &mut HashMap::new(),
                 &mut random,
                 &mut state,
+                &[],
             );
             let id = JOINED_CANDIDATE.load(std::sync::atomic::Ordering::Relaxed);
             assert_ne!(id, 0);
@@ -3423,7 +3747,7 @@ mod tests {
                         chunk,
                         start,
                         &mut |level, request, random| {
-                            let (mob, _) = level.finalize_spawned(request, random)?;
+                            let (mob, _) = level.finalize_spawned(request, random)?.primary;
                             reference.push((mob.position, mob.random.state()));
                             Some(spawn_selection::Spawned {
                                 cluster_size: None,
@@ -3438,11 +3762,14 @@ mod tests {
                     "the pass must resume after an admission"
                 );
                 let mut actual_state = state(&game.natural_level());
+                let mut scratch = NaturalPassScratch::default();
+                scratch.players.refresh(game);
                 game.run_natural_spawn_pass(
                     &[Category::Monster],
                     std::iter::once(chunk),
                     &mut random,
                     &mut actual_state,
+                    &mut scratch,
                 );
                 let actual: Vec<_> = game
                     .mobs

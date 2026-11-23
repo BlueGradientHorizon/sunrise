@@ -9,3 +9,4 @@ sunrise-client game::creatures::pending_birth_tests::split_and_detached_construc
 sunrise-client game::creatures::pending_birth_tests::split_listener_can_remove_the_live_parents_oozing lib daily child-process
 sunrise-client game::creatures::pending_birth_tests::baby_spawn_resolves_the_partners_feeder_when_the_first_left lib daily child-process
 sunrise-client game::natural_spawning::tests::configured_spawner_lends_and_finalizes_its_loaded_body lib daily child-process
+sunrise-client game::natural_spawning::tests::natural_admission_publishes_primary_and_passenger_constructor_uuids lib daily child-process

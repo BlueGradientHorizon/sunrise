@@ -252,8 +252,7 @@ fn mob_spawn_placement_check(&self, _: &dyn mod_api::Host, event: &mut mod_api::
 
 The position check (hook version 3) also gets `event.mob`, the mob about to spawn, as a scoped read-only
 `UnspawnedMobView<'_>` with the same reads as `finalize_spawn`'s (read-only: the hook does not edit the mob). Vanilla
-creates the mob before this check; Sunrise creates it there only when the hook has a listener, the same way the spawn
-would, and the spawn then goes on with that very mob, so what the listener read is what joins the level. A refused check
+creates the mob before this check. The spawn goes on with the very mob the listener read, not a second construction. A refused check
 drops the mob: it never joins the level. Creating it draws nothing from the level's random, so a listener that answers
 `Default` changes no draw.
 
