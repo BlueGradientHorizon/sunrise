@@ -2022,7 +2022,7 @@ sunrise-client game::pad::parity_tests::the_mouse_letting_go_leaves_what_the_pad
 sunrise-client game::pad::parity_tests::the_pads_attack_and_use_reach_the_vanilla_key_mappings lib daily resources
 sunrise-client game::pandas::nested_spawn_tests::lifted_mob_callback_keeps_nested_spawns_until_the_next_pass lib daily resources
 sunrise-client game::pandas::pickup_tests::a_panda_that_takes_a_thrown_item_credits_the_thrower lib daily resources
-sunrise-client game::part_shearing::tests::entity_parts_decide_and_perform_a_dispensers_shearing lib daily resources
+sunrise-client game::part_shearing::tests::entity_parts_decide_and_perform_a_dispensers_shearing lib daily child-process
 sunrise-client game::passengers::content_seat_tests::content_seats_keep_independent_offsets lib daily resources
 sunrise-client game::passengers::nested_vehicle_discard_tests::canceled_dismount_keeps_callback_reposition_for_later_removed_vehicle_dismount lib daily resources
 sunrise-client game::passengers::nested_vehicle_discard_tests::destroyed_vehicle_is_already_invisible_inside_dismount_callback lib daily resources
