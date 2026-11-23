@@ -2,10 +2,11 @@
 use super::Game;
 use crate::game::native_entity_refs::tests::with_client_game;
 use mod_api::{
-    ClientHost, ComputeFovModifierEvent, Hooks, ModEntry,
-    client::camera::{CameraType, FovPlayer, UseItem},
+    ClientHost, ComputeFovEvent, ComputeFovModifierEvent, Hooks, ModEntry,
+    client::camera::CameraType,
 };
 use std::sync::{Arc, Mutex};
+use sunrise_client::options_file::V as OptV;
 use sunrise_client::{items::ItemStack, motion::PlayerMotion};
 use sunrise_core::geometry::Vec3;
 use sunrise_protocol::{
@@ -13,17 +14,26 @@ use sunrise_protocol::{
     packets::play::{self, Clientbound as C},
 };
 
-type Calls = Arc<Mutex<Vec<(FovPlayer, f32)>>>;
+/// What the modifier hook saw: the player's uuid, the raw modifier, the effect scale and the
+/// result it started from.
+type Calls = Arc<Mutex<Vec<(u128, f32, f32, f32)>>>;
 
 struct Modifier(Calls);
 
 #[mod_api::__subscriptions]
 impl Hooks for Modifier {
-    fn compute_fov_modifier(&self, _: &dyn ClientHost, event: &mut ComputeFovModifierEvent<'_>) {
-        self.0.lock().unwrap().push((*event.player, event.base));
+    fn compute_fov_modifier(&self, _: &dyn ClientHost, event: &mut ComputeFovModifierEvent) {
+        self.0.lock().unwrap().push((
+            event.player.uuid(),
+            event.raw,
+            event.effect_scale,
+            event.modifier,
+        ));
         event.modifier = 0.5;
     }
 }
+
+const SPECTATED: u128 = 0x31;
 
 fn with_spectator(kind: &str, test: impl FnOnce(&mut Game<'_>, &Calls)) {
     let calls = Calls::default();
@@ -37,6 +47,11 @@ fn with_spectator(kind: &str, test: impl FnOnce(&mut Game<'_>, &Calls)) {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "CameraFovTest").unwrap();
             game.remote.as_mut().unwrap().entity_id = 7;
+            game.remote
+                .as_mut()
+                .unwrap()
+                .level_players
+                .insert(31, SPECTATED);
             let mut player = PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
             player.flying = true;
             player.speed = 0.4;
@@ -81,12 +96,6 @@ fn spectated_player_fov_uses_their_own_attributes_and_item_use() {
             Some(ItemStack::new("minecraft:spyglass", 1)),
         );
 
-        let inputs = FovPlayer {
-            flying: false,
-            walking_speed: 0.1,
-            movement_speed: 0.2,
-            using: Some((UseItem::Spyglass, 10)),
-        };
         game.view.fov_modifier = 1.0;
         game.camera_type = CameraType::FirstPerson;
         game.tick_fov();
@@ -106,8 +115,21 @@ fn spectated_player_fov_uses_their_own_attributes_and_item_use() {
             "ease halfway toward the mod's 0.5"
         );
         // Vanilla: (0.2 / 0.1 + 1) / 2 in third person; the packet's speed is
-        // used directly and the sprint flag adds nothing to it.
-        assert_eq!(*calls.lock().unwrap(), [(inputs, 1.5)]);
+        // used directly and the sprint flag adds nothing to it. The listener is told the
+        // spectated player, the raw modifier, the scale, and the interpolation it starts from.
+        assert_eq!(*calls.lock().unwrap(), [(SPECTATED, 1.5, 1.0, 1.5)]);
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn at_effect_scale_zero_the_listener_still_sees_the_raw_modifier() {
+    with_spectator("minecraft:player", |game, calls| {
+        game.settings.file.set("fovEffectScale", OptV::Double(0.0));
+        game.camera_type = CameraType::ThirdPersonBack;
+        game.tick_fov();
+        // Mth.lerp(0, 1, 1.5) is 1: the start loses the raw value, the event keeps it.
+        assert_eq!(*calls.lock().unwrap(), [(SPECTATED, 1.5, 0.0, 1.0)]);
     });
 }
 
@@ -119,5 +141,54 @@ fn spectated_non_player_fov_does_not_dispatch_the_player_hook() {
         game.tick_fov();
         assert_eq!(game.view.fov_modifier, 0.75, "ease halfway to neutral 1.0");
         assert!(calls.lock().unwrap().is_empty());
+    });
+}
+
+/// Narrows or widens the world angle, as a `compute_fov` listener would.
+struct Projection(Arc<Mutex<Option<f32>>>);
+
+#[mod_api::__subscriptions]
+impl Hooks for Projection {
+    fn compute_fov(&self, _: &dyn ClientHost, event: &mut ComputeFovEvent) {
+        if let Some(value) = *self.0.lock().unwrap() {
+            event.degrees = value;
+        }
+    }
+}
+
+/// The world angle `fov_degrees` yields with a listener answering `answer`: valid angles
+/// replace the computed one, anything else leaves it.
+#[test]
+#[ignore = "daily"]
+fn the_world_angle_takes_valid_listener_values_and_ignores_the_rest() {
+    let answer = Arc::new(Mutex::new(None));
+    let mods = vec![ModEntry::new(
+        "projection",
+        Box::new(Projection(answer.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_client_game(|game| {
+            let setting = game.settings.fov as f32;
+            for (value, expected) in [
+                (None, setting),
+                (Some(15.0), 15.0),
+                (Some(120.0), 120.0),
+                (Some(1.0), 1.0),
+                (Some(179.0), 179.0),
+                (Some(0.0), setting),
+                (Some(180.0), setting),
+                (Some(-1.0), setting),
+                (Some(f32::NAN), setting),
+                (Some(f32::INFINITY), setting),
+            ] {
+                *answer.lock().unwrap() = value;
+                assert_eq!(
+                    game.fov_degrees(0.25, [1.0, 2.0, 3.0]),
+                    expected,
+                    "listener answered {value:?}"
+                );
+            }
+        });
     });
 }

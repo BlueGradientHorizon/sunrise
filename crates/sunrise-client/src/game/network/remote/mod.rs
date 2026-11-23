@@ -1820,7 +1820,7 @@ impl Game<'_> {
         let r = self.remote.as_ref()?;
         r.level_player_name(id as i32, &r.player_uuid(id)?)
     }
-    pub(super) fn remote_player_uuid(&self, id: u32) -> Option<u128> {
+    pub(in crate::game) fn remote_player_uuid(&self, id: u32) -> Option<u128> {
         let remote = self.remote.as_ref()?;
         if self.player_model.as_ref().is_some_and(|m| m.id == id) {
             Some(remote.profile)

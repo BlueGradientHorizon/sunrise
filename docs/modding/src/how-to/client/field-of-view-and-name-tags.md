@@ -11,11 +11,12 @@ spectated. It runs after vanilla's effects (such as sprinting and a drawn bow) a
 
 | `ComputeFovModifierEvent` field | Meaning |
 | --- | --- |
-| `player` | The camera player's inputs to the calculation (`FovPlayer`) |
-| `base` | The scale before any mod ran |
-| `modifier` | The scale to use; write it to change the field of view |
+| `player` | The camera player's handle: the local player or the spectated one |
+| `raw` | `getFieldOfViewModifier`'s product before its final lerp |
+| `effect_scale` | The Field of View Effects setting |
+| `modifier` | The scale to use, starting as `Mth.lerp(effect_scale, 1, raw)`; write it to change the field of view |
 
-A value that is not finite, or lies outside `0.01..=10`, falls back to `base`. The hook does not run when the
+A value that is not finite, or lies outside `0.01..=10`, falls back to the starting `modifier`. The hook does not run when the
 camera follows a non-player entity, or while the camera player is scoping with a spyglass in first person
 (`AbstractClientPlayer.getFieldOfViewModifier` returns `0.1` before `ComputeFovModifierEvent`). Use
 `client_tick_pre` or `client_tick_post` for state updates that must run even then.
