@@ -31,9 +31,10 @@ impl<T: 'static> AttachmentDescriptor<T> {
     /// Start a descriptor for the namespaced attachment `id` (`"namespace:name"`) with its
     /// default value constructor.
     ///
-    /// Any valid lowercase `namespace:name` not already registered is accepted when submitted to
-    /// [`Registrar::register_attachment_type`]; the registering package is recorded as the
-    /// attachment's owner.
+    /// Use a unique lowercase `namespace:name` in a namespace the registering package owns or
+    /// serves, not `minecraft`. [`Registrar::register_attachment_type`] records the registering
+    /// package as the owner. A dependent package obtains the issued key via
+    /// [`Registrar::attachment_key`], without declaring that ID again.
     pub const fn new(id: &'static str, default: fn() -> T) -> Self {
         Self {
             id,
@@ -635,6 +636,8 @@ impl<T: Send + Sync + 'static> AttachmentKey<T> {
     }
 
     /// Remove a value from `holder`, returning the previous value if one was present.
+    /// A server removal of an absent synced key from an allocated map still queues a removal
+    /// marker to clear any replica value.
     pub fn remove(&self, host: &mut dyn Host, holder: Holder) -> Result<Option<T>, AttachmentError>
     where
         T: Clone,
@@ -642,7 +645,8 @@ impl<T: Send + Sync + 'static> AttachmentKey<T> {
         self.live()?.remove(host.attachments(), holder)
     }
 
-    /// Queue the current value on `holder` for synchronization to clients that see it.
+    /// Queue the current value on `holder` for synchronization to clients that see it, or a
+    /// removal marker if the value is absent. A live key with no sync codec does nothing.
     pub fn sync_data(&self, host: &mut dyn Host, holder: Holder) -> Result<(), AttachmentError> {
         self.live()?.sync_data(host.attachments(), holder)
     }
@@ -686,7 +690,7 @@ impl<T: Send + Sync + 'static> AttachmentKey<T> {
         self.live()?.set(level.attachments(), holder, value)
     }
 
-    /// Remove a value from `holder` in `level`.
+    /// [`Self::remove`] through a [`LevelRandomHost`].
     pub fn remove_in(
         &self,
         level: &mut dyn LevelRandomHost,
@@ -698,7 +702,7 @@ impl<T: Send + Sync + 'static> AttachmentKey<T> {
         self.live()?.remove(level.attachments(), holder)
     }
 
-    /// Queue the current value on `holder` in `level` for synchronization to clients.
+    /// [`Self::sync_data`] through a [`LevelRandomHost`].
     pub fn sync_data_in(
         &self,
         level: &mut dyn LevelRandomHost,

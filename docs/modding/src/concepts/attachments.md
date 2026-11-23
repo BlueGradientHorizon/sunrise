@@ -36,16 +36,16 @@ Ok::<(), AttachmentError>(())
 
 Configure optional persistence with `.serialize(codec)`, client synchronization
 with `.sync(sync_codec)` (independent of `.serialize`), and death copying with
-`.copy_on_death()` (which requires `.serialize`).
+`.copy_on_death()` (which requires `.serialize` first). A second `.serialize` call refuses registration.
 
 The registrar records any refusal even if the returned result is ignored. Any
 attachment ID must be unique and use a namespace the registering package owns or
 [serves](../reference/manifest.md). The registering package is
 recorded as the attachment's owner (`key.owner()`) and named on duplicate
-declarations. Another package that depends on the owner looks up the
-same typed handle during `Hooks::register` with
-`registrar.attachment_key::<T>("namespace:name")`, which returns `Err(AttachmentError::Undeclared)`
-for missing IDs and `Err(AttachmentError::TypeMismatch)` for mismatched Rust types.
+declarations. Looking up an attachment does not declare an ID or require ownership of its
+namespace. Declare a dependency on the registering package so it runs first, then call
+`registrar.attachment_key::<T>("namespace:name")` during `Hooks::register`. A missing ID returns
+`AttachmentError::Undeclared`; a mismatched Rust type returns `AttachmentError::TypeMismatch`.
 
 Cloning an `AttachmentKey<T>` is cheap (it shares the underlying registration)
 and preserves its installation identity. Keys retained from a prior installation
@@ -70,8 +70,8 @@ entity, chunk or level. Call `key.get`, `key.set`, `key.remove`, `key.has`,
 `&mut dyn LevelRandomHost`) and a `Holder`. `get` inserts the default on first
 access, then lends `&T` to the read closure. `has` and `get_existing` read without
 inserting (NeoForge's `hasData` and `getExistingDataOrNull`): `has` says whether a
-value is stored, even before it decodes, and `get_existing` lends `Option<&T>`,
-with `None` instead of the default. `with_decoded` lends the same option but never
+value is stored, even before it decodes, without allocating a holder map or marking the chunk
+unsaved. `get_existing` lends `Option<&T>`, with `None` instead of the default. `with_decoded` lends the same option but never
 decodes a saved or synced value. The read returns only what the closure projects;
 copy or clone the data you need beyond the call. Reads and `set` need
 `T: Send + Sync + 'static`; `remove` also needs `Clone` to return the previous value. `set` runs the optional persistence codec
@@ -86,16 +86,14 @@ a missing holder is an error, not a new phantom holder; a client keeps a copy fo
 any holder it is asked about (see the sync paragraph below).
 `AttachmentError` distinguishes `MissingHolder`, `TypeMismatch`, `Decode`, `Encode`,
 `InvalidNamespace` (a malformed saved compound), `InvalidCopyPolicy` (death-copy
-without a persistence codec), `InvalidSyncPolicy` (sync operation on an unsynced
-key or a policy mismatch), `Undeclared` (missing attachment registration),
+before configuring a persistence codec), `DuplicateSerializer` (two persistence codecs),
+`InvalidSyncPolicy` (a policy mismatch, such as an unsynced key used for render attachments),
+`Undeclared` (missing attachment registration),
 `StaleKey` (key from an earlier installation), `HolderBusy` (storage temporarily
 unavailable; retry after the pass) and `UnsupportedHolder` (the holder family has
 no attachment storage; retrying does not help).
-`host.attachments()` exposes the host's `AttachmentStore` for custom storage
-adapters. Its `store` method accepts only an `AttachmentStoreWrite` prepared by
-the installed descriptor, not a caller-supplied name, erased value or NBT form.
-Ordinary mods write with `key.set(host, holder, value)`. Reading and copying a holder's
-data share its stored values without cloning them.
+The game uses an erased adapter internally; mods use methods on an issued key to access
+values. Holding a value loan does not give ownership of the game's stored binding.
 
 `AttachmentHolder` keeps an existing typed handle when a system needs to store a holder
 identity: `Entity`, `Player`, `BlockEntity`, `Chunk` or `Level`. It is `Copy`, does not keep
@@ -105,8 +103,11 @@ the storage-relative `Holder`, it carries the handle's world scope.
 ## Querying holders
 
 Import `AttachmentQueries` to use `host.query(&key)` on either host side. The
-returned batch is a **snapshot** of membership and stored value bindings in the
-host's current dimension. Create a cursor with `query.iter()` and step it with
+returned query is a **snapshot** of membership and stored value bindings in the
+host's current dimension. Use `host.capture(&key)` if you need an unbound `AttachmentBatch`:
+its `query(&key)` can bind the same captured bucket with a currently issued key, even after
+reinstallation. An already-bound query remains tied to its original installation and refuses
+reads after reinstallation. Create a cursor with `query.iter()` and step it with
 `rows.try_next()?` until it returns `Ok(None)`. Borrow each value with
 `row.with_value(scope, |value| ...)` without cloning it. Get `scope` from
 `host.attachment_read_scope()?`. Iteration decodes saved entries lazily; malformed
@@ -173,15 +174,23 @@ to both).
 
 A descriptor configured with `.sync(sync_codec)` sends its value to Sunrise clients when
 `get` creates the default, on `set` and `remove`, and on demand with
-`key.sync_data(host, holder)` (or `key.sync_data_in(level, holder)`); changes made in one
-tick are sent once, at its end. The recipients are the
+`key.sync_data(host, holder)` (or `key.sync_data_in(level, holder)`). Explicit sync on a live
+unsynced key is a no-op. For a synced key, explicit sync with no value sends a removal marker.
+Removing an absent synced key from an existing attachment map also sends a removal marker,
+while returning `None`; a holder that never had a map need not send one. The marker clears a
+client's local default as well as a previously synced value.
+
+Committed entity, player, chunk and level updates are sent in the order accepted, even when
+the same key is written twice before a send pass. Block entities send the final change per key.
+The recipients are the
 players who track the holder: guests who were sent a chunk for a chunk or block entity,
 who track an entity for an entity, the player and those tracking them for a player, and
 everyone in the level for the level. A client also gets all of a holder's synced values
 when it starts seeing it: a chunk sent (with its block entities), a level joined or
 re-entered, an entity tracked, and its own player. The wire form is encoded and decoded
 with the sync codec passed to `.sync(...)`, without requiring `.serialize(...)`.
-The send pass encodes the current committed value, including on explicit resync.
+The send pass encodes each accepted value binding; it does not deep-copy the interior state of `T`.
+Initial entity pairing projects attachments on the owning server thread before packet workers assemble bundles.
 A codec refusal is logged each time with the holder, attachment ID and declaring
 mod; other keys can still be sent. If a projection succeeds but its NBT cannot
 be written to the network, the send pass reports the holder and key and omits
@@ -199,8 +208,8 @@ that cannot be written is omitted without dropping its siblings. A message past 
 connection's frame limit is not sent. Refusals are logged; the player stays joined. A full outgoing
 queue closes that player's connection.
 
-On a client, `Host::attachments` returns a copy of what the server synced, which `get`
-decodes; `set` and `remove` change only that copy, which is dropped when the chunk,
+On a client, `key.get` reads or decodes the local copy of what the server synced;
+`set` and `remove` change only that copy, which is dropped when the chunk,
 entity or player goes. A client keeps no copy for the level hosts (`LevelRandomHost`):
 they stay server-only there, though their changes on a server are synced.
 

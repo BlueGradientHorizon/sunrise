@@ -38,10 +38,12 @@ a callback panic does not stop the save.
 
 Every captured record runs the save callback once, for full saves (explicit,
 forced, late, unload and closing) and proto saves alike. The writer may coalesce
-older captures without writing them. Saves are refused, with
-no callback, while an action savepoint is open, and chunk unloading waits for
-it to close. A record that the writer cannot encode or write is reported with
-its coordinates and storage type. A flush
+older captures without writing them. Gameplay save entry points check that the entity pass
+is settled. When a save listener is installed, eager saves and the normal streaming/unload
+pass also defer while an action savepoint holds the pass open. The low-level record capture
+and synchronous disk write do not themselves impose a transaction gate; a callback observes
+only the record its caller captured. A record that the writer cannot encode or write is
+reported with its coordinates and storage type. A flush
 waits for all attempts to finish. An individual record failure does not fail the
 command, timer save or shutdown, but a failed region sync fails the flush. The server
 does not retry the failed snapshot. A later edit can be saved in a new snapshot.

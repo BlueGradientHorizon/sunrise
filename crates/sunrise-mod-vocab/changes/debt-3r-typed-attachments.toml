@@ -83,6 +83,8 @@ ids = [
     "handle:AttachmentKey::remove_in",
     "handle:AttachmentKey::sync_data_in",
     "type:AttachmentError.StaleKey",
+    "type:AttachmentError.DuplicateSerializer",
+    "type:AttachmentError.RegistrationMismatch",
     # Block-entity and entity Part state
     "trait:BlockEntityPartState",
     "assoc:BlockEntityPartState::DATA",
@@ -128,7 +130,7 @@ ids = [
     # Attachment queries
     "method:AttachmentQueries::capture",
     "method:AttachmentQueries::query",
-    "method:ModStateHost::attachment_query",
+    "method:prelude::ModStateHost::attachment_query",
     "method:AttachmentQueriesMut::query_mut",
     "handle:AttachmentBatch::query",
 ]
@@ -141,9 +143,9 @@ migrate = '''
 - Store the issued `AttachmentKey<T>` on your mod, hook listener, renderer, or Part (cloning is cheap) and use `key.{get,has,get_existing,set,remove,sync_data}(host, holder, ...)` (or `*_in(level, holder, ...)` on `LevelRandomHost`). Pass `&key` to `host.query(&key)`, `host.query_mut(&key)`, `AttachmentBatch::query(&key)`, `EntityRenderAttachments::get(&key)`, `ChunkDiskData::{get,set,remove}(&key, ...)`, `event.original.{attachment,existing_attachment,has_attachment,remove_attachment,set_attachment,with_decoded_attachment}(&key, ...)`, `AttachedStacks::{new,single}(&key, ...)`, `AttachedEnergy::new(&key, ...)`, `read_state`, `edit_part_state`, and `PartStateDeclaration::of`.
 - Replace `AttachmentType::with_decoded` with `key.with_decoded(host, holder, read)` to borrow an already-decoded value without loading or inserting it. Use `key.get_existing(host, holder, read)` to decode an existing raw value, or borrow query rows through `host.query(&key)`.
 - `PartStateDeclaration` is no longer `Copy`: clone it or rebuild it with `PartStateDeclaration::of(&key)` instead of copying by value.
-- On `BlockEntityPartState` and `EntityPartState`, replace `const DATA: &'static AttachmentType<Self::Data>` with `fn state_key(&self) -> &AttachmentKey<Self::Data>` and call `self.state(...)`, `self.state_existing(...)`, `self.state_in(...)`, `self.state_existing_in(...)`, and `self.edit_state(...)` on `&self` (see the item 44 attachment loan note for the callbacks). Replace matches on `PartStateRefusal::Incompatible { .. }` with `PartStateRefusal::StaleKey`.
+- On `BlockEntityPartState` and `EntityPartState`, replace `const DATA: &'static AttachmentType<Self::Data>` with `fn state_key(&self) -> &AttachmentKey<Self::Data>` and call `self.state(...)`, `self.state_existing(...)`, `self.state_in(...)`, `self.state_existing_in(...)`, and `self.edit_state(...)` on `&self` (see the item 44 attachment loan note for the callbacks). A key from a different registration pass is refused with `PartStateRefusal::StaleKey`; `Sync` and `CopyOnDeath` still identify their own policy refusals. The old `PartStateRefusal::Incompatible` case is gone.
 - Handle `AttachmentError::StaleKey` if a key or retained `AttachmentRowMut` can outlive a registration reinstall. `EntityRenderAttachments::get` also refuses captures from another installation, even with a current key, and returns `AttachmentError::InvalidSyncPolicy` for unsynced keys. Take a fresh capture/key instead of carrying render data across a reinstall.
-- `key.set(...)` can refuse persistence encoding but no longer calls the sync encoder. `key.sync_data(...)` queues the current value; encoding happens in the send pass and its refusals are logged. To retain an attachment through player death, opt in on its current descriptor with `.copy_on_death()`; the flag in old saves only applies to absent mods.
+- `key.set(...)` can refuse persistence encoding but no longer calls the sync encoder. `key.sync_data(...)` queues a value or removal for a synced key and is a no-op for an unsynced one. Removing an absent synced value returns `None` but clears replicas if the holder already has a map. Entity, player, chunk and level updates keep acceptance order; block entity updates coalesce. Encoding runs in the send pass and its refusals are logged. To retain an attachment through player death, opt in on its current descriptor with `.copy_on_death()`; the flag in old saves only applies to absent mods.
 - Rebuild `chunk_data_load` and `chunk_data_save` listeners against hook version 4. Pass `&key` to `data.get/set/remove` and handle each returned error. A refusal changes no envelope; match `ChunkDiskFailureKind` on `err.reason`, including when a proposed edit would not round-trip through normal saved NBT. If several operations must succeed together, return the error from `data.transaction(...)` to undo that group. There is no sticky `data.failure()` job veto. `ChunkDiskData::from_nbt` is now engine-only; use the store lent to the hook. `data.finish()` returns the accepted `Compound`, not a `Result`. A panic discards only that listener's edits, disables its callback for the session and does not cancel publication.
 - The erased store is an engine adapter. Replace raw string operations with methods on an issued key, and capture unbound snapshots with `host.capture(&key)` instead of `host.attachment_query(namespace, name)`. Custom `AttachmentTypesRegistrar` implementations implement `submit_attachment` and `lookup_attachment`; the typed helpers refuse replies with a mismatched ID or Rust type.
 '''

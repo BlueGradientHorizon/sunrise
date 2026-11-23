@@ -58,14 +58,12 @@ Block entity types can only be declared by a package's code, not by content file
 A `side = "server"` package whose Part on such a type listens to a client hook is refused like any other
 client-side Part.
 
-The Part's state (`block_entity_part_with_state`) is an issued `AttachmentKey<T>` registered with
-`register_attachment_type` (or looked up from another package via `attachment_key`). Any valid
-lowercase `namespace:name` not already registered is accepted, and the value is saved in the block
-entity's attachment compound under that key's `(namespace, name)`. A Part reaches the owner's state
-through an attachment the owner declared (the public attachment API); a key not issued in the active
-registration pass is refused at load with `PartStateRefusal::StaleKey`. When the attaching package
-is removed, what it saved stays in the block entity, unread (the saved attachment compound keeps
-entries it does not know on save), and is read again if the package comes back.
+The Part's state (`block_entity_part_with_state`) uses an issued `AttachmentKey<T>` from
+`register_attachment_type`, in a namespace the registering package owns or serves. A dependent
+package can obtain the same key with `attachment_key`; lookup does not declare a new attachment.
+The value is saved in the block entity's attachment compound under the key's `(namespace, name)`.
+When the package is removed, its saved entry remains unread and can be decoded if the package
+returns.
 
 ## Removal side effects
 
@@ -148,17 +146,16 @@ let done = self.edit_state(event.subject.host(), entity, |_, _tx, progress| {
 - An undecodable saved value refuses before the closure runs and keeps its bytes.
 - A transaction that aborts puts back the values, the chunk's unsaved mark and any block entity it
   removed, with its attachment map still bound. Handles of block entities made inside it stay
-  `Stale`. Removed block entities retire only when the outermost transaction commits. No save runs
-  while a value may still be tentative, and a chunk unload waits until no transaction is open.
+  `Stale`. Removed block entities retire only when the outermost transaction commits. For the
+  gameplay entry points that defer saving and unloading during an open action savepoint, see
+  [saving chunk attachments](../../how-to/chunk-data-save.md).
 - No size or depth limit of its own applies to a value. A saved value follows the chunk's NBT rules:
   vanilla 26.3 reads region files with `NbtAccounter.unlimitedHeap`, an unbounded byte budget and
   depth 512. The 2 MiB quota of a chunk packet's block entity data is a network limit and does not
   cap saved state.
-- Registration refuses a declaration whose key syncs, copies on death, or was not issued in the
-  active registration pass (`PartStateRefusal::StaleKey`). Because each attachment ID is registered
-  once with a single Rust type, another package using the same state looks up the owner's issued
-  `AttachmentKey<T>` with `r.attachment_key::<T>(id)`. The refusal names the Part, the key, the
-  type and the reason.
+- Registration reports `PartStateRefusal::Sync` for a synced key, `CopyOnDeath` for a key that
+  copies on death, or `StaleKey` if the key was not issued in the active registration pass.
+  The refusal names the Part, the key, the type and the reason.
 - Values without a codec last for the session. Part state is server-side for now. A client reads the
   default, because nothing is sent to it yet.
 - Part registration and state errors are local values, not `Wire` records.
