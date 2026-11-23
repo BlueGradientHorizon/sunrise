@@ -71,7 +71,7 @@ fn accept<'a>(rows: &'a [(&str, &str)]) -> impl FnMut(&'a Project, &'a Release) 
             project,
             release,
             archive: PathBuf::new(),
-            manifest: manifest(&project.mod_id, &release.version, dependencies),
+            manifest: manifest(&project.mod_id, &release.version.to_string(), dependencies),
             files: None,
         }))
     }
@@ -147,8 +147,8 @@ fn releases_are_tried_newest_first_and_only_as_far_as_the_range_needs() {
         let mut take = accept(&[]);
         let chosen = libraries
             .select(&addon, |project, release| {
-                calls.borrow_mut().push(release.version.clone());
-                if Some(release.version.as_str()) == unfit {
+                calls.borrow_mut().push(release.version.to_string());
+                if Some(release.version.to_string().as_str()) == unfit {
                     return Ok(Err("does not fit".into()));
                 }
                 take(project, release)

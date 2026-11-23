@@ -100,8 +100,9 @@ impl Registry {
         let digest: [u8; 32] = Sha256::digest(&bytes).into();
         if bytes.len() as u64 != file.size || index::sha256(&bytes) != file.sha256 {
             return Err(failed(format!(
-                "{} differs from the size and SHA-256 the index lists; clear this cache entry",
-                archive.display()
+                "{} differs from the size and SHA-256 the index lists; delete the folder {}",
+                archive.display(),
+                kept.display()
             )));
         }
         let attestation = bounded::read_bytes(&bundle, index::MAX_FILE, Symlinks::Refuse)
@@ -117,25 +118,36 @@ fn read_index(cache: &Path, url: &str, fetch: &Fetch, key: &str) -> Result<Index
     let signature = String::from_utf8(signature).map_err(|e| format!("{url}.minisig: {e}"))?;
     let index = Index::verify(&bytes, &signature, key).map_err(|e| format!("{url}: {e}"))?;
     let path = cache.join(SERIAL);
-    match fs::read_to_string(&path) {
-        Ok(text) => {
-            let last: u64 = text
-                .trim()
-                .parse()
-                .map_err(|e| format!("{}: {e}", path.display()))?;
-            if index.serial < last {
-                return Err(format!(
-                    "{url}: serial {} is older than {last}, the last one this computer accepted",
-                    index.serial
-                ));
-            }
-        }
-        Err(e) if e.kind() == io::ErrorKind::NotFound => (),
+    let last = match fs::read_to_string(&path) {
+        Ok(text) => Some(text.trim().parse::<u64>().map_err(|e| {
+            format!(
+                "{}: {e}; delete it to accept the live index",
+                path.display()
+            )
+        })?),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => None,
         Err(e) => return Err(format!("{}: {e}", path.display())),
+    };
+    if let Some(last) = last
+        && index.serial < last
+    {
+        return Err(format!(
+            "{url}: serial {} is older than {last}, the last one this computer accepted",
+            index.serial
+        ));
     }
-    fs::create_dir_all(path.parent().expect("serial file in the cache"))
-        .and_then(|()| fs::write(&path, index.serial.to_string()))
-        .map_err(|e| format!("{}: {e}", path.display()))?;
+    if last.is_none_or(|last| index.serial > last) {
+        // Replaced whole by a rename, so a stopped run never leaves a partial serial behind.
+        let folder = path.parent().expect("serial file in the cache");
+        fs::create_dir_all(folder)
+            .and_then(|()| tempfile::NamedTempFile::new_in(folder))
+            .and_then(|mut file| {
+                file.write_all(index.serial.to_string().as_bytes())?;
+                file.persist(&path).map_err(|e| e.error)?;
+                Ok(())
+            })
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+    }
     Ok(index)
 }
 

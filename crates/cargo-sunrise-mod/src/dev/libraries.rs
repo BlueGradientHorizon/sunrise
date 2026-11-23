@@ -213,17 +213,16 @@ impl Libraries {
         let mut releases: Vec<_> = project
             .releases
             .iter()
-            .filter_map(|release| Some((semver::Version::parse(&release.version).ok()?, release)))
-            .filter(|(version, release)| {
+            .filter(|release| {
                 wanted
                     .iter()
-                    .all(|(_, dep)| dep.requirement.matches(version))
+                    .all(|(_, dep)| dep.requirement.matches(&release.version))
                     && index.revoked(&project.id, &release.file.sha256).is_none()
             })
             .collect();
-        releases.sort_by(|(a, _), (b, _)| b.cmp_precedence(a));
+        releases.sort_by(|a, b| b.version.cmp_precedence(&a.version));
         let mut rejected = Vec::new();
-        for (_, release) in releases {
+        for release in releases {
             match take(project, release)? {
                 Ok(taken) => return Ok(taken),
                 Err(why) => rejected.push(format!("{id} {}: {why}", release.version)),
@@ -264,7 +263,7 @@ impl Libraries {
                 }
                 (package.manifest, None)
             };
-            if manifest.id != project.mod_id || manifest.version.to_string() != row.version {
+            if manifest.id != project.mod_id || manifest.version != row.version {
                 return Ok(Err(format!(
                     "its package is {} {}",
                     manifest.id, manifest.version

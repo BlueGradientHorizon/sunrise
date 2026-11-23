@@ -50,6 +50,10 @@ fn the_index_needs_the_registry_signature_and_a_serial_no_older_than_the_last_ac
         fs::read_to_string(&serial).unwrap(),
         FIRST_SERIAL.to_string()
     );
+    // An unreadable floor is named, never taken as no floor.
+    fs::write(&serial, "").unwrap();
+    let error = read_index(cache.path(), URL, &serve(FIRST), KEY).unwrap_err();
+    assert!(error.contains(&serial.display().to_string()), "{error}");
 }
 
 fn library(bytes: &[u8]) -> Index {
@@ -85,7 +89,7 @@ fn a_package_is_downloaded_once_and_its_size_digest_and_attestation_are_checked_
             assert_eq!(bundle, b"bundle");
             checked
                 .borrow_mut()
-                .push((digest, project.repository.id, release.version.clone()));
+                .push((digest, project.repository.id, release.version.to_string()));
             Ok(())
         },
     );

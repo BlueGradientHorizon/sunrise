@@ -25,7 +25,9 @@ signed index, including the library's own requirements, and does the same for a 
 library is the registry project whose in-game ID is the one you declared. When several projects
 provide that ID, the tool names them and you supply the one to use with `--with`. Before it builds
 with a release, the tool checks the release package's size and SHA-256 against the index, and its
-GitHub attestation against the project's registered repository and release workflow. To include an
+GitHub attestation against the project's registered repository and release workflow. It also refuses
+an index older than the newest one it accepted on the same computer; a fresh machine, such as a CI
+runner, accepts any signed index. To include an
 optional library, supply it with `--with`; an optional declaration alone never fetches one from the
 registry. The tool tries in-range registry releases newest first and takes the first one that fits.
 A library pinned to another Sunrise build must carry a uses list that shows it fits the project's

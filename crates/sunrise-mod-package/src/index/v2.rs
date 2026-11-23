@@ -1,8 +1,8 @@
 //! The signed v2 registry index (`v2/index.json`, sunrise-mods `docs/registry-v2.md` "Published
 //! index"): only what the mod tool reads to take a library. Under schema 2 a reader ignores
 //! fields it doesn't know, so the published page, build and fit fields are left out here.
-use super::Kind;
-use serde::Deserialize;
+use super::{Kind, MAX_FILE};
+use serde::{Deserialize, Deserializer};
 
 /// The only schema served at the v2 address; a breaking change raises it and moves the index.
 pub const SCHEMA: u64 = 2;
@@ -39,7 +39,8 @@ pub struct Repository {
 
 #[derive(Debug, Deserialize)]
 pub struct Release {
-    pub version: String,
+    #[serde(deserialize_with = "semver_text")]
+    pub version: semver::Version,
     /// The exact signer workflow ref the release's attestation records.
     pub workflow: String,
     pub file: File,
@@ -66,12 +67,49 @@ impl Index {
     pub fn verify(bytes: &[u8], signature: &str, key: &str) -> Result<Self, String> {
         super::verify_signature_bytes(key, signature, bytes)
             .map_err(|_| "the signature doesn't match the registry's key".to_string())?;
+        Self::parse(bytes)
+    }
+
+    fn parse(bytes: &[u8]) -> Result<Self, String> {
         let index: Self = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
         if index.schema != SCHEMA {
             return Err(format!(
                 "schema {} where {SCHEMA} is expected",
                 index.schema
             ));
+        }
+        // Readers name cache folders by project ID and digest: refuse the whole index rather than
+        // let a field outside these shapes become a path.
+        for project in &index.projects {
+            if !project_id(&project.id) {
+                return Err(format!(
+                    "project ID {:?} is not 8 base62 characters",
+                    project.id
+                ));
+            }
+            for release in &project.releases {
+                let file = &release.file;
+                if !sha256(&file.sha256) {
+                    return Err(format!(
+                        "{} {}: SHA-256 {:?} is not 64 lowercase hexadecimal characters",
+                        project.id, release.version, file.sha256
+                    ));
+                }
+                if file.size == 0 || file.size > MAX_FILE {
+                    return Err(format!(
+                        "{} {}: size {} is outside 1 byte to {MAX_FILE} bytes",
+                        project.id, release.version, file.size
+                    ));
+                }
+            }
+        }
+        for row in &index.revoked {
+            if !project_id(&row.project) || row.sha256.as_deref().is_some_and(|d| !sha256(d)) {
+                return Err(format!(
+                    "takedown of {:?} names an invalid project ID or SHA-256",
+                    row.project
+                ));
+            }
         }
         Ok(index)
     }
@@ -83,3 +121,25 @@ impl Index {
         })
     }
 }
+
+/// The registry's project IDs: eight case-sensitive base62 characters (sunrise-mods
+/// `docs/registry-v2.md`, after Modrinth's `apps/labrinth/src/database/models/ids.rs`).
+fn project_id(id: &str) -> bool {
+    id.len() == 8 && id.bytes().all(|b| b.is_ascii_alphanumeric())
+}
+
+fn sha256(digest: &str) -> bool {
+    digest.len() == 64
+        && digest
+            .bytes()
+            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+fn semver_text<'de, D: Deserializer<'de>>(deserializer: D) -> Result<semver::Version, D::Error> {
+    let text = String::deserialize(deserializer)?;
+    semver::Version::parse(&text)
+        .map_err(|e| serde::de::Error::custom(format!("release version {text:?}: {e}")))
+}
+
+#[cfg(test)]
+mod tests;
