@@ -1,0 +1,3 @@
+ids = ["handle:LevelRef::brightness"]
+why = "On a client, LevelRef::brightness now reads the light the server sent for the level the handle names, a level open for viewing as well as the shown one (BlockAndLightGetter.getBrightness); a stale handle or closed view answers None. It used to answer None for any level but the shown one. Server reads are unchanged."
+migrate = "Nothing to migrate: a client read of the shown level answers as before."
