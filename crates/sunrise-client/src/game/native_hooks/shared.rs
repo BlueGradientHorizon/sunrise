@@ -528,6 +528,9 @@ impl Game<'_> {
         if screen != Screen::Inventory && self.active_native_screen().is_some() {
             self.remote_close_container();
         }
+        if screen != Screen::DemoIntro {
+            self.demo_intro = None;
+        }
         self.screen = screen;
         if let Some(owner) = owner {
             self.native_mod_screen = Some(owner.to_owned());
@@ -918,6 +921,7 @@ impl Game<'_> {
                     | "dialog"
                     | "dialog_warning"
                     | "confirm_link"
+                    | "demo_intro"
                     | "link_prompt"
                     | "code_of_conduct"
                     | "world_select"
