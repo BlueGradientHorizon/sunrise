@@ -351,6 +351,13 @@ impl Frame {
                     usize::from(selector[1] >> 4),
                     usize::from(selector[1] & 0x0f),
                 );
+                // Td and Ta name one of four table destinations each (B.2.3), whether or not
+                // the scan uses that class.
+                if dc > 3 || ac > 3 {
+                    return Err(format!(
+                        "a scan naming Huffman table destinations {dc} and {ac}, past 3"
+                    ));
+                }
                 let uses_dc = !self.progressive || (start == 0 && approximation >> 4 == 0);
                 let uses_ac = !self.progressive || start > 0;
                 if uses_dc && tables.dc.get(dc).is_none_or(Option::is_none)
@@ -424,8 +431,8 @@ impl Frame {
                         for dx in 0..h {
                             let block = (y * v + dy) * row + x * h + dx;
                             let non_zero = c.non_zero.get_mut(block);
-                            let dc = tables.dc[dc].as_ref();
-                            let ac = tables.ac[ac].as_ref();
+                            let dc = tables.dc.get(dc).and_then(Option::as_ref);
+                            let ac = tables.ac.get(ac).and_then(Option::as_ref);
                             let block = Block {
                                 bits: &mut bits,
                                 dc,
