@@ -1,16 +1,31 @@
-# Install from GitHub
+# Add a mod from source
 
-Install a native mod from the Mods page with **Add from GitHub**, or use:
+The registry lists only signed, reviewed releases. To install anything else, such as a mod you are writing
+or one a friend sent you, use **Add from source** on the launcher's Installed page. It offers two
+sources:
+
+- **Repository:** a GitHub link or a mod folder on this computer. The launcher builds the mod, and it is
+  marked **From source**.
+- **Local `.smod` file:** a package already saved on this computer. It is marked **Local**.
+
+Neither source is reviewed by Sunrise. After the launcher reads the source, a warning names exactly where
+the code comes from: the repository and commit, the release tag, the folder or the file. Native mod code
+runs on your computer with your permissions, so the warning's default is Cancel, and you must choose
+**Install unreviewed mod** to go on. Read the source first.
+
+Mods marked From source or Local never update automatically and are left out of **Update all**. To
+refresh one, add it from source again. A mod installed from the registry is not replaced by an unreviewed
+copy: remove it first.
+
+## From the command line
 
 ```sh
 sunrise-launcher mods add-github URL --trust-native-code
 ```
 
 `--trust-native-code` records your consent to run native code. You can omit it after the launcher
-has saved your consent. Native mods run with full access to your computer; read the source before
-installing. Before downloading the package or source, the launcher presents the
+has saved your consent. Before downloading the package or source, the launcher presents the
 exact resolved source commit link with its warning so you can review that revision.
-GitHub installs are not reviewed by the Sunrise registry.
 
 ## Choose a source
 
