@@ -74,7 +74,6 @@ mod lan_probe;
 mod late_entity_pair_fixture;
 mod lava_cauldron_item_fixture;
 mod light_parity;
-mod living_upside_down_probe;
 mod lore_tooltip_fixture;
 mod marker_particles_probe;
 mod menu_fixture;
@@ -197,7 +196,6 @@ probes! {
     interaction_input_fixture,
     lan_probe,
     light_parity,
-    living_upside_down_probe,
     lore_tooltip_fixture,
     marker_particles_probe,
     menu_fixture,

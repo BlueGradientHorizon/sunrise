@@ -7,8 +7,7 @@ use std::sync::Arc;
 use sunrise_client::mobs::{Mob, MobTypes, render};
 use sunrise_core::geometry::Vec3;
 
-pub fn main() -> sunrise_client::Result<()> {
-    let args: Vec<_> = crate::args().skip(1).collect();
+pub(super) fn run(args: &[String]) -> sunrise_client::Result<()> {
     let types = MobTypes::load(Path::new(&args[0]))?;
     let mut out = String::new();
     for line in fs::read_to_string(&args[1])?.lines() {

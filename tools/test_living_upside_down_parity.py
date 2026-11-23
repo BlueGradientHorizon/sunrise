@@ -28,8 +28,8 @@ def main():
     harness.java_run(build, classes, dependencies, oracle, [inputs, java_out], 'java')
 
     rust_out = build / 'rust.txt'
-    probe = harness.build_probe(build, 'living_upside_down_probe')
-    harness.run_logged([*probe, lab.RESOURCES, inputs, rust_out], build, 'rust')
+    probe = harness.build_probe(build, 'entity_anim_fixture')
+    harness.run_logged([*probe, '--living-upside-down', lab.RESOURCES, inputs, rust_out], build, 'rust')
 
     vanilla = java_out.read_text().splitlines()
     sunrise = rust_out.read_text().splitlines()

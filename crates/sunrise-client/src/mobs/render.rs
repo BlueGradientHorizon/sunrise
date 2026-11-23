@@ -1126,7 +1126,7 @@ pub fn base_transform_at(m: &Mob, alpha: f32, origin: glam::Mat4) -> glam::Mat4 
         let pitch = m.previous_head_pitch + (m.head_pitch - m.previous_head_pitch) * alpha;
         base *= glam::Mat4::from_rotation_x((-90.0 - pitch).to_radians())
             * glam::Mat4::from_rotation_y(((m.age as f32 + alpha) * -75.0).to_radians());
-    } else if anim::upside_down(m) {
+    } else if anim::upside_down(m) && m.pose() != mod_api::Pose::Sleeping {
         // The box height already includes entity scale. Undo the pose's scale
         // for the whole offset, including the 0.1-block clearance.
         let lift = (m.height() + 0.1) / entity_scale;
@@ -4545,6 +4545,8 @@ mod random_texture_tests {
                 want[i]
             );
         }
+        m.custom_name = Some("Dinnerbone".into());
+        assert_eq!(base_transform_at(&m, 0.5, glam::Mat4::IDENTITY), scaled);
     }
 
     /// A sleeping avatar's bed offset is `getEyeHeight(Pose.STANDING) - 0.1`,
