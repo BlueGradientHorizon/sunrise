@@ -125,6 +125,7 @@ pub enum Projection {
 /// An element of a template pool, of any type: a handle the game resolves.
 /// Clone it freely, since clones share one element.
 #[derive(Clone)]
+#[non_exhaustive]
 pub struct PoolElementRef {
     engine: Arc<dyn Any + Send + Sync>,
     mod_element: Option<Arc<dyn PoolElement>>,
@@ -193,6 +194,7 @@ pub fn pool_element_payload(element: &PoolElementRef) -> &Arc<dyn Any + Send + S
 /// A data pack template pool, `minecraft:worldgen/template_pool`, as
 /// `StructureTemplatePool` holds it once loaded.
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct TemplatePool {
     templates: Vec<PoolElementRef>,
     fallback: Identifier,
