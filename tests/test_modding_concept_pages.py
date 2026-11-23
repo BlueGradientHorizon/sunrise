@@ -195,6 +195,39 @@ class ConceptPages(unittest.TestCase):
             with self.assertRaisesRegex(AssertionError, error):
                 pages.check_html(output, self.src / "concepts/..")
 
+    def test_missing_h1_fails_expand(self):
+        (self.src / "concepts/parts/no-h1.md").write_text("## Only h2\n\nBody.\n", encoding="utf-8")
+        with self.assertRaisesRegex(AssertionError, r"concepts/parts/no-h1\.md: missing top-level `# ` heading"):
+            self.expand()
+
+    def test_bare_issue_reference_in_prose_is_rejected_while_code_and_fragments_pass(self):
+        pages.validate(
+            "# Heading\n\nSee [anchor](b-block.md#landing) and `#4776` and:\n\n```text\n#1234\n```\n",
+            "concepts/parts/a-item.md",
+            self.src,
+            {},
+        )
+        with self.assertRaisesRegex(AssertionError, r"bare issue reference #4776"):
+            pages.validate(
+                "# Heading\n\nAdded in #4776.\n",
+                "concepts/parts/a-item.md",
+                self.src,
+                {},
+            )
+
+    def test_inline_plain_rust_fence_is_rejected_while_include_and_rust_ignore_pass(self):
+        (self.src / "sample.rs").write_text("// ANCHOR: ok\nfn ok() {}\n// ANCHOR_END: ok\n", encoding="utf-8")
+        pages.validate(
+            "# Heading\n\n```rust\n{{#include ../../sample.rs:ok}}\n```\n\n```rust,ignore\nlet x = 1;\n```\n",
+            "concepts/parts/a-item.md",
+            self.src,
+            {},
+        )
+        for fence in ("```rust\nlet x = 1;\n```", "```rs\nlet x = 1;\n```", "```rust,no_run\nlet x = 1;\n```"):
+            with self.subTest(fence=fence):
+                with self.assertRaisesRegex(AssertionError, r"must use \{\{#include\}\}"):
+                    pages.validate(f"# Heading\n\n{fence}\n", "concepts/parts/a-item.md", self.src, {})
+
 
 class BookSourceGuards(unittest.TestCase):
     def setUp(self):

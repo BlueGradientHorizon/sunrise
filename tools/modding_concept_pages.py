@@ -11,7 +11,9 @@ no edit to SUMMARY.md, and check every page's links.
 - An absolute URL naming the game's repository or the mod registry names `sunrise-org`, and one naming the
   book names `playsunrise.net/docs/modding`, where it is published; the old Pages addresses are refused.
   Horizon's own projects (the machine sample, the mixins tool) keep their links.
-- A page the book doesn't render, or one titled as a design, a plan or a work list, fails the build.
+- A page the book doesn't render, one missing a top-level `# ` heading, one titled as a design, a plan or a
+  work list, one citing bare `#NNNN` issue numbers in prose, or one with a non-ignored inline `rust` fence
+  (instead of `{{#include}}` from `docs/modding/examples`) fails the build.
 - The HTML check also refuses duplicate rendered chapter H1 titles across the book, including generated chapters.
 """
 import argparse
@@ -45,6 +47,58 @@ SECTION_PAGES = "<!-- section-pages -->"
 # The book documents what the game does. A page titled as one of these is a design, a plan or a work list,
 # and lives in docs/design/ instead.
 NOT_A_MANUAL = re.compile(r"\b(design|designs|proposal|proposed|draft|roadmap|tracker|status|plan)\b", re.IGNORECASE)
+# Reader pages never cite tracker issue or PR numbers (such as `#4776`); hex colours and URL fragments are ignored.
+ISSUE_REF = re.compile(r"(?<![\w`/&#-])#(\d{3,5})(?![0-9a-fA-F])")
+FENCE_OPEN = re.compile(r"^([ \t]*)(`{3,}|~{3,})(.*)$")
+INCLUDE_ONLY = re.compile(r"\{\{#(?:rustdoc_)?include [^\s}]+\s*\}\}")
+
+
+def h1_headings(text):
+    """Yield top-level ATX H1 titles outside fenced blocks."""
+    fenced = ""
+    for line in text.splitlines():
+        m = FENCE_OPEN.match(line)
+        if m:
+            mark = m.group(2)
+            if not fenced:
+                fenced = mark
+            elif mark[0] == fenced[0] and len(mark) >= len(fenced) and not m.group(3).strip():
+                fenced = ""
+            continue
+        if not fenced and line.startswith("# "):
+            yield line[2:].strip()
+
+
+def check_rust_fences(text, path):
+    """Refuse non-ignored inline Rust fences: runnable Rust snippets must come from `{{#include}}`."""
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines):
+        m = FENCE_OPEN.match(lines[i])
+        if not m:
+            i += 1
+            continue
+        mark, info = m.group(2), m.group(3).strip()
+        close_re = re.compile(rf"^[ \t]*{re.escape(mark[0])}{{{len(mark)},}}\s*$")
+        j = i + 1
+        body = []
+        while j < len(lines) and not close_re.match(lines[j]):
+            body.append(lines[j])
+            j += 1
+        tokens = [t.strip().lower() for t in re.split(r"[,\s]+", info) if t.strip()]
+        if tokens and tokens[0] in ("rust", "rs") and "ignore" not in tokens[1:]:
+            non_blank = [line.strip() for line in body if line.strip()]
+            assert non_blank and all(INCLUDE_ONLY.fullmatch(line) for line in non_blank), (
+                f"{path}:{i + 1}: non-ignored ```{info} block must use {{{{#include}}}} from "
+                "docs/modding/examples (or fence fragments as ```rust,ignore)"
+            )
+        i = j + 1
+
+
+def check_issue_refs(body, path):
+    """Refuse bare issue/PR references (`#1234`) in reader prose."""
+    match = ISSUE_REF.search(body)
+    assert not match, f"{path}: bare issue reference {match.group(0)} in reader prose (describe the behaviour instead)"
 
 
 def headings(text):
@@ -89,6 +143,8 @@ def check_url(link, where):
 
 def validate(text, path, src, contents):
     body = prose(text)
+    check_issue_refs(body, path)
+    check_rust_fences(text, path)
     for match in chain(LINK.finditer(body), REFERENCE.finditer(body)):
         url = urlsplit(match[2])
         if url.scheme or url.netloc:
@@ -189,6 +245,13 @@ def refuse_designs(book):
                 "the game does, and designs, plans and trackers live in docs/design/")
 
 
+def require_h1(book):
+    """Fails on any source chapter missing a top-level `# ` heading."""
+    for chapter_ in chapters(book["sections"]):
+        if chapter_["path"] and chapter_.get("source_path"):
+            assert any(h1_headings(chapter_["content"])), f"{chapter_['path']}: missing top-level `# ` heading"
+
+
 def expand(book, src):
     discover(book, src)
     for chapter_ in list(chapters(book["sections"])):
@@ -201,6 +264,7 @@ def expand(book, src):
             validate(chapter_["content"], chapter_["path"], src, contents)
     missing = unrendered(book, src)
     assert not missing, f"pages the book doesn't render (list them in SUMMARY.md or put them in a folder): {missing}"
+    require_h1(book)
     refuse_designs(book)
     return book
 
