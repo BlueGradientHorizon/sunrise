@@ -1071,10 +1071,14 @@ impl Game<'_> {
 
     /// `LocalPlayer.tick`'s `Player.tick` work: input, riding, motion and
     /// sleep, and the input `sendChanges` sends for it (`None`: nothing ticked).
+    /// `fall_flying_before_hooks` is the flag from before the tick's hooks when the caller
+    /// took it before them: a glide a `player_tick_pre` listener starts is then reported as
+    /// this tick's start, as a jump-started glide is.
     pub(super) fn tick_local_player(
         &mut self,
         entity_collisions: Vec<sunrise_core::geometry::Aabb>,
         sprint_window: i32,
+        fall_flying_before_hooks: Option<bool>,
     ) -> Result<Option<u8>> {
         // Player.tick's ItemCooldowns.tick, after Pre and after
         // handleKeybinds: this path replaces `tick_world`'s for a server's
@@ -1200,7 +1204,7 @@ impl Game<'_> {
             return Ok(None);
         };
         let body = player.entity_id;
-        let was_gliding = player.fall_flying;
+        let was_gliding = fall_flying_before_hooks.unwrap_or(player.fall_flying);
         let dead = self.screen == Screen::Dead;
         // LivingEntity.isImmobile: a sleeper lies still, even if its bed's
         // shape is unavailable here; only the server decides when to wake.
@@ -1627,11 +1631,18 @@ impl Game<'_> {
         // The entities that tick before the player pushed it before its tick began, so
         // before Pre.
         self.apply_remote_push(pushed);
+        // The flag a glide starts from is the one before the hook, so a listener that starts
+        // the glide from `player_tick_pre` is reported as this tick's start.
+        let fall_flying_before_hooks = self.player.as_ref().is_some_and(|p| p.fall_flying);
         if let Some(player) = player {
             self.native_player_tick_pre(mod_api::__private::PlayerTickPreCall { player });
         }
         self.native_local_player_fit_sizes();
-        let result = self.tick_local_player(entity_collisions, sprint_window);
+        let result = self.tick_local_player(
+            entity_collisions,
+            sprint_window,
+            Some(fall_flying_before_hooks),
+        );
         // `EntityEvent.Size` for the pose the tick set.
         self.native_local_player_size();
         if let Some(player) = player {
