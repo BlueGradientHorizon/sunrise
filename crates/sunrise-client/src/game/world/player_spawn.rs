@@ -24,7 +24,7 @@ impl Game<'_> {
             p
         } else if self.spawn.is_none() || self.player_spawn.is_some() {
             // A new world: its spawn, then the first player around it.
-            if self.spawn.is_none() && !self.try_initialize_world_spawn()? {
+            if self.spawn.is_none() && !self.try_initialize_world_spawn(false)? {
                 return Ok(());
             }
             let s = self

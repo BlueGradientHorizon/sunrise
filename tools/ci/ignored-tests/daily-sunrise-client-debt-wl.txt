@@ -10,3 +10,4 @@ sunrise-client game::server_lifecycle::tests::debug_world_uses_fixed_spawn_witho
 sunrise-client game::server_lifecycle::tests::full_saves_write_live_players_before_saving_levels lib daily resources
 sunrise-client game::server_lifecycle::tests::shutdown_notifies_only_for_replaced_player_files lib daily child-process
 sunrise-client game::world_loading::tests::custom_flat_stems_validate_and_generate_pack_decoration lib daily child-process
+sunrise-client game::initial_spawn::tests::integrated_creation_finishes_world_spawn_before_opening_the_nether lib daily child-process

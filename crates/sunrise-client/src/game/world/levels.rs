@@ -132,11 +132,6 @@ macro_rules! entity_count_view {
 }
 pub(super) use entity_count_view;
 
-/// Server ticks a custom level stays loaded with no player or ticket holding
-/// it, before it is saved and closed. Built-in levels (Overworld, Nether, End)
-/// stay open until server shutdown and only unload unticketed chunks while idle.
-pub(super) const IDLE_TICKS: u32 = 300;
-
 /// Vanilla 26.3 only services connections while the server is paused (escape
 /// pause or `pause-when-empty-seconds`), so parked-level eviction is skipped
 /// then, while still running during `/tick freeze` (`paused == false`).
@@ -202,8 +197,6 @@ pub(super) struct Parked {
     creaking: CreakingState,
     /// Natural spawning's candidate cache: each level keeps its own players' squares.
     spawn_scratch: super::natural_spawning::SpawnScratch,
-    /// Server ticks since a player was last in the level.
-    pub(super) idle: u32,
     /// The level's own world border (`ServerLevel.getWorldBorder`), and what its players were
     /// last told of it (`LanHost::border_sent`).
     border: sunrise_client::worldborder::WorldBorder,
@@ -850,7 +843,6 @@ impl Game<'_> {
             sculk: Default::default(),
             creaking: Default::default(),
             spawn_scratch: Default::default(),
-            idle: 0,
             border: self.load_border(dim),
             border_sent: None,
         })
@@ -1106,7 +1098,6 @@ impl Game<'_> {
             std::mem::swap(&mut h.states, &mut p.lan_states);
             std::mem::swap(&mut h.border_sent, &mut p.border_sent);
         }
-        p.idle = 0;
         std::mem::replace(&mut self.dim, target)
     }
 
@@ -1622,44 +1613,38 @@ impl Game<'_> {
     /// creation order. A level with no work can be skipped; the Overworld
     /// supplies the idle pass when none qualify.
     pub(super) fn levels_to_tick(&self) -> Vec<Dim> {
-        let guests = self
-            .lan
-            .as_ref()
-            .map_or(&[][..], |h| h.hub.guests.as_slice());
         let mut dims = self.loaded_level_order();
-        dims.retain(|d| {
-            // `/forceload`ed chunks, or a native mod's tickets.
-            let held = |s: &Streaming| !s.forced.is_empty();
-            let forced = if *d == self.dim {
-                held(&self.streaming)
-            } else {
-                self.levels
-                    .parked
-                    .get(d)
-                    .is_some_and(|p| held(&p.streaming))
-            };
-            guests.iter().any(|g| g.dimension == d.id() && g.participates_in_player_simulation())
-                    // A viewer count not yet told to 0 (`tick_mod_container_viewers`).
-                    || self.mod_container_viewers.keys().any(|(k, _)| *k == d.id())
-                    || self.player_bed_levels().any(|b| b == *d)
-                    || forced
-                    // A game test runs in its own level, players or not.
-                    || self.game_tests.has_tests_in(*d)
-                    || self.pregen_level() == Some(*d)
-                    // A pending portal arrival keeps its destination level
-                    // running so it can land and tick (the portal ticket).
-                    || !self.arrival_chunks(*d).is_empty()
-                    || self.server_trips.iter().any(|trip| trip.spawn_destination_areas(*d).next().is_some())
-                    // A portal ticket keeps its dimension active
-                    // (`TicketType.shouldKeepDimensionActive`).
-                    || !self.portal_tickets_in(*d).is_empty()
-                    // So does a viewed `Ticking` area (#3716), for its chunks only.
-                    || self.viewed_level(*d) == Some(true)
-        });
+        dims.retain(|&dim| self.should_tick_level(dim));
         if dims.is_empty() {
             dims.push(Dim::Overworld);
         }
         dims
+    }
+
+    fn should_tick_level(&self, dim: Dim) -> bool {
+        // `/forceload`ed chunks, or a native mod's tickets.
+        let streaming = if dim == self.dim {
+            Some(&self.streaming)
+        } else {
+            self.levels.parked.get(&dim).map(|p| &p.streaming)
+        };
+        streaming.is_some_and(|s| !s.forced.is_empty())
+            || self.lan.as_ref().is_some_and(|h| {
+                h.hub.guests.iter().any(|g| {
+                    g.dimension == dim.id() && g.participates_in_player_simulation()
+                })
+            })
+            // A viewer count not yet told to 0 (`tick_mod_container_viewers`).
+            || self.mod_container_viewers.keys().any(|(k, _)| *k == dim.id())
+            || self.player_bed_levels().any(|b| b == dim)
+            || self.game_tests.has_tests_in(dim)
+            || self.pregen_level() == Some(dim)
+            // An arrival or its portal ticket keeps the destination level active.
+            || self.has_portal_arrivals(dim)
+            || self.server_trips.iter().any(|trip| trip.spawn_destination_areas(dim).next().is_some())
+            || !self.portal_tickets_in(dim).is_empty()
+            // A viewed `Ticking` area (#3716), for its chunks only.
+            || self.viewed_level(dim) == Some(true)
     }
 
     /// A loading-only ticket needs chunk work, not an active simulation.
@@ -1717,57 +1702,27 @@ impl Game<'_> {
             .is_some_and(|lists| !lists.lock().unwrap().autosave)
     }
 
-    /// Count the parked levels' empty ticks, and evict chunks and entities from
-    /// idle non-Overworld levels without closing or unloading the level itself.
-    /// In vanilla (`MinecraftServer.levels`), levels stay open until server
-    /// shutdown (or explicit runtime-level unload), so idle eviction must not
-    /// fire `level_unload`, `level_save`, or a second `level_load` on revisit.
+    /// Evict unticketed chunks and entities from idle parked levels without closing the
+    /// levels themselves (`MinecraftServer.levels`, `ChunkMap.processUnloads`).
     pub(super) fn evict_idle_levels(&mut self) -> Result<()> {
-        let mut occupied = self.levels_to_tick();
-        // A level a viewed area names, ticked or not, or one a client still holds chunks of.
-        occupied.extend(
-            self.levels
-                .parked
-                .keys()
-                .copied()
-                .filter(|d| self.needs_view_pass(*d) || self.has_spawn_tickets(*d)),
-        );
-        // A vehicle waiting there for its rider's arrival in another level.
-        let waiting: Vec<Dim> = self
-            .levels
-            .parked
-            .keys()
-            .copied()
-            .filter(|d| self.vehicle_waits_in(*d))
-            .collect();
-        let saving_enabled = !self.saving_disabled();
-        let mut evicting = Vec::new();
-        for (dim, p) in &mut self.levels.parked {
-            if occupied.contains(dim) || waiting.contains(dim) {
-                p.idle = 0;
-                continue;
-            }
-            p.idle = p.idle.saturating_add(1);
-            // A live `UNKNOWN` ticket keeps its column, so the level stays open (not ticking)
-            // until the ticket expires.
-            if saving_enabled
-                && *dim != Dim::Overworld
-                && p.idle >= IDLE_TICKS
-                && !p.streaming.has_unknown_tickets()
-            {
-                if !p.world.chunks.is_empty() || !p.persist.uuids.is_empty() {
-                    evicting.push(*dim);
-                } else {
-                    p.idle = 0;
-                }
-            }
-        }
-        if evicting.is_empty() {
-            return Ok(());
-        }
-        for dim in evicting {
+        // Runtime level opens/closes are applied outside this pass. Read each parked level
+        // in creation order, after previous unload listeners have had a chance to activate it.
+        for index in 0..self.levels.order.len() {
             if self.saving_disabled() {
                 break;
+            }
+            let dim = self.levels.order[index];
+            if dim == Dim::Overworld
+                || !self.levels.parked.get(&dim).is_some_and(|p| {
+                    (!p.world.chunks.is_empty() || !p.persist.uuids.is_empty())
+                        && !p.streaming.has_unknown_tickets()
+                })
+                || self.should_tick_level(dim)
+                || self.needs_view_pass(dim)
+                || self.has_spawn_tickets(dim)
+                || self.vehicle_waits_in(dim)
+            {
+                continue;
             }
             self.evict_idle_level_chunks(dim)?;
         }
@@ -1793,9 +1748,6 @@ impl Game<'_> {
         self.streaming.paused = prev_paused;
         self.streaming.extra = prev_extra;
         self.enter_level(back)?;
-        if let Some(parked) = self.levels.parked.get_mut(&dim) {
-            parked.idle = 0;
-        }
         evicted
     }
 
@@ -2727,13 +2679,23 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn built_in_levels_stay_open_across_idle_ticks_until_shutdown() {
-        use crate::game::{lan::LanSettings, lan_actions::GuestCommand};
+        use crate::game::{
+            lan::LanSettings, lan_actions::GuestCommand, native_entity_refs::tests::run_fresh_cases,
+        };
         use mod_api::{Hooks, LevelLoadEvent, LevelUnloadEvent, ModEntry, ServerHost};
         use std::sync::{Arc, Mutex};
         use sunrise_client::{
             lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
             server::user_lists::{BanList, IpBanList, OpList, WhiteList},
         };
+
+        if run_fresh_cases(
+            "game::levels::tests::built_in_levels_stay_open_across_idle_ticks_until_shutdown",
+            "SUNRISE_BUILT_IN_IDLE_LIFETIME_CASE",
+            &["built-ins"],
+        ) {
+            return;
+        }
 
         const BUILT_INS: [&str; 3] = [
             "minecraft:overworld",
@@ -2877,16 +2839,12 @@ mod tests {
             let mut loaded = false;
             for _ in 0..2000 {
                 game.tick_server(false).unwrap();
-                let nether_ready = game
-                    .levels
-                    .parked
-                    .get(&Dim::Nether)
-                    .is_some_and(|p| p.world.chunks.contains_key(&(0, 0)));
-                let end_ready = game
-                    .levels
-                    .parked
-                    .get(&Dim::End)
-                    .is_some_and(|p| p.world.chunks.contains_key(&(0, 0)));
+                let nether_ready = game.levels.parked.get(&Dim::Nether).is_some_and(|p| {
+                    p.world.chunks.contains_key(&(0, 0)) && p.world.entities_pending.is_empty()
+                });
+                let end_ready = game.levels.parked.get(&Dim::End).is_some_and(|p| {
+                    p.world.chunks.contains_key(&(0, 0)) && p.world.entities_pending.is_empty()
+                });
                 if nether_ready && end_ready {
                     loaded = true;
                     break;
@@ -2924,13 +2882,10 @@ mod tests {
             );
             assert!(game.run_command("save-on"));
 
-            // `/tick freeze` still allows unticketed chunks to unload, while
-            // idling past IDLE_TICKS keeps the built-in levels open and keeps
-            // ticketed chunks loaded.
+            // `/tick freeze` still allows unticketed chunks to unload. Eligibility,
+            // not a dimension idle timer, controls the sweep.
             assert!(game.run_command("tick freeze"));
-            for _ in 0..=IDLE_TICKS + 15 {
-                game.tick_server(false).unwrap();
-            }
+            game.tick_server(false).unwrap();
             assert!(game.levels.parked.contains_key(&Dim::Nether));
             assert!(game.levels.parked.contains_key(&Dim::End));
             assert!(
@@ -2951,7 +2906,7 @@ mod tests {
             );
             assert!(
                 unloads.lock().unwrap().is_empty(),
-                "built-in levels stay open past IDLE_TICKS"
+                "built-in levels stay open after their idle chunk sweep"
             );
             assert!(game.run_command("tick unfreeze"));
 

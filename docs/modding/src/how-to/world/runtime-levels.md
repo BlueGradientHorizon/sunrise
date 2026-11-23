@@ -53,8 +53,9 @@ unload or a restart. Nothing reopens a runtime level by itself at the next start
 reopens what it keeps, and a player saved in a level that was not reopened keeps the usual
 fallback. At server startup every configured level (including datapack dimensions) fires
 `level_load` (v4) before the next is available. The Overworld opens first and, if needed, selects the
-initial world spawn before the other levels open. `create_spawn_position` runs there for normal
-fresh worlds; the Debug preset uses its fixed spawn without that hook. The remaining levels follow
+initial world spawn before the other levels open, waiting for the spawn search's chunks to reach
+FULL. The owner's player spawn is prepared separately. `create_spawn_position` runs during the
+world spawn search for normal fresh worlds; the Debug preset uses its fixed spawn without that hook. The remaining levels follow
 the `LEVEL_STEM` registry traversal; mods must not assume a particular order among them.
 `host.levels().list_levels()`, ticks of eligible levels, saves and shutdown use that creation order.
 A player's saved dimension does not add to the registry. The server then validates and activates
@@ -99,13 +100,13 @@ the opened level, whereas the Host still names the current level.
 `unload(id)` saves the level and drops it, keeping the folder. It refuses with `PlayersInside`
 while a player, or an arrival that has not landed, is in the level, both when it is called and
 when it is applied: move the players out first with `entity.teleport_to_level`. `NotOpen` is the
-answer for a level that is not open (or still waiting to open). When a non-Overworld level has
-no players, views, or forced chunks for 300 ticks, the server evicts its chunks and entities from
-memory without closing the level: `is_open` stays true, neither `level_unload` nor `level_save`
-fires, and revisiting it does not fire `level_load` again. The sweep leaves a column and its live
-entities resident if a required record cannot be saved; other eligible columns can still evict.
-Only `unload`, `delete`, or server
-shutdown closes it and fires `level_unload`.
+answer for a level that is not open (or still waiting to open). A parked non-Overworld level that
+has no players, views, tickets, or other work keeping it active can evict its chunks and entities
+without closing: `is_open` stays true, neither `level_unload` nor `level_save` fires, and revisiting
+it does not fire `level_load` again. An unload listener that activates another level keeps it
+resident before its turn. The sweep leaves a column and its live entities resident if a required
+record cannot be saved; other eligible columns can still evict. Only `unload`, `delete`, or server
+shutdown closes the level and fires `level_unload`.
 
 ## Deleting
 
