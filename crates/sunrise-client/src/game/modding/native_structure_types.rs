@@ -248,15 +248,15 @@ impl ModStructureType for Adapter {
     fn find_generation_point(
         &self,
         context: &mut dyn sunrise_world::worldgen::structure::start::StartContext,
-        resources: &sunrise_world::worldgen::structure::StructureResources,
+        inputs: &sunrise_world::worldgen::structure::mod_types::StructureInputs<'_>,
         chunk: ChunkPos,
         config: &Arc<Tag>,
         random: &mut WorldgenRandom<LegacyRandom>,
     ) -> Option<(
         [i32; 3],
-        Vec<Box<dyn sunrise_world::worldgen::structure::legacy::LegacyPiece>>,
+        Vec<sunrise_world::worldgen::structure::start::Piece>,
     )> {
-        let worker = WorkerResources::get(resources.registry).ok()?;
+        let worker = WorkerResources::get(inputs.resources.registry).ok()?;
         let mut context = Start {
             worker,
             inner: context,
@@ -271,13 +271,12 @@ impl ModStructureType for Adapter {
             .pieces
             .into_iter()
             .map(|piece| {
-                Box::new(ModPiece {
+                sunrise_world::worldgen::structure::start::Piece::Legacy(Box::new(ModPiece {
                     beardifier: piece.beardifier().and_then(engine_beardifier),
                     piece,
                     ty: ty.clone(),
                     id,
-                })
-                    as Box<dyn sunrise_world::worldgen::structure::legacy::LegacyPiece>
+                }))
             })
             .collect();
         Some((found.position, pieces))

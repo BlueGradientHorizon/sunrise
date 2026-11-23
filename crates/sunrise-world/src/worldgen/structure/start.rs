@@ -64,8 +64,6 @@ pub struct JigsawDef {
     waterlogging: bool,
     /// A carried mod's start rules (`"sunrise:start_checks"`).
     checks: super::start_checks::StartChecks,
-    /// Vanilla's draws, or YUNG's API's for `yungsapi:yung_jigsaw`.
-    draws: super::jigsaw::Draws,
     /// Laid out by Repurposed Structures' and Moog's piece-limited
     /// assembler (`"sunrise:piece_limited"`).
     piece_limited: Option<super::piece_limited::Config>,
@@ -368,15 +366,10 @@ impl StructureRegistry {
         let mut defs = Vec::new();
         for (name, json) in structures {
             let v: Value = serde_json::from_str(json)?;
-            let draws = match v["type"].as_str() {
-                Some("yungsapi:yung_jigsaw") => super::jigsaw::Draws::Yung,
-                _ => super::jigsaw::Draws::Vanilla,
-            };
             let kind = match v["type"].as_str().unwrap_or_default() {
-                "minecraft:jigsaw" | "yungsapi:yung_jigsaw" => {
+                "minecraft:jigsaw" => {
                     let (depth, max_distance) = jigsaw_depth_and_reach(&v);
                     let def = JigsawDef {
-                        draws,
                         start_pool: v["start_pool"].as_str().unwrap_or_default().to_owned(),
                         start_jigsaw: v["start_jigsaw_name"].as_str().map(str::to_owned),
                         max_depth: depth,
@@ -1219,7 +1212,6 @@ fn generate(
                 )?,
                 None => {
                     let placed = place_start(
-                        jigsaw.draws,
                         &config,
                         context,
                         &registry.pools,
@@ -1239,7 +1231,6 @@ fn generate(
                         return Some(Generated::Stub);
                     }
                     lay_out_children(
-                        jigsaw.draws,
                         placed,
                         &config,
                         context,
@@ -1507,14 +1498,15 @@ fn generate(
             // The type's own start and pieces; the biome check below and the
             // set's spacing stay the game's, as for every other kind.
             let context: &mut dyn StartContext = context;
-            let (position, pieces) = mod_type.ty.find_generation_point(
+            let inputs =
+                super::mod_types::StructureInputs::new(resources, &registry.pools, bindings);
+            mod_type.ty.find_generation_point(
                 context,
-                resources,
+                &inputs,
                 chunk,
                 &mod_type.config,
                 &mut random,
-            )?;
-            (position, pieces.into_iter().map(Piece::Legacy).collect())
+            )?
         }
         StructureKind::Unsupported(_) => return None,
     };

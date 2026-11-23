@@ -69,7 +69,7 @@ fn the_same_context_gives_the_same_pieces() {
         let (position, pieces) = adapter
             .find_generation_point(
                 &mut StubContext,
-                test_resources(),
+                &inputs(test_resources()),
                 ChunkPos::new(3, 7),
                 &Arc::new(Tag::Compound(Compound::new())),
                 &mut random,
@@ -91,12 +91,13 @@ fn a_saved_piece_loads_back_the_same() {
     let (_, pieces) = adapter
         .find_generation_point(
             &mut StubContext,
-            resources,
+            &inputs(resources),
             ChunkPos::new(0, 0),
             &Arc::new(Tag::Compound(Compound::new())),
             &mut random,
         )
         .unwrap();
+    let pieces = legacy(pieces);
     let tag = pieces[0].save().unwrap();
     assert!(matches!(
         tag.get(&"id".into()),
@@ -171,12 +172,13 @@ fn the_engines_after_place_call_reaches_the_type() {
     let (_, pieces) = adapter
         .find_generation_point(
             &mut StubContext,
-            test_resources(),
+            &inputs(test_resources()),
             ChunkPos::new(1, 1),
             &Arc::new(Tag::Compound(Compound::new())),
             &mut random,
         )
         .unwrap();
+    let pieces = legacy(pieces);
     let boxes: Vec<BoundingBox> = pieces.iter().map(|p| p.bounding_box()).collect();
     let resources = test_resources();
     struct NoSolid;
@@ -409,14 +411,48 @@ impl sunrise_world::worldgen::structure::legacy::PieceWorld for RecordingWorld {
 /// The engine's own placement tests build their registry this way
 /// (`legacy::tests::registry`): two facts rows, held once for the
 /// `&'static` the engine's resources take — no game resources needed.
+/// What a start builds from over `resources`: no template pools, as these types lay out none.
+fn inputs(
+    resources: &'static sunrise_world::worldgen::structure::StructureResources,
+) -> sunrise_world::worldgen::structure::mod_types::StructureInputs<'static> {
+    let pools: &'static _ = Box::leak(Box::new(
+        sunrise_world::worldgen::structure::jigsaw::Pools::new(Default::default()),
+    ));
+    let bindings: &'static _ = Box::leak(Box::new(
+        sunrise_world::worldgen::block_feature::FeatureBlockBindings::new(
+            resources.registry,
+            Default::default(),
+        )
+        .unwrap(),
+    ));
+    sunrise_world::worldgen::structure::mod_types::StructureInputs::new(resources, pools, bindings)
+}
+
+/// The adapter's pieces, which are all its own legacy pieces.
+fn legacy(
+    pieces: Vec<sunrise_world::worldgen::structure::start::Piece>,
+) -> Vec<Box<dyn sunrise_world::worldgen::structure::legacy::LegacyPiece>> {
+    pieces
+        .into_iter()
+        .map(|piece| match piece {
+            sunrise_world::worldgen::structure::start::Piece::Legacy(piece) => piece,
+            sunrise_world::worldgen::structure::start::Piece::Pool(_) => {
+                unreachable!("the adapter lays out no jigsaw")
+            }
+        })
+        .collect()
+}
+
 fn test_resources() -> &'static sunrise_world::worldgen::structure::StructureResources {
     mod_platform::__private::part_tests::install_parts_fixture(&[]).unwrap();
     let facts = serde_json::json!({
         "states": [
             ["air", true, false, "", {"id":"minecraft:air","properties":{}}],
-            ["stone", false, false, "", {"id":"minecraft:stone","properties":{}}]
+            ["stone", false, false, "", {"id":"minecraft:stone","properties":{}}],
+            ["cave_air", true, false, "", {"id":"minecraft:cave_air","properties":{}}],
+            ["void_air", true, false, "", {"id":"minecraft:void_air","properties":{}}]
         ],
-        "defaults":{"minecraft:air":0,"minecraft:stone":1}
+        "defaults":{"minecraft:air":0,"minecraft:stone":1,"minecraft:cave_air":2,"minecraft:void_air":3}
     });
     let registry =
         sunrise_world::registry::BlockRegistry::from_facts_json(facts.to_string().as_bytes())
@@ -622,7 +658,7 @@ fn structure_config_is_converted_at_load_and_shared_by_starts() {
             kind.ty
                 .find_generation_point(
                     &mut StubContext,
-                    resources,
+                    &inputs(resources),
                     ChunkPos::new(0, 0),
                     &kind.config,
                     &mut random
@@ -833,12 +869,13 @@ fn piece_beardifier_shapes_terrain_and_is_resolved_once() {
     let (_, generated) = adapter
         .find_generation_point(
             &mut StubContext,
-            resources,
+            &inputs(resources),
             ChunkPos::new(0, 0),
             &Arc::new(Tag::Compound(Compound::new())),
             &mut WorldgenRandom::new(LegacyRandom::new(0)),
         )
         .unwrap();
+    let generated = legacy(generated);
     assert_eq!(calls.load(Ordering::SeqCst), 3);
     let loaded: Vec<_> = generated
         .iter()
