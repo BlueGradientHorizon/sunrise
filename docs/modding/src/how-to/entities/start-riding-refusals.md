@@ -37,10 +37,11 @@ or not, and names it `PlayerVehicle`.
 
 ## When `entity_mount` fires
 
-`entity_mount` fires only after every other check passes. The checks run again after the hook,
-since a listener can fill, remove or remount the vehicle. If a check fails on that second pass,
-the refusal names the cause. The requested mount does not complete, but the listener's changes
-remain.
+`entity_mount` fires after the initial eligibility checks pass. If a listener vetoes the mount or
+changes the rider's current vehicle, `start_riding` returns `Canceled` immediately. After an allowed
+callback, eligibility is checked again—since a listener can fill, remove or remount the vehicle—and
+checked once more after dismounting any previous vehicle. If any recheck fails, the refusal names
+the cause; the requested mount does not complete, while the listener's own changes remain.
 
 Some removal effects run while the entity still resolves. A nested `EntityRef::remove` or
 `EntityRef::discard` for that same entity returns `false` while those effects run.

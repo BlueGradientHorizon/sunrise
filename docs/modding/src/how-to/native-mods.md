@@ -29,16 +29,17 @@ and 0.8 for `Full`. There is no second hook dispatch. Two non-commuting listener
 in dispatch order, each completing its rewrites before the next; this does not simulate
 two separate passes over the listener list. Cancellation still leaves motion unchanged.
 
-`kill_credit` and `kill_credit_main` give the pushed living entity's kill credit and that entity's
-current main-hand stack, read after accepted-hit memories are committed and before the push.
-A remembered player takes precedence over the last hurting mob, including a tame wolf's owner.
-An unresolved remembered player yields 0 and no stack, not a fallback to the mob. After the
-remembered player expires, the recent mob may receive credit. This context is distinct from
-`attacker` and its captured source weapon. NeoForge's `LivingKnockBackEvent` doesn't carry either field.
+`kill_credit` identifies who receives kill credit for the pushed living entity, and `kill_credit_main`
+is that credited entity's current main-hand stack (if any), both read after accepted-hit memories are
+committed and before the push. A remembered player takes precedence over the last hurting mob,
+including a tame wolf's owner. An unresolved remembered player yields 0 and no stack, not a fallback
+to the mob. After the remembered player expires, the recent mob may receive credit. This context is
+distinct from `attacker` and its captured source weapon, and the credited entity can differ from both
+the victim and the immediate attacker. NeoForge's `LivingKnockBackEvent` doesn't carry either field.
 
-## Living death contract version 2
+## Living death
 
-[`living_death` version 2](https://github.com/sunrise-org/sunrise/blob/main/docs/native-mods.md#living-death-version-2) supplies
+`living_death` (see its rustdoc and [Hook notes](../reference/hook-notes.md)) supplies
 the accepted killing source and its captured weapon stack. Cancellation keeps the
 health a listener leaves, suppresses loot, experience and death messages, and does
 not heal the body. An unhealed cancelled body is removed at tick 20 without loot
