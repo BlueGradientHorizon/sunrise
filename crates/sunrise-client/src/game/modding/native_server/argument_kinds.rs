@@ -5,8 +5,7 @@ use super::{ArgType, Text, TryIntoEngine};
 use serde_json::{Value, json};
 use std::{collections::HashMap, sync::Arc};
 use sunrise_client::command::{
-    CommandError, Dispatcher, MAX_SUGGESTION_TEXT, MAX_SUGGESTION_TOOLTIP, NodeKind, Range, Reader,
-    RegistryId, args::Coordinates, snbt,
+    CommandError, Dispatcher, NodeKind, Range, Reader, RegistryId, args::Coordinates, snbt,
 };
 
 /// The argument kinds a native usage may name, each with a [`parser`]; `resource:<registry>`
@@ -232,74 +231,6 @@ fn refused_argument_text(error: mod_api::CommandArgumentError) -> Text {
     }
 }
 
-/// Why a mod's suggestion cannot replace part of the text `prefix` being typed: it names the
-/// argument type and the suggestion, and the reason. A replacement that starts past the typed
-/// text, or inside a character, has no range the chat could apply, so the suggestion is refused
-/// (reported, and left out) rather than panicking on the player's input.
-fn suggestion_refusal(
-    id: &str,
-    prefix: &str,
-    suggestion: &mod_api::CommandSuggestion,
-) -> Option<String> {
-    let offset = suggestion.replace_start?;
-    (offset > prefix.len() || !prefix.is_char_boundary(offset)).then(|| {
-        format!(
-            "mod command argument `{id}` refused the suggestion `{}`: it replaces from byte \
-             {offset} of the {} typed",
-            suggestion.text,
-            prefix.len()
-        )
-    })
-}
-
-/// Ask a mod's declared provider for one argument: the request the engine builds from what its
-/// dispatcher parsed, and the answer as the engine's suggestions. A panic answers no suggestions
-/// and is logged against the argument type; nothing is kept between two requests.
-fn provider_suggestions(
-    provider: &Arc<dyn mod_api::SuggestionProvider>,
-    id: &str,
-    reg: &sunrise_client::command::Registries,
-    prefix: &str,
-    arguments: &[sunrise_client::command::ParsedArgument],
-) -> Vec<sunrise_client::command::CustomSuggestion> {
-    let request = mod_api::SuggestionRequest::new(
-        prefix,
-        arguments
-            .iter()
-            .map(|argument| {
-                mod_api::TypedArgument::new(argument.name.clone(), argument.text.clone())
-            })
-            .collect(),
-        reg.sender.as_ref().map(|sender| {
-            mod_api::__private::game::command_sender(
-                sender.uuid,
-                sender.name.clone(),
-                mod_api::PermissionLevel::from_level(reg.permission.into()),
-            )
-        }),
-    );
-    let answered =
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| provider.suggest(&request)));
-    match answered {
-        Ok(reply) => reply
-            .suggestions
-            .into_iter()
-            .map(|suggestion| sunrise_client::command::CustomSuggestion {
-                text: suggestion.text,
-                tooltip: suggestion.tooltip,
-                // The provider answers whole-prefix completions: no replacement offset.
-                replace_start: None,
-            })
-            .collect(),
-        Err(_) => {
-            eprintln!(
-                "mod command argument type {id} suggestion provider panicked; no suggestions"
-            );
-            Vec::new()
-        }
-    }
-}
-
 /// The dispatcher type of one validated tree node: a vanilla kind, or the mod's registered
 /// argument type with its parser and suggestions.
 pub(super) fn argument_type(node: &Value, arguments: &CommandArguments) -> ArgType {
@@ -316,19 +247,6 @@ pub(super) fn argument_type(node: &Value, arguments: &CommandArguments) -> ArgTy
         let parse = argument.clone();
         let suggest = argument.clone();
         let kind_id = id.to_owned();
-        // Read once per tree, like `kind()`: the tree keeps the declaration, not the mod code.
-        let provider = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            argument.suggestion_provider()
-        })) {
-            Ok(provider) => provider,
-            Err(_) => {
-                eprintln!(
-                    "mod command argument type {id} panicked declaring its suggestion provider; \
-                     its arguments complete by `suggest`"
-                );
-                None
-            }
-        };
         // Use the validated tree property rather than calling mod code again.
         let kind = if node["properties"]["type"] == "greedy" {
             sunrise_client::command::CustomArgumentKind::Greedy
@@ -343,69 +261,50 @@ pub(super) fn argument_type(node: &Value, arguments: &CommandArguments) -> ArgTy
                     .map_err(|_| Text::tr("commands.generic.failed", &[]))?
                     .map_err(refused_argument_text)
             },
-            move |reg: &sunrise_client::command::Registries, prefix: &str| {
-                // The mod's provider decides what this sender may complete; the game keeps
-                // its answer as it comes (`CommandSender::suggest`).
-                let sender = reg.sender.as_ref().map(|sender| {
-                    mod_api::__private::game::command_sender(
-                        sender.uuid,
-                        sender.name.clone(),
-                        mod_api::PermissionLevel::from_level(i32::from(reg.permission)),
-                    )
-                });
+            move |reg: &sunrise_client::command::Registries,
+                  prefix: &str,
+                  arguments: &[sunrise_client::command::ParsedArgument]| {
+                // The mod decides what this sender may complete; the game keeps its answer as it
+                // comes (`CommandSender::suggest`).
+                let request = mod_api::SuggestionRequest::new(
+                    prefix,
+                    arguments
+                        .iter()
+                        .map(|argument| {
+                            mod_api::TypedArgument::new(
+                                argument.name.clone(),
+                                argument.text.clone(),
+                            )
+                        })
+                        .collect(),
+                    reg.sender.as_ref().map(|sender| {
+                        mod_api::__private::game::command_sender(
+                            sender.uuid,
+                            sender.name.clone(),
+                            mod_api::PermissionLevel::from_level(i32::from(reg.permission)),
+                        )
+                    }),
+                );
                 let Ok(results) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    suggest.suggest(sender.as_ref(), prefix)
+                    suggest.suggest(&request)
                 })) else {
-                    eprintln!("mod command argument completer panicked");
+                    eprintln!(
+                        "mod command argument type {kind_id} completer panicked; no suggestions"
+                    );
                     return Vec::new();
                 };
-                // Suggestions use STRING_UTF8 (Java UTF-16 length). Tooltips are
-                // literal NBT strings, whose modified UTF-8 byte length is unsigned u16.
-                if results.iter().any(|s| {
-                    s.text.encode_utf16().count() > MAX_SUGGESTION_TEXT
-                        || s.tooltip.as_ref().is_some_and(|tip| {
-                            tip.encode_utf16()
-                                .map(|unit| match unit {
-                                    1..=0x7f => 1,
-                                    0..=0x7ff => 2,
-                                    _ => 3,
-                                })
-                                .sum::<usize>()
-                                > MAX_SUGGESTION_TOOLTIP
-                        })
-                }) {
-                    eprintln!("mod command argument completion exceeds the protocol string limit");
-                    return Vec::new();
-                }
                 results
                     .into_iter()
-                    .filter_map(|suggestion| {
-                        // A completion for one token of the text replaces from its offset; one the
-                        // player's text cannot hold is refused by name instead of panicking where
-                        // the chat applies the range.
-                        if let Some(refusal) = suggestion_refusal(&kind_id, prefix, &suggestion) {
-                            eprintln!("{refusal}");
-                            return None;
-                        }
-                        Some(sunrise_client::command::CustomSuggestion {
-                            text: suggestion.text,
-                            tooltip: suggestion.tooltip,
-                            replace_start: suggestion.replace_start,
-                        })
+                    .map(|s| sunrise_client::command::Suggestion {
+                        range: s.range,
+                        text: s.text,
+                        tooltip: s.tooltip,
+                        int_value: s.int_value,
                     })
                     .collect()
             },
         );
-        return match provider {
-            Some(provider) => {
-                let id: Arc<str> = id.into();
-                let named = id.clone();
-                ArgType::Custom(custom.with_provider(move |reg, prefix, arguments| {
-                    provider_suggestions(&provider, &named, reg, prefix, arguments)
-                }))
-            }
-            None => ArgType::Custom(custom),
-        };
+        return ArgType::Custom(custom);
     }
     if node["parser"] == "minecraft:vec3" && node[UNCENTERED] == true {
         return ArgType::Vec3 { center: false };
@@ -422,27 +321,6 @@ pub(super) fn argument_type(node: &Value, arguments: &CommandArguments) -> ArgTy
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_suggestion_may_replace_from_an_offset_inside_the_typed_text() {
-        let whole = mod_api::CommandSuggestion::new("stone");
-        assert_eq!(suggestion_refusal("test:pattern", "st", &whole), None);
-        let token = mod_api::CommandSuggestion::new("stone").replacing_from(6);
-        assert_eq!(suggestion_refusal("test:pattern", "stone st", &token), None);
-        // Past the typed text: there is no range to replace.
-        let refusal = suggestion_refusal("test:pattern", "st", &token).unwrap();
-        assert!(
-            refusal.contains("test:pattern"),
-            "names the type: {refusal}"
-        );
-        assert!(
-            refusal.contains("`stone`"),
-            "names the suggestion: {refusal}"
-        );
-        // Inside a two-byte character: no boundary to split the replacement on.
-        let inside = mod_api::CommandSuggestion::new("é").replacing_from(1);
-        assert!(suggestion_refusal("test:pattern", "é ", &inside).is_some());
-    }
 
     #[test]
     fn the_id_kind_is_vanillas_free_identifier_parser() {
