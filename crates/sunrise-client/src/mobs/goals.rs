@@ -4759,11 +4759,40 @@ mod check_and_perform_attack_tests {
         assert_eq!(bites, [1, 0]);
     }
 
+    /// Whether `test` of this module runs here: in the test process, it reruns `test` alone in
+    /// a fresh child process, asserts the child passed and returns false; in that child, true.
+    /// The prepared-resource world writes process-wide tables (the block palette, the item
+    /// tables), which no other test of the shared process may see.
+    fn in_fresh_process(test: &str) -> bool {
+        const CHILD: &str = "SUNRISE_TEST_MELEE_ATTACK_CHILD";
+        let module = module_path!().split_once("::").unwrap().1;
+        let name = format!("{module}::{test}");
+        if std::env::var_os(CHILD).is_some_and(|value| value == name.as_str()) {
+            return true;
+        }
+        let out = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([&name, "--exact", "--include-ignored", "--test-threads=1"])
+            .env(CHILD, &name)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.status.success() && stdout.contains("test result: ok. 1 passed;"),
+            "{name} failed in its own process:\n{stdout}{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        false
+    }
+
     /// `FoxMeleeAttackGoal.checkAndPerformAttack` has no `swingForAttack`: a fox's strike
-    /// resets the cooldown, hurts its target and bites, but doesn't swing (#4733).
+    /// resets the cooldown, hurts its target and bites, but doesn't swing (#4733). The world
+    /// is built in a fresh child process.
     #[test]
     #[ignore = "daily"]
     fn a_foxs_strike_hurts_and_bites_without_a_swing() {
+        if !in_fresh_process("a_foxs_strike_hurts_and_bites_without_a_swing") {
+            return;
+        }
         let mut outcome = None;
         let ran = with_test_world(&[], |w, types| {
             let kind = Arc::new(types.types["minecraft:fox"].clone());
