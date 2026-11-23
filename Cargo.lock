@@ -4905,9 +4905,11 @@ dependencies = [
  "tar",
  "tempfile",
  "toml",
+ "url",
  "windows-sys 0.61.2",
  "xz4rust",
  "zip",
+ "zune-jpeg",
 ]
 
 [[package]]

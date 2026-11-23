@@ -39,21 +39,22 @@ fn page_problems(
     root: &Path,
     manifest: &Manifest,
     strict: bool,
-    categories: impl FnOnce() -> Result<Categories, String>,
+    fetch_categories: impl FnOnce() -> Result<Categories, String>,
 ) -> Vec<String> {
     let page = match Page::read(root, manifest) {
         Ok(Some((page, _))) => page,
         Ok(None) => return vec![format!("add {PAGE_FILE} beside sunrise-mod.toml")],
         Err(e) => return vec![e],
     };
-    let categories = categories();
-    let mut problems = page.release_problems(categories.as_ref().ok());
+    let categories = (!page.categories.is_empty()).then(fetch_categories);
+    let mut problems =
+        page.release_problems(categories.as_ref().and_then(|result| result.as_ref().ok()));
     problems.extend(
         page.screenshots
             .iter()
             .filter_map(|shot| shot.read(root).err()),
     );
-    if let Err(reason) = categories {
+    if let Some(Err(reason)) = categories {
         let reason = reason.lines().next().unwrap_or_default();
         if strict {
             problems.push(format!("cannot check registry categories: {reason}"));
@@ -168,7 +169,11 @@ mod tests {
     fn a_missing_category_list_blocks_only_a_release_check() {
         let root = tempfile::tempdir().unwrap();
         fs::create_dir(root.path().join("page")).unwrap();
-        fs::write(root.path().join("page/runes.jpg"), b"\xff\xd8\xff").unwrap();
+        fs::write(
+            root.path().join("page/runes.jpg"),
+            include_bytes!("../../sunrise-mod-package/tests/fixtures/page.jpg"),
+        )
+        .unwrap();
         fs::write(root.path().join(PAGE_FILE), format!("summary = '{}'\ndescription = '{}'\ncategories = ['utility']\n[[screenshots]]\npath = 'page/runes.jpg'\n", "a".repeat(25), "a".repeat(125))).unwrap();
         let unavailable = || Err("fixture unavailable".into());
         assert!(page_problems(root.path(), &manifest(), false, unavailable).is_empty());
@@ -184,6 +189,34 @@ mod tests {
             })
             .is_empty()
         );
+    }
+
+    #[test]
+    fn checks_without_categories_do_not_fetch_the_catalog() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("page")).unwrap();
+        fs::write(
+            root.path().join("page/runes.png"),
+            include_bytes!("../../sunrise-mod-package/tests/fixtures/page.png"),
+        )
+        .unwrap();
+        fs::write(
+            root.path().join(PAGE_FILE),
+            format!(
+                "summary = '{}'\ndescription = '{}'\n[[screenshots]]\npath = 'page/runes.png'\n",
+                "a".repeat(25),
+                "a".repeat(125)
+            ),
+        )
+        .unwrap();
+        for strict in [false, true] {
+            assert!(
+                page_problems(root.path(), &manifest(), strict, || {
+                    panic!("without categories the check must not fetch the catalog");
+                })
+                .is_empty()
+            );
+        }
     }
 
     #[test]

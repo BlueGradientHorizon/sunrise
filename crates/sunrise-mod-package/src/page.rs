@@ -4,11 +4,17 @@ use crate::{
     checkout::read_regular,
     manifest::{MAX_MANIFEST, plain_path},
 };
-use serde::Deserialize;
-use std::{io::ErrorKind, path::Path};
+use serde::{Deserialize, Serialize};
+use std::{collections::HashSet, io::ErrorKind, path::Path};
+use url::Url;
 
 /// The page manifest beside `sunrise-mod.toml`.
 pub const PAGE_FILE: &str = "page.toml";
+/// The release format `cargo sunrise-mod` speaks: `check --release <tag>` and the `<id>.page.tar` bundle `build`
+/// writes. The rolling `mod-tool` release's `tool.json` carries it as `release_contract`
+/// (`tools/ci/mod_tool.py`), and the registry's release workflow refuses a tool without it. Raise it when either
+/// changes in a way that workflow must know.
+pub const RELEASE_CONTRACT: u32 = 1;
 /// Modrinth's gallery upload limit (`apps/labrinth/src/routes/internal/globals.rs`).
 pub const MAX_SCREENSHOT_BYTES: u64 = 5 * 1024 * 1024;
 // Modrinth's minimums and category cap (`apps/labrinth/src/validate/project/{summary,description,tags}.rs`).
@@ -27,6 +33,7 @@ pub struct Page {
     pub authors: Vec<String>,
     pub homepage: Option<String>,
     pub issues: Option<String>,
+    kind: Kind,
 }
 
 #[derive(Deserialize)]
@@ -45,16 +52,25 @@ struct PageToml {
 }
 
 impl Page {
-    /// Parses `page.toml`, rejecting unknown fields and invalid screenshot paths. Releasing
-    /// also requires [`Self::release_problems`] to be empty and every named image to be valid.
+    /// Parses `page.toml`, applies package defaults, and checks the resolved name, authors and links.
+    /// Releasing also requires [`Self::release_problems`] to be empty and every named image valid.
     pub fn parse(text: &str, manifest: &Manifest) -> Result<Self, String> {
         let page: PageToml = toml::from_str(text).map_err(|e| format!("{PAGE_FILE}: {e}"))?;
-        for (field, link) in [("homepage", &page.homepage), ("issues", &page.issues)] {
-            if let Some(link) = link
-                && !link.starts_with("https://")
-                && !link.starts_with("http://")
-            {
-                return Err(format!("{PAGE_FILE}: {field} must be an http(s) link"));
+        let name = page.name.unwrap_or_else(|| manifest.name.clone());
+        let authors = page.authors.unwrap_or_else(|| manifest.authors.clone());
+        let homepage = page.homepage.or_else(|| manifest.homepage.clone());
+        let issues = page.issues.or_else(|| manifest.issues.clone());
+        if name.trim().is_empty() {
+            return Err(format!("{PAGE_FILE}: name must not be blank"));
+        }
+        if authors.iter().any(|author| author.trim().is_empty()) {
+            return Err(format!("{PAGE_FILE}: author names must not be blank"));
+        }
+        for (field, link) in [("homepage", &homepage), ("issues", &issues)] {
+            if link.as_deref().is_some_and(|link| !valid_web_link(link)) {
+                return Err(format!(
+                    "{PAGE_FILE}: {field} must be an absolute HTTP(S) URL without credentials"
+                ));
             }
         }
         Ok(Self {
@@ -62,10 +78,15 @@ impl Page {
             description: page.description,
             categories: page.categories,
             screenshots: page.screenshots,
-            name: page.name.unwrap_or_else(|| manifest.name.clone()),
-            authors: page.authors.unwrap_or_else(|| manifest.authors.clone()),
-            homepage: page.homepage.or_else(|| manifest.homepage.clone()),
-            issues: page.issues.or_else(|| manifest.issues.clone()),
+            name,
+            authors,
+            homepage,
+            issues,
+            kind: if manifest.native.is_some() {
+                Kind::NativeMod
+            } else {
+                Kind::Mod
+            },
         })
     }
 
@@ -100,20 +121,29 @@ impl Page {
                 "{PAGE_FILE}: add at least one [[screenshots]] entry"
             ));
         }
-        if self.categories.len() > MAX_CATEGORIES {
-            problems.push(format!(
-                "{PAGE_FILE}: choose at most {MAX_CATEGORIES} categories"
-            ));
-        }
-        if let Some(categories) = categories {
-            for id in &self.categories {
-                if !categories.category.iter().any(|row| row.id == *id) {
-                    problems.push(format!("{PAGE_FILE}: unknown registry category {id:?}"));
-                }
-            }
-        }
+        problems.extend(
+            category_problems(
+                self.categories.iter().map(String::as_str),
+                self.kind,
+                categories,
+            )
+            .into_iter()
+            .map(|problem| format!("{PAGE_FILE}: {problem}")),
+        );
         problems
     }
+}
+
+/// Whether a resolved page link is an absolute HTTP(S) URL without credentials or whitespace.
+pub fn valid_web_link(link: &str) -> bool {
+    if !(link.starts_with("http://") || link.starts_with("https://"))
+        || link.contains('\\')
+        || link.chars().any(|c| c.is_whitespace() || c.is_control())
+    {
+        return false;
+    }
+    Url::parse(link)
+        .is_ok_and(|url| url.has_host() && url.username().is_empty() && url.password().is_none())
 }
 
 /// One image for the registry page. The path uses forward slashes and stays below `page/`.
@@ -151,13 +181,9 @@ impl Screenshot {
         &self.path
     }
 
-    /// Checks PNG and JPEG signatures, regardless of the file's extension.
+    /// Validates the bytes of a named screenshot (for example, from an archive).
     pub fn check_image(&self, bytes: &[u8]) -> Result<(), String> {
-        if bytes.starts_with(b"\x89PNG\r\n\x1a\n") || bytes.starts_with(b"\xff\xd8\xff") {
-            Ok(())
-        } else {
-            Err(format!("{}: not a PNG or JPEG screenshot", self.path))
-        }
+        check_screenshot(Path::new(&self.path), bytes).map_err(|e| format!("{}: {e}", self.path))
     }
 
     /// Reads and checks the image within [`MAX_SCREENSHOT_BYTES`], without following links.
@@ -167,6 +193,71 @@ impl Screenshot {
         self.check_image(&bytes)?;
         Ok(bytes)
     }
+}
+
+/// Checks an encoded PNG or JPEG screenshot at either an author's or a registry's path.
+/// The extension must match the image format. The size limit also applies to callers reading
+/// bytes from an archive instead of using [`Screenshot::read`].
+pub fn check_screenshot(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    if bytes.len() as u64 > MAX_SCREENSHOT_BYTES {
+        return Err("screenshot exceeds 5 MiB".into());
+    }
+    let extension = path.extension().and_then(|ext| ext.to_str());
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        if extension != Some("png") {
+            return Err("PNG screenshots must have a .png extension".into());
+        }
+        return check_png(bytes).map_err(|e| format!("unreadable PNG screenshot: {e}"));
+    }
+    if bytes.starts_with(b"\xff\xd8\xff") {
+        if !matches!(extension, Some("jpg" | "jpeg")) {
+            return Err("JPEG screenshots must have a .jpg or .jpeg extension".into());
+        }
+        // The JPEG decoder can recover at EOF even in strict mode. Require the end marker
+        // as well so a truncated scan is not published as a complete screenshot.
+        if !bytes.ends_with(b"\xff\xd9") {
+            return Err("unreadable JPEG screenshot: missing end-of-image marker".into());
+        }
+        let options =
+            zune_jpeg::zune_core::options::DecoderOptions::new_safe().set_strict_mode(true);
+        zune_jpeg::JpegDecoder::new_with_options(bytes, options)
+            .decode()
+            .map_err(|e| format!("unreadable JPEG screenshot: {e}"))?;
+        return Ok(());
+    }
+    Err("not a PNG or JPEG screenshot".into())
+}
+
+fn check_png(bytes: &[u8]) -> Result<(), png::DecodingError> {
+    let mut reader = png::Decoder::new(std::io::Cursor::new(bytes)).read_info()?;
+    let frames = reader
+        .info()
+        .animation_control
+        .as_ref()
+        .map_or(1, |animation| {
+            u64::from(animation.num_frames) + u64::from(reader.info().frame_control.is_none())
+        });
+    // Validate the pixel data without allocating a buffer for the whole image.
+    for frame in 0..frames {
+        if frame != 0 {
+            reader.next_frame_info()?;
+        }
+        while reader.next_row()?.is_some() {}
+    }
+    reader.finish()
+}
+
+/// A project kind as named by the registry catalog.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Kind {
+    Mod,
+    NativeMod,
+    Modpack,
+    Resourcepack,
+    Shader,
+    Shaderpack,
+    Datapack,
 }
 
 /// The category catalog published by the registry as `registry/categories.toml`.
@@ -182,7 +273,39 @@ pub struct Categories {
 pub struct Category {
     pub id: String,
     pub icon: String,
-    pub kinds: Vec<String>,
+    pub kinds: Vec<Kind>,
+}
+
+/// Validates the category selection on either an author page or a resolved registry page.
+/// Without a catalog, only the count and uniqueness can be checked.
+pub fn category_problems<'a>(
+    ids: impl ExactSizeIterator<Item = &'a str>,
+    kind: Kind,
+    catalog: Option<&Categories>,
+) -> Vec<String> {
+    let mut problems = Vec::new();
+    if ids.len() > MAX_CATEGORIES {
+        problems.push(format!("choose at most {MAX_CATEGORIES} categories"));
+    }
+    let mut seen = HashSet::new();
+    for id in ids {
+        if !seen.insert(id) {
+            problems.push(format!("duplicate registry category {id:?}"));
+            continue;
+        }
+        if let Some(catalog) = catalog {
+            match catalog.category.iter().find(|row| row.id == id) {
+                None => problems.push(format!("unknown registry category {id:?}")),
+                Some(row) if !row.kinds.contains(&kind) => {
+                    problems.push(format!(
+                        "registry category {id:?} does not apply to this project kind"
+                    ));
+                }
+                Some(_) => {}
+            }
+        }
+    }
+    problems
 }
 
 impl Categories {
