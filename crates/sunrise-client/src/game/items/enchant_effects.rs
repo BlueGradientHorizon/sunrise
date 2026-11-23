@@ -1390,6 +1390,14 @@ impl Game<'_> {
                     }
                     let from = stand.enchantment_equipment[i].take();
                     self.dispatch_living_equipment_change(living, slot, from.as_ref(), to.as_ref());
+                    // A listener can discard the stand while its row waits for the sweep: the
+                    // authoritative residency decides, and a stand that left gets no history
+                    // write, later notification or location effect.
+                    if self.entity_residency(mod_api::EntityRef::new(epoch, id))
+                        != mod_api::EntityResidency::InPlace
+                    {
+                        return;
+                    }
                     if let Some(stand) = stand_by_hint_mut(&mut self.armor_stands, index, id) {
                         stand.enchantment_equipment[i] = to;
                     }

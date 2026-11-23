@@ -1037,6 +1037,7 @@ impl Game<'_> {
                 sunrise_client::mobs::spawn_rules::Reason::Conversion,
             );
         }
+        let mut nauseous = false;
         match (from.species(), kind) {
             (Species::Tadpole, "minecraft:frog") | (Species::Villager, "minecraft:witch") => {
                 self.finalize_converted(&mut mob);
@@ -1047,7 +1048,7 @@ impl Game<'_> {
             }
             (Species::Hoglin, "minecraft:zoglin")
             | (Species::Piglin | Species::PiglinBrute, "minecraft:zombified_piglin") => {
-                mob.add_effect("minecraft:nausea", 200, 0);
+                nauseous = true;
             }
             _ => {}
         }
@@ -1058,6 +1059,15 @@ impl Game<'_> {
         self.seat_mob(id);
         self.copy_conversion_attachments(from.id, id, kind);
         self.native_mobs_joined(self.mobs.len() - 1, false);
+        if nauseous {
+            // `Hoglin.finishConversion` / `AbstractPiglin.finishConversion` call the hooked
+            // `LivingEntity.addEffect` on the converted mob, now that it is resident.
+            self.add_mob_effect(
+                id,
+                sunrise_client::effects::EffectInstance::new("nausea", 200, 0),
+                None,
+            );
+        }
         let transformed = self.mobs.iter().find(|m| m.id == id)?;
         let transformed_kind = from_kind.as_ref().map(|_| transformed.kind.id.clone());
         // Only move passengers once the new mob's join has succeeded.
