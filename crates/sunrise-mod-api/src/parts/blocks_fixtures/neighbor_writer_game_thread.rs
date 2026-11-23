@@ -1,5 +1,5 @@
 /// Install a part on glass that records each `neighbor_changed` it hears and, when the
-/// changed block is a lever, turns itself into white stained glass with `UPDATE_ALL` in the
+/// changed block is a lever, turns itself into white stained glass with `Block.UPDATE_ALL` in the
 /// same call, as `RedstoneLampBlock.neighborChanged` lights itself, for real-game tests.
 pub fn neighbor_writer_game_thread() {
     struct Writer {
@@ -17,7 +17,11 @@ pub fn neighbor_writer_game_thread() {
             NEIGHBOR_WRITES.with(|r| r.borrow_mut().push((pos, event.changed)));
             if event.changed == self.lever {
                 let lit = BlockState::of(&level.block_states(), self.lit, &[]).unwrap();
-                assert!(level.set_block(pos, lit, BlockUpdateFlags::UPDATE_ALL));
+                assert!(level.set_block(
+                    pos,
+                    lit,
+                    BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS
+                ));
             }
         }
     }
