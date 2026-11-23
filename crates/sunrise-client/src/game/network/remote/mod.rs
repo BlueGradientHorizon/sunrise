@@ -2401,6 +2401,10 @@ impl Remote {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    mod client_explosion_tests {
+        include!("client_explosion_tests.rs");
+    }
+
     use super::super::api_values::TryIntoApi;
 
     mod block_entity_state_tests {
