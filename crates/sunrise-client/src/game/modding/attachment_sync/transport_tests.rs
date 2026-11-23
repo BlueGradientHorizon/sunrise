@@ -3,8 +3,7 @@
 //! epoch send, and what an oversized message does to the connection.
 use super::super::Game;
 use mod_api::{
-    AttachmentAccess, AttachmentCodec, AttachmentHolder, AttachmentKey, AttachmentStore,
-    Attachments, Host,
+    AttachmentAccess, AttachmentCodec, AttachmentHolder, AttachmentKey, Attachments, Host,
 };
 use std::{
     sync::atomic::{AtomicUsize, Ordering},
@@ -126,7 +125,7 @@ pub(super) fn set_level(game: &Game<'_>, value: i32, commit: bool) {
 fn window_value(game: &mut Game<'_>, key: &mod_api::AttachmentKey<i32>) -> Option<i32> {
     let host: &dyn Host = game;
     let holder = AttachmentHolder::Level(host.level(host.dimension())?);
-    let batch = host.attachment_query("sync_route", "value").unwrap();
+    let batch = mod_api::AttachmentQueries::capture(host, key).unwrap();
     batch
         .query(key)
         .unwrap()
@@ -463,19 +462,13 @@ fn attachment_sync_follows_the_negotiated_route() {
             assert_eq!(sync_packets_within(&mut vanilla, Duration::from_secs(2)), 0);
 
             let discard = |game: &Game<'_>, commit| {
+                let key = value_key.clone();
                 game.integrated
                     .as_ref()
                     .unwrap()
                     .call(move |server| {
                         server.storage_scope(|server, _| {
-                            AttachmentStore::discard(
-                                server,
-                                Holder::Level,
-                                "sync_route",
-                                "value",
-                                false,
-                            )
-                            .unwrap();
+                            assert_eq!(key.remove(server, Holder::Level), Ok(Some(12)));
                             ((), commit)
                         });
                     })

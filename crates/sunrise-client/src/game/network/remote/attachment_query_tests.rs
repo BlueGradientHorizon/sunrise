@@ -30,7 +30,7 @@ impl mod_api::Hooks for MirrorMod {
 
 fn values(game: &Game<'_>, key: &AttachmentKey<i32>) -> Vec<i32> {
     let host: &dyn Host = game;
-    let batch = host.attachment_query("mirror", "value").unwrap();
+    let batch = mod_api::AttachmentQueries::capture(host, key).unwrap();
     let query = batch.query(key).unwrap();
     let scope = host.attachment_read_scope().unwrap();
     let mut rows = query.iter();
@@ -99,7 +99,7 @@ fn synced_client_queries_follow_replacement_retirement_and_level_changes() {
             client(game).attachments.clear();
             sync(game, Holder::Level, 41);
             assert_eq!(values(game, &value_key), [41]);
-            let captured = game.attachment_query("mirror", "value").unwrap();
+            let captured = mod_api::AttachmentQueries::capture(game, &value_key).unwrap();
             let query = captured.query(&value_key).unwrap();
             let row = query.iter().try_next().unwrap().unwrap();
             assert_eq!(

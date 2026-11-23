@@ -1,7 +1,7 @@
 //! Load-owned typed attachment descriptors, issued keys, and registration traits.
 use super::*;
 use crate::{
-    AttachmentCodec, AttachmentError, AttachmentPolicy, AttachmentStoreWrite, Compound, Holder,
+    AttachmentCodec, AttachmentError, AttachmentPolicy, AttachmentStoreKey, Compound, Holder,
     Identifier, LevelRandomHost,
 };
 use std::{fmt, sync::atomic::AtomicBool};
@@ -123,7 +123,7 @@ type ProjectAttachmentSync = fn(
     &AtomicBool,
 ) -> Result<Option<Compound>, String>;
 
-type MatchAttachmentWrite = fn(&(dyn Any + Send + Sync), &AttachmentStoreWrite<'_>) -> bool;
+type MatchAttachmentKey = fn(&(dyn Any + Send + Sync), &AttachmentStoreKey<'_>) -> bool;
 
 /// Type-erased attachment descriptor accepted by [`AttachmentTypesRegistrar::submit_attachment`].
 ///
@@ -136,7 +136,7 @@ pub struct ErasedAttachmentDescriptor {
     policy: AttachmentPolicy,
     build: BuildAttachmentRecord,
     project_sync: ProjectAttachmentSync,
-    match_write: MatchAttachmentWrite,
+    match_key: MatchAttachmentKey,
 }
 
 impl<T: Send + Sync + 'static> From<AttachmentDescriptor<T>> for ErasedAttachmentDescriptor {
@@ -178,9 +178,9 @@ impl<T: Send + Sync + 'static> From<AttachmentDescriptor<T>> for ErasedAttachmen
             result
         }
 
-        fn match_write<T: Send + Sync + 'static>(
+        fn match_key<T: Send + Sync + 'static>(
             record: &(dyn Any + Send + Sync),
-            write: &AttachmentStoreWrite<'_>,
+            write: &AttachmentStoreKey<'_>,
         ) -> bool {
             record
                 .downcast_ref::<AttachmentRegistration<T>>()
@@ -228,7 +228,7 @@ impl<T: Send + Sync + 'static> From<AttachmentDescriptor<T>> for ErasedAttachmen
             policy,
             build,
             project_sync: project_sync::<T>,
-            match_write: match_write::<T>,
+            match_key: match_key::<T>,
         }
     }
 }
@@ -304,7 +304,7 @@ pub struct RegisteredAttachment {
     policy: AttachmentPolicy,
     record: Arc<dyn Any + Send + Sync>,
     project_sync: ProjectAttachmentSync,
-    match_write: MatchAttachmentWrite,
+    match_key: MatchAttachmentKey,
     sync_panicked: Arc<AtomicBool>,
 }
 
@@ -421,7 +421,7 @@ pub fn check_attachment_descriptor(
         policy: descriptor.policy,
         record,
         project_sync: descriptor.project_sync,
-        match_write: descriptor.match_write,
+        match_key: descriptor.match_key,
         sync_panicked: Default::default(),
     })
 }
@@ -786,34 +786,16 @@ pub fn validate_attachment_use(
     )
 }
 
-/// Resolve removal policy at the authoritative store, not in an adapter supplying the call.
-// hidden: engine-owned attachment removal sync lookup; not an authoring method.
+/// Require an operation prepared by this installation's exact typed descriptor.
+// hidden: engine-owned attachment store descriptor check; not an authoring method.
 #[doc(hidden)]
-pub fn attachment_removal_sync(
-    namespace: &str,
-    name: &str,
-    runtime_sync: bool,
-) -> Result<bool, AttachmentError> {
-    if let Some(record) = installed()
-        .and_then(|parts| parts.attachment_types.get(namespace))
-        .and_then(|types| types.get(name))
-    {
-        return Ok(record.is_synced());
-    }
-    validate_attachment_use(namespace, name, runtime_sync)?;
-    Ok(runtime_sync)
-}
-
-/// Require a write prepared by this installation's exact typed descriptor.
-// hidden: engine-owned attachment store write check; not an authoring method.
-#[doc(hidden)]
-pub fn validate_attachment_write(write: &AttachmentStoreWrite<'_>) -> Result<(), AttachmentError> {
+pub fn validate_attachment_key(write: &AttachmentStoreKey<'_>) -> Result<(), AttachmentError> {
     let (namespace, name) = write.id();
     let record = installed()
         .and_then(|parts| parts.attachment_types.get(namespace))
         .and_then(|types| types.get(name));
     match record {
-        Some(record) if (record.match_write)(record.record.as_ref(), write) => Ok(()),
+        Some(record) if (record.match_key)(record.record.as_ref(), write) => Ok(()),
         // Runtime-only attachments used by the engine are not mod declarations.
         None if write.engine_owned() && crate::content::crash::current_native_mod().is_none() => {
             Ok(())

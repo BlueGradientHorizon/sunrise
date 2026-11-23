@@ -17,9 +17,9 @@ crate::impl_host_areas!(Store, except(mod_state));
 impl ModStateHost for Store {
     fn attachment_query(
         &self,
-        namespace: &str,
-        name: &str,
+        key: &AttachmentCaptureKey<'_>,
     ) -> Result<AttachmentBatch, AttachmentError> {
+        let (namespace, name) = key.id();
         Ok(runtime::AttachmentBatch::new(
             self.index.lock().unwrap().snapshot_named(namespace, name),
         )
@@ -49,11 +49,11 @@ impl AttachmentHost for Store {
         let _ = (namespace, name, sync);
         Ok(())
     }
-    fn validate_attachment_write(
+    fn validate_attachment_key(
         &self,
-        write: &AttachmentStoreWrite<'_>,
+        write: &AttachmentStoreKey<'_>,
     ) -> Result<(), AttachmentError> {
-        crate::__private::validate_attachment_write(write)
+        crate::__private::validate_attachment_key(write)
     }
     fn attachments(
         &mut self,
@@ -188,6 +188,37 @@ fn all_scoped_variants_write_and_remove_the_exact_storage_target() {
 }
 
 #[test]
+fn a_runtime_descriptor_cannot_read_or_discard_an_installed_keys_value() {
+    let key = crate::parts::install_attachment_fixture(
+        "mapping",
+        AttachmentDescriptor::new("mapping:protected", || 0u32),
+    );
+    let mut host = Store::default();
+    host.maps.insert(Holder::Level, Attachments::default());
+    key.set(&mut host, Holder::Level, 73).unwrap();
+    let forged = runtime::AttachmentType {
+        namespace: "mapping",
+        name: "protected",
+        default: || 0u32,
+        codec: None,
+        copy_on_death: false,
+        sync_codec: None,
+    };
+    assert_eq!(
+        forged.get_existing(&mut host, Holder::Level),
+        Err(AttachmentError::StaleKey)
+    );
+    assert_eq!(
+        forged.remove(&mut host, Holder::Level),
+        Err(AttachmentError::StaleKey)
+    );
+    assert_eq!(
+        key.get_existing(&mut host, Holder::Level, |value| value.copied()),
+        Ok(Some(73))
+    );
+}
+
+#[test]
 fn stale_key_is_refused_by_queries_and_retained_row_reads_and_writes() {
     let epoch = WorldEpoch::new(19);
     let level = LevelRef::new(epoch, DimensionKey::OVERWORLD);
@@ -224,13 +255,7 @@ fn stale_key_is_refused_by_queries_and_retained_row_reads_and_writes() {
         host.query_mut(&first).err(),
         Some(AttachmentError::StaleKey)
     );
-    assert_eq!(
-        host.attachment_query("mapping", "stale")
-            .unwrap()
-            .query(&first)
-            .err(),
-        Some(AttachmentError::StaleKey)
-    );
+    assert_eq!(host.capture(&first).err(), Some(AttachmentError::StaleKey));
     assert_eq!(
         row.set(&mut host, 99),
         Err(AttachmentRowError::Value(AttachmentError::StaleKey))
@@ -267,7 +292,7 @@ fn retained_raw_query_uses_the_current_installations_decoder() {
         value: Some(Compound::new()),
     });
     map.bind_index(&host.index, scoped);
-    let retained = host.attachment_query("mapping", "raw").unwrap();
+    let retained = host.capture(&first).unwrap();
     let stale = retained.clone().query(&first).unwrap();
     let mut cursor = stale.iter();
 
@@ -394,7 +419,7 @@ fn a_captured_bucket_refuses_another_live_key_of_the_same_type() {
         value: Some(Compound::new()),
     });
     values.bind_index(&host.index, holder);
-    let batch = host.attachment_query("mapping", "fuel").unwrap();
+    let batch = host.capture(&fuel_key).unwrap();
     assert_eq!(
         batch.query(&charge_key).err(),
         Some(AttachmentError::TypeMismatch)

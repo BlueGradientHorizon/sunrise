@@ -1739,7 +1739,7 @@ mod nested_vehicle_discard_tests {
                 .commands()
                 .run_command("execute if entity 000000a0-0000-0000-0000-000000000047")
         );
-        let batch = host.attachment_query("vehicle_boundary", "value").unwrap();
+        let batch = mod_api::AttachmentQueries::capture(host, key).unwrap();
         assert!(
             batch
                 .query(key)
@@ -2128,7 +2128,7 @@ mod nested_vehicle_discard_tests {
                     self.kind
                 )));
                 let key = self.key.lock().unwrap().clone().unwrap();
-                let batch = host.attachment_query("vehicle_boundary", "value").unwrap();
+                let batch = mod_api::AttachmentQueries::capture(host, &key).unwrap();
                 assert!(
                     batch
                         .query(&key)
@@ -2172,7 +2172,7 @@ mod nested_vehicle_discard_tests {
                     game.build_registries();
                     game.set_allow_commands(true);
                     set_vehicle_test_attachment(game, &key);
-                    let batch = game.attachment_query("vehicle_boundary", "value").unwrap();
+                    let batch = mod_api::AttachmentQueries::capture(game, &key).unwrap();
                     let query = batch.query(&key).unwrap();
                     let mut rows = query.iter();
                     assert!(rows.try_next().unwrap().is_some());
@@ -2231,7 +2231,7 @@ mod nested_vehicle_discard_tests {
                     let command = format!("execute if entity @e[type=minecraft:{kind}]");
                     assert!(game.run_command(&command));
                     set_vehicle_test_attachment(game, &key);
-                    let batch = game.attachment_query("vehicle_boundary", "value").unwrap();
+                    let batch = mod_api::AttachmentQueries::capture(game, &key).unwrap();
                     assert!(
                         batch
                             .query(&key)
@@ -2258,7 +2258,7 @@ mod nested_vehicle_discard_tests {
                     assert!(game.native_entity_target(vehicle).is_none());
                     assert!(game.entity_passengers(vehicle).is_none());
                     assert!(!game.run_command(&command));
-                    let batch = game.attachment_query("vehicle_boundary", "value").unwrap();
+                    let batch = mod_api::AttachmentQueries::capture(game, &key).unwrap();
                     assert!(
                         batch
                             .query(&key)

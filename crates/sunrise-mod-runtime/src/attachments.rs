@@ -178,22 +178,10 @@ pub trait AttachmentHost {
         name: &str,
         sync: bool,
     ) -> Result<(), AttachmentError>;
-    fn validate_attachment_write(
-        &self,
-        write: &AttachmentStoreWrite<'_>,
-    ) -> Result<(), AttachmentError> {
-        let (namespace, name) = write.id();
-        self.validate_attachment(namespace, name, write.form.policy.sync)
-    }
-    /// Installed descriptors own removal sync policy. Runtime-owned types have no declaration.
-    fn removal_sync(
-        &self,
-        namespace: &str,
-        name: &str,
-        runtime_sync: bool,
-    ) -> Result<bool, AttachmentError> {
-        self.validate_attachment(namespace, name, runtime_sync)?;
-        Ok(runtime_sync)
+    /// Validate the descriptor that issued an erased store request.
+    fn validate_attachment_key(&self, key: &AttachmentStoreKey<'_>) -> Result<(), AttachmentError> {
+        let (namespace, name) = key.id();
+        self.validate_attachment(namespace, name, key.policy.sync)
     }
     fn attachments(
         &mut self,
@@ -205,7 +193,7 @@ pub trait AttachmentHost {
 /// A value of a mod's own type, as the holder keeps it: shared, so a copy of the holder's map
 /// copies no value.
 // no wire: host-local erased Arc value; attachment values cross through their registered codec.
-pub type AttachmentValue = Arc<dyn Any + Send + Sync>;
+type AttachmentValue = Arc<dyn Any + Send + Sync>;
 
 type PersistenceEncoder =
     Arc<dyn Fn(&(dyn Any + Send + Sync)) -> Result<Compound, AttachmentError> + Send + Sync>;
@@ -245,7 +233,7 @@ pub enum CloneAttachmentPolicy {
 /// bytes retained when a client replica is decoded, its type's policy, and why it is stored.
 #[derive(Clone, Debug, PartialEq)]
 // no wire: describes a local store operation; the encoded compound is the saved value.
-pub struct AttachmentForm {
+struct AttachmentForm {
     pub encoded: Option<Compound>,
     pub synced: Option<Compound>,
     pub policy: AttachmentPolicy,
@@ -256,7 +244,7 @@ pub struct AttachmentForm {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 // no wire: tells the local store how the value arrived.
-pub enum AttachmentWrite {
+enum AttachmentWrite {
     /// A saved value just decoded: nothing else changes.
     Decoded,
     /// The type's default, inserted by a read: clients hear of it if the type syncs.
@@ -269,46 +257,35 @@ pub enum AttachmentWrite {
 /// An unread disk or replica binding retained by a custom store. Pass the holder's actual
 /// binding through unchanged: the destination checks its identity before promoting it.
 // no wire: identity of an in-process binding, not a serialized attachment.
-pub struct RawAttachment(Arc<AttachmentEntry>);
+pub struct AttachmentBinding(Arc<AttachmentEntry>);
 
-/// A typed attachment operation already prepared by its descriptor. A store can consume it,
-/// but cannot replace its value, codec output, or policy and send it back to the host.
-// no wire: lends the process-local descriptor that prepared this write.
-pub struct AttachmentStoreWrite<'descriptor> {
-    id: (&'static str, &'static str),
-    descriptor: &'descriptor (dyn Any + Send + Sync),
-    engine_owned: bool,
-    value: AttachmentValue,
-    persistence: Option<PersistenceEncoder>,
-    form: AttachmentForm,
-    promotion: Option<RawAttachment>,
+impl PartialEq for AttachmentBinding {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
 }
 
-impl AttachmentStoreWrite<'_> {
-    /// The attachment namespace and path.
+impl Eq for AttachmentBinding {}
+
+/// A borrowed proof of the descriptor that prepared an erased store operation.
+#[doc(hidden)]
+// no wire: borrows the in-process descriptor behind a typed attachment operation.
+pub struct AttachmentStoreKey<'a> {
+    id: (&'static str, &'static str),
+    descriptor: &'a (dyn Any + Send + Sync),
+    engine_owned: bool,
+    policy: AttachmentPolicy,
+}
+
+impl AttachmentStoreKey<'_> {
     pub fn id(&self) -> (&'static str, &'static str) {
         self.id
     }
 
-    /// Unpack the prepared value and storage form for a custom store implementation.
-    pub fn into_parts(
-        self,
-    ) -> (
-        (&'static str, &'static str),
-        AttachmentValue,
-        AttachmentForm,
-    ) {
-        (self.id, self.value, self.form)
-    }
-
-    /// Whether a runtime-only descriptor prepared this write rather than an issued key.
-    #[doc(hidden)]
     pub fn engine_owned(&self) -> bool {
         self.engine_owned
     }
 
-    /// Test whether this write was constructed by the installed descriptor itself.
-    #[doc(hidden)]
     pub fn matches_descriptor<T: Send + Sync + 'static>(
         &self,
         descriptor: &AttachmentType<T>,
@@ -319,116 +296,105 @@ impl AttachmentStoreWrite<'_> {
     }
 }
 
-/// The current server's holders' values, erased to what crosses any boundary: typed
-/// attachment key methods (`AttachmentKey`) are built on it, for mods.
+/// A write already prepared by a typed descriptor. Only the store consumes its value.
+#[doc(hidden)]
+// no wire: retains a process-local write proof and value.
+pub struct AttachmentStoreWrite<'descriptor> {
+    key: AttachmentStoreKey<'descriptor>,
+    value: AttachmentValue,
+    persistence: Option<PersistenceEncoder>,
+    form: AttachmentForm,
+    promotion: Option<AttachmentBinding>,
+}
+
+impl AttachmentStoreWrite<'_> {
+    pub fn key(&self) -> &AttachmentStoreKey<'_> {
+        &self.key
+    }
+}
+
+pub type AttachmentLoan<'a> = &'a mut dyn FnMut(Option<&(dyn Any + Send + Sync)>);
+
+/// Engine storage for typed attachment key methods. Raw calls require an opaque
+/// descriptor proof; decoded values are only accessible inside a loan.
+#[doc(hidden)]
 pub trait AttachmentStore {
-    /// Validate an attachment type against the loaded declarations.
-    fn validate_attachment(
-        &mut self,
-        namespace: &str,
-        name: &str,
-        sync: bool,
-    ) -> Result<(), AttachmentError>;
-    /// Whether `holder` keeps a value under `namespace:name`, saved or decoded.
     fn holds(
         &mut self,
         holder: Holder,
-        namespace: &str,
-        name: &str,
+        key: &AttachmentStoreKey<'_>,
     ) -> Result<bool, AttachmentError>;
-    /// The value under `namespace:name` if it has been decoded.
-    fn decoded(
+    fn lend_decoded(
         &mut self,
         holder: Holder,
-        namespace: &str,
-        name: &str,
-    ) -> Result<Option<AttachmentValue>, AttachmentError>;
-    /// The unread disk or replica binding under `namespace:name`, if any.
-    fn raw(
+        key: &AttachmentStoreKey<'_>,
+        read: AttachmentLoan<'_>,
+    ) -> Result<(), AttachmentError>;
+    fn binding(
         &mut self,
         holder: Holder,
-        namespace: &str,
-        name: &str,
-    ) -> Result<Option<RawAttachment>, AttachmentError>;
-    /// Commit a descriptor-prepared write. Use `AttachmentKey::set`
-    /// for ordinary mod writes rather than calling this custom-store boundary directly.
+        key: &AttachmentStoreKey<'_>,
+    ) -> Result<Option<AttachmentBinding>, AttachmentError>;
     fn store(
         &mut self,
         holder: Holder,
         write: AttachmentStoreWrite<'_>,
     ) -> Result<(), AttachmentError>;
-    /// Drop the value under `namespace:name`, saved or decoded. An installed descriptor decides
-    /// whether clients hear of it; `runtime_sync` applies only to runtime-owned types.
     fn discard(
         &mut self,
         holder: Holder,
-        namespace: &str,
-        name: &str,
-        runtime_sync: bool,
+        key: &AttachmentStoreKey<'_>,
     ) -> Result<(), AttachmentError>;
-    /// Send the value under `namespace:name` to the clients that see the holder again.
     fn queue_sync(
         &mut self,
         holder: Holder,
-        namespace: &str,
-        name: &str,
+        key: &AttachmentStoreKey<'_>,
     ) -> Result<(), AttachmentError>;
 }
 
 impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
-    fn validate_attachment(
-        &mut self,
-        namespace: &str,
-        name: &str,
-        sync: bool,
-    ) -> Result<(), AttachmentError> {
-        AttachmentHost::validate_attachment(self, namespace, name, sync)
-    }
     fn holds(
         &mut self,
         holder: Holder,
-        namespace: &str,
-        name: &str,
+        key: &AttachmentStoreKey<'_>,
     ) -> Result<bool, AttachmentError> {
-        AttachmentHost::validate_attachment(self, namespace, name, false)?;
+        self.validate_attachment_key(key)?;
+        let (namespace, name) = key.id();
         Ok(Attachments::holds(
             self.attachments(holder, AttachmentAccess::Existing)?,
             namespace,
             name,
         ))
     }
-    fn decoded(
+    fn lend_decoded(
         &mut self,
         holder: Holder,
-        namespace: &str,
-        name: &str,
-    ) -> Result<Option<AttachmentValue>, AttachmentError> {
-        AttachmentHost::validate_attachment(self, namespace, name, false)?;
-        Attachments::decoded(
-            self.attachments(holder, AttachmentAccess::Existing)?,
-            namespace,
-            name,
-        )
-    }
-    fn raw(
-        &mut self,
-        holder: Holder,
-        namespace: &str,
-        name: &str,
-    ) -> Result<Option<RawAttachment>, AttachmentError> {
-        AttachmentHost::validate_attachment(self, namespace, name, false)?;
+        key: &AttachmentStoreKey<'_>,
+        read: AttachmentLoan<'_>,
+    ) -> Result<(), AttachmentError> {
+        self.validate_attachment_key(key)?;
+        let (namespace, name) = key.id();
         let map = self.attachments(holder, AttachmentAccess::Existing)?;
-        Ok(map.entry(namespace, name)?.and_then(|entry| {
-            matches!(entry.state, Entry::Raw { .. }).then(|| RawAttachment(Arc::clone(entry)))
-        }))
+        read(Attachments::decoded(map, namespace, name)?.map(|value| value.as_ref()));
+        Ok(())
+    }
+    fn binding(
+        &mut self,
+        holder: Holder,
+        key: &AttachmentStoreKey<'_>,
+    ) -> Result<Option<AttachmentBinding>, AttachmentError> {
+        self.validate_attachment_key(key)?;
+        let (namespace, name) = key.id();
+        let map = self.attachments(holder, AttachmentAccess::Existing)?;
+        Ok(map.entry(namespace, name)?.cloned().map(AttachmentBinding))
     }
     fn store(
         &mut self,
         holder: Holder,
         prepared: AttachmentStoreWrite<'_>,
     ) -> Result<(), AttachmentError> {
-        AttachmentHost::validate_attachment_write(self, &prepared)?;
-        let (namespace, name) = prepared.id();
+        self.validate_attachment_key(&prepared.key)?;
+        let (namespace, name) = prepared.key.id();
         let map = self.attachments(holder, AttachmentAccess::Store)?;
         let entry = map.entry(namespace, name)?;
         if let Some(raw) = &prepared.promotion
@@ -436,17 +402,12 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
         {
             return Err(AttachmentError::Decode);
         }
-        let persistence = prepared.persistence.clone();
-        let (
-            _,
+        let AttachmentStoreWrite {
             value,
-            AttachmentForm {
-                encoded,
-                synced,
-                policy,
-                write,
-            },
-        ) = prepared.into_parts();
+            persistence,
+            form,
+            ..
+        } = prepared;
         Attachments::store(
             map,
             namespace,
@@ -454,34 +415,33 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
             Decoded {
                 value,
                 persistence,
-                encoded,
-                synced,
-                policy,
+                encoded: form.encoded,
+                synced: form.synced,
+                policy: form.policy,
             },
-            write,
+            form.write,
         );
         Ok(())
     }
     fn discard(
         &mut self,
         holder: Holder,
-        namespace: &str,
-        name: &str,
-        runtime_sync: bool,
+        key: &AttachmentStoreKey<'_>,
     ) -> Result<(), AttachmentError> {
-        let sync = self.removal_sync(namespace, name, runtime_sync)?;
+        self.validate_attachment_key(key)?;
+        let (namespace, name) = key.id();
         let map = self.attachments(holder, AttachmentAccess::Existing)?;
         map.check_namespace(namespace)?;
-        Attachments::discard(map, namespace, name, sync);
+        Attachments::discard(map, namespace, name, key.policy.sync);
         Ok(())
     }
     fn queue_sync(
         &mut self,
         holder: Holder,
-        namespace: &str,
-        name: &str,
+        key: &AttachmentStoreKey<'_>,
     ) -> Result<(), AttachmentError> {
-        AttachmentHost::validate_attachment(self, namespace, name, true)?;
+        self.validate_attachment_key(key)?;
+        let (namespace, name) = key.id();
         Attachments::queue_sync(
             self.attachments(holder, AttachmentAccess::Existing)?,
             namespace,
@@ -650,11 +610,16 @@ impl<T: Send + Sync + 'static> CheckedAttachmentType<T> {
         holder: Holder,
         read: impl FnOnce(Option<&T>) -> R,
     ) -> Result<R, AttachmentError> {
-        Ok(read(
-            AttachmentOps::Checked(self)
-                .existing(store, holder)?
-                .as_deref(),
-        ))
+        AttachmentOps::Checked(self).get_existing(store, holder, read)
+    }
+    /// Compare storage revisions without exposing the erased value.
+    #[doc(hidden)]
+    pub fn binding_revision<S: AttachmentStore + ?Sized>(
+        &self,
+        store: &mut S,
+        holder: Holder,
+    ) -> Result<Option<AttachmentBinding>, AttachmentError> {
+        store.binding(holder, &AttachmentOps::Checked(self).key())
     }
     /// Read the decoded value through `read` without cloning it.
     pub fn with_decoded<S: AttachmentStore + ?Sized, R>(
@@ -715,92 +680,132 @@ impl<T: 'static> AttachmentOps<'_, T> {
             Self::Checked(checked) => checked.persistence.clone(),
         }
     }
-    fn validate<S: AttachmentStore + ?Sized>(&self, store: &mut S) -> Result<(), AttachmentError> {
-        let raw = self.raw();
+    fn validate(&self) -> Result<(), AttachmentError> {
         match self {
-            Self::Raw(_) => {
-                store.validate_attachment(raw.namespace, raw.name, raw.sync_codec.is_some())?;
-                raw.validate_policy()
-            }
+            Self::Raw(raw) => raw.validate_policy(),
             Self::Checked(_) => Ok(()),
         }
     }
 }
 
 impl<T: Send + Sync + 'static> AttachmentOps<'_, T> {
+    fn key(&self) -> AttachmentStoreKey<'_> {
+        let raw = self.raw();
+        AttachmentStoreKey {
+            id: (raw.namespace, raw.name),
+            descriptor: raw,
+            engine_owned: matches!(self, Self::Raw(_)),
+            policy: raw.policy(),
+        }
+    }
+
+    fn lend_decoded<S: AttachmentStore + ?Sized, R>(
+        &self,
+        store: &mut S,
+        holder: Holder,
+        read: impl FnOnce(Option<&(dyn Any + Send + Sync)>) -> R,
+    ) -> Result<R, AttachmentError> {
+        let mut read = Some(read);
+        let mut result = None;
+        store.lend_decoded(holder, &self.key(), &mut |value| {
+            if let Some(read) = read.take() {
+                result = Some(read(value));
+            }
+        })?;
+        result.ok_or(AttachmentError::Decode)
+    }
+
     fn get<S: AttachmentStore + ?Sized, R>(
         &self,
         store: &mut S,
         holder: Holder,
         read: impl FnOnce(&T) -> R,
     ) -> Result<R, AttachmentError> {
-        let value = if let Some(value) = self.existing(store, holder)? {
-            value
-        } else {
-            let value = Arc::new((self.raw().default)());
-            self.keep(store, holder, Arc::clone(&value), AttachmentWrite::Default)?;
-            value
-        };
-        Ok(read(&value))
+        let mut read = Some(read);
+        if let Some(result) = self.existing(store, holder, |value| read.take().unwrap()(value))? {
+            return Ok(result);
+        }
+        let value = Arc::new((self.raw().default)());
+        self.keep(store, holder, Arc::clone(&value), AttachmentWrite::Default)?;
+        Ok(read.unwrap()(&value))
     }
     fn has<S: AttachmentStore + ?Sized>(
         &self,
         store: &mut S,
         holder: Holder,
     ) -> Result<bool, AttachmentError> {
-        let raw = self.raw();
-        if matches!(self, Self::Raw(_)) {
-            store.validate_attachment(raw.namespace, raw.name, raw.sync_codec.is_some())?;
-        }
-        store.holds(holder, raw.namespace, raw.name)
+        self.validate()?;
+        store.holds(holder, &self.key())
     }
-    fn existing<S: AttachmentStore + ?Sized>(
+    fn existing<S: AttachmentStore + ?Sized, R>(
         &self,
         store: &mut S,
         holder: Holder,
-    ) -> Result<Option<Arc<T>>, AttachmentError> {
-        let raw = self.raw();
-        self.validate(store)?;
-        if let Some(value) = store.decoded(holder, raw.namespace, raw.name)? {
-            return value
-                .downcast::<T>()
-                .map(Some)
-                .map_err(|_| AttachmentError::TypeMismatch);
+        read: impl FnOnce(&T) -> R,
+    ) -> Result<Option<R>, AttachmentError> {
+        self.validate()?;
+        let mut read = Some(read);
+        if let Some(result) =
+            self.lend_decoded(store, holder, |value| -> Result<_, AttachmentError> {
+                value
+                    .map(|value| {
+                        let value = value
+                            .downcast_ref::<T>()
+                            .ok_or(AttachmentError::TypeMismatch)?;
+                        Ok(read.take().unwrap()(value))
+                    })
+                    .transpose()
+            })??
+        {
+            return Ok(Some(result));
         }
-        let Some(binding) = store.raw(holder, raw.namespace, raw.name)? else {
+        let Some(binding) = store.binding(holder, &self.key())? else {
             return Ok(None);
         };
         let Entry::Raw { saved, kind, .. } = &binding.0.state else {
-            unreachable!("raw binding constructor checked its state");
+            return Err(AttachmentError::Decode);
         };
+        let raw = self.raw();
         let payload = raw_value(saved).ok_or(AttachmentError::Decode)?;
         let (value, encoded, synced) = match kind {
             AttachmentRawKind::Saved => (raw.decode_saved(payload)?, Some(payload.clone()), None),
             AttachmentRawKind::Synced => (raw.decode_synced(payload)?, None, Some(payload.clone())),
         };
+        let key = self.key();
         let form = AttachmentForm {
             encoded,
             synced,
-            policy: raw.policy(),
+            policy: key.policy,
             write: AttachmentWrite::Decoded,
         };
-        // The store and the read share one value, even if promotion is refused.
         let value = Arc::new(value);
         store.store(
             holder,
             AttachmentStoreWrite {
-                id: (raw.namespace, raw.name),
-                descriptor: raw,
-                engine_owned: matches!(self, Self::Raw(_)),
+                key,
                 value: value.clone(),
-                persistence: (*kind == AttachmentRawKind::Saved)
-                    .then(|| self.persistence())
-                    .flatten(),
+                persistence: if *kind == AttachmentRawKind::Saved {
+                    self.persistence()
+                } else {
+                    None
+                },
                 form,
                 promotion: Some(binding),
             },
         )?;
-        Ok(Some(value))
+        Ok(Some(read.unwrap()(&value)))
+    }
+    fn get_existing<S: AttachmentStore + ?Sized, R>(
+        &self,
+        store: &mut S,
+        holder: Holder,
+        read: impl FnOnce(Option<&T>) -> R,
+    ) -> Result<R, AttachmentError> {
+        let mut read = Some(read);
+        match self.existing(store, holder, |value| read.take().unwrap()(Some(value)))? {
+            Some(result) => Ok(result),
+            None => Ok(read.unwrap()(None)),
+        }
     }
     fn with_decoded<S: AttachmentStore + ?Sized, R>(
         &self,
@@ -808,10 +813,10 @@ impl<T: Send + Sync + 'static> AttachmentOps<'_, T> {
         holder: Holder,
         read: impl FnOnce(Option<&T>) -> R,
     ) -> Result<R, AttachmentError> {
-        let raw = self.raw();
-        self.validate(store)?;
-        let value = store.decoded(holder, raw.namespace, raw.name)?;
-        Ok(read(value.as_ref().and_then(|v| v.downcast_ref::<T>())))
+        self.validate()?;
+        self.lend_decoded(store, holder, |value| {
+            read(value.and_then(|v| v.downcast_ref::<T>()))
+        })
     }
     fn set<S: AttachmentStore + ?Sized>(
         &self,
@@ -819,11 +824,8 @@ impl<T: Send + Sync + 'static> AttachmentOps<'_, T> {
         holder: Holder,
         value: T,
     ) -> Result<(), AttachmentError> {
-        let raw = self.raw();
-        self.validate(store)?;
-        if let Some(old) = store.decoded(holder, raw.namespace, raw.name)?
-            && !old.is::<T>()
-        {
+        self.validate()?;
+        if self.lend_decoded(store, holder, |old| old.is_some_and(|old| !old.is::<T>()))? {
             return Err(AttachmentError::TypeMismatch);
         }
         self.keep(store, holder, Arc::new(value), AttachmentWrite::Set)
@@ -839,11 +841,8 @@ impl<T: Send + Sync + 'static> AttachmentOps<'_, T> {
         if !self.has(store, holder)? {
             return Ok(None);
         }
-        let raw = self.raw();
-        let value = self
-            .existing(store, holder)
-            .map(|value| value.as_deref().cloned());
-        store.discard(holder, raw.namespace, raw.name, raw.sync_codec.is_some())?;
+        let value = self.existing(store, holder, T::clone);
+        store.discard(holder, &self.key())?;
         value
     }
     fn sync_data<S: AttachmentStore + ?Sized>(
@@ -851,10 +850,9 @@ impl<T: Send + Sync + 'static> AttachmentOps<'_, T> {
         store: &mut S,
         holder: Holder,
     ) -> Result<(), AttachmentError> {
-        let raw = self.raw();
-        self.validate(store)?;
-        if raw.sync_codec.is_some() {
-            store.queue_sync(holder, raw.namespace, raw.name)?;
+        self.validate()?;
+        if self.raw().sync_codec.is_some() {
+            store.queue_sync(holder, &self.key())?;
         }
         Ok(())
     }
@@ -880,9 +878,7 @@ impl<T: Send + Sync + 'static> AttachmentOps<'_, T> {
         store.store(
             holder,
             AttachmentStoreWrite {
-                id: (raw.namespace, raw.name),
-                descriptor: raw,
-                engine_owned: matches!(self, Self::Raw(_)),
+                key: self.key(),
                 value,
                 persistence: self.persistence(),
                 form,
@@ -968,10 +964,7 @@ impl<T: Clone + Send + Sync + 'static> AttachmentType<T> {
         store: &mut S,
         holder: Holder,
     ) -> Result<Option<T>, AttachmentError> {
-        Ok(AttachmentOps::Raw(self)
-            .existing(store, holder)?
-            .as_deref()
-            .cloned())
+        AttachmentOps::Raw(self).existing(store, holder, T::clone)
     }
     /// Read the decoded value through `read` without cloning it: what a read of one part of a
     /// large value costs. A saved value that has not decoded yet is not decoded, so `read` sees
@@ -1612,10 +1605,10 @@ impl Attachments {
         &self,
         namespace: &str,
         name: &str,
-    ) -> Result<Option<AttachmentValue>, AttachmentError> {
+    ) -> Result<Option<&AttachmentValue>, AttachmentError> {
         Ok(
             match self.entry(namespace, name)?.map(|entry| &entry.state) {
-                Some(Entry::Decoded(value)) => Some(value.value.clone()),
+                Some(Entry::Decoded(value)) => Some(&value.value),
                 _ => None,
             },
         )
@@ -2838,7 +2831,7 @@ mod tests {
         // Decoded Arcs are independent from the source map.
         let src_arc = source.decoded("test", "counter").unwrap().unwrap();
         let copy_arc = end_copy.decoded("test", "counter").unwrap().unwrap();
-        assert!(!Arc::ptr_eq(&src_arc, &copy_arc));
+        assert!(!Arc::ptr_eq(src_arc, copy_arc));
 
         let mut death_copy = source.copy_for_clone(true, |_, _| None);
         assert_eq!(UNSERIALIZED.has(&mut death_copy, Holder::Level), Ok(false));

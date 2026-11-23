@@ -13,9 +13,11 @@ pub use sunrise_core::nbt::Tag;
 pub use sunrise_core::neighbour_update::NeighbourUpdate;
 pub use sunrise_core::use_animation::UseAnimation;
 pub use sunrise_mod_runtime::attachments::{
-    AttachmentCodec, AttachmentError, AttachmentForm, AttachmentPolicy, AttachmentStore,
-    AttachmentStoreWrite, AttachmentValue, AttachmentWrite, Holder, RawAttachment,
+    AttachmentCodec, AttachmentError, AttachmentPolicy, Holder,
 };
-// hidden: the game's maps behind the store, not part of the mod surface
+// hidden: the game's storage backends, not part of the typed mod surface.
 #[doc(hidden)]
-pub use sunrise_mod_runtime::attachments::{AttachmentAccess, AttachmentHost, Attachments};
+pub use sunrise_mod_runtime::attachments::{
+    AttachmentAccess, AttachmentBinding, AttachmentHost, AttachmentLoan, AttachmentStore,
+    AttachmentStoreKey, AttachmentStoreWrite, Attachments,
+};

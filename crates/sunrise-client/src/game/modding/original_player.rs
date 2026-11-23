@@ -1,14 +1,16 @@
 //! The old `ServerPlayer` retained across `restoreFrom`, independently of its replacement.
 use super::{Dim, Game};
 use mod_api::{
-    __private::TransactionFrame, ActiveEffect, AttachmentError, AttachmentStore, AttachmentValue,
-    Attachments, Holder, InventoryView, LevelRef, OriginalPlayerAccess, PlayerExperience,
+    __private::TransactionFrame, ActiveEffect, AttachmentError, AttachmentStore, Attachments,
+    Holder, InventoryView, LevelRef, OriginalPlayerAccess, PlayerExperience,
 };
 use std::sync::{Arc, Mutex};
 use sunrise_core::nbt::Compound;
 use sunrise_items::equipment::Equipment;
 use sunrise_items::items::ItemStack;
-use sunrise_mod_runtime::attachments::{AttachmentStoreWrite, RawAttachment};
+use sunrise_mod_runtime::attachments::{
+    AttachmentBinding, AttachmentLoan, AttachmentStoreKey, AttachmentStoreWrite,
+};
 
 /// Per-player attachment state and active replacement player UUIDs during clone hooks.
 #[derive(Default)]
@@ -83,46 +85,35 @@ impl RetainedOriginalAttachments {
 }
 
 impl AttachmentStore for RetainedOriginalAttachments {
-    fn validate_attachment(
-        &mut self,
-        namespace: &str,
-        name: &str,
-        sync: bool,
-    ) -> Result<(), AttachmentError> {
-        mod_api::__private::validate_attachment_use(namespace, name, sync)
-    }
-
     fn holds(
         &mut self,
         holder: Holder,
-        namespace: &str,
-        name: &str,
+        key: &AttachmentStoreKey<'_>,
     ) -> Result<bool, AttachmentError> {
-        mod_api::__private::validate_attachment_use(namespace, name, false)?;
+        mod_api::__private::validate_attachment_key(key)?;
         let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
-        AttachmentStore::holds(&mut slot.map, holder, namespace, name)
+        AttachmentStore::holds(&mut slot.map, holder, key)
     }
 
-    fn decoded(
+    fn lend_decoded(
         &mut self,
         holder: Holder,
-        namespace: &str,
-        name: &str,
-    ) -> Result<Option<AttachmentValue>, AttachmentError> {
-        mod_api::__private::validate_attachment_use(namespace, name, false)?;
+        key: &AttachmentStoreKey<'_>,
+        read: AttachmentLoan<'_>,
+    ) -> Result<(), AttachmentError> {
+        mod_api::__private::validate_attachment_key(key)?;
         let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
-        AttachmentStore::decoded(&mut slot.map, holder, namespace, name)
+        AttachmentStore::lend_decoded(&mut slot.map, holder, key, read)
     }
 
-    fn raw(
+    fn binding(
         &mut self,
         holder: Holder,
-        namespace: &str,
-        name: &str,
-    ) -> Result<Option<RawAttachment>, AttachmentError> {
-        mod_api::__private::validate_attachment_use(namespace, name, false)?;
+        key: &AttachmentStoreKey<'_>,
+    ) -> Result<Option<AttachmentBinding>, AttachmentError> {
+        mod_api::__private::validate_attachment_key(key)?;
         let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
-        AttachmentStore::raw(&mut slot.map, holder, namespace, name)
+        AttachmentStore::binding(&mut slot.map, holder, key)
     }
 
     fn store(
@@ -130,7 +121,7 @@ impl AttachmentStore for RetainedOriginalAttachments {
         holder: Holder,
         write: AttachmentStoreWrite<'_>,
     ) -> Result<(), AttachmentError> {
-        mod_api::__private::validate_attachment_write(&write)?;
+        mod_api::__private::validate_attachment_key(write.key())?;
         let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
         slot.journal_current();
         AttachmentStore::store(&mut slot.map, holder, write)
@@ -139,26 +130,23 @@ impl AttachmentStore for RetainedOriginalAttachments {
     fn discard(
         &mut self,
         holder: Holder,
-        namespace: &str,
-        name: &str,
-        sync: bool,
+        key: &AttachmentStoreKey<'_>,
     ) -> Result<(), AttachmentError> {
-        let sync = mod_api::__private::attachment_removal_sync(namespace, name, sync)?;
+        mod_api::__private::validate_attachment_key(key)?;
         let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
         slot.journal_current();
-        AttachmentStore::discard(&mut slot.map, holder, namespace, name, sync)
+        AttachmentStore::discard(&mut slot.map, holder, key)
     }
 
     fn queue_sync(
         &mut self,
         holder: Holder,
-        namespace: &str,
-        name: &str,
+        key: &AttachmentStoreKey<'_>,
     ) -> Result<(), AttachmentError> {
-        mod_api::__private::validate_attachment_use(namespace, name, true)?;
+        mod_api::__private::validate_attachment_key(key)?;
         let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
         slot.journal_current();
-        AttachmentStore::queue_sync(&mut slot.map, holder, namespace, name)
+        AttachmentStore::queue_sync(&mut slot.map, holder, key)
     }
 }
 
@@ -974,10 +962,11 @@ mod tests {
                         .snapshot_named("clone", "retained")
                         .is_empty()
                 );
-                let batch = host.attachment_query("clone", "unsaved").unwrap();
+                let key = issued(&VALUE);
+                let batch = mod_api::AttachmentQueries::capture(host, &key).unwrap();
                 assert!(
                     batch
-                        .query(&issued(&VALUE))
+                        .query(&key)
                         .unwrap()
                         .iter()
                         .try_next()

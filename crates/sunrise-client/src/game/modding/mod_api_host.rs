@@ -758,19 +758,11 @@ impl mod_api::AttachmentHost for Game<'_> {
     ) -> Result<(), mod_api::AttachmentError> {
         mod_api::__private::validate_attachment_use(namespace, name, sync)
     }
-    fn validate_attachment_write(
+    fn validate_attachment_key(
         &self,
-        write: &mod_api::AttachmentStoreWrite<'_>,
+        write: &mod_api::AttachmentStoreKey<'_>,
     ) -> Result<(), mod_api::AttachmentError> {
-        mod_api::__private::validate_attachment_write(write)
-    }
-    fn removal_sync(
-        &self,
-        namespace: &str,
-        name: &str,
-        runtime_sync: bool,
-    ) -> Result<bool, mod_api::AttachmentError> {
-        mod_api::__private::attachment_removal_sync(namespace, name, runtime_sync)
+        mod_api::__private::validate_attachment_key(write)
     }
     fn attachments(
         &mut self,
@@ -790,19 +782,11 @@ impl mod_api::AttachmentHost for super::GameLevel<'_> {
     ) -> Result<(), mod_api::AttachmentError> {
         mod_api::__private::validate_attachment_use(namespace, name, sync)
     }
-    fn validate_attachment_write(
+    fn validate_attachment_key(
         &self,
-        write: &mod_api::AttachmentStoreWrite<'_>,
+        write: &mod_api::AttachmentStoreKey<'_>,
     ) -> Result<(), mod_api::AttachmentError> {
-        mod_api::__private::validate_attachment_write(write)
-    }
-    fn removal_sync(
-        &self,
-        namespace: &str,
-        name: &str,
-        runtime_sync: bool,
-    ) -> Result<bool, mod_api::AttachmentError> {
-        mod_api::__private::attachment_removal_sync(namespace, name, runtime_sync)
+        mod_api::__private::validate_attachment_key(write)
     }
     fn attachments(
         &mut self,
@@ -912,19 +896,11 @@ impl mod_api::AttachmentHost for super::native_hooks::HitLevel<'_> {
     ) -> Result<(), mod_api::AttachmentError> {
         mod_api::__private::validate_attachment_use(namespace, name, sync)
     }
-    fn validate_attachment_write(
+    fn validate_attachment_key(
         &self,
-        write: &mod_api::AttachmentStoreWrite<'_>,
+        write: &mod_api::AttachmentStoreKey<'_>,
     ) -> Result<(), mod_api::AttachmentError> {
-        mod_api::__private::validate_attachment_write(write)
-    }
-    fn removal_sync(
-        &self,
-        namespace: &str,
-        name: &str,
-        runtime_sync: bool,
-    ) -> Result<bool, mod_api::AttachmentError> {
-        mod_api::__private::attachment_removal_sync(namespace, name, runtime_sync)
+        mod_api::__private::validate_attachment_key(write)
     }
     fn attachments(
         &mut self,

@@ -6,7 +6,7 @@
 //! unloaded. The Part object is shared behaviour and owns no instance's value.
 
 use crate::*;
-use std::{cell::RefCell, fmt, sync::Arc};
+use std::{cell::RefCell, fmt};
 
 /// A block entity Part's typed state: one value per block entity of the Part's type,
 /// owned by the game, not by the Part or a mod's statics.
@@ -454,7 +454,7 @@ pub fn read_state<H: PartStateHolder, T: Send + Sync + 'static, R>(
         .map_err(|error| attachment(key, error))?;
     entity.part_state_holder(host)?;
     let query = host
-        .attachment_query(checked.namespace(), checked.name())
+        .attachment_query(&AttachmentCaptureKey::new(checked))
         .map_err(|error| attachment(key, error))?
         .query_checked(checked, epoch)
         .map_err(|error| attachment(key, error))?;
@@ -528,27 +528,19 @@ pub fn edit_part_state<H: PartStateHolder, T: Clone + Send + Sync + 'static, R>(
         let current = checked
             .get_existing(store, at, |value| value.cloned())
             .map_err(|error| attachment(key, error))?;
-        // The value's own allocation: each store makes a new one and a transaction puts
-        // the same one back, so it changed exactly when this differs. Holding it keeps
-        // its address from being reused.
-        let revision = store
-            .decoded(at, checked.namespace(), checked.name())
+        // Retain only the opaque binding identity across the edit, not the value.
+        let revision = checked
+            .binding_revision(store, at)
             .map_err(|error| attachment(key, error))?;
         let mut value = current.unwrap_or_else(|| checked.default_value());
         let answer = edit(host, tx, &mut value);
         let checked = key.live().map_err(|error| attachment(key, error))?;
         let at = entity.part_state_holder(host)?;
         let store = host.attachments();
-        let now = store
-            .decoded(at, checked.namespace(), checked.name())
+        let now = checked
+            .binding_revision(store, at)
             .map_err(|error| attachment(key, error))?;
-        if !same(revision.as_ref(), now.as_ref())
-            || (now.is_none()
-                && store
-                    .raw(at, checked.namespace(), checked.name())
-                    .map_err(|error| attachment(key, error))?
-                    .is_some())
-        {
+        if revision != now {
             return Err(PartStateError::Changed);
         }
         checked
@@ -562,14 +554,6 @@ pub fn edit_part_state<H: PartStateHolder, T: Clone + Send + Sync + 'static, R>(
             Err(PartStateError::Unavailable)
         }
         Err(crate::TransactionError::CommitRefused) => Err(PartStateError::CommitRefused),
-    }
-}
-
-fn same(a: Option<&AttachmentValue>, b: Option<&AttachmentValue>) -> bool {
-    match (a, b) {
-        (None, None) => true,
-        (Some(a), Some(b)) => std::ptr::addr_eq(Arc::as_ptr(a), Arc::as_ptr(b)),
-        _ => false,
     }
 }
 
@@ -637,15 +621,5 @@ mod tests {
             edit_part_state(&mut host, entity, &first, |_, _tx, _| panic!("ran")),
             expected
         );
-    }
-
-    #[test]
-    fn revisions_compare_allocations_not_values() {
-        let a: AttachmentValue = Arc::new(7_i32);
-        let b: AttachmentValue = Arc::new(7_i32);
-        assert!(same(Some(&a), Some(&a.clone())));
-        assert!(!same(Some(&a), Some(&b)));
-        assert!(same(None, None));
-        assert!(!same(Some(&a), None));
     }
 }

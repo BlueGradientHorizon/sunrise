@@ -106,9 +106,9 @@ mod_api::impl_host_areas!(BenchHost, except(mod_state));
 impl ModStateHost for BenchHost {
     fn attachment_query(
         &self,
-        namespace: &str,
-        name: &str,
+        key: &AttachmentCaptureKey<'_>,
     ) -> Result<AttachmentBatch, AttachmentError> {
+        let (namespace, name) = key.id();
         Ok(runtime::AttachmentBatch::new(
             self.index.lock().unwrap().snapshot_named(namespace, name),
         )
