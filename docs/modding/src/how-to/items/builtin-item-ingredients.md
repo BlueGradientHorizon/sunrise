@@ -45,16 +45,19 @@ Every component id must be registered, including removal keys. A payload is
 rejected when its available decoder rejects it, and the whole engine-owned
 recipe is omitted. Mod-owned recipe types retain their own validation.
 
-Registered components without a shared decoder **load**. Raw `other` values
+Registered components with a shared decoder are listed in
+[`DECODED_COMPONENTS`](https://github.com/sunrise-org/sunrise/blob/main/crates/sunrise-command/src/item.rs)
+(`crates/sunrise-command/src/item.rs`). Registered components without a shared decoder **load**: raw `other` values
 compare by exact stored NBT equality. Modelled values, including potion, bundle,
 container and trim contents, compare against their complete retained fields.
 All preparation happens at load; candidate comparisons borrow values without
 allocating or converting them to JSON. Removal keys require registration only.
 Native registrations retain their persistent NBT validation contract.
 
-The `chicken/variant` codec decodes a fixed holder from the active chicken-variant
-registry. Bare or empty namespaces become `minecraft`; mod-registered keys are
-accepted, but unknown keys, missing registries, tags and inline objects are refused.
+The `chicken/variant`, `cat/variant`, and `wolf/variant` codecs decode a fixed holder from
+their active variant registry. Bare or empty namespaces become `minecraft`; registered keys
+match, including namespaced mod-registered keys, while unknown keys, missing registries, tags,
+and inline objects are refused.
 Matching borrows the identifier, including inherited item defaults and removals.
 `enchantable` requires a positive integer `value`; extra record fields are ignored
 and equivalent numeric NBT widths match, including item defaults. Map ids accept
@@ -115,14 +118,12 @@ visibility holder sets against active entity data, and ordered recipe keys.
 Custom model data lists default to empty, including JSON null optional fields.
 Recipe keys need no registry lookup; order and duplicates are retained.
 
-Mod-registered cat and wolf variants do not match.
-
 `attack_animation` accepts a record with optional `type` (`none`, `whack`,
 `stab`; default `whack`) and nonnegative integer `duration` (default 6).
 Optional JSON null fields use their defaults; the whole payload must be a map.
 JSON booleans become numeric byte flags before decoding, including durations.
 Very large JSON doubles saturate to an integer where vanilla JSON operations
-wrap; this existing conversion difference is not tightened here.
+wrap.
 `damage_resistant` requires `types`: a damage type id, ordered list of ids
 (including duplicates and the empty list), or a named `#tag` from the active
 frozen damage registry. Missing or null `types` is refused. Named sets compare

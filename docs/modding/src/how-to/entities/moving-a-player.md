@@ -4,8 +4,9 @@
 # Moving a player
 
 `player.entity().move_by(host, delta, cause)` (`EntityRef::move_by`, the call that moves any other entity, on a
-`&mut dyn ServerHost`) moves a player by `delta` through the level as `Entity.move` would: blocks, other entities' colliders and the player's
-collision exclusions stop it, and a step up is taken. It returns the displacement made. As for every entity, a
+`&mut dyn ServerHost`) moves a player by `delta` through the level as `Entity.move` would: for non-spectators, the
+move resolves against block shapes after applying the player's collision exclusions and against other entities'
+colliders, taking a step up where allowed; spectators bypass collision. It returns the displacement made. As for every entity, a
 `delta` beyond 64 blocks on an axis is refused. The `entity_move` hook hears it once, for
 the player and with `cause`, and a listener may replace or cancel it as for any other entity (a cancelled move is
 `Some([0.0; 3])` and the client is told nothing); `cause` changes only what the hook hears, not the physics.
@@ -67,7 +68,7 @@ On either side, `player.supporting_block(host)` returns the player's recorded su
 which may be beside the column under their feet. `player.on_block(host)` reads vanilla's
 `getOnPos()`: the support when present, otherwise the block at the feet with vanilla's small
 downward offset. The client reads its own player's last move; other players return `Ok(None)`
-there. More entity families need to retain their last-move state before this can be an entity-wide read.
+there.
 
 At `player_tick_pre` the player's input fields still hold the previous tick's applied values. To read or edit this
 tick's input, use `movement_input_update`, which lends the sampled input before auto-jump and sprint decisions:

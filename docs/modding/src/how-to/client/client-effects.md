@@ -160,8 +160,8 @@ fn render_tooltip_pre(
 }
 ```
 
-   `TooltipImage.size` no longer exists. Supply dimensions in your `ClientTooltipComponent`'s
-   `width` and `height` implementations. To read a component's dimensions, use
+   Supply dimensions in your `ClientTooltipComponent`'s `width` and `height`
+   implementations. To read a component's dimensions, use
    `component.width(font)` and `component.height(font)` in Pre, as above (`None` means
    measurement failed). Gather sees unprepared data, not dimensions. The `width` and `height`
    passed to `draw_image` are for the entire tooltip's content box, not that component.
@@ -235,11 +235,10 @@ Extra views also omit the sun, moon, stars, clouds and block outline. Translucen
 terrain uses the player camera's sorting. See the generated `world_views` hook notes
 for the rendering contract.
 
-Views draw the player's own level for now. The other levels a server opens for the
-client (viewed levels) are meshed only while a view names one, after the player's own
-level's work and on one worker at a time, and their meshes stay 5 seconds after no view
-names the level. Once views of a viewed level are drawn, such a view draws the sections
-meshed so far and nothing where a section is not meshed yet.
+Views draw only the player's own level; views targeting another level are refused. Separately,
+other levels a server opens for the client (viewed levels) are meshed only while named, after
+the player's own level's work and on one worker at a time, and their meshes stay 5 seconds after
+no request names the level.
 
 ## Muffling sounds
 

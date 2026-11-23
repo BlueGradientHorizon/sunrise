@@ -150,10 +150,9 @@ source component, while an empty list selects none. `exclude` is applied after
 components without removing unselected values. An absent source makes no edit.
 This is the same operation in both loot evaluators.
 
-Entity sources currently supply custom name when present and custom data
-(including an empty compound when unset). Subtype components such as variants
-and entity-type default components will arrive with the separate general entity
-component-getter follow-up; the copy function does not manufacture those values.
+Entity sources supply `custom_name` when present and `custom_data` (including an
+empty compound when unset). Copying does not synthesize subtype components such as
+variants or entity-type default components.
 
 ## Copying custom data
 
