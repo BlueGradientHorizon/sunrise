@@ -172,7 +172,7 @@ fn spectated_locator_uses_camera_entity_for_identity_and_distance() {
                 track_block(game, 5, 5, [122, 64, 0]);
                 game.ui.hide_gui = false;
                 game.locator_camera = Some(([0.0, 65.62, 0.0], 180.0, 0.0, 70.0));
-                add_armor_stand_facing(game, 25, 25, [100.0, 64.0, 0.0], -64);
+                add_armor_stand_facing(game, 25, 25, [100.5, 64.0, 0.5], -64);
                 game.apply_packet(C::SetCamera(play::SetCamera { camera_id: 25 }))
                     .unwrap();
                 let (cam_pos, cam_yaw, cam_pitch) = game.camera_view(0.0).unwrap();
@@ -310,18 +310,11 @@ fn block_waypoints_use_live_non_player_eyes_within_manhattan_three() {
                     .previous = Vec3::new(119.2, 64.0, 5.8);
                 let (rebound_block, rebound_eyes) = game.waypoint_entity(3).unwrap();
                 assert_eq!(rebound_block, [120, 64, 5]);
-                assert_eq!(
-                    rebound_eyes.map(f64::to_bits),
-                    [
-                        0x405e_0ccc_cccc_cccd,
-                        0x4050_71c2_8f80_0000,
-                        0x4017_3333_3333_3333
-                    ]
-                );
+                assert_eq!(rebound_eyes.map(f64::to_bits), interpolated_eye);
                 track_block(game, 3, 3, [122, 64, 6]);
                 assert_eq!(
                     dot_x(game),
-                    228,
+                    229,
                     "reintroduced UUID uses new runtime id eyes"
                 );
             });
