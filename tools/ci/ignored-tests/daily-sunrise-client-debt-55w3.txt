@@ -1,2 +1,3 @@
 # Seeded GUI models and decorations in scoped mod draws in a prepared game.
+sunrise-client game::gui_canvas_items_tests::item_decorator_can_delegate_to_the_base_painter_without_recursion lib daily child-process
 sunrise-client game::gui_canvas_items_tests::scoped_items_keep_the_seed_and_draw_decorations_outside_the_squeeze lib daily child-process

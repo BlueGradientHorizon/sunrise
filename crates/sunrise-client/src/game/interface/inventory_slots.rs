@@ -130,10 +130,7 @@ impl Game<'_> {
         let hook = mod_api::HookId::ItemDecorations;
         if mod_api::__private::has_part_hook(hook) || mod_api::__private::listened(hook) {
             // The ordinary inventory, hotbar and tooltip paths draw in screen GUI units.
-            let _ = self.draw_gui_canvas(batch, None, &mut |canvas| {
-                self.native_item_decorations(stack, x, y, canvas);
-                Ok(())
-            });
+            self.draw_item_decorator(batch, stack, x, y);
         }
     }
 

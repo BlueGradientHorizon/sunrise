@@ -77,8 +77,10 @@ if let Some(stack) = stack {
 `ItemPart::item_decorations` receives a `GuiCanvas` as `event.draw` after the standard
 bar, cooldown and count. Use the icon's local `event.x` and `event.y` for drawing. The canvas
 already has the caller's pose and scissor (identity for ordinary inventory, hotbar and tooltip
-calls). A decorator returns `()`, so use `event.draw.scope` if you want to roll back its own
-primitives together on failure. Move any widgets, focus, narration or live scenes to ordinary
+calls). On this canvas and its child scopes, `item_decorations` paints only the standard bar,
+cooldown and count; it does not invoke any item decorators, even for a different stack. A
+decorator returns `()`, so use `event.draw.scope` to roll back its own primitives together on
+failure. Move any widgets, focus, narration or live scenes to ordinary
 HUD or screen draw hooks.
 
 For replacing or wrapping a HUD status layer, see [HUD drawing](hud-drawing.md).

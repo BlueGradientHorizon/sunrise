@@ -28,6 +28,30 @@ pub(super) struct GameGuiCanvas<'a, 'g> {
     pose: Pose,
     /// Screen-space edges, not affected by future changes of pose.
     scissor: Option<[f32; 4]>,
+    /// A decorator may paint the standard suffix, but never enter the decorator walk again.
+    decorating: bool,
+}
+
+impl Game<'_> {
+    pub(in crate::game) fn draw_item_decorator(
+        &self,
+        batch: &mut HudBatch,
+        stack: &EngineStack,
+        x: f32,
+        y: f32,
+    ) {
+        let _ = GameGuiCanvas::draw_root(
+            batch,
+            &self.gui.atlas,
+            Some(self),
+            None,
+            true,
+            &mut |draw| {
+                self.native_item_decorations(stack, x, y, draw);
+                Ok(())
+            },
+        );
+    }
 }
 
 impl GameGuiCanvas<'_, '_> {
@@ -38,8 +62,28 @@ impl GameGuiCanvas<'_, '_> {
         scissor: Option<[f32; 4]>,
         draw: &mut dyn FnMut(&mut dyn GuiCanvas) -> Result<(), GuiDrawError>,
     ) -> Result<(), GuiDrawError> {
+        Self::draw_root(batch, atlas, game, scissor, false, draw)
+    }
+
+    fn draw_root(
+        batch: &mut HudBatch,
+        atlas: &HudAtlas,
+        game: Option<&Game<'_>>,
+        scissor: Option<[f32; 4]>,
+        decorating: bool,
+        draw: &mut dyn FnMut(&mut dyn GuiCanvas) -> Result<(), GuiDrawError>,
+    ) -> Result<(), GuiDrawError> {
         let head_skins = HeadSkinJournal::default();
-        Self::group(batch, atlas, game, &head_skins, IDENTITY, scissor, draw)?;
+        GameGuiCanvas {
+            batch,
+            atlas,
+            game,
+            head_skins: &head_skins,
+            pose: IDENTITY,
+            scissor,
+            decorating,
+        }
+        .group(draw)?;
         if let Some(game) = game
             && !head_skins.is_empty()
         {
@@ -52,14 +96,18 @@ impl GameGuiCanvas<'_, '_> {
     }
 
     fn group(
-        batch: &mut HudBatch,
-        atlas: &HudAtlas,
-        game: Option<&Game<'_>>,
-        head_skins: &HeadSkinJournal,
-        pose: Pose,
-        scissor: Option<[f32; 4]>,
+        self,
         draw: &mut dyn FnMut(&mut dyn GuiCanvas) -> Result<(), GuiDrawError>,
     ) -> Result<(), GuiDrawError> {
+        let GameGuiCanvas {
+            batch,
+            atlas,
+            game,
+            head_skins,
+            pose,
+            scissor,
+            decorating,
+        } = self;
         head_skins.scope(|| {
             batch.draw_scope(&atlas.font, |batch| {
                 draw(&mut GameGuiCanvas {
@@ -69,6 +117,7 @@ impl GameGuiCanvas<'_, '_> {
                     head_skins,
                     pose,
                     scissor,
+                    decorating,
                 })
             })
         })
@@ -204,15 +253,13 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
         } else {
             self.scissor
         };
-        Self::group(
-            self.batch,
-            self.atlas,
-            self.game,
-            self.head_skins,
+        GameGuiCanvas {
+            batch: &mut *self.batch,
             pose,
-            clip,
-            draw,
-        )
+            scissor: clip,
+            ..*self
+        }
+        .group(draw)
     }
 
     fn fill(&mut self, rect @ [x, y, ..]: [f32; 4], argb: u32) -> Result<(), GuiDrawError> {
@@ -311,7 +358,18 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
         })?;
         // Its draws already use this pose and scissor. Only the vanilla suffix above needs
         // transforming, not the whole decorator call.
-        game.native_item_decorations(&stack, x, y, self);
+        if !self.decorating {
+            game.native_item_decorations(
+                &stack,
+                x,
+                y,
+                &mut GameGuiCanvas {
+                    batch: &mut *self.batch,
+                    decorating: true,
+                    ..*self
+                },
+            );
+        }
         Ok(())
     }
 

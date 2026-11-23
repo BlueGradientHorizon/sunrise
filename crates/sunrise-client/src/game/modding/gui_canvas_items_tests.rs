@@ -95,11 +95,65 @@ impl ItemPart for Decorator {
     }
 
     fn item_decorations(&self, _: &dyn ClientHost, event: &mut ItemDecorationsEvent<'_>) {
+        if event.stack.count() == 1 {
+            let at = [event.x + 20.0, event.y];
+            event
+                .draw
+                .scope(&[], None, &mut |child| {
+                    child.item_decorations(event.stack, at, None)
+                })
+                .unwrap();
+        }
         event
             .draw
             .fill([event.x - 2.0, event.y + 2.0, 1.0, 2.0], 0xFFFF_0000)
             .unwrap();
     }
+}
+
+#[test]
+#[ignore = "daily"]
+fn item_decorator_can_delegate_to_the_base_painter_without_recursion() {
+    use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
+    const NAME: &str = "game::gui_canvas_items_tests::item_decorator_can_delegate_to_the_base_painter_without_recursion";
+    if run_fresh_cases(NAME, "SUNRISE_GUI_DECORATION_DELEGATION", &["run"]) {
+        return;
+    }
+    let mods = vec![ModEntry::new(
+        "painter",
+        Box::new(Painter {
+            answers: Answers::default(),
+            resolves: Resolves::default(),
+        }),
+    )]
+    .into();
+    crate::game::api_values::install_parts(&mods).unwrap();
+    with_mods(mods, || {
+        with_client_game(|game| {
+            let stack =
+                mod_api::ItemStack::new(mod_api::__private::item_key(ITEM).unwrap(), 1).unwrap();
+            let mut batch = HudBatch::scratch([320, 240]);
+            game.draw_gui_canvas(&mut batch, None, &mut |canvas| {
+                canvas.item_decorations(&stack, [8.0, 16.0], None)
+            })
+            .unwrap();
+            let bars: Vec<_> = batch
+                .vertices
+                .chunks_exact(6)
+                .filter(|quad| quad[0].color == BAR)
+                .map(|quad| quad[0].pos)
+                .collect();
+            assert_eq!(bars, [[10.0, 29.0], [30.0, 29.0]]);
+            assert_eq!(
+                batch
+                    .vertices
+                    .iter()
+                    .filter(|v| v.color == 0xFF00_00FF)
+                    .count(),
+                6
+            );
+        });
+    });
 }
 
 #[test]

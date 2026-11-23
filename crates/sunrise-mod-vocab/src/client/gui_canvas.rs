@@ -152,6 +152,8 @@ pub trait GuiCanvas {
     fn item(&mut self, stack: &ItemStack, at: [f32; 2], seed: i32) -> Result<(), GuiDrawError>;
 
     /// Draw the stack's bar, cooldown, count and custom item decorations at `at`, in that order.
+    /// In an item decorator's canvas or its children, this paints only the standard bar, cooldown
+    /// and count, without invoking item decorators again.
     /// `count` replaces the normal count label; `Some("")` hides it. An empty stack draws nothing.
     /// Call this in the surrounding scope after drawing a squeezed model in a child
     /// [`Self::scope`], so the decorations follow the surrounding pose, not the squeeze.
