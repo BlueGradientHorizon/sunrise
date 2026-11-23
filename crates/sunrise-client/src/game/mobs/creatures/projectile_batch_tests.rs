@@ -931,7 +931,9 @@ fn continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass() 
             if case == "ctrl4" {
                 assert!(wind_continuation_witness_26_3(1, "w6_ctrl4").is_none());
                 assert!(game.creatures.projectiles.is_empty());
-                assert_eq!(game.boats.len(), 1);
+                // Four breakers take the boat to 40 damage (still intact when w6 hits),
+                // and w6's own hit is the fifth (50 > 40), destroying the boat as it bursts.
+                assert!(game.boats.is_empty());
                 assert!(observed.launches.lock().unwrap().is_empty());
                 return;
             }
