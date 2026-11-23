@@ -367,6 +367,7 @@ pub(crate) fn install_registrar(
     }
     registrar.validate_recipe_types();
     registrar.skip_absent_effect_parts();
+    registrar.order_tooltip_appenders();
     if !registrar.refused.is_empty() {
         return Err(registrar.refused);
     }

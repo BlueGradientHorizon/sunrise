@@ -69,6 +69,9 @@ pub struct TooltipAppenderPart {
     pub(crate) component: Box<str>,
     pub(crate) placement: crate::TooltipPlacement,
     pub(crate) appender: Arc<dyn crate::TooltipAppender>,
+    /// How many [`VANILLA_TOOLTIP_COMPONENTS`](crate::VANILLA_TOOLTIP_COMPONENTS) come before it
+    /// in the sorted order.
+    pub(crate) slot: usize,
 }
 
 impl TooltipAppenderPart {
@@ -83,6 +86,11 @@ impl TooltipAppenderPart {
     /// The appender that adds the lines.
     pub fn appender(&self) -> &dyn crate::TooltipAppender {
         self
+    }
+    /// How many vanilla tooltip components' lines come before its lines: its lines follow
+    /// those of `VANILLA_TOOLTIP_COMPONENTS[slot - 1]` and precede `[slot]`'s.
+    pub fn slot(&self) -> usize {
+        self.slot
     }
     /// Whether its mod is enabled.
     pub fn enabled(&self) -> bool {
@@ -107,7 +115,8 @@ impl crate::TooltipAppender for TooltipAppenderPart {
     }
 }
 
-/// The tooltip appenders the mods registered, in registration order.
+/// The tooltip appenders the mods registered, in the order their lines go (see
+/// [`TooltipPlacement`](crate::TooltipPlacement)).
 pub fn tooltip_appenders() -> &'static [TooltipAppenderPart] {
     installed().map_or(&[], |installed| &installed.keys.tooltip_appenders)
 }
@@ -249,9 +258,11 @@ pub trait ItemsRegistrar {
     /// Register `appender` as the lines data component `component` (`mymod:charge`) adds to a
     /// stack's tooltip, where `placement` puts them (NeoForge's `RegisterTooltipAppendersEvent`).
     /// Only this mod's appender is asked, for a stack that carries the component and whose
-    /// tooltip shows it, and only while the mod is enabled. A component id that isn't namespaced,
-    /// or a `Before`/`After` anchor the game doesn't list as a component detail, refuses the mods
-    /// at startup, naming the mod.
+    /// tooltip shows it, and only while the mod is enabled. As NeoForge's event, one appender a
+    /// component: a component id that isn't namespaced, one the game or an earlier appender
+    /// already adds lines for, a `Before`/`After` anchor that is neither a vanilla tooltip
+    /// component nor registered by an appender, or anchors that form a cycle, refuse the mods
+    /// at startup, naming them.
     fn register_tooltip_appender(
         &mut self,
         component: &str,
