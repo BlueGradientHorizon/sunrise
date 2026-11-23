@@ -82,10 +82,12 @@ fn matchers_present(value: &Value) -> bool {
 /// `saveWithFullMetadata` (`NbtPredicate.matches`, `NbtUtils.compareNbt` with partial
 /// lists), then the component matchers against `BlockEntity.collectComponents`. A missing
 /// block entity fails any test it would answer; a predicate with neither test holds.
+/// `contains_tag(registry, tag, id)` answers the tags the component predicates name.
 pub fn block_entity_matches(
     predicate: &Value,
     nbt: Option<&Tag>,
     components: impl FnOnce() -> Option<Compound>,
+    contains_tag: &dyn Fn(&str, &str, &str) -> bool,
 ) -> bool {
     if !predicate["nbt"].is_null() {
         let Some(pattern @ Tag::Compound(_)) = super::nbt_predicate_tag(&predicate["nbt"]) else {
@@ -98,44 +100,66 @@ pub fn block_entity_matches(
     if !matchers_present(&predicate["components"]) && !matchers_present(&predicate["predicates"]) {
         return true;
     }
-    components().is_some_and(|components| components_match(predicate, &components))
+    components().is_some_and(|components| components_match(predicate, &components, contains_tag))
 }
 
-/// `DataComponentMatchers.test` against a collected component map: every exact
-/// component (`DataComponentExactPredicate`) equals the map's value, read with vanilla's
-/// tag types and no other number type tried, and every partial predicate holds. Of the
-/// partial predicates a block entity's components answer, `minecraft:custom_data`
-/// (`CustomDataPredicate`) is read; any other fails.
-pub fn components_match(matchers: &Value, components: &Compound) -> bool {
+/// `DataComponentMatchers.test` against a collected component map.
+///
+/// Every exact component (`DataComponentExactPredicate`) must be present and equal the
+/// expected one as decoded values (`from_component_tag`, the component's own codec), so
+/// `"stone"` and `"minecraft:stone"` are one id, while `minecraft:custom_data` keeps its tag
+/// types and tries no other number type. The partial predicates
+/// (`DataComponentPredicate`s) go through the evaluator item predicates use
+/// (`item_predicates::matches`), over the map as a stack's components.
+pub fn components_match(
+    matchers: &Value,
+    components: &Compound,
+    contains_tag: &dyn Fn(&str, &str, &str) -> bool,
+) -> bool {
     let exact = matchers["components"].as_object().into_iter().flatten();
     for (id, want) in exact {
         let id = full_id(id);
+        let Some(have) = components.get(&id.as_str().into()) else {
+            return false;
+        };
         let want = if id == "minecraft:custom_data" {
             super::nbt_predicate_tag(want)
         } else {
             super::json_tag(want)
         };
-        if want.is_none() || components.get(&id.as_str().into()) != want.as_ref() {
-            return false;
+        let decode = |tag: &Tag| crate::component_value::source::from_component_tag(&id, tag).ok();
+        match (want.as_ref().and_then(decode), decode(have)) {
+            (Some(want), Some(have)) if want == have => {}
+            _ => return false,
         }
     }
-    let partial = matchers["predicates"].as_object().into_iter().flatten();
-    for (id, pattern) in partial {
-        let holds = match full_id(id).as_str() {
-            "minecraft:custom_data" => {
-                let data = match components.get(&"minecraft:custom_data".into()) {
-                    Some(Tag::Compound(data)) => Some(data),
-                    _ => None,
-                };
-                super::custom_data_matches(pattern, data)
-            }
-            _ => false,
-        };
-        if !holds {
-            return false;
-        }
-    }
-    true
+    let Some(partial) = matchers["predicates"]
+        .as_object()
+        .filter(|map| !map.is_empty())
+    else {
+        return true;
+    };
+    let predicates: serde_json::Map<String, Value> = partial
+        .iter()
+        .map(|(id, pattern)| (full_id(id), pattern.clone()))
+        .collect();
+    let predicate = serde_json::json!({ "predicates": predicates });
+    super::item_predicates::matches(&predicate, &component_stack(components), contains_tag)
+}
+
+/// The collected components as the item-predicate evaluator reads a stack: every component
+/// in its patch, its `minecraft:enchantments` levels and whether it has a map id.
+fn component_stack(components: &Compound) -> super::LootStack {
+    let mut stack = super::LootStack::new("minecraft:air");
+    stack.map = components.contains_key(&"minecraft:map_id".into());
+    stack.enchantments = super::item_predicates::enchantment_levels(
+        components.get(&"minecraft:enchantments".into()),
+    );
+    stack.components = components
+        .iter()
+        .map(|(id, value)| (id.to_string_lossy(), Some(value.clone())))
+        .collect();
+    stack
 }
 
 fn full_id(id: &str) -> String {
@@ -192,7 +216,7 @@ mod tests {
             Tag::compound([("k", Tag::Byte(1))]),
         )]
         .into();
-        let matches = |v: Value| components_match(&v, &components);
+        let matches = |v: Value| components_match(&v, &components, &|_, _, _| false);
         assert!(matches(json!({"components": {"custom_data": "{k:1b}"}})));
         assert!(matches(
             json!({"components": {"minecraft:custom_data": {"k": 1}}})
@@ -206,23 +230,99 @@ mod tests {
     #[test]
     fn a_missing_block_entity_fails_only_tests_that_read_it() {
         let none = || None;
+        let tags = &|_: &str, _: &str, _: &str| false;
         assert!(block_entity_matches(
             &json!({"blocks": "minecraft:chest"}),
             None,
-            none
+            none,
+            tags
         ));
         assert!(!reads_block_entity(&json!({"components": {}})));
-        assert!(!block_entity_matches(&json!({"nbt": "{}"}), None, none));
+        assert!(!block_entity_matches(
+            &json!({"nbt": "{}"}),
+            None,
+            none,
+            tags
+        ));
         assert!(!block_entity_matches(
             &json!({"predicates": {"custom_data": "{}"}}),
             None,
-            none
+            none,
+            tags
         ));
         let chest = Tag::compound([("id", Tag::String("minecraft:chest".into()))]);
         assert!(block_entity_matches(
             &json!({"nbt": "{id:\"minecraft:chest\"}"}),
             Some(&chest),
-            none
+            none,
+            tags
+        ));
+    }
+
+    /// Exact components compare decoded values: JSON's `3` (a byte as `JsonOps` gives it)
+    /// is the saved `damage` int 3, which a tag comparison would refuse; another value or an
+    /// absent component does not match.
+    #[test]
+    fn exact_components_compare_decoded_values() {
+        let components: Compound = [
+            ("minecraft:damage".into(), Tag::Int(3)),
+            ("minecraft:base_color".into(), Tag::String("red".into())),
+        ]
+        .into();
+        let matches = |v: Value| components_match(&v, &components, &|_, _, _| false);
+        assert_eq!(super::super::json_tag(&json!(3)), Some(Tag::Byte(3)));
+        assert!(matches(
+            json!({"components": {"damage": 3, "minecraft:base_color": "red"}})
+        ));
+        assert!(!matches(json!({"components": {"minecraft:damage": 4}})));
+        assert!(!matches(
+            json!({"components": {"minecraft:base_color": "blue"}})
+        ));
+        assert!(!matches(
+            json!({"components": {"minecraft:repair_cost": 3}})
+        ));
+    }
+
+    /// A chest's `minecraft:container` answers the container predicate through the item
+    /// predicate evaluator: `contains`, `count` and `size` over its stacks.
+    #[test]
+    fn a_container_predicate_reads_the_containers_stacks() {
+        let stack = |slot: i32, id: &str, count: i32| {
+            Tag::compound([
+                ("slot", Tag::Int(slot)),
+                (
+                    "item",
+                    Tag::compound([("id", Tag::String(id.into())), ("count", Tag::Int(count))]),
+                ),
+            ])
+        };
+        let components: Compound = [(
+            "minecraft:container".into(),
+            Tag::List(vec![
+                stack(0, "minecraft:diamond", 3),
+                stack(4, "minecraft:stone", 1),
+            ]),
+        )]
+        .into();
+        let matches = |v: Value| components_match(&v, &components, &|_, _, _| false);
+        assert!(matches(
+            json!({"predicates": {"minecraft:container": {"items": {
+            "contains": [{"items": "minecraft:diamond", "count": {"min": 2}}]}}}})
+        ));
+        assert!(!matches(json!({"predicates": {"container": {"items": {
+            "contains": [{"items": "minecraft:emerald"}]}}}})));
+        assert!(matches(
+            json!({"predicates": {"container": {"items": {"size": 2,
+            "count": [{"test": {"items": "minecraft:stone"}, "count": 1}]}}}})
+        ));
+        assert!(!matches(
+            json!({"predicates": {"container": {"items": {"size": {"min": 3}}}}})
+        ));
+        // `SingleComponentItemPredicate`: no container component, no match.
+        assert!(!components_match(
+            &json!({"predicates": {"container": {"items": {"size": 0}}}}),
+            &Compound::new(),
+            &|_, _, _| false
         ));
     }
 

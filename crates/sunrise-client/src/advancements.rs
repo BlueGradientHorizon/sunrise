@@ -954,7 +954,8 @@ pub fn block(v: &Value, pos: [i32; 3], w: &dyn World) -> bool {
             nbt.as_ref()
                 .map(crate::block_entity_item::collected_components)
         };
-        if !sunrise_world::loot::block_entity_matches(v, nbt.as_ref(), components) {
+        let tags = |registry: &str, tag: &str, id: &str| w.in_tag(registry, tag, id);
+        if !sunrise_world::loot::block_entity_matches(v, nbt.as_ref(), components, &tags) {
             return false;
         }
     }
