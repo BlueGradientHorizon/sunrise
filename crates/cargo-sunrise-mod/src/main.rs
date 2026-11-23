@@ -10,8 +10,6 @@
 //! - `internals add <path>… [--kind <kind>]`: declare internals from the prebuilt catalog.
 //! - `build [--update-lock]`: the `.smod` in `target/sunrise-mod/`, with the mod's `assets/`
 //!   and `data/`; a native mod is compiled first (`dev.rs`).
-//! - `publish`: build, then write the registry entry, the staged file and the pull request text (`publish.rs`).
-//! - `keygen`, `sign`: make an author-held Minisign key pair or sign a release asset (`signing.rs`).
 //! - `run [--game <sunrise-client>] [--resources <folder>] [--jars <dir>] [-- <game args>]`: build, then play with
 //!   the mod.
 //! - `check [--uses]` in a mod folder: the package rules and render pipeline shaders; for a native
@@ -23,7 +21,6 @@
 //! - `sdk diff <build> <build>`: what changed in the surface between two builds.
 //! - `fits [<file.smod>] [--build <name>]…`: whether the mod fits each build; exit 0 when all
 //!   do, 1 when one does not, 2 when it cannot be told.
-//! - `registry build|review|check|list|release|page|releases`: the registry repository's CI (`registry.rs`).
 //! - `use-jar <path>`: list an exact original Java jar as a passive asset/data source.
 //! - `native-build < plan.json`: compile native mods against an unpacked SDK, as the launcher does
 //!   (docs/modding/src/reference/sdk/08-native-build.md).
@@ -39,13 +36,9 @@ mod internals;
 mod jar;
 mod native_build;
 mod options;
-mod publish;
-mod registry;
 mod registry_source;
-mod release;
 mod sdk_cmds;
 mod sdk_fetch;
-mod signing;
 mod uses_table;
 
 use options::Options;
@@ -98,10 +91,6 @@ fn main() -> ExitCode {
             None => Ok(()),
         }),
         Some("build") => build_command(entry, &args[1..]).map(drop),
-        Some("publish") => publish::run(entry, &args[1..]),
-        Some("release") => release::run(Path::new("."), &args[1..]),
-        Some("keygen") => signing::keygen(&args[1..]),
-        Some("sign") => signing::sign(&args[1..]),
         Some("run") => run(&args[1..]).map_err(|e| e.to_string()),
         Some("check") => check_args(&args[1..]).and_then(|wanted| match wanted {
             Check::Folder { uses, with } => sdk_cmds::check_mod(entry, uses, &with),
@@ -110,7 +99,6 @@ fn main() -> ExitCode {
         Some("hooks") => sdk_cmds::hooks(&args[1..]),
         Some("sdk") => sdk_cmds::sdk(&args[1..]),
         Some("fits") => return sdk_cmds::fits(entry, &args[1..]),
-        Some("registry") => registry::main(&args[1..]),
         Some("use-jar") => jar::run(&args[1..]),
         Some("native-build") => return native_build::run(&args[1..]),
         Some("native-check") => return native_build::check(&args[1..]),
@@ -140,105 +128,30 @@ fn main() -> ExitCode {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum BuildMode<'a> {
-    Package,
-    Archive {
-        dir: &'a Path,
-        tag: &'a str,
-        releases: &'a Path,
-        target: sunrise_native_build::contract::TargetName,
-    },
-    Describe {
-        dir: &'a Path,
-        tag: &'a str,
-        releases: &'a Path,
-        sdk: &'a Path,
-    },
-}
-
-#[derive(Debug, PartialEq, Eq)]
 struct BuildArgs<'a> {
     update_lock: bool,
-    mode: BuildMode<'a>,
     with: Vec<&'a Path>,
 }
 
 fn build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
-    let mut options = Options::new(
-        "build",
-        args,
-        &[
-            "--binaries",
-            "--describe-binaries",
-            "--sunrise-release",
-            "--releases",
-            "--sdk-data",
-            "--with",
-        ],
-    );
+    let mut options = Options::new("build", args, &["--with"]);
     let with = options
         .values("--with")?
         .into_iter()
         .map(Path::new)
         .collect::<Vec<_>>();
     let update_lock = options.switch("--update-lock");
-    let server = options.switch("--server");
-    let archive = options.value("--binaries")?;
-    let describe = options.value("--describe-binaries")?;
-    let tag = options.value("--sunrise-release")?;
-    let releases = options.value("--releases")?;
-    let sdk = options.value("--sdk-data")?;
     options.finish()?;
-    let mode = match (archive, describe, tag, releases, sdk) {
-        (None, None, None, None, None) if !server => BuildMode::Package,
-        (Some(dir), None, Some(tag), Some(releases), None) => BuildMode::Archive {
-            dir: Path::new(dir), tag, releases: Path::new(releases),
-            target: if server { sunrise_native_build::contract::TargetName::Server } else { sunrise_native_build::contract::TargetName::Client },
-        },
-        (None, Some(dir), Some(tag), Some(releases), Some(sdk)) if !server && !update_lock => BuildMode::Describe {
-            dir: Path::new(dir), tag, releases: Path::new(releases), sdk: Path::new(sdk),
-        },
-        _ => return Err("use --binaries <dir> with --sunrise-release <tag> and --releases <file>, or --describe-binaries <dir> with those inputs and --sdk-data <dir>".into()),
-    };
-    if !with.is_empty() && matches!(mode, BuildMode::Describe { .. }) {
-        return Err("build --describe-binaries does not take --with".into());
-    }
-    Ok(BuildArgs {
-        update_lock,
-        mode,
-        with,
-    })
+    Ok(BuildArgs { update_lock, with })
 }
 
-/// Compile once through native-build, then write the source package and, when requested, the
-/// exact SDK host's archive. Describe mode only reads the resulting signed assets.
+/// Compile once through native-build, then write the source package.
 fn build_command(
     entry: mod_surface::child::ChildEntry,
     args: &[String],
 ) -> Result<PathBuf, String> {
-    let BuildArgs {
-        update_lock,
-        mode,
-        with,
-    } = build_args(args)?;
+    let BuildArgs { update_lock, with } = build_args(args)?;
     let root = Path::new(".");
-    if let BuildMode::Describe {
-        dir,
-        tag,
-        releases,
-        sdk,
-    } = mode
-    {
-        let releases = release::releases(releases)?;
-        let release = release::stable(&releases, tag)?;
-        let dir = release::output_dir(dir)?;
-        let path = release::describe(&read_manifest(root)?, &dir, release, sdk)?;
-        println!(
-            "Wrote {}: sign this descriptor with the project key",
-            path.display()
-        );
-        return Ok(path);
-    }
     let package = Package::read(root)?;
     if !with.is_empty() && !package.is_native() {
         return Err("build --with supplies libraries to a native mod".into());
@@ -248,35 +161,6 @@ fn build_command(
             "build --update-lock rewrites a native mod's Cargo.lock; {MANIFEST} has no [native] table"
         ));
     }
-    let archive = if let BuildMode::Archive {
-        dir,
-        tag,
-        releases,
-        target,
-    } = mode
-    {
-        let native = package
-            .manifest
-            .native
-            .as_ref()
-            .ok_or("build --binaries needs a native mod")?;
-        if !package.manifest.dependencies.is_empty() || !with.is_empty() {
-            return Err("build --binaries cannot release an add-on: an independent binary cannot pin the identities of the library mods it links. Use build to package the source.".into());
-        }
-        let version = release::version(&package.manifest)?;
-        let releases = release::releases(releases)?;
-        let release = release::stable(&releases, tag)?;
-        if native.sunrise != release.commit {
-            return Err(format!(
-                "{MANIFEST} pins {}, but Sunrise {tag} is {}; build this release in a checkout pinned to that commit",
-                native.sunrise, release.commit
-            ));
-        }
-        release::AssetName::descriptor(&package.manifest.id, &version, tag)?;
-        Some((release::output_dir(dir)?, tag, target, version))
-    } else {
-        None
-    };
     let output = PackageOutput::in_project(root)?;
     if package.is_native() {
         fetched(root)?;
@@ -289,13 +173,7 @@ fn build_command(
                 &package,
                 &with,
                 update_lock,
-                archive.as_ref().map_or(
-                    sunrise_native_build::contract::TargetName::Client,
-                    |(_, _, target, _)| *target,
-                ),
-                archive
-                    .as_ref()
-                    .map(|(_, tag, _, version)| (*tag, version.as_str())),
+                sunrise_native_build::contract::TargetName::Client,
             )
         })
         .transpose()?;
@@ -306,16 +184,6 @@ fn build_command(
         built.as_ref().map(|built| built.mixins.as_str()),
     )?;
     println!("Built {}", path.display());
-    if let Some((dir, _, _, _)) = archive {
-        let (library, name) = built
-            .and_then(|built| built.release)
-            .ok_or("the build returned no releasable library")?;
-        let archive = library.write(&dir, name)?;
-        println!(
-            "Wrote {}: sign this archive with the project key",
-            archive.display()
-        );
-    }
     Ok(path)
 }
 
@@ -1433,7 +1301,6 @@ mod tests {
             build_args(&[]),
             Ok(BuildArgs {
                 update_lock: false,
-                mode: BuildMode::Package,
                 with: vec![]
             })
         );
@@ -1441,7 +1308,6 @@ mod tests {
             build_args(&argv("--update-lock --with ../library --with another.smod")),
             Ok(BuildArgs {
                 update_lock: true,
-                mode: BuildMode::Package,
                 with: vec![Path::new("../library"), Path::new("another.smod")]
             })
         );

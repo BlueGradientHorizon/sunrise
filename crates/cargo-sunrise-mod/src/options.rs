@@ -14,8 +14,6 @@ pub struct Options<'a> {
     end: usize,
     /// Whether the command asked for what follows that `--`.
     rest_read: bool,
-    /// The usage a refusal shows, where it is not the help table's.
-    usage: Option<&'a str>,
 }
 
 impl<'a> Options<'a> {
@@ -40,14 +38,7 @@ impl<'a> Options<'a> {
             is_value,
             end,
             rest_read: false,
-            usage: None,
         }
-    }
-
-    /// Shows `usage` in a refusal, for a command whose forms the help table only names.
-    pub fn usage(mut self, usage: &'a str) -> Self {
-        self.usage = Some(usage);
-        self
     }
 
     /// Whether the option `name` stands among the arguments.
@@ -130,15 +121,12 @@ impl<'a> Options<'a> {
     }
 
     fn refusal(&self, what: &str) -> String {
-        let usage = match self.usage {
-            Some(usage) => usage.to_owned(),
-            None => self
-                .command
-                .split(' ')
-                .next()
-                .and_then(crate::help::of)
-                .unwrap_or_default(),
-        };
+        let usage = self
+            .command
+            .split(' ')
+            .next()
+            .and_then(crate::help::of)
+            .unwrap_or_default();
         format!("{what}\n{}", usage.trim_end())
     }
 }

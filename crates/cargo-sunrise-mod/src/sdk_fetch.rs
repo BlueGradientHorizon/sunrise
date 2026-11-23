@@ -562,26 +562,5 @@ fn unpack_build_data(base: &Base, index: &Index, dir: &Path) -> Result<(), Strin
     )
 }
 
-/// Fetch release metadata into a private staging directory, not a reusable SDK cache.
-pub(crate) fn release_data(
-    base: &Base,
-    keys: &[PublicKey],
-    build: &str,
-    staging: &Path,
-    with_build_data: bool,
-) -> Result<Index, String> {
-    let dir = staging.join(build);
-    let index = fetch_index(base, keys, build, &dir, false)?;
-    if with_build_data {
-        unpack_build_data(base, &index, &dir)?;
-        // This staging folder has no other writers, unlike the shared SDK cache.
-        let lock = dir.join(format!("{BUILD_DATA}{}", sdk::LOCK_SUFFIX));
-        fs::remove_file(&lock).map_err(|e| format!("{}: {e}", lock.display()))?;
-    }
-    // A transported artifact must never be mistaken for a verified local SDK cache.
-    fs::remove_file(dir.join(STAMP)).map_err(|e| format!("{}: {e}", dir.display()))?;
-    Ok(index)
-}
-
 #[cfg(test)]
 mod tests;

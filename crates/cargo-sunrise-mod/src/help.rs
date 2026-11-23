@@ -19,8 +19,8 @@ const COMMANDS: &[Command] = &[
     Command {
         name: "build",
         everyday: true,
-        usage: "build [--update-lock] [--with <path>]… | build [--update-lock] --binaries <dir> --sunrise-release <tag> --releases <file> [--server] | build --describe-binaries <dir> --sunrise-release <tag> --releases <file> --sdk-data <dir>",
-        summary: "Compiles a native mod with its required libraries and any optional libraries supplied with --with, then packs only the mod into target/sunrise-mod/<id>.smod. Use --with for local folders or .smod files; the Sunrise mod registry supplies other required libraries. --update-lock resolves its Cargo.lock again. --binaries writes an independent SDK host archive for a standalone mod; --describe-binaries assembles a descriptor without compiling.",
+        usage: "build [--update-lock] [--with <path>]…",
+        summary: "Compiles a native mod with its required libraries and any optional libraries supplied with --with, then packs only the mod into target/sunrise-mod/<id>.smod. Use --with for local folders or .smod files; the Sunrise mod registry supplies other required libraries. --update-lock resolves its Cargo.lock again.",
     },
     Command {
         name: "run",
@@ -47,30 +47,6 @@ const COMMANDS: &[Command] = &[
         summary: "Searches the pinned build's hooks, or with --all every item of its API, offline.",
     },
     Command {
-        name: "publish",
-        everyday: false,
-        usage: "publish [--out <dir>] [--registry <checkout>] [--summary <text>] [--owner <login>]… [--categories a,b] [--tags a,b] [--changelog <text>] [--key <public key> --signature <file.minisig>] [--package <file.smod>] [--sunrise <tag>] [--asset-base <author release URL> --releases <file>] [--binaries <dir> --sdk-data <dir>]",
-        summary: "Stages a package, its registry entry, and pull request text; it uploads nothing. --sunrise pins signed source to a stable release from --releases and uses the author’s release at --asset-base. --binaries checks signed release assets and fit; to append to an existing version, give --registry and its original signed --package.",
-    },
-    Command {
-        name: "release",
-        everyday: false,
-        usage: crate::release::USAGE,
-        summary: "`release plan` selects a tagged native release or a rebuild and stages verified SDK metadata. `release prepare-rebuild` verifies the original reviewed source and writes a scratch manifest or project without running Cargo. `release scripts` writes the shipped workflow scripts.",
-    },
-    Command {
-        name: "keygen",
-        everyday: false,
-        usage: "keygen [--out <dir>] [--no-password]",
-        summary: "Makes a Minisign key pair in the mod’s per-user key folder (or --out) and prints the public key. The private key is encrypted unless --no-password is given (Unix only). Never overwrites either key.",
-    },
-    Command {
-        name: "sign",
-        everyday: false,
-        usage: "sign <file> [--key <private key path>] [--no-password] | sign <file> --key-env",
-        summary: "Writes the detached .minisig beside <file> without replacing it. Uses the current mod’s per-user signing key unless --key is given; --key-env reads SUNRISE_MOD_SIGNING_KEY and optional SUNRISE_MOD_SIGNING_PASSPHRASE without prompting.",
-    },
-    Command {
         name: "internals",
         everyday: false,
         usage: "internals sync | internals add <path>… [--kind <kind>]",
@@ -87,12 +63,6 @@ const COMMANDS: &[Command] = &[
         everyday: false,
         usage: "fits [<file.smod>] [--build <name>]…",
         summary: "Says whether the mod fits each build; exits 0 when all do, 1 when one does not and 2 when that cannot be told.",
-    },
-    Command {
-        name: "registry",
-        everyday: false,
-        usage: "registry build|review|check|list|release|page | registry releases --out <releases.json>",
-        summary: "The registry repository's offline CI commands, and `releases` to fetch the stable Sunrise release list.",
     },
     Command {
         name: "use-jar",

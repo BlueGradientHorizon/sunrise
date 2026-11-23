@@ -230,25 +230,13 @@ pub(crate) enum Subject {
         /// The mod's manifest: the game code it declares is judged with the list.
         manifest: Box<Manifest>,
     },
-    /// The answer to print with exit status 2, and a reason suitable for the index.
-    NotApplicable {
-        message: String,
-        reason: &'static str,
-    },
+    /// The answer to print with exit status 2.
+    NotApplicable { message: String },
 }
 
-pub(crate) struct PackageSubject {
-    pub content_api: String,
-    pub uses: Result<Subject, String>,
-}
-
-/// The manifest API requirement is known even when the optional uses list cannot be read.
-pub(crate) fn package_subject(path: &Path) -> Result<PackageSubject, String> {
-    let package = Package::read(path)?;
-    Ok(PackageSubject {
-        content_api: package.manifest.api.clone(),
-        uses: package_uses(path, package),
-    })
+/// What the package at `path` gives `fits` to judge.
+pub(crate) fn package_subject(path: &Path) -> Result<Subject, String> {
+    package_uses(path, Package::read(path)?)
 }
 
 fn package_uses(path: &Path, package: Package) -> Result<Subject, String> {
@@ -256,13 +244,11 @@ fn package_uses(path: &Path, package: Package) -> Result<Subject, String> {
     if let Some(table) = game_uses::unjudged(&package.manifest) {
         return Ok(Subject::NotApplicable {
             message: exact_text(name, &format!("it has a {table} table")),
-            reason: table,
         });
     }
     let Some(native) = &package.manifest.native else {
         return Ok(Subject::NotApplicable {
             message: content_text(name),
-            reason: "no native code",
         });
     };
     let pin = &native.sunrise;
@@ -271,7 +257,6 @@ fn package_uses(path: &Path, package: Package) -> Result<Subject, String> {
             message: format!(
                 "{name} pins build {pin} and its package carries no list of what it uses, so it can't be shown to fit another build. Pack it with `cargo sunrise-mod build`, which writes the list when the mod's code can be read, or repin it with `cargo sunrise-mod update --sunrise <build>` first."
             ),
-            reason: "no uses list",
         });
     };
     let table = UsesTable::read(&bytes).map_err(|e| format!("{USES_FILE}: {e}"))?;
@@ -281,7 +266,6 @@ fn package_uses(path: &Path, package: Package) -> Result<Subject, String> {
                 "{name} pins build {pin} and its list of what it uses was made for {}, so the list says nothing about the pinned build. Pack it again with `cargo sunrise-mod build`.",
                 table.made_for
             ),
-            reason: "the uses list is for a different build",
         });
     }
     Ok(Subject::Table {
@@ -298,13 +282,11 @@ fn folder_subject(entry: ChildEntry, root: &Path) -> Result<Subject, String> {
     let Some(native) = &parsed.native else {
         return Ok(Subject::NotApplicable {
             message: content_text(name),
-            reason: "no native code",
         });
     };
     if let Some(table) = game_uses::unjudged(&parsed) {
         return Ok(Subject::NotApplicable {
             message: exact_text(name, &format!("it has a {table} table")),
-            reason: table,
         });
     }
     let sdk = fetch_pinned(root, &native.sunrise)?;
@@ -316,7 +298,6 @@ fn folder_subject(entry: ChildEntry, root: &Path) -> Result<Subject, String> {
         }),
         Scanned::Exact(why) => Ok(Subject::NotApplicable {
             message: exact_text(name, &why),
-            reason: "the mod must be built for its pin",
         }),
         Scanned::Unread(why) => Err(why),
     }
@@ -376,7 +357,7 @@ fn fits_lines(entry: ChildEntry, args: &[String]) -> Result<Answer, String> {
     }
     let project = Path::new(".");
     let subject = match package {
-        Some(path) => package_subject(path)?.uses?,
+        Some(path) => package_subject(path)?,
         None => folder_subject(entry, project)?,
     };
     let (name, mut table, manifest) = match subject {
@@ -911,7 +892,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("greeter.smod");
         std::fs::write(&path, Package::write_files(&manifest, &files).unwrap()).unwrap();
-        package_subject(&path).unwrap().uses.unwrap()
+        package_subject(&path).unwrap()
     }
 
     #[test]
