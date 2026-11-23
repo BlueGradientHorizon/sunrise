@@ -331,7 +331,6 @@ impl Game<'_> {
         if let Some(epoch) = self.native_lifecycle.epoch() {
             self.native_entity_join_level(
                 self.dim.id(),
-                id,
                 &kind,
                 [at.x, at.y, at.z],
                 loaded_from_disk,
@@ -647,7 +646,7 @@ mod tests {
                 host: &mut dyn ServerHost,
                 event: &mut EntityJoinLevelEvent<'_>,
             ) -> Flow {
-                let entity = host.entity(event.entity).expect("joining handle");
+                let entity = host.entity(event.subject.id()).expect("joining handle");
                 assert_eq!(
                     entity.kind(host).and_then(|kind| kind.id(host)).as_deref(),
                     Some(event.kind)
@@ -1030,7 +1029,7 @@ mod tests {
                 event: &mut EntityJoinLevelEvent<'_>,
             ) -> Flow {
                 self.joins.lock().unwrap().push((
-                    event.entity,
+                    event.subject.id(),
                     event.kind.into(),
                     event.loaded_from_disk,
                 ));

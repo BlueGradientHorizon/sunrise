@@ -868,7 +868,7 @@ mod tests {
                         event: &mut EntityJoinLevelEvent<'_>,
                     ) -> Flow {
                         if event.kind == "minecraft:falling_block" {
-                            self.joins.lock().unwrap().push(event.entity);
+                            self.joins.lock().unwrap().push(event.subject.id());
                         }
                         Flow::Continue
                     }
@@ -1036,7 +1036,7 @@ mod tests {
                         if event.kind == "minecraft:falling_block" {
                             let host: &dyn Host = host;
                             self.0.lock().unwrap().push((
-                                host.entity(event.entity).is_some(),
+                                host.entity(event.subject.id()).is_some(),
                                 event.subject.position(host),
                             ));
                         }

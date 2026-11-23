@@ -214,7 +214,11 @@ impl Hooks for RemoveOnArrival {
     ) -> Flow {
         if event.kind == "minecraft:item" && self.armed.swap(false, Ordering::SeqCst) {
             let victim = self.victim.load(Ordering::SeqCst);
-            let victim = if victim == 0 { event.entity } else { victim };
+            let victim = if victim == 0 {
+                event.subject.id()
+            } else {
+                victim
+            };
             assert!(host.entity(victim).unwrap().discard(host));
             self.calls.fetch_add(1, Ordering::SeqCst);
         }

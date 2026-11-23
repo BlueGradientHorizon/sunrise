@@ -2390,7 +2390,7 @@ mod tests {
                     let level = host.level("minecraft:overworld").unwrap();
                     let level_draw = level.with_random(host, |random| random.next_int()).unwrap();
                     self.joins.lock().unwrap().push(Join {
-                        id: event.entity,
+                        id: event.subject.id(),
                         pos: event.pos,
                         level_draw,
                         seed: unique_seed(),

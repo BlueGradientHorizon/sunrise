@@ -188,7 +188,10 @@ impl Hooks for Declare {
         host: &mut dyn ServerHost,
         event: &mut mod_api::EntityJoinLevelEvent<'_>,
     ) -> Flow {
-        SPAWN_HEARD.lock().unwrap().push((event.entity, "join"));
+        SPAWN_HEARD
+            .lock()
+            .unwrap()
+            .push((event.subject.id(), "join"));
         let answer = SPAWN_ON_JOIN.swap(false, std::sync::atomic::Ordering::SeqCst);
         if answer && event.kind == "mymod:robot" {
             let level = host.level("minecraft:overworld").unwrap();

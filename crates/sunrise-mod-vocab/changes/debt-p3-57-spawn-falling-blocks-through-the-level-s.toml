@@ -37,9 +37,9 @@ integrates their existing entity records before replacing the section on disk
 as well, so a move or removal cannot leave behind a stale copy.
 
 NeoForge's `EntityJoinLevelEvent` carries the joining entity. `entity_join_level`
-(hook version 5) adds `subject`, that entity's handle, so a listener can read it
-before admission even into a hidden section; the numeric `entity` stays and
-`Host::entity` still finds only entities in accessible sections.
+(hook version 5) replaces the numeric `entity` with `subject`, that entity's handle, so
+a listener can read it before admission even into a hidden section; `Host::entity` still
+finds only entities in accessible sections.
 """
 migrate = """
 Replace `host.spawn_falling_block(dimension, state, pos, velocity, falling)` with:
@@ -71,7 +71,7 @@ match level.spawn_falling_block(host, state, pos, velocity, falling) {
   treat the returned handle as provisional until that commit, since an abort or
   a join veto makes it stale. A transaction only in the caller's level does not
   defer work in a different destination level.
-- Keep the same `entity_join_level` callback. A fresh natural fall is now told
+- In `entity_join_level` (hook version 5) read `event.subject` where you read `event.entity`: `event.subject.id()` is the id, and the handle itself reads the joining entity while its column is hidden. A fresh natural fall is now told
   before the next scheduled block tick, not after the scheduled pass. A veto
   keeps the falling entity out; it does not restore the replaced source block.
   `loaded_from_disk` can also be true when a save first reads an entity section

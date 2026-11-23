@@ -1442,7 +1442,7 @@ mod mixin or use it replaces in its design or PR."#]
 - A prebuilt horizon-mixins from its CI instead of building it on the player's computer."#]
     #[notes = r##"## More hook capabilities
 
-- `entity_join_level(dimension, entity, kind, pos, loaded_from_disk, canceled)`, an entity joining a
+- `entity_join_level(dimension, kind, pos, loaded_from_disk, subject, canceled)`, an entity joining a
   server level (NeoForge's `EntityJoinLevelEvent`, vanilla's `PersistentEntitySectionManager.addEntity`):
   `loaded_from_disk` is true when it comes back with its chunk, false for a fresh add (a drop, an orb, `/summon`, an
   arrival through a portal into another level). The entity is already in the level's lists when the hook runs; `canceled` takes it back

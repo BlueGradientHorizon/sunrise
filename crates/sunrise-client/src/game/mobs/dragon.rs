@@ -5290,7 +5290,7 @@ mod tests {
                 self.joins
                     .lock()
                     .unwrap()
-                    .push((event.entity, event.loaded_from_disk));
+                    .push((event.subject.id(), event.loaded_from_disk));
                 if self.cancel.load(Ordering::Relaxed) {
                     Flow::Cancel
                 } else {
