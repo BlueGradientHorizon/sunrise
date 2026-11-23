@@ -63,9 +63,14 @@ fn with_filter(test: impl FnOnce(&[ModEntry])) {
 fn fixture(test: impl FnOnce(&mut Game<'_>)) {
     with_filter(|_| {
         with_game(|game| {
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            game.world.chunks.insert(
+                (0, 0),
+                Arc::new({
+                    let mut chunk = Chunk::empty(0, 0);
+                    chunk.lit = true; // a FULL read of a hand-made column finds it ready
+                    chunk
+                }),
+            );
             game.block_ticks
                 .add_empty_chunk(ChunkPos::new(0, 0))
                 .unwrap();

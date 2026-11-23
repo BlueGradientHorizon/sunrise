@@ -17,9 +17,14 @@ fn with_isolated_guests(name: &str, test: impl FnOnce(&mut Game<'_>)) {
 
 fn install(game: &mut Game<'_>) {
     game.build_registries();
-    game.world
-        .chunks
-        .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+    game.world.chunks.insert(
+        (0, 0),
+        Arc::new({
+            let mut chunk = Chunk::empty(0, 0);
+            chunk.lit = true; // a FULL read of a hand-made column finds it ready
+            chunk
+        }),
+    );
     let mut tree = a::Tree::default();
     for (id, trigger, conditions) in [
         (
