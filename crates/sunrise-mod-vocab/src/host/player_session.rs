@@ -21,9 +21,11 @@ pub trait PlayerSessionBackend {
     /// borrow. This is not a verified destination or necessarily the name the
     /// player originally entered.
     ///
-    /// `None` on a client, for a stale or unavailable player, for a fake player
-    /// or other player without a network connection (including a local memory
-    /// connection), or if the host prefix is empty.
+    /// The host may be empty, as `ClientIntentionPacket` allows. The window's own player on an
+    /// integrated server reports its memory connection's handshake, the address `local` and
+    /// port 0, as vanilla's `Minecraft.doWorldLoad` handshake names its local address.
+    ///
+    /// `None` on a client, for a stale or unavailable player, or for a fake player.
     fn player_virtual_host(&self, player: PlayerRef) -> Option<&VirtualHost>;
     /// Side: server.
     /// The stable name of a connected or acting player, borrowed from the host.

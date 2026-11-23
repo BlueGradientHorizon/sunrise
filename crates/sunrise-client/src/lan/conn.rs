@@ -1055,17 +1055,16 @@ fn serve_connection(
     }
 }
 
-/// Keep the destination of an accepted login or transfer, without proxy or loader data.
-fn login_virtual_host(is_memory: bool, intention: handshake::Intention) -> Option<VirtualHost> {
-    if is_memory {
-        return None;
-    }
+/// Keep the destination of an accepted login or transfer, without proxy or loader data: the
+/// host before its first NUL, empty or not, and the port, as the handshake sent them. A memory
+/// connection's handshake names its address and port 0, as `Minecraft.doWorldLoad`'s does.
+fn login_virtual_host(intention: handshake::Intention) -> VirtualHost {
     let handshake::Intention { host, port, .. } = intention;
     let host = match host.split_once('\0') {
         Some((prefix, _)) => prefix.to_owned(),
         None => host,
     };
-    (!host.is_empty()).then_some(VirtualHost { host, port })
+    VirtualHost { host, port }
 }
 
 fn serve_status(c: &mut Connection, shared: &Shared) -> Result<(), String> {
@@ -1242,7 +1241,7 @@ fn serve_login(
     shared: &Arc<Shared>,
     counted: Option<super::Counted>,
 ) -> Result<(), String> {
-    let virtual_host = login_virtual_host(c.is_memory(), intention);
+    let virtual_host = Some(login_virtual_host(intention));
     let e = |e: sunrise_protocol::Error| e.to_string();
     let (id, payload) = c.recv().map_err(e)?;
     let hello = match login::Serverbound::decode(id, &payload).map_err(e)? {
@@ -2686,24 +2685,22 @@ mod tests {
 
     #[test]
     fn login_virtual_host_uses_the_packet_destination() {
-        for (intent, is_memory, host, port, expected) in [
+        for (intent, host, port, expected) in [
             (
                 handshake::LOGIN,
-                false,
                 "Play.Example.test.\0proxy\0marker",
                 25572,
-                Some(("Play.Example.test.", 25572)),
+                ("Play.Example.test.", 25572),
             ),
             (
                 handshake::TRANSFER,
-                false,
                 "next.example.test",
                 65535,
-                Some(("next.example.test", 65535)),
+                ("next.example.test", 65535),
             ),
-            (handshake::LOGIN, false, "", 25565, None),
-            (handshake::LOGIN, false, "\0proxy", 25565, None),
-            (handshake::LOGIN, true, "localhost", 25565, None),
+            // ClientIntentionPacket accepts an empty host name.
+            (handshake::LOGIN, "", 25565, ("", 25565)),
+            (handshake::LOGIN, "\0proxy", 25565, ("", 25565)),
         ] {
             let packet = handshake::Serverbound::Intention(handshake::Intention {
                 protocol: PROTOCOL_VERSION,
@@ -2717,13 +2714,11 @@ mod tests {
             else {
                 panic!("expected an intention packet");
             };
-            let destination = login_virtual_host(is_memory, intention);
+            let destination = login_virtual_host(intention);
             assert_eq!(
-                destination
-                    .as_ref()
-                    .map(|value| (value.host.as_str(), value.port)),
+                (destination.host.as_str(), destination.port),
                 expected,
-                "intent {intent}, memory {is_memory}, host {host:?}, port {port}",
+                "intent {intent}, host {host:?}, port {port}",
             );
         }
     }

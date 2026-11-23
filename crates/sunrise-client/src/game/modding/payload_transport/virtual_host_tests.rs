@@ -87,14 +87,19 @@ fn virtual_host_is_the_rewritten_handshake_host() {
                     assert!(Instant::now() < deadline, "player_logged_in never ran");
                     std::thread::yield_now();
                 }
-                // The window's own player is a memory connection: no virtual host.
-                assert!(
-                    seen.lock().unwrap().contains(&Some(VirtualHost {
-                        host: "rewritten.example.test".into(),
-                        port,
-                    })),
-                    "{:?}",
-                    seen.lock().unwrap()
+                // The window's own player joined first, through its memory connection's handshake.
+                assert_eq!(
+                    *seen.lock().unwrap(),
+                    [
+                        Some(VirtualHost {
+                            host: "local".into(),
+                            port: 0,
+                        }),
+                        Some(VirtualHost {
+                            host: "rewritten.example.test".into(),
+                            port,
+                        }),
+                    ]
                 );
                 drop(c);
                 game.leave_server(None).unwrap();
