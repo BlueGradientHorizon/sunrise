@@ -213,8 +213,20 @@ fn pickup_awards_xp_before_item_smelted_and_keeps_cooking_separate() {
                 assert!(seen.item_smelted.is_empty());
             }
             assert!(!recipes_used_empty(game));
+            let used: Vec<String> = match game.world.block_entities.get(&FURNACE_POS) {
+                Some(BlockEntity::Furnace(furnace)) => {
+                    furnace.recipes_used.keys().cloned().collect()
+                }
+                _ => unreachable!(),
+            };
+            assert!(!used.is_empty());
 
             game.lan_guest_packet(12, click_result(window, 0, input::PICKUP));
+            // The extracting guest learns what the furnace used (`ServerPlayer.awardRecipes`).
+            let learned = game
+                .as_guest(12, |g| used.iter().all(|id| g.level.recipe_book.knows(id)))
+                .unwrap();
+            assert!(learned, "{used:?}");
 
             let seen = recorded.lock().unwrap();
             assert_eq!(seen.item_smelted.len(), 1);

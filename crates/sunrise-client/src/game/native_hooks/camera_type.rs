@@ -242,6 +242,49 @@ mod camera_type_tests {
         );
     }
 
+    struct PinXz;
+    #[mod_api::__subscriptions]
+    impl Hooks for PinXz {
+        fn camera_position(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut mod_api::CameraPositionEvent<'_>,
+        ) {
+            assert!(event.position.set([Some(1000.0), None, Some(1000.0)]));
+        }
+    }
+
+    /// The render position a mod pins over a chunk the server has not sent never moves the
+    /// placement streaming and the level-entry readiness follow.
+    #[test]
+    #[ignore = "daily"]
+    fn a_pinned_camera_position_over_an_unsent_chunk_leaves_streaming_and_readiness_on_the_player()
+    {
+        if run_fresh_cases(
+            "game::native_hooks::camera_type::camera_type_tests::a_pinned_camera_position_over_an_unsent_chunk_leaves_streaming_and_readiness_on_the_player",
+            "SUNRISE_CAMERA_PIN_CHILD",
+            &["pin"],
+        ) {
+            return;
+        }
+        with_mods(
+            vec![ModEntry::new("pin-xz", Box::new(PinXz))].into(),
+            || {
+                with_client_game(|game| {
+                    game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+                    game.title = None;
+                    let (rendered, _, _, _) = game.frame_camera(1.0).unwrap();
+                    assert_eq!([rendered.x, rendered.z], [1000.0, 1000.0]);
+                    let placed = game.visual_camera_position().unwrap();
+                    assert!(
+                        placed[0].abs() < 2.0 && placed[2].abs() < 2.0,
+                        "streaming follows the player, not the pinned render position: {placed:?}"
+                    );
+                });
+            },
+        );
+    }
+
     enum AngleWriter {
         Set,
         Panic(Arc<std::sync::atomic::AtomicUsize>),
