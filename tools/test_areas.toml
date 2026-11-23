@@ -253,7 +253,7 @@ cargo = [
 ]
 harnesses = [
   "item_*", "*_item", "extra_items", "entity_attribute", "use_*", "inventory_*", "consum*", "consume_effect", "stored_*", "active_effect*",
-  "status_*", "effect*", "potion_effect_icon", "player_*", "food*", "damage_*", "*_damage", "living_*", "combat_rules",
+  "status_*", "effect*", "potion_effect_icon", "cloud_water", "player_*", "food*", "damage_*", "*_damage", "living_*", "combat_rules",
   "registered_player_combat", "special_attack", "mace", "blocking_*", "item_blocking", "invulnerable_time",
   "attribute*", "live_attribute*", "enchant*", "stored_enchantment_patch", "loot_*", "opened_loot", "spawn_loot",
   "stand_break_loot", "entity_death_loot", "component_*", "*_components", "effective_item_components",
