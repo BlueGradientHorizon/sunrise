@@ -1,0 +1,3 @@
+sunrise-client game::api_values::loot_values::tests::a_loot_function_reads_the_bound_damage_type_tags lib daily child-process
+sunrise-client game::native_damage_tag_tests::a_hit_listener_reads_its_damage_type_tags_as_bound lib daily child-process
+sunrise-client game::remote_tags::tests::a_client_reads_the_damage_type_tags_its_server_sent lib daily child-process
