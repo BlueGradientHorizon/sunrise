@@ -101,6 +101,8 @@ pub(super) struct CodeSwitches {
 
 #[derive(Clone, Default)]
 pub(super) struct ModsState {
+    /// The instance's native mod settings, shared by the window and its integrated server.
+    pub(super) settings: crate::game::native_hooks::mod_settings::SharedSettings,
     pub(super) active_condition_root: Option<Arc<()>>,
     pub(super) load_condition_candidate: Option<sunrise_world::conditions::LoadConditions>,
     pub(super) load_conditions:

@@ -3582,7 +3582,7 @@ struct Game<'a> {
     tick: sunrise_client::parallel::TickThread,
     /// Authoritative store for this game side's native mod settings registered with
     /// `SettingsRegistrar::register_setting`.
-    native_settings: native_hooks::mod_settings::NativeSettings,
+    native_settings: native_hooks::mod_settings::SharedSettings,
     /// The native damage hooks every level of this game lends to its hits.
     damage_hooks: sunrise_client::health::DamageHooks,
     paused_mob_hurt: Option<Box<sunrise_client::mobs::PausedMobHurt>>,
@@ -13586,7 +13586,8 @@ impl<'a> Game<'a> {
         let role = options.execution_role;
         let loop_side = role.loop_side();
         let item_data = res.core.item_data.context();
-        let mut native_settings = native_hooks::mod_settings::NativeSettings::default();
+        // The window and its integrated server share the instance's one settings authority.
+        let native_settings = options.mods.settings.clone();
         if role.is_logical_server() {
             // Config loading and server startup hooks can read settings before the world
             // publishes its loop context. An integrated server takes its own capture.
@@ -13600,7 +13601,15 @@ impl<'a> Game<'a> {
                     .filter(|(owner, _)| ids.contains(owner));
                 item_data.loop_context_with_registered(loop_side, [], registered)
             };
-            let _ = native_settings.sync_from_loop_context(&settings);
+            let server_owners: std::collections::BTreeSet<_> =
+                sunrise_mod_package::enabled::EnabledMods::read(&options.resources)?
+                    .server_ids()
+                    .map(str::to_owned)
+                    .collect();
+            let _ = native_settings
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .sync_from_loop_context(&settings, |owner| server_owners.contains(owner));
         }
         let root = options.resources.clone();
         let mod_sources = options.mods.clone();

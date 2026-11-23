@@ -13,7 +13,9 @@ struct LiveSetting {
 }
 
 /// The game side's authoritative store for native mod settings registered through
-/// `SettingsRegistrar::register_setting`.
+/// `SettingsRegistrar::register_setting`. One store serves the whole instance settings root: a
+/// window and its integrated server share it ([`SharedSettings`]), so a write on either side
+/// compares, persists and reads through the same live values.
 ///
 /// Live values are initialized from the resource generation's `LoopContext`
 /// snapshot, updated atomically on Options > Mods writes and `set_setting`
@@ -30,9 +32,11 @@ pub(in crate::game) struct NativeSettings {
     /// notification superseded by a synchronous write inside an earlier
     /// callback is not delivered a second time.
     revision: u64,
-    /// Whether live values have been populated from a captured generation yet.
-    initialized: bool,
 }
+
+/// The instance's settings authority, shared by the window and its integrated server. Never
+/// hold its lock across a listener call: take what the call needs, release, then notify.
+pub(in crate::game) type SharedSettings = std::sync::Arc<std::sync::Mutex<NativeSettings>>;
 
 impl NativeSettings {
     fn next_revision(&mut self) -> u64 {
@@ -42,21 +46,23 @@ impl NativeSettings {
 
     /// Populate live values from a captured `LoopContext` snapshot.
     ///
-    /// On the first call (initial load), establishes the baseline values and
-    /// returns no change notifications. On subsequent calls (reloads), updates
-    /// live values from the same captured snapshot and returns the reload
-    /// batch revision plus each `(owner, key)` whose effective value changed
-    /// (comparing `Range` floats by bits so `-0.0` and `+0.0` are distinct).
+    /// Only the owners `covers` names are read from `context` (a server's capture holds the
+    /// server mods' settings alone, and must not reset another side's): a setting the store has
+    /// no value for yet takes the captured one as its baseline, with no change notification, and
+    /// one it has updates from the same snapshot, returning the reload batch revision plus each
+    /// `(owner, key)` whose effective value changed (comparing `Range` floats by bits so `-0.0`
+    /// and `+0.0` are distinct).
     pub(in crate::game) fn sync_from_loop_context(
         &mut self,
         context: &sunrise_world::native_load_context::LoopContext,
+        covers: impl Fn(&str) -> bool,
     ) -> (u64, Vec<(&'static str, &'static str)>) {
         let mut changed = Vec::new();
-        let notify = self.initialized;
-        self.initialized = true;
         let reload_revision = self.next_revision();
-        let mut next = BTreeMap::new();
         for (owner, spec) in mod_api::__private::settings() {
+            if !covers(owner) {
+                continue;
+            }
             let key = spec.key.as_str();
             let raw = context.setting(owner, key);
             let value = spec.read(raw);
@@ -65,13 +71,13 @@ impl NativeSettings {
             let previous_value = previous
                 .map(|entry| entry.value)
                 .unwrap_or_else(|| spec.default_value());
-            let entry_revision = if notify && !previous_value.exact_eq(value) {
+            let entry_revision = if previous.is_some() && !previous_value.exact_eq(value) {
                 changed.push(slot);
                 reload_revision
             } else {
                 previous.map_or(reload_revision, |entry| entry.revision)
             };
-            next.insert(
+            self.values.insert(
                 slot,
                 LiveSetting {
                     value,
@@ -79,7 +85,6 @@ impl NativeSettings {
                 },
             );
         }
-        self.values = next;
         (reload_revision, changed)
     }
 
@@ -98,7 +103,6 @@ impl NativeSettings {
             .map(|(registered_owner, spec)| (*registered_owner, spec.key.as_str()));
         let captured = sunrise_world::native_load_context::capture_registered_settings(root, keys);
         let owner_map = captured.get(owner);
-        let notify = self.initialized;
         let refresh_revision = self.next_revision();
         let mut changed = Vec::new();
         for (registered_owner, spec) in mod_api::__private::settings() {
@@ -113,7 +117,7 @@ impl NativeSettings {
             let previous_value = previous
                 .map(|entry| entry.value)
                 .unwrap_or_else(|| spec.default_value());
-            let entry_revision = if notify && !previous_value.exact_eq(value) {
+            let entry_revision = if previous.is_some() && !previous_value.exact_eq(value) {
                 changed.push(slot);
                 refresh_revision
             } else {
@@ -334,7 +338,23 @@ impl Game<'_> {
     ) -> Result<SettingValue, SettingAccessError> {
         let (owner, spec) =
             mod_api::__private::setting_entry(key).ok_or(SettingAccessError::UnknownKey)?;
-        Ok(self.native_settings.value(owner, spec))
+        Ok(self.live_setting(owner, spec))
+    }
+
+    /// A registered setting's live value in the instance's shared store.
+    pub(in crate::game) fn live_setting(
+        &self,
+        owner: &'static str,
+        spec: &'static SettingSpec,
+    ) -> SettingValue {
+        self.settings_store().value(owner, spec)
+    }
+
+    /// The instance's settings store, locked: the guard must be gone before any listener runs.
+    fn settings_store(&self) -> std::sync::MutexGuard<'_, NativeSettings> {
+        self.native_settings
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// The storage root bound to the active resource generation (`Game::mod_data_root()`
@@ -414,7 +434,7 @@ impl Game<'_> {
         spec: &'static SettingSpec,
         value: SettingValue,
     ) -> Result<bool, SettingAccessError> {
-        let changed = self.native_settings.commit(root, owner, spec, value)?;
+        let changed = self.settings_store().commit(root, owner, spec, value)?;
         if changed {
             self.sync_native_setting_ui_row(owner, spec, value);
             self.native_setting_changed(owner, spec.key.as_str(), value);
@@ -426,19 +446,28 @@ impl Game<'_> {
     /// `LoopContext` snapshot (single capture per reload) and notify owners of
     /// every value that changed on reload.
     pub(in crate::game) fn sync_native_settings_from_loop_context(&mut self) {
-        let was_initialized = self.native_settings.initialized;
-        let (reload_revision, changed) = self
-            .native_settings
-            .sync_from_loop_context(&self.loop_context);
-        if !was_initialized {
-            // Initial startup sync: align any Options > Mods rows built during
-            // `start_mods()` with the captured baseline without firing
-            // `setting_changed`.
-            for (owner, spec) in mod_api::__private::settings() {
-                let value = self.native_settings.value(owner, spec);
-                self.sync_native_setting_ui_row(owner, spec, value);
-            }
-            return;
+        // A server's capture covers the server mods' settings only.
+        let server_owners: Option<std::collections::BTreeSet<String>> =
+            self.options.execution_role.is_logical_server().then(|| {
+                sunrise_mod_package::enabled::EnabledMods::read(&self.options.resources)
+                    .map(|inventory| inventory.server_ids().map(str::to_owned).collect())
+                    .unwrap_or_default()
+            });
+        let (reload_revision, changed) = {
+            let loop_context = &self.loop_context;
+            self.native_settings
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .sync_from_loop_context(loop_context, |owner| {
+                    server_owners
+                        .as_ref()
+                        .is_none_or(|owners| owners.contains(owner))
+                })
+        };
+        // Align the Options > Mods rows with the store, firing nothing for a baseline.
+        for (owner, spec) in mod_api::__private::settings() {
+            let value = self.live_setting(owner, spec);
+            self.sync_native_setting_ui_row(owner, spec, value);
         }
         self.publish_reloaded_settings(reload_revision, changed);
     }
@@ -450,7 +479,8 @@ impl Game<'_> {
         if !self.options.execution_role.is_client() {
             return;
         }
-        let (refresh_revision, changed) = self.native_settings.refresh_owner_from_disk(root, owner);
+        let (refresh_revision, changed) =
+            self.settings_store().refresh_owner_from_disk(root, owner);
         self.publish_reloaded_settings(refresh_revision, changed);
     }
 
@@ -465,15 +495,16 @@ impl Game<'_> {
     ) {
         for &(owner, key) in &changed {
             if let Some(spec) = mod_api::__private::setting(owner, key) {
-                let value = self.native_settings.value(owner, spec);
+                let value = self.live_setting(owner, spec);
                 self.sync_native_setting_ui_row(owner, spec, value);
             }
         }
         for (owner, key) in changed {
-            if self.native_settings.revision_of(owner, key) == Some(batch_revision)
+            let current = self.settings_store().revision_of(owner, key);
+            if current == Some(batch_revision)
                 && let Some(spec) = mod_api::__private::setting(owner, key)
             {
-                let value = self.native_settings.value(owner, spec);
+                let value = self.live_setting(owner, spec);
                 self.native_setting_changed(owner, key, value);
             }
         }
@@ -674,8 +705,8 @@ mod tests {
                 ["many"],
                 registered_setting_keys(),
             );
-            let (_, initial) =
-                store.sync_from_loop_context(&load.captured_loop_context(LoopSide::Client));
+            let (_, initial) = store
+                .sync_from_loop_context(&load.captured_loop_context(LoopSide::Client), |_| true);
             assert!(initial.is_empty());
 
             // A large registration table retains keys through the initial load and live writes.
@@ -696,8 +727,8 @@ mod tests {
                 ["many"],
                 registered_setting_keys(),
             );
-            let (_, reload_changed) =
-                store.sync_from_loop_context(&reload.captured_loop_context(LoopSide::Client));
+            let (_, reload_changed) = store
+                .sync_from_loop_context(&reload.captured_loop_context(LoopSide::Client), |_| true);
             assert!(reload_changed.is_empty());
             assert_eq!(store.value("many", spec_1024), SettingValue::Toggle(true));
             assert_eq!(store.value("many", spec_1025), SettingValue::Toggle(true));
@@ -717,8 +748,10 @@ mod tests {
                 ["many"],
                 registered_setting_keys(),
             );
-            let (batch_rev, changed) =
-                store.sync_from_loop_context(&reload_two.captured_loop_context(LoopSide::Client));
+            let (batch_rev, changed) = store.sync_from_loop_context(
+                &reload_two.captured_loop_context(LoopSide::Client),
+                |_| true,
+            );
             assert_eq!(
                 changed,
                 vec![("many", "toggle_1024"), ("many", "toggle_1025")]
@@ -957,5 +990,56 @@ mod tests {
                 assert_eq!(beta_calls.load(Ordering::Relaxed), 1);
             });
         });
+    }
+
+    /// A capture that does not cover an owner (a server's holds the server mods' settings) leaves
+    /// that owner's live values alone, so the other side's values are not reset to defaults.
+    #[test]
+    fn a_sync_leaves_the_owners_it_does_not_cover_alone() {
+        struct OneSetting;
+
+        #[mod_api::__subscriptions]
+        impl Hooks for OneSetting {
+            fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+                r.register_setting(SettingSpec::toggle("toggle_0000", "many.toggle", false))
+                    .unwrap();
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("settings");
+        fs::create_dir_all(root.join("many")).unwrap();
+        fs::write(root.join("many/toggle_0000"), "true").unwrap();
+        let mods: mod_api::Mods = vec![ModEntry::new("many", Box::new(OneSetting))].into();
+        mod_platform::testing::with_mods(mods.clone(), || {
+            mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
+            let capture = |_: ()| {
+                LoadContext::new_with_registered(
+                    DataLoadOrigin::ClientPreload,
+                    Arc::new(LoadInputs::new(BTreeMap::new(), root.clone())),
+                    ["many"],
+                    registered_setting_keys(),
+                )
+                .captured_loop_context(LoopSide::Client)
+            };
+            let mut store = NativeSettings::default();
+            store.sync_from_loop_context(&capture(()), |_| true);
+            let spec = mod_api::__private::setting("many", "toggle_0000").unwrap();
+            assert_eq!(store.value("many", spec), SettingValue::Toggle(true));
+
+            fs::write(root.join("many/toggle_0000"), "false").unwrap();
+            let (_, changed) = store.sync_from_loop_context(&capture(()), |owner| owner != "many");
+            assert!(changed.is_empty());
+            assert_eq!(store.value("many", spec), SettingValue::Toggle(true));
+            let (_, changed) = store.sync_from_loop_context(&capture(()), |_| true);
+            assert_eq!(changed, [("many", "toggle_0000")]);
+        });
+    }
+
+    /// The window and the integrated server it starts from its options share one store.
+    #[test]
+    fn options_clones_share_the_settings_authority() {
+        let options = crate::game::mods::ModsState::default();
+        let server = options.clone();
+        assert!(Arc::ptr_eq(&options.settings, &server.settings));
     }
 }

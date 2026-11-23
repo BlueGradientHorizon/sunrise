@@ -3553,8 +3553,7 @@ impl Game<'_> {
             .iter()
             .filter(|(owner, _)| *owner == mod_id)
             .map(|(owner, spec)| {
-                let value =
-                    mod_settings::ui_setting_value(spec, self.native_settings.value(owner, spec));
+                let value = mod_settings::ui_setting_value(spec, self.live_setting(owner, spec));
                 NativeSetting {
                     key: spec.key.clone(),
                     label: spec.label.clone(),
@@ -3595,7 +3594,7 @@ impl Game<'_> {
             .is_err()
         {
             // Keep the Options > Mods widget aligned with the live store if persistence fails.
-            let live = self.native_settings.value(owner, spec);
+            let live = self.live_setting(owner, spec);
             if let Some(setting) = self
                 .settings
                 .mods
