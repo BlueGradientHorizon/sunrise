@@ -319,6 +319,7 @@ impl Game<'_> {
                 let environment = item.environment_tick_with_hook(
                     &mut self.world,
                     self.res.facts(),
+                    self.res.items(),
                     registry,
                     &native_components::item_damage_resolver(
                         &self.pack.item_renderer.models,

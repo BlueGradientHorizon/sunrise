@@ -433,7 +433,11 @@ impl Game<'_> {
             Slot::Contents(..) => None,
             Slot::ContentItem(parent, component, index) => {
                 let stack = self.slot_get(parent)?;
-                component.items(&stack).get(*index).cloned().flatten()
+                component
+                    .items(self.res.items(), &stack)
+                    .get(*index)
+                    .cloned()
+                    .flatten()
             }
             Slot::Guest(conn, slot) => self
                 .for_player(Target::Guest(*conn), |g| g.slot_get(slot))
@@ -631,12 +635,12 @@ impl Game<'_> {
                 let Some(mut outer) = self.slot_get(parent) else {
                     return false;
                 };
-                let mut slots = component.items(&outer);
+                let mut slots = component.items(self.res.items(), &outer);
                 let Some(slot) = slots.get_mut(*index) else {
                     return false;
                 };
                 *slot = stack;
-                component.store(&mut outer, slots);
+                component.store(self.res.items(), &mut outer, slots);
                 self.slot_set(parent, Some(outer))
             }
             Slot::Guest(conn, slot) => self

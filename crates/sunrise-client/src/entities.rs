@@ -8,7 +8,7 @@ use crate::entity_rules::EntityRules;
 use crate::{
     blocks::{BlockFacts, Fluid},
     collisions::{EntityCollisions, SceneCollisions},
-    items::ItemStack,
+    items::{ItemStack, Items},
     motion::block_friction,
     world::World,
 };
@@ -490,7 +490,7 @@ impl ItemEntity {
     /// whose health reaches 0 is destroyed at once (`ItemStack.onDestroyed`,
     /// then `discard`), so what it held leaves it here. None while the item
     /// survives; the emptied stacks otherwise.
-    pub fn hurt(&mut self, amount: i32) -> Option<Vec<ItemStack>> {
+    pub fn hurt(&mut self, items: &Items, amount: i32) -> Option<Vec<ItemStack>> {
         self.health -= amount;
         if self.health > 0 {
             return None;
@@ -499,7 +499,7 @@ impl ItemEntity {
         // the stack holds is the dispatch: a bundle's (`BundleItem.onDestroyed`)
         // `bundle_contents` and a container item's (`BlockItem.onDestroyed`)
         // `container`, which a mod's own item carries in the same way.
-        let mut spilled = crate::bundle::destroyed(&mut self.stack);
+        let mut spilled = crate::bundle::destroyed(items, &mut self.stack);
         spilled.extend(crate::item_data::destroyed_container(&mut self.stack));
         Some(spilled)
     }
@@ -4671,7 +4671,10 @@ mod item_destroyed_tests {
         // A second hit has nothing left to spill, and an item that holds
         // nothing never reports any.
         assert_eq!(bundle.hurt(1), Some(Vec::new()));
-        assert_eq!(item("minecraft:stone", &[]).hurt(5), Some(Vec::new()));
+        assert_eq!(
+            item("minecraft:stone", &[]).hurt(&Items::empty(), 5),
+            Some(Vec::new())
+        );
     }
 
     /// `BlockItem.onDestroyed`: the same death path spills a container item's
@@ -4685,7 +4688,9 @@ mod item_destroyed_tests {
             (0, ItemStack::new("minecraft:oak_log", 8)),
             (3, ItemStack::new("minecraft:cobblestone", 64)),
         ];
-        let spent = box_item.hurt(5).expect("the hit that destroys it");
+        let spent = box_item
+            .hurt(&Items::empty(), 5)
+            .expect("the hit that destroys it");
         assert_eq!(
             spent
                 .iter()

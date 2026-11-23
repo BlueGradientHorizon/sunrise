@@ -1379,7 +1379,7 @@ impl Game<'_> {
                                 // Health was already reduced above. Run the shared
                                 // onDestroyed path without applying damage twice.
                                 destroyed_contents.extend(
-                                    item.hurt(0)
+                                    item.hurt(self.res.items(), 0)
                                         .unwrap_or_default()
                                         .into_iter()
                                         .map(|stack| (stack, at)),

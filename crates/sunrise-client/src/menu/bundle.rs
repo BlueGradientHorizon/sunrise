@@ -111,7 +111,7 @@ pub fn vanilla_clicked_override(
         (prev, _) => {
             // toggleSelectedItem(-1), then the click goes on.
             *carried = prev;
-            toggle_selected(&mut bundle, -1);
+            toggle_selected(items, &mut bundle, -1);
             return (false, Some(bundle));
         }
     }

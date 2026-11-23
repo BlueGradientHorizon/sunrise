@@ -4002,6 +4002,78 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 
+    /// One effective component for every reader: a bundle that only inherits its prototype's
+    /// contents spills them on destruction, selects and extracts a non-first entry, and clearing
+    /// the last slot of a command edit leaves an effective empty component.
+    #[test]
+    fn inherited_bundle_contents_are_the_effective_component_everywhere() {
+        use crate::bundle::{Contents, contents_of, destroyed, set_contents, toggle_selected};
+
+        let root =
+            std::env::temp_dir().join(format!("sunrise-bundle-inherited-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("items.json"),
+            r#"{
+                "minecraft:blue_bundle": {"minecraft:max_stack_size": 1, "minecraft:bundle_contents": [{"id": "minecraft:stone", "count": 8}, {"id": "minecraft:dirt", "count": 4}]},
+                "minecraft:stone": {"minecraft:max_stack_size": 64},
+                "minecraft:dirt": {"minecraft:max_stack_size": 64}
+            }"#,
+        )
+        .unwrap();
+        let defaults = sunrise_world::item_defaults::read(&root).unwrap();
+        let items = Items::catalog(&root, &PackOverlay::NONE, &defaults).unwrap();
+        fs::remove_dir_all(root).unwrap();
+        let counts = |bundle: &ItemStack| -> Vec<(String, u32)> {
+            contents_of(&items, bundle)
+                .unwrap()
+                .iter()
+                .map(|s| (s.item.to_string(), s.count))
+                .collect()
+        };
+
+        // Selecting a non-first inherited entry needs no override, and removal takes it.
+        let mut bundle = ItemStack::new("minecraft:blue_bundle", 1);
+        toggle_selected(&items, &mut bundle, 1);
+        let mut contents = Contents::of(&items, &bundle).unwrap();
+        assert_eq!(contents.selected(), 1);
+        let taken = contents.remove_one(&items).unwrap();
+        assert_eq!((&*taken.item, taken.count), ("minecraft:dirt", 4));
+        // An index outside the effective contents selects nothing.
+        toggle_selected(&items, &mut bundle, 2);
+        assert_eq!(bundle.data().unwrap().bundle_selected.0, -1);
+
+        // A command edit of the middle of the list keeps the inherited entries it never touched,
+        // and clearing the final slot does not show the prototype again.
+        let mut edited = ItemStack::new("minecraft:blue_bundle", 1);
+        let mut inside: Vec<_> = contents_of(&items, &edited).unwrap().to_vec();
+        inside[1].count = 2;
+        set_contents(&items, &mut edited, inside);
+        assert_eq!(
+            counts(&edited),
+            [("minecraft:stone".into(), 8), ("minecraft:dirt".into(), 2)]
+        );
+        set_contents(&items, &mut edited, Vec::new());
+        assert!(counts(&edited).is_empty());
+
+        // Destruction spills inherited contents and writes an effective empty component.
+        let mut dropped = ItemStack::new("minecraft:blue_bundle", 1);
+        let spilled = destroyed(&items, &mut dropped);
+        assert_eq!(spilled.iter().map(|s| s.count).collect::<Vec<_>>(), [8, 4]);
+        assert!(counts(&dropped).is_empty());
+        assert!(destroyed(&items, &mut dropped).is_empty());
+        // Explicitly empty and removed contents spill nothing.
+        let mut removed = ItemStack::new("minecraft:blue_bundle", 1);
+        removed.data_mut().set_other(
+            "!minecraft:bundle_contents",
+            Some(sunrise_core::nbt::Tag::compound(Vec::<(
+                &str,
+                sunrise_core::nbt::Tag,
+            )>::new())),
+        );
+        assert!(destroyed(&items, &mut removed).is_empty());
+    }
+
     #[test]
     fn bundle_weight_refuses_prototype_cycles_without_masking_stack_patches() {
         use crate::bundle::{Contents, stack_bar, tooltip_layout};
