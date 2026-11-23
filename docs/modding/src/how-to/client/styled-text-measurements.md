@@ -96,7 +96,8 @@ For vanilla `Component.getVisualOrderText()` behavior, use
 `ClientHost::visit_text_visual_order(&Text, &mut |character| { … })`. It lends each character's
 Unicode scalar (`scalar`), effective `TextStyle` and sink `source_index` for that call. Return
 `true` to continue or `false` to stop; the host returns `false` if stopped. Call
-`character.to_owned()` only for characters you need to retain. Characters already include Arabic
+`character.to_owned()` only for characters you need to retain. The owned character keeps its
+full style and releases deep opaque style data iteratively. Characters already include Arabic
 shaping, bidi reordering and mirrored punctuation. This read is available outside drawing,
 including client setup.
 
