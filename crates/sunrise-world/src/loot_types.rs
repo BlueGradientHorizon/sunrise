@@ -10,6 +10,10 @@ mod normalize;
 mod parameters;
 #[path = "loot_types/shapes/mod.rs"]
 mod shapes;
+/// Whether `kind` (`minecraft:<name>`) is a vanilla `LootItemCondition` type.
+pub fn is_vanilla_condition(kind: &str) -> bool {
+    shapes::contains(kind, false)
+}
 pub(crate) use shapes::{validate_environment_value, validate_particle_options};
 #[cfg(test)]
 #[path = "loot_types/tests.rs"]

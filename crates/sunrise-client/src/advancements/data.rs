@@ -332,8 +332,9 @@ fn bind_condition(
     Ok(values.pop().expect("bound root condition"))
 }
 
-/// A leaf of a `player` predicate: one this evaluator answers, a literal `random_chance`, or a
-/// mod's registered kind. Any other kind would silently never match, so the file is refused.
+/// A leaf of a `player` predicate: one this evaluator answers, any other vanilla condition
+/// (the shared loot evaluator tests it), or a mod's registered kind. Only a kind that is none of
+/// these is refused, as vanilla's codec refuses an unknown type.
 fn bind_leaf(
     kind: &str,
     value: &Value,
@@ -354,15 +355,10 @@ fn bind_leaf(
             data: value.clone(),
         });
     }
-    if kind == "minecraft:random_chance" {
-        let literal = value.as_object().is_some_and(|o| {
-            o.keys()
-                .all(|k| matches!(k.as_str(), "condition" | "type" | "chance"))
-        });
-        return match value["chance"].as_f64() {
-            Some(chance) if literal => Ok(BoundConditionKind::RandomChance(chance as f32)),
-            _ => Err("conditions.player: random_chance supports only a literal chance".into()),
-        };
+    if sunrise_world::loot::types::is_vanilla_condition(kind) {
+        let mut condition = value.clone();
+        condition["type"] = Value::String(kind.to_owned());
+        return Ok(BoundConditionKind::Loot(condition));
     }
     match types
         .bind_registered_condition(kind, value, "conditions.player")

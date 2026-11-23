@@ -1990,6 +1990,19 @@ impl Game<'_> {
             self.ui.command_clocks.get(clock).map_or(0, |c| c.0)
         }
     }
+    /// Every world clock's total ticks by id, for the loot conditions that read one.
+    pub(in crate::game) fn loot_clock_ticks(&self) -> std::collections::BTreeMap<String, i64> {
+        let mut clocks: std::collections::BTreeMap<String, i64> = self
+            .ui
+            .command_clocks
+            .iter()
+            .map(|(name, state)| (name.clone(), state.0))
+            .collect();
+        for name in [self.active_clock(), OVERWORLD_CLOCK, "minecraft:the_end"] {
+            clocks.insert(name.to_owned(), self.command_clock_time(name));
+        }
+        clocks
+    }
     pub(in crate::game) fn set_command_clock_time(&mut self, clock: &str, total: i64) {
         if clock == "minecraft:the_end" {
             self.world.end_clock = total;

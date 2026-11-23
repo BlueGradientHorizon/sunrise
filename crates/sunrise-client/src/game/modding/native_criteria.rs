@@ -121,6 +121,7 @@ impl Game<'_> {
         // The level's random is lent to the tests and given back advanced, as a loot roll does.
         let mut random = self.world.random.clone();
         let loot = self.server_loot.get();
+        let clocks = self.loot_clock_ticks();
         self.trigger_custom(trigger, |criterion, world| {
             if refused.is_some() {
                 return false;
@@ -143,6 +144,8 @@ impl Game<'_> {
                                 &mut adv::LootRuntime {
                                     random: &mut random,
                                     tags,
+                                    data: loot.as_deref(),
+                                    clocks: &clocks,
                                 },
                             )
                         })

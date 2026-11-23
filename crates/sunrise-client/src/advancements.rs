@@ -50,8 +50,9 @@ enum BoundConditionKind {
         kind: String,
         data: Value,
     },
-    /// `LootItemRandomChanceCondition` with a literal chance, drawn once per test.
-    RandomChance(f32),
+    /// A vanilla loot condition no other arm answers, tested by the shared loot evaluator with
+    /// the advancement's level and `this_entity`. `type` holds the full id.
+    Loot(Value),
     /// A condition kind a mod registered, decoded once at load.
     Registered(Arc<RegisteredCondition>),
 }
@@ -72,9 +73,13 @@ impl std::fmt::Debug for RegisteredCondition {
 
 /// What a bound `player` predicate draws on besides the entities and the world: the level's
 /// random and the tag reads mod conditions see, the way a loot roll lends them.
-pub struct LootRuntime<'a> {
-    pub random: &'a mut dyn sunrise_world::loot::types::RollRandom,
+pub struct LootRuntime<'a, R> {
+    pub random: &'a mut R,
     pub tags: &'a dyn sunrise_world::loot::LootTags,
+    /// The loot data the shared evaluator reads (predicates, tags, enchantments), if loaded.
+    pub data: Option<&'a sunrise_world::loot::LootData>,
+    /// `ClockManager` total ticks by clock id, for `time_check`.
+    pub clocks: &'a std::collections::BTreeMap<String, i64>,
 }
 
 struct BoundConditionNode {
@@ -132,7 +137,12 @@ impl BoundCondition {
 
     /// `AllOfCondition`, `AnyOfCondition` and `InvertedLootItemCondition`:
     /// evaluate in list order and stop as soon as the current group has an answer.
-    pub fn test(&self, ctx: &Entities, w: &dyn World, runtime: &mut LootRuntime<'_>) -> bool {
+    pub fn test<R: sunrise_core::random::RandomSource + Clone>(
+        &self,
+        ctx: &Entities,
+        w: &dyn World,
+        runtime: &mut LootRuntime<'_, R>,
+    ) -> bool {
         enum Resume<'a> {
             Invert,
             Group {
@@ -145,7 +155,23 @@ impl BoundCondition {
         loop {
             let mut result = match &node.kind {
                 BoundConditionKind::Leaf { kind, data } => condition_leaf_typed(kind, data, ctx, w),
-                BoundConditionKind::RandomChance(chance) => runtime.random.next_float() < *chance,
+                BoundConditionKind::Loot(condition) => {
+                    let place = sunrise_world::loot::LootPlace {
+                        origin: Some(ctx.origin),
+                        level: Some(sunrise_world::loot::LootLevel {
+                            dimension: w.dimension().to_owned(),
+                            raining: w.weather().0,
+                            thundering: w.weather().1,
+                            clocks: runtime.clocks.clone(),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    };
+                    let entity = ctx.this.map(loot_entity);
+                    runtime.data.is_some_and(|data| {
+                        data.condition_holds(condition, entity.as_ref(), place, runtime.random)
+                    })
+                }
                 BoundConditionKind::Registered(registered) => {
                     let entity = ctx.this.map(loot_entity);
                     let facts = sunrise_world::loot::LootContext {
@@ -3307,8 +3333,17 @@ mod tests {
             None
         }
     }
-    /// A bound `player` predicate tested with a fixed seed and no tags.
+    /// A bound `player` predicate tested with a fixed seed, no tags and the Overworld clock at
+    /// tick 30000.
     fn holds(player: &BoundCondition, ctx: &Entities, w: &dyn World) -> bool {
+        let root = tempfile::tempdir().unwrap();
+        let data = sunrise_world::loot::LootData::load(
+            root.path(),
+            &sunrise_world::loot::PackOverlay::NONE,
+            &sunrise_world::item_defaults::ItemDefaults::decode(b"{}").unwrap(),
+        )
+        .unwrap();
+        let clocks = std::collections::BTreeMap::from([("minecraft:overworld".to_owned(), 30000)]);
         let mut random = sunrise_core::random::LegacyRandom::new(7);
         player.test(
             ctx,
@@ -3316,6 +3351,8 @@ mod tests {
             &mut LootRuntime {
                 random: &mut random,
                 tags: &NoTags,
+                data: Some(&data),
+                clocks: &clocks,
             },
         )
     }
@@ -3402,14 +3439,64 @@ mod tests {
             &ctx,
             &Flat
         ));
+        // A provider chance is a vanilla condition too: it loads and the shared evaluator draws it.
         let provider = definition(serde_json::json!({
             "type": "minecraft:random_chance",
-            "chance": {"type": "minecraft:uniform", "min": 0.0, "max": 1.0}
+            "chance": {"type": "minecraft:constant", "value": 1.0}
         }));
-        assert!(parse("test:provider", &provider).is_none());
-        let unsupported =
-            definition(serde_json::json!({"type": "minecraft:time_check", "value": 1}));
-        assert!(parse("test:unsupported", &unsupported).is_none());
+        let provider = parse("test:provider", &provider).unwrap();
+        assert!(holds(
+            provider.criteria[0].player.as_ref().unwrap(),
+            &ctx,
+            &Flat
+        ));
+        // `time_check` and the value checks are vanilla conditions: a data pack using them loads,
+        // and the shared evaluator answers with the clock at tick 30000 (6000 of a 24000 period).
+        let tested = |condition: serde_json::Value| {
+            let loaded = parse("test:vanilla", &definition(condition)).unwrap();
+            holds(loaded.criteria[0].player.as_ref().unwrap(), &ctx, &Flat)
+        };
+        let time = |extra: serde_json::Value| {
+            let mut check = serde_json::json!({
+                "type": "minecraft:time_check", "clock": "minecraft:overworld"
+            });
+            check
+                .as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            check
+        };
+        assert!(tested(time(
+            serde_json::json!({"value": {"min": 29000, "max": 31000}})
+        )));
+        assert!(!tested(time(serde_json::json!({"value": {"min": 31000}}))));
+        assert!(tested(time(
+            serde_json::json!({"period": 24000, "value": 6000})
+        )));
+        assert!(!tested(time(
+            serde_json::json!({"period": 24000, "value": {"max": 5999}})
+        )));
+        assert!(!tested(time(serde_json::json!({"period": 0, "value": {}}))));
+        let other = serde_json::json!({
+            "type": "minecraft:time_check", "clock": "minecraft:the_end", "value": {}
+        });
+        assert!(
+            !tested(other),
+            "a clock the level does not have never matches"
+        );
+        assert!(tested(serde_json::json!({
+            "type": "minecraft:int_value_check", "value": 5, "test": {"min": 5, "max": 5}
+        })));
+        assert!(!tested(serde_json::json!({
+            "type": "minecraft:float_value_check", "value": 0.5, "test": {"min": 0.75}
+        })));
+        // A vanilla condition whose parameter an advancement lacks loads and does not match.
+        assert!(!tested(
+            serde_json::json!({"type": "minecraft:killed_by_player"})
+        ));
+        // Neither vanilla nor registered: refused at load.
+        let unknown = definition(serde_json::json!({"type": "test:nobody_registered"}));
+        assert!(parse("test:unknown", &unknown).is_none());
         // Conflicting `condition` discriminator must not override the decoded `type`,
         // both at top level and nested inside `all_of`.
         let conflicting = definition(serde_json::json!({

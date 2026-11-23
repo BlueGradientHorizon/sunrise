@@ -5174,6 +5174,7 @@ impl Game<'_> {
                 day_time: self.world.day_time,
                 raining: weather && rain > 0.2,
                 thundering: weather && thunder > 0.9,
+                clocks: self.loot_clock_ticks(),
             }),
         }
     }
