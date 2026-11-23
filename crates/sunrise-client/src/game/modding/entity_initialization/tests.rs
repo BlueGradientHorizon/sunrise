@@ -353,6 +353,15 @@ fn client_login_tracking_and_retracking_initialize_the_client_store_once() {
                 value_key.get(game, Holder::Player(profile), Clone::clone),
                 Ok(41)
             );
+            game.handle_packet(C::PlayerInfoUpdate(play::PlayerInfoUpdate {
+                actions: 1,
+                entries: vec![play::PlayerInfo {
+                    uuid: 22,
+                    name: Some("Remote".into()),
+                    ..Default::default()
+                }],
+            }))
+            .unwrap();
             let registry = game
                 .remote
                 .as_ref()
