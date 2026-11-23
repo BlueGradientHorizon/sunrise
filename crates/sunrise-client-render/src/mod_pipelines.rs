@@ -11,7 +11,7 @@ use mod_api::{
     Identifier, PipelineBlend, PipelineTexture, PipelineTextureError, RenderPipeline,
     RenderPipelineError, RenderPipelineRef, WorldDepth,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 use std::sync::OnceLock;
 use sunrise_shader_api::mod_pipeline::{FOLDER, compose_with};
@@ -129,7 +129,7 @@ pub fn register(
     {
         return Err(RegistrationError::InvalidIdTable(path));
     }
-    let mut seen = HashMap::with_capacity(pipelines.len());
+    let mut seen = BTreeMap::new();
     for pipeline in &pipelines {
         let table = if pipeline.optional {
             &vanilla.optional
@@ -143,7 +143,7 @@ pub fn register(
                 optional: pipeline.optional,
             });
         }
-        if let Some(earlier) = seen.insert(pipeline.id.as_str(), pipeline.owner()) {
+        if let Some(earlier) = seen.insert(&pipeline.id, pipeline.owner()) {
             return Err(RegistrationError::DuplicateModId {
                 earlier: earlier.to_owned(),
                 owner: pipeline.owner().to_owned(),

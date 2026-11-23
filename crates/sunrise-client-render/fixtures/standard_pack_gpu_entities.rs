@@ -232,7 +232,7 @@ fn feature_stage_order(
 ) -> Result<(), Box<dyn std::error::Error>> {
     use sunrise_render_core::TRANSLUCENT_ITEM_OVERLAY;
 
-    let quad = |x, y, z, layer, color| {
+    let quad = |x: f32, y: f32, z: f32, layer: u32, color: u32| {
         [[-x, -y, z], [-x, y, z], [x, y, z], [x, -y, z]].map(|pos| Vertex {
             pos,
             uv: [0.5; 2],
@@ -243,7 +243,7 @@ fn feature_stage_order(
             glint_uv: [0.0; 2],
         })
     };
-    let mut entities = Vec::from(quad(1.8_f32, 1.2_f32, 5.0, 0, u32::MAX));
+    let mut entities = Vec::from(quad(1.8, 1.2, 5.0, 0, u32::MAX));
     entities.extend(quad(0.55, 1.0, 4.75, TRANSLUCENT_ITEM_OVERLAY, 0xff00_ff00));
     let entity_stage = sunrise_shaders::render_stage("ENTITIES");
     let spans = [
