@@ -216,7 +216,7 @@ impl Game<'_> {
                 self.initialize_entity_on_access(holder);
             }
             let remote = self.remote.as_ref().ok_or(AttachmentError::MissingHolder)?;
-            return Ok(remote.attachments.get(&holder));
+            return Ok(remote.attachments.get(&holder).map(|resident| &**resident));
         }
         match self.resolve_attachment_slot(holder)? {
             LocalAttachmentSlot::Entity(id) => Ok(self.entity_attachments.get(&id)),

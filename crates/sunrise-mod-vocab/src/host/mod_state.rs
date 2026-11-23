@@ -6,6 +6,7 @@ use crate::*;
 pub trait ModStateHost {
     /// Side: both.
     /// Engine capture adapter. Use `AttachmentQueries::capture` or `AttachmentQueries::query`.
+    // hidden: the game implements it; mods reach it only through `AttachmentQueries`.
     #[doc(hidden)]
     fn attachment_query(
         &self,

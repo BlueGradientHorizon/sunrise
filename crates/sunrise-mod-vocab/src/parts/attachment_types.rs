@@ -125,6 +125,8 @@ enum ProjectionFailure {
 }
 
 /// Engine diagnostic for an attachment that could not produce a sync value.
+// hidden: only the engine's sync projection reports it, to its own log.
+// exhaustive: its fields are private and only the projection builds it.
 #[doc(hidden)]
 // no wire: diagnostic for a local codec call.
 #[derive(Debug, PartialEq, Eq)]

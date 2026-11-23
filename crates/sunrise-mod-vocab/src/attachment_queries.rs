@@ -4,6 +4,8 @@
 mod tests;
 use crate::*;
 /// Engine-only proof of a live typed key for the requested capture bucket.
+// hidden: the engine builds it from a checked key inside `AttachmentQueries`; mods never name it.
+// exhaustive: its fields are private and `new` is crate-private.
 #[doc(hidden)]
 // no wire: a borrowed proof created only from a validated live key.
 pub struct AttachmentCaptureKey<'a> {
