@@ -138,9 +138,10 @@ pub fn check_release(
     attestation: Option<&Path>,
     repository: Option<u64>,
 ) -> Result<Report, String> {
-    if !matches!(kind, Kind::Mod | Kind::NativeMod)
-        && path.extension().is_none_or(|ext| ext != "smod")
-    {
+    if !matches!(kind, Kind::Mod | Kind::NativeMod) {
+        if path.extension().is_some_and(|ext| ext == "smod") {
+            return Err("a .smod must be checked as a mod or native-mod".into());
+        }
         if attestation.is_some() || repository.is_some() {
             return Err("--attestation and --repository apply only to .smod packages".into());
         }
@@ -150,9 +151,7 @@ pub fn check_release(
     let sidecar = match attestation {
         Some(sidecar) => sidecar,
         None => {
-            let mut name = path.as_os_str().to_owned();
-            name.push(".sigstore.json");
-            default_sidecar = std::path::PathBuf::from(name);
+            default_sidecar = path.with_added_extension("sigstore.json");
             &default_sidecar
         }
     };
@@ -167,22 +166,18 @@ pub fn check_release(
     let mut sha256 = [0; 32];
     hex::decode_to_slice(&report.sha256, &mut sha256).map_err(|e| e.to_string())?;
     report.attestation = Some(
-        verify_release(&bundle, sha256, repository)
+        sunrise_attestation::verify(&bundle, sha256, PUBLIC_GOOD_TRUSTED_ROOT)
+            .map_err(|e| e.to_string())
+            .and_then(|attested| require_release_signer(attested, repository))
             .map_err(|e| format!("{}: {e}", sidecar.display()))?,
     );
     report.signed = true;
     Ok(report)
 }
 
-fn verify_release(
-    bundle: &[u8],
-    sha256: [u8; 32],
-    repository: Option<u64>,
-) -> Result<Attested, String> {
+fn require_release_signer(attested: Attested, repository: Option<u64>) -> Result<Attested, String> {
     const WORKFLOW: &str = "sunrise-org/sunrise-mods/.github/workflows/release.yml";
     const TAG_PREFIX: &str = "refs/tags/release-v";
-    let attested = sunrise_attestation::verify(bundle, sha256, PUBLIC_GOOD_TRUSTED_ROOT)
-        .map_err(|e| e.to_string())?;
     if let Some(expected) = repository
         && attested.repository_id != expected
     {
@@ -380,8 +375,8 @@ mod tests {
         assert!(missing.starts_with("not signed: the release workflow attests each .smod"));
         assert!(missing.ends_with("coords_hud-0.1.0.smod.sigstore.json"));
 
-        let bundle =
-            fixture("../../../sunrise-attestation/tests/fixtures/ruff-source.sigstore.json");
+        let bundle = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../sunrise-attestation/tests/fixtures/ruff-source.sigstore.json");
         let mismatch = check_release(&smod, Kind::Mod, Some(&bundle), None)
             .err()
             .unwrap();
@@ -392,22 +387,49 @@ mod tests {
     }
 
     #[test]
-    fn real_attestation_from_another_workflow_or_repository_is_refused() {
-        let bundle =
-            include_bytes!("../../sunrise-attestation/tests/fixtures/ruff-source.sigstore.json");
-        let mut sha256 = [0; 32];
-        hex::decode_to_slice(
-            "0378ef60356caaad7b84653691a5d57a1d8b57fd59d173cfc27b0fd4a91a13f3",
-            &mut sha256,
-        )
-        .unwrap();
-        let workflow = verify_release(bundle, sha256, Some(523043277)).unwrap_err();
-        assert!(workflow.starts_with("expected workflow sunrise-org/sunrise-mods/"));
-        assert!(workflow.ends_with("astral-sh/ruff/.github/workflows/release.yml@refs/heads/main"));
-        let repository = verify_release(bundle, sha256, Some(1)).unwrap_err();
+    fn a_mod_extension_cannot_be_checked_as_a_different_package_format() {
+        let smod = fixture("coords_hud-0.1.0.smod");
+        let error = check_release(&smod, Kind::ResourcePack, None, None)
+            .err()
+            .unwrap();
+        assert_eq!(error, "a .smod must be checked as a mod or native-mod");
+    }
+
+    #[test]
+    fn release_signer_must_be_the_shared_workflow_at_a_release_tag() {
+        // Test policy on verified claims; the verifier crate exercises real signed bundles.
+        let attested = Attested {
+            repository_id: 123456,
+            repository_name: "author/repo".into(),
+            signer_workflow_ref:
+                "sunrise-org/sunrise-mods/.github/workflows/release.yml@refs/tags/release-v1".into(),
+            source_ref: "refs/tags/v1.0.0".into(),
+            source_commit: "cc67ad5440ad86ceddef5be9c7b1f931d5688a2a".into(),
+            predicate_type: "https://slsa.dev/provenance/v1".into(),
+        };
+        assert_eq!(
+            require_release_signer(attested.clone(), Some(123456)),
+            Ok(attested.clone())
+        );
+        for signer_workflow_ref in [
+            "author/repo/.github/workflows/release.yml@refs/tags/release-v1",
+            "sunrise-org/sunrise-mods/.github/workflows/publish.yml@refs/tags/release-v1",
+            "sunrise-org/sunrise-mods/.github/workflows/release.yml@refs/heads/release-v1",
+        ] {
+            let error = require_release_signer(
+                Attested {
+                    signer_workflow_ref: signer_workflow_ref.into(),
+                    ..attested.clone()
+                },
+                None,
+            )
+            .unwrap_err();
+            assert!(error.starts_with("expected workflow sunrise-org/sunrise-mods/"));
+        }
+        let repository = require_release_signer(attested, Some(1)).unwrap_err();
         assert_eq!(
             repository,
-            "expected repository ID 1, attestation names astral-sh/ruff (ID 523043277)"
+            "expected repository ID 1, attestation names author/repo (ID 123456)"
         );
     }
 

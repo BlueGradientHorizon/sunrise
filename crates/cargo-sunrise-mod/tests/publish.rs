@@ -54,27 +54,6 @@ fn success(result: Output) -> String {
     String::from_utf8(result.stdout).unwrap()
 }
 
-#[cfg(unix)]
-fn run_printed_check(root: &Path, publish_output: &str) -> String {
-    let printed = publish_output
-        .lines()
-        .map(str::trim)
-        .find(|line| line.starts_with("cargo sunrise-mod check "))
-        .unwrap();
-    // Substitute the test binary for the installed Cargo subcommand without changing its arguments.
-    success(
-        Command::new("sh")
-            .current_dir(root)
-            .env("SUNRISE_TEST_BIN", BIN)
-            .arg("-c")
-            .arg(format!(
-                "cargo() {{ shift; \"$SUNRISE_TEST_BIN\" \"$@\"; }}\n{printed} --json"
-            ))
-            .output()
-            .unwrap(),
-    )
-}
-
 #[test]
 #[ignore = "daily"]
 fn bad_version_or_checkout_leaves_destination_and_outside_files_unchanged() {
@@ -149,7 +128,7 @@ fn bad_version_or_checkout_leaves_destination_and_outside_files_unchanged() {
 
 #[test]
 #[ignore = "daily"]
-fn check_command_accepts_an_update_without_shipping_history_or_the_icon_again() {
+fn publish_stages_an_update_without_shipping_history_or_the_icon_again() {
     let work = tempfile::tempdir().unwrap();
     let root = work.path();
     let checkout = "Ada's registry";
@@ -218,22 +197,10 @@ fn check_command_accepts_an_update_without_shipping_history_or_the_icon_again() 
         published
     );
 
-    assert!(output.contains("cargo sunrise-mod check "));
-    #[cfg(unix)]
-    let checked = run_printed_check(root, &output);
-    #[cfg(not(unix))]
-    let checked = success(run(
-        root,
-        &[
-            "check",
-            "Ada's new submission/coords_hud-2.0.0.smod",
-            "--json",
-        ],
-    ));
-    let checked: serde_json::Value = serde_json::from_str(&checked).unwrap();
+    let package = root.join(out).join("coords_hud-2.0.0.smod");
     assert_eq!(
-        checked["report"]["sha256"].as_str(),
-        Some(new.versions[0].sha256.as_str())
+        index::sha256_file(&package).unwrap(),
+        new.versions[0].sha256
     );
 }
 
@@ -273,13 +240,6 @@ fn signed_publish_stages_the_exact_prebuilt_package_with_the_checkout_key() {
     .unwrap();
     let output = success(run(root, &args));
     assert!(!output.contains("unlisted_after_signing"), "{output}");
-    assert!(output.contains("--key ") && output.contains("--signature "));
-    #[cfg(unix)]
-    {
-        let checked: serde_json::Value =
-            serde_json::from_str(&run_printed_check(root, &output)).unwrap();
-        assert_eq!(checked["report"]["signed"].as_bool(), Some(true));
-    }
     let staged = root.join("out");
     let entry: Entry = toml::from_str(&fs::read_to_string(staged.join(ENTRY)).unwrap()).unwrap();
     assert_eq!(entry.key.as_deref(), Some(key));

@@ -788,8 +788,7 @@ fn check_args(args: &[String]) -> Result<Check<'_>, String> {
     }
 }
 
-/// `check <file>`: the registry's checks of a submission, printed; fails
-/// when one does.
+/// `check <file>`: validate a release package and verify the attestation for a mod.
 fn check(wanted: CheckFile<'_>) -> Result<(), String> {
     let CheckFile {
         file,
