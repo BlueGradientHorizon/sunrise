@@ -871,12 +871,12 @@ pub fn push_text(
             }
             return;
         }
-        // `TextFeatureRenderer.renderText`: outline glyphs use NORMAL; the face of
-        // outlined text uses POLYGON_OFFSET on the same plane.
-        let overlay = if call.outline != 0 && !outline {
-            crate::gfx::TEXT_POLYGON_OFFSET_SOLID_OVERLAY
-        } else {
+        // `AbstractSignRenderer.submitSignText` submits every face as POLYGON_OFFSET.
+        // `TextFeatureRenderer.renderText` uses NORMAL only for the outline copies.
+        let overlay = if outline {
             crate::gfx::TEXT_NORMAL_SOLID_OVERLAY
+        } else {
+            crate::gfx::TEXT_POLYGON_OFFSET_SOLID_OVERLAY
         };
         let mut pen = call.x;
         for (i, ch) in call.text.chars().enumerate() {
@@ -4214,9 +4214,9 @@ mod tests {
         }
     }
 
-    /// `TextFeatureRenderer.renderText`: outlined sign text uses depth bias, not a lift.
+    /// `TextFeatureRenderer.renderText`: the outline does not change the face's depth.
     #[test]
-    fn outlined_sign_text_keeps_its_plane_and_biases_only_the_fill() {
+    fn sign_text_faces_use_depth_bias_with_or_without_an_outline() {
         use crate::gfx::{TEXT_NORMAL_SOLID_OVERLAY, TEXT_POLYGON_OFFSET_SOLID_OVERLAY};
         let world = World::new(BlockStateId(0), 1);
         let sprites = HashMap::new();
@@ -4292,9 +4292,9 @@ mod tests {
         let mut plain = Vec::new();
         draw_text(&scene, &call, &mut plain);
         assert_eq!(plain.len(), 2 * 4);
-        for (plain, offset) in plain.iter().zip(text) {
-            assert_eq!(plain.pos, offset.pos);
-            assert_eq!(plain.layer, TEXT_NORMAL_SOLID_OVERLAY);
+        for (plain, outlined) in plain.iter().zip(text) {
+            assert_eq!(plain.pos, outlined.pos);
+            assert_eq!(plain.layer, TEXT_POLYGON_OFFSET_SOLID_OVERLAY);
         }
     }
 

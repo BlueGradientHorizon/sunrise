@@ -177,7 +177,8 @@ public final class VanillaBlockEntityRenderOracle {
                         submit.addProperty("y", (float) args[2]);
                         submit.addProperty("text", text((FormattedCharSequence) args[3]));
                         submit.addProperty("shadow", (boolean) args[4]);
-                        submit.addProperty("mode", args[5].toString());
+                        var mode = (Font.DisplayMode) args[5];
+                        submit.addProperty("mode", mode.name());
                         submit.addProperty("light", (int) args[6]);
                         submit.addProperty("color", (int) args[7]);
                         submit.addProperty("background", (int) args[8]);
@@ -186,7 +187,7 @@ public final class VanillaBlockEntityRenderOracle {
                         submit.add("glyphs", glyphs(sequence, (float) args[1], (float) args[2], (int) args[7], (int) args[6], pose.last().pose()));
                         boolean[] obfuscated = {false};
                         sequence.accept((index, style, c) -> { obfuscated[0] |= style.isObfuscated(); return true; });
-                        if (!obfuscated[0]) submit.add("textVertices", textVertices(sequence, (float) args[1], (float) args[2], (int) args[7] | 0xff000000, (int) args[9] == 0 ? 0 : (int) args[9] | 0xff000000, (int) args[6]));
+                        if (!obfuscated[0]) submit.add("textVertices", textVertices(sequence, (float) args[1], (float) args[2], (int) args[7] | 0xff000000, (int) args[9] == 0 ? 0 : (int) args[9] | 0xff000000, (int) args[6], mode));
                     }
                     case "submitCustomGeometry" -> {
                         var pose = (PoseStack) args[0];
@@ -305,13 +306,13 @@ public final class VanillaBlockEntityRenderOracle {
         return result;
     }
 
-    static JsonArray textVertices(FormattedCharSequence sequence, float x, float y, int color, int outline, int light) {
+    static JsonArray textVertices(FormattedCharSequence sequence, float x, float y, int color, int outline, int light, Font.DisplayMode submittedMode) {
         var result = new JsonArray();
         if (outline != 0) {
             recordTextVertices(result, font.prepare8xTextOutline(sequence, x, y, outline), light, Font.DisplayMode.NORMAL);
         }
         recordTextVertices(result, font.prepareText(sequence, x, y, color, false, false, 0), light,
-            outline == 0 ? Font.DisplayMode.NORMAL : Font.DisplayMode.POLYGON_OFFSET);
+            outline == 0 ? submittedMode : Font.DisplayMode.POLYGON_OFFSET);
         return result;
     }
 

@@ -249,16 +249,14 @@ fn check_signs(game: &mut Game<'_>) {
                 };
                 assert_eq!(
                     glyphs('A'),
-                    [(0xFF00_6600, 0x3080, TEXT_NORMAL_SOLID_OVERLAY)],
+                    [(0xFF00_6600, 0x3080, TEXT_POLYGON_OFFSET_SOLID_OVERLAY)],
                     "{block} front, cached={cached}"
                 );
                 let mut expected_back = Vec::new();
                 if outlined {
                     expected_back.extend([(0xFF00_0066, 0xF0F0, TEXT_NORMAL_SOLID_OVERLAY); 8]);
-                    expected_back.push((0xFF00_00FF, 0xF0F0, TEXT_POLYGON_OFFSET_SOLID_OVERLAY));
-                } else {
-                    expected_back.push((0xFF00_00FF, 0xF0F0, TEXT_NORMAL_SOLID_OVERLAY));
                 }
+                expected_back.push((0xFF00_00FF, 0xF0F0, TEXT_POLYGON_OFFSET_SOLID_OVERLAY));
                 assert_eq!(glyphs('B'), expected_back, "{block} back, cached={cached}");
             };
             set_camera(game, player_id);
@@ -279,6 +277,25 @@ fn check_signs(game: &mut Game<'_>) {
                 assert!(game.using.is_none());
                 check(game, false);
             }
+
+            // Switching slots while holding use keeps the current hand active
+            // for the same item, even though the original stack is still in slot 0.
+            game.inventory[0] = Some(ItemStack::new("minecraft:spyglass", 1));
+            game.set_mapping_held("key.use", true);
+            for (replacement, stays_scoped) in
+                [("minecraft:spyglass", true), ("minecraft:apple", false)]
+            {
+                game.inventory[1] = Some(ItemStack::new(replacement, 1));
+                assert!(game.start_using_item());
+                game.selected = 1;
+                check(game, true);
+                game.remote_tick_using();
+                assert_eq!(game.using, stays_scoped.then_some((1, 1)));
+                check(game, stays_scoped);
+                game.selected = 0;
+                game.using = None;
+            }
+            game.set_mapping_held("key.use", false);
 
             const CART: i32 = 32;
             game.handle_packet(C::AddEntity(play::AddEntity {

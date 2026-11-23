@@ -1268,24 +1268,33 @@ mod crack_projection_tests {
 mod gpu_span_tests {
     use super::*;
     use sunrise_render_core::{PosedModelRuns, SkinRunJob};
+
     #[test]
     #[ignore = "daily"]
-    fn native_materials_stay_native_while_model_uses_pack() {
+    fn native_fluid_stays_native_while_model_uses_pack() {
+        assert_native_overlays([
+            FLUID_OVERLAY,
+            TERRAIN_MODEL_SOLID_OVERLAY,
+            TERRAIN_MODEL_CUTOUT_OVERLAY,
+            TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY,
+            TERRAIN_MODEL_TRANSLUCENT_OVERLAY,
+        ]);
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn sign_text_stays_native_while_model_uses_pack() {
+        assert_native_overlays([TEXT_NORMAL_SOLID_OVERLAY, TEXT_POLYGON_OFFSET_SOLID_OVERLAY]);
+    }
+
+    fn assert_native_overlays(overlays: impl IntoIterator<Item = u32>) {
         let _gpu = crate::test_gpu::lock();
         let adapter = crate::test_gpu::adapter().unwrap();
         let (device, queue) =
             pollster::block_on(adapter.request_device(&Default::default())).unwrap();
         let layout = crate::pack_draw::DrawUniforms::new(&device);
         let mut geometry = PackEntities::new(&device, &layout.layout);
-        for overlay in [
-            super::FLUID_OVERLAY,
-            super::TERRAIN_MODEL_SOLID_OVERLAY,
-            super::TERRAIN_MODEL_CUTOUT_OVERLAY,
-            super::TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY,
-            super::TERRAIN_MODEL_TRANSLUCENT_OVERLAY,
-            TEXT_NORMAL_SOLID_OVERLAY,
-            TEXT_POLYGON_OFFSET_SOLID_OVERLAY,
-        ] {
+        for overlay in overlays {
             let mut mixed = vec![
                 Vertex {
                     layer: 0,
