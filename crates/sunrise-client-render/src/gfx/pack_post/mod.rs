@@ -82,7 +82,7 @@ fn frame_view<'a>(frame: &'a Frame) -> UniformFrameView<'a> {
         eye: frame.eye,
         eye_rotation: frame.eye_rotation,
         first_person: frame.first_person,
-        bob: frame.bob,
+        bob: frame.posed_bob(),
         spin: frame.spin,
         sky: SkyView {
             sun_angle: frame.sky.sun_angle,
@@ -215,7 +215,7 @@ impl PackPostExt for PackPost {
             vertices: frame.hand,
             items: frame.hand_items,
             fov_degrees: frame.hand_fov_degrees,
-            bob: frame.bob,
+            bob: frame.posed_bob(),
             spin: frame.spin,
         };
         self.run_frame(

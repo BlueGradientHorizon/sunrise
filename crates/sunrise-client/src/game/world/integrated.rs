@@ -567,16 +567,24 @@ impl Game<'_> {
             let _finished = Finished(server_flags.clone());
             // MinecraftServer.spin's Thread.setPriority(8).
             sunrise_threads::favour_current();
-            let result = serve(
-                &res,
-                pack,
-                options,
-                settings,
-                launch,
-                server_flags.clone(),
-                server_tasks,
-                &ready_tx,
-            );
+            // `MinecraftServer.runServer` catches the throwable and then reports it: the panic
+            // hook only records, and the report is built here after the unwind.
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                serve(
+                    &res,
+                    pack,
+                    options,
+                    settings,
+                    launch,
+                    server_flags.clone(),
+                    server_tasks,
+                    &ready_tx,
+                )
+            }))
+            .unwrap_or_else(|payload| {
+                sunrise_client::crash::report_server_panic(&*payload);
+                Err("the integrated server panicked".into())
+            });
             if let Err(e) = result {
                 log::error!("Sunrise: integrated server: {e}");
                 *server_flags.failure.lock().unwrap() = Some(e.to_string());
@@ -1588,16 +1596,18 @@ pub(super) mod tests {
                 .name(sunrise_client::crash::INTEGRATED_SERVER_THREAD.into())
                 .stack_size(server_thread_stack())
                 .spawn(move || {
-                    crate::game::native_entity_refs::tests::with_game(|game| {
-                        game.serve_owner_request(receiver.recv().unwrap());
-                    });
+                    let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        crate::game::native_entity_refs::tests::with_game(|game| {
+                            game.serve_owner_request(receiver.recv().unwrap());
+                        });
+                    }))
+                    .unwrap_err();
+                    sunrise_client::crash::report_server_panic(&*payload);
                 })
                 .unwrap(),
         );
-        assert_eq!(
-            server.halt().unwrap_err().to_string(),
-            "the integrated server panicked"
-        );
+        server.halt().unwrap();
+        assert!(sunrise_client::crash::server_crashed());
         std::panic::set_hook(previous);
         let reports: Vec<_> = std::fs::read_dir(home.join("crash-reports"))
             .unwrap()

@@ -48,6 +48,7 @@ pub trait Hooks {
         dispatch = "flat",
         side = "server",
         contract = "listen",
+        version = 2,
         neoforge = "none (NeoForge has no such event)"
     )]
     fn entities_load(dimension: &str, chunk: [i32; 2], count: usize);

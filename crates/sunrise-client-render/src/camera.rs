@@ -739,6 +739,9 @@ pub struct Camera {
     pub fov_modifier: f32,
     pub old_fov_modifier: f32,
     pub position: [f64; 3],
+    /// Where the camera was placed before a mod's `camera_position` overrides: streaming and
+    /// the level-entry readiness follow this, never the render-only `position`.
+    pub placed_position: [f64; 3],
     pub x_rot: f32,
     pub y_rot: f32,
     pub roll: f32,
@@ -761,6 +764,7 @@ impl Default for Camera {
             fov_modifier: 0.0,
             old_fov_modifier: 0.0,
             position: [0.0; 3],
+            placed_position: [0.0; 3],
             x_rot: 0.0,
             y_rot: 0.0,
             roll: 0.0,

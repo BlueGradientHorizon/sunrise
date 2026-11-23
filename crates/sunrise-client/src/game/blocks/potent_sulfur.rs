@@ -445,9 +445,9 @@ impl Game<'_> {
                         // guests play their own.
                         let seed = self.particles.level_random().next_long();
                         if self.remote.is_some() {
-                            self.audio.play_seeded(sound, Some(at), 1.0, 1.0, seed);
+                            self.play_audio_seeded(sound, Some(at), 1.0, 1.0, seed);
                         } else {
-                            self.audio.play_unshared(sound, Some(at), 1.0, 1.0);
+                            self.play_audio_unshared(sound, Some(at), 1.0, 1.0);
                         }
                     }
                 }

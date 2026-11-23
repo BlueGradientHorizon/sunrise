@@ -32,11 +32,15 @@ impl Session {
         let Some(w) = writer.as_mut() else {
             return false;
         };
-        if w.send(&body).is_err() {
-            w.shutdown();
-            return false;
+        match w.send_play(&body) {
+            Ok(()) => true,
+            // Held packets alone fill the credit: this send is refused, the writer stays.
+            Err(SendFailure::Held) => false,
+            Err(SendFailure::Failed(_)) => {
+                w.shutdown();
+                false
+            }
         }
-        true
     }
 
     /// Physical connection and play incarnation; changes even after Play/CFG/Play.
@@ -61,18 +65,24 @@ impl Session {
             })?;
         let writer = self.writer.lock().unwrap();
         let writer = writer.as_ref().ok_or(SendPacketError::NotConnected)?;
-        let prepared = writer.prepare_packet(body, self.serial(), Some(generation));
-        if matches!(
-            prepared,
-            Err(SendPacketError::Backpressure
-                | SendPacketError::FrameTooLarge { .. }
-                | SendPacketError::EncodeFailed { .. })
-        ) {
-            // The same terminal writer-error policy as Session::send for engine packets
-            // (backpressure and transport framing failures).
-            writer.shutdown();
+        match writer.prepare_packet(body, self.serial(), Some(generation)) {
+            Ok(prepared) => Ok(prepared),
+            // Held packets alone fill the credit: refuse this send, keep the writer and holds.
+            Err(PrepareRefusal::Held) => Err(SendPacketError::Backpressure),
+            Err(PrepareRefusal::Failed(error)) => {
+                if matches!(
+                    error,
+                    SendPacketError::Backpressure
+                        | SendPacketError::FrameTooLarge { .. }
+                        | SendPacketError::EncodeFailed { .. }
+                ) {
+                    // The same terminal writer-error policy as Session::send for engine
+                    // packets (backpressure and transport framing failures).
+                    writer.shutdown();
+                }
+                Err(error)
+            }
         }
-        prepared
     }
 }
 

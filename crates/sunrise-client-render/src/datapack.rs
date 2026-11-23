@@ -47,6 +47,31 @@ impl DataPack {
             selection: None,
         }
     }
+    /// The pack's effective source: its root with the overlay directories `meta` (its
+    /// `pack.mcmeta`) names for the data pack format over it, later entries winning
+    /// (`Pack.readPackMetadata` selects them; the pack's resources compose them with the root).
+    /// A pack with no applicable overlay keeps its root as it is.
+    fn with_overlays(root: ResourceSource, meta: &serde_json::Value) -> ResourceSource {
+        let overlays = crate::packs::data_overlays(meta);
+        if overlays.is_empty() {
+            return root;
+        }
+        let layers = std::iter::once(Ok(root.clone())).chain(
+            overlays
+                .iter()
+                .map(|directory| root.subdirectory(directory)),
+        );
+        let mut files = BTreeMap::new();
+        for layer in layers.flatten() {
+            for name in layer.list("") {
+                files.insert(
+                    name.clone(),
+                    crate::resource_source::Resource::file(layer.clone(), name),
+                );
+            }
+        }
+        ResourceSource::indexed(files)
+    }
     /// Retain the pack's parsed `filter.block` section for this generation.
     pub fn with_filter(mut self, filter: Vec<Filter>) -> Self {
         self.filter = filter;
@@ -211,9 +236,9 @@ pub(crate) fn discover_folder_with(
         if path.is_dir()
             && let Some(meta) = folder_metadata(&path)
         {
+            let root = DataPack::with_overlays(ResourceSource::directory(path), &meta);
             packs.push(
-                DataPack::from_source(format!("file/{name}"), ResourceSource::directory(path))
-                    .with_filter(filter_of(&meta)),
+                DataPack::from_source(format!("file/{name}"), root).with_filter(filter_of(&meta)),
             );
         } else if path
             .file_name()
@@ -221,20 +246,20 @@ pub(crate) fn discover_folder_with(
             && let Ok(z) = Zip::open(&path)
             && z.contains("pack.mcmeta")
         {
-            let filter = match z
+            let (filter, root) = match z
                 .read("pack.mcmeta")
                 .and_then(|bytes| crate::packs::first_json(&bytes).map_err(std::io::Error::other))
             {
-                Ok(meta) => filter_of(&meta),
+                Ok(meta) => (
+                    filter_of(&meta),
+                    DataPack::with_overlays(ResourceSource::opened_archive(z), &meta),
+                ),
                 Err(error) => {
                     log::error!("Failed to read the filter section from data pack {name}: {error}");
-                    Vec::new()
+                    (Vec::new(), ResourceSource::opened_archive(z))
                 }
             };
-            packs.push(
-                DataPack::from_source(format!("file/{name}"), ResourceSource::opened_archive(z))
-                    .with_filter(filter),
-            );
+            packs.push(DataPack::from_source(format!("file/{name}"), root).with_filter(filter));
         }
     }
     packs.sort_by(|a, b| compare_ids(&a.id, &b.id));
@@ -2573,6 +2598,52 @@ mod tests {
         assert_eq!(
             files[path],
             ("readable".to_owned(), br#"{"power":7}"#.to_vec())
+        );
+    }
+
+    /// A data pack's applicable overlay composes with its root: a file an overlay replaces reads the
+    /// overlay's bytes, an overlay-only file exists, and an overlay for another format stays out.
+    #[test]
+    fn a_data_packs_active_overlays_replace_and_extend_its_root() {
+        let scratch = tempfile::tempdir().unwrap();
+        let pack = scratch.path().join("overlaid");
+        for (path, bytes) in [
+            (
+                "pack.mcmeta",
+                br#"{"pack":{"description":"o"},"overlays":{"entries":[
+                    {"directory":"now","min_format":121,"max_format":121},
+                    {"directory":"later","min_format":999,"max_format":999}]}}"#
+                    .as_slice(),
+            ),
+            ("data/demo/value/root.json", b"root"),
+            ("data/demo/value/both.json", b"from the root"),
+            ("now/data/demo/value/both.json", b"from the overlay"),
+            ("now/data/demo/value/only.json", b"overlay only"),
+            ("later/data/demo/value/never.json", b"other format"),
+        ] {
+            let at = pack.join(path);
+            fs::create_dir_all(at.parent().unwrap()).unwrap();
+            fs::write(at, bytes).unwrap();
+        }
+        let packs = discover_folder(scratch.path());
+        let source = packs[0].source();
+        assert_eq!(source.read("data/demo/value/root.json").unwrap(), b"root");
+        assert_eq!(
+            source.read("data/demo/value/both.json").unwrap(),
+            b"from the overlay"
+        );
+        assert_eq!(
+            source.read("data/demo/value/only.json").unwrap(),
+            b"overlay only"
+        );
+        assert!(!source.contains("data/demo/value/never.json"));
+        assert_eq!(
+            packs[0].list("data/demo/value/"),
+            [
+                "data/demo/value/both.json",
+                "data/demo/value/only.json",
+                "data/demo/value/root.json"
+            ]
         );
     }
 }

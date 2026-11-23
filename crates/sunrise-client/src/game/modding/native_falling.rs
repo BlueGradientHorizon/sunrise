@@ -868,7 +868,7 @@ mod tests {
                         event: &mut EntityJoinLevelEvent<'_>,
                     ) -> Flow {
                         if event.kind == "minecraft:falling_block" {
-                            self.joins.lock().unwrap().push(event.entity);
+                            self.joins.lock().unwrap().push(event.subject.id());
                         }
                         Flow::Continue
                     }
@@ -1010,6 +1010,101 @@ mod tests {
                         assert_eq!(game.entity_position(joined), Some(at));
                         assert_eq!(game.falling.len(), 1);
                     });
+                });
+            },
+        );
+    }
+
+    /// `EntityJoinLevelEvent.getEntity`: the join listener reads the joining entity through its
+    /// own handle even where `Host::entity` cannot find it (a hidden section).
+    #[test]
+    #[ignore = "daily"]
+    fn a_join_listener_reads_a_falling_block_entering_a_hidden_column_by_its_subject() {
+        crate::game::in_own_process(
+            "game::native_falling::tests::a_join_listener_reads_a_falling_block_entering_a_hidden_column_by_its_subject",
+            || {
+                use mod_api::{EntityJoinLevelEvent, Falling, Flow, Hooks, Host, ServerHost};
+
+                struct Listener(Arc<Mutex<Vec<(bool, Option<[f64; 3]>)>>>);
+                #[mod_api::__subscriptions]
+                impl Hooks for Listener {
+                    fn entity_join_level(
+                        &self,
+                        host: &mut dyn ServerHost,
+                        event: &mut EntityJoinLevelEvent<'_>,
+                    ) -> Flow {
+                        if event.kind == "minecraft:falling_block" {
+                            let host: &dyn Host = host;
+                            self.0.lock().unwrap().push((
+                                host.entity(event.subject.id()).is_some(),
+                                event.subject.position(host),
+                            ));
+                        }
+                        Flow::Continue
+                    }
+                }
+
+                let heard = Arc::new(Mutex::new(Vec::new()));
+                let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+                    "hidden-join-subject",
+                    Box::new(Listener(heard.clone())),
+                )]
+                .into();
+                super::super::native_entity_refs::tests::with_game(|game| {
+                    mod_platform::testing::with_mods(mods, || {
+                        game.world_root = game.save.root.clone();
+                        let at = [1000.5, 70.0, 0.5];
+                        let level = game.level(game.dim.id()).unwrap();
+                        let host: &dyn mod_api::Host = game;
+                        let sand = host.block_state_id("minecraft:sand").unwrap();
+                        level
+                            .spawn_falling_block(game, sand, at, [0.0; 3], Falling::default())
+                            .unwrap()
+                            .unwrap();
+                    });
+                });
+                assert_eq!(*heard.lock().unwrap(), [(false, Some([1000.5, 70.0, 0.5]))]);
+            },
+        );
+    }
+
+    /// `PersistentEntitySectionManager.storeChunkSections`: a column whose old entity record
+    /// cannot be read is left untouched, and the save says it was incomplete.
+    #[test]
+    #[ignore = "daily"]
+    fn a_save_with_an_unreadable_old_entity_record_reports_the_incomplete_column() {
+        crate::game::in_own_process(
+            "game::native_falling::tests::a_save_with_an_unreadable_old_entity_record_reports_the_incomplete_column",
+            || {
+                use mod_api::{Falling, Host};
+                super::super::native_entity_refs::tests::with_game(|game| {
+                    let root = tempfile::tempdir().unwrap();
+                    game.world_root = root.path().to_path_buf();
+                    let level = game.level(game.dim.id()).unwrap();
+                    let host: &dyn Host = game;
+                    let sand = host.block_state_id("minecraft:sand").unwrap();
+                    // Column (62, 0), outside the kept terrain; its region file's entry for it
+                    // holds a record that cannot be decoded.
+                    let region = game.save.root.join("entities");
+                    std::fs::create_dir_all(&region).unwrap();
+                    // One sector at offset 2: a length, an unknown compression type, garbage.
+                    let mut file = vec![0u8; 8192 + 4096];
+                    file[120..124].copy_from_slice(&[0, 0, 2, 1]);
+                    file[8192..8197].copy_from_slice(&[0, 0, 0, 64, 99]);
+                    std::fs::write(region.join("r.1.0.mca"), file).unwrap();
+                    level
+                        .spawn_falling_block(
+                            game,
+                            sand,
+                            [1000.5, 70.0, 0.5],
+                            [0.0; 3],
+                            Falling::default(),
+                        )
+                        .unwrap()
+                        .unwrap();
+                    let error = game.save_entities(true).unwrap_err();
+                    assert!(error.to_string().contains("1 column"), "{error}");
+                    assert!(game.entity_save_complete().is_err());
                 });
             },
         );

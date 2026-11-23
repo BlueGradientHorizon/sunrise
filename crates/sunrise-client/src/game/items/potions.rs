@@ -655,8 +655,7 @@ impl Game<'_> {
             {
                 m.velocity = velocity;
             }
-            self.audio
-                .play("minecraft:entity.silverfish.hurt", Some(at), 1.0, 1.0);
+            self.play_audio("minecraft:entity.silverfish.hurt", Some(at), 1.0, 1.0);
         }
     }
 }
@@ -856,7 +855,7 @@ impl Game<'_> {
                     }
                     _ => ("minecraft:entity.lingering_potion.throw", 0.5),
                 };
-                self.audio.play(sound, Some(eye), 0.5, pitch);
+                self.play_audio(sound, Some(eye), 0.5, pitch);
                 // Projectile.shootFromRotation(xRot, yRot, -20, power, 1.0), with
                 // what the thrower last moved (getKnownMovement).
                 let velocity = self.known_player_movement();
@@ -890,7 +889,7 @@ impl Game<'_> {
                         collect_dragon_breath(player.bounds(), &mut self.breath_clouds)
                 {
                     let player_pos = [player.position.x, player.position.y, player.position.z];
-                    self.audio.play(
+                    self.play_audio(
                         "minecraft:item.bottle.fill_dragonbreath",
                         Some(player_pos),
                         1.0,
@@ -927,8 +926,7 @@ impl Game<'_> {
                 else {
                     return Ok(false);
                 };
-                self.audio
-                    .play("minecraft:item.bottle.fill", Some(at), 1.0, 1.0);
+                self.play_audio("minecraft:item.bottle.fill", Some(at), 1.0, 1.0);
                 self.post_block_game_event(
                     "minecraft:fluid_pickup",
                     hit.pos,
@@ -961,8 +959,7 @@ impl Game<'_> {
             return Ok(false);
         }
         let centre = pos.map(|v| f64::from(v) + 0.5);
-        self.audio
-            .play("minecraft:entity.generic.splash", Some(centre), 1.0, 1.0);
+        self.play_audio("minecraft:entity.generic.splash", Some(centre), 1.0, 1.0);
         self.fill_held(ItemStack::new("minecraft:glass_bottle", 1));
         // PotionItem.useOn: five ServerLevel.sendParticles(SPLASH). The level
         // random places each one (count 1, no spread, speed 1). The packet is
@@ -987,8 +984,7 @@ impl Game<'_> {
                 randomization: 0,
             });
         }
-        self.audio
-            .play("minecraft:item.bottle.empty", Some(centre), 1.0, 1.0);
+        self.play_audio("minecraft:item.bottle.empty", Some(centre), 1.0, 1.0);
         self.post_block_game_event("minecraft:fluid_place", pos, None, None);
         if let Some(mud) = self.pack.assets.registry.default_state("minecraft:mud") {
             self.level_set(pos, mud)?;
@@ -1678,7 +1674,7 @@ impl Game<'_> {
                 && let Some(p) = self.player.as_ref()
             {
                 let at = [p.position.x, p.position.y, p.position.z];
-                self.audio.play(sound, Some(at), 1.0, 1.0);
+                self.play_audio(sound, Some(at), 1.0, 1.0);
             }
             if self.remote.is_none()
                 && mod_api::__private::has_scoped_hook(mod_api::HookId::OnEffectAdded)
@@ -1773,7 +1769,7 @@ impl Game<'_> {
                 && let Some(m) = self.mobs.iter().find(|m| m.id == id && !m.removed)
             {
                 let at = [m.position.x, m.position.y, m.position.z];
-                self.audio.play(sound, Some(at), 1.0, 1.0);
+                self.play_audio(sound, Some(at), 1.0, 1.0);
             }
             if self.remote.is_none()
                 && mod_api::__private::has_scoped_hook(mod_api::HookId::OnEffectAdded)

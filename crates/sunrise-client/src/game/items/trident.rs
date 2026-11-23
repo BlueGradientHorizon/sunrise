@@ -157,8 +157,7 @@ impl Game<'_> {
         if let Some(bolt) = self.bolts.last_mut() {
             bolt.cause = Some(guest);
         }
-        self.audio
-            .play("minecraft:item.trident.thunder", Some(at), 5.0, 1.0);
+        self.play_audio("minecraft:item.trident.thunder", Some(at), 5.0, 1.0);
     }
     /// `minecraft:hit_block` of Channeling (`AbstractArrow.hitBlockEnchantmentEffects`):
     /// the block the trident's path first hits, if it is a lightning rod, with
@@ -283,7 +282,7 @@ impl Game<'_> {
                             LevelSound::new(&sound, at, 1.0, 1.0).in_source(SoundSource::Players);
                         self.play_bound_sound(sound, player, None);
                     }
-                    _ => self.audio.play(&sound, at, 1.0, 1.0),
+                    _ => self.play_audio(&sound, at, 1.0, 1.0),
                 }
                 if let (Some(player), Some(name)) =
                     (self.lan_acting_uuid, self.lan_acting_name.clone())
@@ -512,7 +511,7 @@ impl Game<'_> {
             let pitch = ((self.world.random.next_float() - self.world.random.next_float()) * 0.7
                 + 1.0)
                 * 2.0;
-            self.audio.play(
+            self.play_audio(
                 "minecraft:entity.item.pickup",
                 Some([by.feet.x, by.feet.y, by.feet.z]),
                 0.2,
@@ -534,7 +533,7 @@ impl Game<'_> {
         };
         if extinguished {
             let pitch = 1.6 + (t.random.next_float() - t.random.next_float()) * 0.4;
-            self.audio.play(
+            self.play_audio(
                 "minecraft:entity.generic.extinguish_fire",
                 Some([to.x, to.y, to.z]),
                 0.7,
@@ -666,7 +665,7 @@ impl Game<'_> {
                 let to = t.position;
                 self.entity_section_step(t.id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
                 if t.returning == 0 {
-                    self.audio.play(
+                    self.play_audio(
                         "minecraft:item.trident.return",
                         Some([t.position.x, t.position.y, t.position.z]),
                         10.0,
@@ -793,7 +792,7 @@ impl Game<'_> {
                         if t.deflected_by != Some(breeze_id) {
                             let sound_at =
                                 [breeze.position.x, breeze.position.y, breeze.position.z];
-                            self.audio.play(
+                            self.play_audio(
                                 "minecraft:entity.breeze.deflect",
                                 Some(sound_at),
                                 1.0,
@@ -1053,7 +1052,7 @@ impl Game<'_> {
                                 t.velocity.y * (-0.5 * 0.2),
                                 t.velocity.z * (-0.5 * 0.02),
                             );
-                            self.audio.play(
+                            self.play_audio(
                                 "minecraft:item.trident.hit",
                                 Some([t.position.x, t.position.y, t.position.z]),
                                 1.0,
@@ -1106,8 +1105,7 @@ impl Game<'_> {
                         t.last_state = Some(self.world.block(block.x, block.y, block.z));
                         t.shake = 7;
                         let sound = t.hit_ground_sound();
-                        self.audio
-                            .play(&sound, Some([stop.x, stop.y, stop.z]), 1.0, 1.0);
+                        self.play_audio(&sound, Some([stop.x, stop.y, stop.z]), 1.0, 1.0);
                     }
                 }
                 if !t.in_ground {

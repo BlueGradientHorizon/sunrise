@@ -147,7 +147,12 @@ impl Wire for crate::Identifier {
     layout_fields!("validated-identifier:v1"; "namespace" => String, "path" => String);
     const MIN: usize = 8;
     fn put(&self, out: &mut Writer) {
-        if out.charge_with(|budget| budget.identifier_data()) {
+        // The identifier owns its boxed `namespace:path` text, one byte (the separator) longer
+        // than the two wire strings.
+        if out.charge_with(|budget| {
+            budget.identifier_data()?;
+            budget.bytes(1)
+        }) {
             out.put_str(self.namespace());
             out.put_str(self.path());
         }
@@ -157,7 +162,7 @@ impl Wire for crate::Identifier {
         let path = input.take_str()?;
         input.charge_with(|budget| {
             budget.identifier_data()?;
-            budget.bytes(namespace.len() as u64 + path.len() as u64)
+            budget.bytes(namespace.len() as u64 + path.len() as u64 + 1)
         })?;
         Self::from_parts(namespace, path).map_err(|_| WireError::Invalid("invalid identifier"))
     }

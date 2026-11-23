@@ -1269,6 +1269,7 @@ fn interact_loot_exposes_block_origin_block_entity_level_interacting_entity_and_
             dimension: "minecraft:overworld".into(),
             game_time: 100,
             day_time: 20,
+            clocks: Default::default(),
             raining: false,
             thundering: false,
         }),

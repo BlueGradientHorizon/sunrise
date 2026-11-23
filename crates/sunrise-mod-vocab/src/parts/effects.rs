@@ -98,6 +98,7 @@ impl dyn crate::Registrar + '_ {
 /// Call after effect-key completion, so unknown effects retain their ordinary refusal.
 pub fn validate_effect_part_owners<'a>(
     owner: impl Fn(&str) -> Option<&'a str>,
+    provider_admitted: impl Fn(&str) -> bool,
 ) -> Result<(), Vec<String>> {
     let Some(installed) = installed() else {
         return Ok(());
@@ -115,7 +116,13 @@ pub fn validate_effect_part_owners<'a>(
         .for_hook(HookId::ShouldApplyEffectTickThisTick);
     let subscribed_added = installed.keys.for_hook(HookId::OnEffectAdded);
     for id in ids {
-        let parts = &installed.keys.effects[id];
+        let lost = |mod_id: &str| {
+            optional_provider_lost(&installed.dependencies, &provider_admitted, mod_id, id)
+        };
+        let parts: Vec<_> = installed.keys.effects[id]
+            .iter()
+            .filter(|part| !lost(part.mod_id))
+            .collect();
         if parts.is_empty() {
             continue;
         }
@@ -125,18 +132,26 @@ pub fn validate_effect_part_owners<'a>(
             }
             continue;
         };
-        for part in parts {
+        for part in &parts {
             if !installed.dependencies.permits(part.mod_id, owner) {
                 refused.push(format!("mod {} attached {} to effect {id}, declared by package {owner}; declare {owner} as a dependency", part.mod_id, part.type_name));
             }
         }
         if let Some(parts) = subscribed_ticks.and_then(|table| table.effects.get(id)) {
-            let mut parts = parts.clone();
+            let mut parts: Vec<_> = parts
+                .iter()
+                .filter(|part| !lost(part.mod_id))
+                .cloned()
+                .collect();
             parts.sort_by_key(|part| (part.mod_id != owner, part.mod_index, part.order));
             ticks.insert(id.clone(), parts);
         }
         if let Some(parts) = subscribed_added.and_then(|table| table.effects.get(id)) {
-            let mut parts = parts.clone();
+            let mut parts: Vec<_> = parts
+                .iter()
+                .filter(|part| !lost(part.mod_id))
+                .cloned()
+                .collect();
             parts.sort_by_key(|part| (part.mod_id != owner, part.mod_index, part.order));
             added.insert(id.clone(), parts);
         }
@@ -150,6 +165,20 @@ pub fn validate_effect_part_owners<'a>(
     } else {
         Err(refused)
     }
+}
+
+/// Whether `mod_id` is an optional dependent of the package that owns the namespace of the
+/// effect `id`, and that package was not admitted: its Part is dropped, not refused.
+pub(crate) fn optional_provider_lost(
+    dependencies: &crate::__private::EffectiveDependencies,
+    provider_admitted: &dyn Fn(&str) -> bool,
+    mod_id: &str,
+    id: &str,
+) -> bool {
+    let namespace = id.split_once(':').map_or("", |(namespace, _)| namespace);
+    mod_id != namespace
+        && dependencies.kind(mod_id, namespace) == Some(crate::DependencyKind::Optional)
+        && !provider_admitted(namespace)
 }
 
 /// Run each effect Part's cadence and action as one pair, sharing the holder snapshots.

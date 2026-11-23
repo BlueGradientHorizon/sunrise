@@ -2,6 +2,10 @@ ids = [
     "type:ChunkRefusal",
     "type:ChunkRefusal.NotInPlace",
     "type:ChunkRefusal.TooManyChunks",
+    "handle:LevelRef::relight_chunks",
+    "handle:ChunkRef::resend",
+    "behaviour:level_relight_chunks",
+    "behaviour:chunk_resend",
 ]
 why = "Relight and resend no longer refuse parked levels or impose mod call or queue quotas. Queued work belongs to the resolved level. The light scheduler counts actual jobs until they return, following vanilla ThreadedLevelLightEngine.runUpdate, and asks dynamic light in the owning level before processing edits as in NeoForge BlockLightEngine.getEmission. Resends wait for the column's light work (vanilla ChunkMap.waitForLightBeforeSending, ThreadedLevelLightEngine.waitForPendingTasks and ChunkHolder.getChunkToSend) and go only to sent-chunk holders (ChunkMap.getPlayers/isChunkTracked), with the updated light in the packet as in vanilla and NeoForge PlayerChunkSender.sendChunk. Removing the two refusal variants also changes the ChunkRefusal Wire layout."
 migrate = """

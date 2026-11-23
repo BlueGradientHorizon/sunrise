@@ -191,10 +191,7 @@ impl Game<'_> {
             let current = self
                 .mod_book_live_opening(conn, catalog)
                 .map_err(|_| R::Changed)?;
-            if current.uuid != opening.uuid
-                || current.kind != opening.kind
-                || current.slots != opening.slots
-            {
+            if !same_opening(&current, &opening) {
                 return Err(R::Changed);
             }
             return match answer {
@@ -267,45 +264,24 @@ impl Game<'_> {
         {
             return Err(R::Unavailable);
         }
+        // The state the placement is calculated against is read before the listeners that may
+        // write (`recipe_sources`), and must be the same after them: an opening or a backing slot
+        // they changed without closing the window is not this placement's any more.
+        let state = self.block_book_state(opening)?;
         let raw_sources = self.lan_recipe_sources(opening.gi, opening.kind, pos);
-        let opening = self
+        let current = self
             .mod_book_live_opening(conn, catalog)
             .map_err(|_| R::Changed)?;
-        if opening.slots != Slots::Block(pos)
+        if !same_opening(&current, opening)
             || !matches!(self.world.block_entities.get(&pos), Some(BlockEntity::Mod(m)) if !m.id().is_empty())
         {
             return Err(R::Changed);
         }
-        let (before_main, main_backings, limits) = {
-            let host = self.lan.as_ref().ok_or(R::Changed)?;
-            let guest = host.hub.guests.get(opening.gi).ok_or(R::Changed)?;
-            let before_main = opening
-                .slots
-                .read(&self.world, guest)
-                .filter(|items| items.len() == opening.kind.slots)
-                .ok_or(R::Unavailable)?;
-            let mut seen_main = BTreeSet::new();
-            let mut main_backings = Vec::with_capacity(opening.kind.slots);
-            let mut limits = Vec::with_capacity(opening.kind.slots);
-            for slot in 0..opening.kind.slots {
-                match opening.slots.held_block_slot(&self.world, guest, slot) {
-                    Some((bpos, bslot)) => {
-                        if !seen_main.insert((bpos, bslot))
-                            || self.world.block_entities.get(&bpos).is_none()
-                        {
-                            return Err(R::Unavailable);
-                        }
-                        main_backings.push(Some((bpos, bslot)));
-                        limits.push(self.world.container_stack_limit(bpos));
-                    }
-                    None => {
-                        main_backings.push(None);
-                        limits.push(None);
-                    }
-                }
-            }
-            (before_main, main_backings, limits)
-        };
+        if self.block_book_state(&current)? != state {
+            return Err(R::Changed);
+        }
+        let opening = current;
+        let (before_main, main_backings, limits) = state;
         let mut cleared_blocks = BTreeSet::new();
         for &slot in plan.cleared_slots() {
             if opening.hidden.contains(&slot) {
@@ -703,6 +679,61 @@ impl Game<'_> {
             self.publish_backed_menu_click(conn, opening.uuid, menu_ref, opening.window);
         }
         Ok(post)
+    }
+}
+
+/// A live opening's identity: the guest and window it is for, the menu and where its slots are.
+fn same_opening(a: &LiveOpening, b: &LiveOpening) -> bool {
+    a.gi == b.gi
+        && a.uuid == b.uuid
+        && a.window == b.window
+        && a.instance == b.instance
+        && std::ptr::eq(a.kind, b.kind)
+        && a.slots == b.slots
+        && a.creative == b.creative
+        && a.hidden == b.hidden
+        && a.owned_slots == b.owned_slots
+}
+
+/// A block menu's main slots as a placement reads them: their stacks, the block slot backing
+/// each and its stack limit.
+type BlockBookState = (
+    Vec<Option<ItemStack>>,
+    Vec<Option<((i32, i32, i32), usize)>>,
+    Vec<Option<u32>>,
+);
+
+impl Game<'_> {
+    fn block_book_state(&self, opening: &LiveOpening) -> Result<BlockBookState, sync::Refusal> {
+        use sync::Refusal as R;
+        let host = self.lan.as_ref().ok_or(R::Changed)?;
+        let guest = host.hub.guests.get(opening.gi).ok_or(R::Changed)?;
+        let before_main = opening
+            .slots
+            .read(&self.world, guest)
+            .filter(|items| items.len() == opening.kind.slots)
+            .ok_or(R::Unavailable)?;
+        let mut seen_main = BTreeSet::new();
+        let mut main_backings = Vec::with_capacity(opening.kind.slots);
+        let mut limits = Vec::with_capacity(opening.kind.slots);
+        for slot in 0..opening.kind.slots {
+            match opening.slots.held_block_slot(&self.world, guest, slot) {
+                Some((bpos, bslot)) => {
+                    if !seen_main.insert((bpos, bslot))
+                        || self.world.block_entities.get(&bpos).is_none()
+                    {
+                        return Err(R::Unavailable);
+                    }
+                    main_backings.push(Some((bpos, bslot)));
+                    limits.push(self.world.container_stack_limit(bpos));
+                }
+                None => {
+                    main_backings.push(None);
+                    limits.push(None);
+                }
+            }
+        }
+        Ok((before_main, main_backings, limits))
     }
 }
 

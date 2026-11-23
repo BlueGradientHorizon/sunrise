@@ -46,7 +46,40 @@ enum BoundConditionKind {
     Inverted,
     AllOf,
     AnyOf,
-    Leaf { kind: String, data: Value },
+    Leaf {
+        kind: String,
+        data: Value,
+    },
+    /// A vanilla loot condition no other arm answers, tested by the shared loot evaluator with
+    /// the advancement's level and `this_entity`. `type` holds the full id.
+    Loot(Value),
+    /// A condition kind a mod registered, decoded once at load.
+    Registered(Arc<RegisteredCondition>),
+}
+
+/// A mod's condition kind bound at advancement load.
+struct RegisteredCondition {
+    kind: String,
+    entry: sunrise_world::loot::types::BoundEntry<dyn sunrise_world::loot::types::BoundCondition>,
+}
+
+impl std::fmt::Debug for RegisteredCondition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("RegisteredCondition")
+            .field(&self.kind)
+            .finish()
+    }
+}
+
+/// What a bound `player` predicate draws on besides the entities and the world: the level's
+/// random and the tag reads mod conditions see, the way a loot roll lends them.
+pub struct LootRuntime<'a, R> {
+    pub random: &'a mut R,
+    pub tags: &'a dyn sunrise_world::loot::LootTags,
+    /// The loot data the shared evaluator reads (predicates, tags, enchantments), if loaded.
+    pub data: Option<&'a sunrise_world::loot::LootData>,
+    /// `ClockManager` total ticks by clock id, for `time_check`.
+    pub clocks: &'a std::collections::BTreeMap<String, i64>,
 }
 
 struct BoundConditionNode {
@@ -104,7 +137,12 @@ impl BoundCondition {
 
     /// `AllOfCondition`, `AnyOfCondition` and `InvertedLootItemCondition`:
     /// evaluate in list order and stop as soon as the current group has an answer.
-    pub fn test(&self, ctx: &Entities, w: &dyn World) -> bool {
+    pub fn test<R: sunrise_core::random::RandomSource + Clone>(
+        &self,
+        ctx: &Entities,
+        w: &dyn World,
+        runtime: &mut LootRuntime<'_, R>,
+    ) -> bool {
         enum Resume<'a> {
             Invert,
             Group {
@@ -117,6 +155,33 @@ impl BoundCondition {
         loop {
             let mut result = match &node.kind {
                 BoundConditionKind::Leaf { kind, data } => condition_leaf_typed(kind, data, ctx, w),
+                BoundConditionKind::Loot(condition) => {
+                    let place = sunrise_world::loot::LootPlace {
+                        origin: Some(ctx.origin),
+                        level: Some(sunrise_world::loot::LootLevel {
+                            dimension: w.dimension().to_owned(),
+                            raining: w.weather().0,
+                            thundering: w.weather().1,
+                            clocks: runtime.clocks.clone(),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    };
+                    let entity = ctx.this.map(loot_entity);
+                    runtime.data.is_some_and(|data| {
+                        data.condition_holds(condition, entity.as_ref(), place, runtime.random)
+                    })
+                }
+                BoundConditionKind::Registered(registered) => {
+                    let entity = ctx.this.map(loot_entity);
+                    let facts = sunrise_world::loot::LootContext {
+                        entity: entity.as_ref(),
+                        ..Default::default()
+                    };
+                    registered
+                        .entry
+                        .test(&facts, &mut *runtime.random, runtime.tags)
+                }
                 BoundConditionKind::Inverted => {
                     stack.push(Resume::Invert);
                     node = &node.terms[0].0;
@@ -150,6 +215,44 @@ impl BoundCondition {
             }
         }
     }
+}
+
+/// `this_entity` of an advancement's context as a loot entity: the facts a mod's condition
+/// reads through its parameters view.
+fn loot_entity(view: &EntityView) -> sunrise_world::loot::LootEntity {
+    use sunrise_world::loot::{LootEntity, LootStack};
+    const SLOTS: [&str; 7] = [
+        "mainhand", "offhand", "head", "chest", "legs", "feet", "body",
+    ];
+    let mut entity = LootEntity::new(&view.kind);
+    entity.on_fire = view.on_fire;
+    entity.baby = view.baby;
+    entity.vehicle = view.vehicle.as_deref().map(|v| Box::new(loot_entity(v)));
+    for (slot, item) in SLOTS.iter().zip(&view.equipment) {
+        if let Some(item) = item {
+            entity.equipment.push((
+                (*slot).into(),
+                LootStack {
+                    item: item.id.clone(),
+                    count: item.count as i32,
+                    damage: item.damage as i32,
+                    enchantments: item
+                        .enchantments
+                        .iter()
+                        .map(|(id, level)| (id.clone(), *level as i32))
+                        .collect(),
+                    potion: item.potion.clone(),
+                    map: false,
+                    exploration: None,
+                    ominous_amplifier: None,
+                    stew_effects: Vec::new(),
+                    names: Vec::new(),
+                    components: Vec::new(),
+                },
+            ));
+        }
+    }
+    entity
 }
 
 fn has_json_key(v: &Value, keys: &[&str]) -> bool {
@@ -3155,6 +3258,104 @@ mod tests {
             "bare ids not read as minecraft: {failed:?}"
         );
     }
+    /// A mod condition kind `test:holds` that passes only for the entity type its data names.
+    struct EntityIs;
+    impl sunrise_world::loot::types::BoundCondition for EntityIs {
+        fn test(
+            &self,
+            ctx: &sunrise_world::loot::LootContext<'_>,
+            _: &mut dyn sunrise_world::loot::types::RollRandom,
+            _: &dyn sunrise_world::loot::LootTags,
+        ) -> Result<bool, String> {
+            Ok(ctx.entity.is_some_and(|e| e.kind == "minecraft:player"))
+        }
+    }
+    struct Codec;
+    impl sunrise_world::loot::types::Registry for Codec {
+        fn contains(&self, kind: &str, function: bool) -> bool {
+            !function && kind == "test:holds"
+        }
+        fn conditional(&self, _: &str) -> bool {
+            false
+        }
+        fn decode_function(
+            &self,
+            kind: &str,
+            _: &Value,
+        ) -> Result<sunrise_world::loot::types::DecodedFunction, String> {
+            Err(format!("unknown {kind}"))
+        }
+        fn decode_condition(
+            &self,
+            _: &str,
+            _: &Value,
+        ) -> Result<sunrise_world::loot::types::DecodedCondition, String> {
+            Ok(sunrise_world::loot::types::DecodedCondition {
+                rule: Arc::new(EntityIs),
+                referenced_params: vec!["minecraft:this_entity".into()],
+            })
+        }
+    }
+    fn ctx_for(view: &EntityView) -> Entities<'_> {
+        Entities {
+            this: Some(view),
+            origin: [0.0; 3],
+            tool: None,
+            event_block: None,
+            target: None,
+            interacting: None,
+        }
+    }
+    #[test]
+    fn a_registered_condition_in_a_player_predicate_runs_with_the_players_context() {
+        let advancement = serde_json::json!({"criteria": {"seen": {
+            "trigger": "test:connected",
+            "conditions": {"player": {"type": "test:holds"}}
+        }}});
+        let mut source = PredicateSource::empty()
+            .with_types(sunrise_world::loot::types::Types::new(Arc::new(Codec)));
+        let bound = parse_with("test:registered", &advancement, &mut source).unwrap();
+        let player = bound.criteria[0].player.as_ref().unwrap();
+        let view = |kind: &str| EntityView {
+            kind: kind.into(),
+            ..Default::default()
+        };
+        let (me, cow) = (view("minecraft:player"), view("minecraft:cow"));
+        assert!(holds(player, &ctx_for(&me), &Flat));
+        assert!(!holds(player, &ctx_for(&cow), &Flat));
+    }
+    struct NoTags;
+    impl sunrise_world::loot::LootTags for NoTags {
+        fn members(&self, _: &str, _: &str) -> Option<Vec<String>> {
+            None
+        }
+        fn item_tag_names(&self) -> Option<&sunrise_world::loot::ItemTagNames> {
+            None
+        }
+    }
+    /// A bound `player` predicate tested with a fixed seed, no tags and the Overworld clock at
+    /// tick 30000.
+    fn holds(player: &BoundCondition, ctx: &Entities, w: &dyn World) -> bool {
+        let root = tempfile::tempdir().unwrap();
+        let data = sunrise_world::loot::LootData::load(
+            root.path(),
+            &sunrise_world::loot::PackOverlay::NONE,
+            &sunrise_world::item_defaults::ItemDefaults::decode(b"{}").unwrap(),
+        )
+        .unwrap();
+        let clocks = std::collections::BTreeMap::from([("minecraft:overworld".to_owned(), 30000)]);
+        let mut random = sunrise_core::random::LegacyRandom::new(7);
+        player.test(
+            ctx,
+            w,
+            &mut LootRuntime {
+                random: &mut random,
+                tags: &NoTags,
+                data: Some(&data),
+                clocks: &clocks,
+            },
+        )
+    }
     struct Weather<F>(F);
     impl<F: Fn() -> (bool, bool)> World for Weather<F> {
         fn is_loaded(&self, pos: [i32; 3]) -> bool {
@@ -3215,13 +3416,87 @@ mod tests {
         let valid = definition(serde_json::json!({"type": "minecraft:all_of", "terms": []}));
         let advancement = parse("test:valid", &valid).unwrap();
         assert_eq!(advancement.criteria[0].conditions["custom"]["terms"], false);
-        assert!(
-            advancement.criteria[0]
-                .player
-                .as_ref()
+        assert!(holds(
+            advancement.criteria[0].player.as_ref().unwrap(),
+            &ctx,
+            &Flat
+        ));
+        // `LootItemRandomChanceCondition` with a literal chance draws once and can match;
+        // a kind this evaluator cannot answer is refused at load, not left to never match.
+        let sure =
+            definition(serde_json::json!({"type": "minecraft:random_chance", "chance": 1.0}));
+        let sure = parse("test:sure", &sure).unwrap();
+        assert!(holds(
+            sure.criteria[0].player.as_ref().unwrap(),
+            &ctx,
+            &Flat
+        ));
+        let never =
+            definition(serde_json::json!({"type": "minecraft:random_chance", "chance": 0.0}));
+        let never = parse("test:never", &never).unwrap();
+        assert!(!holds(
+            never.criteria[0].player.as_ref().unwrap(),
+            &ctx,
+            &Flat
+        ));
+        // A provider chance is a vanilla condition too: it loads and the shared evaluator draws it.
+        let provider = definition(serde_json::json!({
+            "type": "minecraft:random_chance",
+            "chance": {"type": "minecraft:constant", "value": 1.0}
+        }));
+        let provider = parse("test:provider", &provider).unwrap();
+        assert!(holds(
+            provider.criteria[0].player.as_ref().unwrap(),
+            &ctx,
+            &Flat
+        ));
+        // `time_check` and the value checks are vanilla conditions: a data pack using them loads,
+        // and the shared evaluator answers with the clock at tick 30000 (6000 of a 24000 period).
+        let tested = |condition: serde_json::Value| {
+            let loaded = parse("test:vanilla", &definition(condition)).unwrap();
+            holds(loaded.criteria[0].player.as_ref().unwrap(), &ctx, &Flat)
+        };
+        let time = |extra: serde_json::Value| {
+            let mut check = serde_json::json!({
+                "type": "minecraft:time_check", "clock": "minecraft:overworld"
+            });
+            check
+                .as_object_mut()
                 .unwrap()
-                .test(&ctx, &Flat)
+                .extend(extra.as_object().unwrap().clone());
+            check
+        };
+        assert!(tested(time(
+            serde_json::json!({"value": {"min": 29000, "max": 31000}})
+        )));
+        assert!(!tested(time(serde_json::json!({"value": {"min": 31000}}))));
+        assert!(tested(time(
+            serde_json::json!({"period": 24000, "value": 6000})
+        )));
+        assert!(!tested(time(
+            serde_json::json!({"period": 24000, "value": {"max": 5999}})
+        )));
+        assert!(!tested(time(serde_json::json!({"period": 0, "value": {}}))));
+        let other = serde_json::json!({
+            "type": "minecraft:time_check", "clock": "minecraft:the_end", "value": {}
+        });
+        assert!(
+            !tested(other),
+            "a clock the level does not have never matches"
         );
+        assert!(tested(serde_json::json!({
+            "type": "minecraft:int_value_check", "value": 5, "test": {"min": 5, "max": 5}
+        })));
+        assert!(!tested(serde_json::json!({
+            "type": "minecraft:float_value_check", "value": 0.5, "test": {"min": 0.75}
+        })));
+        // A vanilla condition whose parameter an advancement lacks loads and does not match.
+        assert!(!tested(
+            serde_json::json!({"type": "minecraft:killed_by_player"})
+        ));
+        // Neither vanilla nor registered: refused at load.
+        let unknown = definition(serde_json::json!({"type": "test:nobody_registered"}));
+        assert!(parse("test:unknown", &unknown).is_none());
         // Conflicting `condition` discriminator must not override the decoded `type`,
         // both at top level and nested inside `all_of`.
         let conflicting = definition(serde_json::json!({
@@ -3236,8 +3511,8 @@ mod tests {
             .unwrap();
         assert_eq!(bound.conditions["custom"]["terms"], false);
         let player = bound.player.unwrap();
-        assert!(!player.test(&ctx, &Flat));
-        assert!(player.test(&ctx, &raining));
+        assert!(!holds(&player, &ctx, &Flat));
+        assert!(holds(&player, &ctx, &raining));
 
         let nested_conflicting = definition(serde_json::json!({
             "type": "minecraft:all_of",
@@ -3255,8 +3530,8 @@ mod tests {
             .unwrap()
             .player
             .unwrap();
-        assert!(!player.test(&ctx, &Flat));
-        assert!(player.test(&ctx, &raining));
+        assert!(!holds(&player, &ctx, &Flat));
+        assert!(holds(&player, &ctx, &raining));
 
         // Unresolved predicate references (top-level and nested) fail at load;
         // valid references in the active registry bind and evaluate.
@@ -3300,8 +3575,8 @@ mod tests {
         .unwrap()
         .player
         .unwrap();
-        assert!(!bound_ref.test(&ctx, &Flat));
-        assert!(bound_ref.test(&ctx, &raining));
+        assert!(!holds(&bound_ref, &ctx, &Flat));
+        assert!(holds(&bound_ref, &ctx, &raining));
 
         // Loading a data directory binds references against `data/<ns>/predicate/`.
         let dir = tempfile::tempdir().unwrap();
@@ -3330,8 +3605,8 @@ mod tests {
             .player
             .as_ref()
             .unwrap();
-        assert!(!good.test(&ctx, &Flat));
-        assert!(good.test(&ctx, &raining));
+        assert!(!holds(&good, &ctx, &Flat));
+        assert!(holds(&good, &ctx, &raining));
     }
 
     #[test]
@@ -3417,7 +3692,7 @@ mod tests {
             calls.set(i + 1);
             [(true, false), (false, true), (false, false)][i]
         });
-        assert!(player.test(&ctx, &weather));
+        assert!(holds(&player, &ctx, &weather));
         assert_eq!(calls.get(), 3);
         drop(tree);
     }

@@ -439,8 +439,9 @@ mod tests {
 
                 game.screen = Screen::Paused;
                 game.render_with(|_, frame| {
+                    assert_eq!(frame.bob, glam::Mat4::IDENTITY);
                     assert_eq!(
-                        frame.bob,
+                        frame.view_transform,
                         glam::Mat4::from_translation(glam::Vec3::new(2.0, 0.0, 0.0))
                     );
                     Ok(true)

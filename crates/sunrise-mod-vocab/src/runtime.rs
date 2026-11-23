@@ -495,20 +495,6 @@ pub(crate) fn invoke<T>(
     })
 }
 
-/// Uses the shared diagnostic fence but leaves the listener available for the next frame.
-#[inline]
-pub(crate) fn invoke_frame<T>(
-    hook: &'static str,
-    mod_id: &'static str,
-    call: impl FnOnce() -> T,
-) -> Option<T> {
-    contain_callback(call, |payload| {
-        let (entered, trapped) = LISTENER_SERIAL.get();
-        LISTENER_SERIAL.set((entered, trapped.wrapping_add(1)));
-        report_callback_panic(installed(), hook, mod_id, None, false, payload);
-    })
-}
-
 #[cold]
 pub(crate) fn report_output_refusal(mod_id: &str, hook: &str, field: &str) {
     log::warn!(

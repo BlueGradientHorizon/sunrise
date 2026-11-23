@@ -858,10 +858,11 @@ pub fn gaussian_weights(
             let wx = weight(0, x);
             for y in 0..6 {
                 let wy = weight(1, y);
+                // A position far outside the world's grid saturates at the edge of `i32`.
                 let biome = biome_at_quart(
-                    integral[0] - 2 + x as i32,
-                    integral[1] - 2 + y as i32,
-                    integral[2] - 2 + z as i32,
+                    integral[0].saturating_add(x as i32 - 2),
+                    integral[1].saturating_add(y as i32 - 2),
+                    integral[2].saturating_add(z as i32 - 2),
                 );
                 let w = wx * wy * wz;
                 match weights.iter_mut().find(|(b, _)| *b == biome) {
@@ -1127,6 +1128,16 @@ mod blend_tests {
         // The kernel sums to 16 per axis whatever the offset.
         assert!((weights[0].1 - 16f64.powi(3)).abs() < 1e-9);
         assert_eq!(blend_rgb(&weights, |_| [0.2, 0.4, 0.6]), [0.2, 0.4, 0.6]);
+    }
+
+    /// A camera far outside the representable quart grid samples without overflowing.
+    #[test]
+    fn a_position_beyond_the_grid_samples_the_edge_cells() {
+        for position in [[-1e30, 0.0, 1e30], [1e30, -1e30, 0.0]] {
+            let weights = gaussian_weights(position, |_, _, _| 4);
+            assert_eq!(weights.len(), 1);
+            assert_eq!(weights[0].0, 4);
+        }
     }
 
     #[test]

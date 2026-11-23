@@ -1196,7 +1196,7 @@ impl Game<'_> {
         ctx: sunrise_client::sculk::Context,
     ) {
         if let Some(sound) = sound {
-            self.audio.play(&sound, Some(at), 1.0, 1.0);
+            self.play_audio(&sound, Some(at), 1.0, 1.0);
         }
         self.post_game_event(
             if equips {

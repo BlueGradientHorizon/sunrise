@@ -59,8 +59,7 @@ impl Game<'_> {
             let at = [m.position.x, m.position.y, m.position.z];
             // playSearchingSound is playLocalSound: silence does not mute it.
             if sniffer::state(m) == sniffer::SEARCHING && m.age.is_multiple_of(20) {
-                self.audio
-                    .play("minecraft:entity.sniffer.searching", Some(at), 1.0, 1.0);
+                self.play_audio("minecraft:entity.sniffer.searching", Some(at), 1.0, 1.0);
                 continue;
             }
             if !sniffer::digging(m) {
@@ -105,7 +104,7 @@ impl Game<'_> {
                                     mod_api::BlockSoundCause::Dig,
                                 )
                                 .event;
-                            self.audio.play(hit.as_str(), Some(at), 0.5, 0.5);
+                            self.play_audio(hit.as_str(), Some(at), 0.5, 0.5);
                         }
                     }
                 }

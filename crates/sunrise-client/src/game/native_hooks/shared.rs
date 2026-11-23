@@ -3441,7 +3441,7 @@ impl Game<'_> {
         {
             return false;
         }
-        self.audio.play_button_click();
+        self.play_audio_button_click();
         true
     }
     /// The open mod screen's tooltip under the cursor.

@@ -3657,13 +3657,13 @@ impl Game<'_> {
     pub(in crate::game) fn native_entity_join_level(
         &mut self,
         dimension: &str,
-        entity: u32,
         kind: &str,
         pos: [f64; 3],
         loaded_from_disk: bool,
+        subject: mod_api::EntityRef,
         canceled: &mut bool,
     ) {
-        self.fire_entity_join_level(dimension, entity, kind, pos, loaded_from_disk, canceled);
+        self.fire_entity_join_level(dimension, kind, pos, loaded_from_disk, subject, canceled);
     }
     /// An entity mounts or dismounts a vehicle (NeoForge's `EntityMountEvent`, posted from
     /// `Entity.startRiding` and `removeVehicle`): `entity` of type `kind` (`minecraft:player`,

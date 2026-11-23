@@ -215,6 +215,10 @@ impl Clouds {
     }
 }
 
+fn identity_matrix() -> [f32; 16] {
+    Mat4::IDENTITY.to_cols_array()
+}
+
 fn default_cloud_height() -> f32 {
     crate::clouds::CLOUD_HEIGHT
 }
@@ -234,6 +238,8 @@ pub struct FrameInputs {
     pub eye_rotation: [f32; 2],
     pub first_person: bool,
     pub bob: [f32; 16],
+    #[serde(default = "identity_matrix")]
+    pub view_transform: [f32; 16],
     pub spin: [f32; 16],
     pub sky: Sky,
     pub distance: f32,
@@ -479,6 +485,7 @@ impl FrameInputs {
             eye_rotation: frame.eye_rotation,
             first_person: frame.first_person,
             bob: frame.bob.to_cols_array(),
+            view_transform: frame.view_transform.to_cols_array(),
             spin: frame.spin.to_cols_array(),
             sky: frame.sky,
             distance: frame.distance,
@@ -534,6 +541,7 @@ impl FrameInputs {
             eye_rotation: f.eye_rotation,
             first_person: f.first_person,
             bob: Mat4::from_cols_array(&f.bob),
+            view_transform: Mat4::from_cols_array(&f.view_transform),
             spin: Mat4::from_cols_array(&f.spin),
             sky: f.sky,
             shadow_scene_revision: (0, 0),

@@ -1273,6 +1273,11 @@ fn content_overlay_with_refusals(
                 detail,
             }));
         }
+        // A built native package keeps its code and Parts only with the content it declared:
+        // refusing the content refuses the package, so no dependent starts without it.
+        if sources.native.built().iter().any(|native| native.id == id) {
+            return Err(format!("{id}: native content refused at admission: {detail}").into());
+        }
         log::warn!("Sunrise: mod {id} content not loaded: {detail}");
     }
     for m in &manifests {
@@ -1493,15 +1498,28 @@ pub(in crate::game) fn content_root(
     }
     register_mob_effects(&overlay.mods, &sources.selected);
     resolve_particle_providers(overlay.root.source())?;
+    // A package whose content was refused is not admitted: an optional dependent's effect Part
+    // on it is dropped, while an admitted provider that lacks the effect is still refused.
+    let provider_admitted = |package: &str| {
+        package == "minecraft"
+            || overlay.mods.iter().any(|content| content.id == package)
+            || sources
+                .native
+                .built()
+                .iter()
+                .any(|native| native.id == package)
+    };
     mod_api::__private::resolve_effects(
         sunrise_client_core::potions::all_effects()
             .map(|def| sunrise_client_core::potions::namespaced(def.id)),
         |id| sunrise_client_core::potions::effect(id).map(|def| def.index),
+        provider_admitted,
     )
     .map_err(|errors| errors.join("\n"))?;
-    mod_api::__private::validate_effect_part_owners(|id| {
-        sunrise_client_core::potions::effect(id)?.owner
-    })
+    mod_api::__private::validate_effect_part_owners(
+        |id| sunrise_client_core::potions::effect(id)?.owner,
+        provider_admitted,
+    )
     .map_err(|errors| errors.join("\n"))?;
     let behavior: serde_json::Value =
         sunrise_world::json_file::read(&overlay.root.prepared().join("block-behaviours.json"))?;
@@ -4358,12 +4376,14 @@ pub(in crate::game) mod tests {
             || {
                 mod_platform::testing::with_mods(mods.clone(), || {
                     mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
-                    mod_api::__private::resolve_effects(["runes:ward"], |id| {
-                        (id == "runes:ward").then_some(0)
-                    })
+                    mod_api::__private::resolve_effects(
+                        ["runes:ward"],
+                        |id| (id == "runes:ward").then_some(0),
+                        |_| true,
+                    )
                     .unwrap();
                     let effect = mod_api::__private::effect_key("runes:ward").unwrap();
-                    mod_api::__private::validate_effect_part_owners(owner_of).expect(
+                    mod_api::__private::validate_effect_part_owners(owner_of, |_| true).expect(
                         "the serving host and its dependent may attach to the served effect",
                     );
 
@@ -4415,7 +4435,7 @@ pub(in crate::game) mod tests {
         let unrelated: mod_api::Mods = vec![WardTick::<2>::entry("third", &trace)].into();
         mod_platform::testing::with_mods(unrelated.clone(), || {
             mod_platform::__private::part_tests::install_parts_fixture(&unrelated).unwrap();
-            let refused = mod_api::__private::validate_effect_part_owners(owner_of)
+            let refused = mod_api::__private::validate_effect_part_owners(owner_of, |_| true)
                 .expect_err("unrelated mod without dependency on serving host must be refused");
             assert_eq!(refused.len(), 1, "{refused:?}");
             assert!(
@@ -5464,6 +5484,65 @@ pub(in crate::game) mod tests {
         }
         // Out of the fixture: Windows won't remove a process's working directory.
         std::env::set_current_dir(std::env::temp_dir()).unwrap();
+    }
+
+    /// A built native package whose own content declares a remainder that is not an item is
+    /// refused with the package: its code and Parts never start without the content it declared.
+    #[test]
+    #[ignore = "daily"]
+    fn a_built_native_package_with_a_missing_remainder_is_refused_whole() {
+        const MODE: &str = "SUNRISE_NATIVE_REMAINDER_TEST";
+        if std::env::var_os(MODE).is_none() {
+            run_in_child(
+                "game::mods::tests::a_built_native_package_with_a_missing_remainder_is_refused_whole",
+                MODE,
+            );
+            return;
+        }
+        let f = Fixture::new("native-missing-remainder");
+        let text = format!(
+            "id='machine_sample'\nname='machine_sample'\nversion='0.3.0'\napi='0.2'\nside='both'\ncapabilities=['registries']\n[native]\ngame='26.3'\nsunrise='{}'\nmixins='{}'\n",
+            "a".repeat(40),
+            "b".repeat(40)
+        );
+        let code: &[(&str, &[u8])] = &[
+            ("Cargo.toml", b"[package]\nname='example'\nversion='1'\n"),
+            ("src/lib.rs", b"pub fn hooks() {}"),
+            (
+                "data/machine_sample/sunrise/item/stew.json",
+                br#"{"template":"minecraft:mushroom_stew","crafting_remainder":"machine_sample:missing_bowl"}"#,
+            ),
+        ];
+        let path = f.0.join("machine_sample.smod");
+        std::fs::write(
+            &path,
+            sunrise_mod_package::Package::write_files(&text, code).unwrap(),
+        )
+        .unwrap();
+        let selected: Arc<[sunrise_mod_package::selection::SelectedPackage]> =
+            vec![sunrise_mod_package::selection::SelectedPackage {
+                package: sunrise_mod_package::Package::read(&path).unwrap(),
+                path,
+            }]
+            .into();
+        let sources = ModsState {
+            native: Arc::new(f.runtime()),
+            selected,
+            ..Default::default()
+        };
+        let base = f.0.join("vanilla");
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join("sunrise-resources.json"), "{}").unwrap();
+        std::fs::write(base.join("facts.json"), r#"{"states":[],"defaults":{}}"#).unwrap();
+        std::fs::write(base.join("gameplay-facts.json"), r#"{"states":[]}"#).unwrap();
+        std::fs::write(base.join("items.json"), r#"{"minecraft:mushroom_stew":{}}"#).unwrap();
+        let error = content_overlay(&base, &sources, &f.0.join("jars"))
+            .err()
+            .unwrap();
+        assert_eq!(
+            error.to_string(),
+            r#"machine_sample: native content refused at admission: machine_sample:stew: crafting_remainder "machine_sample:missing_bowl" is not an item"#
+        );
     }
 
     #[test]

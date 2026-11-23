@@ -1,16 +1,18 @@
 //! The `sound_type` Part method (`IBlockExtension.getSoundType`). The client library asks through
 //! `native_client_hooks`; only a state whose block has a subscribing part is converted.
 use super::Game;
-use super::api_values::{TryIntoApi, block_state};
+use super::api_values::block_state;
+use super::native_surface::FrictionView;
 use mod_api::{BlockSoundCause, BlockSoundType, SoundSource};
+use sunrise_client::motion::FrictionLevel;
 use sunrise_core::position::BlockPos;
-use sunrise_world::{
-    level::data::BlockSound, native_load_context::LoopContext, registry::BlockStateId,
-};
+use sunrise_world::{level::data::BlockSound, registry::BlockStateId};
 
-/// The game's side of `sunrise_client::block_sounds::native_sound_type`.
+/// The game's side of `sunrise_client::block_sounds::native_sound_type`: the client library decides
+/// (the state's own sound type), the game fires the hook with the read-only level, and the
+/// answer comes back for the library to apply.
 pub(crate) fn sound_type(
-    context: &LoopContext,
+    level: FrictionLevel<'_>,
     pos: BlockPos,
     state: BlockStateId,
     entity: Option<(u32, &str)>,
@@ -20,16 +22,8 @@ pub(crate) fn sound_type(
     if !block_state::block_listens(mod_api::HookId::SoundType, state) {
         return None;
     }
-    let api_state = state.try_into_api().ok()?;
     let mut sound = own.clone();
-    mod_api::dispatch_sound_type(
-        &sunrise_client_render::api_context::LoopReader(context).context(),
-        pos,
-        api_state,
-        entity,
-        cause,
-        &mut sound,
-    );
+    FrictionView(level).native_sound_type(pos, state, entity, cause, &mut sound);
     Some(sound)
 }
 
@@ -44,8 +38,15 @@ impl Game<'_> {
         entity: Option<(u32, &str)>,
         cause: BlockSoundCause,
     ) -> BlockSound {
+        let level = FrictionLevel {
+            world: &self.world,
+            registry: self.pack.assets.registry,
+            context: &self.loop_context,
+            side: self,
+            coefficient: &|_| None,
+        };
         let sound = sunrise_client::block_sounds::sound_type(
-            &self.loop_context,
+            level,
             self.res.facts(),
             BlockPos::new(x, y, z),
             state,
@@ -72,7 +73,7 @@ impl Game<'_> {
             return;
         }
         let sound = self.selected_block_sound(pos, state, None, BlockSoundCause::Break);
-        self.audio.play_on(
+        self.play_audio_on(
             SoundSource::Blocks.index(),
             sound.event.as_str(),
             Some(pos.map(|v| f64::from(v) + 0.5)),
@@ -84,45 +85,22 @@ impl Game<'_> {
 
 #[cfg(test)]
 pub(super) mod tests {
-    use super::super::native_entity_refs::tests::{fixture_root, with_game};
+    use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
     use mod_api::BlockSoundCause::{Break, Dig, Fall, Place, Step};
     use std::sync::Arc;
     use sunrise_client::mobs::{Mob, MobEvent, equine};
     use sunrise_core::{geometry::Vec3, position::BlockPos};
     use sunrise_world::level::LevelAccess;
 
-    // The executable installs its client callback table once per process.
+    // The executable installs its client callback table once per process, so the fixture runs
+    // in a fresh child: this returns true there, and false in the parent once the child passed.
     pub(in crate::game) fn install_sound_fixture_in_child(test: &str) -> bool {
         const CHILD: &str = "SUNRISE_BLOCK_SOUND_TEST_CHILD";
-        if std::env::var(CHILD).as_deref() == Ok(test) {
-            crate::entry::install_client_hooks();
-            return true;
+        if run_fresh_cases(test, CHILD, &["child"]) {
+            return false;
         }
-        let scratch = tempfile::tempdir().unwrap();
-        let root = scratch.path();
-        let output = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--include-ignored", "--exact", test, "--nocapture"])
-            .env(CHILD, test)
-            .env(
-                "SUNRISE_TEST_RESOURCES",
-                fixture_root().canonicalize().unwrap(),
-            )
-            .env("SUNRISE_HOME", root.join("home"))
-            .env("SUNRISE_LAUNCHER_HOME", root.join("launcher"))
-            .env("SUNRISE_LAUNCHER_NO_SELF_UPDATE", "1")
-            .env("SUNRISE_NO_AUDIO", "1")
-            .env("XDG_DATA_HOME", root.join("data"))
-            .env("XDG_CONFIG_HOME", root.join("config"))
-            .current_dir(root)
-            .output()
-            .unwrap();
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(
-            output.status.success() && stdout.contains("1 passed; 0 failed;"),
-            "{stdout}\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        false
+        crate::entry::install_client_hooks();
+        true
     }
 
     #[test]
@@ -284,7 +262,13 @@ pub(super) mod tests {
             let air = registry.default_state("minecraft:air").unwrap();
             let planks = registry.default_state("minecraft:oak_planks").unwrap();
             let answered = sunrise_client::block_sounds::sound_type(
-                &game.loop_context,
+                sunrise_client::motion::FrictionLevel {
+                    world: &game.world,
+                    registry: game.pack.assets.registry,
+                    context: &game.loop_context,
+                    side: &*game,
+                    coefficient: &|_| None,
+                },
                 game.res.facts(),
                 BlockPos::new(5, 64, 5),
                 planks,

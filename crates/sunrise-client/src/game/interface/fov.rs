@@ -301,15 +301,14 @@ impl Game<'_> {
             .player
             .as_ref()
             .map(|p| [p.position.x, p.position.y, p.position.z]);
-        self.audio.play("minecraft:item.spyglass.use", at, 1.0, 1.0);
+        self.play_audio("minecraft:item.spyglass.use", at, 1.0, 1.0);
         self.award_stat("used", "minecraft:spyglass", 1);
         self.start_using_item();
     }
     /// `SpyglassItem.releaseUsing` / `finishUsingItem` (after 1200 ticks).
     pub(super) fn stop_spyglass(&mut self) {
         let at = self.eye_position();
-        self.audio
-            .play("minecraft:item.spyglass.stop_using", at, 1.0, 1.0);
+        self.play_audio("minecraft:item.spyglass.stop_using", at, 1.0, 1.0);
     }
     /// `Hud.extractCameraOverlays`: the spyglass scope, its size easing
     /// towards 1.125 by half the frame's game ticks and reset to 0.5 while

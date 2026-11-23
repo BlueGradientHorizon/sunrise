@@ -45,7 +45,7 @@ impl Game<'_> {
             self.stabbed.retain(|(who, _), _| *who != actor);
             if let Some(p) = &self.player {
                 let at = [p.position.x, p.position.y, p.position.z];
-                self.audio.play(kinetic.sound, Some(at), 1.0, 1.0);
+                self.play_audio(kinetic.sound, Some(at), 1.0, 1.0);
             }
         }
         true
@@ -433,7 +433,7 @@ impl Game<'_> {
     pub(super) fn play_at_feet(&mut self, sound: &str) {
         if let Some(p) = &self.player {
             let at = [p.position.x, p.position.y, p.position.z];
-            self.audio.play(sound, Some(at), 1.0, 1.0);
+            self.play_audio(sound, Some(at), 1.0, 1.0);
         }
     }
 
@@ -448,8 +448,7 @@ impl Game<'_> {
             .is_none_or(|&t| now - t > HIT_FEEDBACK_TICKS)
         {
             self.kinetic_feedback.insert(entity, now);
-            self.audio
-                .play_unshared(kinetic.hit_sound, Some(at), 1.0, 1.0);
+            self.play_audio_unshared(kinetic.hit_sound, Some(at), 1.0, 1.0);
         }
     }
 

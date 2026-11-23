@@ -235,6 +235,17 @@ impl Game<'_> {
                 return;
             }
         }
+        // A callback may have committed a discard: the row stays until removals flush.
+        let live = |game: &Self| {
+            !game.held_out.contains(&orb_id)
+                && game.resident_source_target_visible(
+                    game.dim.key(),
+                    crate::game::commands::Target::Orb(orb_id),
+                )
+        };
+        if !live(self) {
+            return;
+        }
         let Some(index) = self.orbs.locate(join) else {
             return;
         };
@@ -254,20 +265,20 @@ impl Game<'_> {
         // ClientPacketListener.handleTakeItemEntity's sound, at the orb.
         let mut random = sunrise_client::random_source::create(); // the listener's own stream
         let pitch = (random.next_float() - random.next_float()) * 0.35 + 0.9;
-        self.audio.play(
+        self.play_audio(
             "minecraft:entity.experience_orb.pickup",
             Some([orb_pos.x, orb_pos.y, orb_pos.z]),
             0.1,
             pitch,
         );
-        if orb_value > 0 {
-            let value = orb_value as u32;
-            self.as_guest(conn, |game| {
-                let rest = game.mending(value);
-                if rest > 0 {
-                    game.give_experience_points(rest.min(i32::MAX as u32) as i32);
-                }
-            });
+        self.as_guest(conn, |game| {
+            let rest = game.mending(orb_value);
+            if rest > 0 {
+                game.give_experience_points(rest);
+            }
+        });
+        if !live(self) {
+            return;
         }
         if let Some(index) = self.orbs.locate(join) {
             if self.orbs[index].count <= 1 {

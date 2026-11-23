@@ -408,6 +408,7 @@ mod tests {
                 dimension: "test:level".into(),
                 game_time: 17,
                 day_time: -3,
+                clocks: Default::default(),
                 raining: true,
                 thundering: false,
             }),

@@ -1344,10 +1344,7 @@ impl Codec<[String; 4]> for SignLines {
     }
     fn validate(v: &[String; 4]) -> Result<()> {
         if let Some(i) = Self::first_oversize_line(v) {
-            return Err(Error::new(format!(
-                "sign line {i} longer than {} chars",
-                Self::MAX_UTF16
-            )));
+            return Err(Error::sign_line_too_long(i, Self::MAX_UTF16));
         }
         Ok(())
     }

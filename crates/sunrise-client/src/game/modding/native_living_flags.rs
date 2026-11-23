@@ -567,7 +567,8 @@ pub(in crate::game) mod tests {
                 event: &mut EntityJoinLevelEvent<'_>,
             ) -> Flow {
                 if event.kind == "minecraft:zombie"
-                    && let Some(er) = mod_api::prelude::EntitiesHost::entity(&*host, event.entity)
+                    && let Some(er) =
+                        mod_api::prelude::EntitiesHost::entity(&*host, event.subject.id())
                     && let Some(m) = mod_api::prelude::MobsHost::mob(&*host, er)
                 {
                     let _ = m.set_persistence_required(&mut *host);

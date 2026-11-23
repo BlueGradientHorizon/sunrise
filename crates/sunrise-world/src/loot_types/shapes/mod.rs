@@ -130,7 +130,7 @@ fn builtin(kind: &str, function: bool) -> Option<Kind> {
     };
     rows.iter().find(|row| row.name == kind).map(|row| row.kind)
 }
-pub(super) fn contains(kind: &str, function: bool) -> bool {
+pub(crate) fn contains(kind: &str, function: bool) -> bool {
     builtin(kind, function).is_some()
 }
 #[derive(Clone, Copy)]

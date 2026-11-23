@@ -226,7 +226,30 @@ impl Game<'_> {
     ) -> Option<T> {
         let conn = match t {
             Target::Player => return Some(f(self)),
-            Target::Guest(conn) if self.lan_acting == Some(conn) => return Some(f(self)),
+            // Their body is already in place, but a nested call can reach here in another
+            // level than theirs: run in theirs, with no second body swap.
+            Target::Guest(conn) if self.lan_acting == Some(conn) => {
+                let back = self.dim;
+                let theirs =
+                    super::super::Dim::from_id(&self.lan.as_ref()?.hub.guest(conn)?.dimension);
+                if theirs == back {
+                    return Some(f(self));
+                }
+                if let Err(e) = self.enter_level(theirs) {
+                    log::error!("could not open {}: {e}", theirs.id());
+                    return None;
+                }
+                let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(self)));
+                if self.dim != back
+                    && let Err(e) = self.enter_level(back)
+                {
+                    log::error!("could not reopen {}: {e}", back.id());
+                }
+                return match out {
+                    Ok(out) => Some(out),
+                    Err(payload) => std::panic::resume_unwind(payload),
+                };
+            }
             Target::Guest(conn) => conn,
             _ => return None,
         };

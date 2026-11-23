@@ -426,6 +426,7 @@ mod placement_context_tests;
 mod play_hit_sound;
 #[cfg(test)]
 mod play_hit_sound_tests;
+pub(in crate::game) mod play_sound;
 mod player_bed_leave;
 mod player_break_speed;
 mod player_brewed_potion;
@@ -549,6 +550,7 @@ mod should_display_fluid_overlay;
 mod should_hide_adjacent_fluid_face;
 mod should_redstone_wire_connect_to;
 mod sound_and_shader_helpers;
+mod sound_type;
 mod spawn_cluster_size;
 mod spread_players_teleport;
 mod state_at_viewpoint;

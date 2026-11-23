@@ -25,6 +25,7 @@ enum Reply {
     Input,
     LargeInput,
     LargeVelocity,
+    HugeVelocity,
     NonFiniteVelocityWithInput,
     NonFiniteInputWithVelocity,
     NonFiniteNoOp,
@@ -44,6 +45,7 @@ impl Hooks for Reply {
             Self::Input => *event.input = [1.0, 0.0, 0.0],
             Self::LargeInput => *event.input = [2.0, 0.0, 0.0],
             Self::LargeVelocity => *event.velocity = [70.0, 0.0, 0.0],
+            Self::HugeVelocity => *event.velocity = [1.0e9, 0.0, 1.0e9],
             Self::NonFiniteVelocityWithInput => {
                 *event.velocity = [f64::NAN, 0.0, 0.0];
                 *event.input = [1.0, 0.0, 0.0];
@@ -543,6 +545,20 @@ fn vanilla_travel_operations_apply_large_and_non_finite_edits_independently() {
             });
         });
     }
+
+    // A finite velocity whose swept box the collision scan cannot cover fails the travel. None of
+    // its work is published: the velocity stands as it was and the player is corrected to the
+    // server's position and velocity.
+    with_reply(Some(Reply::HugeVelocity), || {
+        with_player(false, |game, rx| {
+            let before = guest(game).motion.as_ref().unwrap().velocity;
+            game.guest_server_tick(1, true);
+            let packet = correction(&rx);
+            assert_eq!(packet.position, START);
+            assert_eq!(guest(game).position, START);
+            assert_eq!(guest(game).motion.as_ref().unwrap().velocity, before);
+        });
+    });
 
     with_reply(Some(Reply::NonFiniteNoOp), || {
         with_player(false, |game, rx| {

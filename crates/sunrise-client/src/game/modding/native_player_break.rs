@@ -527,6 +527,149 @@ mod tests {
         });
     }
 
+    struct Reenter(AtomicUsize);
+
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for Reenter {
+        fn break_block(
+            &self,
+            host: &mut dyn mod_api::ServerHost,
+            event: &mut mod_api::BreakBlockEvent<'_>,
+        ) -> mod_api::Flow {
+            self.0.fetch_add(1, Ordering::Relaxed);
+            // No guard: the break of the subject this callback is outstanding on.
+            let player = host.players().acting_player().expect("the breaker acts");
+            player.destroy_block(host, event.pos, false);
+            mod_api::Flow::Continue
+        }
+    }
+
+    /// A listener that breaks the block it is told about, with no guard, would call itself without
+    /// end. The nested break dispatches nothing again, removes the block, and the outer break then
+    /// does nothing more: the callback ran once and the tool wore once. A fresh process, as an
+    /// unbounded reentry would end it.
+    #[test]
+    #[ignore = "daily"]
+    fn a_listener_breaking_its_own_subject_is_not_called_again() {
+        if crate::game::native_entity_refs::tests::run_fresh_cases(
+            "game::native_player_break::tests::a_listener_breaking_its_own_subject_is_not_called_again",
+            "SUNRISE_REENTRANT_BREAK_CHILD",
+            &["reentry"],
+        ) {
+            return;
+        }
+        let calls = Arc::new(Reenter(AtomicUsize::new(0)));
+        struct Shared(Arc<Reenter>);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Shared {
+            fn break_block(
+                &self,
+                host: &mut dyn mod_api::ServerHost,
+                event: &mut mod_api::BreakBlockEvent<'_>,
+            ) -> mod_api::Flow {
+                mod_api::Hooks::break_block(&*self.0, host, event)
+            }
+        }
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "reenter",
+            Box::new(Shared(calls.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                game.world.chunks.insert(
+                    (0, 0),
+                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                );
+                let player = with_player(game, ItemStack::new("minecraft:diamond_pickaxe", 1));
+                let pos = [6, 64, 4];
+                place(game, pos, "minecraft:stone");
+                assert!(!game.player_destroy_block(player, pos, false));
+                assert_eq!(block(game, pos), "minecraft:air");
+                assert_eq!(game.held().unwrap().damage, 1);
+            });
+        });
+        assert_eq!(calls.0.load(Ordering::Relaxed), 1);
+    }
+
+    struct Counts(Arc<AtomicUsize>);
+
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for Counts {
+        fn break_block(
+            &self,
+            _: &mut dyn mod_api::ServerHost,
+            event: &mut mod_api::BreakBlockEvent<'_>,
+        ) -> mod_api::Flow {
+            assert_eq!(event.pos, [8, 64, 4]);
+            self.0.fetch_add(1, Ordering::Relaxed);
+            mod_api::Flow::Continue
+        }
+    }
+
+    /// `ServerPlayerGameMode.destroyBlock` has no air filter: `break_block` fires for air, and the
+    /// break removes nothing.
+    #[test]
+    #[ignore = "daily"]
+    fn a_break_of_air_still_dispatches_break_block() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "counts",
+            Box::new(Counts(calls.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                game.world.chunks.insert(
+                    (0, 0),
+                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                );
+                let player = with_player(game, ItemStack::new("minecraft:diamond_pickaxe", 1));
+                assert!(!game.player_destroy_block(player, [8, 64, 4], false));
+                assert_eq!(game.held().unwrap().damage, 0);
+            });
+        });
+        assert_eq!(calls.load(Ordering::Relaxed), 1);
+    }
+
+    struct RefuseHarvest;
+
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for RefuseHarvest {
+        fn player_harvest_check(
+            &self,
+            _: mod_api::HostSide<'_>,
+            event: &mut mod_api::PlayerHarvestCheckEvent,
+        ) {
+            event.can_harvest = false;
+        }
+    }
+
+    /// The tool wears as `ItemStack.mineBlock` before the removal, whatever the harvest answer: a
+    /// mod's refusal costs the drops and the statistic, not the wear.
+    #[test]
+    #[ignore = "daily"]
+    fn a_refused_harvest_still_wears_the_tool_and_drops_nothing() {
+        let mods: mod_api::Mods =
+            vec![mod_api::ModEntry::new("refuse", Box::new(RefuseHarvest))].into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                game.world.chunks.insert(
+                    (0, 0),
+                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                );
+                let player = with_player(game, ItemStack::new("minecraft:diamond_pickaxe", 1));
+                let pos = [6, 64, 4];
+                place(game, pos, "minecraft:stone");
+                assert!(game.player_destroy_block(player, pos, false));
+                assert_eq!(block(game, pos), "minecraft:air");
+                assert_eq!(game.held().unwrap().damage, 1);
+                assert!(!popped(game, "minecraft:cobblestone"));
+                assert_eq!(game.stats.get("mined", "minecraft:stone"), 0);
+            });
+        });
+    }
+
     struct FinishFirst(AtomicBool);
 
     #[mod_api::__subscriptions]

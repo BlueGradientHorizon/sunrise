@@ -71,13 +71,21 @@ impl Game<'_> {
         &mut self,
         camera: glam::DVec3,
         [fov_degrees, yaw, pitch, roll]: [f32; 4],
-        bob: glam::Mat4,
+        view_transform: glam::Mat4,
         depth_far: f32,
     ) -> Option<sunrise_client::gfx::JoinedFrusta> {
         let own_level = self.client_own_level();
         let renderer = self.renderer.as_mut()?;
         renderer.set_world_view_own_level(own_level);
-        Some(renderer.camera_frustum(camera, fov_degrees, yaw, pitch, roll, bob, depth_far))
+        Some(renderer.camera_frustum(
+            camera,
+            fov_degrees,
+            yaw,
+            pitch,
+            roll,
+            view_transform,
+            depth_far,
+        ))
     }
     /// The world `block_state` and `clip` read: on a server an open level, in place or parked
     /// (`native_level_world`), on a client `client_view_world`.

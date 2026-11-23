@@ -422,7 +422,10 @@ impl Game<'_> {
                 0.0,
             ),
         );
-        self.view = view;
+        self.view = sunrise_client::camera::Camera {
+            placed_position: view.position,
+            ..view
+        };
         Some((
             glam::DVec3::from_array(view.position),
             view.y_rot,
@@ -462,6 +465,7 @@ impl Game<'_> {
             let view = self.align_view_with_angles(&source, partial, angles);
             (view, Some((source, angles)))
         };
+        view.placed_position = view.position;
         if run_hooks {
             let mut position = mod_api::CameraPosition::placed_at(view.position);
             self.native_camera_position(partial, &mut position);
@@ -470,6 +474,7 @@ impl Game<'_> {
             {
                 view = self.align_view_with_angles(&source, partial, angles);
             }
+            view.placed_position = view.position;
             for (coordinate, override_value) in view.position.iter_mut().zip(position.overrides()) {
                 if let Some(value) = override_value {
                     *coordinate = value;

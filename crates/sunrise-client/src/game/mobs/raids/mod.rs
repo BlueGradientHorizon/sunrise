@@ -767,8 +767,7 @@ impl Game<'_> {
                 .iter()
                 .position(|s| *s == "neutral")
                 .unwrap_or(0);
-            self.audio
-                .play_on(neutral, "minecraft:event.raid.horn", Some(at), 64.0, 1.0);
+            self.play_audio_on(neutral, "minecraft:event.raid.horn", Some(at), 64.0, 1.0);
             self.audio.capture = capture;
         }
         let Some(host) = self.lan.as_ref() else {

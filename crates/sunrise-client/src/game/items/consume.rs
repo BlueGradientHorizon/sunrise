@@ -93,16 +93,15 @@ impl Game<'_> {
             && let Some(player) = self.player.as_mut()
         {
             let at = Some([player.position.x, player.position.y, player.position.z]);
-            let pitch = player.random.triangle_float(1.0, 0.4);
-            self.audio.play(&consumable.sound, at, 1.0, pitch);
+            let eat_pitch = player.random.triangle_float(1.0, 0.4);
             // FoodData.eat(nutrition, saturation)
             let food = &mut player.health.food;
             food.food = (food.food + nutrition as i32).clamp(0, 20);
             food.saturation = (food.saturation + saturation).clamp(0.0, food.food as f32);
             // Mth.randomBetween(random, 0.9, 1.0)
             let pitch = player.random.next_float() * (1.0f32 - 0.9f32) + 0.9;
-            self.audio
-                .play("minecraft:entity.player.burp", at, 0.5, pitch);
+            self.play_audio(&consumable.sound, at, 1.0, eat_pitch);
+            self.play_audio("minecraft:entity.player.burp", at, 0.5, pitch);
         }
         // SuspiciousStewEffects.onConsume, a ConsumableListener: each entry is
         // added as a `MobEffectInstance(effect, duration)` (amplifier 0).
@@ -922,7 +921,7 @@ impl TeleportConsumeWorld for MobTeleporter<'_, '_> {
         matches!(self.usage, MobConsumption::Fox(_))
     }
     fn teleport_sound(&mut self, _: Dim, at: Vec3, fox: bool) -> Result<(), ()> {
-        self.game.audio.play(
+        self.game.play_audio(
             if fox {
                 "minecraft:entity.fox.teleport"
             } else {

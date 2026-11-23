@@ -17,6 +17,7 @@ use std::{
 use sunrise_core::random::LegacyRandom;
 
 pub mod hooks;
+pub use hooks::PreparedPlay;
 
 /// `SoundSource` indices (vanilla order).
 pub const MASTER: usize = 0;
@@ -235,7 +236,6 @@ pub struct TickContext {
 /// `AbstractSoundInstance` and its subclasses' fields.
 #[derive(Clone, Debug)]
 pub struct SoundInstance {
-    live_settings: std::cell::OnceCell<std::cell::RefCell<hooks::LiveSettings>>,
     pub identifier: String,
     pub source: usize,
     pub volume: f32,
@@ -279,7 +279,6 @@ impl SoundInstance {
         relative: bool,
     ) -> Self {
         Self {
-            live_settings: std::cell::OnceCell::new(),
             identifier: identifier.to_owned(),
             source,
             volume,
@@ -1067,6 +1066,15 @@ pub type PlaybackHook = fn(&SoundPlayback<'_>, &mut f32, &mut f32, &mut bool);
 pub struct SoundEngine {
     pub registry: SoundRegistry,
     playback_hook: Option<PlaybackHook>,
+    /// Starts a caller made without the game (an audio helper, a delayed start due at the tick),
+    /// held for the game to fire `play_sound` for before it returns control (`next_deferred`).
+    deferred: Vec<InstanceId>,
+    /// The starts the game is firing `play_sound` for right now.
+    inflight: Vec<InstanceId>,
+    /// Starts the game answered: the next `play` of each goes ahead.
+    decided: HashSet<InstanceId>,
+    /// The game's answers for the live refresh of each playing sound (`None` cancels it).
+    live_answers: HashMap<InstanceId, Option<mod_api::SoundPlay>>,
     /// `loaded`: the library opened.
     pub loaded: bool,
     tick_count: i64,
@@ -1105,15 +1113,6 @@ pub struct SoundEngine {
     loop_context: Option<sunrise_world::native_load_context::LoopContext>,
     unmuffled: HashSet<String>,
 }
-// Check edited base values without changing untouched engine inputs. Their sign is
-// interpreted by calculate_volume/calculate_pitch after sound-file scaling.
-fn readable_base_edit(original: [f32; 2], edited: [f32; 2]) -> bool {
-    original
-        .into_iter()
-        .zip(edited)
-        .all(|(before, after)| after.is_finite() || before.to_bits() == after.to_bits())
-}
-
 fn handle_channel(h: &Handle) -> Option<ChannelId> {
     h.channel
 }
@@ -1140,6 +1139,10 @@ impl SoundEngine {
             queued: Vec::new(),
             delete_time: HashMap::new(),
             queued_tickable: Vec::new(),
+            deferred: Vec::new(),
+            inflight: Vec::new(),
+            decided: HashSet::new(),
+            live_answers: HashMap::new(),
             used: [0, 0],
             limits: [STATIC_CHANNELS, STREAMING_CHANNELS],
             source_volumes: [1.0; 11],
@@ -1192,7 +1195,7 @@ impl SoundEngine {
             };
             let mut cancel = false;
             hook(&sound, &mut volume, &mut pitch, &mut cancel);
-            if cancel || !readable_base_edit([instance.volume, instance.pitch], [volume, pitch]) {
+            if cancel {
                 return None;
             }
         }
@@ -1226,6 +1229,8 @@ impl SoundEngine {
             || self.queued.iter().any(|(i, _)| *i == id)
             || self.queued_tickable.contains(&id)
             || self.ticking.contains(&id)
+            || self.deferred.contains(&id)
+            || self.inflight.contains(&id)
     }
     fn collect(&mut self, id: InstanceId) {
         if !self.referenced(id) {
@@ -1515,7 +1520,17 @@ impl SoundEngine {
         (id, self.play(id, backend))
     }
     fn play_inner(&mut self, id: InstanceId, backend: &mut impl Backend) -> PlayResult {
-        if !self.instances.contains_key(&id) || !self.play_sound_allowed(id) || !self.loaded {
+        if !self.instances.contains_key(&id) || !self.loaded {
+            return PlayResult::NotStarted;
+        }
+        // Decide, fire, apply: with a `play_sound` listener the engine cannot fire the hook (it
+        // needs the game's `ClientHost`). The game fires it before this start, through
+        // `begin_play` and `finish_prepared`; a start that reaches here without it is held for the
+        // game's `next_deferred`, which runs before the game's call returns.
+        if self.asks_play_sound() && !self.decided.remove(&id) {
+            if !self.deferred.contains(&id) && !self.inflight.contains(&id) {
+                self.deferred.push(id);
+            }
             return PlayResult::NotStarted;
         }
         if !self.instances[&id].can_play_sound() {

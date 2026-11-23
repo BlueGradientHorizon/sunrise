@@ -2493,7 +2493,7 @@ impl<'g> Game<'g> {
                     at,
                     volume,
                     pitch,
-                } => self.audio.play(sound, Some(at), volume, pitch),
+                } => self.play_audio(sound, Some(at), volume, pitch),
             },
             // Only reached through a root commit, which replays blocks and connection groups in order.
             After::Block(_) | After::BulkBlocks(..) | After::ConnectionGroup(..) => {}

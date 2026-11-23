@@ -391,6 +391,48 @@ fn bulk_insert_skips_a_sparse_range_that_rejects_the_resource() {
     });
 }
 
+static SLOT_ONE_ONLY: AttachmentType<StackList<Pebble>> = AttachmentType {
+    namespace: "attached_storage_test",
+    name: "slot_one_only",
+    default: StackList::new,
+    codec: Some(AttachmentCodec {
+        encode: |list| {
+            if list.contains_key(&0) {
+                Err(AttachmentError::StackEncoding { index: 0 })
+            } else {
+                Ok(Compound::new())
+            }
+        },
+        decode: |_| Ok(StackList::new()),
+    }),
+    copy_on_death: false,
+    sync: false,
+};
+
+#[test]
+fn a_custom_codec_refusing_the_first_slot_still_takes_the_next() {
+    in_world(|| {
+        let mut host = FakeHost::new();
+        let slots = AttachedStacks::new(&SLOT_ONE_ONLY, CHUNK, 4, 4, |_| true);
+        assert_eq!(
+            host.transaction(|host, tx| Ok::<_, ()>(slots.insert_at(
+                host,
+                tx,
+                0,
+                &Pebble::Slate,
+                1
+            ))),
+            Ok(Ok(0))
+        );
+        assert_eq!(
+            host.transaction(|host, tx| slots.insert(host, tx, &Pebble::Slate, 3)),
+            Ok(3)
+        );
+        assert_eq!(slots.amount(&mut host, 0), 0);
+        assert_eq!(slots.amount(&mut host, 1), 3);
+    });
+}
+
 #[test]
 fn bulk_insert_refuses_a_view_beyond_the_stock_codec() {
     crate::testing::with_parts_registration_probe(

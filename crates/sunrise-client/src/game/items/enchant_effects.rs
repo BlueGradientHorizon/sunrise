@@ -588,7 +588,7 @@ impl Game<'_> {
                         .player
                         .as_ref()
                         .map(|p| [p.position.x, p.position.y, p.position.z]);
-                    self.audio.play(sound, at, float("volume"), float("pitch"));
+                    self.play_audio(sound, at, float("volume"), float("pitch"));
                 }
             }
             _ => {}
@@ -1073,7 +1073,10 @@ impl Game<'_> {
         self.lan_entity_event(id as i32, event, at);
     }
     /// `ExperienceOrb.repairPlayerItems`: returns the experience left over.
-    pub(in crate::game) fn mending(&mut self, amount: u32) -> u32 {
+    /// `ExperienceOrb.repairPlayerItems`: the signed `amount`, the points left over. A
+    /// damaged mending piece is picked (and the random drawn) whatever the amount;
+    /// a value of zero or below repairs nothing and, with a piece picked, is spent.
+    pub(in crate::game) fn mending(&mut self, amount: i32) -> i32 {
         let mut amount = amount;
         let player = (self.serving.is_some() || self.options.dedicated.is_some())
             .then(|| self.native_acting_id());
@@ -1098,7 +1101,7 @@ impl Game<'_> {
                 amount,
                 &mut self.world.random,
             );
-            let to_repair_xp = self.xp_repair(player, &stack, amount, vanilla_repair);
+            let to_repair_xp = self.xp_repair(player, &stack, amount.max(0) as u32, vanilla_repair);
             // No re-check that the slot still holds the picked stack, eligible
             // and damaged: nothing between the pick and here can change it. The
             // `xp_repair_ratio` parts are asked through `&self` with a read-only
@@ -1109,10 +1112,12 @@ impl Game<'_> {
                 // Vanilla consumes the XP when its own repair effect returns zero.
                 return if vanilla_repair == 0 { 0 } else { amount };
             }
-            let (repaired, remaining) = repaired_and_left(amount, stack.damage, to_repair_xp);
+            let (repaired, remaining) =
+                repaired_and_left(amount.max(0) as u32, stack.damage, to_repair_xp);
             if repaired == 0 {
                 return amount;
             }
+            let remaining = remaining as i32;
             stack.damage -= repaired;
             let notice = player
                 .filter(|_| mod_api::__private::listened(mod_api::HookId::PlayerItemMend))
@@ -1127,7 +1132,7 @@ impl Game<'_> {
             *self.player_slot_mut(slot) = Some(stack);
 
             if let Some((player, name, item)) = notice {
-                self.native_player_item_mend(player, &name, &item, repaired, amount);
+                self.native_player_item_mend(player, &name, &item, repaired, amount.max(0) as u32);
             }
             if remaining == 0 {
                 return 0;
@@ -1293,7 +1298,7 @@ impl Game<'_> {
             &mut random_source::entity(),
         );
         if let Some(pitch) = pitch {
-            self.audio.play(
+            self.play_audio(
                 "minecraft:particle.soul_escape",
                 Some([position.x, position.y, position.z]),
                 0.6,
@@ -1738,7 +1743,7 @@ fn repair_from_xp(
     enchantments: &Enchantments,
     items: Option<&Items>,
     stack: &ItemStack,
-    amount: u32,
+    amount: i32,
     random: &mut LegacyRandom,
 ) -> u32 {
     let ctx = EffectContext {

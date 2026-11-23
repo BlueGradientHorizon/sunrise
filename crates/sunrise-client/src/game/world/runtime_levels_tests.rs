@@ -764,6 +764,37 @@ fn the_idle_close_keeps_a_runtime_level_open_until_its_unload() {
     });
 }
 
+/// An idle close while a column still has light work outstanding saves the column unlit, so a
+/// reopen relights it instead of trusting light arrays older than its blocks.
+#[test]
+#[ignore = "daily"]
+fn an_idle_close_with_outstanding_light_saves_the_column_unlit() {
+    with_opener("lit", "lit:a", flat(), |game, _| {
+        tick_post(game);
+        game.apply_runtime_levels();
+        place_block(game, "lit:a", "minecraft:stone");
+        let dim = super::Dim::extra("lit:a").unwrap();
+        game.enter_level(dim).unwrap();
+        Arc::make_mut(game.world.chunks.get_mut(&(0, 0)).unwrap()).lit = true;
+        game.world.dirty_light.insert((0, 0));
+        game.world.modified.insert((0, 0));
+        game.enter_level(super::Dim::Overworld).unwrap();
+        game.close_parked_level(dim).unwrap();
+        game.enter_level(dim).unwrap();
+        game.streaming.forced.insert((0, 0));
+        for _ in 0..2000 {
+            game.update_world();
+            if game.world.chunks.contains_key(&(0, 0)) {
+                break;
+            }
+            game.streaming.wait(std::time::Duration::from_millis(5));
+        }
+        let reopened = game.world.chunks.get(&(0, 0)).expect("the chunk reopened");
+        assert!(!reopened.lit, "the saved column was marked lit");
+        game.enter_level(super::Dim::Overworld).unwrap();
+    });
+}
+
 #[test]
 #[ignore = "daily"]
 fn an_idle_level_aborts_an_abandoned_chunk_unload_transaction_before_it_closes() {

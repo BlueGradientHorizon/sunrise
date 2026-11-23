@@ -66,6 +66,20 @@ fn item_from_snbt_refuses_what_is_not_one_item_compound() {
             "stone is minecraft:stone"
         );
         assert_eq!(count(r#"{id:"minecraft:stone",Count:3}"#), Some(1));
+        assert_eq!(
+            count(
+                r#"{id:"minecraft:bundle",count:1,components:{"minecraft:bundle_contents":[{id:"minecraft:stone",count:1}]}}"#
+            ),
+            Some(1),
+            "a registered nested item is accepted"
+        );
+        assert_eq!(
+            count(
+                r#"{id:"minecraft:bundle",count:1,components:{"minecraft:bundle_contents":[{id:"nomod:missing",count:1}]}}"#
+            ),
+            None,
+            "an unknown nested item is refused at the same boundary"
+        );
         assert_eq!(count(r#"{id:"minecraft:stone",count:3,Count:9}"#), Some(3));
         assert_eq!(count(r#"{id:"minecraft:stone",count:99}"#), Some(99));
         assert_eq!(count(r#"{id:"minecraft:stone",count:1}"#), Some(1));

@@ -238,8 +238,9 @@ fn prepare_held_play_shuts_down_on_framing_and_pressure_but_not_encode_or_phase(
     assert_eq!(session.hold_incarnation(), None);
     assert!(!session.send(play::Serverbound::Pong(cfg::Ping { id: 2 })));
 
-    // Writer backpressure also takes the terminal shutdown path.
-    let (session, _peer) = connected();
+    // Credit exhausted by held packets alone refuses the new send and leaves the writer and
+    // the holds alone: once they are dropped the same session sends again.
+    let (session, mut peer) = connected();
     let (_, generation) = session.hold_incarnation().unwrap();
     let _held = {
         let writer = session.writer.lock().unwrap();
@@ -252,5 +253,15 @@ fn prepare_held_play_shuts_down_on_framing_and_pressure_but_not_encode_or_phase(
         session.prepare_held_play(play::Serverbound::Pong(cfg::Ping { id: 3 }), generation),
         Err(SendPacketError::Backpressure)
     ));
-    assert_eq!(session.hold_incarnation(), None);
+    assert!(!session.send(play::Serverbound::Pong(cfg::Ping { id: 4 })));
+    assert_eq!(session.hold_incarnation().map(|(_, g)| g), Some(generation));
+    drop(_held);
+    assert!(session.send(play::Serverbound::Pong(cfg::Ping { id: 5 })));
+    assert_eq!(
+        peer.recv().unwrap(),
+        (
+            sunrise_protocol::ids::play::serverbound::PONG,
+            vec![0, 0, 0, 5]
+        )
+    );
 }

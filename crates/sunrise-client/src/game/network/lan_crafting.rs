@@ -386,7 +386,16 @@ impl Game<'_> {
             smelted,
         } = effects;
         if award_recipes {
-            self.award_furnace_recipes(pos, at);
+            let recipes = self.award_furnace_recipes(pos, at);
+            // The extracting player learns what the furnace used, before `item_smelted`.
+            let conn = self
+                .lan
+                .as_ref()
+                .and_then(|host| host.hub.guests.iter().find(|g| g.uuid == uuid))
+                .map(|g| g.conn);
+            if let Some(conn) = conn {
+                self.as_guest(conn, |game| game.award_recipes(&recipes));
+            }
         }
         if !smelted.is_empty()
             && mod_api::__private::listened(mod_api::HookId::ItemSmelted)

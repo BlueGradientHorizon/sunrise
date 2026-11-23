@@ -185,8 +185,7 @@ impl Game<'_> {
     /// `ShulkerBullet.hurtServer`'s sound and fifteen crit particles
     /// (`sendParticles`, spread 0.2) at the bullet, before it is destroyed.
     pub(super) fn shulker_bullet_hurt(&mut self, at: [f64; 3]) {
-        self.audio
-            .play("minecraft:entity.shulker_bullet.hurt", Some(at), 1.0, 1.0);
+        self.play_audio("minecraft:entity.shulker_bullet.hurt", Some(at), 1.0, 1.0);
         if let Some(ty) = sunrise_client::particles::ParticleType::from_name("crit") {
             let options = sunrise_client::particles::ParticleOptions::simple(ty);
             self.particles
@@ -246,8 +245,7 @@ impl Game<'_> {
             .player
             .as_ref()
             .map(|p| [p.position.x, p.position.y, p.position.z]);
-        self.audio
-            .play("minecraft:entity.player.attack.nodamage", from, 1.0, 1.0);
+        self.play_audio("minecraft:entity.player.attack.nodamage", from, 1.0, 1.0);
         turned
     }
 

@@ -795,7 +795,6 @@ pub fn decode_block_entity_replacing(
     block: &str,
     previous: Option<&crate::containers::BlockEntity>,
 ) -> Option<((i32, i32, i32), crate::containers::BlockEntity)> {
-    let slots = block_mod_item_slots(block);
     let mut decoded = decode_block_entity_with_history(tag, previous, Some(block))?;
     // Several vanilla types share a decoded representation (for example barrel
     // and chest). Membership belongs to the saved type, not that representation.
@@ -805,11 +804,9 @@ pub fn decode_block_entity_replacing(
             if crate::block_entity_types::valid(block, m.id()) != Some(true) {
                 return None;
             }
-            // Missing saved stacks are empty slots, not a shorter container.
-            // Keep any saved stacks past the declared size out of the menu but on disk.
-            if m.items.len() < slots {
-                m.items.resize(slots, None);
-            }
+            // Missing saved stacks are empty slots, whatever the declared capacity: `items` holds
+            // the slots up to the last one occupied, and a slot past it reads as empty.
+            // Any saved stacks past the declared size stay out of the menu but on disk.
             true
         }
         _ => crate::block_entity_types::valid(block, &saved_id)
@@ -4239,12 +4236,7 @@ impl Level {
             .map(|v| v as f32);
         self.abilities = p.get("abilities").map(|a| {
             let flag = |key: &str, default: bool| number(a.get(key)).map_or(default, |v| v != 0);
-            let speed = |key: &str, default: f32| {
-                float(a.get(key))
-                    .map(|v| v as f32)
-                    .filter(|v| v.is_finite())
-                    .unwrap_or(default)
-            };
+            let speed = |key: &str, default: f32| float(a.get(key)).map_or(default, |v| v as f32);
             crate::lan::abilities::PlayerAbilities {
                 invulnerable: flag("invulnerable", false),
                 flying: flag("flying", false),
@@ -8029,7 +8021,7 @@ mod tests {
             )
         };
         data.items.resize(2, None);
-        *data.item_slot_mut(0).unwrap() = Some(ItemStack::new("minecraft:stone", 2));
+        *data.item_slot_mut(0) = Some(ItemStack::new("minecraft:stone", 2));
         let encoded = encode(&data);
         assert_eq!(
             encoded.get("Items"),
@@ -8042,7 +8034,7 @@ mod tests {
         };
         assert_eq!(reloaded.items[0], data.items[0]);
         assert_eq!(encode(&reloaded), encoded);
-        *data.item_slot_mut(0).unwrap() = None;
+        *data.item_slot_mut(0) = None;
         // A tick reply replacing the mutable fields, including shrinking the
         // modeled vector to zero, cannot restore the old saved row for slot 0.
         let mut snapshot = (**data).clone();
@@ -8054,7 +8046,7 @@ mod tests {
             Some(&parse(r#"[{Slot:1b,raw:"retained"},{raw:"no slot"}]"#))
         );
         data.items.resize(2, None);
-        *data.item_slot_mut(1).unwrap() = None;
+        *data.item_slot_mut(1) = None;
         assert_eq!(
             encode(&data).get("Items"),
             Some(&parse(r#"[{raw:"no slot"}]"#))
@@ -8104,6 +8096,26 @@ mod tests {
             panic!("expected mod block entity")
         };
         assert_eq!(reloaded.items, items);
+    }
+
+    /// A holder's capacity is its block's declaration, not the length of what it stores: a write
+    /// reaches its slot and no further, so a first write into a holder declared at the Java-int
+    /// maximum allocates the slots up to it, not the holder.
+    #[test]
+    fn a_slot_write_grows_a_mod_holder_only_to_that_slot() {
+        let saved = sunrise_core::nbt::parse_snbt(r#"{id:"gtmod:vault",x:0,y:0,z:0}"#)
+            .unwrap()
+            .0;
+        let (_, mut back) = decode_block_entity(&saved).expect("mod block entity");
+        let crate::containers::BlockEntity::Mod(m) = &mut back else {
+            panic!("not a mod's");
+        };
+        assert!(m.items.is_empty());
+        *m.item_slot_mut(2) = Some(crate::items::ItemStack::new("minecraft:stone", 1));
+        assert_eq!(m.items.len(), 3);
+        assert!(m.items[0].is_none() && m.items[1].is_none());
+        // Slots past the last written one read as empty without being allocated.
+        assert!(m.items.get(i32::MAX as usize - 1).is_none());
     }
 
     #[test]
@@ -8351,10 +8363,10 @@ mod tests {
         assert!(claimed.has_opaque_item_slot(0));
         assert!(claimed.has_opaque_item_slot(256));
         claimed.items.resize(257, None);
-        *claimed.item_slot_mut(0).unwrap() = Some(stone.clone());
+        *claimed.item_slot_mut(0) = Some(stone.clone());
         assert!(!claimed.has_opaque_item_slot(0));
         assert!(claimed.has_opaque_item_slot(256));
-        *claimed.item_slot_mut(256).unwrap() = Some(dirt.clone());
+        *claimed.item_slot_mut(256) = Some(dirt.clone());
         assert!(!claimed.has_opaque_item_slot(256));
         assert_eq!(
             block_entity_encode::encode(

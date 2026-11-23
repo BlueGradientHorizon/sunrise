@@ -245,6 +245,90 @@ fn observed_mod_click_supplies_grid_once_and_second_click_acts_on_changed_grid()
     });
 }
 
+/// A `recipe_sources` listener that breaks the block backing the open menu, without closing
+/// the player's window.
+struct BreaksTheBacking(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+#[mod_api::__subscriptions]
+impl mod_api::Hooks for BreaksTheBacking {
+    fn recipe_sources(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut mod_api::RecipeSourcesEvent<'_>,
+    ) {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let level = host.level("minecraft:overworld").unwrap();
+        let stone = host.block_state_id("minecraft:stone").unwrap();
+        assert_eq!(
+            level.set_block(host, event.pos, stone, mod_api::BlockUpdateFlags::NONE),
+            Ok(true)
+        );
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_recipe_sources_listener_that_breaks_the_backing_refuses_the_placement() {
+    let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mods: mod_api::Mods = vec![
+        mod_api::ModEntry::new("breaker", Box::new(BreaksTheBacking(calls.clone()))),
+        mod_api::ModEntry::new(
+            "review",
+            Box::new({
+                struct Menu;
+                #[mod_api::__subscriptions]
+                impl mod_api::Hooks for Menu {
+                    fn register(
+                        &self,
+                        r: &mut dyn mod_api::Registrar,
+                        _: &mod_api::RegistrationContext,
+                    ) {
+                        r.menu_part("review:menu", CountingPlacer(Default::default()));
+                    }
+                }
+                Menu
+            }),
+        ),
+    ]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        super::super::native_guest_turn_tests::with_guests(|game| {
+            game.world.chunks.insert(
+                (0, 0),
+                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            );
+            let (pos, catalog, display) = open_mod_menu(game);
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.inventory[9] = Some(sunrise_client::items::ItemStack::new(
+                    "minecraft:iron_ore",
+                    3,
+                ));
+            });
+            let plan = MenuPlacement::for_mod(
+                "review:menu".into(),
+                Placement::of(
+                    vec![Some(Ingredient::of(vec!["minecraft:iron_ore".into()]))],
+                    None,
+                ),
+            )
+            .unwrap();
+            assert_eq!(
+                game.apply_mod_book_plan(12, &catalog, &display, &plan, false),
+                Err(sync::Refusal::Changed)
+            );
+            assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+            assert!(!matches!(
+                game.world.block_entities.get(&pos),
+                Some(BlockEntity::Mod(_))
+            ));
+            let left = game.lan.as_ref().unwrap().hub.guest(12).unwrap().inventory[9]
+                .as_ref()
+                .unwrap()
+                .count;
+            assert_eq!(left, 3, "the refused placement took nothing");
+        });
+    });
+}
+
 #[test]
 #[ignore = "daily"]
 fn panicking_recipe_book_place_discards_answer_disables_only_that_callback_and_keeps_other_menus_running()

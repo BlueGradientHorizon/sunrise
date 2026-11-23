@@ -197,8 +197,7 @@ impl Game<'_> {
         let sound = golem.kind.sounds[0];
         if !sound.is_empty() {
             let at = golem.center();
-            self.audio
-                .play(&format!("minecraft:{sound}"), Some(at), 1.0, 1.0);
+            self.play_audio(&format!("minecraft:{sound}"), Some(at), 1.0, 1.0);
         }
         self.mobs.push(golem);
         self.native_mobs_joined(self.mobs.len() - 1, false);

@@ -2711,6 +2711,8 @@ struct GameLevel<'w> {
     /// Container loot tables (`unpackLootTable`).
     loot: Option<std::sync::Arc<sunrise_world::loot::LootData>>,
     loot_storage: std::sync::Arc<sunrise_world::loot::copy::StorageData>,
+    /// The level's world clocks, for `time_check` in loot conditions.
+    loot_clocks: std::collections::BTreeMap<String, i64>,
     registry: &'static sunrise_world::registry::BlockRegistry,
     block_registries: &'w sunrise_client::command::args::Registries,
     rules: sunrise_world::level::GameRules,
@@ -2750,6 +2752,8 @@ struct GameLevel<'w> {
     debug: bool,
     native_sounds: &'w mut Vec<creatures::NativeSound>,
     loop_context: &'w sunrise_world::native_load_context::LoopContext,
+    /// This side's level data, for the read-only level a block's sound type is asked in.
+    side: native_surface::GameSide<'w>,
     native_particles: &'w mut Vec<lan_particles::QueuedParticle>,
     sound_seeds: Option<&'w sunrise_client::lan::hub::Hub>,
     drop_entity: Option<mod_api::EntityRef>,
@@ -5176,6 +5180,7 @@ impl Game<'_> {
                 day_time: self.world.day_time,
                 raining: weather && rain > 0.2,
                 thundering: weather && thunder > 0.9,
+                clocks: self.loot_clock_ticks(),
             }),
         }
     }
@@ -5251,8 +5256,7 @@ impl Game<'_> {
         let client = self.options.execution_role.is_client();
         match splash {
             ItemSplash::Sound { at, volume, pitch } if !client => {
-                self.audio
-                    .play("minecraft:entity.generic.splash", Some(at), volume, pitch);
+                self.play_audio("minecraft:entity.generic.splash", Some(at), volume, pitch);
             }
             ItemSplash::Particle {
                 bubble,
@@ -5491,6 +5495,7 @@ impl Game<'_> {
         let liquid_transaction_open = self.has_level_transaction();
         let environment = self.res.environment_of(&self.dimension_type().id);
         let other_entities = entity::entity_lists_of!(self, without_carts);
+        let loot_clocks = self.loot_clock_ticks();
         let mut level = GameLevel {
             cake_probe: false,
             cake_requested: std::cell::Cell::new(false),
@@ -5554,6 +5559,7 @@ impl Game<'_> {
                 self.server_loot.get()
             },
             loot_storage: self.score.storage.snapshot(),
+            loot_clocks,
             registry: self.pack.assets.registry,
             block_registries: &self.pack.block_registries,
             rules,
@@ -5575,6 +5581,7 @@ impl Game<'_> {
             debug: self.world_debug,
             native_sounds: &mut self.creatures.lan_sounds,
             loop_context: &self.loop_context,
+            side: game_side!(self),
             native_particles: &mut self.creatures.lan_particles,
             sound_seeds: self.lan.as_ref().map(|host| &host.hub),
             drop_tool: None,
@@ -5970,8 +5977,7 @@ impl Game<'_> {
                 } => {
                     self.growth_particles(pos, data);
                     let at = [pos.x, pos.y, pos.z].map(|v| f64::from(v) + 0.5);
-                    self.audio
-                        .play("minecraft:item.bone_meal.use", Some(at), 1.0, 1.0);
+                    self.play_audio("minecraft:item.bone_meal.use", Some(at), 1.0, 1.0);
                 }
                 LevelEvent::LevelEvent {
                     id: 2015,
@@ -6079,7 +6085,7 @@ impl Game<'_> {
                     );
                     let random = self.particles.level_random();
                     let pitch = (1.0 + (random.next_float() - random.next_float()) * 0.2) * 0.7;
-                    self.audio.play_unshared(
+                    self.play_audio_unshared(
                         "minecraft:block.end_gateway.spawn",
                         Some(at),
                         10.0,
@@ -6105,7 +6111,7 @@ impl Game<'_> {
                 // relative sound, and it is not captured for other players.
                 LevelEvent::LevelEvent { id: 1032, .. } => {
                     let pitch = self.particles.level_random().next_float() * 0.4 + 0.8;
-                    self.audio.play_on(
+                    self.play_audio_on(
                         sunrise_client::sound_engine::AMBIENT,
                         "minecraft:block.portal.travel",
                         None,
@@ -6203,9 +6209,9 @@ impl Game<'_> {
                         ) {
                             // Clients play these sounds from their level events;
                             // capturing it also sends a duplicate sound packet.
-                            self.audio.play_unshared(name, c, volume, pitch);
+                            self.play_audio_unshared(name, c, volume, pitch);
                         } else {
-                            self.audio.play(name, c, volume, pitch);
+                            self.play_audio(name, c, volume, pitch);
                         }
                     }
                     // LevelEventHandler draws smoke after the sound.
@@ -6260,7 +6266,7 @@ impl Game<'_> {
                         &qualified
                     };
                     if source.is_some() {
-                        self.audio.play_on(
+                        self.play_audio_on(
                             mod_api::SoundSource::Blocks.index(),
                             name,
                             Some(c),
@@ -6279,7 +6285,7 @@ impl Game<'_> {
                             captured.except_entity = Some(placer);
                         }
                     } else {
-                        self.audio.play(name, Some(c), volume, pitch);
+                        self.play_audio(name, Some(c), volume, pitch);
                     }
                 }
                 // Handled as the behaviour emits it (GameLevel::emit).
@@ -6382,8 +6388,7 @@ impl Game<'_> {
                         f64::from(pos.y) + 0.5,
                         f64::from(pos.z) + 0.5,
                     ];
-                    self.audio
-                        .play("minecraft:block.frogspawn.hatch", Some(at), 1.0, 1.0);
+                    self.play_audio("minecraft:block.frogspawn.hatch", Some(at), 1.0, 1.0);
                     let count = 2 + self.world.random.next_int_bound(4).unwrap_or(0);
                     for _ in 0..count {
                         // getRandomTadpolePositionOffset: 0.2..0.8 inside the block.
@@ -6468,16 +6473,17 @@ impl Game<'_> {
                     kind: "note_custom_sound",
                     ..
                 } => {
-                    if let Some(BlockEntity::Skull(skull)) =
-                        self.world.block_entities.get(&(pos.x, pos.y + 1, pos.z))
-                        && let Some(sound) = skull.note_block_sound.as_deref()
-                    {
+                    let sound = match self.world.block_entities.get(&(pos.x, pos.y + 1, pos.z)) {
+                        Some(BlockEntity::Skull(skull)) => skull.note_block_sound.clone(),
+                        _ => None,
+                    };
+                    if let Some(sound) = sound.as_deref() {
                         let at = [
                             f64::from(pos.x) + 0.5,
                             f64::from(pos.y) + 0.5,
                             f64::from(pos.z) + 0.5,
                         ];
-                        self.audio.play(sound, Some(at), 3.0, 1.0);
+                        self.play_audio(sound, Some(at), 3.0, 1.0);
                     }
                 }
                 // `level.addParticle`: only the local player's own click draws it.
@@ -6704,12 +6710,15 @@ impl Game<'_> {
         collect: Option<&mut Vec<ItemStack>>,
     ) -> Result<bool> {
         let [x, y, z] = pos;
-        let state = self.world.block(x, y, z);
-        // An absent block (also what the level reads for an unloaded chunk) has
-        // no subject for the break callback.
-        if self.res.behaviours().is_air(state) {
+        // `Level.getBlockState` at the boundary: a column the level does not hold resident is
+        // loaded to read it, and what it holds, air included, is the subject of the break
+        // callback (`ServerPlayerGameMode.destroyBlock` has no air filter).
+        if !self.world.is_loaded_at(x, y, z)
+            && !(self.native_authoritative() && self.load_full_chunk(None, (x >> 4, z >> 4)))
+        {
             return Ok(false);
         }
+        let state = self.world.block(x, y, z);
         // NeoForge CommonHooks.fireBlockBreak: pre-cancel when the held item,
         // game mode, or game-master check refuses the break, then post
         // `break_block` before applying `ServerPlayerGameMode.destroyBlock`'s
@@ -6723,7 +6732,15 @@ impl Game<'_> {
             || (!self.can_use_game_master_blocks()
                 && is_game_master_block(&self.res.facts().get(state).name));
         let mut exp_to_drop = None;
+        // A break of this same block from inside the callback still outstanding on it does not
+        // dispatch again: it would call itself without end. It still removes the block, as a nested
+        // removal, and the outer break then applies none of its own.
+        let outstanding = self
+            .active_player_breaks
+            .iter()
+            .any(|active| active.dim == self.dim && active.pos == pos);
         let removed_by_nested = if self.native_authoritative()
+            && !outstanding
             && (!canceled || mod_api::__private::listened(mod_api::HookId::BreakBlock))
         {
             let depth = self.active_player_breaks.len();
@@ -6759,7 +6776,6 @@ impl Game<'_> {
         self.input_feedback(sunrise_client::input_source::Feedback::BlockBroken);
         let broken = state;
         let facts = self.res.facts().get(state).clone();
-        let held = self.held().cloned();
         let key = (pos[0], pos[1], pos[2]);
         self.unpack_loot(container_loot::LootTarget::Block(key), None);
         let live = (!self.creative)
@@ -6807,17 +6823,14 @@ impl Game<'_> {
             .as_ref()
             .is_some_and(|(h, (honey, _))| !h.bees.is_empty() || honey.is_some_and(|l| l > 0));
         let creative = self.creative;
-        // The block's parts first, then playerWillDestroy and Level.removeBlock.
-        let (removed, state, harvest) =
-            self.player_destroy_block_removal(pos, state, &facts, held.as_ref(), filled_hive);
+        let player_destroy::PlayerRemoval {
+            removed,
+            state,
+            harvest,
+            tool: held,
+            broken_tool,
+        } = self.player_destroy_block_removal(pos, state, &facts, filled_hive);
         if !creative {
-            // The stack as the removal left it: a listener may have swapped it.
-            let held = self.held().cloned();
-            let broken_tool = if removed {
-                self.mine_block_with_held(&facts.name, facts.hardness)
-            } else {
-                None
-            };
             if removed && harvest {
                 // Block.playerDestroy: the mined statistic, the exhaustion and the drops.
                 self.award_stat("mined", &facts.name, 1);
@@ -7675,8 +7688,7 @@ impl Game<'_> {
                         .position(|s| *s == "player")
                         .unwrap_or(0);
                     let capture = g.audio.capture.take();
-                    g.audio
-                        .play_on(players, "ui.hud.bubble_pop", Some(at), volume, pitch);
+                    g.play_audio_on(players, "ui.hud.bubble_pop", Some(at), volume, pitch);
                     g.audio.capture = capture;
                 }
             });
@@ -9745,10 +9757,10 @@ impl Game<'_> {
             f64::from(pos[2]) + 0.5,
         ];
         if self.lan_acting.is_some() {
-            self.audio.play_unshared(&sound, Some(at), 1.0, 1.0);
+            self.play_audio_unshared(&sound, Some(at), 1.0, 1.0);
             self.guest_player_sounds.push((sound.clone(), at, 1.0, 1.0));
         } else {
-            self.audio.play(&sound, Some(at), 1.0, 1.0);
+            self.play_audio(&sound, Some(at), 1.0, 1.0);
         }
         // ItemStack.useOn: a use that acted counts as one of the item.
         self.award_stat("used", &stack.item, 1);
@@ -9764,11 +9776,11 @@ impl Game<'_> {
     fn wax_on_sound(&mut self, at: [f64; 3]) {
         let sound = "minecraft:item.honeycomb.wax_on";
         if self.lan_acting.is_some() {
-            self.audio.play_unshared(sound, Some(at), 1.0, 1.0);
+            self.play_audio_unshared(sound, Some(at), 1.0, 1.0);
             self.guest_block_sounds
                 .push((sound.to_owned(), at, 1.0, 1.0));
         } else {
-            self.audio.play(sound, Some(at), 1.0, 1.0);
+            self.play_audio(sound, Some(at), 1.0, 1.0);
         }
     }
     /// `BlockTransformer.transformBlock`'s `COPPER_CHEST` extra: a double
@@ -9889,7 +9901,7 @@ impl Game<'_> {
             } else {
                 "minecraft:item.bucket.fill"
             };
-            self.audio.play(sound, Some(at(hit.pos)), 1.0, 1.0);
+            self.play_audio(sound, Some(at(hit.pos)), 1.0, 1.0);
             self.post_block_game_event(
                 "minecraft:fluid_pickup",
                 hit.pos,
@@ -10182,13 +10194,11 @@ impl Game<'_> {
         }
         self.tracked_special_box(id as i32)
     }
-    /// `Player.giveExperiencePoints`: the signed grant changes the score before the XP bar.
+    /// `Player.giveExperiencePoints`: the signed grant, zero included (the `player_xp_change` listener
+    /// may rewrite it), changes the score before the XP bar.
     /// `add_experience_levels` runs once for each level gained or lost, and the mods hear
     /// of the level change once.
     pub(super) fn give_experience_points(&mut self, points: i32) {
-        if points == 0 {
-            return;
-        }
         let Some(points) = self.xp_change(points) else {
             return;
         };
@@ -11347,7 +11357,7 @@ impl Game<'_> {
         let distance = (terrain_distance * 16) as f32;
         let depth_far =
             sunrise_client::camera::depth_far(terrain_distance, self.settings.cloud_range);
-        let bob = if camera_effects
+        let view_transform = if camera_effects
             && self.player.is_some()
             && mod_api::__private::listened(mod_api::HookId::RenderViewTransform)
             && let Some(renderer) = &self.renderer
@@ -11361,11 +11371,13 @@ impl Game<'_> {
             );
             mod_api::ViewTransform::with_frame(usable, |transform| {
                 self.native_render_view_transform(camera_alpha as f32, transform);
-                bob * glam::Mat4::from_cols_array(&transform.matrix())
+                glam::Mat4::from_cols_array(&transform.matrix())
             })
         } else {
-            bob
+            glam::Mat4::IDENTITY
         };
+        // The pose the camera, GUI and hand see: the vanilla bob, then the mod's transform.
+        let posed_bob = bob * view_transform;
         let mods_read_camera = !mod_api::__private::mods().is_empty();
         self.screen_blur_requested.set(false);
         self.native_camera_frame = (mods_read_camera && !title).then(|| {
@@ -11381,7 +11393,7 @@ impl Game<'_> {
                 fov_degrees,
                 near: 0.05,
                 far: depth_far,
-                view: (bob * spin * frame_view_matrix).to_cols_array(),
+                view: (posed_bob * spin * frame_view_matrix).to_cols_array(),
                 projection: glam::Mat4::perspective_rh(
                     fov_degrees.to_radians(),
                     size[0] as f32 / size[1].max(1) as f32,
@@ -11440,7 +11452,7 @@ impl Game<'_> {
                 depth_far,
                 0.05,
             ),
-            model_view: bob * spin * frame_view_matrix,
+            model_view: posed_bob * spin * frame_view_matrix,
             sun_angle: sun_angle.to_radians() - std::f32::consts::FRAC_PI_2,
             day_time: day_time.rem_euclid(24000) as f32,
             delta_time: delta_ticks,
@@ -11450,11 +11462,12 @@ impl Game<'_> {
         let core_globals = self.reads_poly_globals().then(poly_globals);
         self.give_poly_globals(core_globals.as_ref());
         self.expression_frame = frame;
-        // Camera.createProjectionMatrixForCulling: max(fov, configuredFov), without bob or spin.
+        // Camera.createProjectionMatrixForCulling: max(fov, configuredFov), without bob or spin,
+        // under the mod's view transform.
         self.view_frustum = self.world_view_frustum(
             camera,
             [cull_fov_degrees, yaw, pitch, roll],
-            glam::Mat4::IDENTITY,
+            view_transform,
             depth_far,
         );
         let billboard_frustum = if self.settings.sunrise.taa {
@@ -11464,7 +11477,7 @@ impl Game<'_> {
                     yaw,
                     pitch,
                     roll,
-                    glam::Mat4::IDENTITY,
+                    view_transform,
                     depth_far,
                 )
             })
@@ -11543,7 +11556,7 @@ impl Game<'_> {
         // GameRenderer.render3dHud: the screen effects after the hand, in
         // its pass (the hand pass draws with `bob * view`).
         if !title {
-            let view = bob * frame_view_matrix;
+            let view = posed_bob * frame_view_matrix;
             let aspect = size[0] as f32 / size[1].max(1) as f32;
             self.item_activation_geometry(camera_alpha as f32, view, aspect, &mut hand);
         }
@@ -11678,6 +11691,7 @@ impl Game<'_> {
             eye_rotation: eye.filter(|_| !title).map_or([yaw, pitch], |e| e.1),
             first_person: eye.is_none() || title || !self.view.detached,
             bob,
+            view_transform,
             spin,
             sky,
             shadow_scene_revision: (self.world.revision, self.world.chunks.membership_revision()),
@@ -12150,8 +12164,8 @@ impl Game<'_> {
                     let (w, h) = self.gui_size();
                     let (x, y) = sunrise_client::level_loading::file_fixer_cancel(w, h);
                     if sunrise_client::ui::hovered(self.cursor, x, y, 200.0, 20.0) {
-                        self.audio.play_button_click();
                         upgrade.set_canceled();
+                        self.play_audio_button_click();
                     }
                 }
                 _ => {}
@@ -12323,7 +12337,7 @@ impl Game<'_> {
             let handled = widget || self.preset_editor_mouse_clicked(code, double_click);
             self.save_title_options();
             if sound {
-                self.audio.play_button_click();
+                self.play_audio_button_click();
             }
             self.title_action(action)?;
             self.reopen_data_packs()?;
@@ -13173,6 +13187,8 @@ impl Game<'_> {
                         self.frames += 1;
                         self.fps_frames += 1;
                         sunrise_client::crash::debug_crash_tick();
+                        // `BlockableEventLoop.relayDelayCrash`: a worker's panic is reported on this thread.
+                        sunrise_client::crash::relay_worker_panic();
                         if self.fps_at.elapsed() >= Duration::from_secs(1) {
                             self.fps = self.fps_frames as f32 / self.fps_at.elapsed().as_secs_f32();
                             self.fps_frames = 0;
@@ -13484,7 +13500,7 @@ impl Game<'_> {
             .and_then(|t| t.tab_bar_key(key, ctrl, shift))
         {
             if sound {
-                self.audio.play_button_click();
+                self.play_audio_button_click();
             }
             return Ok(true);
         }
@@ -13502,7 +13518,7 @@ impl Game<'_> {
                 let handled = sound || !matches!(action, Action::None);
                 self.save_title_options();
                 if sound {
-                    self.audio.play_button_click();
+                    self.play_audio_button_click();
                 }
                 self.title_action(action)?;
                 Ok(handled)

@@ -808,6 +808,7 @@ impl GameLevel<'_> {
                 day_time: self.world.day_time,
                 raining: self.raining,
                 thundering: self.thundering,
+                clocks: self.loot_clocks.clone(),
             }),
         };
         let level = super::location_world::LevelLocation {

@@ -416,8 +416,8 @@ fn held_pressure_refuses_send_play_and_cross_passage_without_moving() {
             )
         );
 
-        // Held backpressure refuses the crossing payload, shuts down the writer,
-        // and leaves the player unmoved with no pending crossing.
+        // Held backpressure refuses the crossing payload, leaves the writer and the hold
+        // alone, and leaves the player unmoved with no pending crossing.
         assert_eq!(
             game.cross_passage(mod_api::PassageId::from_raw(1)),
             Err(mod_api::PassageCrossError::Unavailable)
@@ -432,6 +432,13 @@ fn held_pressure_refuses_send_play_and_cross_passage_without_moving() {
             game.send_play(S::Pong(Ping { id: 99 })),
             PlaySend::Unavailable
         );
-        assert_eq!(game.release_held(hold), Err(HoldError::Unknown));
+        // The hold survived the refusals: dropping it frees the credit and sends flow again.
+        assert_eq!(game.drop_held(hold), Ok(()));
+        assert_eq!(
+            game.send_play(S::Pong(Ping { id: 100 })),
+            PlaySend::Admitted
+        );
+        let (id, body) = peer.recv().unwrap();
+        assert_eq!(S::decode(id, &body).unwrap(), S::Pong(Ping { id: 100 }));
     });
 }

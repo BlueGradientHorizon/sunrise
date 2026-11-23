@@ -174,13 +174,11 @@ impl Game<'_> {
             1018 => {
                 let r = self.particles.random();
                 let pitch = (r.next_float() - r.next_float()) * 0.2 + 1.0;
-                self.audio
-                    .play("minecraft:entity.blaze.shoot", Some(c), 2.0, pitch);
+                self.play_audio("minecraft:entity.blaze.shoot", Some(c), 2.0, pitch);
             }
             1051 => {
                 let pitch = 0.4 / (self.particles.random().next_float() * 0.4 + 0.8);
-                self.audio
-                    .play("minecraft:entity.wind_charge.throw", Some(c), 0.5, pitch);
+                self.play_audio("minecraft:entity.wind_charge.throw", Some(c), 0.5, pitch);
             }
             1049 => self
                 .audio
@@ -1041,7 +1039,7 @@ impl Game<'_> {
         };
         if let Some(at) = at {
             if let Some(sound) = sound {
-                self.audio.play(&sound, Some([at.x, at.y, at.z]), 1.0, 1.0);
+                self.play_audio(&sound, Some([at.x, at.y, at.z]), 1.0, 1.0);
             }
             let who = match target {
                 Target::Mob(i) => Some(sunrise_client::mobs::Who::Mob(self.mobs[i].id)),
@@ -1616,7 +1614,7 @@ impl Game<'_> {
         // new PrimedTnt(level, x + 0.5, y, z + 0.5, null), its sound and ENTITY_PLACE.
         let rot = self.world.random.next_double() * f64::from(std::f32::consts::TAU);
         self.add_primed_tnt(target, rot, 80, None, None);
-        self.audio.play(
+        self.play_audio(
             "minecraft:entity.tnt.primed",
             Some([
                 f64::from(target.x) + 0.5,
@@ -1834,7 +1832,7 @@ impl Game<'_> {
                         Some(next),
                     );
                 }
-                self.audio.play(
+                self.play_audio(
                     "minecraft:block.respawn_anchor.charge",
                     Some(Self::center(target)),
                     1.0,
@@ -1878,7 +1876,7 @@ impl Game<'_> {
         if !self.in_block_tag("minecraft:beehives", &name) || level.is_none_or(|l| l < 5) {
             return Ok(false);
         }
-        self.audio.play(
+        self.play_audio(
             "minecraft:block.beehive.shear",
             Some(Self::center(target)),
             1.0,
@@ -2024,8 +2022,7 @@ impl Game<'_> {
                     let ctx = self.who_context(Some(sunrise_client::mobs::Who::Mob(id)), None);
                     self.post_game_event("minecraft:unequip", [at.x, at.y, at.z], ctx);
                     self.mobs[i].extra.ints[3] = sulfur_cube::PICKUP_TIMER;
-                    self.audio
-                        .play("minecraft:entity.sulfur_cube.eject", sound_at, 1.0, 1.0);
+                    self.play_audio("minecraft:entity.sulfur_cube.eject", sound_at, 1.0, 1.0);
                 }
                 Species::Sheep if !m.extra.sheared && !m.is_baby() => {
                     let color =
@@ -2197,8 +2194,7 @@ impl Game<'_> {
         let ctx = self.who_context(Some(who), None);
         self.post_game_event("minecraft:shear", [at.x, at.y, at.z], ctx);
         let block = [at.x.floor() + 0.5, at.y.floor() + 0.5, at.z.floor() + 0.5];
-        self.audio
-            .play("minecraft:item.shears.snip", Some(block), 1.0, 1.0);
+        self.play_audio("minecraft:item.shears.snip", Some(block), 1.0, 1.0);
         true
     }
     /// The brush behaviour: the first armadillo in front that `brushOffScute`s.
@@ -2225,7 +2221,7 @@ impl Game<'_> {
             for d in drops {
                 self.spawn_at_location(at, 0.0, d);
             }
-            self.audio.play(
+            self.play_audio(
                 "minecraft:entity.armadillo.brush",
                 Some([at.x, at.y, at.z]),
                 1.0,
@@ -2270,7 +2266,7 @@ impl Game<'_> {
             // setItemSlot: a body item without `equippable` posts UNEQUIP.
             let ctx = self.who_context(Some(sunrise_client::mobs::Who::Mob(id)), None);
             self.post_game_event("minecraft:unequip", [at.x, at.y, at.z], ctx);
-            self.audio.play(
+            self.play_audio(
                 "minecraft:entity.sulfur_cube.absorb",
                 Some([at.x, at.y, at.z]),
                 1.0,
@@ -2305,7 +2301,7 @@ impl Game<'_> {
                 source: None,
             });
         self.process_level_events()?;
-        self.audio.play(
+        self.play_audio(
             "minecraft:item.honeycomb.wax_on",
             Some(Self::center(target)),
             1.0,
@@ -2338,7 +2334,7 @@ impl Game<'_> {
             self.particles
                 .add(&ParticleOptions::simple(ParticleType::Splash), p, [0.0; 3]);
         }
-        self.audio.play(
+        self.play_audio(
             "minecraft:item.bottle.empty",
             Some(Self::center(pos)),
             1.0,

@@ -223,6 +223,12 @@ mod camera_type_tests {
                         "an explicit Z equal to the detached placement stays pinned"
                     );
 
+                    // The render-only X override never reaches what streaming and entry
+                    // readiness read.
+                    let placed = game.visual_camera_position().unwrap();
+                    assert_ne!(placed[0], 12.0);
+                    assert_eq!(placed[2], 4.0);
+
                     let custom = glam::DVec3::new(2.0, 31.0, 5.0);
                     game.studio.freecam.activate(custom, 180.0, 0.0, 70.0);
                     game.studio.freecam.roll = 90.0;
@@ -236,9 +242,56 @@ mod camera_type_tests {
         );
     }
 
+    struct PinXz;
+    #[mod_api::__subscriptions]
+    impl Hooks for PinXz {
+        fn camera_position(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut mod_api::CameraPositionEvent<'_>,
+        ) {
+            assert!(event.position.set([Some(1000.0), None, Some(1000.0)]));
+        }
+    }
+
+    /// The render position a mod pins over a chunk the server has not sent never moves the
+    /// placement streaming and the level-entry readiness follow.
+    #[test]
+    #[ignore = "daily"]
+    fn a_pinned_camera_position_over_an_unsent_chunk_leaves_streaming_and_readiness_on_the_player()
+    {
+        if run_fresh_cases(
+            "game::native_hooks::camera_type::camera_type_tests::a_pinned_camera_position_over_an_unsent_chunk_leaves_streaming_and_readiness_on_the_player",
+            "SUNRISE_CAMERA_PIN_CHILD",
+            &["pin"],
+        ) {
+            return;
+        }
+        with_mods(
+            vec![ModEntry::new("pin-xz", Box::new(PinXz))].into(),
+            || {
+                with_client_game(|game| {
+                    game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+                    game.title = None;
+                    let (rendered, _, _, _) = game.frame_camera(1.0).unwrap();
+                    assert_eq!([rendered.x, rendered.z], [1000.0, 1000.0]);
+                    let placed = game.visual_camera_position().unwrap();
+                    assert!(
+                        placed[0].abs() < 2.0 && placed[2].abs() < 2.0,
+                        "streaming follows the player, not the pinned render position: {placed:?}"
+                    );
+                    // The streaming centre is the player's section, not the pinned one's.
+                    game.streaming.center = (500, 500);
+                    game.update_world();
+                    assert_eq!(game.streaming.center, (0, 0));
+                });
+            },
+        );
+    }
+
     enum AngleWriter {
         Set,
-        PanicOnce(Arc<std::sync::atomic::AtomicUsize>),
+        Panic(Arc<std::sync::atomic::AtomicUsize>),
         Add,
     }
     #[mod_api::__subscriptions]
@@ -251,13 +304,10 @@ mod camera_type_tests {
             use std::sync::atomic::Ordering;
             match self {
                 Self::Set => (event.yaw, event.pitch, event.roll) = (17.0, 2.0, 10.0),
-                Self::PanicOnce(calls) => {
+                Self::Panic(calls) => {
                     event.roll = 90.0;
-                    match calls.fetch_add(1, Ordering::Relaxed) {
-                        0 => panic!("fixture camera callback panicked"),
-                        1 => {}
-                        _ => event.pitch = f32::NAN,
-                    }
+                    calls.fetch_add(1, Ordering::Relaxed);
+                    panic!("fixture camera callback panicked");
                 }
                 Self::Add => event.yaw += 10.0,
             }
@@ -266,9 +316,9 @@ mod camera_type_tests {
 
     #[test]
     #[ignore = "daily"]
-    fn a_failed_camera_listener_retries_next_frame_without_losing_preceding_angles() {
+    fn a_failed_camera_listener_is_disabled_and_later_listeners_still_run() {
         if run_fresh_cases(
-            "game::native_hooks::camera_type::camera_type_tests::a_failed_camera_listener_retries_next_frame_without_losing_preceding_angles",
+            "game::native_hooks::camera_type::camera_type_tests::a_failed_camera_listener_is_disabled_and_later_listeners_still_run",
             "SUNRISE_CAMERA_ANGLE_FAILURE_CHILD",
             &["angles"],
         ) {
@@ -280,7 +330,7 @@ mod camera_type_tests {
             ModEntry::new("set", Box::new(AngleWriter::Set)),
             ModEntry::new(
                 "camera-panic",
-                Box::new(AngleWriter::PanicOnce(executions.clone())),
+                Box::new(AngleWriter::Panic(executions.clone())),
             ),
             ModEntry::new("add", Box::new(AngleWriter::Add)),
         ];
@@ -288,18 +338,13 @@ mod camera_type_tests {
             with_client_game(|game| {
                 game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
                 game.title = None;
-                for expected_roll in [10.0, 90.0] {
+                // The failed listener's writes are rolled back, the listeners around it still
+                // run, and it stays disabled for the later frame.
+                for _ in 0..2 {
                     let (_, yaw, pitch, roll) = game.frame_camera(1.0).unwrap();
-                    assert_eq!((yaw, pitch, roll), (27.0, 2.0, expected_roll));
+                    assert_eq!((yaw, pitch, roll), (27.0, 2.0, 10.0));
                 }
-                assert_eq!(executions.load(Ordering::Relaxed), 2);
-
-                // NeoForge assigns angles as given. Check the dispatched value without using
-                // a deliberately non-finite angle to place a render camera.
-                let (mut yaw, mut pitch, mut roll) = (0.0, 0.0, 0.0);
-                game.native_compute_camera_angles(1.0, &mut yaw, &mut pitch, &mut roll);
-                assert!(pitch.is_nan());
-                assert_eq!((yaw, roll), (27.0, 90.0));
+                assert_eq!(executions.load(Ordering::Relaxed), 1);
             });
             let notices = mod_api::__private::take_hook_panics();
             assert_eq!(notices.len(), 1);

@@ -83,6 +83,7 @@ breaker too when other players can break the same blocks while the vein runs. Wh
 sets loose (a torch losing its support, a container's contents) is not the block's own drop and
 still drops where it was.
 
-Keep a guard like `busy` when a listener starts breaks of its own. Chained calls have no fixed
-nesting limit, and the origin is still present when `break_block` first fires. Without a guard,
-a listener that asks to break the same live block can call itself indefinitely.
+Chained calls have no fixed nesting limit. A listener that breaks the block it is being told
+about does not hear itself again: that nested break removes the block without a second
+`break_block`, and the outer call then does nothing more. Keep a guard like `busy` when a
+listener starts breaks of other blocks that may themselves fire it.

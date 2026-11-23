@@ -65,16 +65,18 @@ fn add_facade_dependencies(
         if library != "internals" {
             continue;
         }
-        let entry = match dependencies.entry(alias) {
-            toml::map::Entry::Vacant(entry) => entry,
-            toml::map::Entry::Occupied(entry) => {
-                return Err(trf(
-                    "{mod}: Cargo.toml dependency alias `{alias}` is already in use; rename the dependency or give `sunrise-internals` a different alias.",
-                    &[("mod", &project.bundle.manifest.id), ("alias", entry.key())],
-                ));
-            }
-        };
-        entry.insert(
+        // Cargo names the extern crate after the key with hyphens as underscores.
+        if let Some(existing) = dependencies
+            .keys()
+            .find(|key| key.replace('-', "_") == alias.replace('-', "_"))
+        {
+            return Err(trf(
+                "{mod}: Cargo.toml dependency alias `{alias}` is already in use; rename the dependency or give `sunrise-internals` a different alias.",
+                &[("mod", &project.bundle.manifest.id), ("alias", existing)],
+            ));
+        }
+        dependencies.insert(
+            alias,
             toml::toml! {
                 path = (format!("../../{facade_relative}"))
                 package = facade_package
@@ -301,7 +303,15 @@ pub(super) fn stage_and_cargo(
     }
     // `[[native.mixin]]` rows: the patched crates join the workspace beside the mods, whose
     // crates their helpers call, and compile against the SDK like a mod.
-    let patch = super::patch::prepare(rust, game, &out.join("fnr"), projects, sdk, options.mixins)?;
+    let patch = super::patch::prepare(
+        rust,
+        game,
+        &out.join("fnr"),
+        projects,
+        sdk,
+        options.mixins,
+        check_only,
+    )?;
     if let Some(patch) = &patch {
         for name in &patch.names {
             let dir = patch.dir.join(name);
@@ -727,6 +737,43 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn generated_facade_alias_collides_with_a_hyphenated_registry_alias() {
+        let dir = tempfile::tempdir().unwrap();
+        super::super::tests::write_bundle(dir.path(), "bake", "");
+        let bundle = super::super::bundle_in(dir.path()).unwrap().unwrap();
+        let cargo = r#"
+            [package]
+            name = "bake"
+            version = "0.1.0"
+            [dependencies]
+            sunrise-mod-api = { path = ".sunrise/sdk/api/crates/sunrise-mod-api" }
+            game-internals = { package = "itoa", version = "1" }
+            game_internals = { package = "sunrise-internals", path = ".sunrise/sdk/api/crates/sunrise-internals" }
+            "#;
+        let project = api::Project::parse(&bundle, cargo).unwrap();
+        let (mut manifest, _) =
+            super::super::crates::rewrite_closure(&project, dir.path(), |_, _| {
+                unreachable!("fixture has no local dependencies")
+            })
+            .unwrap();
+        let error = add_facade_dependencies(
+            &project,
+            &mut manifest,
+            "native-internals/bake",
+            "sunrise-internals-bake",
+        )
+        .unwrap_err();
+        assert!(
+            error.contains("bake: Cargo.toml dependency alias `"),
+            "{error}"
+        );
+        assert_eq!(
+            manifest["dependencies"]["game-internals"]["package"].as_str(),
+            Some("itoa")
+        );
     }
 
     #[test]

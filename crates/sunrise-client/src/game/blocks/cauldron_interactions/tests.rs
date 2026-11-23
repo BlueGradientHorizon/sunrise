@@ -294,9 +294,14 @@ fn fixture(dye: bool, test: impl FnOnce(&mut Game<'_>, &Arc<Seen>)) {
     });
 }
 fn setup(game: &mut Game<'_>, block: &str, level: Option<&str>, item: &str, count: u32) {
-    game.world
-        .chunks
-        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+    game.world.chunks.insert(
+        (0, 0),
+        Arc::new({
+            let mut chunk = sunrise_client::chunk::Chunk::empty(0, 0);
+            chunk.lit = true; // a FULL read of a hand-made column finds it ready
+            chunk
+        }),
+    );
     let state = sunrise_world::chunk::BlockState {
         name: block.into(),
         properties: level

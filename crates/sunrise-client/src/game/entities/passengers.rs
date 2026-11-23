@@ -1975,7 +1975,7 @@ mod nested_vehicle_discard_tests {
             host: &mut dyn mod_api::ServerHost,
             event: &mut mod_api::EntityJoinLevelEvent<'_>,
         ) -> mod_api::Flow {
-            if event.entity == 71 {
+            if event.subject.id() == 71 {
                 assert_eq!(
                     self.0.vehicle.fetch_add(1, Ordering::Relaxed),
                     0,

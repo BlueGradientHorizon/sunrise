@@ -435,7 +435,7 @@ mod tests {
                 event: &mut EntityJoinLevelEvent<'_>,
             ) -> Flow {
                 let host: &dyn Host = host;
-                let entity = host.entity(event.entity).unwrap();
+                let entity = host.entity(event.subject.id()).unwrap();
                 self.0.lock().unwrap().push(entity.added_to_level(host));
                 Flow::Continue
             }

@@ -6,11 +6,11 @@ impl Game<'_> {
     /// the other guests without leaving it in the broadcast capture.
     pub(super) fn play_block_use_sound(&mut self, sound: &str, at: [f64; 3], pitch: f32) {
         if self.lan_acting.is_some() {
-            self.audio.play_unshared(sound, Some(at), 1.0, pitch);
+            self.play_audio_unshared(sound, Some(at), 1.0, pitch);
             self.guest_block_sounds
                 .push((sound.to_owned(), at, 1.0, pitch));
         } else {
-            self.audio.play(sound, Some(at), 1.0, pitch);
+            self.play_audio(sound, Some(at), 1.0, pitch);
         }
     }
 
@@ -911,8 +911,7 @@ impl Game<'_> {
             .player
             .as_ref()
             .map_or(eye, |pl| [pl.position.x, pl.position.y, pl.position.z]);
-        self.audio
-            .play("minecraft:entity.arrow.shoot", Some(feet), 1.0, pitch);
+        self.play_audio("minecraft:entity.arrow.shoot", Some(feet), 1.0, pitch);
         self.award_stat("used", "minecraft:bow", 1);
         // useAmmo takes one arrow for the first drawn projectile and none for
         // the rest, and none at all when the weapon draws none.

@@ -38,7 +38,7 @@ the active hand, and inspect that hand's stack with `LivingRef::with_hand_item`.
 
 `host.gui_options().damage_tilt_strength` is the player's Damage Tilt accessibility option, 0 (off) to 1
 (vanilla's `Options.damageTiltStrength`): the factor vanilla's own hurt tilt takes. Scale a hurt shake
-(`camera_shake`) or a field-of-view punch by it, so a player who turned the tilt off for comfort doesn't get yours
+(`render_view_transform`) or a field-of-view punch by it, so a player who turned the tilt off for comfort doesn't get yours
 either.
 
 ## Name tags

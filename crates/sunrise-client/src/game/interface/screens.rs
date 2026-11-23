@@ -615,7 +615,7 @@ impl Game<'_> {
             });
         if let Some(id) = hit {
             self.pause_focus = Some(id);
-            self.audio.play_button_click();
+            self.play_audio_button_click();
             self.execute_pause_action(id)?;
             return Ok(true);
         }
@@ -740,7 +740,7 @@ impl Game<'_> {
             }
             KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => {
                 if let Some(hit) = self.pause_focus.filter(|id| active_ids.contains(id)) {
-                    self.audio.play_button_click();
+                    self.play_audio_button_click();
                     self.execute_pause_action(hit)?;
                     Ok(true)
                 } else {
@@ -943,7 +943,7 @@ impl Game<'_> {
         // handleExitToTitleScreen: outside hardcore, Title Screen asks first.
         if hit == Some(1) && !self.level.hardcore {
             self.ui.death_confirm = Some(std::time::Instant::now());
-            self.audio.play_button_click();
+            self.play_audio_button_click();
             return Ok(true);
         }
         self.death_action(hit)?;
@@ -963,7 +963,7 @@ impl Game<'_> {
             }
             return match key {
                 KeyCode::Escape => {
-                    self.audio.play_button_click();
+                    self.play_audio_button_click();
                     self.death_confirm_answer(false)?;
                     Ok(true)
                 }
@@ -992,7 +992,7 @@ impl Game<'_> {
                 }
                 KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => {
                     let yes = self.death_focus != Some(1);
-                    self.audio.play_button_click();
+                    self.play_audio_button_click();
                     self.death_confirm_answer(yes)?;
                     Ok(true)
                 }
@@ -1027,7 +1027,7 @@ impl Game<'_> {
                 let Some(hit) = self.death_focus else {
                     return Ok(false);
                 };
-                self.audio.play_button_click();
+                self.play_audio_button_click();
                 if hit == 1 && !self.level.hardcore {
                     self.ui.death_confirm = Some(std::time::Instant::now());
                     self.death_focus = Some(0);
@@ -1044,7 +1044,7 @@ impl Game<'_> {
     pub(super) fn death_confirm_answer(&mut self, yes: bool) -> Result<()> {
         self.ui.death_confirm = None;
         if yes {
-            self.audio.play_button_click();
+            self.play_audio_button_click();
             self.close_world()
         } else {
             self.death_action(Some(0))
@@ -1058,7 +1058,7 @@ impl Game<'_> {
             _ => {}
         }
         if hit.is_some() {
-            self.audio.play_button_click();
+            self.play_audio_button_click();
         }
         Ok(())
     }

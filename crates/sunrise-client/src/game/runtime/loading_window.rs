@@ -207,6 +207,7 @@ pub(super) fn loading_frame(hud: &HudBatch) -> Frame<'_> {
         eye_rotation: [0.0, 10.0],
         first_person: true,
         bob: glam::Mat4::IDENTITY,
+        view_transform: glam::Mat4::IDENTITY,
         spin: glam::Mat4::IDENTITY,
         sky: sunrise_client::environment::Sky::default(),
         shadow_scene_revision: (0, 0),

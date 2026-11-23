@@ -1045,9 +1045,11 @@ pub enum ChunkResend {
     Ready,
     /// Waiting for the prefix of `World::light_edits` already queued for the next light pass.
     WaitingEdits { through: usize },
-    /// Waiting for a whole-column light job for this column (including any replacement needed
-    /// if a superseded in-flight job is discarded without applying) to finish `apply_lit`.
-    WaitingLight,
+    /// Waiting for the whole-column light job for this column that covers the request: the
+    /// running job when nothing was queued after it, else the first job submitted after the
+    /// request (`from_seq` and later). That job's light is published when it returns, even
+    /// if a newer request has since queued another job; later requests never extend the wait.
+    WaitingLight { from_seq: u64 },
 }
 
 /// The game rules and difficulty a player's health reads (`Player.isInvulnerableTo`,
