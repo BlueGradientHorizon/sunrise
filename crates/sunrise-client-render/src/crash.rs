@@ -2058,7 +2058,7 @@ pub(crate) mod tests {
             .unwrap()
             .join();
         assert!(worker.is_err());
-        let path = with_crash_lines(broken_and_healthy_sections(), || relayed_worker_panic())
+        let path = with_crash_lines(broken_and_healthy_sections(), relayed_worker_panic)
             .expect("the main thread sees the worker's panic")
             .expect("the report is saved");
         let text = std::fs::read_to_string(path).unwrap();

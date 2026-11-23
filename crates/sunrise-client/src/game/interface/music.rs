@@ -213,6 +213,7 @@ impl Game<'_> {
         // Client mods' sounds asked for since the last update start with it, then their stops
         // and fades apply.
         self.apply_mod_sounds();
+        self.dispatch_play_sounds();
         self.audio.tick(self.pause, &ctx);
     }
     /// `Minecraft.setLevel` -> `updateLevelInEngines`: `SoundManager.stop()`.

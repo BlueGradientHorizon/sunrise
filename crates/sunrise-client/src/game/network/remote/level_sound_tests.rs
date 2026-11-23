@@ -42,7 +42,7 @@ impl mod_api::Hooks for Tuner {
         (e.volume, e.pitch) = (0.5, 2.0);
         Flow::Continue
     }
-    fn play_sound(&self, _: &dyn mod_api::LoopContext, e: &mut mod_api::PlaySoundEvent<'_>) {
+    fn play_sound(&self, _: &mut dyn mod_api::ClientHost, e: &mut mod_api::PlaySoundEvent<'_>) {
         // Active sounds also refresh their playback parameters on ticks.
         if e.starting {
             self.0.lock().unwrap().played.push(e.original.clone());
@@ -328,6 +328,8 @@ fn packets_ask_client_level_before_playback_not_ui() {
                 })
             };
             deliver(game, position("minecraft:block.chest.locked"));
+            // The engine prepared the start; the game fires `play_sound` for it.
+            game.dispatch_play_sounds();
             {
                 let log = log.lock().unwrap();
                 assert_eq!(log.requests, ["position"]);
@@ -340,6 +342,7 @@ fn packets_ask_client_level_before_playback_not_ui() {
                 assert_eq!(heard.position, [1.0, 64.0, -2.0]);
             }
             deliver(game, position("minecraft:entity.pig.ambient"));
+            game.dispatch_play_sounds();
             assert_eq!(
                 log.lock().unwrap().played.len(),
                 1,
@@ -356,6 +359,7 @@ fn packets_ask_client_level_before_playback_not_ui() {
                 })
             };
             deliver(game, entity(7));
+            game.dispatch_play_sounds();
             {
                 let log = log.lock().unwrap();
                 assert_eq!(log.requests, ["position", "position", "entity"]);
@@ -373,6 +377,7 @@ fn packets_ask_client_level_before_playback_not_ui() {
             game.tick_sound_engine();
             assert_eq!(bound[0].state().position, [9.0, 64.0, 4.0]);
             deliver(game, entity(999));
+            game.dispatch_play_sounds();
             {
                 let log = log.lock().unwrap();
                 assert_eq!(
@@ -383,6 +388,7 @@ fn packets_ask_client_level_before_playback_not_ui() {
                 assert_eq!(log.played.len(), 2, "absent emitter starts no playback");
             }
             game.audio.play_button_click();
+            game.dispatch_play_sounds();
             let log = log.lock().unwrap();
             assert_eq!(log.requests.len(), 3, "UI playback adds no level request");
             assert_eq!(

@@ -426,6 +426,7 @@ mod placement_context_tests;
 mod play_hit_sound;
 #[cfg(test)]
 mod play_hit_sound_tests;
+mod play_sound;
 mod player_bed_leave;
 mod player_break_speed;
 mod player_brewed_potion;

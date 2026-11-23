@@ -1,34 +1,12 @@
-//! The sound engine's hook points for native mods. They fire from the engine itself,
-//! where vanilla's `SoundEngine` does, with the client's [`LoopContext`](mod_api::LoopContext): no game is
-//! at hand there, and a sound is played from inside the engine's own loops.
+//! The sound engine's hook points for native mods. The source and load notices fire from the
+//! engine with the client's [`LoopContext`](mod_api::LoopContext). `play_sound` takes a `ClientHost`,
+//! which only the game has: the engine prepares each start and each live refresh
+//! ([`SoundEngine::next_prepared`], [`SoundEngine::live_requests`]), the game fires the hook,
+//! and the engine applies the answer ([`SoundEngine::finish_prepared`],
+//! [`SoundEngine::set_live_answer`]).
 use super::{Attenuation, ChannelId, SoundEngine, SoundInstance};
 use mod_api::__private::built;
 use mod_api::{ChannelRef, HookId, SoundAttenuation, SoundPlay, SoundSource};
-
-/// Hook point for native mods (docs/modding/src/how-to/native-mods.md, declared in `hooks/`
-/// with the game's): a sound is about to play (`PlaySoundEvent`, vanilla's `SoundEngine.play`).
-/// `original` is the sound as asked for; `sound` starts as a copy of it, and a mod edits it or
-/// sets it `None` to play nothing. It is asked before the engine's own checks (library loaded,
-/// sound resolved, volume, channel pool), for every sound the client plays, so answer fast.
-#[inline(never)]
-pub fn native_play_sound(
-    context: &sunrise_world::native_load_context::LoopContext,
-    instance: u64,
-    starting: bool,
-    original: &SoundPlay,
-    sound: &mut Option<SoundPlay>,
-) {
-    if !mod_api::__private::listened(HookId::PlaySound) {
-        return;
-    }
-    mod_api::dispatch_play_sound(
-        &crate::api_context::LoopReader(context).context(),
-        instance,
-        starting,
-        original,
-        sound,
-    );
-}
 
 /// Hook point for native mods (docs/modding/src/how-to/native-mods.md, declared in `hooks/`
 /// with the game's): a sound that is not streamed has started on `channel`
@@ -86,10 +64,12 @@ fn valid_playback_edit(original: &SoundPlay, edited: &SoundPlay) -> bool {
     edited.effects == original.effects || edited.effects.valid()
 }
 
+/// A `play_sound` the engine prepared for the game to fire: the sound as asked for.
 #[derive(Clone, Debug)]
-pub(super) struct LiveSettings {
-    original: SoundPlay,
-    edited: Option<SoundPlay>,
+pub struct PreparedPlay {
+    pub instance: super::InstanceId,
+    pub starting: bool,
+    pub original: SoundPlay,
 }
 
 impl SoundInstance {
@@ -97,13 +77,6 @@ impl SoundInstance {
         let mut sound = SoundPlay::ui("");
         self.write_play_settings(&mut sound);
         sound
-    }
-    fn live_play_settings(&self) -> &std::cell::RefCell<LiveSettings> {
-        self.live_settings.get_or_init(|| {
-            let original = self.play_settings();
-            let edited = Some(original.clone());
-            std::cell::RefCell::new(LiveSettings { original, edited })
-        })
     }
     // Reuse string storage for live playback; starts prepare the buffers.
     fn write_play_settings(&self, sound: &mut SoundPlay) {
@@ -175,63 +148,97 @@ impl SoundEngine {
         self.loop_context = Some(context);
     }
 
-    /// `play_sound`: false when a mod took the sound away. With no listener, or on a
-    /// side with no context (a server has no sound), it costs this one check.
-    pub(super) fn play_sound_allowed(&mut self, id: super::InstanceId) -> bool {
-        let Some(source) = &self.loop_context else {
-            return true;
-        };
-        if !mod_api::__private::listened(HookId::PlaySound) {
-            return true;
-        }
-        let Some(instance) = self.instances.get_mut(&id) else {
-            return true;
-        };
-        let original = instance.play_settings();
-        let mut sound = Some(original.clone());
-        native_play_sound(source, id, true, &original, &mut sound);
-        match sound {
-            None => false,
-            Some(edited) => {
-                if !valid_playback_edit(&original, &edited) {
-                    return false;
-                }
-                if edited != original {
-                    instance.apply_play_settings(edited);
-                }
-                let mut cache = instance.live_play_settings().borrow_mut();
-                instance.write_play_settings(&mut cache.original);
-                if let Some(edited) = cache.edited.as_mut() {
-                    instance.write_play_settings(edited);
-                } else {
-                    cache.edited = Some(cache.original.clone());
-                }
-                true
-            }
-        }
+    /// Whether `play_sound` is asked for the sounds this engine plays: a client with its context
+    /// and a listener. With none, a start costs this one check and nothing is prepared.
+    pub(super) fn asks_play_sound(&self) -> bool {
+        self.loop_context.is_some() && mod_api::__private::listened(HookId::PlaySound)
     }
 
-    /// Live volume, pitch and effects refresh, through the single play_sound contract. Other
-    /// settings cannot be changed on an already allocated channel.
+    /// The next prepared start for the game to fire `play_sound` for (`starting`), in the order
+    /// they were prepared. The instance stays referenced until [`Self::finish_prepared`].
+    pub fn next_prepared(&mut self) -> Option<PreparedPlay> {
+        while !self.prepared.is_empty() {
+            let id = self.prepared.remove(0);
+            let Some(instance) = self.instances.get(&id) else {
+                continue;
+            };
+            let original = instance.play_settings();
+            self.inflight.push(id);
+            return Some(PreparedPlay {
+                instance: id,
+                starting: true,
+                original,
+            });
+        }
+        None
+    }
+
+    /// Apply the game's answer to a prepared start and start it: `None` plays nothing, an edit
+    /// with invalid `effects` refuses the play, a new identifier is resolved again.
+    pub fn finish_prepared(
+        &mut self,
+        id: super::InstanceId,
+        answer: Option<SoundPlay>,
+        backend: &mut impl super::Backend,
+    ) -> super::PlayResult {
+        self.inflight.retain(|i| *i != id);
+        let Some(instance) = self.instances.get_mut(&id) else {
+            return super::PlayResult::NotStarted;
+        };
+        let original = instance.play_settings();
+        let Some(edited) = answer.filter(|edited| valid_playback_edit(&original, edited)) else {
+            self.collect(id);
+            return super::PlayResult::NotStarted;
+        };
+        if edited != original {
+            instance.apply_play_settings(edited);
+        }
+        self.decided.insert(id);
+        let result = self.play(id, backend);
+        self.decided.remove(&id);
+        result
+    }
+
+    /// The live refreshes the game fires `play_sound` for (`starting` false): each playing
+    /// sound, as asked for. Empty with no listener. The answers replace the earlier ones.
+    pub fn live_requests(&mut self) -> Vec<PreparedPlay> {
+        self.live_answers.clear();
+        if !self.asks_play_sound() {
+            return Vec::new();
+        }
+        self.instance_to_channel
+            .iter()
+            .filter_map(|(id, _)| {
+                Some(PreparedPlay {
+                    instance: *id,
+                    starting: false,
+                    original: self.instances.get(id)?.play_settings(),
+                })
+            })
+            .collect()
+    }
+
+    /// The game's answer to a live refresh request; `None` stops the channel.
+    pub fn set_live_answer(&mut self, id: super::InstanceId, answer: Option<SoundPlay>) {
+        self.live_answers.insert(id, answer);
+    }
+
+    /// Live volume, pitch and effects refresh, from the game's answer for this instance (unchanged
+    /// when it has none). Other settings cannot be changed on an already allocated channel.
     pub(super) fn playback_update_parameters(
         &self,
         id: super::InstanceId,
     ) -> Option<(f32, f32, mod_api::SoundEffects)> {
         let instance = self.instances.get(&id)?;
-        let Some(source) = self
-            .loop_context
-            .as_ref()
-            .filter(|_| mod_api::__private::listened(HookId::PlaySound))
-        else {
-            return Some((instance.volume, instance.pitch, instance.effects));
+        let current = (instance.volume, instance.pitch, instance.effects);
+        if !self.asks_play_sound() {
+            return Some(current);
+        }
+        let Some(answer) = self.live_answers.get(&id) else {
+            return Some(current);
         };
-        let mut cache = instance.live_play_settings().borrow_mut();
-        let LiveSettings { original, edited } = &mut *cache;
-        instance.write_play_settings(original);
-        instance.write_play_settings(edited.as_mut()?);
-        native_play_sound(source, id, false, original, edited);
-        let edited = edited.as_ref()?;
-        if !valid_playback_edit(original, edited) {
+        let edited = answer.as_ref()?;
+        if !valid_playback_edit(&instance.play_settings(), edited) {
             return None;
         }
         Some((edited.volume, edited.pitch, edited.effects))
@@ -282,6 +289,7 @@ impl SoundEngine {
 mod tests {
     use super::*;
     use crate::sound_engine::test_backend::Null;
+    use crate::sound_engine::{MASTER, PlayResult, TickContext, Ticking};
     use crate::sound_events::SoundRegistry;
     use std::collections::BTreeMap;
     use std::sync::{Arc, Mutex};
@@ -291,30 +299,18 @@ mod tests {
     /// What the mod heard, in order.
     type Log = Arc<Mutex<Vec<String>>>;
 
-    /// Mutes `minecraft:block.mute`, turns `minecraft:block.quiet` up and a half-tone down.
-    struct Tuner(Log);
+    /// Subscribes to `play_sound` so the engine prepares starts for the game to fire (the game's
+    /// own dispatch is tested in the game crate), and hears the source notices, which the engine
+    /// still fires itself.
+    struct Subscriber(Log);
 
     #[mod_api::__subscriptions]
-    impl mod_api::Hooks for Tuner {
+    impl mod_api::Hooks for Subscriber {
         fn play_sound(
             &self,
-            _context: &dyn mod_api::LoopContext,
-            event: &mut mod_api::PlaySoundEvent<'_>,
+            _host: &mut dyn mod_api::ClientHost,
+            _event: &mut mod_api::PlaySoundEvent<'_>,
         ) {
-            self.0.lock().unwrap().push(format!(
-                "play {} {}",
-                event.original.identifier, event.original.volume
-            ));
-            match event.original.identifier.as_str() {
-                "minecraft:block.mute" => *event.sound = None,
-                "minecraft:block.quiet" => {
-                    if let Some(sound) = event.sound.as_mut() {
-                        sound.volume = 0.5;
-                        sound.pitch = 2.0;
-                    }
-                }
-                _ => {}
-            }
         }
         fn play_sound_source(
             &self,
@@ -348,6 +344,14 @@ mod tests {
         }
     }
 
+    fn subscribed(log: Log, body: impl FnOnce()) {
+        let mods: Vec<mod_api::ModEntry> = vec![mod_api::ModEntry::new(
+            "subscriber",
+            Box::new(Subscriber(log)),
+        )];
+        mod_platform::testing::with_mods(mods.into(), body);
+    }
+
     fn engine() -> SoundEngine {
         let mut registry = SoundRegistry::default();
         registry.add_file(
@@ -363,45 +367,86 @@ mod tests {
         engine
     }
 
+    /// Answers every prepared start the way the game would after firing the hook: `edit` is the
+    /// listener's change of the sound as asked for. The last start's result.
+    fn answer_starts(
+        engine: &mut SoundEngine,
+        backend: &mut Null,
+        edit: impl Fn(&mut Option<SoundPlay>),
+    ) -> Option<PlayResult> {
+        let mut last = None;
+        while let Some(prepared) = engine.next_prepared() {
+            assert!(prepared.starting);
+            let mut sound = Some(prepared.original.clone());
+            edit(&mut sound);
+            last = Some(engine.finish_prepared(prepared.instance, sound, backend));
+        }
+        last
+    }
+
+    /// Answers every live refresh the way the game would.
+    fn answer_refreshes(engine: &mut SoundEngine, edit: impl Fn(&mut Option<SoundPlay>)) {
+        for prepared in engine.live_requests() {
+            assert!(!prepared.starting);
+            let mut sound = Some(prepared.original.clone());
+            edit(&mut sound);
+            engine.set_live_answer(prepared.instance, sound);
+        }
+    }
+
+    /// Plays `name` as the game does with a listener: prepared, answered, started.
     fn play(
         engine: &mut SoundEngine,
         backend: &mut Null,
         name: &str,
-    ) -> crate::sound_engine::PlayResult {
+        edit: impl Fn(&mut Option<SoundPlay>),
+    ) -> PlayResult {
         let instance = SoundInstance::for_ui(name, 1.0, 1.0, LegacyRandom::new(1));
-        engine.play_new(instance, false, backend).1
+        let (_, result) = engine.play_new(instance, false, backend);
+        assert_eq!(result, PlayResult::Pending, "a start waits for the game");
+        answer_starts(engine, backend, edit).unwrap()
     }
 
+    fn unchanged(_: &mut Option<SoundPlay>) {}
+
     #[test]
-    fn a_mod_mutes_retunes_and_hears_the_sources_start() {
-        let log: Log = Log::default();
-        let mods: Vec<mod_api::ModEntry> = vec![mod_api::ModEntry::new(
-            "tuner",
-            Box::new(Tuner(log.clone())),
-        )];
-        mod_platform::testing::with_mods(mods.into(), || {
+    fn a_start_is_prepared_without_side_effects_and_the_answer_decides_it() {
+        let log = Log::default();
+        subscribed(log.clone(), || {
             let (mut engine, mut backend) = (engine(), Null::default());
             engine.notify_loaded();
-            assert_eq!(
-                play(&mut engine, &mut backend, "minecraft:block.mute"),
-                crate::sound_engine::PlayResult::NotStarted
-            );
+            let instance =
+                SoundInstance::for_ui("minecraft:block.mute", 1.0, 1.0, LegacyRandom::new(1));
+            let (_, result) = engine.play_new(instance, false, &mut backend);
+            assert_eq!(result, PlayResult::Pending);
+            assert!(backend.volume.is_empty(), "preparing takes no channel");
+            let prepared = engine.next_prepared().unwrap();
+            assert_eq!(prepared.original.identifier, "minecraft:block.mute");
+            // Cancelled: nothing plays.
+            let result = engine.finish_prepared(prepared.instance, None, &mut backend);
+            assert_eq!(result, PlayResult::NotStarted);
             assert!(backend.volume.is_empty(), "a muted sound takes no channel");
-            play(&mut engine, &mut backend, "minecraft:block.quiet");
+            let retune = |sound: &mut Option<SoundPlay>| {
+                let sound = sound.as_mut().unwrap();
+                sound.volume = 0.5;
+                sound.pitch = 2.0;
+            };
+            play(&mut engine, &mut backend, "minecraft:block.quiet", retune);
             assert_eq!(backend.volume.values().copied().collect::<Vec<_>>(), [0.5]);
-            play(&mut engine, &mut backend, "minecraft:block.plain");
-            play(&mut engine, &mut backend, "minecraft:music.menu");
+            play(
+                &mut engine,
+                &mut backend,
+                "minecraft:block.plain",
+                unchanged,
+            );
+            play(&mut engine, &mut backend, "minecraft:music.menu", unchanged);
         });
         assert_eq!(
             *log.lock().unwrap(),
             [
                 "load Client",
-                "play minecraft:block.mute 1",
-                "play minecraft:block.quiet 1",
                 "source minecraft:block.quiet 0.5",
-                "play minecraft:block.plain 1",
                 "source minecraft:block.plain 1",
-                "play minecraft:music.menu 1",
                 "stream minecraft:music.menu",
             ]
         );
@@ -411,104 +456,55 @@ mod tests {
     fn with_no_listener_a_sound_plays_as_asked() {
         let (mut engine, mut backend) = (engine(), Null::default());
         engine.notify_loaded();
+        let instance =
+            SoundInstance::for_ui("minecraft:block.mute", 1.0, 1.0, LegacyRandom::new(1));
         assert_eq!(
-            play(&mut engine, &mut backend, "minecraft:block.mute"),
-            crate::sound_engine::PlayResult::Started
+            engine.play_new(instance, false, &mut backend).1,
+            PlayResult::Started
         );
+        assert!(engine.next_prepared().is_none() && engine.live_requests().is_empty());
     }
+
     #[test]
     fn live_play_sound_edits_reach_the_channel_without_changing_the_instance() {
-        struct Live(std::sync::atomic::AtomicUsize, std::sync::atomic::AtomicU64);
-        #[mod_api::__subscriptions]
-        impl mod_api::Hooks for Live {
-            fn play_sound(
-                &self,
-                _: &dyn mod_api::LoopContext,
-                event: &mut mod_api::PlaySoundEvent<'_>,
-            ) {
-                let n = self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                assert_eq!(event.starting, n == 0 || n == 3);
-                if n == 0 {
-                    self.1
-                        .store(event.instance, std::sync::atomic::Ordering::SeqCst);
-                } else {
-                    assert_eq!(
-                        event.instance,
-                        self.1.load(std::sync::atomic::Ordering::SeqCst)
-                    );
-                }
-                if n == 1 {
-                    let sound = event.sound.as_mut().unwrap();
-                    sound.volume = 0.25;
-                    sound.pitch = 2.0;
-                } else if n == 2 {
-                    *event.sound = None;
-                }
-            }
-        }
-        let mods = vec![mod_api::ModEntry::new(
-            "live",
-            Box::new(Live(0.into(), 0.into())),
-        )];
-        mod_platform::testing::with_mods(mods.into(), || {
+        subscribed(Log::default(), || {
             let (mut engine, mut backend) = (engine(), Null::default());
             let instance =
                 SoundInstance::for_ui("minecraft:block.plain", 1.0, 1.0, LegacyRandom::new(1));
             let (id, result) = engine.play_new(instance, true, &mut backend);
-            assert_eq!(result, crate::sound_engine::PlayResult::Started);
+            assert_eq!(result, PlayResult::Pending);
+            answer_starts(&mut engine, &mut backend, unchanged);
             let channel = engine.channel(id).unwrap();
-            engine.refresh_category_volume(crate::sound_engine::MASTER, &mut backend);
+            answer_refreshes(&mut engine, |sound| {
+                let sound = sound.as_mut().unwrap();
+                sound.volume = 0.25;
+                sound.pitch = 2.0;
+            });
+            engine.refresh_category_volume(MASTER, &mut backend);
             assert_eq!(backend.volume[&channel], 0.25);
             assert_eq!(backend.pitch[&channel], 2.0);
             assert_eq!(engine.instance(id).unwrap().volume, 1.0);
             assert_eq!(engine.instance(id).unwrap().pitch, 1.0);
-            engine.refresh_category_volume(crate::sound_engine::MASTER, &mut backend);
+            answer_refreshes(&mut engine, |sound| *sound = None);
+            engine.refresh_category_volume(MASTER, &mut backend);
             assert!(engine.instance(id).unwrap().stopped);
             engine.instance_mut(id).unwrap().stopped = false;
+            assert_eq!(engine.play(id, &mut backend), PlayResult::Pending);
             assert_eq!(
-                engine.play(id, &mut backend),
-                crate::sound_engine::PlayResult::Started
+                answer_starts(&mut engine, &mut backend, unchanged),
+                Some(PlayResult::Started)
             );
-            engine.refresh_category_volume(crate::sound_engine::MASTER, &mut backend);
+            answer_refreshes(&mut engine, unchanged);
+            engine.refresh_category_volume(MASTER, &mut backend);
             assert!(
                 !engine.instance(id).unwrap().stopped,
                 "a replay resets a cancelled live edit"
             );
         });
     }
+
     #[test]
     fn a_mods_effects_reach_the_channel_and_out_of_range_ones_play_nothing() {
-        struct Shaper;
-        #[mod_api::__subscriptions]
-        impl mod_api::Hooks for Shaper {
-            fn play_sound(
-                &self,
-                _: &dyn mod_api::LoopContext,
-                event: &mut mod_api::PlaySoundEvent<'_>,
-            ) {
-                let sound = event.sound.as_mut().unwrap();
-                match event.original.identifier.as_str() {
-                    "minecraft:block.quiet" => {
-                        sound.effects.lowpass = 600.0;
-                        sound.effects.cavern = 0.5;
-                    }
-                    "minecraft:block.mute" => sound.effects.lowpass = 5.0,
-                    _ => {}
-                }
-            }
-        }
-        /// Sets one refused value at the start of a sound.
-        struct Refused(fn(&mut mod_api::SoundEffects));
-        #[mod_api::__subscriptions]
-        impl mod_api::Hooks for Refused {
-            fn play_sound(
-                &self,
-                _: &dyn mod_api::LoopContext,
-                event: &mut mod_api::PlaySoundEvent<'_>,
-            ) {
-                (self.0)(&mut event.sound.as_mut().unwrap().effects);
-            }
-        }
         let refused: [fn(&mut mod_api::SoundEffects); 8] = [
             |e| e.gain = f32::NAN,
             |e| e.direct = 1.5,
@@ -519,75 +515,68 @@ mod tests {
             |e| e.cavern = 1.0001,
             |e| e.reverb_lowpass = 20_001.0,
         ];
-        for edit in refused {
-            let mods = vec![mod_api::ModEntry::new("refused", Box::new(Refused(edit)))];
-            mod_platform::testing::with_mods(mods.into(), || {
+        subscribed(Log::default(), || {
+            for edit in refused {
                 let (mut engine, mut backend) = (engine(), Null::default());
-                assert_eq!(
-                    play(&mut engine, &mut backend, "minecraft:block.plain"),
-                    crate::sound_engine::PlayResult::NotStarted
+                let result = play(
+                    &mut engine,
+                    &mut backend,
+                    "minecraft:block.plain",
+                    |sound| edit(&mut sound.as_mut().unwrap().effects),
                 );
+                assert_eq!(result, PlayResult::NotStarted);
                 assert!(backend.effects.is_empty() && backend.volume.is_empty());
-            });
-        }
-        let mods = vec![mod_api::ModEntry::new("shaper", Box::new(Shaper))];
-        mod_platform::testing::with_mods(mods.into(), || {
+            }
             let (mut engine, mut backend) = (engine(), Null::default());
+            let shape = |sound: &mut Option<SoundPlay>| {
+                let sound = sound.as_mut().unwrap();
+                sound.effects.lowpass = 600.0;
+                sound.effects.cavern = 0.5;
+            };
             assert_eq!(
-                play(&mut engine, &mut backend, "minecraft:block.quiet"),
-                crate::sound_engine::PlayResult::Started
+                play(&mut engine, &mut backend, "minecraft:block.quiet", shape),
+                PlayResult::Started
             );
             let effects = backend.effects.values().copied().collect::<Vec<_>>();
             assert_eq!(effects.len(), 1);
             assert_eq!((effects[0].lowpass, effects[0].cavern), (600.0, 0.5));
-            play(&mut engine, &mut backend, "minecraft:block.plain");
+            play(
+                &mut engine,
+                &mut backend,
+                "minecraft:block.plain",
+                unchanged,
+            );
             assert!(
                 backend
                     .effects
                     .values()
                     .any(|e| *e == mod_api::SoundEffects::NONE)
             );
-            assert_eq!(
-                play(&mut engine, &mut backend, "minecraft:block.mute"),
-                crate::sound_engine::PlayResult::NotStarted
-            );
         });
     }
+
     #[test]
     fn a_ticking_sounds_live_refresh_moves_its_effects_and_a_refused_value_stops_it() {
-        /// On each live refresh, sets the low-pass the test asks for next.
-        struct Follower(Arc<Mutex<f32>>);
-        #[mod_api::__subscriptions]
-        impl mod_api::Hooks for Follower {
-            fn play_sound(
-                &self,
-                _: &dyn mod_api::LoopContext,
-                event: &mut mod_api::PlaySoundEvent<'_>,
-            ) {
-                if !event.starting {
-                    event.sound.as_mut().unwrap().effects.lowpass = *self.0.lock().unwrap();
-                }
-            }
-        }
         for refused in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, 10.0, 30_000.0] {
-            let next = Arc::new(Mutex::new(900.0));
-            let mods = vec![mod_api::ModEntry::new(
-                "follower",
-                Box::new(Follower(next.clone())),
-            )];
-            mod_platform::testing::with_mods(mods.into(), || {
+            subscribed(Log::default(), || {
                 let (mut engine, mut backend) = (engine(), Null::default());
                 let mut instance =
                     SoundInstance::for_ui("minecraft:block.plain", 1.0, 1.0, LegacyRandom::new(1));
-                instance.ticking = crate::sound_engine::Ticking::Native;
+                instance.ticking = Ticking::Native;
                 let (id, result) = engine.play_new(instance, true, &mut backend);
-                assert_eq!(result, crate::sound_engine::PlayResult::Started);
+                assert_eq!(result, PlayResult::Pending);
+                answer_starts(&mut engine, &mut backend, unchanged);
                 let channel = engine.channel(id).unwrap();
                 assert_eq!(backend.effects[&channel], mod_api::SoundEffects::NONE);
-                let ctx = crate::sound_engine::TickContext::default();
+                let ctx = TickContext::default();
+                answer_refreshes(&mut engine, |sound| {
+                    sound.as_mut().unwrap().effects.lowpass = 900.0
+                });
                 engine.tick(false, &ctx, &mut backend);
                 assert_eq!(backend.effects[&channel].lowpass, 900.0);
-                *next.lock().unwrap() = refused;
+                answer_refreshes(&mut engine, |sound| {
+                    sound.as_mut().unwrap().effects.lowpass = refused
+                });
                 engine.tick(false, &ctx, &mut backend);
                 // Refused, not clamped: the channel keeps what it had and stops.
                 assert_eq!(backend.effects[&channel].lowpass, 900.0);
@@ -595,36 +584,29 @@ mod tests {
             });
         }
     }
+
     #[test]
     fn finite_negative_play_sound_edits_reach_the_local_sound_mixer() {
-        struct Replace(bool);
-        #[mod_api::__subscriptions]
-        impl mod_api::Hooks for Replace {
-            fn play_sound(
-                &self,
-                _: &dyn mod_api::LoopContext,
-                event: &mut mod_api::PlaySoundEvent<'_>,
-            ) {
-                if event.starting == self.0 {
-                    let sound = event.sound.as_mut().unwrap();
-                    sound.volume = -0.5;
-                    sound.pitch = -1.0;
-                }
-            }
-        }
-        use crate::sound_engine::{MASTER, PlayResult, TickContext, Ticking};
+        let negative = |sound: &mut Option<SoundPlay>| {
+            let sound = sound.as_mut().unwrap();
+            sound.volume = -0.5;
+            sound.pitch = -1.0;
+        };
         for (at_start, category_refresh) in [(true, false), (false, false), (false, true)] {
-            let mods = vec![mod_api::ModEntry::new(
-                "replace",
-                Box::new(Replace(at_start)),
-            )];
-            mod_platform::testing::with_mods(mods.into(), || {
+            subscribed(Log::default(), || {
                 let (mut engine, mut backend) = (engine(), Null::default());
-                let play = SoundPlay::ui("minecraft:block.plain");
-                let mut instance = SoundInstance::from_play(&play, LegacyRandom::new(1));
+                let play_settings = SoundPlay::ui("minecraft:block.plain");
+                let mut instance = SoundInstance::from_play(&play_settings, LegacyRandom::new(1));
                 instance.ticking = Ticking::Mod { fade: None };
                 instance.can_start_silent = true;
-                let (id, result) = engine.play_new(instance, true, &mut backend);
+                let (id, pending) = engine.play_new(instance, true, &mut backend);
+                assert_eq!(pending, PlayResult::Pending);
+                let result = answer_starts(&mut engine, &mut backend, |sound| {
+                    if at_start {
+                        negative(sound);
+                    }
+                })
+                .unwrap();
                 let channel = engine.channel(id).unwrap();
                 if at_start {
                     assert_eq!(result, PlayResult::StartedSilently);
@@ -634,6 +616,7 @@ mod tests {
                         (backend.volume[&channel], backend.pitch[&channel]),
                         (1.0, 1.0)
                     );
+                    answer_refreshes(&mut engine, negative);
                     if category_refresh {
                         engine.refresh_category_volume(MASTER, &mut backend);
                     } else {
@@ -654,33 +637,28 @@ mod tests {
 
     #[test]
     fn invalid_play_sound_edits_refuse_starts_and_stop_live_channels() {
-        struct Poison(bool);
-        #[mod_api::__subscriptions]
-        impl mod_api::Hooks for Poison {
-            fn play_sound(
-                &self,
-                _: &dyn mod_api::LoopContext,
-                event: &mut mod_api::PlaySoundEvent<'_>,
-            ) {
-                if event.starting == self.0 {
-                    let sound = event.sound.as_mut().unwrap();
-                    sound.effects.gain = f32::NAN;
-                }
-            }
-        }
+        let poison =
+            |sound: &mut Option<SoundPlay>| sound.as_mut().unwrap().effects.gain = f32::NAN;
         for at_start in [true, false] {
-            let mods = vec![mod_api::ModEntry::new("poison", Box::new(Poison(at_start)))];
-            mod_platform::testing::with_mods(mods.into(), || {
+            subscribed(Log::default(), || {
                 let (mut engine, mut backend) = (engine(), Null::default());
                 let instance =
                     SoundInstance::for_ui("minecraft:block.plain", 1.0, 1.0, LegacyRandom::new(1));
-                let (id, result) = engine.play_new(instance, true, &mut backend);
+                let (id, pending) = engine.play_new(instance, true, &mut backend);
+                assert_eq!(pending, PlayResult::Pending);
+                let result = answer_starts(&mut engine, &mut backend, |sound| {
+                    if at_start {
+                        poison(sound);
+                    }
+                })
+                .unwrap();
                 if at_start {
-                    assert_eq!(result, crate::sound_engine::PlayResult::NotStarted);
+                    assert_eq!(result, PlayResult::NotStarted);
                     assert!(backend.volume.is_empty());
                 } else {
-                    assert_eq!(result, crate::sound_engine::PlayResult::Started);
-                    engine.refresh_category_volume(crate::sound_engine::MASTER, &mut backend);
+                    assert_eq!(result, PlayResult::Started);
+                    answer_refreshes(&mut engine, poison);
+                    engine.refresh_category_volume(MASTER, &mut backend);
                     assert!(engine.instance(id).unwrap().stopped);
                 }
             });

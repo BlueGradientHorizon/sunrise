@@ -17,6 +17,7 @@ use std::{
 use sunrise_core::random::LegacyRandom;
 
 pub mod hooks;
+pub use hooks::PreparedPlay;
 
 /// `SoundSource` indices (vanilla order).
 pub const MASTER: usize = 0;
@@ -38,6 +39,9 @@ pub const HEARD_RESERVE: usize = 16;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PlayResult {
+    /// Prepared and waiting for the game's `play_sound` dispatch (`SoundEngine::next_prepared`);
+    /// it starts, or not, once the game answers (`SoundEngine::finish_prepared`).
+    Pending,
     Started,
     StartedSilently,
     NotStarted,
@@ -235,7 +239,6 @@ pub struct TickContext {
 /// `AbstractSoundInstance` and its subclasses' fields.
 #[derive(Clone, Debug)]
 pub struct SoundInstance {
-    live_settings: std::cell::OnceCell<std::cell::RefCell<hooks::LiveSettings>>,
     pub identifier: String,
     pub source: usize,
     pub volume: f32,
@@ -279,7 +282,6 @@ impl SoundInstance {
         relative: bool,
     ) -> Self {
         Self {
-            live_settings: std::cell::OnceCell::new(),
             identifier: identifier.to_owned(),
             source,
             volume,
@@ -1067,6 +1069,13 @@ pub type PlaybackHook = fn(&SoundPlayback<'_>, &mut f32, &mut f32, &mut bool);
 pub struct SoundEngine {
     pub registry: SoundRegistry,
     playback_hook: Option<PlaybackHook>,
+    /// Starts prepared for the game's `play_sound` dispatch, in order, and the ones it is asking now.
+    prepared: Vec<InstanceId>,
+    inflight: Vec<InstanceId>,
+    /// Starts the game answered: the next `play` of each goes ahead.
+    decided: HashSet<InstanceId>,
+    /// The game's answers for the live refresh of each playing sound (`None` cancels it).
+    live_answers: HashMap<InstanceId, Option<mod_api::SoundPlay>>,
     /// `loaded`: the library opened.
     pub loaded: bool,
     tick_count: i64,
@@ -1131,6 +1140,10 @@ impl SoundEngine {
             queued: Vec::new(),
             delete_time: HashMap::new(),
             queued_tickable: Vec::new(),
+            prepared: Vec::new(),
+            inflight: Vec::new(),
+            decided: HashSet::new(),
+            live_answers: HashMap::new(),
             used: [0, 0],
             limits: [STATIC_CHANNELS, STREAMING_CHANNELS],
             source_volumes: [1.0; 11],
@@ -1217,6 +1230,8 @@ impl SoundEngine {
             || self.queued.iter().any(|(i, _)| *i == id)
             || self.queued_tickable.contains(&id)
             || self.ticking.contains(&id)
+            || self.prepared.contains(&id)
+            || self.inflight.contains(&id)
     }
     fn collect(&mut self, id: InstanceId) {
         if !self.referenced(id) {
@@ -1506,8 +1521,16 @@ impl SoundEngine {
         (id, self.play(id, backend))
     }
     fn play_inner(&mut self, id: InstanceId, backend: &mut impl Backend) -> PlayResult {
-        if !self.instances.contains_key(&id) || !self.play_sound_allowed(id) || !self.loaded {
+        if !self.instances.contains_key(&id) || !self.loaded {
             return PlayResult::NotStarted;
+        }
+        // Decide, fire, apply: with a `play_sound` listener the engine only prepares the start.
+        // The game fires the hook with its `ClientHost` and starts it once it has an answer.
+        if self.asks_play_sound() && !self.decided.remove(&id) {
+            if !self.prepared.contains(&id) && !self.inflight.contains(&id) {
+                self.prepared.push(id);
+            }
+            return PlayResult::Pending;
         }
         if !self.instances[&id].can_play_sound() {
             return PlayResult::NotStarted;

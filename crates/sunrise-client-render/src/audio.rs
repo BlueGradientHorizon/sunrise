@@ -1542,6 +1542,26 @@ impl Audio {
     }
     /// Replace the loop context when a resource generation starts or reloads, and tell
     /// the sound hooks the engine is loaded with it.
+    /// The next start prepared for the game's `play_sound` dispatch (see `SoundEngine::next_prepared`).
+    pub fn next_prepared(&mut self) -> Option<crate::sound_engine::PreparedPlay> {
+        self.engine.next_prepared()
+    }
+
+    /// Apply the game's `play_sound` answer to a prepared start, and start it.
+    pub fn finish_prepared(&mut self, id: InstanceId, answer: Option<mod_api::SoundPlay>) {
+        self.engine.finish_prepared(id, answer, &mut self.backend);
+    }
+
+    /// The live refreshes the game fires `play_sound` for this tick.
+    pub fn live_requests(&mut self) -> Vec<crate::sound_engine::PreparedPlay> {
+        self.engine.live_requests()
+    }
+
+    /// The game's `play_sound` answer to a live refresh request.
+    pub fn set_live_answer(&mut self, id: InstanceId, answer: Option<mod_api::SoundPlay>) {
+        self.engine.set_live_answer(id, answer);
+    }
+
     pub fn set_loop_context(&mut self, context: sunrise_world::native_load_context::LoopContext) {
         self.engine.set_loop_context(context);
         self.engine.notify_loaded();
