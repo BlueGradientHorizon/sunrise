@@ -385,6 +385,8 @@ pub trait AttachmentStore {
         holder: Holder,
         key: &AttachmentStoreKey<'_>,
     ) -> Result<(), AttachmentError>;
+    /// Check `key`'s declaration, then queue a sync of its current value when its type syncs;
+    /// an unsynced type queues nothing.
     fn queue_sync(
         &mut self,
         holder: Holder,
@@ -526,6 +528,9 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
         key: &AttachmentStoreKey<'_>,
     ) -> Result<(), AttachmentError> {
         self.validate_attachment_key(key)?;
+        if !key.policy.sync {
+            return Ok(());
+        }
         let (namespace, name) = key.id();
         if let Some(map) = self.read_only_attachments(holder) {
             map?;
@@ -567,9 +572,10 @@ pub struct AttachmentType<T: 'static> {
     ///
     /// Values travel on `sunrise:attachment_sync` (play, clientbound, version 1, optional) only to
     /// connections that negotiated it; vanilla clients receive none. Queued changes (from `get`
-    /// inserting a default, `set`, `remove`, or [`AttachmentType::sync_data`]) are coalesced and
-    /// sent at the end of the tick, whereas a client that starts tracking a holder receives an
-    /// initial pairing bundle of all synced values for that holder.
+    /// inserting a default, `set`, `remove`, or [`AttachmentType::sync_data`]) are sent at the end
+    /// of the tick: an entity, player, chunk or level sends each accepted change in order, and a
+    /// block entity sends each changed key once at its final value. A client that starts tracking
+    /// a holder receives an initial pairing bundle of all synced values for that holder.
     ///
     /// Each message is prepared against the player's current connection epoch: inside a
     /// transaction it is published at root commit (a rolled-back edit sends nothing); outside a
@@ -908,7 +914,6 @@ impl<T: Send + Sync + 'static> AttachmentOps<'_, T> {
             write: AttachmentWrite::Decoded,
         };
         let value = Arc::new(value);
-        let value = Arc::new(value);
         // A read-only holder's saved value decodes for this read alone, never stored.
         if !store.read_only(holder)? {
             store.store(
@@ -974,13 +979,19 @@ impl<T: Send + Sync + 'static> AttachmentOps<'_, T> {
     where
         T: Clone,
     {
-        if !self.has(store, holder)? {
-            return Ok(None);
-        }
+        let held = self.has(store, holder)?;
         if store.read_only(holder)? {
-            return Err(AttachmentError::ReadOnlyHolder);
+            return if held {
+                Err(AttachmentError::ReadOnlyHolder)
+            } else {
+                Ok(None)
+            };
         }
-        let value = self.existing(store, holder, T::clone);
+        let value = if held {
+            self.existing(store, holder, T::clone)
+        } else {
+            Ok(None)
+        };
         store.discard(holder, &self.key())?;
         value
     }
@@ -990,10 +1001,7 @@ impl<T: Send + Sync + 'static> AttachmentOps<'_, T> {
         holder: Holder,
     ) -> Result<(), AttachmentError> {
         self.validate()?;
-        if self.raw().sync_codec.is_some() {
-            store.queue_sync(holder, &self.key())?;
-        }
-        Ok(())
+        store.queue_sync(holder, &self.key())
     }
     fn keep<S: AttachmentStore + ?Sized>(
         &self,
@@ -2207,7 +2215,7 @@ mod tests {
         assert!(rows(&index, &SYNCED).is_empty());
         assert_eq!(
             map.take_sync_changes(project_standard),
-            [change("synced", None)]
+            [change("synced", Some(9)), change("synced", None)]
         );
         map.apply_sync(change("synced", Some(12)));
         assert_eq!(indexed_values(&index, &SYNCED), [(1, 12)]);
@@ -2529,7 +2537,7 @@ mod tests {
             assert!(snapshot.take_sync_changes(project_standard).is_empty());
             assert_eq!(
                 map.take_sync_changes(project_standard),
-                [change("synced", None)]
+                [change("synced", Some(2)), change("synced", None)]
             );
         }
     }
@@ -3341,7 +3349,7 @@ mod tests {
         );
         assert_eq!(
             store.take_sync_changes(project_type(sync_only.as_type())),
-            [change("sync_only", Some(11))]
+            [change("sync_only", Some(7)), change("sync_only", Some(11))]
         );
         assert!(store.to_nbt().is_empty());
     }

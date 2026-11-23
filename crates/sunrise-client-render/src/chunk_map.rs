@@ -207,7 +207,7 @@ impl ChunkMap {
         let Some(saved) = &column.saved else {
             return Ok(None);
         };
-        attachment_compound(saved.root.get(&*KEY))?;
+        attachment_compound(saved.root.get(&KEY))?;
         Ok(Some(&saved.attachments))
     }
 
