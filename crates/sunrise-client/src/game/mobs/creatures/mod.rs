@@ -9845,7 +9845,7 @@ mod conversion_tag_tests;
 mod pickable_projectile_tests;
 
 #[cfg(test)]
-mod mob_pearl_hook_tests;
+pub(in crate::game) mod mob_pearl_hook_tests;
 
 #[cfg(test)]
 mod breeding_orb_tests;
@@ -9924,8 +9924,8 @@ mod frame_projectile_tests;
 
 #[cfg(test)]
 #[path = "projectile_targets_tests.rs"]
-mod projectile_targets_tests;
+pub(in crate::game) mod projectile_targets_tests;
 
 #[cfg(test)]
 #[path = "projectiles_120_124_tests.rs"]
-mod projectiles_120_124_tests;
+pub(in crate::game) mod projectiles_120_124_tests;
