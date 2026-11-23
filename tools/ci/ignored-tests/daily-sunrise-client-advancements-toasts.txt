@@ -1,1 +1,2 @@
 sunrise-client game::advancements_screen::remote_tests::remote_tree_rejects_unresolved_nodes_and_retains_removed_progress lib daily resources
+sunrise-client game::tutorial::toast_tests::tutorial_toast_bolds_only_the_rebound_key lib daily resources
