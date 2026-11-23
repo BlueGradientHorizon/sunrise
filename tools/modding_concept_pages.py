@@ -29,7 +29,6 @@ SRC = ROOT / "docs/modding/src"
 LINK = re.compile(r"(\!?\[[^\n]*?\]\()([^\s)]+)(\))")
 REFERENCE = re.compile(r"^( {0,3}\[[^\]\n]+\]:[ \t]*<?)([^\s>]+)(>?)", re.MULTILINE)
 INCLUDE = re.compile(r"(\{\{#(?:rustdoc_)?include )([^ }]+)(\s*\}\})")
-FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 # The game repository and the mod registry are sunrise-org's, and the book is published at
 # playsunrise.net/docs/modding, not on a Pages site (`sunrise-org.github.io/sunrise-mods` is the registry's
 # index, and keeps its link). A sub-project under another owner (`horizon-machine-sample`, `horizon-mixins`)
@@ -48,38 +47,23 @@ SECTION_PAGES = "<!-- section-pages -->"
 NOT_A_MANUAL = re.compile(r"\b(design|designs|proposal|proposed|draft|roadmap|tracker|status|plan)\b", re.IGNORECASE)
 
 
-def unfenced_lines(text):
-    """Yield numbered source lines outside backtick and tilde fences."""
-    fence = None
-    for number, line in enumerate(text.splitlines(), 1):
-        match = FENCE.match(line)
-        if fence is not None:
-            if match and match[1].startswith(fence) and not match[2].strip():
-                fence = None
-        elif match and (match[1][0] == "~" or "`" not in match[2]):
-            fence = match[1]
-        else:
-            yield number, line
-
-
-def headings(text, *, level=None):
+def headings(text):
     """Yield ATX headings outside fenced examples, using mdBook's heading IDs."""
+    fenced = False
     counts = Counter()
-    for _, line in unfenced_lines(text):
-        match = re.match(r"^(#{1,6}) (.*)$", line)
-        if match is None:
-            continue
-        title = re.sub(r"(?:^|[ \t]+)#+[ \t]*$", "", match[2]).strip()
-        explicit = re.fullmatch(r"(.*?)\s*\{#([\w-]+)\}", title)
-        if explicit:
-            title, anchor = explicit.groups()
-        else:
+    for line in text.splitlines():
+        if line.startswith(("```", "~~~")):
+            fenced = not fenced
+        if not fenced and re.match(r"^#{1,6} ", line):
+            title = line.split(" ", 1)[1]
+            explicit = re.fullmatch(r"(.*?)\s*\{#([\w-]+)\}\s*", title)
+            if explicit:
+                yield explicit[1], explicit[2]
+                continue
             slug = re.sub(r"[^\w\- ]", "", title.lower()).replace(" ", "-")
             n = counts[slug]
             counts[slug] += 1
-            anchor = slug + (f"-{n}" if n else "")
-        if level is None or len(match[1]) == level:
-            yield title, anchor
+            yield title, slug + (f"-{n}" if n else "")
 
 
 def page_title(text, path):
@@ -88,8 +72,14 @@ def page_title(text, path):
 
 def prose(text):
     """`text` without fenced code blocks and inline code spans, whose brackets are not links."""
-    return "\n".join(re.sub(r"(`+)(?:(?!\1).)+?\1", "", line)
-                     for _, line in unfenced_lines(text))
+    out, fenced = [], False
+    for line in text.splitlines():
+        if line.lstrip().startswith(("```", "~~~")):
+            fenced = not fenced
+            continue
+        if not fenced:
+            out.append(re.sub(r"(`+)(?:(?!\1).)+?\1", "", line))
+    return "\n".join(out)
 
 
 def check_url(link, where):
@@ -215,12 +205,22 @@ def expand(book, src):
     return book
 
 
+VOID_TAGS = frozenset(
+    {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
+)
+NESTED_HEADING_PARENTS = frozenset(
+    {"blockquote", "li", "ul", "ol", "details", "aside", "figure", "table", "td", "th", "pre", "code"}
+)
+
+
 class HtmlLinks(HTMLParser):
     def __init__(self, text):
         super().__init__()
         self.ids, self.links = set(), []
         self._in_main = 0
         self._saw_main = False
+        self._main_stack = []
+        self._outer_nested = []
         self._capture_h1 = None
         self._h1_chunks = []
         self._main_h1 = None
@@ -229,7 +229,7 @@ class HtmlLinks(HTMLParser):
 
     @property
     def title(self):
-        """The chapter's rendered H1 text, excluding mdBook's menu-title page chrome."""
+        """The chapter's top-level rendered H1 text, excluding mdBook's menu-title page chrome."""
         return self._main_h1 if self._saw_main else self._fallback_h1
 
     def handle_starttag(self, tag, attrs):
@@ -241,20 +241,33 @@ class HtmlLinks(HTMLParser):
         if tag == "main":
             self._in_main += 1
             self._saw_main = True
-        elif tag == "h1" and self._capture_h1 is None:
-            classes = set(attrs.get("class", "").split())
-            if "menu-title" not in classes:
-                if self._in_main and self._main_h1 is None:
+            return
+        if self._in_main:
+            if tag == "h1" and self._main_stack and self._main_stack[-1] == "p":
+                self._main_stack.pop()
+            if tag == "h1" and not self._main_stack and self._capture_h1 is None and self._main_h1 is None:
+                classes = set((attrs.get("class") or "").split())
+                if "menu-title" not in classes:
                     self._capture_h1 = "main"
                     self._h1_chunks = []
-                elif not self._in_main and self._fallback_h1 is None:
+            if tag not in VOID_TAGS:
+                self._main_stack.append(tag)
+        else:
+            if tag in NESTED_HEADING_PARENTS:
+                self._outer_nested.append(tag)
+            elif tag == "h1" and not self._outer_nested and self._capture_h1 is None and self._fallback_h1 is None:
+                classes = set((attrs.get("class") or "").split())
+                if "menu-title" not in classes:
                     self._capture_h1 = "fallback"
                     self._h1_chunks = []
 
     def handle_endtag(self, tag):
         if tag == "main" and self._in_main:
             self._in_main -= 1
-        elif tag == "h1" and self._capture_h1 is not None:
+            if not self._in_main:
+                self._main_stack.clear()
+            return
+        if tag == "h1" and self._capture_h1 is not None:
             text = " ".join("".join(self._h1_chunks).split()) or None
             if self._capture_h1 == "main":
                 self._main_h1 = text
@@ -262,6 +275,16 @@ class HtmlLinks(HTMLParser):
                 self._fallback_h1 = text
             self._capture_h1 = None
             self._h1_chunks = []
+        if self._in_main:
+            for idx in range(len(self._main_stack) - 1, -1, -1):
+                if self._main_stack[idx] == tag:
+                    del self._main_stack[idx:]
+                    break
+        elif tag in self._outer_nested:
+            for idx in range(len(self._outer_nested) - 1, -1, -1):
+                if self._outer_nested[idx] == tag:
+                    del self._outer_nested[idx:]
+                    break
 
     def handle_data(self, data):
         if self._capture_h1 is not None:

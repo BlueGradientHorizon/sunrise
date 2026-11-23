@@ -10,21 +10,16 @@ if __name__ == "__main__" and not __package__:
     sys.path.insert(0, str(ROOT))
 
 from tools import modding_hook_notes as notes, modding_sdk_tables as tables
-from tools.ci import nightly
 
 
 def export(out):
     """Render from this checkout before writing the files the site sync consumes."""
     context = {"root": str(ROOT / "docs/modding")}
+    sdk_tables = {name: make() for name, make in tables.generators(ROOT).items()}
     files = {
         notes.PAGE: notes.generated(context, "notes"),
         "reference/neoforge-counterparts.md": notes.generated(context, "counterparts"),
-        "sdk-tables.json": json.dumps({
-            "sdk-assets": tables.assets(nightly.SDK_ASSETS),
-            "sdk-routes": tables.routes(json.loads(tables.INPUTS.read_text(encoding="utf-8"))),
-            "sdk-hosts": tables.hosts(nightly.SDK_LEGS),
-            "sdk-surface": tables.surface(tables.export_surface(ROOT)),
-        }, indent=2) + "\n",
+        "sdk-tables.json": json.dumps(sdk_tables, indent=2) + "\n",
     }
     for name, text in files.items():
         path = out / name
