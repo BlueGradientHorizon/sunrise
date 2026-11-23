@@ -37,7 +37,7 @@ pub struct VoiceFrame {
 use mod_api::{MicDevice, MicRef, MicRefusal, MicSpec};
 
 pub fn open_mic(
-    host: &dyn ClientHost,
+    host: &dyn mod_api::ClientHost,
     preferred: Option<&MicDevice>,
 ) -> Result<MicRef, MicRefusal> {
     let mut spec = MicSpec::new(1, 48_000); // 1 or 2 channels, 8000 to 48000 Hz.
