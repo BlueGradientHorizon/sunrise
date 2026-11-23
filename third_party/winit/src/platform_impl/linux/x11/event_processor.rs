@@ -389,7 +389,14 @@ impl EventProcessor {
         if let Some(info) = DeviceInfo::get(&window_target.xconn, device as _) {
             for info in info.iter() {
                 devices.insert(DeviceId(info.deviceid as _), Device::new(info));
-                self.raw_motion_sources.borrow_mut().set(info.deviceid, info._use, info.enabled);
+                // Seed raw motion sources once from startup ALL_DEVICES; hotplug updates follow hierarchy events.
+                if device == super::ALL_DEVICES {
+                    self.raw_motion_sources.borrow_mut().set(
+                        info.deviceid,
+                        info._use,
+                        info.enabled,
+                    );
+                }
             }
         }
     }
