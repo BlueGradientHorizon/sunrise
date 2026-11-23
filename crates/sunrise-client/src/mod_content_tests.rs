@@ -8520,6 +8520,7 @@ fn accept_declared_refuses_host_duplicates_of_served_content_and_keeps_served_re
     assert_eq!(mods[2].id, "horizon_java");
     // Served and host items with valid cross-layer remainders (both items and block items) survive.
     let base = tempfile::tempdir().unwrap();
+    std::fs::write(base.path().join("items.json"), "{}").unwrap();
     assert!(
         drop_dangling_remainders(base.path(), &mut mods)
             .unwrap()
