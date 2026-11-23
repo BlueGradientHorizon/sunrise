@@ -8,14 +8,29 @@ use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::ChunkPos;
 
-const WITNESS: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../tools/fixtures/26.3/fangs_fluid_current.tsv"
-));
+fn read_witness() -> String {
+    let raw = std::env::var_os("SUNRISE_FANGS_FLUID_CURRENT_WITNESS").unwrap_or_else(|| {
+        panic!(
+            "SUNRISE_FANGS_FLUID_CURRENT_WITNESS is unset; run through tools/test_fangs_fluid_current_parity.py, which records the 26.3 witness"
+        )
+    });
+    let path = std::path::PathBuf::from(raw);
+    let file = if path.is_dir() {
+        path.join("fangs_fluid_current.tsv")
+    } else {
+        path
+    };
+    std::fs::read_to_string(&file).unwrap_or_else(|err| {
+        panic!(
+            "failed to read {} (run through tools/test_fangs_fluid_current_parity.py): {err}",
+            file.display()
+        )
+    })
+}
 
-fn load_witness() -> BTreeMap<(&'static str, usize), [u64; 3]> {
+fn load_witness(witness: &str) -> BTreeMap<(&str, usize), [u64; 3]> {
     let mut rows = BTreeMap::new();
-    for line in WITNESS.lines() {
+    for line in witness.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
             continue;
@@ -86,16 +101,22 @@ fn check_fangs_motion(
 }
 
 /// #2362 (vanilla 26.3): EvokerFangs fluid-current live and saved Motion match
-/// the recorded 26.3 witness bit-for-bit across water, slow/fast lava, widened
-/// float height, and tick-eligibility guards.
+/// the 26.3 witness recorded by `tools/test_fangs_fluid_current_parity.py`
+/// bit-for-bit across water, slow/fast lava, widened float height, and
+/// tick-eligibility guards.
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_fangs_fluid_current_parity.py"]
 fn fangs_in_a_current_are_pushed_and_fangs_in_still_water_are_not() {
+    run_fangs_in_a_current_are_pushed_and_fangs_in_still_water_are_not();
+}
+
+pub(in crate::game) fn run_fangs_in_a_current_are_pushed_and_fangs_in_still_water_are_not() {
+    let witness = read_witness();
     assert!(
-        WITNESS.starts_with("# minecraft 26.3 "),
+        witness.starts_with("# minecraft 26.3 "),
         "witness must be tagged with vanilla 26.3"
     );
-    let expected = load_witness();
+    let expected = load_witness(&witness);
     let mut checked = 0usize;
 
     // Overworld cases, widened 0.8F height boundary, and non-ticking/late-admission guards.

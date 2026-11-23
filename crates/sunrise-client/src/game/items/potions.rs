@@ -4448,7 +4448,7 @@ mod potion_contents_tests;
 
 #[cfg(test)]
 #[path = "potions/cloud_water_tests.rs"]
-mod cloud_water_tests;
+pub(in crate::game) mod cloud_water_tests;
 
 #[cfg(test)]
 mod mob_absorption_max_tests {

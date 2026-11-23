@@ -117,7 +117,7 @@ harnesses = [
   "noai_*", "nautilus_memory", "pet_owner_teleport", "enderman_placement", "loaded_pig_tags", "ageable_integer_load",
   "bed_poi", "peaceful_summon", "return_to_sender", "hostile_sound_categories", "ominous_warning_sound",
   "command_reinforcements", "last_hurt_by_mob", "spell_ticks", "gateway_cooldown", "damage_source_entities",
-  "creaking_hit_order",
+  "creaking_hit_order", "fangs_fluid_current",
 ]
 lan = [
   "mobs", "barter", "piglin_offspring", "sleep-villager", "trials", "villagers", "hero-trading", "cure-discount",
@@ -253,7 +253,7 @@ cargo = [
 ]
 harnesses = [
   "item_*", "*_item", "extra_items", "entity_attribute", "use_*", "inventory_*", "consum*", "consume_effect", "stored_*", "active_effect*",
-  "status_*", "effect*", "potion_effect_icon", "player_*", "food*", "damage_*", "*_damage", "living_*", "combat_rules",
+  "status_*", "effect*", "potion_effect_icon", "cloud_water", "player_*", "food*", "damage_*", "*_damage", "living_*", "combat_rules",
   "registered_player_combat", "special_attack", "mace", "blocking_*", "item_blocking", "invulnerable_time",
   "attribute*", "live_attribute*", "enchant*", "stored_enchantment_patch", "loot_*", "opened_loot", "spawn_loot",
   "stand_break_loot", "entity_death_loot", "component_*", "*_components", "effective_item_components",

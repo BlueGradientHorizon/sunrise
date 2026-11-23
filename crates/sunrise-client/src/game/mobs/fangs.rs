@@ -452,7 +452,7 @@ fn p_zrot(p: &mut Poses, part: &str, v: f32) {
 }
 #[cfg(test)]
 #[path = "fangs/current_tests.rs"]
-mod current_tests;
+pub(in crate::game) mod current_tests;
 
 #[cfg(test)]
 mod tests {

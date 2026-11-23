@@ -31,7 +31,6 @@ SUNRISE_CLIENT = [
     "docs/api/launch-reference.md", "docs/sunrise-ctl-commands.md", "docs/modding/examples/src/worldgen.rs",
     "docs/parity/block-entity-client-ticks.jsonl", "docs/parity/random-chance-seeded.jsonl",
     "research-lock.json", "tests/fixture_support/item_resource_properties.rs", "tests/fixtures",
-    "tools/fixtures/26.3",
     # mobs::render's compile_part tests compile the fn-replace-check `lower` fixture's helpers (`include!`).
     "tools/ci/fn-replace-check/lower/src",
 ]
