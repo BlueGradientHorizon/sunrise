@@ -228,9 +228,21 @@ fn codec_failure_is_local_to_its_typed_operation() {
     });
     let saved = store(&good, 7).to_nbt();
     let mut data = ChunkDiskData::from_nbt(saved);
-    assert!(data.set(&broken, 8).is_err());
-    // A local codec failure must not poison unrelated edits in the same job.
-    data.set(&good, 9).unwrap();
+    // Propagating one refusal aborts the savepoint, including an earlier edit.
+    assert!(
+        data.transaction(|savepoint| {
+            savepoint.set(&good, 8)?;
+            savepoint.set(&broken, 8)
+        })
+        .is_err()
+    );
+    assert_eq!(data.get(&good).unwrap(), 7);
+    // Handling the same refusal leaves unrelated accepted edits publishable.
+    data.transaction(|savepoint| {
+        assert!(savepoint.set(&broken, 8).is_err());
+        savepoint.set(&good, 9)
+    })
+    .unwrap();
     assert_eq!(read(&good, &data.finish()), 9);
 }
 

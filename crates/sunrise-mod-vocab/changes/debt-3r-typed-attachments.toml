@@ -108,6 +108,8 @@ ids = [
     "handle:ChunkDiskData::get",
     "handle:ChunkDiskData::set",
     "handle:ChunkDiskData::remove",
+    # ChunkDiskData::transaction has the same signature; its savepoint contract is behavioural.
+    "behaviour:chunk_disk_transaction",
     "handle:ChunkDiskData::failure",
     "handle:ChunkDiskData::finish",
     "handle:ChunkDiskData::from_nbt",
