@@ -4246,9 +4246,21 @@ impl Game<'_> {
                             && let Some(capture) = self.chat_capture.as_mut()
                         {
                             capture.push(incoming);
-                        } else if let Some(host) = &self.lan {
-                            host.hub
-                                .send_to(conn, &super::native_server::system_chat(&incoming));
+                        } else if let Some(host) = &self.lan
+                            && let Some(t) = host.hub.guests.connection_index(conn)
+                        {
+                            // The target's copy is private chat with the incoming whisper
+                            // type, shown only to players who show chat (`Hub::whisper`).
+                            let bound = sunrise_protocol::packets::play::ChatTypeBound {
+                                chat_type: host.hub.chat_type_id("msg_command_incoming"),
+                                name: sunrise_client::lan::data::component_nbt(&name.component()),
+                                target: None,
+                            };
+                            host.hub.send_disguised(
+                                t,
+                                sunrise_client::lan::data::component_nbt(&message.component()),
+                                bound,
+                            );
                         }
                     } else {
                         if let Some(capture) = self.chat_capture.as_mut() {
