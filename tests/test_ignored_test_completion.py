@@ -3,6 +3,7 @@ import contextlib
 import io
 import json
 import os
+import re
 from pathlib import Path
 import tempfile
 import subprocess
@@ -74,17 +75,31 @@ class IgnoredTests(unittest.TestCase):
         self.assertEqual(result, {"synced": True})
 
     def test_a_failed_runs_full_output_is_kept_privately_and_not_printed(self):
-        output = target(1, "test bad ... FAILED\n", summary(failed=1)) + "secret payload line\n"
-        with tempfile.TemporaryDirectory() as private:
-            with patch.dict(os.environ, {"IGNORED_TESTS_PRIVATE_LOGS": private}):
-                _, log = self.run_output(output, 101)
-                self.assertEqual((Path(private) / "example.log").read_text(), output)
-                self.assertIn("kept privately on the runner as example.log", log)
-                self.assertNotIn("secret payload line", log)
-                # A passing run keeps nothing.
-                (Path(private) / "example.log").unlink()
-                self.run_output(target(1, "test good ... ok\n", summary(passed=1)))
-                self.assertEqual(list(Path(private).iterdir()), [])
+        panic = ("\n---- bad stdout ----\nthread 'bad' panicked at crates/example/src/lib.rs:3:5:\n"
+                 "synthetic payload 4.2 from the data\n")
+        failed = target(1, "test bad ... FAILED\n", summary(failed=1)) + panic
+        with tempfile.TemporaryDirectory() as private, \
+                patch.dict(os.environ, {"IGNORED_TESTS_PRIVATE_LOGS": private}):
+            kept = Path(private)
+            # A non-zero exit, and a run that exited 0 although a test reported FAILED: both keep the output.
+            for code in (101, 0):
+                with self.subTest(code=code):
+                    _, log = self.run_output(failed, code)
+                    self.assertEqual((kept / "example.test.log").read_text(), failed)
+                    self.assertEqual(re.findall(r"kept privately on the runner: (\S+)", log), ["example.test.log"])
+                    self.assertNotIn("synthetic payload", log)
+                    (kept / "example.test.log").unlink()
+            # A split leg whose listing fails keeps the listing's output under the leg's name.
+            listing = subprocess.CompletedProcess([], 101, "", "error[E0425]: private compiler text\n")
+            with patch.object(ignored_tests.subprocess, "run", return_value=listing), \
+                    contextlib.redirect_stdout(io.StringIO()) as log:
+                self.assertIsNone(ignored_tests.run("example", [], 1, 2))
+            self.assertEqual((kept / "example#1of2.list.log").read_text(), "error[E0425]: private compiler text\n")
+            self.assertNotIn("private compiler text", log.getvalue())
+            (kept / "example#1of2.list.log").unlink()
+            # A passing run keeps nothing.
+            self.run_output(target(1, "test good ... ok\n", summary(passed=1)))
+            self.assertEqual(list(kept.iterdir()), [])
 
     def test_known_failure_is_still_available_to_policy(self):
         result, _ = self.run_output(target(2, "test good ... ok\ntest bad ... FAILED\n", summary(passed=1, failed=1)), 101)
