@@ -627,7 +627,7 @@ fn modify_biome_sets_ambient_particles_sounds_and_music() {
     let scratch = base.parent().unwrap().to_owned();
     fs::write(
         base.join("registries.json"),
-        r#"{"minecraft:sound_event":{"entries":{"minecraft:ambient.warped_forest.loop":{"protocol_id":0},"minecraft:ambient.warped_forest.additions":{"protocol_id":1},"minecraft:ambient.warped_forest.mood":{"protocol_id":2}}}}"#,
+        r#"{"minecraft:item":{"entries":{"minecraft:test":{"protocol_id":0}}},"minecraft:block":{"entries":{"minecraft:test":{"protocol_id":0}}},"minecraft:sound_event":{"entries":{"minecraft:ambient.warped_forest.loop":{"protocol_id":0},"minecraft:ambient.warped_forest.additions":{"protocol_id":1},"minecraft:ambient.warped_forest.mood":{"protocol_id":2}}}}"#,
     )
     .unwrap();
     let m = zinc_mod(
