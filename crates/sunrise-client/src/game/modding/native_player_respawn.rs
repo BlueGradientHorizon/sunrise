@@ -154,7 +154,7 @@ impl Game<'_> {
         [yaw, pitch]: [f32; 2],
         missing_respawn_block: bool,
     ) -> RespawnTarget {
-        RespawnTarget {
+        RespawnTarget::from(mod_api::__private::built::RespawnTarget {
             level: self
                 .level(dim.id())
                 .expect("the level was in place for the read"),
@@ -162,6 +162,6 @@ impl Game<'_> {
             yaw,
             pitch,
             missing_respawn_block,
-        }
+        })
     }
 }

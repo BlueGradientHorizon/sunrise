@@ -1478,7 +1478,7 @@ impl NoBackend for RespawnRefusal {
 /// Where a player would respawn now, as [`PlayerRef::respawn_target`] finds it: the transition
 /// `ServerPlayer.findRespawnPositionAndUseSpawnBlock(false, DO_NOTHING)` gives.
 #[derive(Clone, Copy, Debug, PartialEq)]
-// exhaustive: the game builds it with a literal; mods only read it
+#[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
 pub struct RespawnTarget {
     /// The level: the respawn point's, or the world spawn's (`MinecraftServer.findRespawnDimension`).
