@@ -38,14 +38,32 @@ fn rotation_tag(bits: [u32; 2]) -> Tag {
 }
 
 /// Vanilla 26.3 witness: `area_effect_cloud` and `falling_block` keep their loaded `Rotation` (#2680).
+/// Recorded into `.local` by `tools/test_cloud_falling_loaded_rotation_parity.py`.
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_cloud_falling_loaded_rotation_parity.py"]
 fn a_cloud_and_a_falling_block_save_the_rotation_they_were_loaded_with() {
-    let witness: Witness = serde_json::from_str(include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tools/witness/26.3/cloud_falling_loaded_rotation.json"
-    )))
-    .unwrap();
+    run_a_cloud_and_a_falling_block_save_the_rotation_they_were_loaded_with();
+}
+
+pub(in crate::game) fn run_a_cloud_and_a_falling_block_save_the_rotation_they_were_loaded_with() {
+    let witness_path = std::env::var_os("SUNRISE_CLOUD_FALLING_ROTATION_WITNESS").unwrap_or_else(|| {
+        panic!(
+            "SUNRISE_CLOUD_FALLING_ROTATION_WITNESS is unset; run tools/test_cloud_falling_loaded_rotation_parity.py"
+        )
+    });
+    let witness_path = std::path::PathBuf::from(witness_path);
+    let witness_path = if witness_path.is_dir() {
+        witness_path.join("cloud_falling_loaded_rotation.json")
+    } else {
+        witness_path
+    };
+    let raw = std::fs::read_to_string(&witness_path).unwrap_or_else(|e| {
+        panic!(
+            "failed to read witness {} (record via tools/test_cloud_falling_loaded_rotation_parity.py): {e}",
+            witness_path.display()
+        )
+    });
+    let witness: Witness = serde_json::from_str(&raw).expect("valid 26.3 rotation witness JSON");
     assert_eq!(witness.minecraft, "26.3");
     assert!(!witness.cases.is_empty());
     assert!(!witness.merges.is_empty());

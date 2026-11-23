@@ -2528,7 +2528,7 @@ mod hopper_cooldown_tests;
 
 #[cfg(test)]
 #[path = "data/rotation_tests.rs"]
-mod rotation_tests;
+pub(in crate::game) mod rotation_tests;
 
 #[cfg(test)]
 mod arrow_owner_tests {

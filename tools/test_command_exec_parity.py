@@ -198,8 +198,6 @@ def main():
                         help='leave out the sync_randoms steps: the control in which their fields differ run to run')
     parser.add_argument('--groups-file', type=Path,
                         help='run these generated [name, ops] groups after the common setup instead of the corpus')
-    parser.add_argument('--record-rotation-witness', type=Path,
-                        help='record the 26.3 cloud/falling_block loaded Rotation witness JSON from Java and exit')
     args = parser.parse_args()
     build = args.work_dir.resolve() if args.work_dir else lab.LOCAL / 'command-exec-parity'
     build.mkdir(parents=True, exist_ok=True)
@@ -528,10 +526,6 @@ def main():
         # Generated scripts (tools/parity_fuzz.py): the common setup, then the file's [name, ops] groups only.
         groups = [('setup', corpus_module.group_setup()),
                   *[(name, ops) for name, ops in json.loads(args.groups_file.read_text(encoding='utf-8'))]]
-    if args.record_rotation_witness:
-        groups = [('setup', corpus_module.group_setup()),
-                  (corpus_module.CLOUD_FALLING_ROTATION_GROUP,
-                   corpus_module.cloud_and_falling_block_loaded_rotation())]
     script = assemble(groups, args.unsynced_randoms)
     # docs/parity-workflow.md "Randoms that repeat": both engines' unseeded randoms repeat for a script that syncs them.
     synced = any(op['op'] == 'sync_randoms' for op in script)
@@ -594,7 +588,7 @@ def main():
                 any(len(r.get('bits', [])) != 3 or
                     any(re.fullmatch(r'[0-9a-f]{1,16}', b) is None for b in r['bits']) for r in direct)):
             sys.exit('Java direct underwater reference prerequisite failed')
-    if args.reference_only or args.record_rotation_witness:
+    if args.reference_only:
         reference = [json.loads(line) for line in (build / 'vanilla.jsonl').read_text().splitlines()]
         recorded = [op for op in script if op['op'] in ('player_state', 'player_loop', 'map_state', 'frame_map_state', 'mob_anger', 'projectile_saved_type', 'raid_state', 'menu_state', 'craft_menu_state', 'map_files', 'merchant_state', 'merchant_saved_stats') or
                     (op['op'] == 'cmd' and op.get('record', True)) or
@@ -613,13 +607,6 @@ def main():
                 sys.exit(f'Java callback guard failed: {op}: {row.get("results")}')
             if 'expect_map' in op and row.get('messages') != [[[op['expect_map'], [None, False, False, False, False, False]]]]:
                 sys.exit(f'Java map prerequisite failed: {op}: {row}')
-        if args.record_rotation_witness:
-            java_version = subprocess.check_output(['java', '--version'], text=True).splitlines()[0]
-            witness = corpus_module.extract_cloud_falling_rotation_witness(
-                reference, lock['minecraft']['version'], lab.digest(jars['server'], 'sha256'),
-                java_version, lock['minecraft']['java_major'])
-            lab.write_json(args.record_rotation_witness, witness)
-            print(f'Recorded 26.3 rotation witness: {args.record_rotation_witness}')
         print(f'Java reference: {len(reference)} records, fixture guards passed')
         return
 
