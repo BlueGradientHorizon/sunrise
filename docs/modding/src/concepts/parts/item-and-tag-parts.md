@@ -392,6 +392,10 @@ Global `Hooks::item_stacked_on_other` listeners preserve their separate contract
 be set on `Flow::Cancel` + `handled = true`, result/potion slots cannot be edited directly, and
 `Flow::Cancel` with `handled = false` skips vanilla bundle overrides and runs plain pickup).
 
+For an authoritative mount-menu pickup, the saddle, body equipment and chest slots belong to
+the mount, but roll back together with the player's inventory and cursor if the click is refused
+or an enclosing transaction aborts. The server reconciles the open menu from settled storage.
+
 ## Dropped item destruction
 
 `ItemPart::item_destroyed` is `IItemExtension.onDestroyed` (vanilla `ItemStack.onDestroyed`). It
