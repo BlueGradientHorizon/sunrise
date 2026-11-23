@@ -22,7 +22,25 @@ impl Game<'_> {
     /// the chunk's, and the chunk let through to the light jobs. A server's column is asked
     /// as it is taken in, before any light job can read it.
     pub(super) fn ask_chunk_light_emission(&mut self, key: (i32, i32)) {
-        let Some(chunk) = self.world.chunks.get(&key) else {
+        let dimension = self.current_light_emission_dimension();
+        self.ask_level_chunk_light_emission(None, dimension, key);
+    }
+    /// [`Self::ask_chunk_light_emission`] in the level in place (`parked: None`) or in the
+    /// parked level whose dimension is `parked`, its cells asked as `dimension`'s.
+    pub(super) fn ask_level_chunk_light_emission(
+        &mut self,
+        parked: Option<&str>,
+        dimension: LevelDimension,
+        key: (i32, i32),
+    ) {
+        let world = match parked {
+            None => &self.world,
+            Some(id) => match self.levels.parked_world_of(id) {
+                Some(world) => world,
+                None => return,
+            },
+        };
+        let Some(chunk) = world.chunks.get(&key) else {
             return;
         };
         let pending = chunk.dynamic_pending;
@@ -30,14 +48,20 @@ impl Game<'_> {
         if cells.is_empty() && !pending {
             return;
         }
-        let dimension = self.current_light_emission_dimension();
         let mut answers = FxHashMap::default();
         for (cell, [x, y, z], state) in cells {
             if let Some(emission) = self.ask_light_emission(dimension, x, y, z, state) {
                 answers.insert(cell, emission);
             }
         }
-        if let Some(chunk) = self.world.chunks.get_mut(&key)
+        let world = match parked {
+            None => &mut self.world,
+            Some(id) => match self.levels.parked_world_mut_of(id) {
+                Some(world) => world,
+                None => return,
+            },
+        };
+        if let Some(chunk) = world.chunks.get_mut(&key)
             && (pending || chunk.dynamic_emission != answers)
         {
             // Saved light was not computed from these answers, and admission queues no light
@@ -47,7 +71,7 @@ impl Game<'_> {
             chunk.dynamic_emission = answers;
             chunk.dynamic_pending = false;
             if relight {
-                self.world.dirty_light.insert(key);
+                world.dirty_light.insert(key);
             }
         }
     }

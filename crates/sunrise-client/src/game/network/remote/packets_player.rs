@@ -11,6 +11,8 @@ impl Game<'_> {
         self.install_remote_tags();
         self.refresh_render_visibility();
         self.test_highlights.clear();
+        // handleLogin: `debugSubscriber.clear()`.
+        self.debug_charts.clear_subscriptions();
         self.forget_synced_recipes();
         self.level.hardcore = p.hardcore;
         // handleLogin: startWaitingForNewLevel with Reason.OTHER, which
@@ -29,6 +31,10 @@ impl Game<'_> {
         // pairs a vehicle again with ClientboundSetPassengersPacket).
         self.selected = 0;
         self.potions.effects.clear();
+        // handleLogin creates a fresh LocalPlayer only when none exists yet.
+        if self.remote.as_ref().is_none_or(|r| !r.logged_in) {
+            self.post_effects.clear();
+        }
         self.riding = None;
         if let Some(player) = self.player.as_mut() {
             player.entity_id = p.player_id;
@@ -52,6 +58,7 @@ impl Game<'_> {
             r.local_entity_silent = false;
             // handleLogin: the new LocalPlayer is the camera.
             r.camera = None;
+            r.detached_camera = None;
             r.logged_in = true;
             r.view_distance = p.chunk_radius;
             r.simulation_distance = p.simulation_distance;
@@ -59,15 +66,15 @@ impl Game<'_> {
             r.reduced_debug_info = p.reduced_debug_info;
             r.do_limited_crafting = p.limited_crafting;
         }
+        self.clear_spectated_entity_post_effect();
         self.bind_local_player_residency();
         self.refresh_debug_renderers();
         // LocalPlayer.setReducedDebugInfo always rebuilds, also on a second login.
         self.debug_entries.invalidate();
-        self.streaming.radius = self
-            .settings
-            .render_distance
-            .min(p.chunk_radius.saturating_add(1))
-            .max(2);
+        self.streaming.radius = crate::game::entity_culling::streaming_radius_for(
+            self.settings.render_distance,
+            Some(p.chunk_radius),
+        );
 
         // handleLogin: startWaitingForNewLevel(.., Reason.OTHER).
         self.enter_remote_dimension(
@@ -99,6 +106,7 @@ impl Game<'_> {
         // A new player, without effects (the server sends them
         // again) and with no item in use.
         self.potions.effects.clear();
+        self.post_effects.clear();
         // Every synced attachment but the player's is sent again; the viewed
         // levels go or stay with the level entered (`enter_respawn_level`).
         if let Some(r) = self.remote.as_mut() {
@@ -191,7 +199,9 @@ impl Game<'_> {
             r.health = (20.0, 20, 5.0);
             // handleRespawn: the new LocalPlayer is the camera.
             r.camera = None;
+            r.detached_camera = None;
         }
+        self.clear_spectated_entity_post_effect();
         self.capture(true);
         if let Some((old_id, uuid)) = old_player {
             self.native_client_player_clone(
@@ -239,11 +249,16 @@ impl Game<'_> {
         }
     }
 
-    /// `C::PlayerAbilities`: its arms of `apply_packet`, guard and order kept.
+    /// `C::PlayerAbilities`: mutates `Remote::abilities` in arrival order, preserving `may_build`.
     pub(super) fn apply_player_abilities_packet(&mut self, p: play::PlayerAbilities) {
         self.creative = p.flags & 8 != 0;
         if let Some(r) = self.remote.as_mut() {
-            r.abilities = Some(p);
+            r.abilities.invulnerable = p.flags & 1 != 0;
+            r.abilities.flying = p.flags & 2 != 0;
+            r.abilities.may_fly = p.flags & 4 != 0;
+            r.abilities.instabuild = p.flags & 8 != 0;
+            r.abilities.flying_speed = p.flying_speed;
+            r.abilities.walking_speed = p.walking_speed;
         }
         self.apply_remote_abilities();
     }
@@ -354,6 +369,9 @@ impl Game<'_> {
                         r.tab_players.entry(e.uuid).or_insert_with(|| {
                             sunrise_client::tab_list::TabPlayer::new(e.uuid, name.clone())
                         });
+                        r.tab_game_modes
+                            .entry(e.uuid)
+                            .or_insert_with(|| Arc::new(std::sync::atomic::AtomicI32::new(0)));
                         if let Some(t) = e.properties.iter().find(|p| p.name == "textures") {
                             // Without the services' profile property keys a
                             // signature can't be checked; a signed property
@@ -373,26 +391,50 @@ impl Game<'_> {
             }
         }
         for e in p.entries {
-            if mod_api::__private::listened(mod_api::HookId::ClientPlayerChangeGameType)
-                && self.player.is_some()
-                && let Some(mode) = e.game_mode
-                && let Some(r) = self.remote.as_ref()
-                && r.profile == e.uuid
-                && let Some(info) = r.tab_players.get(&e.uuid)
-                && info.game_mode != mode
-            {
-                let current = info.game_mode;
-                self.native_client_player_change_game_type(
-                    self.own_entity_id(),
-                    e.uuid,
-                    current,
-                    mode,
-                );
+            let mode_change = e.game_mode.and_then(|mode| {
+                let r = self.remote.as_ref()?;
+                let info = r.tab_players.get(&e.uuid)?;
+                (info.game_mode != mode).then_some((info.game_mode, mode))
+            });
+            if let Some((current, mode)) = mode_change {
+                // LocalPlayer.onGameModeChanged(SPECTATOR) clears vertical motion before PlayerInfo.setGameMode.
+                if mode == 3
+                    && self.remote.as_ref().is_some_and(|r| {
+                        r.profile == e.uuid
+                            && (self.player.is_some() || r.has_logical_player || r.logged_in)
+                    })
+                {
+                    if let Some(player) = self.player.as_mut() {
+                        player.velocity.y = 0.0;
+                    }
+                    if let Some(vel) = self
+                        .remote
+                        .as_mut()
+                        .and_then(|r| r.respawn_velocity.as_mut())
+                    {
+                        vel.y = 0.0;
+                    }
+                }
+                if mod_api::__private::listened(mod_api::HookId::ClientPlayerChangeGameType) {
+                    let entity_id = self.remote.as_ref().and_then(|r| {
+                        if e.uuid == r.profile {
+                            (self.player.is_some() || r.has_logical_player || r.logged_in)
+                                .then_some(r.entity_id)
+                        } else {
+                            r.player_entity(e.uuid).map(|id| id as i32)
+                        }
+                    });
+                    self.native_client_player_change_game_type(entity_id, e.uuid, current, mode);
+                }
             }
             if let Some(r) = self.remote.as_mut() {
                 if let Some(t) = r.tab_players.get_mut(&e.uuid) {
                     if let Some(mode) = e.game_mode {
                         t.game_mode = mode;
+                        r.tab_game_modes
+                            .entry(e.uuid)
+                            .or_insert_with(|| Arc::new(std::sync::atomic::AtomicI32::new(mode)))
+                            .store(mode, std::sync::atomic::Ordering::Relaxed);
                     }
                     if let Some(latency) = e.latency {
                         t.latency = latency;
@@ -419,6 +461,16 @@ impl Game<'_> {
                 if let Some(name) = e.name {
                     r.players.insert(e.uuid, name);
                 }
+                // `Player.isPickable` sees `AbstractClientPlayer.gameMode` as soon as
+                // `ClientPacketListener.applyPlayerInfoUpdate` publishes its new mode.
+                if mode_change.is_some()
+                    && let Some(id) = r.player_entity(e.uuid)
+                    && let Some(index) = self.mob_index.find(&self.mobs, id)
+                {
+                    let spectator = r.remote_player_info_game_mode(id as i32) == Some(SPECTATOR);
+                    self.mobs
+                        .update(index, |mob| mob.extra.spectator = spectator);
+                }
             }
         }
     }
@@ -429,6 +481,7 @@ impl Game<'_> {
             for u in p.uuids {
                 r.players.remove(&u);
                 r.tab_players.remove(&u);
+                r.tab_game_modes.remove(&u);
                 r.chat_sessions.remove(&u);
                 r.chat_validators.remove(&u);
                 r.skin_textures.remove(&u);

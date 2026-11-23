@@ -16,7 +16,7 @@ use mod_api::{
     AttributeModifier, AttributeOperation, Direction, EntityRef, EquipmentSlot, Identifier,
     ItemStackView, LivingRef, ModifierLifetime,
 };
-use sunrise_client::items::ItemStack;
+use sunrise_client::items::{EntityTypeTags, ItemStack};
 use sunrise_client::mobs::{
     Mob,
     finalize::{self, EquipmentRead},
@@ -516,24 +516,18 @@ impl Game<'_> {
         }
     }
 
-    /// `LivingEntity.canBreatheUnderwater`: the species' own breath — a
-    /// fish's, an axolotl's, a construct's (`breathes_water`, the
-    /// `#can_breathe_under_water` tag); a player answers false (no player
-    /// kind is in the tag). The tag read only, not the whole drown
-    /// decision: the air tick itself also keeps the air up behind Water
-    /// Breathing, the conduit's power and a player's invulnerability,
-    /// which this read does not carry. None for a stale handle, an armor
-    /// stand or the dragon.
+    /// Membership in the live `#can_breathe_under_water` tag for a mob.
+    /// The tag read only, not the whole drown decision. None for a stale handle,
+    /// an armor stand or the dragon.
     pub(super) fn living_can_breathe_underwater(&self, living: LivingRef) -> Option<bool> {
         match self.native_living_read_target(living)? {
-            Target::Mob(id) => Some(
-                self.mobs
-                    .iter()
-                    .find(|m| m.id == id && !m.removed)?
-                    .kind
-                    .flags
-                    .breathes_water,
-            ),
+            Target::Mob(id) => {
+                let mob = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
+                Some(self.items().entity_type_tags.has_bit(
+                    mob.kind.flags.entity_tag_slot,
+                    EntityTypeTags::CAN_BREATHE_UNDER_WATER,
+                ))
+            }
             Target::Player | Target::Guest(_) => Some(false),
             _ => None,
         }
@@ -927,7 +921,9 @@ impl Game<'_> {
         if broken.is_some() {
             let event =
                 sunrise_client::mobs::item_break::equipment_break_event(world_equipment_slot(slot));
-            self.entity_broadcast_event(living.entity(), event as u8);
+            // Non-player equipment writes above are unjournaled and take effect immediately; keep
+            // the coupled break event on the same immediate side of the rollback boundary.
+            self.broadcast_entity_event_immediate(living.entity(), event as u8);
         }
         broken
     }
@@ -2090,22 +2086,25 @@ pub(in crate::game) mod tests {
             let initial = (player.health(game), mob.health(game));
             let dirty = game.player.as_ref().unwrap().health.data.is_dirty();
             let events = game.player.as_ref().unwrap().events.len();
-            let outer = game.transaction_open();
-            assert!(player.set_health(game, 12.0));
-            assert!(mob.set_health(game, 8.0));
-            let inner = game.transaction_open();
-            assert!(player.set_health(game, 0.0));
-            assert!(mob.set_health(game, 0.0));
-            game.transaction_close(&inner, false);
-            assert_eq!(
-                (player.health(game), mob.health(game)),
-                (Some(12.0), Some(8.0))
-            );
-            let inner = game.transaction_open();
-            assert!(player.set_health(game, 0.0));
-            assert!(mob.set_health(game, 0.0));
-            game.transaction_close(&inner, true);
-            game.transaction_close(&outer, false);
+            game.storage_scope(|game, _| {
+                assert!(player.set_health(game, 12.0));
+                assert!(mob.set_health(game, 8.0));
+                game.storage_scope(|game, _| {
+                    assert!(player.set_health(game, 0.0));
+                    assert!(mob.set_health(game, 0.0));
+                    ((), false)
+                });
+                assert_eq!(
+                    (player.health(game), mob.health(game)),
+                    (Some(12.0), Some(8.0))
+                );
+                game.storage_scope(|game, _| {
+                    assert!(player.set_health(game, 0.0));
+                    assert!(mob.set_health(game, 0.0));
+                    ((), true)
+                });
+                ((), false)
+            });
             assert_eq!((player.health(game), mob.health(game)), initial);
             assert_eq!(game.player.as_ref().unwrap().health.data.is_dirty(), dirty);
             assert_eq!(game.player.as_ref().unwrap().events.len(), events);
@@ -2113,18 +2112,20 @@ pub(in crate::game) mod tests {
             assert!(!game.player.as_ref().unwrap().health.dead);
             assert!(!game.mobs[0].removed);
             game.mobs[0].needs_sync = true;
-            let abort = game.transaction_open();
-            assert!(mob.set_health(game, 0.0));
-            game.transaction_close(&abort, false);
+            game.storage_scope(|game, _| {
+                assert!(mob.set_health(game, 0.0));
+                ((), false)
+            });
             assert_eq!(mob.health(game), initial.1);
             assert!(
                 game.mobs[0].needs_sync,
                 "abort preserves preexisting sync dirtiness"
             );
-            let commit = game.transaction_open();
-            assert!(player.set_health(game, 0.0));
-            assert!(mob.set_health(game, 0.0));
-            game.transaction_close(&commit, true);
+            game.storage_scope(|game, _| {
+                assert!(player.set_health(game, 0.0));
+                assert!(mob.set_health(game, 0.0));
+                ((), true)
+            });
             assert_eq!(
                 (player.health(game), mob.health(game)),
                 (Some(0.0), Some(0.0))
@@ -2141,17 +2142,20 @@ pub(in crate::game) mod tests {
             let guest = game.player(12).unwrap();
             let living = LivingRef::new(guest.entity());
             let before = living.health(game).unwrap();
-            let tx = game.transaction_open();
-            assert!(living.set_health(game, before - 2.0));
-            let inner = game.transaction_open();
-            assert!(living.set_health(game, 0.0));
-            assert_eq!(living.health(game), Some(0.0));
-            game.transaction_close(&inner, false);
-            assert_eq!(living.health(game), Some(before - 2.0));
-            let inner = game.transaction_open();
-            assert!(living.set_health(game, 0.0));
-            game.transaction_close(&inner, true);
-            game.transaction_close(&tx, false);
+            game.storage_scope(|game, _| {
+                assert!(living.set_health(game, before - 2.0));
+                game.storage_scope(|game, _| {
+                    assert!(living.set_health(game, 0.0));
+                    assert_eq!(living.health(game), Some(0.0));
+                    ((), false)
+                });
+                assert_eq!(living.health(game), Some(before - 2.0));
+                game.storage_scope(|game, _| {
+                    assert!(living.set_health(game, 0.0));
+                    ((), true)
+                });
+                ((), false)
+            });
             assert_eq!(living.health(game), Some(before));
         });
     }
@@ -3073,17 +3077,13 @@ pub(in crate::game) mod tests {
 
             // The melee goal's own reach: beside it, yes; a stride away, no.
             // The freeze tick's decision, and a freeze-immune wearable on it.
-            // The air tick's gate: a zombie drowns.
+            // A zombie's type is in the vanilla water-breathing tag.
             {
                 let host: &dyn Host = game;
                 assert_eq!(near.in_melee_range(host, beside), Some(true));
                 assert_eq!(near.in_melee_range(host, far), Some(false));
                 assert_eq!(near.can_freeze(host), Some(true));
-                // The air tick's gate: whatever the species table holds for it.
-                assert_eq!(
-                    near.can_breathe_underwater(host),
-                    Some(game.mobs[0].kind.flags.breathes_water)
-                );
+                assert_eq!(near.can_breathe_underwater(host), Some(true));
             }
             game.mobs[0].extra.equipment.set(
                 sunrise_items::equipment::FEET,

@@ -86,9 +86,10 @@ fn a_general_row_always_has_a_first_snapshot_holding_what_it_holds_now() {
         // First pairing, nothing synced yet: no empty snapshot packet (NeoForge AttachmentSync).
         assert!(game.attachment_snapshot(Holder::Entity(id)).is_empty());
         // A client that pairs later is sent the value the row holds then.
-        let seal = game.transaction_open();
-        VALUE.set(store(game), Holder::Entity(id), 7).unwrap();
-        game.transaction_close(&seal, true);
+        game.storage_scope(|game, _| {
+            VALUE.set(store(game), Holder::Entity(id), 7).unwrap();
+            ((), true)
+        });
         let late = game.attachment_snapshot(Holder::Entity(id));
         assert_eq!(late.len(), 1);
         assert!(late[0].replace);
@@ -150,7 +151,7 @@ fn remote_player_attachments_only_apply_while_the_foreign_player_is_tracked() {
     use sunrise_mod_runtime::attachments::AttachmentSync;
     use sunrise_protocol::{
         attachment_sync::Message,
-        packets::play::{AddEntity, Clientbound, RemoveEntities},
+        packets::play::{AddEntity, Clientbound, PlayerInfo, PlayerInfoUpdate, RemoveEntities},
     };
 
     crate::game::item_entities::thrown_items_tests::with_remote_game(|game| {
@@ -187,6 +188,15 @@ fn remote_player_attachments_only_apply_while_the_foreign_player_is_tracked() {
             !mirrored(game),
             "sync before pairing must not create a mirror"
         );
+        game.handle_packet(Clientbound::PlayerInfoUpdate(PlayerInfoUpdate {
+            actions: 1,
+            entries: vec![PlayerInfo {
+                uuid,
+                name: Some("TrackedPlayer".into()),
+                ..Default::default()
+            }],
+        }))
+        .unwrap();
         game.handle_packet(Clientbound::AddEntity(AddEntity {
             id,
             uuid,

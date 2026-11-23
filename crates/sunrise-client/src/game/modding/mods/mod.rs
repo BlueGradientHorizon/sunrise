@@ -687,6 +687,18 @@ pub(super) fn register_gui_layers(role: ExecutionRole) {
     Game::native_register_gui_layers(&RegistrationContext::new(), &mut layers);
     sunrise_client::gui_layers::freeze(layers);
 }
+/// Install the native mods' client tooltip component factories once at client startup.
+pub(super) fn register_client_tooltip_component_factories(role: ExecutionRole) {
+    if !role.is_client() {
+        return;
+    }
+    let mut factories = sunrise_client::tooltip_components::TooltipComponentFactories::default();
+    Game::native_register_client_tooltip_component_factories(
+        &RegistrationContext::new(),
+        &mut factories,
+    );
+    sunrise_client::tooltip_components::freeze(factories);
+}
 /// Collect the native mods' owned debug renderers and their owners on each list refresh.
 pub(super) fn debug_renderers(
     role: ExecutionRole,
@@ -2491,7 +2503,7 @@ pub(super) fn register_enchantment_damage_effects() {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     #[test]
     fn entity_registry_and_spawner_facts_cannot_publish_different_generations() {
         use super::register_iterated_registries;
@@ -4320,7 +4332,7 @@ mod tests {
     /// Runs `test` again in a child process whose working directory is its own
     /// empty folder: the overlay's `.sunrise-cache` lives under the home, set here to
     /// the working directory, so children sharing one (the temp dir) race on that cache.
-    fn run_in_child(test: &str, mode: &str) {
+    pub(in crate::game) fn run_in_child(test: &str, mode: &str) {
         let cwd = std::env::temp_dir().join(format!(
             "sunrise-game-mods-cwd-{}-{mode}",
             std::process::id()

@@ -1,24 +1,27 @@
 //! The player's advancements in the game: criteria triggered from game
 //! events (`CriteriaTriggers`), awarding with rewards, the toast and the
 //! chat announcement, and `players/advancements/<uuid>.json`.
-use super::{Dim, Game};
+use super::{Dim, Game, chat::PLAYER_NAME, lan_actions::DisplacedPlayer, stats::Stats};
 mod icons;
 
 #[cfg(test)]
 #[path = "inventory_changed_tests.rs"]
 mod inventory_changed_tests;
-use mod_api::ProgressType;
+use mod_api::{GameMode, ProgressType};
 use serde_json::Value;
+#[cfg(test)]
+use std::time::Instant;
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
+    collections::{BTreeMap, BTreeSet},
     sync::Arc,
-    time::Instant,
 };
 use sunrise_client::actions::Action;
 use sunrise_client::{
     advancements::{self as adv, EntityView, Frame, ItemView, Progress, Tree},
+    effects::PlayerEffects,
     hud::{HudBatch, rgba},
     items::ItemStack,
+    motion::PlayerMotion,
     text::{self, Style, Text},
     toasts::Slide,
 };
@@ -56,9 +59,6 @@ pub(super) struct Toast {
     title: Text,
     description: Option<Text>,
     slide: Slide,
-    /// `ToastInstance.firstSlotIndex`: the 32-pixel slot it stacks in once it
-    /// leaves the queue.
-    slot: Option<usize>,
     /// A `RecipeToast`: the crafting station and result of each display
     /// unlocked while it lasts (`recipeItems`); empty for an advancement.
     recipes: Vec<(String, ItemStack)>,
@@ -75,7 +75,6 @@ impl Toast {
             title: Text::translate("recipe.toast.title", &[]),
             description: Some(Text::translate("recipe.toast.description", &[])),
             slide: Slide::default(),
-            slot: None,
             recipes: items,
             changed: true,
             last_changed: 0,
@@ -88,6 +87,15 @@ impl Toast {
     pub(super) fn add_recipes(&mut self, items: Vec<(String, ItemStack)>) {
         self.recipes.extend(items);
         self.changed = true;
+    }
+    pub(super) fn is_challenge(&self) -> bool {
+        !self.is_recipe() && self.frame == Frame::Challenge
+    }
+    pub(super) fn update(&mut self, multiplier: f64) -> (Option<bool>, bool) {
+        let mut slide = std::mem::take(&mut self.slide);
+        let result = slide.update_now(|fully| self.wants_show(fully, multiplier));
+        self.slide = slide;
+        result
     }
     /// `Toast.update` with `fullyVisibleForMs`: whether it wants to be shown.
     fn wants_show(&mut self, fully_for: i64, multiplier: f64) -> bool {
@@ -136,7 +144,6 @@ pub(super) struct AdvState {
     pub(super) positions: Option<Vec<(f32, f32)>>,
     pub(super) progress: Progress,
     pub(super) loaded: bool,
-    pub(super) toasts: VecDeque<Toast>,
     /// Awards skip the toast (`/advancement grant ... everything`).
     pub(super) quiet: bool,
     /// The inventory last seen by `inventory_changed`.
@@ -160,6 +167,20 @@ impl AdvState {
         self.inventory_index = None;
     }
 }
+/// The live parts of a player's entity predicate view, wherever the turn keeps them.
+struct PlayerEntityState<'a> {
+    body: &'a PlayerMotion,
+    name: &'a str,
+    mode: GameMode,
+    input_sneak: bool,
+    main_hand: Option<&'a ItemStack>,
+    off_hand: Option<&'a ItemStack>,
+    armor: &'a [Option<ItemStack>; 4],
+    effects: &'a PlayerEffects,
+    riding: Option<u32>,
+    look: Option<(f32, f32)>,
+}
+
 /// The game's world for predicates.
 pub(in crate::game) struct View<'a, 'g>(pub(in crate::game) &'a Game<'g>);
 impl adv::World for View<'_, '_> {
@@ -290,7 +311,7 @@ impl TagSources<'_> {
                 .damage
                 .id(id)
                 .is_some_and(|source| self.damage.in_tag(source, tag)),
-            "entity_type" => self.mob_data.entity_has(tag, id),
+            "entity_type" => self.items.entity_type_tags.contains(tag, id),
             "worldgen/biome" => self.mob_data.biome_has(tag, id),
             "worldgen/structure" => vanilla_structure_tags(self.resources)
                 .get(tag)
@@ -648,38 +669,101 @@ impl Game<'_> {
         me.player_facts = self.player_facts(asked);
         me
     }
-    /// The player's level, statistics, advancements and recipes that
-    /// `asked` names, and its food, for `PlayerPredicate`; records not
-    /// loaded stay `None`.
+    /// `KilledTrigger` takes the actual killer, not the player borrowing the acting slot.
+    pub(super) fn displaced_player_entity_for(
+        &self,
+        frame: &DisplacedPlayer,
+        body: &PlayerMotion,
+        trigger: &str,
+    ) -> Option<EntityView> {
+        let record = self.lan.as_ref()?.hub.guest(frame.record_conn)?;
+        // Vehicle and sight queries below use the installed level's entities.
+        let here = frame.dimension == self.dim;
+        let mut view = self.player_entity_from(PlayerEntityState {
+            body,
+            name: frame.name.as_deref().unwrap_or(PLAYER_NAME),
+            mode: frame.mode,
+            input_sneak: frame.input_sneak,
+            main_hand: record
+                .inventory
+                .get(frame.selected)
+                .and_then(Option::as_ref),
+            off_hand: record.offhand.as_ref(),
+            armor: &record.armor,
+            effects: &record.effects,
+            riding: frame.riding.filter(|_| here),
+            look: (here && self.adv.tree.may_look(trigger)).then_some((frame.yaw, frame.pitch)),
+        });
+        view.player_facts = self.player_facts_from(
+            self.adv.tree.player_facts_asked(trigger),
+            body,
+            frame.experience.level,
+            &frame.stats,
+            frame.adv_loaded.then_some(&record.advancements),
+            &record.recipe_book.recipes,
+        );
+        Some(view)
+    }
     fn player_facts(&self, asked: adv::FactsAsked) -> adv::PlayerFacts {
         let Some(p) = self.player.as_ref() else {
             return adv::PlayerFacts::default();
         };
+        self.player_facts_from(
+            asked,
+            p,
+            self.experience.level,
+            &self.stats,
+            self.adv.loaded.then_some(&self.adv.progress),
+            &self.level.recipe_book.recipes,
+        )
+    }
+    /// Only copy the records named by `PlayerPredicate`; unloaded records stay absent.
+    fn player_facts_from(
+        &self,
+        asked: adv::FactsAsked,
+        body: &PlayerMotion,
+        level: i32,
+        stats: &Stats,
+        progress: Option<&Progress>,
+        recipes: &BTreeSet<String>,
+    ) -> adv::PlayerFacts {
         adv::PlayerFacts {
-            level: asked.level.then_some(self.experience.level),
-            // `ServerPlayer.getFoodData`, read by every player predicate:
-            // two numbers, so always filled.
-            food: Some((p.health.food.food, p.health.food.saturation)),
-            stats: (asked.stats && self.stats.loaded).then(|| self.stats.values.clone()),
-            advancements: (asked.advancements && self.adv.loaded)
-                .then(|| (self.adv.tree.clone(), self.adv.progress.clone())),
-            recipes: asked
-                .recipes
-                .then(|| self.level.recipe_book.recipes.clone()),
+            level: asked.level.then_some(level),
+            food: Some((body.health.food.food, body.health.food.saturation)),
+            stats: (asked.stats && stats.loaded).then(|| stats.values.clone()),
+            advancements: progress
+                .filter(|_| asked.advancements)
+                .map(|p| (self.adv.tree.clone(), p.clone())),
+            recipes: asked.recipes.then(|| recipes.clone()),
         }
     }
     /// The player as predicates see it, with what it looks at when `looking`.
     pub(super) fn player_entity_looking(&self, looking: bool) -> EntityView {
-        let Some(p) = self.player.as_ref() else {
+        let Some(body) = self.player.as_ref() else {
             return EntityView::default();
         };
+        self.player_entity_from(PlayerEntityState {
+            body,
+            name: self.acting_player_name(),
+            mode: self.mode,
+            input_sneak: self.held_mapping(Action::Sneak),
+            main_hand: self.held(),
+            off_hand: self.offhand.as_ref(),
+            armor: &self.armor,
+            effects: &self.potions.effects,
+            riding: self.riding,
+            look: looking.then_some((self.yaw, self.pitch)),
+        })
+    }
+    fn player_entity_from(&self, state: PlayerEntityState<'_>) -> EntityView {
+        let p = state.body;
         let mut eq: [Option<ItemView>; 7] = Default::default();
-        eq[0] = self.held().map(item_view);
-        eq[1] = self.offhand.as_ref().map(item_view);
-        for (i, a) in self.armor.iter().enumerate() {
+        eq[0] = state.main_hand.map(item_view);
+        eq[1] = state.off_hand.map(item_view);
+        for (i, a) in state.armor.iter().enumerate() {
             eq[2 + i] = a.as_ref().map(item_view);
         }
-        let vehicle = self.riding.and_then(|id| {
+        let vehicle = state.riding.and_then(|id| {
             self.mobs
                 .iter()
                 .find(|m| m.id == id)
@@ -697,15 +781,14 @@ impl Game<'_> {
             on_fire: p.is_on_fire(),
             sneaking: p.pose == sunrise_client::pose::Pose::Crouching,
             // Input.shift: the held key, as `BlockItem.place`'s sneaking reads it.
-            input_sneak: self.held_mapping(Action::Sneak),
+            input_sneak: state.input_sneak,
             sprinting: p.sprinting,
             swimming: p.pose == sunrise_client::pose::Pose::Swimming,
             flying: p.flying,
             on_ground: p.ground.on_ground,
             equipment: eq,
             vehicle,
-            effects: self
-                .potions
+            effects: state
                 .effects
                 .list
                 .iter()
@@ -714,13 +797,23 @@ impl Game<'_> {
                     (id.to_owned(), e.amplifier, e.duration)
                 })
                 .collect(),
-            gamemode: Some(self.mode.name().to_owned()),
-            team: self.player_team().map(|t| t.name.clone()),
+            gamemode: Some(state.mode.name().to_owned()),
+            team: self
+                .score
+                .board
+                .players_team(state.name)
+                .map(|t| t.name.clone()),
             // Vanilla looks for it inside PlayerPredicate.matches whatever the
             // trigger; skipped for a trigger whose criteria can't ask.
-            looking_at: looking
-                .then(|| self.looking_at_entity().map(Box::new))
-                .flatten(),
+            looking_at: state.look.and_then(|(yaw, pitch)| {
+                let eye = [
+                    p.position.x,
+                    p.position.y + f64::from(p.dimensions.eye_height),
+                    p.position.z,
+                ];
+                self.looking_at_entity(eye, super::view_vector(yaw, pitch))
+                    .map(Box::new)
+            }),
             ..Default::default()
         }
     }
@@ -1204,7 +1297,6 @@ impl Game<'_> {
                     title: Text::translate(toast_label(d.frame).0, &[]),
                     description: Some(text_of(&d.title)),
                     slide: Slide::default(),
-                    slot: None,
                     recipes: Vec::new(),
                     changed: false,
                     last_changed: 0,
@@ -1809,12 +1901,10 @@ impl Game<'_> {
     /// The entity a 100 block ray from the eyes meets first, if no block is
     /// in the way (`ProjectileUtil.getEntityHitResult` over every entity but
     /// the player that is not a spectator, then `hasLineOfSight`).
-    fn looking_at_entity(&self) -> Option<EntityView> {
+    fn looking_at_entity(&self, eye: [f64; 3], dir: [f64; 3]) -> Option<EntityView> {
         use super::commands::Target;
         use super::entity::{Entity as _, entity_lists_of, for_each_entity};
         use sunrise_core::geometry::Aabb;
-        let eye = self.eye_position()?;
-        let dir = super::view_vector(self.yaw, self.pitch);
         let mut best: Option<(Target, f64)> = None;
         let mut offer = |t: Option<Target>, b: Aabb| {
             if let Some(t) = t
@@ -2465,94 +2555,27 @@ impl Game<'_> {
                 && c["to"].as_str().is_none_or(|t| adv::full(t) == to_id)
         });
     }
-    /// `ToastManager.SLOT_COUNT`.
-    pub(super) const TOAST_SLOTS: usize = 5;
-    /// `ToastManager.update` and `extractRenderState` for the `AdvancementToast`s and
-    /// `RecipeToast`s: up to five stack in 32-pixel slots, the rest queue. `hidden` (F1)
-    /// keeps them timing out without drawing them.
-    pub(super) fn draw_toasts(&mut self, batch: &mut HudBatch, hidden: bool) {
-        let multiplier = self.settings.notification_display_time;
-        let mut sound_played = false;
-        let mut i = 0;
-        while i < self.adv.toasts.len() {
-            let t = &mut self.adv.toasts[i];
-            if t.slot.is_none() {
-                i += 1;
-                continue;
-            }
-            let origin = *t.slide.origin.get_or_insert_with(Instant::now);
-            let now = origin.elapsed().as_millis() as i64;
-            let mut slide = std::mem::take(&mut t.slide);
-            let (sound, finished) = slide.update(now, |fully| t.wants_show(fully, multiplier));
-            t.slide = slide;
-            if finished {
-                self.adv.toasts.remove(i);
-                continue;
-            }
-            // Only the first visibility change of an update plays its sound.
-            if let Some(show) = sound
-                && !std::mem::replace(&mut sound_played, true)
-            {
-                let event = if show { "ui.toast.in" } else { "ui.toast.out" };
-                self.audio
-                    .play(&format!("minecraft:{event}"), None, 1.0, 1.0);
-            }
-            i += 1;
-        }
-        // The queued toasts take the free slots in order; a challenge's own sound
-        // plays once as it leaves the queue.
-        let mut used = self.toast_slots_used();
-        let mut challenge_sound = false;
-        for t in &mut self.adv.toasts {
-            if t.slot.is_some() {
-                continue;
-            }
-            let Some(slot) = (0..Self::TOAST_SLOTS).find(|s| used & (1 << s) == 0) else {
-                break;
-            };
-            used |= 1 << slot;
-            t.slot = Some(slot);
-            challenge_sound |= !t.is_recipe() && t.frame == Frame::Challenge;
-        }
-        if challenge_sound {
-            self.audio
-                .play("minecraft:ui.toast.challenge_complete", None, 1.0, 1.0);
-        }
-        if hidden {
-            return;
-        }
-        for i in 0..self.adv.toasts.len() {
-            if let Some(slot) = self.adv.toasts[i].slot {
-                self.draw_toast(batch, i, 32.0 * slot as f32, multiplier);
-            }
-        }
-    }
-    /// The slots held by shown advancement, recipe, pack and narrator toasts,
-    /// as bits.
-    pub(super) fn toast_slots_used(&self) -> u32 {
-        let packs = self.server_packs.toast_slots();
-        self.adv
-            .toasts
-            .iter()
-            .filter_map(|t| t.slot)
-            .chain(packs)
-            .chain(self.narrator_toast.as_ref().and_then(|t| t.slot))
-            .fold(self.tutorial_toast_slots(), |used, slot| used | 1 << slot)
-    }
     pub(super) fn add_advancement_toast(&mut self, mut toast: Toast) {
         let kind = if toast.is_recipe() {
             mod_api::ToastKind::Recipe
         } else {
             mod_api::ToastKind::Advancement
         };
-        if self.add_toast(kind, &mut toast.title, &mut toast.description) {
-            self.adv.toasts.push_back(toast);
+        if self.admit_toast(kind, &mut toast.title, &mut toast.description) {
+            self.toast_manager
+                .queued
+                .push_back(super::toast_manager::Toast::Advancement(toast));
         }
     }
 
-    /// The `AdvancementToast` or `RecipeToast` at `index` in its slot at `y`.
-    fn draw_toast(&self, batch: &mut HudBatch, index: usize, y: f32, multiplier: f64) {
-        let t = &self.adv.toasts[index];
+    /// The `AdvancementToast` or `RecipeToast` in its slot at `y`.
+    pub(super) fn draw_advancement_toast(
+        &self,
+        batch: &mut HudBatch,
+        t: &Toast,
+        y: f32,
+        multiplier: f64,
+    ) {
         let x = batch.width - 160.0 * t.slide.portion;
         let fully_for = t.slide.fully_for;
         let (title, frame, icon) = (&t.title, t.frame, &t.icon);
@@ -2815,7 +2838,6 @@ impl Game<'_> {
                     title: Text::translate(toast_label(d.frame).0, &[]),
                     description: Some(text_of(&d.title)),
                     slide: Slide::default(),
-                    slot: None,
                     recipes: Vec::new(),
                     changed: false,
                     last_changed: 0,
@@ -2879,90 +2901,171 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn toast_admission_cancels_edits_and_preserves_queue_behavior() {
-        use mod_api::{ClientHost, Flow, Hooks, ModEntry, ToastAddEvent, ToastKind};
-        struct Listener;
-        #[mod_api::__subscriptions]
-        impl Hooks for Listener {
-            fn toast_add(&self, _: &dyn ClientHost, event: &mut ToastAddEvent<'_>) -> Flow {
-                match event.description.as_ref().map(|text| &text.content) {
-                    Some(mod_api::text::TextContent::Literal(value)) if value == "cancel" => {
-                        Flow::Cancel
+        crate::game::in_own_process(
+            "game::advancements::tests::toast_admission_cancels_edits_and_preserves_queue_behavior",
+            || {
+                use crate::game::toast_manager::{SystemToastId, Toast as QueuedToast};
+                use mod_api::{ClientHost, Flow, Hooks, ModEntry, ToastAddEvent, ToastKind};
+                use std::time::Duration;
+                use sunrise_client::toasts::SystemToast;
+                struct Listener;
+                #[mod_api::__subscriptions]
+                impl Hooks for Listener {
+                    fn toast_add(&self, _: &dyn ClientHost, event: &mut ToastAddEvent<'_>) -> Flow {
+                        match event.description.as_ref().map(|text| &text.content) {
+                            Some(mod_api::text::TextContent::Literal(value))
+                                if value == "cancel" =>
+                            {
+                                Flow::Cancel
+                            }
+                            Some(mod_api::text::TextContent::Literal(value)) if value == "edit" => {
+                                *event.title = mod_api::Text::literal("replacement");
+                                event.title.style.color = Some("#123456".into());
+                                *event.description = Some(mod_api::Text::literal("changed"));
+                                Flow::Continue
+                            }
+                            _ => Flow::Continue,
+                        }
                     }
-                    Some(mod_api::text::TextContent::Literal(value)) if value == "edit" => {
-                        *event.title = mod_api::Text::literal("replacement");
-                        event.title.style.color = Some("#123456".into());
-                        *event.description = Some(mod_api::Text::literal("changed"));
-                        Flow::Continue
-                    }
-                    _ => Flow::Continue,
                 }
-            }
-        }
-        let mods: mod_api::Mods = vec![ModEntry::new("toasts", Box::new(Listener))].into();
-        mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
-                game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
-                game.adv.toasts.clear();
-                let advancement = |name: &str| Toast {
-                    icon: ItemStack::new("minecraft:stone", 1),
-                    frame: Frame::Challenge,
-                    title: Text::translate("advancements.toast.challenge", &[]),
-                    description: Some(Text::literal(name)),
-                    slide: Slide::default(),
-                    slot: None,
-                    recipes: vec![],
-                    changed: false,
-                    last_changed: 0,
-                };
-                game.add_advancement_toast(advancement("cancel"));
-                assert!(game.adv.toasts.is_empty());
-                game.add_advancement_toast(advancement("untouched"));
-                let original = &game.adv.toasts[0];
-                assert_eq!(
-                    original.title.component(),
-                    serde_json::json!({"translate": "advancements.toast.challenge"})
-                );
-                assert_eq!(original.description.as_ref().unwrap().plain(), "untouched");
-                assert_eq!(original.icon, ItemStack::new("minecraft:stone", 1));
-                assert!(original.slot.is_none());
-                assert!(
-                    original.slide.origin.is_none(),
-                    "not animated before admission"
-                );
-                game.add_advancement_toast(advancement("edit"));
-                let edited = &game.adv.toasts[1];
-                assert_eq!(edited.title.plain(), "replacement");
-                assert_eq!(edited.title.component()["color"], "#123456");
-                assert_eq!(edited.description.as_ref().unwrap().plain(), "changed");
-                assert_eq!(edited.frame, Frame::Challenge);
-                for kind in [
-                    ToastKind::Recipe,
-                    ToastKind::Tutorial,
-                    ToastKind::System,
-                    ToastKind::Other,
-                ] {
-                    let mut title = Text::literal("title");
-                    let mut description = Some(Text::literal("cancel"));
-                    assert!(!game.add_toast(kind, &mut title, &mut description));
-                }
-                let mut system = sunrise_client::toasts::SystemToast::new("system".into(), None);
-                system.message = Some(Text::literal("edit"));
-                let system = game.add_system_toast(system).unwrap();
-                assert_eq!(system.title.plain(), "replacement");
-                assert_eq!(system.message.unwrap().plain(), "changed");
-                for role in [
-                    super::super::execution_role::ExecutionRole::IntegratedServer,
-                    super::super::execution_role::ExecutionRole::DedicatedServer,
-                ] {
-                    game.options.execution_role = role;
-                    let mut title = Text::literal("server");
-                    let mut description = Some(Text::literal("edit"));
-                    assert!(!game.add_toast(ToastKind::Advancement, &mut title, &mut description));
-                    assert_eq!(title.plain(), "server", "server must not invoke listener");
-                    assert_eq!(description.unwrap().plain(), "edit");
-                }
-            });
-        });
+                let mods: mod_api::Mods = vec![ModEntry::new("toasts", Box::new(Listener))].into();
+                mod_platform::testing::with_mods(mods, || {
+                    super::super::native_entity_refs::tests::with_game(|game| {
+                        game.options.execution_role =
+                            super::super::execution_role::ExecutionRole::Client;
+                        let advancement = |name: &str| Toast {
+                            icon: ItemStack::new("minecraft:stone", 1),
+                            frame: Frame::Challenge,
+                            title: Text::translate("advancements.toast.challenge", &[]),
+                            description: Some(Text::literal(name)),
+                            slide: Slide::default(),
+                            recipes: vec![],
+                            changed: false,
+                            last_changed: 0,
+                        };
+                        game.add_advancement_toast(advancement("cancel"));
+                        assert!(game.toast_manager.queued.is_empty());
+                        game.add_advancement_toast(advancement("untouched"));
+                        let QueuedToast::Advancement(original) = &game.toast_manager.queued[0]
+                        else {
+                            panic!("expected advancement toast")
+                        };
+                        assert_eq!(
+                            original.title.component(),
+                            serde_json::json!({"translate": "advancements.toast.challenge"})
+                        );
+                        assert_eq!(original.description.as_ref().unwrap().plain(), "untouched");
+                        assert_eq!(original.icon, ItemStack::new("minecraft:stone", 1));
+                        assert!(
+                            original.slide.origin.is_none(),
+                            "not animated before admission"
+                        );
+                        game.add_advancement_toast(advancement("edit"));
+                        let QueuedToast::Advancement(edited) = &game.toast_manager.queued[1] else {
+                            panic!("expected advancement toast")
+                        };
+                        assert_eq!(edited.title.plain(), "replacement");
+                        assert_eq!(edited.title.component()["color"], "#123456");
+                        assert_eq!(edited.description.as_ref().unwrap().plain(), "changed");
+                        assert_eq!(edited.frame, Frame::Challenge);
+                        for kind in [
+                            ToastKind::Recipe,
+                            ToastKind::Tutorial,
+                            ToastKind::System,
+                            ToastKind::Other,
+                        ] {
+                            let mut title = Text::literal("title");
+                            let mut description = Some(Text::literal("cancel"));
+                            assert!(!game.admit_toast(kind, &mut title, &mut description));
+                        }
+                        let mut system =
+                            sunrise_client::toasts::SystemToast::new("system".into(), None);
+                        system.message = Some(Text::literal("edit"));
+                        assert!(game.add_system_toast(None, system));
+                        let Some(QueuedToast::System(_, system)) = game.toast_manager.queued.back()
+                        else {
+                            panic!("expected system toast")
+                        };
+                        assert_eq!(system.title.plain(), "replacement");
+                        assert_eq!(system.message.as_ref().unwrap().plain(), "changed");
+                        for id in [SystemToastId::PackLoadFailure, SystemToastId::Narrator] {
+                            assert!(game.add_system_toast(
+                                Some(id),
+                                SystemToast::new("Other notice".into(), None)
+                            ));
+                        }
+                        assert_eq!(
+                            game.toast_manager.update(1.0),
+                            (None, true),
+                            "both challenges share a promotion sound"
+                        );
+                        assert_eq!(game.toast_manager.visible.len(), 5);
+                        assert_eq!(game.toast_manager.update(1.0), (Some(true), false));
+
+                        game.add_toast(mod_api::ModToast::new(mod_api::Text::literal(
+                            "Older mod toast",
+                        )))
+                        .unwrap();
+                        game.admit_mod_toasts();
+                        game.add_advancement_toast(advancement("newer advancement"));
+                        let fading = game
+                            .toast_manager
+                            .system_mut(SystemToastId::PackLoadFailure)
+                            .unwrap();
+                        fading.slide.origin = Some(Instant::now() - Duration::from_secs(1));
+                        fading.force_hide();
+                        assert_eq!(game.toast_manager.update(1.0), (Some(false), false));
+                        assert_eq!(
+                            game.toast_manager.queued.len(),
+                            2,
+                            "a sliding-out toast still owns its slot"
+                        );
+                        game.toast_manager
+                            .system_mut(SystemToastId::PackLoadFailure)
+                            .unwrap()
+                            .slide
+                            .origin = Some(Instant::now() - Duration::from_secs(2));
+                        assert_eq!(game.toast_manager.update(1.0), (None, false));
+                        assert!(matches!(
+                            game.toast_manager.visible.last().map(|entry| &entry.toast),
+                            Some(QueuedToast::Mod(_))
+                        ));
+                        assert!(matches!(
+                            game.toast_manager.queued.front(),
+                            Some(QueuedToast::Advancement(_))
+                        ));
+
+                        let narrator = game
+                            .toast_manager
+                            .system_mut(SystemToastId::Narrator)
+                            .unwrap();
+                        narrator.slide.origin = Some(Instant::now() - Duration::from_secs(1));
+                        narrator.force_hide();
+                        assert_eq!(
+                            game.toast_manager.update(1.0),
+                            (Some(false), false),
+                            "the first visibility change wins, even while another family slides in"
+                        );
+
+                        for role in [
+                            super::super::execution_role::ExecutionRole::IntegratedServer,
+                            super::super::execution_role::ExecutionRole::DedicatedServer,
+                        ] {
+                            game.options.execution_role = role;
+                            let mut title = Text::literal("server");
+                            let mut description = Some(Text::literal("edit"));
+                            assert!(!game.admit_toast(
+                                ToastKind::Advancement,
+                                &mut title,
+                                &mut description
+                            ));
+                            assert_eq!(title.plain(), "server", "server must not invoke listener");
+                            assert_eq!(description.unwrap().plain(), "edit");
+                        }
+                    });
+                });
+            },
+        );
     }
 
     #[test]

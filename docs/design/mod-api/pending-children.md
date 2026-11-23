@@ -79,11 +79,12 @@ Expected implementation outcomes below are fixtures to write, not tests already 
 
 ## Implementation status
 
-**This is staged work.** `mob_split` and `baby_entity_spawn` now hand their listeners the engine-owned
-list described here. The pieces that need a transaction coordinator wait for
-[#784](https://github.com/arismoko/horizon/issues/784), which is not in main: outer rollback of a vetoed
-listener's Host writes and per-child join recovery. Until it lands, a veto or a stale refusal spawns no
-child but cannot undo what a listener wrote through the host. #825 stays open for that stage.
+`mob_split` and `baby_entity_spawn` hand their listeners the engine-owned list described here.
+The owning decision uses the [per-level journal](../../modding/src/concepts/transactions.md) after
+construction. A refusal, including a contained listener panic, rolls back journaled writes in the
+owning level and spawns no children. Work in another level commits at once when that level has no
+open transaction. Coordinating a wider outer abort and recovering per-child join vetoes are separate
+from that decision.
 
 What is built:
 
@@ -98,11 +99,12 @@ What is built:
   previous listener's leases, so a list, child or ownership token kept from an earlier listener answers
   `Expired`.
 - **Consumed once.** After dispatch the list is frozen and validated (kind, dimension, finite position and
-  yaw, baby state, species size), and the survivors join in order. A cancel, an emptied list,
-  a parent or world that changed under the listener (a parent's position, kind, age, love,
-  variant, colour or tameness differs from what the baby was built from), or an invalid final child spawns
-  nothing and replays nothing. Cancelling keeps the construction draws and the parent's death; breeding's
-  veto leaves both parents at age 6000 and love 0 with no experience, statistic or hearts.
+  yaw, baby state, species size). The survivors are inserted in order inside the savepoint, before deferred
+  join callbacks. A cancel, an emptied list, a parent or world that changed under the listener (a parent
+  was removed or its position, kind, age, love, variant, colour or tameness differs from what the baby
+  was built from), or an invalid final child spawns nothing and replays nothing. Cancelling keeps the
+  construction draws and the parent's death; breeding's veto leaves both parents at age 6000 and love 0
+  with no experience, statistic or hearts.
 - **Unpublished while waiting.** A baby breeding hands over keeps its UUID, and its constructor
   attachments when nothing is bound to them, outside the game's tables until it joins; a split child
   has none before it joins. A removed or replaced baby, and a panicking listener, leave no state behind.

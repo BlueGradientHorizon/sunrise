@@ -58,6 +58,10 @@ the previous eye-in-water sample AND current water contact. The local client pla
 contact is false. It is deliberately not equivalent to checking `eye_fluid` now. Both reads return
 `None` for unsupported kinds or stale handles.
 
+On the server, `LivingRef::can_breathe_underwater(host)` reads whether the mob's type is currently in
+`minecraft:can_breathe_under_water`. It does not predict drowning: it ignores effects, species-specific
+breathing overrides and invulnerability.
+
 `EntityRef::is_swimming` reads the swimming flag, not the player's current pose.
 [Swimming eligibility](entity-hooks.md#swimming-eligibility) can change entry on
 both sides without changing either of the fluid reads above or the conditions

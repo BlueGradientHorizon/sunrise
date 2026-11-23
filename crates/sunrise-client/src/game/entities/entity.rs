@@ -134,7 +134,10 @@ pub(super) trait Entity: EntityRules {
     fn ground_state_mut(&mut self) -> Option<&mut GroundState> {
         None
     }
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+    fn support_collision(
+        &self,
+        _tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         (
             sunrise_client::motion::BodyMotion::entity_context(self.id(), self.position()),
             Some(PowderSnowSubject {
@@ -148,6 +151,7 @@ pub(super) trait Entity: EntityRules {
         &mut self,
         world: &sunrise_client::world::World,
         binding: &sunrise_world::block_collision::BlockCollisionRegistry<'_>,
+        tags: &sunrise_items::items::EntityTypeTags,
         on_ground: bool,
         movement: Option<Vec3>,
     ) -> Result<bool, CollisionScanError<std::io::Error>> {
@@ -155,7 +159,7 @@ pub(super) trait Entity: EntityRules {
             return Ok(false);
         };
         ground.on_ground = on_ground;
-        let (context, subject) = self.support_collision();
+        let (context, subject) = self.support_collision(tags);
         let mut scene = SceneCollisions {
             world,
             binding,
@@ -185,6 +189,14 @@ pub(super) trait Entity: EntityRules {
     /// `Entity.isRemoved`.
     fn is_removed(&self) -> bool {
         false
+    }
+    /// `Entity.isPickable`: true for kinds a projectile or ray pick can strike.
+    fn is_pickable(&self) -> bool {
+        false
+    }
+    /// `Entity.canBeHitByProjectile`: alive and pickable.
+    fn can_be_hit_by_projectile(&self) -> bool {
+        self.is_alive() && self.is_pickable()
     }
     /// `instanceof LivingEntity`.
     fn is_living(&self) -> bool {
@@ -1954,8 +1966,7 @@ impl Game<'_> {
     }
     /// The type ids the boat kind loads.
     fn loads_as_boat(&self, kind: &str) -> bool {
-        super::boats::any_boat_wood(kind)
-            .is_some_and(|(wood, chest)| self.boat_models.has(wood, chest))
+        super::boats::registered_boat(kind, &self.res.items().component_registry).is_some()
     }
     /// Whether `load_listed` loads `kind` as a vehicle that takes its mob
     /// riders (`take_mob_passengers`): a mob, boat, minecart or primed TNT.
@@ -2024,7 +2035,7 @@ impl Game<'_> {
                     .filter(|dragon| dragon.id != 0)
                     .flat_map(|dragon| {
                         (0..dragon.parts.len())
-                            .filter_map(move |offset| dragon.id.checked_add(offset as u32 + 1))
+                            .map(move |offset| super::dragon::dragon_part_id(dragon.id, offset))
                     }),
             )
             .chain(self.ominous_spawners.iter().map(|e| e.id))
@@ -2062,8 +2073,11 @@ impl Entity for Mob {
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
     }
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
-        let (context, subject) = Mob::support_collision(self);
+    fn support_collision(
+        &self,
+        tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+        let (context, subject) = Mob::support_collision(self, Some(tags));
         (context, Some(subject))
     }
     /// `Entity.noPhysics`: written through the mod API; no mob tick rewrites it
@@ -2150,6 +2164,9 @@ impl Entity for Mob {
     fn is_removed(&self) -> bool {
         self.removed
     }
+    fn is_pickable(&self) -> bool {
+        !self.removed && !(&*self.kind.id == "minecraft:player" && self.extra.spectator)
+    }
     fn is_living(&self) -> bool {
         true
     }
@@ -2198,7 +2215,10 @@ impl Entity for Mob {
 
 impl Entity for ItemEntity {
     stored_ground!();
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+    fn support_collision(
+        &self,
+        _tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         (
             self.collision_context(),
             Some(PowderSnowSubject {
@@ -2442,6 +2462,9 @@ impl Entity for Boat {
     fn bounds(&self) -> Aabb {
         Boat::bounds(self)
     }
+    fn is_pickable(&self) -> bool {
+        true
+    }
 }
 
 impl Entity for Minecart {
@@ -2524,6 +2547,9 @@ impl Entity for Minecart {
     fn bounds(&self) -> Aabb {
         Minecart::bounds(self)
     }
+    fn is_pickable(&self) -> bool {
+        true
+    }
     /// `tick_blocks` sweeps minecarts along with the players.
     fn sweeps_blocks_inside(&self) -> bool {
         false
@@ -2531,7 +2557,7 @@ impl Entity for Minecart {
 }
 
 /// Width and height `EntityType.ARMOR_STAND` gives a stand.
-fn armor_stand_size(stand: &ArmorStand) -> (f64, f64) {
+pub(super) fn armor_stand_size(stand: &ArmorStand) -> (f64, f64) {
     if stand.marker {
         (0.0, 0.0)
     } else if stand.small {
@@ -2543,7 +2569,10 @@ fn armor_stand_size(stand: &ArmorStand) -> (f64, f64) {
 
 impl Entity for ArmorStand {
     stored_ground!(enchantment_fall_distance);
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+    fn support_collision(
+        &self,
+        _tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         let (context, subject) = ArmorStand::support_collision(self);
         (context, Some(subject))
     }
@@ -2553,6 +2582,9 @@ impl Entity for ArmorStand {
     /// `LivingEntity.isAlive`: health above 0 (removal is the level's).
     fn is_alive(&self) -> bool {
         self.health > 0.0
+    }
+    fn is_pickable(&self) -> bool {
+        !self.marker
     }
     fn move_entity(&mut self, gate: &mut MoveGate, movement: Vec3) {
         if gate.skipped() {
@@ -2688,7 +2720,10 @@ impl Entity for ArmorStand {
 
 impl Entity for PrimedTnt {
     stored_ground!();
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+    fn support_collision(
+        &self,
+        _tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         (self.collision_context(), Some(self.powder_snow_subject()))
     }
     fn reset_fall_distance(&mut self) {
@@ -2764,6 +2799,9 @@ impl Entity for PrimedTnt {
     fn bounds(&self) -> Aabb {
         PrimedTnt::bounds(self)
     }
+    fn is_pickable(&self) -> bool {
+        true
+    }
     fn piston_slime_bounce(&mut self, movement: Direction) {
         self.velocity = piston_push::bounce_velocity(movement, self.velocity);
         // Leave the ground so the next tick does not apply the on-ground
@@ -2775,7 +2813,10 @@ impl Entity for PrimedTnt {
 
 impl Entity for FallingBlock {
     stored_ground!();
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+    fn support_collision(
+        &self,
+        _tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         (
             sunrise_client::motion::BodyMotion::entity_context(self.id, self.position),
             Some(PowderSnowSubject {
@@ -2848,11 +2889,17 @@ impl Entity for FallingBlock {
     fn bounds(&self) -> Aabb {
         sunrise_client::falling_block::bounds(self.position)
     }
+    fn is_pickable(&self) -> bool {
+        true
+    }
 }
 
 impl Entity for Projectile {
     stored_ground!();
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+    fn support_collision(
+        &self,
+        _tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         (
             sunrise_client::motion::BodyMotion::entity_context(self.id, self.position),
             Some(PowderSnowSubject {
@@ -3034,6 +3081,9 @@ impl Entity for Projectile {
     }
     fn piston_slime_bounce(&mut self, movement: Direction) {
         Projectile::piston_slime_bounce(self, movement);
+    }
+    fn is_pickable(&self) -> bool {
+        super::deflect::attackable(self)
     }
 }
 

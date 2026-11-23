@@ -42,28 +42,37 @@ impl Game<'_> {
             return vanilla_spilled;
         };
         let mut drops = vanilla_spilled.clone();
-        let seal = self.transaction_open();
         let failures = mod_api::runtime::isolated_failures();
+        // One storage transaction around the dispatch. It commits only when no listener
+        // failed (a latched panic shows in `isolated_failures`), and it rolls back on that
+        // failure, on a refused commit, or when the dispatch unwinds (the scope's guard
+        // aborts the frame). Whenever the writes roll back, the listeners' drops are
+        // discarded with them and vanilla's container spill is dropped instead.
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            self.native_item_destroyed(&stack, handle, damage_type, &mut drops);
+            self.storage_transaction_settled(|game, _| {
+                game.native_item_destroyed(&stack, handle, damage_type, &mut drops);
+                if mod_api::runtime::isolated_failures() == failures {
+                    Ok(())
+                } else {
+                    Err(())
+                }
+            })
         }));
-        let failed = outcome.is_err() || mod_api::runtime::isolated_failures() != failures;
-        let result = if !failed {
-            self.transaction_close(&seal, true);
-            drops
-        } else {
-            if let Err(payload) = outcome
-                && let Err(payload) =
-                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(payload)))
-            {
-                std::mem::forget(payload);
+        let result = match outcome {
+            Ok(Ok(())) => drops,
+            outcome => {
+                if let Err(payload) = outcome
+                    && let Err(payload) =
+                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(payload)))
+                {
+                    std::mem::forget(payload);
+                }
+                log::warn!(
+                    "item_destroyed: a listener failed for {}; its writes were rolled back",
+                    stack.item
+                );
+                vanilla_spilled
             }
-            log::warn!(
-                "item_destroyed: listener panicked for {}; rolling back writes",
-                stack.item
-            );
-            self.transaction_close(&seal, false);
-            vanilla_spilled
         };
         if let Some(entry) = self.dropped.iter_mut().find(|e| e.id == id) {
             let _ = entry.spill_destroyed_contents();

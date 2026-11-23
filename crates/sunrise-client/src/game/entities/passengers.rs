@@ -374,9 +374,9 @@ impl Game<'_> {
                     vehicle,
                     rider,
                     vehicle.rider.is_some() || self.riding == Some(v),
-                    self.res
-                        .mob_data()
-                        .entity_has("minecraft:non_controlling_rider", &rider.kind.id),
+                    self.items()
+                        .entity_type_tags
+                        .contains("minecraft:non_controlling_rider", &rider.kind.id),
                 );
                 let takes_body = riders::takes_vehicle_body(vehicle, rider, controlling);
                 let vehicle_width = vehicle.width();
@@ -477,6 +477,7 @@ impl Game<'_> {
             stand.previous = before;
             stand.velocity = Vec3::ZERO;
         }
+        self.sync_seated_pick_sections();
     }
 
     /// Armor stands riding the local player, on the top of its box. Vanilla

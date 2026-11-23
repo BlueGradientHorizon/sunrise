@@ -179,6 +179,17 @@ fn check_record(
     ancestors: &FxHashSet<[i32; 4]>,
     seen: &mut FxHashSet<[i32; 4]>,
 ) -> Result<(), GeneralRecordError> {
+    check_record_fields(record)?;
+    if ancestors.contains(&record.uuid) {
+        return Err(GeneralRecordError::PassengerCycle { uuid: record.uuid });
+    }
+    if !seen.insert(record.uuid) {
+        return Err(GeneralRecordError::DuplicateUuid { uuid: record.uuid });
+    }
+    Ok(())
+}
+
+fn check_record_fields(record: &GeneralEntityRecord) -> Result<(), GeneralRecordError> {
     if !record
         .position
         .iter()
@@ -195,12 +206,6 @@ fn check_record(
         return Err(GeneralRecordError::PayloadTooLarge {
             size: record.envelope.payload_bytes.len(),
         });
-    }
-    if ancestors.contains(&record.uuid) {
-        return Err(GeneralRecordError::PassengerCycle { uuid: record.uuid });
-    }
-    if !seen.insert(record.uuid) {
-        return Err(GeneralRecordError::DuplicateUuid { uuid: record.uuid });
     }
     Ok(())
 }
@@ -1172,13 +1177,33 @@ impl Game<'_> {
         )))
     }
 
-    /// Insert one record as a row (and, recursively, its riders as rows of
-    /// their vehicle): the same join list a fresh spawn pushes into, the
-    /// same remember (`persist.uuids`, the saved attachments) every loaded
-    /// kind takes, and each row's next runtime id from the game's counter.
+    /// Read one spawner passenger without its riders. The spawner loads
+    /// those separately and resolves UUID residency in preorder, not with
+    /// the saved general tree's structural checks.
+    pub(super) fn decode_general_spawn_passenger(
+        tag: &Tag,
+        kind: &str,
+    ) -> Option<(usize, GeneralEntityRecord)> {
+        let slot = general_type_catalog().slot(kind)?;
+        let record = read_general_record(tag, &|_| false)
+            .and_then(|record| {
+                check_record_fields(&record)?;
+                Ok(record)
+            })
+            .map_err(|error| {
+                log::warn!(
+                    "Sunrise: refusing general entity record: {}",
+                    error.message()
+                );
+            })
+            .ok()?;
+        Some((slot, record))
+    }
+
+    /// Insert one saved general record and its riders in seat order.
     fn insert_general_record(
         &mut self,
-        record: GeneralEntityRecord,
+        mut record: GeneralEntityRecord,
         tag: &Tag,
         mount: Option<u32>,
         transferred: Option<TransferredEntityState>,
@@ -1186,6 +1211,30 @@ impl Game<'_> {
         let slot = general_type_catalog()
             .slot(&record.envelope.type_key)
             .expect("check_general_record resolved every type of the tree");
+        let riders = std::mem::take(&mut record.passengers);
+        let id = self.insert_general_row(slot, record, tag, mount, transferred);
+        if let Some(Tag::List(list)) = tag.get(format::PASSENGERS) {
+            let mut general = riders.into_iter();
+            for rider in list {
+                if self.loads_as_mob_passenger(rider) {
+                    self.load_mob(rider.clone(), Some(id));
+                } else if let Some(record) = general.next() {
+                    self.insert_general_record(record, rider, Some(id), None);
+                }
+            }
+        }
+        id
+    }
+
+    /// Publish one validated record; the caller owns its passenger traversal.
+    pub(super) fn insert_general_row(
+        &mut self,
+        slot: usize,
+        record: GeneralEntityRecord,
+        tag: &Tag,
+        mount: Option<u32>,
+        transferred: Option<TransferredEntityState>,
+    ) -> u32 {
         self.next_entity += 1;
         let id = self.next_entity;
         // Install before `remember_uuid` (the same ordering a transferred
@@ -1215,18 +1264,6 @@ impl Game<'_> {
         };
         self.bind_saved_entity_attachments(id, &mut row.attachment_lifetime);
         self.resident_entities.general.rows.push(row);
-        // The decoder parsed the general rows; load vanilla mobs through the
-        // same path that reads them on a vanilla vehicle, in original seat order.
-        if let Some(Tag::List(list)) = tag.get(format::PASSENGERS) {
-            let mut general = record.passengers.into_iter();
-            for rider in list {
-                if self.loads_as_mob_passenger(rider) {
-                    self.load_mob(rider.clone(), Some(id));
-                } else if let Some(record) = general.next() {
-                    self.insert_general_record(record, rider, Some(id), None);
-                }
-            }
-        }
         id
     }
 }
@@ -1295,6 +1332,9 @@ impl Entity for GeneralRow {
     }
     fn bounds(&self) -> Aabb {
         general_type_catalog().bounds(self.type_slot, self.position)
+    }
+    fn is_pickable(&self) -> bool {
+        general_type_catalog().pickable(self.type_slot)
     }
     fn selector_target(&self) -> Option<Target> {
         Some(Target::General(self.id))

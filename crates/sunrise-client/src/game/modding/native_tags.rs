@@ -1,6 +1,7 @@
 //! One membership implementation for full-game and in-write tag services.
-use mod_api::{ItemKey, TagKey, TagMembers};
+use mod_api::{Identifier, ItemKey, TagKey, TagMembers};
 use sunrise_items::items::{Items, TagRegistry};
+use sunrise_world::loot::LootTags;
 
 pub(super) fn is_in_tag(items: Option<&Items>, item: ItemKey, tag: TagKey) -> Option<bool> {
     let items = items.filter(|items| items.tags_loaded(TagRegistry::Item))?;
@@ -14,6 +15,16 @@ pub(super) fn is_in_tag(items: Option<&Items>, item: ItemKey, tag: TagKey) -> Op
         )
     })
 }
+pub(super) fn item_tags(tags: &dyn LootTags, item: ItemKey) -> Option<Vec<Identifier>> {
+    let item = mod_api::__private::item_key_id(item)?;
+    tags.item_tag_names()?
+        .matching(|name| tags.contains("item", name, item))
+}
+
+pub(super) fn item_tag_names(tags: &dyn LootTags) -> Option<Vec<Identifier>> {
+    tags.item_tag_names()?.matching(|_| true)
+}
+
 pub(super) fn snapshot_members<K>(
     items: Option<&Items>,
     registry: TagRegistry,
@@ -61,6 +72,16 @@ macro_rules! impl_tags {
             fn is_in_tag(&self, item: mod_api::ItemKey, tag: mod_api::TagKey) -> Option<bool> {
                 let $this = self;
                 $crate::game::native_tags::is_in_tag($items, item, tag)
+            }
+            fn item_tags(&self, item: mod_api::ItemKey) -> Option<Vec<mod_api::Identifier>> {
+                let $this = self;
+                let items: Option<&sunrise_items::items::Items> = $items;
+                $crate::game::native_tags::item_tags(items?, item)
+            }
+            fn item_tag_names(&self) -> Option<Vec<mod_api::Identifier>> {
+                let $this = self;
+                let items: Option<&sunrise_items::items::Items> = $items;
+                $crate::game::native_tags::item_tag_names(items?)
             }
             fn items(&self, tag: mod_api::TagKey) -> mod_api::TagMembers<mod_api::ItemKey> {
                 let $this = self;

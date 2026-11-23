@@ -183,6 +183,14 @@ impl Game<'_> {
             let (lo, hi) = p.bounds();
             return Some((lo, hi, centre(p.pos)));
         }
+        if let Some(t) = self.tnts.iter().find(|t| t.id == id) {
+            let (lo, hi) = corners(t.bounds());
+            return Some((lo, hi, at(t.position)));
+        }
+        if let Some(f) = self.falling.iter().find(|f| f.id == id) {
+            let (lo, hi) = corners(sunrise_client::falling_block::bounds(f.position));
+            return Some((lo, hi, at(f.position)));
+        }
         let row = self.general_row(id)?;
         let (lo, hi) = corners(super::entity::Entity::bounds(row));
         Some((lo, hi, at(row.position)))

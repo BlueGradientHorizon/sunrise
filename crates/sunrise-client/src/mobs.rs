@@ -122,6 +122,8 @@ pub mod witch;
 pub mod wither;
 
 #[cfg(test)]
+mod equine_graze_tests;
+#[cfg(test)]
 mod invisible_follow_tests;
 #[cfg(test)]
 mod template_mob_tests;
@@ -399,7 +401,8 @@ impl MobTypes {
     ) -> crate::Result<Self> {
         let attribute_bounds = finalize::AttrBounds::of(attributes);
         let bytes = fs::read(root.join("entity-types.json"))?;
-        let types: Value = serde_json::from_slice(&bytes)?;
+        let types: serde_json::Map<String, Value> = serde_json::from_slice(&bytes)?;
+        let entity_ids = crate::items::EntityTypeTags::registry_ids(&types)?;
         let exact = exact_attributes(&bytes);
         let models = models_needed
             .then(|| -> crate::Result<EntityModelDocument> {
@@ -409,9 +412,6 @@ impl MobTypes {
                 }
             })
             .transpose()?;
-        let entity_type_tags =
-            crate::items::load_tags(root, "entity_type", &sunrise_world::loot::PackOverlay::NONE)?;
-        let burn_in_daylight = entity_type_tags.get("minecraft:burn_in_daylight");
         let empty_model = Arc::new(Part::parse("root", &Value::Null));
         let item_tags =
             crate::items::load_tags(root, "item", &sunrise_world::loot::PackOverlay::NONE)
@@ -470,23 +470,18 @@ impl MobTypes {
         // A content mod's living type (its row names a vanilla `template`) is
         // its template's mob under its own id: the template's model, sounds
         // and behaviour, with the attributes its row has.
-        let mod_types = types
-            .as_object()
-            .into_iter()
-            .flatten()
-            .filter_map(|(id, row)| {
-                let template = row["template"].as_str()?.strip_prefix("minecraft:")?;
-                let def = species::ALL.iter().find(|d| d.name == template)?;
-                Some((id.clone(), def))
-            });
+        let mod_types = types.iter().filter_map(|(id, row)| {
+            let template = row["template"].as_str()?.strip_prefix("minecraft:")?;
+            let def = species::ALL.iter().find(|d| d.name == template)?;
+            Some((id.clone(), def))
+        });
         let vanilla = species::ALL
             .iter()
             .map(|def| (format!("minecraft:{}", def.name), def));
         for (id, def) in vanilla.chain(mod_types) {
-            let t = &types[&id];
-            if t.is_null() {
+            let Some(t) = types.get(&id).filter(|row| !row.is_null()) else {
                 continue;
-            }
+            };
             let model_key = format!("minecraft:{}", def.model);
             let model = models
                 .as_ref()
@@ -501,7 +496,7 @@ impl MobTypes {
                 for prefix in def.layer_prefixes() {
                     let start = format!("minecraft:{prefix}#");
                     for (k, v) in all.iter().filter(|(k, _)| k.starts_with(&start)) {
-                        let mut part = Part::parse("root", v);
+                        let mut part = Part::parse_layer(k, v);
                         if culls_back_faces(k) {
                             part.set_cull_back();
                         }
@@ -517,12 +512,10 @@ impl MobTypes {
             if let Some(allowed) = t["allowed_in_peaceful"].as_bool() {
                 flags.not_in_peaceful = !allowed;
             }
-            flags.powder_snow_walkable = entity_type_tags
-                .get("minecraft:powder_snow_walkable_mobs")
-                .is_some_and(|members| members.contains(&id));
-            flags.burns_in_day = burn_in_daylight.is_some_and(|members| members.contains(&id));
+            flags.entity_tag_slot = entity_ids.binary_search(&id).ok();
             let passenger_attachments =
                 riders::parse_passenger_attachments(&t["passenger_attachments"]);
+            let sound_overrides = entity_sounds::Sounds::load(&id, t)?;
             out.insert(
                 id.clone(),
                 MobType {
@@ -555,13 +548,15 @@ impl MobTypes {
                     head_rot_speed: def.head_rot_speed(),
                     max_head_x_rot: def.max_head_x_rot(),
                     max_head_y_rot: def.max_head_y_rot(),
-                    ambient_interval: def.ambient_interval(),
+                    ambient_interval: sound_overrides
+                        .ambient_interval
+                        .unwrap_or_else(|| def.ambient_interval()),
                     flags,
                     model: model.map_or_else(
                         || empty_model.clone(),
                         |model| {
                             Arc::new({
-                                let mut part = Part::parse("root", model);
+                                let mut part = Part::parse_layer(&model_key, model);
                                 if culls_back_faces(&model_key) {
                                     part.set_cull_back();
                                 }
@@ -574,7 +569,7 @@ impl MobTypes {
                     brain: def.brain(),
                     anim: def.anim,
                     sounds: def.sounds,
-                    sound_overrides: entity_sounds::Sounds::load(&id, t)?,
+                    sound_overrides,
                     food: def.food_tag().map_or_else(|| Arc::from(Vec::new()), tag),
                     tempt: def
                         .tempt_tag()
@@ -1318,12 +1313,24 @@ pub struct Extra {
     pub illusions: Option<illusioner::Illusions>,
     /// A villager's claimed bed head and meeting bell.
     pub bed: Option<[i32; 3]>,
+    /// `LivingEntity.SLEEPING_POS_ID` synced from a server.
+    pub sleeping_pos: Option<[i32; 3]>,
+    /// `Player.hurtDir` received from `ClientboundHurtAnimationPacket`.
+    pub hurt_dir: f32,
+    /// `LivingEntity.refreshDirtyAttributes`: clamp health to max health on next living tick.
+    pub max_health_dirty: bool,
+    /// Synced client-side mob effects from `UpdateMobEffect` / `RemoveMobEffect`.
+    pub client_effects: crate::effects::PlayerEffects,
+    /// `MobEffectInstance.BlendState` (previous, current) for client-side darkness on this mob.
+    pub darkness_blend: (f32, f32),
     pub meeting: Option<[i32; 3]>,
     /// Villager and wandering trader offers and experience.
     pub trade: Option<Box<crate::merchant::Trader>>,
     /// Who holds this mob's lead, a holder not yet found after loading, and
     /// the spin the rope's torque gives it.
     pub leash: Option<leash::Holder>,
+    /// Entity id of the specific leash knot instance when `leash == Some(Holder::Knot(_))`.
+    pub leash_knot_id: Option<u32>,
     pub leash_pending: Option<leash::Pending>,
     /// The UUID of the player behind `Holder::Player` (host or guest).
     pub leash_player: Option<[i32; 4]>,
@@ -2578,6 +2585,8 @@ pub enum MobEvent {
         mob: u32,
         pos: [i32; 3],
     },
+    /// Update a trading screen at the owning game's next boundary on this tick.
+    VillagerRestockStep(villager_brain::RestockNotice),
     /// A villager asks whether enough neighbours want an iron golem.
     GolemCheck {
         mob: u32,
@@ -2760,7 +2769,11 @@ include!("mobs/seen.rs");
 
 impl Mob {
     pub(crate) fn hurt_needs_owner(&self) -> bool {
-        self.damage_completion.is_some() || creaking::has_pending_hurt(self)
+        self.damage_completion.is_some()
+            || creaking::has_pending_hurt(self)
+            || villager::ext(self).is_some_and(|ext| {
+                ext.pending_hurt_player.is_some() || ext.pending_hurt_damage.is_some()
+            })
     }
 
     /// The name used by command replies: CustomName takes precedence over the type.
@@ -3275,6 +3288,7 @@ pub fn apply_brain_events_until_hurt(
                 };
                 let attack = crate::health::Attack {
                     attacker: mob as i32,
+                    attacker_uuid: level.mob_uuid(mob),
                     held: [held, None],
                     ..Default::default()
                 };
@@ -3448,6 +3462,8 @@ pub trait LiveMobs {
 pub struct MobWorld<'a> {
     pub mob_maps: &'a crate::neoforge_mob_maps::NeoForgeMobMaps,
     pub professions: &'a villager::ResolvedProfessions,
+    /// The player currently trading with a villager, read at the work step.
+    pub trading_players: Option<&'a dyn villager_brain::TradingPlayers>,
     /// What the motion value hooks are given: the loop context of the side that
     /// ticks these mobs.
     pub loop_context: &'a sunrise_world::native_load_context::LoopContext,
@@ -3791,14 +3807,14 @@ impl Mob {
         random: LegacyRandom,
     ) -> Self {
         let mut mob = Self::remote_with_random(id, kind, position, yaw, random);
-        // The parts a mod attached to this entity type add their goals right
-        // after the species' own (#1077): vanilla's `registerGoals` moment,
-        // which belongs to the authoritative construction. A type with no
-        // brain is told so at the same moment (#824); a brain-driven type
-        // registers its behaviors at the brain's own construction.
-        part_goals::attach(&mut mob);
-        mod_behaviors::attach_at_construction(&mob);
+        mob.attach_mod_parts();
         mob
+    }
+    /// Register the server-only goals and behaviors after the mob has its
+    /// runtime id. A deferred NBT load can read geometry before taking an id.
+    pub fn attach_mod_parts(&mut self) {
+        part_goals::attach(self);
+        mod_behaviors::attach_at_construction(self);
     }
     /// The same construction without the mod parts' goals: a client's copy of
     /// a server's mob, from its spawn packet. The species' goals stand — the
@@ -4228,6 +4244,7 @@ impl Mob {
         // LivingEntity.applyItemBlocking: no mob raises a blocking item, but a native
         // mod may block for it.
         let mut blocked = 0.0;
+        let mut blocked_hit = false;
         if amount > 0.0
             && let Some(b) = level.shield_block(
                 crate::health::Hurting::Mob(self, &source),
@@ -4236,6 +4253,7 @@ impl Mob {
             )
         {
             blocked = b.blocked_damage;
+            blocked_hit = b.blocked;
             if b.blocked {
                 container.record_shield_damage(b.shield_damage.max(0) as f32);
             }
@@ -4434,7 +4452,16 @@ impl Mob {
         }
         self.last_direct = None;
         hurt_by::resolve(self, &source);
-        level.accepted_mob_hit(self);
+        level.accepted_mob_hit(self, &source);
+        if knock && !blocked_hit && self.species() == Species::Villager {
+            let attacker = level.attack().attacker;
+            let cause = match source.attacker {
+                Some(Who::Mob(id)) => Some(id as i32),
+                Some(Who::Player) if attacker != 0 => Some(attacker),
+                _ => None,
+            };
+            villager::ext_mut(self).pending_hurt_damage = Some((source, cause));
+        }
         // dealDefaultKnockback, unless the damage type is tagged no_knockback or
         // the hit was blocked whole; a source without a position knocks in a
         // random direction.
@@ -4468,22 +4495,32 @@ impl Mob {
                 entity_sounds::voices(self)[if dead { 2 } else { 1 }]
             };
             if !dead {
-                self.ambient_timer = -self.ambient_interval();
+                self.ambient_timer = self.ambient_interval().wrapping_neg();
             }
-            if !sound.is_empty() {
+            let at = self.position.components();
+            let voice = if sound.is_empty() {
+                None
+            } else {
                 let pitch = self.voice_pitch();
-                if !self.silent {
-                    let at = [self.position.x, self.position.y, self.position.z];
-                    self.outbox
-                        .push(MobEvent::Sound(sound, at, ai::sound_volume(self), pitch));
-                }
-            }
+                (!self.silent)
+                    .then(|| villager::HurtSound(sound, at, ai::sound_volume(self), pitch))
+            };
             // playSecondaryHurtSound: a thorns hit sounds where the mob
             // stands, silent or not.
-            if source.kind == DamageKind::Thorns {
-                let at = [self.position.x, self.position.y, self.position.z];
-                self.outbox
-                    .push(MobEvent::Sound("enchant.thorns.hit", at, 1.0, 1.0));
+            let thorns = (source.kind == DamageKind::Thorns).then_some(villager::HurtSound(
+                "enchant.thorns.hit",
+                at,
+                1.0,
+                1.0,
+            ));
+            if self.species() == Species::Villager {
+                villager::ext_mut(self).pending_hurt_sounds = [voice, thorns];
+            } else {
+                for villager::HurtSound(name, at, volume, pitch) in
+                    [voice, thorns].into_iter().flatten()
+                {
+                    self.outbox.push(MobEvent::Sound(name, at, volume, pitch));
+                }
             }
         }
         // IronGolem.hurtServer: a new crack level plays the damage sound.
@@ -5116,16 +5153,18 @@ impl Mob {
     pub fn ambient_interval(&self) -> i32 {
         let ridden = self.rider.is_some() || self.extra.rider.is_some();
         if self.species() == Species::HappyGhast && ridden {
-            self.kind.ambient_interval * 6
+            self.kind.ambient_interval.wrapping_mul(6)
         } else {
             self.kind.ambient_interval
         }
     }
-    /// LivingEntity.getVoicePitch.
+    /// LivingEntity.getVoicePitch. A content type's `sounds.voice_pitch` takes
+    /// the place of 1.0, and a baby's raised pitch is that base times the usual factor.
     pub fn voice_pitch(&mut self) -> f32 {
+        let base = self.kind.sound_overrides.voice_pitch();
         // HappyGhast.getVoicePitch: always 1.0, babies and all.
         if self.species() == Species::HappyGhast {
-            return 1.0;
+            return base;
         }
         // Parrot.getVoicePitch is `getPitch(random)`, the plain 1.0 ± 0.2 an
         // adult gets below: a parrot is never a baby (`Parrot.canBeABaby`), so
@@ -5138,7 +5177,7 @@ impl Mob {
             1.5
         };
         let pitch = (self.random.next_float() - self.random.next_float()) * 0.2
-            + if self.is_baby() { baby } else { 1.0 };
+            + if self.is_baby() { baby * base } else { base };
         // Bat.getVoicePitch: a little lower.
         if self.species() == Species::Bat {
             pitch * 0.95
@@ -5184,7 +5223,7 @@ impl EntityModelDocument {
     }
 
     pub fn model(&self, key: &str) -> Option<Part> {
-        self.0.get(key).map(|m| Part::parse("root", m))
+        self.0.get(key).map(|m| Part::parse_layer(key, m))
     }
 
     pub fn keys(&self) -> impl Iterator<Item = &str> {
@@ -5226,7 +5265,10 @@ pub fn render_model(
     );
 }
 
-/// Draw a posed model, skipping a part and its descendants when its pose is `None`.
+/// Draw a posed model, skipping a part and its descendants when its pose is `None`. Each part's
+/// own geometry goes through the step every baked model's draw takes (`render::compile_part`
+/// when a mod replaced it), with the model's layer and empty `Poses`: these draws are posed by
+/// `pose_for`, not by `anim`.
 pub fn render_model_filtered(
     part: &Part,
     base: (glam::Mat4, ModelNormals),
@@ -5236,16 +5278,44 @@ pub fn render_model_filtered(
     overlay: u32,
     out: &mut Vec<Vertex>,
 ) {
-    visit(part, base.0, base.1, pose_for, uv, light, overlay, out);
+    let paint = skin::Paint {
+        uv,
+        scroll: 0.0,
+        color: 0xFFFF_FFFF,
+        light,
+        overlay,
+    };
+    let compile = render::compiler();
+    // Built only for a replacement to read: empty maps allocate nothing.
+    let poses = anim::Poses::default();
+    let draw = Draw {
+        layer: part.layer.as_deref(),
+        compile,
+        paint,
+        poses: &poses,
+    };
+    visit(
+        part,
+        base.0,
+        base.1,
+        pose_for,
+        &draw,
+        &mut render::Quads::new(out),
+    );
+    /// What every part of one draw shares.
+    struct Draw<'a> {
+        layer: Option<&'a str>,
+        compile: Option<render::CompilePart>,
+        paint: skin::Paint,
+        poses: &'a anim::Poses,
+    }
     fn visit(
         part: &Part,
         parent: glam::Mat4,
         normals: ModelNormals,
         pose_for: &impl Fn(&Part) -> Option<[f32; 9]>,
-        uv: [f32; 4],
-        light: u32,
-        overlay: u32,
-        out: &mut Vec<Vertex>,
+        draw: &Draw<'_>,
+        quads: &mut render::Quads<'_>,
     ) {
         let Some(p) = pose_for(part) else {
             return;
@@ -5260,31 +5330,17 @@ pub fn render_model_filtered(
             ))
             * glam::Mat4::from_scale(glam::Vec3::new(p[6], p[7], p[8]));
         let normals = normals.part(p);
-        for poly in &part.polygons {
-            let normal = poly.vertex_normal(normals);
-            for v in poly.vertices {
-                let pos = m.transform_point3(glam::Vec3::new(v[0], v[1], v[2]) / 16.0);
-                out.push(Vertex {
-                    normal,
-                    pos: pos.to_array(),
-                    uv: [
-                        uv[0] + (uv[2] - uv[0]) * v[3],
-                        uv[1] + (uv[3] - uv[1]) * v[4],
-                    ],
-                    layer: overlay,
-                    color: 0xFFFF_FFFF,
-                    light,
-                    // The armour glint scrolls the model UV in the shader.
-                    glint_uv: if overlay == render::ARMOR_GLINT {
-                        [v[3], v[4]]
-                    } else {
-                        [0.0, 0.0]
-                    },
-                });
-            }
-        }
+        render::emit_part(
+            draw.compile,
+            draw.layer,
+            part,
+            (m, normals),
+            draw.paint,
+            draw.poses,
+            quads,
+        );
         for c in &part.children {
-            visit(c, m, normals, pose_for, uv, light, overlay, out);
+            visit(c, m, normals, pose_for, draw, quads);
         }
     }
 }
@@ -6833,6 +6889,7 @@ mod allay_damage_identity_tests {
         let attack = crate::health::Attack {
             attacker: 7,
             player_uuid: Some(ACTUAL),
+            attacker_uuid: None,
             ..Default::default()
         };
         let mut level = test_level.level().attacked_by(&attack);
@@ -7192,6 +7249,51 @@ mod effect_refusal_tests {
         assert_eq!(aquatic::dark_ticks(&struck), 100);
     }
 }
+#[cfg(test)]
+#[test]
+fn content_mob_tag_slot_uses_the_entity_registry_index() {
+    use crate::items::{EntityTypeTags, Items};
+    use serde_json::json;
+    use sunrise_world::loot::PackOverlay;
+
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    fs::write(
+        root.join("entity-types.json"),
+        json!({
+            "test:walker": {"template": "minecraft:zombie"},
+            "minecraft:item": {},
+            "minecraft:zombie": {},
+        })
+        .to_string(),
+    )
+    .unwrap();
+    fs::write(root.join("items.json"), "{}").unwrap();
+    let tags = root.join("data/minecraft/tags/entity_type");
+    fs::create_dir_all(&tags).unwrap();
+    fs::write(
+        tags.join("powder_snow_walkable_mobs.json"),
+        r#"{"values":["test:walker"]}"#,
+    )
+    .unwrap();
+    let attributes = sunrise_world::attributes::entity::Catalog::from_json(&json!({
+        "data_version": sunrise_core::version::DATA_VERSION,
+        "attributes": [], "entities": {},
+    }))
+    .unwrap();
+    let types = MobTypes::load_for_server(root, &attributes).unwrap();
+    let defaults = sunrise_world::item_defaults::read(root).unwrap();
+    let items = Items::tags_only(root, &PackOverlay::NONE, &defaults).unwrap();
+    let ids = items.component_registry.ids(EntityTypeTags::REGISTRY);
+    let slot = types.types["test:walker"].flags.entity_tag_slot.unwrap();
+    assert_eq!(ids[slot], "test:walker");
+    assert!(
+        items
+            .entity_type_tags
+            .has_bit(Some(slot), EntityTypeTags::POWDER_SNOW_WALKABLE)
+    );
+}
+
 #[cfg(test)]
 mod model_document_sharing_tests {
     use super::*;

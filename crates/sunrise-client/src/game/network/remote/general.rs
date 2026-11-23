@@ -168,11 +168,11 @@ impl Game<'_> {
             }
         };
         let row = RemoteGeneral::new(type_slot, uuid, position, rotation, render_attachments);
-        r.general.rows.insert(id, row);
         self.persist
             .uuids
             .insert(id as u32, sunrise_client::lan::playerdata::uuid_ints(uuid));
         // Tracked: the id-keyed move, position sync, teleport and removal handlers apply.
+        // Snapshot any old emitter body before publishing this new row.
         self.spawn_entity(
             id,
             &type_key,
@@ -180,8 +180,10 @@ impl Game<'_> {
             [rotation[0], rotation[1], rotation[0]],
         );
         if let Some(r) = self.remote.as_mut() {
+            r.general.rows.insert(id, row);
             r.lerps.remove(&id);
         }
+        self.pick_section_sync_id(id as u32);
     }
 
     /// `ClientLevel.tickPassenger` for the general rows in an applied passenger
@@ -220,7 +222,7 @@ impl Game<'_> {
     }
 
     /// The server removed general row `id` from the window.
-    pub(super) fn forget_remote_general(r: &mut Remote, id: i32) {
+    pub(in crate::game) fn forget_remote_general(r: &mut Remote, id: i32) {
         r.general.rows.shift_remove(&id);
     }
 }

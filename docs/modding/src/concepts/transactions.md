@@ -1,13 +1,13 @@
 # Transactions
 
-Use `HostTransaction` on a `ServerHost` to group capability writes. The closure's
-`Ok` commits; `Err` aborts. Pass the borrowed `&Transaction` to each handler or
-place write.
+Use `HostTransaction` on a `ServerHost` to group capability writes. Pass the
+borrowed `&TransactionContext` (`tx` below) and the host from the **same** closure
+to each handler or place write.
 
 ```rust,ignore
-use mod_api::{HostTransaction, ServerHost};
+use mod_api::{HostTransaction, ServerHost, TransactionError};
 
-fn update(host: &mut dyn ServerHost) -> Result<(), ()> {
+fn update(host: &mut dyn ServerHost) -> Result<(), TransactionError<()>> {
     host.transaction(|host, tx| {
         // Pass host and tx to your capability writes.
         Ok(())
@@ -15,21 +15,53 @@ fn update(host: &mut dyn ServerHost) -> Result<(), ()> {
 }
 ```
 
+The closure's `Ok(value)` requests a commit; the scope returns `Ok(value)` only if it commits. Its `Err(error)`
+rolls back the transaction's journaled work and returns `TransactionError::Aborted(error)`.
+`TransactionError::Unavailable` means the host could not open the transaction and did not
+call the closure. `TransactionError::CommitRefused` means the closure requested a commit,
+but the host rolled back its writes (for example, a captured packet could not reserve bytes). The callback
+receives `&mut dyn ServerHost`, even if you call `transaction` on a concrete or generic
+host. Use that type in explicitly typed callbacks and in the helpers they call, and
+keep concrete-host-only setup and assertions outside the loan.
+
+Other entry points use the same result type:
+
+- In `block_entity_tick`, use `event.subject.transaction(|tick, tx| …)` to group writes
+  through `tick.host()` and `tick.with_view(…)`. End each borrow before starting the next;
+  another view loan can refuse if the original block entity is gone. Return `Err` if a
+  required write or view does not succeed.
+- The server scopes for `general_entity_tick` and `on_entity_item_update` also expose
+  `.transaction(|scope, tx| …)`, with sequential view and host loans.
+- In a server main-thread payload handler, use `cx.transaction(|cx, tx| …)` on
+  `&mut dyn IPayloadContext` when you need the payload context and world writes in the
+  same savepoint. Call `cx.server_host()` for the host and use `tx` for its capability
+  writes. End the host borrow before calling `cx.reply`. Replies reserve packet budget
+  when staged and refund it on rollback. `cx.finish_configuration_task` updates the
+  main-thread session immediately; a transaction does not roll it back.
+  The client and the network thread cannot open this scope.
+
+To lend a temporary scratch item slot inside a scoped transaction—either a single fixed-item
+slot or a two-slot copy for dispenser-style exchanges—use `host.scratch_stack` and
+`host.scratch_slots` on `HostTransaction`. Both return `Result<(T, …), ScratchError<E>>`,
+publish the resulting stack or slots only on commit (otherwise a refused commit returns
+`ScratchError::CommitRefused`), restore lent slots on nested abort, and
+keep closed loans out of enclosing journals; see
+[Scratch stacks and wrapped places](capabilities/item-places-and-components.md#scratch-stacks-and-wrapped-places).
+
 ## Commit and rollback
 
 - Writes apply immediately, so subsequent steps in the transaction see them.
 - The game snapshots each storage before its first write. Handlers use the game's
   journal rather than keeping their own.
-- A nested commit merges into its parent. Only the outermost commit makes storage
-  changes final and publishes deferred engine-managed container effects.
+- For level-local work, a nested commit merges into the nearest open transaction
+  in that level. Its outermost commit makes changes final and publishes deferred
+  effects. A transaction in another level does not defer or undo that work.
 - An abort restores recorded storage without publishing those commit effects.
 - Direct writes by mods to their own storage and rollback restores issue no notices.
 - Explicit changed/comparator/neighbour/data-send notifications run when issued,
   including inside a transaction, and survive abort.
 - A panic unwinding out of the closure aborts its transaction. The parent remains
   open if you catch the panic inside the parent closure.
-- Closing a transaction aborts any transactions left open inside it before closing
-  the parent.
 
 The journal covers these storages, including writes through capability handlers:
 
@@ -53,10 +85,11 @@ At the outermost commit, default `ITEMS` and item `STORAGE` writes to vanilla co
 and engine-managed mod slots publish their implicit change notifications.
 Other deferred effects include jukebox playback, cauldron and composter block updates and
 item drops, including items placed at a block, thrown by a player or entity, or split off an
-item entity. Explicit mod-issued world notifications are not deferred with these effects.
+item entity. Explicit mod-issued sounds, particles and level, entity and player events are
+deferred too: see [Deferred level, entity, and player effects](#deferred-level-entity-and-player-effects).
 
 A world pickup or placement of fluid (`level.pickup_fluid`, `level.place_fluid`) writes
-its block at the call and the rest at the outermost commit; an aborted one leaves the world
+its block at the call and the rest at the outermost commit in that level; an abort leaves the world
 unchanged, where NeoForge's may not. `level.play_fluid_effects` queues a fluid's sound and
 game event the same way: they play only at the outermost commit and are dropped on abort,
 unlike `trigger_sound_and_game_event`, which acts at once. The `block_drops` listeners of a
@@ -89,14 +122,14 @@ tick does not open a transaction for you. Use `event.subject.transaction` to mak
 a subject edit and a dropped-item write atomic:
 
 ```rust,ignore
-use mod_api::{BlockEntityScope, ItemEntityRef, ItemStack};
+use mod_api::{BlockEntityScope, ItemEntityRef, ItemStack, TransactionError};
 
 fn update(
     tick: &mut BlockEntityScope<'_>,
     item: ItemEntityRef,
     replacement: ItemStack,
     progress: i32,
-) -> Result<(), &'static str> {
+) -> Result<(), TransactionError<&'static str>> {
     tick.transaction(|tick, _| {
         if !item.set_stack(tick.host(), replacement).map_err(|_| "invalid stack")? {
             return Err("dropped-item write was refused");
@@ -111,11 +144,48 @@ fn update(
 }
 ```
 
-Other direct writes are not journaled: `LivingRef::set_equipment` and the armor-stand
-`slot_set` paths take effect immediately, even inside a transaction. Equipment sounds
-and equip/unequip events from `LivingRef::set_equipment` also happen immediately.
-An abort does not undo these writes or effects. Use journaled capability handlers
-when you need rollback.
+Other direct writes are not journaled: `LivingRef::set_equipment`, non-player
+`LivingRef::hurt_and_break`, and the armor-stand `slot_set` paths take effect immediately,
+even inside a transaction. Equipment sounds, equip/unequip events from
+`LivingRef::set_equipment`, and the equipment-break entity event from non-player
+`LivingRef::hurt_and_break` also happen immediately so the write and its notification stay
+on the same side of the rollback boundary. An abort does not undo these writes or effects.
+Use journaled capability handlers when you need rollback.
+
+## Deferred level, entity, and player effects
+
+An explicit server-side presentation effect joins the innermost open transaction in the level
+active at the call. It waits for the outermost commit for that owning level and is discarded on
+rollback or an aborted nested transaction. Delivery still uses the level named by the request,
+including for sounds or particles targeting a parked level. An independent transaction in another
+level publishes its own effects at its own commit.
+
+Calls covered by these rules:
+
+- `LevelRef::play_sound`, `LevelRef::send_particles`, `LevelRef::level_event`,
+  `LevelRef::block_break_effect`, `LevelRef::global_level_event` (and the `LevelWriteHost`
+  counterparts `play_sound`, `send_particles`, `level_event`)
+- `EntityRef::play_sound`, `EntityRef::play_bound_sound`, `EntityRef::broadcast_event`
+- `PlayerRef::play_sound`, `PlayerRef::stop_sound`
+
+An accepted `LevelRef::game_event` is posted at the call for vibration listeners, not deferred by
+this rule.
+
+Argument and handle validation still happens at the call, so invalid requests return `false`
+immediately. For directed sounds, `true` means the request was accepted, not that a client received
+or played it. A deferred request is discarded on abort or if the player no longer resolves at commit. For level and entity sounds, `play_level_sound_at_position` and
+`play_level_sound_at_entity` run synchronously at the call inside the open transaction, so
+listeners can edit or cancel the sound and have their writes or effects journaled (in the
+listener's level when a transaction is open in that level, and for player-owned state in the
+enclosing transaction); only the resolved effect record is deferred. On the outermost commit, pure
+delivery sends every deferred record in journal order across all effect kinds, replaying in each
+request's level (even if another level is active when the transaction commits) without running mod
+callbacks or draining unrelated queued effects.
+
+Outside a transaction, a queued level sound draws its seed at the call even if a later hook
+cancels it. Inside one, it draws a seed only when the resolved sound is published. Directed
+`PlayerRef::play_sound` draws from the request level's random at an immediate send or when
+published at commit. An aborted request does not advance either stream.
 
 ## Spawning and removing entities
 
@@ -147,6 +217,13 @@ Entities a transaction spawns or removes follow the same commit and rollback rul
 - Travel between levels is not journaled: an entity that arrives in another level during an aborted
   transaction stays where it arrived.
 
+`mob_split` and `baby_entity_spawn` open a transaction after constructing the pending children.
+An accepted list is validated and applied before deferred join callbacks run. A veto, empty list,
+stale inputs (including a parent marked for removal), invalid child or contained listener panic
+discards the children and rolls back journaled listener writes in that level. Work in another level
+commits at once when that level has no open transaction. Construction draws stay spent, and the
+parent's death or the parents' breeding cooldown is not undone.
+
 For batched projectiles and thrown tridents, `projectile_impact` runs in the same transaction
 as the captured hit. Canceling the hit does not abort listener writes. Discarding the
 projectile makes its handle stale during the callback; the outermost commit notifies
@@ -155,15 +232,35 @@ discard and only cancels the hit, the original projectile stays alive.
 
 ## Transaction authority
 
-`Transaction` identifies an open transaction with a game-issued write token. It
-does not grant permission to close it. A write with a token that does not name an
-open transaction changes nothing, including a token retained past its closure.
+`TransactionContext` is a loan for one transaction on the current thread. It
+cannot be cloned, sent or shared across threads (`!Send` and `!Sync`), or encoded
+with `Wire`. It cannot outlive the closure, and only the scope ends the transaction.
 
-Closing requires a separate `TransactionSeal`. The `host.transaction` guard holds
-that seal; its closure receives only the write token. If you use the raw
-`transaction_open` method, you receive the seal and must close it with
-`transaction_close`. The game refuses a seal that does not match an open
-transaction and logs `Sunrise: refused to close a transaction the seal does not end`.
+Writes must use the context for the **innermost** open transaction on that host.
+An ancestor context (even from the same host), a context from another host, or a
+context passed to a host with no open transaction is refused without calling the
+handler or panicking, even for a zero-amount write. The innermost-frame rule follows
+NeoForge's `TransactionManager.validateCurrentTransaction`. Use the inner `tx` until
+that closure returns.
+
+Every transaction-scoped write reports a mismatched context as an error (`InvalidContext`
+in `TransactionError`, `StorageError`, `ItemPlaceEditError`, `CraftedByError`, or
+`BlockEntityItemError`) rather than returning zero, `false`, or `None`.
+Resource helpers that accept `Option<&TransactionContext>` require `Some(tx)` for
+that same innermost frame or `None` when opening a root transaction. A mismatch,
+including `None` while one is open, returns `TransactionError::InvalidContext`.
+
+## Joining an open transaction
+
+Use `host.current_transaction(|host, tx| …)` to borrow the innermost open frame without
+creating a child. This follows NeoForge's `Transaction.getCurrentOpenedTransaction`, but
+lends the context only for the closure. The resident block-entity, entity and item-entity
+server scopes and the server payload context also offer `current_transaction`.
+
+It returns `None` without running the closure when no frame is available. Otherwise,
+`tx.depth()` is unchanged and writes commit or roll back with the enclosing frame.
+Returning or unwinding from the borrowed closure does not close that frame. Use
+`transaction` instead when the action needs its own commit or rollback.
 
 ## Inspecting a transaction
 
@@ -171,9 +268,10 @@ These methods are server-only:
 
 | Method | Result |
 |---|---|
-| `host.transaction_current()` | Innermost open `Transaction`, or `None`; not a closing seal |
-| `host.transaction_depth(tx)` | `Some(0)` for the outermost transaction, increasing by one per nesting level; `None` if it is not open |
-| `host.transaction_lifecycle()` | `TransactionLifecycle` describing the open or closing phase |
+| `tx.depth()` | A `usize`: `0` for a root transaction, increasing by one per nesting level. It does not say whether the context is current; use `transaction_matches` for that. |
+| `host.transaction_matches(Some(tx))` | Whether `tx` belongs to the innermost open transaction on this host. |
+| `host.transaction_matches(None)` | Whether there is no open transaction on this host. |
+| `host.transaction_lifecycle()` | A process-local `TransactionLifecycle` describing the open or closing phase. It does not implement `Wire`. |
 
 | `TransactionLifecycle` variant | Meaning |
 |---|---|

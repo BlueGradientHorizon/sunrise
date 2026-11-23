@@ -12,8 +12,9 @@ pub trait Hooks {
     /// from `stack` (`minecraft:bundle_contents` or `minecraft:container`); push or edit stacks in
     /// `drops` to spawn them at the entity's position (`ItemUtils.onContainerDestroyed`) when the
     /// entity is discarded. Each part's drop list is validated before continuing (an invalid stack
-    /// rolls that part's edit back), and a panic rolls back the transaction's host writes and keeps
-    /// the vanilla drop baseline while still discarding the destroyed item entity.
+    /// rolls that part's edit back), and a panic or a refused commit rolls back the transaction's
+    /// host writes and keeps the vanilla drop baseline while still discarding the destroyed item
+    /// entity.
     /// Only the `ItemPart`s attached to `stack`'s item hear it: an item with none costs one
     /// table lookup, and a game with no such part none at all.
     #[hook(

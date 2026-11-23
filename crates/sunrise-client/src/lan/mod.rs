@@ -77,7 +77,7 @@ pub enum NetEvent {
     /// Frozen receiver identity and credit, retained through its main root transaction.
     RawPayload(Box<crate::raw_payloads::Delivery>),
     /// A client finished configuration and enters the play state.
-    Joined(Box<Joined>),
+    Joined(Box<Joined>, Option<configuration_tasks::Configured>),
     /// A packet and the bytes of its body on the wire.
     Packet(u32, Box<play::Serverbound>, usize),
     /// The connection ended (reason for the log).
@@ -127,7 +127,7 @@ impl NetEvent {
         let owned = match self {
             Self::RawPayload(delivery) => size_of::<crate::raw_payloads::Delivery>()
                 .saturating_add(delivery.incoming.owned_heap_bytes()),
-            Self::Joined(joined) => {
+            Self::Joined(joined, _) => {
                 let Joined {
                     conn: _,
                     uuid: _,
@@ -350,9 +350,9 @@ impl NetConfig {
 /// `IntegratedServer.getSingleplayerProfile` (`Minecraft.getGameProfile`):
 /// the signed-in account's profile properties, its signed `textures` among
 /// them, which the player list gives the owner so that LAN guests see the
-/// owner's skin. Fetched in the background from the world's start; nothing
-/// waits for it: until it answers (or when it fails) the owner is listed
-/// without properties, as before.
+/// owner's skin. The fetch starts in the background when the world opens.
+/// Integrated-server creation waits for the result; callers of `properties()`
+/// do not. A failed fetch yields no properties.
 pub struct OwnerProfile {
     properties: std::sync::OnceLock<Vec<sunrise_core::profile::AccountProperty>>,
     fetch: Mutex<Receiver<Vec<sunrise_core::profile::AccountProperty>>>,
@@ -379,15 +379,33 @@ impl OwnerProfile {
         if let Some(properties) = self.properties.get() {
             return properties;
         }
-        let received = self.fetch.lock().ok().and_then(|r| match r.try_recv() {
-            Ok(properties) => Some(properties),
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => Some(Vec::new()),
-            Err(std::sync::mpsc::TryRecvError::Empty) => None,
-        });
-        match received {
-            Some(properties) => self.properties.get_or_init(|| properties),
-            None => &[],
+        // Kept for the answer's whole store, so `wait` never sees the channel emptied first.
+        let Ok(fetch) = self.fetch.try_lock() else {
+            return &[];
+        };
+        match fetch.try_recv() {
+            Ok(properties) => self.properties.get_or_init(|| properties),
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.properties.get_or_init(Vec::new)
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => &[],
         }
+    }
+    /// The owner's properties, waiting for the fetch if it is still out
+    /// (`Minecraft.getGameProfile`'s `profileFuture.join()`): empty when it
+    /// failed. Every later read, [`Self::properties`] too, sees the same list.
+    pub fn wait(&self) -> &[sunrise_core::profile::AccountProperty] {
+        if let Some(properties) = self.properties.get() {
+            return properties;
+        }
+        let fetch = self.fetch.lock();
+        if let Some(properties) = self.properties.get() {
+            return properties;
+        }
+        let received = fetch.as_ref().ok().and_then(|fetch| fetch.recv().ok());
+        let properties = self.properties.get_or_init(|| received.unwrap_or_default());
+        drop(fetch);
+        properties
     }
 }
 
@@ -438,6 +456,7 @@ pub struct Shared {
     sync: Mutex<Arc<data::SyncData>>,
     pub events: crate::net::ingress::Producer<NetEvent>,
     configuration_requests: Option<Sender<configuration_tasks::ConfigurationRequest>>,
+    prepare_spawn: bool,
     lan_incarnation: u64,
     next_configuration_connection: AtomicU64,
     pub config: NetConfig,
@@ -723,16 +742,23 @@ impl Lan {
     }
     /// ServerConnectionListener.startTcpServerListener with a configuration.
     pub fn start_with(sync: Arc<data::SyncData>, config: NetConfig) -> io::Result<Self> {
-        Self::start_with_configuration_tasks(sync, config, false)
+        Self::start_listener(sync, config, false, false)
     }
-    /// Start a listener whose game thread collects tasks for each joining connection.
-    pub fn start_with_configuration_tasks(
+    /// Start a listener whose game thread runs configuration tasks and prepares each spawn.
+    pub fn start_with_spawn_preparation(
         sync: Arc<data::SyncData>,
         config: NetConfig,
-        register_tasks: bool,
+    ) -> io::Result<Self> {
+        Self::start_listener(sync, config, true, true)
+    }
+    fn start_listener(
+        sync: Arc<data::SyncData>,
+        config: NetConfig,
+        drive_configuration: bool,
+        prepare_spawn: bool,
     ) -> io::Result<Self> {
         let (tx, events) = event_channel();
-        let (request_tx, request_rx) = if register_tasks {
+        let (request_tx, request_rx) = if drive_configuration {
             let (tx, rx) = channel();
             (Some(tx), Some(rx))
         } else {
@@ -751,6 +777,7 @@ impl Lan {
             sync: Mutex::new(sync),
             events: tx,
             configuration_requests: request_tx,
+            prepare_spawn,
             lan_incarnation,
             next_configuration_connection: AtomicU64::new(1),
             motd: Mutex::new(config.motd.clone()),
@@ -1164,11 +1191,9 @@ mod tests {
             ..NetConfig::lan(0, "config-incarnation".into(), 1)
         };
         let lan_a =
-            Lan::start_with_configuration_tasks(Arc::new(data::SyncData::empty()), config(), true)
-                .unwrap();
+            Lan::start_listener(Arc::new(data::SyncData::empty()), config(), true, false).unwrap();
         let mut lan_b =
-            Lan::start_with_configuration_tasks(Arc::new(data::SyncData::empty()), config(), true)
-                .unwrap();
+            Lan::start_listener(Arc::new(data::SyncData::empty()), config(), true, false).unwrap();
         let conn_a = lan_a.shared.next_configuration_connection().unwrap();
         let conn_b = lan_b.shared.next_configuration_connection().unwrap();
         let (inc_a, local_a) = mod_api::__private::configuration_connection_parts(conn_a);

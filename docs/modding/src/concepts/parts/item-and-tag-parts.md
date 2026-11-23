@@ -250,8 +250,13 @@ held-stack queries. Each item's parts are asked once per registered enchantment 
 installed (server world open or `/reload`, or client tag packets), with the item's default stack. The
 engines read the stored answers until the next install or world close. Support resolves before the server
 resolves primary answers. Each snapshot owns its answers; publishing a fresh world-loot snapshot copies
-the current answers without asking listeners again. The client `Host::enchantment_supports` read is separate:
-it checks `supported_items` membership only.
+the current answers without asking listeners again.
+
+`enchantments()`, `enchantment_supports(id, item)` and `enchantment_min_cost(id, level)` on `ClientHost`
+and `ClientSetupContext` read the table built from the server's synced enchantment entries when available,
+and the local table otherwise. `enchantments()` lists `EnchantmentInfo` records in registry order, including
+`weight` (selection weight) and `anvil_cost` (base anvil fee per enchantment level).
+`enchantment_supports` checks only `supported_items` membership, not Item Part overrides.
 
 ## Hand, break and name on the client
 
@@ -451,6 +456,6 @@ The part receives the original intact `event.stack`, the still-live `event.item:
 `minecraft:bundle_contents` or `minecraft:container` spills). Push or edit stacks in `event.drops`
 to spawn them at the entity's position (`ItemUtils.onContainerDestroyed`) once the entity is
 discarded. Each part's drop edits are validated against the item registry (an invalid stack rolls
-that part's edit back); a panic rolls back the transaction's host writes and falls back to the
-vanilla drop baseline while still discarding the destroyed item entity. An item with no listening
-`ItemPart` pays one table lookup and opens no transaction.
+that part's edit back); a panic or a refused commit rolls back the transaction's host writes and
+falls back to the vanilla drop baseline while still discarding the destroyed item entity. An item
+with no listening `ItemPart` pays one table lookup and opens no transaction.
