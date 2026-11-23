@@ -64,6 +64,14 @@ impl Game<'_> {
             .payload_endpoint();
         self.queue_current_payload(endpoint, id, bytes)
     }
+    /// NeoForge's `hasChannel`: the test `send_payload_to_server` makes on the session's
+    /// current epoch (`Epoch::can_send`), with no bytes.
+    pub(super) fn has_channel(&self, id: &PayloadId) -> bool {
+        self.remote
+            .as_ref()
+            .and_then(|remote| remote.session.payload_transport().epoch())
+            .is_some_and(|epoch| epoch.can_send(id).is_ok())
+    }
     pub(super) fn queue_current_payload(
         &mut self,
         endpoint: Endpoint,

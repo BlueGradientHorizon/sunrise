@@ -200,3 +200,80 @@ fn the_contextual_bar_facts_read_the_jumpable_mount_and_the_tracked_waypoints() 
         },
     );
 }
+
+/// NeoForge's `ICommonPacketListener.hasChannel` (#4677): the send test of
+/// `send_payload_to_server` for the current phase, against a server that negotiated a
+/// mod's optional channel and against a vanilla server that offered nothing.
+#[test]
+#[ignore = "daily"]
+fn has_channel_follows_what_the_server_negotiated() {
+    use mod_api::{
+        Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadAccepted, PayloadBytes,
+        PayloadHandleError, PayloadId, PayloadSendError, Registrar,
+    };
+    use std::sync::Arc;
+    crate::game::in_own_process(
+        "game::remote::tests::client_vanilla_reads_tests::has_channel_follows_what_the_server_negotiated",
+        || {
+            const CHANNEL: &str = "channels:to_server";
+            struct Handler;
+            impl IPayloadHandler for Handler {
+                fn handle(
+                    &self,
+                    _: PayloadBytes,
+                    _: &mut dyn IPayloadContext,
+                ) -> Result<(), PayloadHandleError> {
+                    Ok(())
+                }
+            }
+            struct Mod;
+            #[mod_api::__subscriptions]
+            impl Hooks for Mod {
+                fn register(
+                    &self,
+                    registrar: &mut dyn Registrar,
+                    _: &mod_api::RegistrationContext,
+                ) {
+                    registrar
+                        .payload_handlers()
+                        .registrar("1")
+                        .optional()
+                        .play_to_server(PayloadId(CHANNEL.into()), Arc::new(Handler));
+                }
+            }
+            let id = PayloadId(CHANNEL.into());
+            let other = PayloadId("channels:undeclared".into());
+            let mods = vec![ModEntry::new("channels", Box::new(Mod))].into();
+            mod_platform::testing::with_mods(mods, || {
+                // A server that declares the channel too.
+                with_client_game(|game| {
+                    assert!(!(&*game as &dyn ClientHost).has_channel(&id));
+                    let local = sunrise_client::raw_payloads::Local::capture(
+                        sunrise_client::raw_payloads::Side::Server,
+                    )
+                    .unwrap();
+                    let _connection = super::connect_play_test(game, |reader, writer| {
+                        super::offer_test_payloads(reader, writer, &local.manifest);
+                    });
+                    let host: &mut dyn ClientHost = game;
+                    assert!(host.has_channel(&id));
+                    assert!(!host.has_channel(&other));
+                    assert_eq!(
+                        host.send_payload_to_server(&id, PayloadBytes(vec![1])),
+                        Ok(PayloadAccepted::Queued)
+                    );
+                });
+                // A vanilla server: no offer, so the optional channel is absent.
+                with_client_game(|game| {
+                    let _connection = super::connect_play_test(game, |_, _| {});
+                    let host: &mut dyn ClientHost = game;
+                    assert!(!host.has_channel(&id));
+                    assert_eq!(
+                        host.send_payload_to_server(&id, PayloadBytes(vec![1])),
+                        Err(PayloadSendError::UnsupportedPeer(id.clone()))
+                    );
+                });
+            });
+        },
+    );
+}
