@@ -12,7 +12,8 @@ pub trait Hooks {
     /// [`ItemStackView`] (a player's selected and off-hand stacks, a mob's main hand; none when
     /// unknown, empty or unrepresentable). Vanilla's short `LivingEntity.knockback` overload
     /// delegates directly to the full overload, firing this event once per knockback operation,
-    /// matching NeoForge's `CommonHooks.onLivingKnockBack`. Change `strength`, `x` or `z`, or
+    /// matching NeoForge's `CommonHooks.onLivingKnockBack`, which takes the strength as a float:
+    /// `strength` is an `f32` (the engine's `f64` cast down), widened again after the edit. Change `strength`, `x` or `z`, or
     /// set `canceled`, and the push follows them: canceled, the entity's motion is left alone. A
     /// `strength` of 0 or less after the hook is no push, and a direction too short to tell
     /// draws a random one after it, as in vanilla. A value a mod leaves that is not a finite
@@ -55,7 +56,7 @@ pub trait Hooks {
         attacker_off: Option<ItemStackView<'_>>,
         kill_credit: i32,
         kill_credit_main: Option<ItemStackView<'_>>,
-        strength: &mut f64,
+        strength: &mut f32,
         x: &mut f64,
         z: &mut f64,
         canceled: &mut bool,

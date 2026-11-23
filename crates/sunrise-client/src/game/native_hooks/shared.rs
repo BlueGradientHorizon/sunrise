@@ -2362,6 +2362,8 @@ pub(super) fn knockback(level: DamageLevel<'_>, pushed: Hurting<'_>, knock: &mut
         off_metadata.map(|metadata| mod_api::ItemStackView::resident(metadata, &project_off));
     let kill_credit_main =
         credit_metadata.map(|metadata| mod_api::ItemStackView::resident(metadata, &project_credit));
+    // NeoForge `LivingEntity.knockback` posts `(float) strength` and widens the result back.
+    let mut strength = knock.strength as f32;
     HitLevel(level).native_living_knockback(mod_api::__private::LivingKnockbackCall {
         entity,
         kind,
@@ -2371,11 +2373,12 @@ pub(super) fn knockback(level: DamageLevel<'_>, pushed: Hurting<'_>, knock: &mut
         attacker_off,
         kill_credit,
         kill_credit_main,
-        strength: &mut knock.strength,
+        strength: &mut strength,
         x: &mut knock.x,
         z: &mut knock.z,
         canceled: &mut canceled,
     });
+    knock.strength = f64::from(strength);
     canceled
 }
 
