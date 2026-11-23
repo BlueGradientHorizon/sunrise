@@ -1,12 +1,12 @@
 // exports: none (reached inside the crate only)
-//! Crash report lines a mod adds (NeoForge's `CrashReportCallables`), computed on a diagnostics
-//! thread while the game runs, and read from its last reading when a report is written.
+//! Crash report lines a mod adds (NeoForge's `CrashReportCallables`), computed while a report is
+//! built, after the panicking thread has unwound.
 use super::*;
 
 /// A crash report line a mod computes: NeoForge's `ISystemReportExtender`, `ICrashReportHeader`,
-/// or a `registerCrashCallable` supplier with its active check. A diagnostics thread asks it about
-/// once a second, in registration order, while the game runs; a report carries the last answer
-/// and never waits for a new one. Read the mod's own state, and keep it cheap.
+/// or a `registerCrashCallable` supplier with its active check. It is asked in registration order
+/// when a report is built, on the thread that builds it after the panicking thread has unwound,
+/// as vanilla builds a report outside the throw. Read the mod's own state, and keep it cheap.
 pub trait CrashSection: Send + Sync + 'static {
     /// The full text to include in the report, or `None` to omit this entry.
     fn value(&self) -> Option<String>;

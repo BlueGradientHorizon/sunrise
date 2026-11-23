@@ -2711,6 +2711,8 @@ struct GameLevel<'w> {
     /// Container loot tables (`unpackLootTable`).
     loot: Option<std::sync::Arc<sunrise_world::loot::LootData>>,
     loot_storage: std::sync::Arc<sunrise_world::loot::copy::StorageData>,
+    /// The level's world clocks, for `time_check` in loot conditions.
+    loot_clocks: std::collections::BTreeMap<String, i64>,
     registry: &'static sunrise_world::registry::BlockRegistry,
     block_registries: &'w sunrise_client::command::args::Registries,
     rules: sunrise_world::level::GameRules,
@@ -5490,6 +5492,7 @@ impl Game<'_> {
         let liquid_transaction_open = self.has_level_transaction();
         let environment = self.res.environment_of(&self.dimension_type().id);
         let other_entities = entity::entity_lists_of!(self, without_carts);
+        let loot_clocks = self.loot_clock_ticks();
         let mut level = GameLevel {
             cake_probe: false,
             cake_requested: std::cell::Cell::new(false),
@@ -5553,6 +5556,7 @@ impl Game<'_> {
                 self.server_loot.get()
             },
             loot_storage: self.score.storage.snapshot(),
+            loot_clocks,
             registry: self.pack.assets.registry,
             block_registries: &self.pack.block_registries,
             rules,
@@ -13156,6 +13160,8 @@ impl Game<'_> {
                         self.frames += 1;
                         self.fps_frames += 1;
                         sunrise_client::crash::debug_crash_tick();
+                        // `BlockableEventLoop.relayDelayCrash`: a worker's panic is reported on this thread.
+                        sunrise_client::crash::relay_worker_panic();
                         if self.fps_at.elapsed() >= Duration::from_secs(1) {
                             self.fps = self.fps_frames as f32 / self.fps_at.elapsed().as_secs_f32();
                             self.fps_frames = 0;

@@ -1315,6 +1315,8 @@ impl Game<'_> {
         // `/stop`, or a stop signal (the shutdown hook's `halt`): either way the players and levels are
         // saved below, after the wait `[transfer]` may make (transfer.rs).
         while !self.stop_now(&state) {
+            // `BlockableEventLoop.relayDelayCrash`: a worker's panic is reported on this thread.
+            sunrise_client::crash::relay_worker_panic();
             self.server_tick_deadline = Some(next + self.clock.tick_duration());
             let tick_start = Instant::now();
             if let Some(watchdog) = &watchdog {
