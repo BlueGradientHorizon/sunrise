@@ -1302,25 +1302,15 @@ pub(super) fn emit<'a>(
         } else {
             ""
         };
-        // Camera extraction is per frame. Fail only the invocation, without quarantining
-        // the subscriber, while keeping the same scopes and output rollback as other hooks.
-        let camera_frame = matches!(
-            name,
-            "compute_camera_angles" | "camera_position" | "render_view_transform"
-        );
         let callback = if hook.independent_listener {
             format!("super::runtime::Callback::IndependentHook(HookId::{hook_id})")
         } else {
             format!("HookId::{hook_id}")
         };
         let run = |mod_id_expr: &str, on_abort: &str, expression: &str| {
-            let invocation = if camera_frame {
-                format!("super::runtime::invoke_frame(\"{name}\", {mod_id_expr}, || {expression})")
-            } else {
-                format!(
-                    "super::runtime::invoke({callback}, \"{name}\", {mod_id_expr}, || {expression})"
-                )
-            };
+            let invocation = format!(
+                "super::runtime::invoke({callback}, \"{name}\", {mod_id_expr}, || {expression})"
+            );
             let discard_batch = if answered_collect_batch {
                 let output = out.unwrap();
                 format!(

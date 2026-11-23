@@ -1,4 +1,4 @@
-sunrise-client game::native_hooks::camera_type::camera_type_tests::a_failed_camera_listener_retries_next_frame_without_losing_preceding_angles lib daily child-process
+sunrise-client game::native_hooks::camera_type::camera_type_tests::a_failed_camera_listener_is_disabled_and_later_listeners_still_run lib daily child-process
 sunrise-client game::native_hooks::camera_type::camera_type_tests::frame_camera_position_keeps_explicit_axes_when_realigning lib daily child-process
 sunrise-client game::native_hooks::camera_type::camera_type_tests::shared_camera_pose_requests_apply_before_frame_consumers lib daily child-process
 sunrise-client game::remote::minecarts::tests::interpolating_local_rider_skips_angles_but_lends_placed_position lib daily child-process

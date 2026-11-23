@@ -238,7 +238,7 @@ mod camera_type_tests {
 
     enum AngleWriter {
         Set,
-        PanicOnce(Arc<std::sync::atomic::AtomicUsize>),
+        Panic(Arc<std::sync::atomic::AtomicUsize>),
         Add,
     }
     #[mod_api::__subscriptions]
@@ -251,13 +251,10 @@ mod camera_type_tests {
             use std::sync::atomic::Ordering;
             match self {
                 Self::Set => (event.yaw, event.pitch, event.roll) = (17.0, 2.0, 10.0),
-                Self::PanicOnce(calls) => {
+                Self::Panic(calls) => {
                     event.roll = 90.0;
-                    match calls.fetch_add(1, Ordering::Relaxed) {
-                        0 => panic!("fixture camera callback panicked"),
-                        1 => {}
-                        _ => event.pitch = f32::NAN,
-                    }
+                    calls.fetch_add(1, Ordering::Relaxed);
+                    panic!("fixture camera callback panicked");
                 }
                 Self::Add => event.yaw += 10.0,
             }
@@ -266,9 +263,9 @@ mod camera_type_tests {
 
     #[test]
     #[ignore = "daily"]
-    fn a_failed_camera_listener_retries_next_frame_without_losing_preceding_angles() {
+    fn a_failed_camera_listener_is_disabled_and_later_listeners_still_run() {
         if run_fresh_cases(
-            "game::native_hooks::camera_type::camera_type_tests::a_failed_camera_listener_retries_next_frame_without_losing_preceding_angles",
+            "game::native_hooks::camera_type::camera_type_tests::a_failed_camera_listener_is_disabled_and_later_listeners_still_run",
             "SUNRISE_CAMERA_ANGLE_FAILURE_CHILD",
             &["angles"],
         ) {
@@ -280,7 +277,7 @@ mod camera_type_tests {
             ModEntry::new("set", Box::new(AngleWriter::Set)),
             ModEntry::new(
                 "camera-panic",
-                Box::new(AngleWriter::PanicOnce(executions.clone())),
+                Box::new(AngleWriter::Panic(executions.clone())),
             ),
             ModEntry::new("add", Box::new(AngleWriter::Add)),
         ];
@@ -288,18 +285,13 @@ mod camera_type_tests {
             with_client_game(|game| {
                 game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
                 game.title = None;
-                for expected_roll in [10.0, 90.0] {
+                // The failed listener's writes are rolled back, the listeners around it still
+                // run, and it stays disabled for the later frame.
+                for _ in 0..2 {
                     let (_, yaw, pitch, roll) = game.frame_camera(1.0).unwrap();
-                    assert_eq!((yaw, pitch, roll), (27.0, 2.0, expected_roll));
+                    assert_eq!((yaw, pitch, roll), (27.0, 2.0, 10.0));
                 }
-                assert_eq!(executions.load(Ordering::Relaxed), 2);
-
-                // NeoForge assigns angles as given. Check the dispatched value without using
-                // a deliberately non-finite angle to place a render camera.
-                let (mut yaw, mut pitch, mut roll) = (0.0, 0.0, 0.0);
-                game.native_compute_camera_angles(1.0, &mut yaw, &mut pitch, &mut roll);
-                assert!(pitch.is_nan());
-                assert_eq!((yaw, roll), (27.0, 90.0));
+                assert_eq!(executions.load(Ordering::Relaxed), 1);
             });
             let notices = mod_api::__private::take_hook_panics();
             assert_eq!(notices.len(), 1);
