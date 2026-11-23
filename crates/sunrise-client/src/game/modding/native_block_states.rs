@@ -579,8 +579,7 @@ mod tests {
         ) {
             return;
         }
-        use super::super::native_block_tables::fluid_measures;
-        use sunrise_mod_package::content::FluidMeasures;
+        use mod_api::{FluidTypeProperties, Host, HostFluidStates};
         let dir = tempfile::tempdir().unwrap();
         let fluids = dir.path().join("data/measured/sunrise/fluid");
         std::fs::create_dir_all(&fluids).unwrap();
@@ -605,25 +604,39 @@ mod tests {
         );
         let vanilla = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let root = super::super::mods::content_root(&vanilla, &sources).unwrap();
+        let world_fluids = [
+            "measured:brine",
+            "measured:flowing_brine",
+            "measured:plain",
+            "measured:flowing_plain",
+        ];
         super::super::native_entity_refs::tests::with_game_at(
             root.prepared().to_path_buf(),
-            |_| {
-                let brine = FluidMeasures {
-                    temperature: -40,
-                    density: 1200,
-                    viscosity: 0,
+            |game| {
+                // The fixture resolves only vanilla's fluid keys; resolve the mod's world fluids
+                // after them, as `content_root` does at startup.
+                let engine = sunrise_world::fluid::FluidKind::ALL.map(|kind| kind.name());
+                let mut names = engine.to_vec();
+                names.extend(world_fluids);
+                mod_api::__private::resolve_fluids(&names, &engine).unwrap();
+                let host: &dyn Host = game;
+                let read = |id: &str| -> FluidTypeProperties {
+                    host.fluid_states()
+                        .type_properties(host.fluid_key(id).unwrap())
+                        .unwrap()
                 };
-                assert_eq!(fluid_measures("measured:brine"), brine);
-                assert_eq!(fluid_measures("measured:flowing_brine"), brine);
-                assert_eq!(fluid_measures("measured:plain"), FluidMeasures::default());
-                assert_eq!(
-                    fluid_measures("measured:flowing_plain"),
-                    FluidMeasures::default()
-                );
-                assert_eq!(
-                    fluid_measures("minecraft:flowing_water"),
-                    FluidMeasures::default()
-                );
+                let measures = |id: &str| {
+                    let properties = read(id);
+                    [
+                        properties.temperature,
+                        properties.density,
+                        properties.viscosity,
+                    ]
+                };
+                assert_eq!(measures("measured:brine"), [-40, 1200, 0]);
+                assert_eq!(measures("measured:flowing_brine"), [-40, 1200, 0]);
+                assert_eq!(measures("measured:plain"), [300, 1000, 1000]);
+                assert_eq!(measures("measured:flowing_plain"), [300, 1000, 1000]);
             },
         );
     }

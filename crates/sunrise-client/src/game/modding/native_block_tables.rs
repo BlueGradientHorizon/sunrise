@@ -71,7 +71,7 @@ impl<'a> BlockTables<'a> {
         let kind = FluidKind::from_name(id);
         let water = kind.is_some_and(|kind| kind.same_family(FluidKind::Water));
         let lava = kind.is_some_and(|kind| kind.same_family(FluidKind::Lava));
-        let measures = fluid_measures(id);
+        let measures = fluid_measures(id, kind);
         Some(FluidTypeProperties {
             description_id,
             light_level: block.map_or(0, |block| block.emission),
@@ -414,11 +414,11 @@ impl<'a> BlockTables<'a> {
     }
 }
 
-/// `FluidType.getTemperature`, `getDensity` and `getViscosity` of the registered fluid `id`.
-/// NeoForgeMod's EMPTY_TYPE and LAVA_TYPE state their own; water keeps `FluidType.Properties`'
-/// defaults, and a mod's fluid, flowing or not, what its source's file states.
-pub(in crate::game) fn fluid_measures(id: &str) -> FluidMeasures {
-    let kind = FluidKind::from_name(id);
+/// `FluidType.getTemperature`, `getDensity` and `getViscosity` of the registered fluid `id`,
+/// whose world kind is `kind`. NeoForgeMod's EMPTY_TYPE and LAVA_TYPE state their own; water
+/// keeps `FluidType.Properties`' defaults, and a mod's fluid, flowing or not, what its source's
+/// file states.
+fn fluid_measures(id: &str, kind: Option<FluidKind>) -> FluidMeasures {
     match kind {
         Some(FluidKind::Empty) => FluidMeasures {
             temperature: 0,
