@@ -814,6 +814,17 @@ fn decode_mod_block_entity(
     Some(entity)
 }
 /// Whether a mod block owns the saved `Items` field as engine-managed inventory.
+/// A `RandomizableContainer`: a chest, barrel, shulker box, dispenser or hopper, or a mod
+/// block entity whose block declares container slots. Its `LootTable` and `LootTableSeed`
+/// wait beside it until its first access rolls them.
+pub fn randomizable_container(e: &crate::containers::BlockEntity, block: &str) -> bool {
+    match e {
+        crate::containers::BlockEntity::Chest(_) => true,
+        crate::containers::BlockEntity::Mod(_) => block_has_mod_item_slots(block),
+        _ => false,
+    }
+}
+
 fn block_has_mod_item_slots(block: &str) -> bool {
     mod_api::__private::parts_installation::block_container(block).is_some_and(|c| c.slots > 0)
 }
@@ -1830,7 +1841,7 @@ fn decode_column(
                 None
             };
             match decoded {
-                Some(be) => {
+                Some(mut be) => {
                     if let Ok(Some(data)) = attachment_compound(e.get(ATTACHMENTS_KEY)) {
                         extras.block_entity_attachments.push((
                             be.0,
@@ -1851,9 +1862,17 @@ fn decode_column(
                     if let Some(name) = name {
                         chunk.block_names.push((be.0, name));
                     }
-                    let randomizable = matches!(be.1, crate::containers::BlockEntity::Chest(_));
+                    let block = registry
+                        .state(chunk.block(be.0.0 & 15, be.0.1, be.0.2 & 15))
+                        .map_or("", |state| state.name.as_str());
+                    let randomizable = randomizable_container(&be.1, block);
                     if randomizable && let Some(pending) = PendingContainerLoot::from_tag(e) {
                         extras.pending_loot.insert(be.0, pending);
+                        // A mod container's table waits beside it, not in its own payload.
+                        if let crate::containers::BlockEntity::Mod(m) = &mut be.1 {
+                            m.nbt.remove(&"LootTable".into());
+                            m.nbt.remove(&"LootTableSeed".into());
+                        }
                     }
                     let mut source = e.clone();
                     if randomizable && let Tag::Compound(map) = &mut source {

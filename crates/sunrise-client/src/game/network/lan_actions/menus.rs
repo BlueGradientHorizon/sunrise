@@ -44,6 +44,17 @@ impl Game<'_> {
 
     /// Install the block menu for a guest's use or a direct BlockEntityRef open.
     pub(in crate::game) fn open_block_menu(&mut self, conn: u32, pos: (i32, i32, i32)) -> MenuOpen {
+        // A mod container's `RandomizableContainer.unpackLootTable(player)` as its menu is
+        // created; a vanilla container's ran in its block's use.
+        if self.mod_menu_at(pos).is_some() {
+            let player = self
+                .lan
+                .as_ref()
+                .and_then(|lan| lan.hub.guest(conn))
+                .map(|guest| guest.uuid)
+                .and_then(|uuid| self.player(uuid));
+            self.unpack_loot(crate::game::container_loot::LootTarget::Block(pos), player);
+        }
         let generation = self.world.block_entities.generation(&pos);
         let name = &self
             .res

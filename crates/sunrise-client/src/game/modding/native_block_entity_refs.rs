@@ -474,6 +474,48 @@ impl Game<'_> {
         Ok(true)
     }
 
+    /// `RandomizableContainer.setLootTable(table, seed)` on a mod container: kept beside the
+    /// block entity as a vanilla chest's is, and rolled by its first access
+    /// (`container_loot::unpack_loot`).
+    pub(super) fn block_entity_set_loot_table(
+        &mut self,
+        entity: BlockEntityRef,
+        table: &str,
+        seed: i64,
+    ) -> Result<bool, BlockEntityError> {
+        let (key, block) = self
+            .native_block_entity_write_target(entity)
+            .ok_or(BlockEntityError::Stale)?;
+        let Some(entity) = self.world.block_entities.get(&key) else {
+            return Err(BlockEntityError::Stale);
+        };
+        if !matches!(entity, BlockEntity::Mod(_))
+            || !save::randomizable_container(entity, &block)
+            || sunrise_client_core::identifier::normalize_id(table).is_none()
+        {
+            return Ok(false);
+        }
+        let pending = save::PendingContainerLoot {
+            table: Tag::String(table.into()),
+            seed: Some(Tag::Long(seed)),
+        };
+        let current = self
+            .world
+            .chunks
+            .get(&(key.0 >> 4, key.2 >> 4))
+            .and_then(|chunk| chunk.saved.as_ref())
+            .and_then(|saved| saved.pending_loot.get(&key));
+        if current == Some(&pending) {
+            return Ok(false);
+        }
+        self.journal_block_entity(key);
+        self.world.with_chunk_extras(key, |extras| {
+            extras.pending_loot.insert(key, pending);
+        });
+        self.world.modified.insert((key.0 >> 4, key.2 >> 4));
+        Ok(true)
+    }
+
     /// `BlockEntity.setChanged`: notify at once, including inside a transaction. An abort
     /// restores storage, not notifications already delivered to observers or comparators.
     pub(super) fn block_entity_set_changed(
@@ -716,6 +758,10 @@ pub(in crate::game) fn mod_payload(mut data: Compound) -> Compound {
 #[cfg(test)]
 #[path = "quiet_write_tests.rs"]
 mod quiet_write_tests;
+
+#[cfg(test)]
+#[path = "container_loot_table_tests.rs"]
+mod container_loot_table_tests;
 
 #[cfg(test)]
 mod payload_tests {

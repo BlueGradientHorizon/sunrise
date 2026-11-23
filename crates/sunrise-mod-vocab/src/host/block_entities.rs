@@ -119,6 +119,26 @@ pub trait BlockEntitiesBackendMut {
         data: Compound,
     ) -> Result<bool, BlockEntityError>;
     /// Side: server.
+    /// `RandomizableContainer.setLootTable(table, seed)` (NeoForge mods call the same vanilla
+    /// method) on a mod block entity whose block declares container slots: the table and seed
+    /// are kept with it and saved as its `LootTable` and `LootTableSeed`, which `/data` and
+    /// `data` show, and nothing is rolled yet. The first time a player opens its menu, a
+    /// hopper or other container access reads it, or the block is broken
+    /// (`RandomizableContainer.unpackLootTable`), the table rolls once into its empty slots
+    /// with `LootTable.fill`'s slot shuffle, from `RandomSource.create(seed)`, the table's
+    /// random sequence for a seed of 0, else the level random, with the container's centre
+    /// as `ORIGIN` and the opening player as `THIS_ENTITY`; then the table is gone. Two
+    /// worlds rolling the same table and seed fill the same slots. Ok(false) for a block
+    /// entity with no declared slots, a table that is not an identifier, or no change;
+    /// Stale for an invalidated or unwritable handle. Inside a transaction an abort puts the
+    /// previous table back.
+    fn block_entity_set_loot_table(
+        &mut self,
+        entity: BlockEntityRef,
+        table: &str,
+        seed: i64,
+    ) -> Result<bool, BlockEntityError>;
+    /// Side: server.
     /// [`Self::block_entity_merge_data`] without the send: the data is merged and loaded,
     /// then `BlockEntity.setChanged` marks the chunk unsaved and notifies comparators, and no
     /// `Level.sendBlockUpdated` follows. Clients keep what they last got until

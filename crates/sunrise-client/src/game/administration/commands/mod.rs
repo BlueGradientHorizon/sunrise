@@ -2836,7 +2836,10 @@ impl Game<'_> {
     ) {
         if !matches!(
             world.block_entities.get(&key),
-            Some(sunrise_client::containers::BlockEntity::Chest(_))
+            Some(
+                sunrise_client::containers::BlockEntity::Chest(_)
+                    | sunrise_client::containers::BlockEntity::Mod(_)
+            )
         ) {
             return;
         }
