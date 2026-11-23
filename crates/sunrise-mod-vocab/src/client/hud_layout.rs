@@ -95,6 +95,25 @@ pub enum GuiDraw {
         tex: [i32; 2],
         color: u32,
     },
+    /// `blit(pipeline, id, x, y, u, v, w, h, srcW, srcH, texW, texH, color)` of a standalone
+    /// texture: `id` is the exact resource (`mymod:textures/gui/chapter.png`), read from the
+    /// active resource stack, mod packs included, never rewritten. The quad samples `uv / tex`
+    /// to `(uv + src) / tex` unclamped (a negative span flips that axis) with the sampler its
+    /// winning `.png.mcmeta` sets: `blur` filters linearly, `clamp` clamps to the edge, else
+    /// nearest and repeat, no mipmaps. It loads on first use and stays loaded until the next
+    /// resource reload. A missing or undecodable image draws vanilla's missing texture in its
+    /// place. A `tex` with a zero side or a NaN or infinite `uv` refuses the buffer.
+    Texture {
+        id: Identifier,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+        uv: [f32; 2],
+        src: [i32; 2],
+        tex: [i32; 2],
+        color: u32,
+    },
     /// `fill(x0, y0, x1, y1, color)` with the corners sorted.
     Fill {
         x0: i32,

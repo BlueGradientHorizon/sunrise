@@ -2595,6 +2595,18 @@ mod gui_draw_boundary_tests {
                 tex: [28, 29],
                 color: 30,
             },
+            D::Texture {
+                id: sunrise_core::identifier::Identifier::parse("test:textures/chapter.png")
+                    .unwrap(),
+                x: -71,
+                y: 72,
+                w: 73,
+                h: -74,
+                uv: [-0.25, 1.5],
+                src: [-75, 76],
+                tex: [77, -78],
+                color: 0x8000_0079,
+            },
             D::Fill {
                 x0: -31,
                 y0: 32,
@@ -2641,7 +2653,7 @@ mod gui_draw_boundary_tests {
         let actual: Result<Vec<D>, mod_api::text::TextFormError> = api.try_into_engine(&());
         let actual = actual.unwrap();
         assert_eq!(actual, commands);
-        let D::Text { text: actual, .. } = &actual[5] else {
+        let D::Text { text: actual, .. } = &actual[6] else {
             panic!("text command")
         };
         assert_eq!(actual.component(), text.component());

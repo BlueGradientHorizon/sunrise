@@ -108,3 +108,196 @@ fn realms_pictures_do_not_enlarge_the_startup_atlas() {
     );
     fs::remove_dir_all(&root).unwrap();
 }
+
+/// A `width` x 1 PNG of `pixels` at the resource `name` under `root`.
+fn png_at(root: &Path, name: &str, pixels: &[[u8; 4]]) {
+    let path = root.join(name);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let mut image = png::Encoder::new(fs::File::create(path).unwrap(), pixels.len() as u32, 1);
+    image.set_color(png::ColorType::Rgba);
+    image.set_depth(png::BitDepth::Eight);
+    image
+        .write_header()
+        .unwrap()
+        .write_image_data(pixels.as_flattened())
+        .unwrap();
+}
+
+fn write(root: &Path, name: &str, bytes: &[u8]) {
+    let path = root.join(name);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(path, bytes).unwrap();
+}
+
+fn folder_pack(root: &Path, name: &str) -> crate::packs::Pack {
+    write(
+        root,
+        &format!("{name}/pack.mcmeta"),
+        br#"{"pack":{"description":"test","pack_format":97}}"#,
+    );
+    crate::packs::pack_for(
+        name.into(),
+        crate::text::Text::empty(),
+        crate::packs::Source::Dir(root.join(name)),
+        crate::packs::RESOURCE_FORMAT,
+    )
+    .unwrap()
+}
+
+/// The resource stack `base` with `packs` over it, lowest first, opened afresh as a reload does.
+fn stack(root: &Path, packs: &[&str]) -> HudAtlas {
+    let base = crate::resource_source::ResourceSource::directory(root.join("base"));
+    let packs: Vec<_> = packs.iter().map(|name| folder_pack(root, name)).collect();
+    HudAtlas::build(&crate::packs::resources(base, &packs).unwrap()).unwrap()
+}
+
+fn texture(id: &str, at: [i32; 4], uv: [f32; 2], src: [i32; 2], tex: [i32; 2]) -> GuiDraw {
+    let [x, y, w, h] = at;
+    GuiDraw::Texture {
+        id: Identifier::parse(id).unwrap(),
+        x,
+        y,
+        w,
+        h,
+        uv,
+        src,
+        tex,
+        color: 0xFFFF_FFFF,
+    }
+}
+
+use crate::hud_layout::{GuiDraw, paint};
+
+const CHAPTER: &str = "assets/demo/textures/chapter.png";
+
+#[test]
+fn a_texture_is_the_exact_resource_sampled_as_its_winning_mcmeta_says_until_a_reload() {
+    let root = temp_root("gui-texture");
+    // A non-GUI image of a mod's namespace, and a higher pack with only its `.mcmeta`.
+    png_at(
+        &root.join("base"),
+        CHAPTER,
+        &[[1, 2, 3, 255], [4, 5, 6, 255]],
+    );
+    write(
+        &root.join("meta"),
+        &format!("{CHAPTER}.mcmeta"),
+        br#"{"texture":{"blur":true,"clamp":true}}"#,
+    );
+    let atlas = stack(&root, &["meta"]);
+    // `innerBlit`: u from -2 / 2 to (-2 + 4) / 2, v from 0 to 2: past 1 both ways, unclamped.
+    let op = texture(
+        "demo:textures/chapter.png",
+        [10, 20, 32, 16],
+        [-2.0, 0.0],
+        [4, 2],
+        [2, 1],
+    );
+    let mut batch = HudBatch::scratch([854, 480]);
+    paint(&mut batch, &atlas, std::slice::from_ref(&op));
+    let [picture] = batch.pictures.as_slice() else {
+        panic!("one picture, not {}", batch.pictures.len())
+    };
+    assert_eq!(picture.pixels, [1, 2, 3, 255, 4, 5, 6, 255]);
+    assert_eq!(
+        picture.flags,
+        TextureFlags {
+            blur: true,
+            clamp: true
+        }
+    );
+    let linear = sampler(picture.flags);
+    assert_eq!(linear.min_filter, wgpu::FilterMode::Linear);
+    assert_eq!(linear.mag_filter, wgpu::FilterMode::Linear);
+    assert_eq!(linear.address_mode_u, wgpu::AddressMode::ClampToEdge);
+    assert_eq!(linear.address_mode_v, wgpu::AddressMode::ClampToEdge);
+    assert_eq!(linear.mipmap_filter, wgpu::MipmapFilterMode::Nearest);
+    assert_eq!(batch.blends, [(0..6, Blend::Picture(picture.id))]);
+    let corner = |pos: [f32; 2]| batch.vertices.iter().find(|v| v.pos == pos).unwrap().uv;
+    assert_eq!(corner([10.0, 20.0]), [-1.0, 0.0]);
+    assert_eq!(corner([42.0, 20.0]), [1.0, 0.0]);
+    assert_eq!(corner([42.0, 36.0]), [1.0, 2.0]);
+    assert_eq!(corner([10.0, 36.0]), [-1.0, 2.0]);
+
+    // Held for the generation: drawn again with its file gone, it is the same decoded image.
+    let first = picture.clone();
+    fs::remove_file(root.join("base").join(CHAPTER)).unwrap();
+    let mut again = HudBatch::scratch([854, 480]);
+    paint(&mut again, &atlas, std::slice::from_ref(&op));
+    assert!(Arc::ptr_eq(&first, &again.pictures[0]));
+
+    // A reload: a higher pack's image wins, and the `.mcmeta` below it no longer counts, so the
+    // sampler is nearest and repeat again.
+    png_at(&root.join("art"), CHAPTER, &[[9, 8, 7, 255]]);
+    let reloaded = stack(&root, &["meta", "art"]);
+    let mut batch = HudBatch::scratch([854, 480]);
+    paint(&mut batch, &reloaded, std::slice::from_ref(&op));
+    let picture = &batch.pictures[0];
+    assert_ne!(picture.id, first.id);
+    assert_eq!(picture.pixels, [9, 8, 7, 255]);
+    assert_eq!(picture.flags, TextureFlags::default());
+    let nearest = sampler(picture.flags);
+    assert_eq!(nearest.min_filter, wgpu::FilterMode::Nearest);
+    assert_eq!(nearest.mag_filter, wgpu::FilterMode::Nearest);
+    assert_eq!(nearest.address_mode_u, wgpu::AddressMode::Repeat);
+    assert_eq!(nearest.address_mode_v, wgpu::AddressMode::Repeat);
+    fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn a_missing_or_undecodable_texture_draws_the_missing_texture_in_its_place() {
+    let root = temp_root("gui-texture-missing");
+    write(
+        &root.join("base"),
+        "assets/demo/textures/broken.png",
+        b"not a png",
+    );
+    let atlas = stack(&root, &[]);
+    let fill = GuiDraw::Fill {
+        x0: 0,
+        y0: 0,
+        x1: 4,
+        y1: 4,
+        color: 0xFFFF_FFFF,
+    };
+    let draws = [
+        fill.clone(),
+        texture(
+            "demo:textures/nothing.png",
+            [8, 0, 16, 16],
+            [0.0, 0.0],
+            [16, 16],
+            [16, 16],
+        ),
+        texture(
+            "demo:textures/broken.png",
+            [24, 0, 16, 16],
+            [0.0, 0.0],
+            [16, 16],
+            [16, 16],
+        ),
+        // Named as an atlas sprite would be, it is still only the exact resource.
+        texture(
+            "demo:broken",
+            [40, 0, 16, 16],
+            [0.0, 0.0],
+            [16, 16],
+            [16, 16],
+        ),
+        fill,
+    ];
+    let mut batch = HudBatch::scratch([854, 480]);
+    paint(&mut batch, &atlas, &draws);
+    // Every op drew, in order: the fills around one run of the shared missing texture.
+    assert_eq!(batch.vertices.len(), 5 * 6);
+    let [missing] = batch.pictures.as_slice() else {
+        panic!("one missing texture, not {}", batch.pictures.len())
+    };
+    assert_eq!(batch.blends, [(6..24, Blend::Picture(missing.id))]);
+    assert_eq!((missing.width, missing.height), (16, 16));
+    // `generateMissingImage`: black top left, magenta top right.
+    assert_eq!(missing.pixels[..4], [0, 0, 0, 255]);
+    assert_eq!(missing.pixels[15 * 4..16 * 4], [248, 0, 248, 255]);
+    assert_eq!(missing.flags, TextureFlags::default());
+    fs::remove_dir_all(&root).unwrap();
+}

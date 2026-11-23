@@ -34,6 +34,9 @@ pub enum Undrawable {
     BlitTexture(String),
     /// A `Blit` whose texture size is not positive, or whose `uv` is NaN or infinite.
     BlitSize,
+    /// A `Texture` whose texture size has a zero side, or whose `uv` is NaN or infinite: its
+    /// texture coordinates would not be finite.
+    TextureSize,
     /// A `Sprite` or `AtlasSprite` the GUI atlas does not hold, a mob effect sprite included.
     Sprite(String),
     /// A `Sprite` whose `region` has a zero (or negative) sprite width or height.
@@ -79,6 +82,11 @@ fn refusal(atlas: &HudAtlas, draw: &GuiDraw) -> Option<Undrawable> {
             } else {
                 None
             }
+        }
+        // Any id draws: a missing or undecodable image draws the missing texture.
+        GuiDraw::Texture { uv, tex, .. } => {
+            let finite = tex[0] != 0 && tex[1] != 0 && uv.iter().all(|v| v.is_finite());
+            (!finite).then_some(Undrawable::TextureSize)
         }
         GuiDraw::Sprite {
             sprite,

@@ -336,6 +336,49 @@ fn draw_member(draw: &mut dyn DrawContext, member: u128, x: i32, y: i32) -> Resu
 - **Pose and clip.** The face follows the buffer's pose (`Push`) and the hook call's clip (`push_clip`), as
   `Blit` does; the hat layer is drawn under the same pose, clip and tint as the face.
 
+## Standalone textures
+
+The `gui_paint` op `GuiDraw::Texture { id, x, y, w, h, uv, src, tex, color }` is vanilla's
+`GuiGraphicsExtractor.blit` with a texture's `Identifier`: a picture that isn't in the GUI atlas, such as a
+guide book's chapter art. It takes `blit`'s arguments: the quad at `x, y`, `w` by `h` GUI pixels, showing the
+`src` texels from `uv` of an image `tex` texels big, tinted by the ARGB `color`.
+
+```rust,ignore
+use mod_api::client::hud_layout::GuiDraw;
+
+fn draw_chapter(draw: &mut dyn DrawContext, art: &Identifier) -> Result<(), GuiPaintError> {
+    // `art` is `mymod:textures/book/chapter.png`, parsed once at load.
+    draw.gui_paint(&[GuiDraw::Texture {
+        id: art.clone(),
+        x: 20,
+        y: 20,
+        w: 128,
+        h: 64,
+        uv: [0.0, 0.0],
+        src: [256, 128],
+        tex: [256, 128],
+        color: 0xFFFF_FFFF,
+    }])
+}
+```
+
+- **Which file.** `id` is the exact resource, `assets/<namespace>/<path>`, from the active resource stack:
+  any namespace, a mod's own included, and a resource pack can replace it. Nothing is added to it, so name the
+  `textures/` folder and the `.png` yourself. Only packed resources are read: not files, URLs or dynamic
+  textures.
+- **When it loads.** The image is decoded the first time it is drawn and kept until the next resource reload,
+  which loads the new one. Drawing it every frame costs one quad.
+- **Coordinates.** The quad samples from `uv / tex` to `(uv + src) / tex`, as `innerBlit` does, without
+  clamping: past 1 the image repeats (or clamps, below), and a negative `src` or `tex` flips that axis.
+- **Sampler.** As the image's `.png.mcmeta` says, from the image's pack or a pack above it: `"blur": true`
+  filters linearly, `"clamp": true` clamps to the edge; otherwise nearest and repeat. No mipmaps.
+- **Missing images.** An id with no image, or one that doesn't decode, draws vanilla's magenta and black missing
+  texture in its place, in order with the other ops. The buffer isn't refused for it.
+- **Refused.** A `tex` with a zero side, or a NaN or infinite `uv`, refuses the whole buffer with
+  `GuiPaintError::TextureSize`: its coordinates would not be finite.
+- **Pose and clip.** The quad follows the buffer's pose (`Push`) and the hook call's clip (`push_clip`), as
+  `Blit` does.
+
 ## Scaled text
 
 `DrawContext::text_scaled(text, at, scale, argb, shadow)` draws `text` as `text` does, scaled by `scale` about
