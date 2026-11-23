@@ -2663,6 +2663,20 @@ impl Game<'_> {
         self.fire_sleep_finished_time(dimension, current, new_time, adjustment, canceled);
     }
 
+    /// Enough players sleep in level `dimension` to skip the night (`ServerLevel.tick`), before
+    /// the clock moves, the sleepers wake and the rain ends. Set `canceled` and none of it
+    /// happens this tick.
+    pub(in crate::game) fn native_sleep_skip_night(
+        &mut self,
+        dimension: &str,
+        percentage: i32,
+        sleeping: i64,
+        active: i64,
+        canceled: &mut bool,
+    ) {
+        self.fire_sleep_skip_night(dimension, percentage, sleeping, active, canceled);
+    }
+
     /// The overworld clock is about to jump, from sleep or `/time`. Set
     /// `cancel` to keep `from`.
     pub(in crate::game) fn native_time_skip(
