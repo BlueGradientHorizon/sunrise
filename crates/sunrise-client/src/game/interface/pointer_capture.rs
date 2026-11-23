@@ -113,19 +113,26 @@ impl Game<'_> {
     /// toggles keeps its toggle state (`shouldSetOnIngameFocus`).
     pub(super) fn restore_held_keys(&mut self) {
         let held: Vec<KeyCode> = self.physical_keys.iter().copied().collect();
-        let toggles = [self.settings.toggle_crouch, self.settings.toggle_sprint];
+        let options = self.toggle_options();
         for key in held {
+            if let Some(name) = sunrise_client::keybinds::key_name(key) {
+                for slot in self.settings.keys.slots_for(name) {
+                    let option =
+                        sunrise_client::keymapping::toggle_index(slot).is_some_and(|i| options[i]);
+                    if self
+                        .vanilla_mappings
+                        .state(slot)
+                        .should_set_on_ingame_focus(option)
+                    {
+                        self.vanilla_mappings.set_down(slot, true, option);
+                    }
+                }
+            }
             for mapped in self.settings.keys.translate_all(key) {
                 match mapped {
-                    Ok(slot_key @ (KeyCode::ShiftLeft | KeyCode::ControlLeft)) => {
-                        let slot = usize::from(slot_key == KeyCode::ControlLeft);
-                        if !toggles[slot] {
-                            self.toggles.0[slot].set_down(true, false);
-                            self.sync_toggle(slot);
-                        }
-                    }
+                    Ok(KeyCode::ShiftLeft | KeyCode::ControlLeft) => {}
                     Ok(other) => {
-                        self.keys.insert(other);
+                        self.insert_device_key(other);
                     }
                     Err(_) => {}
                 }
@@ -147,9 +154,11 @@ impl Game<'_> {
         }
         // MouseHandler.grabMouse never captures an inactive window, and vanilla
         // grabs only on `setScreen(null)`: the pack prompt and server dialogs
-        // are screens over the world that keep the pointer.
+        // are screens over the world that keep the pointer, as does a screen a
+        // mod's `screen_opening` answer kept or opened in place of none.
         if capture
-            && ((!self.focused && !self.unclaimed_window && !self.scripted_run())
+            && ((self.screen_state.answered.get() && self.screen != Screen::Playing)
+                || (!self.focused && !self.unclaimed_window && !self.scripted_run())
                 || self.server_packs.prompt.is_some()
                 || self.dialog_open()
                 || self.command_prompt.is_some())

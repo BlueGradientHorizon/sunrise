@@ -1,13 +1,12 @@
 //! One demand-driven creative catalog per logical side, and the scoped edit event.
 use super::*;
 use crate::game::api_values::{TryIntoApi, TryIntoEngine, stack_value};
-use mod_api::__private::{ModPhase, current_phase};
 use mod_api::{
     CreativeModeTabInfo, CreativeModeTabs, CreativeTabChange, CreativeTabEdit,
     CreativeTabEditError, CreativeTabList, CreativeTabPermissions, CreativeTabPlacement,
     CreativeTabReadError, CreativeTabVisibility,
 };
-use std::cell::RefCell;
+use std::cell::{OnceCell, RefCell};
 use std::sync::atomic::{AtomicU64, Ordering};
 use sunrise_items::creative_catalog::{
     Catalog, Holders, Kind, Parameters, TabContents, normalize_components,
@@ -40,8 +39,9 @@ impl BuildKey {
 struct Published {
     key: BuildKey,
     lists: Contents,
-    api: Option<Arc<CreativeModeTabs>>,
+    api: OnceCell<Arc<CreativeModeTabs>>,
     holders: Arc<Holders>,
+    items: Arc<Items>,
 }
 
 struct ActiveBuild {
@@ -183,8 +183,9 @@ impl Game<'_> {
         self.creative_contents.published = Some(Published {
             key,
             lists: lists.clone(),
-            api: None,
+            api: OnceCell::new(),
             holders: Arc::new(holders),
+            items,
         });
         Ok(lists)
     }
@@ -207,16 +208,44 @@ impl Game<'_> {
         if let Some(published) = &self.creative_contents.published
             && Arc::ptr_eq(&lists, &published.lists)
         {
-            self.creative_screen
-                .publish(lists, published.holders.clone(), &self.pack.names);
+            self.creative_screen.publish(
+                lists,
+                published.holders.clone(),
+                published.items.clone(),
+                &self.pack.names,
+            );
+            self.refresh_creative_search_names();
         }
+    }
+
+    /// The name components that replace the creative search's prepared name lines.
+    pub(in crate::game) fn refresh_creative_search_names(&mut self) {
+        // Only when the search tab's stacks were made again, not every creative tick.
+        let generation = self.creative_screen.search_generation();
+        if self.creative_search_named == Some(generation) {
+            return;
+        }
+        self.creative_search_named = Some(generation);
+        let names = self
+            .creative_screen
+            .search_items()
+            .iter()
+            .map(|stack| {
+                if sunrise_client::stations::names_itself(stack) {
+                    Some(self.stack_hover_name_text(stack))
+                } else {
+                    self.mod_item_name(stack)
+                }
+            })
+            .collect();
+        self.creative_screen.set_search_names(names);
     }
 
     pub(in crate::game) fn creative_tabs(
         &mut self,
         permissions: CreativeTabPermissions,
     ) -> Result<Arc<CreativeModeTabs>, CreativeTabReadError> {
-        if current_phase() != ModPhase::World {
+        if self.native_lifecycle.epoch().is_none() {
             return Err(CreativeTabReadError::Unavailable);
         }
         let lists = self.build_creative(permissions)?;
@@ -227,17 +256,39 @@ impl Game<'_> {
         let published = self
             .creative_contents
             .published
-            .as_mut()
+            .as_ref()
             .expect("complete creative build");
         Ok(published
             .api
-            .get_or_insert_with(|| snapshot(catalog, permissions, &lists))
+            .get_or_init(|| snapshot(catalog, permissions, &lists))
             .clone())
+    }
+
+    /// The last completed build's catalog, for a reader that cannot build: unavailable outside
+    /// a live world's phase, and `None` before the side has built once.
+    pub(in crate::game) fn built_creative_tabs(
+        &self,
+    ) -> Result<Option<Arc<CreativeModeTabs>>, CreativeTabReadError> {
+        if self.native_lifecycle.epoch().is_none() {
+            return Err(CreativeTabReadError::Unavailable);
+        }
+        Ok(self.creative_contents.published.as_ref().map(|published| {
+            published
+                .api
+                .get_or_init(|| {
+                    snapshot(
+                        self.creative_screen.catalog(),
+                        published.key.permissions,
+                        &published.lists,
+                    )
+                })
+                .clone()
+        }))
     }
 
     /// The search tab's canonical display list (not the client-only UI additions).
     pub(in crate::game) fn creative_search_items(&mut self) -> Vec<ItemStack> {
-        if current_phase() != ModPhase::World {
+        if self.native_lifecycle.epoch().is_none() {
             return Vec::new();
         }
         let Ok(lists) = self.build_creative(self.creative_permissions()) else {
@@ -375,9 +426,6 @@ impl Game<'_> {
         edit: CreativeTabEdit,
         apply: impl FnOnce(&mut TabContents, &Items) -> Result<T, CreativeTabEditError>,
     ) -> Result<T, CreativeTabEditError> {
-        if current_phase() != ModPhase::World {
-            return Err(CreativeTabEditError::Stale);
-        }
         let Some(active) = &self.creative_contents.active else {
             return Err(CreativeTabEditError::Stale);
         };
@@ -413,6 +461,7 @@ fn snapshot(
             CreativeModeTabInfo::new(
                 tab.id.clone(),
                 tab.kind == Kind::Category,
+                display_name(&tab.id, &tab.title),
                 api_stacks(&stacks.display),
                 api_stacks(&stacks.search),
             )
@@ -421,14 +470,27 @@ fn snapshot(
     Arc::new(CreativeModeTabs::new(permissions, tabs))
 }
 
+/// `CreativeModeTab.getDisplayName`: the tab's `itemGroup.*` key with its title as fallback.
+fn display_name(id: &str, title: &str) -> mod_api::Text {
+    let key = sunrise_client::creative::item_group_key(id).map_or_else(
+        || sunrise_client::creative::mod_item_group_key(id),
+        str::to_owned,
+    );
+    mod_api::Text::new(mod_api::text::TextContent::Translatable {
+        key,
+        fallback: Some(title.to_owned()),
+        arguments: Vec::new(),
+    })
+}
+
 // Comparison ignores count and resident maxima, but damage must fit the component codec.
 fn comparison_key(
     mut stack: ItemStack,
     items: &Items,
 ) -> Result<ItemStack, mod_api::StackWriteError> {
     if i32::try_from(stack.damage).is_err() {
-        return Err(mod_api::StackWriteError::DamageExceeded {
-            maximum: i32::MAX as u32,
+        return Err(mod_api::StackWriteError::InvalidComponents {
+            reason: mod_api::StackError::InvalidDamage,
         });
     }
     normalize_components(&mut stack, items);
