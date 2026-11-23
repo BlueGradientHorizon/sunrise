@@ -127,7 +127,7 @@ impl Game<'_> {
                     .and_then(|chunk| chunk.packet_motion_blocking_height(x, z))
                     .unwrap_or(remote.dimension.min_y)
             } else {
-                Dim::sea_level_of_id(&remote.level).wrapping_add(1)
+                remote.sea_level.wrapping_add(1)
             };
         }
         self.spawn = Some(Vec3::new(
