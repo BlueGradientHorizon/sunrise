@@ -187,6 +187,8 @@ pub enum BuiltinInsideAction {
     LayeredCauldronExtinguish { pos: [i32; 3], state: u32 },
     /// `BaseFireBlock.entityInside` `runAfter(FIRE_IGNITE)`: deal `minecraft:in_fire` damage.
     FireHurt(f32),
+    /// `LavaFluid.entityInside` and `LavaCauldronBlock.entityInside`: run `Entity.lavaHurt` after ignition.
+    LavaHurt,
 }
 
 /// Vanilla `InsideBlockEffectType`: what a block does to the entity inside it, beyond

@@ -262,31 +262,21 @@ impl FluidInteractionWorld for EntityFluidWorld<'_> {
         Ok(self.fluids.fluid(self.world.block(p.x, p.y, p.z)))
     }
     fn fluid_height(&mut self, f: FluidState, p: BlockPos) -> Result<f32, Error> {
-        f.height_at(self, [p.x, p.y, p.z])
+        f.height_at(&mut self.fluid_level(), [p.x, p.y, p.z])
     }
     fn camera_height(&mut self, f: FluidState, p: BlockPos) -> Result<f32, Error> {
-        f.camera_height_at(self, [p.x, p.y, p.z])
+        f.camera_height_at(&mut self.fluid_level(), [p.x, p.y, p.z])
     }
     fn flow(&mut self, f: FluidState, p: BlockPos) -> Result<Vec3, Error> {
-        crate::motion::pushing_flow(
-            self.context,
-            &mut FlowLevel {
-                world: self.world,
-                fluids: self.fluids,
-            },
-            f,
-            p,
-        )
+        crate::motion::pushing_flow(self.context, &mut self.fluid_level(), f, p)
     }
 }
-impl FluidHeightWorld for EntityFluidWorld<'_> {
-    type Error = Error;
-    fn fluid(&mut self, p: [i32; 3]) -> Result<FluidState, Error> {
-        Ok(self.fluids.fluid(self.world.block(p[0], p[1], p[2])))
-    }
-    fn sturdy_down(&mut self, p: [i32; 3]) -> Result<bool, Error> {
-        let state = self.world.block(p[0], p[1], p[2]);
-        Ok(self.fluids.sturdy(state, Direction::Down))
+impl EntityFluidWorld<'_> {
+    fn fluid_level(&self) -> FlowLevel<'_> {
+        FlowLevel {
+            world: self.world,
+            fluids: self.fluids,
+        }
     }
 }
 /// `FluidState.getFlow` at `pos` as it pushes an entity there: vanilla's vector, then the
@@ -302,11 +292,47 @@ pub fn fluid_flow(
         crate::motion::pushing_flow(context, &mut FlowLevel { world, fluids }, state, pos);
     flow
 }
-/// The blocks a current reads, from a loaded world.
+/// `Entity.checkInsideBlocks` intersects the movement with the fluid's
+/// current AABB, independently of the block's inside-collision shape.
+pub fn swept_fluid_contact(
+    world: &World,
+    fluids: &FluidResources,
+    pos: BlockPos,
+    bounds: Aabb,
+    delta: Vec3,
+) -> bool {
+    let fluid = fluids.fluid(world.block(pos.x, pos.y, pos.z));
+    if fluid.kind() == FluidKind::Empty {
+        return false;
+    }
+    let height = fluid
+        .height_at(&mut FlowLevel { world, fluids }, [pos.x, pos.y, pos.z])
+        .unwrap_or_else(|never| match never {});
+    let (x, y, z) = (f64::from(pos.x), f64::from(pos.y), f64::from(pos.z));
+    let shape = Aabb::new(
+        Vec3::new(x, y, z),
+        Vec3::new(x + 1.0, y + f64::from(height), z + 1.0),
+    );
+    bounds.collided_along_vector(delta, &[shape])
+}
+
+/// The blocks a fluid reads in a loaded world.
 struct FlowLevel<'a> {
     world: &'a World,
     fluids: &'a FluidResources,
 }
+impl FluidHeightWorld for FlowLevel<'_> {
+    type Error = Error;
+    fn fluid(&mut self, p: [i32; 3]) -> Result<FluidState, Error> {
+        Ok(self.fluids.fluid(self.world.block(p[0], p[1], p[2])))
+    }
+    fn sturdy_down(&mut self, p: [i32; 3]) -> Result<bool, Error> {
+        Ok(self
+            .fluids
+            .sturdy(self.world.block(p[0], p[1], p[2]), Direction::Down))
+    }
+}
+
 impl FluidFlowWorld for FlowLevel<'_> {
     type Error = Error;
     type Block = BlockStateId;

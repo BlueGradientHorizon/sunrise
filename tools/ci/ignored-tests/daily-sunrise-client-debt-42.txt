@@ -8,3 +8,5 @@ sunrise-client game::native_hooks::entity_inside::sweep_tests::player_live_insid
 sunrise-client game::native_hooks::entity_inside::sweep_tests::player_powder_snow_and_fire_builtin_ordering lib daily child-process
 sunrise-client game::native_hooks::entity_inside::sweep_tests::item_tick_sweeps_once_and_keeps_the_single_hit lib daily child-process
 sunrise-client game::native_hooks::entity_inside::sweep_tests::mob_inside_hurt_teleports_before_the_next_callback lib daily child-process
+sunrise-client game::native_hooks::entity_inside::sweep_tests::item_tick_places_vanilla_fire_inside_the_ignition_slot lib daily child-process
+sunrise-client game::native_hooks::entity_inside::sweep_tests::burning_mob_sweeping_into_dry_powder_snow_melts_it_and_draws_the_hiss lib daily child-process

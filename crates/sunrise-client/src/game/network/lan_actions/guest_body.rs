@@ -1022,14 +1022,17 @@ impl mod_api::InsideEntityAccess for GamePlayerInsideAccess<'_, '_> {
                 }
             }
             mod_api::__private::BuiltinInsideAction::FireHurt(damage) => {
-                let _ = self.game.hurt_target(
-                    crate::game::commands::Target::Player,
-                    damage,
-                    "minecraft:in_fire",
-                    None,
-                    None,
-                    None,
-                );
+                self.hurt_with_source("minecraft:in_fire", damage, None, None);
+            }
+            mod_api::__private::BuiltinInsideAction::LavaHurt => {
+                if self
+                    .game
+                    .player
+                    .as_ref()
+                    .is_some_and(|p| !p.mod_fire_immune)
+                {
+                    self.hurt_with_source("minecraft:lava", 4.0, None, None);
+                }
             }
         }
     }

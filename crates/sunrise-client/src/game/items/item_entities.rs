@@ -58,9 +58,6 @@ impl Game<'_> {
                     item.position.z.floor() as i32,
                 )
         });
-        // `ItemUtils.onContainerDestroyed`: what a destroyed item held, and
-        // where it lay, for adding to the level once its own tick is done.
-        let mut destroyed: Vec<(ItemStack, Vec3)> = Vec::new();
         let item_type = sunrise_threads::work::entity_id(native_ticks::ITEM);
         // Items a mod named (`entity_tick_each`) hear their Pre right before their own tick and
         // their Post right after it, each alone, with the list given back for the call; their
@@ -133,6 +130,7 @@ impl Game<'_> {
                                     )
                                 })
                         };
+                        let revision = self.world.revision;
                         let mut at_turn = |item: &mut ItemEntity| {
                             // `getEntityCollisions(entity, bounds.expandTowards(movement))`: the boxes around
                             // where the item can reach this tick.
@@ -160,7 +158,7 @@ impl Game<'_> {
                             );
                             (no_physics, alive, discarded, entered)
                         };
-                        match moves.take(i, item, &mut at_turn) {
+                        match moves.take(i, item, revision, &mut at_turn) {
                             Some(moved) => moved,
                             None => at_turn(item),
                         }
@@ -272,71 +270,6 @@ impl Game<'_> {
                         [to.x, to.y, to.z],
                     );
                 }
-                let item_id = item.id;
-                let saved = native_components::ITEM_ENVIRONMENT_DAMAGE
-                    .map(|damage| self.saved_refuses_damage(item_id, damage, false));
-                let tags = world_items!(self);
-                let registry = self.pack.assets.registry;
-                let block_registries = &self.pack.block_registries;
-                let hooks = &self.damage_hooks;
-                let environment = item.environment_tick_with_hook(
-                    &mut self.world,
-                    self.res.facts(),
-                    registry,
-                    &native_components::item_damage_resolver(
-                        &self.pack.item_renderer.models,
-                        &self.health_resources.damage,
-                    ),
-                    |world, damage| {
-                        let vanilla = match damage {
-                            "minecraft:on_fire" => saved[0],
-                            "minecraft:lava" => saved[1],
-                            "minecraft:in_fire" => saved[2],
-                            "minecraft:cactus" => saved[3],
-                            _ => false,
-                        };
-                        let source = sunrise_client::health::HurtSource {
-                            damage_type: damage,
-                            causing: 0,
-                            direct: 0,
-                            position: None,
-                        };
-                        sunrise_client::health::DamageLevel::of(
-                            world,
-                            registry,
-                            Some(tags),
-                            Some(block_registries),
-                            hooks,
-                        )
-                        .no_push()
-                        .invulnerability_check(
-                            sunrise_client::health::Hurting::Entity(
-                                item_id as i32,
-                                "minecraft:item",
-                                source,
-                            ),
-                            vanilla,
-                        )
-                    },
-                );
-                if environment.should_play_lava_hurt_sound(item.ticks) {
-                    // `Entity.lavaHurt` pitches the burn from `this.random`, the item's own.
-                    let pitch = 2.0 + item.random.next_float() * 0.4;
-                    self.audio.play(
-                        "minecraft:entity.generic.burn",
-                        Some([item.position.x, item.position.y, item.position.z]),
-                        0.4,
-                        pitch,
-                    );
-                }
-                if !environment.alive {
-                    removed[i] = true;
-                    gone = true;
-                    cells.remove(i, item.position);
-                    for stack in environment.spilled {
-                        destroyed.push((stack, item.position));
-                    }
-                }
             }
             if alone {
                 let id = items[i].id;
@@ -354,12 +287,10 @@ impl Game<'_> {
         items.retain(|_| !removed.next().unwrap_or(false));
         let Some(p) = self.player.as_ref() else {
             self.put_back_dropped(items);
-            self.spawn_destroyed_contents(destroyed);
             return;
         };
         if p.health.dead_or_dying() || self.spectator() {
             self.put_back_dropped(items);
-            self.spawn_destroyed_contents(destroyed);
             return;
         }
         let w = f64::from(p.dimensions.width) / 2.0;
@@ -379,7 +310,6 @@ impl Game<'_> {
         let own = self.level.ensure_player_uuid();
         self.native_player_pickups(&mut items, (min, max), feet, own);
         self.put_back_dropped(items);
-        self.spawn_destroyed_contents(destroyed);
     }
     /// Gives the lifted items back to the level for a hook that reads them live (a named item's
     /// own Pre or Post, at item `i`), then takes them again. The items gone this pass so far

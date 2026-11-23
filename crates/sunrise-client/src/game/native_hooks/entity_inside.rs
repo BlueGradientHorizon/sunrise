@@ -768,6 +768,77 @@ mod sweep_tests {
         });
     }
 
+    #[test]
+    #[ignore = "daily"]
+    fn item_tick_places_vanilla_fire_inside_the_ignition_slot() {
+        if fresh("item_tick_places_vanilla_fire_inside_the_ignition_slot") {
+            return;
+        }
+        use std::sync::{Arc, Mutex};
+        use sunrise_core::geometry::Vec3;
+
+        #[derive(Clone, Default)]
+        struct FireProbe(Arc<Mutex<Vec<i32>>>);
+        #[mod_api::sunrise_part]
+        impl mod_api::BlockPart for FireProbe {
+            fn entity_inside(
+                &self,
+                _: &mut dyn mod_api::LevelRandomHost,
+                event: &mut mod_api::EntityInsideEvent<'_>,
+            ) {
+                let seen = self.0.clone();
+                event.run_before(mod_api::InsideEffect::FireIgnite, move |view| {
+                    seen.lock().unwrap().push(view.fire_ticks());
+                });
+                let seen = self.0.clone();
+                event.run_after(mod_api::InsideEffect::FireIgnite, move |view| {
+                    seen.lock().unwrap().push(view.fire_ticks());
+                });
+            }
+        }
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for FireProbe {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+                let fire = r.block_key("minecraft:fire");
+                r.block_part(fire, self.clone());
+            }
+        }
+        let part = FireProbe::default();
+        let entry = || mod_api::ModEntry::new("inside-item-fire", Box::new(part.clone()));
+        crate::game::api_values::install_parts(&[entry()]).unwrap();
+        mod_platform::testing::with_mods(vec![entry()].into(), || {
+            crate::game::native_entity_refs::tests::with_game(|game| {
+                let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                let mut item = single_stone_item(game);
+                let fire = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:fire")
+                    .unwrap();
+                game.world.set(1, 100, 0, fire).unwrap();
+                item.position = Vec3::new(1.5, 100.25, 0.5);
+                let outcome = sunrise_client::block_contact::in_level(
+                    sunrise_client::parallel::TickThread::mint(),
+                    Some("minecraft:overworld"),
+                    || {
+                        game.tick_item_with_block_contacts(
+                            &mut item,
+                            None,
+                            &[],
+                            false,
+                            None,
+                            &mut |_| {},
+                        )
+                    },
+                );
+                assert_eq!(outcome, (true, false));
+                assert_eq!(*part.0.lock().unwrap(), [0, 160]);
+                assert_eq!((item.fire_ticks, item.health), (160, 4));
+            });
+        });
+    }
+
     /// A killing write stops the item's flush: the walk still reaches both blocks,
     /// the writes after the destruction never apply.
     #[test]
@@ -2073,6 +2144,63 @@ mod sweep_tests {
                 assert_eq!(mob.position.components().map(f64::to_bits), expected);
                 assert_eq!(mob.random.state(), 0xf46e_d8cd_4912);
             });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn burning_mob_sweeping_into_dry_powder_snow_melts_it_and_draws_the_hiss() {
+        if fresh("burning_mob_sweeping_into_dry_powder_snow_melts_it_and_draws_the_hiss") {
+            return;
+        }
+        use std::sync::Arc;
+        use sunrise_client::{
+            chunk::Chunk,
+            mobs::{Mob, goals::GoalSelector},
+            ticket_levels::Sources,
+        };
+        use sunrise_core::{geometry::Vec3, random::LegacyRandom};
+
+        crate::game::native_entity_refs::tests::with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            game.tickets.update(Some(Sources {
+                players: vec![(0, 0)],
+                forced: Vec::new(),
+                portal: Vec::new(),
+                spawn: Vec::new(),
+                dragon: None,
+                viewed: Vec::new(),
+                view_distance: 2,
+                simulation_distance: 2,
+            }));
+            let state = |name| game.pack.assets.registry.default_state(name).unwrap();
+            let snow = state("minecraft:powder_snow");
+            let air = state("minecraft:air");
+            game.world.set(8, 100, 8, snow).unwrap();
+            let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+            let mut mob = Mob::new(200, kind, Vec3::new(7.5, 100.25, 8.5), 0.0);
+            mob.ai.goals = GoalSelector::default();
+            mob.ai.targets = GoalSelector::default();
+            mob.no_gravity = true;
+            mob.persistent = true;
+            mob.velocity = Vec3::new(0.25, 0.0, 0.0);
+            mob.fire_ticks = 21;
+            mob.random = LegacyRandom::new(1);
+            game.mobs.push(mob);
+            sunrise_client::block_contact::in_level(
+                sunrise_client::parallel::TickThread::mint(),
+                Some("minecraft:overworld"),
+                || game.tick_creatures().unwrap(),
+            );
+            let mob = game.mobs.iter().find(|m| m.id == 200).unwrap();
+            assert_eq!(game.world.block(8, 100, 8), air);
+            assert_eq!((mob.fire_ticks, mob.ticks_frozen, mob.health), (0, 1, 10.0));
+            // Java Random(seed=1) after the ambient nextInt(1000) and the two
+            // extinguish nextFloat() calls. No periodic fire damage at 21 ticks.
+            assert_eq!(mob.random.state(), 0x68fb_0e6f_f399);
         });
     }
 

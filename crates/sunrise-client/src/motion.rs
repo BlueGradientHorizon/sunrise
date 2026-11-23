@@ -1945,13 +1945,6 @@ impl MotionWorld<'_, '_, '_> {
     fn make_stuck_in_block(&mut self, multiplier: Vec3) {
         self.player.apply_stuck_in_block(multiplier);
     }
-    /// `LavaCauldronBlock.entityInside`: CLEAR_FREEZE, LAVA_IGNITE
-    /// (`Entity.lavaIgnite`, 15 seconds) and then `Entity.lavaHurt` (lava,
-    /// 4), as ordinary lava does to the player.
-    fn lava_cauldron_inside(&mut self) -> Result<()> {
-        self.player.ticks_frozen = 0;
-        self.lava_ignite_and_hurt()
-    }
     /// `WebBlock.entityInside`: stuck at a quarter of the speed, half with
     /// the Weaving effect.
     fn web_inside(&mut self) {
@@ -3285,6 +3278,14 @@ impl mod_api::InsideEntityAccess for PlayerInsideAccess<'_, '_, '_, '_> {
                     self.error = Some(err);
                 }
             }
+            mod_api::__private::BuiltinInsideAction::LavaHurt => {
+                if !self.m.player.mod_fire_immune
+                    && let Err(err) = self.m.environment_hurt("minecraft:lava", 4.0)
+                    && self.error.is_none()
+                {
+                    self.error = Some(err);
+                }
+            }
         }
     }
 }
@@ -3409,28 +3410,9 @@ impl crate::block_contact::InsideWalk for PlayerInside<'_, '_, '_, '_> {
         // CactusBlock, CampfireBlock, BaseFireBlock and the cauldrons' entityInside
         // (`entity.hurt`, the fire and the fill level), and WitherRoseBlock's
         // server-side effect.
+        crate::block_contact::queue_block_effects(effects, name, state, p);
         match name {
-            "minecraft:fire" | "minecraft:soul_fire" => {
-                let damage = if name == "minecraft:fire" { 1.0 } else { 2.0 };
-                effects.apply(mod_api::InsideEffect::ClearFreeze);
-                effects.apply(mod_api::InsideEffect::FireIgnite);
-                effects.run_after_builtin(
-                    mod_api::InsideEffect::FireIgnite,
-                    mod_api::__private::BuiltinInsideAction::FireHurt(damage),
-                );
-            }
             "minecraft:cactus" => self.m.environment_hurt("minecraft:cactus", 1.0)?,
-            "minecraft:lava_cauldron" => self.m.lava_cauldron_inside()?,
-            "minecraft:water_cauldron" | "minecraft:powder_snow_cauldron" => {
-                effects.run_before_builtin(
-                    mod_api::InsideEffect::Extinguish,
-                    mod_api::__private::BuiltinInsideAction::LayeredCauldronExtinguish {
-                        pos: [p.x, p.y, p.z],
-                        state: state.0,
-                    },
-                );
-                effects.apply(mod_api::InsideEffect::Extinguish);
-            }
             "minecraft:wither_rose" => {
                 self.m.player.events.push(MotionEvent::InsideWitherRose);
             }
@@ -3465,12 +3447,6 @@ impl crate::block_contact::InsideWalk for PlayerInside<'_, '_, '_, '_> {
                 } else {
                     self.m.powder_snow_inside(p)?;
                 }
-                effects.run_before_builtin(
-                    mod_api::InsideEffect::Extinguish,
-                    mod_api::__private::BuiltinInsideAction::PowderSnowMelt([p.x, p.y, p.z]),
-                );
-                effects.apply(mod_api::InsideEffect::Freeze);
-                effects.apply(mod_api::InsideEffect::Extinguish);
             }
             _ => {}
         }

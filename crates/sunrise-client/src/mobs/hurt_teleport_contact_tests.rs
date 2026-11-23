@@ -109,6 +109,12 @@ fn a_burning_teleport_does_not_take_the_old_spots_fire_along() {
                         &mut crate::health::TestLevel::new(0).level(),
                         &mut events,
                     );
+                    effects_from_blocks(
+                        &mut m,
+                        w,
+                        &mut crate::health::TestLevel::new(0).level(),
+                        &mut events,
+                    );
                     if first.position != Vec3::new(0.5, 64.0, 0.5) {
                         assert_eq!(m.position, first.position, "seed {seed}: the same teleport");
                         teleported += 1;

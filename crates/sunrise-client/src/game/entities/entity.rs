@@ -603,11 +603,8 @@ pub(in crate::game) fn shot_alive(shot: &Projectile) -> bool {
     shot.arrow.as_ref().is_none_or(|a| !a.removed)
 }
 
-/// The item's view of the shared inside walk: its box, its life, the batch's
-/// blocks, and the part's contact, fired mid-walk over a lent level. An item
-/// has no per-block vanilla arms of its own in the walk: its fire, lava and
-/// cactus contacts are its own tick's (`ItemEntity::environment_tick`), kept
-/// where they were.
+/// The item's contacts run in its own sweep: immediate cactus hurt and the
+/// queued fire, fluid, powder snow and cauldron effects.
 pub(in crate::game) struct ItemInside<'a, 'g> {
     pub(in crate::game) game: &'a mut Game<'g>,
     pub(in crate::game) item: &'a mut ItemEntity,
@@ -640,12 +637,41 @@ impl sunrise_client::block_contact::InsideWalk for ItemInside<'_, '_> {
     }
     fn inside_shape(
         &mut self,
-        _state: sunrise_world::registry::BlockStateId,
-        _at: sunrise_core::position::BlockPos,
+        state: sunrise_world::registry::BlockStateId,
+        at: BlockPos,
     ) -> sunrise_client::block_contact::InsideShape {
-        // `getEntityInsideCollisionShape` is the whole block for every block
-        // an item meets, as the item's own sweep always treated it.
-        sunrise_client::block_contact::InsideShape::Full
+        self.game.pack.assets.registry.state(state).map_or(
+            sunrise_client::block_contact::InsideShape::Full,
+            |def| {
+                sunrise_client::block_contact::cauldron_inside_shape(
+                    self.game.collision,
+                    state,
+                    def,
+                    at,
+                )
+            },
+        )
+    }
+    fn collided_with_fluid(&self, at: BlockPos, from: Vec3, to: Vec3) -> bool {
+        sunrise_client::entities::swept_fluid_contact(
+            &self.game.world,
+            &self.game.res.motion().fluids,
+            at,
+            self.bounds_at(from),
+            to.subtract(from),
+        )
+    }
+    fn fluid_inside(
+        &mut self,
+        at: BlockPos,
+        _: i32,
+        effects: &mut mod_api::InsideEffects,
+    ) -> Result<(), ()> {
+        sunrise_client::block_contact::queue_fluid_effects(
+            effects,
+            self.game.res.motion().fluids.fluid(self.block(at)).kind(),
+        );
+        Ok(())
     }
     fn entity_inside(
         &mut self,
@@ -658,6 +684,12 @@ impl sunrise_client::block_contact::InsideWalk for ItemInside<'_, '_> {
         let id = self.item.id;
         self.game
             .fire_batch_inside(id as i32, "minecraft:item", state, at, precise, effects);
+        let block = &*self.game.res.facts().get(state).name;
+        sunrise_client::block_contact::queue_block_effects(effects, block, state, at);
+        if block == "minecraft:cactus" {
+            self.game
+                .hurt_lent_item_entity(self.item, 1.0, "minecraft:cactus", None, None, None);
+        }
         Ok(())
     }
 }
@@ -718,6 +750,10 @@ impl sunrise_client::block_contact::InsideWalk for ProjectileInside<'_, '_> {
 pub(in crate::game) type InsideSources<'a> =
     Option<&'a dyn Fn(u32) -> Option<(crate::game::commands::Target, [f64; 3])>>;
 
+fn item_can_burn(game: &Game<'_>, item: &ItemEntity) -> bool {
+    game.stack_can_be_hurt_by(&item.stack, "minecraft:in_fire") != Some(false)
+}
+
 /// Engine backing for [`mod_api::InsideEntityView`] while flushing an item's
 /// `InsideEffects` collector.
 struct ItemInsideAccess<'a, 'g> {
@@ -760,11 +796,7 @@ impl mod_api::InsideEntityAccess for ItemInsideAccess<'_, '_> {
     }
 
     fn is_on_fire(&self) -> bool {
-        self.item.fire_ticks > 0
-            && self
-                .game
-                .stack_can_be_hurt_by(&self.item.stack, "minecraft:in_fire")
-                != Some(false)
+        self.item.fire_ticks > 0 && item_can_burn(self.game, self.item)
     }
 
     fn fall_distance(&self) -> f64 {
@@ -874,17 +906,78 @@ impl mod_api::InsideEntityAccess for ItemInsideAccess<'_, '_> {
                 self.item.fire_ticks = self.item.fire_ticks.min(0);
             }
             mod_api::InsideEffect::FireIgnite => {
-                if self.item.fire_ticks < 0 {
-                    self.item.fire_ticks += 1;
-                }
-                if self.item.fire_ticks >= 0 {
-                    self.item.fire_ticks = self.item.fire_ticks.max(160);
+                if item_can_burn(self.game, self.item) {
+                    if self.item.fire_ticks < 0 {
+                        self.item.fire_ticks += 1;
+                    }
+                    if self.item.fire_ticks >= 0 {
+                        self.item.fire_ticks = self.item.fire_ticks.max(160);
+                    }
                 }
             }
             mod_api::InsideEffect::LavaIgnite => {
-                self.item.fire_ticks = self.item.fire_ticks.max(300);
+                if item_can_burn(self.game, self.item) {
+                    self.item.fire_ticks = self.item.fire_ticks.max(300);
+                }
             }
             mod_api::InsideEffect::Freeze | mod_api::InsideEffect::ClearFreeze => {}
+        }
+    }
+
+    fn apply_builtin(&mut self, action: mod_api::__private::BuiltinInsideAction) {
+        use mod_api::__private::BuiltinInsideAction as Action;
+        match action {
+            Action::PowderSnowMelt(pos) => {
+                if self.is_on_fire()
+                    && self.game.can_entity_grief(Some(self.item.id))
+                    && let Some(level) = self.game.level(self.game.dim.id())
+                {
+                    self.game
+                        .level_destroy_block(level, pos, false, None, false);
+                }
+            }
+            Action::LayeredCauldronExtinguish {
+                pos: [x, y, z],
+                state,
+            } => {
+                if self.is_on_fire() {
+                    self.game.cauldron_extinguish_at(
+                        BlockPos::new(x, y, z),
+                        sunrise_world::registry::BlockStateId(state),
+                    );
+                }
+            }
+            Action::FireHurt(damage) => {
+                self.game.hurt_lent_item_entity(
+                    self.item,
+                    damage,
+                    "minecraft:in_fire",
+                    None,
+                    None,
+                    None,
+                );
+            }
+            Action::LavaHurt => {
+                if item_can_burn(self.game, self.item)
+                    && self.game.hurt_lent_item_entity(
+                        self.item,
+                        4.0,
+                        "minecraft:lava",
+                        None,
+                        None,
+                        None,
+                    )
+                    && (self.item.health <= 0 || self.item.ticks.is_multiple_of(10))
+                {
+                    let pitch = 2.0 + self.item.random.next_float() * 0.4;
+                    self.game.audio.play(
+                        "minecraft:entity.generic.burn",
+                        Some(self.item.position.components()),
+                        0.4,
+                        pitch,
+                    );
+                }
+            }
         }
     }
 }
@@ -1310,26 +1403,16 @@ impl Game<'_> {
 /// fluids again. Returns false when the item should be removed. A server's tick
 /// runs the halves itself, with the landing's `Block.fallOn` between them.
 impl Game<'_> {
-    /// Tick an item owned by the caller. The two results are ordinary survival
-    /// and explicit consumption by a block-contact handler. `escape_speed`:
-    /// the item is inside a block and moves without physics this tick, pushed
-    /// out at this speed.
-    /// The item's `Entity.checkInsideBlocks`, run at its batch with the part's
-    /// contact fired mid-walk: the shared sweep over the item's move, the staged
-    /// fire over a lent level (as `item_fall_on` lends one), and the flush of
-    /// the queued writes into this item, its own tick. Nothing runs without a
-    /// listening part: one `any_inside` test is the whole cost.
+    /// The one `Entity.checkInsideBlocks` pass after an item's `stepOn`, followed by
+    /// the ordered callback/vanilla effect flush and the extinguish transition.
     pub(in crate::game) fn sweep_item_inside(
         &mut self,
         item: &mut ItemEntity,
         sources: InsideSources<'_>,
     ) {
-        if !sunrise_client::block_contact::HOOKS
-            .get()
-            .is_some_and(|hooks| (hooks.any_inside)())
-        {
-            return;
-        }
+        use mod_api::InsideEntityAccess as _;
+        let fire_before = item.fire_ticks;
+        let burning_before = fire_before > 0 && item_can_burn(self, item);
         let mut effects = mod_api::InsideEffects::default();
         let mut inside = ItemInside { game: self, item };
         let movement = sunrise_world::entity_move::MovementRecord {
@@ -1353,6 +1436,28 @@ impl Game<'_> {
             sources,
         };
         effects.apply_and_clear(&mut access);
+        let at = access.item.position;
+        if access
+            .game
+            .rain_falls_on(at, access.item.bounds().max_position().y)
+        {
+            access.item.fire_ticks = access.item.fire_ticks.min(0);
+        }
+        if !access.is_on_fire() {
+            if burning_before {
+                let pitch =
+                    1.6 + (access.item.random.next_float() - access.item.random.next_float()) * 0.4;
+                access.game.audio.play(
+                    "minecraft:entity.generic.extinguish_fire",
+                    Some(at.components()),
+                    0.7,
+                    pitch,
+                );
+            }
+            if access.item.fire_ticks <= fire_before {
+                access.item.fire_ticks = 0;
+            }
+        }
     }
 
     fn apply_item_write(&mut self, item: &mut ItemEntity, write: mod_api::EntityWrite) {
@@ -1588,6 +1693,9 @@ impl Game<'_> {
         step_on(StepLevel::Server(&mut level), step, velocity)
     }
 
+    /// Tick a caller-owned item, returning survival and explicit consumption
+    /// by damage or a block-contact handler. `escape_speed` places the item in
+    /// no-physics movement while it is pushed out of a solid.
     pub(super) fn tick_item_with_block_contacts(
         &mut self,
         item: &mut ItemEntity,
@@ -1604,7 +1712,20 @@ impl Game<'_> {
         let heights =
             item.push_by_fluid(&self.world, &self.res.motion().fluids, &self.loop_context);
         item.water_entry(heights.0 > 0.0, item.ticks == 0, before, splash);
-        item.lava_fall(heights.1 > 0.0);
+        let in_lava = item.ticks > 0 && heights.1 > 0.0;
+        item.lava_fall(in_lava);
+        if client || item.fire_ticks > 0 && !item_can_burn(self, item) {
+            item.fire_ticks = item.fire_ticks.min(0);
+        } else if item.fire_ticks > 0 {
+            if item.fire_ticks % 20 == 0 && !in_lava {
+                self.hurt_lent_item_entity(item, 1.0, "minecraft:on_fire", None, None, None);
+            }
+            item.fire_ticks -= 1;
+            if item.health <= 0 {
+                item.previous = item.position;
+                return (false, true);
+            }
+        }
         let mut step = item.tick_move_before_block_effects(
             &self.world,
             self.res.facts(),
