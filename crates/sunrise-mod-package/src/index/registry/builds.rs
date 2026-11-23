@@ -60,6 +60,18 @@ pub struct Checks<'a> {
     pub source: fn(&native::Bundle) -> Result<(), String>,
 }
 
+/// A hash-named input for the offline check. The descriptor has no declared size.
+#[derive(Serialize)]
+pub struct AssetRequest<'a> {
+    pub id: &'a str,
+    pub version: &'a str,
+    pub sunrise: &'a str,
+    pub url: String,
+    pub name: String,
+    pub sha256: String,
+    pub size: Option<u64>,
+}
+
 pub fn descriptor_name(id: &str, version: &str, release: &str) -> String {
     format!("{id}-{version}+{release}.binaries.json")
 }
@@ -73,6 +85,7 @@ struct Submission<'a> {
     version: &'a EntryVersion,
     row: &'a BuildRow,
     key: &'a str,
+    parent: &'a str,
     name: String,
 }
 
@@ -131,6 +144,7 @@ fn submissions<'a>(
                 version,
                 row,
                 key,
+                parent: &row.binaries[..row.binaries.len() - asset.len() - 1],
                 name,
             })
         })
@@ -187,6 +201,51 @@ impl Submission<'_> {
         }
         Ok(descriptor)
     }
+}
+
+/// The first pass lists descriptors; the second lists archives only after binding their
+/// names and hashes to each author's verified descriptor. Workflows perform the downloads.
+pub fn assets<'a>(
+    entries: &'a [Entry],
+    files: Option<&Path>,
+    revoked: &[Revoked],
+) -> Result<Vec<AssetRequest<'a>>, String> {
+    let mut requests = Vec::new();
+    for entry in entries {
+        for version in &entry.versions {
+            for submission in submissions(entry, version)
+                .map_err(|e| format!("{} {}: {e}", entry.id, version.version))?
+            {
+                if let Some(files) = files {
+                    for archive in submission.descriptor(files)?.archives {
+                        if revoked.iter().any(|r| r.covers(&entry.id, &archive.sha256)) {
+                            continue;
+                        }
+                        requests.push(AssetRequest {
+                            id: &entry.id,
+                            version: &version.version,
+                            sunrise: &submission.row.sunrise,
+                            url: format!("{}/{}", submission.parent, archive.name),
+                            name: archive.name,
+                            sha256: archive.sha256,
+                            size: Some(archive.size),
+                        });
+                    }
+                } else {
+                    requests.push(AssetRequest {
+                        id: &entry.id,
+                        version: &version.version,
+                        sunrise: &submission.row.sunrise,
+                        url: submission.row.binaries.clone(),
+                        name: submission.name,
+                        sha256: submission.row.sha256.clone(),
+                        size: None,
+                    });
+                }
+            }
+        }
+    }
+    Ok(requests)
 }
 
 pub fn sdk_index(data: &Path, commit: &str) -> Result<sdk::Index, String> {

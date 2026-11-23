@@ -432,22 +432,6 @@ fn new_native(
         (MANIFEST, manifest.as_str()),
         (".gitignore", include_str!("../template/gitignore")),
         ("README.md", include_str!("../template/native/README.md")),
-        (
-            ".github/workflows/release.yml",
-            include_str!("../template/native/release.yml"),
-        ),
-        (
-            ".github/workflows/rebuild.yml",
-            include_str!("../template/native/rebuild.yml"),
-        ),
-        (
-            ".github/workflows/sunrise-release-jobs.yml",
-            include_str!("../template/native/sunrise-release-jobs.yml"),
-        ),
-        (
-            ".github/actions/sunrise-release-tool/action.yml",
-            include_str!("../template/native/release-tool.yml"),
-        ),
     ];
     for (file, text) in files {
         let to = dir.join(file);
@@ -1139,22 +1123,14 @@ mod tests {
             commit.into(),
         ];
         assert_eq!(new(&args, &offline).unwrap(), Some(path.clone()));
-        for file in [
-            "README.md",
-            ".github/workflows/release.yml",
-            ".github/workflows/rebuild.yml",
-            ".github/workflows/sunrise-release-jobs.yml",
-            ".github/actions/sunrise-release-tool/action.yml",
-        ] {
-            assert!(path.join(file).is_file(), "template missing {file}");
-        }
-        let github_files: Vec<_> = std::fs::read_dir(path.join(".github"))
-            .unwrap()
-            .map(|entry| entry.unwrap().file_name())
-            .collect();
-        assert_eq!(github_files.len(), 2);
-        assert!(github_files.contains(&"actions".into()));
-        assert!(github_files.contains(&"workflows".into()));
+        assert!(
+            path.join("README.md").is_file(),
+            "template missing README.md"
+        );
+        assert!(
+            !path.join(".github").exists(),
+            "the template writes no release workflow"
+        );
         // The template writes none of the fields the tool derives.
         let text = std::fs::read_to_string(path.join(MANIFEST)).unwrap();
         for key in ["api", "capabilities", "mixins"] {

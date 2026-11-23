@@ -277,8 +277,16 @@ The old index is built from `mods/<id>.toml` files in the registry repository. A
   Collections and `mod` or `native-mod` entries in the `library` category do not need screenshots.
 
 The generated index supplies HTTPS URLs for images. Unknown entry keys are refused. A project’s kind cannot change.
-If you set a minisign key, sign every version with it. The registry takes no new entry that follows a repository's
-releases (`repo = ...`): every version is listed as its own file.
+If you set a minisign key, sign every version with it. The registry takes no
+new entry that follows a repository's releases (`repo = ...`): every version is listed as its own file.
+
+### Adding a signing key to an unsigned entry
+
+`publish --registry` refuses to add a `key` to an existing unsigned entry that still has unsigned version rows.
+To switch an unsigned listing to signed releases, prepare the signed release without `--registry`, keep the existing
+project entry, edit its `key`, remove its unsigned legacy version rows, and add the new signed row in your registry
+checkout. Only unsigned legacy rows without `sunrise` can be removed without a takedown (review notes each removed
+row while the project entry stays).
 
 ### The entry
 
