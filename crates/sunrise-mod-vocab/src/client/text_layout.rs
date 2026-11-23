@@ -27,6 +27,17 @@ pub struct TextLayoutSpec {
     pub scale: f32,
 }
 
+impl TextLayoutSpec {
+    /// Wrap at `max_width`, place lines by `align`, and draw at `scale`.
+    pub fn new(max_width: f32, align: TextAlign, scale: f32) -> Self {
+        Self {
+            max_width,
+            align,
+            scale,
+        }
+    }
+}
+
 /// A line lent to a visitor in top-to-bottom order.
 // no wire: borrowed component.
 #[derive(Clone, Copy, Debug)]

@@ -18,6 +18,13 @@ pub struct GuiSpriteRegion {
     pub offset: [i32; 2],
 }
 
+impl GuiSpriteRegion {
+    /// The region at `offset` of a sprite whose whole size is `size`.
+    pub fn new(size: [i32; 2], offset: [i32; 2]) -> Self {
+        Self { size, offset }
+    }
+}
+
 /// A source rectangle for `blit`, in the texture's logical pixel units.
 // no wire: arguments to an in-process GUI draw
 // exhaustive: plain texture source rectangle coordinates built by struct literal
@@ -29,6 +36,13 @@ pub struct GuiBlitRegion {
     pub src: [i32; 2],
     /// Nonzero divisors for the two source axes, normally the whole texture's pixel size.
     pub tex: [i32; 2],
+}
+
+impl GuiBlitRegion {
+    /// The source rectangle at `uv` with extents `src`, in a texture divided by `tex`.
+    pub fn new(uv: [f32; 2], src: [i32; 2], tex: [i32; 2]) -> Self {
+        Self { uv, src, tex }
+    }
 }
 
 /// A refusal from a GUI call or its callback. A refused primitive adds no output; returning the
