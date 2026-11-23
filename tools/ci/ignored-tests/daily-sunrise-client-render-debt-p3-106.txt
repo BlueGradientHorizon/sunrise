@@ -1,1 +1,2 @@
 sunrise-client-render crash::tests::a_panicking_crash_section_disables_only_itself lib daily child-process
+sunrise-client-render crash::tests::the_installed_hook_attributes_a_retained_crash_callbacks_panic lib daily child-process

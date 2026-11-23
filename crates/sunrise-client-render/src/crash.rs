@@ -789,16 +789,18 @@ pub fn install(
     spawn_mod_details_publisher();
     let default = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        // A hook dispatch or retained owner reports its panic and returns control to the caller.
-        // Do not emit a fatal crash report or terminate a worker before that scope unwinds.
-        if mod_api::__private::hook_dispatch_depth() > CONTAIN_HOOK_DEPTH.with(std::cell::Cell::get)
-        {
+        // A retained callback's panic is recorded for its boundary (its location and the
+        // attributed operation) before nested fatal handling is suppressed; the dispatch inside
+        // it must not return first.
+        if mod_api::__private::game::retained_callback_active() {
+            contained_panic(info);
             return;
         }
-        // A retained callback's panic is recorded for its boundary (location and the
-        // attributed operation) before nested fatal handling is suppressed.
-        let recorded = contained_panic(info);
-        if recorded || mod_api::__private::game::retained_callback_active() {
+        // A hook dispatch reports its panic and returns control to the caller.
+        // Do not emit a fatal crash report or terminate a worker before that scope unwinds.
+        if mod_api::__private::hook_dispatch_depth() > CONTAIN_HOOK_DEPTH.with(std::cell::Cell::get)
+            || contained_panic(info)
+        {
             return;
         }
         default(info);
@@ -1864,6 +1866,67 @@ pub(crate) mod tests {
                 );
             },
         );
+    }
+
+    /// The installed production hook, not a fixture, records a retained crash callback's panic with
+    /// its location and attribution: the report entry names where it panicked and the mod and
+    /// operation, and nothing is written as a crash. A fresh process holds the process-wide hook.
+    #[test]
+    #[ignore = "daily"]
+    fn the_installed_hook_attributes_a_retained_crash_callbacks_panic() {
+        use std::sync::Arc;
+        const CHILD: &str = "SUNRISE_INSTALLED_CRASH_HOOK_CHILD";
+        const NAME: &str =
+            "crash::tests::the_installed_hook_attributes_a_retained_crash_callbacks_panic";
+        if std::env::var_os(CHILD).is_none() {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--ignored", "--exact", NAME])
+                .env(CHILD, "1")
+                .output()
+                .unwrap();
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(
+                output.status.success() && stdout.contains("test result: ok. 1 passed;"),
+                "{stdout}{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            return;
+        }
+        let home = tempfile::tempdir().unwrap();
+        install(home.path().to_path_buf(), "client", || None);
+        with_crash_lines(
+            vec![(
+                Some("broken".into()),
+                Arc::new(Line(|| -> Option<String> {
+                    panic!("a retained callback failed")
+                })),
+            )],
+            || {
+                publish_mod_details();
+                let details = mod_lines(false);
+                let [(name, entry)] = details.as_slice() else {
+                    panic!("unexpected crash details: {details:?}");
+                };
+                assert_eq!(name, "diagnostics: broken");
+                assert!(entry.starts_with("~~ERROR~~ "), "{entry}");
+                // The panic's own location, then the mod and the operation it ran in.
+                assert!(entry.contains("a retained callback failed"), "{entry}");
+                assert!(entry.contains("crash.rs:"), "{entry}");
+                assert!(
+                    entry.contains("in native mod diagnostics, hook crash_section"),
+                    "{entry}"
+                );
+                assert_eq!(
+                    mod_api::__private::take_hook_panics(),
+                    [mod_api::__private::HookPanicReport {
+                        mod_id: "diagnostics",
+                        hook: "crash_section",
+                    }]
+                );
+            },
+        );
+        // No fatal report was written for a contained callback.
+        assert!(std::fs::read_dir(home.path().join("crash-reports")).is_err());
     }
 
     #[test]
