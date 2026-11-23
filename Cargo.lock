@@ -4972,6 +4972,7 @@ dependencies = [
 name = "sunrise-modding-examples"
 version = "0.0.0"
 dependencies = [
+ "log",
  "sunrise-mod-api",
 ]
 

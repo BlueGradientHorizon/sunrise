@@ -96,7 +96,7 @@ materializes its unsigned engine stack does a negative count become zero, retain
 position; subsequent modifiers still observe the original signed count.
 
 `context.snapshot()` reads the current facts and the set-once queried root table id. Missing facts
-stay missing. Its legacy `seed` field is zero: obtaining a snapshot does not draw a new seed.
+stay missing. Its `seed` field is zero: obtaining a snapshot draws no random value.
 `context.random()` borrows the actual selected roll source through `RandomSource`, the existing
 shared draw capability; do not create a separate seeded generator. `context.roll_raw(&table_id)`
 rolls into an appendable list using the same parameters, selected random, visited-table guards and
