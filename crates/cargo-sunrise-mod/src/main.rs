@@ -6,6 +6,7 @@
 //!   SDK unless `--sunrise` names another build (a release tag such as `nightly-<date>` or `26.3-0.1.0`, or a sha), with that SDK fetched
 //!   into `.sunrise/sdk/` (`sdk_fetch.rs`).
 //! - `pin [<build>]`: repin a native mod and diff/refresh declared internals.
+//! - `self-update`: install the newest signed standalone tool without changing any project's SDK pin.
 //! - `internals sync [--repo <path>]`: sync declarations for native mods.
 //! - `internals add <path>… [--kind <kind>]`: declare internals from the prebuilt catalog.
 //! - `build [--update-lock]`: the `.smod` in `target/sunrise-mod/`, with the mod's `assets/`
@@ -42,6 +43,7 @@ mod page;
 mod registry_source;
 mod sdk_cmds;
 mod sdk_fetch;
+mod self_update;
 mod uses_table;
 
 use options::Options;
@@ -88,7 +90,12 @@ fn main() -> ExitCode {
         print!("{text}");
         return ExitCode::SUCCESS;
     }
-    let result = match args.first().map(String::as_str) {
+    let command = args.first().map(String::as_str);
+    // `hooks` reads the pinned SDK's catalog and stays offline.
+    if command.is_some_and(|c| help::is_everyday(c) && c != "hooks") {
+        self_update::notice();
+    }
+    let result = match command {
         Some("new") => new(&args[1..], &sdk_fetch::fetch_pinned).and_then(|code| match code {
             Some(dir) => fetched(&dir),
             None => Ok(()),
@@ -114,6 +121,7 @@ fn main() -> ExitCode {
         Some("hooks") => sdk_cmds::hooks(&args[1..]),
         Some("sdk") => sdk_cmds::sdk(&args[1..]),
         Some("use-jar") => jar::run(&args[1..]),
+        Some("self-update") => self_update::run(&args[1..]),
         Some("native-build") => return native_build::run(&args[1..]),
         Some("native-check") => return native_build::check(&args[1..]),
         Some("native-discover") => return native_build::discover(&args[1..]),

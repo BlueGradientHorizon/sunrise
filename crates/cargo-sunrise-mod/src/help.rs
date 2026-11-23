@@ -71,6 +71,12 @@ const COMMANDS: &[Command] = &[
         summary: "Lists an exact original Java jar as a passive asset and data source and caches it for runs.",
     },
     Command {
+        name: "self-update",
+        everyday: false,
+        usage: "self-update",
+        summary: "Updates the standalone tool to the newest signed mod-tool release. Does not change any mod's pinned SDK.",
+    },
+    Command {
         name: "native-build",
         everyday: false,
         usage: "native-build < plan.json",
@@ -101,6 +107,11 @@ const COMMANDS: &[Command] = &[
         summary: "Checks a local prebuilt game and lays it out as an SDK's slices.",
     },
 ];
+
+/// Whether this command belongs to the everyday list and can show the update notice.
+pub fn is_everyday(name: &str) -> bool {
+    COMMANDS.iter().any(|c| c.name == name && c.everyday)
+}
 
 /// The short list `cargo sunrise-mod --help` prints.
 pub fn short() -> String {
