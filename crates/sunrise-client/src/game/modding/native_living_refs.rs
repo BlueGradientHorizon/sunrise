@@ -71,6 +71,17 @@ pub(super) fn with_equipment_view<R>(
 ) -> R {
     use sunrise_core::nbt::{JavaString, Tag};
     let read_override = |id: &str| {
+        // The dye is read on the render path: its typed field and removal marker answer
+        // directly, without encoding a patch compound to read one integer back.
+        match id {
+            "minecraft:dyed_color" => {
+                return stack.base().extra.as_ref()?.dyed_color.map(Tag::Int);
+            }
+            "!minecraft:dyed_color" => {
+                return stack.base().extra.as_ref()?.other(id).cloned();
+            }
+            _ => {}
+        }
         let bare = id.strip_prefix('!').unwrap_or(id);
         let Tag::Compound(mut patch) = stack.extra_components_matching(|name| name == bare)? else {
             return None;
@@ -1304,6 +1315,44 @@ pub(in crate::game) mod tests {
     use super::super::api_values::TryIntoApi;
     use super::*;
     use sunrise_core::geometry::Vec3;
+
+    /// A worn item's dye answers from its typed field, its removal marker and absence, and
+    /// every other component still reads through the patch.
+    #[test]
+    fn a_worn_items_dye_override_reads_without_a_patch_projection() {
+        use mod_api::{Tag, prelude::ItemsHost};
+        use std::num::NonZeroU32;
+
+        let mut host = mod_api::testing::FakeHost::new();
+        let id = mod_api::Identifier::parse("armor_test:chest").unwrap();
+        host.registries.resolve_items([id.clone()]).unwrap();
+        let item = host.item_key(&id).unwrap();
+        let metadata = (item, NonZeroU32::MIN, None);
+        let probe = |stack: &ItemStack, ids: &[&str]| {
+            with_equipment_view(&EquipmentRead::resident(stack), metadata, |_, read| {
+                ids.iter().map(|id| read(id)).collect::<Vec<_>>()
+            })
+        };
+        let dyed_id = ["minecraft:dyed_color", "!minecraft:dyed_color"];
+        let mut stack = ItemStack::new("minecraft:leather_chestplate", 1);
+        assert_eq!(probe(&stack, &dyed_id), [None, None], "absence");
+        stack.data_mut().dyed_color = Some(0x12_34_56);
+        assert_eq!(
+            probe(&stack, &dyed_id),
+            [Some(Tag::Int(0x12_34_56)), None],
+            "the typed field"
+        );
+        let mut removed = ItemStack::new("minecraft:leather_chestplate", 1);
+        removed.data_mut().set_other(
+            "!minecraft:dyed_color",
+            Some(Tag::Compound(Default::default())),
+        );
+        assert_eq!(
+            probe(&removed, &dyed_id),
+            [None, Some(Tag::Compound(Default::default()))],
+            "the removal marker"
+        );
+    }
 
     #[test]
     #[ignore = "daily"]
