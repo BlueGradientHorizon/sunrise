@@ -39,8 +39,9 @@ from pathlib import Path
 import struct
 
 try:
-    from . import wire_stream
+    from . import client_packet_routes, wire_stream
 except ImportError:
+    import client_packet_routes
     import wire_stream
 
 MOVES = wire_stream.MOVES
@@ -194,6 +195,19 @@ def run_number(path, client):
     return int(rest) if path.name.startswith(client + "-") and rest.isdigit() else None
 
 
+def expectation_problems(run, cut):
+    """What each played route's own `expect` (client_packet_routes.route) found missing in this run, as problems."""
+    out = []
+    for name, ticks in cut.items():
+        expect = client_packet_routes.ROUTES.get(name, {}).get("expect")
+        if expect is None:
+            continue
+        shots = {label: run / f"{name}-{label}.png" for _, label in client_packet_routes.ROUTES[name]["shots"]
+                 if (run / f"{name}-{label}.png").exists()}
+        out += [{"kind": "expectation", "route": name, "detail": detail} for detail in expect(ticks, shots)]
+    return out
+
+
 def runs_of(folder, client, indices=None):
     """Every run folder of `client` (a prefix: `vanilla`, `x-sunrise`), in number order, with what it played and the
     problems that keep it out; only the run numbers in `indices` when given."""
@@ -211,6 +225,7 @@ def runs_of(folder, client, indices=None):
             cut, entry["problems"] = cut_routes(entries, manifest["played"])
             entry.update(routes={n: features(t) for n, t in cut.items()}, ticks=cut,
                          keep_alive=keep_alive_problems(entries))
+            entry["problems"] += expectation_problems(run, cut)
             if manifest.get("diagnostic"):
                 entry["problems"].append({"kind": "diagnostic", "mouse_scale": manifest.get("mouse_scale")})
         out.append(entry)

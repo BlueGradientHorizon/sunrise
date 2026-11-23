@@ -26,8 +26,9 @@ use {
 type Pos = (i32, i32, i32);
 
 pub(super) use sunrise_gameplay::structure_blocks::{
-    TemplateEntry, create_seed, encode_template, load_settings, template_file, template_size,
+    TemplateEntry, encode_template, load_settings, template_file,
 };
+pub use sunrise_gameplay::structure_blocks::{create_seed, template_size};
 
 impl Game<'_> {
     /// `BlockEntityWithBoundingBoxRenderer`: for a player who may use game

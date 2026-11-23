@@ -1,4 +1,4 @@
-pub(super) use sunrise_gameplay::execution_role::ExecutionRole;
+pub use sunrise_gameplay::execution_role::ExecutionRole;
 
 use super::Game;
 use mod_api::HostSide;

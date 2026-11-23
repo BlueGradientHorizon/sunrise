@@ -86,6 +86,31 @@ pub fn check_game_graph_names(
     Ok(())
 }
 
+// Cargo still reads the underscore spellings before edition 2024.
+pub(super) const DEPENDENCY_KINDS: [&str; 5] = [
+    "dependencies",
+    "dev-dependencies",
+    "build-dependencies",
+    "dev_dependencies",
+    "build_dependencies",
+];
+
+pub(super) fn dependency_tables(manifest: &toml::Table) -> impl Iterator<Item = &toml::Table> {
+    std::iter::once(manifest)
+        .chain(
+            manifest
+                .get("target")
+                .and_then(toml::Value::as_table)
+                .into_iter()
+                .flat_map(|targets| targets.values().filter_map(toml::Value::as_table)),
+        )
+        .flat_map(|table| {
+            DEPENDENCY_KINDS
+                .into_iter()
+                .filter_map(|kind| table.get(kind).and_then(toml::Value::as_table))
+        })
+}
+
 /// A crate a mod's crate asks for in its `Cargo.toml`: under its own name or `package`, in any
 /// dependency table (dev and build ones too: the lock has them all).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -119,25 +144,7 @@ pub fn wanted(
                 return Err(format!("{}: [{section}] is refused", manifest.display()));
             }
         }
-        let mut tables: Vec<&toml::Value> = Vec::new();
-        // Cargo still reads the underscore spellings before edition 2024.
-        let kinds = [
-            "dependencies",
-            "dev-dependencies",
-            "build-dependencies",
-            "dev_dependencies",
-            "build_dependencies",
-        ];
-        tables.extend(kinds.iter().filter_map(|k| value.get(*k)));
-        for target in value
-            .get("target")
-            .and_then(|t| t.as_table())
-            .into_iter()
-            .flat_map(|t| t.values())
-        {
-            tables.extend(kinds.iter().filter_map(|k| target.get(*k)));
-        }
-        for (key, dep) in tables.iter().filter_map(|t| t.as_table()).flatten() {
+        for (key, dep) in dependency_tables(&value).flatten() {
             if dep.get("package").is_some_and(|package| !package.is_str()) {
                 return Err(format!(
                     "{}: dependency {key} has a non-string package name",
@@ -332,16 +339,31 @@ pub fn local_path(root: &Path, relative: &Path, path: &str) -> Result<PathBuf, S
     if path.contains('\\') {
         return Err("dependency path must use portable separators".into());
     }
-    let mut inside = relative.to_path_buf();
-    for component in Path::new(path).components() {
+    let mut inside = PathBuf::new();
+    for component in relative.components().chain(Path::new(path).components()) {
         match component {
-            Component::Normal(part) => inside.push(part),
+            Component::Normal(part) => {
+                // A Windows drive prefix can parse as Normal in the middle of a path,
+                // then replace the path so far when pushed on its own. Reject it on every host.
+                if matches!(part.as_encoded_bytes(), [drive, b':', ..] if drive.is_ascii_alphabetic())
+                    || matches!(
+                        Path::new(part).components().next(),
+                        Some(Component::Prefix(_) | Component::RootDir)
+                    )
+                {
+                    return Err("path outside the mod is refused".into());
+                }
+                inside.push(part);
+            }
             Component::CurDir => {}
             Component::ParentDir if inside.pop() => {}
             _ => return Err("path outside the mod is refused".into()),
         }
     }
-    let mut checked = root.to_path_buf();
+    let mut checked = fs::canonicalize(root).map_err(|e| e.to_string())?;
+    if !checked.join(&inside).starts_with(&checked) {
+        return Err("path outside the mod is refused".into());
+    }
     for part in inside.components() {
         checked.push(part);
         let meta = fs::symlink_metadata(&checked).map_err(|e| e.to_string())?;

@@ -1,4 +1,3 @@
-// game-module-visibility: pub
 //! Mod block entities drawn on the client: `native_block_entity_submit`
 //! (vanilla's `BlockEntityRenderer.submit`) gets a [`BlockEntityDraw`], whose
 //! pose stack (`PoseStack`) places what the helpers here add to the entity
@@ -16,17 +15,20 @@ use sunrise_assets::{
     model::{Direction, Material},
 };
 use sunrise_client::{
-    block_entity_render::{TEXT_OVER_OUTLINE, diffuse, diffuse_lights, vertex_light},
+    block_entity_render::{diffuse, diffuse_lights, vertex_light},
     containers::{BlockEntity, ModRevision},
     fast_hash::FxHashMap,
     gfx::Cull,
     hud::Rect,
     items::ItemStack,
     mesher::Vertex,
-    mobs::model_layers,
+    mobs::{ModelNormals, model_layers},
     text::Text,
 };
 use sunrise_world::registry::BlockStateId;
+
+// The native block-entity draw helper submits the outline and fill as one material.
+const TEXT_OVER_OUTLINE: f32 = 0.05;
 
 /// Atlas-resolved standalone geometry, indexed by model slot and resource generation.
 pub(super) struct StandaloneGeometry {
@@ -291,6 +293,23 @@ fn in_frustum(frustum: Option<&impl Cull>, origin: Vec3, bounds: [f32; 6]) -> bo
     frustum.is_none_or(|f| f.intersects(min, max))
 }
 
+/// Whether a mod block entity with `bounds` is visible in the eye pass: global renderers
+/// (infinite bounds or `shouldRenderOffScreen`) bypass the eye-section filter, while ordinary
+/// renderers follow the same eye-visible section check as built-in block entities.
+fn mod_block_entity_visible(
+    frustum: Option<&impl Cull>,
+    origin: Vec3,
+    bounds: [f32; 6],
+    eye_visible: bool,
+    off_screen: bool,
+) -> bool {
+    let is_global = off_screen || bounds.iter().any(|b| !b.is_finite());
+    if !is_global && !eye_visible {
+        return false;
+    }
+    in_frustum(frustum, origin, bounds)
+}
+
 /// One mod block entity's frame, as `submit` gets it: the render state's
 /// partial tick, game time and light, and the pose stack the helpers draw
 /// under (`native_draw_quad`, `native_draw_cube`, `native_draw_block`).
@@ -310,10 +329,12 @@ pub struct BlockEntityDraw {
     /// The block drawn, for `native_draw_item`'s owner.
     block: [i32; 3],
     pose: Mat4,
+    /// First-person arm normals follow the listener's pose operations separately.
+    normal_pose: Option<ModelNormals>,
     /// World entity draws track the local translation separately from their camera-relative
     /// render pose. The affine pose's basis is the same in both spaces.
     local_light_translation: Option<DVec3>,
-    parent_poses: Vec<(Mat4, Option<DVec3>)>,
+    parent_poses: Vec<(Mat4, Option<ModelNormals>, Option<DVec3>)>,
     lights: (Vec3, Vec3),
     vertices: Vec<Vertex>,
     kept: bool,
@@ -551,6 +572,7 @@ impl BlockEntityDraw {
             light,
             block,
             pose,
+            normal_pose: None,
             local_light_translation: None,
             parent_poses: Vec::new(),
             lights,
@@ -691,15 +713,22 @@ impl BlockEntityDraw {
         self.local_light_translation = Some(DVec3::ZERO);
     }
 
+    /// Track normals from the rigid first-person view transform through listener draws.
+    pub(super) fn track_normal_pose(mut self) -> Self {
+        self.normal_pose = Some(ModelNormals::from_rotation(self.pose));
+        self
+    }
+
     /// `PoseStack.pushPose`: `pop` comes back to the pose as it is now.
     fn push(&mut self) {
         self.parent_poses
-            .push((self.pose, self.local_light_translation));
+            .push((self.pose, self.normal_pose, self.local_light_translation));
     }
     /// `PoseStack.popPose`; the block's own pose is never popped.
     fn pop(&mut self) {
-        if let Some((pose, light_translation)) = self.parent_poses.pop() {
+        if let Some((pose, normals, light_translation)) = self.parent_poses.pop() {
             self.pose = pose;
+            self.normal_pose = normals;
             self.local_light_translation = light_translation;
         }
     }
@@ -713,15 +742,19 @@ impl BlockEntityDraw {
     fn rotate_about(&mut self, axis: [f32; 3], degrees: f32, pivot: [f32; 3]) {
         let axis = Vec3::from_array(axis).normalize_or(Vec3::Y);
         let pivot = Vec3::from_array(pivot);
-        self.apply(
-            Mat4::from_translation(pivot)
-                * Mat4::from_quat(Quat::from_axis_angle(axis, degrees.to_radians()))
-                * Mat4::from_translation(-pivot),
-        );
+        let rotation = Mat4::from_quat(Quat::from_axis_angle(axis, degrees.to_radians()));
+        self.apply(Mat4::from_translation(pivot) * rotation * Mat4::from_translation(-pivot));
+        if let Some(normal) = &mut self.normal_pose {
+            normal.rotate(glam::Mat3::from_mat4(rotation));
+        }
     }
     /// Scales what is drawn next by `by` about the pose's origin.
     fn scale(&mut self, by: [f32; 3]) {
-        self.apply(Mat4::from_scale(Vec3::from_array(by)));
+        let scale = Vec3::from_array(by);
+        self.apply(Mat4::from_scale(scale));
+        if let Some(normal) = &mut self.normal_pose {
+            normal.scale(scale);
+        }
     }
     /// Keeps what this call drew: the block is drawn the same again, with
     /// neither `native_block_entity_submit` nor
@@ -815,6 +848,9 @@ impl BlockEntityDraw {
     }
     pub(super) fn pose(&self) -> Mat4 {
         self.pose
+    }
+    pub(super) fn normal_pose(&self) -> Option<ModelNormals> {
+        self.normal_pose
     }
     pub(super) fn vertices_mut(&mut self) -> &mut Vec<Vertex> {
         &mut self.vertices
@@ -1152,15 +1188,14 @@ impl Game<'_> {
             })
         })
     }
-    /// `native_block_entity_submit` for each of `blocks` (in drawn sections,
-    /// drawn by no vanilla renderer) whose block entity is a mod's, closer than
-    /// `BlockEntityRenderer.getViewDistance` to the camera (`shouldRender`)
-    /// and with its bounds (`native_block_entity_render_bounding_box`) in the
-    /// frustum. Entity occlusion culling is for ordinary entities; block
-    /// entities use these renderer-provided bounds instead.
+    /// `native_block_entity_submit` for each of `blocks` (paired with whether its section is
+    /// eye-visible, drawn by no vanilla renderer) whose block entity is a mod's, closer than
+    /// `BlockEntityRenderer.getViewDistance` to the camera (`shouldRender`) and with its bounds
+    /// (`native_block_entity_render_bounding_box`) in the frustum. Ordinary (non-global)
+    /// renderers require an eye-visible section, matching built-in block entities.
     pub(super) fn mod_block_entity_geometry<'a>(
         &self,
-        blocks: impl Iterator<Item = &'a ([i32; 3], u32)>,
+        blocks: impl Iterator<Item = (&'a ([i32; 3], u32), bool)>,
         camera: DVec3,
         partial: f32,
         out: &mut Vec<Vertex>,
@@ -1172,6 +1207,7 @@ impl Game<'_> {
             light: 0,
             block: [0; 3],
             pose: Mat4::IDENTITY,
+            normal_pose: None,
             local_light_translation: None,
             parent_poses: Vec::new(),
             lights: diffuse_lights(self.nether_lighting()),
@@ -1195,7 +1231,7 @@ impl Game<'_> {
         kept.sweep(now);
         let distances = self.view_distances();
         let light_at = |b: [i32; 3]| self.world.light(b[0], b[1], b[2]);
-        for &(pos, state) in blocks {
+        for (&(pos, state), eye_visible) in blocks {
             let corner = DVec3::new(f64::from(pos[0]), f64::from(pos[1]), f64::from(pos[2]));
             // Vec3.closerThan: strictly closer.
             let distance = distances.of(state);
@@ -1239,7 +1275,13 @@ impl Game<'_> {
                     bounds
                 },
                 |bounds, start| {
-                    if !in_frustum(self.view_frustum.as_ref(), origin, bounds) {
+                    if !mod_block_entity_visible(
+                        self.view_frustum.as_ref(),
+                        origin,
+                        bounds,
+                        eye_visible,
+                        self.block_entity_reach(state).off_screen(),
+                    ) {
                         return false;
                     }
                     self.mark_block_entity(start, state);
@@ -1454,8 +1496,6 @@ impl Game<'_> {
         let light = if glowing { 240 | 240 << 8 } else { draw.light };
         let pose = draw.pose();
         for (i, quad) in batch.vertices.as_chunks::<6>().0.iter().enumerate() {
-            // The text sits a hair in front of its outline, as a sign's does
-            // (`TEXT_OVER_OUTLINE`): one mesh, so no polygon offset.
             let lift = if outline.is_some() && i * 6 >= front {
                 TEXT_OVER_OUTLINE
             } else {
@@ -1826,6 +1866,7 @@ mod tests {
             light: 0xF0F0,
             block: [0; 3],
             pose: Mat4::from_translation(Vec3::new(10.0, 0.0, 0.0)),
+            normal_pose: None,
             local_light_translation: None,
             parent_poses: Vec::new(),
             lights: diffuse_lights(false),
@@ -2377,13 +2418,7 @@ mod tests {
         super::super::native_entity_refs::tests::with_client_game(|game| {
             let id = Identifier::parse("minecraft:block/grass_block").unwrap();
             let model = game.render_assets().model(&id).unwrap();
-            for phase in [
-                mod_api::__private::ModPhase::Setup,
-                mod_api::__private::ModPhase::Reloading,
-            ] {
-                let _scope = mod_api::__private::PhaseOwner::scope(phase);
-                assert_eq!(game.render_assets().model(&id), Ok(model));
-            }
+            assert_eq!(game.render_assets().model(&id), Ok(model));
             assert_eq!(
                 game.render_assets()
                     .model(&Identifier::parse("mymod:block/absent").unwrap()),
@@ -2913,10 +2948,15 @@ mod tests {
                 game,
                 surface: &mut surface,
             };
-            assert_eq!(drawn.text_width(&mod_api::Text::literal("A")), Ok(6.0));
-            assert_eq!(drawn.text_width(&plain), Ok(12.0));
+            assert_eq!(drawn.text_width(&mod_api::Text::literal("A")), 6.0);
+            assert_eq!(drawn.text_width(&plain), 12.0);
             // Font.width: bold adds a pixel a glyph.
-            assert_eq!(drawn.text_width(&bold), Ok(7.0));
+            assert_eq!(drawn.text_width(&bold), 7.0);
+            let mut deep = mod_api::Text::literal("A");
+            for _ in 0..mod_api::text::MAX_TEXT_DEPTH {
+                deep = mod_api::Text::literal("").append(deep);
+            }
+            assert_eq!(drawn.text_width(&deep), 6.0);
             assert_eq!(
                 drawn.text(&plain, [0.0, 0.0], 0xFF0000, false, None),
                 Ok(12.0)
@@ -3003,7 +3043,7 @@ mod tests {
                 surface: &mut surface,
             };
             let text = mod_api::Text::literal("XX");
-            assert_eq!(drawn.text_width(&text), Ok(5.0));
+            assert_eq!(drawn.text_width(&text), 5.0);
             assert_eq!(drawn.text(&text, [0.0; 2], 0xFFFFFF, false, None), Ok(5.0));
             assert_eq!(
                 drawn.text(&text, [0.0; 2], 0xFFFFFF, true, Some(0)),
@@ -3227,18 +3267,21 @@ mod tests {
                 _: &mod_api::RegistrationContext,
                 event: &mut mod_api::RegisterLayerDefinitionsEvent<'_>,
             ) {
-                let mut mesh = MeshDefinition::new();
-                let root = mesh.root();
-                mesh.add_or_replace_child(
-                    root,
-                    "body",
-                    CubeListBuilder::create().add_box_faces([0.0; 3], [16.0; 3], &[Face::South]),
-                    PartPose::offset(16.0, 0.0, 0.0),
-                );
-                event.layers.push((
-                    "golem_mod:golem#main".into(),
-                    LayerDefinition::create(mesh, 64, 64),
-                ));
+                event.register("golem_mod:golem#main", || {
+                    let mut mesh = MeshDefinition::new();
+                    let root = mesh.root();
+                    mesh.add_or_replace_child(
+                        root,
+                        "body",
+                        CubeListBuilder::create().add_box_faces(
+                            [0.0; 3],
+                            [16.0; 3],
+                            &[Face::South],
+                        ),
+                        PartPose::offset(16.0, 0.0, 0.0),
+                    );
+                    LayerDefinition::create(mesh, 64, 64)
+                });
             }
         }
         let drawn = |game: &Game<'_>| {
@@ -3260,8 +3303,9 @@ mod tests {
             crate::game::native_entity_refs::tests::with_client_game(|game| {
                 crate::game::mods::register_layer_definitions(
                     crate::game::execution_role::ExecutionRole::Client,
-                    std::path::Path::new("."),
-                );
+                    &game.vanilla_root(),
+                )
+                .unwrap();
                 assert_eq!(drawn(game), face);
                 assert!(game.bake_layer("golem_mod:other#main").is_none());
                 assert!(game.bake_layer("minecraft:zombie#main").is_some());
@@ -3683,5 +3727,121 @@ mod tests {
         kept.sweep(200);
         assert!(!kept.entries.contains_key(&gone));
         assert!(kept.get(seen, KEY, m, 200).is_some());
+    }
+
+    /// Ordinary (non-global) native block entities go through the same eye-section filter as
+    /// built-in chests: from Y=111 looking down at render distance 2, Y=60 is excluded (fresh
+    /// and cached), the inclusive edge Y=64 submits geometry, and global renderers at Y=60 stay.
+    #[test]
+    fn ordinary_native_block_entities_follow_eye_visible_sections() {
+        use std::cell::Cell;
+        use sunrise_client::gfx::{Frustum, JoinedFrusta, section_in_eye_view};
+
+        let min_y = -64;
+        let sections = 24;
+        let rd = 2;
+        let camera = DVec3::new(8.5, 111.0, 8.5);
+        let proj = Mat4::perspective_rh(70.0_f32.to_radians(), 16.0 / 9.0, 192.0, 0.05);
+        let view = sunrise_client::camera::view_matrix(0.0, 90.0);
+        let frustum = JoinedFrusta::from(Frustum::from_view_projection(proj * view));
+
+        let eye_visible = |pos: [i32; 3], cam: DVec3, view: &JoinedFrusta| {
+            let key = (pos[0] >> 4, (pos[1] >> 4) - (min_y >> 4), pos[2] >> 4);
+            section_in_eye_view(key, cam, min_y, sections, rd, Some(view), |_| true)
+        };
+
+        let outside_pos = [8, 60, 8];
+        let edge_pos = [8, 64, 8];
+        assert!(
+            !eye_visible(outside_pos, camera, &frustum),
+            "Y=60 is outside the vertical band from Y=111 at distance 2"
+        );
+        assert!(
+            eye_visible(edge_pos, camera, &frustum),
+            "Y=64 lies on the inclusive bottom edge of the band"
+        );
+
+        let mut kept = KeptGeometry::default();
+        let revision = machine();
+        let mut draw = draw();
+        let submits = Cell::new(0);
+        let render_at = |kept: &mut KeptGeometry,
+                         draw: &mut BlockEntityDraw,
+                         pos: [i32; 3],
+                         cam: DVec3,
+                         bounds: [f32; 6]| {
+            draw.vertices.clear();
+            let corner = DVec3::from_array(pos.map(f64::from));
+            let origin = (corner - cam).as_vec3();
+            let in_eye = eye_visible(pos, cam, &frustum);
+            kept.render(
+                pos,
+                KEY,
+                revision,
+                draw,
+                origin,
+                &LevelLight {
+                    origin: corner,
+                    light_at: &|_| 0xF0,
+                },
+                || bounds,
+                |b, _| mod_block_entity_visible(Some(&frustum), origin, b, in_eye, false),
+                |draw| {
+                    submits.set(submits.get() + 1);
+                    draw.keep();
+                    draw.quad(LIGHT_QUAD, [[0.0; 2]; 4], sprite(), 0xFFFFFF);
+                },
+            );
+            draw.vertices.len()
+        };
+
+        // Non-global renderer at Y=60 never submits geometry from Y=111 looking down at rd=2.
+        assert_eq!(
+            render_at(&mut kept, &mut draw, outside_pos, camera, DEFAULT_BOUNDS),
+            0
+        );
+        assert_eq!(submits.get(), 0);
+
+        // Even after caching geometry while the camera was near Y=60, Y=111 at rd=2 hides it.
+        let near_camera = DVec3::new(8.5, 65.0, 8.5);
+        assert_eq!(
+            render_at(
+                &mut kept,
+                &mut draw,
+                outside_pos,
+                near_camera,
+                DEFAULT_BOUNDS
+            ),
+            4
+        );
+        assert_eq!(submits.get(), 1);
+        assert_eq!(
+            render_at(&mut kept, &mut draw, outside_pos, camera, DEFAULT_BOUNDS),
+            0
+        );
+        assert_eq!(submits.get(), 1);
+
+        // Non-global renderer at the inclusive edge Y=64 still submits geometry.
+        assert_eq!(
+            render_at(&mut kept, &mut draw, edge_pos, camera, DEFAULT_BOUNDS),
+            4
+        );
+        assert_eq!(submits.get(), 2);
+
+        // Global renderer (infinite bounds) at Y=60 bypasses the eye-section filter.
+        let global_pos = [9, 60, 8];
+        let infinite = [
+            f32::NEG_INFINITY,
+            f32::NEG_INFINITY,
+            f32::NEG_INFINITY,
+            f32::INFINITY,
+            f32::INFINITY,
+            f32::INFINITY,
+        ];
+        assert_eq!(
+            render_at(&mut kept, &mut draw, global_pos, camera, infinite),
+            4
+        );
+        assert_eq!(submits.get(), 3);
     }
 }

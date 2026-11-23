@@ -214,10 +214,7 @@ public final class LocatorBarClient {
                     case "selfmetadata" -> selfMetadata = w[1].equals("on");
                     case "trackposes" -> trackPoses = w[1].equals("on");
                     case "still" -> players.get(w[1]).still();
-                    case "fallmove" -> {
-                        String[] a = w[2].split(" ");
-                        players.get(w[1]).fallmove(Double.parseDouble(a[0]), Double.parseDouble(a[1]), Double.parseDouble(a[2]), Boolean.parseBoolean(a[3]));
-                    }
+                    case "fallmove" -> players.get(w[1]).fallmove(w[2].split(" "));
                     case "respawn" -> players.get(w[1]).send(new net.minecraft.network.protocol.game.ServerboundClientCommandPacket(
                         net.minecraft.network.protocol.game.ServerboundClientCommandPacket.Action.PERFORM_RESPAWN));
                     case "use-on" -> {
@@ -617,15 +614,21 @@ public final class LocatorBarClient {
             position = new PositionMoveRotation(new Vec3(start.x, y, z), Vec3.ZERO, at.yRot(), at.xRot());
         }
 
-        /** One position in a client tick of its own: the server takes one position per client tick. */
-        void fallmove(double x, double y, double z, boolean ground) throws Exception {
+        /** Write the reports together, with a client-tick marker between positions. */
+        synchronized void fallmove(String[] reports) throws Exception {
             PositionMoveRotation before = position;
-            Vec3 to = new Vec3(x, y, z);
-            send(net.minecraft.network.protocol.game.ServerboundClientTickEndPacket.INSTANCE);
-            send(new ServerboundMovePlayerPacket.PosRot(to, before.yRot(), before.xRot(), ground, false));
-            send(net.minecraft.network.protocol.game.ServerboundClientTickEndPacket.INSTANCE);
-            position = new PositionMoveRotation(to, Vec3.ZERO, before.yRot(), before.xRot());
-            record("fallmove " + x + " " + y + " " + z + " " + ground);
+            ByteBuf batch = Unpooled.buffer();
+            frame(batch, net.minecraft.network.protocol.game.ServerboundClientTickEndPacket.INSTANCE);
+            for (int i = 0; i < reports.length; i += 4) {
+                Vec3 to = new Vec3(Double.parseDouble(reports[i]), Double.parseDouble(reports[i + 1]),
+                    Double.parseDouble(reports[i + 2]));
+                boolean ground = Boolean.parseBoolean(reports[i + 3]);
+                frame(batch, new ServerboundMovePlayerPacket.PosRot(to, before.yRot(), before.xRot(), ground, false));
+                frame(batch, net.minecraft.network.protocol.game.ServerboundClientTickEndPacket.INSTANCE);
+                position = new PositionMoveRotation(to, Vec3.ZERO, before.yRot(), before.xRot());
+                record("fallmove " + to.x + " " + to.y + " " + to.z + " " + ground);
+            }
+            flush(batch);
         }
 
         void still() throws Exception {
@@ -974,12 +977,14 @@ if (ownPoses && p instanceof net.minecraft.network.protocol.game.ClientboundSetE
                             syncs++;
                             replyLock.notifyAll();
                         }
-                    } else if (advancements && p instanceof ClientboundSystemChatPacket c
+                    } else if ((advancements || listSyncs) && p instanceof ClientboundSystemChatPacket c
                         && c.content().getContents() instanceof net.minecraft.network.chat.contents.TranslatableContents t
                         && t.getKey().equals("commands.list.players")) {
                         synchronized (replyLock) {
-                            record("adv-receipt " + net.minecraft.network.chat.ComponentSerialization.CODEC.encodeStart(
-                                ParityData.access.createSerializationContext(com.mojang.serialization.JsonOps.INSTANCE), c.content()).getOrThrow());
+                            if (advancements) {
+                                record("adv-receipt " + net.minecraft.network.chat.ComponentSerialization.CODEC.encodeStart(
+                                    ParityData.access.createSerializationContext(com.mojang.serialization.JsonOps.INSTANCE), c.content()).getOrThrow());
+                            }
                             listReplies++;
                             replyLock.notifyAll();
                         }
@@ -1079,11 +1084,16 @@ if (ownPoses && p instanceof net.minecraft.network.protocol.game.ClientboundSetE
         }
 
         synchronized void send(Packet<?> packet) throws Exception {
+            ByteBuf frame = Unpooled.buffer();
+            frame(frame, packet);
+            flush(frame);
+        }
+
+        private void frame(ByteBuf frame, Packet<?> packet) throws Exception {
             ByteBuf body = Unpooled.buffer();
             ((ProtocolInfo) outbound).codec().encode(body, packet);
             byte[] raw = new byte[body.readableBytes()];
             body.readBytes(raw);
-            ByteBuf frame = Unpooled.buffer();
             if (threshold >= 0) {
                 ByteBuf inner = Unpooled.buffer();
                 if (raw.length >= threshold) {
@@ -1104,8 +1114,11 @@ if (ownPoses && p instanceof net.minecraft.network.protocol.game.ClientboundSetE
                 writeVarInt(frame, raw.length);
                 frame.writeBytes(raw);
             }
-            byte[] bytes = new byte[frame.readableBytes()];
-            frame.readBytes(bytes);
+        }
+
+        private void flush(ByteBuf frames) throws Exception {
+            byte[] bytes = new byte[frames.readableBytes()];
+            frames.readBytes(bytes);
             out.write(bytes);
             out.flush();
         }

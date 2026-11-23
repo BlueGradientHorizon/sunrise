@@ -22,6 +22,7 @@ pub(crate) const WORLD_GLUE: Glue = Glue {
     setup: "Position = hz_pos; Color = hz_color; UV0 = hz_uv; UV2 = ivec2(hz_light.y, hz_light.x);",
     finish: "",
     vertex_id: "int(gl_VertexIndex)",
+    interface: sunrise_shaders::DEVICELESS_INTERFACE_LIMITS,
 };
 
 pub(crate) const SEE_THROUGH_GLUE: Glue = Glue {
@@ -32,6 +33,7 @@ pub(crate) const SEE_THROUGH_GLUE: Glue = Glue {
     setup: "Position = hz_pos; Color = hz_color; UV0 = hz_uv;",
     finish: "",
     vertex_id: "int(gl_VertexIndex)",
+    interface: sunrise_shaders::DEVICELESS_INTERFACE_LIMITS,
 };
 
 #[derive(Default)]
@@ -134,7 +136,7 @@ pub(super) struct Part {
 
 /// The pack's world text pipelines over one uniform buffer: vanilla's four blocks once, then the
 /// world text's Polytone blocks, then the see-through text's.
-pub(super) struct CoreText {
+pub(crate) struct CoreText {
     pub(super) polygon_offset: Option<Part>,
     pub(super) see_through: Option<Part>,
     uniform: wgpu::Buffer,

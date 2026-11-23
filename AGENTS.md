@@ -34,8 +34,8 @@ Feature → files → harness for the most-changed areas: [docs/architecture.md]
   child process, uses the network or takes 2 s or more is `#[ignore]`d with a row in `tools/ci/ignored-tests/`;
   say in the PR when you could not run it. A daily red becomes an issue listing the suspect PRs, fixed by an
   ordinary PR. `tools/ci/move_to_daily.py` moves a `verify` test that needs resources, a child process or the
-  network. Builds: snapshot (a commit of main, gate green; published as
-  `snapshot-<date>-<short>`, which no launcher offers), nightly (published by a fully green daily run), release (cut from a nightly).
+  network. Builds: Dev (a commit of main, gate green; published as
+  `dev-<date>-<short>`, which no launcher offers), nightly (published by a fully green daily run), release (cut from a nightly).
 - **No hardcoded user-facing strings.** Keep UI translation-ready from the start. In the launcher ([sunrise-org/sunrise-launcher](https://github.com/sunrise-org/sunrise-launcher)), wrap visible text with `tr("...")` or `trf("... {arg} ...", &[("arg", &val)])` from `crate::i18n` instead of raw string literals or `format!`. In the game, use translation keys (`Text::tr`, `lang::get`), never hardcoded English strings.
 - **Claim before you start**: comment `/claim` on the issue (no issue yet: open one, then claim it). An assigned
   issue is taken, and so is one labelled `in progress` (claimed on Discord): pick another. `/unclaim` when you stop;
@@ -49,6 +49,7 @@ Feature → files → harness for the most-changed areas: [docs/architecture.md]
 - **Docs say where and how, not how many.** Point to where a thing lives and the command that lists or measures it.
   Don't write counts, growing lists, timings or current status into a doc: they go stale, and the next agent
   spends a turn fixing them.
+- **Contract details go in rustdoc, not concept pages.** A PR that adds or changes a hook, method or edge case updates its `///` doc comment or `#[notes]`, not a concept page in `docs/modding/src/concepts/`; runnable Rust snippets belong in `docs/modding/examples/` via `{{#include}}`.
 
 ## Mod API: the clean break
 
@@ -130,6 +131,7 @@ Game workspace (root `Cargo.toml`); `crates/sunrise-telemetry-server` is a separ
 | `sunrise-client-core` | The client lib's bottom layer: `text.rs`, `lang.rs`, `snbt.rs`, `nbt_path.rs`, `component.rs`, `scoreboard.rs`, `bossbar.rs`, `gamerules.rs`, `block_entity_nbt.rs`, registry/particle/sound tables. Re-exported under the old paths (`sunrise_client::text`...) |
 | `sunrise-client-input` | Key bindings and key names, toggle keys, mouse options, controller settings and glyphs, the clipboard, window options (`keybinds.rs`, `gamepad.rs`, `mouse.rs`, `window.rs`...). Re-exported under the old paths |
 | `sunrise-client-render` | The client's world data, rendering and screens (chunks, meshing, light, streaming, `gfx`, HUD, menus, settings): its modules (`ls crates/sunrise-client-render/src`), which sunrise-client re-exports under the same paths. Nothing in it reaches gameplay |
+| `sunrise-stage` | Prebuilt game staging, SDK surface export and comparison, and standalone mod source scans (`surface`, `surface-diff`, `uses`, `fits`) |
 | `sunrise-mod-runtime` | Engine-independent mod attachment storage, query index and generic registry slot tables; depends only on `sunrise-core` |
 | `sunrise-world` | Vanilla world data with no gameplay loop: NBT, regions, chunks, `datafix/`, `worldgen/`, `level/` (server-side block behaviour, ticks, redstone), entity physics, items, effects, food, damage |
 | `sunrise-core` | Simulation primitives: Java `Random`s, `jmath` (HotSpot-exact `Math`), positions, noise, density, paletted storage, `version.rs` (the pinned version) |
@@ -143,6 +145,7 @@ Game workspace (root `Cargo.toml`); `crates/sunrise-telemetry-server` is a separ
 | `sunrise-mod-package`, `cargo-sunrise-mod` | Content mods (`.smod`: manifest, content fence, no code), the registry index and `.spack`, and `cargo sunrise-mod` (`new`, `build`, `run`, `check`, `publish`, `registry`, `native-build`) ([docs/modding/](docs/modding/src/introduction.md)). Code mods are native, built by the launcher ([docs/modding/src/how-to/native-mods.md](docs/modding/src/how-to/native-mods.md)) |
 | `sunrise-native-build` | Native mods compiled against a signed prebuilt SDK: the launcher's build, and `cargo sunrise-mod native-build`'s JSON contract that every `sdk-<build id>` ships ([docs/modding/src/reference/sdk/08-native-build.md](docs/modding/src/reference/sdk/08-native-build.md)) |
 | `sunrise-port-pack` | Porting Java modpacks ([docs/modpacks.md](docs/modpacks.md)) |
+| `sunrise-proxy` | Shared proxy selection and connection pools for CLI downloads |
 | `sunrise-connected` | Connected textures whatever file declares them: the neighbour geometry, the format-neutral `Rule` (OptiFine's and mods' both fill it) and its `table` method. Read by `sunrise-client-render`'s `connected.rs` and the mesher, and by `sunrise-optifine`; a mod's files are `assets/<mod>/sunrise/connected/` ([docs/modding/src/how-to/client/connected-textures.md](docs/modding/src/how-to/client/connected-textures.md)) |
 | `sunrise-optifine` | OptiFine-format pack files below every feature that reads them: `.properties`, the name/range/block matchers, paths and `optifine/` folders, and custom entity models (`cem/`: `.jem`/`.jpm` parsing and baking) |
 | `sunrise-polytone` | Polytone-format pack files (`assets/*/polytone/`), read clean-room from the public wiki: targets, biome and dimension modifiers and their environment attribute layers |
@@ -210,6 +213,9 @@ python3 tools/lang_coverage.py --summary --show-keys   # the same, then the keys
   + a Rust probe: a module `crates/<crate>/examples/probe/<name>.rs` of that crate's probe binary (`ls crates/*/examples/probe`),
   or the game binary with a fixture env var (`game/interface/dispense_fixture.rs`, `game/blocks/sculk_fixture.rs`,
   `game/administration/command_harness.rs`, `game/network/net_harness.rs`). Copy a nearby harness for a new one.
+  A sunrise-client fixture (a `#[test]` under `game` whose body is one call to `run_<test>()`) runs from the
+  `sunrise-parity-fixtures` program (`crates/sunrise-parity-fixtures`, `lab.parity_fixtures()`, [docs/parity-workflow.md](docs/parity-workflow.md#sunrise-client-fixtures));
+  a harness never builds the `sunrise-client` lib test.
 - Native mods compile against a pinned prebuilt SDK; `[[native.mixin]]` rows compile into a function-replacement patch library.
   Use `native-build --trust-native-code`; the launcher never rebuilds the game for a mod.
 - Probes build into `.local/parity-target/`; harnesses find binaries via `lab.cargo_target()`, never `target/`.
@@ -232,8 +238,7 @@ python3 tools/lang_coverage.py --summary --show-keys   # the same, then the keys
   [.claude/skills/vanilla-parity/SKILL.md](.claude/skills/vanilla-parity/SKILL.md), [docs/port-ledger.md](docs/port-ledger.md).
 - Decompiled sources: `.local/minecraft/26.3/sources/{client,server}/` (`python3 tools/lab.py decompile`).
 - Bytecode queries (callers through lambdas, every overload):
-  `python3 tools/rea_vanilla.py method net.minecraft.world.level.block.DispenserBlock dispenseFrom`
-  ([docs/decompilation-status.md](docs/decompilation-status.md)).
+  `python3 tools/rea_vanilla.py method net.minecraft.world.level.block.DispenserBlock dispenseFrom`.
 - A harness runs the oracle against the real 26.3 jars and the Rust probe on the same inputs, then compares
   their JSON. Oracle runs are cached by `tools/parity_shim.py`; `--fresh` reruns them.
 - Match vanilla's `Math` results with `sunrise_core::jmath`, and vanilla's RNG with `sunrise_core::random`:
@@ -284,7 +289,7 @@ state stays separate from the library tests. This compiles gameplay twice for ex
   between the two side crates.
 - `struct Game` (game.rs) keeps the core loop and fields. Each `game/<area>/<feature>.rs` (or
   `<feature>/mod.rs`) adds an `impl Game<'_>` block and state types. Logical modules remain direct
-  children of `game`; an area's `.game-area` marker enables build-derived declarations.
+  children of `game`: `game.rs` declares each with a `#[path]`, so an area folder is not a module.
 - Find a feature's code: `grep -rn "fn tick_<thing>\|fn <verb>_<thing>" crates/sunrise-client/src/game*`;
   the file is under `game/<area>/`. Find its callers in game.rs's `fn tick` and `world/level_tick.rs`'s `fn tick_world`.
 - Fields that say which mode runs: `remote` (this window is a client of a server: multiplayer, LAN guest, or

@@ -13,10 +13,14 @@ impl Game<'_> {
         self.destroy_block_progress(p.id, p.pos, i32::from(p.progress));
     }
 
-    /// `C::SectionBlocksUpdate`: its arms of `apply_packet`, guard and order kept.
-    pub(super) fn apply_section_blocks_update_packet(&mut self, p: play::SectionBlocksUpdate) {
-        for (pos, state) in super::super::remote_chunks::section_blocks(&p) {
-            self.server_block(pos, state);
+    /// `C::SectionBlocksUpdate`: apply verified states in packet order.
+    pub(in crate::game) fn apply_section_blocks_update_packet(
+        &mut self,
+        p: &play::SectionBlocksUpdate,
+        mut groups: crate::game::native_connection_groups::GroupUpdates,
+    ) {
+        for (pos, state) in super::super::remote_chunks::section_blocks(p) {
+            self.server_block(pos, state, groups.remove(&pos));
         }
     }
 
@@ -182,10 +186,9 @@ impl Game<'_> {
             // START_RAINING, STOP_RAINING, RAIN_LEVEL_CHANGE and THUNDER_LEVEL_CHANGE.
             event @ (1 | 2 | 7 | 8) => self.world.weather.game_event(event, p.param),
             3 => {
-                self.set_mode_id(p.rounded_param());
-                let mode = self.mode_id();
-                if let Some(r) = self.remote.as_mut() {
-                    r.game_mode = mode;
+                self.set_local_mode(crate::game::game_mode::mode_from_id(p.rounded_param()));
+                if self.spectator() {
+                    self.reset_client_item_use();
                 }
             }
             // IMMEDIATE_RESPAWN: LocalPlayer.setShowDeathScreen.

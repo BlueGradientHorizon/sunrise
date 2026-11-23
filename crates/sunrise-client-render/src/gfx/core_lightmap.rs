@@ -17,6 +17,7 @@ pub(crate) const GLUE: Glue = Glue {
     setup: "",
     finish: "gl_Position.y = -gl_Position.y;",
     vertex_id: "int(gl_VertexIndex)",
+    interface: sunrise_shaders::DEVICELESS_INTERFACE_LIMITS,
 };
 
 /// The block `Lightmap.render` fills, beside the vanilla ones.
@@ -171,7 +172,7 @@ impl Readback {
 ///
 /// It holds nothing of the level: a level change keeps it, and a pack change or reload makes a
 /// new renderer, which loads the packs' shader again (`set_lightmap_shader`).
-pub(super) struct CoreLightmap {
+pub(crate) struct CoreLightmap {
     pipeline: wgpu::RenderPipeline,
     group: wgpu::BindGroup,
     uniform: wgpu::Buffer,

@@ -23,3 +23,85 @@ the full list.
 - **Tests:** `gfx::pack_uniforms::lightning_bolt_test::the_last_bolt_in_the_draw_list_reaches_the_pack_in_player_space`
   (`sunrise-client-render`) and the daily `game::lightning_bolt_uniform_tests::a_summoned_bolt_reaches_the_pack_in_player_space`
   (`sunrise-client`).
+
+## D-2: which player booleans programs read, from which vanilla method, and their type
+
+- **Open point:** spec rev 1, 3.4, line 552 lists fourteen player booleans (`is_alive` … `is_wet`) for expressions,
+  "state of the player (the camera entity)", and adds "`[IR]` also exposes six of them as uniforms". The uniform
+  table of 5.2 (line 664) lists only those six (`is_burning is_hurt is_invisible is_on_ground is_sneaking
+  is_sprinting`). The bullet at line 558 ("the player booleans as normal uniforms too") can be read as all fourteen.
+  The spec names no vanilla method for any of them, and no type beyond "bool". None of this is one of section 9's
+  open questions.
+- **Decision 1, expression-only:** custom uniforms (`uniform.<type>.<name> = <expression>`) read all fourteen. A
+  program that declares one of the eight others (`is_alive is_child is_glowing is_in_lava is_in_water is_ridden
+  is_riding is_wet`) gets no built-in value: it reads 0, unless the pack defines a custom uniform of that name, which
+  binds instead. Compute programs and quad programs follow the same rule. The basis is line 552's "six of them" and
+  the six-name table at line 664, which agree; line 558 is the looser of the three and is read through them. The 3.4
+  heading ("Parameters only for expressions (Tier A) and as uniforms (Tier E)") is no basis: `biome`, `temperature`
+  and the rest sit under it and are program uniforms.
+- **Decision 2, the vanilla method behind each name** (Minecraft 26.3, the window's player as a client answers;
+  `LocalPlayer` and `AbstractClientPlayer` override none of them):
+  - `is_alive`: `LivingEntity.isAlive` (`!isRemoved() && getHealth() > 0`; the window's player is never removed
+    while it is the camera);
+  - `is_child`: `LivingEntity.isBaby`, which `Player` keeps, so always 0;
+  - `is_glowing`: `Entity.isCurrentlyGlowing` on a client, which skips the effect check and reads shared flag 6: the
+    flag a server sends, or in single player the Glowing effect the flag is set from (a local `Glowing` tag is not
+    modelled). A server's flag resets with a new `LocalPlayer` (a login, a respawn without `KEEP_ENTITY_DATA`), as
+    the player's other shared flags do;
+  - `is_in_lava`: `Entity.isInLava` (`!firstTick && isInFluid(LAVA)`);
+  - `is_in_water`: `Entity.isInWater` (`wasTouchingWater`), not `isUnderWater`;
+  - `is_ridden`: `Entity.isVehicle` (`!passengers.isEmpty()`), so a dying passenger counts until it is removed;
+  - `is_riding`: `Entity.isPassenger` (`getVehicle() != null`);
+  - `is_wet`: `Entity.isInWaterOrRain` (`isInWater() || isInRain()`, rain at `blockPosition` or at the box's top);
+  - the six of the table keep the methods they already had.
+- **Decision 3, bool only:** the eight are `bool` built-ins, like the six, so `uniform.float.x = is_wet` reads 0 as
+  `uniform.float.x = is_sneaking` does. Only the six were probed; the eight are bool by inference from the spec's
+  "bool" and from the six, not by measurement.
+- **Not covered:** the spec's "the camera entity". While spectating another entity all fourteen read the window's
+  player, as the six did before this entry.
+- **Tests:** `gfx::pack_uniforms::initial_history_tests::custom_uniforms_read_every_player_boolean`,
+  `gfx::pack_uniforms::initial_history_tests::programs_read_only_six_player_booleans` and
+  `gfx::pack_post::player_boolean_tests::compute_and_quad_programs_read_only_the_listed_player_booleans`
+  (`sunrise-client-render`); the daily `game::shader_packs::player_status_tests::pack_status_follows_the_player`,
+  `game::shader_packs::player_status_tests::pack_status_leaves_queued_effects_alone`,
+  `game::shader_packs::player_status_tests::pack_status_on_a_server_follows_what_it_sent` and
+  `game::shader_packs::player_status_tests::pack_status_starts_over_with_a_new_local_player` (`sunrise-client`).
+
+## D-3: an image whose format qualifier differs from its buffer's format
+
+- **Open point:** spec rev 1, 5.2, lines 783-784 declare images as `layout(<format>) uniform image2D <name>;` over the
+  buffer they name, and 6.7, lines 984-996 list the formats a buffer, raw texture or image may have. The spec doesn't
+  say what happens when the qualifier names another format than the buffer's (`layout(rgba16)` on a buffer whose
+  `colortex8Format` is `RGBA16F`), and it is not one of section 9's open questions. wgpu binds a storage image only
+  in its texture's exact format, and the shader must declare that same format, so a differing qualifier is either
+  replaced by the texture's format or its program is refused (#548).
+- **Decision:** a 16-bit normalized qualifier (`rgba16`, `rg16`, `r16` and their `_snorm` forms) on the 16-bit float
+  format of the same channels (`RGBA16F`, `RG16F`, `R16F`), which is the same size per texel, binds the texture's
+  float format, and the program gets a note naming it, the image, the qualifier and the format bound. The same holds
+  for the float format Sunrise makes of a 16-bit unorm or snorm buffer on a device without 16-bit normalized
+  formats. Every other differing pair is refused, with the note naming the program, the image, the qualifier and
+  the texture's format: another size per texel (`rgba8` on `RGBA16F`), other channels, an integer qualifier on a
+  float or normalized texture or the reverse, unorm against snorm, and a float qualifier on a normalized texture.
+  The `r11f_g11f_b10f` qualifier on Sunrise's `RGBA16F` stand-in for an `R11F_G11F_B10F` buffer or image keeps its
+  earlier rule, which is the same in kind, and now gets the same note.
+- **Semantics:** a rebound image is accessed as the texture's values, with the conversion of the texture's format,
+  not the qualifier's. A store of 2.0 through `layout(rgba16)` stays 2.0 in an `RGBA16F` buffer, and a store of 0.5
+  reads back as 0.5. So the same program can store differently by device: over an `RGBA16` buffer that the device
+  holds as `RGBA16` (with `TEXTURE_FORMAT_16BIT_NORM`), the qualifier matches, and the store of 2.0 is clamped to 1.0;
+  over the `RGBA16F` that Sunrise makes of that buffer without the feature, it stays 2.0. The note says when this
+  happens. Sunrise does not reinterpret the texture's bits as the qualifier's format; doing so would leave the
+  unorm16 bits of 0.5 (0x8000), which a half float reads as -0.0.
+- **Reason:** the spec leaves the pair open, and wgpu binds a storage texture only in its own format, with the shader
+  declaring that same format; so the program can keep its image only in the texture's format. The buffer's format is
+  what the pack chose for its data. The shader reads and writes floating-point vectors through unorm, snorm and float
+  formats alike, so taking the texture's format changes no expression of the program, only the conversion at the
+  texture. The pairs are limited to equal texel sizes so that a qualifier is never taken over a buffer of another
+  precision or channel count.
+- **Tests:** `pack_post::tests::only_16_bit_normalized_qualifiers_bind_their_float_texture`,
+  `pack_post::tests::a_rebound_image_declares_its_textures_format_alone` and
+  `pack_post::tests::a_rebound_image_is_noted_and_an_exact_one_is_not` (`sunrise-render-shaderpack`); the daily
+  `gfx::pack_post::normalized_image_tests::an_rgba16_image_of_a_float_buffer_keeps_the_floats_stored`,
+  `gfx::pack_post::normalized_image_tests::an_rgba16_snorm_image_of_a_float_buffer_keeps_the_floats_a_quad_program_stores`,
+  `gfx::pack_post::normalized_image_tests::an_rgba16f_image_of_a_float_buffer_binds_without_a_note` and
+  `gfx::pack_post::normalized_image_tests::an_rgba8_image_of_a_float_buffer_still_refuses_its_program`
+  (`sunrise-client-render`).

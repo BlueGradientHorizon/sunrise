@@ -19,6 +19,8 @@ impl Game<'_> {
         armor_weapon: Option<sunrise_client::health::ArmorWeapon>,
     ) -> sunrise_client::Result<sunrise_client::health::BlockOutcome> {
         let rules = self.world.health_rules;
+        // One subscription decision for the hit's three levels' attacker loans.
+        let listened = sunrise_client::health::hit_host_listened();
         let helmet = self.armor[0]
             .as_ref()
             .is_some_and(|s| s.count > 0 && &*s.item != "minecraft:air");
@@ -32,9 +34,11 @@ impl Game<'_> {
                     attack,
                     no_push,
                     sunrise_client::health::HitLend::attacking_mob(
+                        listened,
                         self.mobs.iter_mut(),
                         attack.attacker
-                    )
+                    ),
+                    acting_equipment!(self)
                 ),
                 &self.health_resources,
                 rules,
@@ -63,6 +67,7 @@ impl Game<'_> {
                     attack,
                     no_push,
                     sunrise_client::health::HitLend::attacking_mob(
+                        listened,
                         self.mobs.iter_mut(),
                         attack.attacker
                     )
@@ -85,6 +90,7 @@ impl Game<'_> {
                     attack,
                     no_push,
                     sunrise_client::health::HitLend::attacking_mob(
+                        listened,
                         self.mobs.iter_mut(),
                         attack.attacker
                     )

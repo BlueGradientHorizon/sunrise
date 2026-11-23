@@ -252,10 +252,11 @@ class Display:
             env["VK_ICD_FILENAMES"] = str(LVP)
         return env
 
-    def screenshot(self, path):
-        """Saves the display's picture to `path`; False, with a note on stderr, when `import` couldn't."""
-        done = subprocess.run(["import", "-display", self.name, "-window", "root", str(path)], capture_output=True,
-                              timeout=30)
+    def screenshot(self, path, crop=None):
+        """Saves the display's picture (`crop`: a geometry like 854x480+0+0) to `path`; False, with a note on
+        stderr, when `import` couldn't."""
+        done = subprocess.run(["import", "-display", self.name, "-window", "root", *(["-crop", crop, "+repage"] if crop else []),
+                               str(path)], capture_output=True, timeout=30)
         if done.returncode or not path.exists():
             print(f"  screenshot {path.name} missing: import exited {done.returncode}", file=sys.stderr)
             return False
@@ -401,6 +402,8 @@ def run_once(client, index, recording, bins, label=None, mouse_scale=1.0, replac
         wait_in_game(counts, process)
         _, window = game_window(display.name, timeout=10)
         injector = input_recording.Injector(display.name, window.id)
+        at = window.query_tree().root.translate_coords(window, 0, 0)
+        window_crop = f"{routes.WIDTH}x{routes.HEIGHT}+{at.x}+{at.y}"
         if not display.screenshot(run / "joined.png"):
             manifest["missing_screenshots"].append("joined.png")
         played = []
@@ -416,6 +419,10 @@ def run_once(client, index, recording, bins, label=None, mouse_scale=1.0, replac
             settle(counts, accepted)
             start = fixture(server)
             timers = [threading.Timer(t, server.console, [c]) for t, c in routes.ROUTES.get(name, {}).get("during", [])]
+            # The route's screenshots, of the game window, while it plays (its `expect` reads them).
+            shot = lambda label: (display.screenshot(run / f"{name}-{label}.png", window_crop)  # noqa: E731
+                                  or manifest["missing_screenshots"].append(f"{name}-{label}.png"))
+            timers += [threading.Timer(t, shot, [label]) for t, label in routes.ROUTES.get(name, {}).get("shots", [])]
             for timer in timers:
                 timer.start()
             seconds = injector.play(scaled(events, mouse_scale), number=number)

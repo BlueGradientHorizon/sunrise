@@ -421,6 +421,7 @@ mod tests {
         }
         let at = Vec3::new(20.5, 4.0, 20.5);
         let item = ItemEntity {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             fall_distance: 0.0,
             random: sunrise_core::random::LegacyRandom::new(0),
@@ -441,9 +442,8 @@ mod tests {
             position: at,
             previous: at,
             velocity: Vec3::ZERO,
-            on_ground: false,
+            ground: Default::default(),
             vertical_collision: false,
-            horizontal_collision: false,
             age: 0,
             pickup_delay: 0,
             bob_offset: 0.0,
@@ -536,6 +536,7 @@ mod tests {
         }
         let at = Vec3::new(20.5, 4.0, 20.5);
         let orb = ExperienceOrb {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             fall_distance: 0.0,
             rotation: [0.0, 0.0],
@@ -547,7 +548,7 @@ mod tests {
             velocity: Vec3::ZERO,
             value: 1,
             age: 0,
-            on_ground: false,
+            ground: Default::default(),
             count: 1,
             ticks: 0,
             health: 5,
@@ -566,6 +567,7 @@ mod tests {
             None,
             &fluids,
             crate::test_resources::server_loop_context(),
+            None,
             sunrise_client::motion::dry_side(),
             &mut |_, _| {},
         ));
@@ -583,6 +585,7 @@ mod tests {
             None,
             &fluids,
             crate::test_resources::server_loop_context(),
+            None,
             sunrise_client::motion::dry_side(),
             &mut |_, _| {},
         ));
@@ -603,6 +606,7 @@ mod tests {
                 None,
                 &fluids,
                 crate::test_resources::server_loop_context(),
+                None,
                 sunrise_client::motion::dry_side(),
                 &mut |_, _| {},
             );
@@ -642,6 +646,7 @@ mod tests {
         }
         let at = Vec3::new(20.5, 4.6, 20.5);
         let mut orb = ExperienceOrb {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             fall_distance: 0.0,
             rotation: [0.0, 0.0],
@@ -653,7 +658,7 @@ mod tests {
             velocity: Vec3::ZERO,
             value: 1,
             age: 0,
-            on_ground: false,
+            ground: Default::default(),
             count: 1,
             ticks: 0,
             health: 5,
@@ -671,6 +676,7 @@ mod tests {
             None,
             &fluids,
             crate::test_resources::server_loop_context(),
+            None,
             sunrise_client::motion::dry_side(),
             &mut |_, _| {},
         ));

@@ -1,5 +1,6 @@
 //! Optimistic block writes and reconciliation on the multiplayer client.
 use super::*;
+use crate::game::native_connection_groups::{GroupUpdates, ReceivedGroup, check_group_updates};
 use sunrise_core::position::BlockPos;
 
 /// `BlockStatePredictionHandler.ServerVerifiedState`: the most recent sequence,
@@ -9,6 +10,7 @@ pub(super) struct Prediction {
     state: BlockStateId,
     player_pos: [f64; 3],
     removed_entity: Option<Box<RemovedEntity>>,
+    group: Option<ReceivedGroup>,
 }
 
 /// A predicted write displaced this entity. The server need not resend its payload
@@ -98,6 +100,7 @@ impl Game<'_> {
                     state: before,
                     player_pos: here,
                     removed_entity: None,
+                    group: None,
                 });
         }
         self.write_client_block(pos, state, None)
@@ -133,7 +136,12 @@ impl Game<'_> {
 
     /// ClientLevel.setServerVerifiedBlockState: a predicted block keeps its on-screen
     /// state until acknowledgement, but remembers the server's update for then.
-    pub(super) fn server_block(&mut self, pos: [i32; 3], state: i32) {
+    pub(in crate::game) fn server_block(
+        &mut self,
+        pos: [i32; 3],
+        state: i32,
+        group: Option<ReceivedGroup>,
+    ) {
         // An unknown state (a server with mods we lack) reads as air, as in its chunks.
         let state = state.max(0) as u32;
         let state = BlockStateId(if sunrise_client::chunk::known_block_state(state) {
@@ -147,6 +155,9 @@ impl Game<'_> {
             .and_then(|r| r.predictions.get_mut(&pos))
         {
             p.state = state;
+            if group.is_some() {
+                p.group = group;
+            }
             if let Some(removed) = &p.removed_entity
                 && self.res.facts().get(removed.state).name != self.res.facts().get(state).name
             {
@@ -155,27 +166,87 @@ impl Game<'_> {
             return;
         }
         let previous = self.write_client_block(pos, state, None);
+        if let Some(group) = group {
+            group.apply(&mut self.world, pos);
+        }
         self.finish_client_block_write(pos, previous, state, false);
+    }
+
+    pub(in crate::game) fn check_active_group_updates(
+        &self,
+        groups: &GroupUpdates,
+        limit: usize,
+    ) -> sunrise_protocol::Result<()> {
+        check_group_updates(
+            &self.world,
+            groups.iter().filter_map(|(&pos, &group)| {
+                (!self
+                    .remote
+                    .as_ref()
+                    .is_some_and(|r| r.predictions.contains_key(&pos)))
+                .then_some((pos, group))
+            }),
+            limit,
+        )
+    }
+
+    /// `handleLevelChunkWithLight` writes the column directly, unlike verified block
+    /// updates. When a pending correction carries group data, that newer authoritative
+    /// snapshot supersedes the correction (including absence). Predictions without a
+    /// group correction retain vanilla's acknowledgement behaviour.
+    pub(in crate::game) fn supersede_group_predictions(
+        &mut self,
+        chunk: &sunrise_client::chunk::Chunk,
+    ) {
+        let Some(r) = self.remote.as_mut() else {
+            return;
+        };
+        for (&[x, y, z], prediction) in &mut r.predictions {
+            if prediction.group.is_some()
+                && (x >> 4, z >> 4) == (chunk.x, chunk.z)
+                && chunk.section_index(y).is_some()
+            {
+                prediction.state = chunk.block(x & 15, y, z & 15);
+                prediction.group = Some(ReceivedGroup(chunk.connection_group(x & 15, y, z & 15)));
+                prediction.removed_entity = None;
+            }
+        }
     }
 
     /// BlockStatePredictionHandler.endPredictionsUpTo: settle the server's known
     /// state and restore data before the correction notice. Confirmations are silent.
-    pub(super) fn end_predictions(&mut self, sequence: i32) {
+    pub(super) fn end_predictions(&mut self, sequence: i32) -> Result<()> {
         let Some(r) = self.remote.as_mut() else {
-            return;
+            return Ok(());
         };
         let last_teleport = r.last_teleport_sequence;
         let settled: Vec<_> = r
             .predictions
             .extract_if(|_, p| p.sequence <= sequence)
             .collect();
+        let updates = settled.iter().filter_map(|&([x, y, z], ref prediction)| {
+            prediction
+                .group
+                .filter(|_| self.world.is_loaded_at(x, y, z))
+                .map(|group| ([x, y, z], group))
+        });
+        if let Err(error) = check_group_updates(&self.world, updates, self.connection_group_limit())
+        {
+            return self.refuse_play_payload(error);
+        }
         for (pos, prediction) in settled {
             let [x, y, z] = pos;
             let state = prediction.state;
-            if self.world.block(x, y, z) == state {
+            let changed = self.world.block(x, y, z) != state;
+            let previous = changed
+                .then(|| self.write_client_block(pos, state, prediction.removed_entity))
+                .flatten();
+            if let Some(group) = prediction.group {
+                group.apply(&mut self.world, pos);
+            }
+            if !changed {
                 continue;
             }
-            let previous = self.write_client_block(pos, state, prediction.removed_entity);
             self.finish_client_block_write(pos, previous, state, false);
             // ClientLevel.syncBlockState: the returning block may now hold the player.
             let meets = self.block_meets_player(pos, state);
@@ -183,6 +254,7 @@ impl Game<'_> {
                 self.snap_player_to(at);
             }
         }
+        Ok(())
     }
 
     fn write_client_block(
@@ -195,6 +267,13 @@ impl Game<'_> {
         let previous = self.world.block(x, y, z);
         if !self.world.loaded(x, z) || self.world.set(x, y, z, state).is_err() {
             return None;
+        }
+        // LevelChunk.setBlockState drops the old pot only when the block changes;
+        // a new state of the same pot keeps its event-driven wobble.
+        if self.be_anims.pots.contains_key(&pos)
+            && self.res.facts().get(previous).name != self.res.facts().get(state).name
+        {
+            self.be_anims.pots.remove(&pos);
         }
         if let Some(restored) = restored {
             let RemovedEntity {

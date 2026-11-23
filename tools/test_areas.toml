@@ -116,7 +116,8 @@ harnesses = [
   "trading", "trade_components", "merchant_*", "warden_owned_memories", "wolf_anger_writes", "zombie_cure_sound",
   "noai_*", "nautilus_memory", "pet_owner_teleport", "enderman_placement", "loaded_pig_tags", "ageable_integer_load",
   "bed_poi", "peaceful_summon", "return_to_sender", "hostile_sound_categories", "ominous_warning_sound",
-  "command_reinforcements", "last_hurt_by_mob", "spell_ticks", "gateway_cooldown",
+  "command_reinforcements", "last_hurt_by_mob", "spell_ticks", "gateway_cooldown", "damage_source_entities",
+  "creaking_hit_order",
 ]
 lan = [
   "mobs", "barter", "piglin_offspring", "sleep-villager", "trials", "villagers", "hero-trading", "cure-discount",
@@ -176,7 +177,7 @@ harnesses = [
   "lan*", "server_*", "remote_*", "dedicated_*", "online_mode", "secure_chat", "wire_stream", "item_wire",
   "stop_sound_wire", "protocol_*", "friends_integration", "management_protocol", "user_cache", "player_sync",
   "*_guest", "guest_*", "connected_guest_advancement_save", "disconnect_crafting", "entity_sound_packet",
-  "synced_*", "test_pos_guest",
+  "synced_*", "test_pos_guest", "gamemode_split", "network",
 ]
 # Every LAN check runs through a guest: all of them belong here as well.
 lan = ["*"]
@@ -201,7 +202,7 @@ cargo = [
 harnesses = [
   "save_roundtrip", "world_reopen", "world", "datafix", "*_save_reload", "*_save", "*_load", "*_saved_*",
   "saved_empty_tags", "player_save_fields", "display_save", "trident_save", "stand_fall_save", "dedicated_crash_save",
-  "save_kill", "save_corruption", "structure_start_nbt", "entity_nbt_boolean", "nbt_path_reader", "snbt_unicode", "java_*", "string_hash",
+  "save_kill", "save_corruption", "structure_start_nbt", "entity_nbt_boolean", "nbt_path_reader", "snbt_unicode", "java_*", "string_hash", "modified_utf8",
 ]
 lan = ["sleep-reload", "leash_reload", "reopen_player"]
 
@@ -261,7 +262,7 @@ harnesses = [
   "inline_loot_reference", "inline_trim_holders", "craft_map_take", "map_*", "exploration_map_command",
   "lore_tooltip", "tooltip_display", "firework_tooltip", "orb_*", "absorption_save_reload", "suffocation",
   "squid_damage_result", "server_knockback", "elder_curse", "pick_block_data", "hotbar", "slot_range_codec",
-  "creative_mining", "creative",
+  "creative_mining", "creative", "crosshair_pick",
 ]
 lan = [
   "damage", "hazards", "pvp", "deaths", "kills", "looting", "hurt", "eat*", "xp", "effects", "absorption", "breath",
@@ -292,7 +293,7 @@ harnesses = [
   "command_*", "function_*", "tick_function_time", "macro_source_type", "scoreboard", "entity_scores", "selector_*",
   "named_predicate_reference", "predicate_reference_startup", "run_coordinate_feedback", "terminal_execute_fork",
   "fork_function_feedback", "loaded_command", "storage_alias", "seed_sync", "team_rules", "local_coordinate_rotation",
-  "folder_datapack_metadata", "world_pack_enchantment_loader", "world_test_def*", "vehicle_command_damage",
+  "folder_datapack_metadata", "world_pack_enchantment_loader", "entity_type_tags", "world_test_def*", "vehicle_command_damage",
   "stand_command_hurt", "dialog_codec", "clone_dimensions", "inline_object", "entity_lookup_order",
 ]
 lan = [
@@ -346,7 +347,7 @@ harnesses = [
   "interaction_input", "game_loop", "mipmap", "sprite_animation", "resource_pack", "pack_*", "server_resource_pack",
   "translucency", "block_tint", "face_visibility", "breaking_model", "crack_feedback", "stack_foil", "text_*",
   "float_text", "potion_effect_icon", "hdr_auto_flip", "environment_*", "level_environment_reads", "world_border*",
-  "world_options", "squid_client", "cursor_death", "interaction_*", "view_direction",
+  "world_options", "squid_client", "cursor_death", "interaction_*", "view_direction", "displays", "glint", "visibility",
 ]
 lan = [
   "tab", "self", "nametags", "names", "titles", "chat", "hud", "sidebar", "border", "particles", "sparks", "swings",
@@ -381,7 +382,7 @@ name = "mod-api"
 about = "the native mod API: hooks, the Host, handles and parts"
 paths = [
   "crates/sunrise-mod-*", "crates/cargo-sunrise-mod/*", "crates/sunrise-native-build/*",
-  "crates/sunrise-guest-stack/*", "crates/sunrise-hooks/*", "crates/sunrise-client/src/game/native_hooks/*",
+  "crates/sunrise-hooks/*", "crates/sunrise-client/src/game/native_hooks/*",
   "crates/sunrise-client/src/game/modding/*",
 ]
 cargo = [

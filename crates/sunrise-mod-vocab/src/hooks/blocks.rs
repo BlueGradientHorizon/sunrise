@@ -4,10 +4,14 @@
 pub trait Hooks {
     /// Declare blocks in code once at startup on each side, before resources load.
     /// Pass each `mod_api::Block` to `event.register`. The declaration belongs to the
-    /// submitting package and works like `data/<id>/sunrise/block/<path>.json` in a
+    /// submitting package — in its own namespaces or in a content package it serves
+    /// (`served_by`) — and works like `data/<id>/sunrise/block/<path>.json` in a
     /// content mod, including a block item unless disabled with `Block::with_item(false)`.
+    /// Duplicate IDs across the host and served layers, and declarations into a
+    /// `side = "server"` package's namespace, are refused.
     /// `register` returns a typed `DeclarationError` for invalid IDs or fields.
-    /// The game records the refusal and stops startup even if you ignore the error.
+    /// The game records the refusal and stops startup even if a returning listener ignores it.
+    /// A panic discards this listener's declarations and diagnostics without rejecting startup.
     #[notes = r#"## Villager farming
 
 Farmers recognize mod blocks made from farmland and `CropBlock` templates, including declarations from
@@ -18,12 +22,19 @@ beetroots mature at age 3, ordinary crops at 7; torchflower crops never reach th
 still crops. Pitcher crops are not `CropBlock`s and are not harvested by this behavior. Farming still
 requires a farmer at work and `mob_griefing` enabled."#]
     #[hook(
+        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_blocks",
+        receiver = "associated",
+        dispatch = "flat",
         side = "both",
         contract = "collect",
         out = "blocks",
         context = "registration",
         neoforge = "RegisterEvent",
-        version = 2
+        version = 4
     )]
-    fn blocks();
+    fn blocks(
+        blocks: &mut dyn FnMut(
+            mod_api::Answered<mod_api::Block>,
+        ) -> Result<(), mod_api::DeclarationError>,
+    );
 }
