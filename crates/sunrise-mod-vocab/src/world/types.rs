@@ -407,18 +407,23 @@ impl LevelRef {
     /// another, through the level's UUID index: it never switches, loads or scans a level.
     /// To search every level, as vanilla's `ServerLevel.getEntityInAnyDimension(UUID)`
     /// does, ask the hook's own level first, then each other level of
-    /// [`Levels::list_levels`]:
+    /// [`Levels::visit_levels`]:
     ///
     /// ```
+    /// use core::ops::ControlFlow;
     /// use mod_api::prelude::*;
     /// use mod_api::{EntityRef, EntityUuid, LevelRef, ServerHost};
     /// fn find_anywhere(host: &dyn ServerHost, own: LevelRef, uuid: EntityUuid) -> Option<EntityRef> {
     ///     own.entity_by_uuid(host, uuid).or_else(|| {
-    ///         let levels = host.levels().list_levels();
-    ///         levels
-    ///             .into_iter()
-    ///             .filter(|level| *level != own)
-    ///             .find_map(|level| level.entity_by_uuid(host, uuid))
+    ///         let mut found = None;
+    ///         let _ = host.levels().visit_levels(&mut |level| {
+    ///             found = (level != own).then(|| level.entity_by_uuid(host, uuid)).flatten();
+    ///             match found {
+    ///                 Some(_) => ControlFlow::Break(()),
+    ///                 None => ControlFlow::Continue(()),
+    ///             }
+    ///         });
+    ///         found
     ///     })
     /// }
     /// ```
