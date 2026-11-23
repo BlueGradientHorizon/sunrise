@@ -10,6 +10,16 @@ use crate::items::ItemStack;
 #[path = "custom_tests.rs"]
 mod tests;
 
+/// What a slot's backing says it takes of one stack: the live handler's `capacity` for the
+/// resource (NeoForge `ResourceHandlerSlot.getMaxStackSize`), asked once the planner has named
+/// the slot and the stack. The placement takes the smaller of this and the menu's own limit.
+#[derive(Clone, Debug)]
+pub struct SlotCap {
+    pub slot: usize,
+    pub prototype: ItemStack,
+    pub max: u32,
+}
+
 impl Menu {
     /// Shared vanilla calculateAmountToCraft, including an already matching grid.
     pub(super) fn recipe_place_amount(
@@ -47,6 +57,97 @@ impl Menu {
         use_max: bool,
         allow_drop: bool,
     ) -> Result<PostPlace, Refused> {
+        self.place_custom_recipe_capped(env, plan, use_max, allow_drop, &[])
+    }
+
+    /// The stock the placement would draw on, one prototype (a single item) per distinct stack
+    /// with its available amount: eligible inventory and sources, and the inputs it clears.
+    fn recipe_prototypes(
+        &self,
+        env: &Env,
+        plan: &MenuPlacement,
+    ) -> Result<(Vec<ItemStack>, Vec<i32>), Refused> {
+        let mut prototypes: Vec<ItemStack> = Vec::new();
+        let mut amounts: Vec<i32> = Vec::new();
+        let mut account = |stack: &ItemStack, simple: bool| -> Result<(), Refused> {
+            if simple && !usable_for_crafting(stack) {
+                return Ok(());
+            }
+            let count = i32::try_from(stack.count.min(Self::max_stack(env, stack)))
+                .map_err(|_| Refused::InvalidLayout)?;
+            if count == 0 {
+                return Ok(());
+            }
+            if let Some(index) = prototypes
+                .iter()
+                .position(|p| p.same_item_same_components(stack))
+            {
+                amounts[index] = amounts[index]
+                    .checked_add(count)
+                    .ok_or(Refused::InvalidLayout)?;
+            } else {
+                prototypes.push(ItemStack {
+                    count: 1,
+                    ..stack.clone()
+                });
+                amounts.push(count);
+            }
+            Ok(())
+        };
+        for stack in self.state.containers[PLAYER][..36].iter().flatten() {
+            account(stack, true)?;
+        }
+        for stack in self.state.sources.iter().flatten().flatten() {
+            account(stack, true)?;
+        }
+        for &slot in &plan.inputs {
+            if let Some(stack) = self.slot(slot) {
+                account(stack, false)?;
+            }
+        }
+        Ok((prototypes, amounts))
+    }
+
+    /// The (slot, stack) pairs the placement will weigh: each target slot of an ingredient with
+    /// each stack that ingredient accepts and the menu lets the slot take. A game that backs
+    /// slots with live handlers asks them about exactly these pairs, with its host, and hands the
+    /// answers to [`Self::place_custom_recipe_capped`].
+    pub fn custom_recipe_candidates(
+        &self,
+        env: &Env,
+        plan: &MenuPlacement,
+    ) -> Result<Vec<(usize, ItemStack)>, Refused> {
+        let (prototypes, _) = self.recipe_prototypes(env, plan)?;
+        let mut target = vec![0; plan.placement.ingredients.len()];
+        for &(ingredient, slot) in &plan.cells {
+            target[ingredient] = slot;
+        }
+        let mut pairs: Vec<(usize, ItemStack)> = Vec::new();
+        for prototype in &prototypes {
+            for (ingredient, &slot) in plan.placement.ingredients.iter().zip(&target) {
+                if ingredient.test_in(env.loop_context, prototype)
+                    && self.may_place(env, slot, prototype)
+                    && !pairs
+                        .iter()
+                        .any(|(at, p)| *at == slot && p.same_item_same_components(prototype))
+                {
+                    pairs.push((slot, prototype.clone()));
+                }
+            }
+        }
+        Ok(pairs)
+    }
+
+    /// [`Self::place_custom_recipe`] with what each backed slot says it takes: a `(slot, stack)`
+    /// the answers do not name keeps the menu's own limit.
+    pub fn place_custom_recipe_capped(
+        &mut self,
+        env: &Env,
+        plan: &MenuPlacement,
+        use_max: bool,
+        allow_drop: bool,
+        caps: &[SlotCap],
+    ) -> Result<PostPlace, Refused> {
         self.touch();
         if !matches!(self.kind(), Kind::Mod(menu) if menu.id == plan.menu) {
             return Err(Refused::Unavailable);
@@ -59,46 +160,7 @@ impl Menu {
         if !allow_drop && !self.test_clear_slots(env, &plan.inputs) {
             return Ok(PostPlace::Nothing);
         }
-        let mut prototypes: Vec<ItemStack> = Vec::new();
-        let mut amounts: Vec<i32> = Vec::new();
-        {
-            let mut account = |stack: &ItemStack, simple: bool| -> Result<(), Refused> {
-                if simple && !usable_for_crafting(stack) {
-                    return Ok(());
-                }
-                let count = i32::try_from(stack.count.min(Self::max_stack(env, stack)))
-                    .map_err(|_| Refused::InvalidLayout)?;
-                if count == 0 {
-                    return Ok(());
-                }
-                if let Some(index) = prototypes
-                    .iter()
-                    .position(|p| p.same_item_same_components(stack))
-                {
-                    amounts[index] = amounts[index]
-                        .checked_add(count)
-                        .ok_or(Refused::InvalidLayout)?;
-                } else {
-                    prototypes.push(ItemStack {
-                        count: 1,
-                        ..stack.clone()
-                    });
-                    amounts.push(count);
-                }
-                Ok(())
-            };
-            for stack in self.state.containers[PLAYER][..36].iter().flatten() {
-                account(stack, true)?;
-            }
-            for stack in self.state.sources.iter().flatten().flatten() {
-                account(stack, true)?;
-            }
-            for &slot in &plan.inputs {
-                if let Some(stack) = self.slot(slot) {
-                    account(stack, false)?;
-                }
-            }
-        }
+        let (prototypes, mut amounts) = self.recipe_prototypes(env, plan)?;
         let ingredients = &plan.placement.ingredients;
         let mut target = vec![0; ingredients.len()];
         for &(ingredient, slot) in &plan.cells {
@@ -121,8 +183,14 @@ impl Menu {
                 compatible.push(if accepted { i32::MAX } else { 0 });
                 let allowed = accepted && self.may_place(env, *slot, prototype);
                 let cap = if allowed {
-                    self.slot_max(env, *slot, prototype)
-                        .min(Self::max_stack(env, prototype))
+                    let own = self
+                        .slot_max(env, *slot, prototype)
+                        .min(Self::max_stack(env, prototype));
+                    caps.iter()
+                        .find(|cap| {
+                            cap.slot == *slot && cap.prototype.same_item_same_components(prototype)
+                        })
+                        .map_or(own, |cap| own.min(cap.max))
                 } else {
                     0
                 };

@@ -213,6 +213,29 @@ fn per_slot_caps_limit_max_and_policy_refusal_is_not_a_missing_ingredient_ghost(
 }
 #[test]
 #[ignore = "daily"]
+fn a_slot_whose_backing_takes_one_gets_one_craft_not_a_plan_it_would_roll_back() {
+    with_env(|env| {
+        let mut menu = Menu::new(kind());
+        menu.set_player_item(0, stack("minecraft:iron_ore", 10));
+        let plan = single("minecraft:iron_ore");
+        let candidates = menu.custom_recipe_candidates(env, &plan).unwrap();
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].0, 4);
+        let caps = [SlotCap {
+            slot: 4,
+            prototype: candidates[0].1.clone(),
+            max: 1,
+        }];
+        assert_eq!(
+            menu.place_custom_recipe_capped(env, &plan, true, false, &caps),
+            Ok(PostPlace::Nothing)
+        );
+        assert_eq!(menu.slot(4).map(|s| s.count), Some(1));
+        assert_eq!(menu.player_item(0).map(|s| s.count), Some(9));
+    });
+}
+#[test]
+#[ignore = "daily"]
 fn component_distinct_stacks_never_pool_into_one_destination() {
     with_env(|env| {
         let mut menu = Menu::new(kind());
