@@ -2075,6 +2075,13 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn world_render_view_lends_frame_state_and_prepare_updates_instance_groups() {
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::native_custom_geometry::tests::world_render_view_lends_frame_state_and_prepare_updates_instance_groups",
+            "SUNRISE_PREPARE_WORLD_VIEW_CHILD",
+            &["same-frame-groups"],
+        ) {
+            return;
+        }
         let _fixture =
             sunrise_client::models::standalone_fixture(vec!["minecraft:block/grass_block".into()]);
         super::super::native_entity_refs::tests::with_client_game(|game| {
