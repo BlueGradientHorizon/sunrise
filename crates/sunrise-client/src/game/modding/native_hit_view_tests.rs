@@ -32,7 +32,8 @@ struct Read {
     absorption: Option<f32>,
     max_health: Option<f32>,
     max_health_attribute: Option<f64>,
-    speed: Option<i32>,
+    /// The speed effect's amplifier and ticks left.
+    speed: Option<(i32, i32)>,
     effects: Option<usize>,
     speed_affected: bool,
     main_hand: Option<(u32, bool)>,
@@ -78,7 +79,7 @@ fn view_read(view: LivingView<'_>) -> Read {
         absorption: view.absorption(),
         max_health: view.max_health(),
         max_health_attribute: view.attribute_value("minecraft:max_health"),
-        speed: view.effect(speed()).map(|e| e.amplifier),
+        speed: view.effect(speed()).map(|e| (e.amplifier, e.duration)),
         effects: view.effects().map(|list| list.len()),
         speed_affected: view.potion_affected(speed()),
         main_hand: view.with_hand_item(Hand::Main, |stack| {
@@ -152,7 +153,9 @@ fn handle_read(game: &mut super::Game<'_>, id: u32) -> Read {
         absorption: living.absorption(game),
         max_health: living.max_health(game),
         max_health_attribute: living.attribute_value(game, "minecraft:max_health"),
-        speed: living.effect(game, speed()).map(|e| e.amplifier),
+        speed: living
+            .effect(game, speed())
+            .map(|e| (e.amplifier, e.duration)),
         effects: living.effects(game).map(|list| list.len()),
         speed_affected: living.potion_affected(game, speed()),
         main_hand: living.with_hand_item(game, Hand::Main, |stack| {
@@ -188,9 +191,12 @@ fn a_hit_listener_reads_its_victim_and_causer_live_and_their_attachments_read_on
     if run_fresh_cases(
         "game::native_hit_view_tests::a_hit_listener_reads_its_victim_and_causer_live_and_their_attachments_read_only",
         CASE,
-        &["hits"],
+        &["hits", "guest"],
     ) {
         return;
+    }
+    if std::env::var(CASE).as_deref() == Ok("guest") {
+        return the_acting_guest_is_read_with_its_holder();
     }
     let seen = Arc::new(Mutex::new(Vec::new()));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
@@ -222,7 +228,7 @@ fn a_hit_listener_reads_its_victim_and_causer_live_and_their_attachments_read_on
             let player_before = handle_read(game, 7);
             let zombie_before = handle_read(game, zombie);
             assert_eq!(player_before.health, Some(20.0));
-            assert_eq!(player_before.speed, Some(1));
+            assert_eq!(player_before.speed, Some((1, 400)));
             assert_eq!(player_before.main_hand, Some((5, true)));
             game.mob_hits_player_caused(
                 4.0,
@@ -248,6 +254,48 @@ fn a_hit_listener_reads_its_victim_and_causer_live_and_their_attachments_read_on
             assert_eq!(calls[2].victim, victim(player_after.health.unwrap()));
             for call in &calls {
                 assert_eq!(call.causing, causing, "{}", call.hook);
+            }
+
+            // An effect upgraded, then removed, between hits of the same tick: each hit reads the
+            // store as it is then.
+            let living = game.living(game.entity(7).unwrap()).unwrap();
+            let upgraded = ActiveEffect::new(speed(), 100, 3, false, true, true);
+            assert!(game.living_add_effect(living, &upgraded));
+            game.mob_hits_player_caused(
+                2.0,
+                [0.5, 70.0, 0.5],
+                "minecraft:mob_attack",
+                Some(zombie),
+            );
+            let calls = std::mem::take(&mut *seen.lock().unwrap());
+            assert_eq!(calls.len(), 3);
+            for call in &calls {
+                let victim = call.victim.as_ref().unwrap();
+                assert_eq!(
+                    (victim.speed, victim.effects, victim.speed_affected),
+                    (Some((3, 100)), Some(1), true),
+                    "{}",
+                    call.hook
+                );
+                assert_eq!(call.causing.as_ref().unwrap().speed, Some((2, 400)));
+            }
+            assert!(game.living_remove_effect(living, speed()));
+            game.mob_hits_player_caused(
+                2.0,
+                [0.5, 70.0, 0.5],
+                "minecraft:mob_attack",
+                Some(zombie),
+            );
+            let calls = std::mem::take(&mut *seen.lock().unwrap());
+            assert_eq!(calls.len(), 3);
+            for call in &calls {
+                let victim = call.victim.as_ref().unwrap();
+                assert_eq!(
+                    (victim.speed, victim.effects, victim.speed_affected),
+                    (None, Some(0), false),
+                    "{}",
+                    call.hook
+                );
             }
 
             // The player's melee hit on a mob: the pig is the victim, the player the causer.
@@ -301,6 +349,30 @@ fn a_hit_listener_reads_its_victim_and_causer_live_and_their_attachments_read_on
             }
             assert_eq!(MARK.has(game, Holder::Entity(cow)), Ok(false));
 
+            // A lent attacker that is removed is no causing entity.
+            let set_removed = |game: &mut super::Game<'_>, removed: bool| {
+                game.mobs
+                    .iter_mut()
+                    .find(|m| m.id == zombie)
+                    .unwrap()
+                    .removed = removed;
+            };
+            set_removed(game, true);
+            let source = Damage {
+                kind: DamageKind::MobAttack,
+                attacker: Some(Who::Mob(zombie)),
+                from: Some([0.5, 70.0, 0.5]),
+                attacker_species: None,
+            };
+            assert!(game.mob_hits_mob(cow, 1.0, source));
+            set_removed(game, false);
+            let calls = std::mem::take(&mut *seen.lock().unwrap());
+            assert_eq!(calls.len(), 3);
+            for call in &calls {
+                assert!(call.victim.is_some(), "{}", call.hook);
+                assert_eq!(call.causing, None, "{}", call.hook);
+            }
+
             // A lethal hit's Post waits for the death to settle, and reads the bodies then.
             assert!(game.mob_hits_mob(cow, 100.0, Damage::player([0.5, 70.0, 0.5])));
             let calls = std::mem::take(&mut *seen.lock().unwrap());
@@ -326,6 +398,70 @@ fn a_hit_listener_reads_its_victim_and_causer_live_and_their_attachments_read_on
             assert_eq!(MARK.get_existing(game, Holder::Player(7)), Ok(Some(3)));
             assert_eq!(MARK.get_existing(game, Holder::Entity(zombie)), Ok(Some(5)));
             assert_eq!(MARK.get_existing(game, Holder::Entity(pig)), Ok(Some(8)));
+        });
+    });
+}
+
+/// A guest hurt in its own turn (`as_guest`, the turn's body, effects and attachments swapped
+/// into place): the view reads that guest and names its attachment holder by its UUID.
+fn the_acting_guest_is_read_with_its_holder() {
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "probe",
+        Box::new(Probe(seen.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        super::native_guest_turn_tests::with_guests(|game| {
+            game.lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .update_guest(13, |guest| {
+                    guest.loaded = true;
+                    guest.load_timeout = 0;
+                })
+                .unwrap();
+            let zombie = summon_mob(game, "minecraft:zombie", "{}");
+            let before = game
+                .as_guest(13, |g| {
+                    g.set_game_mode(GameMode::Creative);
+                    g.set_game_mode(GameMode::Survival);
+                    let living = g.living(g.entity(13).unwrap()).unwrap();
+                    let effect = ActiveEffect::new(speed(), 300, 2, false, true, true);
+                    assert!(g.living_add_effect(living, &effect));
+                    MARK.set(g, Holder::Player(13), 4).unwrap();
+                    handle_read(g, 13)
+                })
+                .unwrap();
+            assert_eq!(before.holder, Some(Holder::Player(13)));
+            assert_eq!(before.speed, Some((2, 300)));
+            let after = game
+                .as_guest(13, |g| {
+                    g.mob_hits_player_caused(
+                        2.0,
+                        [3.0, 64.0, 5.0],
+                        "minecraft:mob_attack",
+                        Some(zombie),
+                    );
+                    handle_read(g, 13)
+                })
+                .unwrap();
+            assert!(after.health.unwrap() < before.health.unwrap());
+            let calls = std::mem::take(&mut *seen.lock().unwrap());
+            let hooks: Vec<_> = calls.iter().map(|c| (c.hook, c.entity)).collect();
+            assert_eq!(hooks, [("incoming", 13), ("pre", 13), ("post", 13)]);
+            let victim = |health| Some(read_only(with_health(before.clone(), health), Some(4)));
+            assert_eq!(calls[0].victim, victim(before.health.unwrap()));
+            assert_eq!(calls[1].victim, victim(before.health.unwrap()));
+            assert_eq!(calls[2].victim, victim(after.health.unwrap()));
+            for call in &calls {
+                assert_eq!(call.causing.as_ref().map(|read| read.id), Some(zombie));
+            }
+            let mark = game
+                .as_guest(13, |g| MARK.get_existing(g, Holder::Player(13)))
+                .unwrap();
+            assert_eq!(mark, Ok(Some(4)));
         });
     });
 }
