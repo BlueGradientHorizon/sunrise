@@ -26,8 +26,8 @@ the runner has a Vulkan driver (an ICD file), and must pass there.
 
 A row marked `daily` (`PACKAGE TEST TARGET daily REASON`, in `daily-<package>.txt`) is a test moved out of
 `verify` into the daily run with `#[ignore = "daily"]` (tools/ci/move_to_daily.py): not a known failure, it must
-pass, and its row must name a test that still runs. A package's shard runs the daily rows of the targets it
-already runs (its library; every target for the packages in INTEGRATION_TESTS); the shard `daily-rows`
+pass, and its row must name a test that still runs. Daily shards and `daily-rows` require an adapter for GPU
+fixtures, including rows with reason `gpu`. A package's shard runs the daily rows of the targets it already runs (its library; every target for the packages in INTEGRATION_TESTS); the shard `daily-rows`
 (tools/ci/ignored_shards.py) runs every other daily row: the root workspace's tests are built once with verify's command
 (WORKSPACE_TEST_BUILD) and each package's test executables then run with `--ignored --exact TEST...`; a package that
 build didn't make, or one in OWN_BUILD, runs `cargo test -p PACKAGE TARGET... -- --ignored --exact TEST...`, from the
@@ -85,6 +85,8 @@ POLICY_PATH = "tools/ci/ignored-tests"  # as messages name it
 # The single list these files replaced: a file there again fails every reader, naming the folder.
 RETIRED = Path(__file__).with_name("ignored-tests-known-failures.txt")
 RESULT = re.compile(r"^test (\S+)(?: - should panic)? \.\.\. (ok|FAILED)$")
+# libtest's header over a failed test's captured output.
+CAPTURE = re.compile(r"^---- (\S+) stdout ----$")
 SUMMARY = re.compile(r"^test result: \S+\. (\d+) passed; (\d+) failed; (\d+) ignored; (\d+) measured;")
 # Cargo's line as a test executable starts: `Running unittests src/lib.rs (…)`, `Running tests/x.rs (…)`, or a
 # target whose source lives in another package's folder (`Running ../sunrise-client/tests/lan_bot.rs (…)`).
@@ -106,8 +108,11 @@ LEG = re.compile(r"^(?P<package>[^#]+)#(?P<number>\d+)of(?P<count>\d+)$")
 LISTED = re.compile(r"^(\S+): test$")
 # A daily row's TARGET: the library, or one binary or integration test (cargo's --bin NAME, --test NAME).
 DAILY_TARGET = re.compile(r"^(?:lib|(?:bin|test):[\w-]+)$")
-# Why a test is a daily test (CONTRIBUTING.md "CI tiers"): slower than 2 s, or what it needs.
-DAILY_REASONS = ("slow", "game-boot", "resources", "child-process", "network", "windows")
+# Why a test is a daily test (CONTRIBUTING.md "CI tiers"): slower than 2 s, or what it needs. `stable-line` is a check
+# `verify` runs too, repeated in the daily because a stable release needs a green daily of its commit to hold it.
+DAILY_REASONS = ("slow", "game-boot", "resources", "child-process", "network", "gpu", "windows", "own-sdk", "stable-line")
+# A test that needs the daily head's SDK in book-quickstart.yml, not a previous Nightly.
+OWN_SDK_REASON = "own-sdk"
 # A daily reason for a test whose target compiles only on Windows (`#![cfg(windows)]`): no Linux shard or `daily-rows`
 # leg selects or expects it, and the Windows job of windows-runtime-leases.yml runs it (--windows-rows).
 WINDOWS_REASON = "windows"
@@ -144,8 +149,12 @@ def compile_diagnostics(output):
         elif re.match(r"^\s*--> [\w./-]+:\d+:\d+$", line):
             headings.append(line)
     for line in headings[:20]:
+        location = re.match(r"^\s*--> ([\w./-]+):\d+:\d+$", line)
+        # A location is published only when it is a tracked source: a generated file's path is the runner's own.
+        if location and source_lines(location[1]) is None:
+            line, location = "  --> location withheld (not a tracked Rust source)", None
         print("  compiler: " + line[:300] + (" [shortened]" if len(line) > 300 else ""))
-        if line.strip().startswith("--> "):
+        if location:
             panic_source(line.strip()[4:], kind="compiler")
     if len(headings) > 20:
         print(f"  compiler diagnostics truncated: {len(headings) - 20} more headings")
@@ -272,13 +281,13 @@ def known_failures():
 
 def daily_rows():
     """The rows marked `daily` that the shards run: tests moved out of verify that the daily run must run and pass.
-    A Windows-only test runs in the Windows job rather than a Linux shard."""
+    Windows-only and own-SDK tests run in their respective jobs rather than a Linux shard."""
     return [row for row in listed_entries() if row.mark == "daily" and not kept_out(row)]
 
 
 def kept_out(row):
-    """Whether no Linux shard or `daily-rows` leg runs this daily row: another job does (`windows`)."""
-    return row.reason == WINDOWS_REASON
+    """Whether this daily row runs in another job, not a Linux shard or the daily-rows leg."""
+    return row.reason in {WINDOWS_REASON, OWN_SDK_REASON}
 
 
 def windows_rows():
@@ -541,8 +550,10 @@ def assertion_source(path, line):
 def failure_diagnostics(output):
     """One record per failed result occurrence, including repeated names across targets.
 
-    Panic contexts use libtest's name model and the first panic for that name.
-    They cannot disambiguate identical names in different targets.
+    Panic contexts use libtest's name model. Within the first failed-test capture kept for a name (libtest's
+    `---- <name> stdout ----` block), its last panic wins: the one the test failed on, after any it caught. Across
+    targets the first kept context wins for every occurrence of the name, and so does the first panic of output
+    outside a failed test's capture (a fatal run's).
     Beside the classified reason, a record shows the statement that panicked and any part of the payload (a
     message, an operand) that occurs verbatim in the tracked source around it (public_text): the checkout's own text,
     never a computed or prepared value.
@@ -553,9 +564,15 @@ def failure_diagnostics(output):
     aborts = []
     panic_reason_pending = False
     thread_name = None
-    # Collect compiler codes only after a panic that already exposed a tracked message.
+    # Collect compiler codes only after a panic that already exposed a tracked message, or one whose payload starts as
+    # rustc's own output does.
     compiler_codes = {}
     pending_codes = None
+    # Which captured-output block a line is in (a result line or libtest's capture header starts the next), the test
+    # whose failed-test capture it is (None outside one), and the block each kept context came from.
+    block = 0
+    capture = None
+    kept_block = {}
     # The tracked (path, line) of the current panic, and whether its `left:`/`right:` operand lines may follow.
     where = None
     operands_pending = False
@@ -603,6 +620,10 @@ def failure_diagnostics(output):
                 ("index out of bounds", "index out of bounds"),
                 ("attempt to", "arithmetic failure"),
             ) if line.strip().startswith(prefix)), "custom panic")
+            # A test that compiles a generated program panics with rustc's own output: its codes are categories.
+            compiler = RUSTC_ERROR.match(line.strip())
+            if compiler:
+                reason = "rustc could not compile a test program"
             withheld_text = "payload withheld (resource privacy)"
             if reason == "Result::unwrap on an error":
                 if shape := unwrap_error_shape(line.strip().split(" value: ", 1)[-1]):
@@ -615,7 +636,10 @@ def failure_diagnostics(output):
                 message = line.strip().split("failed: ", 1)[1] if "failed: " in line else None
             elif where and reason in ("assertion condition failed", "custom panic"):
                 message = line.strip()
-            if shown := (public_text(message, *where) if message else None):
+            if compiler and context is contexts.get(thread_name):
+                context.append(f"  panic reason: {reason}; {withheld_text}")
+                pending_codes = compiler_codes[thread_name] = [compiler[1]]
+            elif shown := (public_text(message, *where) if message else None):
                 context.append(f"  panic reason: {reason}; message: {shown}")
                 if context is contexts.get(thread_name):
                     pending_codes = compiler_codes[thread_name] = []
@@ -629,12 +653,22 @@ def failure_diagnostics(output):
         if found := RESULT.match(line):
             if found[2] == "FAILED":
                 failures.append(found[1])
+        header = CAPTURE.match(line)
+        if header or RESULT.match(line):
+            block += 1
+            capture = header[1] if header else None
         if panic:
             context = []
             thread_name = panic[1]
-            if thread_name not in contexts:
+            if thread_name in contexts and kept_block[thread_name] == block and capture == thread_name:
+                # A test that catches a panic it raises on purpose (a listener's) fails on its last one: a later
+                # panic in the same failed-test capture replaces the earlier.
+                contexts[thread_name] = context
+                compiler_codes.pop(thread_name, None)
+            elif thread_name not in contexts:
                 if len(contexts) < DIAGNOSTIC_CONTEXTS:
                     contexts[thread_name] = context
+                    kept_block[thread_name] = block
                 else:
                     skipped_contexts += 1
                     continue
@@ -642,9 +676,7 @@ def failure_diagnostics(output):
             path = location[1] if location else ""
             if any(ord(char) < 32 or 127 <= ord(char) <= 159 for char in path):
                 path = ""
-            # game-discovery emits canonical absolute #[path] declarations. Only
-            # this checkout's exact resolved prefix is authoritative; never guess
-            # another checkout's prefix or search for a matching path suffix.
+            # An absolute path counts only under this checkout's exact prefix, never a guessed one.
             path = path.replace(os.sep, "/")
             prefix = ROOT.as_posix() + "/"
             if path.startswith(prefix):
@@ -726,6 +758,18 @@ def failure_diagnostics(output):
 
 
 RUNNING_LONG = re.compile(r"^test (\S+) has been running for over 60 seconds$")
+# A hung test held its leg until the job's own time limit cancelled the job, and a cancelled job names no test
+# (the client halves in daily 44814607973). Each test run stops at this limit instead: GNU timeout ends the run's
+# whole process group, the test executable included, and returns TIMED_OUT, so the run is red with the tests still
+# running named (libtest's 60 s notices) and the job's later legs still run. The longest leg that finished ran
+# 1,424 s (daily 44781526923).
+TEST_RUN_LIMIT = 45 * 60
+TIMED_OUT = 124
+
+
+def time_limit():
+    """The prefix that stops a test run at TEST_RUN_LIMIT; none without GNU timeout (Windows' `timeout` only waits)."""
+    return ["timeout", f"{TEST_RUN_LIMIT}s"] if os.name == "posix" and shutil.which("timeout") else []
 CRASH_NAMES = 20
 # The job's cgroup (v2): the whole job's memory, compilation and file cache included, as the data-leg lines print it.
 CGROUP = Path("/sys/fs/cgroup")
@@ -900,11 +944,15 @@ def run_binaries(package, executables, arguments, env):
     for target, executable in executables.items():
         output.append(f"     Running {executable} ({executable})")
         crate = package if target == "lib" else target.split(":", 1)[1]
-        done = subprocess.run([executable, *arguments], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-                              errors="replace", env=dict(env, CARGO_CRATE_NAME=crate.replace("-", "_")), cwd=folder)
+        done = subprocess.run([*time_limit(), executable, *arguments], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              text=True, errors="replace", env=dict(env, CARGO_CRATE_NAME=crate.replace("-", "_")),
+                              cwd=folder)
         output.append(done.stdout)
-        if done.returncode:
-            status = 101
+        if done.returncode == TIMED_OUT:
+            # The executables after it still run; the run as a whole reads as stopped at the limit.
+            status = TIMED_OUT
+        elif done.returncode:
+            status = status or 101
             ended = (f"signal: {-done.returncode}, {signal.Signals(-done.returncode).name}"
                      if done.returncode < 0 and -done.returncode in signal.valid_signals()
                      else f"exit status: {done.returncode}")
@@ -913,7 +961,31 @@ def run_binaries(package, executables, arguments, env):
     return subprocess.CompletedProcess(list(executables.values()), status, "\n".join(output) + "\n")
 
 
+# What the current run's commands printed, by stage (build, list, test): kept privately when the run fails.
+_captured = {}
+
+
 def run(package, skip, number=None, count=None, only=None, binaries=None):
+    """Run one leg (run_leg) and, when it fails in any way, keep everything its commands printed.
+
+    The public log withholds free-form panic payloads and compiler text (they can carry vanilla data). With
+    IGNORED_TESTS_PRIVATE_LOGS set, a run that stopped (None) or has a failed test keeps each stage's whole output
+    there as `<leg>.<stage>.log`, which ignored-tests.yml copies into the CI host's private keep; the public log
+    names the files only."""
+    _captured.clear()
+    results = run_leg(package, skip, number, count, only, binaries)
+    private = os.environ.get("IGNORED_TESTS_PRIVATE_LOGS")
+    if private and (results is None or not all(results.values())):
+        leg = package if number is None else f"{package}#{number}of{count}"
+        for stage, text in _captured.items():
+            kept = Path(private) / f"{leg}.{stage}.log"
+            kept.parent.mkdir(parents=True, exist_ok=True)
+            kept.write_text(text, errors="replace")
+            print(f"{package}: kept privately on the runner: {kept.name}")
+    return results
+
+
+def run_leg(package, skip, number=None, count=None, only=None, binaries=None):
     """Each test's result in `package`'s ignored library tests but `skip` (and, with a leg, the other legs'), or None if they didn't build.
 
     `only=(targets, tests)` runs just those ignored tests of those targets (`lib`, `bin:NAME`, `test:NAME`) instead;
@@ -931,7 +1003,7 @@ def run(package, skip, number=None, count=None, only=None, binaries=None):
         for key in ("SUNRISE_LAUNCHER_TRASH", "SUNRISE_LAUNCHER_CLIPBOARD", "SUNRISE_LAUNCHER_DESKTOP"):
             homes[key] = Path(scratch) / key.lower()
         env = lab.game_env(**homes)
-        # A fixture holds a server Game by value, which the server thread gets a guest stack for: not libtest's 2 MiB.
+        # Some fixtures hold a server Game by value on a libtest thread and need more than its default stack.
         env["RUST_MIN_STACK"] = str(TEST_THREAD_STACK)
         if package == "sunrise-client-lib":
             # Worldgen must meet its real-time deadlines without disabling test assertions.
@@ -960,6 +1032,7 @@ def run(package, skip, number=None, count=None, only=None, binaries=None):
         if prepare := ignored_shards.PREPARE.get(package):
             built = subprocess.run(prepare, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                    errors="replace", env=env, cwd=ROOT / workspace)
+            _captured["build"] = built.stdout
             if built.returncode:
                 print(f"{package}: building what its tests need failed (cargo exit {built.returncode})")
                 compile_diagnostics(built.stdout)
@@ -977,6 +1050,7 @@ def run(package, skip, number=None, count=None, only=None, binaries=None):
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors="replace", env=env,
                 cwd=ROOT / workspace,
             )
+            _captured["list"] = (listing.stdout or "") + (listing.stderr or "")
             names = {found[1] for line in listing.stdout.splitlines() if (found := LISTED.match(line))}
             if listing.returncode or not names:
                 print(f"{package}: could not list the tests to split into legs (cargo exit {listing.returncode})")
@@ -996,16 +1070,18 @@ def run(package, skip, number=None, count=None, only=None, binaries=None):
         threads = min(8 if client_half else 4, int(os.environ.get("CI_CPUS", "8")))
         selection = ["--ignored", "--exact", f"--test-threads={threads}", *only[1]] if only else \
             ["--include-ignored", "--exact", f"--test-threads={threads}", *skips]
+        env["SUNRISE_GPU_TESTS_REQUIRE_ADAPTER"] = "1"
         if binaries:
             process = run_binaries(package, {target: binaries[target] for target in only[0]}, selection, env)
         else:
             process = subprocess.run(
-                [*command, "--", *selection],
+                [*time_limit(), *command, "--", *selection],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace", env=env,
                 cwd=ROOT / workspace,
             )
         if timing:
             print(f"data-leg phase={phase} test-command-end utc={time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} execution_seconds={time.monotonic() - execution_started:.3f}", flush=True)
+    _captured["test"] = process.stdout
     results = {}
     summaries = []
     print(f"{package}: cargo exit {process.returncode}")
@@ -1088,6 +1164,12 @@ def run(package, skip, number=None, count=None, only=None, binaries=None):
                 if status != "ignored":
                     results[name] = results.get(name, True) and status == "ok"
     finish_target()
+    if process.returncode == TIMED_OUT:
+        ended_by = f"the {TEST_RUN_LIMIT} s limit"
+        stop("tests still running at the time limit (a hung test)")
+        still = ", ".join(_stopped["still_running"]) or "none named (each started under 60 s before the limit)"
+        print(f"{package}: stopped after {TEST_RUN_LIMIT} s; still running past 60 s: {still}")
+        return None
     if crashed:
         print(f"{package}: a test process crashed (cargo exit {process.returncode})")
         crash_report(package, process.stdout, expected, results)
@@ -1197,7 +1279,7 @@ def main(shards, report=None):
                 if listed == package and in_leg(test, number, count) and not os.environ.get(variable):
                     print(f"{package} {safe_identity(test)}: refused, needs {variable}; run by the parity harness")
                     skip.append(test)
-            # The daily rows another job runs (`windows`) never run here.
+            # The daily rows another job runs never run here.
             skip += [row.test for row in listed_entries() if row.mark == "daily" and kept_out(row)
                      and row.package == package and in_leg(row.test, number, count)]
             if package == "sunrise-client" and count == 2:

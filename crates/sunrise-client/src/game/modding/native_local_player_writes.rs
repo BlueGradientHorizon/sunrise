@@ -1,7 +1,7 @@
 //! A client mod's writes to the player it moves itself, before the tick's own move.
 //! Nothing is sent; the server hears of the result in the normal position report.
 use super::Game;
-use mod_api::LevelWriteError;
+use mod_api::{LevelWriteError, PlayerRef};
 use sunrise_core::geometry::Vec3;
 use sunrise_world::entity_move::MoverType;
 
@@ -36,6 +36,20 @@ impl Game<'_> {
         self.riding.is_none() && self.sleeping.is_none() && self.screen != super::Screen::Dead
     }
 
+    pub(super) fn player_reset_fall_distance(
+        &mut self,
+        player: PlayerRef,
+    ) -> Result<bool, LevelWriteError> {
+        if self.native_local_status(player).is_none() {
+            return Ok(false);
+        }
+        let Some(player) = self.player.as_mut() else {
+            return Ok(false);
+        };
+        player.fall_distance = 0.0;
+        Ok(true)
+    }
+
     pub(super) fn move_local_player_by(
         &mut self,
         delta: [f64; 3],
@@ -48,7 +62,7 @@ impl Game<'_> {
         }
         let [x, y, z] = delta;
         self.in_this_levels_colliders(|game| {
-            game.move_local_player(MoverType::SelfMovement, Vec3::new(x, y, z))
+            game.move_local_player(MoverType::SelfMovement, Vec3::new(x, y, z), false)
         })
         .map(|moved| moved.map(Vec3::components))
         .map_err(|_| LevelWriteError::Unavailable)
@@ -189,6 +203,87 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn resetting_a_local_fall_discards_the_distance_before_landing() {
+        use crate::game::native_entity_refs::tests::with_client_game;
+        use mod_api::ClientHost;
+        use sunrise_client::{
+            landing::{FallEvent, SceneSound},
+            motion::MotionEvent,
+        };
+
+        with_client_game(|game| {
+            loaded_client(game);
+            let local = game.local_player().unwrap();
+            let stale = mod_api::__private::game::player_ref(
+                mod_api::EntityRef::new(
+                    mod_api::WorldEpoch::new(local.entity().epoch().get() + 1),
+                    local.entity().id(),
+                ),
+                local.uuid(),
+            );
+            assert_eq!(stale.reset_fall_distance(game), Ok(false));
+            let stone = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:stone")
+                .unwrap();
+            game.world.set(0, 57, 0, stone).unwrap();
+
+            for reset in [true, false] {
+                let player = game.player.as_mut().unwrap();
+                player.client_side = true;
+                player.position.y = 64.0;
+                player.ground.on_ground = false;
+                player.fall_distance = 0.0;
+                player.events.clear();
+                let health = player.health.health();
+                let host: &mut dyn ClientHost = game;
+                assert_eq!(
+                    host.move_local_player_by([0.0, -5.0, 0.0]),
+                    Ok(Some([0.0, -5.0, 0.0]))
+                );
+                assert_eq!(game.player.as_ref().unwrap().fall_distance, 5.0);
+                if reset {
+                    assert_eq!(local.reset_fall_distance(game), Ok(true));
+                    assert_eq!(game.player.as_ref().unwrap().fall_distance, 0.0);
+                }
+                let host: &mut dyn ClientHost = game;
+                assert_eq!(
+                    host.move_local_player_by([0.0, -2.0, 0.0]),
+                    Ok(Some([0.0, -1.0, 0.0]))
+                );
+                let player = game.player.as_ref().unwrap();
+                assert!(player.ground.on_ground);
+                assert_eq!(player.health.health(), health);
+                if reset {
+                    assert!(!player.events.iter().any(|event| {
+                        matches!(
+                            event,
+                            MotionEvent::Fall(
+                                FallEvent::Sound { .. } | FallEvent::BlockFallSound { .. }
+                            )
+                        )
+                    }));
+                } else {
+                    assert!(player.events.iter().any(|event| {
+                        matches!(
+                            event,
+                            MotionEvent::Fall(FallEvent::Sound {
+                                sound: SceneSound::SmallFall,
+                                ..
+                            })
+                        )
+                    }));
+                }
+            }
+            game.player = None;
+            assert_eq!(local.reset_fall_distance(game), Ok(false));
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn a_local_displacement_respects_collider_exemptions_when_moving_and_sneaking() {
         use sunrise_client_render::moving_colliders::{Placed, Prepared, Scope};
         use sunrise_core::geometry::{
@@ -272,10 +367,14 @@ mod tests {
                 event: &mut mod_api::EntityEnteringSectionEvent,
             ) {
                 if let HostSide::Client(host) = host
-                    && host
-                        .local_player()
-                        .is_some_and(|p| p.entity() == event.entity)
+                    && let Some(player) = host.local_player()
+                    && player.entity() == event.entity
                 {
+                    assert_eq!(
+                        player.reset_fall_distance(host),
+                        Err(mod_api::LevelWriteError::Unavailable),
+                    );
+                    assert!(host.client_executor().is_none());
                     self.0.lock().unwrap().push((
                         event.old_section,
                         event.new_section,
@@ -316,6 +415,59 @@ mod tests {
             assert!(!game.set_local_player_velocity([0.0; 3]));
             assert!(!game.set_local_player_on_ground(true));
             assert_eq!(game.move_local_player_by([1.0, 0.0, 0.0]), Ok(None));
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn player_collision_flags_distinguish_a_ceiling_from_the_floor_and_a_wall() {
+        use crate::game::native_entity_refs::tests::{bind_local_player, with_client_game};
+        use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
+        use sunrise_core::geometry::Vec3;
+        use sunrise_world::entity_move::MoverType;
+
+        let check = |game: &mut Game<'_>| {
+            let player = game.player(456).unwrap();
+            let stone = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:stone")
+                .unwrap();
+            game.world.set(0, 63, 0, stone).unwrap();
+            game.world.set(0, 66, 0, stone).unwrap();
+            game.world.set(2, 64, 0, stone).unwrap();
+
+            let mut move_and_read = |movement| {
+                game.move_local_player(MoverType::SelfMovement, movement, false)
+                    .unwrap();
+                player.collision_flags(game).unwrap().unwrap()
+            };
+            let ceiling = move_and_read(Vec3::new(0.0, 1.0, 0.0));
+            assert!(ceiling.vertical);
+            assert!(!ceiling.vertical_below);
+            assert!(!ceiling.horizontal);
+
+            let floor = move_and_read(Vec3::new(0.0, -1.0, 0.0));
+            assert!(floor.vertical);
+            assert!(floor.vertical_below);
+            assert!(!floor.horizontal);
+
+            let wall = move_and_read(Vec3::new(3.0, 0.0, 0.0));
+            assert!(wall.horizontal);
+            assert!(!wall.minor_horizontal);
+        };
+
+        with_client_game(|game| {
+            loaded_client(game);
+            check(game);
+        });
+        with_game(|game| {
+            game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
+            bind_local_player(game, 42, 456);
+            game.streaming
+                .insert_remote(&mut game.world, Chunk::empty(0, 0));
+            check(game);
         });
     }
 

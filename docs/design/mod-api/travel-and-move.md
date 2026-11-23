@@ -45,19 +45,17 @@ actual resulting displacement in vanilla order. Travel and move are distinct
 moments: a travel replacement can still encounter a move veto. No second hook is
 added for individual branches or replay.
 
-Vectors use owned finite f64 components. Travel input components must lie in [-1,1];
-replacement velocity and move delta components in [-64,64] blocks per tick or call.
-These are proposed mod-output budgets, not limits applied to untouched values.
-Reject the entire malformed result, including its cancellation, rather than
-clamping it. For travel, diagnose the refusal once per listener per tick.
-Later listeners see the preceding accepted values, and cannot clear an accepted
-travel cancellation. For both hooks — with no host writes there is nothing to
-go stale — a panic keeps the **requested** values (not a replacement
-an earlier listener had proposed), and the panic poison disables that listener
-for the session; the travel or move carries on. A rejected replacement is
-refused as the requested values would be: result validation, not a
-stale-decision recheck.
-A process abort cannot be recovered.
+Vectors use owned finite f64 components. Travel replacement input components
+must lie in [-1,1] and replacement velocity components in [-64,64] blocks per tick.
+Move replacement components need only be finite: `Entity.move` has no general
+per-axis magnitude limit, and its piston-specific limit still applies afterward.
+The direct `move_by` action validates the request separately. Untouched values
+are not revalidated. Reject the entire malformed result, including its
+cancellation, rather than clamping it. Report the mod and field on each refusal.
+Later listeners see the preceding accepted values and cannot clear an accepted
+cancellation. A panic also leaves the preceding accepted values intact and disables
+only that mod's callback for the hook; the travel or move carries on. This is result
+validation, not a stale-decision recheck. A process abort cannot be recovered.
 
 ## Ownership and route map
 
@@ -92,12 +90,11 @@ lands and route their actual Entity.move equivalents through this boundary.
 
 Both hooks, ruled hostless (#2414), reduce to result validation: the gate holds
 the resolved values (travel's input and velocity, move's requested delta), a
-listener result that passes the budgets replaces them, malformed output is
-dropped and the preceding valid values stand (`living_travel` checks each
-listener's pair as it returns and names the mod and the field; `entity_move`
-checks the final delta), and cancellation skips the invocation. A panic keeps
-the resolved values while its poison disables that listener for this hook for
-the session. The decide/fire/apply lift with a real Host reopens only on a
+listener result that passes validation replaces them, malformed output is
+dropped and the preceding accepted values stand. `living_travel` checks each
+listener's pair as it returns; `entity_move` checks each proposed replacement
+delta. Cancellation skips the invocation. A panic keeps the preceding accepted
+result and disables that mod's callback for this hook for the session. The decide/fire/apply lift with a real Host reopens only on a
 measured need from a real mod, as its own PR. Both take
 the existing path without snapshots, allocations or mod scans when nobody
 subscribes — dispatch only to subscribed mods, resolved once.
@@ -148,10 +145,11 @@ cases isolate move from travel acceleration and gravity.
 | Same, Cancel | Position (0,64,0), zero displacement notices |
 | Same, ReplaceDelta (0,0,1) | Position (0,64,1), one notice |
 | AABB x extent [-0.3,0.3], solid wall plane x=1, delta (2,0,0), no step opening | Center x=0.7, right face x=1, zero penetration |
-| Replacement NaN, infinity, 65 or -65 on one axis | Entire result rejected; original delta (1,0,0) still yields (1,64,0) |
+| Move replacement NaN or infinity on one axis | Entire result rejected; original delta (1,0,0) still yields (1,64,0) when no earlier proposal was accepted |
+| Finite move replacement (65,0,0), no obstruction | Position (65,64,0), one notice |
 | Replacement (-1,0,0) | Position (-1,64,0) |
-| Listener panics after a replacement | The resolved values run; listener disabled for this hook for the session |
-| Replacement beyond the budgets | Refused by name (NaN, infinity, out of range); the preceding valid values run, the resolved ones when none |
+| Listener panics after a replacement | Preceding accepted values run; listener disabled for this hook for the session |
+| Travel replacement outside its budget | Refused by mod and field; preceding accepted values run |
 | Two identical corrected replays of fixed input sequence | Final position/velocity and attachment bytes equal fresh authoritative simulation; exactly one external effect per action identity |
 | Host window, LAN guest, dedicated player | Each geometric case above has identical values and correct acting-player identity |
 | No listeners: air, water, lava, glide, flying, piston, vehicle | Exact position/velocity/collision/fall-state equality with vanilla 26.3 oracle fixtures for the same inputs |

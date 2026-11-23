@@ -157,8 +157,15 @@ fn object_style<'a>(
     child: &mut dyn FnMut(&'a Value) -> Text,
     origin: Origin,
     decoded_clicks: Option<&[crate::text::ClickEvent]>,
+    local_styles: bool,
 ) -> Style {
     let mut style = Style::default();
+    if local_styles {
+        style.opaque_style_id = o
+            .get("__sunrise_local_style_id")
+            .and_then(Value::as_u64)
+            .and_then(|id| usize::try_from(id).ok());
+    }
     if let Some(c) = o.get("color").and_then(Value::as_str) {
         style.color = parse_color(c);
     }
@@ -261,6 +268,7 @@ pub fn to_text_with(
         &|_| Origin::Remote,
         None,
         None,
+        false,
     )
     .unwrap_or_default()
 }
@@ -276,6 +284,24 @@ pub fn text_with_decoded_clicks(v: &Value, clicks: &[crate::text::ClickEvent]) -
         &|_| Origin::Remote,
         None,
         Some(clicks),
+        false,
+    )
+    .unwrap_or_default()
+}
+
+/// Render the engine-generated local layout projection, which omits user metadata.
+/// Only that projection's internally assigned style indices are used, and its
+/// objects are not retained as a serialized source.
+pub fn text_with_local_styles(v: &Value) -> Text {
+    build(
+        v,
+        &mut |s| Text::literal(s),
+        &mut |_| None,
+        Sourced(false, Origin::Local),
+        &|_| Origin::Local,
+        None,
+        None,
+        true,
     )
     .unwrap_or_default()
 }
@@ -314,6 +340,7 @@ fn build_source(
         origin,
         language,
         None,
+        false,
     )
 }
 
@@ -616,6 +643,7 @@ fn build(
     origin: &dyn Fn(&Value) -> Origin,
     language: Option<&crate::lang::Language>,
     decoded_clicks: Option<&[crate::text::ClickEvent]>,
+    local_styles: bool,
 ) -> Option<Text> {
     enum Content<'a> {
         Decode(Option<Text>),
@@ -676,8 +704,13 @@ fn build(
                 let Value::Object(o) = value else {
                     unreachable!()
                 };
-                let style =
-                    object_style(o, &mut |v| done.take_text(v), origin(value), decoded_clicks);
+                let style = object_style(
+                    o,
+                    &mut |v| done.take_text(v),
+                    origin(value),
+                    decoded_clicks,
+                    local_styles,
+                );
                 let overridden = if hover { None } else { contents(o) };
                 let needs_content = overridden.is_none();
                 let translation = o.get("translate").and_then(Value::as_str).filter(|_| {

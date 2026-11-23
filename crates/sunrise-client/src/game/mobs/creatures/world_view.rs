@@ -13,6 +13,7 @@ impl Game<'_> {
             side: self,
             mob_maps: self.mob_maps(),
             section_writer: None,
+            trading_players: Some(self),
             professions: self.stations().professions.as_ref(),
             loop_context: &self.loop_context,
             world: &self.world,
@@ -32,6 +33,7 @@ impl Game<'_> {
             others,
             live_mobs: None,
             dragon: self.dragon_target(),
+            armor_stands: &self.armor_stands,
             leash_boats: &self.leash_boats,
             others_grid: None,
             others_index: None,
@@ -63,6 +65,10 @@ impl Game<'_> {
                 .ui
                 .rules
                 .bool_at(sunrise_client::gamerules::vanilla::MOB_DROPS),
+            pvp: self
+                .ui
+                .rules
+                .bool_at(sunrise_client::gamerules::vanilla::PVP),
             max_entity_cramming: self
                 .ui
                 .rules

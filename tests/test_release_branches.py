@@ -103,10 +103,10 @@ class StableTagTests(unittest.TestCase):
 
 
 class AuthorizeTests(unittest.TestCase):
-    KINDS = ("daily", "nightly", "snapshot", "stable", "sdk")
+    KINDS = ("daily", "nightly", "dev", "stable", "sdk")
 
     def test_only_exact_refs_of_this_repository_dispatched_for_real_publish(self):
-        for ref, kinds in ((MAIN, {"daily", "nightly", "snapshot", "sdk"}), (NIGHTLY, {"nightly"}),
+        for ref, kinds in ((MAIN, {"daily", "nightly", "dev", "sdk"}), (NIGHTLY, {"nightly"}),
                            (RELEASE, {"daily", "stable", "sdk"})):
             for kind in self.KINDS:
                 self.assertEqual(train.authorized(kind, "false", ref, REPO, DISPATCH), kind in kinds, (ref, kind))
@@ -135,7 +135,7 @@ class AuthorizeTests(unittest.TestCase):
         gates = [(workflow("daily.yml")["jobs"]["resolve"], "auth", "daily", RELEASE),
                  (workflow("nightly-build.yml")["jobs"]["pick"], "mode", "stable", RELEASE),
                  (workflow("nightly-build.yml")["jobs"]["pick"], "mode", "nightly", NIGHTLY),
-                 (workflow("release.yml")["jobs"]["decide"], "mode", "snapshot", MAIN),
+                 (workflow("release.yml")["jobs"]["decide"], "mode", "dev", MAIN),
                  (workflow("sdk-publish.yml")["jobs"]["authorize"], "authorize", "sdk", MAIN)]
         for job, step_id, kind, ref in gates:
             step = next(step for step in job["steps"] if step.get("id") == step_id)
@@ -178,8 +178,7 @@ class AuthorizeTests(unittest.TestCase):
             self.assertEqual(outputs["dry_run"], "${{ steps.mode.outputs.publish == 'true' && 'false' || 'true' }}", name)
         build = workflow("nightly-build.yml")["jobs"]
         self.assertEqual(build["pick"]["outputs"]["publish"], "${{ steps.mode.outputs.publish }}")
-        for job in ("sign", "musl-attach"):
-            self.assertEqual(build[job]["environment"], "${{ needs.pick.outputs.publish == 'true' && 'release' || '' }}")
+        self.assertEqual(build["sign"]["environment"], "${{ needs.pick.outputs.publish == 'true' && 'release' || '' }}")
         daily = workflow("daily.yml")["jobs"]
         self.assertEqual(daily["resolve"]["steps"][-1]["env"]["DRY_RUN"], "${{ steps.auth.outputs.dry_run }}")
         for job in ("nightly-branch", "nightly"):
@@ -384,7 +383,7 @@ class NightlyBranchTests(unittest.TestCase):
 
     def test_the_train_is_not_held_by_a_stable_build(self):
         runs = [{"databaseId": 1, "status": "in_progress", "displayTitle": "stable build release/26.3"},
-                {"databaseId": 2, "status": "queued", "displayTitle": "snapshot build abc"}]
+                {"databaseId": 2, "status": "queued", "displayTitle": "dev build abc"}]
         with mock.patch.object(train, "gh_json", return_value=runs):
             self.assertIsNone(train.nightly_building())
         runs.append({"databaseId": 3, "status": "queued", "displayTitle": "nightly build"})
@@ -432,7 +431,7 @@ class StableHeadTests(unittest.TestCase):
 class PickStableTests(unittest.TestCase):
     SHA = "0c02067" + "a" * 33
 
-    def pick(self, folder, blockers=(), tags=None, **env):
+    def pick(self, folder, blockers=(), tags=None, parent=None, **env):
         out = Path(folder, "out")
         values = {"GITHUB_REPOSITORY": REPO, "GITHUB_OUTPUT": str(out), "GITHUB_REF": RELEASE, "DRY_RUN": "false",
                   "NIGHTLY_BASE": self.SHA, "RELEASE_VERSION": "0.1.0", "RELEASES_PAUSED": "", **env}
@@ -441,13 +440,14 @@ class PickStableTests(unittest.TestCase):
         os.chdir(folder)
         try:
             with mock.patch.dict(os.environ, values), mock.patch.object(nightly, "git", return_value=""), \
-                    mock.patch.object(nightly, "remote_tags", return_value=tags), \
+                    mock.patch.object(nightly.train, "origin_tags", return_value=tags), \
                     mock.patch.object(nightly.train, "release_head", return_value=self.SHA) as head, \
                     mock.patch.object(nightly.train, "open_blockers", return_value=list(blockers)), \
                     mock.patch.object(nightly.train, "known_issues", return_value=[]), \
-                    mock.patch.object(nightly, "sdk_ready", return_value=True):
+                    mock.patch.object(nightly, "sdk_ready", return_value=True), \
+                    mock.patch.object(nightly, "stable_parent", return_value=parent):
                 nightly.pick_stable()
-            head.assert_called_once_with(values["NIGHTLY_BASE"], values["DRY_RUN"] == "true")
+            head.assert_called_once_with(values["NIGHTLY_BASE"], values["DRY_RUN"] == "true", daily=True)
             return dict(line.split("=", 1) for line in out.read_text().splitlines()), Path("nightly-notes.md").read_text()
         finally:
             os.chdir(back)
@@ -475,6 +475,18 @@ class PickStableTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, "is not newer than 26.3-0.1.0"):
                 self.pick(folder, tags={"26.3-0.1.0": "9" * 40})
 
+    def test_a_version_that_skips_a_step_stops_at_the_pick(self):
+        parent = nightly.train.Release("26.3-0.1.0", "9" * 40, nightly.train.github_time("2026-11-01T00:00:00Z"))
+        with tempfile.TemporaryDirectory() as folder:
+            tags = {"26.3-0.1.0": parent.sha}
+            with mock.patch.object(nightly, "stop", side_effect=SystemExit("stopped")) as stop:
+                with self.assertRaises(SystemExit):
+                    self.pick(folder, tags=tags, parent=parent, RELEASE_VERSION="0.2.1")
+            self.assertIn("26.3-0.2.1 does not follow 26.3-0.1.0", stop.call_args.args[2])
+            outputs, _ = self.pick(folder, tags=tags, parent=parent, RELEASE_VERSION="0.2.0")
+            self.assertEqual((outputs["tag"], outputs["parent_tag"], outputs["parent_sha"]),
+                             ("26.3-0.2.0", "26.3-0.1.0", parent.sha))
+
     def test_a_pause_or_a_release_blocker_holds_a_real_release_and_a_dry_run_says_so(self):
         for held in ({"RELEASES_PAUSED": "1"}, {"blockers": [3715]}):
             with self.subTest(held=held), tempfile.TemporaryDirectory() as folder:
@@ -497,20 +509,24 @@ class PickStableTests(unittest.TestCase):
 class ReserveStableTagTests(unittest.TestCase):
     SHA = "0c02067" + "a" * 33
 
-    def reserve(self, tags, created=0, after="", head=None, ref=RELEASE, tag="26.3-0.1.0"):
+    def reserve(self, tags, created=0, after="", head=None, ref=RELEASE, tag="26.3-0.1.0", parent=None, picked=None):
         calls = []
+        found = picked or ((parent.tag, parent.sha) if parent else ("", ""))
 
         def run(command, **kwargs):
             calls.append(command)
             return subprocess.CompletedProcess(command, created, "", "Reference already exists" if created else "")
-        with mock.patch.dict(os.environ, {"GITHUB_REF": ref, "GITHUB_REPOSITORY": REPO}), \
-                mock.patch.object(nightly, "remote_tags", return_value=tags), \
+        with mock.patch.dict(os.environ, {"GITHUB_REF": ref, "GITHUB_REPOSITORY": REPO, "PARENT_TAG": found[0],
+                                          "PARENT_SHA": found[1]}), \
+                mock.patch.object(nightly, "stable_parent", return_value=parent) as resolved, \
+                mock.patch.object(nightly.train, "origin_tags", return_value=tags), \
                 mock.patch.object(nightly.train, "release_head", return_value=head or self.SHA) as release_head, \
                 mock.patch.object(nightly.train, "origin_commit", return_value=after), \
                 mock.patch.object(nightly.subprocess, "run", side_effect=run), \
                 mock.patch("sys.stdout", new_callable=io.StringIO):
             nightly.reserve_stable_tag(self.SHA, tag)
-        release_head.assert_called_once_with(self.SHA)
+        release_head.assert_called_once_with(self.SHA, daily=True)
+        resolved.assert_called_once_with(tag, verify=True)
         return calls
 
     def test_the_tag_is_created_at_the_approved_commit_in_one_write(self):
@@ -532,8 +548,15 @@ class ReserveStableTagTests(unittest.TestCase):
             self.reserve({}, head="9" * 40)
         with self.assertRaisesRegex(SystemExit, "a real stable runs only on release/26.3"):
             self.reserve({}, ref="refs/heads/Release/26.3")
-        with self.assertRaisesRegex(SystemExit, "is not newer than 26.3-0.2.0"):
-            self.reserve({"26.3-0.2.0": "9" * 40}, tag="26.3-0.1.1")
+        with self.assertRaisesRegex(SystemExit, "26.3-0.1.1 is not newer than 26.3-0.2.0"):
+            self.reserve({"26.3-0.2.0": "9" * 40}, tag="26.3-0.1.1",
+                         parent=nightly.train.Release("26.3-0.2.0", "9" * 40,
+                                                                      nightly.train.github_time("2026-11-01T00:00:00Z")))
+        with self.assertRaisesRegex(SystemExit, "the first stable release on 26.3 is 26.3-0.1.0"):
+            self.reserve({}, tag="26.3-0.2.0")
+        # The parent the pick judged it against, and no other.
+        with self.assertRaisesRegex(SystemExit, "the parent release changed since the pick"):
+            self.reserve({}, picked=("26.3-0.1.0", "9" * 40))
         for bad in ("26.4-0.1.0", "v26.3-0.1.0", "26.3-0.1"):
             with self.assertRaisesRegex(SystemExit, "is not a stable tag on 26.3"):
                 self.reserve({}, tag=bad)

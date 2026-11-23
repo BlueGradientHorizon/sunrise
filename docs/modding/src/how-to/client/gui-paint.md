@@ -40,7 +40,7 @@ items this way too. To draw a stack the player doesn't hold, use `DrawContext::i
 
 | `GuiPaintError` | When |
 | --- | --- |
-| `Text(TextFormError)` | A `Text` op's text cannot cross to the game (deeper than 512 nodes, malformed). |
+| `Text(TextFormError)` | A `Text` op's text cannot cross to the game (unrepresentable metadata). |
 | `ItemSlot { index, slot }` | An `Item` of a slot other than 0-8 or 40. |
 | `ItemNotFinite { index }` | An `Item` whose `scale` or `pivot` is NaN or infinite. |
 | `BlitTexture { index, texture }` | A `Blit` of a texture the GUI atlas does not hold. |

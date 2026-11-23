@@ -79,7 +79,7 @@ impl Game<'_> {
         }
         if self.dialog_open() {
             let before = self.dialog_screen_key();
-            if let Err(e) = self.dialog_key(KeyCode::Escape, None, None) {
+            if let Err(e) = self.dialog_key(KeyCode::Escape, None) {
                 log::warn!("Sunrise: closing the dialog: {e:#}");
             }
             return Some(!self.dialog_open() || self.dialog_screen_key() != before);
@@ -102,9 +102,12 @@ impl Game<'_> {
         {
             return false;
         }
-        let vehicle = self.riding_mount_with_menu() || self.riding_chest_boat();
-        let _ = self.key_pressed(KeyCode::KeyE, KeyCode::KeyE);
-        vehicle || self.screen != Screen::Playing
+        if self.remote.is_some() && (self.riding_mount_with_menu() || self.riding_chest_boat()) {
+            self.queue_mapping_click("key.inventory");
+            return true;
+        }
+        self.open_inventory_key_action();
+        self.screen != Screen::Playing
     }
     /// `AbstractSignEditScreen`'s sign: its block position and the side the
     /// editor is on. None when no sign editor is open, or outside a world.
@@ -388,7 +391,7 @@ mod client_screen_tests {
                     let S::EditBook(edit) = sent_pkt else {
                         unreachable!();
                     };
-                    let mut w = sunrise_protocol::buf::Writer::new();
+                    let mut w = sunrise_core::vanilla_bytes::Writer::new();
                     <play::EditBook as sunrise_protocol::buf::Codec<play::EditBook>>::write(
                         edit, &mut w,
                     );

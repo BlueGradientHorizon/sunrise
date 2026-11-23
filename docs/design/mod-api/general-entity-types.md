@@ -10,8 +10,8 @@ Provisional answer to [#792](https://github.com/arismoko/horizon/issues/792): re
 
 `Hooks::register` receives `&mut dyn Registrar`, whose `GeneralTypesRegistrar`
 supertrait provides `declare_general_entity(path, category, width, height,
-passenger_attachment, save_policy, summonable, pickable, tracking_chunks, update_interval,
-payload_version, required_features)`. Use `GeneralEntityCategory::Misc` and
+passenger_attachment, save_policy, summonable, pickable, piston_push_reaction,
+tracking_chunks, update_interval, payload_version, required_features)`. Use `GeneralEntityCategory::Misc` and
 `GeneralSavePolicy::{Save, NoSave}`. The path must belong to the declaring
 mod's namespace. Registration is only available during the registration phase,
 requires a both-side package, and refuses duplicates and unavailable required
@@ -110,7 +110,7 @@ The [moving-structures carrier](moving-structures.md) remains a game-owned speci
 - **Vanilla clients.** A vanilla client is never paired with a row: no packet names it. Refusing such a client when required general types exist is still the open question below.
 - **The client.** A Sunrise client keeps the rows it was shown in `game/network/remote/general.rs`. Each row's type is resolved in the client's frozen catalog. It moves with the non-living interpolation (3 steps), keeps the position and rotation of the tick before for a frame's partial tick, and is dropped on removal or a world change. An unknown key or a duplicate id is ignored with one warning. No mod code runs on the client.
 - **Shown with its fields.** The server sends every row its first attachment snapshot at tracking start, empty or not, and the client shows a row only once the spawn and that snapshot are both there.
-- **The renderer handoff.** `resolve_entity_renderers` resolves a renderer registered for a general key into a slot per catalog slot (`EntityRendererTable`, `game/modding/native_entity_renderers.rs`), so a frame does no lookup by name. Each frame, shown rows are culled by distance, frustum and section eligibility. The visible list preserves client entity lookup order. Each extracted row goes to its type's renderer (`game/mobs/general_draw.rs`) through the guard every route shares, at `lerp(previous, position, partial)`, with `EntityRenderState`'s identity, age and angles interpolated the same way. Extraction captures a bounded, immutable snapshot of only that row's synced attachments, built when sync changes. Native renderers read it via `EntityRenderState::attachments` and draw through `EntityRenderer::submit`, without a live host. A type with no renderer draws nothing and is named once a resource load; a failed renderer draws nothing until the next load, and a reload re-resolves the slots without touching the rows.
+- **The renderer handoff.** `resolve_entity_renderers` resolves a renderer registered for a general key into a slot per catalog slot (`EntityRendererTable`, `game/modding/native_entity_renderers.rs`), so a frame does no lookup by name. Each frame, shown rows are culled by distance, frustum and section eligibility. General rows take their client entity lookup slot at spawn and submit there once their first attachment snapshot has arrived. Each extracted row goes to its type's renderer (`game/mobs/general_draw.rs`) through the guard every route shares, at `lerp(previous, position, partial)`, with `EntityRenderState`'s identity, age and angles interpolated the same way. Extraction captures a bounded, immutable snapshot of only that row's synced attachments, built when sync changes. Native renderers read it via `EntityRenderState::attachments` and draw through `EntityRenderer::submit`, without a live host. A type with no renderer draws nothing and is named once a resource load; a failed renderer draws nothing until the next load, and a reload re-resolves the slots without touching the rows.
 
 ## Lifecycle route owners and migration obligations
 
@@ -124,7 +124,7 @@ Paths below are verified existing integration owners relative to this repository
 | Identity, reads and queries | `crates/sunrise-client/src/game/modding/native_entity_refs.rs:101` resolves targets, `:176` creates refs, `:245` queries entities. Extend all three to general rows; do not scan families for each lookup. |
 | Temporary lift | `crates/sunrise-client/src/game/modding/native_entity_refs.rs:86` owns held-out access. General rows must retain residency visibility and balance restoration after panic. |
 | Residency insert/remove/unload/restore/world reset | `crates/sunrise-client/src/join_seq/residency.rs:95` journals events, `:108` drains them, `:121` resets epoch. Integrate the general owner here; retirement waits for root commit. |
-| Save and chunk reload | `crates/sunrise-client/src/save.rs:3101` loads entity tags; `:3316` and `:3320` save synchronously/asynchronously. Both consume the same committed general snapshots, including quarantine. |
+| Save and chunk reload | `crates/sunrise-client/src/save/dir.rs:507` loads entity tags; `:595` and `:599` save synchronously/asynchronously. Both consume the same committed general snapshots, including quarantine. |
 | Dimension/passenger transfer | `crates/sunrise-client/src/game/entities/vehicle_teleport.rs:231` transfers vehicles, `:391` passengers. Validate the entire tree before moving any row. |
 | Server tracking and ids | `crates/sunrise-client/src/game/network/lan_entities.rs:130` runs native tracking, `:197` builds object states, `:578` supplies UUIDs, `:590` assigns ids. Include general rows once. |
 

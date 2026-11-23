@@ -661,6 +661,34 @@ public final class VanillaCommandExecOracle {
                             if (!op.has("record") || op.get("record").getAsBoolean()) out.append(gson.toJson(record)).append('\n');
                         }
                     }
+                    case "mob_damage_state" -> {
+                        if (op.has("level_seed")) level.getRandom().setSeed(op.get("level_seed").getAsLong());
+                        var mob = (net.minecraft.world.entity.Mob) level.getEntity(UUID.fromString(op.get("uuid").getAsString()));
+                        if (op.has("start_sleeping")) {
+                            var p = op.getAsJsonArray("start_sleeping");
+                            if (!mob.startSleeping(new BlockPos(p.get(0).getAsInt(), p.get(1).getAsInt(), p.get(2).getAsInt())))
+                                throw new IllegalStateException("sleep fixture: villager did not start sleeping");
+                        }
+                        if (op.has("no_action_time")) mob.setNoActionTime(op.get("no_action_time").getAsInt());
+                        var state = new JsonObject();
+                        state.addProperty("no_action_time", mob.getNoActionTime());
+                        state.addProperty("cooldown", mob.damageCooldownTime);
+                        state.addProperty("hurt_time", mob.hurtTime);
+                        state.addProperty("health", String.format("%08x", Float.floatToRawIntBits(mob.getHealth())));
+                        state.addProperty("sleeping", mob.isSleeping());
+                        var position = new JsonArray();
+                        for (double v : new double[] {mob.getX(), mob.getY(), mob.getZ()})
+                            position.add(String.format("%016x", Double.doubleToRawLongBits(v)));
+                        state.add("position", position);
+                        var rotation = new JsonArray();
+                        for (float v : new float[] {mob.getYRot(), mob.getXRot()})
+                            rotation.add(String.format("%08x", Float.floatToRawIntBits(v)));
+                        state.add("rotation", rotation);
+                        var row = new JsonObject();
+                        row.add("cmd", op.get("label"));
+                        row.add("state", state);
+                        out.append(gson.toJson(row)).append('\n');
+                    }
                     case "projectile_saved_type" -> {
                         var entity=level.getEntity(UUID.fromString(op.get("uuid").getAsString()));
                         if (!(entity instanceof net.minecraft.world.entity.projectile.arrow.AbstractArrow) || !entity.isAlive())
@@ -887,6 +915,12 @@ public final class VanillaCommandExecOracle {
                             record.add("results", new JsonArray());
                             out.append(gson.toJson(record)).append('\n');
                         }
+                    }
+                    case "creaking_hit_order" -> {
+                        // Optional fixture: the shared runner still compiles on its own.
+                        Class<?> fixture = Class.forName("dev.sunriselab.parity.VanillaCreakingHitOrderOracle");
+                        var run = fixture.getDeclaredMethod("run", ServerPlayer.class, EmbeddedChannel.class, JsonObject.class);
+                        out.append(gson.toJson(run.invoke(null, player, channel, op))).append('\n');
                     }
                     case "dragon_contacts" -> {
                         // Optional fixture: the shared runner still compiles on its own.

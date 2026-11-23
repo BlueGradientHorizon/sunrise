@@ -41,69 +41,42 @@ Conversion evidence: `api_values.rs:711–728`,
 the stack cost**, without a new public stack representation, but does not remove
 the need for the following small Host boundary.
 
-## Proposed boundary and budget
+## Implemented boundary
 
-Lend an engine-owned, call-scoped read-only Host adapter through both menu callbacks,
-with an API-owned target entity handle and the prepared `&ItemStack`. Split borrows
-of menu storage and entity reads; never put a borrowed Game behind the mutable menu.
-Prepare the API stack once per distinct input stack version, before candidate traversal;
-reuse it for all slots, not the predicate's answer. Read the actual engine stack's
-resolved equippable component, including removals, slot overrides and absent versus
-empty allowed-entity sets, before dispatch. Retain one `can_equip` moment and the
-existing ItemPart/catalog dispatch, not a parallel loop-context variant.
+The native `can_equip` predicate runs synchronously against the live `&Game` lent as a
+read-only `&dyn mod_api::Host` (through `NativeHookHost { host: self }`), with an
+API-owned `LivingRef` target handle and a borrowed `&mod_api::ItemStack`. There is no
+pre-captured `EquipSnapshot`, no cached `EquipHost`, no thread-local revision/pointer
+stamp table, no `EquipDecision` wrapper and no apply-time snapshot recheck: the read-only
+`Host` borrow makes live entity and world reads directly available while the synchronous
+decision and apply run under the same game state (matching NeoForge's
+`IItemExtension.canEquip` and vanilla's `LivingEntity.isEquippableInSlot`).
 
-The adapter exposes registry/tag/settings reads and target identity, type, position,
-living state and equipment reads from a stable read view. These are observations,
-not commands, RNG, scheduling, storage writes or a transaction capability. Variable
-owned read results must be prepared outside traversal and borrowed during it; do not
-promise arbitrary existing allocating Host methods are free. Unsupported reads report
-unavailable explicitly, never fabricated values. Client prediction uses the local
-player/replicated entity view at the click revision, without a server round trip;
-the server uses its current authoritative target. A candidate that asks a Part
-refuses a missing or stale handle rather than aliasing a recycled entity ID.
+Before converting a stack or calling into mod parts, every caller checks
+`item_listens(HookId::CanEquip, &stack.item)`. When no `ItemPart` listens on that item,
+the stack's resolved `equippable` component answer stands immediately with zero
+conversion and zero entity lookup.
 
-Decide captures stack/menu/entity revisions and prepares reads; fire asks once per
-candidate slot; apply rechecks those revisions and slot preconditions in the same
-transaction, refusing rather than recomputing on mismatch. Authoritative evaluation
-still runs independently of prediction. Dispenser and pickup retain their candidate
-iteration and other vanilla checks, using the same read adapter and stack data rule.
+Where one unchanged stack is tested across multiple candidates in a single synchronous
+operation, conversion is hoisted locally:
+- Dispenser (`EquipmentDispenseItemBehavior`) and mob pickup (`Mob.equipItemIfPossible`)
+  convert once with `Game::equip_stack` into a local `EquipStack` and reuse it for each
+  candidate entity or slot in that call.
+- Inventory menus (`Menu::move_item_stack_to` and `Input::QuickCraft` distribution)
+  borrow the unchanged `&ItemStack` through `CanEquip::with_stack`, which holds a
+  stack-local `OnceCell<EquipStack>` in `ScopedMenuEquip` keyed only by that immutable
+  borrow. The conversion runs lazily on the first armor candidate and is reused with zero
+  extra conversions or allocations for every remaining candidate in that loop.
 
-Maintainer ruling on the revision recheck: on the native path the synchronous read-only
-borrow is the accepted equivalent of the recheck. The predicate is asked and its answer
-applied under one immutable borrow, through a Host adapter that offers observations only
-(no commands, storage writes, scheduling or random draws), so nothing can change in
-between and a revision token would compare a value with itself. The recheck stays required
-wherever an answer is kept beyond the call, as with a cache or prediction applied later.
-Native dispatch borrows the prepared values, including slot and entity-kind names.
-Gameplay hoists preparation across candidates for one dispense, menu input scope
-and mob pickup attempt. `EquipDecision` exclusively owns the source slot during
-mutation; every mutable field access bumps its revision before lending, and
-replacement/removal bumps its identity generation. Overflow retires the scope.
-A changed-and-restored source remains stale. Menu reuse uses scope and scalar stamps,
-not stack equality. Apply checks the source, menu and entity admission preconditions;
-a recycled numeric entity ID does not reuse an earlier admission. The no-listener
-path returns the data answer without conversion or a new entity lookup; a missing
-target handle does not override that answer.
+A candidate that asks a listening `ItemPart` refuses a missing or despawned target handle
+instead of aliasing a recycled entity ID. Client prediction uses the replicated client
+entity view; the server evaluates authoritatively against live server state.
 
-The prepared target rows retain entity type (`EntityTypeKey`), position, health,
-maximum health, alive/living status and the eight physical equipment slots. Native
-lends these through an observation Host. Equipment components remain shared API
-owners rather than being converted or encoded again per read. `entity_kind` uses the
-same allocation-free key API for every caller, with explicit `key.id(host)` name
-resolution outside this budget. Other allocating Host reads remain ordinary calls;
-this is not a promise that every Host operation is allocation-free. Registry/tag/settings
-observations use scalar lookups; owned names and enumerations are outside the budget.
-
-The required engine/bridge budget **per candidate** is 0 heap allocations, 0 stack or
-component payload clones/copies, and only bounded scalar/handle copies, including
-Host reads and native dispatch. Setup is not free and must be measured separately;
-stack mutations invalidate preparation. A counting allocator/no-allocation scope
-around warmed traversal must cover both menus, multiple slots, component-rich stacks,
-unrelated subscribed items and entity reads. Check refusal leaves the source and all
-other slots unchanged, stale revisions refuse, and data-only stack overrides work.
-Mod-authored allocations are outside the bridge budget. Decision tests cover source
-mutation barriers, entity admission checks, gameplay apply preconditions and the
-no-listener path. Native warmed traversal checks allocations.
+The required engine/bridge budget **per candidate** after local conversion is 0 heap
+allocations and 0 stack or component payload clones/copies. Setup conversion of a
+component-rich stack happens at most once per synchronous candidate loop and is covered
+by `equip_answers::tests` (including a four-armor-slot `QuickCraft` menu pass and warmed
+allocation measurement) and `menu::equip_movement::tests`.
 
 ## Historical guest preparation
 

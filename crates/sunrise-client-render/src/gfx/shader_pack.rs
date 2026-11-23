@@ -379,32 +379,9 @@ impl Renderer {
     /// terrain's in the pack's block atlas (made here when missing; none when it does not fit).
     pub fn pack_inputs(&mut self) -> sunrise_shaders::GameInputs {
         let terrain = self.pack_terrain_inputs();
-        // A geometry stage reads flat draws' vertices itself, through their index buffer.
-        let terrain_geometry = terrain
-            .clone()
-            .filter(|_| self.pack_terrain_flat)
-            .map(|mut inputs| {
-                inputs.declarations.push_str(
-                    "layout(set = 5, binding = 0) readonly buffer HzIndices { uint hz_indices[]; };\n",
-                );
-                sunrise_shaders::GeometryInputs {
-                    inputs,
-                    // Flat terrain inputs pull their own vertex (`PULL_FLAT`, `gl_VertexIndex` → `hz_vertex_index`).
-                    pull: String::new(),
-                    index: "hz_indices[@]".to_owned(),
-                }
-            });
         sunrise_shaders::GameInputs {
-            terrain_geometry,
-            entity_geometry: Some(pack_entities::geometry_inputs()),
-            sky: Some(pack_sky::inputs()),
-            celestial: Some(pack_sky::celestial_inputs()),
-            entities: Some(pack_entities::inputs()),
-            clouds: Some(pack_entities::cloud_inputs()),
-            weather: Some(pack_weather::inputs()),
-            lines: Some(pack_lines::inputs()),
-            hand: Some(pack_hand::inputs()),
-            ..pack_atlas::game_terrain(terrain, &self.pack_lava_layers)
+            interface_limits: crate::core_shader::interface_limits(&self.device.limits()),
+            ..pack_atlas::game_inputs(terrain, self.pack_terrain_flat, &self.pack_lava_layers)
         }
     }
 

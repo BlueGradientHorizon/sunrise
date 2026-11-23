@@ -12,17 +12,44 @@ mod exact;
 mod gameplay;
 pub(crate) mod ops;
 mod raw;
+use super::consume_effects::AdmissionLookup;
 use super::{
     Component, FireworkExplosion, Hashed, Stack, StackHashError, WirePatch, component as kind,
     persistent,
 };
-use crate::hash_ops::HashCode;
+use crate::{buf::Reader, hash_ops::HashCode};
 use ops::{Ops, Record};
 
 /// Registry names for the ids a component holds.
 pub trait Names {
     /// The name of entry `id` of `registry` (`minecraft:enchantment`, ...).
     fn name(&self, registry: &str, id: i32) -> Option<String>;
+
+    /// The consume-effect type at this connection's stream ID.
+    fn consume_effect_kind(&self, id: i32) -> Option<super::consume_effects::Kind> {
+        super::consume_effects::builtin_name(id).map(|_| super::consume_effects::Kind::Builtin(id))
+    }
+
+    /// Effects already projected from this same stream patch, including its nested templates.
+    fn consume_effect_admissions(&self) -> Option<&AdmissionLookup<'_>> {
+        None
+    }
+
+    /// Synchronized registry entry `(name, data)` at `id`, if present.
+    fn registry_entry(
+        &self,
+        registry: &str,
+        id: i32,
+    ) -> Option<(&str, Option<&sunrise_core::nbt::Tag>)> {
+        let _ = (registry, id);
+        None
+    }
+
+    /// Whether `registry` contains entry `name`.
+    fn contains_entry(&self, registry: &str, name: &str) -> bool {
+        let _ = (registry, name);
+        false
+    }
 }
 /// No registries: only the components that hold no registry id hash.
 pub struct NoNames;
@@ -462,7 +489,7 @@ impl Component {
             Self::PaintingVariant(i) => entry_with::<O>(names, "minecraft:painting_variant", *i)?,
             Self::Profile(p) => raw::profile_with::<O>(p),
             Self::TrimDirect { .. } => {
-                let mut writer = crate::buf::Writer::new();
+                let mut writer = ::sunrise_core::vanilla_bytes::Writer::new();
                 self.write(id, &mut writer);
                 raw::code_with::<O>(id, &writer.data, names)?
             }
@@ -477,6 +504,66 @@ impl Component {
 }
 
 impl Hashed {
+    /// `HashedStack.matches`: compare the entire effective patch as a map and set,
+    /// independent of wire order. A value we cannot hash cannot confirm a claim.
+    pub fn matches(&self, stack: &Stack, names: &dyn Names) -> bool {
+        self.matches_projected(stack, || Self::create(stack, names))
+    }
+
+    /// Use the source values admitted for native effects, without projecting those values again.
+    pub fn matches_with_admitted(
+        &self,
+        stack: &Stack,
+        names: &dyn Names,
+        admitted: &AdmissionLookup<'_>,
+    ) -> bool {
+        self.matches_projected(stack, || Self::create_with_admitted(stack, names, admitted))
+    }
+
+    fn matches_projected(
+        &self,
+        stack: &Stack,
+        project: impl FnOnce() -> Result<Self, StackHashError>,
+    ) -> bool {
+        self.item == stack.item
+            && self.count == stack.count
+            && project().is_ok_and(|expected| {
+                self.added.len() == expected.added.len()
+                    && self.removed.len() == expected.removed.len()
+                    && expected
+                        .added
+                        .iter()
+                        .all(|entry| self.added.contains(entry))
+                    && expected.removed.iter().all(|id| self.removed.contains(id))
+            })
+    }
+
+    /// Hash a retained stream patch using the effect values already decoded from it.
+    pub fn create_with_admitted(
+        stack: &Stack,
+        names: &dyn Names,
+        admitted: &AdmissionLookup<'_>,
+    ) -> Result<Self, StackHashError> {
+        struct Projection<'a> {
+            names: &'a dyn Names,
+            admitted: &'a AdmissionLookup<'a>,
+        }
+        impl Names for Projection<'_> {
+            fn name(&self, registry: &str, id: i32) -> Option<String> {
+                self.names.name(registry, id)
+            }
+
+            fn consume_effect_kind(&self, id: i32) -> Option<super::consume_effects::Kind> {
+                self.names.consume_effect_kind(id)
+            }
+
+            fn consume_effect_admissions(&self) -> Option<&AdmissionLookup<'_>> {
+                Some(self.admitted)
+            }
+        }
+        Self::create(stack, &Projection { names, admitted })
+    }
+
     /// Hash all effective sets on a nonempty stack, or refuse the whole patch.
     /// An absent slot is represented by the caller, separately from failure.
     pub fn create(stack: &Stack, names: &dyn Names) -> Result<Self, StackHashError> {
@@ -486,7 +573,7 @@ impl Hashed {
             .wire
             .0
             .as_deref()
-            .map(WirePatch::decode)
+            .map(|patch| WirePatch::decode_reader(Reader::new(patch).with_names(names)))
             .transpose()
             .map_err(StackHashError::Wire)?;
         let (sets, removals) = decoded
@@ -869,6 +956,50 @@ mod tests {
     }
 
     #[test]
+    fn a_prediction_must_match_the_whole_patch() {
+        let mut stack = Stack::new(1, 2);
+        stack.added.push((k::DAMAGE, C::Int(5)));
+        stack.removed.push(k::RARITY);
+        // `TypedDataComponent.encodeValue` with vanilla 26.3's CRC32C HashOps.
+        let correct = Hashed {
+            item: 1,
+            count: 2,
+            added: vec![(k::DAMAGE, 645064431)],
+            removed: vec![k::RARITY],
+        };
+        assert!(correct.matches(&stack, &Table));
+        let wrong_hash = Hashed {
+            added: vec![(k::DAMAGE, 0)],
+            ..correct.clone()
+        };
+        assert!(!wrong_hash.matches(&stack, &Table));
+        let missing_removal = Hashed {
+            removed: vec![],
+            ..correct.clone()
+        };
+        assert!(!missing_removal.matches(&stack, &Table));
+        let wrong_removed_key = Hashed {
+            removed: vec![k::TOOL],
+            ..correct.clone()
+        };
+        assert!(!wrong_removed_key.matches(&stack, &Table));
+        let wrong_added_key = Hashed {
+            added: vec![(k::MAP_ID, 645064431)],
+            ..correct.clone()
+        };
+        assert!(!wrong_added_key.matches(&stack, &Table));
+
+        stack.added.push((k::MAP_POST_PROCESSING, C::Int(0)));
+        assert!(!correct.matches(&stack, &Table), "missing unhashable key");
+        let mut unprovable = correct;
+        unprovable.added.push((k::MAP_POST_PROCESSING, 0));
+        assert!(
+            !unprovable.matches(&stack, &Table),
+            "unavailable value hash"
+        );
+    }
+
+    #[test]
     fn repeated_enchantment_levels_keep_first_key_order_and_last_values() {
         let entries = C::Enchantments(vec![(1, 0), (0, 1), (1, 2), (0, 3)]);
         let effective = C::Enchantments(vec![(1, 2), (0, 3)]);
@@ -911,7 +1042,7 @@ mod tests {
         );
         // A stack kept as the server sent it hashes the patch it holds.
         use crate::buf::Codec as _;
-        let mut w = crate::buf::Writer::new();
+        let mut w = ::sunrise_core::vanilla_bytes::Writer::new();
         crate::item::DelimitedSlot::write(&Some(stack.clone()), &mut w);
         let kept = crate::item::DelimitedSlot::read(&mut crate::buf::Reader::new(&w.data))
             .unwrap()
@@ -934,7 +1065,7 @@ mod tests {
             Hashed::create(&stack, &Table),
             Err(StackHashError::Component(k::DAMAGE))
         );
-        let mut w = crate::buf::Writer::new();
+        let mut w = ::sunrise_core::vanilla_bytes::Writer::new();
         crate::item::DelimitedSlot::write(&Some(stack), &mut w);
         let kept = crate::item::DelimitedSlot::read(&mut crate::buf::Reader::new(&w.data))
             .unwrap()

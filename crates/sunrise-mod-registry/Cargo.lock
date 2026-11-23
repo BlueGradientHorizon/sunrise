@@ -309,6 +309,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "filetime"
+version = "0.2.29"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c287a33c7f0a620c38e641e7f60827713987b3c0f26e8ddc9462cc69cf75759"
+dependencies = [
+ "cfg-if",
+ "libc",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1419,9 +1429,11 @@ dependencies = [
 name = "sunrise-mod-package"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "libc",
  "log",
  "minisign-verify",
+ "object",
  "png",
  "same-file",
  "semver",
@@ -1429,13 +1441,17 @@ dependencies = [
  "serde_json",
  "sha2",
  "sunrise-core",
- "sunrise-mod-api-macros",
+ "sunrise-mod-source",
  "sunrise-mod-surface",
  "sunrise-mod-vocab",
  "sunrise-shader-api",
+ "tar",
  "toml",
+ "url",
  "windows-sys 0.61.2",
+ "xz4rust",
  "zip",
+ "zune-jpeg",
 ]
 
 [[package]]
@@ -1564,6 +1580,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.9",
+]
+
+[[package]]
+name = "tar"
+version = "0.4.46"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f6221d9a6003c78398e3b239969f352578258df48c8eb051caadae0015bc840"
+dependencies = [
+ "filetime",
+ "libc",
 ]
 
 [[package]]
@@ -1980,6 +2006,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 
 [[package]]
+name = "xz4rust"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "606930b71bad6379f366994e4e6252a3462fa28bfc3695c33b07bef8f967d6d6"
+
+[[package]]
 name = "yoke"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2121,4 +2153,19 @@ dependencies = [
  "crc32fast",
  "log",
  "simd-adler32",
+]
+
+[[package]]
+name = "zune-core"
+version = "0.4.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f423a2c17029964870cfaabb1f13dfab7d092a62a29a89264f4d36990ca414a"
+
+[[package]]
+name = "zune-jpeg"
+version = "0.4.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29ce2c8a9384ad323cf564b67da86e21d3cfdff87908bc1223ed5c99bc792713"
+dependencies = [
+ "zune-core",
 ]

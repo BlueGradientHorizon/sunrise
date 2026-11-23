@@ -102,6 +102,11 @@ jobs:
         run: python3 tools/ci/source_mtimes.py "${CARGO_TARGET_DIR:-target}/ci-source-mtimes-v2.json"
       - name: Cap build parallelism to the runner
         run: python3 tools/ci/cargo_jobs.py --job-mib 3072 --cap
+      # The tool names the commit it was built from (`--version`), as a release tool does. Set for every later step, so the test builds below don't rebuild it as `dev`.
+      - name: The tool's commit
+        run: |
+          tool_commit=$(git rev-parse --verify HEAD)
+          printf 'SUNRISE_TOOL_COMMIT=%s\n' "$tool_commit" >> "$GITHUB_ENV"
       # debug_assertions on (the dev profile): the build that honours SUNRISE_SDK_TRUSTED_KEY.
       - name: Build this commit's tool
         run: cargo build --locked -p cargo-sunrise-mod
@@ -151,7 +156,10 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           commit=$(git rev-parse HEAD)
-          gh release download "sdk-$commit" --dir "$QS_SCRATCH/sdk-base/sdk-$commit"
+          gh release download "sdk-$commit" --dir "$QS_SCRATCH/sdk-base/sdk-$commit" \
+            --pattern 'SHA256SUMS*' --pattern 'sdk.json' --pattern 'surface.json' \
+            --pattern 'api-source.tar.xz' --pattern 'build-data.tar.xz' \
+            --pattern '*-x86_64-unknown-linux-gnu*.tar.xz'
       # What `cargo sunrise-mod new` reads when it names no build: nightly/sdk.json, only a pointer (the build it
       # names is verified when fetched). The mod pages run `new` with no --sunrise.
       - name: This run's SDK is the Nightly of the SDK folder
@@ -168,6 +176,21 @@ jobs:
           cargo test --locked -p cargo-sunrise-mod --test build_errors --
           --ignored --exact a_failed_native_build_names_the_authors_file_and_not_the_cache_copy
           a_failed_registry_build_names_the_authors_file_and_a_good_one_still_builds
+      - name: Native registration reaches the game log
+        if: inputs.own_sdk
+        run: >-
+          cargo test --locked -p cargo-sunrise-mod --test run --
+          --ignored --exact run_writes_native_registration_logs_to_latest_log
+      - name: Native add-on builds with local libraries
+        if: inputs.own_sdk
+        run: >-
+          cargo test --locked -p cargo-sunrise-mod --test addon --
+          --ignored --exact builds_and_checks_a_native_addon_with_local_libraries
+      - name: Installed native rows bend and route a client model
+        if: inputs.own_sdk
+        run: >-
+          cargo test --locked -p cargo-sunrise-mod --test installed_client_draw --
+          --ignored --exact installed_lower_bends_and_routes_a_client_model
       - name: The start pages run with the mod tool alone
         run: python3 tools/book_quickstart.py --tool "${CARGO_TARGET_DIR:-target}/debug/cargo-sunrise-mod"
       - name: Clean private scratch

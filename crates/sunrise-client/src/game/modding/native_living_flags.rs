@@ -740,7 +740,7 @@ pub(in crate::game) mod tests {
             border: &game.border,
             streaming: None,
         };
-        game.lan.as_mut().unwrap().hub.tick_level(&mut ctx);
+        game.lan.as_mut().unwrap().hub.tick_level(&mut ctx, None);
     }
 
     pub(in crate::game) fn packets(

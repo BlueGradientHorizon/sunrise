@@ -62,8 +62,11 @@ fn a_mod_menu_part_decides_whether_its_menu_stays_open() {
     let _callbacks = scoped_dispatch();
     let shell: &'static ModMenuType = Box::leak(Box::new(ModMenuType {
         id: "test:shell",
+        owner: "test",
         slots: 27,
+        player_inventory: true,
         data_slots: 0,
+        owned_slots: None,
         results: Vec::new(),
         inputs: Vec::new(),
         crafting: None,
@@ -221,12 +224,15 @@ fn a_mod_menu_part_decides_whether_its_menu_stays_open() {
                 sent: Vec::new(),
                 drag: None,
                 sent_data: Vec::new(),
-                hidden: Vec::new(),
+                reported_unsent_data_len: None,
+                blockless_data: Vec::new(),
+
                 mod_type: Some(shell),
                 registry_id: "test:shell".into(),
                 craft: None,
                 links: Vec::new(),
                 asks_still_valid: asks_still_valid(Some(shell), "test:shell"),
+                opening_item: None,
             };
             assert!(menu.asks_still_valid);
             let before = asked();
@@ -285,7 +291,18 @@ fn a_blockless_mod_menu_closes_when_its_part_answers_false() {
         crate::game::api_values::install_parts(&mods).unwrap();
         let _callbacks = scoped_dispatch();
         sunrise_client::containers::with_mod_menu_types(
-            [(MENU.into(), 9, 0, Vec::new(), Vec::new(), None, None)],
+            [(
+                MENU.into(),
+                "test".into(),
+                9,
+                0,
+                Vec::new(),
+                Vec::new(),
+                None,
+                None,
+                true,
+                None,
+            )],
             || {
                 super::super::native_guest_turn_tests::with_guests(|game| {
                     // A screen position is not a vehicle key, even at this reserved Y.
@@ -371,14 +388,13 @@ fn a_blockless_mod_menu_closes_when_its_part_answers_false() {
                     assert_eq!(window_of_guest(game), None);
                     assert_eq!(answer.asks.load(Ordering::Relaxed), before + 1);
                     assert!(
-                        !game
-                            .lan
+                        game.lan
                             .as_ref()
                             .unwrap()
                             .hub
                             .native_menu_events
                             .iter()
-                            .any(|event| matches!(event, NativeMenuEvent::Click { .. }))
+                            .any(|event| matches!(event, NativeMenuEvent::Closed { window: closed, .. } if *closed == window))
                     );
                 });
             },

@@ -79,7 +79,7 @@ impl Game<'_> {
         {
             return true;
         }
-        let sneaking = self.keys.held(Action::Sneak);
+        let sneaking = self.held_mapping(Action::Sneak);
         match m.species() {
             // Villager.mobInteract: trading, or a baby's head shake. A sleeping
             // villager falls back to super.mobInteract, which passes.
@@ -115,7 +115,7 @@ impl Game<'_> {
                         item,
                         "minecraft:bucket" | "minecraft:bowl" | "minecraft:shears"
                     ) || m.extra.variant == 1
-                        && sunrise_client::flowers::stew_effect(item).is_some())
+                        && self.items().suspicious_stew_effects(item).is_some())
             }
             Species::Sheep if !act => {
                 item == "minecraft:shears" || self.sheep_would_take_dye(i, hand)
@@ -212,6 +212,14 @@ impl Game<'_> {
         // an unnamed one passes on to the trader's trading (SUCCESS_SERVER).
         if m.species() == Species::WanderingTrader && item == "minecraft:name_tag" {
             return stack.is_some_and(|s| s.custom_name().is_some());
+        }
+        // MushroomCow.mobInteract: a stew source answers SUCCESS before ordinary food.
+        if m.species() == Species::Mooshroom
+            && m.extra.variant == 1
+            && !m.is_baby()
+            && self.items().suspicious_stew_effects(item).is_some()
+        {
+            return true;
         }
         mob_swings(m, item)
     }

@@ -58,6 +58,15 @@ the previous eye-in-water sample AND current water contact. The local client pla
 contact is false. It is deliberately not equivalent to checking `eye_fluid` now. Both reads return
 `None` for unsupported kinds or stale handles.
 
+On the server, `LivingRef::can_breathe_underwater(host)` reads whether the mob's type is currently in
+`minecraft:can_breathe_under_water`. It does not predict drowning: it ignores effects, species-specific
+breathing overrides and invulnerability.
+
+`EntityRef::is_swimming` reads the swimming flag, not the player's current pose.
+[Swimming eligibility](entity-hooks.md#swimming-eligibility) can change entry on
+both sides without changing either of the fluid reads above or the conditions
+for continuing a swim.
+
 `PlayerRef::trigger_consume_item(host, &stack)` is server-only and fires just
 `CriteriaTriggers.CONSUME_ITEM.trigger(serverPlayer, stack)`, the vanilla public call that NeoForge
 mods can also use. It uses the same advancement path as food and potions, with the supplied stack,
@@ -84,6 +93,22 @@ client-side write and a stale handle are refused (`false`). The write also refus
 falling block and an ender pearl by name: each keeps its cooldown in a store of its own (the player and guest portal
 states, the falling block's saved field, an End gateway traveller) that this write does not own, so a write can only
 reach them once that kind has its own owner decision.
+
+On the server, `EntityRef::tick_count(host)` reads the signed 32-bit `Entity.tickCount` for a player, mob, item entity, experience
+orb or minecart. A local player and the guest whose turn is running read their active `PlayerMotion`; a guest outside
+its turn reads the motion kept in the guest record, or its carried count while a teleport is between bodies. A newly
+admitted player with no body has count 0. The value wraps like Java's `int`, and a stale handle or another entity
+kind returns `None`.
+
+On a client, the read answers for every entity of the level the client shows, whatever its kind, from the client's
+own copy: as in vanilla, each copy counts the ticks the client level gives it from when the server added it
+(`Entity.commonTick` in `ClientLevel.tickNonPassenger` and `tickPassenger`), not the server's count. A frozen level
+ticks only the players and the entities carrying them. The local player counts before its own update, so also before
+it has loaded and while it sleeps. A root counts at its own visit, once its `entity_tick_pre` let it through (a
+canceled root does not count that tick), and a passenger counts before its own tick, whatever its Pre answers; a
+`player_tick_pre` callback already reads the player's new count. The new local player that a
+respawn or a dimension change makes starts again at 0 as soon as it is admitted, and counts from there, before the
+server's first teleport gives it a body.
 
 `MobRef::can_use_portal` reads the existing server portal decision for a mob in the current level, including mounts and player riders. It takes `&dyn Host`: `Some(false)` means the mob is ineligible, while `None` means a client, stale or unavailable handle, parked mob, or the separately modelled dragon. It does not load a level.
 
@@ -138,10 +163,7 @@ For an Allay, the expiring liked-player memory, liked-note-block cooldown and it
 stop during the pause. Passive healing, the duplication countdown, dancing and animation continue.
 
 ```rust
-// A spawner's movable no-AI mob: paused once, and still paused after a reload.
-if let Some(mob) = host.mob(entity) {
-    let _ = mob.set_ai_paused(host, true);
-}
+{{#include ../../../examples/src/entity_and_native.rs:pause_mob_ai}}
 ```
 
 The persistence pair `persistence_required`/`set_persistence_required` reads and sets `Mob.isPersistenceRequired`;
@@ -202,3 +224,20 @@ riding relationships are unlinked even when a listener cancels. Each mob keeps i
 resident or off-level classification, and descendant state remains frozen.
 Cancellation can prevent ejection while the vehicle remains live, including
 underwater or activator ejection.
+
+## A type's default attributes
+
+`host.entity_type_default_attribute(entity_type, attribute)` reads what a new entity of a type has, with no entity
+spawned and before any modifier: `DefaultAttributes.getSupplier(type).getValue(attribute)`, the supplier's base inside
+the attribute's range. It works for vanilla's types and mods' registered ones (a mod type's declared row, with the
+attributes other mods added to it), on both sides. The Host and typed reload and client setup contexts read the same
+published catalog without unwinding. Registration and config contexts do not expose the read.
+
+```rust,ignore
+// The Zombie's 20 health and 2 armor, for a screen that lists a mob's stats.
+let health = host.entity_type_default_attribute("minecraft:zombie", "minecraft:max_health");
+let armor = host.entity_type_default_attribute("minecraft:zombie", "minecraft:armor");
+```
+
+`None` means the catalog has not been published yet, the type is not registered or has no attribute supplier
+(such as `minecraft:item`), or the supplier has no entry for that attribute. Names are read as `Identifier.parse` reads them: `zombie` and `:zombie` are `minecraft:zombie`.

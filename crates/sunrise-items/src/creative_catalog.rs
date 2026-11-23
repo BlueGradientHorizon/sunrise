@@ -47,6 +47,8 @@ enum Source {
         all_levels: bool,
     },
     Horns,
+    #[serde(skip_deserializing)]
+    SuspiciousStews,
     Banner {
         #[serde(deserialize_with = "stack")]
         snbt: ItemStack,
@@ -147,13 +149,40 @@ fn enabled(required: Option<&Vec<String>>, features: &[String]) -> bool {
 }
 
 impl Catalog {
+    /// `ItemStack.isItemEnabled`: the item's required feature flags from the prepared registry.
+    pub fn item_enabled(&self, stack: &ItemStack, features: &[String]) -> bool {
+        enabled(self.item_features.get(&*stack.item), features)
+    }
+
     pub fn parse(json: &serde_json::Value) -> Result<Self, String> {
-        let catalog = Self::deserialize(json).map_err(|e| e.to_string())?;
+        let mut catalog = Self::deserialize(json).map_err(|e| e.to_string())?;
         if catalog.schema != 4 {
             return Err(format!(
                 "unsupported creative inventory schema {}",
                 catalog.schema
             ));
+        }
+        if let Some(food) = catalog
+            .tabs
+            .iter_mut()
+            .find(|tab| tab.id == "minecraft:food_and_drinks")
+        {
+            // The prepared rows mark where vanilla called the generator; only
+            // the position and visibility are kept, not the exported stacks.
+            for rows in std::iter::once(&mut food.build).chain(&mut food.operator_build) {
+                let mut inserted = false;
+                rows.retain_mut(|row| {
+                    if !matches!(&row.source, Source::Stack { snbt } if &*snbt.item == "minecraft:suspicious_stew") {
+                        return true;
+                    }
+                    if inserted {
+                        return false;
+                    }
+                    row.source = Source::SuspiciousStews;
+                    inserted = true;
+                    true
+                });
+            }
         }
         Ok(catalog)
     }
@@ -195,8 +224,7 @@ impl Catalog {
             let width = u16::from(p.width.get());
             (width * u16::from(p.height.get()), width)
         });
-        let admits =
-            |stack: &ItemStack| enabled(self.item_features.get(&*stack.item), params.features);
+        let admits = |stack: &ItemStack| self.item_enabled(stack, params.features);
         for category in [true, false] {
             for (i, tab) in self.tabs.iter().enumerate() {
                 if category != (tab.kind == Kind::Category) {
@@ -291,6 +319,15 @@ impl Catalog {
                             let mut book = ItemStack::new("minecraft:enchanted_book", 1);
                             book.enchant(&enchantment.id, u32::from(level));
                             add(book);
+                        }
+                    }
+                }
+                Source::SuspiciousStews => {
+                    for item in &params.items.registry_order {
+                        if let Some(effects) = params.items.suspicious_stew_effects(item) {
+                            let mut stew = ItemStack::new("minecraft:suspicious_stew", 1);
+                            stew.data_mut().stew_effects = effects.to_vec();
+                            add(stew);
                         }
                     }
                 }

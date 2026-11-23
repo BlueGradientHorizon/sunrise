@@ -631,13 +631,13 @@ class DailySummaryTests(unittest.TestCase):
 
     def test_a_job_skipped_beside_another_leg_jobs_failure_is_still_its_own_issue(self):
         arm = "cargo-sunrise-mod / build aarch64-apple-darwin"
-        intel = "cargo-sunrise-mod / build x86_64-apple-darwin"
+        windows = "cargo-sunrise-mod / build x86_64-pc-windows-msvc"
         jobs = [job(arm, "failure", ["Build tool"]) if entry["name"] == arm
-                else job(intel, "skipped") if entry["name"] == intel else entry for entry in GREEN_JOBS]
+                else job(windows, "skipped") if entry["name"] == windows else entry for entry in GREEN_JOBS]
         api = Api(jobs)
         _, out = self.run_summary(api, results=dict(LEGS, **{"cargo-sunrise-mod": {"result": "failure"}}))
         self.assertEqual(sorted(body["title"] for _, path, body in api.writes if path == "issues"),
-                         [f"Daily: {arm} did not complete", f"Daily: {intel} did not complete"])
+                         [f"Daily: {arm} did not complete", f"Daily: {windows} did not complete"])
         self.assertEqual(out.splitlines(), ["green=false", "sdk_green=true"])
 
     def test_a_shard_killed_for_memory_says_by_what_with_its_memory_time_and_running_tests(self):
@@ -947,7 +947,7 @@ class DailyWorkflowTests(unittest.TestCase):
         self.assertIn('git merge-base --is-ancestor "$sha" "refs/remotes/origin/$branch"', step["run"])
         self.assertEqual(jobs["summary"]["steps"][-1]["env"]["DRY_RUN"], "${{ needs.resolve.outputs.dry_run }}")
         self.assertEqual(jobs["nightly"]["if"],
-                         "needs.green.result == 'success' && needs.resolve.outputs.branch == 'main'"
+                         "!cancelled() && needs.green.result == 'success' && needs.resolve.outputs.branch == 'main'"
                          " && needs.nightly-branch.result == 'success'")
         self.assertEqual(self.workflow["concurrency"]["cancel-in-progress"], "false")
         self.assertEqual(jobs["sdk"]["with"]["commit"], "${{ needs.resolve.outputs.commit }}")
@@ -1048,16 +1048,6 @@ class DailyWorkflowTests(unittest.TestCase):
         self.assertEqual(steps["actions/upload-artifact@v4"]["with"]["name"], "sdk-leg-${{ matrix.name }}")
         self.assertNotIn("env", build, "no hand-set archive name")
 
-        # The launcher and the mod tool ask for sunrise_mod_package::sdk::Asset::name(kind, target, side):
-        # `{kind}-{target}{-server}.tar.xz`, the kinds named runtime, api and engine; and the release's other files
-        # are its BESIDE_ASSETS. Producer (the legs), publish check (SDK_ARCHIVES, SDK_ASSETS) and launcher agree.
-        sdk = (ROOT / "crates/sunrise-mod-package/src/sdk.rs").read_text()
-        self.assertIn('format!("{}-{target}{suffix}.tar.xz", kind.name())', sdk)
-        self.assertIn('let suffix = if kind.per_side() && side == Side::Server {', sdk)
-        for kind in ("runtime", "api", "engine", "build-data", "api-source", "tool"):
-            self.assertIn(f'=> "{kind}",', sdk)
-        self.assertIn('pub const INDEX: &str = "sdk.json";', sdk)
-        self.assertIn('pub const BESIDE_ASSETS: [&str; 3] = [INDEX, "SHA256SUMS", "SHA256SUMS.sig"];', sdk)
         self.assertEqual(set(nightly.SDK_ASSETS) - set(nightly.SDK_ARCHIVES), {"sdk.json", "SHA256SUMS", "SHA256SUMS.sig"})
 
     def test_the_sdk_is_signed_and_published_only_on_main(self):

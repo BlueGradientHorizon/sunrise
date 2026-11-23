@@ -728,6 +728,16 @@ pub struct Chunk {
     /// The chunk came in holding a `dynamic_light` state and its cells are not asked yet: no light
     /// job reads it until they are (`streaming::light_region_ready`).
     pub dynamic_pending: bool,
+    /// Mod-published per-position connection groups (`LevelRef::set_connection_group`), by
+    /// [`Self::dynamic_cell`]. Read by the mesher when evaluating rules with `connect_group`;
+    /// synced to Sunrise clients over `sunrise:connection_groups`; dropped with the chunk and
+    /// never saved to disk.
+    pub connection_groups: crate::fast_hash::FxHashMap<u32, u64>,
+    /// The standalone models a client mod draws as part of a cell's block
+    /// (`ClientRenderClientHost::set_block_extra_models`), by [`Self::dynamic_cell`]: the mesher
+    /// draws them after the block's own models. A change of the cell's state drops its list;
+    /// dropped with the chunk, never saved or sent.
+    pub extra_models: crate::fast_hash::FxHashMap<u32, Arc<[mod_api::ModelRef]>>,
 }
 impl Chunk {
     /// An all-air chunk in the current `layout`.
@@ -764,12 +774,59 @@ impl Chunk {
             entities: Vec::new(),
             dynamic_emission: Default::default(),
             dynamic_pending: false,
+            connection_groups: Default::default(),
+            extra_models: Default::default(),
         }
     }
-    /// The [`Self::dynamic_emission`] key of the cell at `y` (chunk-local `x`, `z`):
-    /// `section << 12 | y << 8 | z << 4 | x`; `None` outside the column.
+    /// The [`Self::dynamic_emission`] / [`Self::connection_groups`] key of the cell at `y`
+    /// (chunk-local `x`, `z`): `section << 12 | y << 8 | z << 4 | x`; `None` outside the column.
     pub fn dynamic_cell(&self, x: i32, y: i32, z: i32) -> Option<u32> {
         Some((self.section_index(y)? as u32) << 12 | index(x, y, z) as u32)
+    }
+    /// Inverse of [`Self::dynamic_cell`]: `(local_x 0..16, world_y, local_z 0..16)`.
+    pub fn dynamic_cell_coords(&self, cell: u32) -> (u8, i32, u8) {
+        let s = (cell >> 12) as i32;
+        let idx = (cell & 0xFFF) as i32;
+        let local_x = (idx & 15) as u8;
+        let local_z = ((idx >> 4) & 15) as u8;
+        let local_y = (idx >> 8) & 15;
+        (local_x, self.min_y + s * 16 + local_y, local_z)
+    }
+    /// Read the mod-published connection group at chunk-local `(x, z)` and world `y`.
+    #[inline]
+    pub fn connection_group(&self, x: i32, y: i32, z: i32) -> Option<u64> {
+        if self.connection_groups.is_empty() {
+            return None;
+        }
+        let cell = self.dynamic_cell(x, y, z)?;
+        self.connection_groups.get(&cell).copied()
+    }
+    /// Set or clear the connection group at chunk-local `(x, z)` and world `y`.
+    /// Returns `None` if `y` is outside the column, else `Some(changed)`.
+    pub fn set_connection_group(
+        &mut self,
+        x: i32,
+        y: i32,
+        z: i32,
+        group: Option<u64>,
+    ) -> Option<bool> {
+        let cell = self.dynamic_cell(x, y, z)?;
+        Some(self.write_group(cell, group))
+    }
+
+    pub(crate) fn write_group(&mut self, cell: u32, group: Option<u64>) -> bool {
+        if let Some(group) = group {
+            self.connection_groups.insert(cell, group) != Some(group)
+        } else if self.connection_groups.remove(&cell).is_some() {
+            if self.connection_groups.is_empty() {
+                self.connection_groups = Default::default();
+            } else if self.connection_groups.len() * 4 < self.connection_groups.capacity() {
+                self.connection_groups.shrink_to_fit();
+            }
+            true
+        } else {
+            false
+        }
     }
     /// The original `structures.starts`, including starts with unknown pieces.
     pub fn saved_structure_starts(&self) -> Option<&sunrise_core::nbt::Compound> {
@@ -861,9 +918,13 @@ impl Chunk {
         // move it. Any other change rebuilds that map on the next read.
         if previous != v {
             // A part's answer was for the state the cell held.
+            let cell = (s as u32) << 12 | index(x, y, z) as u32;
             if !self.dynamic_emission.is_empty() {
-                self.dynamic_emission
-                    .remove(&((s as u32) << 12 | index(x, y, z) as u32));
+                self.dynamic_emission.remove(&cell);
+            }
+            // So are the models a mod drew with it.
+            if !self.extra_models.is_empty() {
+                self.extra_models.remove(&cell);
             }
             for map in [&mut self.surface, &mut self.motion_blocking] {
                 map.write(column(x, z), y);
@@ -874,12 +935,14 @@ impl Chunk {
     /// Section `s`'s block states replaced whole (a bulk edit): its storage
     /// compacted, and the heightmaps built again on their next read.
     pub fn replace_blocks(&mut self, s: usize, values: &[u32; 4096]) {
-        // The parts' answers of the cells whose state changes go with it.
+        // The parts' answers and the mods' models of the cells whose state changes go with it.
         let old = &self.sections[s];
-        self.dynamic_emission.retain(|&cell, _| {
+        let kept = |&cell: &u32| {
             let i = (cell & 4095) as usize;
             cell >> 12 != s as u32 || old.get(i) == values[i]
-        });
+        };
+        self.dynamic_emission.retain(|cell, _| kept(cell));
+        self.extra_models.retain(|cell, _| kept(cell));
         let section = Arc::make_mut(&mut self.sections[s]);
         section.blocks = Section::from_blocks(values);
         section.compact();
@@ -1070,10 +1133,15 @@ impl Chunk {
     /// the quart y clamped to the column).
     #[inline]
     pub fn biome(&self, x: i32, y: i32, z: i32) -> u16 {
-        let qy = ((y - self.min_y) >> 2).clamp(0, self.sections.len() as i32 * 4 - 1);
+        self.biome_quart([x >> 2, y >> 2, z >> 2])
+    }
+    /// A biome at quart coordinates, with Y clamped before converting to a section index.
+    #[inline]
+    pub(crate) fn biome_quart(&self, [qx, qy, qz]: [i32; 3]) -> u16 {
+        let qy = (qy - (self.min_y >> 2)).clamp(0, self.sections.len() as i32 * 4 - 1);
         self.sections[(qy >> 2) as usize]
             .biomes
-            .get(((qy & 3) << 4 | ((z & 15) >> 2) << 2 | (x & 15) >> 2) as usize) as u16
+            .get(((qy & 3) << 4 | (qz & 3) << 2 | (qx & 3)) as usize) as u16
     }
     /// Sets the biome of one quart cell (`qy` counts from the column's bottom).
     pub fn set_biome_cell(&mut self, qx: i32, qy: i32, qz: i32, biome: u16) {
