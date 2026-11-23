@@ -217,9 +217,9 @@ pub struct StackedOnOther<'a> {
     /// stack's `ItemPart` (`CarriedOnOther`), or the clicked stack's `ItemPart`
     /// (`OtherStackedOnMe`).
     pub direction: StackedOnOtherDirection,
-    /// `ItemStackedOnOtherEvent.setCancellationResult`: on a cancelled click, `true` (the start
-    /// value, as in NeoForge) when the listener's work is all of it, `false` when plain pickup
-    /// still runs.
+    /// `ItemStackedOnOtherEvent.setCancellationResult`, for global listeners: on a cancelled
+    /// click, `true` (the start value, as in NeoForge) when the listener's work is all of it,
+    /// `false` when plain pickup still runs. An `ItemPart` answers with its `Flow` instead.
     pub handled: bool,
     edits: &'a mut StackedEdits,
 }

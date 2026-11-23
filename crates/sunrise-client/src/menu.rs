@@ -24,7 +24,7 @@ mod models;
 pub use models::{
     AnvilCraftSnapshot, AnvilUpdateInputs, GrindstonePlaceEdits, GrindstoneTakeEdits,
     PendingGrindstoneTake, QuickCraftDrag, SlotContext, SlotRules, SlotView, StackedClick,
-    StackedClickedEdit, StackedEditPolicy, StackedOutcome, StackedResume, StackedSlotKind,
+    StackedEdit, StackedEditPolicy, StackedOutcome, StackedResume, StackedSlotKind,
     StackedSlotTarget,
 };
 mod slot_context;

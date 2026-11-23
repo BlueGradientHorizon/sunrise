@@ -24,9 +24,9 @@ pub trait Hooks {
     /// the edits made; one without runs plain pickup. Edits on any other answer, a take, or a
     /// write to a result slot or a filled brewing potion slot refuse the click.
     ///
-    /// `ItemPart` overrides: return `Flow::Cancel` with `click.handled` to stop (nothing later
-    /// runs), or `Flow::Continue` after setting `click.handled = false` to go on to the later
-    /// phases and plain pickup, which see the edits made.
+    /// `ItemPart` overrides answer as vanilla's `boolean` does: `Flow::Cancel` stops the click
+    /// (nothing later runs), `Flow::Continue` goes on to the later phases and plain pickup, which
+    /// see the edits made. `click.handled` is read only from global listeners.
     ///
     /// The edits are applied to the menu in the order they were made once every phase has
     /// answered. `set_clicked` writes the slot directly (`Slot.set`, without the slot's take
@@ -34,7 +34,6 @@ pub trait Hooks {
     /// experience, `recipes_used`, crafting remainders and take hooks for each take in turn.
     ///
     /// The click is refused, and every write rolled back, for:
-    /// - a contradictory `ItemPart` answer (`canceled != click.handled`);
     /// - an invalid stack, or a slot rule that refuses an edit;
     /// - a write through `Host` to what the click read;
     /// - a panic.
