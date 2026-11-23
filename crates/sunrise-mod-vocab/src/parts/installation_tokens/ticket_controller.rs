@@ -38,3 +38,17 @@ pub fn register_ticket_controller(
     let handle = crate::TicketController { slot, token };
     (info, handle)
 }
+
+/// Drop the validator of a refused registration inside the retained-callback guard, so a
+/// destructor that panics is contained and reported instead of unwinding out of registration.
+pub fn dispose_refused_ticket_validator(
+    mod_id: &'static str,
+    mod_index: usize,
+    name: &str,
+    validator: Option<Arc<LoadingValidationCallback>>,
+) {
+    if let Some(validator) = validator {
+        RetainedCallback::new(mod_id, mod_index, "validate_tickets", name)
+            .dispose("TicketValidator::drop", validator);
+    }
+}
