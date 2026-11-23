@@ -180,9 +180,8 @@ pub trait CommandArgumentType: Send + Sync + 'static {
     /// The completions for the text `prefix` being typed at this argument, for `sender`.
     ///
     /// `prefix` is the text the argument holds so far, up to the cursor. Return the values
-    /// that match, in the order the
-    /// chat should show them; the game keeps each suggestion's replacement range and tooltip. A
-    /// suggestion replaces the whole prefix unless it names a
+    /// that match, in the order the chat should show them; the game keeps each suggestion's
+    /// replacement range and tooltip. A suggestion replaces the whole prefix unless it names a
     /// [`replace_start`](CommandSuggestion::replace_start), which is how a type completes the
     /// token being typed inside a longer greedy text. An empty list leaves the input as typed.
     ///
