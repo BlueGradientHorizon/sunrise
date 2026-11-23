@@ -71,28 +71,7 @@ impl<'a> BlockTables<'a> {
         let kind = FluidKind::from_name(id);
         let water = kind.is_some_and(|kind| kind.same_family(FluidKind::Water));
         let lava = kind.is_some_and(|kind| kind.same_family(FluidKind::Lava));
-        // NeoForgeMod's EMPTY_TYPE and LAVA_TYPE state their own; water keeps
-        // `FluidType.Properties`' defaults, and a mod's fluid what its file states.
-        let measures = match kind {
-            Some(FluidKind::Empty) => FluidMeasures {
-                temperature: 0,
-                density: 0,
-                viscosity: 0,
-            },
-            _ if lava => FluidMeasures {
-                temperature: 1300,
-                density: 3000,
-                viscosity: 6000,
-            },
-            _ => {
-                let source = kind
-                    .and_then(FluidKind::mod_fluid)
-                    .map_or(id, |fluid| fluid.get().id.as_str());
-                sunrise_client::mod_content::fluid_look(source)
-                    .map(|look| look.measures)
-                    .unwrap_or_default()
-            }
-        };
+        let measures = fluid_measures(id);
         Some(FluidTypeProperties {
             description_id,
             light_level: block.map_or(0, |block| block.emission),
@@ -432,5 +411,31 @@ impl<'a> BlockTables<'a> {
             .transformers()
             .waxed(registry, registry.state(state)?)?;
         registry.resolve(&waxed).ok()
+    }
+}
+
+/// `FluidType.getTemperature`, `getDensity` and `getViscosity` of the registered fluid `id`.
+/// NeoForgeMod's EMPTY_TYPE and LAVA_TYPE state their own; water keeps `FluidType.Properties`'
+/// defaults, and a mod's fluid, flowing or not, what its source's file states.
+pub(in crate::game) fn fluid_measures(id: &str) -> FluidMeasures {
+    let kind = FluidKind::from_name(id);
+    match kind {
+        Some(FluidKind::Empty) => FluidMeasures {
+            temperature: 0,
+            density: 0,
+            viscosity: 0,
+        },
+        Some(kind) if kind.same_family(FluidKind::Lava) => FluidMeasures {
+            temperature: 1300,
+            density: 3000,
+            viscosity: 6000,
+        },
+        Some(kind) if kind.same_family(FluidKind::Water) => FluidMeasures::default(),
+        _ => {
+            let source = kind
+                .and_then(FluidKind::mod_fluid)
+                .map_or(id, |fluid| fluid.get().id.as_str());
+            sunrise_client::mod_content::fluid_measures(source).unwrap_or_default()
+        }
     }
 }

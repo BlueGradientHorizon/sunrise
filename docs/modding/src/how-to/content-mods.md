@@ -219,9 +219,9 @@ object makes it exist in the world: `{"world": {}}` adds the block `<id>:<path>`
 with vanilla's fluid simulation, and the bucket item `<id>:<path>_bucket`, which needs its model as any item does. `world`
 takes `tick_delay` (1 or more, default 5), `drop_off` (1 to 7, default 1), `slope_find_distance` (1 to 4, default 4),
 `source_conversion` (default false) and `bucket` (default true). Beside `world`, a fluid file may state NeoForge's
-`FluidType` numbers, which other mods read through `FluidTypeProperties`: `temperature` (default 300), `density`
-(default 1000) and `viscosity` (0 or more, default 1000). These apply to a tank-only fluid too, and to a fluid a native mod
-declares in code. The fluid is in no vanilla fluid tag, so entities don't
+`FluidType` numbers, which other mods read through `FluidTypeProperties`: `temperature` and `density` (any signed
+32-bit integer, defaults 300 and 1000) and `viscosity` (0 or more, default 1000). A file without `world` declares no
+fluid by itself; its numbers describe the tank-only fluid a native mod declares in code with `declare_fluid`. The fluid is in no vanilla fluid tag, so entities don't
 swim in it or get pushed by it. In the world it draws its `sprite`, a block atlas texture such as `mymod:block/oil`, times
 its `tint`; with neither it looks like water, and a `tint` alone colours water's textures. A client mod's
 `register_fluid_models` hook accepts `mod_api::FluidModel` values with separate flowing and overlay sprites via

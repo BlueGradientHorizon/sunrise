@@ -566,6 +566,68 @@ mod tests {
         });
     }
 
+    /// A mod's fluid file through the real content loader: the numbers it states, for its
+    /// source and flowing forms alike, and `FluidType.Properties`' defaults for keys it leaves
+    /// out. Loading a mod replaces process-wide fluid tables, so this runs in its own process.
+    #[test]
+    #[ignore = "daily"]
+    fn a_mod_fluid_file_states_its_temperature_density_and_viscosity() {
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::native_block_states::tests::a_mod_fluid_file_states_its_temperature_density_and_viscosity",
+            "SUNRISE_FLUID_MEASURES_CHILD",
+            &["loaded"],
+        ) {
+            return;
+        }
+        use super::super::native_block_tables::fluid_measures;
+        use sunrise_mod_package::content::FluidMeasures;
+        let dir = tempfile::tempdir().unwrap();
+        let fluids = dir.path().join("data/measured/sunrise/fluid");
+        std::fs::create_dir_all(&fluids).unwrap();
+        std::fs::write(
+            dir.path().join("sunrise-mod.toml"),
+            "id = \"measured\"\nname = \"Measured\"\nversion = \"1\"\napi = \"0.2\"\ncapabilities = [\"registries\"]\n",
+        )
+        .unwrap();
+        std::fs::write(
+            fluids.join("brine.json"),
+            br#"{"temperature":-40,"density":1200,"viscosity":0,"world":{}}"#,
+        )
+        .unwrap();
+        std::fs::write(fluids.join("plain.json"), br#"{"world":{}}"#).unwrap();
+        let mut sources = super::super::mods::ModsState {
+            dev: vec![dir.path().to_path_buf()],
+            ..Default::default()
+        };
+        sources.select(
+            &std::env::current_dir().unwrap(),
+            &["measured".to_owned()].into(),
+        );
+        let vanilla = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+        let root = super::super::mods::content_root(&vanilla, &sources).unwrap();
+        super::super::native_entity_refs::tests::with_game_at(
+            root.prepared().to_path_buf(),
+            |_| {
+                let brine = FluidMeasures {
+                    temperature: -40,
+                    density: 1200,
+                    viscosity: 0,
+                };
+                assert_eq!(fluid_measures("measured:brine"), brine);
+                assert_eq!(fluid_measures("measured:flowing_brine"), brine);
+                assert_eq!(fluid_measures("measured:plain"), FluidMeasures::default());
+                assert_eq!(
+                    fluid_measures("measured:flowing_plain"),
+                    FluidMeasures::default()
+                );
+                assert_eq!(
+                    fluid_measures("minecraft:flowing_water"),
+                    FluidMeasures::default()
+                );
+            },
+        );
+    }
+
     /// `FluidState.createLegacyBlock`: a source is its block at level 0, flowing water of amount
     /// 3 is level 5, falling adds 8, the empty fluid is air; states no fluid can be in have none.
     #[test]
