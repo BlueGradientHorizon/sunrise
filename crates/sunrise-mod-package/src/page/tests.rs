@@ -158,6 +158,73 @@ fn a_jpeg_too_large_to_decode_is_refused_from_its_header() {
     );
 }
 
+/// 48 x 48 pictures of ours (seeded noise over gradients), written by Pillow: one sequential
+/// scan; ten progressive scans; one sequential scan in three restart intervals.
+const SEQUENTIAL: &[u8] = include_bytes!("../../tests/fixtures/page-sequential.jpg");
+const PROGRESSIVE: &[u8] = include_bytes!("../../tests/fixtures/page-progressive.jpg");
+const RESTART: &[u8] = include_bytes!("../../tests/fixtures/page-restart.jpg");
+
+/// `jpeg` cut inside its last scan's entropy-coded data, then closed with an end-of-image
+/// marker, so the end marker is no sign that the scan was whole.
+fn cut_inside_last_scan(jpeg: &[u8]) -> Vec<u8> {
+    let data = jpeg
+        .windows(2)
+        .rposition(|m| m == [0xff, 0xda])
+        .map(|sos| sos + 2 + usize::from(u16::from_be_bytes([jpeg[sos + 2], jpeg[sos + 3]])))
+        .expect("a scan");
+    // After the last restart marker, if the scan has any, so the cut is in its last interval.
+    let data = jpeg[data..]
+        .windows(2)
+        .rposition(|m| m[0] == 0xff && (0xd0..=0xd7).contains(&m[1]))
+        .map_or(data, |rst| data + rst + 2);
+    let end = jpeg.len() - 2;
+    let mut cut = data + (end - data) / 2;
+    if jpeg[cut - 1] == 0xff {
+        cut -= 1;
+    }
+    [&jpeg[..cut], &[0xff, 0xd9][..]].concat()
+}
+
+#[test]
+fn whole_jpegs_of_every_layout_pass() {
+    for jpeg in [JPEG, SEQUENTIAL, PROGRESSIVE, RESTART] {
+        check_screenshot(Path::new("image.jpg"), jpeg).unwrap();
+    }
+}
+
+#[test]
+fn a_jpeg_cut_inside_a_scan_is_refused_despite_its_end_marker() {
+    for (layout, jpeg) in [
+        ("sequential", SEQUENTIAL),
+        ("progressive", PROGRESSIVE),
+        ("restart", RESTART),
+    ] {
+        let cut = cut_inside_last_scan(jpeg);
+        assert!(cut.ends_with(&[0xff, 0xd9]) && cut.len() < jpeg.len());
+        let error = check_screenshot(Path::new("image.jpg"), &cut).unwrap_err();
+        assert!(
+            error.contains("ends before its last block"),
+            "{layout}: {error}"
+        );
+    }
+}
+
+#[test]
+fn a_progressive_jpeg_missing_its_later_scans_is_refused() {
+    // Cut before the fourth scan: the first three are whole, but the coefficients the rest
+    // carry never reach full precision.
+    let fourth = PROGRESSIVE
+        .windows(2)
+        .enumerate()
+        .filter(|(_, m)| *m == [0xff, 0xda])
+        .nth(3)
+        .map(|(at, _)| at)
+        .expect("ten scans");
+    let cut = [&PROGRESSIVE[..fourth], &[0xff, 0xd9][..]].concat();
+    let error = check_screenshot(Path::new("image.jpg"), &cut).unwrap_err();
+    assert!(error.contains("no full scan of component"), "{error}");
+}
+
 #[cfg(unix)]
 #[test]
 fn linked_screenshot_subfolders_are_refused() {
