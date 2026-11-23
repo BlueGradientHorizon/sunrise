@@ -218,10 +218,13 @@ fn a_usage_merged_into_a_vanilla_command_keeps_its_usages() {
                     1
                 );
 
+                let (ok, chat) = game
+                    .run_guest_command_told(command("time add 1", 2))
+                    .unwrap();
                 assert!(
-                    game.run_guest_command_told(command("time set day", 2))
-                        .unwrap()
-                        .0
+                    ok,
+                    "{:?}",
+                    chat.iter().map(|line| line.plain()).collect::<Vec<_>>()
                 );
                 assert!(
                     calls.lock().unwrap().is_empty(),
