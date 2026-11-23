@@ -333,6 +333,39 @@ fn the_contextual_bar_facts_read_the_jumpable_mount_and_the_tracked_waypoints() 
     );
 }
 
+/// `LocalPlayer.jumpableVehicle` asks nothing of the mount's health: a saddled horse the player
+/// controls stays its jumpable vehicle, and the jump bar's, while it dies.
+#[test]
+#[ignore = "daily"]
+fn a_dying_mount_stays_the_jumpable_vehicle() {
+    use sunrise_client::locator_bar::ContextualBar;
+    crate::game::in_own_process(
+        "game::remote::tests::client_vanilla_reads_tests::a_dying_mount_stays_the_jumpable_vehicle",
+        || {
+            with_client_game(|game| {
+                let _connection = join(game);
+                add(game, 30, "minecraft:horse");
+                game.mobs
+                    .iter_mut()
+                    .find(|m| m.id == 30)
+                    .unwrap()
+                    .extra
+                    .set_saddled(true);
+                game.handle_packet(C::SetPassengers(play::SetPassengers {
+                    vehicle: 30,
+                    passengers: vec![PLAYER as i32],
+                }))
+                .unwrap();
+                let horse = game.entity(30);
+                assert!(horse.is_some());
+                game.mobs.iter_mut().find(|m| m.id == 30).unwrap().health = 0.0;
+                assert_eq!((&*game as &dyn ClientHost).jumpable_vehicle(), horse);
+                assert_eq!(game.contextual_bar(), ContextualBar::JumpableVehicle);
+            });
+        },
+    );
+}
+
 /// NeoForge's `ICommonPacketListener.hasChannel` (#4677): the send test of
 /// `send_payload_to_server` for the current phase, against a server that negotiated a
 /// mod's optional channel and against a vanilla server that offered nothing.
