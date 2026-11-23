@@ -90,6 +90,10 @@ pub(super) trait Entity: EntityRules {
     /// `Entity.getDeltaMovement`.
     fn velocity(&self) -> Vec3;
     fn velocity_mut(&mut self) -> &mut Vec3;
+    /// The server's accumulated `Entity.fallDistance`. A kind that does not track it has zero.
+    fn fall_distance(&self) -> f64 {
+        self.body_fall_distance()
+    }
     /// `Entity.resetFallDistance`: how far it has fallen is forgotten, so its next landing
     /// hurts it as a step does. Required, so a new kind states whether it keeps a fall distance.
     fn reset_fall_distance(&mut self);
@@ -1812,14 +1816,16 @@ macro_rules! hit_effects_of {
 }
 /// What a hit's listeners need from `$game` to name and read the living entities the hit lends
 /// ([`HitReads`](sunrise_client::health::HitReads)), as field-level borrows; none before the
-/// world has an epoch, and none while no `HitHost` hook listens.
+/// world has an epoch. It asks nothing: the views it backs exist only inside a callback the
+/// hit dispatches, behind that callback's own subscription check.
 macro_rules! hit_reads_of {
     ($game:expr) => {
-        sunrise_client::health::hit_host_listened()
-            .then(|| $game.native_lifecycle.epoch())
-            .flatten()
+        $game
+            .native_lifecycle
+            .epoch()
             .map(|epoch| sunrise_client::health::HitReads {
                 epoch,
+                living_types: $game.res.living_type_keys(),
                 attributes: &$game.motion.attributes,
                 player_effects: Some(&$game.potions.effects),
                 player_equipment: acting_equipment!($game),
@@ -2125,6 +2131,9 @@ impl Entity for Mob {
     const SERIALIZES_ATTACHMENTS: bool = true;
     stored_ground!();
 
+    fn fall_distance(&self) -> f64 {
+        self.fall_distance
+    }
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
     }
@@ -2271,6 +2280,9 @@ impl Entity for Mob {
 impl Entity for ItemEntity {
     stored_size!(|_: &Self| ItemEntity::DIMENSIONS);
     stored_ground!();
+    fn fall_distance(&self) -> f64 {
+        self.fall_distance
+    }
     fn support_collision(
         &self,
         _tags: &sunrise_items::items::EntityTypeTags,
@@ -2528,6 +2540,9 @@ impl Entity for Boat {
 impl Entity for Minecart {
     stored_size!(|_: &Self| Minecart::DIMENSIONS);
     stored_ground!();
+    fn fall_distance(&self) -> f64 {
+        self.fall_distance
+    }
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
     }
@@ -2875,6 +2890,9 @@ impl Entity for PrimedTnt {
 impl Entity for FallingBlock {
     stored_size!(|_: &Self| FallingBlock::DIMENSIONS);
     stored_ground!();
+    fn fall_distance(&self) -> f64 {
+        self.fall_distance
+    }
     fn support_collision(
         &self,
         _tags: &sunrise_items::items::EntityTypeTags,
@@ -2959,6 +2977,11 @@ impl Entity for FallingBlock {
 impl Entity for Projectile {
     stored_size!(|p: &Self| p.kind.dimensions());
     stored_ground!();
+    fn fall_distance(&self) -> f64 {
+        self.arrow
+            .as_ref()
+            .map_or(self.fall_distance, |arrow| arrow.fall_distance)
+    }
     fn support_collision(
         &self,
         _tags: &sunrise_items::items::EntityTypeTags,
@@ -2966,10 +2989,7 @@ impl Entity for Projectile {
         (
             sunrise_client::motion::BodyMotion::entity_context(self.id, self.position),
             Some(PowderSnowSubject {
-                fall_distance: self
-                    .arrow
-                    .as_ref()
-                    .map_or(self.fall_distance, |arrow| arrow.fall_distance),
+                fall_distance: self.fall_distance(),
                 ..Default::default()
             }),
         )
