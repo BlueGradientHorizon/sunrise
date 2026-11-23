@@ -133,29 +133,34 @@ pub fn kind_of(path: &Path) -> Option<Kind> {
 }
 
 /// Inspect a downloaded package and require an attestation for mods. A mod is read once into a
-/// private copy, and that copy is hashed and verified before anything opens it as an archive:
-/// the facts reported are those of the attested bytes.
+/// private copy, and that copy is hashed and verified before its contents are inspected: the facts
+/// reported are those of the attested bytes. Whether a file is a mod is decided by its contents
+/// too: a `.smod`, a mod `--kind`, or any archive with `sunrise-mod.toml` at its root.
 pub fn check_release(
     path: &Path,
     kind: Option<Kind>,
     attestation: Option<&Path>,
     repository: Option<u64>,
 ) -> Result<Report, String> {
-    let smod = path.extension().is_some_and(|ext| ext == "smod");
-    if !kind
+    let bytes =
+        bounded::read_bytes(path, index::MAX_FILE, Symlinks::Follow).map_err(|e| e.to_string())?;
+    let holds_manifest = zip::ZipArchive::new(std::io::Cursor::new(&bytes))
+        .is_ok_and(|mut archive| archive.by_name(MANIFEST).is_ok());
+    let mod_archive = holds_manifest || path.extension().is_some_and(|ext| ext == "smod");
+    let as_mod = kind
         .as_ref()
-        .map_or(smod, |kind| matches!(kind, Kind::Mod | Kind::NativeMod))
-    {
-        if smod {
-            return Err("a .smod must be checked as a mod or native-mod".into());
-        }
+        .is_some_and(|kind| matches!(kind, Kind::Mod | Kind::NativeMod));
+    if !mod_archive && !as_mod {
         if attestation.is_some() || repository.is_some() {
-            return Err("--attestation and --repository apply only to .smod packages".into());
+            return Err("--attestation and --repository apply only to mod packages".into());
         }
         let kind = kind
             .or_else(|| kind_of(path))
             .ok_or("pass --kind mod|modpack|resourcepack: the extension doesn't say")?;
         return inspect(path, kind, true);
+    }
+    if kind.as_ref().is_some_and(|_| !as_mod) {
+        return Err("a mod package must be checked as a mod or native-mod".into());
     }
     let default_sidecar;
     let sidecar = match attestation {
@@ -165,19 +170,17 @@ pub fn check_release(
             &default_sidecar
         }
     };
-    let bundle =
-        bounded::read_bytes(sidecar, crate::sdk_fetch::SMALL, Symlinks::Follow).map_err(|e| {
-            if e.is_not_found() {
-                format!(
-                    "not signed: the release workflow attests each .smod; bundle not found: {}",
-                    sidecar.display()
-                )
-            } else {
-                e.to_string()
-            }
-        })?;
-    let bytes =
-        bounded::read_bytes(path, index::MAX_FILE, Symlinks::Follow).map_err(|e| e.to_string())?;
+    // The registry downloads a release's attestation within its bound for one release file.
+    let bundle = bounded::read_bytes(sidecar, index::MAX_FILE, Symlinks::Follow).map_err(|e| {
+        if e.is_not_found() {
+            format!(
+                "not signed: the release workflow attests each mod package; bundle not found: {}",
+                sidecar.display()
+            )
+        } else {
+            e.to_string()
+        }
+    })?;
     let attested = sunrise_attestation::verify(
         &bundle,
         Sha256::digest(&bytes).into(),
@@ -186,15 +189,16 @@ pub fn check_release(
     .map_err(|e| e.to_string())
     .and_then(|attested| require_release_signer(attested, repository))
     .map_err(|e| format!("{}: {e}", sidecar.display()))?;
+    // A fixed name: the download's own name never becomes part of a path written here.
     let private = tempfile::tempdir().map_err(|e| format!("check: {e}"))?;
-    let copy = private
-        .path()
-        .join(path.file_name().ok_or("the package path names no file")?);
+    let copy = private.path().join("package.smod");
     std::fs::write(&copy, &bytes).map_err(|e| format!("{}: {e}", copy.display()))?;
-    let kind = kind.unwrap_or(if index::native::holds(&copy) {
-        Kind::NativeMod
-    } else {
-        Kind::Mod
+    let kind = kind.unwrap_or_else(|| {
+        if index::native::holds(&copy) {
+            Kind::NativeMod
+        } else {
+            Kind::Mod
+        }
     });
     let mut report = inspect(&copy, kind, true)?;
     report.attestation = Some(attested);
@@ -204,6 +208,7 @@ pub fn check_release(
 
 fn require_release_signer(attested: Attested, repository: Option<u64>) -> Result<Attested, String> {
     const WORKFLOW: &str = "sunrise-org/sunrise-mods/.github/workflows/release.yml";
+    // The shared workflow's tags are `release-v<number>` (sunrise-mods registry/release-workflow.toml).
     const TAG_PREFIX: &str = "refs/tags/release-v";
     if let Some(expected) = repository
         && attested.repository_id != expected
@@ -219,13 +224,13 @@ fn require_release_signer(attested: Attested, repository: Option<u64>) -> Result
             .split_once('@')
             .is_some_and(|(workflow, git_ref)| {
                 workflow == WORKFLOW
-                    && git_ref
-                        .strip_prefix(TAG_PREFIX)
-                        .is_some_and(|version| !version.is_empty() && !version.contains('/'))
+                    && git_ref.strip_prefix(TAG_PREFIX).is_some_and(|version| {
+                        !version.is_empty() && version.bytes().all(|b| b.is_ascii_digit())
+                    })
             });
     if !allowed {
         return Err(format!(
-            "expected workflow {WORKFLOW}@{TAG_PREFIX}*, attestation names {}",
+            "expected workflow {WORKFLOW}@{TAG_PREFIX}<number>, attestation names {}",
             attested.signer_workflow_ref
         ));
     }
@@ -401,7 +406,6 @@ mod tests {
         let missing = check_release(&smod, Some(Kind::Mod), None, None)
             .err()
             .unwrap();
-        assert!(missing.starts_with("not signed: the release workflow attests each .smod"));
         assert!(missing.ends_with("coords_hud-0.1.0.smod.sigstore.json"));
 
         let bundle = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -427,12 +431,17 @@ mod tests {
     }
 
     #[test]
-    fn a_mod_extension_cannot_be_checked_as_a_different_package_format() {
+    fn a_mod_package_needs_its_attestation_whatever_its_name_or_kind() {
+        let dir = tempfile::tempdir().unwrap();
+        let renamed = dir.path().join("pack.zip");
+        std::fs::copy(fixture("coords_hud-0.1.0.smod"), &renamed).unwrap();
+        for kind in [None, Some(Kind::ResourcePack)] {
+            assert!(check_release(&renamed, kind, None, None).is_err());
+        }
+        let missing = check_release(&renamed, None, None, None).err().unwrap();
+        assert!(missing.ends_with("pack.zip.sigstore.json"), "{missing}");
         let smod = fixture("coords_hud-0.1.0.smod");
-        let error = check_release(&smod, Some(Kind::ResourcePack), None, None)
-            .err()
-            .unwrap();
-        assert_eq!(error, "a .smod must be checked as a mod or native-mod");
+        assert!(check_release(&smod, Some(Kind::ResourcePack), None, None).is_err());
     }
 
     #[test]
@@ -455,6 +464,8 @@ mod tests {
             "author/repo/.github/workflows/release.yml@refs/tags/release-v1",
             "sunrise-org/sunrise-mods/.github/workflows/publish.yml@refs/tags/release-v1",
             "sunrise-org/sunrise-mods/.github/workflows/release.yml@refs/heads/release-v1",
+            "sunrise-org/sunrise-mods/.github/workflows/release.yml@refs/tags/release-vnext",
+            "sunrise-org/sunrise-mods/.github/workflows/release.yml@refs/tags/release-v1.2",
         ] {
             let error = require_release_signer(
                 Attested {
@@ -464,7 +475,7 @@ mod tests {
                 None,
             )
             .unwrap_err();
-            assert!(error.starts_with("expected workflow sunrise-org/sunrise-mods/"));
+            assert!(error.contains(signer_workflow_ref), "{error}");
         }
         let repository = require_release_signer(attested, Some(1)).unwrap_err();
         assert_eq!(
