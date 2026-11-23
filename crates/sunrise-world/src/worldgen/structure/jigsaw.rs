@@ -364,7 +364,7 @@ fn template_jigsaws<'a>(
         .iter()
         .map(|j| {
             let relative = StructureTemplate::transform(j.info.pos, Mirror::None, rotation, [0; 3]);
-            let pos = std::array::from_fn(|i| relative[i] + position[i]);
+            let pos = std::array::from_fn(|i| relative[i].wrapping_add(position[i]));
             let state = resources.transforms.rotate(j.info.state, rotation);
             let orientation = resources
                 .registry
@@ -1170,8 +1170,8 @@ impl Placer<'_, '_> {
         'jigsaws: for jigsaw in jigsaws {
             let direction = jigsaw.front;
             let s = step(direction);
-            let target_pos: [i32; 3] = std::array::from_fn(|i| jigsaw.pos[i] + s[i]);
-            let local_y = jigsaw.pos[1] - source_y;
+            let target_pos: [i32; 3] = std::array::from_fn(|i| jigsaw.pos[i].wrapping_add(s[i]));
+            let local_y = jigsaw.pos[1].wrapping_sub(source_y);
             let mut base_height = i32::MIN;
             let Some(target_pool) = self.pool(&jigsaw.pool) else {
                 continue;
@@ -1243,14 +1243,16 @@ impl Placer<'_, '_> {
                         }
                         let target_local = target_jigsaw.pos;
                         let raw_position: [i32; 3] =
-                            std::array::from_fn(|i| target_pos[i] - target_local[i]);
+                            std::array::from_fn(|i| target_pos[i].wrapping_sub(target_local[i]));
                         let raw_box = target.bounding_box(raw_position, rotation);
                         let raw_y = raw_box.min[1];
                         let target_rigid = target.projection() == Projection::Rigid;
                         let target_local_y = target_local[1];
-                        let delta_y = local_y - target_local_y + step(jigsaw.front)[1];
+                        let delta_y = local_y
+                            .wrapping_sub(target_local_y)
+                            .wrapping_add(step(jigsaw.front)[1]);
                         let target_y = if source_rigid && target_rigid {
-                            source_y + delta_y
+                            source_y.wrapping_add(delta_y)
                         } else {
                             if base_height == i32::MIN {
                                 base_height = context.base_height(
@@ -1259,29 +1261,35 @@ impl Placer<'_, '_> {
                                     HeightmapType::WorldSurfaceWg,
                                 );
                             }
-                            base_height - target_local_y
+                            base_height.wrapping_sub(target_local_y)
                         };
-                        let offset = target_y - raw_y;
+                        let offset = target_y.wrapping_sub(raw_y);
                         let mut target_box = raw_box.moved([0, offset, 0]);
-                        let target_position =
-                            [raw_position[0], raw_position[1] + offset, raw_position[2]];
+                        let target_position = [
+                            raw_position[0],
+                            raw_position[1].wrapping_add(offset),
+                            raw_position[2],
+                        ];
                         if expand_to > 0 {
-                            let size = (expand_to + 1).max(target_box.max[1] - target_box.min[1]);
-                            target_box.max[1] = target_box.max[1].max(target_box.min[1] + size);
+                            let size = expand_to
+                                .wrapping_add(1)
+                                .max(target_box.max[1].wrapping_sub(target_box.min[1]));
+                            target_box.max[1] =
+                                target_box.max[1].max(target_box.min[1].wrapping_add(size));
                         }
                         if !children_free.borrow().fits(&target_box) {
                             continue;
                         }
                         children_free.borrow_mut().removed.push(target_box);
                         let target_ground = if target_rigid {
-                            source_ground - delta_y
+                            source_ground.wrapping_sub(delta_y)
                         } else {
                             target.ground_level_delta()
                         };
                         let junction_y = if source_rigid {
-                            source_y + local_y
+                            source_y.wrapping_add(local_y)
                         } else if target_rigid {
-                            target_y + target_local_y
+                            target_y.wrapping_add(target_local_y)
                         } else {
                             if base_height == i32::MIN {
                                 base_height = context.base_height(
@@ -1290,11 +1298,13 @@ impl Placer<'_, '_> {
                                     HeightmapType::WorldSurfaceWg,
                                 );
                             }
-                            base_height + delta_y / 2
+                            base_height.wrapping_add(delta_y / 2)
                         };
                         self.pieces[source_index].junctions.push(Junction {
                             source_x: target_pos[0],
-                            source_ground_y: junction_y - local_y + source_ground,
+                            source_ground_y: junction_y
+                                .wrapping_sub(local_y)
+                                .wrapping_add(source_ground),
                             source_z: target_pos[2],
                             delta_y,
                             dest_projection: target.projection(),
@@ -1307,9 +1317,11 @@ impl Placer<'_, '_> {
                             bounding_box: target_box,
                             junctions: vec![Junction {
                                 source_x: jigsaw.pos[0],
-                                source_ground_y: junction_y - target_local_y + target_ground,
+                                source_ground_y: junction_y
+                                    .wrapping_sub(target_local_y)
+                                    .wrapping_add(target_ground),
                                 source_z: jigsaw.pos[2],
-                                delta_y: -delta_y,
+                                delta_y: delta_y.wrapping_neg(),
                                 dest_projection: if source_rigid {
                                     Projection::Rigid
                                 } else {

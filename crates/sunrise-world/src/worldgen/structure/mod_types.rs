@@ -545,17 +545,22 @@ mod tests {
             .assemble_jigsaw(&settings, &mut Flat, &mut random, [0, 0, 0])
             .expect("the start fits");
         assert!(none.is_empty());
-        // A type's reach and padding are its own: Java's int arithmetic wraps at the extremes.
-        for (max_distance, padding) in [
-            ([i32::MAX, i32::MAX], [0, 0]),
-            ([1, 1], [i32::MIN, i32::MAX]),
-            ([i32::MAX, i32::MAX], [i32::MAX, i32::MIN]),
+        // A type's position, reach and padding are its own: Java's int arithmetic wraps at the
+        // extremes.
+        for (position, max_distance, padding, expansion) in [
+            ([0, 0, 0], [i32::MAX, i32::MAX], [0, 0], false),
+            ([0, 0, 0], [1, 1], [i32::MIN, i32::MAX], false),
+            ([0, 0, 0], [i32::MAX, i32::MAX], [i32::MAX, i32::MIN], false),
+            ([i32::MAX; 3], [i32::MAX, i32::MAX], [0, 0], true),
+            ([i32::MIN; 3], [i32::MAX, i32::MAX], [0, 0], true),
+            ([i32::MAX, i32::MIN, i32::MAX], [16, 400], [0, 0], true),
         ] {
             settings.max_depth = 2;
             settings.max_distance = max_distance;
             settings.padding = padding;
+            settings.use_expansion_hack = expansion;
             let mut random = WorldgenRandom::new(LegacyRandom::new(0));
-            let _ = inputs.assemble_jigsaw(&settings, &mut Flat, &mut random, [0, 0, 0]);
+            let _ = inputs.assemble_jigsaw(&settings, &mut Flat, &mut random, position);
         }
 
         // The same structure as `minecraft:jigsaw` is past its codec's bound and refused.
