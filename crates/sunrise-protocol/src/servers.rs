@@ -50,13 +50,16 @@ impl ServerEntry {
         Tag::compound(entries)
     }
     fn from_tag(tag: &Tag) -> Option<Self> {
+        if !matches!(tag, Tag::Compound(_)) {
+            return None;
+        }
         let string = |k: &str| match tag.get(k) {
             Some(Tag::String(s)) => Some(s.to_string_lossy()),
             _ => None,
         };
         Some(Self {
             name: string("name").unwrap_or_default(),
-            ip: string("ip")?,
+            ip: string("ip").unwrap_or_default(),
             icon: string("icon"),
             // ServerData.ServerPackStatus.FIELD_CODEC -> NbtOps.getBooleanValue:
             // any numeric tag whose doubleValue() != 0.0.
@@ -69,8 +72,14 @@ impl ServerEntry {
                 Some(Tag::Double(bits)) => Some(f64::from_bits(*bits) != 0.0),
                 _ => None,
             },
+            // CompoundTag.getIntOr("acceptedCodeOfConduct", 0) -> NumericTag.intValue().
             accepted_code_of_conduct: match tag.get("acceptedCodeOfConduct") {
-                Some(Tag::Int(hash)) => *hash,
+                Some(Tag::Byte(n)) => i32::from(*n),
+                Some(Tag::Short(n)) => i32::from(*n),
+                Some(Tag::Int(n)) => *n,
+                Some(Tag::Long(n)) => *n as i32,
+                Some(Tag::Float(bits)) => sunrise_core::mth::floor_f32(f32::from_bits(*bits)),
+                Some(Tag::Double(bits)) => sunrise_core::mth::floor(f64::from_bits(*bits)),
                 _ => 0,
             },
         })
@@ -95,7 +104,7 @@ pub fn load_all(path: &Path) -> (Vec<ServerEntry>, Vec<ServerEntry>) {
     let Ok(bytes) = std::fs::read(path) else {
         return (shown, hidden);
     };
-    let Ok((root, _)) = nbt::read_named(&bytes, nbt::Limits::default()) else {
+    let Ok((root, _)) = nbt::read_named(&bytes, nbt::Limits::unlimited_heap()) else {
         return (shown, hidden);
     };
     if let Some(Tag::List(list)) = root.tag.get("servers") {
@@ -103,12 +112,18 @@ pub fn load_all(path: &Path) -> (Vec<ServerEntry>, Vec<ServerEntry>) {
             let Some(entry) = ServerEntry::from_tag(t) else {
                 continue;
             };
-            // CompoundTag.getBooleanOr("hidden", false): any number but zero.
+            // CompoundTag.getBooleanOr("hidden", false) -> NumericTag.byteValue() != 0.
             let is_hidden = match t.get("hidden") {
                 Some(Tag::Byte(b)) => *b != 0,
                 Some(Tag::Short(n)) => *n as i8 != 0,
                 Some(Tag::Int(n)) => *n as i8 != 0,
                 Some(Tag::Long(n)) => *n as i8 != 0,
+                Some(Tag::Float(bits)) => {
+                    (sunrise_core::mth::floor_f32(f32::from_bits(*bits)) as i8) != 0
+                }
+                Some(Tag::Double(bits)) => {
+                    (sunrise_core::mth::floor(f64::from_bits(*bits)) as i8) != 0
+                }
                 _ => false,
             };
             if is_hidden {
@@ -172,7 +187,7 @@ pub fn remove_where(path: &Path, matches: impl Fn(&str, &str) -> bool) -> std::i
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
         Err(e) => return Err(e),
     };
-    let mut root = nbt::read_named(&bytes, nbt::Limits::default())
+    let mut root = nbt::read_named(&bytes, nbt::Limits::unlimited_heap())
         .map_err(std::io::Error::other)?
         .0;
     let Some(Tag::List(list)) = root.tag.get_mut("servers") else {
@@ -198,7 +213,7 @@ fn insert(
 ) -> std::io::Result<()> {
     let mut root = match std::fs::read(path) {
         Ok(bytes) => {
-            nbt::read_named(&bytes, nbt::Limits::default())
+            nbt::read_named(&bytes, nbt::Limits::unlimited_heap())
                 .map_err(std::io::Error::other)?
                 .0
         }
@@ -224,7 +239,8 @@ fn insert(
     write(path, &root)
 }
 fn write(path: &Path, root: &NamedTag) -> std::io::Result<()> {
-    let bytes = nbt::write_named(root, nbt::Limits::default()).map_err(std::io::Error::other)?;
+    let bytes =
+        nbt::write_named(root, nbt::Limits::unlimited_heap()).map_err(std::io::Error::other)?;
     // ServerList.save + Util.safeReplaceFile: write a temp file, back up the
     // preceding servers.dat to servers.dat_old, then move the new file into place.
     let tmp = path.with_extension(format!("dat_tmp.{}", std::process::id()));
@@ -501,6 +517,63 @@ mod tests {
         std::fs::write(&path, corrupt).unwrap();
         save_all(&path, &[], &[]).unwrap();
         assert_eq!(std::fs::read(&backup).unwrap(), corrupt);
+
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn disk_decoder_accepts_long_code_of_conduct_and_large_lists_across_second_save() {
+        let dir = std::env::temp_dir().join(format!(
+            "sunrise-servers-unbounded-coc-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("servers.dat");
+
+        // Vanilla ServerList.load uses NbtAccounter.unlimitedHeap() and CompoundTag.getIntOr()
+        // for acceptedCodeOfConduct (NumericTag.intValue). Exceed Limits::default().max_bytes
+        // (64 MiB) so a bounded decoder would empty the list on load.
+        let shown_entry = Tag::compound([
+            ("name", Tag::String(JavaString::from("LargeShown"))),
+            ("ip", Tag::String(JavaString::from("shown.example"))),
+            ("acceptTextures", Tag::Byte(0)),
+            ("acceptedCodeOfConduct", Tag::Long(0x1_0000_002A_i64)),
+            ("padding", Tag::ByteArray(vec![0u8; 64 * 1024 * 1024 + 1])),
+        ]);
+        let hidden_entry = Tag::compound([
+            ("name", Tag::String(JavaString::from("LargeHidden"))),
+            ("ip", Tag::String(JavaString::from("hidden.example"))),
+            ("hidden", Tag::Double(1.9_f64.to_bits())),
+            ("acceptedCodeOfConduct", Tag::Double((-3.2_f64).to_bits())),
+        ]);
+        let raw_root = NamedTag {
+            name: JavaString::from(""),
+            tag: Tag::compound([("servers", Tag::List(vec![shown_entry, hidden_entry]))]),
+        };
+        let bytes = nbt::write_named(&raw_root, nbt::Limits::unlimited_heap()).unwrap();
+        assert!(nbt::read_named(&bytes, nbt::Limits::default()).is_err());
+        std::fs::write(&path, &bytes).unwrap();
+
+        let (shown, hidden) = load_all(&path);
+        assert_eq!(shown.len(), 1);
+        assert_eq!(shown[0].ip, "shown.example");
+        assert_eq!(shown[0].accept_textures, Some(false));
+        assert_eq!(shown[0].accepted_code_of_conduct, 0x2A);
+        assert_eq!(hidden.len(), 1);
+        assert_eq!(hidden[0].ip, "hidden.example");
+        assert_eq!(hidden[0].accepted_code_of_conduct, -4);
+
+        // Save once, then save a second time: both shown and hidden entries and their
+        // acceptedCodeOfConduct values must survive.
+        save(&path, &shown).unwrap();
+        let (shown2, hidden2) = load_all(&path);
+        assert_eq!(shown2, shown);
+        assert_eq!(hidden2, hidden);
+        save(&path, &shown2).unwrap();
+        let (shown3, hidden3) = load_all(&path);
+        assert_eq!(shown3, shown);
+        assert_eq!(hidden3, hidden);
 
         std::fs::remove_dir_all(dir).unwrap();
     }
