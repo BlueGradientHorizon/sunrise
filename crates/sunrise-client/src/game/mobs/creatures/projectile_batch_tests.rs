@@ -736,3 +736,266 @@ fn wind_charges_retrace_only_after_gameplay_breaks_a_vehicle() {
         }
     });
 }
+
+#[derive(Default)]
+struct WindContinuationObserved {
+    launches: Mutex<Vec<u32>>,
+    alone_ticks: Mutex<Vec<u32>>,
+    buffered: Mutex<bool>,
+}
+
+struct WindContinuationObserver {
+    spawn_on_shoot: bool,
+    observed: Arc<WindContinuationObserved>,
+}
+
+#[mod_api::__subscriptions]
+impl Hooks for WindContinuationObserver {
+    fn entity_tick_listened(
+        &self,
+        _: mod_api::HostSide<'_>,
+        event: &mut mod_api::EntityTickListenedEvent,
+    ) {
+        event.listened = true;
+    }
+
+    fn entity_tick_post(
+        &self,
+        _: mod_api::HostSide<'_>,
+        event: &mut mod_api::EntityTickPostEvent<'_>,
+    ) {
+        self.observed
+            .alone_ticks
+            .lock()
+            .unwrap()
+            .extend_from_slice(event.entities);
+    }
+
+    fn projectile_launch(
+        &self,
+        _: &mut dyn ServerHost,
+        event: &mut mod_api::ProjectileLaunchEvent<'_>,
+    ) {
+        self.observed.launches.lock().unwrap().push(event.entity);
+    }
+
+    fn vanilla_game_event(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut mod_api::VanillaGameEventEvent<'_>,
+    ) -> Flow {
+        if self.spawn_on_shoot && event.event == "minecraft:projectile_shoot" {
+            let mut buffered = self.observed.buffered.lock().unwrap();
+            if !*buffered {
+                // Spawn into the lifted buffer so SpawnsFirst restores it ahead of survivors.
+                let _ = host.summon(
+                    event.dimension,
+                    "minecraft:snowball",
+                    [12.5, -55.0, 8.5],
+                    Default::default(),
+                );
+                *buffered = true;
+            }
+        }
+        Flow::Continue
+    }
+
+    fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+        r.entity_tick_each("minecraft:breeze_wind_charge");
+    }
+}
+
+fn wind_continuation_witness_26_3(tick: usize, tag: &str) -> Option<([f64; 3], [f64; 3])> {
+    const WITNESS: &str = include_str!(
+        "../../../../../../tools/witness/26.3/wind_charge_continuation_tick_order.txt"
+    );
+    let prefix = format!("tick {tick} {tag} ");
+    let line = WITNESS
+        .lines()
+        .find(|line| line.starts_with(&prefix))
+        .unwrap_or_else(|| panic!("missing 26.3 witness row for {prefix}"));
+    let rest = &line[prefix.len()..];
+    if rest == "gone" {
+        return None;
+    }
+    let rest = rest.strip_prefix("pos ").expect("pos prefix");
+    let (pos_str, mot_str) = rest.split_once(" motion ").expect("motion separator");
+    let parse3 = |s: &str| {
+        let mut it = s
+            .split_whitespace()
+            .map(|n| n.parse::<f64>().expect("witness float"));
+        [it.next().unwrap(), it.next().unwrap(), it.next().unwrap()]
+    };
+    Some((parse3(pos_str), parse3(mot_str)))
+}
+
+fn assert_vec3_bits(actual: Vec3, expected: [f64; 3], label: &str) {
+    for (axis, (got, want)) in actual.components().into_iter().zip(expected).enumerate() {
+        assert_eq!(
+            got.to_bits(),
+            want.to_bits(),
+            "{label} axis {axis}: got {got} expected {want}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass() {
+    const CASE: &str = "SUNRISE_PROJECTILE_BATCH_CASE";
+    if run_fresh_cases(
+        "game::creatures::projectile_batch_tests::continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass",
+        CASE,
+        &["main", "ctrl4", "mixed-batch"],
+    ) {
+        return;
+    }
+    let case = std::env::var(CASE).unwrap();
+    let observed = Arc::new(WindContinuationObserved::default());
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "wind-continuation-observer",
+        Box::new(WindContinuationObserver {
+            spawn_on_shoot: case == "mixed-batch",
+            observed: observed.clone(),
+        }),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        super::super::native_entity_refs::tests::with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
+            for cz in 0..=2 {
+                game.world
+                    .chunks
+                    .insert((0, cz), Arc::new(Chunk::empty(0, cz)));
+                game.block_ticks
+                    .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, cz))
+                    .unwrap();
+            }
+            game.build_registries();
+            game.set_allow_commands(true);
+            assert!(game.run_command("forceload add 0 0 15 47"));
+            game.next_entity = 100;
+            let (z, breakers) = if case == "ctrl4" {
+                (24.5, 4_u32)
+            } else {
+                (8.5, 5_u32)
+            };
+            game.boats.push(crate::game::boats::Boat::new(
+                71,
+                Arc::from("oak"),
+                Vec3::new(4.5, -60.0, z),
+                0.0,
+            ));
+            for i in 0..breakers {
+                let mut p =
+                    Projectile::new(ProjectileKind::WindCharge, Vec3::new(4.5, -59.2, z), None);
+                p.id = 80 + i;
+                p.velocity = Vec3::new(0.0, -0.5, 0.0);
+                p.acceleration = 0.0;
+                game.creatures.projectiles.push(p);
+            }
+            let mut w6 = Projectile::new(
+                ProjectileKind::BreezeWindCharge,
+                Vec3::new(3.5, -59.7, z),
+                None,
+            );
+            w6.id = 85;
+            w6.velocity = Vec3::new(1.5, 0.0, 0.0);
+            w6.acceleration = 0.0;
+            game.creatures.projectiles.push(w6);
+            let w6_join = game.creatures.projectiles.last().unwrap().join;
+            let a2_join = if case != "ctrl4" {
+                let mut a2 = Projectile::new(
+                    ProjectileKind::Arrow {
+                        base_damage: 2.0,
+                        critical: false,
+                        effect: None,
+                    },
+                    Vec3::new(8.0, -58.6, z),
+                    None,
+                );
+                a2.id = 86;
+                a2.velocity = Vec3::new(0.0, -0.2, 0.0);
+                game.creatures.projectiles.push(a2);
+                Some(game.creatures.projectiles.last().unwrap().join)
+            } else {
+                None
+            };
+            game.native_joins_skip();
+            game.ticked_entities_through = u32::MAX;
+            game.tick_projectiles().unwrap();
+            assert!(
+                observed.alone_ticks.lock().unwrap().contains(&85),
+                "w6 must run through the batched entity_tick_each pass"
+            );
+            if case == "ctrl4" {
+                assert!(wind_continuation_witness_26_3(1, "w6_ctrl4").is_none());
+                assert!(game.creatures.projectiles.is_empty());
+                assert_eq!(game.boats.len(), 1);
+                assert!(observed.launches.lock().unwrap().is_empty());
+                return;
+            }
+            assert!(game.boats.is_empty());
+            let spawned = (case == "mixed-batch").then(|| {
+                assert!(*observed.buffered.lock().unwrap());
+                game.creatures
+                    .projectiles
+                    .iter()
+                    .find(|p| p.position.x == 12.5)
+                    .expect("nested snowball restored ahead of survivors")
+                    .id
+            });
+            let expected_ids: Vec<u32> = match spawned {
+                Some(id) => vec![id, 85, 86],
+                None => vec![85, 86],
+            };
+            let actual_ids: Vec<u32> = game.creatures.projectiles.iter().map(|p| p.id).collect();
+            assert_eq!(actual_ids, expected_ids);
+            let expected_launches: Vec<u32> = spawned.into_iter().collect();
+            assert_eq!(*observed.launches.lock().unwrap(), expected_launches);
+            let w6_live = game
+                .creatures
+                .projectiles
+                .iter()
+                .find(|p| p.id == 85)
+                .unwrap();
+            let a2_live = game
+                .creatures
+                .projectiles
+                .iter()
+                .find(|p| p.id == 86)
+                .unwrap();
+            assert_eq!(w6_live.join, w6_join);
+            assert_eq!(Some(a2_live.join), a2_join);
+            let check_tick = |game: &Game<'_>, tick: usize| {
+                let (w6_pos, w6_mot) =
+                    wind_continuation_witness_26_3(tick, "w6_main").expect("w6 alive");
+                let (a2_pos, a2_mot) =
+                    wind_continuation_witness_26_3(tick, "a2_main").expect("a2 alive");
+                let w6 = game
+                    .creatures
+                    .projectiles
+                    .iter()
+                    .find(|p| p.id == 85)
+                    .unwrap();
+                let a2 = game
+                    .creatures
+                    .projectiles
+                    .iter()
+                    .find(|p| p.id == 86)
+                    .unwrap();
+                assert_vec3_bits(w6.position, w6_pos, "w6 pos");
+                assert_vec3_bits(w6.velocity, w6_mot, "w6 motion");
+                assert_vec3_bits(a2.position, a2_pos, "a2 pos");
+                assert_vec3_bits(a2.velocity, a2_mot, "a2 motion");
+            };
+            check_tick(game, 1);
+            for tick in 2..=4 {
+                game.ticked_entities_through = u32::MAX;
+                game.tick_projectiles().unwrap();
+                check_tick(game, tick);
+            }
+            assert_eq!(*observed.launches.lock().unwrap(), expected_launches);
+        });
+    });
+}

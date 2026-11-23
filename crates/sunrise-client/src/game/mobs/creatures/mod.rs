@@ -2494,7 +2494,7 @@ impl Game<'_> {
             a.spawn_velocity = Some(p.velocity);
             a.spawn_rot = Some((p.pitch, p.yaw));
         }
-        self.creatures.projectiles.push_in_join_order(p);
+        self.creatures.projectiles.push(p);
         self.native_projectile_launch(player, &name, id, kind);
         id
     }
@@ -5595,12 +5595,17 @@ impl Game<'_> {
                     .apply_captured_impact(p, hit, contact)
                     .map(|p| (p, hit)),
                 (None, Some(before)) if self.wind_vehicle_broken(hit) => {
-                    let (p, keep, hit) = self.broken_vehicle_retick(before);
+                    let from = before.position;
+                    let (mut p, keep, hit) = self.broken_vehicle_retick(before);
                     if keep {
                         if let Some(ceiling) = self.wind_ceiling_contact(&p) {
                             Some((p, ceiling))
                         } else {
-                            self.add_projectile(p);
+                            self.sweep_projectile_inside(&mut p);
+                            self.lava_mark_hurt(&mut p);
+                            let (pid, to) = (p.id, p.position);
+                            self.reinsert_continuing_projectile(p);
+                            self.entity_section_step(pid, from.components(), to.components());
                             None
                         }
                     } else {
@@ -5996,22 +6001,22 @@ impl Game<'_> {
         }
     }
 
-    /// Re-insert an arrow that remains alive after entity hit dispatch, preserving tick order.
-    fn reinsert_bounced_arrow(&mut self, arrow: Projectile) {
+    /// Re-insert a projectile that remains alive after entity hit dispatch, preserving tick order.
+    fn reinsert_continuing_projectile(&mut self, projectile: Projectile) {
         let followers = self
             .creatures
             .bounced_followers
             .iter()
-            .position(|(id, _)| *id == arrow.id)
+            .position(|(id, _)| *id == projectile.id)
             .map(|k| self.creatures.bounced_followers.swap_remove(k).1)
             .unwrap_or_default();
         let projectiles = &mut self.creatures.projectiles;
-        if let Some(existing) = projectiles.locate(arrow.join) {
-            projectiles.store_back(existing, arrow);
+        if let Some(existing) = projectiles.locate(projectile.join) {
+            projectiles.store_back(existing, projectile);
             return;
         }
         let index = bounced_place(projectiles, &followers);
-        projectiles.insert(index, arrow);
+        projectiles.insert(index, projectile);
     }
 
     /// The rest of the tick of an arrow that hit an entity (`arrows::finish_entity_hit`).
@@ -6022,7 +6027,7 @@ impl Game<'_> {
         };
         self.flush_arrow_events(&mut arrow);
         if keep {
-            self.reinsert_bounced_arrow(arrow);
+            self.reinsert_continuing_projectile(arrow);
         } else if self.creatures.projectiles.locate(arrow.join).is_none() {
             self.creatures
                 .projectiles
