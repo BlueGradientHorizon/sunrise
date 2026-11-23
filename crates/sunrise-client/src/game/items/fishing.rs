@@ -2827,6 +2827,7 @@ mod tests {
     #[test]
     fn reeling_an_item_requests_an_immediate_motion_update() {
         let mut item = ItemEntity {
+            size_answer: None,
             random: sunrise_core::random::LegacyRandom::new(0),
             attachment_lifetime: Default::default(),
             fall_distance: 0.0,
