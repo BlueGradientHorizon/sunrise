@@ -2,6 +2,10 @@
 //! `AdvancementWidget`): one tab per displayed root, the tree laid out by
 //! `TreeNodePosition`, dragged or scrolled inside the 252x140 window, with
 //! the progress tooltip of the hovered advancement.
+#[cfg(test)]
+#[path = "advancements/remote_tests.rs"]
+mod remote_tests;
+
 use super::{Game, Screen, advancements::text_of};
 use std::{sync::Arc, time::Instant};
 use sunrise_client::{
@@ -173,6 +177,36 @@ impl Game<'_> {
             self.capture(true);
         }
     }
+    /// `AdvancementsScreen.onAdvancementsUpdated`: keep the tab by root ID,
+    /// not by its old index. A removed tab loses its scroll and, while the
+    /// screen is open, the first remaining tab takes its place.
+    pub(super) fn remote_advancement_tabs_updated(&mut self, previous: &Tree, reset: bool) {
+        self.adv_ui.tab = if reset {
+            None
+        } else {
+            self.adv_ui
+                .tab
+                .and_then(|i| previous.list.get(i))
+                .and_then(|a| self.adv.tree.by_id.get(&a.id).copied())
+        };
+        self.adv_ui.hovered = None;
+        if self.adv_ui.tab.is_none() {
+            self.adv_ui.scroll = None;
+            self.adv_ui.fade = 0.0;
+        }
+        if self.screen == Screen::Advancements {
+            let previous_tab = self.adv_ui.tab;
+            self.adv_view();
+            if self.adv_ui.tab != previous_tab
+                && let Some(tab) = self.adv_ui.tab
+            {
+                let id = &self.adv.tree.list[tab].id;
+                self.send(
+                    sunrise_protocol::packets::play::Serverbound::SeenAdvancements(opened_tab(id)),
+                );
+            }
+        }
+    }
     fn adv_cache(&mut self) {
         if self
             .adv_ui
@@ -227,16 +261,19 @@ impl Game<'_> {
                     && a.display.as_ref().is_some_and(|d| d.background.is_some())
             })
             .collect();
-        tabs.sort_by_key(|&i| {
-            let id = &tree.list[i].id;
-            (
-                TAB_ORDER
-                    .iter()
-                    .position(|r| r == id)
-                    .unwrap_or(TAB_ORDER.len()),
-                id.clone(),
-            )
-        });
+        // The packet tree already has AdvancementTree's insertion order.
+        if self.adv.positions.is_none() {
+            tabs.sort_by_key(|&i| {
+                let id = &tree.list[i].id;
+                (
+                    TAB_ORDER
+                        .iter()
+                        .position(|r| r == id)
+                        .unwrap_or(TAB_ORDER.len()),
+                    id.clone(),
+                )
+            });
+        }
         tabs.truncate(26);
         let tab = self
             .adv_ui
@@ -267,6 +304,11 @@ impl Game<'_> {
                     stack.push((k, next));
                 }
             }
+        }
+        if self.adv.positions.is_some() && self.adv_ui.tab != tab {
+            self.adv_ui.scroll = None;
+            self.adv_ui.fade = 0.0;
+            self.adv_ui.hovered = None;
         }
         self.adv_ui.tab = tab;
         View {

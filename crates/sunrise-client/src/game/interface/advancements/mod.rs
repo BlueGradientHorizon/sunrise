@@ -2746,87 +2746,38 @@ impl Game<'_> {
     }
 }
 impl Game<'_> {
-    /// `ClientAdvancements.update` (ClientboundUpdateAdvancementsPacket):
-    /// the server's advancements replace or join the tree, each changed one
-    /// takes the progress sent, and one just done shows its toast.
+    /// `ClientAdvancements.update`: update the tree before applying progress.
+    /// Incremental removals forget nodes, not the progress stored by id.
     pub(super) fn remote_advancements(
         &mut self,
         p: sunrise_protocol::packets::play::UpdateAdvancements,
     ) {
-        use sunrise_client::scoreboard::tag_to_json;
-        let mut list: Vec<adv::Advancement> = Vec::new();
-        let mut positions: Vec<(f32, f32)> = Vec::new();
-        if !p.reset {
-            let old = self.adv.positions.take().unwrap_or_default();
-            for (i, a) in self.adv.tree.list.iter().enumerate() {
-                if !p.removed.contains(&a.id) {
-                    list.push(a.clone());
-                    positions.push(old.get(i).copied().unwrap_or((0.0, 0.0)));
-                }
-            }
-        } else {
+        if p.reset {
             self.adv.progress = Progress::default();
         }
-        for id in &p.removed {
-            self.adv.progress.criteria.remove(id);
-        }
-        for a in p.added {
-            list.retain(|o| o.id != a.id);
-            let display = a.display.map(|d| adv::Display {
-                icon: self.remote_advancement_icon(d.icon),
-                title: tag_to_json(&d.title),
-                description: tag_to_json(&d.description),
-                frame: match d.frame {
-                    1 => Frame::Challenge,
-                    2 => Frame::Goal,
-                    _ => Frame::Task,
-                },
-                background: d.background,
-                show_toast: d.show_toast,
-                announce: false,
-                hidden: d.hidden,
-            });
-            let mut criteria: Vec<adv::Criterion> = Vec::new();
-            for name in a.requirements.iter().flatten() {
-                if !criteria.iter().any(|c| &c.name == name) {
-                    criteria.push(adv::Criterion {
-                        name: name.clone(),
-                        trigger: String::new(),
-                        conditions: Value::Null.into(),
-                    });
-                }
-            }
-            list.push(adv::Advancement {
-                id: a.id,
-                parent: a.parent,
-                display,
-                criteria,
-                requirements: a.requirements,
-                rewards: Default::default(),
-            });
-            positions.push((a.x, a.y));
-        }
-        let mut tree = Tree::default();
-        tree.list = list;
-        for (i, a) in tree.list.iter().enumerate() {
-            tree.by_id.insert(a.id.clone(), i);
-        }
-        self.ui.registries.advancements = tree.list.iter().map(|a| a.id.clone()).collect();
-        self.adv.tree = Arc::new(tree);
-        self.adv.positions = Some(positions);
+        let previous_tree = if p.reset || !p.removed.is_empty() || !p.added.is_empty() {
+            let (tree, positions) =
+                self.update_remote_advancement_tree(p.reset, &p.removed, p.added);
+            self.ui.registries.advancements = tree.list.iter().map(|a| a.id.clone()).collect();
+            self.adv.positions = Some(positions);
+            Some(std::mem::replace(&mut self.adv.tree, Arc::new(tree)))
+        } else {
+            None
+        };
         let tree = self.adv.tree.clone();
         for (id, criteria) in p.progress {
-            let Some(&i) = tree.by_id.get(&id) else {
+            let Some(a) = tree.get(&id) else {
+                log::warn!("Server sent progress for unknown advancement {id}");
                 continue;
             };
-            // The client only shows whether a criterion is obtained, not when.
-            let obtained: BTreeMap<String, String> = criteria
+            // AdvancementProgress.update drops criteria not in the node's requirements.
+            // The client only shows whether each remaining criterion is obtained, not when.
+            let obtained = criteria
                 .into_iter()
-                .filter(|(_, at)| at.is_some())
+                .filter(|(name, at)| at.is_some() && a.criteria.iter().any(|c| c.name == *name))
                 .map(|(name, _)| (name, String::new()))
                 .collect();
             self.adv.progress.criteria.insert(id, obtained);
-            let a = &tree.list[i];
             if !p.reset
                 && p.show
                 && self.adv.progress.done(a)
@@ -2843,6 +2794,126 @@ impl Game<'_> {
                     last_changed: 0,
                 });
             }
+        }
+        if let Some(previous) = previous_tree {
+            self.remote_advancement_tabs_updated(&previous, p.reset);
+        }
+    }
+
+    /// `AdvancementTree.remove` and `AdvancementTree.addAll`: prune whole
+    /// subtrees, then admit additions in the order their parents become available.
+    fn update_remote_advancement_tree(
+        &self,
+        reset: bool,
+        removed: &[String],
+        mut pending: Vec<sunrise_protocol::packets::play::Advancement>,
+    ) -> (Tree, Vec<(f32, f32)>) {
+        let mut tree = Tree::default();
+        let mut positions = Vec::new();
+        let old = &self.adv.tree;
+        let mut deleted = vec![false; old.list.len()];
+        let children = if reset || removed.is_empty() {
+            Vec::new()
+        } else {
+            old.children()
+        };
+        let mut stack = Vec::new();
+        for id in removed {
+            if !reset
+                && let Some(&i) = old.by_id.get(id)
+                && !deleted[i]
+            {
+                stack.push(i);
+                while let Some(i) = stack.pop() {
+                    if !std::mem::replace(&mut deleted[i], true) {
+                        stack.extend(children[i].iter().copied());
+                    }
+                }
+            } else {
+                log::warn!("Server removed unknown advancement {id}");
+            }
+        }
+        if !reset {
+            let old_positions = self.adv.positions.as_deref().unwrap_or_default();
+            for (i, a) in old.list.iter().enumerate() {
+                if !deleted[i] {
+                    tree.by_id.insert(a.id.clone(), tree.list.len());
+                    tree.list.push(a.clone());
+                    positions.push(old_positions.get(i).copied().unwrap_or_default());
+                }
+            }
+        }
+
+        let mut unresolved = Vec::new();
+        while !pending.is_empty() {
+            let before = pending.len();
+            for a in pending.drain(..) {
+                if a.parent
+                    .as_ref()
+                    .is_some_and(|id| !tree.by_id.contains_key(id))
+                {
+                    unresolved.push(a);
+                    continue;
+                }
+                let position = (a.x, a.y);
+                let node = self.remote_advancement(a);
+                let i = *tree.by_id.entry(node.id.clone()).or_insert(tree.list.len());
+                if i == tree.list.len() {
+                    tree.list.push(node);
+                    positions.push(position);
+                } else {
+                    tree.list[i] = node;
+                    positions[i] = position;
+                }
+            }
+            if unresolved.len() == before {
+                let ids: Vec<_> = unresolved.iter().map(|a| &a.id).collect();
+                log::error!("Couldn't load advancements: {ids:?}");
+                break;
+            }
+            std::mem::swap(&mut pending, &mut unresolved);
+        }
+        (tree, positions)
+    }
+
+    /// Convert the admitted packet's network icon, components and requirements
+    /// into the definition used by the screen and toast.
+    fn remote_advancement(
+        &self,
+        a: sunrise_protocol::packets::play::Advancement,
+    ) -> adv::Advancement {
+        use sunrise_client::scoreboard::tag_to_json;
+        let display = a.display.map(|d| adv::Display {
+            icon: self.remote_advancement_icon(d.icon),
+            title: tag_to_json(&d.title),
+            description: tag_to_json(&d.description),
+            frame: match d.frame {
+                1 => Frame::Challenge,
+                2 => Frame::Goal,
+                _ => Frame::Task,
+            },
+            background: d.background,
+            show_toast: d.show_toast,
+            announce: false,
+            hidden: d.hidden,
+        });
+        let mut criteria: Vec<adv::Criterion> = Vec::new();
+        for name in a.requirements.iter().flatten() {
+            if !criteria.iter().any(|c| &c.name == name) {
+                criteria.push(adv::Criterion {
+                    name: name.clone(),
+                    trigger: String::new(),
+                    conditions: Value::Null.into(),
+                });
+            }
+        }
+        adv::Advancement {
+            id: a.id,
+            parent: a.parent,
+            display,
+            criteria,
+            requirements: a.requirements,
+            rewards: Default::default(),
         }
     }
 }
