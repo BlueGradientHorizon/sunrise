@@ -466,7 +466,7 @@ volume, pitch)` is `Level.playSound(null, x, y, z, ...)` and `host.play_sound_fr
 `Level.playSound(null, entity, ...)`: every player in range hears it, and a cancelled hit still plays what was
 queued. The seed is drawn at the call from the level's sound-seed stream, not from the level's random.
 `entity.next_float(host)`, `next_double`, `next_bool` and `next_int(host, bound)` draw from the entity's actual
-random stream, in listener order. A hit lends its attacker where the game applies a melee hit (the attacking player or mob, for player → mob, mob → mob and mob → player) and no entity at any other damage site (environment, projectiles, explosions, potions and the like); the attacking mob's own random is the one its AI draws from, and a hit built inside a mob's own tick lends none. Any other entity, a stale handle, a client and an out-of-range `bound` answer `None` (`false` for a sound).
+random stream, in listener order. A hit lends its attacking player or mob only where the game already has that entity at hand at the damage site, such as a melee hit (player → mob, mob → mob and mob → player); damage with no attacker at hand (environment, explosions, potions and the like) lends none; the attacking mob's own random is the one its AI draws from, and a hit built inside a mob's own tick lends none. Any other entity, a stale handle, a client and an out-of-range `bound` answer `None` (`false` for a sound).
 `host.victim()` (`LivingIncomingDamageEvent.getEntity`) and `host.causing()` (`DamageSource.getEntity`) lend
 the hit's living victim and that attacker as a `LivingView`, read-only and valid for the listener's call. Its
 reads take the same names, arguments and answers as the `LivingRef` reads (`health`, `absorption`, `max_health`,
