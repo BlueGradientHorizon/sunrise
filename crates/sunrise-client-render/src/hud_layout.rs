@@ -87,6 +87,18 @@ pub enum GuiDraw {
         scale: [f32; 2],
         pivot: [f32; 2],
     },
+    /// `PlayerFaceExtractor.extractRenderState` of the player `uuid`'s skin: the face, then the
+    /// hat layer when `hat`, `size` pixels square, upside down when `flip`, tinted `color`. The
+    /// skin comes from the caller ([`GuiFaces`]).
+    PlayerFace {
+        uuid: u128,
+        x: i32,
+        y: i32,
+        size: i32,
+        hat: bool,
+        flip: bool,
+        color: u32,
+    },
     /// `pose().pushMatrix()` followed by `ops`.
     Push(Vec<PoseOp>),
     /// `pose().popMatrix()`.
@@ -882,19 +894,22 @@ impl HealthHud {
 
 /// Draws the calls with the HUD batch under their poses; items are left to
 /// the caller (they need the item renderer) and so are the vignette and
-/// nausea blits (their blending needs the screen-effect pipeline).
-/// [`paint_items`] draws both.
+/// nausea blits (their blending needs the screen-effect pipeline) and player
+/// faces (their skins are the game's). [`paint_items`] draws the first two,
+/// [`paint_checked`] all three.
 pub fn paint(batch: &mut crate::hud::HudBatch, atlas: &crate::hud::HudAtlas, draws: &[GuiDraw]) {
-    paint_with(batch, atlas, draws, None);
+    paint_with(batch, atlas, draws, None, None);
 }
 
 /// [`paint`], and with `items` also each `Item` (its stack, scaled about its pivot, then its
-/// decorations) and the blits of every blend. Without `items` those draw nothing, as `paint`.
+/// decorations) and the blits of every blend, and with `faces` each `PlayerFace`. Without them
+/// those draw nothing, as `paint`.
 fn paint_with<'a>(
     batch: &mut crate::hud::HudBatch,
     atlas: &crate::hud::HudAtlas,
     draws: impl IntoIterator<Item = &'a GuiDraw>,
     mut items: Option<&mut dyn GuiItems>,
+    mut faces: Option<&mut dyn GuiFaces>,
 ) {
     // The initial identity is implicit, so a layer without Push does not allocate a pose stack.
     let mut stack = Vec::new();
@@ -1007,6 +1022,23 @@ fn paint_with<'a>(
                     items.decorations(batch, *slot, *x, *y);
                 }
             }
+            GuiDraw::PlayerFace {
+                uuid,
+                x,
+                y,
+                size,
+                hat,
+                flip,
+                color,
+            } => {
+                if let Some(faces) = faces.as_deref_mut() {
+                    // The tab list's face: its blits, drawn here and then moved by this op's pose.
+                    let mut blits = Vec::with_capacity(2);
+                    let skin = faces.skin(*uuid);
+                    crate::tab_list::face(&mut blits, &skin, *x, *y, *size, *hat, *flip, *color);
+                    paint_with(batch, atlas, &blits[..], None, None);
+                }
+            }
             GuiDraw::Fill {
                 x0,
                 y0,
@@ -1088,8 +1120,13 @@ fn opaque(color: u32) -> u32 {
 
 #[path = "hud_layout_items.rs"]
 mod items;
-pub use items::{GuiItems, Undrawable, item_slot, paint_checked, paint_items, undrawable};
+pub use items::{
+    GuiFaces, GuiItems, Undrawable, item_slot, paint_checked, paint_items, undrawable,
+};
 
+#[cfg(test)]
+#[path = "hud_layout_face_tests.rs"]
+mod face_tests;
 #[cfg(test)]
 #[path = "hud_layout_gradient_tests.rs"]
 mod gradient_tests;

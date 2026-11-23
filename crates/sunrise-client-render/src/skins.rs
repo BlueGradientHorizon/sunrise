@@ -635,6 +635,24 @@ pub fn head_skin(
     crate::tab_list::default_skin(p.info.id).to_owned()
 }
 
+/// The skin a GUI face of the player `uuid` draws (`GuiDraw::PlayerFace`): `listed`, the drawn
+/// skin of the connection's `PlayerInfo` for `uuid` when there is one; else the profile `uuid`
+/// resolved by id as a head's `Dynamic` profile is ([`head_skin`]), started once in the background
+/// and never waited on, with the UUID's default skin until its texture is in the atlas (`atlas`).
+pub fn face_skin(
+    uuid: u128,
+    listed: Option<String>,
+    resolver: &mut Resolver,
+    downloads: &mut Downloader,
+    atlas: impl Fn(&str) -> bool,
+) -> String {
+    if let Some(skin) = listed {
+        return skin;
+    }
+    let profile = serde_json::json!({ "id": format!("{uuid:032x}") });
+    head_skin(&profile, resolver, downloads, atlas)
+}
+
 /// `PlayerSkin.Patch.apply` for a head: the sprite of a profile's `texture`
 /// override (`ClientAsset.ResourceTexture`, a resource pack's
 /// `<namespace>:textures/<path>.png`), which replaces the downloaded or
@@ -2376,5 +2394,76 @@ mod download_bound_tests {
             std::env::temp_dir(),
         ));
         assert!(d.resources.is_empty() && d.resource_order.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod face_skin_tests {
+    use super::{
+        Download, Downloader, Entry, Kind, NameOrId, ResolvedProfile, Resolver, face_skin,
+        skin_location,
+    };
+
+    /// `GuiDraw::PlayerFace`'s skin, on a backend that never reaches the services: the resolver's
+    /// entry and the download's state are set by the test. A listed player's skin wins and starts
+    /// no lookup; an unlisted UUID draws its default while its lookup and its download are pending
+    /// and after the download until the upload, then its own skin. Every call answers at once.
+    #[test]
+    fn a_face_draws_the_listed_skin_else_the_default_until_the_lookup_is_uploaded() {
+        use std::time::Instant;
+        let (listed, offline) = (
+            0x0123_4567_89ab_cdef_0123_4567_89ab_cdef_u128,
+            0x853c_80ef_3c37_49fd_aa49_938b_674a_dae6_u128,
+        );
+        let mut resolver = Resolver::new();
+        let mut downloads =
+            Downloader::new(std::env::temp_dir().join("sunrise-test-face-skins-absent"));
+        let mut uploaded = std::collections::HashSet::new();
+        let skin = face_skin(
+            listed,
+            Some("skins/listed".into()),
+            &mut resolver,
+            &mut downloads,
+            |l| uploaded.contains(l),
+        );
+        assert_eq!(skin, "skins/listed");
+        assert!(
+            resolver.entries.is_empty(),
+            "a listed face looked up a profile"
+        );
+
+        let key = NameOrId::Id(offline);
+        let entry = |resolved| Entry {
+            touched: Instant::now(),
+            resolved,
+        };
+        // The lookup in flight, as `Resolver::state` leaves it after starting its thread.
+        resolver.entries.insert(key.clone(), entry(None));
+        let default = crate::tab_list::default_skin(offline);
+        let face = |resolver: &mut Resolver,
+                    downloads: &mut Downloader,
+                    uploaded: &std::collections::HashSet<String>| {
+            face_skin(offline, None, resolver, downloads, |l| uploaded.contains(l))
+        };
+        assert_eq!(face(&mut resolver, &mut downloads, &uploaded), default);
+        assert!(resolver.entries[&key].resolved.is_none());
+
+        // The services answered: a signed `textures` property naming texture `abc123`.
+        let value = "eyJ0ZXh0dXJlcyI6IHsiU0tJTiI6IHsidXJsIjogImh0dHBzOi8vdGV4dHVyZXMubWluZWNyYWZ0Lm5ldC90ZXh0dXJlL2FiYzEyMyJ9fX0=";
+        let profile = ResolvedProfile {
+            id: offline,
+            name: "Offline".into(),
+            properties: vec![("textures".into(), value.into(), Some("sig".into()))],
+        };
+        resolver.entries.insert(key, entry(Some(Some(profile))));
+        let download = (Kind::Skin, "abc123".to_owned());
+        downloads.set_state(download.clone(), Download::Pending);
+        assert_eq!(face(&mut resolver, &mut downloads, &uploaded), default);
+        downloads.set_state(download, Download::Ready);
+        assert_eq!(face(&mut resolver, &mut downloads, &uploaded), default);
+        let location = skin_location("abc123");
+        uploaded.insert(location.clone());
+        assert_eq!(face(&mut resolver, &mut downloads, &uploaded), location);
+        assert!(downloads.take_drawn().contains(&location));
     }
 }

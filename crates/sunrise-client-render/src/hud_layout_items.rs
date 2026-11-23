@@ -14,6 +14,14 @@ pub trait GuiItems {
     fn decorations(&mut self, batch: &mut HudBatch, slot: u32, x: i32, y: i32);
 }
 
+/// What draws a `GuiDraw::PlayerFace`: the skin of a player by UUID.
+pub trait GuiFaces {
+    /// The skin texture to draw `uuid`'s face from now, as a `Blit` names it: the player's own
+    /// once it is in the atlas, else the UUID's default skin. It never waits for a lookup or a
+    /// download.
+    fn skin(&mut self, uuid: u128) -> String;
+}
+
 /// Why [`paint_checked`] drew nothing: the op it could not draw.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Undrawable {
@@ -92,7 +100,9 @@ fn refusal(atlas: &HudAtlas, draw: &GuiDraw) -> Option<Undrawable> {
             let known = atlas.sprites.contains_key(sprite.as_ref());
             (!known).then(|| Undrawable::Sprite(sprite.to_string()))
         }
+        // A face always has a skin to draw: the UUID's default until its own is uploaded.
         GuiDraw::Fill { .. }
+        | GuiDraw::PlayerFace { .. }
         | GuiDraw::FillGradient { .. }
         | GuiDraw::Text { .. }
         | GuiDraw::Push(_)
@@ -109,21 +119,23 @@ pub fn paint_items(
     draws: &[GuiDraw],
     items: &mut dyn GuiItems,
 ) {
-    paint_with(batch, atlas, draws, Some(items));
+    paint_with(batch, atlas, draws, Some(items), None);
 }
 
-/// [`paint_items`] for a buffer a mod sent: an op it cannot draw ([`undrawable`]) refuses the
-/// whole buffer, with that op's index, and nothing of it is drawn.
+/// [`paint_items`] for a buffer a mod sent, each `PlayerFace` with the skin `faces` gives: an op
+/// it cannot draw ([`undrawable`]) refuses the whole buffer, with that op's index, and nothing of
+/// it is drawn.
 pub fn paint_checked(
     batch: &mut HudBatch,
     atlas: &HudAtlas,
     draws: &[GuiDraw],
     items: &mut dyn GuiItems,
+    faces: &mut dyn GuiFaces,
 ) -> Result<(), (usize, Undrawable)> {
     if let Some(refused) = undrawable(atlas, draws) {
         return Err(refused);
     }
-    paint_items(batch, atlas, draws, items);
+    paint_with(batch, atlas, draws, Some(items), Some(faces));
     Ok(())
 }
 
