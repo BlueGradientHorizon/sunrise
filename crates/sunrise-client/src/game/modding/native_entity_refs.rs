@@ -2379,6 +2379,83 @@ pub(super) mod tests {
         });
     }
 
+    /// `RedstoneLampBlock.neighborChanged` sets its own block in the call
+    /// (`level.setBlock(pos, state.cycle(LIT), 2)`): a part's write in `neighbor_changed`
+    /// lands within the lever's update, and its own neighbour updates run next, depth first,
+    /// before the lever's next neighbour hears (`CollectingNeighborUpdater`).
+    #[test]
+    #[ignore = "daily"]
+    fn neighbor_changed_writes_the_level_and_its_updates_run_next() {
+        use mod_platform::__private::part_tests::{neighbor_writer_game_thread, neighbor_writes};
+
+        // The fixture installs its mod for the process: run it in a child of its own.
+        if run_fresh_cases(
+            "game::native_entity_refs::tests::neighbor_changed_writes_the_level_and_its_updates_run_next",
+            "SUNRISE_NEIGHBOR_WRITER_CHILD",
+            &["lever"],
+        ) {
+            return;
+        }
+        neighbor_writer_game_thread();
+        with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
+            let registry = game.pack.assets.registry;
+            let glass = registry.default_state("minecraft:glass").unwrap();
+            let lit = registry
+                .default_state("minecraft:white_stained_glass")
+                .unwrap();
+            let lever = |powered: &str| {
+                registry
+                    .resolve(&sunrise_world::chunk::BlockState {
+                        name: "minecraft:lever".into(),
+                        properties: [("face", "wall"), ("facing", "east"), ("powered", powered)]
+                            .into_iter()
+                            .map(|(key, value)| (key.into(), value.into()))
+                            .collect(),
+                    })
+                    .unwrap()
+            };
+            for (x, z) in (-1..=1).flat_map(|x| (-1..=1).map(move |z| (x, z))) {
+                let mut chunk = sunrise_client::chunk::Chunk::empty(x, z);
+                chunk.lit = true;
+                game.world.chunks.insert((x, z), std::sync::Arc::new(chunk));
+            }
+            // A lever on the east face of stone. `NeighborUpdater.UPDATE_ORDER` is west, east,
+            // down, up, north, south: glass `a` east of the lever hears second (west is the
+            // stone), glass `b` above it fourth. Glass `c` east of `a` hears only `a`'s write.
+            let (a, b, c) = ([7, 64, 5], [6, 65, 5], [8, 64, 5]);
+            game.world
+                .set(5, 64, 5, registry.default_state("minecraft:stone").unwrap())
+                .unwrap();
+            game.world.set(6, 64, 5, lever("false")).unwrap();
+            for [x, y, z] in [a, b, c] {
+                game.world.set(x, y, z, glass).unwrap();
+            }
+            let dimension = game.dim.id().to_owned();
+            let key = |state| {
+                use crate::game::api_values::TryIntoApi;
+                let state: mod_api::BlockState = state.try_into_api().unwrap();
+                state.block()
+            };
+            assert!(neighbor_writes().is_empty());
+
+            assert!(game.native_set_block(&dimension, [6, 64, 5], lever("true"), 3));
+            assert_eq!(
+                neighbor_writes(),
+                [
+                    (a, key(lever("true"))),
+                    (c, key(lit)),
+                    (b, key(lever("true"))),
+                ]
+            );
+            // Both glasses the lever reached changed in the same call, with no tick run.
+            for [x, y, z] in [a, b] {
+                assert_eq!(game.world.block(x, y, z), lit);
+            }
+            assert_eq!(game.world.block(c[0], c[1], c[2]), glass);
+        });
+    }
+
     #[test]
     #[ignore = "daily"]
     fn a_level_handle_reads_redstone_through_should_check_weak_power() {
