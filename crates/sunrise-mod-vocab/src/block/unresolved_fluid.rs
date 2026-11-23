@@ -24,10 +24,16 @@ impl FluidIdentity {
     /// `minecraft:empty`, a bare name meaning `minecraft:`, and invalid names follow
     /// [`UnresolvedFluid::new`]; None for the empty fluid or an invalid name.
     pub fn of_name(id: &str) -> Option<Self> {
-        if let Some(key) = crate::content::registry_keys::fluid_key(id) {
-            return Some(Self::Resolved(key));
+        let id = Identifier::parse(id).ok()?;
+        if id.as_str() == "minecraft:empty" {
+            return None;
         }
-        UnresolvedFluid::new(Identifier::parse(id).ok()?).map(Self::Unresolved)
+        Some(
+            match crate::content::registry_keys::fluid_key(id.as_str()) {
+                Some(key) => Self::Resolved(key),
+                None => Self::Unresolved(UnresolvedFluid(id)),
+            },
+        )
     }
 }
 
