@@ -921,7 +921,7 @@ impl Records {
     pub fn at(&self, id: u32) -> Option<&Record> {
         self.records.get(id as usize).filter(|r| r.page().is_some())
     }
-    #[cfg(any(test, debug_assertions))]
+    /// The live sections on each page; its length is the page count.
     pub fn page_sections(&self) -> &[u32] {
         &self.page_sections
     }
