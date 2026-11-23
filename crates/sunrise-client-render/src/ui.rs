@@ -2,11 +2,12 @@
 //! metadata), buttons, sliders, tiled menu backgrounds, separators and the
 //! EditBox text field with vanilla cursor, selection and scrolling.
 use crate::{
-    hud::{HudAtlas, HudBatch, Rect, rgba},
+    hud::{GuiSprite, HudAtlas, HudBatch, Rect, rgba},
     text::Text,
 };
+use mod_api::ButtonSprites;
 use serde_json::value::RawValue;
-use std::{collections::HashMap, sync::RwLock, time::Instant};
+use std::{collections::HashMap, time::Instant};
 use sunrise_assets::resource_source::ResourceSource;
 
 /// `GuiSpriteScaling.NineSlice`: the sprite's size in GUI pixels, whatever
@@ -36,8 +37,6 @@ pub enum SpriteMetadata {
     /// `SpriteResourceLoader` drops a sprite whose metadata doesn't decode: it draws as the missing sprite.
     Rejected,
 }
-/// GUI sprite metadata from `.png.mcmeta` files.
-static METADATA: RwLock<Option<HashMap<String, SpriteMetadata>>> = RwLock::new(None);
 
 type JsonObject = HashMap<String, Box<RawValue>>;
 /// A JSON object; duplicate keys keep the last, as Gson's `JsonObject` does.
@@ -120,104 +119,30 @@ fn decode_metadata(raw: &RawValue) -> Result<Option<Scaling>, ()> {
         _ => Err(()),
     }
 }
-/// Read `gui.scaling` metadata for every GUI sprite under `root`.
-pub fn load_metadata(root: &ResourceSource) {
-    set_metadata(read_metadata(root));
-}
-/// The GUI sprites' scaling metadata of a resource root, read off the
-/// render thread by a pack reload ([`read_metadata`]) and put in use with
-/// [`set_metadata`].
-pub struct UiMetadata(HashMap<String, SpriteMetadata>);
-impl UiMetadata {
-    /// A sprite's metadata, by its atlas name; none for a stretch.
-    pub fn get(&self, sprite: &str) -> Option<SpriteMetadata> {
-        self.0.get(sprite).copied()
+/// `ResourceMetadata.fromJsonStream` then `getSection(GuiMetadataSection.TYPE)` on `.png.mcmeta`
+/// bytes: `None` for a stretch or no `gui` section, `Some(SpriteMetadata::Scaled(..))` for `tile`
+/// or `nine_slice`, and `Some(SpriteMetadata::Rejected)` when it does not decode.
+fn parse_sprite_metadata(bytes: &[u8]) -> Option<SpriteMetadata> {
+    match crate::packs::first_json::<Box<RawValue>>(bytes)
+        .map_err(|_| ())
+        .and_then(|raw| decode_metadata(&raw))
+    {
+        Ok(None) => None,
+        Ok(Some(scaling)) => Some(SpriteMetadata::Scaled(scaling)),
+        Err(()) => Some(SpriteMetadata::Rejected),
     }
 }
-/// Puts read metadata in use ([`load_metadata`] in two halves).
-pub fn set_metadata(metadata: UiMetadata) {
-    *METADATA.write().unwrap_or_else(|e| e.into_inner()) = Some(metadata.0);
-}
-/// Reads the metadata [`load_metadata`] puts in use, without putting it in use. Another
-/// namespace's sprites are named with it (`lobby:gui/sprites/...`), as the GUI atlas packs them.
-pub fn read_metadata(root: &ResourceSource) -> UiMetadata {
-    let mut map = HashMap::new();
-    for namespace in root.namespaces("assets") {
-        let base = format!("assets/{namespace}/textures/");
-        let prefix = match namespace.as_str() {
-            "minecraft" => String::new(),
-            namespace => format!("{namespace}:"),
-        };
-        for name in root.list(&format!("{base}gui/sprites/")) {
-            let Some(stripped) = name.strip_suffix(".png.mcmeta") else {
-                continue;
-            };
-            let Ok(text) = root.read_to_string(&name) else {
-                continue;
-            };
-            let metadata = match crate::packs::first_json::<Box<RawValue>>(text.as_bytes())
-                .map_err(|_| ())
-                .and_then(|raw| decode_metadata(&raw))
-            {
-                Ok(None) => continue,
-                Ok(Some(scaling)) => SpriteMetadata::Scaled(scaling),
-                Err(()) => SpriteMetadata::Rejected,
-            };
-            let key = stripped.strip_prefix(base.as_str()).unwrap_or_default();
-            map.insert(format!("{prefix}{key}"), metadata);
-        }
-    }
-    UiMetadata(map)
-}
-/// The sprite's metadata, when its `.png.mcmeta` has any that isn't a stretch.
-fn sprite_metadata(sprite: &str) -> Option<SpriteMetadata> {
-    METADATA
-        .read()
-        .unwrap_or_else(|e| e.into_inner())
-        .as_ref()
-        .and_then(|m| m.get(sprite).copied())
-}
-/// `GuiSpriteManager.getSprite`: the sprite and its scaling, or the missing sprite (a stretch) for one whose
-/// metadata was rejected; `default` is the scaling of a sprite with no metadata.
-fn resolve(
-    atlas: &HudAtlas,
-    sprite: &str,
-    rect: Rect,
-    default: impl FnOnce() -> Option<Scaling>,
-) -> Option<(Rect, Option<Scaling>)> {
-    match sprite_metadata(sprite) {
-        Some(SpriteMetadata::Scaled(scaling)) => Some((rect, Some(scaling))),
-        Some(SpriteMetadata::Rejected) => {
-            Some((*atlas.sprites.get(crate::hud::MISSING_SPRITE)?, None))
-        }
-        None => Some((rect, default())),
-    }
-}
-/// The scaling `nine_slice` gives a sprite without metadata (no resources loaded): a nine slice of its
-/// GUI size and the widgets' usual borders.
-fn default_nine_slice(sprite: &str, r: &Rect) -> Scaling {
-    Scaling::NineSlice(NineSlice {
-        width: r.w,
-        height: r.h,
-        border: match sprite {
-            "sunrise/jei/button_enabled_v2"
-            | "sunrise/jei/button_disabled_v2"
-            | "sunrise/jei/button_highlight_v2" => [6; 4],
-            "sunrise/jei/search_background_v2" => [6; 4],
-            "sunrise/jei/interactive_ingredient_tooltip_background" => [16; 4],
-            "sunrise/jei/recipe_preview_background_v2" => [16; 4],
-            "sunrise/jei/scrollbar_background_v2" => [6; 4],
-            "sunrise/jei/scrollbar_marker_v2" => [2, 2, 2, 1],
-            "gui/sprites/widget/button"
-            | "gui/sprites/widget/button_highlighted"
-            | "gui/sprites/widget/button_disabled" => [3; 4],
-            "gui/sprites/widget/slider_handle" | "gui/sprites/widget/slider_handle_highlighted" => {
-                [2, 2, 2, 3]
-            }
-            _ => [1; 4],
-        },
-        stretch_inner: false,
-    })
+/// `ResourceMetadata.fromJsonStream` then `getSection(GuiMetadataSection.TYPE)` on `file`'s
+/// `.mcmeta` (`format!("{file}.mcmeta")`): `None` when the file has no `.mcmeta` or scales as a
+/// stretch, `Some(SpriteMetadata::Scaled(..))` for `tile` or `nine_slice`, and
+/// `Some(SpriteMetadata::Rejected)` when the `.mcmeta` does not decode.
+pub fn sprite_metadata_of(root: &ResourceSource, file: &str) -> Option<SpriteMetadata> {
+    let bytes = match root.read(&format!("{file}.mcmeta")) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(_) => return Some(SpriteMetadata::Rejected),
+    };
+    parse_sprite_metadata(&bytes)
 }
 /// The region `[x, y, w, h]` of a sprite `size` GUI pixels large, in its own units:
 /// `TextureAtlasSprite.getU((float)x / width)` to `getU((float)(x + w) / width)`, and the same for v.
@@ -246,7 +171,12 @@ pub fn tile(
 ) {
     let [_, _, sw, sh] = src;
     let [dx, dy, dw, dh] = dst;
-    if sw <= 0.0 || sh <= 0.0 || dw <= 0.0 || dh <= 0.0 {
+    if ![dx, dy, dw, dh, sw, sh].into_iter().all(f32::is_finite)
+        || sw <= 0.0
+        || sh <= 0.0
+        || dw <= 0.0
+        || dh <= 0.0
+    {
         return;
     }
     let whole = sub(r, size, src);
@@ -275,15 +205,122 @@ pub fn tile(
                 ..whole
             };
             batch.rect_uv(dx + x, dy + y, w, h, uv, color);
-            y += sh;
+            let next_y = y + sh;
+            if next_y == y {
+                break;
+            }
+            y = next_y;
         }
-        x += sw;
+        let next_x = x + sw;
+        if next_x == x {
+            break;
+        }
+        x = next_x;
     }
 }
-/// `GuiGraphicsExtractor.blitNineSlicedSprite`: the corners at their size,
-/// the edges and centre tiled (or stretched with `stretch_inner`), all in
-/// the sprite's `gui.scaling` units, so a high-resolution pack's sprite draws
-/// as the default one does.
+/// [`tile`] clipped to the batch's viewport (`0..batch.width`, `0..batch.height`), anchored in phase
+/// to `dst`'s origin so oversized or offscreen widgets only extract visible tiles.
+fn tile_viewport(
+    batch: &mut HudBatch,
+    r: Rect,
+    size: [f32; 2],
+    src: [f32; 4],
+    dst: [f32; 4],
+    color: u32,
+) {
+    let [_, _, sw, sh] = src;
+    let [dx, dy, dw, dh] = dst.map(f64::from);
+    let [tw, th] = [sw as f64, sh as f64];
+    if ![dx, dy, dw, dh, tw, th].into_iter().all(f64::is_finite)
+        || tw <= 0.0
+        || th <= 0.0
+        || dw <= 0.0
+        || dh <= 0.0
+    {
+        return;
+    }
+    let vw = f64::from(batch.width);
+    let vh = f64::from(batch.height);
+    if dx >= 0.0 && dy >= 0.0 && dx + dw <= vw && dy + dh <= vh {
+        tile(batch, r, size, src, dst, color);
+        return;
+    }
+    // HudBatch has no retained scissor stack: its painters clip their ranges
+    // after extraction. Start with the viewport, walking only intersecting tiles.
+    let right = (dx + dw).min(vw);
+    let bottom = (dy + dh).min(vh);
+    if right <= dx.max(0.0) || bottom <= dy.max(0.0) {
+        return;
+    }
+    let whole = sub(r, size, src);
+    let lerp = |t: f32, a: f32, b: f32| a + t * (b - a);
+    // Anchor the first tile to the original destination, not the clipped edge.
+    let first = |origin: f64, step: f64| {
+        if origin < 0.0 {
+            -(-origin).rem_euclid(step)
+        } else {
+            origin
+        }
+    };
+    let top_start = first(dy, th);
+    let mut x = first(dx, tw);
+    while x < right {
+        let start = x.max(0.0);
+        let next_x = x + tw;
+        let end_x = next_x.min(right);
+        let w = (end_x - start) as f32;
+        let u0 = if start > x {
+            lerp((start - x) as f32 / sw, whole.u0, whole.u1)
+        } else {
+            whole.u0
+        };
+        let u1 = if end_x < next_x {
+            lerp((end_x - x) as f32 / sw, whole.u0, whole.u1)
+        } else {
+            whole.u1
+        };
+        let mut y = top_start;
+        while y < bottom {
+            let top = y.max(0.0);
+            let next_y = y + th;
+            let end_y = next_y.min(bottom);
+            let h = (end_y - top) as f32;
+            let v0 = if top > y {
+                lerp((top - y) as f32 / sh, whole.v0, whole.v1)
+            } else {
+                whole.v0
+            };
+            let v1 = if end_y < next_y {
+                lerp((end_y - y) as f32 / sh, whole.v0, whole.v1)
+            } else {
+                whole.v1
+            };
+            let uv = Rect {
+                u0,
+                v0,
+                u1,
+                v1,
+                w: w as u32,
+                h: h as u32,
+            };
+            batch.rect_uv(start as f32, top as f32, w, h, uv, color);
+            if next_y == y {
+                break;
+            }
+            y = next_y;
+        }
+        if next_x == x {
+            break;
+        }
+        x = next_x;
+    }
+}
+/// `GuiGraphicsExtractor.blitSprite`: a sprite over `w` × `h` as its `gui.scaling` says:
+/// nine-sliced (corners at their size and edges/centre tiled or stretched with `stretch_inner`),
+/// tiled (`tile`: whole copies from the top left), or stretched when it has no scaling, all in the
+/// sprite's `gui.scaling` units so a high-resolution pack's sprite draws as the default one does.
+/// The sprite the atlas published decides: a sprite its list removed or failed (including rejected
+/// metadata) draws as the missing sprite, stretched, with no scaling of its own.
 pub fn nine_slice(
     batch: &mut HudBatch,
     atlas: &HudAtlas,
@@ -294,49 +331,21 @@ pub fn nine_slice(
     h: f32,
     color: u32,
 ) {
-    if let Some(r) = atlas.sprites.get(sprite) {
-        let draw = |batch: &mut HudBatch, key: &str, rect: Rect, at: [f32; 4], color: u32| {
-            if let Some((rect, scaling)) =
-                resolve(atlas, key, rect, || Some(default_nine_slice(key, &rect)))
-            {
-                draw_sprite(batch, rect, scaling, at, color);
+    let Some(r) = atlas.gui_draw_rect(sprite) else {
+        return;
+    };
+    match crate::hud::sprite_modifiers::draws(atlas, sprite, *r, [x, y, w, h], color) {
+        Some(draws) => {
+            for d in draws {
+                draw_whole_sprite(batch, atlas, &d.key, d.rect, d.at, d.color);
             }
-        };
-        match crate::hud::sprite_modifiers::draws(atlas, sprite, *r, [x, y, w, h], color) {
-            Some(draws) => {
-                for d in draws {
-                    draw(batch, &d.key, d.rect, d.at, d.color);
-                }
-            }
-            None => draw(batch, sprite, *r, [x, y, w, h], color),
         }
+        None => draw_whole_sprite(batch, atlas, sprite, *r, [x, y, w, h], color),
     }
 }
-/// `GuiGraphicsExtractor.blitSprite`: a sprite over `w` × `h` as its
-/// `gui.scaling` says, tiled or nine-sliced, or stretched when it has no metadata.
-pub fn blit_sprite(
-    batch: &mut HudBatch,
-    atlas: &HudAtlas,
-    sprite: &str,
-    x: f32,
-    y: f32,
-    w: f32,
-    h: f32,
-    color: u32,
-) {
-    if let Some(r) = atlas.sprites.get(sprite) {
-        match crate::hud::sprite_modifiers::draws(atlas, sprite, *r, [x, y, w, h], color) {
-            Some(draws) => {
-                for d in draws {
-                    draw_whole_sprite(batch, atlas, &d.key, d.rect, d.at, d.color);
-                }
-            }
-            None => draw_whole_sprite(batch, atlas, sprite, *r, [x, y, w, h], color),
-        }
-    }
-}
-/// `blitSprite` of the whole GUI sprite `key`, found as `rect`: as its `gui.scaling` says, or the missing
-/// sprite when its metadata was rejected.
+/// `blitSprite` of the whole GUI sprite `key`, found as `rect`: as its `gui.scaling` says. A
+/// sprite the atlas published as missing already resolved to the missing sprite and has no
+/// scaling, so it stretches.
 pub fn draw_whole_sprite(
     batch: &mut HudBatch,
     atlas: &HudAtlas,
@@ -345,9 +354,11 @@ pub fn draw_whole_sprite(
     at: [f32; 4],
     color: u32,
 ) {
-    if let Some((rect, scaling)) = resolve(atlas, key, rect, || None) {
-        draw_sprite(batch, rect, scaling, at, color);
-    }
+    let scaling = match atlas.gui_lookup(key) {
+        Some(GuiSprite::Present { scaling, .. }) => scaling,
+        _ => None,
+    };
+    draw_sprite(batch, rect, scaling, at, color);
 }
 /// `GuiGraphicsExtractor.blitSprite`'s switch on the sprite's `GuiSpriteScaling`.
 fn draw_sprite(
@@ -362,7 +373,7 @@ fn draw_sprite(
         // `blitTiledSprite(sprite, x, y, w, h, 0, 0, tileW, tileH, tileW, tileH)`.
         Some(Scaling::Tile { width, height }) => {
             let size = [width as f32, height as f32];
-            tile(
+            tile_viewport(
                 batch,
                 r,
                 size,
@@ -407,7 +418,7 @@ fn draw_nine_slice(
         if n.stretch_inner {
             batch.rect_uv(dst[0], dst[1], dst[2], dst[3], sub(r, size, src), color);
         } else {
-            tile(batch, r, size, src, dst, color);
+            tile_viewport(batch, r, size, src, dst, color);
         }
     };
     if w == sw && h == sh {
@@ -465,10 +476,10 @@ pub fn tiled_sized(
     size: [f32; 2],
     color: u32,
 ) {
-    let Some(r) = atlas.sprites.get(sprite).copied() else {
+    let Some(r) = atlas.gui_draw_rect(sprite).copied() else {
         return;
     };
-    tile(
+    tile_viewport(
         batch,
         r,
         size,
@@ -534,26 +545,22 @@ pub fn centered_text(
         batch.text_styled(atlas, &shown, x + 1.0, y, color, true);
     }
 }
-/// `ActiveTextCollector.defaultScrollingHelper`'s slide: a label `overflow`
-/// pixels too wide moves from its end back to its start and out again, one
-/// sine period every `max(overflow * 0.5, 3)` seconds of `Util.getMillis`.
-fn scroll_offset(overflow: f32, now_ms: i64) -> f64 {
-    let period = (f64::from(overflow) * 0.5).max(3.0);
-    let seconds = now_ms as f64 / 1000.0;
-    let phase = (std::f64::consts::TAU * seconds / period).cos();
-    let pos = (std::f64::consts::FRAC_PI_2 * phase).sin() / 2.0 + 0.5;
-    f64::from(overflow) * pos
+/// `defaultScrollingHelper`'s `textTop`: `(top + bottom - 9) / 2 + 1` in Java
+/// `int` arithmetic, where the division truncates toward zero (so a negative
+/// sum rounds up, not down).
+fn scrolling_text_top(top: f32, bottom: f32) -> f32 {
+    ((top + bottom - 9.0) / 2.0).trunc() + 1.0
 }
 
 /// Where an overflowing label's left edge is drawn: `left - (int) pos`.
 fn scrolled_left(left: f32, overflow: f32, now_ms: i64) -> f32 {
-    left - scroll_offset(overflow, now_ms) as i32 as f32
+    left - crate::screen_draw::scroll_position(f64::from(overflow), now_ms) as i32 as f32
 }
 
 /// A widget's label as `AbstractWidget.extractScrollingStringOverContents`
 /// draws it, at `now_ms`: centred between `left` and `right` when it fits,
 /// else drawn from the left and slid (`defaultScrollingHelper`) inside the
-/// widget's box. `y` is the label's top line.
+/// widget's box. The label's top line is `(top + bottom - 9) / 2 + 1`.
 #[allow(clippy::too_many_arguments)]
 pub fn scrolling_text_at(
     batch: &mut HudBatch,
@@ -563,14 +570,13 @@ pub fn scrolling_text_at(
     right: f32,
     top: f32,
     bottom: f32,
-    y: f32,
     now_ms: i64,
     color: u32,
 ) {
     // `acceptScrollingWithDefaultCenter`: `centerX = (left + right) / 2`.
-    let center_x = left + ((right - left) / 2.0).floor();
+    let center_x = ((left + right) / 2.0).trunc();
     scrolling_text_around_at(
-        batch, atlas, text, center_x, left, right, top, bottom, y, now_ms, color,
+        batch, atlas, text, center_x, left, right, top, bottom, now_ms, color,
     );
 }
 
@@ -591,31 +597,63 @@ pub fn scrolling_text_around_at(
     right: f32,
     top: f32,
     bottom: f32,
-    y: f32,
     now_ms: i64,
     color: u32,
 ) {
+    scrolling_text_with_offset(
+        batch,
+        atlas,
+        text,
+        LabelPlacement {
+            center_x,
+            clip: [left, top, right, bottom],
+            offset: None,
+        },
+        now_ms,
+        color,
+    );
+}
+
+struct LabelPlacement {
+    center_x: f32,
+    clip: [f32; 4],
+    offset: Option<[f32; 2]>,
+}
+
+fn scrolling_text_with_offset(
+    batch: &mut HudBatch,
+    atlas: &HudAtlas,
+    text: &Text,
+    placement: LabelPlacement,
+    now_ms: i64,
+    color: u32,
+) {
+    let LabelPlacement {
+        center_x,
+        clip: [left, top, right, bottom],
+        offset,
+    } = placement;
+    let y = scrolling_text_top(top, bottom);
     let text = text.resolved();
     let width = atlas.font.width_text(&text);
     let room = right - left;
-    if width <= room {
-        let half = (width / 2.0).floor();
-        let text_x = center_x.max(left + half).min(right - half);
-        batch.text_styled(atlas, &text, text_x - half, y, color, true);
-        return;
-    }
-    // Scissored to the widget: what does not fit is read as the label
-    // slides, never dropped.
+    let fits = width <= room;
+    let x = if fits {
+        let half = (width / 2.0).trunc();
+        center_x.max(left + half).min(right - half) - half
+    } else {
+        scrolled_left(left, width - room, now_ms)
+    };
+    let [x, y] = match offset {
+        Some([dx, dy]) => [x + dx, y + dy],
+        None => [x, y],
+    };
     let start = batch.vertices.len();
-    batch.text_styled(
-        atlas,
-        &text,
-        scrolled_left(left, width - room, now_ms),
-        y,
-        color,
-        true,
-    );
-    batch.clip_since(start, left, top, right, bottom);
+    batch.text_styled(atlas, &text, x, y, color, true);
+    if !fits {
+        // Scissored to the widget: what does not fit is read as the label slides.
+        batch.clip_since(start, left, top, right, bottom);
+    }
 }
 
 /// [`scrolling_text_at`] at `Util.getMillis`.
@@ -628,7 +666,6 @@ pub fn scrolling_text(
     right: f32,
     top: f32,
     bottom: f32,
-    y: f32,
     color: u32,
 ) {
     scrolling_text_at(
@@ -639,7 +676,6 @@ pub fn scrolling_text(
         right,
         top,
         bottom,
-        y,
         crate::hud_overlays::now_ms(),
         color,
     );
@@ -669,8 +705,6 @@ pub fn menu_tab_label(
         x + width - 1.0,
         top,
         bottom,
-        // defaultScrollingHelper: `(top + bottom - lineHeight) / 2 + 1`.
-        ((top + bottom - 9.0) / 2.0).floor() + 1.0,
         now_ms,
         if active { u32::MAX } else { 0xFFA0_A0A0 },
     );
@@ -688,9 +722,16 @@ pub fn button(
     active: bool,
     hover: bool,
 ) {
-    button_as(batch, atlas, x, y, w, h, label, active, hover, |rect| {
-        crate::widgets::Narratable::button(label.plain(), rect, active)
-    });
+    button_as(
+        batch,
+        atlas,
+        [x, y, w, h],
+        label,
+        active,
+        hover,
+        None,
+        |rect| crate::widgets::Narratable::button(label.plain(), rect, active),
+    );
 }
 /// A [`button`] with a job on its screen: its controller button and glyph come from `action`, so
 /// a new screen gets them by drawing this for its Done, Back, Cancel or Apply.
@@ -722,35 +763,43 @@ pub fn action_button(
         hover,
         false,
         room,
+        None,
         |rect| crate::widgets::Narratable::button(label.plain(), rect, active),
     );
 }
-/// A [`button`] that vanilla narrates as another widget (a `CycleButton`, a
-/// `LockIconButton`): `narration` builds what it records from its rectangle,
-/// and only while the narrator records.
+/// A [`button`] with optional custom art and narration. `narration` builds the record from the
+/// button's rectangle, only while the narrator records (for example as a `CycleButton`).
 #[allow(clippy::too_many_arguments)]
 pub fn button_as(
     batch: &mut HudBatch,
     atlas: &HudAtlas,
-    x: f32,
-    y: f32,
-    w: f32,
-    h: f32,
+    rect: [f32; 4],
     label: &Text,
     active: bool,
     hover: bool,
+    sprites: Option<&ButtonSprites>,
+    narration: impl FnOnce([f32; 4]) -> crate::widgets::Narratable,
+) {
+    button_focused_as(
+        batch, atlas, rect, label, active, hover, false, sprites, narration,
+    );
+}
+
+/// A button whose focus highlights its art but whose cursor depends only on pointer hover.
+#[allow(clippy::too_many_arguments)]
+pub fn button_focused_as(
+    batch: &mut HudBatch,
+    atlas: &HudAtlas,
+    rect: [f32; 4],
+    label: &Text,
+    active: bool,
+    hover: bool,
+    focused: bool,
+    sprites: Option<&ButtonSprites>,
     narration: impl FnOnce([f32; 4]) -> crate::widgets::Narratable,
 ) {
     button_with_room(
-        batch,
-        atlas,
-        [x, y, w, h],
-        label,
-        active,
-        hover,
-        false,
-        0.0,
-        narration,
+        batch, atlas, rect, label, active, hover, focused, 0.0, sprites, narration,
     );
 }
 /// An options button whose focus highlights it without changing the mouse cursor.
@@ -785,6 +834,7 @@ pub(crate) fn focused_button(
         hover,
         focused,
         room,
+        None,
         |rect| crate::widgets::Narratable::button(label.plain(), rect, active),
     );
 }
@@ -799,6 +849,7 @@ fn button_with_room(
     hover: bool,
     focused: bool,
     room: f32,
+    sprites: Option<&ButtonSprites>,
     narration: impl FnOnce([f32; 4]) -> crate::widgets::Narratable,
 ) {
     let plain = label.plain();
@@ -809,30 +860,55 @@ fn button_with_room(
     }
     crate::widgets::narratable(|| narration([x, y, w, h]).hovered(hover || focused));
     crate::widgets::widget_cursor(hover, active);
-    let sprite = if !active {
-        "gui/sprites/widget/button_disabled"
-    } else if hover || focused {
-        "gui/sprites/widget/button_highlighted"
+    let highlighted = hover || focused;
+    let custom = sprites.and_then(|sprites| {
+        let state = if !active {
+            sprites.disabled.as_deref()
+        } else if highlighted {
+            sprites.highlighted.as_deref()
+        } else {
+            None
+        };
+        [state, Some(sprites.normal.as_str())]
+            .into_iter()
+            .flatten()
+            .find_map(|id| match atlas.gui_lookup(id) {
+                Some(GuiSprite::Present { rect, .. }) => Some(rect),
+                _ => None,
+            })
+    });
+    if let Some(sprite) = custom {
+        batch.rect_uv(x, y, w, h, sprite, u32::MAX);
     } else {
-        "gui/sprites/widget/button"
-    };
-    nine_slice(batch, atlas, sprite, x, y, w, h, u32::MAX);
+        let vanilla = if !active {
+            "widget/button_disabled"
+        } else if highlighted {
+            "widget/button_highlighted"
+        } else {
+            "widget/button"
+        };
+        nine_slice(batch, atlas, vanilla, x, y, w, h, u32::MAX);
+    }
     let color = if active {
         rgba(255, 255, 255, 255)
     } else {
         rgba(160, 160, 160, 255)
     };
-    // Centred on the button, as the title's are, and only moved out from under a glyph.
-    scrolling_text_around_at(
+    // Centre the label (keeping it out from under a glyph), then apply the mod's offset.
+    let offset = sprites
+        .map(|sprites| sprites.label_offset)
+        .filter(|offset| offset.iter().all(|coord| coord.is_finite()));
+    scrolling_text_with_offset(
         batch,
         atlas,
         label,
-        x + (w / 2.0).floor(),
-        x + 2.0 + room,
-        x + w - 2.0,
-        y,
-        y + h,
-        y + ((h - 8.0) / 2.0).floor(),
+        LabelPlacement {
+            // `acceptScrollingWithDefaultCenter`: `(left + right) / 2` with the
+            // margin's 2 px each side, which is `x + w / 2` truncated.
+            center_x: ((x + 2.0 + x + w - 2.0) / 2.0).trunc(),
+            clip: [x + 2.0 + room, y, x + w - 2.0, y + h],
+            offset,
+        },
         crate::hud_overlays::now_ms(),
         color,
     );
@@ -909,7 +985,6 @@ pub fn slider_ext(
         x + w - 2.0,
         y,
         y + 20.0,
-        y + 6.0,
         color,
     );
 }
@@ -926,7 +1001,7 @@ fn slider_sprites(hover: bool, active: bool, dragging: bool) -> (&'static str, &
 /// flipped by Enter (`setFocused`, `keyPressed`): Sunrise's `can_change_value`
 /// for the keyboard, and a drag for the mouse, which focuses it with the value
 /// free to change. So a dragged slider keeps its plain track.
-fn slider_sprites_ext(
+pub(crate) fn slider_sprites_ext(
     hover: bool,
     active: bool,
     focused: bool,
@@ -935,14 +1010,14 @@ fn slider_sprites_ext(
 ) -> (&'static str, &'static str) {
     let can_change_value = can_change_value || dragging;
     let track = if active && focused && !can_change_value {
-        "gui/sprites/widget/slider_highlighted"
+        "widget/slider_highlighted"
     } else {
-        "gui/sprites/widget/slider"
+        "widget/slider"
     };
     let handle = if active && (hover || can_change_value) {
-        "gui/sprites/widget/slider_handle_highlighted"
+        "widget/slider_handle_highlighted"
     } else {
-        "gui/sprites/widget/slider_handle"
+        "widget/slider_handle"
     };
     (track, handle)
 }
@@ -967,7 +1042,7 @@ pub fn menu_background(
     } else {
         "gui/menu_background"
     };
-    if atlas.sprites.contains_key(sprite) {
+    if atlas.gui_rect(sprite).is_some() {
         tiled(batch, atlas, sprite, x, y, w, h, 32.0, u32::MAX);
     } else {
         batch.fill(atlas, x, y, w, h, rgba(0, 0, 0, 160));
@@ -1096,8 +1171,8 @@ impl Scroll {
     }
     /// `mouseDragged` while held: above or below the list jumps to an end,
     /// otherwise the thumb follows the pointer.
-    pub fn drag(&mut self, y: f32, top: f32, bottom: f32, content: f32) {
-        let Some(last) = self.held else { return };
+    pub fn drag(&mut self, y: f32, top: f32, bottom: f32, content: f32) -> bool {
+        let Some(last) = self.held else { return false };
         let max = Self::max(top, bottom, content);
         if y < top {
             self.amount = 0.0;
@@ -1110,6 +1185,7 @@ impl Scroll {
         }
         self.clamp(top, bottom, content);
         self.held = Some(y);
+        true
     }
     /// `onRelease`.
     pub fn release(&mut self) {
@@ -1155,23 +1231,14 @@ pub fn scrollbar_sprites(
     nine_slice(
         batch,
         atlas,
-        "gui/sprites/widget/scroller_background",
+        "widget/scroller_background",
         x,
         top,
         6.0,
         height,
         u32::MAX,
     );
-    nine_slice(
-        batch,
-        atlas,
-        "gui/sprites/widget/scroller",
-        x,
-        y,
-        6.0,
-        bar,
-        u32::MAX,
-    );
+    nine_slice(batch, atlas, "widget/scroller", x, y, 6.0, bar, u32::MAX);
 }
 
 /// Screen tooltip (DefaultTooltipPositioner + TooltipRenderUtil): the
@@ -1319,13 +1386,13 @@ fn tooltip_size(atlas: &HudAtlas, lines: &[Text]) -> (f32, f32) {
 }
 /// `TooltipRenderUtil.getBackgroundSprite` and `getFrameSprite` of a tooltip style
 /// (`<namespace>:<path>`): `tooltip/<path>_background` and `tooltip/<path>_frame` in the style's
-/// namespace, named as the GUI atlas packs them.
+/// namespace, named by GUI id.
 pub fn tooltip_style_sprites(namespace: &str, path: &str) -> [String; 2] {
     let prefix = match namespace {
         "minecraft" => String::new(),
         namespace => format!("{namespace}:"),
     };
-    ["background", "frame"].map(|part| format!("{prefix}gui/sprites/tooltip/{path}_{part}"))
+    ["background", "frame"].map(|part| format!("{prefix}tooltip/{path}_{part}"))
 }
 /// `TooltipRenderUtil.renderTooltipBackground`: the background sprite, then the frame sprite,
 /// each drawn by `blitSprite` (nine-sliced as its `gui.scaling` says, stretched without it)
@@ -1339,12 +1406,12 @@ pub fn tooltip_sprites(
 ) -> bool {
     if ![background, frame]
         .iter()
-        .all(|sprite| atlas.sprites.contains_key(*sprite))
+        .all(|sprite| atlas.gui_rect(sprite).is_some())
     {
         return false;
     }
     for sprite in [background, frame] {
-        blit_sprite(
+        nine_slice(
             batch,
             atlas,
             sprite,
@@ -1370,10 +1437,7 @@ fn tooltip_box(
     tooltip_sprites(
         batch,
         atlas,
-        [
-            "gui/sprites/tooltip/background",
-            "gui/sprites/tooltip/frame",
-        ],
+        ["tooltip/background", "tooltip/frame"],
         [x, y, w, h],
     );
     let mut ly = y;
@@ -1498,14 +1562,16 @@ impl Caret {
         atlas: &HudAtlas,
         (id, value, max): (crate::clipboard::FieldId, &mut String, usize),
         x: f32,
-    ) {
+    ) -> bool {
         if self.held && self.last_click.is_some_and(|(_, field)| field == id) {
             self.edit(id, value, max, |edit| edit.drag_to(atlas, x));
+            return true;
         }
+        false
     }
     /// The button was released: drags no longer select.
-    pub fn release(&mut self) {
-        self.held = false;
+    pub fn release(&mut self) -> bool {
+        std::mem::take(&mut self.held)
     }
     /// Draw field `id` at `rect`: the focused one with its caret, the others
     /// showing the end of their text.
@@ -1861,34 +1927,7 @@ impl EditBox {
     }
     /// Draw the field; `format` styles the visible text (command colouring).
     pub fn draw(&mut self, batch: &mut HudBatch, atlas: &HudAtlas, format: Option<&Text>) {
-        let caret = self.cursor_visible();
-        self.draw_with_caret(batch, atlas, format, caret);
-    }
-    /// The first character shown (`EditBox.displayPos`): a field kept outside the box (a
-    /// mod's) hands back the scroll its last draw answered.
-    pub fn set_scroll(&mut self, first: usize) {
-        self.display = first.min(char_len(&self.value));
-    }
-    /// After a draw: the first character shown and the GUI x of each shown character
-    /// boundary, from the start of the shown text to its end.
-    pub fn shown_edges(&self, atlas: &HudAtlas) -> (usize, Vec<f32>) {
-        let rest: String = self.value.chars().skip(self.display).collect();
-        let shown = atlas.font.fit(&rest, self.inner_width());
-        let edges = (0..=shown)
-            .map(|n| self.text_x() + atlas.font.width(&rest.chars().take(n).collect::<String>()))
-            .collect();
-        (self.display, edges)
-    }
-    /// [`Self::draw`] with the caret's blink decided by the caller: `caret` shows it (when it
-    /// is in view) for a field whose blink a mod keeps.
-    pub fn draw_with_caret(
-        &mut self,
-        batch: &mut HudBatch,
-        atlas: &HudAtlas,
-        format: Option<&Text>,
-        caret: bool,
-    ) {
-        self.draw_skinned_caret(batch, atlas, format, caret, None);
+        self.draw_with_skin(batch, atlas, format, None);
     }
     /// Draw with a custom nine-slice background and the field's own caret blink.
     pub fn draw_with_skin(
@@ -1924,9 +1963,9 @@ impl EditBox {
         });
         if self.bordered {
             let sprite = skin.unwrap_or(if self.focused {
-                "gui/sprites/widget/text_field_highlighted"
+                "widget/text_field_highlighted"
             } else {
-                "gui/sprites/widget/text_field"
+                "widget/text_field"
             });
             nine_slice(
                 batch,
@@ -2054,6 +2093,7 @@ impl EditBox {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::screen_draw::scroll_position;
     use std::path::Path;
 
     #[test]
@@ -2069,10 +2109,9 @@ mod tests {
              \"border\": {\"left\": 34, \"top\": 8, \"right\": 34, \"bottom\": 8}}}}\n\n// 0  10\n// 1  8\n",
         )
         .unwrap();
-        let metadata = read_metadata(&ResourceSource::directory(root.clone()));
+        let text = std::fs::read(widget.join("button_highlighted.png.mcmeta")).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
-        let SpriteMetadata::Scaled(Scaling::NineSlice(slice)) =
-            metadata.0["gui/sprites/widget/button_highlighted"]
+        let Some(SpriteMetadata::Scaled(Scaling::NineSlice(slice))) = parse_sprite_metadata(&text)
         else {
             panic!("not a nine slice");
         };
@@ -2140,14 +2179,17 @@ mod tests {
     fn an_overflowing_label_slides_from_its_end_to_its_start_and_back() {
         let overflow = 40.0;
         // max(40 * 0.5, 3) = 20 s.
-        assert!((scroll_offset(overflow, 0) - 40.0).abs() < 1.0e-9);
-        assert!(scroll_offset(overflow, 10_000).abs() < 1.0e-9);
-        assert!((scroll_offset(overflow, 20_000) - 40.0).abs() < 1.0e-9);
+        assert_eq!(scroll_position(overflow, 0), 40.0);
+        assert_eq!(scroll_position(overflow, 10_000), 0.0);
+        assert_eq!(scroll_position(overflow, 20_000), 40.0);
         // A label one pixel too wide waits the floor of three seconds.
-        assert!(scroll_offset(1.0, 1_500).abs() < 1.0e-9);
-        assert!((scroll_offset(1.0, 0) - 1.0).abs() < 1.0e-9);
+        assert_eq!(scroll_position(1.0, 1_500), 0.0);
+        assert_eq!(scroll_position(1.0, 0), 1.0);
+        // Java `Math.sin`/`Math.cos` give 7.745040016214215 for overflow 149 at
+        // 176 938 ms; the host's trig gives ...223, so the old formula fails.
+        assert_eq!(scroll_position(149.0, 176_938), 7.745040016214215);
         for ms in 0..40_000 {
-            let offset = scroll_offset(overflow, ms);
+            let offset = scroll_position(overflow, ms);
             assert!((0.0..=40.0).contains(&offset), "{ms} ms: {offset}");
         }
     }
@@ -2159,6 +2201,221 @@ mod tests {
         .unwrap()
     }
 
+    #[test]
+    fn oversized_tiled_nine_slice_extracts_only_visible_tiles_in_phase() {
+        let mut batch = HudBatch::scratch([8, 5]);
+        let sprite = Rect {
+            u0: 0.0,
+            v0: 0.0,
+            u1: 0.75,
+            v1: 0.5,
+            w: 3,
+            h: 2,
+        };
+        draw_nine_slice(
+            &mut batch,
+            sprite,
+            NineSlice {
+                width: 3,
+                height: 2,
+                border: [0; 4],
+                stretch_inner: false,
+            },
+            [-536_870_912.0, 1.0, i32::MAX as f32, 6.0],
+            u32::MAX,
+        );
+        let tiles = quads(&batch);
+        assert_eq!(tiles.len(), 8);
+        assert_eq!(tiles[0], ([0.0, 1.0, 1.0, 3.0], [0.5, 0.0, 0.75, 0.5]));
+        assert_eq!(tiles[1], ([0.0, 3.0, 1.0, 5.0], [0.5, 0.0, 0.75, 0.5]));
+        assert_eq!(tiles[2], ([1.0, 1.0, 4.0, 3.0], [0.0, 0.0, 0.75, 0.5]));
+        assert_eq!(tiles[7], ([7.0, 3.0, 8.0, 5.0], [0.0, 0.0, 0.25, 0.5]));
+    }
+
+    #[test]
+    fn button_art_selects_the_state_then_its_fallbacks() {
+        let mut atlas = atlas();
+        let scaling = Some(Scaling::NineSlice(NineSlice {
+            width: 16,
+            height: 16,
+            border: [2, 3, 4, 5],
+            stretch_inner: true,
+        }));
+        for (n, name) in [
+            "test:normal",
+            "test:hover",
+            "test:disabled",
+            "widget/button",
+            "widget/button_highlighted",
+            "widget/button_disabled",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            atlas.gui.insert(
+                name.into(),
+                GuiSprite::Present {
+                    rect: Rect {
+                        u0: n as f32 / 8.0,
+                        v0: 0.0,
+                        u1: (n as f32 + 0.5) / 8.0,
+                        v1: 0.25,
+                        w: 16,
+                        h: 16,
+                    },
+                    scaling,
+                },
+            );
+        }
+        atlas.gui.insert("test:removed".into(), GuiSprite::Missing);
+        let draw = |active, highlighted, sprites: Option<&ButtonSprites>| {
+            let mut batch = HudBatch::scratch([640, 480]);
+            button_as(
+                &mut batch,
+                &atlas,
+                [10.0, 20.0, 14.0, 15.0],
+                &Text::empty(),
+                active,
+                highlighted,
+                sprites,
+                |rect| crate::widgets::Narratable::button("", rect, active),
+            );
+            batch
+        };
+        let mut art = ButtonSprites::new("test:normal");
+        art.highlighted = Some("test:hover".into());
+        art.disabled = Some("test:disabled".into());
+        for (active, highlighted, u) in
+            [(true, false, 0.0), (true, true, 0.125), (false, true, 0.25)]
+        {
+            assert_eq!(
+                quads(&draw(active, highlighted, Some(&art))),
+                [([10.0, 20.0, 24.0, 35.0], [u, 0.0, u + 0.0625, 0.25])],
+                "custom art stretches even when its atlas entry has nine-slice metadata",
+            );
+        }
+        for fallback in [None, Some("test:unknown"), Some("test:removed")] {
+            art.highlighted = fallback.map(str::to_owned);
+            art.disabled = fallback.map(str::to_owned);
+            for active in [true, false] {
+                assert_eq!(
+                    quads(&draw(active, true, Some(&art))),
+                    [([10.0, 20.0, 24.0, 35.0], [0.0, 0.0, 0.0625, 0.25])],
+                    "state sprite {fallback:?} should fall back to normal (active={active})",
+                );
+            }
+        }
+        art.normal = "test:also_missing".into();
+        for (active, highlighted, vanilla_u) in [
+            (true, false, 0.375),
+            (true, true, 0.5),
+            (false, true, 0.625),
+        ] {
+            let vanilla = draw(active, highlighted, None);
+            let slices = quads(&vanilla);
+            assert_eq!(slices.len(), 9);
+            // The 2×3 top-left corner keeps its size; the centre fills the inner 8×7.
+            assert!(slices.contains(&(
+                [10.0, 20.0, 12.0, 23.0],
+                [vanilla_u, 0.0, vanilla_u + 2.0 / 256.0, 3.0 / 64.0],
+            )));
+            assert!(slices.contains(&(
+                [12.0, 23.0, 20.0, 30.0],
+                [
+                    vanilla_u + 2.0 / 256.0,
+                    3.0 / 64.0,
+                    vanilla_u + 12.0 / 256.0,
+                    11.0 / 64.0
+                ],
+            )));
+            assert_eq!(
+                bytemuck::cast_slice::<_, u8>(&draw(active, highlighted, Some(&art)).vertices),
+                bytemuck::cast_slice::<_, u8>(&vanilla.vertices),
+            );
+        }
+    }
+
+    #[test]
+    fn button_label_offset_moves_text_without_moving_the_overflow_clip() {
+        let atlas = atlas();
+        let short = Text::literal("Run");
+        let button_text = |art: Option<&ButtonSprites>| {
+            let mut batch = HudBatch::scratch([640, 480]);
+            button_as(
+                &mut batch,
+                &atlas,
+                [10.0, 20.0, 100.0, 20.0],
+                &short,
+                true,
+                false,
+                art,
+                |rect| crate::widgets::Narratable::button("Run", rect, true),
+            );
+            batch.vertices
+        };
+        let centered = button_text(None);
+        let mut art = ButtonSprites::new("test:missing");
+        art.label_offset = [2.0, -1.0];
+        let shifted = button_text(Some(&art));
+        assert!(!centered.is_empty());
+        assert_eq!(centered.len(), shifted.len());
+        for (a, b) in centered.iter().zip(&shifted) {
+            assert_eq!(b.pos, [a.pos[0] + 2.0, a.pos[1] - 1.0]);
+        }
+        art.label_offset = [f32::NAN, -1.0];
+        assert_eq!(
+            bytemuck::cast_slice::<_, u8>(&button_text(Some(&art))),
+            bytemuck::cast_slice::<_, u8>(&centered),
+        );
+
+        let mut batch = HudBatch::scratch([640, 480]);
+        scrolling_text_with_offset(
+            &mut batch,
+            &atlas,
+            &Text::literal("MMMMMMMMMMMM"),
+            LabelPlacement {
+                center_x: 17.0,
+                clip: [10.0, 20.0, 24.0, 40.0],
+                offset: Some([5.0, 10.0]),
+            },
+            0,
+            u32::MAX,
+        );
+        // Twelve missing glyphs advance 72 px. At time zero the 58 px overrun is fully
+        // scrolled, so glyph 10 starts at x = 10 - 58 + 5 + 9*6 = 11, y = (20 + 40 - 9) / 2 + 1 + 10 = 36.
+        // Its 5×8 SpecialGlyphs.MISSING quad extends to y = 44, so the unshifted clip
+        // [10, 20, 24, 40] cuts its bottom to y = 40 (4/8 of its height visible) and its
+        // shadow at (12, 37) to [12, 37, 17, 40].
+        let missing = atlas.font.missing_rect().expect("missing glyph sprite");
+        let drawn = quads(&batch);
+        let glyph10 = drawn
+            .iter()
+            .find(|(rect, _)| *rect == [11.0, 36.0, 16.0, 40.0])
+            .expect("offset glyph 10 clipped at unshifted bottom y=40");
+        assert_quad(
+            *glyph10,
+            (
+                [11.0, 36.0, 16.0, 40.0],
+                [
+                    missing.u0,
+                    missing.v0,
+                    missing.u1,
+                    missing.v0 + (missing.v1 - missing.v0) * 4.0 / 8.0,
+                ],
+            ),
+        );
+        assert!(
+            drawn
+                .iter()
+                .any(|(rect, _)| *rect == [12.0, 37.0, 17.0, 40.0])
+        );
+        assert!(
+            batch.vertices.iter().all(|v| {
+                (10.0..=24.0).contains(&v.pos[0]) && (20.0..=40.0).contains(&v.pos[1])
+            })
+        );
+    }
+
     /// `defaultScrollingHelper` draws an overflowing label from `left` less the
     /// integer part of the slide, so it shows its end first and its start half
     /// a period later, and it moves a whole pixel at a time.
@@ -2167,10 +2424,152 @@ mod tests {
         // max(40 * 0.5, 3) = 20 s: at 0 s the whole overflow is slid, at 10 s none.
         assert_eq!(scrolled_left(10.0, 40.0, 0), -30.0);
         assert_eq!(scrolled_left(10.0, 40.0, 10_000), 10.0);
-        // A fractional slide is cut, not rounded.
-        let offset = scroll_offset(40.0, 1_000) as i32 as f32;
-        assert!(offset > 0.0);
-        assert_eq!(scrolled_left(10.0, 40.0, 1_000), 10.0 - offset);
+        // At 1 s the slide is between 39.5 and 40 px: truncate to 39, not 40.
+        assert_eq!(scrolled_left(10.0, 40.0, 1_000), -29.0);
+    }
+
+    /// Slide in whole pixels, from vanilla 26.3's own `defaultScrollingHelper`
+    /// arithmetic (`Math.sin`/`Math.cos`, `(int) pos`) run on a JVM, at fixed clocks.
+    #[test]
+    fn the_slide_matches_vanilla_at_fixed_clock_values() {
+        #[rustfmt::skip]
+        let vanilla: [(i32, i64, i32); 35] = [
+            (1, 0, 1), (1, 1, 0), (1, 1234, 0), (1, 3000, 1), (1, 5000, 0), (1, 17777, 0), (1, 123456789, 0),
+            (6, 0, 6), (6, 1, 5), (6, 1234, 0), (6, 3000, 6), (6, 5000, 0), (6, 17777, 5), (6, 123456789, 2),
+            (40, 0, 40), (40, 1, 39), (40, 1234, 39), (40, 3000, 35), (40, 5000, 20), (40, 17777, 38), (40, 123456789, 34),
+            (58, 0, 58), (58, 1, 57), (58, 1234, 57), (58, 3000, 56), (58, 5000, 48), (58, 17777, 2), (58, 123456789, 54),
+            (100, 0, 100), (100, 1, 100), (100, 1234, 99), (100, 3000, 99), (100, 5000, 97), (100, 17777, 8), (100, 123456789, 92),
+        ];
+        for (overflow, ms, slid) in vanilla {
+            assert_eq!(
+                scrolled_left(7.0, overflow as f32, ms),
+                7.0 - slid as f32,
+                "overflow {overflow} at {ms} ms"
+            );
+        }
+    }
+
+    /// First glyph position of `label` drawn by [`button`] at `rect`.
+    fn label_origin(rect: [f32; 4], label: &str) -> [f32; 2] {
+        let atlas = atlas();
+        let mut batch = HudBatch::scratch([640, 480]);
+        let [x, y, w, h] = rect;
+        button(
+            &mut batch,
+            &atlas,
+            x,
+            y,
+            w,
+            h,
+            &Text::literal(label),
+            true,
+            false,
+        );
+        let mut text = batch.vertices.iter().filter(|v| v.text == 1);
+        let first = text.next().expect("label glyphs").pos;
+        let (mut lo_x, mut lo_y) = (first[0], first[1]);
+        for v in text {
+            lo_x = lo_x.min(v.pos[0]);
+            lo_y = lo_y.min(v.pos[1]);
+        }
+        [lo_x, lo_y]
+    }
+
+    /// Top-left of the glyphs `text_styled` draws for `label` at `x, y`.
+    fn glyph_origin(atlas: &HudAtlas, label: &str, x: f32, y: f32) -> [f32; 2] {
+        let mut batch = HudBatch::scratch([640, 480]);
+        batch.text_styled(
+            atlas,
+            &Text::literal(label).resolved(),
+            x,
+            y,
+            u32::MAX,
+            true,
+        );
+        let glyphs = || batch.vertices.iter().filter(|v| v.text == 1);
+        [
+            glyphs().map(|v| v.pos[0]).fold(f32::INFINITY, f32::min),
+            glyphs().map(|v| v.pos[1]).fold(f32::INFINITY, f32::min),
+        ]
+    }
+
+    /// `defaultScrollingHelper`'s `textTop = (top + bottom - 9) / 2 + 1` is Java
+    /// `int` arithmetic: a 15 px button at y = 20 starts its label at 24, and a
+    /// negative sum truncates toward zero. Tops are vanilla's, written out.
+    #[test]
+    fn a_button_label_top_follows_vanilla_integer_division() {
+        let atlas = atlas();
+        for (y, h, top) in [
+            (20.0, 15.0, 24.0),
+            (20.0, 20.0, 26.0),
+            (20.0, 16.0, 24.0),
+            (20.0, 17.0, 25.0),
+            (-30.0, 14.0, -26.0),
+            (-30.0, 15.0, -26.0),
+            (-31.0, 20.0, -24.0),
+            (-4.0, 4.0, -5.0),
+        ] {
+            assert_eq!(scrolling_text_top(y, y + h), top, "y {y} h {h}");
+            // "Hi" is 12 px: centred in x 10..70 it starts at 34.
+            assert_eq!(
+                label_origin([10.0, y, 60.0, h], "Hi"),
+                glyph_origin(&atlas, "Hi", 34.0, top),
+                "y {y} h {h}"
+            );
+        }
+    }
+
+    /// A short label's centre is `(left + right) / 2` and its half width, both
+    /// Java `int` divisions: truncated toward zero, not floored, left of 0.
+    #[test]
+    fn a_button_label_x_truncates_toward_zero_for_negative_origins() {
+        let atlas = atlas();
+        assert_eq!(atlas.font.width_text(&Text::literal("Hi").resolved()), 12.0);
+        // x = -31, w = 21: left -29, right -12, (left + right) / 2 = -20 (not -21).
+        assert_eq!(
+            label_origin([-31.0, 0.0, 21.0, 20.0], "Hi"),
+            glyph_origin(&atlas, "Hi", -26.0, 6.0)
+        );
+        // x = 10, w = 21: (12 + 29) / 2 = 20.
+        assert_eq!(
+            label_origin([10.0, 0.0, 21.0, 20.0], "Hi"),
+            glyph_origin(&atlas, "Hi", 14.0, 6.0)
+        );
+    }
+
+    /// An overflowing label is drawn from `left - (int) pos`, from the same top.
+    #[test]
+    fn an_overflowing_button_label_is_drawn_at_the_vanilla_slide() {
+        let atlas = atlas();
+        let label = Text::literal("MMMMMMMMMMMM");
+        let width = atlas.font.width_text(&label.resolved());
+        // 12 missing glyphs: 72 px in a 40 px button (36 px of room): overflow 36.
+        assert_eq!(width, 72.0);
+        // Vanilla at 3 000 ms: period 18 s, alpha 0.8536, (int) 30.73 = 30, so the
+        // label starts at 12 - 30 = -18.
+        for (y, h, top) in [(20.0, 15.0, 24.0), (-30.0, 14.0, -26.0)] {
+            let mut batch = HudBatch::scratch([640, 480]);
+            scrolling_text_with_offset(
+                &mut batch,
+                &atlas,
+                &label,
+                LabelPlacement {
+                    center_x: 30.0,
+                    clip: [12.0, y, 48.0, y + h],
+                    offset: None,
+                },
+                3_000,
+                u32::MAX,
+            );
+            let mut want = HudBatch::scratch([640, 480]);
+            want.text_styled(&atlas, &label.resolved(), -18.0, top, u32::MAX, true);
+            want.clip_since(0, 12.0, y, 48.0, y + h);
+            assert_eq!(
+                bytemuck::cast_slice::<_, u8>(&batch.vertices),
+                bytemuck::cast_slice::<_, u8>(&want.vertices),
+                "y {y} h {h}"
+            );
+        }
     }
 
     /// A controller reaches an icon button only through its target, and can't press a disabled one.
@@ -2249,7 +2648,6 @@ mod tests {
             106.0,
             20.0,
             40.0,
-            26.0,
             0,
             u32::MAX,
         );
@@ -2272,29 +2670,15 @@ mod tests {
             106.0,
             20.0,
             40.0,
-            26.0,
             0,
             u32::MAX,
         );
-        let width = atlas.font.width_text(&short.resolved());
-        let left = centered_left(10.0, 96.0, width);
-        let lo = batch
-            .vertices
-            .iter()
-            .map(|v| v.pos[0])
-            .fold(f32::INFINITY, f32::min);
-        let hi = batch
-            .vertices
-            .iter()
-            .map(|v| v.pos[0])
-            .fold(f32::NEG_INFINITY, f32::max);
-        assert!(
-            (lo - left).abs() < 0.001,
-            "centred at {left}, drawn from {lo}"
-        );
-        assert!(
-            hi - lo >= width - 0.001,
-            "the whole label is drawn: {lo}..{hi}, {width} wide"
+        // Four 6 px advances put the start at 58 - 12 = 46; the text top is 26.
+        let mut expected = HudBatch::scratch([640, 480]);
+        expected.text_styled(&atlas, &short.resolved(), 46.0, 26.0, u32::MAX, true);
+        assert_eq!(
+            bytemuck::cast_slice::<_, u8>(&batch.vertices),
+            bytemuck::cast_slice::<_, u8>(&expected.vertices),
         );
     }
 
@@ -2350,31 +2734,31 @@ mod tests {
     fn slider_sprites_follow_focus_and_the_drag() {
         // Hovered, at rest: plain track, lit handle.
         let (track, handle) = slider_sprites(true, true, false);
-        assert_eq!(track, "gui/sprites/widget/slider");
-        assert_eq!(handle, "gui/sprites/widget/slider_handle_highlighted");
+        assert_eq!(track, "widget/slider");
+        assert_eq!(handle, "widget/slider_handle_highlighted");
         // Dragged: still a plain track, lit handle.
         let (track, handle) = slider_sprites(true, true, true);
-        assert_eq!(track, "gui/sprites/widget/slider");
-        assert_eq!(handle, "gui/sprites/widget/slider_handle_highlighted");
+        assert_eq!(track, "widget/slider");
+        assert_eq!(handle, "widget/slider_handle_highlighted");
         // Focused with the arrow keys: the value can't change, the track lights.
         let (track, handle) = slider_sprites_ext(false, true, true, false, false);
-        assert_eq!(track, "gui/sprites/widget/slider_highlighted");
-        assert_eq!(handle, "gui/sprites/widget/slider_handle");
+        assert_eq!(track, "widget/slider_highlighted");
+        assert_eq!(handle, "widget/slider_handle");
         // Focused with Tab, or Enter pressed on it: the value can change, the handle lights.
         let (track, handle) = slider_sprites_ext(false, true, true, true, false);
-        assert_eq!(track, "gui/sprites/widget/slider");
-        assert_eq!(handle, "gui/sprites/widget/slider_handle_highlighted");
+        assert_eq!(track, "widget/slider");
+        assert_eq!(handle, "widget/slider_handle_highlighted");
         // Focused while the mouse drags: the track stays plain.
         let (track, _) = slider_sprites_ext(true, true, true, false, true);
-        assert_eq!(track, "gui/sprites/widget/slider");
+        assert_eq!(track, "widget/slider");
         // Not hovered, not dragged: nothing is lit.
         let (track, handle) = slider_sprites(false, true, false);
-        assert_eq!(track, "gui/sprites/widget/slider");
-        assert_eq!(handle, "gui/sprites/widget/slider_handle");
+        assert_eq!(track, "widget/slider");
+        assert_eq!(handle, "widget/slider_handle");
         // An inactive slider highlights neither, even when focused.
         let (track, handle) = slider_sprites_ext(true, false, true, true, true);
-        assert_eq!(track, "gui/sprites/widget/slider");
-        assert_eq!(handle, "gui/sprites/widget/slider_handle");
+        assert_eq!(track, "widget/slider");
+        assert_eq!(handle, "widget/slider_handle");
     }
     #[test]
     fn separator_tiles_sample_both_rows_and_clip_the_last_column() {
@@ -2489,8 +2873,8 @@ mod tests {
     }
     #[test]
     fn blit_sprite_tiles_a_sprite_whose_metadata_says_tile() {
-        // `GuiSpriteScaling.Tile` 16x16 over 40x20: whole copies from the top left, column by column,
-        // the last column and row cut to what is left, their UVs cut with them.
+        // `GuiSpriteScaling.Tile` 16x16 over 40x20 (vanilla 26.3 `tile-0` in `test_gui_sprite_scaling_parity.py`):
+        // whole copies from the top left, column by column, the last column and row cut to what is left.
         let tile = decode(r#"{"gui":{"scaling":{"type":"tile","width":16,"height":16}}}"#).unwrap();
         assert_eq!(
             tile,
@@ -2507,12 +2891,19 @@ mod tests {
             [0.0, 0.0, 40.0, 20.0],
             u32::MAX,
         );
-        let q = quads(&batch);
-        assert_eq!(q.len(), 6);
-        assert_quad(q[0], ([0.0, 0.0, 16.0, 16.0], [0.0, 0.0, 1.0, 1.0]));
-        assert_quad(q[1], ([0.0, 16.0, 16.0, 20.0], [0.0, 0.0, 1.0, 0.25]));
-        assert_quad(q[2], ([16.0, 0.0, 32.0, 16.0], [0.0, 0.0, 1.0, 1.0]));
-        assert_quad(q[5], ([32.0, 16.0, 40.0, 20.0], [0.0, 0.0, 0.5, 0.25]));
+        let expected: [([f32; 4], [f32; 4]); 6] = [
+            ([0.0, 0.0, 16.0, 16.0], [0.0, 0.0, 1.0, 1.0]),
+            ([0.0, 16.0, 16.0, 20.0], [0.0, 0.0, 1.0, 0.25]),
+            ([16.0, 0.0, 32.0, 16.0], [0.0, 0.0, 1.0, 1.0]),
+            ([16.0, 16.0, 32.0, 20.0], [0.0, 0.0, 1.0, 0.25]),
+            ([32.0, 0.0, 40.0, 16.0], [0.0, 0.0, 0.5, 1.0]),
+            ([32.0, 16.0, 40.0, 20.0], [0.0, 0.0, 0.5, 0.25]),
+        ];
+        let bits = |q: ([f32; 4], [f32; 4])| (q.0.map(f32::to_bits), q.1.map(f32::to_bits));
+        assert_eq!(
+            quads(&batch).into_iter().map(bits).collect::<Vec<_>>(),
+            expected.into_iter().map(bits).collect::<Vec<_>>()
+        );
         // `ExtraCodecs.POSITIVE_INT`: a zero size fails the codec, which drops the sprite.
         assert_eq!(
             decode(r#"{"gui":{"scaling":{"type":"tile","width":0,"height":16}}}"#),
@@ -2532,6 +2923,129 @@ mod tests {
         let q = quads(&batch);
         assert_eq!(q.len(), 1);
         assert_quad(q[0], ([0.0, 0.0, 27.0, 18.0], [0.0, 0.0, 1.0, 1.0]));
+    }
+    /// A GUI sprite draws as the sprite the atlas published says: an alias of a file with
+    /// nine-slice or tile metadata uses that scaling, explicit stretch or a generated sprite
+    /// (a cut of that file) carries none of it and stretches, and a sprite whose origin or
+    /// metadata failed draws the missing sprite stretched, whatever the failed file's metadata said.
+    #[test]
+    fn a_sprite_is_scaled_by_the_metadata_of_the_sprite_the_atlas_published() {
+        let root = std::env::temp_dir().join(format!("sunrise-ui-scaling-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let textures = root.join("assets/demo/textures/gui");
+        std::fs::create_dir_all(&textures).unwrap();
+        std::fs::create_dir_all(root.join("assets/minecraft/atlases")).unwrap();
+        let nine = r#""gui":{"scaling":{"type":"nine_slice","width":6,"height":6,"border":2,"stretch_inner":true}}"#;
+        let tiled = r#""gui":{"scaling":{"type":"tile","width":6,"height":6}}"#;
+        let stretched = r#""gui":{"scaling":{"type":"stretch"}}"#;
+        let bad_tile = r#""gui":{"scaling":{"type":"tile","width":0,"height":6}}"#;
+        for (name, mcmeta) in [
+            ("panel", format!("{{{nine}}}")),
+            ("tiled", format!("{{{tiled}}}")),
+            ("stretched", format!("{{{stretched}}}")),
+            (
+                "bad",
+                format!(r#"{{"animation":{{"width":4,"height":4}},{nine}}}"#),
+            ),
+            ("rejected", "invalid".to_owned()),
+            ("rejected_tile", format!("{{{bad_tile}}}")),
+        ] {
+            let mut encoder = png::Encoder::new(
+                std::fs::File::create(textures.join(format!("{name}.png"))).unwrap(),
+                6,
+                6,
+            );
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            encoder
+                .write_header()
+                .unwrap()
+                .write_image_data(&[255; 6 * 6 * 4])
+                .unwrap();
+            std::fs::write(textures.join(format!("{name}.png.mcmeta")), mcmeta).unwrap();
+        }
+        std::fs::write(
+            root.join("assets/minecraft/atlases/blocks.json"),
+            r#"{"sources":[]}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("assets/minecraft/atlases/items.json"),
+            r#"{"sources":[]}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("assets/minecraft/atlases/gui.json"),
+            r#"{"sources":[
+                {"type":"minecraft:single","resource":"demo:gui/panel","sprite":"demo:alias"},
+                {"type":"minecraft:single","resource":"demo:gui/tiled","sprite":"demo:tiled"},
+                {"type":"minecraft:single","resource":"demo:gui/stretched","sprite":"demo:stretched"},
+                {"type":"minecraft:unstitch","resource":"demo:gui/panel","divisor_x":1,"divisor_y":1,
+                 "regions":[{"sprite":"demo:made","x":0,"y":0,"width":6,"height":6}]},
+                {"type":"minecraft:single","resource":"demo:gui/bad","sprite":"demo:failed"},
+                {"type":"minecraft:single","resource":"demo:gui/rejected","sprite":"demo:rejected"},
+                {"type":"minecraft:single","resource":"demo:gui/rejected_tile","sprite":"demo:rejected_tile"}]}"#,
+        )
+        .unwrap();
+        let atlas = HudAtlas::build(&sunrise_assets::resource_source::ResourceSource::directory(
+            root.clone(),
+        ))
+        .unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        let drawn = |id: &str| {
+            let mut batch = HudBatch::scratch([640, 480]);
+            nine_slice(&mut batch, &atlas, id, 0.0, 0.0, 20.0, 20.0, u32::MAX);
+            quads(&batch)
+        };
+        let hud_drawn = |id: &str| {
+            let mut batch = HudBatch::scratch([640, 480]);
+            crate::hud_layout::paint(
+                &mut batch,
+                &atlas,
+                &[crate::hud_layout::GuiDraw::Sprite {
+                    sprite: std::borrow::Cow::Owned(id.to_owned()),
+                    x: 0,
+                    y: 0,
+                    w: 20,
+                    h: 20,
+                    region: None,
+                    color: u32::MAX,
+                    blend: crate::hud_layout::Blend::Textured,
+                }],
+            );
+            quads(&batch)
+        };
+        // The alias carries its file's nine-slice: nine quads, the corners 2 GUI pixels.
+        let alias = drawn("demo:alias");
+        assert_eq!(alias.len(), 9);
+        assert_eq!(alias[0].0, [0.0, 0.0, 2.0, 2.0]);
+        // The tiled sprite repeats 6x6 over 20x20: 4 columns by 4 rows = 16 quads, on both UI and HUD paths.
+        let tiled = drawn("demo:tiled");
+        assert_eq!(tiled.len(), 16);
+        assert_eq!(tiled[0].0, [0.0, 0.0, 6.0, 6.0]);
+        assert_eq!(hud_drawn("demo:tiled"), tiled);
+        // Explicit stretch and the generated cut draw as one stretched quad.
+        for id in ["demo:stretched", "demo:made"] {
+            let stretched = drawn(id);
+            assert_eq!(stretched.len(), 1, "{id}");
+            assert_eq!(stretched[0].0, [0.0, 0.0, 20.0, 20.0], "{id}");
+        }
+        // A failed origin or rejected metadata is rejected at atlas load and draws the missing sprite stretched.
+        let missing = atlas.sprites[crate::hud::MISSING_SPRITE];
+        for id in ["demo:failed", "demo:rejected", "demo:rejected_tile"] {
+            assert!(
+                matches!(atlas.gui_lookup(id), Some(GuiSprite::Missing)),
+                "{id}"
+            );
+            for rendered in [drawn(id), hud_drawn(id)] {
+                assert_eq!(rendered.len(), 1, "{id}");
+                assert_eq!(
+                    rendered[0].1,
+                    [missing.u0, missing.v0, missing.u1, missing.v1],
+                    "{id}"
+                );
+            }
+        }
     }
     #[test]
     fn borders_shrink_to_half_the_drawn_size() {
@@ -2856,38 +3370,61 @@ mod tests {
     fn nine_slice_metadata_reads_resolved_resource_names_without_files() {
         use sunrise_assets::resource_source::Resource;
         let source = ResourceSource::indexed(std::collections::BTreeMap::from([
-            ("assets/minecraft/textures/gui/sprites/widget/button.png.mcmeta".to_owned(),
-             Resource::bytes(br#"{"gui":{"scaling":{"type":"nine_slice","width":20,"height":12,"border":3}}}"#.to_vec())),
-            ("assets/minecraft/textures/gui/sprites/broken.png.mcmeta".to_owned(), Resource::bytes(b"invalid".to_vec())),
-            ("assets/minecraft/textures/block/stone.png.mcmeta".to_owned(), Resource::bytes(b"{}".to_vec())),
-            ("assets/lobby/textures/gui/sprites/tooltip/gold_frame.png.mcmeta".to_owned(),
-             Resource::bytes(br#"{"gui":{"scaling":{"type":"nine_slice","width":40,"height":40,"border":6}}}"#.to_vec())),
+            (
+                "assets/minecraft/textures/gui/sprites/widget/button.png.mcmeta".to_owned(),
+                Resource::bytes(
+                    br#"{"gui":{"scaling":{"type":"nine_slice","width":20,"height":12,"border":3}}}"#
+                        .to_vec(),
+                ),
+            ),
+            (
+                "assets/minecraft/textures/gui/sprites/broken.png.mcmeta".to_owned(),
+                Resource::bytes(b"invalid".to_vec()),
+            ),
+            (
+                "assets/minecraft/textures/block/stone.png.mcmeta".to_owned(),
+                Resource::bytes(b"{}".to_vec()),
+            ),
+            (
+                "assets/lobby/textures/gui/sprites/tooltip/gold_frame.png.mcmeta".to_owned(),
+                Resource::bytes(
+                    br#"{"gui":{"scaling":{"type":"nine_slice","width":40,"height":40,"border":6}}}"#
+                        .to_vec(),
+                ),
+            ),
         ]));
-        let metadata = read_metadata(&source);
-        assert_eq!(metadata.0.len(), 3);
+        assert_eq!(
+            sprite_metadata_of(&source, "assets/minecraft/textures/gui/sprites/plain.png"),
+            None
+        );
+        assert_eq!(
+            sprite_metadata_of(&source, "assets/minecraft/textures/block/stone.png"),
+            None
+        );
         // Metadata that isn't JSON fails `ResourceMetadata`, which drops the sprite.
         assert_eq!(
-            metadata.0.get("gui/sprites/broken"),
-            Some(&SpriteMetadata::Rejected)
+            sprite_metadata_of(&source, "assets/minecraft/textures/gui/sprites/broken.png"),
+            Some(SpriteMetadata::Rejected)
         );
-        let Some(SpriteMetadata::Scaled(Scaling::NineSlice(button))) =
-            metadata.0.get("gui/sprites/widget/button")
-        else {
+        let Some(SpriteMetadata::Scaled(Scaling::NineSlice(button))) = sprite_metadata_of(
+            &source,
+            "assets/minecraft/textures/gui/sprites/widget/button.png",
+        ) else {
             panic!("no nine slice");
         };
         assert_eq!(
             (button.width, button.height, button.border),
             (20, 12, [3; 4])
         );
-        // Another namespace's sprite is named with it, as the GUI atlas packs it.
-        let Some(SpriteMetadata::Scaled(Scaling::NineSlice(frame))) =
-            metadata.0.get("lobby:gui/sprites/tooltip/gold_frame")
-        else {
+        let Some(SpriteMetadata::Scaled(Scaling::NineSlice(frame))) = sprite_metadata_of(
+            &source,
+            "assets/lobby/textures/gui/sprites/tooltip/gold_frame.png",
+        ) else {
             panic!("no nine slice");
         };
         assert_eq!((frame.width, frame.border), (40, [6; 4]));
     }
-    /// A tooltip style names its sprites as `TooltipRenderUtil` does, in the GUI atlas's names;
+    /// A tooltip style names its sprites as `TooltipRenderUtil` does, by GUI id;
     /// the box draws the background, then the frame, 12 pixels out from the contents, each
     /// stretched when it has no `gui.scaling` (`GuiMetadataSection.DEFAULT`), and nothing
     /// without either sprite.
@@ -2895,18 +3432,12 @@ mod tests {
     fn a_tooltip_style_draws_its_own_background_and_frame() {
         assert_eq!(
             tooltip_style_sprites("minecraft", "fancy"),
-            [
-                "gui/sprites/tooltip/fancy_background",
-                "gui/sprites/tooltip/fancy_frame"
-            ]
+            ["tooltip/fancy_background", "tooltip/fancy_frame"]
         );
         let [background, frame] = tooltip_style_sprites("lobby", "gold");
         assert_eq!(
             [background.as_str(), frame.as_str()],
-            [
-                "lobby:gui/sprites/tooltip/gold_background",
-                "lobby:gui/sprites/tooltip/gold_frame"
-            ]
+            ["lobby:tooltip/gold_background", "lobby:tooltip/gold_frame"]
         );
         let mut atlas = atlas();
         let mut batch = HudBatch::scratch([640, 480]);

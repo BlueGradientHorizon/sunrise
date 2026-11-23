@@ -153,7 +153,7 @@ def main():
         "quads": quads, "matched_lines": matched, "client_jar_sha256": lab.digest(jars["client"], "sha256"),
         "sources_sha256": tested_sources, "fixtures_sha256": tested_fixtures,
         "scope": "ResourceMetadata.fromJsonStream then getSection(GuiMetadataSection.TYPE) on each .png.mcmeta text, "
-                 "against Sunrise's ui::read_metadata over a resource source; TiledBlitRenderState.buildVertices with "
+                 "against Sunrise's ui::sprite_metadata_of over a resource source; TiledBlitRenderState.buildVertices with "
                  "UVs from a real TextureAtlasSprite (getU/getV as blitTiledSprite calls them), against ui::tile, "
                  "every quad's positions and UVs as float bits. No GPU, atlas packing or screen layout."})
     print(f"GUI sprite scaling: {matched} lines match ({rejected} rejected metadata, {quads} tiled quads)", flush=True)

@@ -146,6 +146,7 @@ pub fn build(
     sdk: &Identity,
     mixins: &MixinsIdentity,
     rustc: impl Fn(&str) -> std::process::Command,
+    check_only: bool,
 ) -> Result<Option<Patch>, String> {
     let Some(prepared) = prepare(rust, game, out, projects, sdk, mixins)? else {
         return Ok(None);
@@ -153,7 +154,8 @@ pub fn build(
     // The patched crates, against the prebuilt game and the mods.
     let mut compiled = Vec::new();
     for name in &prepared.names {
-        let rlib = out.join(format!("lib{name}.rlib"));
+        let extension = if check_only { "rmeta" } else { "rlib" };
+        let rlib = out.join(format!("lib{name}.{extension}"));
         let mut hash = sha2::Sha256::new();
         use sha2::Digest;
         hash.update(sdk.commit());
@@ -182,6 +184,9 @@ pub fn build(
         .arg("-o")
         .arg(&rlib)
         .arg(prepared.dir.join(name).join("src/lib.rs"));
+        if check_only {
+            cmd.arg("--emit=metadata");
+        }
         game_cfg(&mut cmd, sdk);
         // An `@` file, one argument per line: an extern per SDK crate passes Windows'
         // 32,767-character command-line limit.
@@ -210,22 +215,27 @@ pub fn build(
     }))
 }
 
-/// The SDK libraries a patch crate compiles against: the game crate and the facade crates.
+/// The crates a patch crate links: the game crate and the facade crates.
+fn sdk_extern_names(sdk: &Identity) -> impl Iterator<Item = &str> {
+    std::iter::once("sunrise_client").chain(
+        sdk.facade_crates()
+            .filter(|krate| *krate != "sunrise_client"),
+    )
+}
+
+/// The SDK libraries a patch crate compiles against: [`sdk_extern_names`], with their files.
 pub fn sdk_externs(game: &Path, sdk: &Identity) -> Result<Vec<(String, PathBuf)>, String> {
     let deps = game.join("deps");
-    let mut externs = vec![(
-        "sunrise_client".to_owned(),
-        super::prebuilt::library(&deps, "sunrise_client")?,
-    )];
-    for krate in sdk.facade_crates() {
-        if krate != "sunrise_client" {
-            externs.push((
-                krate.to_owned(),
-                super::prebuilt::facade_library(&deps, krate, sdk)?,
-            ));
-        }
-    }
-    Ok(externs)
+    sdk_extern_names(sdk)
+        .map(|krate| {
+            let library = if krate == "sunrise_client" {
+                super::prebuilt::library(&deps, krate)?
+            } else {
+                super::prebuilt::facade_library(&deps, krate, sdk)?
+            };
+            Ok((krate.to_owned(), library))
+        })
+        .collect()
 }
 
 impl Prepared<'_> {
@@ -450,6 +460,7 @@ pub fn prepare<'a>(
     // The generator refuses targets the staged game cannot replace.
     let mut extras = extras(&bundles)?;
     extras.loops = loops;
+    extras.linked = sdk_extern_names(sdk).map(str::to_owned).collect();
     let generated = api_gen::patch::generate(&source, CRATE, &targets, &extras, &index);
     let refusals: Vec<String> = match &generated {
         Ok(_) => Vec::new(),

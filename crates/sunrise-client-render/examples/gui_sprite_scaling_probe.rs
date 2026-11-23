@@ -11,13 +11,14 @@ use sunrise_client_render::{
     ui::{self, Scaling, SpriteMetadata},
 };
 
-const SPRITE: &str = "assets/minecraft/textures/gui/sprites/probe.png.mcmeta";
+const SPRITE: &str = "assets/minecraft/textures/gui/sprites/probe.png";
+const MCMETA: &str = "assets/minecraft/textures/gui/sprites/probe.png.mcmeta";
 
 fn decode(row: &Value) -> Value {
     let text = row["json"].as_str().unwrap().as_bytes().to_vec();
     let source =
-        ResourceSource::indexed(BTreeMap::from([(SPRITE.to_owned(), Resource::bytes(text))]));
-    match ui::read_metadata(&source).get("gui/sprites/probe") {
+        ResourceSource::indexed(BTreeMap::from([(MCMETA.to_owned(), Resource::bytes(text))]));
+    match ui::sprite_metadata_of(&source, SPRITE) {
         None => json!({"type": "stretch"}),
         Some(SpriteMetadata::Rejected) => json!({"error": true}),
         Some(SpriteMetadata::Scaled(Scaling::Tile { width, height })) => {
