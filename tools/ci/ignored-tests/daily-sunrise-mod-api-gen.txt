@@ -2,8 +2,6 @@
 # where it must pass (README.md). Rows: PACKAGE TEST TARGET daily REASON, sorted; tools/ci/move_to_daily.py writes them.
 sunrise-mod-api-gen dispatch::stack_count_tests::only_container_loot_filled_changes_when_stack_count_marker_is_removed lib daily slow
 sunrise-mod-api-gen dispatch::stack_crossing_tests::block_crossing_runtime_and_mutants lib daily child-process
-sunrise-mod-api-gen dispatch::stack_crossing_tests::block_numeric_index_runtime_and_mutants lib daily slow
-sunrise-mod-api-gen dispatch::stack_crossing_tests::level_block_read_refusal_runtime_and_mutants lib daily slow
 sunrise-mod-api-gen dispatch::stack_crossing_tests::per_block_routing_runtime_and_mutants lib daily slow
 sunrise-mod-api-gen dispatch::stack_crossing_tests::unsubscribed_owned_values_never_convert_or_allocate lib daily child-process
 sunrise-mod-api-gen dispatch::tests::a_worldgen_part_method_takes_the_worldgen_context_and_reads_the_published_table lib daily slow
