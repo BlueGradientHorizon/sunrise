@@ -1137,8 +1137,8 @@ pub fn render_pack(
         [SIZE; 2],
         &[],
         &mut |_, _, _, _| {},
-        false,
-        |_| {},
+        Default::default(),
+        |_, _| false,
         &std::sync::atomic::AtomicBool::new(false),
         super::in_flight::poll_live,
     )

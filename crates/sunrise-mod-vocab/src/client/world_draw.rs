@@ -371,7 +371,7 @@ mod tests {
             fn assert_local() {}
         }
         impl<T> Local<()> for T {}
-        impl<T: Wire> Local<u8> for T {}
+        impl<T: crate::wire::Wire> Local<u8> for T {}
 
         let _ = <DrawError as Local<_>>::assert_local;
         let _ = <RenderLevelStage as Local<_>>::assert_local;

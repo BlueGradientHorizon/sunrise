@@ -143,7 +143,7 @@ pub fn register(
                 optional: pipeline.optional,
             });
         }
-        if let Some(earlier) = seen.insert(&pipeline.id, pipeline.owner()) {
+        if let Some(earlier) = seen.insert(pipeline.id.as_str(), pipeline.owner()) {
             return Err(RegistrationError::DuplicateModId {
                 earlier: earlier.to_owned(),
                 owner: pipeline.owner().to_owned(),
