@@ -3585,8 +3585,10 @@ mod tests {
         let facts = crate::blocks::BlockFacts::load(&root, assets.registry).unwrap();
         let data = MobData::load(
             &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
-            &facts,
-        );
+            facts.states.len(),
+            true,
+        )
+        .unwrap();
         for id in ["minecraft:villager", "minecraft:wandering_trader"] {
             let kind = std::sync::Arc::new(types.types[id].clone());
             let mut mob = Mob::new(1, kind, sunrise_core::geometry::Vec3::ZERO, 0.0);
@@ -3634,8 +3636,8 @@ mod tests {
         // mask, draws depth only): the glint must not be one of them.
         use crate::gfx::{
             ENERGY_SWIRL_OVERLAY, SHADOW_OVERLAY, TEXT_POLYGON_OFFSET_OVERLAY,
-            TRANSLUCENT_GLINT_ITEM_OVERLAY, TRANSLUCENT_ITEM_OVERLAY, TRANSLUCENT_PARTICLE_OVERLAY,
-            WATER_MASK_OVERLAY,
+            TEXT_POLYGON_OFFSET_SOLID_OVERLAY, TRANSLUCENT_GLINT_ITEM_OVERLAY,
+            TRANSLUCENT_ITEM_OVERLAY, TRANSLUCENT_PARTICLE_OVERLAY, WATER_MASK_OVERLAY,
         };
         assert!(
             ![
@@ -3646,6 +3648,7 @@ mod tests {
                 TRANSLUCENT_GLINT_ITEM_OVERLAY,
                 ENERGY_SWIRL_OVERLAY,
                 TEXT_POLYGON_OFFSET_OVERLAY,
+                TEXT_POLYGON_OFFSET_SOLID_OVERLAY,
             ]
             .contains(&ARMOR_GLINT)
         );

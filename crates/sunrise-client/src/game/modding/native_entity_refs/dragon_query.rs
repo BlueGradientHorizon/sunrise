@@ -14,7 +14,9 @@ impl Game<'_> {
         if parts {
             let mut cursor = None;
             while let Some(id) = self.dragon.next_part(&mut cursor) {
-                if bounds.intersects(dragon.part_geometry((id - dragon.id - 1) as usize).1) {
+                if let Some(part) = crate::game::dragon::dragon_part_index(dragon.id, id)
+                    && bounds.intersects(dragon.part_geometry(part).1)
+                {
                     visit_id(id)?;
                 }
             }
@@ -476,7 +478,7 @@ mod tests {
                 Ok(parts.to_vec())
             );
             // A spectating window leaves only its own player out.
-            game.set_mode_id(3);
+            game.set_local_mode(sunrise_client::command::args::GameMode::Spectator);
             assert_eq!(
                 ids(game, [-100.0, -10.0, -100.0], [100.0, 300.0, 100.0]),
                 Ok([vec![15, 20], parts.to_vec()].concat())

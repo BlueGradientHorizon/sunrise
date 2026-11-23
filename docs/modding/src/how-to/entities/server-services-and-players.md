@@ -197,9 +197,16 @@ A translation's `fallback` and an `nbt` component's `interpret`, `plain` and
 key is `index` is refused, as in vanilla; Sunrise follows vanilla there. JSON
 escapes such as `\u0041` are decoded.
 
-`host.text_from_legacy("§cRed")` reads `§` formatting codes as
+`host.text_to_nbt(&text)` encodes the component as vanilla's `ComponentSerialization.CODEC`
+with `NbtOps`, without resolving translations or adding styles. It returns `Result<Tag, TextFormError>`.
+`host.text_from_nbt(&tag)` reads that form, returning `Result<Option<Text>, TextFormError>`.
+An unstyled literal without siblings encodes as an NBT string, and strings are read literally,
+including `§` codes. NBT flags are true for nonzero numeric tags, and custom click payloads
+keep their tag types. Both methods enforce vanilla's 512-container NBT depth limit.
+
+`host.text_from_legacy("§cRed")` instead reads `§` formatting codes as
 the font draws them; `&` codes are not read, so replace `&` with `§` first.
-Both work on either side.
+These conversions work on either side.
 
 ## Server clock, rules and distances
 
@@ -217,6 +224,12 @@ read the distances in chunks; `host.server_set_view_distance(d)` and
 dedicated server and return `false` otherwise. `server.properties` is not
 written.
 
+`host.server_is_published()` is `MinecraftServer.isPublished`: always true on a
+dedicated server, and on a single-player world's server only while the world is
+open to LAN, so it turns false again when the LAN closes (`/unpublish`). A rule
+meant for multiplayer only reads it when it applies, not once at start: no hook
+fires when a world is opened to LAN.
+
 `host.tick_rate_is_frozen()` is `TickRateManager.isFrozen` (`/tick freeze`): `Some(true)` while the server's
 ticking is frozen, `None` on a client. A frozen server still runs the ticks `/tick step` asks for, so
 `server_tick_start`'s `world_running` can be true while it is frozen; read this to tell a frozen server from a
@@ -231,6 +244,25 @@ palette keeps a state no block uses any more, and a section of more distinct sta
 named whenever the block exists. A mod that points at the nearest block of a kind asks it on `chunk_load` for
 blocks placed before it tracked them. `None` for a stale handle, on a client, or for a chunk that isn't
 loaded; it loads nothing.
+
+## Loading a chunk
+
+`level.load_chunk(host, [x, z])` is vanilla's `Level.getChunk(x, z)` (`ServerChunkCache.getChunk(x, z, FULL, true)`):
+it loads the chunk from the save, or generates it, to FULL, in any open server level, and returns true once it is
+there with its initial light done, so the level's block and light reads find it. To light it, the 8 chunks around
+it are loaded too (vanilla only generates them part of the way); they hold no ticket and unload with the next sweep. **It blocks the server tick until the chunk is loaded or
+generated**, as vanilla does, with no timeout; a chunk already full answers at once. Generating a new chunk takes
+long enough to be felt, so load ahead of time rather than many chunks in one tick. Like vanilla, the call leaves an
+`UNKNOWN` ticket on the chunk that keeps it loaded (not ticking) through the next ticket purge and expires at the one
+after, and the first purge can come in the same tick, depending on when the call runs; the chunk then unloads like
+any other. Loading a chunk of a parked level doesn't put the level in place: `set_block` and the other writes that
+need it in place still answer `LevelWriteError::Unavailable` there. To keep a chunk, force it (`chunk.set_forced`)
+or hold a ticket controller's
+ticket. The `chunk_load` listeners of each chunk the call brings in run during the call, while that chunk is loaded
+and before the call returns, as NeoForge's `ChunkEvent.Load` does inside `getChunk`. `false` for a
+stale handle, a client, a level the server has not opened, a chunk past `ChunkPos.isValid`
+(`ChunkPyramid.MAX_CHUNK_COORDINATE_VALUE`, where vanilla's block reads and writes stop), and while the level's
+generation is paused or stopped.
 
 ## World mutation: chunks, blocks shown and placed as a player
 
@@ -322,7 +354,9 @@ wait for the outermost commit.
 local player's supported open menu, or the inventory menu when none is open; every other
 player returns `None`. `MenuRef::slot_count`, `slot` and `carried` read the client's view:
 server slot updates plus local prediction, not server authority. A menu ref becomes stale
-when that menu closes or another opens. The server retains its supported-menu restrictions.
+when that menu closes or another opens. `MenuRef::kind` returns `Some(Some(id))` for a supported
+registry-backed menu, `Some(None)` for the player's inventory menu or a mount's inventory on the client,
+and `None` for a stale, foreign or unavailable handle. The server retains its supported-menu restrictions.
 
 ## Local player reads on a client
 
@@ -337,6 +371,7 @@ kept body:
 | `on_ground` | The local player's own predicted flag; for another kept entity, its client copy's flag. |
 | `is_in_water` | The local player's own fluid state, or a kept entity's last client update. |
 | `is_swimming` | The local player's swimming flag, not the pose (crawling can share that pose). `None` for other players and other entity kinds. |
+| `main_arm` | `LivingEntity.getMainArm` for every living entity the client tracks, as the server last sent it: another player's or a mannequin's main hand, a mob's left-handed flag; the local player's own Main Hand option. `None` for an entity that isn't living. |
 
 Client reads are views, not server authority. Inventory access here is read-only;
 inventory and movement writes still require a server host.

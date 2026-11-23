@@ -35,8 +35,11 @@ checkout fails the wiring check.
 
 - **Prerequisites:** Rust (stable), Python 3.11+, JDK 25, git 2.38 or newer, and on Linux the ALSA and udev headers
   (`libasound2-dev libudev-dev`).
-- **Resources:** Sunrise never downloads the game; it prepares its resources from your own copy of Minecraft 26.3, as
-  described in [Build from source](README.md#build-from-source).
+- **Resources:** Client preparation reads your own copy of Minecraft 26.3, as in [Build from source](README.md#build-from-source).
+  Only the launcher downloads client files, for a signed-in account that owns the game. For a dedicated server,
+  `sunrise-prepare --server` and `sunrise-server init` may download Mojang's free `server.jar` and Java runtime from
+  Mojang's URLs, with SHA-1 checks, on the server owner's machine or in CI. Never commit, publish or ship Mojang's
+  files or data derived from them.
 - **Commands:**
 
   ```sh
@@ -209,8 +212,8 @@ A claim with no open pull request linking the issue (`Fixes #123` in the descrip
 
 You can hold at most 10 claimed issues that no open pull request of yours links. An eleventh `/claim` is refused with a
 comment that gives the count; opening a pull request for one of them, or `/unclaim` on one, frees a slot. The
-repository's collaborators, and the trusted contributors listed in the repository variable `CLAIM_LIMIT_EXEMPT`, are
-not limited.
+repository's owners, members and collaborators, the council and the trusted reviewers, and the trusted contributors
+listed in the repository variable `CLAIM_LIMIT_EXEMPT`, are not limited.
 
 When your pull request changes the same functions as another open one, or closes the same issue, a bot comment names
 it (edited on every push, never repeated): talk to its author in the thread before you both finish the same work.
