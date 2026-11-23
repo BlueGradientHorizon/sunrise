@@ -384,6 +384,28 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                             game.native_lifecycle_world_ready();
                             if case == "runtime-extra-level" {
                                 game.join_world_rest().unwrap();
+                                // The world's data pack defines the pocket's stem, as a
+                                // data pack's `dimension/` entry does in vanilla.
+                                let pack = root.join("datapacks/pocket");
+                                let stems = pack.join("data/test/dimension");
+                                std::fs::create_dir_all(&stems).unwrap();
+                                std::fs::write(
+                                    pack.join("pack.mcmeta"),
+                                    r#"{"pack":{"description":"Pocket","min_format":[121,0],"max_format":[121,0]}}"#,
+                                )
+                                .unwrap();
+                                std::fs::write(
+                                    stems.join("pocket.json"),
+                                    r#"{"type":"minecraft:overworld","generator":{"type":"minecraft:flat","settings":{
+                                        "biome":"minecraft:plains","features":false,"lakes":false,"structure_overrides":[],
+                                        "layers":[{"height":1,"block":"minecraft:bedrock"}]}}}"#,
+                                )
+                                .unwrap();
+                                std::fs::write(
+                                    root.join("datapacks.json"),
+                                    r#"{"enabled":["vanilla","file/pocket"],"disabled":[]}"#,
+                                )
+                                .unwrap();
                                 Dim::add_extra("test:pocket");
                                 let pocket = Dim::extra("test:pocket").unwrap();
                                 let parked = game.open_level(pocket).unwrap();
