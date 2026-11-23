@@ -353,6 +353,9 @@ impl IPayloadContext for MainContext<'_, '_> {
 #[path = "payload_transport/config_tests.rs"]
 mod config_tests;
 #[cfg(test)]
+#[path = "payload_transport/virtual_host_tests.rs"]
+mod virtual_host_tests;
+#[cfg(test)]
 #[path = "payload_transport/disconnect_tests.rs"]
 mod disconnect_tests;
 #[cfg(test)]
