@@ -1691,7 +1691,7 @@ impl ParticleEngine {
         p: [f64; 3],
         v: [f64; 3],
     ) -> bool {
-        !self.capture(options, p, v) && self.create_with_world(world, options, p, v)
+        self.capture(options, p, v) || self.create_with_world(world, options, p, v)
     }
 
     /// `ClientLevel.doAddParticle`'s admission step, before invoking a provider.
