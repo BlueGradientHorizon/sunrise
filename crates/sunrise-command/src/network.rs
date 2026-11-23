@@ -20,6 +20,11 @@ pub const SERVER_COMMAND: &str = "server";
 /// (vanilla's), whose matching nodes lend their types and providers, not executor bindings.
 pub fn from_packet(packet: &Commands, local: &Dispatcher) -> Dispatcher {
     let count = packet.nodes.len();
+    // A decoded packet always names a root node (`Commands::read`); a tree built in process
+    // without one has nothing to convert.
+    if count == 0 {
+        return Dispatcher::new();
+    }
     let root = usize::try_from(packet.root)
         .ok()
         .filter(|&r| r < count)
@@ -96,9 +101,7 @@ pub fn from_packet(packet: &Commands, local: &Dispatcher) -> Dispatcher {
         });
     }
     let mut d = Dispatcher::new();
-    if count > 0 {
-        d.nodes = nodes.into_iter().flatten().collect();
-    }
+    d.nodes = nodes.into_iter().flatten().collect();
     d
 }
 
