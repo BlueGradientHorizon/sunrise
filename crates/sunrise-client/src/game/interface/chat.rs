@@ -234,7 +234,7 @@ pub struct ChatDraft {
 }
 /// `ChatScreen.ExitReason`: why the chat screen went away.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(super) enum ChatExit {
+pub(in crate::game) enum ChatExit {
     /// Another screen replaced it (death, a container, a disconnect).
     Interrupted,
     /// The player closed it (Escape).
@@ -1043,7 +1043,7 @@ impl Game<'_> {
         });
         true
     }
-    pub(super) fn close_chat(&mut self, reason: ChatExit) {
+    pub(in crate::game) fn close_chat(&mut self, reason: ChatExit) {
         // InBedChatScreen.onClose: leaving the screen means getting up; the
         // screen goes once the player has woken (`tick_in_bed_chat`).
         if self.ui.in_bed_chat && self.sleeping.is_some() {
@@ -1051,7 +1051,8 @@ impl Game<'_> {
             return;
         }
         if self.screen == Screen::Chat {
-            self.set_screen_with(Screen::Playing, |game| game.remove_chat_screen(reason));
+            // `Gui.setScreen(null)`: Closing fires, no vetoable Opening does.
+            self.dismiss_screen_with(|game| game.remove_chat_screen(reason));
             if self.screen == Screen::Playing {
                 self.capture(true);
             }
@@ -1114,6 +1115,9 @@ impl Game<'_> {
             });
             if let Some(text) = typed {
                 self.replace_chat_screen(&text, false, ChatExit::Done);
+                // A vetoed replacement keeps the outgoing instance and its draft; the
+                // sleeping-to-awake transition has been offered once and is not repeated.
+                self.ui.in_bed_chat = false;
             } else {
                 self.dismiss_screen_with(|game| game.remove_chat_screen(ChatExit::Interrupted));
                 if self.screen == Screen::Playing {
