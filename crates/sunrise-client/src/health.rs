@@ -153,7 +153,8 @@ enum LentBody<'a> {
 /// friendly fire. Vanilla asks it both ways round, with the same answer: the victim's
 /// `hurtServer` of the attacker, `AbstractArrow.canHitEntity` of the owner. Every
 /// player-on-player rule asks it here: a melee blow and its sweep, an arrow, another player's
-/// projectile, a trident, a spear's stab and the `PlayerRef::can_harm` read. NeoForge and
+/// projectile, a trident, a spear's stab, a blast the player caused (a primed TNT they own, an
+/// end crystal they broke) and the `PlayerRef::can_harm` read. NeoForge and
 /// Fabric have no event at this method, so a Java mod mixes into `ServerPlayer.canHarmPlayer`;
 /// a native mod answers here through `[[native.mixin]]` (#4854).
 #[sunrise_mod_api_macros::replaceable]
