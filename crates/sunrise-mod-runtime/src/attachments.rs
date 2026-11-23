@@ -115,7 +115,10 @@ pub enum AttachmentError {
     /// Retry after the current pass; the refused store writes no value.
     HolderBusy,
     /// The holder is only lent for reading during this hook (a hit's victim or causing
-    /// entity): `has` and `get_existing` answer, and a store writes nothing.
+    /// entity): `has` and `get_existing` answer, while a `get` that would store its default,
+    /// `set`, `remove` of a held value and `sync_data` of a synced type refuse before any of
+    /// the type's callbacks run and write nothing. A `remove` of an absent value and a
+    /// `sync_data` of an unsynced type stay the no-ops they are on any holder.
     ReadOnlyHolder,
     /// This physical holder family has no attachment lifetime storage; retrying cannot help.
     /// Stable lowercase family names: mob, item, orb, projectile, armorstand,
@@ -233,6 +236,12 @@ pub enum AttachmentWrite {
 /// [`AttachmentType`] methods are built on this store; persistence and sync use
 /// the attachment's codec.
 pub trait AttachmentStore {
+    /// Whether `holder` is lent for reading only (a hit's victim or causing entity): its values
+    /// read, and every write refuses with [`AttachmentError::ReadOnlyHolder`] before any of the
+    /// type's callbacks run. False, the default, for a store that lends none.
+    fn read_only(&mut self, _holder: Holder) -> Result<bool, AttachmentError> {
+        Ok(false)
+    }
     /// Validate an attachment type against the loaded declarations.
     fn validate_attachment(
         &mut self,
@@ -288,6 +297,12 @@ pub trait AttachmentStore {
 }
 
 impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
+    fn read_only(&mut self, holder: Holder) -> Result<bool, AttachmentError> {
+        match self.read_only_attachments(holder) {
+            Some(map) => map.map(|_| true),
+            None => Ok(false),
+        }
+    }
     fn validate_attachment(
         &mut self,
         namespace: &str,
@@ -358,11 +373,7 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
         }
         if let Some(map) = self.read_only_attachments(holder) {
             map?;
-            // A saved value read through a read-only map is decoded for that read alone.
-            return match form.write {
-                AttachmentWrite::Decoded => Ok(()),
-                _ => Err(AttachmentError::ReadOnlyHolder),
-            };
+            return Err(AttachmentError::ReadOnlyHolder);
         }
         let AttachmentForm {
             encoded,
@@ -480,6 +491,10 @@ impl<T: Clone + Send + Sync + 'static> AttachmentType<T> {
         if let Some(value) = self.get_existing(store, holder)? {
             return Ok(value);
         }
+        // A read-only holder refuses to store the default before the default is made.
+        if store.read_only(holder)? {
+            return Err(AttachmentError::ReadOnlyHolder);
+        }
         let value = (self.default)();
         self.keep(store, holder, value.clone(), AttachmentWrite::Default)?;
         Ok(value)
@@ -512,7 +527,10 @@ impl<T: Clone + Send + Sync + 'static> AttachmentType<T> {
             return Ok(None);
         };
         let value = self.decode(&saved)?;
-        self.keep(store, holder, value.clone(), AttachmentWrite::Decoded)?;
+        // A read-only holder's saved value is decoded for this read alone, never re-encoded.
+        if !store.read_only(holder)? {
+            self.keep(store, holder, value.clone(), AttachmentWrite::Decoded)?;
+        }
         Ok(Some(value))
     }
     /// Read the decoded value through `read` without cloning it: what a read of one part of a
@@ -539,6 +557,9 @@ impl<T: Clone + Send + Sync + 'static> AttachmentType<T> {
     ) -> Result<(), AttachmentError> {
         store.validate_attachment(self.namespace, self.name, self.sync)?;
         self.validate_policy()?;
+        if store.read_only(holder)? {
+            return Err(AttachmentError::ReadOnlyHolder);
+        }
         if let Some(old) = store.decoded(holder, self.namespace, self.name)?
             && !old.is::<T>()
         {
@@ -555,6 +576,9 @@ impl<T: Clone + Send + Sync + 'static> AttachmentType<T> {
     ) -> Result<Option<T>, AttachmentError> {
         if !self.has(store, holder)? {
             return Ok(None);
+        }
+        if store.read_only(holder)? {
+            return Err(AttachmentError::ReadOnlyHolder);
         }
         let value = self.get_existing(store, holder);
         store.discard(holder, self.namespace, self.name, self.sync)?;
@@ -1274,31 +1298,64 @@ mod tests {
         }
     }
 
+    /// How many times [`COUNTED`]'s encoder and default ran.
+    static COUNTED_CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    static COUNTED: AttachmentType<i32> = AttachmentType {
+        namespace: "test",
+        name: "counted",
+        default: || {
+            COUNTED_CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            -1
+        },
+        codec: Some(AttachmentCodec {
+            encode: |n| {
+                COUNTED_CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                encode(n)
+            },
+            decode,
+        }),
+        copy_on_death: false,
+        sync: false,
+    };
+
     #[test]
     fn a_read_only_holder_answers_reads_and_refuses_every_write() {
+        use std::sync::atomic::Ordering;
         let mut source = Attachments::default();
         COUNTER.set(&mut source, Holder::Level, 5).unwrap();
+        COUNTED.set(&mut source, Holder::Level, 6).unwrap();
         let mut map = Attachments::from_nbt(source.to_nbt());
         MEMORY.set(&mut map, Holder::Level, 8).unwrap();
         let mut host = ReadOnlyHost { map };
         let (one, two) = (Holder::Entity(1), Holder::Entity(2));
+        COUNTED_CALLS.store(0, Ordering::SeqCst);
 
+        assert_eq!(host.read_only(one), Ok(true));
+        assert_eq!(host.read_only(Holder::Level), Ok(false));
         assert_eq!(COUNTER.has(&mut host, one), Ok(true));
         assert_eq!(COUNTER.get_existing(&mut host, one), Ok(Some(5)));
         assert_eq!(MEMORY.get_existing(&mut host, one), Ok(Some(8)));
-        // The saved value decoded for that read alone: the lent map still keeps it saved.
-        assert!(matches!(host.map.decoded("test", "counter"), Ok(None)));
+        // The saved value decoded for that read alone, without its encoder: the lent map still
+        // keeps it saved.
+        assert_eq!(COUNTED.get_existing(&mut host, one), Ok(Some(6)));
+        assert!(matches!(host.map.decoded("test", "counted"), Ok(None)));
         assert_eq!(COUNTER.has(&mut host, two), Ok(false));
         assert_eq!(COUNTER.get_existing(&mut host, two), Ok(None));
 
+        // Writes refuse before the type's default or encoder runs.
         assert_eq!(
-            COUNTER.get(&mut host, two),
+            COUNTED.get(&mut host, two),
             Err(AttachmentError::ReadOnlyHolder)
         );
         assert_eq!(
-            COUNTER.set(&mut host, one, 9),
+            COUNTED.set(&mut host, one, 9),
             Err(AttachmentError::ReadOnlyHolder)
         );
+        assert_eq!(
+            COUNTED.set(&mut host, two, 9),
+            Err(AttachmentError::ReadOnlyHolder)
+        );
+        assert_eq!(COUNTED_CALLS.load(Ordering::SeqCst), 0);
         assert_eq!(
             COUNTER.remove(&mut host, one),
             Err(AttachmentError::ReadOnlyHolder)
@@ -1307,6 +1364,9 @@ mod tests {
             SYNCED.sync_data(&mut host, one),
             Err(AttachmentError::ReadOnlyHolder)
         );
+        // What is a no-op on any holder stays one.
+        assert_eq!(COUNTER.remove(&mut host, two), Ok(None));
+        assert_eq!(COUNTER.sync_data(&mut host, one), Ok(()));
         assert_eq!(COUNTER.has(&mut host, two), Ok(false));
         assert_eq!(COUNTER.get_existing(&mut host, one), Ok(Some(5)));
         assert_eq!(MEMORY.get_existing(&mut host, one), Ok(Some(8)));
