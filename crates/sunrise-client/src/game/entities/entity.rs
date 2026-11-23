@@ -2553,7 +2553,7 @@ impl Entity for Minecart {
 }
 
 /// Width and height `EntityType.ARMOR_STAND` gives a stand.
-fn armor_stand_size(stand: &ArmorStand) -> (f64, f64) {
+pub(super) fn armor_stand_size(stand: &ArmorStand) -> (f64, f64) {
     if stand.marker {
         (0.0, 0.0)
     } else if stand.small {
