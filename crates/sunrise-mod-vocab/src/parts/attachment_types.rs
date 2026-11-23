@@ -785,7 +785,7 @@ pub fn attachment_sync_projection() -> impl Fn(
         // Stored IDs are Java strings, the descriptor table uses Rust strings. Reuse
         // conversion buffers and release them before invoking a possibly reentrant codec.
         let record = COMPONENTS.with_borrow_mut(|[ns, nm]| {
-            for (out, source) in [(ns, namespace), (nm, name)] {
+            for (out, source) in [(&mut *ns, namespace), (&mut *nm, name)] {
                 out.clear();
                 for c in char::decode_utf16(source.0.iter().copied()) {
                     out.push(c.ok()?);
