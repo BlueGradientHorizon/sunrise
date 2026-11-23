@@ -537,29 +537,7 @@ It returns `false` if the host has no live client or if a quit is already pendin
 For example, to let the player press Q on the title screen while this mod is loaded:
 
 ```rust
-use mod_api::{ClientHost, Flow, Hooks, ScreenKeyPressedPreEvent};
-
-#[derive(Default)]
-struct TitleQuit;
-
-#[mod_api::sunrise_mod]
-impl Hooks for TitleQuit {
-    fn screen_key_pressed_pre(
-        &self,
-        host: &dyn ClientHost,
-        event: &mut ScreenKeyPressedPreEvent<'_>,
-    ) -> Flow {
-        if event.screen.id == "title"
-            && event.key == "key.keyboard.q"
-            && !event.repeat
-            && host.request_client_quit()
-        {
-            Flow::Cancel
-        } else {
-            Flow::Continue
-        }
-    }
-}
+{{#include ../../../examples/src/title_quit.rs:title_quit}}
 ```
 
 ## Labels: wrapped text without a widget
