@@ -1564,7 +1564,7 @@ pub(super) fn emit<'a>(
             None if mod_cancel && hook.event_per_listener => (
                 String::new(),
                 format!(
-                    "{{ let mut {entered} = super::runtime::ListenerScope::new(); for ({receives}, {mod_entry}) in super::listening(HookId::{hook_id}) {{ if *{o} && !{receives} {{ continue; }} let {mod_item} = {entered}.enter({mod_entry}, \"{name}\"); {cancel_step} }} }}",
+                    "let mut {entered} = super::runtime::ListenerScope::new(); for ({receives}, {mod_entry}) in super::listening(HookId::{hook_id}) {{ if *{o} && !{receives} {{ continue; }} let {mod_item} = {entered}.enter({mod_entry}, \"{name}\"); {cancel_step} }}",
                     o = cancel_out.unwrap()
                 ),
             ),
