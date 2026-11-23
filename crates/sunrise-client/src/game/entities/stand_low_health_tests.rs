@@ -3,10 +3,18 @@ use sunrise_client::motion::PlayerMotion;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 
-const WITNESS_26_3: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../tools/fixtures/26.3/stand_low_health.tsv"
-));
+fn load_witness_26_3() -> String {
+    let path = std::env::var("SUNRISE_STAND_LOW_HEALTH_WITNESS").unwrap_or_else(|_| {
+        panic!(
+            "SUNRISE_STAND_LOW_HEALTH_WITNESS is unset; run tools/test_stand_low_health_parity.py"
+        )
+    });
+    std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        panic!(
+            "failed to read witness {path} (record via tools/test_stand_low_health_parity.py): {e}"
+        )
+    })
+}
 
 struct WitnessRow<'a> {
     case: &'a str,
@@ -66,11 +74,18 @@ fn parse_witness_26_3(text: &str) -> Vec<WitnessRow<'_>> {
     rows
 }
 
-/// Vanilla 26.3 witness (#2692): low-health and dead armor stands match the real 26.3 oracle.
+/// Vanilla 26.3 witness (#2692): low-health and dead armor stands match the real 26.3 oracle
+/// recorded by `tools/test_stand_low_health_parity.py`.
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_stand_low_health_parity.py"]
 fn a_stand_breaks_on_low_health_only_through_damage_and_a_dead_one_goes_at_twenty() {
-    let rows = parse_witness_26_3(WITNESS_26_3);
+    run_a_stand_breaks_on_low_health_only_through_damage_and_a_dead_one_goes_at_twenty();
+}
+
+pub(in crate::game) fn run_a_stand_breaks_on_low_health_only_through_damage_and_a_dead_one_goes_at_twenty()
+ {
+    let witness = load_witness_26_3();
+    let rows = parse_witness_26_3(&witness);
     with_game(|game| {
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
         game.update_chunk_tickets();

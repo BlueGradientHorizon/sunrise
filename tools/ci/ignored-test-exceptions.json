@@ -1158,5 +1158,13 @@
     "path": "crates/sunrise-client/src/game/mobs/creatures/projectiles_120_124_tests.rs",
     "reason": "run by tools/test_projectile_targets_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_projectile_targets_parity.py records the vanilla 26.3 projectile witnesses into .local and runs this test against them through SUNRISE_PROJECTILE_WITNESS_DIR, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::stand_low_health_tests::a_stand_breaks_on_low_health_only_through_damage_and_a_dead_one_goes_at_twenty",
+    "path": "crates/sunrise-client/src/game/entities/stand_low_health_tests.rs",
+    "reason": "run by tools/test_stand_low_health_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_stand_low_health_parity.py records the vanilla 26.3 armor-stand low-health witness into .local and runs this test against it through SUNRISE_STAND_LOW_HEALTH_WITNESS, so no recorded vanilla data is committed."
   }
 ]
