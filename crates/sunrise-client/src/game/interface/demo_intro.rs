@@ -200,11 +200,15 @@ impl Game<'_> {
         if button == 0 {
             self.confirm_trusted_link(BUY_MINECRAFT_JAVA, Screen::Playing);
         } else {
-            // Later asks for the grab before closing the popup. The transition
-            // callback runs only after the screen hooks accept the close.
-            self.set_screen_with(Screen::Playing, |game| game.capture(true));
+            self.close_demo_intro();
         }
         true
+    }
+    /// Closes the parentless popup to the HUD: `Gui.setScreen(null)` grabs the
+    /// mouse once the screen hooks let the close go ahead (`PopupScreen.onClose`
+    /// for Escape; Later's `MouseHandler.grabMouse` closes the screen the same way).
+    pub(super) fn close_demo_intro(&mut self) {
+        self.set_screen(Screen::Playing);
     }
 }
 

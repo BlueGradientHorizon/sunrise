@@ -1311,7 +1311,7 @@ impl Game<'_> {
             C::SetPlayerInventory(p) => self.apply_set_player_inventory_packet(p),
             C::ContainerSetData(p) => self.apply_container_set_data_packet(p)?,
             C::OpenScreen(p) => self.remote_open_screen(p),
-            C::MountScreenOpen(p) => self.remote_open_mount(p),
+            C::MountScreenOpen(p) => self.remote_open_mount(p)?,
             C::UpdateRecipes(p) => self.remote_recipe_properties(p),
 
             C::RecipeBookAdd(p) => self.remote_recipe_book_add(p),

@@ -2,6 +2,7 @@ use super::{connect_menu_test, spawn_menu_test};
 use crate::game::{
     Game, Screen, in_own_process, mount_menu::CHEST, native_entity_refs::tests::with_game,
 };
+use std::time::{Duration, Instant};
 use sunrise_client::{hud::HudBatch, items::ItemStack, menu::Input, mobs::Mob};
 use sunrise_core::{geometry::Vec3, nbt::Tag};
 use sunrise_protocol::{
@@ -104,6 +105,38 @@ fn rejected_mounts_preserve_the_previous_client_menu_without_sending_close() {
                             .any(|p| matches!(p, S::ContainerClose(_)))
                     );
                 }
+            });
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_mount_chest_beyond_the_slot_range_ends_the_connection() {
+    in_own_process(
+        "game::remote::tests::menu_packets_tests::a_mount_chest_beyond_the_slot_range_ends_the_connection",
+        || {
+            with_game(|game| {
+                let (_reader, _writer) = connect_menu_test(game);
+                spawn_menu_test(game);
+                let horse = game.res.mob_types().get("minecraft:horse").unwrap().clone();
+                game.mobs.push(Mob::new(41, horse, Vec3::ZERO, 0.0));
+                game.handle_packet(C::MountScreenOpen(MountScreenOpen {
+                    container: 8,
+                    columns: i32::MAX,
+                    entity: 41,
+                }))
+                .unwrap();
+                assert!(game.mount_menu.opened_mob().is_none());
+                let deadline = Instant::now() + Duration::from_secs(5);
+                while game.remote.is_some() && Instant::now() < deadline {
+                    game.poll_remote().unwrap();
+                    std::thread::yield_now();
+                }
+                assert!(
+                    game.remote.is_none(),
+                    "an oversized mount chest must disconnect"
+                );
             });
         },
     );

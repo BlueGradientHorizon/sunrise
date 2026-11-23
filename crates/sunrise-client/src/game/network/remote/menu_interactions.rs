@@ -873,7 +873,8 @@ impl Game<'_> {
     }
     /// `ClientPacketListener.handleMountScreenOpen`: only horses and nautiluses
     /// open a menu. A missing or different entity leaves the current menu alone.
-    pub(in crate::game) fn remote_open_mount(&mut self, p: play::MountScreenOpen) {
+    pub(in crate::game) fn remote_open_mount(&mut self, p: play::MountScreenOpen) -> Result<()> {
+        use crate::game::{inventory_slots::MOD_MENU_SLOT_BASE, mount_menu::CHEST};
         let entity = p.entity as u32;
         let Some(species) = self
             .mobs
@@ -882,7 +883,7 @@ impl Game<'_> {
             .map(sunrise_client::mobs::Mob::species)
             .filter(|&s| crate::game::mount_menu::has_mount_menu(s))
         else {
-            return;
+            return Ok(());
         };
         if self.mod_screen.is_some() {
             self.remote_close_local();
@@ -892,10 +893,22 @@ impl Game<'_> {
         } else {
             usize::try_from(p.columns).unwrap_or(0)
         };
+        // `new SimpleContainer(getInventorySize(inventoryColumns))`: the chest is as
+        // wide as the server says. Its slots must end below the mod menus' base,
+        // and a chest that does not fit ends the connection, as the handler's own
+        // exception does.
+        let mut items = Vec::new();
+        if columns > (MOD_MENU_SLOT_BASE - CHEST) / 3
+            || items.try_reserve_exact(columns * 3).is_err()
+        {
+            return self.refuse_play_payload("the mount menu's chest does not fit its slot range");
+        }
+        items.resize(columns * 3, None);
         // Install the window before opening its screen, including when a mod
         // replaces the requested screen with the player's own inventory.
         self.remote_set_menu(Some((p.container, format!("{MOUNT_MENU}{columns}"))), None);
-        self.open_remote_mount_menu(entity, species, columns);
+        self.open_remote_mount_menu(entity, species, items);
+        Ok(())
     }
     /// The type of the menu a server opened (`MenuType`'s id).
     pub(in crate::game) fn remote_menu_type(&self) -> Option<&str> {

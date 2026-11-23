@@ -77,14 +77,20 @@ impl Game<'_> {
     }
     /// Open the screen for the server's already installed mount window. Its
     /// equipment and chest stacks arrive in the menu's content packets.
-    pub(super) fn open_remote_mount_menu(&mut self, entity: u32, species: Species, columns: usize) {
+    pub(super) fn open_remote_mount_menu(
+        &mut self,
+        entity: u32,
+        species: Species,
+        items: Vec<Option<ItemStack>>,
+    ) {
+        let columns = items.len() / 3;
         self.mount_menu.open = Some(Open {
             mob: entity,
             species,
             columns,
             saddle: None,
             armor: None,
-            items: vec![None; columns * 3],
+            items,
             show_saddle: shows_saddle(species),
             show_armor: shows_body(species),
         });
