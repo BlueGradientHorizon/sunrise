@@ -6,7 +6,7 @@
 use super::Game;
 use sunrise_client::{
     hud_layout::GuiDraw,
-    lan::playerdata::{ints_uuid, uuid_ints},
+    lan::playerdata::ints_uuid,
     locator_bar::{ClientWaypoints, View},
 };
 use sunrise_protocol::packets::play::TrackedWaypoint;
@@ -91,13 +91,8 @@ impl Game<'_> {
                 false,
             )
         } else if let Some(remote) = &self.remote {
-            let uuid = uuid_ints(uuid);
-            let id = self
-                .persist
-                .uuids
-                .iter()
-                .find_map(|(&id, &known_uuid)| (known_uuid == uuid).then_some(id))?;
-            let entity = self.live_entity_camera_subject(remote, id as i32)?;
+            let &id = remote.level_uuids.get(&uuid)?;
+            let entity = self.live_entity_camera_subject(remote, id)?;
             // TickRateManager.isEntityFrozen: players and entities carrying them keep moving.
             let frozen =
                 !self.clock.runs_normally() && !entity.is_player && !entity.has_player_passenger;
@@ -131,7 +126,7 @@ impl Game<'_> {
         let Some((camera_pos, yaw, pitch, fov)) = self.locator_camera else {
             return Vec::new();
         };
-        let Some(camera_entity) = self.camera_subject() else {
+        let Some((camera_uuid, camera_entity_pos)) = self.camera_identity_and_position() else {
             return Vec::new();
         };
         // Camera.getViewRotationProjectionMatrix, through view space: the
@@ -158,8 +153,8 @@ impl Game<'_> {
         let view = View {
             gui_width,
             gui_height,
-            camera_uuid: camera_entity.uuid,
-            camera_entity_pos: camera_entity.camera.position,
+            camera_uuid,
+            camera_entity_pos,
             camera_pos,
             yaw,
             pitch,

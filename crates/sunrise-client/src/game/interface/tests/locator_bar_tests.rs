@@ -44,6 +44,10 @@ fn connect(game: &mut Game<'_>, position: Vec3) -> Pipe {
 }
 
 fn add_armor_stand(game: &mut Game<'_>, id: i32, uuid: u128, position: [f64; 3]) {
+    add_armor_stand_facing(game, id, uuid, position, 0);
+}
+
+fn add_armor_stand_facing(game: &mut Game<'_>, id: i32, uuid: u128, position: [f64; 3], yaw: i8) {
     let kind = game
         .remote
         .as_ref()
@@ -60,8 +64,8 @@ fn add_armor_stand(game: &mut Game<'_>, id: i32, uuid: u128, position: [f64; 3])
         position,
         velocity: [0.0; 3],
         pitch: 0,
-        yaw: 0,
-        head_yaw: 0,
+        yaw,
+        head_yaw: yaw,
         data: 0,
     }))
     .unwrap();
@@ -136,6 +140,68 @@ fn spectated_locator_uses_camera_entity_for_identity_and_distance() {
                 game.apply_packet(C::RemoveEntities(play::RemoveEntities { ids: vec![20] }))
                     .unwrap();
                 assert_draws(game);
+
+                // First frame after SetCamera switches to a stand facing east (-90 deg, packed -64):
+                // extract_frame_hud updates locator_camera before HUD extraction so placement and
+                // distance both use the new camera rather than the previous frame's north-facing camera.
+                use sunrise_client::hud::Rect;
+                let near_rect = Rect {
+                    u0: 0.25,
+                    v0: 0.0,
+                    u1: 0.5,
+                    v1: 0.25,
+                    w: 9,
+                    h: 9,
+                };
+                game.gui
+                    .atlas
+                    .sprites
+                    .insert("hud/locator_bar_dot/near".into(), near_rect);
+                game.gui.atlas.sprites.insert(
+                    "hud/locator_bar_dot/far".into(),
+                    Rect {
+                        u0: 0.75,
+                        v0: 0.0,
+                        u1: 1.0,
+                        v1: 0.25,
+                        w: 9,
+                        h: 9,
+                    },
+                );
+                game.clear_waypoints();
+                track_block(game, 5, 5, [122, 64, 0]);
+                game.ui.hide_gui = false;
+                game.locator_camera = Some(([0.0, 65.62, 0.0], 180.0, 0.0, 70.0));
+                add_armor_stand_facing(game, 25, 25, [100.0, 64.0, 0.0], -64);
+                game.apply_packet(C::SetCamera(play::SetCamera { camera_id: 25 }))
+                    .unwrap();
+                let (cam_pos, cam_yaw, cam_pitch) = game.camera_view(0.0).unwrap();
+                let cam_fov = game.fov_degrees(0.0, cam_pos.to_array());
+                let batch = game.extract_frame_hud(
+                    [427, 240],
+                    None,
+                    false,
+                    cam_pos.to_array(),
+                    cam_yaw,
+                    cam_pitch,
+                    cam_fov,
+                );
+                let near_dots: Vec<i32> = batch
+                    .vertices
+                    .as_chunks::<6>()
+                    .0
+                    .iter()
+                    .filter(|q| {
+                        q[0].uv == [near_rect.u0, near_rect.v0]
+                            && q[2].uv == [near_rect.u1, near_rect.v1]
+                    })
+                    .map(|q| q[0].pos[0] as i32)
+                    .collect();
+                assert_eq!(
+                    near_dots,
+                    vec![209],
+                    "first frame after SetCamera must align placement and distance with the new stand"
+                );
             });
         },
     );
@@ -208,6 +274,56 @@ fn block_waypoints_use_live_non_player_eyes_within_manhattan_three() {
                 game.apply_packet(C::RemoveEntities(play::RemoveEntities { ids: vec![30] }))
                     .unwrap();
                 assert_eq!(dot_x(game), 229, "entity absent: block centre");
+
+                // Dimension change clears the current-level UUID index even when persist.uuids
+                // retains an old runtime id; reintroducing the UUID under a new id resolves live eyes.
+                add_armor_stand(game, 30, 3, [120.2, 64.0, 5.8]);
+                game.enter_remote_dimension(
+                    &SpawnInfo {
+                        dimension_type: 1,
+                        dimension: "minecraft:the_nether".into(),
+                        seed: 0,
+                        game_type: 3,
+                        previous_game_type: None,
+                        debug: false,
+                        flat: true,
+                        last_death: None,
+                        portal_cooldown: 0,
+                        sea_level: 63,
+                    },
+                    RemoteDimensionEntry::Respawn,
+                    Reason::Other,
+                );
+                assert!(
+                    game.persist.uuids.contains_key(&30),
+                    "stale persist.uuids entry remains after level replacement"
+                );
+                assert!(
+                    game.waypoint_entity(3).is_none(),
+                    "old level entity must not resolve after dimension change"
+                );
+                add_armor_stand(game, 45, 3, [120.2, 64.0, 5.8]);
+                game.armor_stands
+                    .iter_mut()
+                    .find(|a| a.id == 45)
+                    .unwrap()
+                    .previous = Vec3::new(119.2, 64.0, 5.8);
+                let (rebound_block, rebound_eyes) = game.waypoint_entity(3).unwrap();
+                assert_eq!(rebound_block, [120, 64, 5]);
+                assert_eq!(
+                    rebound_eyes.map(f64::to_bits),
+                    [
+                        0x405e_0ccc_cccc_cccd,
+                        0x4050_71c2_8f80_0000,
+                        0x4017_3333_3333_3333
+                    ]
+                );
+                track_block(game, 3, 3, [122, 64, 6]);
+                assert_eq!(
+                    dot_x(game),
+                    228,
+                    "reintroduced UUID uses new runtime id eyes"
+                );
             });
         },
     );

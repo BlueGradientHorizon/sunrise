@@ -590,6 +590,30 @@ impl Game<'_> {
     pub(super) fn controls_camera(&self) -> bool {
         self.remote_camera_id().is_none()
     }
+    /// Camera entity's UUID and feet position (`Minecraft.getCameraEntity`), borrowing
+    /// any detached snapshot instead of cloning it.
+    pub(in crate::game) fn camera_identity_and_position(&self) -> Option<(Option<u128>, [f64; 3])> {
+        if let Some(r) = self.remote.as_ref()
+            && let Some(id) = r.camera
+        {
+            if let Some(detached) = r
+                .detached_camera
+                .as_deref()
+                .filter(|d| d.entity_id == id as u32)
+            {
+                return Some((detached.uuid, detached.camera.position));
+            }
+            return self
+                .live_entity_camera_subject(r, id)
+                .map(|c| (c.uuid, c.camera.position));
+        }
+        let p = self.player.as_ref()?;
+        Some((
+            self.own_profile_uuid(),
+            [p.position.x, p.position.y, p.position.z],
+        ))
+    }
+
     /// `Minecraft.getCameraEntity`: local player, live tracked entity, or detached snapshot.
     pub(in crate::game) fn camera_subject(&self) -> Option<ResolvedCameraEntity> {
         if let Some(r) = self.remote.as_ref()
@@ -954,12 +978,13 @@ impl Game<'_> {
         id: i32,
     ) -> Option<ResolvedCameraEntity> {
         let uid = id as u32;
-        let uuid = self
-            .persist
-            .uuids
-            .get(&uid)
-            .copied()
-            .map(sunrise_client::lan::playerdata::ints_uuid);
+        let uuid = remote.level_entity_uuids.get(&id).copied().or_else(|| {
+            self.persist
+                .uuids
+                .get(&uid)
+                .copied()
+                .map(sunrise_client::lan::playerdata::ints_uuid)
+        });
         let mount = self.living_vehicle_for(remote, uid);
         let has_player_passenger = self.entity_has_player_passenger(remote, uid);
         let non_living_subject = |camera, collision_kind, kind: &str| ResolvedCameraEntity {

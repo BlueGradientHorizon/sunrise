@@ -7224,6 +7224,22 @@ impl Game<'_> {
         self.hud_with_reload(size, None)
     }
 
+    /// Aligns `locator_camera` with this frame's render camera before HUD extraction
+    /// (`GameRenderer.renderLevel` sets `mainCamera` before `Gui.render`).
+    pub(in crate::game) fn extract_frame_hud(
+        &mut self,
+        size: [u32; 2],
+        reload_overlay: Option<(f32, sunrise_client::level_loading::OverlayFade)>,
+        title: bool,
+        camera: [f64; 3],
+        view_yaw: f32,
+        view_pitch: f32,
+        fov_degrees: f32,
+    ) -> HudBatch {
+        self.locator_camera = (!title).then_some((camera, view_yaw, view_pitch, fov_degrees));
+        self.hud_with_reload(size, reload_overlay)
+    }
+
     fn hud_with_reload(
         &mut self,
         size: [u32; 2],
@@ -11299,16 +11315,23 @@ impl Game<'_> {
         pr.lap("pr_projection");
         let vanilla_skin = self.apply_player_skin_override(title);
         // GUI hooks project against this frame's camera, including its bob/spin and FOV.
-        let mut hud =
-            sunrise_client::spans::time("hud", || self.hud_with_reload(size, reload_overlay));
+        let mut hud = sunrise_client::spans::time("hud", || {
+            self.extract_frame_hud(
+                size,
+                reload_overlay,
+                title,
+                camera.to_array(),
+                view_yaw,
+                view_pitch,
+                fov_degrees,
+            )
+        });
         if reload_overlay.is_none() {
             self.flush_ime(&mut hud);
             self.native_gui_render_post(&mut hud, self.ui.hide_gui, self.focused);
         }
         self.resolve_inline_profiles(&hud.inline_profiles);
         pr.lap("pr_hud");
-        self.locator_camera =
-            (!title).then_some((camera.to_array(), view_yaw, view_pitch, fov_degrees));
         // The packs' Polytone post chains, after vanilla's (#11486).
         let game_ticks = self.world.game_time as f64 + alpha;
         let delta_ticks = (game_ticks - self.polytone_post_ticks).clamp(0.0, 20.0) as f32;
