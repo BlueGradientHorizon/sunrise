@@ -21,7 +21,8 @@ pub trait Hooks {
         scope = "item",
         key = "stack",
         host = "read",
-        neoforge = "none (vanilla Item.getUseDuration; NeoForge adds no event or extension for it); LivingEntityUseItemEvent.Start can set a use's duration"
+        neoforge = "none (vanilla Item.getUseDuration; NeoForge adds no event or extension for it); LivingEntityUseItemEvent.Start can set a use's duration",
+        version = 2
     )]
     fn use_duration(stack: &ItemStack, duration: &mut i32);
 }

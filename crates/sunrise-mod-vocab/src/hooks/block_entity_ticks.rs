@@ -14,7 +14,8 @@ pub trait Hooks {
         scope = "block_entity",
         key = "block",
         host = "read",
-        neoforge = "none (vanilla EntityBlock.getTicker; NeoForge adds no event or extension for it)"
+        neoforge = "none (vanilla EntityBlock.getTicker; NeoForge adds no event or extension for it)",
+        version = 2
     )]
     fn block_entity_ticks(block: &str, ticks: &mut bool);
 }
