@@ -46,12 +46,21 @@ fn a_standalone_copy_updates_from_the_signed_rolling_release() {
         String::from_utf8_lossy(&update.stderr)
     );
     let stdout = String::from_utf8(update.stdout).unwrap();
-    let new = stdout
-        .trim()
-        .strip_prefix(format!("Updated cargo sunrise-mod: {old} -> ").as_str())
-        .expect("the standalone copy should report the verified replacement's commit");
-    assert!(sunrise_mod_package::manifest::revision(new));
-    assert_ne!(old, new, "the fixture must need an update");
-    assert_eq!(version(&installed).split_whitespace().nth(2), Some(new));
+    let report = stdout.trim();
+    let expected = if report == format!("cargo sunrise-mod is already the newest ({old}).") {
+        // A release build can already be the one served by the rolling tag.
+        old
+    } else {
+        let new = report
+            .strip_prefix(format!("Updated cargo sunrise-mod: {old} -> ").as_str())
+            .unwrap_or_else(|| panic!("unexpected self-update report: {report}"));
+        assert_ne!(old, new);
+        new
+    };
+    assert!(sunrise_mod_package::manifest::revision(expected));
+    assert_eq!(
+        version(&installed).split_whitespace().nth(2),
+        Some(expected)
+    );
     assert_eq!(version(&sdk_tool).split_whitespace().nth(2), Some(old));
 }
