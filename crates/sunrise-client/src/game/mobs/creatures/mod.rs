@@ -1825,25 +1825,33 @@ impl Game<'_> {
         let Some(index) = self.mobs.locate(join) else {
             return;
         };
-        let mut dying = self.mobs[index].clone();
         let removal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            if split {
+            let mut random = if split {
+                let mut dying = self.mobs[index].clone();
                 self.split_cube_children(&mut dying);
-            }
-            if !dying.extra.effects.is_empty() {
-                let names: Vec<_> = dying
+                dying.random
+            } else {
+                self.mobs[index].random.clone()
+            };
+            // LivingEntity.remove sees the body's current effects and pose, after the split
+            // and child join listeners have had a chance to edit it. Keep the split's draws.
+            let Some(index) = self.mobs.locate(join) else {
+                return;
+            };
+            let parent = &self.mobs[index];
+            if !parent.extra.effects.is_empty() {
+                let names: Vec<_> = parent
                     .extra
                     .effects
                     .iter()
                     .map(|e| e.id.trim_start_matches("minecraft:"))
                     .collect();
-                let bounds = dying.bounds();
                 self.effects_on_death(
                     &names,
-                    bounds,
-                    dying.silent,
-                    Some(dying.id),
-                    Some(&mut dying.random),
+                    parent.bounds(),
+                    parent.silent,
+                    Some(parent.id),
+                    Some(&mut random),
                 );
             }
         }));

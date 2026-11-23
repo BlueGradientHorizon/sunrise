@@ -2062,3 +2062,45 @@ fn split_and_detached_construction_precede_admission() {
         });
     });
 }
+
+#[test]
+#[ignore = "daily"]
+fn split_listener_can_remove_the_live_parents_oozing() {
+    if crate::game::native_entity_refs::tests::run_fresh_cases(
+        "game::creatures::pending_birth_tests::split_listener_can_remove_the_live_parents_oozing",
+        "SUNRISE_SPLIT_OOZING_CASE",
+        &["remove"],
+    ) {
+        return;
+    }
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let removed = Arc::new(AtomicBool::new(false));
+    let observed = removed.clone();
+    with_split(
+        move |host, event| {
+            let parent = host.living(host.entity(event.parent).unwrap()).unwrap();
+            let effect = host.effect_key("minecraft:oozing").unwrap();
+            observed.store(parent.remove_effect(host, effect), Ordering::Relaxed);
+            Flow::Continue
+        },
+        |game| {
+            let mut dying = cube(game, "minecraft:slime", 4, SEED);
+            dying.health = 0.0;
+            dying
+                .extra
+                .effects
+                .push(sunrise_client::mobs::StoredEffect::new(
+                    "minecraft:oozing",
+                    200,
+                    0,
+                ));
+            let first = game.next_entity + 1;
+            game.mobs.push(dying);
+            game.native_joins_skip();
+            let join = game.mobs[0].join;
+            game.complete_mob_removal(join, true);
+            assert!(removed.load(Ordering::Relaxed));
+            assert_vanilla_children(&spawned(game), "minecraft:slime", first);
+        },
+    );
+}
