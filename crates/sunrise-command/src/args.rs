@@ -1859,13 +1859,13 @@ impl ArgType {
             }
             ArgType::Custom(custom) => {
                 let text = match custom.kind {
-                    CustomArgumentKind::Word => reader.read_unquoted_string(),
+                    CustomArgumentKind::Word => reader.read_unquoted_string().to_owned(),
                     CustomArgumentKind::Greedy => {
-                        let text = reader.remaining();
+                        let text = reader.remaining().to_owned();
                         reader.cursor = reader.string.len();
                         text
                     }
-                    CustomArgumentKind::Id => read_identifier_token(reader)?.0,
+                    CustomArgumentKind::Id => read_identifier_token(reader)?.0.to_owned(),
                     // The number is checked as Brigadier's own type first; the mod's parser sees
                     // the digits it accepted.
                     CustomArgumentKind::Integer { min, max } => {
@@ -1877,7 +1877,7 @@ impl ArgType {
                         reader.string[start..reader.cursor].to_owned()
                     }
                 };
-                match (custom.parse)(text) {
+                match (custom.parse)(&text) {
                     Ok(value) => Arg::Custom {
                         kind: custom.id.clone(),
                         value,
