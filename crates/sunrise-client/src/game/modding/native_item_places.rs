@@ -86,7 +86,8 @@ impl Game<'_> {
                 Some(*player)
             }
             ItemPlace::PlayerCursor { menu } => self
-                .menu_carried(*menu)
+                .native_menu_guest(*menu)
+                .filter(|guest| !Self::menu_cursor_retired(guest))
                 .map(|_| menu.fields().player.uuid()),
             _ => None,
         }
@@ -325,6 +326,9 @@ impl Game<'_> {
             }
             ItemPlace::PlayerCursor { menu } => {
                 let guest = self.native_menu_guest(*menu)?;
+                if Self::menu_cursor_retired(guest) {
+                    return None;
+                }
                 if self.lan_acting == Some(guest.conn) {
                     self.carried.as_ref()
                 } else {
@@ -487,6 +491,7 @@ impl Game<'_> {
             ItemPlace::PlayerCursor { menu } => {
                 let guest = self
                     .native_menu_guest(menu)
+                    .filter(|guest| !Self::menu_cursor_retired(guest))
                     .ok_or(ItemPlaceEditError::NotHeld)?;
                 let player = guest.uuid;
                 let (parked, carried) = if self.lan_acting == Some(guest.conn) {

@@ -201,7 +201,7 @@ impl Game<'_> {
     }
 
     /// The backing of `conn`'s menu: its window and number of slots.
-    fn menu_places_of(&self, conn: u32) -> Option<(i32, usize, Option<usize>)> {
+    pub(super) fn menu_places_of(&self, conn: u32) -> Option<(i32, usize, Option<usize>)> {
         let backed = self.active_menu_places(conn)?;
         Some((backed.window, backed.places.len(), backed.locked))
     }
@@ -397,6 +397,56 @@ impl Game<'_> {
         })
     }
 
+    /// What the menu's own slot rules (`menu_slot_rules`, the locked held-backpack slot) say of a
+    /// backed slot: whether it may take `amount` of `resource`, whether it may give its stack up,
+    /// and how many it holds. Click admission and the slot probes both ask this, so a probe
+    /// answers what a click would do.
+    pub(super) fn place_menu_rules(
+        &self,
+        conn: u32,
+        size: usize,
+        locked: Option<usize>,
+        slot: usize,
+        resource: &ItemResource,
+        amount: u32,
+    ) -> (bool, bool, u32) {
+        if locked.is_some() && native_menu_inventory_slot(size, slot as i32) == locked {
+            return (false, false, 0);
+        }
+        let Some(guest) = self.lan.as_ref().and_then(|lan| lan.hub.guest(conn)) else {
+            return (false, false, 0);
+        };
+        let Some(open) = guest.menu.as_ref() else {
+            return (false, false, 0);
+        };
+        if !self.listens(&open.registry_id) {
+            return (true, true, u32::MAX);
+        }
+        let Some(stack) = resource
+            .to_stack(amount)
+            .and_then(|stack| stack.try_into_engine(self.items()).ok())
+        else {
+            return (true, true, u32::MAX);
+        };
+        apply_menu_slot_rules(
+            Some(self),
+            &open.registry_id,
+            native_menu_inventory_slot(size, slot as i32).unwrap_or(slot),
+            &stack,
+            SlotContext::blockless(
+                guest,
+                open.pos.map(|(x, y, z)| [x, y, z]),
+                if slot < size {
+                    MenuContainer::Main
+                } else {
+                    MenuContainer::Player
+                },
+            ),
+            (true, true, u32::MAX),
+            item_max_stack(self.items(), &stack),
+        )
+    }
+
     /// A click on a backed menu (`AbstractContainerMenu.clicked`'s `PICKUP` and `QUICK_MOVE`),
     /// done through the places' handlers in one transaction. `None` lets ordinary display-menu
     /// routing run, for a menu no mod backed or a click this backing does not handle. Before any
@@ -438,41 +488,7 @@ impl Game<'_> {
             true
         } else if inventory.is_none() || inventory != locked {
             let accepts = |game: &Game<'_>, slot, resource: &ItemResource, amount| {
-                if locked.is_some() && native_menu_inventory_slot(size, slot as i32) == locked {
-                    return (false, false, 0);
-                }
-                let Some(guest) = game.lan.as_ref().and_then(|lan| lan.hub.guest(conn)) else {
-                    return (false, false, 0);
-                };
-                let Some(open) = guest.menu.as_ref() else {
-                    return (false, false, 0);
-                };
-                if !game.listens(&open.registry_id) {
-                    return (true, true, u32::MAX);
-                }
-                let Some(stack) = resource
-                    .to_stack(amount)
-                    .and_then(|stack| stack.try_into_engine(game.items()).ok())
-                else {
-                    return (true, true, u32::MAX);
-                };
-                apply_menu_slot_rules(
-                    Some(game),
-                    &open.registry_id,
-                    native_menu_inventory_slot(size, slot as i32).unwrap_or(slot),
-                    &stack,
-                    SlotContext::blockless(
-                        guest,
-                        open.pos.map(|(x, y, z)| [x, y, z]),
-                        if slot < size {
-                            MenuContainer::Main
-                        } else {
-                            MenuContainer::Player
-                        },
-                    ),
-                    (true, true, u32::MAX),
-                    item_max_stack(game.items(), &stack),
-                )
+                game.place_menu_rules(conn, size, locked, slot, resource, amount)
             };
             if pickup {
                 click_pickup(self, menu, at, button == 1, accepts)
@@ -1484,6 +1500,12 @@ mod tests {
             host.transaction(|host, tx| hidden.extract(host, tx, &stone, 5)),
             Ok(0)
         );
+        // The probes answer what a click would: the handler permits both, the menu's rules veto.
+        let stone_stack =
+            mod_api::ItemStack::new(mod_api::__private::item_key("minecraft:stone").unwrap(), 1)
+                .unwrap();
+        assert_eq!(menu.probe_slot_holds(game, 0, &stone_stack), Ok(Some(0)));
+        assert_eq!(menu.probe_slot_gives(game, 0), Ok(Some(false)));
         let contents = |game: &mut Game<'_>| {
             (0..45)
                 .map(|slot| {
