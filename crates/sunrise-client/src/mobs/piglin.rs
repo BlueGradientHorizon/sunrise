@@ -1895,9 +1895,9 @@ pub fn client_converting(m: &mut Mob, nether: bool) {
     m.extra.counter2 = i32::from(!nether && !m.extra.flag2 && !m.no_ai);
 }
 /// The piglin's, brute's and hoglin's brain in `customServerAiStep`, before
-/// [`brain_step`]: the hoglin's repellent sensor, the hunt cooldown, a piglin
-/// dropping a dead or unseen hoglin, the brute's `updateActivity` and growl,
-/// and the memories that run out (`ANGRY_AT`, admiring). It runs inside
+/// [`brain_step`]: the piglin's and hoglin's sensors, the hunt cooldown, a
+/// piglin dropping a dead or unseen hoglin, and the brute's `updateActivity`
+/// and growl. [`memories_run_out`] follows the activity update. It runs inside
 /// `Mob.serverAiStep` (`ai::server_ai_step`), so a step a mod skips skips it.
 pub fn brain_tick(
     m: &mut Mob,
@@ -1907,6 +1907,11 @@ pub fn brain_tick(
 ) {
     if m.species() == Species::Hoglin && m.alive() {
         hoglin_repellent(m, w);
+    }
+    // PiglinSpecificSensor (every 20 ticks): the nearest repelling block.
+    if m.species() == Species::Piglin && m.alive() && m.age.wrapping_add(m.id).is_multiple_of(20) {
+        m.extra.repellent = find_piglin_repellent(m, w);
+        piglin_sense(m, w);
     }
     if m.species() == Species::Piglin {
         if m.extra.ints[0] > 0 {
@@ -1928,6 +1933,15 @@ pub fn brain_tick(
         update_activity(m, w, events);
         maybe_play_brute_sound(m, level_random, events);
     }
+}
+/// `Brain.forgetOutdatedMemories` for the piglin's, brute's and hoglin's
+/// countdowns (`ANGRY_AT`, which drops a player target it no longer hates, and
+/// the admiring memories), after `updateActivity`. Vanilla forgets them in
+/// `Brain.tick`, before `updateActivity`, but `MemorySlot.tick` only clears a
+/// memory whose time to live is already 0 and otherwise counts it down: a
+/// countdown here that reaches 0 was still there for that tick's activity, as
+/// when it is counted down after the activity update.
+pub fn memories_run_out(m: &mut Mob, w: &MobWorld) {
     if m.extra.anger > 0 {
         m.extra.anger -= 1;
         if m.extra.anger == 0
@@ -1946,10 +1960,9 @@ pub fn brain_tick(
     b.seen_admire = (b.seen_admire - 1).max(0);
     b.ate_recently = (b.ate_recently - 1).max(0);
 }
-/// Per-tick piglin, piglin brute and hoglin state outside the brain: a
-/// piglin's admiring item in use and the sensor for repellents, zombification,
-/// and the hoglin attack animation.
-pub fn ai_step(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
+/// Per-tick piglin, piglin brute and hoglin state outside `Mob.serverAiStep`: a
+/// piglin's admiring item in use and the hoglin attack animation.
+pub fn ai_step(m: &mut Mob, events: &mut Vec<MobEvent>) {
     if m.extra.anim_ticks > 0 {
         m.extra.anim_ticks -= 1;
     }
@@ -1960,6 +1973,13 @@ pub fn ai_step(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
             events.push(MobEvent::FinishAdmiring { mob: m.id });
         }
     }
+}
+/// `AbstractPiglin.customServerAiStep` and the end of `Hoglin.customServerAiStep`,
+/// after the activity update: the zombification count outside the Nether
+/// (piglins and brutes without immunity, hoglins) and, past 300 ticks, the
+/// conversion. It runs inside `Mob.serverAiStep` (`ai::server_ai_step`), before
+/// travel, so a step a mod skips neither counts nor converts.
+pub fn zombification_tick(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
     // Zombification outside the Nether (piglins without immunity, hoglins).
     if w.dimension_type.piglins_zombify && !m.extra.flag2 && m.alive() {
         m.extra.counter2 += 1;
@@ -2029,11 +2049,6 @@ pub fn ai_step(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
         }
     } else {
         m.extra.counter2 = 0;
-    }
-    // PiglinSpecificSensor (every 20 ticks): the nearest repelling block.
-    if m.species() == Species::Piglin && m.alive() && m.age.wrapping_add(m.id).is_multiple_of(20) {
-        m.extra.repellent = find_piglin_repellent(m, w);
-        piglin_sense(m, w);
     }
 }
 /// `PiglinSpecificSensor.findNearestRepellent`: the nearest `#piglin_repellents`
@@ -2748,7 +2763,7 @@ mod conversion_tests {
             m.extra.using_item = 60;
             m.extra.counter2 = CONVERSION + 1;
             let mut events = Vec::new();
-            ai_step(&mut m, w, &mut events);
+            zombification_tick(&mut m, w, &mut events);
             let relevant: Vec<_> = events
                 .iter()
                 .filter(|e| {
@@ -2799,7 +2814,7 @@ mod conversion_tests {
             m.extra.using_item = 60;
             m.extra.counter2 = CONVERSION + 1;
             let mut events = Vec::new();
-            ai_step(&mut m, w, &mut events);
+            zombification_tick(&mut m, w, &mut events);
             assert!(
                 events.iter().any(|e| matches!(
                     e,

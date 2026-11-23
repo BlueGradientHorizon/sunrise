@@ -3309,7 +3309,9 @@ fn ai_step(
         super::piglin::before_goals(m, w, level.random(), events);
     }
     if m.alive() && !immobile {
-        server_ai_step(m, w, level, events, pause_movement)?;
+        if !server_ai_row::cancels_head() {
+            server_ai_step(m, w, level, events, pause_movement)?;
+        }
     } else {
         m.ai.jumping = false;
         m.ai.xxa = 0.0;
@@ -3901,6 +3903,39 @@ mod selector_restore_tests {
     }
 }
 
+/// What a native row's cancelling `HEAD` on `server_ai_step` leaves of `ai_step`: the staged
+/// copy returns `Continue(())` before the body, so `ai_step` goes on as after the step. A test
+/// turns it on for its own thread; a plain build never cancels.
+#[cfg(not(test))]
+mod server_ai_row {
+    #[inline(always)]
+    pub(super) fn cancels_head() -> bool {
+        false
+    }
+}
+#[cfg(test)]
+mod server_ai_row {
+    use std::cell::Cell;
+    std::thread_local! {
+        static CANCEL: Cell<bool> = const { Cell::new(false) };
+    }
+    pub(super) fn cancels_head() -> bool {
+        CANCEL.get()
+    }
+    /// Run `f` with the step's `HEAD` cancelled on this thread.
+    pub(super) fn cancelled<R>(f: impl FnOnce() -> R) -> R {
+        struct Restore;
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                CANCEL.set(false);
+            }
+        }
+        CANCEL.set(true);
+        let _restore = Restore;
+        f()
+    }
+}
+
 #[cfg(test)]
 mod server_ai_brain_tests {
     use super::*;
@@ -3953,6 +3988,145 @@ mod server_ai_brain_tests {
         let (celebration, spot, admire_disabled, anger) = outcome.unwrap();
         assert!(celebration > 0 && spot, "the celebration starts");
         assert_eq!((admire_disabled, anger), (4, 4));
+    }
+
+    /// A piglin, brute or hoglin one tick from converting (`timeInOverworld` at 300), on the
+    /// tick its repellent sensor runs, with a repellent remembered that isn't there.
+    fn about_to_convert(types: &super::super::MobTypes, name: &str) -> Mob {
+        let mut m = Mob::new(
+            1,
+            Arc::new(types.types[name].clone()),
+            Vec3::new(0.5, 64.0, 0.5),
+            0.0,
+        );
+        m.extra.counter2 = 300;
+        // The tick counts it to 19 first; 19 + id 1 is the sensors' 20-tick beat.
+        m.age = 18;
+        m.extra.repellent = Some([7, 7, 7]);
+        m
+    }
+
+    /// One whole tick of `m`: whether it converted, its zombification count and the
+    /// repellent it remembers after.
+    fn one_tick(w: &MobWorld, mut m: Mob) -> (bool, i32, Option<[i32; 3]>) {
+        let mut level = crate::health::TestLevel::new(0);
+        let mut events = Vec::new();
+        tick(&mut m, w, &mut level.level(), &mut events);
+        let converted = events.iter().any(|e| matches!(e, MobEvent::Convert { .. }));
+        (converted, m.extra.counter2, m.extra.repellent)
+    }
+
+    /// `AbstractPiglin` and `Hoglin.customServerAiStep` own the zombification, and
+    /// `Piglin.customServerAiStep`'s brain runs `PiglinSpecificSensor` (`Hoglin`'s runs
+    /// `HoglinSpecificSensor`): all of it is inside `Mob.serverAiStep`. A native row that
+    /// cancels the step at `HEAD` leaves the count, the conversion and the sensor alone; the
+    /// same tick without the row converts and senses.
+    #[test]
+    #[ignore = "daily"]
+    fn a_cancelled_server_ai_step_skips_the_conversion_and_the_sensor() {
+        let ran = with_test_world(&[], |w, types| {
+            let mut world = w.clone();
+            world.player = None;
+            for name in [
+                "minecraft:piglin",
+                "minecraft:piglin_brute",
+                "minecraft:hoglin",
+            ] {
+                let skipped =
+                    server_ai_row::cancelled(|| one_tick(&world, about_to_convert(types, name)));
+                assert_eq!(
+                    skipped,
+                    (false, 300, Some([7, 7, 7])),
+                    "{name}, step cancelled"
+                );
+                let (converted, _, _) = one_tick(&world, about_to_convert(types, name));
+                assert!(converted, "{name} converts when its step runs");
+            }
+            for name in ["minecraft:piglin", "minecraft:hoglin"] {
+                let (_, _, repellent) = one_tick(&world, about_to_convert(types, name));
+                assert_eq!(repellent, None, "{name}'s sensor runs with its step");
+            }
+        });
+        assert!(ran, "vanilla data is missing");
+    }
+
+    /// `Piglin.customServerAiStep` is `Brain.tick`, then `PiglinAi.updateActivity`. In
+    /// `Brain.tick`, `forgetOutdatedMemories` clears a memory only once its time to live is
+    /// already 0 (`MemorySlot.tick`) and otherwise counts it down, so a seen item's
+    /// `ADMIRING_ITEM` with one tick left is still there for that tick's `updateActivity`: the
+    /// piglin admires through that tick and goes idle on the next.
+    #[test]
+    #[ignore = "daily"]
+    fn a_piglin_admires_through_the_last_tick_of_its_memory() {
+        let ran = with_test_world(&[], |w, types| {
+            let mut world = w.clone();
+            world.player = None;
+            let mut level = crate::health::TestLevel::new(0);
+            let mut events = Vec::new();
+            let mut m = Mob::new(
+                1,
+                Arc::new(types.types["minecraft:piglin"].clone()),
+                Vec3::new(0.5, 64.0, 0.5),
+                0.0,
+            );
+            m.extra.piglin.seen_admire = 1;
+            m.extra.piglin.activity = super::super::piglin::Activity::Admire;
+            let _ = server_ai_step(&mut m, &world, &mut level.level(), &mut events, false);
+            assert_eq!(
+                (m.extra.piglin.activity, m.extra.piglin.seen_admire),
+                (super::super::piglin::Activity::Admire, 0),
+                "the last tick still admires"
+            );
+            let _ = server_ai_step(&mut m, &world, &mut level.level(), &mut events, false);
+            assert_eq!(
+                m.extra.piglin.activity,
+                super::super::piglin::Activity::Idle
+            );
+        });
+        assert!(ran, "vanilla data is missing");
+    }
+
+    /// `PiglinBrute.customServerAiStep` runs `updateActivity` and `maybePlayActivitySound`
+    /// inside `Mob.serverAiStep`, which `LivingEntity.aiStep` calls before `travel`: a moving
+    /// brute that starts fighting growls where it stood before it moved.
+    #[test]
+    #[ignore = "daily"]
+    fn a_moving_brutes_fight_growl_comes_from_before_travel() {
+        let ran = with_test_world(&[], |w, types| {
+            let mut world = w.clone();
+            world.player = Some(test_player(Vec3::new(4.5, 64.0, 0.5)));
+            let mut level = crate::health::TestLevel::new(0);
+            let mut events = Vec::new();
+            let mut m = Mob::new(
+                1,
+                Arc::new(types.types["minecraft:piglin_brute"].clone()),
+                Vec3::new(0.5, 64.0, 0.5),
+                0.0,
+            );
+            m.ai.target = Some(Who::Player);
+            m.extra.piglin.activity = super::super::piglin::Activity::Idle;
+            m.velocity = Vec3::new(0.3, 0.0, 0.0);
+            let before = [m.position.x, m.position.y, m.position.z];
+            tick(&mut m, &world, &mut level.level(), &mut events);
+            assert_ne!(
+                [m.position.x, m.position.y, m.position.z],
+                before,
+                "it moved"
+            );
+            let growls: Vec<_> = events
+                .iter()
+                .filter_map(|e| match e {
+                    MobEvent::Sound("entity.piglin_brute.angry", at, ..) => Some(*at),
+                    _ => None,
+                })
+                .collect();
+            assert!(!growls.is_empty(), "the fight starts with a growl");
+            assert!(
+                growls.iter().all(|at| *at == before),
+                "{growls:?} != {before:?}"
+            );
+        });
+        assert!(ran, "vanilla data is missing");
     }
 }
 
@@ -4145,12 +4319,19 @@ fn custom_server_ai_step(m: &mut Mob, cx: &mut Cx) {
         Species::Evoker | Species::Illusioner if m.extra.counter > 0 => m.extra.counter -= 1,
         Species::Bat => super::bat::server_ai_step(m, cx.w, cx.events),
         Species::Frog => super::frog::server_ai_step(m, cx.w),
-        // Hoglin, Piglin and PiglinBrute.customServerAiStep: the brain, then updateActivity.
+        // Hoglin, Piglin and PiglinBrute.customServerAiStep: the brain, then updateActivity,
+        // then (AbstractPiglin.customServerAiStep for both piglins) the zombification.
         Species::Piglin | Species::Hoglin => {
             super::piglin::brain_tick(m, cx.w, cx.level.random(), cx.events);
             super::piglin::brain_step(m, cx);
+            super::piglin::memories_run_out(m, cx.w);
+            super::piglin::zombification_tick(m, cx.w, cx.events);
         }
-        Species::PiglinBrute => super::piglin::brain_tick(m, cx.w, cx.level.random(), cx.events),
+        Species::PiglinBrute => {
+            super::piglin::brain_tick(m, cx.w, cx.level.random(), cx.events);
+            super::piglin::memories_run_out(m, cx.w);
+            super::piglin::zombification_tick(m, cx.w, cx.events);
+        }
         Species::Zoglin => super::piglin::zoglin_step(m, cx),
         _ => {}
     }
@@ -4173,7 +4354,7 @@ fn species_ai_step(
         Species::Cat => super::tame::cat_ai_step(m, events),
         Species::IronGolem => super::golem::iron_ai_step(m, w),
         Species::Piglin | Species::PiglinBrute | Species::Hoglin => {
-            super::piglin::ai_step(m, w, events)
+            super::piglin::ai_step(m, events)
         }
         Species::Zoglin if m.extra.anim_ticks > 0 => m.extra.anim_ticks -= 1,
         s if super::equine::is_equine(s) => super::equine::ai_step(m, w, events),
