@@ -349,6 +349,9 @@ mod player_boolean_tests;
 mod snorm_tests;
 
 #[cfg(test)]
+mod far_location_tests;
+
+#[cfg(test)]
 mod terrain_parts_tests;
 
 #[cfg(test)]
@@ -409,3 +412,6 @@ mod colortex_mip_blend_tests;
 
 #[cfg(test)]
 mod material_route_tests;
+
+#[cfg(test)]
+mod sign_text_target_tests;

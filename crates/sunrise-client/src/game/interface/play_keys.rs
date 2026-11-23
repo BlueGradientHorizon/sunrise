@@ -88,6 +88,11 @@ impl Game<'_> {
         {
             return Ok(());
         }
+        // Escape cancels a press on the item panel; one that is a drag takes
+        // the Escape, and the screen stays open.
+        if key == KeyCode::Escape && self.mod_browser_drag_escape() {
+            return Ok(());
+        }
         if key == KeyCode::Escape && self.mod_browser_back() {
             return Ok(());
         }
@@ -155,7 +160,6 @@ impl Game<'_> {
                 Screen::Mod => self.close_mod_screen(),
                 Screen::HudEditor => self.close_hud_editor(),
             },
-            KeyCode::KeyL if self.screen == Screen::Advancements => self.close_advancements(),
             KeyCode::F11 => self.toggle_fullscreen(),
             KeyCode::KeyE
                 if self.screen == Screen::Creative && self.creative_screen.tab().search => {}

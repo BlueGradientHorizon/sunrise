@@ -398,6 +398,10 @@ pub(super) struct GameLevel<'g, 'a> {
     /// The mob a listened position check created and lent, which the spawn
     /// that follows takes rather than creating it again ([`Checked`]).
     checked: std::cell::RefCell<Option<Checked>>,
+    /// Single-entry cache of the last looked-up chunk: natural spawning makes
+    /// dozens of block, heightmap, light, biome and structure queries in the
+    /// same chunk per pass.
+    last_chunk: std::cell::Cell<Option<((i32, i32), Option<&'g sunrise_client::chunk::Chunk>)>>,
 }
 /// The mob a listened `mob_spawn_position_check` created for its lend, held
 /// until the spawn takes it, and the provisional count before it was
@@ -465,10 +469,22 @@ impl MobBoxes {
             .chain(all.into_iter().flatten().copied())
     }
 }
-impl GameLevel<'_, '_> {
+impl<'g> GameLevel<'g, '_> {
     /// Every player in the level ([`Game::level_players`]).
     pub(super) fn players(&self) -> &[LevelPlayer] {
         &self.search.players
+    }
+    #[inline]
+    fn chunk_at(&self, cx: i32, cz: i32) -> Option<&'g sunrise_client::chunk::Chunk> {
+        let key = (cx, cz);
+        if let Some((cached, chunk)) = self.last_chunk.get()
+            && cached == key
+        {
+            return chunk;
+        }
+        let chunk = self.w.world.chunk_at(cx, cz);
+        self.last_chunk.set(Some((key, chunk)));
+        chunk
     }
     /// The mobs not removed whose boxes may meet `area` (callers test them).
     fn mobs_near(&self, area: Aabb) -> Box<dyn Iterator<Item = MobBox> + '_> {
@@ -528,10 +544,23 @@ impl GameLevel<'_, '_> {
         true
     }
     fn biome(&self, x: i32, y: i32, z: i32) -> Option<&BiomeInfo> {
-        self.game.spawn_biome([x, y, z])
+        Some(self.w.biomes.get(self.noise_biome(x, y, z)?))
+    }
+    #[inline]
+    fn noise_biome(&self, x: i32, y: i32, z: i32) -> Option<u16> {
+        self.w
+            .world
+            .noise_biome_with_chunk(x, y, z, self.chunk_at(x >> 4, z >> 4))
+    }
+    #[inline]
+    fn light(&self, x: i32, y: i32, z: i32) -> u8 {
+        self.w
+            .world
+            .light_with_chunk(x, y, z, self.chunk_at(x >> 4, z >> 4))
     }
     fn zoomed_biome(&self, x: i32, y: i32, z: i32) -> Option<&BiomeInfo> {
-        self.game.zoomed_spawn_biome([x, y, z])
+        let [x, y, z] = self.game.zoomed_spawn_cell([x, y, z]);
+        self.biome(x, y, z)
     }
     /// A provisional id, distinct within the pass and mapped to a real one
     /// by [`Game::add_spawned`].
@@ -740,7 +769,9 @@ impl SpawnLevel for GameLevel<'_, '_> {
             .is_within_bounds(f64::from(x), f64::from(z), 0.0)
     }
     fn state(&self, x: i32, y: i32, z: i32) -> BlockStateId {
-        self.w.state(x, y, z)
+        self.w
+            .world
+            .block_with_chunk(x, y, z, self.chunk_at(x >> 4, z >> 4))
     }
     fn facts(&self) -> &BlockFacts {
         self.w.facts
@@ -754,13 +785,13 @@ impl SpawnLevel for GameLevel<'_, '_> {
     // Level.getBiome: the zoomed biome.
     fn biome_tag(&self, tag: &str, x: i32, y: i32, z: i32) -> bool {
         let [x, y, z] = self.game.zoomed_spawn_cell([x, y, z]);
-        self.w.biome_tag(tag, x, y, z)
+        self.w.spawn_biome_tag(tag, self.noise_biome(x, y, z))
     }
     fn sky_light(&self, x: i32, y: i32, z: i32) -> i32 {
-        self.w.sky_light(x, y, z)
+        self.w.spawn_sky_light(|| self.light(x, y, z))
     }
     fn block_light(&self, x: i32, y: i32, z: i32) -> i32 {
-        self.w.block_light(x, y, z)
+        sunrise_client::mobs::spawn_rules::spawn_block_light(self.light(x, y, z))
     }
     fn sky_darken(&self) -> i32 {
         SpawnLevel::sky_darken(&self.w)
@@ -772,7 +803,8 @@ impl SpawnLevel for GameLevel<'_, '_> {
         self.w.sea_level()
     }
     fn world_surface(&self, x: i32, z: i32) -> i32 {
-        self.w.world_surface(x, z)
+        self.w
+            .spawn_world_surface(x, z, self.chunk_at(x >> 4, z >> 4))
     }
     fn peaceful(&self) -> bool {
         self.w.peaceful()
@@ -917,6 +949,12 @@ impl NaturalLevel for GameLevel<'_, '_> {
         z: i32,
         wanted: &dyn Fn(&str) -> bool,
     ) -> Vec<StructureAt> {
+        if self
+            .chunk_at(x >> 4, z >> 4)
+            .is_none_or(|c| c.structure_refs.is_empty())
+        {
+            return Vec::new();
+        }
         self.game
             .structures_reaching_where([x, y, z], wanted)
             .into_iter()
@@ -959,7 +997,7 @@ impl NaturalLevel for GameLevel<'_, '_> {
     }
     /// `ServerLevel.canSpawnEntitiesInChunk`: the whole chunk is inside the border.
     fn can_spawn_in_chunk(&self, cx: i32, cz: i32) -> bool {
-        self.game.world.chunks.contains_key(&(cx, cz))
+        self.chunk_at(cx, cz).is_some()
             && self.within_world_border(cx << 4, cz << 4)
             && self.within_world_border((cx << 4).wrapping_add(15), (cz << 4).wrapping_add(15))
     }
@@ -1023,7 +1061,7 @@ impl NaturalLevel for GameLevel<'_, '_> {
         // narrower than its chunks' column would read the column's bottom).
         let min_y = world.shape.min_y;
         if kind == Heightmap::WorldSurface {
-            return self.w.world_surface(x, z).max(min_y);
+            return self.world_surface(x, z).max(min_y);
         }
         world
             .chunks
@@ -1187,6 +1225,7 @@ impl<'a> Game<'a> {
             costed,
             spawner: None,
             checked: Default::default(),
+            last_chunk: Default::default(),
         }
     }
     /// Gives a spawn pass's provisional mobs (the `u32::MAX - n` ids
@@ -1487,7 +1526,7 @@ impl<'a> Game<'a> {
                         || sunrise_client::mobs::ai::requires_custom_persistence(m),
                 })
                 .collect();
-            let players = players
+            let spawn_players: Vec<SpawnPlayer> = players
                 .iter()
                 .map(|p| SpawnPlayer {
                     position: [p.position.x, p.position.y, p.position.z],
@@ -1496,7 +1535,8 @@ impl<'a> Game<'a> {
                 .collect();
             laps.lap("sn_materialize");
             let buffers = std::mem::take(&mut scratch.spawn_buffers);
-            let state = self.natural_spawn_state(&level, spawnable, players, buffers, &counted);
+            let state =
+                self.natural_spawn_state(&level, spawnable, spawn_players, buffers, &counted);
             scratch.pass.players = level.search;
             laps.lap("sn_state");
             let categories = self.natural_categories(&state);

@@ -45,8 +45,14 @@ impl Game<'_> {
         let at = item.position;
         self.post_item_damage(at, causing);
         if item.health <= 0 {
-            let contents = item.hurt(0).unwrap_or_default();
-            self.spawn_destroyed_contents(contents.into_iter().map(|stack| (stack, at)).collect());
+            if mod_api::__private::item_listens(mod_api::HookId::ItemDestroyed, &item.stack.item) {
+                self.item_destroyed_damage = Some((item.id, damage_type.to_owned()));
+            } else {
+                let contents = item.hurt(0).unwrap_or_default();
+                self.spawn_destroyed_contents(
+                    contents.into_iter().map(|stack| (stack, at)).collect(),
+                );
+            }
         }
         true
     }
@@ -122,6 +128,26 @@ impl Game<'_> {
             position,
         );
         if items[index].health <= 0 {
+            let at = items[index].position;
+            let deferred = self
+                .item_destroyed_damage
+                .take_if(|(destroyed_id, _)| *destroyed_id == id)
+                .map(|(_, ty)| ty);
+            if let Some(ty) = deferred {
+                self.put_back_dropped(items);
+                let contents = if let Some(k) = self.dropped.iter().position(|item| item.id == id) {
+                    self.destroy_item_entity_drops(k, &ty)
+                } else {
+                    Vec::new()
+                };
+                if let Some(k) = self.dropped.iter().position(|item| item.id == id) {
+                    self.dropped.remove(k);
+                }
+                self.spawn_destroyed_contents(
+                    contents.into_iter().map(|stack| (stack, at)).collect(),
+                );
+                return hurt;
+            }
             items.remove(index);
         }
         self.put_back_dropped(items);

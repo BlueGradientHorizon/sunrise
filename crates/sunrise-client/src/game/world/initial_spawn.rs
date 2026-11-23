@@ -129,7 +129,7 @@ impl Game<'_> {
             if self.spawn_spiral.tested() {
                 let (cx, cz) = (ox + dx, oz + dz);
                 if wait {
-                    if !self.load_full_chunk(None, (cx, cz)) {
+                    if self.load_full_chunk(None, (cx, cz)).is_err() {
                         return Err(format!("could not load initial spawn chunk {cx},{cz}").into());
                     }
                 } else if !self.streaming.is_lit(cx, cz) {

@@ -51,6 +51,7 @@ impl Game<'_> {
             sunrise_client::entities::ObstacleGrid::new(self.entity_collisions(Mover::Passive));
         let mut nearby = Vec::new();
         let mut bubble_tops = Vec::new();
+        let mut destroyed = Vec::new();
         let mut moves = ahead::Moves::work_out(self, &items, &obstacles, round, |item| {
             !self.joined_during_entity_pass(item.id)
                 && ticking(
@@ -110,6 +111,7 @@ impl Game<'_> {
             if round.canceled(items[i].id) {
                 continue;
             }
+            let mut env_destroyed = None;
             'tick: {
                 if round.halted(items[i].id) {
                     break 'tick;
@@ -171,9 +173,27 @@ impl Game<'_> {
                     self.apply_item_splash(splash);
                 }
                 if discarded {
-                    removed[i] = true;
-                    gone = true;
-                    cells.remove(i, item.previous);
+                    if merging
+                        && item.health <= 0
+                        && mod_api::__private::item_listens(
+                            mod_api::HookId::ItemDestroyed,
+                            &item.stack.item,
+                        )
+                    {
+                        let damage_type = self
+                            .item_destroyed_damage
+                            .take_if(|(destroyed_id, _)| *destroyed_id == item.id)
+                            .map(|(_, ty)| ty)
+                            .unwrap_or_else(|| "minecraft:generic".to_owned());
+                        cells.moved(i, item.previous, item.position);
+                        env_destroyed = Some((item.id, item.position, damage_type));
+                    } else {
+                        self.item_destroyed_damage
+                            .take_if(|(destroyed_id, _)| *destroyed_id == item.id);
+                        removed[i] = true;
+                        gone = true;
+                        cells.remove(i, item.previous);
+                    }
                     break 'tick;
                 }
                 if merging && !no_physics {
@@ -271,6 +291,34 @@ impl Game<'_> {
                     );
                 }
             }
+            if let Some((id, at, damage_type)) = env_destroyed {
+                let mut drops = Vec::new();
+                let given =
+                    self.give_items_back(items, &mut removed, &mut cells, &mut gone, i, |game| {
+                        drops = if let Some(k) =
+                            native_ticks::place(&game.dropped, i, |item| item.id == id)
+                        {
+                            game.destroy_item_entity_drops(k, &damage_type)
+                        } else {
+                            Vec::new()
+                        };
+                        if alone && !game.dropped.iter().any(|item| item.id == id) {
+                            game.native_tick_post_one(round, id, native_ticks::ITEM);
+                        }
+                    });
+                (items, next) = (given.items, given.next);
+                for stack in drops {
+                    destroyed.push((stack, at));
+                }
+                if let Some(at_idx) = given.at {
+                    i = at_idx;
+                    removed[i] = true;
+                    gone = true;
+                    cells.remove(i, items[i].position);
+                } else {
+                    continue;
+                }
+            }
             if alone {
                 let id = items[i].id;
                 let given =
@@ -287,10 +335,12 @@ impl Game<'_> {
         items.retain(|_| !removed.next().unwrap_or(false));
         let Some(p) = self.player.as_ref() else {
             self.put_back_dropped(items);
+            self.spawn_destroyed_contents(destroyed);
             return;
         };
         if p.health.dead_or_dying() || self.spectator() {
             self.put_back_dropped(items);
+            self.spawn_destroyed_contents(destroyed);
             return;
         }
         let w = f64::from(p.dimensions.width) / 2.0;
@@ -310,6 +360,7 @@ impl Game<'_> {
         let own = self.level.ensure_player_uuid();
         self.native_player_pickups(&mut items, (min, max), feet, own);
         self.put_back_dropped(items);
+        self.spawn_destroyed_contents(destroyed);
     }
     /// Gives the lifted items back to the level for a hook that reads them live (a named item's
     /// own Pre or Post, at item `i`), then takes them again. The items gone this pass so far
