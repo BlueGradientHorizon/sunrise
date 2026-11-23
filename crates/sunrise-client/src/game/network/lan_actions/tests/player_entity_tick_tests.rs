@@ -130,7 +130,11 @@ fn a_canceled_player_skips_its_server_player_tick_while_the_others_run_it() {
             );
             assert_eq!(
                 *heard.lock().unwrap(),
-                [("pre", vec![first, second]), ("post", vec![second])]
+                [
+                    ("pre", vec![first]),
+                    ("pre", vec![second]),
+                    ("post", vec![second])
+                ]
             );
         });
     });

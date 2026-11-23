@@ -437,7 +437,7 @@ impl ClimbingWorld for FlagClimbing<'_> {
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::super::Game;
-    use super::super::native_entity_refs::tests::{record_key, with_game};
+    use super::super::native_entity_refs::tests::{fixture_resident_column, record_key, with_game};
     use mod_api::{
         BlockPart, EntityRef, Hooks, LivingRef, LoopContext, MakesOpenTrapdoorAboveClimbableEvent,
         Registrar, WorldEpoch,
@@ -449,6 +449,7 @@ pub(in crate::game) mod tests {
 
     /// A live cow `id` at `(5.5, 64, 5.5)`, with its handle.
     fn cow(game: &mut Game<'_>, id: u32) -> LivingRef {
+        fixture_resident_column(&mut game.world, (0, 0));
         let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
         game.mobs
             .push(Mob::new(id, kind, Vec3::new(5.5, 64.0, 5.5), 0.0));
@@ -580,6 +581,7 @@ pub(in crate::game) mod tests {
             vec![ModEntry::new("join_persist", Box::new(Joiner))].into(),
             || {
                 with_game(|game| {
+                    fixture_resident_column(&mut game.world, (0, 0));
                     let before = game.mobs.len();
                     game.spawn_mob_spawned(
                         "zombie",

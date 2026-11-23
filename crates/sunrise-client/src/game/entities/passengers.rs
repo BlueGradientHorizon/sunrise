@@ -1260,6 +1260,12 @@ mod nested_vehicle_discard_tests {
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_game(|game| {
                 game.options.dedicated = Some(Vec::new());
+                for column in [(0, 0), (0, 1)] {
+                    crate::game::native_entity_refs::tests::fixture_resident_column(
+                        &mut game.world,
+                        column,
+                    );
+                }
                 let at = Vec3::new(10.0, 200.0, 20.0);
                 if cart {
                     game.carts.push(super::super::minecarts::Minecart::new(
@@ -1328,6 +1334,12 @@ mod nested_vehicle_discard_tests {
                     .join(format!("guard-{:?}", std::thread::current().id())),
             );
             game.world_root = game.options.game_dir.as_ref().unwrap().join("world");
+            for column in [(0, 0), (0, 1)] {
+                crate::game::native_entity_refs::tests::fixture_resident_column(
+                    &mut game.world,
+                    column,
+                );
+            }
             let at = Vec3::new(10.0, 200.0, 20.0);
             if cart {
                 game.carts.push(super::super::minecarts::Minecart::new(

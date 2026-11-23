@@ -1084,6 +1084,7 @@ fn a_finalize_spawn_listener_keeps_the_mod_goals() {
     .unwrap();
     with_game(|game| {
         game.resolve_parts().unwrap();
+        fixture_resident_column(&mut game.world, (0, 0));
         let kind = game
             .res
             .mob_types()
@@ -1091,6 +1092,8 @@ fn a_finalize_spawn_listener_keeps_the_mod_goals() {
             .unwrap()
             .clone();
         let mut m = Mob::new(60, kind, Vec3::new(3.5, 65.0, 3.5), 0.0);
+        // The game attaches the parts where it constructs the mob (`Mob::attach_mod_parts`).
+        m.attach_mod_parts(&*game);
         m.ground.on_ground = true;
         let reason = sunrise_client::mobs::spawn_rules::Reason::Natural;
         game.finalize_with(&mut m, reason, None);
