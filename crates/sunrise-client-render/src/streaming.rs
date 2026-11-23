@@ -495,7 +495,7 @@ pub struct ProtoCensus {
     /// `ChunkGenerator::cache_census`.
     pub caches: Vec<(&'static str, usize, Option<usize>)>,
 }
-fn plan_unloads(world: &World, unload: impl Fn(i32, i32) -> bool) -> Vec<(i32, i32)> {
+fn plan_unloads(world: &World, unload: impl Fn(i32, i32) -> bool) -> HashSet<(i32, i32)> {
     world
         .chunks
         .keys()
@@ -504,10 +504,16 @@ fn plan_unloads(world: &World, unload: impl Fn(i32, i32) -> bool) -> Vec<(i32, i
         .collect()
 }
 
-fn commit_unloads(world: &mut World, keys: &[(i32, i32)]) -> Vec<Arc<Chunk>> {
-    keys.iter()
-        .filter_map(|&key| world.unload_chunk(key))
-        .collect()
+fn commit_unloads(world: &mut World, keys: &mut HashSet<(i32, i32)>) -> Vec<Arc<Chunk>> {
+    let mut removed = Vec::with_capacity(keys.len());
+    keys.retain(|&key| {
+        let Some(chunk) = world.unload_chunk(key) else {
+            return false;
+        };
+        removed.push(chunk);
+        true
+    });
+    removed
 }
 
 /// A completed mesh and the compile sequence that produced it, kept through GPU publication.
@@ -522,13 +528,13 @@ pub struct MeshUpload {
 pub struct StreamingUpdate {
     uploads: Vec<MeshUpload>,
     sweep: bool,
-    far: Vec<(i32, i32)>,
+    far: HashSet<(i32, i32)>,
     paused: bool,
 }
 
 impl StreamingUpdate {
-    /// Live columns that need to be saved before the plan removes them.
-    pub fn unloading_columns(&self) -> &[(i32, i32)] {
+    /// Columns selected for removal. After `prepare_commit`, only the columns actually removed.
+    pub fn unloading_columns(&self) -> &HashSet<(i32, i32)> {
         &self.far
     }
 
@@ -2000,7 +2006,7 @@ impl Streaming {
             return PlanStep::Ready(StreamingUpdate {
                 uploads: Vec::new(),
                 sweep: false,
-                far: Vec::new(),
+                far: HashSet::new(),
                 paused: true,
             });
         }
@@ -2122,7 +2128,7 @@ impl Streaming {
                 !self.remote && self.ranges().unloaded(x, z, self.decorates)
             })
         } else {
-            Vec::new()
+            HashSet::new()
         };
         PlanStep::Ready(StreamingUpdate {
             uploads: resume.uploads,
@@ -2136,9 +2142,9 @@ impl Streaming {
     pub fn finish_update(
         &mut self,
         world: &mut World,
-        plan: StreamingUpdate,
+        mut plan: StreamingUpdate,
     ) -> (Vec<MeshUpload>, Vec<Arc<Chunk>>) {
-        let (commit, protos) = self.prepare_commit(world, plan);
+        let (commit, protos) = self.prepare_commit(world, &mut plan);
         self.submit_protos(protos);
         self.complete_commit(world, commit)
     }
@@ -2147,15 +2153,10 @@ impl Streaming {
     pub fn prepare_commit(
         &mut self,
         world: &mut World,
-        plan: StreamingUpdate,
+        plan: &mut StreamingUpdate,
     ) -> (StreamingCommit, Vec<ProtoSave>) {
-        let StreamingUpdate {
-            uploads,
-            sweep,
-            far,
-            paused,
-        } = plan;
-        if paused {
+        let uploads = std::mem::take(&mut plan.uploads);
+        if plan.paused {
             return (
                 StreamingCommit {
                     uploads,
@@ -2168,14 +2169,13 @@ impl Streaming {
         let mut hz_laps = crate::spans::laps();
         let mut removed = Vec::new();
         let mut proto_saves = Vec::new();
-        if sweep {
+        if plan.sweep {
             self.decoration_changed = true;
-            for key in &far {
-                self.decorated.remove(key);
-            }
-            removed = commit_unloads(world, &far);
+            let far = &mut plan.far;
+            removed = commit_unloads(world, far);
             self.forget_visibility(world, far.iter().copied());
-            for key in &far {
+            for key in far.iter() {
+                self.decorated.remove(key);
                 world.entities_pending.remove(key);
                 self.lit.remove(key);
                 self.meshed.remove(key);
@@ -2183,7 +2183,6 @@ impl Streaming {
                 self.light_snapshots.remove(key);
             }
             if !far.is_empty() {
-                let far: HashSet<(i32, i32)> = far.iter().copied().collect();
                 self.meshing.retain(|k, _| !far.contains(&(k.0, k.2)));
                 self.compile_started
                     .retain(|k, _| !far.contains(&(k.0, k.2)));
@@ -4667,10 +4666,10 @@ mod tests {
         world.chunks.insert((11, 0), Arc::new(Chunk::empty(11, 0)));
         world.chunks.insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         world.modified.insert((10, 0));
-        let plan = plan_unloads(&world, |x, _| x > 5);
+        let mut plan = plan_unloads(&world, |x, _| x > 5);
         assert!(world.chunks.contains_key(&(10, 0)));
         let saved = world.chunks.get(&(10, 0)).unwrap().clone();
-        let unloaded = commit_unloads(&mut world, &plan);
+        let unloaded = commit_unloads(&mut world, &mut plan);
         assert_eq!((saved.x, saved.z), (10, 0));
         assert_eq!(unloaded.len(), 2);
         assert!(!world.chunks.contains_key(&(10, 0)));
@@ -5644,9 +5643,9 @@ mod tests {
             forced_cover: None,
             band: None,
         };
-        let planned = plan_unloads(&world, |x, z| idle.unloaded(x, z, true));
+        let mut planned = plan_unloads(&world, |x, z| idle.unloaded(x, z, true));
         assert_eq!(planned.len(), 3);
-        let unloaded = commit_unloads(&mut world, &planned);
+        let unloaded = commit_unloads(&mut world, &mut planned);
         assert_eq!(unloaded.len(), 3);
         assert!(world.chunks.is_empty());
     }

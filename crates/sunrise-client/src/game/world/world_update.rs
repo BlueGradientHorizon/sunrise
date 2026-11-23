@@ -221,21 +221,19 @@ impl Game<'_> {
             // complete before its live entities can replace the stored ones.
             plan.retain_unloading_columns(|key| !self.world.entities_pending.contains(key));
         }
-        let mut keys: std::collections::HashSet<_> =
-            plan.unloading_columns().iter().copied().collect();
         let saved = (|| -> Result<_> {
+            let keys = plan.unloading_columns();
             if keys.is_empty() {
                 return Ok(Vec::new());
             }
             self.admit_level_save()?;
             let chunks = self.with_entities(
-                plan.unloading_columns()
-                    .iter()
+                keys.iter()
                     .filter(|key| self.world.modified.contains(key))
                     .filter_map(|key| self.world.chunks.get(key)),
             );
             self.native_full_chunk_snapshots(&chunks);
-            let entities = self.unloading_entity_snapshots(&keys);
+            let entities = self.unloading_entity_snapshots(keys);
             let mut counts = Vec::new();
             if mod_api::__private::listened(mod_api::HookId::EntitiesUnload) {
                 counts.extend(entities.iter().map(|(key, rows)| (*key, rows.len())));
@@ -248,7 +246,6 @@ impl Game<'_> {
                     entities,
                 )?;
                 plan.retain_unloading_columns(|key| !refused.contains(key));
-                keys.retain(|key| !refused.contains(key));
             } else {
                 if !chunks.is_empty() {
                     self.save.save_later(
@@ -265,7 +262,8 @@ impl Game<'_> {
             plan.keep_columns();
             self.streaming.force_unload_sweep();
         }
-        let (commit, protos) = self.streaming.prepare_commit(&mut self.world, plan);
+        let (commit, protos) = self.streaming.prepare_commit(&mut self.world, &mut plan);
+        let unloaded_columns = plan.unloading_columns();
         self.native_proto_snapshots(&protos);
         self.streaming.submit_protos(protos);
         let (mut uploads, unloaded) = sunrise_client::spans::time("streaming", || {
@@ -314,30 +312,27 @@ impl Game<'_> {
                 }
             });
         }
-        for chunk in &unloaded {
-            let key = (chunk.x, chunk.z);
-            self.world.modified.remove(&key);
-            self.world.modified.unloaded(&key);
+        for key in unloaded_columns {
+            self.world.modified.remove(key);
+            self.world.modified.unloaded(key);
         }
-        if !unloaded.is_empty() {
-            self.remove_unloading_entities(&keys);
+        if !unloaded_columns.is_empty() {
+            self.remove_unloading_entities(unloaded_columns);
             if let Ok(counts) = &saved {
                 for &(chunk, count) in counts {
-                    if keys.contains(&chunk) {
+                    if unloaded_columns.contains(&chunk) {
                         self.native_entities_unload(self.dim.id(), [chunk.0, chunk.1], count);
                     }
                 }
             }
-            let gone: sunrise_client::fast_hash::FxHashSet<(i32, i32)> =
-                unloaded.iter().map(|c| (c.x, c.z)).collect();
             sunrise_client::spans::time("unload_block_entities", || {
-                for &column in &gone {
+                for &column in unloaded_columns {
                     self.world.block_entities.unload_column(column);
                 }
             });
             self.world
                 .block_names
-                .retain(|p, _| !gone.contains(&(p.0 >> 4, p.2 >> 4)));
+                .retain(|p, _| !unloaded_columns.contains(&(p.0 >> 4, p.2 >> 4)));
         }
         // LevelChunk.registerTickContainerInLevel: a chunk that became
         // resident has its tick containers before a command can schedule into

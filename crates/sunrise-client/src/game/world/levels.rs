@@ -21,6 +21,7 @@ use super::{
 };
 use mod_api::DimensionKey;
 use std::{
+    borrow::Cow,
     collections::HashMap,
     sync::Arc,
     time::{Duration, Instant},
@@ -483,6 +484,8 @@ pub(super) struct Levels {
     /// insertion-ordered `LinkedHashMap`), shared by tick, save, close and Host
     /// enumeration regardless of which level is swapped into `Game`.
     order: Vec<Dim>,
+    /// A tick holds its eligible levels across swaps and callbacks; reuse the allocation.
+    tick_order: Vec<Dim>,
     /// Whether the level held in `Game`'s own fields has been closed by server
     /// shutdown (`close_loaded_levels_for_stop`).
     pub(in crate::game) active_closed: bool,
@@ -537,6 +540,7 @@ impl Levels {
     pub(super) fn clear(&mut self) {
         self.parked.clear();
         self.order.clear();
+        self.tick_order.clear();
         self.active_closed = false;
         self.requested_saves.clear();
         self.runtime.clear();
@@ -850,6 +854,10 @@ impl Game<'_> {
 
     /// Every loaded server level in `MinecraftServer.levels` creation order.
     pub(in crate::game) fn loaded_level_order(&self) -> Vec<Dim> {
+        self.level_creation_order().into_owned()
+    }
+
+    fn level_creation_order(&self) -> Cow<'_, [Dim]> {
         #[cfg(test)]
         if self.levels.order.len()
             != self.levels.parked.len() + usize::from(!self.levels.active_closed)
@@ -864,9 +872,9 @@ impl Game<'_> {
                 .collect();
             unannounced.sort_by_key(|dim| dim_fallback_key(*dim));
             dims.extend(unannounced);
-            return dims;
+            return Cow::Owned(dims);
         }
-        self.levels.order.clone()
+        Cow::Borrowed(&self.levels.order)
     }
 
     /// `MinecraftServer.createLevels`: open every configured level from the
@@ -1345,7 +1353,8 @@ impl Game<'_> {
         }
         let observe_level =
             running.is_some() && (self.serving.is_some() || self.options.dedicated.is_some());
-        let order = self.levels_to_tick();
+        let mut order = std::mem::take(&mut self.levels.tick_order);
+        self.select_tick_levels(&mut order);
         let n = order.len();
         let mut result = Ok(());
         for phase in server_tick_phases(&order) {
@@ -1462,14 +1471,16 @@ impl Game<'_> {
                 let _span = sunrise_client::spans::guard("late_portal_arrivals");
                 let mut moved = false;
                 for &earlier in &order[..k] {
-                    if !self.arrival_chunks(earlier).is_empty() && self.enter_level(earlier).is_ok()
-                    {
+                    if self.has_portal_arrivals(earlier) && self.enter_level(earlier).is_ok() {
                         self.land_portal_arrivals();
                         moved = true;
                     }
                 }
                 if moved && k + 1 < n {
-                    self.enter_level(dim)?;
+                    result = self.enter_level(dim);
+                    if result.is_err() {
+                        break;
+                    }
                 }
             }
         }
@@ -1488,6 +1499,7 @@ impl Game<'_> {
         {
             let _ = self.enter_level(first);
         }
+        self.levels.tick_order = order;
         self.level_pass = Pass::default();
         if result.is_err() {
             self.native_lifecycle.cancel_server_tick();
@@ -1612,12 +1624,24 @@ impl Game<'_> {
     /// The loaded levels this server tick runs, in `MinecraftServer.levels`
     /// creation order. A level with no work can be skipped; the Overworld
     /// supplies the idle pass when none qualify.
-    pub(super) fn levels_to_tick(&self) -> Vec<Dim> {
-        let mut dims = self.loaded_level_order();
-        dims.retain(|&dim| self.should_tick_level(dim));
+    fn select_tick_levels(&self, dims: &mut Vec<Dim>) {
+        dims.clear();
+        let order = self.level_creation_order();
+        dims.extend(
+            order
+                .iter()
+                .copied()
+                .filter(|&dim| self.should_tick_level(dim)),
+        );
         if dims.is_empty() {
             dims.push(Dim::Overworld);
         }
+    }
+
+    #[cfg(test)]
+    pub(super) fn levels_to_tick(&self) -> Vec<Dim> {
+        let mut dims = Vec::new();
+        self.select_tick_levels(&mut dims);
         dims
     }
 
