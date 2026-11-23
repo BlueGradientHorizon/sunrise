@@ -15,7 +15,7 @@ fn tick_ends_need_the_level_the_login_makes() {
 fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit() {
     use crate::game::{
         native_client_session::tests::logged_client,
-        native_entity_refs::tests::with_client_game,
+        native_entity_refs::tests::{run_fresh_cases, with_client_game},
         remote::{Received, RemoteDimensionEntry, tests::connect_play_test},
     };
     use mod_api::__private::{HookPanicReport, take_hook_panics};
@@ -36,8 +36,16 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
     };
     use sunrise_protocol::packets::{
         configuration::CustomPayload,
-        play::{Clientbound, SpawnInfo},
+        play::{Clientbound, Login, SpawnInfo},
     };
+
+    if run_fresh_cases(
+        "game::remote::tests::client_level_lifecycle_tests::client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit",
+        "SUNRISE_CLIENT_LEVEL_LIFECYCLE_CASE",
+        &["reconfiguration"],
+    ) {
+        return;
+    }
 
     struct Notice {
         kind: &'static str,
@@ -223,10 +231,28 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
                         Received::Event(event, credit)
                     }));
                 game.poll_remote_events(true).unwrap();
-                let remote = game.remote.as_mut().unwrap();
-                remote.reconfiguring = None;
-                remote.logged_in = true;
-                game.enter_remote_dimension(&login, RemoteDimensionEntry::Login, Reason::Other);
+                let remote = game.remote.as_ref().unwrap();
+                assert!(remote.reconfiguring.is_some());
+                assert!(!remote.logged_in);
+                game.apply_packet(Clientbound::Login(Login {
+                    player_id: 8,
+                    hardcore: false,
+                    levels: vec![login.dimension.clone()],
+                    max_players: 1,
+                    chunk_radius: 2,
+                    simulation_distance: 2,
+                    reduced_debug_info: false,
+                    show_death_screen: true,
+                    limited_crafting: false,
+                    spawn: login.clone(),
+                    online_mode: false,
+                    enforces_secure_chat: false,
+                }))
+                .unwrap();
+                let remote = game.remote.as_ref().unwrap();
+                assert!(remote.reconfiguring.is_none());
+                assert!(remote.logged_in);
+                assert_eq!(remote.entity_id, 8);
                 let next = game.level(&login.dimension).unwrap();
                 assert_eq!(nether.datapack_entries(game, "levels:spell"), None);
                 assert_eq!(
