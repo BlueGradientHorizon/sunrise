@@ -844,6 +844,10 @@ impl Game<'_> {
         reg.structures = ids.structures.clone();
         reg.biomes = ids.biomes.clone();
         reg.clocks = ids.clocks.clone();
+        // The mods' clocks (`register_world_clock`) for `/time of`.
+        reg.clocks
+            .extend(mod_api::__private::world_clock_declarations());
+        reg.clocks.sort();
         reg.dimensions = vec![
             "minecraft:overworld".into(),
             "minecraft:the_nether".into(),
