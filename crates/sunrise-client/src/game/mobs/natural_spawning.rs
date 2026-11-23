@@ -3733,104 +3733,138 @@ mod tests {
         });
     }
 
+    const SILVERFISH: &str = "minecraft:silverfish";
+    const MOVED_PLAYER: [f64; 3] = [42.5, 64.0, 38.5];
+    const RESUMPTION_PLAYER: u32 = 10;
+    struct SilverfishPack {
+        move_player: bool,
+    }
+
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for SilverfishPack {
+        fn potential_spawns(
+            &self,
+            _: &dyn mod_api::Host,
+            event: &mut mod_api::PotentialSpawnsEvent<'_>,
+        ) -> mod_api::Flow {
+            if event.category == "monster" {
+                *event.entries = vec![SpawnEntry {
+                    entity: SILVERFISH.into(),
+                    weight: 1,
+                    min: 4,
+                    max: 4,
+                    constant: true,
+                }];
+            }
+            mod_api::Flow::Continue
+        }
+
+        fn entity_join_level(
+            &self,
+            host: &mut dyn mod_api::ServerHost,
+            event: &mut mod_api::EntityJoinLevelEvent<'_>,
+        ) -> mod_api::Flow {
+            if self.move_player && event.kind == SILVERFISH {
+                let player = host.entity(RESUMPTION_PLAYER).unwrap();
+                assert!(player.teleport_to(host, MOVED_PLAYER, None));
+            }
+            mod_api::Flow::Continue
+        }
+    }
+
     #[test]
     #[ignore = "daily"]
     fn resuming_the_natural_spawn_pass_keeps_the_constructor_streams() {
-        use super::super::native_entity_refs::tests::with_game;
-        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
-            "sulfur-cubes",
-            Box::new(SulfurCubesOnly),
-        )]
-        .into();
-        mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
-                let player = Vec3::new(0.5, 64.0, 0.5);
-                spawn_check_world(game, player);
-                let stone = game
-                    .pack
-                    .assets
-                    .registry
-                    .default_state("minecraft:stone")
-                    .unwrap();
-                for x in 24..64 {
-                    for z in 24..64 {
-                        game.world.set(x, 63, z, stone).unwrap();
+        use super::super::native_entity_refs::tests::{
+            bind_local_player, run_fresh_cases, with_game,
+        };
+        if run_fresh_cases(
+            concat!(
+                module_path!(),
+                "::resuming_the_natural_spawn_pass_keeps_the_constructor_streams"
+            ),
+            "SUNRISE_TEST_SEEDS",
+            &["1"],
+        ) {
+            return;
+        }
+        // Independent Java LCG calculation from NaturalSpawner.getRandomPosWithin and
+        // spawnCategoryForPosition: seed 1099 starts at (42, 64, 38). This pack picks
+        // one weighted entry and its constant count. Every silverfish passes the
+        // stone-floor predicate without drawing, then consumes one level yaw and
+        // Mob.finalizeSpawn's two doubles and one float. The per-mob states after
+        // construction are the wrapping uniquifier steps from 12345 (nextLong
+        // twice for Entity.<init>'s UUID and nextFloat for LivingEntity.<init>'s yaw).
+        const EXPECTED: [([f64; 3], u32, u64); 4] = [
+            ([44.5, 64.0, 37.5], 0x42bb_ed1c, 0xb901_cbf7_095f),
+            ([48.5, 64.0, 39.5], 0x4397_91e0, 0x1965_53db_d76b),
+            ([45.5, 64.0, 40.5], 0x430f_0a9a, 0xca79_aeb8_d527),
+            ([45.5, 64.0, 38.5], 0x42cd_912f, 0x287f_9289_3a33),
+        ];
+        for move_player in [false, true] {
+            let mods = vec![mod_api::ModEntry::new(
+                "silverfish-pack",
+                Box::new(SilverfishPack { move_player }),
+            )];
+            mod_platform::testing::with_mods(mods.into(), || {
+                with_game(|game| {
+                    let player = [0.5, 64.0, 0.5];
+                    spawn_check_world(game, Vec3::new(player[0], player[1], player[2]));
+                    bind_local_player(game, RESUMPTION_PLAYER, 10);
+                    let stone = game
+                        .pack
+                        .assets
+                        .registry
+                        .default_state("minecraft:stone")
+                        .unwrap();
+                    for x in 24..64 {
+                        for z in 24..64 {
+                            game.world.set(x, 63, z, stone).unwrap();
+                        }
                     }
-                }
-                let chunk = (2, 2);
-                let mut random = {
-                    let level = game.natural_level();
-                    (0..4096)
-                        .find_map(|seed| {
-                            let random = LegacyRandom::new(seed);
-                            let [x, y, z] =
-                                spawn_selection::spawn_start(&level, &mut random.clone(), chunk);
-                            (y == 64 && (38..=42).contains(&x) && (38..=42).contains(&z))
-                                .then_some(LevelRandom::for_level(random))
-                        })
-                        .expect("a start over the platform")
-                };
-                let state = |level: &GameLevel<'_, '_>| {
-                    SpawnState::new(
-                        level,
-                        289,
-                        vec![SpawnPlayer {
-                            position: [player.x, player.y, player.z],
-                            spectator: false,
-                        }],
-                        &[],
-                        |_, _| true,
-                    )
-                };
-                let mut reference = Vec::new();
-                let mut expected_random = random.clone();
-                {
-                    let level = game.natural_level();
-                    let mut expected_state = state(&level);
-                    let start = spawn_selection::spawn_start(&level, &mut expected_random, chunk);
-                    // Reference: one uninterrupted level view assigns all constructor IDs.
-                    spawn_selection::spawn_category_for_position(
-                        &level,
-                        &mut expected_random,
-                        &mut expected_state,
-                        Category::Monster,
-                        chunk,
-                        start,
-                        &mut |level, request, random| {
-                            let (mob, _) = level.finalize_spawned(request, random)?.primary;
-                            reference.push((mob.position, mob.random.state()));
-                            Some(spawn_selection::Spawned {
-                                cluster_size: None,
-                                school: true,
-                            })
-                        },
-                        &mut |_| {},
+                    let players = vec![SpawnPlayer {
+                        position: player,
+                        spectator: false,
+                    }];
+                    let mut state =
+                        SpawnState::new(&game.natural_level(), 289, players, &[], |_, _| true);
+                    let mut scratch = NaturalPassScratch::default();
+                    scratch.players.refresh(game);
+                    let mut random = LevelRandom::for_level(LegacyRandom::new(1099));
+                    sunrise_client::random_source::set_thread_uniquifier(12345).unwrap();
+                    game.run_natural_spawn_pass(
+                        &[Category::Monster],
+                        std::iter::once((2, 2)),
+                        &mut random,
+                        &mut state,
+                        &mut scratch,
                     );
-                }
-                assert!(
-                    reference.len() > 1,
-                    "the pass must resume after an admission"
-                );
-                let mut actual_state = state(&game.natural_level());
-                let mut scratch = NaturalPassScratch::default();
-                scratch.players.refresh(game);
-                game.run_natural_spawn_pass(
-                    &[Category::Monster],
-                    std::iter::once(chunk),
-                    &mut random,
-                    &mut actual_state,
-                    &mut scratch,
-                );
-                let actual: Vec<_> = game
-                    .mobs
-                    .iter()
-                    .filter(|mob| mob.species() == Species::SulfurCube)
-                    .map(|mob| (mob.position, mob.random.state()))
-                    .collect();
-                assert_eq!(actual, reference);
-                assert_eq!(random.next_int(), expected_random.next_int());
+                    let actual: Vec<_> = game
+                        .mobs
+                        .iter()
+                        .filter(|mob| mob.kind.id == SILVERFISH)
+                        .map(|mob| {
+                            (
+                                [mob.position.x, mob.position.y, mob.position.z],
+                                mob.yaw.to_bits(),
+                                mob.random.state(),
+                            )
+                        })
+                        .collect();
+                    if move_player {
+                        let pos = game.player.as_ref().unwrap().position;
+                        assert_eq!([pos.x, pos.y, pos.z], MOVED_PLAYER);
+                        // The join moved the player before the next search: every remaining
+                        // attempt is within 24 blocks and only consumes the offsets.
+                        assert_eq!(actual, EXPECTED[..1]);
+                        assert_eq!(random.next_int(), 260_227_472);
+                    } else {
+                        assert_eq!(actual, EXPECTED);
+                        assert_eq!(random.next_int(), 273_362_771);
+                    }
+                })
             });
-        });
+        }
     }
 
     /// `ServerLevel.tick` ticks the raids before the chunk source spawns

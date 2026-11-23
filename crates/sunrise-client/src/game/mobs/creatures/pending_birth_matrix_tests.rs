@@ -1,6 +1,6 @@
 //! Test pending children through real splitting and breeding with a native listener.
 
-use super::pending_birth_tests::{SEED, YAWS, breed_pair, cube, find, near};
+use super::pending_birth_tests::{SEED, SPLIT_DISPLACEMENT, YAWS, breed_pair, cube, find};
 use super::*;
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
 use mod_api::{BabyEntitySpawnEvent, Flow, Hooks, MobSplitEvent, ServerHost};
@@ -60,7 +60,10 @@ fn matrix(mods: mod_api::Mods) {
             assert_eq!(kids.len(), 3);
             assert_eq!(kids[0].yaw, 90.0);
             assert_eq!(kids[1].yaw, YAWS[2]);
-            assert!(near(kids[1].position.x, 10.0 - 0.52));
+            assert_eq!(
+                kids[1].position.x.to_bits(),
+                (10.0 - SPLIT_DISPLACEMENT).to_bits()
+            );
             assert_eq!(
                 (kids[2].position.x, kids[2].yaw, kids[2].extra.size),
                 (3.0, 12.0, 2)
@@ -108,14 +111,22 @@ fn matrix(mods: mod_api::Mods) {
             assert_eq!(pig.position, parent.position);
             assert_eq!(pig.yaw, 0.0);
             assert_eq!(pig.head_pitch, 0.0);
-            assert!(pig.extra.spawn_tags.iter().any(|t| t == "replaced_pig"));
+            assert!(
+                game.tags_of(crate::game::commands::Target::Mob(pig.id))
+                    .iter()
+                    .any(|t| t == "replaced_pig")
+            );
             assert_eq!(game.mobs.len(), 3);
             // A grown replacement is Invalid (4); the cow baby stays with yaw 0 and the tag.
             let (_, _, child) = breed(game, 4);
             let baby = find(game, child.unwrap());
             assert_eq!(baby.kind.id, "minecraft:cow");
             assert_eq!(baby.yaw, 0.0);
-            assert!(baby.extra.spawn_tags.iter().any(|t| t == "refused_4"));
+            assert!(
+                game.tags_of(crate::game::commands::Target::Mob(baby.id))
+                    .iter()
+                    .any(|t| t == "refused_4")
+            );
         });
     });
 }

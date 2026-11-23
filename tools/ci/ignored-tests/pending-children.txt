@@ -3,11 +3,11 @@ sunrise-client game::native_pending_children::tests::split_child_list_grows_unbo
 sunrise-client game::native_pending_children::tests::invalid_spec_and_edits_refuse_without_mutating_slot_or_list lib daily game-boot
 sunrise-client game::native_pending_children::tests::scoped_editors_coexist_with_mutable_server_host lib daily game-boot
 sunrise-client game::native_pending_children::tests::nested_pending_editors_use_independent_stack_frames lib daily game-boot
-sunrise-client game::creatures::pending_birth_tests::size_four_slime_and_magma_split_three_children_and_draw_the_vanilla_yaws lib daily game-boot
+sunrise-client game::creatures::pending_birth_tests::size_four_slime_and_magma_split_three_children_and_draw_the_vanilla_yaws lib daily child-process
 sunrise-client game::creatures::pending_birth_tests::cancelled_split_spawns_nothing_but_keeps_the_construction_draws lib daily game-boot
-sunrise-client game::creatures::pending_birth_tests::no_listener_split_is_exactly_vanilla lib daily game-boot
+sunrise-client game::creatures::pending_birth_tests::no_listener_split_is_exactly_vanilla lib daily child-process
 sunrise-client game::creatures::pending_birth_tests::sulfur_cube_splits_two_babies_unless_primed_and_size_one_asks_nobody lib daily game-boot
-sunrise-client game::creatures::pending_birth_tests::edit_remove_push_commits_a_c_d_once lib daily game-boot
+sunrise-client game::creatures::pending_birth_tests::edit_remove_push_commits_a_c_d_once lib daily child-process
 sunrise-client game::creatures::pending_birth_tests::replace_c_with_e_commits_a_b_e lib daily game-boot
 sunrise-client game::creatures::pending_birth_tests::invalid_input_fails_before_mutation_and_the_valid_list_stands lib daily game-boot
 sunrise-client game::creatures::pending_birth_tests::breeding_replaces_the_cow_baby_with_a_pig_baby lib daily game-boot

@@ -93,9 +93,9 @@ pub(super) fn cube(game: &mut Game<'_>, kind: &str, size: i32, seed: i64) -> Mob
     mob
 }
 
-pub(super) fn near(a: f64, b: f64) -> bool {
-    (a - b).abs() < 1e-4
-}
+/// The exact displacement for size four: EntityTypes' 0.52F scaled by
+/// size, then halved for the grid spacing and halved for each offset.
+pub(super) const SPLIT_DISPLACEMENT: f64 = 0.52_f32 as f64;
 
 /// The mobs the split added, in order (the fixture world starts with none).
 fn spawned(game: &Game<'_>) -> Vec<Mob> {
@@ -104,22 +104,33 @@ fn spawned(game: &Game<'_>) -> Vec<Mob> {
 
 fn assert_vanilla_children(children: &[Mob], kind: &str, first_id: u32) {
     assert_eq!(children.len(), 3);
-    // `setUpSplitCube`: a half-width offset spread over a 2x2 grid by index, 0.5 up. A size-4
-    // cube is 2.08 wide (0.52 per size), so the offset is 1.04.
-    let offset = 1.04;
+    // AbstractCubeMob.remove and setUpSplitCube widen the float offsets only
+    // when adding them to the double-valued parent position.
+    let expected = [
+        [
+            AT[0] - SPLIT_DISPLACEMENT,
+            AT[1] + 0.5,
+            AT[2] - SPLIT_DISPLACEMENT,
+        ],
+        [
+            AT[0] + SPLIT_DISPLACEMENT,
+            AT[1] + 0.5,
+            AT[2] - SPLIT_DISPLACEMENT,
+        ],
+        [
+            AT[0] - SPLIT_DISPLACEMENT,
+            AT[1] + 0.5,
+            AT[2] + SPLIT_DISPLACEMENT,
+        ],
+    ];
     for (i, child) in children.iter().enumerate() {
         assert_eq!(child.kind.id, kind);
         assert_eq!(child.id, first_id + i as u32, "ids are issued in order");
         assert_eq!(child.extra.size, 2);
-        assert!(near(
-            child.position.x,
-            AT[0] + ((i % 2) as f64 - 0.5) * offset
-        ));
-        assert!(near(child.position.y, AT[1] + 0.5));
-        assert!(near(
-            child.position.z,
-            AT[2] + ((i / 2) as f64 - 0.5) * offset
-        ));
+        assert_eq!(
+            [child.position.x, child.position.y, child.position.z].map(f64::to_bits),
+            expected[i].map(f64::to_bits)
+        );
         assert_eq!(child.yaw, YAWS[i]);
     }
 }
@@ -127,6 +138,16 @@ fn assert_vanilla_children(children: &[Mob], kind: &str, first_id: u32) {
 #[test]
 #[ignore = "daily"]
 fn size_four_slime_and_magma_split_three_children_and_draw_the_vanilla_yaws() {
+    if crate::game::native_entity_refs::tests::run_fresh_cases(
+        concat!(
+            module_path!(),
+            "::size_four_slime_and_magma_split_three_children_and_draw_the_vanilla_yaws"
+        ),
+        "SUNRISE_SPLIT_COORDINATES",
+        &["coordinates"],
+    ) {
+        return;
+    }
     let _ = IGNORE;
     for kind in ["minecraft:slime", "minecraft:magma_cube"] {
         let seen = Arc::new(Mutex::new(Vec::new()));
@@ -182,6 +203,13 @@ fn cancelled_split_spawns_nothing_but_keeps_the_construction_draws() {
 #[test]
 #[ignore = "daily"]
 fn no_listener_split_is_exactly_vanilla() {
+    if crate::game::native_entity_refs::tests::run_fresh_cases(
+        concat!(module_path!(), "::no_listener_split_is_exactly_vanilla"),
+        "SUNRISE_SPLIT_NO_LISTENER_COORDINATES",
+        &["coordinates"],
+    ) {
+        return;
+    }
     let mods: mod_api::Mods = Vec::new().into();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
@@ -288,6 +316,13 @@ fn spec(kind: &str, at: [f64; 3], yaw: f32, size: Option<u32>, dimension: &str) 
 #[test]
 #[ignore = "daily"]
 fn edit_remove_push_commits_a_c_d_once() {
+    if crate::game::native_entity_refs::tests::run_fresh_cases(
+        concat!(module_path!(), "::edit_remove_push_commits_a_c_d_once"),
+        "SUNRISE_SPLIT_EDIT_COORDINATES",
+        &["coordinates"],
+    ) {
+        return;
+    }
     let second_saw = Arc::new(Mutex::new(None));
     let record = second_saw.clone();
     with_splits(
@@ -345,8 +380,15 @@ fn edit_remove_push_commits_a_c_d_once() {
             assert_eq!(kids.len(), 3);
             assert_eq!(kids[0].yaw, 90.0);
             assert_eq!(kids[0].id, first);
-            assert!(near(kids[1].position.x, AT[0] - 0.52));
-            assert!(near(kids[1].position.z, AT[2] + 0.52));
+            assert_eq!(
+                kids[1].position.x.to_bits(),
+                (AT[0] - SPLIT_DISPLACEMENT).to_bits()
+            );
+            assert_eq!(kids[1].position.y.to_bits(), (AT[1] + 0.5).to_bits());
+            assert_eq!(
+                kids[1].position.z.to_bits(),
+                (AT[2] + SPLIT_DISPLACEMENT).to_bits()
+            );
             assert_eq!(kids[1].yaw, YAWS[2]);
             assert_eq!(kids[1].id, first + 2);
             assert_eq!(kids[2].position.x, 3.0);
