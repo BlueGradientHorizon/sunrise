@@ -292,7 +292,9 @@ impl Frame {
             return Err("a frame with no size".into());
         }
         let components = fields
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|c| {
                 let (h, v) = (usize::from(c[1] >> 4), usize::from(c[1] & 0x0f));
                 if !(1..=4).contains(&h) || !(1..=4).contains(&v) {
@@ -338,7 +340,9 @@ impl Frame {
             return Err(format!("a scan of coefficients {start} to {end}"));
         }
         let components = segment[1..1 + 2 * count]
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|selector| {
                 let index = self
                     .components
