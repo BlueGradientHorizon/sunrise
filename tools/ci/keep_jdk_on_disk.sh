@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Keeps actions/setup-java's JDK out of a Dyna runner's memory. There $RUNNER_TEMP and $RUNNER_TOOL_CACHE are tmpfs
 # counted against the job's memory: setup-java leaves its download and its extraction in RUNNER_TEMP and installs a
-# copy into the tool cache, about 0.75 GiB of a 16 GiB runner.
+# copy into the tool cache.
 #   keep_jdk_on_disk.sh before LISTING   (before setup-java) records `ls -1 "$RUNNER_TEMP"` in LISTING, and links the
 #                                        JDK an earlier job of this slot kept in $DYNA_CI_BUILD/tool-cache into the
 #                                        tool cache, where setup-java finds it and downloads nothing.

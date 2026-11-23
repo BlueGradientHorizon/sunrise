@@ -110,7 +110,7 @@ jobs:
             curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal
           fi
           bash tools/ci/rustup_install.sh --profile minimal
-      # $RUNNER_TEMP and the tool cache are tmpfs counted against this runner's 16 GiB, which the sunrise-client lib
+      # $RUNNER_TEMP and the tool cache are tmpfs counted against the runner's memory, which the sunrise-client lib
       # test's rustc nearly fills: the JDK is kept on the slot's disk and reused by later jobs (tools/ci/keep_jdk_on_disk.sh).
       - name: Link the JDK this slot kept
         run: bash tools/ci/keep_jdk_on_disk.sh before "$DYNA_CI_BUILD/runner-temp-before-java"
