@@ -376,10 +376,10 @@ fn fire(
 
     // An `ItemPart` phase: `Flow::Cancel` stops the click, `Flow::Continue` goes on with its edits.
     let part = |game: &mut Game<'_>,
-                    lent: &mut StackedEdits,
-                    working: &mut Working,
-                    item: &str,
-                    direction: StackedOnOtherDirection|
+                lent: &mut StackedEdits,
+                working: &mut Working,
+                item: &str,
+                direction: StackedOnOtherDirection|
      -> std::result::Result<bool, InvalidReason> {
         let from = lent.since(0).len();
         let mut canceled = false;
