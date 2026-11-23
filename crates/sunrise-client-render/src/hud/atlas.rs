@@ -387,7 +387,10 @@ impl HudAtlas {
         if self.sprites.contains_key(name) {
             return None;
         }
-        self.registered_owners.get(name).copied()
+        // Registered names drop the `minecraft:` namespace, as GUI lookups do.
+        self.registered_owners
+            .get(name.strip_prefix("minecraft:").unwrap_or(name))
+            .copied()
     }
     pub(crate) fn blit_atlas_page(&self, name: &str) -> Option<usize> {
         if self
@@ -414,7 +417,10 @@ impl HudAtlas {
     /// The rect of a texture by its exact name: the packed sprite, else a registered atlas's
     /// sprite. The raw lookup of the camera draw; a GUI id goes through [`HudAtlas::gui_lookup`].
     pub fn texture_rect(&self, name: &str) -> Option<&Rect> {
-        self.sprites.get(name).or_else(|| self.registered.get(name))
+        self.sprites.get(name).or_else(|| {
+            self.registered
+                .get(name.strip_prefix("minecraft:").unwrap_or(name))
+        })
     }
     /// The rect of a `Blit` texture by its name: a live texture's first, else
     /// [`HudAtlas::texture_rect`]. One lookup for the refusal and the draw.
