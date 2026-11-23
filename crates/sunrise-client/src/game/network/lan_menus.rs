@@ -51,7 +51,7 @@ pub(super) struct MenuPublications {
 
 /// Moving or replacing the player's current menu holds publication until teardown and handoff
 /// complete. The hold identifies the same connection on release.
-pub(super) struct MenuOpenHold(u32);
+pub(in crate::game) struct MenuOpenHold(u32);
 
 /// An authoritative click reply, published only once the click's transaction has committed.
 pub(super) struct MenuClickReply {
@@ -213,7 +213,16 @@ impl super::Game<'_> {
         None
     }
 
-    pub(super) fn resume_menu_opens(&mut self, MenuOpenHold(conn): MenuOpenHold) {
+    /// The player is leaving: the opens held back never publish.
+    pub(in crate::game) fn discard_menu_opens(&mut self, MenuOpenHold(conn): MenuOpenHold) {
+        if let Some(stream) = self.transactions.menu_publications.get_mut(&conn) {
+            stream.queue.clear();
+            stream.holds -= 1;
+        }
+        self.drain_menu_opens(conn);
+    }
+
+    pub(in crate::game) fn resume_menu_opens(&mut self, MenuOpenHold(conn): MenuOpenHold) {
         self.transactions
             .menu_publications
             .get_mut(&conn)

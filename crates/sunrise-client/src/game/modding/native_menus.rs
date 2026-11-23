@@ -561,7 +561,7 @@ impl Game<'_> {
     /// `conn`'s tracked menu closes with the guest's state in place
     /// (`ServerPlayer.doCloseContainer`). Close listeners are checked independently
     /// of open listeners.
-    pub(super) fn player_menu_closing(&mut self, conn: u32, window: i32, generation: u64) {
+    pub(in crate::game) fn player_menu_closing(&mut self, conn: u32, window: i32, generation: u64) {
         let heard = self
             .lan
             .as_mut()

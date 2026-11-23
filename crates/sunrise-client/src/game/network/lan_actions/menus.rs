@@ -495,6 +495,7 @@ impl Game<'_> {
     /// Does not send a close packet or remove window 0: ordinary menu
     /// replacement keeps its cursor and crafting inputs. The guest's level
     /// must be the one in place.
+    #[cfg(test)]
     pub(in crate::game) fn guest_close_all(&mut self, conn: u32) {
         self.guest_replace_menu(conn, false, |_| ());
     }
@@ -556,10 +557,20 @@ impl Game<'_> {
     }
 
     /// Finish removal before saving or exporting a live guest. Neither menu's
-    /// cursor nor the inventory crafting grid is part of the saved player.
-    pub(in crate::game) fn guest_close_menus_for_save(&mut self, conn: u32) {
-        self.guest_close_all(conn);
+    /// cursor nor the inventory crafting grid is part of the saved player. Opens that the
+    /// closing listeners request stay unpublished behind the returned hold, so nothing real can
+    /// enter a transient slot the save omits: the caller drops them when the player is leaving
+    /// ([`Self::discard_menu_opens`]) and resumes them otherwise
+    /// ([`Self::resume_menu_opens`]).
+    pub(in crate::game) fn guest_close_menus_for_save(
+        &mut self,
+        conn: u32,
+    ) -> super::super::lan_menus::MenuOpenHold {
+        self.journal_merchant_replacement(conn);
+        let hold = self.hold_menu_opens(conn);
+        self.guest_remove_menus(conn, MenuRemoval::Live, false);
         self.lan_crafting_removed(conn, Some(0), MenuRemoval::Live);
+        hold
     }
 
     /// `Player.remove(CHANGED_DIMENSION)` removes both menus without dropping
