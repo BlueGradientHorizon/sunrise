@@ -1003,7 +1003,7 @@ fn options_controller_notice_paints_after_screen_post_despite_hud_cancel() {
                 game.open_options(false);
                 game.controller_notice
                     .raise(Notice::new("Controller disconnected", "Use the keyboard"));
-                let frame = game.hud_layers([640, 480]);
+                let frame = game.hud([640, 480]);
                 let post = frame
                     .vertices
                     .iter()
@@ -1095,9 +1095,16 @@ fn panicking_hud_listeners_under_f1_disable_only_themselves_and_report_their_own
                         "same mod hud post"
                     ]
                 );
-                let [(Some(whole), _), (Some(layer), _)] =
-                    game.server_packs.hook_panics.as_mut_slice()
-                else {
+                let _ = game.hud(size); // Start both slides after promotion.
+                assert_eq!(
+                    take(),
+                    [
+                        "observer hud pre",
+                        "observer crosshair pre",
+                        "same mod hud post"
+                    ]
+                );
+                let [whole, layer] = game.toast_manager.visible.as_mut_slice() else {
                     panic!("one shared error toast per panicking listener");
                 };
                 let rect = *game
@@ -1114,7 +1121,12 @@ fn panicking_hud_listeners_under_f1_disable_only_themselves_and_report_their_own
                         h: 32,
                     });
                 let y =
-                    [(whole, "render_gui_pre"), (layer, "gui_layer_pre")].map(|(toast, hook)| {
+                    [(whole, "render_gui_pre"), (layer, "gui_layer_pre")].map(|(entry, hook)| {
+                        let crate::game::toast_manager::Toast::Diagnostic { toast, .. } =
+                            &mut entry.toast
+                        else {
+                            panic!("expected panic toast")
+                        };
                         let message = toast.message.as_ref().unwrap().component();
                         assert_eq!(
                             message,
@@ -1124,7 +1136,7 @@ fn panicking_hud_listeners_under_f1_disable_only_themselves_and_report_their_own
                             })
                         );
                         toast.slide.origin = Some(Instant::now() - Duration::from_secs(1));
-                        32.0 * toast.slot.unwrap() as f32
+                        32.0 * entry.slot as f32
                     });
                 let frame = game.hud(size);
                 for y in y {
@@ -1143,7 +1155,7 @@ fn panicking_hud_listeners_under_f1_disable_only_themselves_and_report_their_own
                         "same mod hud post"
                     ]
                 );
-                assert_eq!(game.server_packs.hook_panics.len(), 2);
+                assert_eq!(game.toast_manager.visible.len(), 2);
             });
         },
     );
@@ -1185,32 +1197,39 @@ fn a_panicking_hud_painter_shows_its_error_toast_under_f1() {
             enter_test_world(game);
             game.toggle_hide_gui();
             assert!(game.ui.player_hides_gui && game.ui.hide_gui);
-            game.server_packs.load_fail = Some(SystemToast::new(
-                Text::tr("resourcePack.load_fail", &[]),
-                None,
-            ));
+            use crate::game::toast_manager::{SystemToastId, Toast};
+            game.add_system_toast(
+                Some(SystemToastId::PackLoadFailure),
+                SystemToast::new(Text::tr("resourcePack.load_fail", &[]), None),
+            );
             let size = [640, 480];
             let _ = game.hud(size);
 
             // Backdate the slide to test fully visible toasts without waiting for animation.
             let slide_started = Instant::now() - Duration::from_millis(700);
-            let [(Some(error), _)] = game.server_packs.hook_panics.as_mut_slice() else {
-                panic!("the shared callback owner must report one panic");
+            let _ = game.hud(size); // Start both slides after promotion.
+            let [ordinary, error] = game.toast_manager.visible.as_mut_slice() else {
+                panic!("expected an ordinary toast and one panic diagnostic");
+            };
+            let Toast::Diagnostic { toast, .. } = &mut error.toast else {
+                panic!("expected panic toast")
             };
             assert_eq!(
-                error.title.translation_key(),
+                toast.title.translation_key(),
                 Some("sunrise.mods.hook_panic.title")
             );
             assert_eq!(
-                error.message.as_ref().unwrap().component()["with"][0]["text"],
+                toast.message.as_ref().unwrap().component()["with"][0]["text"],
                 OWNER
             );
-            let error_y = 32.0 * error.slot.unwrap() as f32;
-            error.slide.origin = Some(slide_started);
-            let ordinary = game.server_packs.load_fail.as_mut().unwrap();
-            let ordinary_y = 32.0 * ordinary.slot.unwrap() as f32;
+            let error_y = 32.0 * error.slot as f32;
+            toast.slide.origin = Some(slide_started);
+            let ordinary_y = 32.0 * ordinary.slot as f32;
+            let Toast::System(_, toast) = &mut ordinary.toast else {
+                panic!("expected ordinary toast")
+            };
             assert_ne!(ordinary_y, error_y);
-            ordinary.slide.origin = Some(slide_started);
+            toast.slide.origin = Some(slide_started);
             let rect = *game
                 .gui
                 .atlas

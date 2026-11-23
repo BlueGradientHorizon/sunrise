@@ -419,6 +419,8 @@ impl Game<'_> {
         } else if let Some(m) = self.mob_index.get_mut(&mut self.mobs, p.id as u32) {
             m.limb_speed = 1.5;
             m.hurt_time = 10;
+            // LivingEntity.handleDamageEvent.
+            m.invulnerable = 20;
         } else {
             self.remote_dragon_hurt(p.id);
         }
@@ -426,10 +428,13 @@ impl Game<'_> {
 
     /// `C::RemoveMobEffect`: its arms of `apply_packet`, guard and order kept.
     pub(super) fn apply_remove_mob_effect_packet(&mut self, p: play::RemoveMobEffect) {
-        if self.remote.as_ref().is_some_and(|r| r.entity_id == p.id)
-            && let Some(id) = self.remote_effect_id(p.effect)
-        {
+        let Some(id) = self.remote_effect_id(p.effect) else {
+            return;
+        };
+        if self.remote.as_ref().is_some_and(|r| r.entity_id == p.id) {
             self.potions.effects.list.retain(|e| e.id != id);
+        } else if let Some(m) = self.mob_index.get_mut(&mut self.mobs, p.id as u32) {
+            m.extra.client_effects.list.retain(|e| e.id != id);
         }
     }
 

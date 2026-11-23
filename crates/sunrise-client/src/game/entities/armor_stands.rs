@@ -562,13 +562,6 @@ impl Game<'_> {
     }
     /// The armor stand under the crosshair, its distance and the hit point.
     pub(super) fn armor_stand_hit(&self) -> Option<(usize, f64, [f64; 3])> {
-        let mut pick = crate::game::pick_accumulator::PickAccumulator::new(self.entity_reach);
-        self.armor_stand_hit_with_pick(&mut pick)
-    }
-    pub(super) fn armor_stand_hit_with_pick(
-        &self,
-        pick: &mut crate::game::pick_accumulator::PickAccumulator,
-    ) -> Option<(usize, f64, [f64; 3])> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, point) = hit?;
             let index = self.armor_stands.iter().position(|f| f.id == entity.id())?;
@@ -576,31 +569,22 @@ impl Game<'_> {
         }
         let (eye, dir) = self.aim()?;
         let reach: f64 = self.entity_reach;
+        let (from, to) = super::pick_accumulator::pick_ray_segment(eye, dir, reach);
+        let mut pick = super::pick_accumulator::PickAccumulator::new(reach * reach);
         let mut best: Option<(usize, f64, [f64; 3])> = None;
         for (i, a) in self.armor_stands.iter().enumerate() {
-            // Minecraft.pick never hits the camera entity it looks from.
             if a.marker {
                 continue;
             }
-            let b = self.client_copy_box(a.id, a.position, a.bounds());
-            let (lo, hi) = (b.min_position(), b.max_position());
-            let (lo, hi) = ([lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]);
-            let (mut t0, mut t1) = (0.0f64, reach);
-            let mut hit = true;
-            for k in 0..3 {
-                if dir[k].abs() < 1e-9 {
-                    hit &= eye[k] >= lo[k] && eye[k] <= hi[k];
-                    continue;
-                }
-                let (mut ta, mut tb) = ((lo[k] - eye[k]) / dir[k], (hi[k] - eye[k]) / dir[k]);
-                if ta > tb {
-                    std::mem::swap(&mut ta, &mut tb);
-                }
-                t0 = t0.max(ta);
-                t1 = t1.min(tb);
-            }
-            if hit && t0 <= t1 && pick.consider(self, a.id, t0) {
-                best = Some((i, t0, std::array::from_fn(|k| eye[k] + dir[k] * t0)));
+            if pick.consider_box(
+                self,
+                a.id,
+                from,
+                to,
+                self.client_copy_box(a.id, a.position, a.bounds()),
+            ) {
+                let hit = pick.hovered.unwrap();
+                best = Some((i, hit.distance_sq.sqrt(), hit.point));
             }
         }
         best

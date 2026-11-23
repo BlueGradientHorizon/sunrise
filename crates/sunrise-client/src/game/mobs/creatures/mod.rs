@@ -6839,7 +6839,8 @@ impl Game<'_> {
             Some(t) => Self::named_entity(&self.mobs, t.id, |m| m.id)
                 .filter(|&i| {
                     let m = &self.mobs[i];
-                    named_mob_pickable(m.alive(), m.id, self.riding, self.remote_camera_id())
+                    named_mob_pickable(m.alive(), m.id, self.riding, self.live_remote_camera_id())
+                        && !self.is_pick_camera(m.id)
                 })
                 .map(|i| (i, 0.0, [0.0; 3])),
             None => self.mob_hit(),
@@ -8412,14 +8413,19 @@ impl Game<'_> {
     ) {
         self.elder_apparition_geometry(alpha, out);
         self.spawner_geometry(camera, alpha, out);
-        let live = self.creatures.projectiles.iter().map(|a| {
-            let at = [
-                a.previous.x + (a.position.x - a.previous.x) * alpha,
-                a.previous.y + (a.position.y - a.previous.y) * alpha,
-                a.previous.z + (a.position.z - a.previous.z) * alpha,
-            ];
-            (a, at)
-        });
+        let live = self
+            .creatures
+            .projectiles
+            .iter()
+            .filter(|a| !self.hides_as_camera(a.id))
+            .map(|a| {
+                let at = [
+                    a.previous.x + (a.position.x - a.previous.x) * alpha,
+                    a.previous.y + (a.position.y - a.previous.y) * alpha,
+                    a.previous.z + (a.position.z - a.previous.z) * alpha,
+                ];
+                (a, at)
+            });
         self.projectile_geometry(camera, alpha, live, out);
     }
 

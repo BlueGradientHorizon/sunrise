@@ -43,6 +43,7 @@ use sunrise_protocol::{
     buf::Reader,
     connection::{ConnReader, Connection, Counters},
     crypto::{generate_secret, offline_uuid, server_hash},
+    item::{Names, NoNames},
     packets::{Empty, configuration as cfg, handshake, login, play},
     registry::Dynamic,
     rsa::RsaPublicKey,
@@ -1757,30 +1758,30 @@ impl PlayIo {
     }
 }
 
-/// Registry view for decoding clientbound play packets: synchronized registries
-/// plus the loaded `minecraft:item` table for `Component` `hover_event` validation.
-struct PlayDecodeNames<'a> {
-    dynamic: &'a Dynamic,
+/// The loaded item table for `HoverEvent.ShowItem`, even when a packet's
+/// component codec has no synchronized registry context (configuration).
+struct ClientboundDecodeNames<'a> {
+    registries: &'a dyn Names,
     items: &'a ItemData,
 }
-impl sunrise_protocol::item::Names for PlayDecodeNames<'_> {
+impl Names for ClientboundDecodeNames<'_> {
     fn name(&self, registry: &str, id: i32) -> Option<String> {
-        sunrise_protocol::item::Names::name(self.dynamic, registry, id)
+        self.registries.name(registry, id)
     }
     fn consume_effect_kind(
         &self,
         id: i32,
     ) -> Option<sunrise_protocol::item::consume_effects::Kind> {
-        sunrise_protocol::item::Names::consume_effect_kind(self.dynamic, id)
+        self.registries.consume_effect_kind(id)
     }
     fn registry_entry(&self, registry: &str, id: i32) -> Option<(&str, Option<&Tag>)> {
-        sunrise_protocol::item::Names::registry_entry(self.dynamic, registry, id)
+        self.registries.registry_entry(registry, id)
     }
     fn contains_entry(&self, registry: &str, name: &str) -> bool {
         if registry == "minecraft:item" {
             return self.items.defaults().entries().contains_key(name);
         }
-        sunrise_protocol::item::Names::contains_entry(self.dynamic, registry, name)
+        self.registries.contains_entry(registry, name)
     }
 }
 
@@ -1815,8 +1816,8 @@ fn receive_play(
     let mut bundle = PlayBundle::default();
     loop {
         let (id, payload) = reader.recv().map_err(|e| connection_lost(e, lang))?;
-        let decode_names = PlayDecodeNames {
-            dynamic: &registries,
+        let decode_names = ClientboundDecodeNames {
+            registries: registries.as_ref(),
             items: resources,
         };
         let packet = match play::Clientbound::decode_reader(
@@ -2065,6 +2066,10 @@ fn configure(
             None => Err(Reason::plain("Disconnected")),
         }
     };
+    let decode_names = ClientboundDecodeNames {
+        registries: &NoNames,
+        items: resources,
+    };
     // Nothing goes out before the server has spoken on the channel (its Query or Offer) or
     // named itself Sunrise by brand: a vanilla server is sent what vanilla's client sends,
     // whatever mods are installed.
@@ -2078,20 +2083,20 @@ fn configure(
                 return Err(connection_lost(e, lang));
             }
         };
-        let packet =
-            cfg::Clientbound::decode_with_payload_codecs(id, &payload, &payloads.local.codecs)
-                .map_err(|err| {
-                    let name = sunrise_protocol::ids::name(
-                        sunrise_protocol::State::Configuration,
-                        sunrise_protocol::Direction::Clientbound,
-                        id,
-                    )
-                    .unwrap_or("?");
-                    log::warn!(
-                        "Sunrise: configuration packet decode failed ({name}, id={id}): {err}"
-                    );
-                    packet_decode_reason(sunrise_protocol::State::Configuration, id, &err, lang)
-                })?;
+        let packet = cfg::Clientbound::decode_reader(
+            id,
+            Reader::with_payload_codecs(&payload, &payloads.local.codecs).with_names(&decode_names),
+        )
+        .map_err(|err| {
+            let name = sunrise_protocol::ids::name(
+                sunrise_protocol::State::Configuration,
+                sunrise_protocol::Direction::Clientbound,
+                id,
+            )
+            .unwrap_or("?");
+            log::warn!("Sunrise: configuration packet decode failed ({name}, id={id}): {err}");
+            packet_decode_reason(sunrise_protocol::State::Configuration, id, &err, lang)
+        })?;
         if !io.accepts_packets() {
             continue;
         }
@@ -3392,6 +3397,61 @@ mod tests {
     }
 
     #[test]
+    fn configuration_accepts_a_resource_pack_prompt_with_a_builtin_item_hover() {
+        let root = TempDirGuard(std::env::temp_dir().join(format!(
+            "sunrise-net-config-item-hover-{}",
+            std::process::id()
+        )));
+        std::fs::create_dir_all(&root.0).unwrap();
+        std::fs::write(root.0.join("items.json"), r#"{"minecraft:diamond":{}}"#).unwrap();
+        let data =
+            crate::test_resources::item_data(&root.0, DataLoadOrigin::ClientPreload).unwrap();
+        let (client, server) = sunrise_protocol::connection::Pipe::pair();
+        let (mut reader, writer) = Connection::local(client).split();
+        let writer = Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
+        let (prompt, _) = sunrise_core::nbt::parse_snbt(
+            r#"{text:"Pack prompt",hover_event:{action:show_item,id:"minecraft:diamond"}}"#,
+        )
+        .unwrap();
+        let request = cfg::ResourcePackPush {
+            id: 42,
+            url: "https://example.invalid/pack.zip".into(),
+            hash: String::new(),
+            required: false,
+            prompt: Some(prompt),
+        };
+        let mut server = Connection::local(server);
+        for packet in [
+            cfg::Clientbound::ResourcePackPush(request.clone()),
+            cfg::Clientbound::FinishConfiguration(Empty),
+        ] {
+            server.send(&packet.encode()).unwrap();
+        }
+        let mut received = None;
+        drive_configuration(
+            |send| {
+                configure(
+                    &mut reader,
+                    &writer,
+                    &Arc::new(AtomicBool::new(true)),
+                    &Language::new(),
+                    send,
+                    &Cookies::default(),
+                    &data,
+                    &crate::raw_payloads::Transport::empty(),
+                )
+            },
+            |event| {
+                if let Event::PackPush(request) = event {
+                    received = Some(request);
+                }
+            },
+        )
+        .unwrap();
+        assert_eq!(received, Some(request));
+    }
+
+    #[test]
     fn configuration_dialog_binds_holders_from_its_own_packets() {
         use crate::dialog::Dialog;
         use sunrise_core::nbt::parse_snbt;
@@ -4110,6 +4170,36 @@ mod tests {
                 }
             ));
         }
+    }
+
+    #[test]
+    fn block_entity_data_with_a_non_compound_root_disconnects_before_ingress() {
+        let (root, mut server, session, reader) = bundle_pipe("invalid-block-entity-root", 1 << 20);
+        let recorder = TestRecorder::default();
+        *session.recorder.lock().unwrap() = Some(Box::new(recorder.clone()));
+        server
+            .send(
+                &play::Clientbound::BlockEntityData(play::BlockEntityData {
+                    pos: [0; 3],
+                    kind: 0,
+                    tag: Tag::Int(1),
+                })
+                .encode(),
+            )
+            .unwrap();
+        let event = session.events.recv_timeout_owned(Duration::from_secs(5));
+        drop(server);
+        reader.join().unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+        assert!(recorder.decoded().is_empty());
+        let (event, _credit) = event.unwrap().into_parts();
+        assert!(matches!(
+            event,
+            Event::Disconnected {
+                from_server: false,
+                ..
+            }
+        ));
     }
 
     #[test]

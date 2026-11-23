@@ -785,7 +785,7 @@ pub fn decode_block_entity_replacing(
     previous: Option<&crate::containers::BlockEntity>,
 ) -> Option<((i32, i32, i32), crate::containers::BlockEntity)> {
     let slots = mod_api::__private::parts_installation::block_container(block)
-        .map_or(0, crate::containers::mod_container_slot_count);
+        .map_or(0, |container| container.slots);
     let mut decoded = decode_block_entity_with_history(tag, previous, slots > 0)?;
     // Several vanilla types share a decoded representation (for example barrel
     // and chest). Membership belongs to the saved type, not that representation.
@@ -8019,6 +8019,37 @@ mod tests {
         assert_eq!(encode(&data).get("Items"), Some(&parse("{energy:5}")));
         data.nbt.remove(&"Items".into());
         assert_eq!(encode(&data).get("Items"), None);
+    }
+
+    #[test]
+    fn mod_block_entity_round_trips_the_first_and_last_byte_indexed_slots() {
+        use crate::{
+            containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields},
+            items::ItemStack,
+        };
+
+        let mut items = vec![None; 256];
+        items[0] = Some(ItemStack::new("minecraft:stone", 2));
+        items[255] = Some(ItemStack::new("minecraft:dirt", 3));
+        let entity = BlockEntity::Mod(Box::new(ModBlockEntity::new(
+            "test:machine".into(),
+            ModBlockEntityFields {
+                items: items.clone(),
+                ..Default::default()
+            },
+        )));
+        let saved =
+            block_entity_encode::encode((0, 64, 0), &entity, "test:machine", &Default::default());
+        let expected_rows = sunrise_core::nbt::parse_snbt(
+            r#"[{Slot:0b,id:"minecraft:stone",count:2},{Slot:-1b,id:"minecraft:dirt",count:3}]"#,
+        )
+        .unwrap()
+        .0;
+        assert_eq!(saved.get("Items"), Some(&expected_rows));
+        let (_, BlockEntity::Mod(reloaded)) = decode_block_entity(&saved).unwrap() else {
+            panic!("expected mod block entity")
+        };
+        assert_eq!(reloaded.items, items);
     }
 
     #[test]

@@ -703,6 +703,7 @@ impl NearPlane {
 /// `Camera`: the eye-height and field-of-view easing and the view placement.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Camera {
+    pub initialized: bool,
     pub eye_height: f32,
     pub eye_height_old: f32,
     pub fov_modifier: f32,
@@ -723,6 +724,7 @@ pub struct Camera {
 impl Default for Camera {
     fn default() -> Self {
         Self {
+            initialized: false,
             eye_height: 0.0,
             eye_height_old: 0.0,
             fov_modifier: 0.0,
@@ -852,6 +854,7 @@ impl Camera {
             self.set_rotation(bed.map_or(0.0, |yaw| yaw - 180.0), 0.0);
             self.move_by(0.0, 0.15, 0.0);
         }
+        self.initialized = true;
     }
     /// `Camera.getMaxZoom`: eight rays from the corners of a 0.2 cube about
     /// the eye, shortening the distance to the nearest visual-shape hit.

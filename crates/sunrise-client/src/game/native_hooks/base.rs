@@ -925,7 +925,8 @@ impl Game<'_> {
     }
     /// Block `block`'s registered item slots (`WorldlyContainer`), read from
     /// its per-block declaration when the ticking table is built.
-    /// At most 256 slots, with slot numbers past the count left out.
+    /// Registration already checks the saved slot count. The table builder leaves
+    /// out slot references past that count.
     /// Its menu must be one of the supported menus:
     /// `containers::MOD_MENUS` or a content mod's menu type
     /// (`data/<id>/sunrise/menu/`) with as many
@@ -4788,7 +4789,7 @@ mod text_tests {
     #[ignore = "daily"]
     fn text_takes_argb_and_skips_transparent_text() {
         use mod_api::DrawContext;
-        crate::game::native_entity_refs::tests::with_game(|game| {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
             let drawn = |argb: u32| {
                 let mut batch = HudBatch::scratch([640, 480]);
                 crate::game::host::draw::GameDrawContext::new(game, &mut batch).text(

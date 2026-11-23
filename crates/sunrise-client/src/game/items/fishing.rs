@@ -1764,7 +1764,7 @@ impl Game<'_> {
 /// that another player cast: drawn where the server puts it, its line
 /// running to that player's hand.
 pub(super) struct RemoteHook {
-    id: u32,
+    pub(super) id: u32,
     uuid: [i32; 4],
     pub(super) owner: u32,
     pub(super) owner_fishing: bool,
@@ -2368,6 +2368,9 @@ impl Game<'_> {
         self.remote_hooks
             .iter()
             .filter_map(|h| {
+                if self.hides_as_camera(h.id) {
+                    return None;
+                }
                 let owner = self.mobs.iter().find(|m| m.id == h.owner)?;
                 let feet = lerp(owner.previous, owner.position);
                 let body = mod_api::client::camera::lerp(
