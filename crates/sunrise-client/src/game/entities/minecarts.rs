@@ -193,6 +193,9 @@ pub(super) struct Minecart {
     /// `AbstractMinecart.customDisplayOffset` (`DisplayOffset`), in sixteenths.
     pub custom_offset: Option<i32>,
     pub random: LegacyRandom,
+    /// What `entity_size` answered at its last size refresh (`EntityEvent.Size`): its box takes
+    /// the answer while it holds for its vanilla size.
+    pub(super) size_answer: Option<sunrise_client::pose::SizeAnswer>,
 }
 /// `EntityType.MINECART`'s `sized(0.98F, 0.7F)`: float dimensions, widened.
 pub(super) const WIDTH: f64 = 0.98_f32 as f64;
@@ -495,6 +498,7 @@ impl Minecart {
     }
     pub fn new(id: u32, kind: CartKind, position: Vec3) -> Self {
         Self {
+            size_answer: None,
             join: Default::default(),
             attachment_lifetime: Default::default(),
             id,
@@ -543,12 +547,19 @@ impl Minecart {
             random: random_source::entity(),
         }
     }
+    /// `EntityType.MINECART & co`'s `getDimensions()`: width, height and eye height.
+    pub(super) const DIMENSIONS: [f32; 3] = [0.98, 0.7, 0.595];
     pub fn bounds(&self) -> Aabb {
-        let (w, p) = (WIDTH / 2.0, self.position);
-        Aabb::new(
+        self.bounds_at(self.position)
+    }
+    /// The box of this cart were its position `p`.
+    fn bounds_at(&self, p: Vec3) -> Aabb {
+        let w = WIDTH / 2.0;
+        let vanilla = Aabb::new(
             Vec3::new(p.x - w, p.y, p.z - w),
             Vec3::new(p.x + w, p.y + HEIGHT, p.z + w),
-        )
+        );
+        sunrise_client::pose::SizeAnswer::sized_box(self.size_answer, Self::DIMENSIONS, p, vanilla)
     }
     fn horizontal(&self) -> f64 {
         sunrise_core::geometry::length(self.velocity.x, self.velocity.z)
@@ -868,12 +879,7 @@ impl Game<'_> {
     /// left it. `slot` is where the cart is stored.
     fn cart_inside_blocks(&mut self, c: &mut Minecart, slot: usize, from: Vec3, to: Vec3) {
         let shrink = f64::from(1.0e-5f32);
-        let half = WIDTH / 2.0;
-        let bounds = Aabb::new(
-            Vec3::new(to.x - half, to.y, to.z - half),
-            Vec3::new(to.x + half, to.y + HEIGHT, to.z + half),
-        )
-        .deflate(Vec3::new(shrink, shrink, shrink));
+        let bounds = c.bounds_at(to).deflate(Vec3::new(shrink, shrink, shrink));
         let mut hits = Vec::new();
         let behaviours = self.res.behaviours();
         let world = &self.world;
@@ -2190,13 +2196,6 @@ impl Game<'_> {
         true
     }
     pub(super) fn cart_hit(&self) -> Option<(usize, f64)> {
-        let mut pick = crate::game::pick_accumulator::PickAccumulator::new(self.entity_reach);
-        self.cart_hit_with_pick(&mut pick)
-    }
-    pub(super) fn cart_hit_with_pick(
-        &self,
-        pick: &mut crate::game::pick_accumulator::PickAccumulator,
-    ) -> Option<(usize, f64)> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, _) = hit?;
             let index = self.carts.iter().position(|f| f.id == entity.id())?;
@@ -2204,27 +2203,18 @@ impl Game<'_> {
         }
         let (eye, dir) = self.aim()?;
         let reach: f64 = self.entity_reach;
+        let (from, to) = super::pick_accumulator::pick_ray_segment(eye, dir, reach);
+        let mut pick = super::pick_accumulator::PickAccumulator::new(reach * reach);
         let mut best: Option<(usize, f64)> = None;
         for (i, c) in self.carts.iter().enumerate() {
-            let bb = c.bounds();
-            let (lo, hi) = (bb.min_position(), bb.max_position());
-            let (lo, hi) = ([lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]);
-            let (mut t0, mut t1) = (0.0f64, reach);
-            let mut hit = true;
-            for a in 0..3 {
-                if dir[a].abs() < 1e-9 {
-                    hit &= eye[a] >= lo[a] && eye[a] <= hi[a];
-                    continue;
-                }
-                let (mut ta, mut tb) = ((lo[a] - eye[a]) / dir[a], (hi[a] - eye[a]) / dir[a]);
-                if ta > tb {
-                    std::mem::swap(&mut ta, &mut tb);
-                }
-                t0 = t0.max(ta);
-                t1 = t1.min(tb);
-            }
-            if hit && t0 <= t1 && pick.consider(self, c.id, t0) {
-                best = Some((i, t0));
+            if pick.consider_box(
+                self,
+                c.id,
+                from,
+                to,
+                self.client_copy_box(c.id, c.position, c.bounds()),
+            ) {
+                best = Some((i, pick.hovered.unwrap().distance_sq.sqrt()));
             }
         }
         best
@@ -2710,6 +2700,9 @@ impl Game<'_> {
         // edge, scaled by the view scale.
         let range = (WIDTH + HEIGHT + WIDTH) / 3.0 * 64.0 * self.view_scale();
         for c in &self.carts[run] {
+            if self.hides_as_camera(c.id) {
+                continue;
+            }
             let Some(model) = self.cart_models.models.get(&c.kind) else {
                 continue;
             };
@@ -2874,6 +2867,7 @@ impl Game<'_> {
         let lid = |_: [i32; 3]| 0.0;
         let scene = sunrise_client::block_entity_render::Scene {
             camera: glam::DVec3::ZERO,
+            sign_outline: sunrise_client::block_entity_render::SignOutline::None,
             orientation: glam::Quat::IDENTITY,
             anim: &|_| sunrise_client::block_entity_render::BlockAnim::default(),
             texts: None,

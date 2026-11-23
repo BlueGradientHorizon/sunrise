@@ -224,6 +224,7 @@ impl Game<'_> {
             let mut removing_vehicle = None;
             let mut stand_cut = None;
             let mut lid_push = None;
+            let mut paused_hurt = None;
             // A mob told alone hears its Pre right before its tick and its Post right after:
             // stop there, restore the list, tell it while the live rows are readable, and resume.
             let mut tell_pre: Option<(u32, std::sync::Arc<sunrise_client::mobs::MobType>, usize)> =
@@ -252,6 +253,7 @@ impl Game<'_> {
                     Some(&self.pack.block_registries),
                     &self.damage_hooks,
                 )
+                .with_mob_hurt_handoff(&mut paused_hurt)
                 .with_mob_uuids(&self.persist.uuids)
                 .with_player_resolver(
                     crate::game::entity::player_resolver!(self),
@@ -261,7 +263,8 @@ impl Game<'_> {
                     self,
                     None,
                     in hit_sounds
-                ));
+                ))
+                .with_reads(crate::game::entity::hit_reads_of!(self));
                 let path_changes = sunrise_client::mobs::collision_changes(&base, &path_writes);
                 laps.lap("creature_prepare");
                 let mut cached_difficulty: Option<((i32, i32), spawning::LocalDifficulty)> = None;
@@ -551,7 +554,8 @@ impl Game<'_> {
                     // A listener can redirect to any real player in this level. Keep
                     // immutable views during the borrow so changing selection
                     // never invalidates a view a goal already holds. No allocation
-                    // is made when nobody listens for target changes.
+                    // is made when nobody listens for target changes and no pet
+                    // needs a player other than the one it sees.
                     let selection = if resuming {
                         let mut selection = resume_selection.take();
                         if matches!(resume, Some(Pause::AfterDamage(_)))
@@ -575,7 +579,26 @@ impl Game<'_> {
                             });
                         }
                         selection
-                    } else if mod_api::__private::listened(mod_api::HookId::LivingChangeTarget) {
+                    } else if mod_api::__private::listened(mod_api::HookId::LivingChangeTarget)
+                        || sunrise_client::mobs::tame::reads_another_player(
+                            m,
+                            active_player.as_ref(),
+                            seen_guest.and(base.player.as_ref()).into_iter().chain(
+                                guests
+                                    .iter()
+                                    .enumerate()
+                                    .filter(|(k, _)| Some(*k) != lent)
+                                    .map(|(_, (_, view))| view),
+                            ),
+                            |id| {
+                                base.player_identity.is_some_and(|(_, own)| own == id)
+                                    || guests.iter().any(|(conn, _)| {
+                                        self.guest_identity(*conn)
+                                            .is_some_and(|(_, guest)| guest == id)
+                                    })
+                            },
+                        )
+                    {
                         let mut players = Vec::new();
                         if let (Some(view), Some((_, entity_id))) =
                             (&active_player, active_identity)
@@ -808,7 +831,7 @@ impl Game<'_> {
                                         [write.to.x, write.to.y, write.to.z],
                                     )
                                 {
-                                    section_entered.push(write.id);
+                                    section_entered.push((write.id, write.to.components()));
                                 }
                             }
                         }
@@ -1012,13 +1035,23 @@ impl Game<'_> {
                     );
                     swapped_sections = Some(sections);
                 }
-                if let Some(sting) = sting {
+                if let Some(mut sting) = sting {
                     let before_hurt = events.drain(brain_from..sting.at).collect();
                     let _ = self.handle_mob_events(before_hurt);
                     if let Some(i) = self.mob_index.find(&self.mobs, sting.target)
                         && sting.same_target(&self.mobs[i])
                     {
-                        self.finish_mob_damage_at(i);
+                        if let Some(hit) = paused_hurt.take() {
+                            self.paused_mob_hurt = Some(hit);
+                            if let Some((i, hurt)) = self.complete_mob_hurt(i, false) {
+                                sting.resolved_hit(hurt);
+                                self.finish_mob_damage_at(i);
+                            } else {
+                                sting.resolved_hit(false);
+                            }
+                        } else {
+                            self.finish_mob_damage_at(i);
+                        }
                         self.settle_creaking_hurt(sting.target);
                     }
                     if self
@@ -1065,6 +1098,7 @@ impl Game<'_> {
                                 && self.mobs[i].join == join
                                 && !self.mobs[i].removed
                             {
+                                self.paused_mob_hurt = paused_hurt.take();
                                 self.finish_mob_damage_at(i);
                                 self.settle_creaking_hurt(id);
                             }
@@ -1236,8 +1270,8 @@ impl Game<'_> {
         }
         // `Callback.onMove`, in the order of the writes.
         let table = self.resident_entities.table.get_mut();
-        for id in section_entered.drain(..) {
-            table.entered_section(id);
+        for (id, to) in section_entered.drain(..) {
+            table.entered_section(id, to);
         }
         self.native_lifecycle.entity_sections.entered = section_entered;
         *state.pushes = pushes;

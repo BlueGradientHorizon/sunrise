@@ -58,6 +58,7 @@ impl Game<'_> {
             r.local_entity_silent = false;
             // handleLogin: the new LocalPlayer is the camera.
             r.camera = None;
+            r.detached_camera = None;
             r.logged_in = true;
             r.view_distance = p.chunk_radius;
             r.simulation_distance = p.simulation_distance;
@@ -198,6 +199,7 @@ impl Game<'_> {
             r.health = (20.0, 20, 5.0);
             // handleRespawn: the new LocalPlayer is the camera.
             r.camera = None;
+            r.detached_camera = None;
         }
         self.clear_spectated_entity_post_effect();
         self.capture(true);
@@ -332,8 +334,14 @@ impl Game<'_> {
         match p.slot {
             0..=35 => self.inventory[p.slot as usize] = stack,
             36..=39 => self.armor[3 - (p.slot - 36) as usize] = stack,
-            // Inventory.SLOT_OFFHAND.
+            // Inventory.EQUIPMENT_SLOT_MAPPING: SLOT_OFFHAND, SLOT_BODY_ARMOR, SLOT_SADDLE.
             40 => self.offhand = stack,
+            41 => {
+                self.equipment.set(sunrise_items::equipment::BODY, stack);
+            }
+            42 => {
+                self.equipment.set(sunrise_items::equipment::SADDLE, stack);
+            }
             _ => {}
         }
         self.remote_synced_since(&before);
@@ -458,6 +466,16 @@ impl Game<'_> {
                 }
                 if let Some(name) = e.name {
                     r.players.insert(e.uuid, name);
+                }
+                // `Player.isPickable` sees `AbstractClientPlayer.gameMode` as soon as
+                // `ClientPacketListener.applyPlayerInfoUpdate` publishes its new mode.
+                if mode_change.is_some()
+                    && let Some(id) = r.player_entity(e.uuid)
+                    && let Some(index) = self.mob_index.find(&self.mobs, id)
+                {
+                    let spectator = r.remote_player_info_game_mode(id as i32) == Some(SPECTATOR);
+                    self.mobs
+                        .update(index, |mob| mob.extra.spectator = spectator);
                 }
             }
         }

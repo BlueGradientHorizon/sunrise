@@ -1,9 +1,10 @@
 //! Configuration state: registries, tags, known packs, feature flags and the
 //! common packets (keep-alive, ping, custom payloads, resource packs).
 use crate::{
-    Result,
+    Error, Result,
     buf::{
-        Bool, Byte, Codec, Ident, Int, List, Long, Nbt, Opt, Reader, Str, StrN, UByte, Uuid, VarInt,
+        Bool, Byte, Codec, Ident, Int, List, Long, Nbt, Opt, Reader, Str, StrN, TrustedComponent,
+        TrustedNbt, UByte, Uuid, VarInt,
     },
     entity_data::humanoid_arm_id,
     packet, packet_enum,
@@ -16,7 +17,7 @@ packet!(CookieRequest { key: String => Ident });
 pub use super::custom_payload::CustomPayload;
 packet!(
     /// Common disconnect: a chat component (NBT).
-    Disconnect { reason: Tag => Nbt }
+    Disconnect { reason: Tag => TrustedComponent }
 );
 packet!(KeepAlive { id: i64 => Long });
 packet!(Ping { id: i32 => Int });
@@ -32,7 +33,7 @@ packet!(ResourcePackPush {
     url: String => Str,
     hash: String => StrN<40>,
     required: bool => Bool,
-    prompt: Option<Tag> => Opt<Nbt>,
+    prompt: Option<Tag> => Opt<TrustedComponent>,
 });
 packet!(StoreCookie { key: String => Ident, payload: Vec<u8> => crate::buf::Bytes });
 packet!(Transfer { host: String => Str, port: i32 => VarInt });
@@ -73,7 +74,7 @@ impl Codec<ServerLink> for ServerLink {
         let kind = if Bool::read(r)? {
             ServerLinkKind::Known(VarInt::read(r)?)
         } else {
-            ServerLinkKind::Custom(Nbt::read(r)?)
+            ServerLinkKind::Custom(TrustedComponent::read(r)?)
         };
         Ok(Self {
             kind,
@@ -102,7 +103,7 @@ packet!(
 packet!(
     /// ClientboundShowDialogPacket.CONTEXT_FREE_STREAM_CODEC: the dialog
     /// itself (`Dialog.DIRECT_CODEC` as NBT).
-    ShowDialog { dialog: Tag => Nbt }
+    ShowDialog { dialog: Tag => TrustedNbt }
 );
 packet!(
     /// ServerboundCustomClickActionPacket: a `custom` click event's id and
@@ -110,12 +111,15 @@ packet!(
     CustomClickAction { id: String => Ident, payload: Option<Tag> => ClickPayload }
 );
 /// ServerboundCustomClickActionPacket.UNTRUSTED_TAG_CODEC: an optional tag
-/// (`End` when there is none) behind its length, 65536 bytes at most.
+/// (`End` when there is none) behind its length, 65536 bytes at most, read
+/// with `new NbtAccounter(32768, 16)`: a 32 KiB heap quota and 16 nested
+/// lists and compounds.
 pub struct ClickPayload;
 impl Codec<Option<Tag>> for ClickPayload {
     fn read(r: &mut Reader) -> Result<Option<Tag>> {
         let n = r.count(65536)?;
-        let tag = Reader::new(r.bytes(n)?).nbt()?;
+        let (tag, _) = sunrise_core::nbt::read_network_accounted(r.bytes(n)?, 32768, 16)
+            .map_err(|e| Error::new(format!("NBT: {e}")))?;
         Ok((tag != Tag::End).then_some(tag))
     }
     fn write(v: &Option<Tag>, w: &mut Writer) {
@@ -417,6 +421,23 @@ mod tests {
         let mut w = Writer::new();
         ClickPayload::write(&Some(Tag::Byte(1)), &mut w);
         assert_eq!(w.data, [2, 1, 1]);
+    }
+
+    /// `UNTRUSTED_TAG_CODEC` reads with `new NbtAccounter(32768, 16)`. A root byte array costs
+    /// 24 bytes plus one per element (`ByteArrayTag.TYPE.load`), so 32744 elements fill the
+    /// quota and one more passes it; 16 nested lists are the deepest it takes.
+    #[test]
+    fn click_payload_keeps_vanilla_untrusted_heap_and_depth() {
+        let read = |tag: Tag| {
+            let mut w = Writer::new();
+            ClickPayload::write(&Some(tag), &mut w);
+            ClickPayload::read(&mut Reader::new(&w.data))
+        };
+        assert!(read(Tag::ByteArray(vec![0; 32744])).is_ok());
+        assert!(read(Tag::ByteArray(vec![0; 32745])).is_err());
+        let nested = |depth: usize| (0..depth).fold(Tag::Int(1), |tag, _| Tag::List(vec![tag]));
+        assert_eq!(read(nested(16)).unwrap(), Some(nested(16)));
+        assert!(read(nested(17)).is_err());
     }
 
     #[test]

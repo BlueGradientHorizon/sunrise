@@ -117,6 +117,8 @@ pub(super) struct Boat {
     pub items: Vec<Option<ItemStack>>,
     /// `AbstractBoat.leashData`: who holds its lead (`boat_leads.rs`).
     pub leash: Option<Holder>,
+    /// Entity id of the specific leash knot instance when `leash == Some(Holder::Knot(_))`.
+    pub leash_knot_id: Option<u32>,
     /// The player a `Holder::Player` lead is tied to (their UUID).
     pub leash_player: Option<[i32; 4]>,
     /// A holder read from a save that is not in the world yet.
@@ -128,6 +130,9 @@ pub(super) struct Boat {
     pub random: LegacyRandom,
     /// The server teleport the boat this client drives is easing to.
     pub(super) lerp: Option<DrivenLerp>,
+    /// What `entity_size` answered at its last size refresh (`EntityEvent.Size`): its box takes
+    /// the answer while it holds for its vanilla size.
+    pub(super) size_answer: Option<sunrise_client::pose::SizeAnswer>,
 }
 /// `LinearInterpolationHandler` of the boat this client drives: where a server
 /// teleport takes it (`interpolationData`), the steps left, and where the boat
@@ -250,6 +255,7 @@ impl Boat {
             format!("minecraft:{wood}_chest_{suffix}").into(),
         ];
         Self {
+            size_answer: None,
             pitch: 0.0,
             join: Default::default(),
             attachment_lifetime: Default::default(),
@@ -292,6 +298,7 @@ impl Boat {
             chest: false,
             items: Vec::new(),
             leash: None,
+            leash_knot_id: None,
             leash_player: None,
             leash_pending: None,
             leash_spin: 0.0,
@@ -346,16 +353,19 @@ impl Boat {
         self.items = vec![None; CHEST_SLOTS];
         self
     }
+    /// `EntityType.OAK_BOAT & co`'s `getDimensions()`: width, height and eye height.
+    pub(super) const DIMENSIONS: [f32; 3] = [1.375, 0.5625, 0.5625];
     pub fn bounds(&self) -> Aabb {
-        Self::bounds_at(self.position)
+        self.bounds_at(self.position)
     }
-    /// The box of a boat whose position is `p`.
-    fn bounds_at(p: Vec3) -> Aabb {
+    /// The box of this boat were its position `p`.
+    fn bounds_at(&self, p: Vec3) -> Aabb {
         let w = WIDTH / 2.0;
-        Aabb::new(
+        let vanilla = Aabb::new(
             Vec3::new(p.x - w, p.y, p.z - w),
             Vec3::new(p.x + w, p.y + HEIGHT, p.z + w),
-        )
+        );
+        sunrise_client::pose::SizeAnswer::sized_box(self.size_answer, Self::DIMENSIONS, p, vanilla)
     }
     /// `Entity.saveWithoutId` with `AbstractChestBoat`'s items: the loaded
     /// compound `raw` under the live fields.
@@ -920,7 +930,7 @@ impl Game<'_> {
     /// `AbstractInterpolationHandler.adjustInterpolationPosition`: check the
     /// shifted target against blocks, entities and the border at the boat's live pose.
     fn boat_lerp_target_fits(&self, boat: &Boat, target: Vec3) -> bool {
-        let bounds = Boat::bounds_at(target);
+        let bounds = boat.bounds_at(target);
         let scene = SceneCollisions {
             world: &self.world,
             binding: self.collision,
@@ -1616,7 +1626,7 @@ impl Game<'_> {
     fn boat_reached_cells(&self, b: &Boat, is: impl Fn([i32; 3]) -> bool) -> Vec<[i32; 3]> {
         let mut cells = reached_cells(b.bounds(), &is);
         if b.previous != b.position {
-            for p in reached_cells(Boat::bounds_at(b.previous), &is) {
+            for p in reached_cells(b.bounds_at(b.previous), &is) {
                 if !cells.contains(&p) {
                     cells.push(p);
                 }
@@ -1632,7 +1642,7 @@ impl Game<'_> {
         // after it last, so a block the boat moves into wins over one it leaves.
         let mut cells = Vec::new();
         if b.previous != b.position {
-            cells.extend(reached_cells(Boat::bounds_at(b.previous), |_| true));
+            cells.extend(reached_cells(b.bounds_at(b.previous), |_| true));
         }
         for cell in reached_cells(b.bounds(), |_| true) {
             if !cells.contains(&cell) {
@@ -1687,7 +1697,7 @@ impl Game<'_> {
     /// cleared. True when the fire broke it.
     fn boat_fire_passes(&mut self, i: usize) -> bool {
         let b = &self.boats[i];
-        let mut steps = vec![Boat::bounds_at(b.previous)];
+        let mut steps = vec![b.bounds_at(b.previous)];
         if b.previous != b.position {
             steps.push(b.bounds());
         }
@@ -2000,13 +2010,6 @@ impl Game<'_> {
         Some(boat)
     }
     pub(super) fn boat_hit(&self) -> Option<(usize, f64)> {
-        let mut pick = crate::game::pick_accumulator::PickAccumulator::new(self.entity_reach);
-        self.boat_hit_with_pick(&mut pick)
-    }
-    pub(super) fn boat_hit_with_pick(
-        &self,
-        pick: &mut crate::game::pick_accumulator::PickAccumulator,
-    ) -> Option<(usize, f64)> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, _) = hit?;
             let index = self.boats.iter().position(|f| f.id == entity.id())?;
@@ -2014,27 +2017,18 @@ impl Game<'_> {
         }
         let (eye, dir) = self.aim()?;
         let reach: f64 = self.entity_reach;
+        let (from, to) = super::pick_accumulator::pick_ray_segment(eye, dir, reach);
+        let mut pick = super::pick_accumulator::PickAccumulator::new(reach * reach);
         let mut best: Option<(usize, f64)> = None;
         for (i, b) in self.boats.iter().enumerate() {
-            let bb = b.bounds();
-            let (lo, hi) = (bb.min_position(), bb.max_position());
-            let (lo, hi) = ([lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]);
-            let (mut t0, mut t1) = (0.0f64, reach);
-            let mut hit = true;
-            for a in 0..3 {
-                if dir[a].abs() < 1e-9 {
-                    hit &= eye[a] >= lo[a] && eye[a] <= hi[a];
-                    continue;
-                }
-                let (mut ta, mut tb) = ((lo[a] - eye[a]) / dir[a], (hi[a] - eye[a]) / dir[a]);
-                if ta > tb {
-                    std::mem::swap(&mut ta, &mut tb);
-                }
-                t0 = t0.max(ta);
-                t1 = t1.min(tb);
-            }
-            if hit && t0 <= t1 && pick.consider(self, b.id, t0) {
-                best = Some((i, t0));
+            if pick.consider_box(
+                self,
+                b.id,
+                from,
+                to,
+                self.client_copy_box(b.id, b.position, b.bounds()),
+            ) {
+                best = Some((i, pick.hovered.unwrap().distance_sq.sqrt()));
             }
         }
         best
@@ -2200,6 +2194,7 @@ impl Game<'_> {
                 }
                 self.special_attack_slowdown(knockback);
             }
+            self.remember_player_target(None);
             self.special_attack_exhaustion();
         }
         // Player.onAttack: the hit starts the attack strength again.

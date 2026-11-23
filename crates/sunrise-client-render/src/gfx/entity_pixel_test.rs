@@ -1187,6 +1187,7 @@ fn probe_frame(hud: &HudBatch) -> super::Frame<'_> {
         yaw: 0.0,
         pitch: 0.0,
         fov_degrees: 90.0,
+        cull_fov_degrees: 90.0,
         bob: Mat4::IDENTITY,
         spin: Mat4::IDENTITY,
         sky: crate::environment::Sky::default(),
@@ -2056,8 +2057,10 @@ pub fn render_entity_world(draw: EntityWorldDraw<'_>) -> std::result::Result<Vec
         native_translucent_quads,
         banner_pattern_quads,
         glint_only_quads,
-        text_solid_quads,
+        text_offset_solid_quads,
+        text_normal_solid_quads,
     ] = counts;
+    let text_solid_quads = text_offset_solid_quads + text_normal_solid_quads;
     let world_quads: u32 = counts.iter().sum();
     let base_quads = world_quads
         - oit_entity_quads

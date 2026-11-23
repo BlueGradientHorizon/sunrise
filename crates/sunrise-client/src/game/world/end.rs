@@ -282,6 +282,10 @@ impl EndState {
     }
     /// A server's move: an eye has no interpolation handler, so
     /// `moveOrInterpolateTo` puts it there at once. False when `id` isn't one.
+    pub(in crate::game) fn remote_eye_pose(&self, id: u32) -> Option<([f64; 3], [f64; 3])> {
+        let e = self.eyes.iter().find(|e| e.id == id)?;
+        Some((e.position.to_array(), e.previous.to_array()))
+    }
     pub(super) fn move_remote_eye(&mut self, id: u32, at: [f64; 3]) -> bool {
         let Some(e) = self.eyes.iter_mut().find(|e| e.id == id) else {
             return false;
@@ -656,16 +660,9 @@ impl Game<'_> {
     pub(super) fn tick_end(&mut self) -> Result<()> {
         self.end.gateway_cooldown = self.end.gateway_cooldown.saturating_sub(1);
         if self.dimension_type().has_ender_dragon_fight {
-            self.tick_fight();
             // The fireballs fly with the other projectiles; the breath
             // clouds tick here, once.
             self.tick_breath();
-        } else {
-            // `/summon ender_dragon` outside the End: no fight, but the dragon flies.
-            self.tick_fight();
-        }
-        if let Some((id, from, to)) = self.dragon.as_ref().map(|d| (d.id, d.previous, d.position)) {
-            self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
         }
         // The spikes' crystals (placed above) join before they light a fire:
         // a mod that cancels one keeps its fire out too.
@@ -1275,6 +1272,9 @@ impl Game<'_> {
         camera: glam::DVec3,
         out: &mut Vec<Vertex>,
     ) {
+        if self.hides_as_camera(crystal.id) {
+            return;
+        }
         let feet = glam::DVec3::new(crystal.position.x, crystal.position.y, crystal.position.z);
         let rel = feet - camera;
         if rel.length_squared() > 256.0 * 256.0 {
@@ -1521,6 +1521,9 @@ impl Game<'_> {
             yaw.cos() * pitch.sin(),
         ) * 0.25;
         for eye in &self.end.eyes {
+            if self.hides_as_camera(eye.id) {
+                continue;
+            }
             let p = eye.previous + (eye.position - eye.previous) * alpha - camera;
             out.extend(eye_quad(p.as_vec3(), right, up, r));
         }
@@ -2132,4 +2135,4 @@ mod tests {
 
 #[cfg(test)]
 #[path = "end/gateway_cooldown_tests.rs"]
-mod cooldown_tests;
+pub(in crate::game) mod cooldown_tests;

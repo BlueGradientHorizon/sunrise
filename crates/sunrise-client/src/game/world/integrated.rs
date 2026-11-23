@@ -15,6 +15,7 @@ use super::{
         LanSettings, Owner,
         sync::{SyncPreload, preload_sync_data},
     },
+    native_singleplayer_owner::SingleplayerProfile,
     owner_link::{OwnerRequest, Reply},
     world_loading::{WorldLoader, WorldRequest},
 };
@@ -771,6 +772,13 @@ impl Game<'_> {
         ready: &Sender<Ready>,
         opening: Opening,
     ) -> Result<()> {
+        // `IntegratedServer`'s constructor: `setSingleplayerProfile(minecraft.getGameProfile())`,
+        // fixed before the configs and startup hooks, which mods may read it in.
+        self.singleplayer_profile = Some(SingleplayerProfile::launched(
+            launch.player.clone(),
+            launch.owner,
+            launch.owner_profile.as_deref(),
+        ));
         let result = self.run_server_lifecycle(false, |game, startup_began| {
             *startup_began = true;
             game.run_integrated_inner(launch, flags, tasks, ready, opening)
@@ -1009,7 +1017,10 @@ impl Game<'_> {
             owner_profile: launch.owner_profile.clone(),
             // `IntegratedServer.getSingleplayerProfile`: the window's own player logs in
             // through memory as the account's profile, whatever the hello says.
-            singleplayer_profile: Some((launch.player.clone(), owner)),
+            singleplayer_profile: self
+                .singleplayer_profile
+                .as_ref()
+                .map(|profile| (profile.name.clone(), profile.uuid)),
             // IntegratedServer.initServer: the MOTD names the owner and the world.
             ..NetConfig::lan(
                 0,
@@ -1598,6 +1609,80 @@ pub(super) mod tests {
         assert!(text.contains("Server thread"));
         assert!(text.contains("posted integrated panic 3494"));
         assert!(text.contains("in native mod example:posted, hook server_tick"));
+    }
+
+    /// A mod's quit while the world is still loading stops and joins the starting server
+    /// before the loop ends, and that server's failure is the game's error.
+    #[test]
+    #[ignore = "daily"]
+    fn a_quit_while_the_world_loads_waits_for_its_server() {
+        use crate::game::EventLoopCtl;
+        use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
+        use std::cell::Cell;
+        use winit::event_loop::ControlFlow;
+        if run_fresh_cases(
+            "game::integrated::tests::a_quit_while_the_world_loads_waits_for_its_server",
+            "SUNRISE_CLIENT_QUIT_STARTING_CHILD",
+            &["starting"],
+        ) {
+            return;
+        }
+        struct Loop(Cell<usize>);
+        impl EventLoopCtl for Loop {
+            fn exit(&self) {
+                self.0.set(self.0.get() + 1);
+            }
+            fn set_control_flow(&self, _: ControlFlow) {}
+        }
+        with_client_game(|game| {
+            let flags = Arc::new(Flags::default());
+            let (gate, held) = channel::<()>();
+            let server_flags = flags.clone();
+            let thread = std::thread::spawn(move || {
+                let _ = held.recv();
+                *server_flags.failure.lock().unwrap() = Some("the world failed to load".into());
+            });
+            let (tasks, _requests) = channel::<OwnerRequest>();
+            let (_ready, ready) = channel();
+            game.integrated_starting = Some(Starting {
+                handle: Integrated {
+                    emergency_save: None,
+                    flags: flags.clone(),
+                    thread: Some(thread),
+                    tasks,
+                    world_name: String::new(),
+                    save_folder: String::new(),
+                    rule_registry: Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+                },
+                ready,
+                player: "Dev".into(),
+                folder: "loading".into(),
+                new_world: false,
+            });
+            assert!(game.request_client_quit());
+            let event_loop = Loop(Cell::new(0));
+            game.idle(&event_loop);
+            game.idle(&event_loop);
+            assert_eq!(
+                event_loop.0.get(),
+                0,
+                "the loop waits for the starting server"
+            );
+            assert!(
+                flags.stop.load(Ordering::Relaxed),
+                "the starting server is told to stop"
+            );
+            gate.send(()).unwrap();
+            while event_loop.0.get() == 0 {
+                game.idle(&event_loop);
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            assert_eq!(event_loop.0.get(), 1);
+            assert_eq!(
+                game.error.as_ref().map(ToString::to_string).as_deref(),
+                Some("the world failed to load")
+            );
+        });
     }
 
     /// The integrated server keeps its stack floor and honors a larger

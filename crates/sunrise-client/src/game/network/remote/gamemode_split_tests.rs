@@ -1439,12 +1439,22 @@ fn spawn_mob(
 ) {
     let pkt = add_entity_packet(game, id, uuid, kind);
     game.handle_packet(pkt).unwrap();
+    // The HUD reads the tracked entity's synced max health, not the mob's local cache.
+    let attr = game.motion.attributes.id("minecraft:max_health").unwrap();
+    game.handle_packet(C::UpdateAttributes(play::UpdateAttributes {
+        id,
+        values: vec![play::AttributeSnapshot {
+            attribute: attr.registry_id(),
+            base: f64::from(max_health),
+            modifiers: vec![],
+        }],
+    }))
+    .unwrap();
     let mob = game
         .mobs
         .iter_mut()
         .find(|m| m.id == id as u32)
         .expect("spawned mob");
-    mob.attrs.max_health = max_health;
     mob.health = health;
     mob.extra.set_saddled(saddled);
 }
@@ -1547,12 +1557,13 @@ fn hud_camera_mounts_match_26_3_oracle() {
                         row["local_game_mode"].as_str().unwrap(),
                         "{label}: local_game_mode"
                     );
+                    let camera = game.camera_player();
                     assert_eq!(
-                        game.camera_player().is_some(),
+                        camera != crate::game::remote_camera::CameraPlayer::Absent,
                         row["camera_is_player"].as_bool().unwrap(),
                         "{label}: camera_is_player"
                     );
-                    let got_vehicle = game.camera_player_vehicle_health();
+                    let got_vehicle = game.camera_vehicle_health(camera);
                     assert_eq!(
                         got_vehicle.map_or(0, |(hearts, _)| hearts),
                         row["vehicle_max_hearts"].as_i64().unwrap() as i32,
