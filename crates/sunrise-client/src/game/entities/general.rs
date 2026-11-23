@@ -1395,6 +1395,9 @@ impl Entity for GeneralRow {
     fn bounds(&self) -> Aabb {
         general_type_catalog().bounds(self.type_slot, self.position)
     }
+    fn is_pickable(&self) -> bool {
+        general_type_catalog().pickable(self.type_slot)
+    }
     fn selector_target(&self) -> Option<Target> {
         Some(Target::General(self.id))
     }

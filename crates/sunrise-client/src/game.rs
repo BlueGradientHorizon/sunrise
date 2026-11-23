@@ -382,6 +382,9 @@ mod crop_grow_tests;
 #[path = "game/items/crossbow.rs"]
 mod crossbow;
 #[cfg(test)]
+#[path = "game/entities/crosshair_pick_tests.rs"]
+mod crosshair_pick_tests;
+#[cfg(test)]
 #[path = "game/entities/cushion_refind_tests.rs"]
 mod cushion_refind_tests;
 #[path = "game/entities/cushions.rs"]
@@ -4996,15 +4999,10 @@ impl Game<'_> {
         if let Some(hit) = self.tick_hit.get() {
             return hit;
         }
-        let (origin, dir) = self.aim()?;
-        // GameRenderer.pick: the block ray runs out to the larger of the two
-        // interaction ranges; filterHitResult then drops a hit past the
-        // block's.
-        self.clip_ray(origin, dir, self.block_reach.max(self.entity_reach))
-            .filter(|hit| {
-                let distance: [f64; 3] = std::array::from_fn(|i| hit.point[i] - origin[i]);
-                distance.iter().map(|v| v * v).sum::<f64>() <= self.block_reach.powi(2)
-            })
+        match self.compute_crosshair_decision() {
+            pick_entity::CrosshairDecision::Block(hit) => Some(hit),
+            _ => None,
+        }
     }
     /// An item-specific POV outline ray at the current rotation and block reach.
     pub(super) fn item_pick(&self) -> Option<Hit> {
@@ -9036,9 +9034,7 @@ impl Game<'_> {
         }
     }
 
-    /// The mob hit along the view, the distance to it and the point the ray
-    /// met its box at, measured from the mob's feet (`EntityHitResult
-    /// .getLocation() - entity.position()`, the interact packet's location).
+    /// The mob hit along the view, its distance, and the hit point relative to its feet.
     fn mob_hit(&self) -> Option<(usize, f64, [f64; 3])> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, point) = hit?;
@@ -9053,45 +9049,32 @@ impl Game<'_> {
         if let Some(hit) = self.tick_mob {
             return hit;
         }
-        let mut pick = crate::game::pick_accumulator::PickAccumulator::new(self.entity_reach);
-        self.mob_hit_within_with_pick(self.entity_reach, &mut pick)
+        let pick_entity::CrosshairDecision::Entity(hit) = self.compute_crosshair_decision() else {
+            return None;
+        };
+        let i = self.mob_index.find_ref(&self.mobs, hit.id)?;
+        let point = Vec3::new(hit.point[0], hit.point[1], hit.point[2]);
+        Some((
+            i,
+            hit.distance_sq.sqrt(),
+            interact_location(point, self.mobs[i].position),
+        ))
     }
-    /// The brush's `ProjectileUtil.getHitResultOnViewVector` uses the nearest
-    /// box entry, excluding the source but not its vehicle or passengers.
+    /// The brush's `ProjectileUtil.getHitResultOnViewVector` excludes only the source entity.
     pub(super) fn mob_hit_within(&self, reach: f64) -> Option<(usize, f64, [f64; 3])> {
         let source = self.pick_camera_id();
-        let mut nearest = f64::INFINITY;
-        self.mob_hit_within_consider(reach, |id, distance| {
-            if Some(id) == source || distance == 0.0 || distance >= nearest {
-                return false;
-            }
-            nearest = distance;
-            true
-        })
-    }
-    pub(super) fn mob_hit_within_with_pick(
-        &self,
-        reach: f64,
-        pick: &mut crate::game::pick_accumulator::PickAccumulator,
-    ) -> Option<(usize, f64, [f64; 3])> {
-        self.mob_hit_within_consider(reach, |id, distance| pick.consider(self, id, distance))
-    }
-    fn mob_hit_within_consider(
-        &self,
-        reach: f64,
-        mut consider: impl FnMut(u32, f64) -> bool,
-    ) -> Option<(usize, f64, [f64; 3])> {
         let (eye, dir) = self.aim()?;
+        let mut nearest = f64::INFINITY;
         let mut best: Option<(usize, f64, [f64; 3])> = None;
         for (i, m) in self.mobs.iter().enumerate() {
-            // EntitySelector.CAN_BE_PICKED is isPickable — `!isRemoved`,
-            // not alive: a health-0 fake player still answers a click.
-            if m.removed {
+            if m.removed || Some(m.id) == source {
                 continue;
             }
             if let Some(t) = ray_box(eye, dir, reach, m.bounds())
-                && consider(m.id, t)
+                && t != 0.0
+                && t < nearest
             {
+                nearest = t;
                 let point = Vec3::new(
                     eye[0] + dir[0] * t,
                     eye[1] + dir[1] * t,

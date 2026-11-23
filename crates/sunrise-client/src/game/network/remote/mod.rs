@@ -2205,24 +2205,22 @@ impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_
     fn pick(&mut self) {
         // Minecraft.pickBlockOrEntity: an entity before the block is asked
         // for (`handlePickItemFromEntity`), else the block.
-        if let Some(entity) = self.0.pick_entity_hit() {
-            if let Some(id) = entity {
-                if self
-                    .0
-                    .native_interaction(
-                        InteractionKey::PickBlock,
-                        Hand::Main,
-                        mod_api::InteractionAttempt::Press,
-                    )
-                    .canceled
-                {
-                    return;
-                }
-                self.0.send(S::PickItemFromEntity(play::PickItemFromEntity {
-                    id,
-                    include_data: self.0.has_control_down(),
-                }));
+        if let Some(hit) = self.0.crosshair_entity_hit() {
+            if self
+                .0
+                .native_interaction(
+                    InteractionKey::PickBlock,
+                    Hand::Main,
+                    mod_api::InteractionAttempt::Press,
+                )
+                .canceled
+            {
+                return;
             }
+            self.0.send(S::PickItemFromEntity(play::PickItemFromEntity {
+                id: hit.id,
+                include_data: self.0.has_control_down(),
+            }));
         } else if let Some(hit) = self.0.pick() {
             if self
                 .0
@@ -2246,6 +2244,14 @@ impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_
     }
     fn continue_attack(&mut self, down: bool) {
         self.0.remote_continue_attack(down);
+    }
+}
+
+#[cfg(test)]
+impl Game<'_> {
+    pub(in crate::game) fn test_remote_pick_click(&mut self) {
+        use sunrise_client::interaction_input::InteractionWorld as _;
+        RemoteInputWorld(self).pick();
     }
 }
 

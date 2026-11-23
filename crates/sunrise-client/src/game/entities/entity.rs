@@ -190,6 +190,10 @@ pub(super) trait Entity: EntityRules {
     fn is_removed(&self) -> bool {
         false
     }
+    /// `Entity.isPickable`: true for kinds a projectile or ray pick can strike.
+    fn is_pickable(&self) -> bool {
+        false
+    }
     /// `instanceof LivingEntity`.
     fn is_living(&self) -> bool {
         false
@@ -2027,7 +2031,7 @@ impl Game<'_> {
                     .filter(|dragon| dragon.id != 0)
                     .flat_map(|dragon| {
                         (0..dragon.parts.len())
-                            .filter_map(move |offset| dragon.id.checked_add(offset as u32 + 1))
+                            .map(move |offset| super::dragon::dragon_part_id(dragon.id, offset))
                     }),
             )
             .chain(self.ominous_spawners.iter().map(|e| e.id))
@@ -2155,6 +2159,9 @@ impl Entity for Mob {
     }
     fn is_removed(&self) -> bool {
         self.removed
+    }
+    fn is_pickable(&self) -> bool {
+        !self.removed && !(&*self.kind.id == "minecraft:player" && self.extra.spectator)
     }
     fn is_living(&self) -> bool {
         true
@@ -2451,6 +2458,9 @@ impl Entity for Boat {
     fn bounds(&self) -> Aabb {
         Boat::bounds(self)
     }
+    fn is_pickable(&self) -> bool {
+        true
+    }
 }
 
 impl Entity for Minecart {
@@ -2533,6 +2543,9 @@ impl Entity for Minecart {
     fn bounds(&self) -> Aabb {
         Minecart::bounds(self)
     }
+    fn is_pickable(&self) -> bool {
+        true
+    }
     /// `tick_blocks` sweeps minecarts along with the players.
     fn sweeps_blocks_inside(&self) -> bool {
         false
@@ -2565,6 +2578,9 @@ impl Entity for ArmorStand {
     /// `LivingEntity.isAlive`: health above 0 (removal is the level's).
     fn is_alive(&self) -> bool {
         self.health > 0.0
+    }
+    fn is_pickable(&self) -> bool {
+        !self.marker
     }
     fn move_entity(&mut self, gate: &mut MoveGate, movement: Vec3) {
         if gate.skipped() {
@@ -2779,6 +2795,9 @@ impl Entity for PrimedTnt {
     fn bounds(&self) -> Aabb {
         PrimedTnt::bounds(self)
     }
+    fn is_pickable(&self) -> bool {
+        true
+    }
     fn piston_slime_bounce(&mut self, movement: Direction) {
         self.velocity = piston_push::bounce_velocity(movement, self.velocity);
         // Leave the ground so the next tick does not apply the on-ground
@@ -2865,6 +2884,9 @@ impl Entity for FallingBlock {
     }
     fn bounds(&self) -> Aabb {
         sunrise_client::falling_block::bounds(self.position)
+    }
+    fn is_pickable(&self) -> bool {
+        true
     }
 }
 
@@ -3055,6 +3077,9 @@ impl Entity for Projectile {
     }
     fn piston_slime_bounce(&mut self, movement: Direction) {
         Projectile::piston_slime_bounce(self, movement);
+    }
+    fn is_pickable(&self) -> bool {
+        super::deflect::attackable(self)
     }
 }
 

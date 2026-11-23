@@ -1546,18 +1546,9 @@ impl Game<'_> {
     fn stand_camera_values(&self, a: &ArmorStand) -> (f32, f64) {
         self.remote_entity_living_values(a.id as i32)
     }
-
-    /// The entity under a spectator's crosshair (`Minecraft.hitResult` as an
-    /// `EntityHitResult`): the nearest mob or object before any block.
+    /// The entity under a spectator's crosshair (`Minecraft.hitResult` as an `EntityHitResult`).
     pub(super) fn spectator_click_target(&self) -> Option<i32> {
-        let mob = self.mob_hit().map(|(i, d, _)| (self.mobs[i].id as i32, d));
-        let object = self.remote_object_hit(false).map(|h| (h.id, h.distance));
-        [mob, object]
-            .into_iter()
-            .flatten()
-            .filter(|(_, d)| self.before_block(*d))
-            .min_by(|a, b| a.1.total_cmp(&b.1))
-            .map(|(id, _)| id)
+        self.crosshair_entity_hit().map(|hit| hit.id)
     }
 
     /// `LevelRenderer`: the camera entity is not drawn from its own eyes, but a sleeping one is.

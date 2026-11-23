@@ -108,8 +108,7 @@ impl Game<'_> {
         if epoch != entity.epoch() {
             return Err(EntityReadError::Stale);
         }
-        let id = i32::try_from(entity.id()).map_err(|_| EntityReadError::Stale)?;
-        Ok((remote, id))
+        Ok((remote, entity.id() as i32))
     }
 
     /// An entity tracked by the remote client but absent from local entity lists.
@@ -201,8 +200,8 @@ impl Game<'_> {
                 .ok_or(EntityReadError::Unavailable);
         }
         // The server tracks the dragon alone; its parts are the client's own copies of it.
-        if let Some(part) = self.level_dragon_part(entity.id()) {
-            return Ok(part);
+        if self.resident_dragon_part(entity.id()).is_some() {
+            return Ok(Target::DragonPart(entity.id()));
         }
         remote.tracked_entity(id).ok_or(EntityReadError::Stale)?;
         match self.level_entity(id) {
