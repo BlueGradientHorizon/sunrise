@@ -63,7 +63,8 @@ impl Game<'_> {
         let Some(r) = self.remote.as_mut() else {
             return;
         };
-        if r.registries.tags.is_empty() {
+        let damage_types = r.registries.registries.get(DAMAGE_TYPE);
+        if r.registries.tags.is_empty() && damage_types.is_none() {
             r.tags = None;
             self.refresh_recipe_property_context();
             return;
@@ -81,11 +82,10 @@ impl Game<'_> {
             let tags = tags.iter().map(|(tag, ids)| (tag.clone(), members(ids)));
             items.set_tags(registry, tags.collect());
         }
-        // The damage type registry and its tags, for `Tags::damage_type_in_tag`.
-        if let (Some(types), Some(tags)) = (
-            r.registries.registries.get(DAMAGE_TYPE),
-            r.registries.tags.get(DAMAGE_TYPE),
-        ) {
+        // The damage type registry and its tags, for `Tags::damage_type_in_tag`. A registry
+        // sent with no tag group binds its types with no tags, as vanilla binds received
+        // elements whose tag payload was omitted.
+        if let Some(types) = damage_types {
             let members = |ids: &[i32]| {
                 ids.iter()
                     .filter_map(|&id| names.name(DAMAGE_TYPE, id))
@@ -93,7 +93,11 @@ impl Game<'_> {
             };
             items.bind_damage_registry(
                 types.iter().map(|(name, _)| name.clone()).collect(),
-                tags.iter()
+                r.registries
+                    .tags
+                    .get(DAMAGE_TYPE)
+                    .into_iter()
+                    .flatten()
                     .map(|(tag, ids)| (tag.clone(), members(ids)))
                     .collect(),
             );
@@ -1000,10 +1004,11 @@ mod tests {
         if run_fresh_cases(
             "game::remote_tags::tests::a_client_reads_the_damage_type_tags_its_server_sent",
             "SUNRISE_TEST_CLIENT_DAMAGE_TYPE_TAGS",
-            &["client"],
+            &["client", "no_group"],
         ) {
             return;
         }
+        let case = std::env::var("SUNRISE_TEST_CLIENT_DAMAGE_TYPE_TAGS").unwrap();
         const TYPES: [&str; 3] = [
             "minecraft:arrow",
             "minecraft:mob_attack",
@@ -1066,6 +1071,16 @@ mod tests {
                     "minecraft:damage_type".into(),
                     TYPES.map(|name| (name.to_owned(), None)).to_vec(),
                 );
+                if case == "no_group" {
+                    // A registry sent with no damage type tags: its types are known and
+                    // in no tag; an unknown type stays unanswered.
+                    game.handle_packet(login()).unwrap();
+                    let joined = [Some(false), Some(false), None];
+                    assert_eq!(reads(game), joined, "at join with no tag group");
+                    assert_eq!(predicting(game), joined, "the predicting hit host");
+                    assert_eq!(*seen.lock().unwrap(), [joined]);
+                    return;
+                }
                 registries.add_tags(&projectiles(vec![0]));
                 assert_eq!(reads(game), [None; 3], "before the login installs them");
                 assert_eq!(predicting(game), [None; 3]);

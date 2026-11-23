@@ -150,6 +150,10 @@ pub(in crate::game) const PACK_BINDING_CASES: [(&str, &[u8], bool); 3] = [
 ];
 
 #[cfg(test)]
+#[path = "native_damage_tag_tests.rs"]
+mod native_damage_tag_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use mod_api::Tags;
@@ -308,8 +312,17 @@ mod tests {
         table.bind_component_damage_catalog(&catalog);
     }
 
+    /// Runs in a fresh child process: its keys intern tag names in the process-wide table.
     #[test]
+    #[ignore = "daily"]
     fn damage_type_membership_follows_the_last_bound_catalog() {
+        if crate::game::native_entity_refs::tests::run_fresh_cases(
+            "game::native_tags::tests::damage_type_membership_follows_the_last_bound_catalog",
+            "SUNRISE_TEST_DAMAGE_TYPE_CATALOG",
+            &["catalog"],
+        ) {
+            return;
+        }
         let tag =
             |name| mod_api::__private::tag_key(&mod_api::Identifier::parse(name).unwrap()).unwrap();
         let fire = tag("minecraft:is_fire");

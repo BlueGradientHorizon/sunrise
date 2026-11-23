@@ -1155,9 +1155,6 @@ mod native_custom_geometry;
 #[path = "game/modding/native_custom_stats.rs"]
 mod native_custom_stats;
 #[cfg(test)]
-#[path = "game/modding/native_damage_tag_tests.rs"]
-mod native_damage_tag_tests;
-#[cfg(test)]
 #[path = "game/modding/native_damage_tests.rs"]
 mod native_damage_tests;
 #[path = "game/modding/native_data_bound.rs"]

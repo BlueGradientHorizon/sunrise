@@ -1,6 +1,6 @@
 //! A hit listener reads its source's damage type tags through the hit's host
 //! (`DamageSource.is(TagKey)`), against the vanilla damage registry the world bound.
-use super::native_entity_refs::tests::{bind_local_player, run_fresh_cases, with_game};
+use crate::game::native_entity_refs::tests::{bind_local_player, run_fresh_cases, with_game};
 use mod_api::{Flow, HitHost, Hooks, Identifier, LivingIncomingDamageEvent};
 use std::sync::{Arc, Mutex};
 use sunrise_client::command::args::GameMode;
@@ -59,7 +59,7 @@ impl Hooks for Probe {
 fn a_hit_listener_reads_its_damage_type_tags_as_bound() {
     const CASE: &str = "SUNRISE_TEST_DAMAGE_TYPE_TAGS";
     if run_fresh_cases(
-        "game::native_damage_tag_tests::a_hit_listener_reads_its_damage_type_tags_as_bound",
+        "game::native_tags::native_damage_tag_tests::a_hit_listener_reads_its_damage_type_tags_as_bound",
         CASE,
         &["hits"],
     ) {
