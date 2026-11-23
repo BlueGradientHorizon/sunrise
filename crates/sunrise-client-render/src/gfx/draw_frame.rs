@@ -481,17 +481,13 @@ impl Renderer {
         let serial = self.frame_serial;
         // GPU frames' statistics come back a frame or a few later: the near table's
         // (`GpuCulling::collect`) and sourced geometry's, which drew only in frames the
-        // near pass drew, added to the same frame's counts.
+        // near pass drew, added to the same frame's counts. The halves land in different
+        // polls when one pass's ring held no readback free for the frame, and half a
+        // frame's counts undercount it, so they publish together (`collect_stats`).
         if let Some(gpu) = &mut self.gpu_culling {
             let near = gpu.collect();
             let sourced = self.sourced.collect();
-            let stats = match (near, sourced) {
-                (Some((f, [a, b, c])), Some((g, [d, e, _]))) if f == g => {
-                    Some((f, [a + d, b + e, c]))
-                }
-                (near, sourced) => near.or(sourced),
-            };
-            if let Some((frame, stats)) = stats {
+            if let Some((frame, stats)) = self.collect_stats(near, sourced) {
                 self.show_stats(frame, stats);
             }
         }
@@ -511,6 +507,9 @@ impl Renderer {
         );
         self.gpu_frame = gpu_frame;
         self.gpu_sourced_frame = sourced_frame;
+        // Which serial's statistics wait for sourced geometry's half (`collect_stats`).
+        self.sourced_frames = self.sourced_frames & !(1 << (serial % u64::BITS as u64))
+            | u64::from(sourced_frame) << (serial % u64::BITS as u64);
         let reachable = &self.occlusion;
         let cutout = &self.lod_cutout;
         // Sections fading out (`leave_section`) are past the render distance:
