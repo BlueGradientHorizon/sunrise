@@ -993,7 +993,8 @@ mod tests {
     #[test]
     fn update_report_shows_migration_for_a_removed_world_lifecycle_member() {
         use mod_surface::uses::{Entry, Origin, Used, Uses};
-        let id = "type:WorldPhase.WorldCloseFailed";
+        // Keep the formatter fixture independent of the real lifecycle note's IDs and wording.
+        let id = "type:FixturePhase.Gone";
         let uses = Uses {
             items: vec![Used {
                 entry: Entry::plain(id.into(), "old-version".into()),
@@ -1004,21 +1005,31 @@ mod tests {
                 note: None,
             }],
         };
-        let note: ChangeNote = toml::from_str(include_str!(
+        let lifecycle: ChangeNote = toml::from_str(include_str!(
             "../../sunrise-mod-vocab/changes/debt-re-wl-re-wl.toml"
         ))
         .unwrap();
-        let notes = migrate_notes(&[note]);
         for changed in [
+            "type:WorldPhase.WorldCloseFailed",
             "hook:world_lifecycle",
             "hook:client_level_load",
             "hook:client_level_unload",
         ] {
             assert!(
-                notes.contains_key(changed),
-                "missing migration for {changed}"
+                lifecycle.ids.iter().any(|id| id == changed),
+                "missing ID {changed}"
             );
         }
+        assert!(
+            lifecycle
+                .migrate
+                .is_some_and(|text| !text.trim().is_empty())
+        );
+        let notes = migrate_notes(&[note(
+            &[id],
+            "The fixture phase was removed.",
+            Some("switch to the replacement fixture phase"),
+        )]);
         let pinned = |name: &str, build: &str| PinnedSdk {
             name: name.into(),
             build: build.into(),
@@ -1034,9 +1045,16 @@ mod tests {
             &surface(vec![]),
             &notes,
         );
-        assert!(text.contains("WorldPhase::WorldCloseFailed"), "{text}");
-        assert!(text.contains("note from the change:"), "{text}");
-        assert!(text.contains("WorldPhase::WorldOpenFailed and WorldPhase::WorldCloseFailed -> delete the failure-only branches"), "{text}");
+        assert!(
+            text.lines()
+                .any(|line| line.trim() == "the variant `FixturePhase::Gone` (removed)"),
+            "{text}"
+        );
+        assert!(
+            text.lines().any(|line| line.trim()
+                == "note from the change: \"switch to the replacement fixture phase\""),
+            "{text}"
+        );
     }
 
     #[test]

@@ -6,8 +6,9 @@ pub trait Hooks {
     /// `PlayerEvent.SaveToFile`, `PlayerList.save`): when they leave or the
     /// world closes, when a dedicated or integrated server saves its guests,
     /// and for an integrated server's owner when the world saves them.
-    /// Once for each save. `directory`
-    /// is the world's player directory (`players/data`): write your own file
+    /// Fires only after successful replacement of the player file, independently
+    /// of world metadata. `directory` is the world's player directory
+    /// (`players/data`): write your own file
     /// there, named `<uuid>.<suffix>`, never the player's `.dat`. The player
     /// may be leaving, so no player's state is swapped in. Not cancellable.
     /// On a full world save, including an autosave, successful player writes and

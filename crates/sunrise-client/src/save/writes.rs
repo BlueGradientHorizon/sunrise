@@ -71,6 +71,21 @@ pub(super) struct QueuedWrite {
     pub(super) key: (i32, i32),
     pub(super) record: Record,
     seq: u64,
+    eviction: Option<EvictionWrites>,
+}
+
+/// Records skipped or refused in one idle eviction, independent of other saves.
+#[derive(Clone, Default)]
+pub(super) struct EvictionWrites(Arc<Mutex<std::collections::HashSet<(i32, i32)>>>);
+
+impl EvictionWrites {
+    pub(super) fn refuse(&self, key: (i32, i32)) {
+        self.0.lock().unwrap().insert(key);
+    }
+
+    pub(super) fn refused(&self) -> std::collections::HashSet<(i32, i32)> {
+        std::mem::take(&mut *self.0.lock().unwrap())
+    }
 }
 
 impl QueuedWrite {
@@ -79,6 +94,13 @@ impl QueuedWrite {
             key,
             record: record.track_block_entity_edits(),
             seq,
+            eviction: None,
+        }
+    }
+
+    fn refuse_eviction(&self) {
+        if let Some(eviction) = &self.eviction {
+            eviction.refuse(self.key);
         }
     }
 }
@@ -175,6 +197,19 @@ impl SaveDir {
         records: Vec<((i32, i32), Record)>,
         wait: bool,
     ) -> Result<()> {
+        self.enqueue_records(folder, records, None)?;
+        if wait {
+            self.flush()?;
+        }
+        Ok(())
+    }
+
+    pub(super) fn enqueue_records(
+        &self,
+        folder: Folder,
+        records: Vec<((i32, i32), Record)>,
+        eviction: Option<&EvictionWrites>,
+    ) -> Result<()> {
         if !records.is_empty() {
             // Run snapshot callbacks before publishing pending records or taking writer locks.
             let records = if folder == Folder::Region {
@@ -193,11 +228,12 @@ impl SaveDir {
             {
                 let mut pending = self.pending.lock().map_err(|_| "pending writes poisoned")?;
                 for (key, record) in records {
-                    let job = QueuedWrite::new(
+                    let mut job = QueuedWrite::new(
                         key,
                         record,
                         self.sequence.fetch_add(1, Ordering::Relaxed),
                     );
+                    job.eviction = eviction.cloned();
                     pending.insert((folder, key.0, key.1), (job.seq, job.record.clone()));
                     batch.push(job);
                 }
@@ -234,9 +270,6 @@ impl SaveDir {
                 drop(unsent);
                 return Err("the region writer stopped".into());
             }
-        }
-        if wait {
-            self.flush()?;
         }
         Ok(())
     }
@@ -343,21 +376,31 @@ impl SaveDir {
                                     if let Some(capture) = job.record.disk_job() {
                                         capture.cancel();
                                     }
+                                    job.refuse_eviction();
                                     return None;
                                 }
                                 match compression_pool::catch_encoding_panic(|| {
                                     Ok(resolve_poi(storage, job.key, &job.record))
                                 }) {
-                                    Ok(record) => record.map(|record| (job.key, record)),
+                                    Ok(record) => record.map(|record| (job, record)),
                                     Err(error) => {
+                                        job.refuse_eviction();
                                         reporting.report(kind, job.key, &error);
                                         None
                                     }
                                 }
                             })
                             .collect();
-                        let records: Vec<_> = resolved.iter().map(|(k, r)| (*k, r)).collect();
+                        let records: Vec<_> =
+                            resolved.iter().map(|(job, r)| (job.key, r)).collect();
                         let outcome = write_region_records(storage, &records, &sync_data);
+                        if !outcome.failed_records.is_empty() {
+                            for (job, _) in &resolved {
+                                if outcome.failed_records.contains_key(&job.key) {
+                                    job.refuse_eviction();
+                                }
+                            }
+                        }
                         for (key, error) in outcome.failed_records {
                             reporting.report(kind, key, &error);
                         }

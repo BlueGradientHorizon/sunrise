@@ -534,17 +534,14 @@ fn an_idle_level_aborts_an_abandoned_chunk_unload_transaction_before_it_closes()
     );
 }
 
-/// A chunk-unload listener that forces a chunk in an idle custom level while a
-/// built-in level drains, in the same server tick that would have closed it,
-/// keeps that level open with its new ticket: the close plan is made after the
-/// drains and rechecked before each close.
+/// A chunk-unload listener can reactivate a level whose turn in the idle sweep has not come.
 #[test]
 #[ignore = "daily"]
 fn a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open() {
-    use super::levels::IDLE_TICKS;
+    use super::Dim;
     use super::native_entity_refs::tests::run_fresh_cases;
+    use sunrise_client::chunk::Chunk;
 
-    // A parallel world load can replace the process-wide dimension list during the idle ticks.
     if run_fresh_cases(
         "game::runtime_levels_tests::a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open",
         "SUNRISE_RUNTIME_LEVEL_RESCUE_CHILD",
@@ -553,59 +550,64 @@ fn a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open() {
         return;
     }
     with_opener("rescue", "rescue:a", flat(), |game, seen| {
+        game.native_level_opened(Dim::Overworld);
+        game.enter_level(Dim::Nether).unwrap();
+        game.world.chunks.insert(
+            (0, 0),
+            Arc::new(Chunk::with_layout(0, 0, game.world.layout())),
+        );
+        let nether = ChunkRef::new(game.level("minecraft:the_nether").unwrap(), [0, 0]);
+        game.enter_level(Dim::Overworld).unwrap();
+
         tick_post(game);
         game.apply_runtime_levels();
-        seen.mode.store(IDLE, Ordering::SeqCst);
-        let dim = super::Dim::extra("rescue:a").unwrap();
-        let custom = ChunkRef::new(game.level("rescue:a").unwrap(), [0, 0]);
-        // Idle the custom level to one server tick short of its close.
-        for _ in 1..IDLE_TICKS {
-            game.tick_server(false).unwrap();
-        }
-        assert_eq!(game.levels.parked[&dim].idle, IDLE_TICKS - 1);
-        // Open the Nether only now and load its chunk (0, 0), then release it:
-        // its first drain leaves the view it opened with, so that drain unloads
-        // the chunk at once, in the tick the custom level's close is due.
-        game.settings.render_distance = 2;
-        game.enter_level(super::Dim::Nether).unwrap();
-        let nether = ChunkRef::new(game.level("minecraft:the_nether").unwrap(), [0, 0]);
-        assert!(game.chunk_set_forced(nether, true));
-        assert!(game.chunk_set_forced(nether, false));
-        game.enter_level(super::Dim::Overworld).unwrap();
-        assert!(game.chunk_loaded(nether));
+        let dim = Dim::extra("rescue:a").unwrap();
+        game.enter_level(dim).unwrap();
+        // Record a forced ticket without unrelated generation. The distant column would
+        // leave if a stale eviction plan swept the reactivated level anyway.
+        game.streaming.paused = true;
+        game.world.chunks.insert(
+            (16, 0),
+            Arc::new(Chunk::with_layout(16, 0, game.world.layout())),
+        );
+        let level = game.level("rescue:a").unwrap();
+        let forced = ChunkRef::new(level, [0, 0]);
+        let distant = ChunkRef::new(level, [16, 0]);
+        game.enter_level(Dim::Overworld).unwrap();
+
         seen.mode.store(RESCUE, Ordering::SeqCst);
-        game.tick_server(false).unwrap();
+        game.evict_idle_levels().unwrap();
         assert!(
             !game.chunk_loaded(nether),
-            "the released Nether chunk unloaded"
+            "the first idle level evicted immediately"
         );
         assert_eq!(*seen.rescued.lock().unwrap(), [true]);
-        seen.mode.store(IDLE, Ordering::SeqCst);
-        // Through the idle close and past it, the level and the ticket both remain.
-        for _ in 0..=IDLE_TICKS {
-            game.tick_server(false).unwrap();
-        }
-        // The ticket may make this the first level to tick, leaving it in place.
+        assert_eq!(game.chunk_forced(forced), Some(true));
         assert!(
-            game.native_level_world(custom.level()).is_some(),
-            "the custom level stays open"
+            game.chunk_loaded(distant),
+            "the later level was reactivated before its sweep"
         );
+
+        assert!(game.chunk_set_forced(forced, false));
+        game.evict_idle_levels().unwrap();
+        assert!(
+            !game.chunk_loaded(distant),
+            "the level can evict again once unticketed"
+        );
+        assert_eq!(game.level("minecraft:the_nether"), Some(nether.level()));
+        assert_eq!(game.level("rescue:a"), Some(level));
         assert!(seen.unloads.lock().unwrap().is_empty());
-        assert_eq!(game.chunk_forced(custom), Some(true));
-        assert!(game.chunk_loaded(custom));
     });
 }
 
-/// A chunk a mod loads (`LevelRef::load_chunk`, #4550) in an idle custom level in the tick its
-/// close is due keeps the level open, not ticking, with the chunk, while the `UNKNOWN` ticket
-/// lives; once the ticket expires, the idle level closes as before.
+/// `LevelRef::load_chunk` holds an idle level's column without making it tick. When the
+/// `UNKNOWN` ticket expires its chunks can evict, without closing the level.
 #[test]
 #[ignore = "daily"]
 fn a_live_loading_ticket_keeps_an_idle_custom_level_open_until_it_expires() {
-    use super::levels::IDLE_TICKS;
     use super::native_entity_refs::tests::run_fresh_cases;
+    use sunrise_client::chunk::Chunk;
 
-    // A parallel world load can replace the process-wide dimension list during the idle ticks.
     if run_fresh_cases(
         "game::runtime_levels_tests::a_live_loading_ticket_keeps_an_idle_custom_level_open_until_it_expires",
         "SUNRISE_RUNTIME_LEVEL_LOADING_TICKET_CHILD",
@@ -620,35 +622,32 @@ fn a_live_loading_ticket_keeps_an_idle_custom_level_open_until_it_expires() {
         let dim = super::Dim::extra("loading:a").unwrap();
         let level = game.level("loading:a").unwrap();
         let chunk = ChunkRef::new(level, [5, 5]);
-        // Idle the custom level to one server tick short of its close.
-        for _ in 1..IDLE_TICKS {
-            game.tick_server(false).unwrap();
-        }
-        assert_eq!(game.levels.parked[&dim].idle, IDLE_TICKS - 1);
         assert!(!game.chunk_loaded(chunk));
         let host: &mut dyn ServerHost = game;
         assert!(level.load_chunk(host, [5, 5]));
-        // The close falls due in this tick, and the ticket outlives it.
-        game.tick_server(false).unwrap();
-        assert!(
-            game.native_level_world(level).is_some(),
-            "the custom level stays open for the live ticket"
+
+        game.enter_level(dim).unwrap();
+        game.world.chunks.insert(
+            (16, 0),
+            Arc::new(Chunk::with_layout(16, 0, game.world.layout())),
         );
+        game.enter_level(super::Dim::Overworld).unwrap();
+        let distant = ChunkRef::new(level, [16, 0]);
+        game.tick_server(false).unwrap();
         assert!(game.chunk_loaded(chunk));
+        assert!(game.chunk_loaded(distant));
         assert!(
             !game.levels_to_tick().contains(&dim),
             "the ticket does not make the level tick"
         );
-        assert!(seen.unloads.lock().unwrap().is_empty());
-        // The ticket expires within two purges; the idle level then closes.
-        for _ in 0..3 {
-            game.tick_server(false).unwrap();
-        }
+
+        game.tick_server(false).unwrap();
         assert!(
-            game.native_level_world(level).is_none(),
-            "the idle level closes once the ticket expired"
+            !game.chunk_loaded(distant),
+            "the expired ticket allows idle eviction"
         );
-        assert_eq!(*seen.unloads.lock().unwrap(), ["loading:a"]);
+        assert_eq!(game.level("loading:a"), Some(level));
+        assert!(seen.unloads.lock().unwrap().is_empty());
     });
 }
 

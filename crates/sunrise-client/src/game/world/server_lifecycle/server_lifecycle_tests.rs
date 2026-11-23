@@ -1130,6 +1130,102 @@ fn integrated_shutdown_reopens_the_authoritative_owner_or_keeps_an_interrupted_s
     }
 }
 
+#[test]
+#[ignore = "daily"]
+fn shutdown_notifies_only_for_replaced_player_files() {
+    use crate::game::{lan::Owner, native_entity_refs::tests::run_fresh_cases};
+    use sunrise_client::{
+        lan::playerdata,
+        save::{self, Level, LevelShape, SaveDir, SessionLock},
+    };
+    use sunrise_core::nbt::Tag;
+
+    const CASE: &str = "SUNRISE_SHUTDOWN_PLAYER_FILE_CASE";
+    if run_fresh_cases(
+        "game::server_lifecycle::tests::shutdown_notifies_only_for_replaced_player_files",
+        CASE,
+        &["owner", "guest"],
+    ) {
+        return;
+    }
+    let (failed, written) = if std::env::var(CASE).unwrap() == "owner" {
+        (12, 13)
+    } else {
+        (13, 12)
+    };
+    struct Log(Arc<Mutex<Vec<u128>>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Log {
+        fn player_save_to_file(
+            &self,
+            _: &mut dyn ServerHost,
+            event: &mut mod_api::PlayerSaveToFileEvent<'_>,
+        ) {
+            self.0.lock().unwrap().push(event.player);
+        }
+    }
+    let notices = Arc::new(Mutex::new(Vec::new()));
+    with_mods(
+        vec![ModEntry::new(
+            "shutdown_save",
+            Box::new(Log(notices.clone())),
+        )]
+        .into(),
+        || {
+            with_guests(|game| {
+                game.join_world_rest().unwrap();
+                game.options.execution_role = ExecutionRole::IntegratedServer;
+                let root = tempfile::tempdir().unwrap();
+                let dir = root.path();
+                let mut level = Level {
+                    player_uuid: Some(playerdata::uuid_ints(12)),
+                    name: "before shutdown".into(),
+                    xp_level: 3,
+                    ..Level::default()
+                };
+                level.write(dir, game.res.items()).unwrap();
+                let failed_path = playerdata::path(dir, failed);
+                if failed != 12 {
+                    save::write_dat(&failed_path, Tag::compound([("XpLevel", Tag::Int(3))]))
+                        .unwrap();
+                }
+                let prior = std::fs::read(&failed_path).unwrap();
+                // Block the backup rename before the existing player file can move.
+                let backup = failed_path.with_extension("dat_old");
+                std::fs::create_dir(&backup).unwrap();
+                std::fs::write(backup.join("sentinel"), b"keep").unwrap();
+                let host = game.lan.as_mut().unwrap();
+                host.owner = Some(Owner {
+                    uuid: 12,
+                    saved: None,
+                });
+                host.hub.singleplayer_owner = Some(12);
+                for uuid in [12, 13] {
+                    host.hub.update_guest(uuid, |g| g.xp_level = 9).unwrap();
+                }
+                game.world_root = dir.to_owned();
+                game.save = Arc::new(SaveDir::new(
+                    dir.to_owned(),
+                    LevelShape::OVERWORLD,
+                    Some(Default::default()),
+                ));
+                game.session_lock = Some(SessionLock::acquire(dir).unwrap());
+                game.world_adopted = true;
+                game.level = level;
+                game.level.name = "after shutdown".into();
+                game.run_server_lifecycle(false, |_| Ok(super::ServerRunOutcome::Orderly))
+                    .unwrap();
+
+                assert_eq!(std::fs::read(&failed_path).unwrap(), prior);
+                let player = save::read_dat(&playerdata::path(dir, written)).unwrap();
+                assert_eq!(player.get("XpLevel"), Some(&Tag::Int(9)));
+                assert_eq!(Level::read(dir).unwrap().name, "after shutdown");
+            });
+        },
+    );
+    assert_eq!(*notices.lock().unwrap(), [written]);
+}
+
 /// A Debug world's fixed spawn bypasses the NeoForge event in setInitialSpawn.
 #[test]
 #[ignore = "daily"]

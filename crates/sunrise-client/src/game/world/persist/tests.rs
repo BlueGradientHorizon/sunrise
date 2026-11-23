@@ -67,7 +67,8 @@ mod transient_entities {
 
             let chunk = game.world.chunks.remove(&(0, 0)).unwrap();
             let keys = HashSet::from([(0, 0)]);
-            game.save_unloading_entities(&keys).unwrap();
+            let records = game.unloading_entity_snapshots(&keys);
+            game.save.save_entities_later(records).unwrap();
             game.remove_unloading_entities(&keys);
             game.save.flush().unwrap();
             assert_eq!(game.entity(display.id()), None);

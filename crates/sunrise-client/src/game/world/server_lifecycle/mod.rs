@@ -220,11 +220,15 @@ impl Game<'_> {
         // `free_player_beds` can enter another level and trigger callbacks before
         // players are written.
         self.exclude_interrupted_players(crashed, |m| log::warn!("{m}"));
-        if let Err(payload) = catch_unwind(AssertUnwindSafe(|| self.save_leaving_guests()))
-            && result.is_ok()
-        {
-            result = Err(shutdown_panic(payload.as_ref()).into());
-        }
+        let owner_saved = match catch_unwind(AssertUnwindSafe(|| self.save_leaving_guests())) {
+            Ok(saved) => saved,
+            Err(payload) => {
+                if result.is_ok() {
+                    result = Err(shutdown_panic(payload.as_ref()).into());
+                }
+                false
+            }
+        };
         self.exclude_interrupted_players(crashed, |m| log::warn!("{m}"));
         if let Err(payload) = catch_unwind(AssertUnwindSafe(|| self.lan_disconnect(false)))
             && result.is_ok()
@@ -242,7 +246,7 @@ impl Game<'_> {
         let saved = match catch_unwind(AssertUnwindSafe(|| {
             if save_world {
                 // PlayerList already saved the live owner; the shell is not a player.
-                self.save_world_with(true, false)
+                self.save_world_after_players(owner_saved)
             } else {
                 Ok(())
             }

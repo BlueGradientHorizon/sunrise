@@ -394,7 +394,8 @@ mod tests {
     fn an_unload_save_ejects_a_mob_riding_a_player() {
         ejected(|game, _| {
             let keys = [(0, 0)].into_iter().collect();
-            game.save_unloading_entities(&keys).unwrap();
+            let records = game.unloading_entity_snapshots(&keys);
+            game.save.save_entities_later(records).unwrap();
             game.remove_unloading_entities(&keys);
         });
     }

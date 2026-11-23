@@ -1682,6 +1682,11 @@ impl Game<'_> {
             self.native_entity_portal(self.dim.id(), id, [entry.x, entry.y, entry.z]);
         }
     }
+    /// Whether a portal arrival still needs this level, without collecting its chunks.
+    pub(super) fn has_portal_arrivals(&self, dim: Dim) -> bool {
+        self.portals.arrivals.iter().any(|a| a.plan.dim == dim)
+    }
+
     /// The chunks of the arrivals still waiting to land in `dim`, for the
     /// streaming `extra` areas that light them: vanilla's portal ticket
     /// (`Entity.teleport` adds `TicketType.PORTAL` at the destination) keeps

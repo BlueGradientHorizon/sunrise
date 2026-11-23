@@ -286,15 +286,38 @@ impl VanillaTerrain {
         flat: &sunrise_world::worldgen::generator::FlatSettings,
         structures: bool,
     ) -> crate::Result<Self> {
-        let data: Arc<GeneratorData> = shared_resource_data(resources, overrides)?;
-        let generator = OverworldGenerator::flat(data, seed, flat, structures)?;
-        let mut terrain = Self::assemble(
+        Self::for_flat_level(
             resources,
-            generator,
+            overrides,
             seed,
-            "minecraft:normal",
+            flat,
+            structures,
             "minecraft:overworld",
+            None,
+        )
+    }
+
+    /// `FlatLevelSource` for a resolved level stem: the layers start at this
+    /// dimension's build minimum, and its structure references belong to it.
+    pub fn for_flat_level(
+        resources: TerrainResources<'_>,
+        overrides: &WorldgenOverrides,
+        seed: i64,
+        flat: &sunrise_world::worldgen::generator::FlatSettings,
+        structures: bool,
+        dimension: &str,
+        shape: Option<crate::chunk::LevelShape>,
+    ) -> crate::Result<Self> {
+        let data: Arc<GeneratorData> = shared_resource_data(resources, overrides)?;
+        let generator = OverworldGenerator::flat(
+            data,
+            seed,
+            flat,
+            structures,
+            shape.map(|s| (s.min_y, s.height)),
         )?;
+        let mut terrain =
+            Self::assemble(resources, generator, seed, "minecraft:normal", dimension)?;
         terrain.flat = true;
         Ok(terrain)
     }

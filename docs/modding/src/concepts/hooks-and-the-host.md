@@ -32,7 +32,10 @@ A failed proposal is not a cancellation or replacement. Later eligible listeners
 accepted event state, not the original request. [Staged registration](load-phases.md#registration-and-setup)
 discards the failed callback's declarations. On a journaled action its failed writes do not join
 the action; this is not a rollback of arbitrary external or mod-owned side effects. A failed
-[chunk-disk job](../how-to/chunk-data-load.md) cannot publish that job's edits.
+[chunk-disk job](../how-to/chunk-data-load.md) cannot publish that job's edits, while the other
+listeners' accepted edits still can. An attachment codec refusal rejects only that operation and
+does not disable the listener; an error encoding or writing the disk record itself is separate,
+and can keep that record from being saved.
 
 ## Listener priority and cancellation
 
