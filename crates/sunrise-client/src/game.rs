@@ -1423,6 +1423,8 @@ mod native_living_absorption;
 mod native_living_blocking;
 #[path = "game/modding/native_living_effects.rs"]
 mod native_living_effects;
+#[path = "game/modding/native_living_body.rs"]
+mod native_living_body;
 #[path = "game/modding/native_living_flags.rs"]
 mod native_living_flags;
 #[path = "game/modding/native_living_position.rs"]

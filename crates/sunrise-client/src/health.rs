@@ -267,6 +267,54 @@ impl<'a> HitEffects<'a> {
         ))
     }
 }
+/// A living entity's body as a read borrows it, whoever holds it: a hit (its victim, its lent
+/// causer) or the game's handle reads. The game reads each field of it through one function per
+/// field, so a hit's [`LivingView`](mod_api::LivingView) and a [`mod_api::LivingRef`] read agree.
+#[derive(Clone, Copy)]
+pub enum LivingBody<'a> {
+    /// A mob.
+    Mob(&'a crate::mobs::Mob),
+    /// A player: the one in place, a guest's record, or the body a hit's adapter lends.
+    Player(PlayerBody<'a>),
+    /// An armor stand.
+    Stand(FixedBody<'a>),
+    /// The ender dragon.
+    Dragon(FixedBody<'a>),
+}
+/// The fields an armor stand or the dragon keeps of a living entity.
+#[derive(Clone, Copy)]
+pub struct FixedBody<'a> {
+    pub id: u32,
+    pub health: &'a f32,
+    pub live: &'a crate::living_attributes::LivingAttributes,
+    pub equipment: &'a sunrise_items::equipment::Equipment,
+}
+/// Where a player's health and absorption are read.
+#[derive(Clone, Copy)]
+pub enum PlayerHealthRead<'a> {
+    /// The synced floats of a body in place (`LivingEntity.DATA_HEALTH_ID`,
+    /// `Player.DATA_PLAYER_ABSORPTION_ID`).
+    Synced(&'a SyncedFloats, PlayerFloatIds),
+    /// A parked guest's hub record: its stored health, and the absorption of its body, or the
+    /// saved amount while it has none.
+    Record {
+        health: &'a f32,
+        body: Option<&'a PlayerHealth>,
+        saved_absorption: &'a Option<f32>,
+    },
+}
+/// A player's body: health, attributes, effects and equipment, each borrowed where it lives.
+#[derive(Clone, Copy)]
+pub struct PlayerBody<'a> {
+    pub id: i32,
+    /// The player's UUID, the holder of its attachments, when the borrower knows it.
+    pub uuid: Option<u128>,
+    pub health: PlayerHealthRead<'a>,
+    pub attributes: Option<&'a Attributes>,
+    pub effects: Option<&'a crate::effects::PlayerEffects>,
+    /// The stacks in vanilla `EquipmentSlot` order.
+    pub equipment: PlayerEquipment<'a>,
+}
 /// Inputs to `Entity.isInvulnerableToBase` for a mob or a nonliving body.
 pub struct BodyImmunity<T> {
     pub removed: bool,
