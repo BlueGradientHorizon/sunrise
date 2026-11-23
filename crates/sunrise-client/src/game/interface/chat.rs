@@ -1096,7 +1096,6 @@ impl Game<'_> {
     pub(super) fn tick_in_bed_chat(&mut self) {
         if self.screen != Screen::Chat {
             self.remove_chat_screen(ChatExit::Interrupted);
-            self.ui.in_bed_chat = false;
         }
         if self.ui.in_bed_chat && self.sleeping.is_none() && !self.screen_over_playing() {
             // InBedChatScreen.onPlayerWokeUp: replace once, discarding the
