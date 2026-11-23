@@ -115,6 +115,8 @@ pub trait PlayerProgressBackendMut {
     /// Omitted counters read as zero. Changed statistic scores follow the replacement,
     /// and changed counts, including zero for removals, go out on the next statistics
     /// request. The normal player save persists the replacement. No `player_stat_award`
-    /// hook fires.
+    /// hook fires. Inside a transaction the replacement, with its scores, happens when the
+    /// outermost transaction commits and is dropped if it aborts; until then reads see the
+    /// old counters.
     fn player_set_statistics(&mut self, player: PlayerRef, snapshot: &str) -> bool;
 }

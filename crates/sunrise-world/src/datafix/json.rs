@@ -157,11 +157,11 @@ impl Reader<'_> {
         }
     }
     fn value(&mut self, depth: usize) -> R<Json> {
-        if depth > 255 {
-            return Err(());
-        }
         let c = self.skip_ws()?.ok_or(())?;
         match c {
+            // JsonReader.push: DEFAULT_NESTING_LIMIT (255) open objects and arrays, the
+            // document's own stack entry not counted; values inside them are not limited.
+            0x7B | 0x5B if depth >= 255 => Err(()),
             0x7B => self.object(depth),
             0x5B => self.array(depth),
             0x22 => {
@@ -438,7 +438,7 @@ pub fn parse_strict(s: &[u16]) -> Option<Json> {
 pub fn migrate_stats(text: &str) -> Option<Json> {
     use super::{
         CURRENT, Ty,
-        files::{AdvancementJson, json_to_tag, tag_to_json},
+        files::{AdvancementJson, json_to_tag},
         tables, update,
     };
 
@@ -491,7 +491,8 @@ pub fn migrate_stats(text: &str) -> Option<Json> {
         let context = AdvancementJson::Other;
         let mut tag = json_to_tag(&parsed, context);
         update(Ty::Stats, &mut tag, from, CURRENT);
-        tag_to_json(&tag, context)
+        // The counts were normalized to numbers and nulls above: no boolean marker to read back.
+        from_nbt(&tag)
     })
     .ok()
 }
@@ -690,6 +691,16 @@ mod tests {
     use super::*;
     fn w(s: &str) -> Vec<u16> {
         s.encode_utf16().collect()
+    }
+    /// Gson 2.14's JsonReader opens at most 255 nested arrays or objects.
+    #[test]
+    fn nesting_stops_at_the_json_reader_limit() {
+        let nested = |n: usize| w(&format!("{}1{}", "[".repeat(n), "]".repeat(n)));
+        assert!(parse_strict(&nested(255)).is_some());
+        assert!(parse_strict(&nested(256)).is_none());
+        let empty = |n: usize| w(&format!("{}{}", "[".repeat(n), "]".repeat(n)));
+        assert!(parse_strict(&empty(255)).is_some());
+        assert!(parse_strict(&empty(256)).is_none());
     }
     #[test]
     fn gson_helper_reads_one_value_but_retains_strict_token_boundaries() {

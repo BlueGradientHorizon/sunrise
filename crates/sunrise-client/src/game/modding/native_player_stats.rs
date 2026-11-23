@@ -3,8 +3,12 @@
 //! `ServerRecipeBook`. Reads return None for a stale handle or a player who
 //! isn't online here. Writes return false (or None) for those, for a dead
 //! player, and, inside another player's turn, for anyone but that player.
-use super::{Game, lan_actions::CombatPlayer, native_server::PlayerRead, stats::Stats};
+use super::{
+    Game, lan_actions::CombatPlayer, native_server::PlayerRead, stats::Stats,
+    transactions::DeferredEffect,
+};
 use mod_api::{PlayerRef, StatType};
+use sunrise_gameplay::stats::StatValues;
 
 use super::native_namespaced_id::namespaced;
 
@@ -71,7 +75,9 @@ impl Game<'_> {
         Some(json.to_string())
     }
 
-    /// Decode with the server's registries before entering the player's turn.
+    /// Decode with the server's registries before entering the player's turn. Inside a
+    /// transaction the replacement waits for the root commit, as the game's own deferred
+    /// statistics do, so counters and criterion scores never outlive an abort apart.
     pub(super) fn player_set_statistics(&mut self, player: PlayerRef, snapshot: &str) -> bool {
         if !self.is_logical_server() {
             return false;
@@ -81,6 +87,21 @@ impl Game<'_> {
         }) else {
             return false;
         };
+        if self.transactions.last().is_some() {
+            if !self.native_player_writable(player) {
+                return false;
+            }
+            self.defer_effect(DeferredEffect::RestoreStatistics(player, Box::new(values)));
+            return true;
+        }
+        self.restore_player_statistics(player, values)
+    }
+    /// The replacement itself, in the player's turn.
+    pub(super) fn restore_player_statistics(
+        &mut self,
+        player: PlayerRef,
+        values: StatValues,
+    ) -> bool {
         self.native_as_player_handle(player, |game| {
             // A local counter loads lazily; guest turns already own their counter.
             if game.lan_acting.is_none() {
@@ -88,6 +109,14 @@ impl Game<'_> {
             }
             game.stats.replace_values(values);
         })
+    }
+    /// Whether `native_as_player_handle` would run for `player` now.
+    fn native_player_writable(&self, player: PlayerRef) -> bool {
+        match self.player_handle_read(player) {
+            None => false,
+            Some(PlayerRead::Acting { .. }) => true,
+            Some(PlayerRead::Guest(g)) => !g.dead,
+        }
     }
 
     /// `Player.awardStat(stat, amount)`: adds `amount`, as the game does
@@ -377,6 +406,30 @@ mod tests {
                 let path = super::super::stats::player_json(world.path(), "stats", uuid_ints(12));
                 let saved: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
                 assert_eq!(saved, restored);
+
+                // In a transaction the parked guest's restore waits for the commit: an abort
+                // leaves the counter and its score as they were, a commit moves both.
+                let jump9 = json!({
+                    "DataVersion": version,
+                    "stats": {"minecraft:custom": {"minecraft:jump": 9}}
+                })
+                .to_string();
+                use mod_api::HostTransaction as _;
+                for commit in [false, true] {
+                    let server: &mut dyn ServerHost = game;
+                    let result = server.transaction(|server, _| {
+                        assert!(player.set_statistics(server, &jump9));
+                        assert_eq!(player.stat(server, StatType::Custom, "jump"), Some(-7));
+                        if commit { Ok(()) } else { Err(()) }
+                    });
+                    assert_eq!(result.is_ok(), commit);
+                    let expected = if commit { 9 } else { -7 };
+                    assert_eq!(player.stat(game, StatType::Custom, "jump"), Some(expected));
+                    assert_eq!(
+                        game.score.board.score("guest12", "jump").unwrap().value,
+                        expected
+                    );
+                }
 
                 assert!(player.set_statistics(game, &json!({"DataVersion": version}).to_string()));
                 let cleared = player.statistics(game).unwrap();

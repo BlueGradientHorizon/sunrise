@@ -134,15 +134,17 @@ impl Stats {
             loaded: true,
             ..Self::default()
         };
+        // Both keys decode as `Identifier`s, as in a restore, so the live map holds only the
+        // namespaced spelling that reads, criteria and packets use.
         if let Some(all) = json.get("stats").and_then(|s| s.as_object()) {
             for (ty, entries) in all {
-                let Some(entries) = entries.as_object() else {
+                let (Ok(ty), Some(entries)) = (Identifier::parse(ty), entries.as_object()) else {
                     continue;
                 };
-                let map = stats.values.entry(ty.clone()).or_default();
+                let map = stats.values.entry(ty.to_string()).or_default();
                 for (key, v) in entries {
-                    if let Some(n) = v.as_i64() {
-                        map.insert(key.clone(), n as i32);
+                    if let (Ok(key), Some(n)) = (Identifier::parse(key), v.as_i64()) {
+                        map.entry(key.to_string()).or_insert(n as i32);
                     }
                 }
             }
@@ -404,6 +406,22 @@ mod tests {
         );
     }
 
+    /// A save's unqualified keys load as their namespaced ids, so a snapshot of the loaded
+    /// counter restores the same live count.
+    #[test]
+    fn a_loaded_unqualified_key_round_trips_through_a_snapshot() {
+        let mut stats = Stats::from_json(&serde_json::json!({
+            "DataVersion": sunrise_world::DATA_VERSION,
+            "stats": {"custom": {"jump": 7}}
+        }));
+        assert_eq!(stats.get("custom", "minecraft:jump"), 7);
+        let snapshot = stats.to_json().to_string();
+        let values = Stats::decode_snapshot(&snapshot, |_, _| true).unwrap();
+        stats.replace_values(values);
+        assert_eq!(stats.get("custom", "minecraft:jump"), 7);
+        assert!(stats.events.is_empty());
+    }
+
     #[test]
     fn snapshot_distinguishes_an_empty_map_from_no_result() {
         let current = sunrise_world::DATA_VERSION;
@@ -421,6 +439,11 @@ mod tests {
         assert_eq!(
             read(&format!(r#"{{"DataVersion":{current},"stats":null}}"#)),
             None
+        );
+        // A grouped legacy document whose only group is named like the boolean marker.
+        assert_eq!(
+            read(r#"{"DataVersion":2000,"stats":{"\u0000bool":{}}}"#),
+            Some(StatValues::new())
         );
         for malformed in [
             r#"[1,2,3]"#,
