@@ -1,4 +1,5 @@
 """Dyna's switch routes only supported, same-repository events to its pool."""
+import ast
 import hashlib
 import json
 import os
@@ -622,9 +623,15 @@ class DynaRoutingTests(unittest.TestCase):
     def test_no_parity_harness_builds_the_client_lib_test(self):
         # Its one rustc outgrew the 16 GiB parity runner (#4896): a harness runs a sunrise-client fixture from
         # lab.parity_fixtures() instead.
-        client_lib_test = re.compile(r"""['"]test['"],\s+(['"]--locked['"],\s+)?['"]-p['"],\s+['"]sunrise-client['"]""")
+        def builds_client_lib_test(path):
+            # Any command list holding cargo, test and sunrise-client, whatever its flags and their order.
+            return any(isinstance(node, ast.List)
+                       and {"cargo", "test", "sunrise-client"} <= {item.value for item in node.elts
+                                                                   if isinstance(item, ast.Constant)}
+                       for node in ast.walk(ast.parse(path.read_text())))
+
         self.assertEqual([path.name for path in sorted((ROOT / "tools").glob("test_*_parity.py"))
-                          if client_lib_test.search(path.read_text())], [])
+                          if builds_client_lib_test(path)], [])
 
     def test_daily_harnesses_client_lib_tests_are_built_before_the_harnesses(self):
         from test_ci_runners import jobs
