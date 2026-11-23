@@ -807,15 +807,11 @@ impl Levels {
         }
     }
 
-    pub(super) fn install_mob_map_snapshots(
-        &self,
-        snapshot: &Arc<sunrise_client::neoforge_mob_maps::NeoForgeMobMaps>,
-    ) {
-        for level in self.parked.values() {
-            if let Some(terrain) = &level.locator {
-                terrain.set_mob_maps(snapshot);
-            }
-        }
+    /// The generators of the parked levels, for the world snapshots their workers read.
+    pub(in crate::game) fn parked_terrains(&self) -> impl Iterator<Item = &Arc<VanillaTerrain>> {
+        self.parked
+            .values()
+            .filter_map(|level| level.locator.as_ref())
     }
 
     pub(super) fn parked_worlds(&self) -> impl Iterator<Item = &World> {
@@ -953,6 +949,7 @@ impl Game<'_> {
         save.install_profession_snapshot(self.stations().professions.clone());
         if let Some(terrain) = &locator {
             terrain.set_mob_maps(self.mob_map_snapshot());
+            terrain.set_biome_keys(&self.biome_key_snapshot());
         }
         let mut world = Game::authoritative_world_for_mods(&self.res, seed);
         world.attachments = save.load_attachments();
