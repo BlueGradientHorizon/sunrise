@@ -45,20 +45,19 @@ impl Project {
         )
         .unwrap();
         let sdk = OfflineSdk::new(&dir);
-        // Each build's signed build data, as `build_data` below writes it: OLD's catalog holds
-        // STEADY 1111, RESHAPED 2222, DROPPED 3333 and BODILESS 4444; NEW's holds STEADY 1111,
-        // RESHAPED 2299 and BODILESS 4499. Packed as a `.tar.xz` (Python's `tarfile` and `lzma`,
-        // CRC64) since the tool has no xz encoder.
-        sdk.release(
-            OLD,
-            MIXINS,
-            Some(include_bytes!("fixtures/build-data-old.tar.xz")),
-        );
-        sdk.release(
-            NEW,
-            MIXINS,
-            Some(include_bytes!("fixtures/build-data-new.tar.xz")),
-        );
+        let old = [
+            (STEADY, "struct", "1111"),
+            (RESHAPED, "struct", "2222"),
+            (DROPPED, "field", "3333"),
+            (BODILESS, "method", "4444"),
+        ];
+        let new = [
+            (STEADY, "struct", "1111"),
+            (RESHAPED, "struct", "2299"),
+            (BODILESS, "method", "4499"),
+        ];
+        sdk.release(OLD, MIXINS, Some(&build_data(OLD, &old)));
+        sdk.release(NEW, MIXINS, Some(&build_data(NEW, &new)));
         sdk.prefetch(&dir, OLD, NEW);
         Self { dir, sdk }
     }
@@ -231,23 +230,25 @@ fn pin_without_a_build_moves_to_the_current_nightly() {
 #[ignore = "daily"]
 fn a_changed_build_data_cache_cannot_turn_a_misfit_into_a_fit() {
     let moved = Project::new("cache", &[STEADY, RESHAPED, DROPPED]);
-    // The project's cache holds the new build's catalog rewritten to the old hashes; the verdict
-    // still comes from the signed SDK's build data.
-    let cached = moved
-        .dir
-        .join(".sunrise/cache")
-        .join(NEW)
-        .join("build-data");
-    fs::create_dir_all(&cached).unwrap();
-    for (name, bytes) in build_data(
-        NEW,
-        &[
-            (STEADY, "struct", "1111"),
-            (RESHAPED, "struct", "2222"),
-            (DROPPED, "field", "3333"),
-        ],
-    ) {
-        fs::write(cached.join(name), bytes).unwrap();
+    // The project's cache holds both builds' catalogs rewritten to the same hashes, which would
+    // read as a fit; the baseline and the target still come from the signed SDKs' build data.
+    for build in [OLD, NEW] {
+        let cached = moved
+            .dir
+            .join(".sunrise/cache")
+            .join(build)
+            .join("build-data");
+        fs::create_dir_all(&cached).unwrap();
+        for (name, bytes) in build_data(
+            build,
+            &[
+                (STEADY, "struct", "5555"),
+                (RESHAPED, "struct", "6666"),
+                (DROPPED, "field", "7777"),
+            ],
+        ) {
+            fs::write(cached.join(name), bytes).unwrap();
+        }
     }
     assert_answer(moved.run(&["check", "--build", NEW]), 1, CHANGED_IDS);
 }

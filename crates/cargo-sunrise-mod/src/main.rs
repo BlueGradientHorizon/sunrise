@@ -510,7 +510,7 @@ fn build(
         let scanned = uses_table::scan(entry, root, &package.manifest, &surface)?;
         match scanned {
             uses_table::Scanned::Uses(uses) => Some(
-                uses_table::table(&uses, None, &package.manifest, &sdk)?
+                uses_table::table(&uses, &package.manifest, &sdk)?
                     .to_json()
                     .into_bytes(),
             ),

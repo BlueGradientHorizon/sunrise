@@ -53,13 +53,26 @@ impl Project {
                 1,
             )
         };
-        fs::write(dir.join("internals.json"), text).unwrap();
         // Update's fit report also reads the function index. These tests need no function bodies.
-        fs::write(
-            dir.join("functions.json"),
-            format!(r#"{{"schema":1,"build":{{"commit":"{revision}"}},"crates":{{}},"functions":{{}},"refused":{{}}}}"#),
-        )
-        .unwrap();
+        let functions = format!(
+            r#"{{"schema":1,"build":{{"commit":"{revision}"}},"crates":{{}},"functions":{{}},"refused":{{}}}}"#
+        );
+        fs::write(dir.join("internals.json"), &text).unwrap();
+        fs::write(dir.join("functions.json"), &functions).unwrap();
+        // The pin report reads the same files from the signed release, never from this cache.
+        let mixins = if revision == OLD {
+            MANIFEST_MIXINS
+        } else {
+            NEW_MIXINS
+        };
+        self.sdk.release(
+            revision,
+            mixins,
+            Some(&[
+                ("internals.json", text.into_bytes()),
+                ("functions.json", functions.into_bytes()),
+            ]),
+        );
     }
     fn run(&self, args: &[&str]) -> Output {
         self.sdk.command(&self.dir).args(args).output().unwrap()

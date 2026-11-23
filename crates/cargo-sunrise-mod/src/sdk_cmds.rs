@@ -293,7 +293,7 @@ fn folder_subject(entry: ChildEntry, root: &Path) -> Result<Subject, String> {
     match uses_table::scan(entry, root, &parsed, &surface_of(&sdk)?)? {
         Scanned::Uses(uses) => Ok(Subject::Table {
             name: name.clone(),
-            table: uses_table::table(&uses, Some(root), &parsed, &sdk)?,
+            table: uses_table::table(&uses, &parsed, &sdk)?,
             manifest: Box::new(parsed),
         }),
         Scanned::Exact(why) => Ok(Subject::NotApplicable {
@@ -646,7 +646,7 @@ pub(crate) fn pin_report(entry: ChildEntry, root: &Path, to: &str) -> Result<(),
         report(name, &old, &new, &uses, &old_surface, &new_surface, &notes)
     );
     // The game code the mod declares, by the new build's build data.
-    let made = uses_table::table(&uses, Some(root), &parsed, &old)?;
+    let made = uses_table::table(&uses, &parsed, &old)?;
     let (compared, uncompared) = game_fit(&parsed, &made, &new)?;
     for misfit in &compared.misfits {
         println!("{misfit}");
