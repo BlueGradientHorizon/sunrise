@@ -1174,7 +1174,7 @@ impl Game<'_> {
         let ctx = self.who_context(owner, None);
         self.post_game_event("minecraft:explode", at, ctx);
     }
-    fn rocket_hurt_mobs(
+    pub(in crate::game) fn rocket_hurt_mobs(
         &mut self,
         hits: &[(u32, f32)],
         rocket_id: u32,
