@@ -227,6 +227,15 @@ struct Entry {
     attrs: Vec<syn::Attribute>,
 }
 
+impl Entry {
+    /// `#[goal_view]`: a mob's goal tick answers this read from its own view for every holder,
+    /// players included, and resolves the entity the answer names there too, so a mob lent to
+    /// the tick stays visible. Unmarked reads in [`GOAL_VIEW_READS`] send players to the game.
+    fn goal_view(&self) -> bool {
+        self.attrs.iter().any(|a| a.path().is_ident("goal_view"))
+    }
+}
+
 /// One area file: its traits by tier.
 struct Area {
     stem: String,
@@ -634,6 +643,11 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
                             Some(error) if outer_type(error, "LevelReadError") => format!(
                                 "{call}.try_into_api().unwrap_or(Err(mod_api::LevelReadError::Unavailable))"
                             ),
+                            // The placement-state read refuses an unrepresentable state as
+                            // other level reads do.
+                            Some(error) if outer_type(error, "PlacementStateError") => format!(
+                                "{call}.try_into_api().unwrap_or(Err(mod_api::PlacementStateError::Unavailable))"
+                            ),
                             Some(error) if outer_type(error, "GameRuleReadError") => format!(
                                 "{call}.try_into_api().expect(\"game rule values convert infallibly\")"
                             ),
@@ -968,7 +982,9 @@ fn handle_method(
     let mut docs = doc_comments(&entry.attrs, name, true)?;
     // The reads a mob's goal tick answers from its view carry the snapshot rule where a mod reads
     // them (#1077).
-    if GOAL_VIEW_READS.contains(&name) {
+    if entry.goal_view() {
+        docs.push_str("///\n/// In a mob's goal tick ([`GoalContext::host`](crate::GoalContext::host)) this reads\n/// the tick's own view for every holder, and the entity it names resolves there too.\n");
+    } else if GOAL_VIEW_READS.contains(&name) {
         docs.push_str("///\n/// In a mob's goal tick ([`GoalContext::host`](crate::GoalContext::host)) this reads\n/// the active mob or a disjoint live mob when available; player reads use the\n/// game host. Other unsupported reads retain their typed refusal.\n");
     }
     let backend = match (mutable, tier.client()) {
@@ -1169,7 +1185,7 @@ fn goal_view(
             }
             refusal => format!(".unwrap_or({refusal})"),
         };
-        let body = if GOAL_VIEW_READS.contains(&name) {
+        let body = if entry.goal_view() || GOAL_VIEW_READS.contains(&name) {
             format!("self.r_{name}({args})")
         } else if entity_data {
             if args.is_empty() {
@@ -1213,7 +1229,7 @@ fn goal_view(
                 }
             })
             .collect();
-        let body = if entity_data && !game_entities.is_empty() {
+        let body = if entity_data && !game_entities.is_empty() && !entry.goal_view() {
             let all_available = game_entities
                 .iter()
                 .map(|entity| format!("self.is_game_entity({entity})"))
