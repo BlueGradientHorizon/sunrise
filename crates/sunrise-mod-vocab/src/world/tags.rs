@@ -50,8 +50,9 @@ pub trait Tags {
     /// [`HurtSource::damage_type`](crate::HurtSource::damage_type) (`minecraft:arrow`), is in the
     /// current damage type tag, as bound at the last data reload. An unknown tag is false;
     /// an unknown damage type, or unavailable authoritative damage type tags, answer None.
+    /// A tag service with no damage type data, such as a crafting kind's, answers None.
     fn damage_type_in_tag(&self, _damage_type: &str, _tag: TagKey) -> Option<bool> {
-        unimplemented!("Tags::damage_type_in_tag")
+        None
     }
     /// The names of the tags that currently contain `item`, each once, in no specified order.
     /// `None` means the item mapping or authoritative tag names are unavailable.

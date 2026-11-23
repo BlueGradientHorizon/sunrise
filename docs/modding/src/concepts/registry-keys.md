@@ -420,7 +420,8 @@ the membership method chooses the registry. Reload replaces membership, not key 
 `tags.is_in_tag(item_key, tag_key)` tests merged item membership. It returns `Some(false)`
 for either an absent tag or a loaded empty tag. `tags.damage_type_in_tag(damage_type, tag_key)`
 tests a damage type, by the name a hit's `HurtSource::damage_type` gives, the same way; it
-returns `None` for a damage type the registry doesn't have. Use `tags.items(tag_key)`,
+returns `None` for a damage type the registry doesn't have, and from a tag service with no
+damage type data. Use `tags.items(tag_key)`,
 `tags.blocks(tag_key)` or `tags.fluids(tag_key)` to tell them apart. Each returns a
 `TagMembers<K>` for the registry's key type:
 

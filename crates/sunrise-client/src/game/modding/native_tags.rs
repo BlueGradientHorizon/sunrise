@@ -23,23 +23,7 @@ pub(super) fn damage_type_in_tag(
     tag: TagKey,
 ) -> Option<bool> {
     let items = items?;
-    let types = &items
-        .component_registry
-        .by_registry
-        .get("minecraft:damage_type")?
-        .ids;
-    if !types.iter().any(|id| id == damage_type) {
-        return None;
-    }
-    mod_api::__private::with_tag_name(tag, |name| {
-        Some(
-            items
-                .enchantments
-                .damage_tags
-                .get(name?)
-                .is_some_and(|members| members.contains(damage_type)),
-        )
-    })
+    mod_api::__private::with_tag_name(tag, |name| items.damage_type_in_tag(damage_type, name?))
 }
 pub(super) fn item_tags(tags: &dyn LootTags, item: ItemKey) -> Option<Vec<Identifier>> {
     let item = mod_api::__private::item_key_id(item)?;

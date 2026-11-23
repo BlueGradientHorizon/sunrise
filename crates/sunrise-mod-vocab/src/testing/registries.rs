@@ -118,10 +118,6 @@ impl crate::Tags for FakeRegistries {
         Self::resolved_item_id(item)?;
         Some(false)
     }
-    // The fake holds no damage type registry, so no damage type is known.
-    fn damage_type_in_tag(&self, _: &str, _: crate::TagKey) -> Option<bool> {
-        None
-    }
     fn item_tags(&self, item: crate::ItemKey) -> Option<Vec<crate::Identifier>> {
         Self::resolved_item_id(item)?;
         Some(Vec::new())
