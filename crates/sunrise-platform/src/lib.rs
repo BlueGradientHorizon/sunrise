@@ -80,6 +80,10 @@ pub mod mod_rows {
     pub use sunrise_hooks::mod_rows::{Row, register};
 }
 
+/// Proxy selection and connection pooling for HTTP requests to caller-supplied URLs.
+#[cfg(feature = "http-proxy")]
+pub use sunrise_proxy as proxy;
+
 /// The game's own release: [`release::VERSION`] is what its Mods screen row shows.
 pub use sunrise_core::release;
 
@@ -127,14 +131,9 @@ pub mod look {
     pub use sunrise_hooks::look::{Chat, Look, update};
 }
 
-/// Build-time mod source generation and point signature inspection.
+/// Build-time mod source generation.
 #[cfg(feature = "mod-build")]
 pub mod mod_build {
-    /// Parsing and validation of injection point signatures.
-    pub use point_shape;
     /// The shared mod API and source generator.
     pub use sunrise_mod_api_gen as api_gen;
 }
-
-/// Establish the executable stack policy before starting the game or supervisor.
-pub use sunrise_guest_stack::prepare_main as prepare_main_stack;

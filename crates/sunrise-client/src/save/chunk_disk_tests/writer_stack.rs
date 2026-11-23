@@ -1,22 +1,36 @@
 use super::*;
+use std::sync::OnceLock;
+use std::thread::{self, ThreadId};
+
+#[derive(Debug)]
+struct WriterThread {
+    id: ThreadId,
+    #[cfg(target_os = "linux")]
+    stack_bytes: Option<usize>,
+}
 
 #[derive(Default)]
 struct StackProbe {
-    stack: Arc<std::sync::OnceLock<std::result::Result<(), &'static str>>>,
+    writer: Arc<OnceLock<WriterThread>>,
 }
 
 #[mod_api::sunrise_mod]
 impl Hooks for StackProbe {
     fn chunk_data_save(&self, _: &dyn ChunkDiskHost, _: &mut ChunkDataSaveEvent<'_>) {
-        self.stack
-            .set(sunrise_guest_stack::check_current())
-            .unwrap();
+        self.writer
+            .set(WriterThread {
+                id: thread::current().id(),
+                #[cfg(target_os = "linux")]
+                stack_bytes: sunrise_threads::unwind::StackBounds::current()
+                    .map(|bounds| bounds.hi - bounds.lo),
+            })
+            .expect("the save hook ran more than once");
     }
 }
 
 #[test]
 #[ignore = "daily"]
-fn asynchronous_chunk_save_hook_runs_with_a_guest_stack() {
+fn asynchronous_chunk_save_hook_runs_on_the_region_writer() {
     // Subscribed saves consult a process-wide lease. A parallel test must not block this save.
     const CHILD: &str = "SUNRISE_REGION_WRITER_STACK_CHILD";
     if std::env::var_os(CHILD).is_none() {
@@ -24,7 +38,7 @@ fn asynchronous_chunk_save_hook_runs_with_a_guest_stack() {
             .args([
                 "--ignored",
                 "--exact",
-                "save::chunk_disk_tests::writer_stack::asynchronous_chunk_save_hook_runs_with_a_guest_stack",
+                "save::chunk_disk_tests::writer_stack::asynchronous_chunk_save_hook_runs_on_the_region_writer",
             ])
             .env(CHILD, "1")
             .status()
@@ -32,46 +46,26 @@ fn asynchronous_chunk_save_hook_runs_with_a_guest_stack() {
         assert!(status.success());
         return;
     }
+    let caller = thread::current().id();
     let probe = StackProbe::default();
-    let stack = probe.stack.clone();
+    let writer = probe.writer.clone();
     let mods = vec![mod_api::ModEntry::new("stack_probe", Box::new(probe))].into();
-    save_chunk(mods);
-    assert_eq!(stack.get(), Some(&Ok(())));
-}
-
-#[test]
-#[ignore = "daily"]
-fn compiled_chunk_save_hook_updates_the_region_record() {
-    // Loading the fixture enters the guest too, before the real writer thread takes over.
-    sunrise_guest_stack::run_on_guest_stack(|| {
-        use sunrise_mod_package::manifest::Package;
-        let path = PathBuf::from(std::env::var_os("SUNRISE_WASM_FIXTURE").unwrap());
-        let mut manifest = Package::read(&path).unwrap().manifest;
-        // This test uses a hook, not the fixture's injection points.
-        manifest.inject.clear();
-        let info = mod_api::PackageInfo::new(
-            manifest.id.clone(),
-            manifest.version.to_string(),
-            mod_api::PackageKind::Code,
-            mod_api::Side::Both,
-            vec![manifest.id.clone()],
-            Vec::new(),
+    assert_eq!(
+        save_chunk(mods),
+        7,
+        "the queued chunk reached the region file"
+    );
+    let writer = writer.get().expect("the save hook did not run");
+    assert_ne!(writer.id, caller, "the save hook ran on the calling thread");
+    #[cfg(target_os = "linux")]
+    {
+        let minimum = sunrise_threads::GAME_THREAD_STACK_BYTES;
+        let bytes = writer.stack_bytes.expect("could not read the writer stack");
+        assert!(
+            bytes >= minimum,
+            "the writer stack was {bytes} bytes, below {minimum}"
         );
-        let std = fs::read(std::env::var_os("SUNRISE_WASM_STD").unwrap()).unwrap();
-        let loaded = sunrise_mod_wasm::load(
-            &std,
-            vec![sunrise_mod_wasm::WasmPackage {
-                manifest,
-                module: Package::read_wasm(&path).unwrap(),
-            }],
-        );
-        assert!(loaded.refused.is_empty(), "{:?}", loaded.refused);
-        loaded.initialize(&[info]).unwrap();
-        mod_platform::__private::initialize().unwrap();
-        let _registration =
-            mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
-        assert_eq!(save_chunk(loaded.mods.into()), 8);
-    });
+    }
 }
 
 fn save_chunk(mods: mod_api::Mods) -> i32 {

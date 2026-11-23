@@ -113,7 +113,7 @@ pub(crate) fn install() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
         let installed = super::install(NativeClientHooks {
-            menu_still_valid: |context, player, menu, pos, eye, valid| {
+            menu_still_valid: |context, player, menu, pos, eye, _, valid| {
                 STILL_VALID_ASKED.set(STILL_VALID_ASKED.get() + 1);
                 STILL_VALID_POS.set(pos);
                 if menu == "test:rules" && player == 2 && eye[2] == 0.0 {
@@ -129,29 +129,17 @@ pub(crate) fn install() {
                     *amount += 1.0;
                 }
             },
-            living_breathe: |context, _, kind, can_breathe, consume, _| {
-                if context.setting("rules_mod", "stack").is_some() {
-                    // A cod breathes on land; a salmon loses all its air at once.
-                    *can_breathe = kind == "minecraft:cod";
-                    *consume = match kind {
-                        "minecraft:salmon" => i32::MAX,
-                        _ => *consume + 4,
-                    };
-                }
-            },
-            farmland_trample: |context, _, _, _, _, cancel| {
-                *cancel = context.setting("rules_mod", "stack").is_some();
-            },
+            living_breathe_heard: || false,
             has_mods: || false,
             player_name_format: |context, _, displayname| {
                 if let Some(value) = context.setting("rules_mod", "stack") {
-                    *displayname = crate::text::Text::literal(&value);
+                    *displayname = crate::text::Text::literal(value);
                 }
             },
             player_tab_list_name_format: |context, _, _, display_name| {
                 *display_name = context
                     .setting("rules_mod", "stack")
-                    .map(|value| crate::text::Text::literal(&value));
+                    .map(crate::text::Text::literal);
             },
             living_drown: |context, _, _, drowning, damage, bubbles, _| {
                 if context.setting("rules_mod", "stack").is_some() {
@@ -252,6 +240,7 @@ pub(crate) fn install() {
             can_fit_inside_container_items: |context, stack, fits| {
                 item_part(context, "can_fit_inside_container_items", stack, fits);
             },
+            item_name: |_, _, _| {},
         });
         assert!(
             installed,

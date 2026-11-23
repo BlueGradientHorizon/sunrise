@@ -181,6 +181,7 @@ mod tests {
             sprite: Some("test:block/honey".into()),
             tint: Some(0xC0FF_AA00),
             world: None,
+            measures: Default::default(),
         }
     }
 
@@ -344,14 +345,11 @@ mod tests {
                 luminosity: 0
             })
         );
-        // No tint is the colour `DrawContext::fluid` draws (`fluid_tint`).
+        // No tint is the colour `DrawContext::fluid` draws: an opaque mid grey.
         let plain = sunrise_mod_package::content::FluidLook { tint: None, ..flat };
         assert_eq!(
             fluid_box_look("test:honey", Some(&plain), 0, layers).map(|look| look.tint),
-            Ok(crate::game::native_panel_recipes::fluid_tint(
-                "test:honey",
-                None
-            ))
+            Ok(0xFF9A_9A9A)
         );
     }
 }

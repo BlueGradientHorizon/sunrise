@@ -241,14 +241,10 @@ fn criteria_rename(cx: &mut Cx, advancement: &str, conversions: &dyn Fn(&str) ->
         let Some(criteria) = v.get_mut(advancement).and_then(|a| a.get_mut("criteria")) else {
             return;
         };
-        if let Tag::Compound(c) = criteria {
-            let old = std::mem::take(c);
-            for (k, value) in old {
-                let name = k.to_string_lossy();
-                let k = conversions(&name).map_or(k, |n| n.as_str().into());
-                c.insert(k, value);
-            }
-        }
+        super::advancement_criteria::map_keys(criteria, |k| {
+            let name = k.to_string_lossy();
+            conversions(&name).map_or(k, |n| n.as_str().into())
+        });
     });
 }
 
@@ -311,7 +307,7 @@ fn filtered_signs(cx: &mut Cx) {
         for i in 1..=4 {
             remove(be, &format!("FilteredText{i}"));
         }
-        reread_as(Ty::BlockEntity, k, be);
+        reread_as(Ty::BlockEntity, k, be)
     });
 }
 
@@ -637,7 +633,7 @@ fn sign_double_sided(cx: &mut Cx, id: &str) {
         for field in super::fixes_a::SIGN_FIELDS_TO_DROP {
             remove(be, field);
         }
-        reread_as(Ty::BlockEntity, k, be);
+        reread_as(Ty::BlockEntity, k, be)
     });
 }
 

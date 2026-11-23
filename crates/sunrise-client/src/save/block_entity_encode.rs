@@ -1,7 +1,7 @@
 use super::{block_entity_id, string, uuid_tag};
 use crate::{
     beehive::BeehiveExt,
-    containers::BlockEntity,
+    containers::{BlockEntity, ModBlockEntity},
     mobs::{spawner::SpawnerExt, trial_spawner::TrialSpawnerExt},
 };
 use sunrise_core::nbt::{Compound, Tag};
@@ -13,18 +13,18 @@ pub fn encode(
     block: &str,
     items: &crate::items::Items,
 ) -> Tag {
-    encode_with(p, e, block, DataFields::default(), items, |_, _| None)
+    encode_with(p, e, block, DataFields::default(), items, |_| None)
 }
 
-/// Encode a chunk block entity. Its owner may supply the mod payload before the
-/// engine adds published shapes, owned item slots, identity and position.
+/// Encode a chunk block entity. If supplied, the edited mod payload already contains
+/// its final `Items` field. The engine then adds shapes, identity and position.
 pub fn encode_with(
     p: (i32, i32, i32),
     e: &BlockEntity,
     block: &str,
     extra: DataFields<'_>,
     items: &crate::items::Items,
-    save_additional: impl FnOnce(&str, &Compound) -> Option<Compound>,
+    save_additional: impl FnOnce(&ModBlockEntity) -> Option<Compound>,
 ) -> Tag {
     let mut map = fields(e, block, extra, items, save_additional);
     crate::block_entity_nbt::write_metadata(&mut map, block_entity_id(e, block), [p.0, p.1, p.2]);
@@ -52,7 +52,7 @@ pub fn data(
     extra: DataFields<'_>,
     items: &crate::items::Items,
 ) -> Tag {
-    data_with(p, e, block, extra, items, |_, _| None)
+    data_with(p, e, block, extra, items, |_| None)
 }
 
 /// The command view with the live mod payload; `keepPacked` is chunk-only.
@@ -62,7 +62,7 @@ pub fn data_with(
     block: &str,
     extra: DataFields<'_>,
     items: &crate::items::Items,
-    save_additional: impl FnOnce(&str, &Compound) -> Option<Compound>,
+    save_additional: impl FnOnce(&ModBlockEntity) -> Option<Compound>,
 ) -> Tag {
     let mut map = fields(e, block, extra, items, save_additional);
     if matches!(e, BlockEntity::Mod(_)) {
@@ -73,10 +73,7 @@ pub fn data_with(
 }
 
 /// Merge modeled stacks with saved rows the engine did not take ownership of.
-pub fn mod_items(
-    m: &crate::containers::ModBlockEntity,
-    items: &crate::items::Items,
-) -> Option<Tag> {
+pub fn mod_items(m: &ModBlockEntity, items: &crate::items::Items) -> Option<Tag> {
     let mut entries = sunrise_items::item_nbt::encode_items_using(&m.items, |stack| {
         sunrise_items::item_nbt::item_to_nbt(stack, items)
     });
@@ -91,6 +88,16 @@ pub fn mod_items(
     }
 }
 
+/// Restore the stored inventory, including any modeled slots, to a payload copy.
+pub fn write_mod_items(out: &mut Compound, m: &ModBlockEntity, items: &crate::items::Items) {
+    let key = "Items".into();
+    if let Some(items) = mod_items(m, items) {
+        out.insert(key, items);
+    } else {
+        out.remove(&key);
+    }
+}
+
 fn fields(
     e: &crate::containers::BlockEntity,
     block: &str,
@@ -101,20 +108,17 @@ fn fields(
         hopper_cooldown,
     }: DataFields<'_>,
     items: &crate::items::Items,
-    save_additional: impl FnOnce(&str, &Compound) -> Option<Compound>,
+    save_additional: impl FnOnce(&ModBlockEntity) -> Option<Compound>,
 ) -> Compound {
     if let BlockEntity::Mod(m) = e {
-        let mut map = save_additional(m.id(), &m.nbt).unwrap_or_else(|| m.nbt.clone());
+        let edited = save_additional(m);
+        let write_items = edited.is_none() && !m.items.is_empty();
+        let mut map = edited.unwrap_or_else(|| m.nbt.clone());
         if let Some((key, shapes)) = m.shapes_tag() {
             map.insert(key.into(), shapes);
         }
-        if !m.items.is_empty() {
-            let key = "Items".into();
-            if let Some(items) = mod_items(m, items) {
-                map.insert(key, items);
-            } else {
-                map.remove(&key);
-            }
+        if write_items {
+            write_mod_items(&mut map, m, items);
         }
         if let Some(lock) = lock {
             map.insert("lock".into(), lock.clone());

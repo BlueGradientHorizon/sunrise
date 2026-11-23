@@ -171,7 +171,7 @@ impl Game<'_> {
     /// Whether any object rides the entity, even one without a handle.
     pub(super) fn entity_is_vehicle(&self, entity: EntityRef) -> Option<bool> {
         Some(match self.riding_read(entity)? {
-            RidingRead::Server(_) => !self.seated_passengers(entity.id()).is_empty(),
+            RidingRead::Server(_) => self.has_seated_passengers(entity.id()),
             RidingRead::Client(remote) => remote.has_passengers(entity.id()),
         })
     }
@@ -253,7 +253,7 @@ impl Game<'_> {
     /// handle.
     pub(super) fn entity_controlling_passenger(&self, entity: EntityRef) -> Option<LivingRef> {
         let vehicle = self.native_entity_target(entity)?;
-        let first_id = self.seated_passengers(entity.id()).first()?.1;
+        let first_id = self.first_seated_passenger(entity.id())?.1;
         let first = self.entity(first_id)?;
         let rider = self.native_entity_target(first)?;
         let is_player = matches!(rider, Target::Player | Target::Guest(_));
@@ -267,10 +267,10 @@ impl Game<'_> {
                         .then(|| LivingRef::new(first));
                 }
                 let rider = self.mobs.iter().find(|m| m.id == first.id())?;
-                let tagged = self
-                    .res
-                    .mob_data()
-                    .entity_has("minecraft:non_controlling_rider", &rider.kind.id);
+                let tagged = self.items().entity_type_tags.has_bit(
+                    rider.kind.flags.entity_tag_slot,
+                    sunrise_client::items::EntityTypeTags::NON_CONTROLLING_RIDER,
+                );
                 (!mob.no_ai && !tagged).then(|| LivingRef::new(first))
             }
             _ => None,
@@ -539,7 +539,7 @@ impl Game<'_> {
                     _ => {}
                 }
                 self.riding = Some(vehicle_id);
-                self.seat_acting_player(vehicle_id);
+                self.seat_player(vehicle_id);
                 self.trigger_player("minecraft:started_riding");
             }
             Target::Mob(id) => {
@@ -635,7 +635,7 @@ impl Game<'_> {
         }
         if !force {
             match rider {
-                Target::Player if self.keys.held(sunrise_client::actions::Action::Sneak) => {
+                Target::Player if self.held_mapping(sunrise_client::actions::Action::Sneak) => {
                     return Err(R::CannotRide);
                 }
                 Target::Mob(id)
@@ -667,9 +667,12 @@ impl Game<'_> {
                     .iter()
                     .position(|b| b.id == id)
                     .ok_or(R::NoEntity)?;
-                if self.boat_passengers(id) >= self.boats[index].max_passengers()
-                    || (!force && !self.boat_has_room(index))
-                {
+                let full = if force {
+                    self.seated_passenger_count(id) >= self.boats[index].max_passengers()
+                } else {
+                    !self.boat_has_room(index)
+                };
+                if full {
                     return Err(R::Full);
                 }
             }
@@ -677,10 +680,7 @@ impl Game<'_> {
                 if !self.carts.iter().any(|cart| cart.id == id) {
                     return Err(R::NoEntity);
                 }
-                if self.riding == Some(id)
-                    || self.ridden_by_guest(id)
-                    || !self.seated_passengers(id).is_empty()
-                {
+                if self.has_seated_passengers(id) {
                     return Err(R::Full);
                 }
             }
@@ -773,6 +773,45 @@ impl Game<'_> {
         }
     }
 
+    /// `Entity.setRemoved`: stop each direct passenger in list order, not
+    /// the reverse order of `ejectPassengers`. A callback can move a later
+    /// passenger, so check each edge again before asking it to stop riding.
+    pub(super) fn dismount_removed_passengers(&mut self, vehicle: u32, y: f64) {
+        let passengers = self.seated_passengers(vehicle);
+        let own = self
+            .player
+            .as_ref()
+            .filter(|_| self.lan_acting.is_none())
+            .map(|player| player.entity_id as u32);
+        // An own-player edge that has no seat entry still needs to dismount.
+        if let Some(own) = own
+            && self.riding == Some(vehicle)
+            && !passengers
+                .iter()
+                .any(|&(_, id, player)| player && id == own)
+        {
+            self.stop_riding_from_removed_vehicle(vehicle, y);
+        }
+        for (_, id, player) in passengers {
+            if player {
+                let target = if own == Some(id) {
+                    Some(Target::Player)
+                } else {
+                    self.player_vehicle(id)
+                };
+                if let Some(target) = target
+                    && self.native_vehicle_id(target) == Some(vehicle)
+                {
+                    self.for_player(target, |g| g.stop_riding_from_removed_vehicle(vehicle, y));
+                }
+            } else if self.native_vehicle_id(Target::Mob(id)) == Some(vehicle) {
+                self.dismount_mob_from_removed_vehicle(id, y);
+            } else if self.native_vehicle_id(Target::General(id)) == Some(vehicle) {
+                self.dismount_general(id, vehicle);
+            }
+        }
+    }
+
     pub(super) fn dismount_general_passengers(&mut self, vehicle: u32) {
         let mut passengers: Vec<_> = self
             .general_passengers(vehicle)
@@ -806,6 +845,7 @@ mod tests {
     use super::super::{Game, commands::Target};
     use mod_api::{
         self, EntityMountEvent, EntityRef, EntityUnleashEvent, Flow, Hooks, LivingRef, ServerHost,
+        StartRidingRefusal,
     };
     use std::sync::{Arc, Mutex};
     use sunrise_client::chunk::Chunk;
@@ -891,6 +931,7 @@ mod tests {
                         game.armor_stands.push(ArmorStand::new(id, Vec3::ZERO, 0.0));
                     } else {
                         game.others.push(super::super::commands::OtherEntity {
+                            size_answer: None,
                             attachment_lifetime: Default::default(),
                             knot_check: None,
                             eye: None,
@@ -1043,17 +1084,30 @@ mod tests {
                 game.mobs[2].extra.mount = Some(41);
                 game.mobs[1].extra.rider = Some(42);
                 game.mobs[3].extra.mount = Some(44);
-                game.riding = Some(44);
+                super::super::native_player_death::tests::add_guest(game);
+                game.lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| guest.vehicle = Some(44));
                 events.lock().unwrap().clear();
                 let rider = game.entity(40).unwrap();
                 for id in [41, 44] {
                     let vehicle = game.entity(id).unwrap();
-                    assert!(game.entity_start_riding(rider, vehicle, false).is_err());
+                    assert_eq!(
+                        game.entity_start_riding(rider, vehicle, false),
+                        Err(StartRidingRefusal::Full),
+                        "vehicle {id} is full"
+                    );
                 }
                 // Boats keep their storage limit even for commands and forced handles.
                 assert!(!game.run_command(boat));
                 let vehicle = game.entity(44).unwrap();
-                assert!(game.entity_start_riding(rider, vehicle, true).is_err());
+                assert_eq!(
+                    game.entity_start_riding(rider, vehicle, true),
+                    Err(StartRidingRefusal::Full)
+                );
                 assert!(events.lock().unwrap().is_empty());
                 // /ride forces mob boarding: capacity alone must not suppress its hook.
                 assert!(game.run_command(pig));
@@ -1875,6 +1929,7 @@ mod tests {
             // A marker has a zero-sized box. Entity's default dismount answer is
             // still its position with the box's top as Y, even without a current ride.
             game.others.push(super::super::commands::OtherEntity {
+                size_answer: None,
                 attachment_lifetime: Default::default(),
                 knot_check: None,
                 eye: None,

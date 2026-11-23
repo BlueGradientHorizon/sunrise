@@ -17,6 +17,7 @@ pub(crate) const GLUE: Glue = Glue {
     setup: "",
     finish: "gl_Position.y = -gl_Position.y;",
     vertex_id: "int(gl_VertexIndex)",
+    interface: sunrise_shaders::DEVICELESS_INTERFACE_LIMITS,
 };
 
 /// The block `Lightmap.render` fills, beside the vanilla ones.
@@ -171,7 +172,7 @@ impl Readback {
 ///
 /// It holds nothing of the level: a level change keeps it, and a pack change or reload makes a
 /// new renderer, which loads the packs' shader again (`set_lightmap_shader`).
-pub(super) struct CoreLightmap {
+pub(crate) struct CoreLightmap {
     pipeline: wgpu::RenderPipeline,
     group: wgpu::BindGroup,
     uniform: wgpu::Buffer,
@@ -210,7 +211,11 @@ impl CoreLightmap {
         };
         let vertex = module("Resource pack lightmap (vertex)", &program.vertex);
         let fragment = module("Resource pack lightmap (fragment)", &program.fragment);
-        let extra = super::expression_blocks::ExpressionBlocks::new(expressions, INFO_OFFSET + 256);
+        let extra = super::expression_blocks::ExpressionBlocks::new(
+            program,
+            expressions,
+            INFO_OFFSET + 256,
+        );
         let uniform = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Resource pack lightmap"),
             size: extra.size(),
@@ -222,27 +227,11 @@ impl CoreLightmap {
         let info = info_binding.map(|b| (b, INFO_OFFSET, INFO_SIZE, program.stages_reading(b)));
         let mut blocks = super::expression_blocks::vanilla_blocks(program);
         blocks.extend(info.filter(|(.., stages)| !stages.is_empty()));
-        let entries: Vec<wgpu::BindGroupLayoutEntry> = (blocks.iter())
-            .map(|&(binding, _, size, stages)| {
-                super::expression_blocks::block_entry(binding, size, stages)
-            })
-            .chain(extra.layout())
-            .collect();
+        let (entries, resources) = super::expression_blocks::bindings(&blocks, &extra, &uniform);
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Resource pack lightmap"),
             entries: &entries,
         });
-        let resources: Vec<wgpu::BindGroupEntry> = (blocks.iter())
-            .map(|&(binding, offset, size, _)| wgpu::BindGroupEntry {
-                binding,
-                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                    buffer: &uniform,
-                    offset,
-                    size: wgpu::BufferSize::new(size),
-                }),
-            })
-            .chain(extra.entries(&uniform))
-            .collect();
         let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Resource pack lightmap"),
             layout: &layout,

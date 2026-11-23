@@ -1,5 +1,5 @@
 // `joml::Mat4::rotation`, `rotate`, `rotate_affine`, `scale`, `transform_affine`,
-// `transform_position` and `invert_orthonormal`, and `joml::Quat::rotation_x`/`_y`/`_z` and
+// `transform_position` and `invert_orthonormal`, and `joml::Quat::rotation_x`/`_y`/`_z`, `rotate_z` and
 // `rotation_zyx`, in this file are adapted from JOML 1.10.9's `Matrix4f`, `Quaternionf`,
 // `Vector3f` and `Vector4f` (https://github.com/JOML-CI/JOML, MIT; see THIRD_PARTY_NOTICES.md).
 //
@@ -95,7 +95,7 @@ pub mod joml {
 
     /// `Math.sin(float)`: `java.lang.Math.sin` narrowed.
     pub fn sin(rad: f32) -> f32 {
-        f64::from(rad).sin() as f32
+        sunrise_core::jmath::sin(f64::from(rad)) as f32
     }
     /// `Math.cosFromSin(float, float)`.
     pub fn cos_from_sin(sin: f32, angle: f32) -> f32 {
@@ -189,6 +189,18 @@ pub mod joml {
                 y: 0.0,
                 z,
                 w,
+            }
+        }
+        /// `Quaternionf.rotateZ(angle)` for provider roll, with HotSpot's `Math.sin`.
+        pub(crate) fn rotate_z(self, angle: f32) -> Self {
+            let half = angle * 0.5;
+            let sin = sunrise_core::jmath::sin(f64::from(half)) as f32;
+            let cos = cos_from_sin(sin, half);
+            Self {
+                x: self.x * cos + self.y * sin,
+                y: self.y * cos - self.x * sin,
+                z: self.w * sin + self.z * cos,
+                w: self.w * cos - self.z * sin,
             }
         }
         fn half_turn(angle: f32) -> (f32, f32) {
@@ -446,6 +458,26 @@ pub mod joml {
                 properties: AFFINE,
             }
         }
+        /// `Matrix4f.mulAffine(Matrix4fc, Matrix4f)` in JOML's unfused right-to-left order.
+        pub fn mul_affine(&self, b: &Self) -> Self {
+            let mut out = [0.0f32; 16];
+            for col in 0..3 {
+                for row in 0..3 {
+                    out[col * 4 + row] = self.get(0, row) * b.get(col, 0)
+                        + (self.get(1, row) * b.get(col, 1) + self.get(2, row) * b.get(col, 2));
+                }
+            }
+            for row in 0..3 {
+                out[12 + row] = self.get(0, row) * b.get(3, 0)
+                    + (self.get(1, row) * b.get(3, 1)
+                        + (self.get(2, row) * b.get(3, 2) + self.get(3, row)));
+            }
+            out[15] = 1.0;
+            Self {
+                m: out,
+                properties: AFFINE,
+            }
+        }
         /// `Matrix4f.rotate(Quaternionfc)` of an affine matrix that is neither the identity nor
         /// a pure translation (`rotateAffine`).
         pub fn rotate_affine(&mut self, q: Quat) {
@@ -671,6 +703,7 @@ impl NearPlane {
 /// `Camera`: the eye-height and field-of-view easing and the view placement.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Camera {
+    pub initialized: bool,
     pub eye_height: f32,
     pub eye_height_old: f32,
     pub fov_modifier: f32,
@@ -691,6 +724,7 @@ pub struct Camera {
 impl Default for Camera {
     fn default() -> Self {
         Self {
+            initialized: false,
             eye_height: 0.0,
             eye_height_old: 0.0,
             fov_modifier: 0.0,
@@ -820,6 +854,7 @@ impl Camera {
             self.set_rotation(bed.map_or(0.0, |yaw| yaw - 180.0), 0.0);
             self.move_by(0.0, 0.15, 0.0);
         }
+        self.initialized = true;
     }
     /// `Camera.getMaxZoom`: eight rays from the corners of a 0.2 cube about
     /// the eye, shortening the distance to the nearest visual-shape hit.

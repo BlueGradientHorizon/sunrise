@@ -130,32 +130,38 @@ impl From<ItemFished> for super::ItemFished {
 // no wire: borrowed game-to-hook adapter; its call fields cross separately.
 pub struct ScreenView<'a> {
     pub id: &'static str,
+    pub mod_screen: Option<&'a str>,
     pub menu: Option<&'a str>,
     pub title: Option<&'a Text>,
     pub rect: [f32; 4],
     pub slots: usize,
     pub mouse: [f32; 2],
     pub partial_tick: f32,
+    pub regions: &'a [ScreenRegion],
 }
 impl<'a> From<ScreenView<'a>> for super::ScreenView<'a> {
     fn from(v: ScreenView<'a>) -> Self {
         let ScreenView {
             id,
+            mod_screen,
             menu,
             title,
             rect,
             slots,
             mouse,
             partial_tick,
+            regions,
         } = v;
         Self {
             id,
+            mod_screen,
             menu,
             title,
             rect,
             slots,
             mouse,
             partial_tick,
+            regions,
         }
     }
 }
@@ -422,6 +428,7 @@ pub struct SoundPlay {
     pub delay: i32,
     pub attenuation: super::SoundAttenuation,
     pub relative: bool,
+    pub effects: super::SoundEffects,
 }
 impl From<SoundPlay> for super::SoundPlay {
     fn from(v: SoundPlay) -> Self {
@@ -435,6 +442,7 @@ impl From<SoundPlay> for super::SoundPlay {
             delay,
             attenuation,
             relative,
+            effects,
         } = v;
         Self {
             identifier,
@@ -446,6 +454,7 @@ impl From<SoundPlay> for super::SoundPlay {
             delay,
             attenuation,
             relative,
+            effects,
         }
     }
 }
@@ -474,7 +483,7 @@ impl From<PortalShape> for super::PortalShape {
     }
 }
 // exhaustive: the game builds it with a literal; mods only read it
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: the engine converts this native staging record directly into the render frame.
 pub struct EntityRenderState {
     pub id: u32,
     pub partial: f32,

@@ -1,5 +1,5 @@
-//! A mod's recipes shown in its item panel's place (`native_panel_recipes`,
-//! or `browser.set-recipes` of a WebAssembly mod, docs/modding/src/how-to/content-mods.md), laid out by the game with its own slots, arrows and
+//! A mod's recipes shown in its item panel's place (`native_panel_recipes`),
+//! laid out by the game with its own slots, arrows and
 //! buttons, paged to the panel's height, under a title and a back button.
 //! The mod hears clicks on their slots, their action buttons, the back
 //! button and page turns.
@@ -647,15 +647,9 @@ impl Game<'_> {
                 sunrise_client::text::Text::literal(warning.clone()).resolve_legacy(),
                 rgba(255, 100, 100, 255),
             )];
-            let (x, y, w, h) = Self::tooltip_geometry(
-                &self.gui.atlas,
-                &lines,
-                cursor,
-                (batch.width, batch.height),
-                [0.0; 2],
-            );
-            sunrise_client::widgets::record(&warning, [x, y, w, h], false);
-            self.draw_tooltip_lines(batch, &lines, cursor.0, cursor.1);
+            if let Some(rect) = self.draw_tooltip_lines(batch, &lines, cursor.0, cursor.1) {
+                sunrise_client::widgets::record(&warning, rect, false);
+            }
         }
     }
 

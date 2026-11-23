@@ -1,6 +1,6 @@
 ---
 name: sunrise-mods
-description: Make, build, test or debug a Sunrise mod (a content, native or Wasm mod, the `.smod` package, the mod SDK, `cargo sunrise-mod`, `native-lock`), or change the mod tools in this repository and try the change on a real mod. Use for "make me a mod", "why doesn't my mod build", "does this mod fit the new build", a manifest or lock error, and any work in `crates/cargo-sunrise-mod`, `crates/sunrise-mod-package` or `crates/sunrise-native-build`.
+description: Make, build, test or debug a Sunrise mod (a content or native mod, the `.smod` package, the mod SDK, `cargo sunrise-mod`, `native-lock`), or change the mod tools in this repository and try the change on a real mod. Use for "make me a mod", "why doesn't my mod build", "does this mod fit the new build", a manifest or lock error, and any work in `crates/cargo-sunrise-mod`, `crates/sunrise-mod-package` or `crates/sunrise-native-build`.
 ---
 
 # Sunrise mods and the mod tools
@@ -14,14 +14,12 @@ Choose the walkthrough under `docs/modding/src/` for the kind of mod you are mak
 
 - **Native:** `for-agents.md` and `start/first-mod.md`. Use `cargo sunrise-mod check` after an edit, `build`
   to compile and pack, `run` to stage and play, and `cargo test` for the Rust logic.
-- **Wasm:** `start/first-wasm-mod.md`. Start with the Wasm template, use `cargo sunrise-mod build --wasm`,
-  then the page's `sunrise-client --dev-mod` command to try the package.
 - **Content-only:** `start/first-content-mod.md`. Use `cargo sunrise-mod build` and `check` the resulting
   `.smod`; there is no Cargo test target or SDK to install.
 
 `cargo sunrise-mod new` generates the project and `sunrise-mod.toml`. Edit declared fields such as the name,
 description and dependencies as needed (`reference/manifest.md`); do not write the manifest from scratch
-or change generated pins by hand. For code mods, `cargo sunrise-mod update` changes the pins.
+or change the generated build pin by hand. For code mods, `cargo sunrise-mod pin` moves the build pin.
 
 - `cargo sunrise-mod help all` lists the commands; `reference/sdk/05-commands.md` describes the SDK commands.
 - Find a hook with `cargo sunrise-mod hooks <words>`, never by guessing a name.
@@ -39,7 +37,7 @@ or change generated pins by hand. For code mods, `cargo sunrise-mod update` chan
 | A compile fails | `how-to/native-mods/05-build-log.md` |
 | Changing game code (`[native.*]` tables, mixins, loops) | `concepts/native-route.md` |
 | The SDK: what a release holds, the pin, signatures | `reference/sdk.md`, `reference/sdk/01-release.md`, `reference/sdk/03-in-a-project.md` |
-| Does a mod still fit a newer build (`fits`, `update`, `uses.json`) | `reference/sdk/04-fit.md`, `how-to/native-mods/14-checking-a-mod-against-a-build.md` |
+| Does a mod still fit a newer build (`check --build`, `pin`, `uses.json`) | `reference/sdk/04-fit.md`, `how-to/native-mods/14-checking-a-mod-against-a-build.md` |
 | crates.io dependencies and `Cargo.lock` (`build --update-lock`, `native-lock`) | `start/first-mod.md` (step 5), `reference/sdk/08-native-build.md` |
 | The JSON contract a build server or launcher drives (`native-build`, `native-check`, `native-lock`) | `reference/sdk/08-native-build.md` |
 | Testing a mod's logic | `concepts/testing.md` |
@@ -54,7 +52,7 @@ or change generated pins by hand. For code mods, `cargo sunrise-mod update` chan
 - Try a change on a real mod with a host debug build of the tool. From the checkout, resolve the executable
   before changing directories. Only code templates fetch an SDK: the current Nightly by default, or the
   build named by `new --sunrise <build>`. The example is for a native mod; use the matching walkthrough above
-  to smoke-test a Wasm or content-only change.
+  to smoke-test a content-only change.
 
   ```sh
   target_dir="$PWD/target/mod-tool-smoke"

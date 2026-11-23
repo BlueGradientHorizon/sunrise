@@ -75,6 +75,9 @@ pub mod dimension_transition;
 pub mod fluid_models;
 pub mod level_loading;
 pub mod light;
+pub mod light_border;
+#[cfg(test)]
+mod light_storage_tests;
 pub mod lod;
 pub mod logging;
 pub mod mark_sprite;
@@ -203,3 +206,5 @@ pub mod render_views;
 
 #[cfg(test)]
 mod test_log;
+#[cfg(test)]
+mod test_process;

@@ -61,8 +61,8 @@ DependencySorter.visitDependenciesAndElement	port	crates/sunrise-world/src/world
 DependencySorter.isCyclic	port	crates/sunrise-world/src/worldgen/tags.rs::reaches	reach test used to refuse a cyclic edge
 DependencySorter.addDependencyIfNotCyclic	inline	crates/sunrise-world/src/worldgen/tags.rs::TagDefinitions::build	adds the edge only when reaches is false
 DependencySorter.orderByDependencies	inline	crates/sunrise-world/src/worldgen/tags.rs::TagDefinitions::build	required edges first, then optional ones, then the visit order
-DirectoryLock.create	port	crates/sunrise-client/src/save.rs::SessionLock::acquire	exclusive file lock on session.lock with the two-byte snowman content
-DirectoryLock.isLocked	port	crates/sunrise-client/src/save.rs::SessionLock::is_locked	trying for the world's session.lock tells a locked world; title.rs uses it to flag the entry
+DirectoryLock.create	port	crates/sunrise-client/src/save/session.rs::SessionLock::acquire	exclusive file lock on session.lock with the two-byte snowman content
+DirectoryLock.isLocked	port	crates/sunrise-client/src/save/session.rs::SessionLock::is_locked	trying for the world's session.lock tells a locked world; title.rs uses it to flag the entry
 Ease.inBack	missing		a named easing only a datapack's timeline can reach: the four shipped timelines ask for constant, cubic_bezier or no ease, and environment.rs::Environment::load_dimension reads those two
 Ease.inElastic	missing		a named easing only a datapack's timeline can reach: the four shipped timelines ask for constant, cubic_bezier or no ease, and environment.rs::Environment::load_dimension reads those two
 Ease.inExpo	missing		a named easing only a datapack's timeline can reach: the four shipped timelines ask for constant, cubic_bezier or no ease, and environment.rs::Environment::load_dimension reads those two
@@ -117,7 +117,7 @@ FastBufferedInputStream.skip	skip:java		buffered stream helper; Rust readers do 
 FastBufferedInputStream.fill	skip:java		buffered stream helper; Rust readers do their own buffering
 FileSystemUtil.safeGetPath	skip:other		opens a jar or zip filesystem for a URI; Sunrise reads archives with the zip crate
 FileUtil.sanitizeName	port	crates/sunrise-client/src/title.rs::Title::target_folder	gap: minor: replaces every non-alphanumeric character with _; vanilla only replaces illegal file characters, dots, slashes and quotes
-FileUtil.isPathPortable	port	crates/sunrise-client/src/game/administration/structure_blocks.rs::portable_path	the structure path's check: no empty, `.` or `..` segment; vanilla also tests the part's characters (isPathPartPortable)
+FileUtil.isPathPortable	port	crates/sunrise-gameplay/src/structure_blocks.rs::portable_path	the structure path's check: no empty, `.` or `..` segment; vanilla also tests the part's characters (isPathPartPortable)
 FileUtil.decomposePath	skip:data		resource path handling; Sunrise reads its data from tables and files
 FileUtil.resolvePath	skip:data		resource path handling; Sunrise reads its data from tables and files
 FileUtil.isValidPathSegment	skip:data		resource path handling; Sunrise reads its data from tables and files

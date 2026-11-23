@@ -1820,9 +1820,10 @@ impl Game<'_> {
         // Construction and join callbacks can insert, cancel, or remove rows.
         // Resolve the surviving arrival by the resident UUID index after them.
         let Some(entity) = uuid.and_then(|uuid| {
-            self.entity_by_uuid(mod_api::EntityUuid(
-                sunrise_client::lan::playerdata::ints_uuid(uuid),
-            ))
+            self.level_entity_by_uuid(
+                self.native_current_level()?,
+                mod_api::EntityUuid(sunrise_client::lan::playerdata::ints_uuid(uuid)),
+            )
         }) else {
             return;
         };
@@ -1922,7 +1923,7 @@ impl Game<'_> {
             f.drop_item,
             f.damage,
             f.fall_distance,
-            f.on_ground,
+            f.ground.on_ground,
             f.rotation,
             uuid,
         );
@@ -1983,7 +1984,17 @@ impl Game<'_> {
         if !self.portals.dirty || self.remote.is_some() {
             return;
         }
-        let list = self.portals.arrivals.iter().map(arrival_tag).collect();
+        let list = self
+            .portals
+            .arrivals
+            .iter()
+            .filter(|arrival| match &arrival.transferred {
+                Some(TransferredArrivalState::Entity(state)) => !state.transient,
+                Some(TransferredArrivalState::VehicleTree(tree)) => !tree.is_transient(),
+                None => true,
+            })
+            .map(arrival_tag)
+            .collect();
         let root = Tag::compound([("arrivals", Tag::List(list))]);
         if sunrise_client::save::write_dat(&self.arrivals_path(), root).is_ok() {
             self.portals.dirty = false;
@@ -1994,7 +2005,7 @@ impl Game<'_> {
 impl Game<'_> {}
 
 #[cfg(test)]
-mod tests {
+pub(in crate::game) mod tests {
     use super::super::server_travel::TravelCause;
     use super::*;
     use std::sync::{
@@ -2502,7 +2513,71 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
+    fn portal_arrivals_keep_the_live_opt_out_without_writing_a_waiting_entity() {
+        mod_platform::testing::with_mods(Default::default(), || {
+            crate::game::native_entity_refs::tests::with_game(|game| {
+                let chunk = (0, 0);
+                let at = BlockPos::new(4, 64, 4);
+                let spawn = |game: &mut Game<'_>, nbt| {
+                    let target = game
+                        .summon_with_nbt("minecraft:text_display", [4.0, 64.0, 4.0], nbt)
+                        .unwrap()
+                        .unwrap();
+                    game.entity(game.resident_target_id(target).unwrap())
+                        .unwrap()
+                };
+                let transient = spawn(game, "{UUID:[I;0,0,0,583]}");
+                let persistent = spawn(game, "{UUID:[I;0,0,0,584]}");
+                assert_eq!(transient.set_persistent(game, false), Ok(true));
+                game.send_through_portal(transient.id(), at);
+                game.send_through_portal(persistent.id(), at);
+                let world = tempfile::tempdir().unwrap();
+                game.world_root = world.path().to_path_buf();
+                let path = game.arrivals_path();
+                std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+                game.save_portal_arrivals();
+                let written = sunrise_client::save::read_dat(&path).unwrap();
+                let Some(Tag::List(saved)) = written.get("arrivals") else {
+                    panic!("missing arrivals list");
+                };
+                assert_eq!(saved.len(), 1);
+                let saved = arrival_from_tag(&saved[0]).unwrap();
+                assert_eq!(
+                    sunrise_client::entity_nbt::uuid(&saved.tag),
+                    Some([0, 0, 0, 584])
+                );
+
+                let waiting = std::mem::take(&mut game.portals.arrivals);
+                assert_eq!(waiting.len(), 2);
+                for pending in waiting {
+                    let Some(TransferredArrivalState::Entity(state)) = pending.transferred else {
+                        panic!("display must carry its live transfer state");
+                    };
+                    game.spawn_teleported_entity(chunk, pending.tag.into(), Some(state));
+                }
+                let level = game.native_current_level().unwrap();
+                assert!(
+                    game.level_entity_by_uuid(level, mod_api::EntityUuid(583))
+                        .is_some()
+                );
+                let records = game.entity_chunks(&std::collections::HashSet::from([chunk]), false);
+                assert_eq!(records[0].1.len(), 1);
+                assert_eq!(
+                    sunrise_client::entity_nbt::uuid(&records[0].1[0]),
+                    Some([0, 0, 0, 584])
+                );
+            });
+        });
+    }
+
+    #[test]
     fn portal_transfer_pending_arrival_does_not_save_transient_tnt_immunity() {
+        run_portal_transfer_pending_arrival_does_not_save_transient_tnt_immunity();
+    }
+
+    pub(in crate::game) fn run_portal_transfer_pending_arrival_does_not_save_transient_tnt_immunity()
+     {
         let arrival = Arrival {
             plan: Plan::end_portal(
                 Dim::End,
@@ -2667,7 +2742,7 @@ mod tests {
 
 #[cfg(test)]
 #[path = "tests/portal_cooldown_tests.rs"]
-mod cooldown_tests;
+pub(in crate::game) mod cooldown_tests;
 
 #[cfg(test)]
 #[path = "nether_portal/arrival_effects_tests.rs"]

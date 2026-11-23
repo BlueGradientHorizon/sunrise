@@ -7,6 +7,8 @@ use sunrise_client::particles::{ParticleOptions as EngineOptions, ParticleType};
 pub(crate) enum ParticleValueError {
     UnknownProvider,
     NonFinite,
+    /// An item crumb's colour has a component outside `0.0..=1.0`.
+    ColorRange,
     InvalidStack,
 }
 
@@ -49,10 +51,16 @@ impl<C: ParticleItems + ?Sized> TryIntoEngine<C> for ApiOptions {
     type Engine = EngineOptions;
     type Error = ParticleValueError;
     fn try_into_engine(&self, context: &C) -> Result<Self::Engine, Self::Error> {
+        if let Some(value) = self.typed() {
+            return EngineOptions::typed(value.clone()).ok_or(ParticleValueError::UnknownProvider);
+        }
+        if mod_api::__private::particle_override_limiter(self.key()).is_some() {
+            return Err(ParticleValueError::UnknownProvider);
+        }
         if !finite(self) {
             return Err(ParticleValueError::NonFinite);
         }
-        let (ty, custom) = match mod_api::__private::particle_kind(self.ty)
+        let (ty, custom) = match mod_api::__private::particle_kind(self.key())
             .ok_or(ParticleValueError::UnknownProvider)?
         {
             ParticleKind::Vanilla(index) => (
@@ -64,16 +72,20 @@ impl<C: ParticleItems + ?Sized> TryIntoEngine<C> for ApiOptions {
             ParticleKind::Custom => (
                 ParticleType::Smoke,
                 Some(std::borrow::Cow::Borrowed(
-                    mod_api::__private::particle_name(self.ty)
+                    mod_api::__private::particle_name(self.key())
                         .ok_or(ParticleValueError::UnknownProvider)?,
                 )),
             ),
         };
+        if ty.is_item_crumb() && !self.color.into_iter().all(|c| (0.0..=1.0).contains(&c)) {
+            return Err(ParticleValueError::ColorRange);
+        }
         Ok(EngineOptions {
             polytone_seed: None,
             source: None,
             ty,
             mod_particle: custom,
+            typed_particle: None,
             block: self.block.clone(),
             color: self.color,
             scale: self.scale,
@@ -102,31 +114,33 @@ impl TryIntoApi for EngineOptions {
     type Api = ApiOptions;
     type Error = ParticleValueError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
+        if let Some((value, _)) = &self.typed_particle {
+            return Ok(ApiOptions::from_typed(value.clone()));
+        }
         let key = match self.mod_particle.as_deref() {
             Some(name) => mod_api::__private::particle_named_key(name),
             None => mod_api::__private::particle_vanilla_key(self.ty as u32),
         }
         .ok_or(ParticleValueError::UnknownProvider)?;
-        Ok(ApiOptions {
-            ty: key,
-            block: self.block.clone(),
-            color: self.color,
-            scale: self.scale,
-            to_color: self.to_color,
-            trail: self.trail,
-            item: self.item.clone(),
-            item_stack: self
-                .item_stack
-                .as_ref()
-                .map(|stack| {
-                    stack
-                        .try_into_api()
-                        .map_err(|_| ParticleValueError::InvalidStack)
-                })
-                .transpose()?,
-            geyser: self.geyser,
-            vibration: self.vibration.clone(),
-        })
+        let mut options = ApiOptions::simple(key);
+        options.block = self.block.clone();
+        options.color = self.color;
+        options.scale = self.scale;
+        options.to_color = self.to_color;
+        options.trail = self.trail;
+        options.item = self.item.clone();
+        options.item_stack = self
+            .item_stack
+            .as_ref()
+            .map(|stack| {
+                stack
+                    .try_into_api()
+                    .map_err(|_| ParticleValueError::InvalidStack)
+            })
+            .transpose()?;
+        options.geyser = self.geyser;
+        options.vibration = self.vibration.clone();
+        Ok(options)
     }
 }
 impl TryIntoEngine<()> for mod_api::FireworkExplosion {
@@ -149,7 +163,12 @@ mod tests {
     fn prepare() {
         mod_platform::__private::part_tests::install_parts_fixture(&[]).unwrap();
         mod_api::__private::resolve_particles(
-            ["minecraft:smoke", "minecraft:trail", "test:spark"],
+            [
+                "minecraft:smoke",
+                "minecraft:trail",
+                "minecraft:item",
+                "test:spark",
+            ],
             |id| {
                 if id == "test:spark" {
                     Some(ParticleKind::Custom)
@@ -178,7 +197,7 @@ mod tests {
         ));
         let api = original.try_into_api().unwrap();
         assert_eq!(
-            mod_api::__private::particle_kind(api.ty),
+            mod_api::__private::particle_kind(api.key()),
             Some(ParticleKind::Vanilla(ParticleType::Trail as u32))
         );
         let result = api.try_into_engine(&()).unwrap();
@@ -216,7 +235,7 @@ mod tests {
     fn particle_custom_provider_borrows_its_retained_name() {
         prepare();
         let value = EngineOptions::named("test:spark").try_into_api().unwrap();
-        let published = mod_api::__private::particle_name(value.ty).unwrap();
+        let published = mod_api::__private::particle_name(value.key()).unwrap();
         let output = value.try_into_engine(&()).unwrap();
         assert_eq!(output.mod_particle.as_deref(), Some("test:spark"));
         assert!(std::ptr::eq(
@@ -241,6 +260,32 @@ mod tests {
         assert_eq!(
             options.try_into_engine(&()),
             Err(ParticleValueError::NonFinite)
+        );
+    }
+    #[test]
+    fn an_item_crumbs_colour_must_stay_inside_zero_to_one() {
+        prepare();
+        let colour = |ty, color| {
+            let mut options = EngineOptions::simple(ty).try_into_api().unwrap();
+            options.color = color;
+            options.try_into_engine(&())
+        };
+        assert_eq!(
+            colour(ParticleType::Item, [1.5, 0.0, 0.0, 1.0]).map(|_| ()),
+            Err(ParticleValueError::ColorRange)
+        );
+        assert_eq!(
+            colour(ParticleType::Item, [0.8, 0.5, 0.0, 1.0])
+                .unwrap()
+                .color,
+            [0.8, 0.5, 0.0, 1.0]
+        );
+        // Another particle's colour is not bounded here.
+        assert_eq!(
+            colour(ParticleType::Smoke, [1.5, 0.0, 0.0, 1.0])
+                .unwrap()
+                .color,
+            [1.5, 0.0, 0.0, 1.0]
         );
     }
 }

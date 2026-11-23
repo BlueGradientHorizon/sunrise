@@ -85,6 +85,11 @@ pub struct Creative {
     pub search: EditBox,
     /// The search tab's stacks, in its display order.
     search_items: Vec<ItemStack>,
+    /// The name a mod item's part gives each search stack (`Item.getName`), by index into
+    /// `search_items`; empty while no part names any. Set by the game (`set_search_names`).
+    search_names: Vec<Option<crate::text::Text>>,
+    /// Counts `project`s: a new value means new search stacks to name.
+    search_generation: u64,
     search_index: Vec<SearchEntry>,
     /// Definitions from the same catalog snapshot, rendered in the active language.
     holders: Arc<sunrise_items::creative_catalog::Holders>,
@@ -340,6 +345,10 @@ pub fn item_group_key(id: &str) -> Option<&'static str> {
         _ => return None,
     })
 }
+/// A mod tab's own `itemGroup.<mod>.<name>` key, for its id `<mod>:<name>`.
+pub fn mod_item_group_key(id: &str) -> String {
+    format!("itemGroup.{}", id.replace(':', "."))
+}
 impl Creative {
     pub const WIDTH: f32 = 195.0;
     pub const HEIGHT: f32 = 136.0;
@@ -450,7 +459,7 @@ impl Creative {
                 .and_then(|s| crate::item_data::parse_stack(s).ok().flatten());
             headers.push(Tab {
                 id: recipe.id.clone(),
-                title: tab["title"].as_str().unwrap_or("").to_owned(),
+                title: recipe.title.clone(),
                 icon: icon.map_or_else(|| "minecraft:stone".to_owned(), |s| s.item.to_string()),
                 items: Vec::new(),
                 top: tab["row"] == "TOP",
@@ -478,6 +487,8 @@ impl Creative {
                 search
             },
             search_items: Vec::new(),
+            search_names: Vec::new(),
+            search_generation: 0,
             search_index: Vec::new(),
             holders: Default::default(),
             items: Default::default(),
@@ -518,6 +529,8 @@ impl Creative {
         }
         self.tabs = tabs;
         self.search_items = search;
+        self.search_names.clear();
+        self.search_generation += 1;
         self.index_search();
     }
 
@@ -799,6 +812,22 @@ impl Creative {
     pub fn search_items(&self) -> &[ItemStack] {
         &self.search_items
     }
+    /// Which projection of the search stacks this is: it changes whenever they are made again.
+    pub fn search_generation(&self) -> u64 {
+        self.search_generation
+    }
+    /// The search stacks' resolved name overrides, by index into
+    /// [`Self::search_items`]: the search matches them as the stacks' name lines. Nothing but
+    /// `None`s keeps the prepared index.
+    pub fn set_search_names(&mut self, names: Vec<Option<crate::text::Text>>) {
+        self.search_names = if names.iter().any(Option::is_some) {
+            names
+        } else {
+            Vec::new()
+        };
+        *self.lines_cache.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        *self.shown.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    }
     /// Opening the screen: vanilla rebuilds CreativeModeInventoryScreen, whose
     /// init() makes a fresh search box and a zeroed scrollbar; only the tab
     /// persists (its static selectedTab). selectTab on the reopened screen
@@ -820,6 +849,7 @@ impl Creative {
         let local = if term.is_empty() || term.starts_with('#') {
             Arc::from([])
         } else if english
+            && self.search_names.is_empty()
             && self
                 .search_index
                 .iter()
@@ -833,7 +863,7 @@ impl Creative {
             match cache.as_ref().filter(|(built, _)| *built == generation) {
                 Some((_, lines)) => lines.clone(),
                 None => {
-                    let lines = self.localized_lines(&|k| names.display_get(k));
+                    let lines = self.localized_lines(names);
                     *cache = Some((generation, lines.clone()));
                     lines
                 }
@@ -843,20 +873,28 @@ impl Creative {
     }
     /// `SessionSearchTrees.getTooltipLines`: holder-dependent entries use only
     /// the active definitions and the selected language, never their prepared names.
-    fn localized_lines(&self, translate: &dyn Fn(&str) -> Option<String>) -> Arc<[Vec<String>]> {
+    fn localized_lines(&self, names: &Names) -> Arc<[Vec<String>]> {
         self.search_items
             .iter()
-            .map(|stack| {
-                let lines = item_tooltip::lines(
+            .enumerate()
+            .map(|(i, stack)| {
+                let mut lines = item_tooltip::lines(
                     stack,
                     self.items.get(&stack.item),
                     &item_tooltip::NoAttributeListener,
                     item_tooltip::TooltipHolders::Live(&self.holders),
                     true,
-                    translate,
+                    &|key| names.display_get(key),
                     // The search cache has no attribute catalog.
                     &|_| None,
                 );
+                if let Some(first) = lines.first_mut() {
+                    let name = match self.search_names.get(i).and_then(Option::as_ref) {
+                        Some(name) => crate::scoreboard::comp_text(name.component_view().as_ref()),
+                        None => crate::stations::hover_name_text(names, stack),
+                    };
+                    *first = crate::clipboard::strip_formatting(&name.plain());
+                }
                 lines
                     .iter()
                     .map(|line| java_trim(line))
@@ -901,10 +939,11 @@ impl Creative {
         all.filter(|&i| {
             let e = &self.search_index[i];
             let local = local.get(i).map_or(&[][..], Vec::as_slice);
+            let named = self.search_names.get(i).is_some_and(Option::is_some);
             let hit = |term: &str| {
-                if !e.live_tooltip && english && !e.lines.is_empty() {
+                if !named && !e.live_tooltip && english && !e.lines.is_empty() {
                     any(e.lines.iter().map(String::as_str), term)
-                } else if local.is_empty() && !e.live_tooltip {
+                } else if !named && local.is_empty() && !e.live_tooltip {
                     java_lower(&names.item(&self.search_items[i].item)).contains(term)
                 } else {
                     any(local.iter().map(String::as_str), term)
@@ -1022,8 +1061,8 @@ impl Creative {
         true
     }
     /// mouseReleased.
-    pub fn release(&mut self) {
-        self.scrolling = false;
+    pub fn release(&mut self) -> bool {
+        std::mem::take(&mut self.scrolling)
     }
     /// mouseScrolled: ItemPickerMenu.subtractInputFromScroll.
     pub fn wheel(&mut self, amount: f64, names: &Names) {
@@ -1466,10 +1505,10 @@ mod tests {
         use sunrise_protocol::registry::{Builtin, Dynamic};
         let raw = serde_json::json!({
             "schema":4, "item_features":{}, "potion_features":{}, "tabs":[
-                {"id":"minecraft:ingredients", "type":"CATEGORY", "build":[
+                {"id":"minecraft:ingredients", "title":"Ingredients", "type":"CATEGORY", "build":[
                     {"kind":"enchantments","all_levels":false,"visibility":"PARENT_AND_SEARCH_TABS"}
                 ]},
-                {"id":"minecraft:search", "type":"SEARCH", "build":[], "search_metadata":[
+                {"id":"minecraft:search", "title":"Search Items", "type":"SEARCH", "build":[], "search_metadata":[
                     {"stack":r#"{components:{"minecraft:stored_enchantments":{"minecraft:sharpness":5}},count:1,id:"minecraft:enchanted_book"}"#, "lines":["Enchanted Book","Sharpness V"]}
                 ]}
             ]
@@ -1522,8 +1561,8 @@ mod tests {
         let visible = r#"{id:"minecraft:enchanted_book",count:1,components:{"minecraft:lore":["Ink under moonlight"]}}"#;
         let hidden = r#"{id:"minecraft:enchanted_book",count:1,components:{"minecraft:lore":["Ink under moonlight"],"minecraft:tooltip_display":{hidden_components:["minecraft:lore"]}}}"#;
         let creative = fixture(serde_json::json!([
-            {"id":"minecraft:ingredients", "type":"CATEGORY", "build":[row(visible), row(hidden)]},
-            {"id":"minecraft:search", "type":"SEARCH", "build":[]}
+            {"id":"minecraft:ingredients", "title":"Ingredients", "type":"CATEGORY", "build":[row(visible), row(hidden)]},
+            {"id":"minecraft:search", "title":"Search Items", "type":"SEARCH", "build":[]}
         ]));
         assert_eq!(creative.search_items().len(), 2);
         assert_eq!(
@@ -1544,8 +1583,8 @@ mod tests {
             r#","minecraft:tooltip_display":{hidden_components:["minecraft:written_book_content"]}"#,
         );
         let creative = fixture(serde_json::json!([
-            {"id":"minecraft:ingredients", "type":"CATEGORY", "build":[row(&visible), row(&hidden)]},
-            {"id":"minecraft:search", "type":"SEARCH", "build":[]}
+            {"id":"minecraft:ingredients", "title":"Ingredients", "type":"CATEGORY", "build":[row(&visible), row(&hidden)]},
+            {"id":"minecraft:search", "title":"Search Items", "type":"SEARCH", "build":[]}
         ]));
         assert_eq!(creative.search_items().len(), 2);
         let language = lang::Language::of("en_us", [("book.byAuthor".into(), "by %1$s".into())]);
@@ -1571,12 +1610,12 @@ mod tests {
             )
         };
         let mut creative = fixture(serde_json::json!([
-            {"id":"minecraft:ingredients", "type":"CATEGORY", "build":[
+            {"id":"minecraft:ingredients", "title":"Ingredients", "type":"CATEGORY", "build":[
                 row(stack("")),
                 row(stack(r#""minecraft:attribute_modifiers""#)),
                 row(stack(r#""minecraft:painting/variant""#))
             ]},
-            {"id":"minecraft:search", "type":"SEARCH", "build":[]}
+            {"id":"minecraft:search", "title":"Search Items", "type":"SEARCH", "build":[]}
         ]));
         creative.holders = Arc::new(Holders {
             paintings: vec![Painting {
@@ -1597,7 +1636,8 @@ mod tests {
             ]),
             ..Default::default()
         };
-        let local = creative.localized_lines(&|key| names.get(key).map(str::to_owned));
+        let lang = lang::Language::of("en_us", names.map.clone());
+        let (local, _) = lang::scoped(lang, || creative.localized_lines(&names));
         let search = |term| creative.search_results_in(term, &names, &local, false);
         assert_eq!(search("+2 armor"), [0, 2]);
         assert_eq!(search("winter orchard"), [0, 1]);
@@ -1611,8 +1651,8 @@ mod tests {
         let tool = r#"{id:"minecraft:wooden_pickaxe",count:1,components:{"minecraft:enchantments":{"test:veins":2},"minecraft:unbreakable":{}}}"#;
         let mut creative = Creative::from_json(&serde_json::json!({
             "schema":4, "item_features":{}, "potion_features":{}, "tabs":[
-                {"id":"minecraft:ingredients", "type":"CATEGORY", "build":[row(tool)]},
-                {"id":"minecraft:search", "type":"SEARCH", "build":[], "search_metadata":[
+                {"id":"minecraft:ingredients", "title":"Ingredients", "type":"CATEGORY", "build":[row(tool)]},
+                {"id":"minecraft:search", "title":"Search Items", "type":"SEARCH", "build":[], "search_metadata":[
                     {"stack":tool, "lines":["Wooden Pickaxe", "Stale Vein Finder II"]}
                 ]}
             ]
@@ -2313,8 +2353,8 @@ mod tests {
             ]),
             ..Default::default()
         };
-        let tr = |k: &str| names.get(k).map(str::to_owned);
-        let local = c.localized_lines(&tr);
+        let lang = lang::Language::of("zh_cn", names.map.clone());
+        let (local, _) = lang::scoped(lang, || c.localized_lines(&names));
         let q = |s: &str| c.search_results_in(s, &names, &local, false);
         assert_eq!(q("铁砧"), [0]);
         assert_eq!(q("木锄"), [2]);
@@ -2331,13 +2371,41 @@ mod tests {
         // tooltip lines; the export's English lines do not apply.
         let c = creative(0);
         let names = Names::default();
-        let ru: HashMap<&str, &str> = HashMap::from([("item.minecraft.anvil", "Наковальня")]);
-        let tr = |k: &str| ru.get(k).map(|v| (*v).to_owned());
-        let local = c.localized_lines(&tr);
+        let lang = lang::Language::of(
+            "ru_ru",
+            HashMap::from([("item.minecraft.anvil".into(), "Наковальня".into())]),
+        );
+        let (local, _) = lang::scoped(lang, || c.localized_lines(&names));
         let q = |s: &str, english| c.search_results_in(s, &names, &local, english);
         assert_eq!(q("наков", false), [0]);
         assert!(q("anvil", false).is_empty());
         assert_eq!(q("anvil", true), [0]);
+    }
+
+    #[test]
+    fn creative_search_rerenders_retained_names_when_language_changes() {
+        let mut creative = creative(0);
+        let names = Names::default();
+        let key = "item.test.anvil_name";
+        let english = lang::Language::of("en_us", [(key.into(), "Metalworking".into())]);
+        lang::scoped(english, || {
+            creative.set_search_names(vec![Some(crate::text::Text::translate(key, &[]))]);
+            assert_eq!(creative.search_results("metalworking", &names), [0]);
+        });
+
+        let german = lang::Language::of("de_de", [(key.into(), "Schmieden".into())]);
+        lang::scoped(german, || {
+            assert_eq!(creative.search_results("schmieden", &names), [0]);
+            assert!(creative.search_results("metalworking", &names).is_empty());
+        });
+    }
+
+    #[test]
+    fn search_strips_legacy_formatting_across_name_components() {
+        let mut creative = creative(0);
+        let name = crate::text::Text::literal("Ruby§").append(crate::text::Text::literal("aGem"));
+        creative.set_search_names(vec![Some(name)]);
+        assert_eq!(creative.search_results("rubygem", &Names::default()), [0]);
     }
 
     #[test]

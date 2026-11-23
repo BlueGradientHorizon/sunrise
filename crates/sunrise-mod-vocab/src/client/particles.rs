@@ -18,15 +18,19 @@ pub enum PositionSource {
     },
 }
 
-/// `ParticleOptions` with the parameters of the option classes used here.
-#[derive(sunrise_mod_api_macros::Wire, Clone, Debug, PartialEq)]
-// exhaustive: the game builds it with a literal; mods use the constructors
+/// An owned particle request: built-in options, an asset-only type, or the
+/// value paired with a registered [`ParticleType`].
+// no wire: process-local type slots and erased native values; each type owns its stream codec.
+#[derive(Clone, Debug, PartialEq)]
+// exhaustive: construction is through the methods, which pair typed values and keys.
 pub struct ParticleOptions {
-    /// Provider identity issued by `Registrar::particle_key`, never an engine enum.
-    pub ty: ParticleKey,
+    ty: ParticleKey,
+    typed: Option<super::particle_types::TypedParticleOptions>,
     /// `BlockParticleOption`: the block's particle sprite and terrain tint.
     pub block: Option<(String, u32)>,
-    /// RGB(A) for dust, spells, entity effects and tinted leaves.
+    /// RGB(A) for dust, spells, entity effects and tinted leaves. The item crumbs (`item` and
+    /// its `item_*` variants) multiply their red, green and blue by it when spawned and ignore
+    /// its alpha; white, the default, leaves them as they are.
     pub color: [f32; 4],
     /// `DustParticleOptions.scale`, `PowerParticleOption.power`, `SpellParticleOption.power`,
     /// `SculkChargeParticleOptions.roll`, `ShriekParticleOption.delay`.
@@ -51,10 +55,33 @@ pub struct ParticleOptions {
     pub vibration: Option<(PositionSource, [f64; 3], i32)>,
 }
 impl ParticleOptions {
-    /// Construct an option for a retained vanilla or custom sprite-provider key.
+    /// The option's registered particle key.
+    pub fn key(&self) -> ParticleKey {
+        self.ty
+    }
+
+    // hidden: the game wraps a value decoded by the registered codec.
+    #[doc(hidden)]
+    pub fn from_typed(value: super::particle_types::TypedParticleOptions) -> Self {
+        let key = value.key();
+        Self {
+            typed: Some(value),
+            ..Self::simple(key)
+        }
+    }
+
+    // hidden: the game's spawn and send paths inspect the erased value.
+    #[doc(hidden)]
+    pub fn typed(&self) -> Option<&super::particle_types::TypedParticleOptions> {
+        self.typed.as_ref()
+    }
+
+    /// Construct a value for a vanilla or asset-only sprite-provider key.
+    /// Code-defined types require [`ParticleType::options`].
     pub fn simple(ty: ParticleKey) -> Self {
         Self {
             ty,
+            typed: None,
             block: None,
             color: [1.0; 4],
             scale: 1.0,
@@ -160,6 +187,16 @@ impl ParticleOptions {
         Self {
             color: rgba,
             ..Self::simple(ty)
+        }
+    }
+    /// These options with `color` set to `rgba` ([`ParticleOptions::color`]): the way to tint an
+    /// item crumb, as `ParticleOptions::item(key, vec![sprite]).with_color([r, g, b, 1.0])`. An
+    /// item crumb's colour must be finite and each component in `0.0..=1.0`; `add_particle`
+    /// refuses anything else, and nothing is clamped.
+    pub fn with_color(self, rgba: [f32; 4]) -> Self {
+        Self {
+            color: rgba,
+            ..self
         }
     }
 }

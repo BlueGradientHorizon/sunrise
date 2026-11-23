@@ -1,12 +1,13 @@
 //! How native mods stand against one game build before anything compiles: each mod's refusal and fit (SDK design §10), and the route the usable ones take.
-use crate::{api, game_uses, internals, prebuilt, scan_bundles};
+use crate::{api, game_uses, prebuilt, scan_bundles};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use sunrise_mod_package::mod_surface::{
     self,
-    uses::{self, Fit, Misfit, UsesError, UsesTable},
+    uses::{self, Change, Fit, Misfit, UsesError, UsesTable},
 };
 
 /// How a mod stands against the build an instance plays.
@@ -32,8 +33,6 @@ pub enum Verdict {
         made_for: String,
         misfits: Vec<Misfit>,
     },
-    /// An `[[inject]]` row's point is not the same in this build: why.
-    Points { made_for: String, why: String },
 }
 
 impl Verdict {
@@ -80,12 +79,11 @@ pub fn table(dir: &Path) -> Result<UsesTable, Unlisted> {
     })
 }
 
-/// How `project` stands against build `build`, whose surface `surface` gives (asked for only when the mod was made for another build), whose build data `catalog` holds, and where the game code the mod declares is as `game` says ([`game_uses::entries`], asked for only when it declares some).
+/// How `project` stands against build `build`, whose surface `surface` gives (asked for only when the mod was made for another build), and where the game code the mod declares is as `game` says ([`game_uses::entries`], asked for only when it declares some).
 pub fn judge<E>(
     project: &api::Project<'_>,
     build: &str,
     surface: &mut dyn FnMut() -> Result<Rc<mod_surface::Surface>, E>,
-    catalog: &mut dyn FnMut() -> Result<Rc<internals::Catalog>, E>,
     game: &mut dyn FnMut() -> Result<Vec<(String, game_uses::Now)>, E>,
 ) -> Result<Verdict, E> {
     let made_for = project.bundle.native().sunrise.clone();
@@ -110,7 +108,7 @@ pub fn judge<E>(
         .entries
         .iter()
         .partition(|entry| entry.id.starts_with(game_uses::PREFIX));
-    let (mut misfits, mut unversioned) = match uses::fits(api, surface()?.as_ref()) {
+    let (mut misfits, mut unversioned) = match table.fits(api, surface()?.as_ref()).verdict {
         Fit::Fits => (Vec::new(), Vec::new()),
         Fit::DoesNotFit(misfits) => (misfits, Vec::new()),
         // The build the list was made for, which has the versions, is not at hand here.
@@ -150,14 +148,6 @@ pub fn judge<E>(
             std::mem::take(&mut unversioned),
         ));
     }
-    if !project.bundle.manifest.inject.is_empty()
-        && let Err(error) = catalog()?.check(&project.bundle.manifest)
-    {
-        return Ok(Verdict::Points {
-            made_for,
-            why: error.to_string(),
-        });
-    }
     Ok(Verdict::Fits { made_for })
 }
 
@@ -174,7 +164,8 @@ pub struct Plan {
     /// The build's `surface.json`; absent, a mod that needs it says so (`needs`).
     #[serde(default)]
     pub surface: Option<PathBuf>,
-    /// The build's unpacked build data (`points.json`, `internals.json`); absent, a mod that needs it says so.
+    /// The build's unpacked build data (`functions.json`, `internals.json`, `loops.json`);
+    /// absent, a mod that needs it says so. Same-build mixins need `functions.json` too.
     #[serde(default)]
     pub build_data: Option<PathBuf>,
 }
@@ -199,17 +190,18 @@ pub struct Reply {
     pub mods: Vec<Checked>,
 }
 
-/// What a verdict lacked: a file the plan didn't give, or one that didn't read.
+/// What prevented a fit verdict: missing or unreadable data, or a named refusal.
 enum Lack {
     Needs(&'static str),
     Unread(String),
+    Refused(String),
 }
 
 /// Checks `plan`'s mods against its build.
 pub fn check(plan: &Plan) -> Result<Reply, String> {
     let found = scan_bundles(&plan.mods)?;
     let mut surface: Option<Rc<mod_surface::Surface>> = None;
-    let mut catalog: Option<Rc<internals::Catalog>> = None;
+    let mut functions = None;
     let mut mods = Vec::new();
     let mut usable = Vec::new();
     for bundle in &found {
@@ -235,39 +227,73 @@ pub fn check(plan: &Plan) -> Result<Reply, String> {
             });
             continue;
         }
-        let judged = judge(
-            &project,
-            &plan.build,
-            &mut || {
-                if let Some(read) = &surface {
-                    return Ok(read.clone());
-                }
-                let path = plan.surface.as_ref().ok_or(Lack::Needs("surface"))?;
-                let bytes = std::fs::read(path)
-                    .map_err(|e| Lack::Unread(format!("{}: {e}", path.display())))?;
-                let read = Rc::new(
-                    mod_surface::Surface::read(&bytes)
-                        .map_err(|e| Lack::Unread(format!("{}: {e}", path.display())))?,
-                );
-                surface = Some(read.clone());
-                Ok(read)
-            },
-            &mut || {
-                if let Some(read) = &catalog {
-                    return Ok(read.clone());
-                }
+        let native = bundle.native();
+        let judged = if native.sunrise == plan.build && !native.mixin.is_empty() {
+            (|| {
                 let dir = plan.build_data.as_ref().ok_or(Lack::Needs("build-data"))?;
-                let read = Rc::new(internals::Catalog::read(dir).map_err(Lack::Unread)?);
-                catalog = Some(read.clone());
-                Ok(read)
-            },
-            &mut || {
-                let dir = plan.build_data.as_ref().ok_or(Lack::Needs("build-data"))?;
-                game_uses::entries(&bundle.manifest, dir, &plan.build).map_err(Lack::Unread)
-            },
-        );
+                let index = match &functions {
+                    Some(index) => index,
+                    None => functions
+                        .insert(game_uses::function_index(dir, &plan.build).map_err(Lack::Unread)?),
+                };
+                for row in &native.mixin {
+                    if let Some(refused) = game_uses::mixin_refusal(index, &row.target) {
+                        return Err(Lack::Refused(format!(
+                            "{}: {id}:{}: {}: {}",
+                            refused.code.name(),
+                            row.id,
+                            row.target,
+                            refused.why,
+                        )));
+                    }
+                }
+                Ok(Verdict::MadeFor)
+            })()
+        } else {
+            judge(
+                &project,
+                &plan.build,
+                &mut || {
+                    if let Some(read) = &surface {
+                        return Ok(read.clone());
+                    }
+                    let path = plan.surface.as_ref().ok_or(Lack::Needs("surface"))?;
+                    let bytes = std::fs::read(path)
+                        .map_err(|e| Lack::Unread(format!("{}: {e}", path.display())))?;
+                    let read = Rc::new(
+                        mod_surface::Surface::read(&bytes)
+                            .map_err(|e| Lack::Unread(format!("{}: {e}", path.display())))?,
+                    );
+                    surface = Some(read.clone());
+                    Ok(read)
+                },
+                &mut || {
+                    let dir = plan.build_data.as_ref().ok_or(Lack::Needs("build-data"))?;
+                    game_uses::entries(&bundle.manifest, dir, &plan.build).map_err(Lack::Unread)
+                },
+            )
+        };
         match judged {
-            Ok(verdict) => {
+            Ok(mut verdict) => {
+                if let Verdict::DoesNotFit { misfits, .. } = &mut verdict {
+                    for misfit in misfits.iter_mut() {
+                        if matches!(
+                            misfit.change,
+                            Change::Refused { .. }
+                                | Change::BodyChanged { .. }
+                                | Change::DeclarationChanged { .. }
+                        ) {
+                            // Contract 2 callers isolate unfit mods and their dependents, but
+                            // only decode known changes. Carry the full diagnostic as entry
+                            // text, not a `game:fn:` id the launcher shortens to its leaf.
+                            misfit.id = misfit.to_string();
+                            misfit.change = Change::Changed;
+                        }
+                    }
+                    // A function declared as both a mixin target and an internal reads the same.
+                    let mut seen = BTreeSet::new();
+                    misfits.retain(|misfit| seen.insert(misfit.clone()));
+                }
                 if verdict.usable() {
                     usable.push(project);
                 }
@@ -285,6 +311,12 @@ pub fn check(plan: &Plan) -> Result<Reply, String> {
                 needs: Some(what),
             }),
             Err(Lack::Unread(why)) => return Err(why),
+            Err(Lack::Refused(why)) => mods.push(Checked {
+                id,
+                refusal: Some(why),
+                verdict: None,
+                needs: None,
+            }),
         }
     }
     Ok(Reply {

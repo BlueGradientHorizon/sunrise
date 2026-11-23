@@ -285,7 +285,7 @@ fn a_vanilla_boat_is_unchanged_by_a_registration_for_its_type() {
             game.boats
                 .push(super::boats::Boat::new(100, "oak".into(), feet(), 0.0));
             let mut boat = Vec::new();
-            game.boat_geometry(CAMERA, 1.0, &mut boat);
+            game.boat_geometry(CAMERA, 1.0, &mut boat, 0..game.boats.len());
             assert!(!boat.is_empty(), "its vanilla model");
             assert!(
                 boat.iter().all(|v| above(v) < 2.0),

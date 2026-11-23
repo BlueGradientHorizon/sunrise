@@ -43,6 +43,9 @@ DAILY_ROWS_LEGS = {".": DAILY_ROWS}
 PREPARE = {
     "sunrise-mod-package": ["cargo", "build", "--locked", "--profile", "test", "-p", "sunrise-mod-package",
                             "--features", "runtime-process", "--example", "holder_actor"],
+    # tests/shader_fuzz_cli.rs drives the `shader_fuzz` example through its command line.
+    "sunrise-render-shaderpack": ["cargo", "build", "--locked", "--profile", "test", "-p", "sunrise-render-shaderpack",
+                                  "--example", "shader_fuzz"],
 }
 # A package too big for one test process's memory runs as several legs, `PACKAGE#NofM` (tools/ci/ignored_tests.py
 # gives each test to exactly one leg). sunrise-client's single process was killed (signal 9) on three main runs.

@@ -15,6 +15,7 @@ impl Game<'_> {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
+        host.hub.sync_initial_health_data();
         Self::sync_hub_mod_flags(&mut host.hub);
         let turns: Vec<_> = host
             .hub
@@ -316,7 +317,7 @@ impl Game<'_> {
         let play = host.play.entry(conn).or_default();
         play.chat_spam = play.chat_spam.saturating_sub(1);
         play.command_spam = play.command_spam.saturating_sub(1);
-        play.recipe_checks = play.recipe_checks.saturating_sub(1);
+        play.decay_recipe_checks();
         // commandSuggestionsProvider.tick: one answer a tick, to the latest request.
         play.suggestion_budget = true;
         self.guest_try_suggestions(conn);
@@ -408,7 +409,7 @@ impl Game<'_> {
                 if body {
                     g.attack_ticks = g.attack_ticks.saturating_add(1);
                 }
-                g.right = g.using.is_some();
+                g.set_mapping_held("key.use", g.using.is_some());
                 g.tick_using();
                 g.stab_players = outer;
                 if g.use_delay > 0 {
@@ -472,6 +473,8 @@ impl Game<'_> {
         // armor, experience and level objectives follow the guest.
         let mut recorded = std::mem::take(&mut host.play.entry(conn).or_default().score_recorded);
         let _ = self.as_guest_at(gi, conn, |g| {
+            // Exercise a panic in a normal borrowed tick, not in player placement.
+            crate::game::dedicated::crash_fixture("guest", || true);
             g.tick_fishing();
             // Player.aiStep's Inventory.tick and doTick's statistics are the body's.
             if body {

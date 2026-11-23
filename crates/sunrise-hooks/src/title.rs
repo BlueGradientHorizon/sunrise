@@ -50,6 +50,7 @@ pub trait Button: Sync {
 
 /// Why [`register`] refused a button.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Refused {
     /// The game sealed the list: buttons register before it runs, as [`crate::TooLate`].
     TooLate,
@@ -74,7 +75,11 @@ static BUTTONS: Registry<dyn Button> = Registry::new();
 /// keep the order buttons registered in, and only [`MAX_BUTTONS`] of them fit the main menu's
 /// ids.
 pub fn register(button: &'static dyn Button) -> Result<(), Refused> {
-    match BUTTONS.register_max(button, MAX_BUTTONS) {
+    register_in(&BUTTONS, button)
+}
+
+fn register_in(buttons: &Registry<dyn Button>, button: &'static dyn Button) -> Result<(), Refused> {
+    match buttons.register_max(button, MAX_BUTTONS) {
         Ok(()) => Ok(()),
         Err(Beyond::TooLate) => Err(Refused::TooLate),
         Err(Beyond::Full) => Err(Refused::Full),
@@ -112,18 +117,20 @@ mod tests {
 
     #[test]
     fn the_registry_refuses_a_button_the_main_menu_has_no_id_for() {
+        // A registry of the test's own: the game's list stays unsealed for other tests.
+        static BUTTONS: Registry<dyn Button> = Registry::new();
         static ROWS: [Row; MAX_BUTTONS] = [Row; MAX_BUTTONS];
         for row in &ROWS {
-            assert_eq!(register(row), Ok(()));
+            assert_eq!(register_in(&BUTTONS, row), Ok(()));
         }
         // The list is not sealed yet: a full registry is not a late one.
-        assert_eq!(register(&Row), Err(Refused::Full));
+        assert_eq!(register_in(&BUTTONS, &Row), Err(Refused::Full));
         assert_eq!(
-            register(&Row).unwrap_err().to_string(),
+            register_in(&BUTTONS, &Row).unwrap_err().to_string(),
             "the title screen has no main-menu id left for the button"
         );
         // Reading the list seals it; a further registration is late, not full.
-        assert_eq!(engine::all().len(), MAX_BUTTONS);
-        assert_eq!(register(&Row), Err(Refused::TooLate));
+        assert_eq!(BUTTONS.all().len(), MAX_BUTTONS);
+        assert_eq!(register_in(&BUTTONS, &Row), Err(Refused::TooLate));
     }
 }

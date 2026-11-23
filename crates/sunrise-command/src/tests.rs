@@ -722,6 +722,26 @@ fn suggestions_like_vanilla() {
     assert_eq!(suggestions("time set 5"), ["d", "s", "t"]);
     assert!(suggestions("time set ").contains(&"minecraft:day".to_owned()));
 }
+
+/// `CommandDispatcher.getCompletionSuggestions`: a merged empty list is
+/// `Suggestions.empty()`, `StringRange.at(0)` — not the token's range the
+/// chat merge keeps for `ask_server` replies.
+#[test]
+fn empty_suggestions_answer_at_zero() {
+    let reg = reg();
+    let d = vanilla::dispatcher();
+    for input in ["gamemode x", "time set  1", "tp nope "] {
+        let parse = d.parse(input, &reg);
+        let (range, list) = d.suggestions(&parse, input.len(), &reg);
+        assert!(list.is_empty(), "{input}");
+        assert_eq!(range, (0, 0), "{input}");
+        // The chat entries still answer a range ending at the cursor, so the
+        // merge pastes an `ask_server` reply over the token being typed.
+        let (range, list) = d.client_suggestions(&parse, input.len(), &reg);
+        assert!(list.is_empty(), "{input}");
+        assert_eq!(range.1, input.len(), "{input}");
+    }
+}
 /// ClientSuggestionProvider: block and column positions offer the targeted
 /// block (`getRelevantCoordinates`), `Vec3` and `Vec2` the exact hit point
 /// with two decimals (`getAbsoluteCoordinates`); with no block hit, `~`.
@@ -1697,6 +1717,91 @@ fn h149_oblique_local_offsets_are_grouped_before_the_origin() {
     );
 }
 
+/// `IntegerArgumentType.parse` before the mod's parser: a value out of range is refused with
+/// Brigadier's message (the bound, then the value found), and the parser sees only digits that fit.
+#[test]
+fn a_custom_integer_argument_is_bounded_before_its_parser() {
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let parsed = seen.clone();
+    let argument = ArgType::Custom(CustomArgument::new(
+        "example:stack",
+        CustomArgumentKind::Integer { min: 1, max: 64 },
+        move |input| {
+            parsed.lock().unwrap().push(input.to_owned());
+            Ok(format!("{input} items"))
+        },
+        |_, _| Vec::new(),
+    ));
+    let mut dispatcher = Dispatcher::new();
+    let command = dispatcher.literal(0, "stack");
+    let count = dispatcher.argument(command, "count", argument);
+    dispatcher.executes(count, "test");
+    let registries = reg();
+    let parsed = dispatcher.parse("stack 64", &registries);
+    let (context, _) = parsed.executable().unwrap();
+    assert_eq!(
+        context.get("count"),
+        Some(&Arg::Custom {
+            kind: "example:stack".into(),
+            value: "64 items".into(),
+        })
+    );
+    for (input, expected) in [
+        ("stack 65", Text::tr("argument.integer.big", &[&64, &65])),
+        ("stack 0", Text::tr("argument.integer.low", &[&1, &0])),
+        ("stack 7.5", Text::tr("parsing.int.invalid", &[&"7.5"])),
+    ] {
+        let error = dispatcher
+            .parse(input, &registries)
+            .executable()
+            .unwrap_err();
+        assert_eq!(error.message, expected, "{input}");
+        assert_eq!(error.cursor, "stack ".len(), "{input}");
+    }
+    assert_eq!(*seen.lock().unwrap(), ["64"]);
+}
+
+/// `LongArgumentType.longArg(min, max)`: an `i64` past `int`'s range, refused out of range with
+/// `argument.long.low` / `big`, and never a fraction.
+#[test]
+fn a_long_argument_reads_past_int_and_refuses_out_of_range() {
+    let mut dispatcher = Dispatcher::new();
+    let command = dispatcher.literal(0, "bank");
+    let total = dispatcher.argument(
+        command,
+        "total",
+        ArgType::Long {
+            min: -5,
+            max: 9_000_000_000,
+        },
+    );
+    dispatcher.executes(total, "test");
+    let registries = reg();
+    let parsed = dispatcher.parse("bank 9000000000", &registries);
+    let (context, _) = parsed.executable().unwrap();
+    assert_eq!(context.get("total"), Some(&Arg::Long(9_000_000_000)));
+    for (input, expected) in [
+        (
+            "bank 9000000001",
+            Text::tr(
+                "argument.long.big",
+                &[&9_000_000_000_i64, &9_000_000_001_i64],
+            ),
+        ),
+        (
+            "bank -6",
+            Text::tr("argument.long.low", &[&-5_i64, &-6_i64]),
+        ),
+        ("bank 1.5", Text::tr("parsing.long.invalid", &[&"1.5"])),
+    ] {
+        let error = dispatcher
+            .parse(input, &registries)
+            .executable()
+            .unwrap_err();
+        assert_eq!(error.message, expected, "{input}");
+    }
+}
+
 #[test]
 fn a_custom_argument_parses_completes_and_keeps_its_id() {
     let argument = ArgType::Custom(CustomArgument::new(
@@ -1800,10 +1905,11 @@ fn an_ask_server_node_replies_with_the_token_range_when_it_has_no_suggestion_of_
     assert!(ask, "the client asks the server for this node");
     assert!(list.is_empty(), "the identifier itself suggests nothing");
     assert_eq!(range, (6, typed.len()), "the token, never (0, 0)");
-    // The server answers the same way; its dispatcher has no provider to ask, only its mods.
+    // The server's dispatcher has no provider to ask, only its mods; an empty merge is
+    // `Suggestions.empty()`.
     let (range, list) = dispatcher.suggestions(&parse, typed.len(), &registries);
     assert!(list.is_empty());
-    assert_eq!(range, (6, typed.len()));
+    assert_eq!(range, (0, 0), "Suggestions.empty()");
 }
 
 #[test]

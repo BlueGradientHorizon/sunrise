@@ -218,6 +218,7 @@ fn expected_cube(
 fn primed(id: u32, fuse: i32) -> super::tnt::PrimedTnt {
     let at = Vec3::new(FEET[0], FEET[1], FEET[2]);
     super::tnt::PrimedTnt {
+        size_answer: None,
         attachment_lifetime: Default::default(),
         rotation: [90.0, -10.0],
         join: Default::default(),
@@ -227,7 +228,7 @@ fn primed(id: u32, fuse: i32) -> super::tnt::PrimedTnt {
         velocity: Vec3::ZERO,
         fuse,
         ticks: 0,
-        on_ground: false,
+        ground: Default::default(),
         fall_distance: 0.0,
         stuck: Vec3::ZERO,
         in_water: false,
@@ -245,7 +246,13 @@ fn tnt_frame(game: &mut Game<'_>, id: u32, fuse: i32) -> Vec<Vertex> {
     game.tnts.clear();
     game.tnts.push(primed(id, fuse));
     let mut out = Vec::new();
-    game.tnt_geometry(CAMERA, ALPHA, &mut out);
+    game.tnt_geometry(
+        CAMERA,
+        ALPHA,
+        &mut out,
+        0..game.tnts.len(),
+        game.tnt_face_sprites(),
+    );
     out
 }
 
@@ -365,7 +372,13 @@ fn a_registered_tnt_draws_its_renderer_in_place_of_the_cube() {
             game.tnts.clear();
             game.tnts.push(tnt);
             let mut drawn = Vec::new();
-            game.tnt_geometry(CAMERA, ALPHA, &mut drawn);
+            game.tnt_geometry(
+                CAMERA,
+                ALPHA,
+                &mut drawn,
+                0..game.tnts.len(),
+                game.tnt_face_sprites(),
+            );
             assert_eq!(drawn.len(), 4, "one quad and no cube: {drawn:?}");
             // Interpolated position [1.0, 64.5, 1.5] minus CAMERA [0.5, 64.0, -4.5] is
             // [0.5, 0.5, 6.0]; the raised quad sits 100..101 above that origin, 0..1 in x, at z.

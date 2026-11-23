@@ -102,6 +102,11 @@ The GLSL frontend also resets the common type for each comma-separated declarato
 variable's array specifier does not change later variables.
 It also reads a struct member outside a constant expression through a pointer to the member,
 not out of a loaded copy of the whole struct, so a member an atomic function uses can be read.
+An array, struct or block too large to lay out (past naga's type size limit) is a parse error at its
+declaration, not a panic at the next array. `Options::interface_limits` carries the device's stage
+interface limits (`max_inter_stage_shader_variables`, `max_vertex_attributes`; wgpu's defaults
+when not given): a stage whose location-bound variables of one direction take more is a parse error
+before an entry-point argument is made per element.
 The HLSL backend writes an ordinary level-zero texture sample as `SampleLevel(..., 0.0)`, while
 comparison textures keep `SampleCmpLevelZero`; HLSL has no ordinary `SampleLevelZero` method.
 The shared interpolation defaults also compile with `glsl-in` alone, without needing the
@@ -131,7 +136,7 @@ files ship beside the DLL as `DXC-LICENSE-MS.txt` and `DXC-LICENSE-LLVM.txt`, wi
   ([REDIST.TXT lists](https://learn.microsoft.com/en-us/legal/windows-sdk/redist), updated 2024-10-21) names
   `Redist\D3D\x64\dxcompiler.dll` and `dxil.dll` and their x86 copies, for classic Windows applications (Sunrise is
   one), and no ARM64 copy. The release zip's own `LICENSE-MS.txt` refers to a list of distributable files that the zip
-  doesn't contain, so the SDK's list is the one followed. The Windows ARM64 build ships no DXC and compiles with FXC.
+  doesn't contain, so the SDK's list is the one followed.
 - No `dxil.dll`: since DXC 1.8.2505 the compiler signs shaders with its own validator and no longer loads it, and
   wgpu never does.
 
@@ -140,9 +145,14 @@ files ship beside the DLL as `DXC-LICENSE-MS.txt` and `DXC-LICENSE-LLVM.txt`, wi
 `third_party/libmimalloc-sys` is [libmimalloc-sys](https://github.com/purpleprotocol/mimalloc_rust)
 0.1.49 by Octavian Oncescu, with the [mimalloc](https://github.com/microsoft/mimalloc) v3 sources it
 bundles (Copyright (c) 2018-2025 Microsoft Corporation, Daan Leijen), both under the MIT license
-(`LICENSE.txt` and `c_src/mimalloc/v3/LICENSE` in that folder). It holds only the v3 sources. One
-change: `mi_popcount` in `include/mimalloc/bits.h` uses mimalloc's portable bit count on MSVC
-x86/x64 instead of the POPCNT instruction, which CPUs before Nehalem lack (#7264).
+(`LICENSE.txt` and `c_src/mimalloc/v3/LICENSE` in that folder). It holds only the v3 sources. Three
+changes: `mi_popcount` in `include/mimalloc/bits.h` uses mimalloc's portable bit count on MSVC
+x86/x64 instead of the POPCNT instruction, which CPUs before Nehalem lack (#7264);
+`build.rs` reruns when a file under `c_src/mimalloc/v3` changes, so a kept build directory never links stale
+sources (#3299); and
+`_mi_arenas_page_free` in `src/arena.c` lowers the `malloc_huge` statistic when a huge page is freed, at
+every `MI_STAT` level as `src/page.c` raises it, instead of `mi_stat_free` (`src/free.c`) and
+`_mi_theap_page_destroy` (`src/theap.c`) lowering it only with detailed statistics (#3299).
 
 ## Pixelify Sans
 
@@ -481,3 +491,12 @@ NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FO
 OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
+
+## Sigstore attestation verification
+
+`sunrise-attestation` uses [`sigstore-verify` 0.17](https://crates.io/crates/sigstore-verify/0.17.0)
+(Apache-2.0) for offline verification, with [AWS-LC](https://github.com/aws/aws-lc) for cryptography.
+It bundles [Sigstore's public-good TUF target](https://github.com/sigstore/root-signing/blob/25b222a48cda4aa88e1af85605bdd193f5619a60/targets/trusted_root.json)
+unchanged, under [Apache-2.0](crates/sunrise-attestation/LICENSE-APACHE-SIGSTORE). Its offline test
+fixture is a public [Ruff release attestation](crates/sunrise-attestation/tests/fixtures/README.md)
+from the GitHub attestation API, not the release asset itself.

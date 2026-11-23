@@ -111,6 +111,7 @@ pub fn friction_game_thread() -> Arc<std::sync::atomic::AtomicUsize> {
                 ("minecraft:blue_wool", 3.0),
                 ("minecraft:green_wool", f32::INFINITY),
                 ("minecraft:black_wool", -0.5),
+                ("minecraft:orange_wool", 1.5),
             ] {
                 let key = r.block_key(block);
                 r.block_part(key, Answer(answer, self.0.clone()));

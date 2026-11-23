@@ -161,7 +161,12 @@ impl Game<'_> {
                     break 'tick;
                 }
                 if merging && !no_physics {
-                    self.item_landing_event(item.id, item.previous, item.position, item.on_ground);
+                    self.item_landing_event(
+                        item.id,
+                        item.previous,
+                        item.position,
+                        item.ground.on_ground,
+                    );
                     self.entity_powder_snow_particles(
                         item.previous,
                         item.position,
@@ -455,6 +460,7 @@ impl Game<'_> {
                 let vanilla = o.can_merge(merge_id as u32, value as i32);
                 let (join, id, count, age) = (o.join, o.id, o.count, o.age);
                 let orb_value = o.value;
+                self.journal_orb_merge(join, (orb_value, count, age));
                 if !self.orb_merges(id, orb_value, count, 0, value as i32, 1, vanilla) {
                     self.restore_orb(join, orb_value, count, age);
                     continue;
@@ -628,6 +634,7 @@ impl Game<'_> {
         }
         self.next_entity += 1;
         self.orbs.push(ExperienceOrb {
+            size_answer: None,
             attachment_lifetime: Default::default(),
             fall_distance: 0.0,
             rotation: [0.0, 0.0],
@@ -640,7 +647,7 @@ impl Game<'_> {
             // `getExperienceValue` sizes: 1 to 2477.
             value: value as i32,
             age: 0,
-            on_ground: false,
+            ground: Default::default(),
             count: 1,
             ticks: 0,
             health: 5,
@@ -841,18 +848,13 @@ impl Game<'_> {
 
     /// Block.popResource
     pub(super) fn pop_resource(&mut self, pos: [i32; 3], stack: ItemStack) {
-        // Block.popResource: Mth.nextDouble offsets from the level random; the
-        // motion is `new ItemEntity(..)`'s own, from the item's random.
-        let p = spill::pop_position(&mut self.world.random, pos);
-        // Block.popResource draws its offsets before the private overload checks the gamerule.
-        if !self
+        let block_drops = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::BLOCK_DROPS)
-        {
-            return;
+            .bool_at(sunrise_client::gamerules::vanilla::BLOCK_DROPS);
+        if let Some(at) = spill::admitted_pop_position(&mut self.world.random, pos, block_drops) {
+            self.spawn_item_own(stack, at, 10);
         }
-        self.spawn_item_own(stack, p, 10);
     }
 
     /// `Containers.dropItemStack`: a crafting remainder leaves from inside the
@@ -941,23 +943,7 @@ impl Game<'_> {
         randomly: bool,
         thrown_from_hand: bool,
     ) -> Option<u32> {
-        // `Player.drop` draws the spread from the player's own random. A throw with no player
-        // in place (a `/give` remainder whose target this game doesn't hold) keeps a fresh one
-        // rather than losing the item.
-        let v = match self.player.as_mut() {
-            Some(player) => sunrise_client::entities::drop_motion(
-                &mut player.random,
-                self.yaw,
-                self.pitch,
-                randomly,
-            ),
-            None => sunrise_client::entities::drop_motion(
-                &mut random_source::entity(),
-                self.yaw,
-                self.pitch,
-                randomly,
-            ),
-        };
+        let v = self.player_drop_motion(randomly);
         let at = [eye[0], eye[1] - f64::from(0.3f32), eye[2]];
         let uuid = thrown_from_hand.then(|| self.acting_player_uuid());
         // Only `drop(.., false)` tosses ask `item_toss`: a death's scatter (`randomly`) does not.
@@ -970,6 +956,24 @@ impl Game<'_> {
         let item = self.dropped.iter_mut().rev().find(|d| d.id == id)?;
         item.thrower = uuid;
         Some(item.id)
+    }
+
+    /// `LivingEntity.createItemStackToDrop` draws the spread from the player's own random.
+    pub(super) fn player_drop_motion(&mut self, randomly: bool) -> [f64; 3] {
+        match self.player.as_mut() {
+            Some(player) => sunrise_client::entities::drop_motion(
+                &mut player.random,
+                self.yaw,
+                self.pitch,
+                randomly,
+            ),
+            None => sunrise_client::entities::drop_motion(
+                &mut random_source::entity(),
+                self.yaw,
+                self.pitch,
+                randomly,
+            ),
+        }
     }
 
     /// `FurnaceResultSlot.checkTakeAchievements`: the player took from the output of the
