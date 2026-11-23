@@ -362,10 +362,7 @@ fn fit_lines(entry: ChildEntry, package: Option<&Path>, builds: &[&str]) -> Resu
     // Each build gets its own verdict: one that cannot be fetched or compared is not known, and
     // the rest are still checked.
     for build in builds {
-        let target = match fetch_build(project, build).and_then(|target| {
-            let surface = surface_of(&target)?;
-            Ok((target, surface))
-        }) {
+        let target = match fetch_build(project, build) {
             Ok(target) => target,
             Err(why) => {
                 known = false;
@@ -373,11 +370,20 @@ fn fit_lines(entry: ChildEntry, package: Option<&Path>, builds: &[&str]) -> Resu
                 continue;
             }
         };
-        let (target, target_surface) = target;
+        // The identity comes first: a mod made for this build is answered by the build's id,
+        // whatever its own surface says.
         if target.build == table.made_for {
             println!("{}  made for", target.name);
             continue;
         }
+        let target_surface = match surface_of(&target) {
+            Ok(surface) => surface,
+            Err(why) => {
+                known = false;
+                println!("{}  not known: {why}", target.name);
+                continue;
+            }
+        };
         let game = match game_fit(&manifest, &table, &target) {
             Ok(game) => game,
             Err(why) => {
