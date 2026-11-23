@@ -32,10 +32,12 @@ exceeding the boundary's size or nesting limits is refused before reaching the H
 ## Running a command as an entity
 
 `host.commands().run_command` runs as the console. To run a line as a player or another entity instead, at a level
-you choose, call `entity.run_command(host, line, PermissionLevel::Gamemasters)`: `@s` is that entity, `~` its
-position, and only a player is answered. It returns `false` for a line that fails, a stale or removed entity, and an
-entity outside the level in place (a player in another level included, since that level is parked while the hook
-runs). To run a command in another level, do it from a moment in that level or from a task scheduled there.
+you choose, call `entity.run_command(host, line, PermissionLevel::Gamemasters, false)`: `@s` is that entity and
+`~` its position. Pass `true` as the last argument to suppress the player's command feedback and operator
+notifications. Other entities already have a silent source. It returns `false` for a line that fails, a stale or
+removed entity, and an entity outside the level in place (a player in another level included, since that level is
+parked while the hook runs). To run a command in another level, do it from a moment in that level or from a task
+scheduled there.
 
 ## Identity and location
 
