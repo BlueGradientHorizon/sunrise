@@ -80,7 +80,11 @@ pub fn load(dir: &Path, request: &Request) -> Post {
 /// atlas's size only reaches the GLSL as constants. `flat` picks the game's flat draws.
 pub fn inputs(flat: bool) -> sunrise_shaders::GameInputs {
     let terrain = PackAtlas::terrain_inputs_sized([1024, 1024], 64, 16, false, flat);
-    game_inputs(Some(terrain), flat, &[3, 4])
+    sunrise_shaders::GameInputs {
+        // No device: the largest stage interface limits real devices have, not wgpu's defaults.
+        interface_limits: sunrise_shaders::DEVICELESS_INTERFACE_LIMITS,
+        ..game_inputs(Some(terrain), flat, &[3, 4])
+    }
 }
 
 /// Every program of `post` with a slot, by slot.
