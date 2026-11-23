@@ -2372,19 +2372,24 @@ mod pounce_turn_tests {
     use super::*;
     use std::sync::Arc;
 
-    const WITNESS_26_3: &str = include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tools/witness/26.3/mob_turn/fox.txt"
-    ));
-
     /// The pinned vanilla 26.3 side is `VanillaTurnOracle`'s `fox.txt`
-    /// (`tools/test_mob_turn_parity.py`, committed at `tools/witness/26.3/mob_turn/fox.txt`):
+    /// (`tools/test_mob_turn_parity.py`, recorded into `.local/witness/26.3/mob_turn/fox.txt`):
     /// `Fox$FoxPounceGoal.tick` on a fox with no target, from each motion, pitch and `jumping`
     /// (the upward bias), as the pitch bits it leaves. A flat motion keeps `Math.signum`'s zero
     /// sign, and the rising, falling and nearly still ones take each branch.
     #[test]
-    #[ignore = "daily"]
+    #[ignore = "run by tools/test_mob_turn_parity.py"]
     fn the_pounce_turn_matches_the_pinned_oracle() {
+        let witness_dir = std::env::var_os("SUNRISE_MOB_TURN_WITNESS_DIR").expect(
+            "SUNRISE_MOB_TURN_WITNESS_DIR must be set; run through tools/test_mob_turn_parity.py, which records the witness",
+        );
+        let witness_path = std::path::Path::new(&witness_dir).join("fox.txt");
+        let witness = std::fs::read_to_string(&witness_path).unwrap_or_else(|err| {
+            panic!(
+                "failed to read {} ({err}); run through tools/test_mob_turn_parity.py, which records the witness",
+                witness_path.display()
+            )
+        });
         let bits = |v: f64| format!("{:016x}", v.to_bits());
         let ran = crate::mobs::world::with_test_world(&[], |w, types| {
             let mut rows = Vec::new();
@@ -2421,7 +2426,7 @@ mod pounce_turn_tests {
                 std::fs::write(std::path::Path::new(&dir).join("fox.txt"), &actual).unwrap();
             }
             assert_eq!(rows.len(), MOTIONS.len() * 3 * 2);
-            assert_eq!(actual, WITNESS_26_3);
+            assert_eq!(actual, witness);
         });
         assert!(ran, "prepared mob data must run the pounce fixture");
     }

@@ -754,18 +754,23 @@ mod jump_turn_tests {
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;
 
-    const WITNESS_26_3: &str = include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tools/witness/26.3/mob_turn/dolphin.txt"
-    ));
-
     /// The pinned vanilla 26.3 side is `VanillaTurnOracle`'s `dolphin.txt`
-    /// (`tools/test_mob_turn_parity.py`, committed at `tools/witness/26.3/mob_turn/dolphin.txt`):
+    /// (`tools/test_mob_turn_parity.py`, recorded into `.local/witness/26.3/mob_turn/dolphin.txt`):
     /// `DolphinJumpGoal.tick` on a dolphin out of water, from each motion and pitch, as the pitch
     /// bits it leaves (rising, falling, straight up and down, nearly still).
     #[test]
-    #[ignore = "daily"]
+    #[ignore = "run by tools/test_mob_turn_parity.py"]
     fn the_jump_turn_matches_the_pinned_oracle() {
+        let witness_dir = std::env::var_os("SUNRISE_MOB_TURN_WITNESS_DIR").expect(
+            "SUNRISE_MOB_TURN_WITNESS_DIR must be set; run through tools/test_mob_turn_parity.py, which records the witness",
+        );
+        let witness_path = std::path::Path::new(&witness_dir).join("dolphin.txt");
+        let witness = std::fs::read_to_string(&witness_path).unwrap_or_else(|err| {
+            panic!(
+                "failed to read {} ({err}); run through tools/test_mob_turn_parity.py, which records the witness",
+                witness_path.display()
+            )
+        });
         let bits = |v: f64| format!("{:016x}", v.to_bits());
         let ran = crate::mobs::world::with_test_world(&[], |w, types| {
             let mut rows = Vec::new();
@@ -799,7 +804,7 @@ mod jump_turn_tests {
                 std::fs::write(std::path::Path::new(&dir).join("dolphin.txt"), &actual).unwrap();
             }
             assert_eq!(rows.len(), MOTIONS.len() * 3);
-            assert_eq!(actual, WITNESS_26_3);
+            assert_eq!(actual, witness);
         });
         assert!(ran, "prepared mob data must run the jump fixture");
     }

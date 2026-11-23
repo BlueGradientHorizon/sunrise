@@ -5237,19 +5237,26 @@ pub(in crate::game) mod tests {
     use super::*;
 
     /// The pinned vanilla 26.3 side is `VanillaTurnOracle`'s `dragon.txt`
-    /// (`tools/test_mob_turn_parity.py`, committed at `tools/witness/26.3/mob_turn/dragon.txt`):
+    /// (`tools/test_mob_turn_parity.py`, recorded into `.local/witness/26.3/mob_turn/dragon.txt`):
     /// `DragonSittingScanningPhase.doServerTick` with its scan's player at each place, from each
     /// yaw, `yRotA` and head, as the yaw and `yRotA` bits it leaves.
     #[test]
+    #[ignore = "run by tools/test_mob_turn_parity.py"]
     fn the_scanning_turn_matches_the_pinned_oracle() {
         run_the_scanning_turn_matches_the_pinned_oracle();
     }
 
     pub(in crate::game) fn run_the_scanning_turn_matches_the_pinned_oracle() {
-        const WITNESS_26_3: &str = include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../tools/witness/26.3/mob_turn/dragon.txt"
-        ));
+        let witness_dir = std::env::var_os("SUNRISE_MOB_TURN_WITNESS_DIR").expect(
+            "SUNRISE_MOB_TURN_WITNESS_DIR must be set; run through tools/test_mob_turn_parity.py, which records the witness",
+        );
+        let witness_path = std::path::Path::new(&witness_dir).join("dragon.txt");
+        let witness = std::fs::read_to_string(&witness_path).unwrap_or_else(|err| {
+            panic!(
+                "failed to read {} ({err}); run through tools/test_mob_turn_parity.py, which records the witness",
+                witness_path.display()
+            )
+        });
         let bits = |v: f64| format!("{:016x}", v.to_bits());
         let mut rows = Vec::new();
         let places = [
@@ -5293,7 +5300,7 @@ pub(in crate::game) mod tests {
             std::fs::write(std::path::Path::new(&dir).join("dragon.txt"), &actual).unwrap();
         }
         assert_eq!(rows.len(), 7 * 5 * 3 * 2);
-        assert_eq!(actual, WITNESS_26_3);
+        assert_eq!(actual, witness);
     }
 
     #[test]

@@ -22,20 +22,27 @@ fn attribute_values_add_then_multiply_as_vanilla() {
 }
 
 /// The pinned vanilla 26.3 side is `VanillaTurnOracle`'s `look_at.txt`
-/// (`tools/test_mob_turn_parity.py`, committed at `tools/witness/26.3/mob_turn/look_at.txt`):
+/// (`tools/test_mob_turn_parity.py`, recorded into `.local/witness/26.3/mob_turn/look_at.txt`):
 /// `Entity.lookAt(FEET, target)` from each place to each offset, as the yaw and pitch bits it
 /// stores: the cardinal directions, the yaw wrap at -180, both pitch signs, straight up and down
 /// (`Mth.atan2` stops a hair short of 90) and a target at the eye (-90 yaw, pitch -0.0).
 #[test]
+#[ignore = "run by tools/test_mob_turn_parity.py"]
 fn look_at_matches_the_pinned_oracle() {
     run_look_at_matches_the_pinned_oracle();
 }
 
 pub(in crate::game) fn run_look_at_matches_the_pinned_oracle() {
-    const WITNESS_26_3: &str = include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tools/witness/26.3/mob_turn/look_at.txt"
-    ));
+    let witness_dir = std::env::var_os("SUNRISE_MOB_TURN_WITNESS_DIR").expect(
+        "SUNRISE_MOB_TURN_WITNESS_DIR must be set; run through tools/test_mob_turn_parity.py, which records the witness",
+    );
+    let witness_path = std::path::Path::new(&witness_dir).join("look_at.txt");
+    let witness = std::fs::read_to_string(&witness_path).unwrap_or_else(|err| {
+        panic!(
+            "failed to read {} ({err}); run through tools/test_mob_turn_parity.py, which records the witness",
+            witness_path.display()
+        )
+    });
     let bits = |v: f64| format!("{:016x}", v.to_bits());
     let mut rows = Vec::new();
     for from in [[10.0, 64.0, -5.0], [0.0, 0.0, 0.0], [0.5, 64.5, 0.5]] {
@@ -73,7 +80,7 @@ pub(in crate::game) fn run_look_at_matches_the_pinned_oracle() {
         std::fs::write(std::path::Path::new(&dir).join("look_at.txt"), &actual).unwrap();
     }
     assert_eq!(rows.len(), 36);
-    assert_eq!(actual, WITNESS_26_3);
+    assert_eq!(actual, witness);
 }
 
 /// `handleMovePlayer` moves the player's pitch and the model's old pitch
