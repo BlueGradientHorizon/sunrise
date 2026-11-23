@@ -54,7 +54,7 @@ impl CacheStamp {
 }
 pub(crate) const SURFACE: &str = "surface.json";
 const API_SOURCE: &str = "api-source.tar.xz";
-/// The most a small file (`sdk.json`, the sums, the signature, `surface.json`) may be.
+/// The most a small release file (`sdk.json`, the sums, the signature, `surface.json`) may be.
 pub(crate) const SMALL: u64 = 16 << 20;
 /// The most the API source may unpack to.
 const API_LIMIT: u64 = 512 << 20;
@@ -275,7 +275,7 @@ pub(crate) fn named(text: &str, build: &str, error: String) -> String {
     }
 }
 
-/// The keys a game release (a Stable or Dev tag) must be signed with.
+/// The built-in release signing keys, with no debug SDK keys.
 pub(crate) fn release_keys() -> Vec<PublicKey> {
     sunrise_release_sign::trusted_keys_for(native::PREBUILT_REPO)
 }
@@ -305,7 +305,7 @@ impl Base {
         }
     }
 
-    fn open(&self, release: &str, file: &str) -> Result<Box<dyn Read>, String> {
+    pub(crate) fn open(&self, release: &str, file: &str) -> Result<Box<dyn Read>, String> {
         match self {
             Self::Url(base) => {
                 let url = format!("{base}/{release}/{file}");
@@ -322,7 +322,7 @@ impl Base {
     }
 
     /// The release's file, refused past `limit` bytes.
-    fn read(&self, release: &str, file: &str, limit: u64) -> Result<Vec<u8>, String> {
+    pub(crate) fn read(&self, release: &str, file: &str, limit: u64) -> Result<Vec<u8>, String> {
         let mut bytes = Vec::new();
         self.open(release, file)?
             .take(limit + 1)
