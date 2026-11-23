@@ -162,9 +162,9 @@ level publishes its own effects at its own commit.
 
 Calls covered by these rules:
 
-- `LevelRef::play_sound`, `LevelRef::send_particles`, `LevelRef::level_event`,
-  `LevelRef::block_break_effect`, `LevelRef::global_level_event` (and the `LevelWriteHost`
-  counterparts `play_sound`, `send_particles`, `level_event`)
+- `LevelRef::play_sound`, `LevelRef::send_particles`, `LevelRef::send_particles_batch`,
+  `LevelRef::level_event`, `LevelRef::block_break_effect`, `LevelRef::global_level_event`
+  (and the `LevelWriteHost` counterparts `play_sound`, `send_particles`, `level_event`)
 - `EntityRef::play_sound`, `EntityRef::play_bound_sound`, `EntityRef::broadcast_event`
 - `PlayerRef::play_sound`, `PlayerRef::stop_sound`
 
