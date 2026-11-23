@@ -262,14 +262,18 @@ pub(crate) fn stack_effects(
                 *entry = (*effect.saved).clone();
                 effect.saved.clone()
             } else {
-                // Unregistered gameplay-only effects retain their existing JSON projection:
-                // NbtOps to JsonOps, which keeps bytes as numbers (the scoreboard
-                // text projection turns every byte into a boolean, so 15 became 1).
-                let json = sunrise_core::json_nbt::tag_to_json(entry)
-                    .map_err(|error| error.to_string())?;
-                let data = sunrise_core::json_nbt::json_to_tag(&json)
-                    .map_err(|error| error.to_string())?;
-                Arc::new(data)
+                // An unregistered kind keeps its saved NBT as written: bytes, floats and
+                // any UTF-16 string reach the hook unchanged, as a mod's own codec reads
+                // them. Only a non-finite number is refused, like a codec error: the
+                // entry is kept in the saved tag but does not run, and its siblings do.
+                if !finite_numbers(entry) {
+                    let Some(refused) = refused.as_deref_mut() else {
+                        return Err("non-finite number in consume effect payload".into());
+                    };
+                    *refused = true;
+                    continue;
+                }
+                Arc::new(entry.clone())
             };
             effects.push(ConsumeEffect::Native {
                 kind,
@@ -281,6 +285,30 @@ pub(crate) fn stack_effects(
         }
     }
     Ok(effects)
+}
+
+/// Whether every float and double in `tag` is finite (the one payload refusal
+/// left for an unregistered consume-effect kind).
+fn finite_numbers(tag: &sunrise_core::nbt::Tag) -> bool {
+    let mut work = vec![tag];
+    while let Some(tag) = work.pop() {
+        match tag {
+            Tag::Float(bits) => {
+                if !f32::from_bits(*bits).is_finite() {
+                    return false;
+                }
+            }
+            Tag::Double(bits) => {
+                if !f64::from_bits(*bits).is_finite() {
+                    return false;
+                }
+            }
+            Tag::List(values) => work.extend(values),
+            Tag::Compound(fields) => work.extend(fields.iter().map(|(_, value)| value)),
+            _ => {}
+        }
+    }
+    true
 }
 
 #[derive(Clone, Debug)]
@@ -3747,6 +3775,60 @@ mod consume_effect_tests {
         );
         assert_eq!(field(2, "short"), Some(Tag::Short(300)));
         assert_eq!(field(2, "flag"), Some(Tag::Byte(0)));
+    }
+
+    fn saved_stack(effects: Vec<Tag>) -> ItemStack {
+        let saved = Tag::compound([(
+            "minecraft:consumable",
+            Tag::compound([("on_consume_effects", Tag::List(effects))]),
+        )]);
+        let (damage, extra) = crate::item_data::decode_components(Some(&saved));
+        ItemStack {
+            item: "mymod:snack".into(),
+            count: 1,
+            damage,
+            extra,
+        }
+    }
+
+    #[test]
+    fn unregistered_native_effect_keeps_a_saved_float_exactly() {
+        let stack = saved_stack(vec![Tag::compound([
+            ("type", Tag::String("mymod:chill".into())),
+            ("strength", Tag::Float(0.1f32.to_bits())),
+        ])]);
+        let consumable = stack.consumable(None).expect("consumable");
+        let [ConsumeEffect::Native { data, .. }] = consumable.effects.as_slice() else {
+            panic!("expected one native effect, got {:?}", consumable.effects)
+        };
+        assert_eq!(data.get("strength"), Some(&Tag::Float(0.1f32.to_bits())));
+    }
+
+    #[test]
+    fn unregistered_native_effect_with_a_lone_surrogate_keeps_its_siblings() {
+        let lone = sunrise_core::nbt::JavaString(vec![0x61, 0xD800, 0x62]);
+        let stack = saved_stack(vec![
+            Tag::compound([
+                ("type", Tag::String("mymod:named".into())),
+                ("name", Tag::String(lone.clone())),
+            ]),
+            Tag::compound([("type", Tag::String("minecraft:clear_all_effects".into()))]),
+        ]);
+        let data = stack.data().expect("saved data");
+        assert!(!data.refused_consume_effect_component("minecraft:consumable"));
+        let consumable = stack.consumable(None).expect("consumable");
+        let [
+            ConsumeEffect::Native { kind, data, .. },
+            ConsumeEffect::ClearAllEffects,
+        ] = consumable.effects.as_slice()
+        else {
+            panic!(
+                "expected the custom and built-in effects, got {:?}",
+                consumable.effects
+            )
+        };
+        assert_eq!(kind, "mymod:named");
+        assert_eq!(data.get("name"), Some(&Tag::String(lone)));
     }
 }
 
