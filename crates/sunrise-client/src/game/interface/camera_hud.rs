@@ -92,7 +92,7 @@ impl Game<'_> {
             .is_some_and(|r| r.entity_id as u32 == id)
         {
             let p = self.player.as_mut()?;
-            let max_health = p.attribute("minecraft:max_health").unwrap_or(20.0) as f32;
+            let max_health = p.attribute("minecraft:max_health").ok()? as f32;
             return Some((max_health, p.health.health()));
         }
         let (default_max, health) =

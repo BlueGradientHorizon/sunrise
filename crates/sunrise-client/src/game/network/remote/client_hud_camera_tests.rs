@@ -380,11 +380,15 @@ fn a_watched_rider_gets_hearts_for_the_dragon_and_local_player_but_not_a_boat() 
                     panic!("expected the watched player to be the camera");
                 };
 
-                for (vehicle, expected, air_y) in [
-                    (DRAGON, Some((30, 37.25_f32.to_bits())), 171),
-                    (LOCAL, Some((16, 17.25_f32.to_bits())), 181),
-                    (BOAT, None, 191),
+                for (vehicle, expected, air_y, dragon_max_health) in [
+                    (DRAGON, Some((30, 37.25_f32.to_bits())), 171, None),
+                    (DRAGON, Some((9, 37.25_f32.to_bits())), 191, Some(18.0)),
+                    (LOCAL, Some((16, 17.25_f32.to_bits())), 181, None),
+                    (BOAT, None, 191, None),
                 ] {
+                    if let Some(max_health) = dragon_max_health {
+                        attributes(game, DRAGON, &[("minecraft:max_health", max_health)]);
+                    }
                     game.handle_packet(C::SetPassengers(play::SetPassengers {
                         vehicle,
                         passengers: vec![WATCHED],

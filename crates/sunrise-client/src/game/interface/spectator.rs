@@ -132,7 +132,7 @@ impl Game<'_> {
 mod tests {
     use super::*;
     use crate::game::{in_own_process, native_entity_refs::tests::with_client_game};
-    use sunrise_client::{spectator_menu::Item, tab_list::default_skin};
+    use sunrise_client::spectator_menu::Item;
     use sunrise_protocol::packets::{Empty, play::Clientbound as C};
 
     #[test]
@@ -143,7 +143,8 @@ mod tests {
             || {
                 with_client_game(|game| {
                     let (mut peer, _writer) = crate::game::remote::tests::connect_menu_test(game);
-                    const UNLISTED: u128 = 0xcafe;
+                    // Java UUID(0, 0xcaff): hashCode 51967 mod 18 == 1 -> entity/player/slim/ari.
+                    const UNLISTED: u128 = 0xcaff;
                     const LISTED: u128 = 0xbeef;
                     game.handle_packet(C::PlayerInfoUpdate(play::PlayerInfoUpdate {
                         actions: 0x01 | 0x04 | 0x08, // ADD_PLAYER | UPDATE_GAME_MODE | UPDATE_LISTED
@@ -182,7 +183,7 @@ mod tests {
                     let Item::Team(team) = teams.item(0) else {
                         panic!("team with only an unlisted eligible member is missing");
                     };
-                    assert_eq!(team.icon, default_skin(UNLISTED));
+                    assert_eq!(team.icon, "entity/player/slim/ari");
                     teams.select_slot(0);
                     teams.select_slot(0);
                     assert!(matches!(teams.item(0), Item::Player(p) if p.uuid == UNLISTED));

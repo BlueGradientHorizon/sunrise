@@ -428,29 +428,23 @@ impl Game<'_> {
             first_person: self.camera_type.is_first_person(),
             scoping: self.scoping(),
             game_time_delta: 0.0,
-            // `EquipmentSlot.values()` order for the slots that a local player uses.
-            equipment: [
-                (self.inventory[self.selected].as_ref(), "mainhand"),
-                (self.offhand.as_ref(), "offhand"),
-                (self.armor[3].as_ref(), "feet"),
-                (self.armor[2].as_ref(), "legs"),
-                (self.armor[1].as_ref(), "chest"),
-                (self.armor[0].as_ref(), "head"),
-            ]
-            .into_iter()
-            .filter_map(|(stack, slot)| {
-                let e = sunrise_client::item_sync::equippable(stack?, self.res.items())?;
-                if e.slot != slot {
-                    return None;
-                }
-                let overlay = e.camera_overlay?;
-                Some(
-                    overlay
-                        .strip_prefix("minecraft:")
-                        .map_or_else(|| overlay.clone(), str::to_owned),
-                )
-            })
-            .collect(),
+            // `EquipmentSlot.values()` order across all 8 player equipment slots (including body and saddle).
+            equipment: acting_equipment!(self)
+                .into_iter()
+                .zip(sunrise_items::equipment::SLOT_NAMES)
+                .filter_map(|(stack, slot)| {
+                    let e = sunrise_client::item_sync::equippable(stack?, self.res.items())?;
+                    if e.slot != slot {
+                        return None;
+                    }
+                    let overlay = e.camera_overlay?;
+                    Some(
+                        overlay
+                            .strip_prefix("minecraft:")
+                            .map_or_else(|| overlay.clone(), str::to_owned),
+                    )
+                })
+                .collect(),
             ticks_frozen: p.ticks_frozen,
             percent_frozen: p.percent_frozen(),
             partial,
@@ -1257,7 +1251,7 @@ mod tests {
                     game.camera_type = CameraType::FirstPerson;
                     game.ui.hide_gui = false;
                     game.gui.atlas.sprites.clear();
-                    let expected = [0.0, 0.125, 0.25, 0.375, 0.5, 0.625];
+                    let expected = [0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875];
                     let mut stack = |slot: &str, u0: f32| {
                         let overlay = format!("misc/test_{slot}");
                         game.gui.atlas.sprites.insert(
@@ -1287,10 +1281,14 @@ mod tests {
                     let legs = stack("legs", expected[3]);
                     let chest = stack("chest", expected[4]);
                     let head = stack("head", expected[5]);
+                    let body = stack("body", expected[6]);
+                    let saddle = stack("saddle", expected[7]);
                     game.selected = 4;
                     game.inventory[4] = mainhand;
                     game.offhand = offhand;
                     game.armor = [head, chest, legs, feet];
+                    game.equipment.set(sunrise_items::equipment::BODY, body);
+                    game.equipment.set(sunrise_items::equipment::SADDLE, saddle);
                     let quads = |game: &super::Game<'_>| {
                         game.screen_quads(
                             0.0,
@@ -1311,6 +1309,50 @@ mod tests {
                         assert_eq!(q.vertices[0].pos[..2], [-1.0, 1.0]);
                         assert_eq!(q.vertices[2].pos[..2], [1.0, -1.0]);
                     }
+
+                    // SetPlayerInventory slots 41 and 42 sync body armor and saddle.
+                    game.init_remote_for_replay().unwrap();
+                    let item_id = |name: &str| {
+                        game.remote
+                            .as_ref()
+                            .unwrap()
+                            .builtin
+                            .get("minecraft:item")
+                            .and_then(|i| i.id(name))
+                            .unwrap()
+                    };
+                    let body_id = item_id("minecraft:wolf_armor");
+                    let saddle_id = item_id("minecraft:saddle");
+                    game.handle_packet(
+                        sunrise_protocol::packets::play::Clientbound::SetPlayerInventory(
+                            sunrise_protocol::packets::play::SetPlayerInventory {
+                                slot: 41,
+                                item: Some(sunrise_protocol::item::Stack::new(body_id, 1)),
+                            },
+                        ),
+                    )
+                    .unwrap();
+                    game.handle_packet(
+                        sunrise_protocol::packets::play::Clientbound::SetPlayerInventory(
+                            sunrise_protocol::packets::play::SetPlayerInventory {
+                                slot: 42,
+                                item: Some(sunrise_protocol::item::Stack::new(saddle_id, 1)),
+                            },
+                        ),
+                    )
+                    .unwrap();
+                    assert_eq!(
+                        game.equipment
+                            .get(sunrise_items::equipment::BODY)
+                            .map(|s| s.item.as_ref()),
+                        Some("minecraft:wolf_armor")
+                    );
+                    assert_eq!(
+                        game.equipment
+                            .get(sunrise_items::equipment::SADDLE)
+                            .map(|s| s.item.as_ref()),
+                        Some("minecraft:saddle")
+                    );
 
                     game.camera_type = CameraType::ThirdPersonBack;
                     assert!(quads(game).is_empty());
