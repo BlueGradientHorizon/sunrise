@@ -673,7 +673,7 @@ impl SpawnerExt for Spawner {
             );
             let pending = spawn_selection::Pending {
                 yaw,
-                fresh: data.unconfigured(),
+                configured: (!data.unconfigured()).then_some(&data.entity),
             };
             let position_ok =
                 spawn_selection::position_ok(l, &id, Reason::Spawner, placed, pending, || {

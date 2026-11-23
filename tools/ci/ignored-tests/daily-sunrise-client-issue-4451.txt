@@ -1981,8 +1981,8 @@ sunrise-client game::natural_spawning::tests::mob_despawn_with_no_listener_draws
 sunrise-client game::natural_spawning::tests::natural_spawn_checks_lend_the_mob_and_keep_the_draws lib daily resources
 sunrise-client game::natural_spawning::tests::raids_tick_before_natural_and_custom_spawning lib daily resources
 sunrise-client game::natural_spawning::tests::spawn_checks_pin_the_random_draws_of_both_halves lib daily resources
-sunrise-client game::natural_spawning::tests::spawner_checks_tell_the_block_and_keep_the_draws lib daily resources
-sunrise-client game::natural_spawning::tests::trial_spawner_checks_tell_the_block_and_keep_the_draws lib daily resources
+sunrise-client game::natural_spawning::tests::spawner_checks_tell_the_block_and_keep_the_draws lib daily child-process
+sunrise-client game::natural_spawning::tests::trial_spawner_checks_tell_the_block_and_keep_the_draws lib daily child-process
 sunrise-client game::natural_spawning::tests::world_border_outer_chunk_gate_keeps_attempt_randomness lib daily resources
 sunrise-client game::nautili::nautili_tests::a_click_that_does_nothing_still_keeps_the_nautilus lib daily resources
 sunrise-client game::nautili::nautili_tests::a_tame_zombie_nautilus_at_full_health_falls_in_love lib daily resources

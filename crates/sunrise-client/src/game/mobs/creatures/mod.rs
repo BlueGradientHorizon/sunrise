@@ -1199,6 +1199,20 @@ impl Game<'_> {
     ) {
         let at = [mob.position.x, mob.position.y, mob.position.z];
         let difficulty = self.local_difficulty(at);
+        self.finalize_spawn_with_difficulty(mob, reason, spawner, difficulty, group)
+    }
+    pub(super) fn finalize_spawn_with_difficulty(
+        &self,
+        mob: &mut Mob,
+        reason: SpawnReason,
+        spawner: Option<mod_api::SpawnSource>,
+        difficulty: spawning::LocalDifficulty,
+        group: &mut Option<Group>,
+    ) -> (
+        sunrise_client::mobs::finalize::SpawnEvent,
+        spawning::LocalDifficulty,
+    ) {
+        let at = [mob.position.x, mob.position.y, mob.position.z];
         if !mod_api::__private::listened(mod_api::HookId::FinalizeSpawn) {
             return (Default::default(), difficulty);
         }

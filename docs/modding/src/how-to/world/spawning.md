@@ -224,8 +224,8 @@ you need a list after the call, collect the handles you need in your visitor.
 
 `mob_spawn_placement_check` and `mob_spawn_position_check` both get the `level` the mob would join (a `LevelRef`, so a
 listener can read the blocks around `pos` through the host) and the `spawner` that asked: `Spawner::Block { pos }` for a
-spawner block, `Spawner::Trial { pos }` for a trial spawner, and `None` when no block asked, including a spawner
-minecart. Set `*event.result` to `SpawnCheck::Succeed` or `Fail` to override that
+spawner block, `Spawner::Trial { pos }` on a trial-spawner placement check, and `None` when no block asked, including
+a spawner minecart. Set `*event.result` to `SpawnCheck::Succeed` or `Fail` to override that
 check; `Default` keeps the check's own answer.
 
 In `mob_spawn_placement_check` version 2, `event.default_result` is the effective predicate result. It can differ
@@ -250,7 +250,7 @@ fn mob_spawn_placement_check(&self, _: &dyn mod_api::Host, event: &mut mod_api::
 }
 ```
 
-The position check (hook version 2) also gets `event.mob`, the mob about to spawn, as a scoped read-only
+The position check (hook version 3) also gets `event.mob`, the mob about to spawn, as a scoped read-only
 `UnspawnedMobView<'_>` with the same reads as `finalize_spawn`'s (read-only: the hook does not edit the mob). Vanilla
 creates the mob before this check; Sunrise creates it there only when the hook has a listener, the same way the spawn
 would, and the spawn then goes on with that very mob, so what the listener read is what joins the level. A refused check
@@ -265,9 +265,9 @@ fn mob_spawn_position_check(&self, _: &dyn mod_api::Host, event: &mut mod_api::M
 }
 ```
 
-Where the game does not create the mob fresh, the view answers only `kind` and `position` (the rest is
-`UnspawnedMobError::Unsupported`): chunk generation's packs, which the world generator creates and finalizes after the
-check, and a spawner or trial spawner whose spawn data carries entity data, which the game loads after the tick.
+Both configured ordinary spawners and chunk-generation packs lend the real candidate. The ordinary spawner
+loads its configured entity data before the position check. Trial spawners post placement checks, but run
+obstruction checks directly without posting a position check.
 
 ## Stopping a spawn or leaving a mob plain
 
@@ -282,7 +282,10 @@ fn finalize_spawn(&self, _: &dyn mod_api::Host, event: &mut mod_api::FinalizeSpa
 }
 ```
 
-`finalize_spawn` fires only where vanilla calls `finalizeSpawn`, so a breeding, an infested block's silverfish or a thrown egg's chick does not tell it.
+`finalize_spawn` also fires for ordinary and trial spawners with configured entity data. Those already skip
+vanilla initialization; a listener can still read, edit or veto the loaded mob. Chunk-generation packs lend
+their actual mob and carry spawn group data between members. Breeding, an infested block's silverfish and a
+thrown egg's chick do not run this hook.
 
 For `/summon minecraft:ender_dragon` without NBT, command placement starts at zero
 rotation and consumes no random yaw draw. Skipping finalization also skips its

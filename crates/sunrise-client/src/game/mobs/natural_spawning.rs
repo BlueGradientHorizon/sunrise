@@ -20,17 +20,17 @@ use sunrise_client::{
         },
     },
 };
-use sunrise_client::{join_seq::JoinSeq, vanillagen::VanillaTerrain};
+use sunrise_client::{
+    join_seq::JoinSeq,
+    vanillagen::{GeneratedMob, VanillaTerrain},
+};
 use sunrise_core::{
     geometry::{Aabb, COLLISION_EPSILON, Vec3, VoxelShape},
     position::BlockPos,
     random::{LegacyRandom, LevelRandom, RandomSource, WorldgenRandom, XoroshiroRandom},
 };
 use sunrise_world::dimension_type::DimensionFacts;
-use {
-    sunrise_core::nbt::{Compound, Tag},
-    sunrise_world::registry::BlockStateId,
-};
+use sunrise_world::registry::BlockStateId;
 
 /// The primary candidate survives the insertion attempt as an owning row (possibly
 /// restored with a new ID in another level) or as a detached body after a veto or transfer.
@@ -375,8 +375,13 @@ pub(super) struct GameLevel<'g, 'a> {
 /// created: a refused check drops the mob and gives the id back, so a refused
 /// attempt leaves the pass as an unlistened one would.
 struct Checked {
-    mob: Mob,
+    body: CheckedBody,
     provisional: u32,
+}
+enum CheckedBody {
+    Fresh(Mob),
+    Generated(Mob, [i32; 4]),
+    Configured(super::persist::SpawnTree),
 }
 const SCANNED_QUERIES: u32 = 8;
 struct PendingMob {
@@ -512,9 +517,28 @@ impl GameLevel<'_, '_> {
     /// is the one asked for (`entity` at `position`, facing `yaw`): the spawn
     /// goes on with it rather than creating it again.
     pub(super) fn take_checked(&self, entity: &str, position: [f64; 3], yaw: f32) -> Option<Mob> {
-        let Checked { mob, .. } = self.checked.take()?;
+        let CheckedBody::Fresh(mob) = self.checked.take()?.body else {
+            return None;
+        };
         let at = [mob.position.x, mob.position.y, mob.position.z];
         (mob.kind.id == entity && at == position && mob.yaw == yaw).then_some(mob)
+    }
+    pub(super) fn take_checked_tree(&self) -> Option<super::persist::SpawnTree> {
+        match self.checked.take()?.body {
+            CheckedBody::Configured(tree) => Some(tree),
+            _ => None,
+        }
+    }
+    fn generated_candidate(
+        &self,
+        entity: &str,
+        [x, y, z]: [f64; 3],
+        yaw: f32,
+    ) -> Option<(Mob, [i32; 4])> {
+        let kind = self.game.res.mob_types().get(entity)?.clone();
+        let (random, uuid) = sunrise_client::mobs::living_random();
+        let mob = Mob::with_random(self.provisional_id(), kind, Vec3::new(x, y, z), yaw, random);
+        Some((mob, uuid))
     }
     /// Creates a mob the spawner accepted, finalized the game's way
     /// (`finalizeSpawn` on this pass's level, its draws on the spawner's own
@@ -731,20 +755,14 @@ impl NaturalLevel for GameLevel<'_, '_> {
     fn spawn_hooks(&self) -> bool {
         !mod_api::__private::mods().is_empty()
     }
-    /// Vanilla creates the mob before its position checks, so with a listener
-    /// the mob a fresh spawn is about to create is created here, the way the
-    /// spawn creates it, lent to the listeners, and handed on to the spawn
-    /// ([`GameLevel::take_checked`]); a refused check drops it
-    /// ([`NaturalLevel::position_refused`]). Creating it draws nothing from
-    /// the level's random. A site that does not create the mob fresh (a
-    /// spawner's entity data, chunk generation's packs) lends its kind and
-    /// position only. With no listener nothing is created.
+    /// Lend the actual candidate, then hand it on to the spawn or drop it on refusal.
+    /// Constructing the body does not draw from the level's random.
     fn position_check(
         &self,
         entity: &str,
         reason: Reason,
         at: [f64; 3],
-        pending: spawn_selection::Pending,
+        pending: spawn_selection::Pending<'_>,
     ) -> SpawnCheck {
         let mut result = SpawnCheck::Default;
         if !mod_api::__private::listened(mod_api::HookId::MobSpawnPositionCheck) {
@@ -753,21 +771,37 @@ impl NaturalLevel for GameLevel<'_, '_> {
         // An earlier check's mob that no spawn took is not this one.
         self.checked.take();
         let provisional = self.provisional.get();
-        let mob = pending
-            .fresh
-            .then(|| self.game.res.mob_types().get(entity))
-            .flatten()
-            .map(|kind| {
+        let body = if let Some(tag) = pending.configured {
+            self.game
+                .decode_spawner_tree(tag, at, pending.yaw)
+                .map(CheckedBody::Configured)
+        } else if reason == Reason::ChunkGeneration {
+            self.generated_candidate(entity, at, pending.yaw)
+                .map(|(mob, uuid)| CheckedBody::Generated(mob, uuid))
+        } else {
+            self.game.res.mob_types().get(entity).map(|kind| {
                 let [x, y, z] = at;
-                Mob::new(
+                CheckedBody::Fresh(Mob::new(
                     self.provisional_id(),
                     kind.clone(),
                     Vec3::new(x, y, z),
                     pending.yaw,
-                )
-            });
+                ))
+            })
+        };
+        let Some(mut body) = body else {
+            return SpawnCheck::Fail;
+        };
+        let mob = match &mut body {
+            CheckedBody::Fresh(mob) | CheckedBody::Generated(mob, _) => mob,
+            CheckedBody::Configured(tree) => match tree.root_mob() {
+                Some(mob) => mob,
+                None => return SpawnCheck::Fail,
+            },
+        };
         let level = self.level_ref();
-        let borrowed = self.game.borrowed_unspawned_mob(entity, at, mob.as_ref());
+        let at = [mob.position.x, mob.position.y, mob.position.z];
+        let borrowed = self.game.borrowed_unspawned_mob(entity, at, Some(mob));
         self.game
             .native_mob_spawn_position_check(mod_api::__private::MobSpawnPositionCheckCall {
                 dimension: self.game.dim.id(),
@@ -779,9 +813,7 @@ impl NaturalLevel for GameLevel<'_, '_> {
                 mob: mod_api::UnspawnedMobView::new(&borrowed),
                 result: &mut result,
             });
-        if let Some(mob) = mob {
-            *self.checked.borrow_mut() = Some(Checked { mob, provisional });
-        }
+        *self.checked.borrow_mut() = Some(Checked { body, provisional });
         result
     }
     fn position_refused(&self) {
@@ -1646,8 +1678,8 @@ impl<'a> Game<'a> {
         } else {
             return;
         };
-        for nbt in added {
-            self.load_mob(Tag::Compound(nbt), None);
+        for pack in added {
+            self.install_generated_mobs(pack);
         }
     }
     fn generation_creatures<Q: RandomSource + Clone + 'static>(
@@ -1656,7 +1688,7 @@ impl<'a> Game<'a> {
         cz: i32,
         terrain: &VanillaTerrain,
         region: &mut Q,
-    ) -> Vec<Compound> {
+    ) -> Vec<Vec<GeneratedMob>> {
         let mut random = WorldgenRandom::new(LegacyRandom::new(0));
         random.set_decoration_seed(self.level.seed, cx * 16, cz * 16);
         let mut added = Vec::new();
@@ -1671,10 +1703,30 @@ impl<'a> Game<'a> {
             let [x, y, z] = r.position;
             let (bx, by, bz) = (x.floor() as i32, y.floor() as i32, z.floor() as i32);
             let biome = l.zoomed_biome(bx, by, bz).map_or("", |b| b.name.as_str());
-            let at = Vec3::new(x, y, z);
-            match terrain.spawn_generated(r.entity, at, r.yaw, biome, region, &mut group) {
-                Some(nbt) => {
-                    added.push(nbt);
+            let Some((mob, uuid)) = (match l.checked.take().map(|c| c.body) {
+                Some(CheckedBody::Generated(mob, uuid)) => Some((mob, uuid)),
+                _ => l.generated_candidate(r.entity, r.position, r.yaw),
+            }) else {
+                return false;
+            };
+            match terrain.spawn_generated(
+                mob,
+                uuid,
+                biome,
+                region,
+                &mut group,
+                |mob, difficulty, group| {
+                    l.game.finalize_spawn_with_difficulty(
+                        mob,
+                        Reason::ChunkGeneration,
+                        None,
+                        difficulty,
+                        group,
+                    )
+                },
+            ) {
+                Some(pack) => {
+                    added.push(pack);
                     true
                 }
                 None => false,
@@ -1700,6 +1752,7 @@ mod spawn_obstruction_fixture;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sunrise_core::nbt::{Compound, Tag};
 
     /// `Level.hasNearbyAlivePlayer` as spawners ask it, against the same
     /// test on every player's full record (`level_players`).
@@ -2177,7 +2230,7 @@ mod tests {
                     [8.5, 64.0, 8.5],
                     spawn_selection::Pending {
                         yaw: 0.0,
-                        fresh: true,
+                        configured: None,
                     },
                     || {
                         random.next_int();
@@ -2471,13 +2524,23 @@ mod tests {
     /// A spawner block: both checks hear `Spawner::Block` at the block; a `Default` listener on
     /// the position check leaves the draws, the real ids and the mobs that join as with none
     /// (the lent mob is the one that joins); a `Fail` adds no mob, uses no entity id and leaves
-    /// no tracking entry. Spawn data with entity data lends the kind and position only.
+    /// no tracking entry. Configured spawn data lends a fully loaded mob.
     #[test]
     #[ignore = "daily"]
     fn spawner_checks_tell_the_block_and_keep_the_draws() {
-        use super::super::native_entity_refs::tests::with_game;
+        use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
         use sunrise_client::chunk::block_entity::Next;
         use sunrise_client::mobs::spawner::{SpawnData, SpawnDataExt};
+        if run_fresh_cases(
+            concat!(
+                module_path!(),
+                "::spawner_checks_tell_the_block_and_keep_the_draws"
+            ),
+            "SUNRISE_BLOCK_SPAWNER_CHECKS",
+            &["checks"],
+        ) {
+            return;
+        }
         with_game(|game| {
             spawn_check_world(game, Vec3::new(0.5, 70.0, 0.5));
             let level = level_of(game);
@@ -2544,7 +2607,7 @@ mod tests {
                 (0, 0, 0),
                 "no mob, no entity id, no tracking entry"
             );
-            // Entity data: the mob is loaded after the tick, so the lend is its kind and position.
+            // Configured spawn data also lends equipment, not just the kind and position.
             let health = || Some(("Health", Tag::Float(5.0f32.to_bits())));
             let (_, heard) =
                 with_checks(Some(SpawnCheck::Default), Vec::new, || tick(game, health()));
@@ -2553,20 +2616,28 @@ mod tests {
             for (kind, position, head) in lent {
                 assert_eq!(kind, Ok(mod_api::Identifier::parse(SULFUR_CUBE).unwrap()));
                 assert!(position.is_ok());
-                assert_eq!(head, Err(mod_api::UnspawnedMobError::Unsupported));
+                assert_eq!(head, Ok(true));
             }
         });
     }
 
-    /// A trial spawner: the position check (obstruction only) and the placement check hear
-    /// `Spawner::Trial` at the block; a `Default` listener leaves the draws, ids and mob as with
-    /// none; a `Fail` adds no mob and no tracking entry.
+    /// The trial spawner posts a placement check, but not the NeoForge position event.
     #[test]
     #[ignore = "daily"]
     fn trial_spawner_checks_tell_the_block_and_keep_the_draws() {
-        use super::super::native_entity_refs::tests::with_game;
+        use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
         use sunrise_client::mobs::spawner::{SpawnData, SpawnDataExt};
         use sunrise_client::mobs::trial_spawner::{TrialSpawner, TrialState};
+        if run_fresh_cases(
+            concat!(
+                module_path!(),
+                "::trial_spawner_checks_tell_the_block_and_keep_the_draws"
+            ),
+            "SUNRISE_TRIAL_SPAWNER_CHECKS",
+            &["checks"],
+        ) {
+            return;
+        }
         with_game(|game| {
             spawn_check_world(game, Vec3::new(0.5, 70.0, 0.5));
             let level = level_of(game);
@@ -2604,12 +2675,7 @@ mod tests {
             assert!(unlistened.0[0].4, "a trial spawner's mob is persistent");
             let (listened, heard) = with_checks(Some(SpawnCheck::Default), Vec::new, || tick(game));
             assert_eq!(listened, unlistened, "same draws, ids and mob");
-            let lent = (
-                Ok(mod_api::Identifier::parse(SULFUR_CUBE).unwrap()),
-                Ok(unlistened.0[0].2),
-                Ok(true),
-            );
-            assert!(heard.iter().any(|h| h.mob.as_ref() == Some(&lent)));
+            assert!(heard.iter().all(|h| h.hook != "position"));
             assert!(heard.iter().any(|h| h.hook == "placement"));
             for h in &heard {
                 assert_eq!(
@@ -2618,12 +2684,116 @@ mod tests {
                 );
             }
             let (refused, heard) = with_checks(Some(SpawnCheck::Fail), Vec::new, || tick(game));
-            assert!(heard.iter().any(|h| h.hook == "position"));
+            assert!(!heard.is_empty());
+            assert!(heard.iter().all(|h| h.hook == "placement"));
             assert_eq!(
                 (refused.0.len(), refused.1, refused.2),
                 (0, 0, 0),
                 "no mob, no entity id, no tracking entry"
             );
+        });
+    }
+
+    type NameLog = std::sync::Arc<std::sync::Mutex<Vec<(&'static str, Option<mod_api::Text>)>>>;
+
+    struct ConfiguredMobListener {
+        veto: bool,
+        heard: NameLog,
+    }
+
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for ConfiguredMobListener {
+        fn mob_spawn_position_check(
+            &self,
+            _: &dyn mod_api::Host,
+            event: &mut mod_api::MobSpawnPositionCheckEvent<'_>,
+        ) {
+            self.heard
+                .lock()
+                .unwrap()
+                .push(("position", event.mob.custom_name().unwrap()));
+        }
+
+        fn finalize_spawn(
+            &self,
+            _: &dyn mod_api::Host,
+            event: &mut mod_api::FinalizeSpawnEvent<'_>,
+        ) -> mod_api::Flow {
+            self.heard
+                .lock()
+                .unwrap()
+                .push(("finalize", event.mob.custom_name().unwrap()));
+            event
+                .mob
+                .set_custom_name(Some(mod_api::Text::literal("edited")))
+                .unwrap();
+            *event.spawn_cancelled = self.veto;
+            mod_api::Flow::Continue
+        }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn configured_spawner_lends_and_finalizes_its_loaded_body() {
+        use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
+        use sunrise_client::chunk::block_entity::Next;
+        use sunrise_client::mobs::spawner::{SpawnData, SpawnDataExt};
+        const FLAG: &str = "SUNRISE_CONFIGURED_SPAWNER_LEND";
+        if run_fresh_cases(
+            concat!(
+                module_path!(),
+                "::configured_spawner_lends_and_finalizes_its_loaded_body"
+            ),
+            FLAG,
+            &["keep", "veto"],
+        ) {
+            return;
+        }
+        let veto = std::env::var(FLAG).unwrap() == "veto";
+        with_game(|game| {
+            spawn_check_world(game, Vec3::new(0.5, 70.0, 0.5));
+            game.world.random.set_seed(7);
+            let before = game.mobs.len();
+            let uuid_count = game.persist.uuids.len();
+            let mut entity = Compound::default();
+            entity.insert("id".into(), Tag::String(SULFUR_CUBE.into()));
+            entity.insert("CustomName".into(), Tag::String("configured".into()));
+            entity.insert("Health".into(), Tag::Float(5.0_f32.to_bits()));
+            let mut spawner = sunrise_client::mobs::spawner::Spawner {
+                spawn_delay: 0,
+                spawn_count: 1,
+                next: Some(Next::Own(SpawnData::new(entity, None, None))),
+                ..Default::default()
+            };
+            let heard = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+            mod_platform::testing::with_mods(
+                vec![mod_api::ModEntry::new(
+                    "configured-spawner",
+                    Box::new(ConfiguredMobListener {
+                        veto,
+                        heard: heard.clone(),
+                    }),
+                )]
+                .into(),
+                || {
+                    game.server_tick_spawner_of((2, 70, 2), &mut spawner, None)
+                        .unwrap()
+                },
+            );
+            let name = || Some(mod_api::Text::literal("configured"));
+            assert_eq!(
+                *heard.lock().unwrap(),
+                [("position", name()), ("finalize", name())]
+            );
+            if veto {
+                assert_eq!(game.mobs.len(), before);
+                assert_eq!(game.persist.uuids.len(), uuid_count);
+            } else {
+                assert_eq!(game.mobs.len(), before + 1);
+                let mob = &game.mobs[before];
+                assert_eq!(mob.custom_name.as_deref(), Some("edited"));
+                assert_eq!(mob.health.to_bits(), 5.0_f32.to_bits());
+            }
         });
     }
 

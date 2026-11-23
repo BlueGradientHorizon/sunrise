@@ -344,7 +344,7 @@ pub trait NaturalLevel: SpawnLevel {
         _entity: &str,
         _reason: Reason,
         _at: [f64; 3],
-        _pending: Pending,
+        _pending: Pending<'_>,
     ) -> SpawnCheck {
         SpawnCheck::Default
     }
@@ -630,14 +630,11 @@ pub fn spawn_aabb(s: Species, x: f64, y: f64, z: f64, width: f32, height: f32) -
 /// The mob a position check is about, which the site has not created yet
 /// (vanilla creates it before the check).
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Pending {
+pub struct Pending<'a> {
     /// The yaw the site creates it with, drawn before the check.
     pub yaw: f32,
-    /// Whether the site creates it fresh from its type (`EntityType.create`):
-    /// natural spawning, and a spawner whose spawn data is the type alone. A
-    /// spawner with entity data loads it, and chunk generation's packs come
-    /// from the generator.
-    pub fresh: bool,
+    /// Configured spawner data, loaded into the candidate before the check.
+    pub configured: Option<&'a sunrise_core::nbt::Compound>,
 }
 /// `Mob.checkSpawnRules` and `checkSpawnObstruction` of a freshly created
 /// mob, unless a mod forces the answer (`MobSpawnEvent.PositionCheck`); then
@@ -647,7 +644,7 @@ pub fn position_ok<L: NaturalLevel>(
     entity: &str,
     reason: Reason,
     at: [f64; 3],
-    pending: Pending,
+    pending: Pending<'_>,
     vanilla: impl FnOnce() -> bool,
 ) -> bool {
     let ok = match l.position_check(entity, reason, at, pending) {
@@ -1521,7 +1518,10 @@ impl SpawnCluster {
                     &entry.entity,
                     Reason::Natural,
                     [xx, f64::from(y), zz],
-                    Pending { yaw, fresh: true },
+                    Pending {
+                        yaw,
+                        configured: None,
+                    },
                     || {
                         mob_spawn_rules(species, l, x, y, z)
                             && spawn_obstruction(species, l, bounds, true, x, y, z)
@@ -1869,7 +1869,10 @@ pub fn spawn_mobs_for_chunk_generation<
                         &entry.entity,
                         Reason::ChunkGeneration,
                         [fx, fy, fz],
-                        Pending { yaw, fresh: false },
+                        Pending {
+                            yaw,
+                            configured: None,
+                        },
                         || {
                             mob_spawn_rules(species, l, bx, pos[1], bz)
                                 && spawn_obstruction(species, l, bounds, false, bx, pos[1], bz)
