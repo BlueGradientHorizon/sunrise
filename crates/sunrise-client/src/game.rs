@@ -11318,7 +11318,7 @@ impl Game<'_> {
         let distance = (terrain_distance * 16) as f32;
         let depth_far =
             sunrise_client::camera::depth_far(terrain_distance, self.settings.cloud_range);
-        let bob = if camera_effects
+        let view_transform = if camera_effects
             && self.player.is_some()
             && mod_api::__private::listened(mod_api::HookId::RenderViewTransform)
             && let Some(renderer) = &self.renderer
@@ -11332,11 +11332,13 @@ impl Game<'_> {
             );
             mod_api::ViewTransform::with_frame(usable, |transform| {
                 self.native_render_view_transform(camera_alpha as f32, transform);
-                bob * glam::Mat4::from_cols_array(&transform.matrix())
+                glam::Mat4::from_cols_array(&transform.matrix())
             })
         } else {
-            bob
+            glam::Mat4::IDENTITY
         };
+        // The pose the camera, GUI and hand see: the vanilla bob, then the mod's transform.
+        let posed_bob = bob * view_transform;
         let mods_read_camera = !mod_api::__private::mods().is_empty();
         self.screen_blur_requested.set(false);
         self.native_camera_frame = (mods_read_camera && !title).then(|| {
@@ -11352,7 +11354,7 @@ impl Game<'_> {
                 fov_degrees,
                 near: 0.05,
                 far: depth_far,
-                view: (bob * spin * frame_view_matrix).to_cols_array(),
+                view: (posed_bob * spin * frame_view_matrix).to_cols_array(),
                 projection: glam::Mat4::perspective_rh(
                     fov_degrees.to_radians(),
                     size[0] as f32 / size[1].max(1) as f32,
@@ -11411,7 +11413,7 @@ impl Game<'_> {
                 depth_far,
                 0.05,
             ),
-            model_view: bob * spin * frame_view_matrix,
+            model_view: posed_bob * spin * frame_view_matrix,
             sun_angle: sun_angle.to_radians() - std::f32::consts::FRAC_PI_2,
             day_time: day_time.rem_euclid(24000) as f32,
             delta_time: delta_ticks,
@@ -11421,11 +11423,12 @@ impl Game<'_> {
         let core_globals = self.reads_poly_globals().then(poly_globals);
         self.give_poly_globals(core_globals.as_ref());
         self.expression_frame = frame;
-        // Camera.createProjectionMatrixForCulling: max(fov, configuredFov), without bob or spin.
+        // Camera.createProjectionMatrixForCulling: max(fov, configuredFov), without bob or spin,
+        // under the mod's view transform.
         self.view_frustum = self.world_view_frustum(
             camera,
             [cull_fov_degrees, yaw, pitch, roll],
-            glam::Mat4::IDENTITY,
+            view_transform,
             depth_far,
         );
         let billboard_frustum = if self.settings.sunrise.taa {
@@ -11435,7 +11438,7 @@ impl Game<'_> {
                     yaw,
                     pitch,
                     roll,
-                    glam::Mat4::IDENTITY,
+                    view_transform,
                     depth_far,
                 )
             })
@@ -11514,7 +11517,7 @@ impl Game<'_> {
         // GameRenderer.render3dHud: the screen effects after the hand, in
         // its pass (the hand pass draws with `bob * view`).
         if !title {
-            let view = bob * frame_view_matrix;
+            let view = posed_bob * frame_view_matrix;
             let aspect = size[0] as f32 / size[1].max(1) as f32;
             self.item_activation_geometry(camera_alpha as f32, view, aspect, &mut hand);
         }
@@ -11649,6 +11652,7 @@ impl Game<'_> {
             eye_rotation: eye.filter(|_| !title).map_or([yaw, pitch], |e| e.1),
             first_person: eye.is_none() || title || !self.view.detached,
             bob,
+            view_transform,
             spin,
             sky,
             shadow_scene_revision: (self.world.revision, self.world.chunks.membership_revision()),

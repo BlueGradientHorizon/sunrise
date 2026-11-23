@@ -126,6 +126,9 @@ pub struct Frame<'a> {
     /// The `GameRenderer.bobHurt`/`bobView` pose multiplied into the
     /// projection (`crate::camera::bob_matrix`).
     pub bob: Mat4,
+    /// A mod's `render_view_transform` (identity when none listens): drawn after the bob, and
+    /// part of the culling transform, which the vanilla bob and spin stay out of.
+    pub view_transform: Mat4,
     /// The spinning effect multiplied into the level's projection only
     /// (`crate::camera::spinning_effect_matrix`), not the hand's.
     pub spin: Mat4,
@@ -293,6 +296,13 @@ pub struct Frame<'a> {
     pub chunk_fade: f32,
     /// `GameRenderer.requestedPostEffects`: the chains that run over the world.
     pub post_effects: crate::post_chain::Request<'a>,
+}
+
+impl Frame<'_> {
+    /// The pose the world and hand are drawn with: the vanilla bob, then the mod's transform.
+    pub fn posed_bob(&self) -> Mat4 {
+        self.bob * self.view_transform
+    }
 }
 /// A frame to save as a PNG: F2's screenshot, an agent's `game_screenshot`,
 /// or the icon the Select World list shows.
