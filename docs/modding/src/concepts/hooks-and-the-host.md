@@ -399,13 +399,21 @@ they were the server's: a client's own shape update that refuses a block removes
 
 Before a block's placement state is selected, `ItemPart::placement_context` replaces the item's
 `BlockItem.updatePlacementContext` rewrite. It is keyed by the real pre-use `stack`, including its
-components. `placer` gives the player handle and the eyes at the time of the click via `eye_position()`
-(the acting player on the server, the predicting player on the client). It is `None` for a dispenser.
+components. `context.source` distinguishes a player placement
+(`PlacementSource::Player { yaw, pitch, sneaking }`, vanilla's `BlockPlaceContext` with a non-null
+player) from a non-player directional placement (`PlacementSource::Directional { direction }`,
+vanilla's `DirectionalPlaceContext`, such as a dispenser placing a shulker box). `placer` gives
+the live player handle and eye position at the time of the click via `eye_position()`
+(the acting player on the server, the predicting player on the client) and is `None` for a dispenser.
 `Some(Some(context))` rewrites the target and click, even if the player's original destination is
 occupied. The new destination must be loaded, in bounds and replaceable. The placing item cannot
-change and click and view values must be finite. `Some(None)` refuses. `None` keeps vanilla, which
+change and click and player view values must be finite. A rewritten `PlacementSource::Directional`
+context is a `DirectionalPlaceContext`: the game works out its `replace_clicked` from the block at
+`hit_pos`, whatever the part wrote, and refuses the placement where vanilla would throw (see
+`PlacementStateError::NoVerticalLook` and `ReplacingClickedCycle` below). `Some(None)` refuses. `None` keeps vanilla, which
 checks the original destination before its own rewrite (such as scaffolding's column walk). A
-blocked dispenser still fails before this hook. `BlockPart::state_for_placement` then selects the
+blocked dispenser still fails before this hook. `BlockPart::state_for_placement` then receives the
+resolved `PlacementContext` (including `source`) and selects the
 candidate, which may be a registered state of another block. The game uses that
 candidate for survival, obstruction, and the written-block check that gates item data and placed-by
 callbacks. The held item does not change, and its double-height pre-clear still runs if applicable.
@@ -429,12 +437,31 @@ the level in play. It runs the block's `Block.getStateForPlacement`, including i
 `state_for_placement` parts, without resolving the click again or placing anything. The caller
 owns the `ServerHost`; the Part still sees only its restricted `LevelHost` through `LevelSide`.
 The context's item is a registry key, not a stack or its components. The method returns
-`Result<Option<BlockState>, LevelReadError>`. `Ok(Some(state))` gives the candidate before item
+`Result<Option<BlockState>, PlacementStateError>`. `Ok(Some(state))` gives the candidate before item
 placement's additional survival, obstruction and permission checks. `Ok(None)` means there is no
-candidate or a placement input was refused. A stale handle or closed level returns `Err(LevelReadError::Stale)`; a parked level,
+candidate or a placement input was refused. A stale handle or closed level returns `Err(PlacementStateError::Stale)`; a parked level,
 an unavailable host or load phase, or a state the API cannot represent returns
-`Err(LevelReadError::Unavailable)`. A camouflage block can use this read to store a held block's
+`Err(PlacementStateError::Unavailable)`. A camouflage block can use this read to store a held block's
 placement state, such as a stair's facing or a log's axis.
+
+A `PlacementContext::directional` query is a `DirectionalPlaceContext`, which has no player. Its
+`replace_clicked` is what `replacingClickedOnBlock()` answers there: whether the block at `hit_pos`
+can be replaced in this context, read from the level, not from the context. So an oak trapdoor
+queried into stone, along and clicked on East, faces east on the bottom half, as vanilla places it.
+Two directional questions have no vanilla answer, because vanilla throws, so they are refused
+rather than answered:
+
+- `Err(PlacementStateError::NoVerticalLook)`: the block's own rule reads
+  `getNearestLookingVerticalDirection`, the placer's pitch, which `DirectionalPlaceContext` doesn't
+  override. Pointed dripstone and sulfur spikes (`SpeleothemBlock`) read it, whatever their
+  supports, as does a block built on one of them when no Part answers for it.
+- `Err(PlacementStateError::ReplacingClickedCycle)`: the clicked block's `canBeReplaced` asks
+  `replacingClickedOnBlock`, which for a directional context is that same `canBeReplaced`. A slab
+  that isn't double, or a snow layer under eight layers, asks it when the context holds its own
+  item.
+
+A Part's answer replaces the block's rule, so a block whose Part answers is never refused for
+`NoVerticalLook`. A player context answers both questions.
 
 A neighbour's `BlockPart::fence_gate_in_wall` answers whether a fence gate sits at wall height
 beside that state. It runs on both sides at placement and shape updates, with a read-only `LevelSide`:

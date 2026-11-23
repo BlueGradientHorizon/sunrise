@@ -362,7 +362,13 @@ resolve without parsing identifiers per read.
 ## Placement and loot snapshots
 
 `mod_api::PlacementContext` owns the placement inputs, including world-space click
-coordinates and the placer view/flags. Its `item` is `Option<ItemKey>`: `None` is a
+coordinates and `source: PlacementSource` (`PlacementSource::Player { yaw, pitch, sneaking }` for
+a player's `BlockPlaceContext`, or `PlacementSource::Directional { direction }` for a non-player
+`DirectionalPlaceContext` such as a dispenser or falling block; construct one with
+`PlacementContext::new` or `PlacementContext::directional`). A player context's `replace_clicked` is
+read as written, as `BlockPlaceContext` stores it; a directional context's is worked out by the game
+from the block at `hit_pos`, as `DirectionalPlaceContext.replacingClickedOnBlock()` asks the level each
+time. Its `item` is `Option<ItemKey>`: `None` is a
 real empty hand, including falling-block placement contexts, not an invented air
 item. Nonempty items resolve through the load-owned item table. The game applies the returned block state.
 
