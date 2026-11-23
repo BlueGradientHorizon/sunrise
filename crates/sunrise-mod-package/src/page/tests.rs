@@ -285,5 +285,28 @@ fn the_description_defaults_to_the_manifest() {
     manifest.description = "From the manifest".into();
     let page = Page::parse("summary = 'Summary'\n", &manifest).unwrap();
     assert_eq!(page.description, "From the manifest");
-    assert_eq!(Page::parse(TEXT, &manifest).unwrap().description, "Description");
+    assert_eq!(
+        Page::parse(TEXT, &manifest).unwrap().description,
+        "Description"
+    );
+}
+
+#[test]
+fn a_progressive_jpeg_counts_its_coefficients_against_the_decoding_budget() {
+    // The fixture's frame made progressive at 8000 x 8000 with three components: its 192 MB of
+    // pixels fit the budget, but the decoder's coefficients double that, so it is refused from
+    // the header, before anything is allocated.
+    let mut image = JPEG.to_vec();
+    let at = image
+        .windows(2)
+        .position(|m| m[0] == 0xff && matches!(m[1], 0xc0 | 0xc2))
+        .expect("the fixture has a frame header");
+    image[at + 1] = 0xc2;
+    image[at + 5..at + 9].copy_from_slice(&[0x1f, 0x40, 0x1f, 0x40]);
+    const { assert!(8000 * 8000 * 3 < MAX_DECODED_SCREENSHOT_BYTES) };
+    let error = check_screenshot(Path::new("image.jpg"), &image).unwrap_err();
+    assert!(
+        error.contains(&MAX_DECODED_SCREENSHOT_BYTES.to_string()),
+        "{error}"
+    );
 }
