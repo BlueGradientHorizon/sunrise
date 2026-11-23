@@ -697,7 +697,8 @@ impl Game<'_> {
                 && let (Some(pos), Some(p)) = (self.container, self.player.as_ref())
             {
                 let at = [p.position.x, p.position.y, p.position.z];
-                self.award_furnace_recipes(pos, at);
+                let recipes = self.award_furnace_recipes(pos, at);
+                self.award_recipes(&recipes);
             }
         } else if self.screen == Screen::Creative {
             // A THROW in the creative screen with an empty hand: on an item tab's hotbar

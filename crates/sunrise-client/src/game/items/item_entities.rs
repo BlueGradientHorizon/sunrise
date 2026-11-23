@@ -1078,15 +1078,24 @@ impl Game<'_> {
 
     /// `FurnaceResultSlot.checkTakeAchievements`: the player took from the output of the
     /// furnace at `pos`, which pops the experience of what it made at them
-    /// (`awardUsedRecipesAndPopExperience`) and forgets it.
-    pub(super) fn award_furnace_recipes(&mut self, pos: (i32, i32, i32), at: [f64; 3]) {
-        let used = match self.world.block_entities.get_mut(&pos) {
+    /// (`awardUsedRecipesAndPopExperience`) and forgets it. Returns the used recipes' ids, which
+    /// the caller awards to the extracting player (`ServerPlayer.awardRecipes`) in the body that
+    /// took the output.
+    #[must_use = "the used recipes are awarded to the extracting player"]
+    pub(super) fn award_furnace_recipes(
+        &mut self,
+        pos: (i32, i32, i32),
+        at: [f64; 3],
+    ) -> Vec<String> {
+        let (used, recipes) = match self.world.block_entities.get_mut(&pos) {
             Some(BlockEntity::Furnace(f)) => {
                 let used = f.recipe_experience(world_recipes!(self));
+                let mut recipes: Vec<String> = f.recipes_used.keys().cloned().collect();
+                recipes.sort();
                 f.recipes_used.clear();
-                used
+                (used, recipes)
             }
-            _ => return,
+            _ => return Vec::new(),
         };
         for (count, experience) in used {
             let xp = sunrise_client::containers::create_experience(
@@ -1096,6 +1105,7 @@ impl Game<'_> {
             );
             self.spawn_orbs(at, xp);
         }
+        recipes
     }
 }
 
