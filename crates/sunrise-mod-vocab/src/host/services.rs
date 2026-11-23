@@ -197,7 +197,9 @@ pub trait Players {
 /// The profiles service, reached through its host: account profiles by name or UUID through
 /// the server's `ProfileResolver.Cached`, the one `/fetchprofile` and dynamic player heads use,
 /// also on an offline-mode server. Each name and each UUID is kept 10 minutes after its last
-/// lookup, at most 256 of each, so polling a lookup keeps its answer.
+/// lookup, at most 256 of each, so polling a lookup keeps its answer. A lookup that failed
+/// or found no account is kept the same way, as `Done(None)`; a new request is sent only
+/// once it has expired.
 pub trait Profiles {
     /// Side: server.
     /// The profile of the account named `name`, any case (`ProfileResolver.fetchByName`):

@@ -252,7 +252,9 @@ through the server's own resolver, the one `/fetchprofile` and dynamic player he
 an offline-mode server. The first call starts the lookup and answers
 `ProfileResolution::Pending`; call again with the same name or UUID to poll it until it answers
 `Done`, with the `AccountProfile` (UUID, the account's own spelling of its name, and the signed
-properties such as `textures`) or `None`. As in vanilla, a failed request also answers `None`.
+properties such as `textures`) or `None`. As in vanilla, a failed request also answers `None`, and
+that answer is kept like any other: the same name or UUID answers `Done(None)` until the entry
+expires, ten minutes after its last lookup.
 
 ## Finding blocks in a chunk
 

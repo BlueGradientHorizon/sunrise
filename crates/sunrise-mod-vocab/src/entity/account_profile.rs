@@ -30,9 +30,9 @@ pub struct AccountProfile {
 /// Where a profile lookup stands ([`Profiles::resolve_name`](crate::Profiles::resolve_name),
 /// [`resolve_id`](crate::Profiles::resolve_id)): ask again with the same name or UUID to
 /// poll it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-// exhaustive: a lookup is in flight or answered, nothing else
 // no wire: a host reply a mod polls in process
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ProfileResolution {
     /// The lookup is in flight.
     Pending,
