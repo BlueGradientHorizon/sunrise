@@ -1257,6 +1257,7 @@ impl Game<'_> {
     /// player or a guest acting (`as_guest`), then its attribute modifiers
     /// and status flags.
     pub(super) fn tick_mob_effects(&mut self) {
+        self.clear_dead_player_target();
         let Some(player) = self.player.as_ref() else {
             return;
         };
@@ -2575,6 +2576,7 @@ impl Game<'_> {
                     let mut attack = self.potion_attack(owner.who(), owner.guest);
                     attack.projectile = self.combat.attack().projectile;
                     attack.projectile_kind = self.combat.attack().projectile_kind;
+                    attack.projectile_type = self.combat.attack().projectile_type;
                     let plan = self.prepare_knockback_credit(id as i32, owner.who(), &attack);
                     let mut credit = plan.lend(&mut self.last_hurt_by_player);
                     self.mobs[i].damage_by(

@@ -1270,6 +1270,9 @@ impl Game<'_> {
                             cause,
                             (amount, source),
                         );
+                        let hurt = self
+                            .complete_mob_hurt(i, hurt)
+                            .is_some_and(|(_, hurt)| hurt);
                         self.settle_mob_hurt(victim);
                         // The loan recorded the accepted hit's player credit
                         // (`resolvePlayerResponsibleForDamage`); a guest's also names its connection.
@@ -2666,6 +2669,7 @@ mod tests {
     fn zombie_type() -> std::sync::Arc<sunrise_client::mobs::MobType> {
         use sunrise_client::mobs::{Anim, Brain, MobType, Part, Species};
         std::sync::Arc::new(MobType {
+            type_key: Default::default(),
             shadow: None,
             id: "minecraft:zombie".into(),
             species: Species::Zombie,

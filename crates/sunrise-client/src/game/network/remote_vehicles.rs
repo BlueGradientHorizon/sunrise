@@ -144,7 +144,9 @@ impl Game<'_> {
             {
                 return None;
             }
-            let origin = self.entity_position(entity)?;
+            let origin = self
+                .pick_object_origin(entity.id())
+                .or_else(|| self.entity_position(entity))?;
             return Some(ObjectHit {
                 id: entity.id() as i32,
                 distance,
@@ -840,17 +842,14 @@ impl Game<'_> {
         let hooks = self.damage_hooks.client_side();
         {
             let world = self.mob_world_base(&[]);
-            let mut level = sunrise_client::health::DamageLevel::lent(
-                &self.world,
-                self.pack.assets.registry,
-                &mut lent,
-                None,
-                None,
-                &hooks,
-            )
-            .on_client(true);
+            let mut level = self.predicting_damage_level(&mut lent, &hooks);
             mob.tick(&world, &mut level, &mut events);
         }
+        // LivingEntity.baseTick's tickEffects, inside the mount's own tick (#3948).
+        super::potions::client_tick_effects(
+            &mut mob.extra.client_effects,
+            &mut mob.extra.darkness_blend,
+        );
         // Only the server's packets take the mount away.
         mob.removed = false;
         lent.give_back(&mut self.world);
@@ -891,6 +890,24 @@ impl Game<'_> {
         });
         // #4821: footstep, gallop, breathe, splash and landing sounds from mob.tick
         let _ = self.handle_mob_events(events);
+    }
+
+    /// The level a mount this client predicts is hurt in, with the client's hooks (`hooks`)
+    /// and the tags its server sent, so its tag view answers the server's membership.
+    pub(super) fn predicting_damage_level<'a>(
+        &'a self,
+        lent: &'a mut sunrise_client::health::LentLevel,
+        hooks: &'a sunrise_client::health::DamageHooks,
+    ) -> sunrise_client::health::DamageLevel<'a> {
+        sunrise_client::health::DamageLevel::lent(
+            &self.world,
+            self.pack.assets.registry,
+            lent,
+            self.remote.as_ref().and_then(|r| r.tags.as_ref()),
+            None,
+            hooks,
+        )
+        .on_client(true)
     }
 }
 
