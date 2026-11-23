@@ -1046,7 +1046,7 @@ impl Game<'_> {
                 .dragon
                 .as_ref()
                 .is_some_and(|d| d.id == id && d.health > 0.0),
-            _ => false,
+            _ => self.parked_living_alive(id),
         }
     }
 
