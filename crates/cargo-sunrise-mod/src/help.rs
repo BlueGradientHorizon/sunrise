@@ -31,14 +31,14 @@ const COMMANDS: &[Command] = &[
     Command {
         name: "check",
         everyday: true,
-        usage: "check [--release <tag>] [--uses] [--with <path>]… | check <file> [--kind <kind>] [--attestation <bundle>] [--repository <id>] [--json]",
-        summary: "Checks the mod in this folder, including native Rust code with the same libraries as build, or validates a release file. Folder checks report missing page requirements; --release requires a valid page and matching version tag, and compiles native code. A .smod must have its .sigstore.json bundle beside it unless --attestation names another path. --repository requires the attestation to name that GitHub repository ID. Repeat --with for local libraries; --uses lists what the mod uses of its pinned build.",
+        usage: "check [--release <tag>] [--uses] [--with <path>]… | check <file> [--kind <kind>] [--attestation <bundle>] [--repository <id>] [--json] | check [<file.smod>] --build <name> [--build <name>]…",
+        summary: "Checks the mod in this folder, including native Rust code with the same libraries as build, or validates a release file, or reports fit for the builds named by --build. Folder checks report missing page requirements; --release requires a valid page and matching version tag, and compiles native code. A .smod must have its .sigstore.json bundle beside it unless --attestation names another path. --repository requires the attestation to name that GitHub repository ID. Repeat --with for local libraries; --uses lists what the mod uses of its pinned build. Fit mode takes no other options and exits 0 if all fit, 1 if one does not, or 2 if it cannot tell.",
     },
     Command {
-        name: "update",
+        name: "pin",
         everyday: true,
-        usage: "update [--sunrise <build>]",
-        summary: "Repins a native mod to another game build (the current Nightly unless --sunrise names one) and reports what that breaks; a content mod pins no build.",
+        usage: "pin [<build>]",
+        summary: "Repins a native mod to another game build (the current Nightly if no build is given) and reports what that breaks; a content mod pins no build.",
     },
     Command {
         name: "hooks",
@@ -63,12 +63,6 @@ const COMMANDS: &[Command] = &[
         everyday: false,
         usage: "sdk diff <build> <build>",
         summary: "Lists what changed in the API surface between two builds.",
-    },
-    Command {
-        name: "fits",
-        everyday: false,
-        usage: "fits [<file.smod>] [--build <name>]…",
-        summary: "Says whether the mod fits each build; exits 0 when all do, 1 when one does not and 2 when that cannot be told.",
     },
     Command {
         name: "use-jar",
