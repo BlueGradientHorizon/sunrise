@@ -197,19 +197,20 @@ SDK ships an older tool.
 cargo sunrise-mod self-update
 ```
 
-This replaces the standalone copy installed by the blocks above in `~/.local/bin` (Linux and macOS) or
-`%USERPROFILE%\.sunrise\bin` (Windows) with the rolling `mod-tool` release. It verifies Sunrise's signature and
+This replaces a standalone copy of the rolling `mod-tool` release, installed by the "Newest tool from main" block
+in `~/.local/bin` (Linux and macOS) or `%USERPROFILE%\.sunrise\bin` (Windows), with that release's newest build. It verifies Sunrise's signature and
 the checksum of the release's commit metadata before deciding whether the tool is current. If it installs an
 update, it also verifies the archive's checksum and prints the old and new commits. It never changes a mod's
 pinned SDK. On Windows, the previous executable is kept as `.cargo-sunrise-mod.exe.old` beside the new one and can
 be deleted once the command exits.
 
-On everyday commands the standalone tool checks for a different rolling release once per day at most. It prints a
-reminder when one is available but never installs it automatically. The notice is off in CI and honors
-`CARGO_NET_OFFLINE` and Cargo's `net.offline` configuration files.
+On `new`, `build`, `run`, `check` and `update`, such a copy checks the signed rolling release for a newer build once
+per day at most. It prints a reminder when one is available but never installs it automatically. The check is off
+in CI and when `CARGO_NET_OFFLINE` is `true`.
 
-If your copy does not know `self-update` yet, or you want the tool from a particular SDK instead of the rolling
-release, rerun the appropriate install block above. Copies run from an SDK folder or managed by `cargo install` or
+A copy installed from an SDK follows that SDK and is never replaced by `self-update`. If your copy does not know
+`self-update` yet, or you want to switch between an SDK's tool and the rolling release, rerun the appropriate
+install block above. Copies run from an SDK folder or managed by `cargo install` or
 another package manager are not replaced in place; update them through their own install method.
 
 ## With `cargo install`

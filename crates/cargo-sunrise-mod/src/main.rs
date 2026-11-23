@@ -95,7 +95,8 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let command = args.first().map(String::as_str);
-    if command.is_some_and(help::is_everyday) {
+    // `hooks` reads the pinned SDK's catalog and stays offline.
+    if command.is_some_and(|c| help::is_everyday(c) && c != "hooks") {
         self_update::notice();
     }
     let result = match command {

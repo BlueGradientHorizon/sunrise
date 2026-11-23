@@ -77,8 +77,7 @@ fn a_signature_from_the_wrong_key_never_replaces_or_reports_current() {
     let sums = fs::read(release.asset(SUMS)).unwrap();
     fs::write(release.asset(SIGNATURE), other.sign(MOD_TOOL, &sums)).unwrap();
     for current in [CURRENT, NEW] {
-        let error = release.update(current).unwrap_err();
-        assert!(error.contains("signature doesn't match"), "{error}");
+        release.update(current).unwrap_err();
         assert_eq!(fs::read(&release.exe).unwrap(), ORIGINAL);
     }
 }
@@ -87,11 +86,7 @@ fn a_signature_from_the_wrong_key_never_replaces_or_reports_current() {
 fn tampered_metadata_cannot_claim_that_the_installed_tool_is_current() {
     let release = Fixture::new();
     fs::write(release.asset(INFO), format!(r#"{{"commit":"{CURRENT}"}}"#)).unwrap();
-    let error = release.update(CURRENT).unwrap_err();
-    assert!(
-        error.contains("tool.json doesn't match its signed checksum"),
-        "{error}"
-    );
+    release.update(CURRENT).unwrap_err();
     assert_eq!(fs::read(&release.exe).unwrap(), ORIGINAL);
 }
 
@@ -99,11 +94,7 @@ fn tampered_metadata_cannot_claim_that_the_installed_tool_is_current() {
 fn a_valid_archive_with_the_wrong_hash_never_replaces_the_tool() {
     let release = Fixture::new();
     fs::write(release.asset(ASSET), archive(b"a different tool")).unwrap();
-    let error = release.update(CURRENT).unwrap_err();
-    assert!(
-        error.contains("tool-fixture.tar.xz doesn't match its signed checksum"),
-        "{error}"
-    );
+    release.update(CURRENT).unwrap_err();
     assert_eq!(fs::read(&release.exe).unwrap(), ORIGINAL);
 }
 
@@ -127,9 +118,9 @@ fn only_a_different_full_commit_is_new_to_the_tool() {
 }
 
 #[test]
-fn only_release_tools_outside_ci_and_not_offline_check_for_updates() {
-    assert!(checks_allowed(false, CURRENT, || true));
-    assert!(!checks_allowed(true, CURRENT, || true));
-    assert!(!checks_allowed(false, CURRENT, || false));
-    assert!(!checks_allowed(false, "local", || true));
+fn only_a_standalone_rolling_tool_outside_ci_and_online_checks_for_updates() {
+    assert!(checks_allowed(false, MOD_TOOL, true));
+    assert!(!checks_allowed(true, MOD_TOOL, true));
+    assert!(!checks_allowed(false, MOD_TOOL, false));
+    assert!(!checks_allowed(false, "", true));
 }

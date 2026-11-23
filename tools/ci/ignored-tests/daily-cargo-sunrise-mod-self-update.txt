@@ -1,1 +1,0 @@
-cargo-sunrise-mod a_standalone_copy_updates_from_the_signed_rolling_release test:self_update daily network
