@@ -8,6 +8,7 @@ use super::native_living_effects::{active_effect, mob_effect};
 use mod_api::{ActiveEffect, EquipmentSlot};
 use std::sync::Arc;
 use sunrise_client::health::{FixedBody, LivingBody, PlayerBody, PlayerHealthRead};
+use sunrise_client::mobs::EntityTypeKeyCell;
 use sunrise_client::mobs::finalize::{self, EquipmentRead};
 use sunrise_world::attribute_map::ValueKind;
 use sunrise_world::attributes::entity::Catalog;
@@ -158,6 +159,38 @@ pub(super) fn body_kind_name<'a>(body: LivingBody<'a>) -> &'a str {
 pub(super) const PLAYER: &str = "minecraft:player";
 pub(super) const ARMOR_STAND: &str = "minecraft:armor_stand";
 pub(super) const ENDER_DRAGON: &str = "minecraft:ender_dragon";
+
+/// Those three types' registry keys, each resolved once: the registry is complete once per
+/// process.
+static PLAYER_KEY: EntityTypeKeyCell = EntityTypeKeyCell::new();
+static ARMOR_STAND_KEY: EntityTypeKeyCell = EntityTypeKeyCell::new();
+static ENDER_DRAGON_KEY: EntityTypeKeyCell = EntityTypeKeyCell::new();
+
+/// A player's type key (`EntityType.PLAYER`).
+pub(super) fn player_kind_key() -> Option<mod_api::EntityTypeKey> {
+    PLAYER_KEY.get_or_resolve(PLAYER)
+}
+
+/// An armor stand's type key (`EntityType.ARMOR_STAND`).
+pub(super) fn armor_stand_kind_key() -> Option<mod_api::EntityTypeKey> {
+    ARMOR_STAND_KEY.get_or_resolve(ARMOR_STAND)
+}
+
+/// The dragon's type key (`EntityType.ENDER_DRAGON`).
+pub(super) fn ender_dragon_kind_key() -> Option<mod_api::EntityTypeKey> {
+    ENDER_DRAGON_KEY.get_or_resolve(ENDER_DRAGON)
+}
+
+/// The registry key of the type a living body is of (`Entity.getType`), as the type keeps it:
+/// the one read both the full host's `entity_kind` and a hit's view make.
+pub(super) fn body_kind(body: LivingBody<'_>) -> Option<mod_api::EntityTypeKey> {
+    match body {
+        LivingBody::Mob(m) => m.kind.entity_type_key(),
+        LivingBody::Player(_) => player_kind_key(),
+        LivingBody::Stand(_) => armor_stand_kind_key(),
+        LivingBody::Dragon(_) => ender_dragon_kind_key(),
+    }
+}
 
 /// The holder of a living body's attachments: a player's by UUID where its borrower knows it,
 /// any other entity's by id.
