@@ -25,6 +25,7 @@ public final class VanillaMobAttributeNbtOracle {
     }
 
     static String bits(double v) { return Long.toHexString(Double.doubleToRawLongBits(v)); }
+    static String fbits(float v) { return String.format("%08x", Float.floatToRawIntBits(v)); }
 
     static void appendReads(StringBuilder sb, String prefix, LivingEntity living, com.google.gson.JsonArray names, net.minecraft.core.Registry<Attribute> attrs) {
         var map = living.getAttributes();
@@ -125,6 +126,19 @@ public final class VanillaMobAttributeNbtOracle {
                     var output = net.minecraft.world.level.storage.TagValueOutput.createWithContext(net.minecraft.util.ProblemReporter.DISCARDING, level.registryAccess());
                     e.saveWithoutId(output);
                     var saved = output.buildResult();
+                    if (c.has("health") && c.get("health").getAsBoolean()) {
+                        @SuppressWarnings("unchecked")
+                        double defaultMax = DefaultAttributes.getSupplier((EntityType<? extends LivingEntity>) type).getBaseValue(Attributes.MAX_HEALTH);
+                        float savedHealth = saved.getFloat("Health").orElse(Float.NaN);
+                        sb.append("\thealth ")
+                            .append(fbits(living.getHealth()))
+                            .append(' ')
+                            .append(fbits(living.getMaxHealth()))
+                            .append(' ')
+                            .append(fbits(savedHealth))
+                            .append(' ')
+                            .append(bits(defaultMax));
+                    }
                     appendSaved(sb, "saved", saved);
                     if (c.has("reload") && c.get("reload").getAsBoolean()) {
                         Entity reloaded = type.create(level, EntitySpawnReason.LOAD);

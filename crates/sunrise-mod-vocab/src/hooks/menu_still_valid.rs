@@ -5,7 +5,10 @@ pub trait Hooks {
     /// Asked on the server each tick the menu is open and before processing a
     /// matching non-spectator container click.
     /// `pos` is the backing block's position, or `None` for a blockless menu
-    /// even if its opener supplied a position for the client's screen.
+    /// even if its opener supplied a position for the client's screen. `opening_item` is
+    /// present when the opener supplied a hand; its `stack_matches` says whether that hand
+    /// holds the same item with the same components as at open (count ignored). Neither
+    /// affects the initial validity answer.
     /// `valid` starts true without a backing block; for a block menu it is
     /// whether `eye` is within the player's block interaction range plus 4 of
     /// each backing block. Set it to keep the menu open or close it. Vanilla
@@ -22,6 +25,10 @@ cursor held goes back to the inventory and the client's window closes.
 
 `event.player` is the player's UUID and `event.menu` is the menu type. `event.pos` is the backing block's
 position, or `None` for a blockless menu even if its opener supplied a position for the client's screen.
+An item opener can supply a hand independently of how the menu stores its slots. The part sees it as
+`event.opening_item`; its `stack_matches` compares the hand's current item and components with its
+contents at open, ignoring count. This compares values, not stack instance identity. A part can use the result
+when setting `event.valid`; the game does not close the menu just because the answer is false.
 `event.valid` starts true for blockless menus. For block menus it starts true only if the player's eyes
 (`event.eye`) are within their block interaction range plus 4 of each backing block. A part may keep a larger
 machine's menu open past that distance, or close a menu for any reason. A part that leaves `valid` alone, or
@@ -37,9 +44,16 @@ when the menu opens: a menu with none does no work for this hook."##]
         scope = "menu",
         key = "menu",
         context = "loop",
-        version = 2,
+        version = 3,
         target = "sunrise_client_lib::lan::menu::native_menu_still_valid",
         neoforge = "none (vanilla AbstractContainerMenu.stillValid, which each menu overrides)"
     )]
-    fn menu_still_valid();
+    fn menu_still_valid(
+        player: u128,
+        menu: &str,
+        pos: Option<[i32; 3]>,
+        eye: [f64; 3],
+        opening_item: Option<MenuOpeningItem>,
+        valid: &mut bool,
+    );
 }

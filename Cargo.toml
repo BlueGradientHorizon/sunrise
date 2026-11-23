@@ -1,7 +1,6 @@
 [workspace]
 exclude = ["crates/sunrise-telemetry-server", "crates/sunrise-mod-registry", "third_party/wgpu-hal", "third_party/naga", "third_party/libmimalloc-sys", "tools/fixtures/paper-trace-mod"]
 members = [
-    "crates/sunrise-guest-stack",
     "crates/sunrise-mod-vocab",
     "crates/sunrise-game-discovery",
     "crates/sunrise-telemetry",
@@ -19,10 +18,12 @@ members = [
     "docs/modding/examples",
     "crates/sunrise-dualsense",
     "crates/sunrise-narrator",
+    "crates/sunrise-audio-input",
     "crates/sunrise-threads",
     "crates/sunrise-hdr",
     "crates/sunrise-world",
     "crates/sunrise-client",
+    "crates/sunrise-parity-fixtures",
     "crates/sunrise-internals",
     "crates/sunrise-client-lib",
     "crates/sunrise-gameplay",
@@ -32,6 +33,7 @@ members = [
     "crates/sunrise-border",
     "crates/sunrise-client-render",
     "crates/sunrise-render-core",
+    "crates/sunrise-render-shaderpack",
     "crates/sunrise-command",
     "crates/sunrise-items",
     "crates/sunrise-server-files",
@@ -55,7 +57,9 @@ members = [
     "crates/sunrise-friends",
     "crates/sunrise-relay",
     "crates/sunrise-mod-package",
+    "crates/sunrise-attestation",
     "crates/sunrise-mod-api-gen",
+    "crates/sunrise-stage",
     "crates/sunrise-mod-api",
     "crates/sunrise-mod-dimension-game",
     "crates/sunrise-hot-paths-game",
@@ -66,6 +70,7 @@ members = [
     "crates/sunrise-mod-api-gen/dispatch-tests",
     "crates/cargo-sunrise-mod",
     "crates/sunrise-port-pack",
+    "crates/sunrise-proxy",
     "crates/sunrise-shaders",
     "crates/sunrise-connected",
     "crates/sunrise-optifine",
@@ -122,6 +127,8 @@ opt-level = 3
 
 [profile.dev.package.sunrise-mod-api-gen]
 opt-level = 3
+[profile.dev.package.sunrise-stage]
+opt-level = 3
 [profile.dev.package.syn]
 opt-level = 3
 # The perf-format tests gzip over 512 MiB; unoptimized deflate took most of their time.
@@ -140,6 +147,8 @@ opt-level = 0
 [profile.test.package.sunrise-client-lib]
 opt-level = 0
 [profile.release.package.sunrise-mod-api-gen]
+opt-level = 3
+[profile.release.package.sunrise-stage]
 opt-level = 3
 [profile.release.package.syn]
 opt-level = 3

@@ -2,7 +2,6 @@
 //! and lines without player context for the recipe book and creative search trees.
 use crate::text::{GRAY, Text};
 use crate::{
-    bundle::TooltipLayout,
     enchant::Enchantments,
     hud::rgba,
     items::{ItemInfo, ItemStack, Items},
@@ -365,11 +364,10 @@ impl PlayerHeadName {
     }
     /// The title as a component, for command feedback.
     pub fn text(&self) -> crate::text::Text {
-        crate::text::Text::translate_with_fallback(
-            "block.minecraft.player_head.named",
-            "%s's Head",
-            &[crate::text::Text::literal(self.0.clone())],
-        )
+        crate::text::Text::from(serde_json::json!({
+            "translate": "block.minecraft.player_head.named",
+            "with": [&self.0],
+        }))
     }
 }
 
@@ -460,22 +458,12 @@ pub fn rarity<'a>(stack: &ItemStack, default: &'a str) -> &'a str {
     sunrise_items::properties::ItemRarity::of(rarity, !stack.enchantments().is_empty()).as_str()
 }
 
-/// `BundleItem.getTooltipImage`: the contents grid of a bundle, or None when
-/// the stack is not one or `minecraft:tooltip_display` hides
-/// `minecraft:bundle_contents` - the image is that component's tooltip
-/// detail, so a display that hides the component hides the grid too.
-pub fn bundle_tooltip(
-    items: &Items,
-    stack: &ItemStack,
-    x: f32,
-    y: f32,
-    box_width: f32,
-    description_lines: usize,
-) -> Option<TooltipLayout> {
-    tooltip_display(stack)
-        .shows("minecraft:bundle_contents")
-        .then(|| crate::bundle::tooltip_layout(items, stack, x, y, box_width, description_lines))
-        .flatten()
+/// `BundleItem.getTooltipImage`: select a stack's bundle tooltip only when it carries
+/// `minecraft:bundle_contents` and `minecraft:tooltip_display` shows that component.
+/// Selection does not copy the contents or compute their weight.
+pub fn shows_bundle_tooltip(items: &Items, stack: &ItemStack) -> bool {
+    tooltip_display(stack).shows("minecraft:bundle_contents")
+        && crate::bundle::Contents::is_bundle(items, stack)
 }
 
 fn is_beehive(path: &str) -> bool {
@@ -699,12 +687,12 @@ pub fn bees_line(
 
 /// `TypedEntityData.addToTooltip` for a spawn egg: in Peaceful, the red
 /// "Disabled in Peaceful" under an egg whose entity type is not allowed there
-/// (`EntityType.isAllowedInPeaceful`). The type is the one in the egg's
-/// `entity_data` component, else the egg's own (`zombie_spawn_egg`).
+/// (`EntityType.isAllowedInPeaceful`). The type comes from the stack's
+/// effective `entity_data` component.
 /// `allowed_in_peaceful` answers for an entity type id; one it does not know
 /// is allowed.
 pub fn spawn_egg_peaceful_line(
-    stack: &ItemStack,
+    kind: Option<&str>,
     peaceful: bool,
     display: &TooltipDisplay,
     allowed_in_peaceful: &dyn Fn(&str) -> bool,
@@ -713,31 +701,7 @@ pub fn spawn_egg_peaceful_line(
     if !peaceful || !display.shows("minecraft:entity_data") {
         return None;
     }
-    // `TypedEntityData.addToTooltip` hangs on the `entity_data` component, whatever the item;
-    // a spawn egg without the component has its own mob as the default.
-    let id = match stack
-        .data()
-        .and_then(|d| d.other("minecraft:entity_data"))
-        .and_then(|data| data.get("id"))
-    {
-        Some(Tag::String(id)) => {
-            let id = id.to_string_lossy();
-            if id.contains(':') {
-                id
-            } else {
-                format!("minecraft:{id}")
-            }
-        }
-        _ if stack.item.ends_with("_spawn_egg") => format!(
-            "minecraft:{}",
-            stack
-                .item
-                .trim_start_matches("minecraft:")
-                .trim_end_matches("_spawn_egg")
-        ),
-        _ => return None,
-    };
-    (!allowed_in_peaceful(&id)).then(|| {
+    (!allowed_in_peaceful(kind?)).then(|| {
         translate("item.spawn_egg.peaceful").unwrap_or_else(|| "item.spawn_egg.peaceful".into())
     })
 }
@@ -1827,10 +1791,10 @@ mod tests {
         let items = Items::for_tests(Default::default());
         let mut bundle = ItemStack::new("minecraft:bundle", 1);
         bundle.data_mut().bundle_contents = vec![ItemStack::new("minecraft:stone", 3)];
-        assert!(bundle_tooltip(&items, &bundle, 0.0, 0.0, 96.0, 2).is_some());
+        assert!(shows_bundle_tooltip(&items, &bundle));
         // A stack that is not a bundle has no grid.
         let stone = ItemStack::new("minecraft:stone", 1);
-        assert!(bundle_tooltip(&items, &stone, 0.0, 0.0, 96.0, 2).is_none());
+        assert!(!shows_bundle_tooltip(&items, &stone));
         // A display that hides the contents component hides the grid.
         bundle.data_mut().set_other(
             "minecraft:tooltip_display",
@@ -1839,13 +1803,13 @@ mod tests {
                 Tag::List(vec![Tag::String("minecraft:bundle_contents".into())]),
             )])),
         );
-        assert!(bundle_tooltip(&items, &bundle, 0.0, 0.0, 96.0, 2).is_none());
+        assert!(!shows_bundle_tooltip(&items, &bundle));
         // So does one that hides the whole tooltip.
         bundle.data_mut().set_other(
             "minecraft:tooltip_display",
             Some(Tag::compound([("hide_tooltip", Tag::Byte(1))])),
         );
-        assert!(bundle_tooltip(&items, &bundle, 0.0, 0.0, 96.0, 2).is_none());
+        assert!(!shows_bundle_tooltip(&items, &bundle));
         // A component the display does not name leaves the grid alone.
         bundle.data_mut().set_other(
             "minecraft:tooltip_display",
@@ -1854,7 +1818,7 @@ mod tests {
                 Tag::List(vec![Tag::String("minecraft:lore".into())]),
             )])),
         );
-        assert!(bundle_tooltip(&items, &bundle, 0.0, 0.0, 96.0, 2).is_some());
+        assert!(shows_bundle_tooltip(&items, &bundle));
     }
 
     #[test]
@@ -2130,6 +2094,15 @@ mod tests {
             Some(Tag::compound([("name", Tag::String("Notch".into()))])),
         );
         assert_eq!(name_line(&compound, &translate), "Notch's Head");
+
+        let mut numeric = ItemStack::new("minecraft:player_head", 1);
+        numeric
+            .data_mut()
+            .set_other("minecraft:profile", Some(Tag::String("123".into())));
+        assert_eq!(
+            player_head_name(&numeric).unwrap().text().component(),
+            serde_json::json!({"translate": "block.minecraft.player_head.named", "with": ["123"]}),
+        );
 
         let mut id_only = ItemStack::new("minecraft:player_head", 1);
         id_only.data_mut().set_other(
@@ -2938,35 +2911,15 @@ mod tests {
         let lang =
             |k: &str| (k == "item.spawn_egg.peaceful").then(|| "Disabled in Peaceful".to_owned());
         let monsters = |id: &str| !matches!(id, "minecraft:zombie" | "minecraft:creeper");
-        let line = |s: &ItemStack, peaceful| {
-            spawn_egg_peaceful_line(s, peaceful, &tooltip_display(s), &monsters, &lang)
-        };
-        let zombie = ItemStack::new("minecraft:zombie_spawn_egg", 1);
-        assert_eq!(line(&zombie, true).as_deref(), Some("Disabled in Peaceful"));
-        // Not in Peaceful, or an egg of a mob that is allowed there, or no egg.
-        assert_eq!(line(&zombie, false), None);
-        assert_eq!(
-            line(&ItemStack::new("minecraft:pig_spawn_egg", 1), true),
-            None
-        );
-        assert_eq!(line(&ItemStack::new("minecraft:stone", 1), true), None);
-        // The entity data's type wins over the egg's own.
-        let mut pig = ItemStack::new("minecraft:pig_spawn_egg", 1);
-        pig.data_mut().set_other(
-            "minecraft:entity_data",
-            Some(Tag::compound([(
-                "id",
-                Tag::String("minecraft:creeper".into()),
-            )])),
-        );
-        assert_eq!(line(&pig, true).as_deref(), Some("Disabled in Peaceful"));
-        // Any item with the component, and an id without its namespace.
-        let mut stand = ItemStack::new("minecraft:armor_stand", 1);
-        stand.data_mut().set_other(
-            "minecraft:entity_data",
-            Some(Tag::compound([("id", Tag::String("zombie".into()))])),
-        );
-        assert_eq!(line(&stand, true).as_deref(), Some("Disabled in Peaceful"));
+        let stack = ItemStack::new("minecraft:zombie_spawn_egg", 1);
+        let display = tooltip_display(&stack);
+        let line =
+            |kind, peaceful| spawn_egg_peaceful_line(kind, peaceful, &display, &monsters, &lang);
+        let zombie = Some("minecraft:zombie");
+        assert_eq!(line(zombie, true).as_deref(), Some("Disabled in Peaceful"));
+        assert_eq!(line(zombie, false), None);
+        assert_eq!(line(Some("minecraft:pig"), true), None);
+        assert_eq!(line(None, true), None);
     }
 
     /// An appender that adds its own name, so the order of the lines shows.

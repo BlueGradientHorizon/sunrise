@@ -63,20 +63,63 @@ fn sub(r: Rect, size: [f32; 2], [x, y, w, h]: [f32; 4]) -> Rect {
 /// units) repeated over `dst` from its top left, the last row and column cut.
 fn tile(batch: &mut HudBatch, r: Rect, size: [f32; 2], src: [f32; 4], dst: [f32; 4], color: u32) {
     let [sx, sy, sw, sh] = src;
-    let [dx, dy, dw, dh] = dst;
-    if sw <= 0.0 || sh <= 0.0 || dw <= 0.0 || dh <= 0.0 {
+    let [dx, dy, dw, dh] = dst.map(f64::from);
+    let [tw, th] = [sw as f64, sh as f64];
+    if ![dx, dy, dw, dh, tw, th].into_iter().all(f64::is_finite)
+        || tw <= 0.0
+        || th <= 0.0
+        || dw <= 0.0
+        || dh <= 0.0
+    {
         return;
     }
-    let mut y = 0.0;
-    while y < dh {
-        let h = sh.min(dh - y);
-        let mut x = 0.0;
-        while x < dw {
-            let w = sw.min(dw - x);
-            batch.rect_uv(dx + x, dy + y, w, h, sub(r, size, [sx, sy, w, h]), color);
-            x += sw;
+    // HudBatch has no retained scissor stack: its painters clip their ranges
+    // after extraction. Start with the viewport, walking only intersecting tiles.
+    let right = (dx + dw).min(batch.width as f64);
+    let bottom = (dy + dh).min(batch.height as f64);
+    if right <= dx.max(0.0) || bottom <= dy.max(0.0) {
+        return;
+    }
+    // Anchor the first tile to the original destination, not the clipped edge.
+    let first = |origin: f64, step| {
+        if origin < 0.0 {
+            -(-origin).rem_euclid(step)
+        } else {
+            origin
         }
-        y += sh;
+    };
+    let left = first(dx, tw);
+    let mut y = first(dy, th);
+    while y < bottom {
+        let top = y.max(0.0);
+        let next_y = y + th;
+        let h = (next_y.min(bottom) - top) as f32;
+        let mut x = left;
+        while x < right {
+            let start = x.max(0.0);
+            let next_x = x + tw;
+            let w = (next_x.min(right) - start) as f32;
+            batch.rect_uv(
+                start as f32,
+                top as f32,
+                w,
+                h,
+                sub(
+                    r,
+                    size,
+                    [sx + (start - x) as f32, sy + (top - y) as f32, w, h],
+                ),
+                color,
+            );
+            if next_x == x {
+                break;
+            }
+            x = next_x;
+        }
+        if next_y == y {
+            break;
+        }
+        y = next_y;
     }
 }
 /// `GuiGraphicsExtractor.blitSprite`: a sprite over `w` × `h` as its `gui.scaling` says: the
@@ -95,7 +138,7 @@ pub fn nine_slice(
     h: f32,
     color: u32,
 ) {
-    let Some(r) = atlas.gui_rect(sprite) else {
+    let Some(r) = atlas.gui_draw_rect(sprite) else {
         return;
     };
     // Each effective draw's own scaling: what the entry the key resolves to published.
@@ -215,7 +258,7 @@ pub fn tiled_sized(
     size: [f32; 2],
     color: u32,
 ) {
-    let Some(r) = atlas.gui_rect(sprite).copied() else {
+    let Some(r) = atlas.gui_draw_rect(sprite).copied() else {
         return;
     };
     tile(
@@ -284,26 +327,22 @@ pub fn centered_text(
         batch.text_styled(atlas, &shown, x + 1.0, y, color, true);
     }
 }
-/// `ActiveTextCollector.defaultScrollingHelper`'s slide: a label `overflow`
-/// pixels too wide moves from its end back to its start and out again, one
-/// sine period every `max(overflow * 0.5, 3)` seconds of `Util.getMillis`.
-fn scroll_offset(overflow: f32, now_ms: i64) -> f64 {
-    let period = (f64::from(overflow) * 0.5).max(3.0);
-    let seconds = now_ms as f64 / 1000.0;
-    let phase = (std::f64::consts::TAU * seconds / period).cos();
-    let pos = (std::f64::consts::FRAC_PI_2 * phase).sin() / 2.0 + 0.5;
-    f64::from(overflow) * pos
+/// `defaultScrollingHelper`'s `textTop`: `(top + bottom - 9) / 2 + 1` in Java
+/// `int` arithmetic, where the division truncates toward zero (so a negative
+/// sum rounds up, not down).
+fn scrolling_text_top(top: f32, bottom: f32) -> f32 {
+    ((top + bottom - 9.0) / 2.0).trunc() + 1.0
 }
 
 /// Where an overflowing label's left edge is drawn: `left - (int) pos`.
 fn scrolled_left(left: f32, overflow: f32, now_ms: i64) -> f32 {
-    left - scroll_offset(overflow, now_ms) as i32 as f32
+    left - crate::screen_draw::scroll_position(f64::from(overflow), now_ms) as i32 as f32
 }
 
 /// A widget's label as `AbstractWidget.extractScrollingStringOverContents`
 /// draws it, at `now_ms`: centred between `left` and `right` when it fits,
 /// else drawn from the left and slid (`defaultScrollingHelper`) inside the
-/// widget's box. `y` is the label's top line.
+/// widget's box. The label's top line is `(top + bottom - 9) / 2 + 1`.
 #[allow(clippy::too_many_arguments)]
 pub fn scrolling_text_at(
     batch: &mut HudBatch,
@@ -313,14 +352,13 @@ pub fn scrolling_text_at(
     right: f32,
     top: f32,
     bottom: f32,
-    y: f32,
     now_ms: i64,
     color: u32,
 ) {
     // `acceptScrollingWithDefaultCenter`: `centerX = (left + right) / 2`.
-    let center_x = left + ((right - left) / 2.0).floor();
+    let center_x = ((left + right) / 2.0).trunc();
     scrolling_text_around_at(
-        batch, atlas, text, center_x, left, right, top, bottom, y, now_ms, color,
+        batch, atlas, text, center_x, left, right, top, bottom, now_ms, color,
     );
 }
 
@@ -341,7 +379,6 @@ pub fn scrolling_text_around_at(
     right: f32,
     top: f32,
     bottom: f32,
-    y: f32,
     now_ms: i64,
     color: u32,
 ) {
@@ -351,7 +388,6 @@ pub fn scrolling_text_around_at(
         text,
         LabelPlacement {
             center_x,
-            y,
             clip: [left, top, right, bottom],
             offset: None,
         },
@@ -362,7 +398,6 @@ pub fn scrolling_text_around_at(
 
 struct LabelPlacement {
     center_x: f32,
-    y: f32,
     clip: [f32; 4],
     offset: Option<[f32; 2]>,
 }
@@ -377,16 +412,16 @@ fn scrolling_text_with_offset(
 ) {
     let LabelPlacement {
         center_x,
-        y,
         clip: [left, top, right, bottom],
         offset,
     } = placement;
+    let y = scrolling_text_top(top, bottom);
     let text = text.resolved();
     let width = atlas.font.width_text(&text);
     let room = right - left;
     let fits = width <= room;
     let x = if fits {
-        let half = (width / 2.0).floor();
+        let half = (width / 2.0).trunc();
         center_x.max(left + half).min(right - half) - half
     } else {
         scrolled_left(left, width - room, now_ms)
@@ -413,7 +448,6 @@ pub fn scrolling_text(
     right: f32,
     top: f32,
     bottom: f32,
-    y: f32,
     color: u32,
 ) {
     scrolling_text_at(
@@ -424,7 +458,6 @@ pub fn scrolling_text(
         right,
         top,
         bottom,
-        y,
         crate::hud_overlays::now_ms(),
         color,
     );
@@ -454,8 +487,6 @@ pub fn menu_tab_label(
         x + width - 1.0,
         top,
         bottom,
-        // defaultScrollingHelper: `(top + bottom - lineHeight) / 2 + 1`.
-        ((top + bottom - 9.0) / 2.0).floor() + 1.0,
         now_ms,
         if active { u32::MAX } else { 0xFFA0_A0A0 },
     );
@@ -531,8 +562,26 @@ pub fn button_as(
     sprites: Option<&ButtonSprites>,
     narration: impl FnOnce([f32; 4]) -> crate::widgets::Narratable,
 ) {
+    button_focused_as(
+        batch, atlas, rect, label, active, hover, false, sprites, narration,
+    );
+}
+
+/// A button whose focus highlights its art but whose cursor depends only on pointer hover.
+#[allow(clippy::too_many_arguments)]
+pub fn button_focused_as(
+    batch: &mut HudBatch,
+    atlas: &HudAtlas,
+    rect: [f32; 4],
+    label: &Text,
+    active: bool,
+    hover: bool,
+    focused: bool,
+    sprites: Option<&ButtonSprites>,
+    narration: impl FnOnce([f32; 4]) -> crate::widgets::Narratable,
+) {
     button_with_room(
-        batch, atlas, rect, label, active, hover, false, 0.0, sprites, narration,
+        batch, atlas, rect, label, active, hover, focused, 0.0, sprites, narration,
     );
 }
 /// An options button whose focus highlights it without changing the mouse cursor.
@@ -636,8 +685,9 @@ fn button_with_room(
         atlas,
         label,
         LabelPlacement {
-            center_x: x + (w / 2.0).floor(),
-            y: y + ((h - 8.0) / 2.0).floor(),
+            // `acceptScrollingWithDefaultCenter`: `(left + right) / 2` with the
+            // margin's 2 px each side, which is `x + w / 2` truncated.
+            center_x: ((x + 2.0 + x + w - 2.0) / 2.0).trunc(),
             clip: [x + 2.0 + room, y, x + w - 2.0, y + h],
             offset,
         },
@@ -717,7 +767,6 @@ pub fn slider_ext(
         x + w - 2.0,
         y,
         y + 20.0,
-        y + 6.0,
         color,
     );
 }
@@ -904,8 +953,8 @@ impl Scroll {
     }
     /// `mouseDragged` while held: above or below the list jumps to an end,
     /// otherwise the thumb follows the pointer.
-    pub fn drag(&mut self, y: f32, top: f32, bottom: f32, content: f32) {
-        let Some(last) = self.held else { return };
+    pub fn drag(&mut self, y: f32, top: f32, bottom: f32, content: f32) -> bool {
+        let Some(last) = self.held else { return false };
         let max = Self::max(top, bottom, content);
         if y < top {
             self.amount = 0.0;
@@ -918,6 +967,7 @@ impl Scroll {
         }
         self.clamp(top, bottom, content);
         self.held = Some(y);
+        true
     }
     /// `onRelease`.
     pub fn release(&mut self) {
@@ -1294,14 +1344,16 @@ impl Caret {
         atlas: &HudAtlas,
         (id, value, max): (crate::clipboard::FieldId, &mut String, usize),
         x: f32,
-    ) {
+    ) -> bool {
         if self.held && self.last_click.is_some_and(|(_, field)| field == id) {
             self.edit(id, value, max, |edit| edit.drag_to(atlas, x));
+            return true;
         }
+        false
     }
     /// The button was released: drags no longer select.
-    pub fn release(&mut self) {
-        self.held = false;
+    pub fn release(&mut self) -> bool {
+        std::mem::take(&mut self.held)
     }
     /// Draw field `id` at `rect`: the focused one with its caret, the others
     /// showing the end of their text.
@@ -1657,34 +1709,7 @@ impl EditBox {
     }
     /// Draw the field; `format` styles the visible text (command colouring).
     pub fn draw(&mut self, batch: &mut HudBatch, atlas: &HudAtlas, format: Option<&Text>) {
-        let caret = self.cursor_visible();
-        self.draw_with_caret(batch, atlas, format, caret);
-    }
-    /// The first character shown (`EditBox.displayPos`): a field kept outside the box (a
-    /// mod's) hands back the scroll its last draw answered.
-    pub fn set_scroll(&mut self, first: usize) {
-        self.display = first.min(char_len(&self.value));
-    }
-    /// After a draw: the first character shown and the GUI x of each shown character
-    /// boundary, from the start of the shown text to its end.
-    pub fn shown_edges(&self, atlas: &HudAtlas) -> (usize, Vec<f32>) {
-        let rest: String = self.value.chars().skip(self.display).collect();
-        let shown = atlas.font.fit(&rest, self.inner_width());
-        let edges = (0..=shown)
-            .map(|n| self.text_x() + atlas.font.width(&rest.chars().take(n).collect::<String>()))
-            .collect();
-        (self.display, edges)
-    }
-    /// [`Self::draw`] with the caret's blink decided by the caller: `caret` shows it (when it
-    /// is in view) for a field whose blink a mod keeps.
-    pub fn draw_with_caret(
-        &mut self,
-        batch: &mut HudBatch,
-        atlas: &HudAtlas,
-        format: Option<&Text>,
-        caret: bool,
-    ) {
-        self.draw_skinned_caret(batch, atlas, format, caret, None);
+        self.draw_with_skin(batch, atlas, format, None);
     }
     /// Draw with a custom nine-slice background and the field's own caret blink.
     pub fn draw_with_skin(
@@ -1850,6 +1875,7 @@ impl EditBox {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::screen_draw::scroll_position;
     use std::path::Path;
 
     #[test]
@@ -1925,14 +1951,17 @@ mod tests {
     fn an_overflowing_label_slides_from_its_end_to_its_start_and_back() {
         let overflow = 40.0;
         // max(40 * 0.5, 3) = 20 s.
-        assert!((scroll_offset(overflow, 0) - 40.0).abs() < 1.0e-9);
-        assert!(scroll_offset(overflow, 10_000).abs() < 1.0e-9);
-        assert!((scroll_offset(overflow, 20_000) - 40.0).abs() < 1.0e-9);
+        assert_eq!(scroll_position(overflow, 0), 40.0);
+        assert_eq!(scroll_position(overflow, 10_000), 0.0);
+        assert_eq!(scroll_position(overflow, 20_000), 40.0);
         // A label one pixel too wide waits the floor of three seconds.
-        assert!(scroll_offset(1.0, 1_500).abs() < 1.0e-9);
-        assert!((scroll_offset(1.0, 0) - 1.0).abs() < 1.0e-9);
+        assert_eq!(scroll_position(1.0, 1_500), 0.0);
+        assert_eq!(scroll_position(1.0, 0), 1.0);
+        // Java `Math.sin`/`Math.cos` give 7.745040016214215 for overflow 149 at
+        // 176 938 ms; the host's trig gives ...223, so the old formula fails.
+        assert_eq!(scroll_position(149.0, 176_938), 7.745040016214215);
         for ms in 0..40_000 {
-            let offset = scroll_offset(overflow, ms);
+            let offset = scroll_position(overflow, ms);
             assert!((0.0..=40.0).contains(&offset), "{ms} ms: {offset}");
         }
     }
@@ -1942,6 +1971,36 @@ mod tests {
             (std::path::Path::new("/nonexistent/sunrise-test-assets")).to_owned(),
         ))
         .unwrap()
+    }
+
+    #[test]
+    fn oversized_tiled_nine_slice_extracts_only_visible_tiles_in_phase() {
+        let mut batch = HudBatch::scratch([8, 5]);
+        let sprite = Rect {
+            u0: 0.0,
+            v0: 0.0,
+            u1: 0.75,
+            v1: 0.5,
+            w: 3,
+            h: 2,
+        };
+        draw_nine_slice(
+            &mut batch,
+            sprite,
+            NineSlice {
+                width: 3,
+                height: 2,
+                border: [0; 4],
+                stretch_inner: false,
+            },
+            [-536_870_912.0, 1.0, i32::MAX as f32, 6.0],
+            u32::MAX,
+        );
+        let tiles = quads(&batch);
+        assert_eq!(tiles.len(), 8);
+        assert_eq!(tiles[0], ([0.0, 1.0, 1.0, 3.0], [0.5, 0.0, 0.75, 0.5]));
+        assert_eq!(tiles[1], ([1.0, 1.0, 4.0, 3.0], [0.0, 0.0, 0.75, 0.5]));
+        assert_eq!(tiles[7], ([7.0, 3.0, 8.0, 5.0], [0.0, 0.0, 0.25, 0.5]));
     }
 
     #[test]
@@ -2087,7 +2146,6 @@ mod tests {
             &Text::literal("MMMMMMMMMMMM"),
             LabelPlacement {
                 center_x: 17.0,
-                y: 24.0,
                 clip: [10.0, 20.0, 24.0, 40.0],
                 offset: Some([5.0, 10.0]),
             },
@@ -2095,12 +2153,32 @@ mod tests {
             u32::MAX,
         );
         // Twelve missing glyphs advance 72 px. At time zero the 58 px overrun is fully
-        // scrolled, so glyph 10 starts at x = 10 - 58 + 5 + 9*6, y = 24 + 10.
-        // Its 5×1 top stroke is fully visible; other quads extend past the clip.
+        // scrolled, so glyph 10 starts at x = 10 - 58 + 5 + 9*6 = 11, y = (20 + 40 - 9) / 2 + 1 + 10 = 36.
+        // Its 5×8 SpecialGlyphs.MISSING quad extends to y = 44, so the unshifted clip
+        // [10, 20, 24, 40] cuts its bottom to y = 40 (4/8 of its height visible) and its
+        // shadow at (12, 37) to [12, 37, 17, 40].
+        let missing = atlas.font.missing_rect().expect("missing glyph sprite");
+        let drawn = quads(&batch);
+        let glyph10 = drawn
+            .iter()
+            .find(|(rect, _)| *rect == [11.0, 36.0, 16.0, 40.0])
+            .expect("offset glyph 10 clipped at unshifted bottom y=40");
+        assert_quad(
+            *glyph10,
+            (
+                [11.0, 36.0, 16.0, 40.0],
+                [
+                    missing.u0,
+                    missing.v0,
+                    missing.u1,
+                    missing.v0 + (missing.v1 - missing.v0) * 4.0 / 8.0,
+                ],
+            ),
+        );
         assert!(
-            quads(&batch)
+            drawn
                 .iter()
-                .any(|(rect, _)| *rect == [11.0, 34.0, 16.0, 35.0])
+                .any(|(rect, _)| *rect == [12.0, 37.0, 17.0, 40.0])
         );
         assert!(
             batch.vertices.iter().all(|v| {
@@ -2117,10 +2195,152 @@ mod tests {
         // max(40 * 0.5, 3) = 20 s: at 0 s the whole overflow is slid, at 10 s none.
         assert_eq!(scrolled_left(10.0, 40.0, 0), -30.0);
         assert_eq!(scrolled_left(10.0, 40.0, 10_000), 10.0);
-        // A fractional slide is cut, not rounded.
-        let offset = scroll_offset(40.0, 1_000) as i32 as f32;
-        assert!(offset > 0.0);
-        assert_eq!(scrolled_left(10.0, 40.0, 1_000), 10.0 - offset);
+        // At 1 s the slide is between 39.5 and 40 px: truncate to 39, not 40.
+        assert_eq!(scrolled_left(10.0, 40.0, 1_000), -29.0);
+    }
+
+    /// Slide in whole pixels, from vanilla 26.3's own `defaultScrollingHelper`
+    /// arithmetic (`Math.sin`/`Math.cos`, `(int) pos`) run on a JVM, at fixed clocks.
+    #[test]
+    fn the_slide_matches_vanilla_at_fixed_clock_values() {
+        #[rustfmt::skip]
+        let vanilla: [(i32, i64, i32); 35] = [
+            (1, 0, 1), (1, 1, 0), (1, 1234, 0), (1, 3000, 1), (1, 5000, 0), (1, 17777, 0), (1, 123456789, 0),
+            (6, 0, 6), (6, 1, 5), (6, 1234, 0), (6, 3000, 6), (6, 5000, 0), (6, 17777, 5), (6, 123456789, 2),
+            (40, 0, 40), (40, 1, 39), (40, 1234, 39), (40, 3000, 35), (40, 5000, 20), (40, 17777, 38), (40, 123456789, 34),
+            (58, 0, 58), (58, 1, 57), (58, 1234, 57), (58, 3000, 56), (58, 5000, 48), (58, 17777, 2), (58, 123456789, 54),
+            (100, 0, 100), (100, 1, 100), (100, 1234, 99), (100, 3000, 99), (100, 5000, 97), (100, 17777, 8), (100, 123456789, 92),
+        ];
+        for (overflow, ms, slid) in vanilla {
+            assert_eq!(
+                scrolled_left(7.0, overflow as f32, ms),
+                7.0 - slid as f32,
+                "overflow {overflow} at {ms} ms"
+            );
+        }
+    }
+
+    /// First glyph position of `label` drawn by [`button`] at `rect`.
+    fn label_origin(rect: [f32; 4], label: &str) -> [f32; 2] {
+        let atlas = atlas();
+        let mut batch = HudBatch::scratch([640, 480]);
+        let [x, y, w, h] = rect;
+        button(
+            &mut batch,
+            &atlas,
+            x,
+            y,
+            w,
+            h,
+            &Text::literal(label),
+            true,
+            false,
+        );
+        let mut text = batch.vertices.iter().filter(|v| v.text == 1);
+        let first = text.next().expect("label glyphs").pos;
+        let (mut lo_x, mut lo_y) = (first[0], first[1]);
+        for v in text {
+            lo_x = lo_x.min(v.pos[0]);
+            lo_y = lo_y.min(v.pos[1]);
+        }
+        [lo_x, lo_y]
+    }
+
+    /// Top-left of the glyphs `text_styled` draws for `label` at `x, y`.
+    fn glyph_origin(atlas: &HudAtlas, label: &str, x: f32, y: f32) -> [f32; 2] {
+        let mut batch = HudBatch::scratch([640, 480]);
+        batch.text_styled(
+            atlas,
+            &Text::literal(label).resolved(),
+            x,
+            y,
+            u32::MAX,
+            true,
+        );
+        let glyphs = || batch.vertices.iter().filter(|v| v.text == 1);
+        [
+            glyphs().map(|v| v.pos[0]).fold(f32::INFINITY, f32::min),
+            glyphs().map(|v| v.pos[1]).fold(f32::INFINITY, f32::min),
+        ]
+    }
+
+    /// `defaultScrollingHelper`'s `textTop = (top + bottom - 9) / 2 + 1` is Java
+    /// `int` arithmetic: a 15 px button at y = 20 starts its label at 24, and a
+    /// negative sum truncates toward zero. Tops are vanilla's, written out.
+    #[test]
+    fn a_button_label_top_follows_vanilla_integer_division() {
+        let atlas = atlas();
+        for (y, h, top) in [
+            (20.0, 15.0, 24.0),
+            (20.0, 20.0, 26.0),
+            (20.0, 16.0, 24.0),
+            (20.0, 17.0, 25.0),
+            (-30.0, 14.0, -26.0),
+            (-30.0, 15.0, -26.0),
+            (-31.0, 20.0, -24.0),
+            (-4.0, 4.0, -5.0),
+        ] {
+            assert_eq!(scrolling_text_top(y, y + h), top, "y {y} h {h}");
+            // "Hi" is 12 px: centred in x 10..70 it starts at 34.
+            assert_eq!(
+                label_origin([10.0, y, 60.0, h], "Hi"),
+                glyph_origin(&atlas, "Hi", 34.0, top),
+                "y {y} h {h}"
+            );
+        }
+    }
+
+    /// A short label's centre is `(left + right) / 2` and its half width, both
+    /// Java `int` divisions: truncated toward zero, not floored, left of 0.
+    #[test]
+    fn a_button_label_x_truncates_toward_zero_for_negative_origins() {
+        let atlas = atlas();
+        assert_eq!(atlas.font.width_text(&Text::literal("Hi").resolved()), 12.0);
+        // x = -31, w = 21: left -29, right -12, (left + right) / 2 = -20 (not -21).
+        assert_eq!(
+            label_origin([-31.0, 0.0, 21.0, 20.0], "Hi"),
+            glyph_origin(&atlas, "Hi", -26.0, 6.0)
+        );
+        // x = 10, w = 21: (12 + 29) / 2 = 20.
+        assert_eq!(
+            label_origin([10.0, 0.0, 21.0, 20.0], "Hi"),
+            glyph_origin(&atlas, "Hi", 14.0, 6.0)
+        );
+    }
+
+    /// An overflowing label is drawn from `left - (int) pos`, from the same top.
+    #[test]
+    fn an_overflowing_button_label_is_drawn_at_the_vanilla_slide() {
+        let atlas = atlas();
+        let label = Text::literal("MMMMMMMMMMMM");
+        let width = atlas.font.width_text(&label.resolved());
+        // 12 missing glyphs: 72 px in a 40 px button (36 px of room): overflow 36.
+        assert_eq!(width, 72.0);
+        // Vanilla at 3 000 ms: period 18 s, alpha 0.8536, (int) 30.73 = 30, so the
+        // label starts at 12 - 30 = -18.
+        for (y, h, top) in [(20.0, 15.0, 24.0), (-30.0, 14.0, -26.0)] {
+            let mut batch = HudBatch::scratch([640, 480]);
+            scrolling_text_with_offset(
+                &mut batch,
+                &atlas,
+                &label,
+                LabelPlacement {
+                    center_x: 30.0,
+                    clip: [12.0, y, 48.0, y + h],
+                    offset: None,
+                },
+                3_000,
+                u32::MAX,
+            );
+            let mut want = HudBatch::scratch([640, 480]);
+            want.text_styled(&atlas, &label.resolved(), -18.0, top, u32::MAX, true);
+            want.clip_since(0, 12.0, y, 48.0, y + h);
+            assert_eq!(
+                bytemuck::cast_slice::<_, u8>(&batch.vertices),
+                bytemuck::cast_slice::<_, u8>(&want.vertices),
+                "y {y} h {h}"
+            );
+        }
     }
 
     /// A controller reaches an icon button only through its target, and can't press a disabled one.
@@ -2199,7 +2419,6 @@ mod tests {
             106.0,
             20.0,
             40.0,
-            26.0,
             0,
             u32::MAX,
         );
@@ -2222,29 +2441,15 @@ mod tests {
             106.0,
             20.0,
             40.0,
-            26.0,
             0,
             u32::MAX,
         );
-        let width = atlas.font.width_text(&short.resolved());
-        let left = centered_left(10.0, 96.0, width);
-        let lo = batch
-            .vertices
-            .iter()
-            .map(|v| v.pos[0])
-            .fold(f32::INFINITY, f32::min);
-        let hi = batch
-            .vertices
-            .iter()
-            .map(|v| v.pos[0])
-            .fold(f32::NEG_INFINITY, f32::max);
-        assert!(
-            (lo - left).abs() < 0.001,
-            "centred at {left}, drawn from {lo}"
-        );
-        assert!(
-            hi - lo >= width - 0.001,
-            "the whole label is drawn: {lo}..{hi}, {width} wide"
+        // Four 6 px advances put the start at 58 - 12 = 46; the text top is 26.
+        let mut expected = HudBatch::scratch([640, 480]);
+        expected.text_styled(&atlas, &short.resolved(), 46.0, 26.0, u32::MAX, true);
+        assert_eq!(
+            bytemuck::cast_slice::<_, u8>(&batch.vertices),
+            bytemuck::cast_slice::<_, u8>(&expected.vertices),
         );
     }
 

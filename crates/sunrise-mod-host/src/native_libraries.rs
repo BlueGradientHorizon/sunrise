@@ -3,7 +3,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::{ffi::CStr, path::Path};
 
-/// Commit used for the pinned SDK ABI.
+/// Commit used for the pinned SDK ABI; `dev` for a build that names none.
 pub const GAME_BUILD_ID: &str = env!("SUNRISE_GAME_BUILD_ID");
 /// Compiler release used for the pinned Rust ABI.
 pub const RUSTC_VERSION: &str = env!("SUNRISE_RUSTC_VERSION");
@@ -119,7 +119,7 @@ fn verify(folder: &Path, libraries: &[Library]) -> Result<Vec<Vec<u8>>, String> 
             .is_none_or(|(build, rustc, _)| build != GAME_BUILD_ID || rustc != RUSTC_VERSION)
         {
             return Err(format!(
-                "mod {}: incompatible build identity {:?}; game {GAME_BUILD_ID} rustc {RUSTC_VERSION}. The library was built for another game build or Rust release: rebuild the mod for this build (`cargo sunrise-mod update --sunrise {GAME_BUILD_ID}`, then `cargo sunrise-mod build`)",
+                "mod {}: incompatible build identity {:?}; game {GAME_BUILD_ID} rustc {RUSTC_VERSION}. The library was built for another game build or Rust release: rebuild the mod for this build (`cargo sunrise-mod pin {GAME_BUILD_ID}`, then `cargo sunrise-mod build`)",
                 library.id, library.identity
             ));
         }
@@ -250,7 +250,6 @@ pub fn load(folder: &Path) -> Result<Vec<&'static mod_api::__private::native::Na
 
 /// Start the fixed executable, registering checked native libraries before the engine seal.
 pub fn main() {
-    crate::prepare_main_stack();
     let startup = sunrise_client::entry::prepare();
     let result = std::env::current_exe()
         .map_err(|e| e.to_string())

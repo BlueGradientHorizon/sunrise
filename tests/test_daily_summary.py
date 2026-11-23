@@ -631,13 +631,13 @@ class DailySummaryTests(unittest.TestCase):
 
     def test_a_job_skipped_beside_another_leg_jobs_failure_is_still_its_own_issue(self):
         arm = "cargo-sunrise-mod / build aarch64-apple-darwin"
-        intel = "cargo-sunrise-mod / build x86_64-apple-darwin"
+        windows = "cargo-sunrise-mod / build x86_64-pc-windows-msvc"
         jobs = [job(arm, "failure", ["Build tool"]) if entry["name"] == arm
-                else job(intel, "skipped") if entry["name"] == intel else entry for entry in GREEN_JOBS]
+                else job(windows, "skipped") if entry["name"] == windows else entry for entry in GREEN_JOBS]
         api = Api(jobs)
         _, out = self.run_summary(api, results=dict(LEGS, **{"cargo-sunrise-mod": {"result": "failure"}}))
         self.assertEqual(sorted(body["title"] for _, path, body in api.writes if path == "issues"),
-                         [f"Daily: {arm} did not complete", f"Daily: {intel} did not complete"])
+                         [f"Daily: {arm} did not complete", f"Daily: {windows} did not complete"])
         self.assertEqual(out.splitlines(), ["green=false", "sdk_green=true"])
 
     def test_a_shard_killed_for_memory_says_by_what_with_its_memory_time_and_running_tests(self):
@@ -931,7 +931,7 @@ class DailyWorkflowTests(unittest.TestCase):
         self.assertEqual(jobs["schedule-dispatch"]["runs-on"], "ubuntu-latest")
         self.assertIn("--ref main -f dry_run=false -f scheduled=true", jobs["schedule-dispatch"]["steps"][0]["run"])
         resolve = jobs["resolve"]["steps"][-1]
-        self.assertIn('if [ "$SCHEDULED" = true ] && [ "$DRY_RUN" != true ]', resolve["run"],
+        self.assertIn('if [ "$SCHEDULED" = true ] && [ "$DRY_RUN" = false ]', resolve["run"],
                       "only the schedule stops on a commit already tested; a hand dispatch retries")
         self.assertEqual(self.workflow["on"]["workflow_dispatch"]["inputs"]["scheduled"]["default"], "false")
         self.assertEqual(jobs["resolve"]["if"], "github.event_name == 'workflow_dispatch'")
@@ -940,13 +940,15 @@ class DailyWorkflowTests(unittest.TestCase):
     def test_only_main_without_dry_run_writes(self):
         jobs = self.workflow["jobs"]
         step = jobs["resolve"]["steps"][-1]
-        self.assertEqual(step["env"]["DRY_RUN"], "${{ inputs.dry_run || github.ref != 'refs/heads/main' }}")
-        # A writing run takes only a commit of main: an unmerged commit is never tagged, signed or published.
-        self.assertIn('git merge-base --is-ancestor "$sha" refs/remotes/origin/main', step["run"])
+        # Exactly main or release/26.3, dispatched in this repository, decide it (release_train.py authorize).
+        self.assertEqual(step["env"]["DRY_RUN"], "${{ steps.auth.outputs.dry_run }}")
+        self.assertIn("authorize --publish-kind daily", jobs["resolve"]["steps"][-2]["run"])
+        # A writing run takes only a commit of its branch: an unmerged commit is never tagged, signed or published.
+        self.assertIn('git merge-base --is-ancestor "$sha" "refs/remotes/origin/$branch"', step["run"])
         self.assertEqual(jobs["summary"]["steps"][-1]["env"]["DRY_RUN"], "${{ needs.resolve.outputs.dry_run }}")
         self.assertEqual(jobs["nightly"]["if"],
-                         "always() && needs.summary.outputs.green == 'true' && needs.resolve.outputs.dry_run == 'false'"
-                         " && (needs.sdk-publish.result == 'success' || needs.sdk-publish.result == 'skipped')")
+                         "!cancelled() && needs.green.result == 'success' && needs.resolve.outputs.branch == 'main'"
+                         " && needs.nightly-branch.result == 'success'")
         self.assertEqual(self.workflow["concurrency"]["cancel-in-progress"], "false")
         self.assertEqual(jobs["sdk"]["with"]["commit"], "${{ needs.resolve.outputs.commit }}")
         self.assertNotIn("permissions", jobs["sdk"], "the build leg publishes nothing")
@@ -975,7 +977,9 @@ class DailyWorkflowTests(unittest.TestCase):
         # The one publish step, signed only on main through the called workflow's `release` environment.
         self.assertEqual(publish["uses"], "./.github/workflows/sdk-publish.yml")
         self.assertEqual(publish["with"], {"commit": "${{ needs.resolve.outputs.commit }}", "publish": "true"})
-        self.assertIn("sdk-publish", jobs["nightly"]["needs"])
+        # The nightly waits for the SDK through `green`, which needs it published (or already out).
+        self.assertIn("sdk-publish", jobs["green"]["needs"])
+        self.assertIn("green", jobs["nightly"]["needs"])
         report = jobs["sdk-publish-report"]
         self.assertIn("sdk-publish", report["needs"])
         self.assertIn("daily_summary.py --after sdk-publish", report["steps"][-1]["run"])
@@ -1044,23 +1048,13 @@ class DailyWorkflowTests(unittest.TestCase):
         self.assertEqual(steps["actions/upload-artifact@v4"]["with"]["name"], "sdk-leg-${{ matrix.name }}")
         self.assertNotIn("env", build, "no hand-set archive name")
 
-        # The launcher and the mod tool ask for sunrise_mod_package::sdk::Asset::name(kind, target, side):
-        # `{kind}-{target}{-server}.tar.xz`, the kinds named runtime, api and engine; and the release's other files
-        # are its BESIDE_ASSETS. Producer (the legs), publish check (SDK_ARCHIVES, SDK_ASSETS) and launcher agree.
-        sdk = (ROOT / "crates/sunrise-mod-package/src/sdk.rs").read_text()
-        self.assertIn('format!("{}-{target}{suffix}.tar.xz", kind.name())', sdk)
-        self.assertIn('let suffix = if kind.per_side() && side == Side::Server {', sdk)
-        for kind in ("runtime", "api", "engine", "build-data", "api-source", "tool"):
-            self.assertIn(f'=> "{kind}",', sdk)
-        self.assertIn('pub const INDEX: &str = "sdk.json";', sdk)
-        self.assertIn('pub const BESIDE_ASSETS: [&str; 3] = [INDEX, "SHA256SUMS", "SHA256SUMS.sig"];', sdk)
         self.assertEqual(set(nightly.SDK_ASSETS) - set(nightly.SDK_ARCHIVES), {"sdk.json", "SHA256SUMS", "SHA256SUMS.sig"})
 
     def test_the_sdk_is_signed_and_published_only_on_main(self):
         from tests.test_ci_concurrency import ROOT, yaml
         workflow = yaml.load((ROOT / ".github/workflows/sdk-publish.yml").read_text(), Loader=yaml.BaseLoader)
         jobs = workflow["jobs"]
-        on_main = "inputs.publish && github.ref == 'refs/heads/main'"
+        on_main = "needs.authorize.outputs.publish == 'true'"
         self.assertEqual(jobs["sign"]["environment"], f"${{{{ {on_main} && 'release' || '' }}}}")
         sign = jobs["sign"]["steps"][-3]
         self.assertEqual(sign["run"], 'bash tools/ci/sign_release.sh "$TAG" dist/*')
@@ -1073,7 +1067,7 @@ class DailyWorkflowTests(unittest.TestCase):
         self.assertEqual(jobs["sign"]["steps"][0]["with"]["sparse-checkout"], "tools/ci/sign_release.sh")
         on_main_check = jobs["sign"]["steps"][1]
         self.assertEqual(on_main_check["if"], f"${{{{ {on_main} }}}}")
-        self.assertIn('git merge-base --is-ancestor "$COMMIT" refs/remotes/origin/main', on_main_check["run"])
+        self.assertIn('git merge-base --is-ancestor "$COMMIT" "refs/remotes/origin/$GITHUB_REF_NAME"', on_main_check["run"])
         # The jobs that read the legs' output cannot write; the legs' artifacts only, not an earlier attempt's own.
         for job in ("index", "sign"):
             self.assertEqual(jobs[job]["permissions"], {"contents": "read"}, job)
@@ -1082,7 +1076,8 @@ class DailyWorkflowTests(unittest.TestCase):
         self.assertNotIn("environment", jobs["index"])
         self.assertNotIn("environment", jobs["publish"])
         publish = {step.get("name"): step for step in jobs["publish"]["steps"]}
-        self.assertEqual(jobs["publish"]["env"]["PUBLISH"], f"${{{{ {on_main} }}}}")
+        self.assertEqual(jobs["publish"]["env"]["PUBLISH"], "${{ needs.authorize.outputs.publish }}")
+        self.assertEqual(jobs["authorize"]["steps"][-1]["env"]["DRY_INPUT"], "${{ !inputs.publish }}")
         self.assertEqual(publish["Release sdk-<sha>"]["if"], "env.PUBLISH == 'true'")
         order = [step.get("name") for step in jobs["publish"]["steps"]]
         self.assertLess(order.index("The signature, checked as the launcher checks it"), order.index("Release sdk-<sha>"))
@@ -1117,7 +1112,9 @@ class DailyWorkflowTests(unittest.TestCase):
         self.assertIn("parity", jobs["summary"]["needs"])
         self.assertIn("sdk-windows-macos", jobs["summary"]["needs"])
         self.assertIn("!cancelled()", jobs["summary"]["if"])
-        self.assertIn("needs.summary.outputs.green == 'true'", jobs["nightly"]["if"])
+        self.assertIn("needs.summary.outputs.green == 'true'", jobs["green"]["if"])
+        self.assertIn("needs.parity.result == 'success'", jobs["green"]["if"])
+        self.assertIn("needs.green.result == 'success'", jobs["nightly"]["if"])
         self.assertIn("needs.summary.outputs.sdk_green == 'true'", jobs["sdk-publish"]["if"])
         self.assertNotIn("parity-report", jobs)
 
@@ -1137,6 +1134,8 @@ class DailyWorkflowTests(unittest.TestCase):
             for ref, dry, commit, required in (("main", "false", "head", "true"),
                                                ("main", "false", "older", "true"),
                                                ("main", "true", "head", "false"),
+                                               ("release/26.3", "false", "head", "true"),
+                                               ("nightly/26.3", "false", "head", "false"),
                                                ("topic", "false", "head", "false")):
                 with self.subTest(ref=ref, dry=dry, commit=commit):
                     out.unlink(missing_ok=True)

@@ -426,8 +426,10 @@ impl Game<'_> {
         if !matches!(self.screen, Screen::Inventory | Screen::Creative) || self.title.is_some() {
             return None;
         }
-        let disabled = &self.settings.mods.disabled;
-        let Some(shown) = self.panel.shown(|id| !disabled.contains(id)) else {
+        let Some(shown) = self
+            .panel
+            .shown(|id| !self.mods.code_disabled(&self.settings.mods.disabled, id))
+        else {
             self.panel.of = None;
             self.panel.stacks.clear();
             return None;
@@ -456,8 +458,8 @@ impl Game<'_> {
     }
     /// What the panel shows now.
     fn panel_shown(&self) -> Option<&Shown> {
-        let disabled = &self.settings.mods.disabled;
-        self.panel.shown(|id| !disabled.contains(id))
+        self.panel
+            .shown(|id| !self.mods.code_disabled(&self.settings.mods.disabled, id))
     }
     /// The player did `event` on `owner`'s panel.
     pub(super) fn panel_event(&mut self, owner: &Owner, event: BrowserEvent) {
@@ -934,32 +936,24 @@ impl Game<'_> {
             && self.panel.search.as_ref().is_some_and(|s| s.focused)
     }
     /// A key press while the search box has focus.
-    pub(super) fn mod_browser_key(&mut self, event: &winit::event::KeyEvent) {
-        use winit::keyboard::PhysicalKey;
-        let shortcut = self.edit_shortcut(event);
-        let ctrl = self.has_control_down();
-        let shift = self.has_shift_down();
-        let types_text = self.types_text();
+    pub(super) fn mod_browser_key(
+        &mut self,
+        key: winit::keyboard::KeyCode,
+        shortcut: Option<sunrise_client::clipboard::EditShortcut>,
+    ) -> bool {
+        let (ctrl, shift) = (self.has_control_down(), self.has_shift_down());
         let Some(search) = self.panel.search.as_mut() else {
-            return;
+            return false;
         };
-        if let Some(shortcut) = shortcut {
+        let handled = if let Some(shortcut) = shortcut {
             search.shortcut(shortcut, &mut self.clipboard);
+            true
         } else {
-            let handled = match event.physical_key {
-                PhysicalKey::Code(code) => search.key(code, ctrl, shift),
-                _ => false,
-            };
-            if !handled
-                && types_text
-                && let Some(text) = &event.text
-            {
-                let text: String = text.chars().filter(|c| !c.is_control()).collect();
-                search.insert_text(&text);
-            }
-        }
+            search.key(key, ctrl, shift)
+        };
         search.reset_blink();
         self.browser_searched();
+        handled
     }
     /// Text typed (or one backspace) into the search box (`sunrise-ctl type`).
     pub(super) fn mod_browser_text(&mut self, text: Option<&str>, backspace: bool) {
@@ -1466,7 +1460,6 @@ mod tests {
         use crate::game::Screen;
         const WINDOW: [u32; 2] = [854, 480];
         crate::game::native_entity_refs::tests::with_client_game(|game| {
-            let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
             let mods: mod_api::Mods =
                 vec![mod_api::ModEntry::new("jei", Box::new(Listener))].into();
             mod_platform::testing::with_mods(mods, || {
@@ -1521,61 +1514,6 @@ mod tests {
                 );
                 assert_eq!(frame(game, WINDOW), []);
                 assert_eq!(game.panel.search.as_ref().unwrap().value, "golds");
-            });
-        });
-    }
-
-    static GATED_BEFORE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    static GATED_AFTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    /// Asks the Host for a level in its panel hook, and counts the calls that came back.
-    struct Gated;
-    #[mod_api::__subscriptions]
-    impl mod_api::Hooks for Gated {
-        fn panel_event(
-            &self,
-            host: &mut dyn mod_api::ClientHost,
-            _: &mut mod_api::PanelEventEvent<'_>,
-        ) {
-            GATED_BEFORE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            let _ = host.level("minecraft:overworld");
-            GATED_AFTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        }
-    }
-
-    /// The panel's events fire on input, after the thread reached World. Fired in Setup and in
-    /// Reloading anyway, a listener's world read is refused inside the hook's own containment
-    /// (the listener never gets past it), never the no-scope panic; in World it is answered.
-    #[test]
-    #[ignore = "daily"]
-    fn the_panel_outside_the_world_is_refused_not_a_panic() {
-        use mod_api::__private::{ModPhase, PhaseOwner};
-        use std::sync::atomic::Ordering;
-        crate::game::native_entity_refs::tests::with_client_game(|game| {
-            let mods: mod_api::Mods = vec![mod_api::ModEntry::new("gated", Box::new(Gated))].into();
-            mod_platform::testing::with_mods(mods, || {
-                let owner = Owner::Native("gated".into());
-                for reloading in [false, true] {
-                    let setup = PhaseOwner::scope(ModPhase::Setup);
-                    let _reload = reloading.then(|| setup.reloading().unwrap());
-                    GATED_BEFORE.store(0, Ordering::Relaxed);
-                    GATED_AFTER.store(0, Ordering::Relaxed);
-                    game.panel_event(&owner, crate::game::native_hooks::PanelEvent::Back);
-                    assert_eq!(GATED_BEFORE.load(Ordering::Relaxed), 1, "the hook fired");
-                    assert_eq!(
-                        GATED_AFTER.load(Ordering::Relaxed),
-                        0,
-                        "the read is refused"
-                    );
-                }
-                let _world = PhaseOwner::scope(ModPhase::World);
-                GATED_BEFORE.store(0, Ordering::Relaxed);
-                GATED_AFTER.store(0, Ordering::Relaxed);
-                game.panel_event(&owner, crate::game::native_hooks::PanelEvent::Back);
-                assert_eq!(
-                    GATED_AFTER.load(Ordering::Relaxed),
-                    1,
-                    "in World it is answered"
-                );
             });
         });
     }

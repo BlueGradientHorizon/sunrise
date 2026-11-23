@@ -1345,7 +1345,7 @@ fn player_push(m: &mut Mob, p: &super::PlayerView, w: &MobWorld, events: &mut Ve
     let speed = (p.velocity.length() * 2.0 * f64::from(0.3f32)).clamp(0.0, 0.5);
     let push = Vec3::new(
         dx / len * kb * speed,
-        if m.on_ground {
+        if m.ground.on_ground {
             kb * f64::from(0.3f32) * speed
         } else {
             0.0
@@ -1493,7 +1493,7 @@ impl Goal for SearchForItems {
     }
 }
 /// `addAdditionalSaveData`: the cube's size, the timers and the fuse.
-pub fn to_nbt(m: &Mob, map: &mut sunrise_core::nbt::Compound) {
+pub fn to_nbt(m: &Mob, map: &mut crate::entity_nbt::EntityTagWriter) {
     use sunrise_core::nbt::Tag;
     map.insert("Size".into(), Tag::Int(m.extra.size.max(1) - 1));
     map.insert("wasOnGround".into(), Tag::Byte(i8::from(m.extra.flag2)));
@@ -1503,13 +1503,6 @@ pub fn to_nbt(m: &Mob, map: &mut sunrise_core::nbt::Compound) {
         Tag::Byte(i8::from(m.extra.scratch[3] != 0)),
     );
     map.insert("fuse".into(), Tag::Int(fuse(m)));
-    for (key, value) in [
-        ("Age", Tag::Int(m.extra.age)),
-        ("AgeLocked", Tag::Byte(i8::from(m.extra.age_locked))),
-    ] {
-        map.insert(key.into(), value);
-    }
-    map.entry("ForcedAge".into()).or_insert(Tag::Int(0));
 }
 /// `SulfurCube.readAdditionalSaveData`: size precedes the living health default.
 pub fn from_nbt(m: &mut Mob, tag: &sunrise_core::nbt::Tag) {
@@ -1536,9 +1529,8 @@ pub fn from_nbt(m: &mut Mob, tag: &sunrise_core::nbt::Tag) {
             }
         }
     }
-    // The saved Health, not the one the living load's Health Boost clamp cut
-    // to the unsized maximum: vanilla sizes the cube before `setHealth`.
-    m.health = crate::save::float(tag.get("Health")).map_or(m.attrs.max_health, |h| h as f32);
+    // The saved Health, clamped to the sized maximum: vanilla sizes the cube before `setHealth`.
+    m.health = crate::entity_nbt::loaded_health(m, crate::save::float(tag.get("Health")));
     m.extra.flag2 = int("wasOnGround").unwrap_or(0) != 0;
     m.extra.ints[3] = int("pickup_timer").unwrap_or(0);
     m.extra.scratch[3] = int("from_bucket").unwrap_or(0);

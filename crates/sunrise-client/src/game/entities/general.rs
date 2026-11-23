@@ -179,6 +179,17 @@ fn check_record(
     ancestors: &FxHashSet<[i32; 4]>,
     seen: &mut FxHashSet<[i32; 4]>,
 ) -> Result<(), GeneralRecordError> {
+    check_record_fields(record)?;
+    if ancestors.contains(&record.uuid) {
+        return Err(GeneralRecordError::PassengerCycle { uuid: record.uuid });
+    }
+    if !seen.insert(record.uuid) {
+        return Err(GeneralRecordError::DuplicateUuid { uuid: record.uuid });
+    }
+    Ok(())
+}
+
+fn check_record_fields(record: &GeneralEntityRecord) -> Result<(), GeneralRecordError> {
     if !record
         .position
         .iter()
@@ -195,12 +206,6 @@ fn check_record(
         return Err(GeneralRecordError::PayloadTooLarge {
             size: record.envelope.payload_bytes.len(),
         });
-    }
-    if ancestors.contains(&record.uuid) {
-        return Err(GeneralRecordError::PassengerCycle { uuid: record.uuid });
-    }
-    if !seen.insert(record.uuid) {
-        return Err(GeneralRecordError::DuplicateUuid { uuid: record.uuid });
     }
     Ok(())
 }
@@ -532,6 +537,11 @@ impl GeneralTypeCatalog {
         &self.entries[slot].id
     }
 
+    /// The range and update interval of the already-resolved type.
+    pub(in crate::game) fn tracking(&self, slot: usize) -> sunrise_client::lan::tracking::General {
+        (&self.entries[slot]).into()
+    }
+
     pub(in crate::game) fn keys(&self) -> impl Iterator<Item = &str> {
         self.entries.iter().map(|entry| entry.id.as_str())
     }
@@ -552,6 +562,13 @@ impl GeneralTypeCatalog {
 
     pub(in crate::game) fn pickable(&self, slot: usize) -> bool {
         self.entries[slot].pickable
+    }
+
+    pub(in crate::game) fn piston_push_reaction(
+        &self,
+        slot: usize,
+    ) -> sunrise_world::level::PushReaction {
+        super::api_values::push_reaction(&self.entries[slot].piston_push_reaction).1
     }
 
     /// The type's declared payload schema version, the one a fresh row starts at.
@@ -686,15 +703,16 @@ pub struct RiderIndex {
     stamp: Option<sunrise_client::join_seq::ListStamp>,
     length: usize,
     mounts: u64,
-    /// Each row's first rider's place; `None` carries none.
+    /// Each vehicle's first general rider. Places at and above `length` are
+    /// foreign vehicles, with no corresponding general row.
     pub(super) first_child: Vec<Option<usize>>,
     /// Each rider's next sibling's place on the same vehicle.
     pub(super) next_sibling: Vec<Option<usize>>,
     /// Each vehicle's latest rider of the ongoing rebuild.
     last_child: Vec<Option<usize>>,
-    /// Each row's place by id, for the rebuild's edge pass.
+    /// A general row or foreign vehicle's place by id.
     places: FxHashMap<u32, usize>,
-    boarded: Vec<usize>,
+    boarded: Vec<(usize, u32)>,
     pub(super) ticked: Vec<bool>,
     pub(super) pending: Vec<(usize, Option<u32>)>,
     pub(super) foreign_parents: Vec<(usize, i64, usize)>,
@@ -739,16 +757,20 @@ impl RiderIndex {
             self.places.insert(row.id, place);
         }
         self.boarded.clear();
+        self.boarded.extend(
+            rows.iter()
+                .enumerate()
+                .filter_map(|(place, row)| Some((place, row.mount?))),
+        );
         self.boarded
-            .extend(rows.iter().enumerate().filter_map(|(place, row)| {
-                row.mount
-                    .is_some_and(|vehicle| self.places.contains_key(&vehicle))
-                    .then_some(place)
-            }));
-        self.boarded
-            .sort_unstable_by_key(|&place| (rows[place].vehicle_order, rows[place].id));
-        for &place in &self.boarded {
-            let vehicle_place = self.places[&rows[place].mount.unwrap()];
+            .sort_unstable_by_key(|&(place, _)| (rows[place].vehicle_order, rows[place].id));
+        for &(place, vehicle) in &self.boarded {
+            let vehicle_place = *self.places.entry(vehicle).or_insert_with(|| {
+                let place = self.first_child.len();
+                self.first_child.push(None);
+                self.last_child.push(None);
+                place
+            });
             match self.last_child[vehicle_place] {
                 // The chain's tail takes the new rider; the head opens it.
                 Some(tail) => self.next_sibling[tail] = Some(place),
@@ -777,11 +799,8 @@ impl Game<'_> {
             return None;
         }
         if store.riders.is_fresh(&store.rows, store.mount_writes) {
-            return store
-                .riders
-                .places
-                .get(&id)
-                .map(|&place| &store.rows[place]);
+            let &place = store.riders.places.get(&id)?;
+            return store.rows.get(place);
         }
         store.rows.iter().find(|row| row.id == id)
     }
@@ -970,13 +989,16 @@ impl Game<'_> {
     /// handle of the source level reaches it again. A failure after the
     /// rows left — the destination level cannot open — puts every row back
     /// in the source, at its place and with the join identity it had; a
-    /// failure before leaves the tree untouched. The root lands at `at`;
-    /// a rider keeps its own position until the tree's own tick moves it.
+    /// failure before leaves the tree untouched. The root lands at `at`, and
+    /// each rider takes its own vehicle's transition on arrival.
     pub(in crate::game) fn teleport_general_tree_across(
         &mut self,
         root_id: u32,
         destination: crate::game::Dim,
         at: [f64; 3],
+        rotation: Option<[f32; 2]>,
+        turn_riders: bool,
+        motion: super::vehicle_teleport::TeleportMotion,
     ) -> Result<bool, String> {
         let source = self.dim;
         if source == destination {
@@ -1039,15 +1061,25 @@ impl Game<'_> {
         }
         // The tree joins the destination: identities unchanged, join
         // identity new (a fresh admission — no source handle reaches it).
-        for (_, mut row, transient) in extracted {
+        let (mut arrivals, transients): (Vec<_>, Vec<_>) = extracted
+            .into_iter()
+            .map(|(_, row, transient)| (row, transient))
+            .unzip();
+        super::vehicle_teleport::transfer_general_tree(
+            &mut arrivals,
+            root_id,
+            super::vehicle_teleport::Transition::to_level(
+                Vec3::new(at[0], at[1], at[2]),
+                motion,
+                rotation,
+            ),
+            turn_riders,
+        );
+        for (mut row, transient) in arrivals.into_iter().zip(transients) {
             if transient {
                 self.persist.transient.insert(row.id);
             }
             row.join = JoinSeq::UNJOINED;
-            if row.id == root_id {
-                row.position = Vec3::new(at[0], at[1], at[2]);
-                row.previous = row.position;
-            }
             self.resident_entities.general.rows.push(row);
         }
         if let Err(error) = self.enter_level(source) {
@@ -1145,13 +1177,33 @@ impl Game<'_> {
         )))
     }
 
-    /// Insert one record as a row (and, recursively, its riders as rows of
-    /// their vehicle): the same join list a fresh spawn pushes into, the
-    /// same remember (`persist.uuids`, the saved attachments) every loaded
-    /// kind takes, and each row's next runtime id from the game's counter.
+    /// Read one spawner passenger without its riders. The spawner loads
+    /// those separately and resolves UUID residency in preorder, not with
+    /// the saved general tree's structural checks.
+    pub(super) fn decode_general_spawn_passenger(
+        tag: &Tag,
+        kind: &str,
+    ) -> Option<(usize, GeneralEntityRecord)> {
+        let slot = general_type_catalog().slot(kind)?;
+        let record = read_general_record(tag, &|_| false)
+            .and_then(|record| {
+                check_record_fields(&record)?;
+                Ok(record)
+            })
+            .map_err(|error| {
+                log::warn!(
+                    "Sunrise: refusing general entity record: {}",
+                    error.message()
+                );
+            })
+            .ok()?;
+        Some((slot, record))
+    }
+
+    /// Insert one saved general record and its riders in seat order.
     fn insert_general_record(
         &mut self,
-        record: GeneralEntityRecord,
+        mut record: GeneralEntityRecord,
         tag: &Tag,
         mount: Option<u32>,
         transferred: Option<TransferredEntityState>,
@@ -1159,6 +1211,30 @@ impl Game<'_> {
         let slot = general_type_catalog()
             .slot(&record.envelope.type_key)
             .expect("check_general_record resolved every type of the tree");
+        let riders = std::mem::take(&mut record.passengers);
+        let id = self.insert_general_row(slot, record, tag, mount, transferred);
+        if let Some(Tag::List(list)) = tag.get(format::PASSENGERS) {
+            let mut general = riders.into_iter();
+            for rider in list {
+                if self.loads_as_mob_passenger(rider) {
+                    self.load_mob(rider.clone(), Some(id));
+                } else if let Some(record) = general.next() {
+                    self.insert_general_record(record, rider, Some(id), None);
+                }
+            }
+        }
+        id
+    }
+
+    /// Publish one validated record; the caller owns its passenger traversal.
+    pub(super) fn insert_general_row(
+        &mut self,
+        slot: usize,
+        record: GeneralEntityRecord,
+        tag: &Tag,
+        mount: Option<u32>,
+        transferred: Option<TransferredEntityState>,
+    ) -> u32 {
         self.next_entity += 1;
         let id = self.next_entity;
         // Install before `remember_uuid` (the same ordering a transferred
@@ -1188,18 +1264,6 @@ impl Game<'_> {
         };
         self.bind_saved_entity_attachments(id, &mut row.attachment_lifetime);
         self.resident_entities.general.rows.push(row);
-        // The decoder parsed the general rows; load vanilla mobs through the
-        // same path that reads them on a vanilla vehicle, in original seat order.
-        if let Some(Tag::List(list)) = tag.get(format::PASSENGERS) {
-            let mut general = record.passengers.into_iter();
-            for rider in list {
-                if self.loads_as_mob_passenger(rider) {
-                    self.load_mob(rider.clone(), Some(id));
-                } else if let Some(record) = general.next() {
-                    self.insert_general_record(record, rider, Some(id), None);
-                }
-            }
-        }
         id
     }
 }
@@ -1248,6 +1312,9 @@ impl Entity for GeneralRow {
     fn velocity_mut(&mut self) -> &mut Vec3 {
         &mut self.velocity
     }
+    fn fall_distance(&self) -> f64 {
+        self.fall_distance
+    }
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
     }
@@ -1269,11 +1336,17 @@ impl Entity for GeneralRow {
     fn bounds(&self) -> Aabb {
         general_type_catalog().bounds(self.type_slot, self.position)
     }
+    fn is_pickable(&self) -> bool {
+        general_type_catalog().pickable(self.type_slot)
+    }
     fn selector_target(&self) -> Option<Target> {
         Some(Target::General(self.id))
     }
-    fn native_type(&self) -> Cow<'static, str> {
-        Cow::Owned(general_type_catalog().key(self.type_slot).to_owned())
+    fn get_piston_push_reaction(&self) -> sunrise_world::level::PushReaction {
+        general_type_catalog().piston_push_reaction(self.type_slot)
+    }
+    fn native_type(&self) -> Cow<'_, str> {
+        Cow::Borrowed(general_type_catalog().key(self.type_slot))
     }
     fn save_nbt(
         game: &mut Game<'_>,
@@ -1508,6 +1581,7 @@ mod tests {
             save_policy: mod_api::GeneralSavePolicy::Save,
             summonable: true,
             pickable: false,
+            piston_push_reaction: mod_api::PushReaction::PushPull,
             tracking_chunks: 8,
             update_interval: 3,
             payload_version: 1,

@@ -19,18 +19,26 @@ use sunrise_client::{
         menu::{ModCraft, Slots, linked_slot_count, read_links, write_links},
     },
     menu::{
-        Asked, Env, Input, Kind, Menu,
+        Env, Input, Kind, Menu,
         place::{PostPlace, TransferCheck, TransferError},
     },
 };
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 
-/// `AbstractContainerMenu.dropOrPlaceInInventory`: actual network disconnects
-/// drop inputs; a live close still returns them to the inventory.
+/// `AbstractContainerMenu.dropOrPlaceInInventory`: killed or disconnected players
+/// drop inputs, while a live close or a dimension change returns them.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum MenuRemoval {
     Live,
+    ChangedDimension,
+    Killed,
     Disconnected,
+}
+
+impl MenuRemoval {
+    pub(super) fn drops_items(self) -> bool {
+        matches!(self, Self::Killed | Self::Disconnected)
+    }
 }
 
 /// The guest's menus the game runs: kept between clicks, so a drag (quick
@@ -137,6 +145,7 @@ fn place_back(menu: &mut Menu, items: &Items, stacks: impl IntoIterator<Item = I
 }
 
 /// The non-storage effects from one guest menu action.
+#[derive(Default)]
 pub(in crate::game) struct GuestMenuEffects {
     dropped: Vec<ItemStack>,
     equipped: Vec<(&'static str, Option<ItemStack>)>,
@@ -147,14 +156,25 @@ pub(in crate::game) struct GuestMenuEffects {
     crafted_counts: Vec<(std::sync::Arc<str>, i32)>,
 }
 
+pub(in crate::game) struct FurnaceMenuEffects {
+    uuid: u128,
+    entity_id: i32,
+    pos: (i32, i32, i32),
+    at: [f64; 3],
+    smelted: Vec<(Option<ItemStack>, u32)>,
+    extracted: Option<(ItemStack, u32)>,
+}
+
 impl GuestMenuEffects {
+    pub(in crate::game) fn dropped(dropped: Vec<ItemStack>) -> Self {
+        Self {
+            dropped,
+            ..Self::default()
+        }
+    }
+
     fn take(menu: &mut Menu) -> Self {
-        // An anvil result waits for AnvilCraftEvent.Pre; lan_station_op throws or refuses its drops.
-        let dropped = if menu.anvil_craft.is_some() {
-            Vec::new()
-        } else {
-            std::mem::take(&mut menu.dropped)
-        };
+        let dropped = std::mem::take(&mut menu.dropped);
         menu.drops.clear();
         Self {
             dropped,
@@ -213,20 +233,18 @@ impl Game<'_> {
         menu: &mut Menu,
         op: impl FnOnce(&mut Menu, &Env) -> R,
     ) -> Option<R> {
-        self.guest_menu_op_with(gi, menu, None, None, op)
+        self.guest_menu_op_with(gi, menu, None, op)
     }
 
-    /// `guest_menu_op` with the slot rules a decision kept (instead of asking the mods) and the
-    /// mods' answer to the pickup it decided, when there is one.
+    /// `guest_menu_op` with the mods' answer to a decided pickup, when there is one.
     pub(super) fn guest_menu_op_with<R>(
         &mut self,
         gi: usize,
         menu: &mut Menu,
-        rules: Option<&dyn sunrise_client::menu::SlotRules>,
         stacked: Option<&sunrise_client::menu::StackedOutcome>,
         op: impl FnOnce(&mut Menu, &Env) -> R,
     ) -> Option<R> {
-        let result = self.guest_menu_edit(gi, menu, rules, stacked, op)?;
+        let result = self.guest_menu_edit(gi, menu, stacked, op)?;
         let conn = self.lan.as_ref()?.hub.guests[gi].conn;
         self.publish_guest_menu_effects(conn, GuestMenuEffects::take(menu));
         Some(result)
@@ -238,7 +256,6 @@ impl Game<'_> {
         &mut self,
         gi: usize,
         menu: &mut Menu,
-        rules: Option<&dyn sunrise_client::menu::SlotRules>,
         stacked: Option<&sunrise_client::menu::StackedOutcome>,
         op: impl FnOnce(&mut Menu, &Env) -> R,
     ) -> Option<R> {
@@ -268,39 +285,14 @@ impl Game<'_> {
         // `ArmorSlot.mayPlace` asks the parts with the game as `Host`: the menu is the guest's own.
         let parts = self.menu_can_equip();
         let env = Env {
-            crafting_remainder: Some(self),
-            player: Some(host.hub.guests[gi].uuid),
-            player_entity_id: Some(host.hub.guests[gi].entity_id),
-            loop_context: &self.loop_context,
             maps: maps.as_ref().map(|m| m as &dyn sunrise_client::menu::Maps),
-            limited_crafting: host.hub.limited_crafting,
             can_equip: Some(&parts),
-            known_recipes: Some(&host.hub.guests[gi].recipe_book),
-            ..self.menu_env()
-        };
-        let env = Env {
-            slot_rules: rules.or(env.slot_rules),
             stacked,
-            ..env
+            ..self.load_guest_menu(menu, host, gi)
         };
-        let limits = host.hub.guests[gi]
-            .menu
-            .as_ref()
-            .map(|opened| opened.slots.stack_limits(&self.world, opened.size))
-            .unwrap_or_default();
-        menu.set_container_limits(limits);
-        menu.set_block_pos(
-            host.hub.guests[gi]
-                .menu
-                .as_ref()
-                .and_then(|opened| opened.pos)
-                .map(|(x, y, z)| [x, y, z]),
-        );
-        load_player(menu, &host.hub.guests[gi]);
         menu.brewed_potion_hook = !mod_api::__private::mods().is_empty();
         menu.item_smelted_hook = menu.brewed_potion_hook;
         let result = op(menu, &env);
-        drop(parts);
         if let Some(maps) = maps {
             self.register_made_maps(maps);
         }
@@ -310,6 +302,61 @@ impl Game<'_> {
             .guests
             .update(gi, |guest| store_player(menu, guest));
         Some(result)
+    }
+
+    pub(super) fn publish_furnace_menu_effects(&mut self, effects: FurnaceMenuEffects) {
+        let FurnaceMenuEffects {
+            uuid,
+            entity_id,
+            pos,
+            at,
+            smelted,
+            extracted,
+        } = effects;
+        for (stack, removed) in smelted {
+            self.native_item_smelted(uuid, entity_id, stack.as_ref(), removed);
+        }
+        if let Some((stack, taken)) = extracted {
+            if mod_api::__private::listened(mod_api::HookId::FurnaceExtract)
+                && let Some(name) = self.lan.as_ref().and_then(|host| {
+                    host.hub
+                        .guests
+                        .iter()
+                        .find(|g| g.uuid == uuid)
+                        .map(|g| g.name.clone())
+                })
+            {
+                self.native_furnace_extract(uuid, &name, [pos.0, pos.1, pos.2], &stack.item, taken);
+            }
+            self.award_furnace_recipes(pos, at);
+        }
+    }
+
+    /// Load the player and slot context for the menu's live queries, without storing any edits.
+    fn load_guest_menu<'a>(
+        &'a self,
+        menu: &mut Menu,
+        host: &'a super::lan::LanHost,
+        gi: usize,
+    ) -> Env<'a> {
+        let guest = &host.hub.guests[gi];
+        let open = guest.menu.as_ref();
+        let limits = open
+            .map(|opened| opened.slots.stack_limits(&self.world, opened.size))
+            .unwrap_or_default();
+        menu.set_container_limits(limits);
+        menu.set_block_pos(
+            open.and_then(|opened| opened.pos)
+                .map(|(x, y, z)| [x, y, z]),
+        );
+        load_player(menu, guest);
+        Env {
+            player: Some(guest.uuid),
+            player_entity_id: Some(guest.entity_id),
+            limited_crafting: host.hub.limited_crafting,
+            known_recipes: Some(&guest.recipe_book),
+            ..self.menu_env()
+        }
     }
 
     pub(in crate::game) fn publish_guest_menu_effects(
@@ -472,30 +519,94 @@ impl Game<'_> {
         true
     }
 
-    /// A click on the guest's open furnace, blast furnace, smoker or brewing stand:
-    /// the host's `AbstractFurnaceMenu` (fuel slot, take-only result, quick moves by
-    /// recipe and fuel), `BrewingStandMenu` (one bottle per slot, ingredient and
-    /// blaze powder slots) or a content mod's menu type (`Kind::Mod`) over the
-    /// block entity's slots. False for other windows.
-    pub(super) fn lan_machine_click(&mut self, conn: u32, p: &play::ContainerClick) -> bool {
-        self.lan_machine_click_asked(conn, p, Asked::default())
-    }
-
-    /// `lan_machine_click` with the slot rules' answers the server got for this click before it
-    /// reached the menu (`Menu::click_asked`).
-    pub(in crate::game) fn lan_machine_click_asked(
+    /// Run a blockless owned menu through the same slot layout and click engine as its client.
+    pub(super) fn lan_owned_menu_click(
         &mut self,
         conn: u32,
         p: &play::ContainerClick,
-        asked: Asked,
-    ) -> bool {
-        let Some(host) = self.lan.as_mut() else {
-            return false;
+    ) -> Option<bool> {
+        use super::lan_menus::ClickReply;
+        let host = self.lan.as_mut()?;
+        let gi = host.hub.guests.connection_index(conn)?;
+        let guest = &host.hub.guests[gi];
+        let layout = guest.menu.as_ref().and_then(|m| {
+            let layout = m.mod_type.filter(|t| t.owned_slots.is_some())?;
+            (m.window == p.container && !guest.spectator()).then_some(layout)
+        })?;
+        let generation = guest.menu_generation;
+        let items = guest.native_menu.clone();
+        let mut menu = host
+            .menus
+            .entry(conn)
+            .or_default()
+            .owned_menu
+            .take()
+            .filter(|(g, _)| *g == generation)
+            .map_or_else(|| Box::new(Menu::new(Kind::Mod(layout))), |(_, menu)| menu);
+        let live = |g: &Guest| {
+            g.menu_generation == generation
+                && g.menu.as_ref().is_some_and(|m| m.window == p.container)
         };
-        let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) else {
-            return false;
-        };
-        let Some((pos, mod_type, hidden, menu_id)) = host.hub.guests[gi]
+        let click = super::lan_pickup::click_of(p);
+        let prepare = |menu: &mut Menu, env: &Env| menu.load_container(env, &items, None);
+        let snapshot = menu.snapshot();
+        let changed = self.guest_menu_action(
+            gi,
+            &mut menu,
+            Some(click),
+            Some(&prepare),
+            |game, menu, stacked| {
+                let gi = game.guest_index(conn)?;
+                game.lan.as_ref()?.hub.guest(conn).filter(|g| live(g))?;
+                let changed: Vec<_> = game.guest_menu_edit(gi, menu, stacked, |menu, env| {
+                    prepare(menu, env);
+                    let before: Vec<_> = (0..menu.slot_count())
+                        .map(|s| menu.slot(s).cloned())
+                        .collect();
+                    menu.click(env, click.0, click.1, click.2).ok()?;
+                    Some(
+                        (0..menu.slot_count())
+                            .filter(|&s| menu.slot(s) != before[s].as_ref())
+                            .collect(),
+                    )
+                })??;
+                game.lan.as_mut()?.hub.guests.update(gi, |g| {
+                    g.native_menu = (0..layout.slots).map(|s| menu.slot(s).cloned()).collect();
+                });
+                game.after_commit(After::GuestMenu(
+                    conn,
+                    Box::new(GuestMenuEffects::take(menu)),
+                ));
+                Some(changed)
+            },
+        );
+        let applied = changed.is_some();
+        if !applied {
+            menu.restore(snapshot);
+        }
+        if let Some(host) = self.lan.as_mut()
+            && host.hub.guest(conn).is_some_and(live)
+        {
+            host.menus.entry(conn).or_default().owned_menu = Some((generation, menu));
+            if let Some(changed) = changed {
+                self.reply_predicted_menu_click(conn, p, changed);
+            } else {
+                self.reply_menu_click(conn, ClickReply::Resend(p.container));
+            }
+        }
+        Some(applied)
+    }
+
+    /// A click in a machine or block-backed mod menu. `None` means a different kind of menu.
+    pub(in crate::game) fn lan_machine_click(
+        &mut self,
+        conn: u32,
+        p: &play::ContainerClick,
+    ) -> Option<bool> {
+        use super::lan_menus::ClickReply;
+        let host = self.lan.as_mut()?;
+        let gi = host.hub.guests.connection_index(conn)?;
+        let (pos, mod_type, menu_id) = host.hub.guests[gi]
             .menu
             .as_ref()
             .filter(|m| p.container != 0 && m.window == p.container)
@@ -503,14 +614,10 @@ impl Game<'_> {
                 Slots::Block(pos) => Some((
                     pos,
                     m.mod_type,
-                    m.hidden.clone(),
                     host.hub.registry_name("minecraft:menu", m.kind)?.to_owned(),
                 )),
                 _ => None,
-            })
-        else {
-            return false;
-        };
+            })?;
         // A mod menu type's linked slots show their containers' slots
         // (`native_menu_links`); those with nothing behind them are left out
         // of the click, as a hidden slot is.
@@ -522,19 +629,18 @@ impl Game<'_> {
                 .unwrap_or_default();
             (l, links)
         });
-        let mut hidden = hidden;
-        if let Some((l, links)) = &linked {
-            let bound = linked_slot_count(&self.world, links);
-            hidden.extend(l.slots().skip(bound));
-        }
-        let Some(entity) = self.world.block_entities.get(&pos) else {
-            return false;
-        };
-        let Some((kind, mut items)) = machine_menu(entity, mod_type) else {
-            return false;
-        };
+        let unlinked = linked
+            .as_ref()
+            .map(|(l, links)| l.slots().skip(linked_slot_count(&self.world, links)));
+        let entity = self.world.block_entities.get(&pos)?;
+        let (kind, mut items) = machine_menu(entity, mod_type)?;
         let heard = matches!((kind, entity), (Kind::Mod(_), BlockEntity::Mod(entity))
             if mod_api::__private::block_entity_type_listens(mod_api::HookId::MenuSlotTake, entity.id()));
+        let click = super::lan_pickup::click_of(p);
+        let native_quick_move = click.2 == Input::QuickMove
+            && (0..=1).contains(&click.1)
+            && matches!((kind, entity), (Kind::Mod(_), BlockEntity::Mod(entity))
+                if mod_api::__private::block_entity_type_listens(mod_api::HookId::MenuQuickMove, entity.id()));
         let overlay_links = |world: &sunrise_client::world::World,
                              items: &mut [Option<ItemStack>]| {
             if let Some((l, links)) = &linked {
@@ -557,9 +663,20 @@ impl Game<'_> {
         if host.hub.guests[gi].spectator() {
             // handleContainerClick: nothing changes, and sendAllDataToRemote
             // takes back what the client predicted.
-            host.hub.resend_menu(conn, p.container, &self.world);
-            return true;
+            self.reply_menu_click(conn, ClickReply::Resend(p.container));
+            return Some(true);
         }
+        let menu_generation = host.hub.guests[gi].menu_generation;
+        let generation = self.world.block_entities.generation(&pos);
+        let live = |guest: &Guest| {
+            guest.menu_generation == menu_generation
+                && guest
+                    .menu
+                    .as_ref()
+                    .is_some_and(|open| open.window == p.container)
+        };
+        self.journal_menu_click(conn);
+        let host = self.lan.as_mut()?;
         let mut menu = host
             .menus
             .entry(conn)
@@ -570,20 +687,56 @@ impl Game<'_> {
             .filter(|(window, m)| *window == p.container && m.kind() == kind)
             .map_or_else(|| Box::new(Menu::new(kind)), |(_, m)| m);
         menu.set_registry_id(Some(&menu_id));
-        for &slot in &hidden {
-            menu.hide_slot(slot);
+        let mut refreshed_result = None;
+        if matches!(kind, Kind::Mod(_)) {
+            menu.reset_mod_visibility(unlinked.into_iter().flatten());
+            let host = self.lan.as_ref().unwrap();
+            let shown = Self::lan_mod_craft_shown(host, gi, &items);
+            let env = self.load_guest_menu(&mut menu, host, gi);
+            // Use the shown result without assembling again. If the grid is stale,
+            // prepare its new result before any rule or move reads that slot.
+            let needs_preview = shown.is_none();
+            menu.load_container(&env, &items, shown);
+            if needs_preview && let Some(craft) = menu.mod_crafting() {
+                self.lan_mod_craft_settle(gi, pos, &mut menu);
+                refreshed_result = Some(craft.result);
+            }
         }
-        // A crafting grid's result is what the guest was shown, the mods' say
-        // included, while the grid is as it was then.
-        let shown = Self::lan_mod_craft_shown(self.lan.as_ref().unwrap(), gi, &items);
-        // What the click finds: the container's slots set in, as the guest was shown them.
+        let refresh = |game: &Game<'_>, menu: &mut Menu| {
+            if generation != game.world.block_entities.generation(&pos)
+                || !game
+                    .lan
+                    .as_ref()
+                    .and_then(|host| host.hub.guest(conn))
+                    .is_some_and(live)
+            {
+                return false;
+            }
+            let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&pos) else {
+                return false;
+            };
+            let mut actual = entity.items.clone();
+            actual.resize(items.len(), None);
+            overlay_links(&game.world, &mut actual);
+            let old = menu.container_items();
+            // `load_container` recomputes from the grid. Keep the current (possibly
+            // customized) result when the listener only edited slots outside the grid.
+            let kept_result = menu
+                .mod_crafting()
+                .filter(|c| c.grid_slots().all(|k| old[k] == actual[k]))
+                .map(|c| menu.slot(c.result).cloned());
+            let Some(host) = game.lan.as_ref() else {
+                return false;
+            };
+            let Some(gi) = host.hub.guests.connection_index(conn) else {
+                return false;
+            };
+            let env = game.load_guest_menu(menu, host, gi);
+            menu.load_container(&env, &actual, kept_result);
+            true
+        };
         let prepare = |menu: &mut Menu, env: &Env| {
-            if matches!(kind, Kind::Mod(_)) {
-                menu.load_container(env, &items);
-                if let Some((slot, result)) = &shown {
-                    menu.set_slot(env, *slot, result.clone());
-                }
-            } else {
+            if !matches!(kind, Kind::Mod(_)) {
                 for (k, s) in items.iter().enumerate() {
                     menu.set_slot(env, k, s.clone());
                 }
@@ -595,6 +748,46 @@ impl Game<'_> {
                 }
                 menu.data[9] = i32::from(triggered);
             }
+        };
+        let pickup_checked = if native_quick_move
+            && !menu.quick_crafting()
+            && let Ok(slot) = usize::try_from(click.0)
+            && slot < menu.slot_count()
+        {
+            let env = self.load_guest_menu(&mut menu, self.lan.as_ref().unwrap(), gi);
+            if !menu.may_pickup(&env, slot) {
+                // The source refused before quickMoveStack. Correct the client's prediction.
+                if let Some(host) = self.lan.as_mut()
+                    && host.hub.guest(conn).is_some_and(live)
+                {
+                    *host.menus.entry(conn).or_default().crafting.machine =
+                        Some((p.container, menu));
+                    self.reply_predicted_menu_click(
+                        conn,
+                        p,
+                        refreshed_result.into_iter().collect(),
+                    );
+                }
+                return Some(true);
+            }
+            if let Some(applied) = self.lan_mod_quick_move(conn, p, Some(&menu)) {
+                if !applied
+                    && let Some(host) = self.lan.as_mut()
+                    && host.hub.guest(conn).is_some_and(live)
+                {
+                    *host.menus.entry(conn).or_default().crafting.machine =
+                        Some((p.container, menu));
+                }
+                return Some(applied);
+            }
+            // Refresh the already-admitted menu without asking the pickup rule again.
+            if !refresh(self, &mut menu) {
+                self.reply_menu_click(conn, ClickReply::Resend(p.container));
+                return Some(false);
+            }
+            true
+        } else {
+            false
         };
         // The write-back to the block's storage and its effects: inside the click's decision, so
         // an outer abort restores them with the cursor and the slots.
@@ -648,35 +841,31 @@ impl Game<'_> {
                 }
                 _ => {}
             }
-            // FurnaceResultSlot.checkTakeAchievements, each as the click made it.
-            let Some(guest) = game.lan.as_ref().map(|host| &host.hub.guests[gi]) else {
-                return;
+            // FurnaceResultSlot.checkTakeAchievements and its observable effects may run
+            // only after the click, including any outer menu decision, is committed, and only for
+            // actual takes (`onTake` / `onQuickCraft`), never direct `Slot.set` edits.
+            let smelted = std::mem::take(&mut menu.item_smelted);
+            let extracted = if furnace {
+                let mut takes = std::mem::take(&mut menu.furnace_extracted);
+                takes.pop().map(|(stack, last)| {
+                    let total = takes.into_iter().map(|(_, n)| n).sum::<u32>() + last;
+                    (stack, total)
+                })
+            } else {
+                None
             };
-            let (uuid, entity_id, at) = (guest.uuid, guest.entity_id, guest.position);
-            for (stack, removed) in std::mem::take(&mut menu.item_smelted) {
-                game.native_item_smelted(uuid, entity_id, stack.as_ref(), removed);
-            }
-            // The guest took from the output.
-            let count = |s: Option<&ItemStack>| s.map_or(0, |s| s.count);
-            if furnace && count(menu.slot(2)) < count(items[2].as_ref()) {
-                let output = items[2].as_ref();
-                if let Some(output) = output
-                    && mod_api::__private::listened(mod_api::HookId::FurnaceExtract)
-                    && let Some(name) = game
-                        .lan
-                        .as_ref()
-                        .map(|host| host.hub.guests[gi].name.clone())
-                {
-                    let taken = output.count - count(menu.slot(2));
-                    game.native_furnace_extract(
-                        uuid,
-                        &name,
-                        [pos.0, pos.1, pos.2],
-                        &output.item,
-                        taken,
-                    );
-                }
-                game.award_furnace_recipes(pos, at);
+            if (!smelted.is_empty() || extracted.is_some())
+                && let Some(guest) = game.lan.as_ref().and_then(|host| host.hub.guest(conn))
+            {
+                let effects = FurnaceMenuEffects {
+                    uuid: guest.uuid,
+                    entity_id: guest.entity_id,
+                    pos,
+                    at: guest.position,
+                    smelted,
+                    extracted,
+                };
+                game.after_commit(After::FurnaceMenu(Box::new(effects)));
             }
             // Slot.setChanged on a changed container slot: BlockEntity.setChanged,
             // so the chunk is saved and comparators read the block again.
@@ -691,7 +880,6 @@ impl Game<'_> {
                 }
             }
         };
-        let click = super::lan_pickup::click_of(p);
         if heard {
             let host = self.lan.as_ref().unwrap();
             let before: Vec<_> = (0..menu.slot_count())
@@ -700,106 +888,83 @@ impl Game<'_> {
             let original = menu.snapshot();
             let uuid = host.hub.guests[gi].uuid;
             let offhand_before = host.hub.guests[gi].offhand.clone();
-            let generation = self.world.block_entities.generation(&pos);
-            let refresh = |game: &Game<'_>, menu: &mut Menu| {
-                if generation != game.world.block_entities.generation(&pos)
-                    || !game
-                        .lan
-                        .as_ref()
-                        .and_then(|host| host.hub.guest(conn))
-                        .and_then(|guest| guest.menu.as_ref())
-                        .is_some_and(|open| open.window == p.container)
-                {
-                    return false;
-                }
-                let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&pos) else {
-                    return false;
-                };
-                let mut actual = entity.items.clone();
-                actual.resize(items.len(), None);
-                overlay_links(&game.world, &mut actual);
-                let old = menu.container_items();
-                if old == actual {
-                    return true;
-                }
-                // `load_container` recomputes from the grid. Keep the current (possibly
-                // customized) result when the listener only edited slots outside the grid.
-                let kept_result = menu
-                    .mod_crafting()
-                    .filter(|c| c.grid_slots().all(|k| old[k] == actual[k]))
-                    .map(|c| (c.result, menu.slot(c.result).cloned()));
-                menu.load_container(&game.menu_env(), &actual);
-                if let Some((slot, result)) = kept_result {
-                    menu.set_slot(&game.menu_env(), slot, result);
-                }
-                true
-            };
-            let applied = mod_api::run_transaction(self, |game, _| {
-                game.journal_guest_click(conn);
-                game.guest_menu_action(
-                    gi,
-                    &mut menu,
-                    Some(click),
-                    Some(&prepare),
-                    |game, menu, rules, stacked| {
-                        let (mut previous, (mut rest, mut answers)) =
-                            game.guest_menu_edit(gi, menu, rules, stacked, |menu, env| {
-                                prepare(menu, env);
-                                menu.track_takes(true);
-                                let before = menu.container_items();
-                                (
-                                    before,
-                                    menu.start_click(env, click.0, click.1, click.2, asked),
-                                )
-                            })?;
-                        loop {
-                            let after = menu.container_items();
-                            write_back(game, menu, after != previous);
-                            let menu_live = if let Some(take) = menu.take_notice() {
-                                if game.as_guest(conn, |game| {
-                                    game.mod_menu_slot_take(pos, uuid, &menu_id, &take)
-                                }) != Some(true)
-                                {
-                                    return None;
-                                }
-                                refresh(game, menu)
-                            } else {
-                                true
-                            };
-                            let Some(step) = rest.ok().flatten() else {
-                                break;
-                            };
-                            let step = if menu_live {
-                                // Listener edits are now the step's inputs. Don't overwrite them.
-                                previous = menu.container_items();
-                                step
-                            } else if let Some(overflow) = step.after_menu_closed() {
-                                overflow
-                            } else {
-                                break;
-                            };
-                            let (next, kept) =
-                                game.guest_menu_edit(gi, menu, None, None, |menu, env| {
-                                    menu.resume_click(env, step, answers)
+            let applied = self
+                .storage_transaction(|game, _| {
+                    game.journal_guest_click(conn);
+                    game.guest_menu_action(
+                        gi,
+                        &mut menu,
+                        Some(click),
+                        Some(&prepare),
+                        |game, menu, stacked| {
+                            let (mut previous, mut rest) =
+                                game.guest_menu_edit(gi, menu, stacked, |menu, env| {
+                                    if !pickup_checked {
+                                        prepare(menu, env);
+                                    }
+                                    menu.track_takes(true);
+                                    let before = menu.container_items();
+                                    let rest = if pickup_checked {
+                                        menu.start_checked_quick_move(env, click.0, click.1)
+                                    } else {
+                                        menu.start_click(env, click.0, click.1, click.2)
+                                    };
+                                    (before, rest)
                                 })?;
-                            if !menu_live {
-                                // Only the player's overflow was owed. Don't write back the menu.
-                                break;
+                            if rest.is_err() {
+                                return None;
                             }
-                            rest = Ok(next);
-                            answers = kept;
-                        }
-                        menu.track_takes(false);
-                        game.after_commit(After::GuestMenu(
-                            conn,
-                            Box::new(GuestMenuEffects::take(menu)),
-                        ));
-                        Some(())
-                    },
-                )
-                .ok_or(())
-            })
-            .is_ok();
+                            loop {
+                                let after = menu.container_items();
+                                write_back(game, menu, after != previous);
+                                let menu_live = if let Some(take) = menu.take_notice() {
+                                    if game.as_guest(conn, |game| {
+                                        game.mod_menu_slot_take(pos, uuid, &menu_id, &take)
+                                    }) != Some(true)
+                                    {
+                                        return None;
+                                    }
+                                    refresh(game, menu)
+                                } else {
+                                    true
+                                };
+                                let Some(step) = rest.ok()? else {
+                                    break;
+                                };
+                                let step = if menu_live {
+                                    // Listener edits are now the step's inputs. Don't overwrite them.
+                                    previous = menu.container_items();
+                                    step
+                                } else {
+                                    let Some(owed) = step.after_menu_closed() else {
+                                        break;
+                                    };
+                                    // Losing the block queues a close, so the admitted cursor is
+                                    // still live here. Never settle this write on a different window.
+                                    game.lan.as_ref()?.hub.guest(conn).filter(|g| live(g))?;
+                                    owed
+                                };
+                                let next =
+                                    game.guest_menu_edit(gi, menu, stacked, |menu, env| {
+                                        menu.resume_click(env, step)
+                                    })?;
+                                if !menu_live {
+                                    // Only the player-side write was owed. Don't write back the menu.
+                                    break;
+                                }
+                                rest = Ok(next);
+                            }
+                            menu.track_takes(false);
+                            game.after_commit(After::GuestMenu(
+                                conn,
+                                Box::new(GuestMenuEffects::take(menu)),
+                            ));
+                            Some(())
+                        },
+                    )
+                    .ok_or(())
+                })
+                .is_ok();
             if applied && refresh(self, &mut menu) {
                 self.lan_mod_craft_settle(gi, pos, &mut menu);
             }
@@ -809,75 +974,102 @@ impl Game<'_> {
             if let Some(host) = self.lan.as_mut()
                 && let Some(guest) = host.hub.guest(conn)
             {
-                let open = guest
-                    .menu
-                    .as_ref()
-                    .is_some_and(|open| open.window == p.container);
-                // The offhand isn't one of the block menu's visible slots. A refused swap
-                // must still undo the client's prediction there.
-                if guest.offhand != offhand_before
-                    || (!applied && click.2 == Input::Swap && click.1 == OFFHAND as i32)
-                {
-                    let offhand = guest.offhand.clone();
-                    let item = host.hub.stack(&offhand);
-                    host.hub.guests[gi].send(&C::SetPlayerInventory(play::SetPlayerInventory {
-                        slot: OFFHAND as i32,
-                        item,
-                    }));
+                let offhand = guest.offhand != offhand_before
+                    && !(p.input == sunrise_client::lan::menu::input::SWAP && p.button == 40);
+                if live(guest) {
+                    let reply = if !applied {
+                        ClickReply::Resend(p.container)
+                    } else if generation != self.world.block_entities.generation(&pos) {
+                        ClickReply::Close(p.container)
+                    } else {
+                        let changed = before
+                            .into_iter()
+                            .enumerate()
+                            .filter_map(|(s, old)| {
+                                (refreshed_result == Some(s)
+                                    || old != host.hub.view_slot(gi, &self.world, s))
+                                .then_some(s)
+                            })
+                            .collect();
+                        ClickReply::Predicted(p.clone(), changed)
+                    };
+                    *host.menus.entry(conn).or_default().crafting.machine =
+                        Some((p.container, menu));
+                    self.reply_menu_click(conn, reply);
                 }
-                if !open {
-                    return true;
-                }
-                if applied && generation != self.world.block_entities.generation(&pos) {
-                    host.hub.close_container(conn);
-                    host.hub.send_inventory(gi);
-                    return true;
-                }
-                *host.menus.entry(conn).or_default().crafting.machine = Some((p.container, menu));
-                if applied {
-                    let changed: Vec<_> = before
-                        .into_iter()
-                        .enumerate()
-                        .filter_map(|(s, old)| {
-                            (old != host.hub.view_slot(gi, &self.world, s)).then_some(s)
-                        })
-                        .collect();
-                    host.hub.inventory_clicked(conn, p, &self.world, &changed);
-                } else {
-                    host.hub.resend_menu(conn, p.container, &self.world);
+                if offhand {
+                    self.reply_menu_click(conn, ClickReply::Offhand);
                 }
             }
-            return true;
+            return Some(applied);
         }
-        let Some(mut changed) = self.guest_menu_op_settled(
+        let original = menu.snapshot();
+        let changed = self.guest_menu_action(
             gi,
             &mut menu,
             Some(click),
             Some(&prepare),
-            |menu, env| {
-                prepare(menu, env);
-                let before: Vec<_> = (0..menu.slot_count())
-                    .map(|s| menu.slot(s).cloned())
-                    .collect();
-                let _ = menu.click_asked(env, click.0, click.1, click.2, asked);
-                (0..menu.slot_count())
-                    .filter(|&s| menu.slot(s) != before[s].as_ref())
-                    .collect::<Vec<_>>()
+            |game, menu, stacked| {
+                let changed: Vec<_> = game.guest_menu_edit(gi, menu, stacked, |menu, env| {
+                    if !pickup_checked {
+                        prepare(menu, env);
+                    }
+                    let before: Vec<_> = (0..menu.slot_count())
+                        .map(|s| menu.slot(s).cloned())
+                        .collect();
+                    if pickup_checked {
+                        menu.start_checked_quick_move(env, click.0, click.1).ok()?;
+                    } else {
+                        menu.click(env, click.0, click.1, click.2).ok()?;
+                    }
+                    Some(
+                        (0..menu.slot_count())
+                            .filter(|&s| menu.slot(s) != before[s].as_ref())
+                            .collect(),
+                    )
+                })??;
+                write_back(game, menu, changed.iter().any(|&s| s < items.len()));
+                game.after_commit(After::GuestMenu(
+                    conn,
+                    Box::new(GuestMenuEffects::take(menu)),
+                ));
+                Some(changed)
             },
-            |game, menu, changed| write_back(game, menu, changed.iter().any(|&s| s < items.len())),
-        ) else {
-            return true;
+        );
+        let applied = changed.is_some();
+        let changed = if let Some(mut changed) = changed {
+            if self
+                .lan
+                .as_ref()
+                .and_then(|host| host.hub.guest(conn))
+                .is_some_and(live)
+            {
+                for slot in self
+                    .lan_mod_craft_settle(gi, pos, &mut menu)
+                    .into_iter()
+                    .chain(refreshed_result)
+                {
+                    if !changed.contains(&slot) {
+                        changed.push(slot);
+                    }
+                }
+            }
+            Some(changed)
+        } else {
+            menu.restore(original);
+            None
         };
-        if let Some(slot) = self.lan_mod_craft_settle(gi, pos, &mut menu)
-            && !changed.contains(&slot)
+        if let Some(host) = self.lan.as_mut()
+            && host.hub.guest(conn).is_some_and(live)
         {
-            changed.push(slot);
-        }
-        if let Some(host) = self.lan.as_mut() {
             *host.menus.entry(conn).or_default().crafting.machine = Some((p.container, menu));
-            host.hub.inventory_clicked(conn, p, &self.world, &changed);
+            if let Some(changed) = changed {
+                self.reply_predicted_menu_click(conn, p, changed);
+            } else {
+                self.reply_menu_click(conn, ClickReply::Resend(p.container));
+            }
         }
-        true
+        Some(applied)
     }
 
     /// `ServerGamePacketListenerImpl.handleContainerSlotStateChanged`: a
@@ -1080,7 +1272,7 @@ impl Game<'_> {
     }
 
     pub(super) fn guest_recipe_transfer(&mut self, conn: u32, data: &[u8]) {
-        use sunrise_protocol::buf::Writer;
+        use sunrise_core::vanilla_bytes::Writer;
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -1128,7 +1320,8 @@ impl Game<'_> {
     /// packet but the reply. Each guest can burst ten checks, then gains one
     /// check per server tick (twenty per second at 20 TPS); more go unanswered.
     pub(super) fn guest_recipe_check(&mut self, conn: u32, data: &[u8]) {
-        use sunrise_protocol::buf::{Reader, Writer};
+        use sunrise_core::vanilla_bytes::Writer;
+        use sunrise_protocol::buf::Reader;
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -1216,10 +1409,7 @@ impl Game<'_> {
             menu.set_container_limits(limits);
             menu.sources = sources.into_iter().map(|(_, items)| items).collect();
             load_player(&mut menu, &host.hub.guests[gi]);
-            menu.load_container(&env, &items);
-            if let Some((slot, result)) = shown {
-                menu.set_slot(&env, slot, result);
-            }
+            menu.load_container(&env, &items, shown);
             menu
         } else if container == 0 {
             let host = self.lan.as_ref()?;
@@ -1302,7 +1492,7 @@ impl Game<'_> {
 
     /// The guest opened a crafting table (`CraftingTableBlock.getMenuProvider`).
     pub(super) fn lan_open_crafting(&mut self, conn: u32, pos: [i32; 3]) {
-        if !self.guest_may_open(conn, "minecraft:crafting", Some(pos)) {
+        if self.guest_may_open(conn, "minecraft:crafting", Some(pos)) != Some(true) {
             return;
         }
         // ServerPlayer.openMenu closes the menu that was open.
@@ -1329,7 +1519,7 @@ impl Game<'_> {
         let Some(play) = host.menus.get_mut(&conn) else {
             return false;
         };
-        let Some((window, state, mut menu, pos)) = play
+        let Some((window, mut state, mut menu, pos)) = play
             .crafting
             .table
             .take_if(|(window, ..)| *window == p.container)
@@ -1337,10 +1527,8 @@ impl Game<'_> {
             return false;
         };
         let owner = play.crafting.table.stamp();
-        // handleContainerClick: broadcastFullState only for a click on an old
-        // state, else only what the client got wrong. The whole menu after every
-        // click would undo the clicks it has predicted since.
-        let mut agreed = false;
+        // A full snapshot on the current state would undo clicks the client has since predicted.
+        let mut full = true;
         // A table that is no longer valid takes no clicks (handleContainerClick).
         let gi = host.hub.guests.iter().position(|g| g.conn == conn);
         let Some(host) = self.lan.as_ref() else {
@@ -1389,19 +1577,26 @@ impl Game<'_> {
             let Some(host) = self.lan.as_mut() else {
                 return true;
             };
-            agreed = p.state == state
-                && host.hub.click_agreed(
-                    gi,
-                    p,
-                    menu.slot_count(),
-                    &|s| menu.slot(s).cloned(),
-                    &changed,
-                );
-            if agreed {
-                // The inventory menu's sync isn't to send what the click settled.
+            full = p.state != state;
+            if !full {
+                let slots: Vec<_> = (0..menu.slot_count())
+                    .map(|s| menu.slot(s).cloned())
+                    .collect();
+                let corrected = host
+                    .hub
+                    .sync_click_prediction(gi, p, &mut state, &slots, |slot| {
+                        changed.contains(&slot)
+                    });
+                // The inventory menu's broadcast shouldn't repeat what the click settled.
                 host.hub.guests.update(gi, |g| {
-                    for &s in changed.iter().filter(|&&s| s >= 10) {
-                        g.menu_sent[s - 1] = menu.slot(s).cloned();
+                    let settled = p
+                        .changed
+                        .iter()
+                        .map(|(s, _)| *s as usize)
+                        .chain(changed)
+                        .chain(corrected);
+                    for s in settled.filter(|s| (10..slots.len()).contains(s)) {
+                        g.menu_sent[s - 1] = slots[s].clone();
                     }
                 });
             }
@@ -1410,7 +1605,7 @@ impl Game<'_> {
             return true;
         };
         *host.menus.entry(conn).or_default().crafting.table = Some((window, state, menu, pos));
-        if !agreed {
+        if full {
             self.lan_send_table_content(conn);
         }
         true
@@ -1443,8 +1638,11 @@ impl Game<'_> {
             return None;
         };
         let t = m.mod_type.filter(|t| t.crafting.is_some())?;
-        matches!(self.world.block_entities.get(&pos), Some(BlockEntity::Mod(e)) if !e.id().is_empty())
-            .then_some((pos, t))
+        matches!(
+            self.world.block_entities.get(&pos),
+            Some(BlockEntity::Mod(_))
+        )
+        .then_some((pos, t))
     }
 
     /// `apply` (a recipe book placement or a viewer's transfer) on guest
@@ -1479,10 +1677,7 @@ impl Game<'_> {
         let sources = self.lan_recipe_sources(gi, t, pos);
         menu.sources = sources.iter().map(|(_, items)| items.clone()).collect();
         let out = self.guest_menu_op(gi, &mut menu, |menu, env| {
-            menu.load_container(env, &items);
-            if let Some((slot, result)) = shown {
-                menu.set_slot(env, slot, result);
-            }
+            menu.load_container(env, &items, shown);
             apply(menu, env)
         })?;
         for ((at, before), after) in sources.into_iter().zip(std::mem::take(&mut menu.sources)) {
@@ -1556,13 +1751,12 @@ impl Game<'_> {
     /// The slots of the block container at `at` that a mod may lend a menu
     /// (`native_recipe_sources`, `native_menu_links`): a chest-like block
     /// entity's (chests, barrels, shulker boxes, hoppers, dispensers,
-    /// droppers) or a mod container's, while it is in the world (not
-    /// ticking). None for anything else.
+    /// droppers) or a mod container's. None for anything else.
     fn linkable_container(&self, at: (i32, i32, i32)) -> Option<Vec<Option<ItemStack>>> {
         let state = self.world.block(at.0, at.1, at.2).0;
         match self.world.block_entities.get(&at)? {
             BlockEntity::Chest(items) => Some(items.clone()),
-            BlockEntity::Mod(m) if !m.id().is_empty() => {
+            BlockEntity::Mod(m) => {
                 let c = self.world.block_entities.mod_container(state)?;
                 Some(m.items.iter().take(c.slots).cloned().collect())
             }
@@ -1615,18 +1809,17 @@ impl Game<'_> {
         }
     }
 
-    /// The result guest `gi`'s mod crafting menu shows, with its slot, while
-    /// the block entity's grid (`items`) is the one it was made from.
+    /// The result guest `gi`'s mod crafting menu shows (`Some(None)` if empty),
+    /// while the block entity's grid (`items`) is the one it was made from.
     fn lan_mod_craft_shown(
         host: &super::lan::LanHost,
         gi: usize,
         items: &[Option<ItemStack>],
-    ) -> Option<(usize, Option<ItemStack>)> {
+    ) -> Option<Option<ItemStack>> {
         let menu = host.hub.guests[gi].menu.as_ref()?;
         let c = menu.mod_type?.crafting?;
         let craft = menu.craft.as_ref()?;
-        (items.get(c.grid_slots()) == Some(&craft.grid[..]))
-            .then(|| (c.result, craft.result.clone()))
+        (items.get(c.grid_slots()) == Some(&craft.grid[..])).then(|| craft.result.clone())
     }
 
     /// After the menu engine ran on guest `gi`'s mod crafting menu at `pos`:
@@ -1641,21 +1834,44 @@ impl Game<'_> {
     ) -> Option<usize> {
         let c = menu.mod_crafting()?;
         let guest = &self.lan.as_ref()?.hub.guests[gi];
-        let (uuid, name) = (guest.uuid, guest.name.clone());
-        let mut result = menu.slot(c.result).cloned();
-        let vanilla = result.clone();
-        self.native_prepare_item_craft(uuid, &name, Some([pos.0, pos.1, pos.2]), &mut result);
-        let grid = c.grid_slots().map(|k| menu.slot(k).cloned()).collect();
-        let changed = result != vanilla;
-        if changed {
-            menu.set_slot(&self.menu_env(), c.result, result.clone());
+        let open = guest.menu.as_ref()?;
+        let grid = c.grid_slots().map(|k| menu.slot(k));
+        let shown = menu.slot(c.result);
+        let cached = open.craft.as_ref();
+        let same_grid =
+            cached.is_some_and(|cached| cached.grid.iter().map(Option::as_ref).eq(grid));
+        if same_grid && cached.and_then(|cached| cached.result.as_ref()) == shown {
+            return None;
         }
-        self.lan.as_mut()?.hub.guests.update(gi, |guest| {
-            if let Some(m) = guest.menu.as_mut() {
-                m.craft = Some(ModCraft { grid, result });
-            }
-        });
+        let mut result = shown.cloned();
+        let window = open.window;
+        // Taking from the shown result is not a grid update. Do not build a new
+        // preview over what the click left unless the inputs changed.
+        if !same_grid {
+            let (uuid, name) = (guest.uuid, guest.name.clone());
+            self.native_prepare_item_craft(uuid, &name, Some([pos.0, pos.1, pos.2]), &mut result);
+        }
+        let changed = result.as_ref() != shown;
+        if changed {
+            menu.load_slot(c.result, result.clone());
+        }
+        let grid = c.grid_slots().map(|k| menu.slot(k).cloned()).collect();
+        self.lan_mod_craft_store(gi, window, ModCraft { grid, result });
         changed.then_some(c.result)
+    }
+
+    /// Publish the result and the grid it belongs to as one value, before the hub syncs it.
+    pub(super) fn lan_mod_craft_store(&mut self, gi: usize, window: i32, craft: ModCraft) {
+        if let Some(host) = self.lan.as_ref() {
+            self.journal_menu_click(host.hub.guests[gi].conn);
+        }
+        if let Some(host) = self.lan.as_mut() {
+            host.hub.guests.update(gi, |guest| {
+                if let Some(open) = guest.menu.as_mut().filter(|open| open.window == window) {
+                    open.craft = Some(craft);
+                }
+            });
+        }
     }
 
     /// `CraftingMenu.slotsChanged` for the guests' mod crafting menus: the
@@ -1692,7 +1908,7 @@ impl Game<'_> {
             }
             let mut menu = Menu::new(Kind::Mod(t));
             self.guest_menu_op(gi, &mut menu, |menu, env| {
-                menu.load_container(env, &items);
+                menu.load_container(env, &items, None);
             });
             self.lan_mod_craft_settle(gi, pos, &mut menu);
         }
@@ -1730,9 +1946,6 @@ impl Game<'_> {
                 conn,
                 &C::ContainerClose(play::ContainerClose { container: window }),
             );
-            if let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) {
-                self.guest_carried_back(gi);
-            }
         }
     }
 
@@ -1756,18 +1969,7 @@ impl Game<'_> {
         let mut items: Vec<Option<ItemStack>> = (0..10).map(|s| menu.slot(s).cloned()).collect();
         let g = &host.hub.guests[gi];
         items.extend((9..36).chain(0..9).map(|i| g.inventory[i].clone()));
-        let carried = g.carried.clone();
-        let items = items.iter().map(|s| host.hub.stack(s)).collect();
-        let carried = host.hub.stack(&carried);
-        host.hub.send_to(
-            conn,
-            &C::ContainerSetContent(play::ContainerSetContent {
-                container: window,
-                state,
-                items,
-                carried,
-            }),
-        );
+        host.hub.send_menu_snapshot(gi, window, state, &items);
         host.hub.guests.update(gi, |g| g.inventory_told());
     }
 
@@ -1792,19 +1994,20 @@ impl Game<'_> {
     pub(super) fn lan_crafting_closed(&mut self, conn: u32, window: Option<i32>) -> bool {
         let closed = self.lan_crafting_removed(conn, window, MenuRemoval::Live);
         if closed && window != Some(0) {
-            if let Some(gi) = self
-                .lan
-                .as_ref()
-                .and_then(|host| host.hub.guests.iter().position(|g| g.conn == conn))
-            {
-                self.guest_carried_back(gi);
-            }
             self.player_menu_closing(conn);
         }
         closed
     }
 
-    /// Remove only input slots; disconnected players drop their inputs.
+    /// Retire a game-owned menu on the guest record, even when their active
+    /// cursor is temporarily in `Game` during a guest turn.
+    pub(super) fn close_guest_menu_cursor(&mut self, gi: usize, window: i32) -> Option<ItemStack> {
+        self.with_own_record(gi, |host, _| {
+            host.hub.guests.update(gi, |g| g.close_menu_cursor(window))
+        })
+    }
+
+    /// Return the cursor and inputs, or drop them if the player died or disconnected.
     pub(super) fn lan_crafting_removed(
         &mut self,
         conn: u32,
@@ -1820,72 +2023,59 @@ impl Game<'_> {
         let crafting = &mut host.menus.entry(conn).or_default().crafting;
         let grid: Vec<ItemStack> = if window == Some(0) {
             *crafting.inventory = None;
-            host.hub.guests.update(gi, |g| {
-                g.craft_result = None;
-                g.craft_grid.iter_mut().filter_map(Option::take).collect()
+            self.with_own_record(gi, |host, _| {
+                Some(host.hub.guests.update(gi, |g| {
+                    g.craft_result = None;
+                    g.take_inventory_carried()
+                        .into_iter()
+                        .chain(g.craft_grid.iter_mut().filter_map(Option::take))
+                        .collect()
+                }))
             })
+            .unwrap_or_default()
         } else {
             match crafting
                 .table
                 .take_if(|(w, ..)| window.is_none_or(|window| *w == window))
             {
-                Some((_, _, menu, _)) => (1..10).filter_map(|s| menu.slot(s).cloned()).collect(),
+                Some((window, _, menu, _)) => {
+                    let carried = self.close_guest_menu_cursor(gi, window);
+                    carried
+                        .into_iter()
+                        .chain((1..10).filter_map(|s| menu.slot(s).cloned()))
+                        .collect()
+                }
                 None => return false,
             }
         };
         if !grid.is_empty() {
-            match removal {
-                MenuRemoval::Live => self.lan_place_back(gi, grid),
-                MenuRemoval::Disconnected => self.drop_guest_items(gi, grid),
+            if removal.drops_items() {
+                self.drop_guest_items(gi, grid);
+            } else {
+                self.lan_place_back(gi, grid);
             }
         }
         true
     }
 
-    /// `AbstractContainerMenu.removed`: return the cursor, then any menu inputs, to
-    /// the closing player's inventory. Drop overflow after restoring the active turn,
-    /// since spawning an item can call mods synchronously.
-    pub(super) fn return_guest_menu_items(
-        &mut self,
-        gi: usize,
-        inputs: Vec<ItemStack>,
-        return_cursor: bool,
-    ) {
+    /// `Inventory.placeItemBackInInventory` for the stacks a closing menu returned.
+    /// Drop overflow after restoring the active turn, since spawning an item can call mods.
+    pub(super) fn lan_place_back(&mut self, gi: usize, inputs: Vec<ItemStack>) {
+        if inputs.is_empty() {
+            return;
+        }
         let overflow = self.with_own_record(gi, |lan, items| {
-            let (overflow, cursor_cleared) = lan.hub.guests.update(gi, |guest| {
-                let carried = if return_cursor {
-                    guest.carried.take()
-                } else {
-                    None
-                };
-                let cursor_cleared = carried.is_some();
-                if !cursor_cleared && inputs.is_empty() {
-                    return None;
-                }
+            Some(lan.hub.guests.update(gi, |guest| {
                 let mut menu = Menu::new(Kind::Inventory);
                 load_player(&mut menu, guest);
-                place_back(&mut menu, items, carried.into_iter().chain(inputs));
+                place_back(&mut menu, items, inputs);
                 store_player(&mut menu, guest);
-                Some((std::mem::take(&mut menu.dropped), cursor_cleared))
-            })?;
-            if cursor_cleared {
-                lan.hub.send_inventory(gi);
-            }
-            Some(overflow)
+                std::mem::take(&mut menu.dropped)
+            }))
         });
         if let Some(overflow) = overflow.filter(|stacks| !stacks.is_empty()) {
             self.drop_guest_items(gi, overflow);
         }
-    }
-
-    /// `clearContainer`: return the inputs without taking the cursor.
-    pub(super) fn lan_place_back(&mut self, gi: usize, inputs: Vec<ItemStack>) {
-        self.return_guest_menu_items(gi, inputs, false);
-    }
-
-    /// Return the closing player's cursor when the menu holds no inputs.
-    pub(super) fn guest_carried_back(&mut self, gi: usize) {
-        self.return_guest_menu_items(gi, Vec::new(), true);
     }
 
     /// A guest left: what their crafting grids and workstation held goes back into their
@@ -1896,8 +2086,12 @@ impl Game<'_> {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
+        // If the leaving level could not be opened for normal removal, put
+        // its remaining cursors in the same fallback as the remaining inputs.
+        let mut grid: Vec<_> = host.hub.take_closed_menu_cursors(g.conn).collect();
+        grid.extend(g.take_menu_cursors());
+        grid.extend(g.craft_grid.iter_mut().filter_map(Option::take));
         let play = host.menus.get_mut(&g.conn);
-        let mut grid: Vec<ItemStack> = g.craft_grid.iter_mut().filter_map(Option::take).collect();
         g.craft_result = None;
         if let Some(play) = play {
             if let Some((_, _, menu, _)) = play.crafting.table.take() {
@@ -2296,7 +2490,7 @@ mod recipe_check_tests {
     }
 
     fn request(window: i32, tag: i32, id: &str) -> Vec<u8> {
-        let mut w = sunrise_protocol::buf::Writer::new();
+        let mut w = ::sunrise_core::vanilla_bytes::Writer::new();
         w.varint(window);
         w.varint(tag);
         w.string(id);
@@ -2340,8 +2534,11 @@ mod recipe_check_tests {
             .unwrap();
             let station: &'static ModMenuType = Box::leak(Box::new(ModMenuType {
                 id: "test:station",
+                owner: "test",
                 slots: 10,
+                player_inventory: true,
                 data_slots: 0,
+                owned_slots: None,
                 results: vec![],
                 inputs: Vec::new(),
                 links: None,
@@ -2395,11 +2592,14 @@ mod recipe_check_tests {
                 sent: vec![None; 46],
                 drag: None,
                 sent_data: Vec::new(),
-                hidden: Vec::new(),
+                reported_unsent_data_len: None,
+                blockless_data: Vec::new(),
+
                 mod_type: Some(station),
                 craft: None,
                 links: Vec::new(),
                 asks_still_valid: false,
+                opening_item: None,
             });
             game.lan.as_mut().unwrap().hub.guests.push(guest);
             sent(&rx);
@@ -2432,7 +2632,7 @@ mod recipe_check_tests {
             );
             // The transfer the first check answered for does move them.
             game.guest_recipe_transfer(2, &{
-                let mut w = sunrise_protocol::buf::Writer::new();
+                let mut w = ::sunrise_core::vanilla_bytes::Writer::new();
                 w.varint(WINDOW);
                 w.string("minecraft:stick");
                 w.data
@@ -2484,8 +2684,10 @@ mod empty_ingredient_placement_tests {
             &self,
             _: &dyn mod_api::DataLoadContext,
             event: &mut mod_api::IngredientEvent<'_>,
-        ) {
-            assert_eq!(event.kind, "empty_fixture:predicate");
+        ) -> Option<mod_api::IngredientDefinition> {
+            let kind = event.kind;
+            (kind == "empty_fixture:predicate")
+                .then(|| mod_api::IngredientDefinition::new(vec![], |_, _| true))
         }
     }
 
@@ -2594,8 +2796,8 @@ mod empty_ingredient_placement_tests {
                     game.build_registries();
                     {
                         // The generated Host entrypoint serves mod callers;
-                        // roundtrip its real answer, not a hand-constructed ingredient.
-                        use mod_api::wire::{Reader, Wire, Writer};
+                        // check its real answer directly (Ingredient holds in-process
+                        // predicates and has no Wire form).
                         let host: &dyn mod_api::Host = game;
                         let empty = host
                             .recipe_ingredient(r##""#empty_fixture:empty""##)
@@ -2609,15 +2811,10 @@ mod empty_ingredient_placement_tests {
                                 .is_none()
                         );
                         assert!(host.recipe_ingredient("[]").unwrap().is_none());
-                        let mut writer = Writer::default();
-                        empty.put(&mut writer);
-                        let decoded: mod_api::Ingredient =
-                            Reader::decode(&writer.into_bytes()).unwrap();
-                        assert_eq!(decoded, empty);
                         let stone = mod_api::ItemStack::of(
                             mod_api::__private::item_key("minecraft:stone").unwrap(),
                         );
-                        assert!(!decoded.test(host, &stone));
+                        assert!(!empty.test(host, &stone));
                     }
                     game.lan_host(
                         crate::game::lan::LanSettings {

@@ -200,7 +200,7 @@ impl Hooks for Observer {
             let slot = player.selected_slot(host).unwrap();
             let resource = ItemResource::of(event.click.stack.unwrap());
             host.transaction(|host, tx| {
-                assert_eq!(items.extract_at(host, tx, slot, &resource, 1), 1);
+                assert_eq!(items.extract_at(host, tx, slot, &resource, 1), Ok(1));
                 Ok::<_, ()>(())
             })
             .unwrap();
@@ -306,7 +306,11 @@ fn with_interaction_game_at(
             None
         };
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 3.5)).unwrap());
-        game.set_mode_id(1);
+        if client {
+            game.set_local_mode(sunrise_client::command::args::GameMode::Creative);
+        } else {
+            game.set_mode_id(1);
+        }
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -335,9 +339,9 @@ fn hit() -> Hit {
 
 fn use_block(game: &mut Game<'_>, client: bool) -> bool {
     if client {
-        game.remote_use_item_on(Hand::Main)
+        game.remote_use_item_on(Hand::Main, mod_api::InteractionAttempt::Press, None)
     } else {
-        game.guest_use = Some(super::super::GuestUse::OnBlock(Hand::Main));
+        game.guest_use = Some(super::super::GuestUse::on_block(Hand::Main));
         game.use_hand(Some(&hit())).unwrap()
     }
 }
@@ -400,7 +404,11 @@ fn right_click_block_forced_item_use_reaches_empty_hand_on_both_sides() {
                 );
                 // TRUE bypasses the stack/cooldown gate, not adventure's
                 // placement predicate (which an empty hand cannot satisfy).
-                game.set_mode_id(2);
+                if client {
+                    game.set_local_mode(sunrise_client::command::args::GameMode::Adventure);
+                } else {
+                    game.set_mode_id(2);
+                }
                 *observer.0.lock().unwrap() = Controls {
                     use_block: TriState::False,
                     use_item: TriState::True,
@@ -437,7 +445,7 @@ fn right_click_block_explicit_allow_overrides_sneak_skip_on_both_sides() {
                     .unwrap();
                 game.world.set(0, 63, 0, stone).unwrap();
                 game.forced_hit = Some(hit());
-                game.keys.insert(winit::keyboard::KeyCode::ShiftLeft);
+                game.insert_device_key(winit::keyboard::KeyCode::ShiftLeft);
                 if let Some(remote) = game.remote.as_mut() {
                     remote.last_input |= super::SHIFT_INPUT;
                 }
@@ -629,7 +637,11 @@ fn phase_events_replace_the_behaviour_before_its_part_on_both_sides() {
                 assert!(observer.0.lock().unwrap().steps.is_empty());
 
                 // ItemStack.useOn passes before Item.useOn in adventure mode.
-                game.set_mode_id(2);
+                if client {
+                    game.set_local_mode(sunrise_client::command::args::GameMode::Adventure);
+                } else {
+                    game.set_mode_id(2);
+                }
                 *observer.0.lock().unwrap() = Controls {
                     use_block: TriState::False,
                     ..Controls::default()
@@ -656,7 +668,11 @@ fn phase_events_replace_the_behaviour_before_its_part_on_both_sides() {
                     observer.0.lock().unwrap().steps,
                     [Step::Phase(UsePhase::ItemAfterBlock, side)]
                 );
-                game.set_mode_id(1);
+                if client {
+                    game.set_local_mode(sunrise_client::command::args::GameMode::Creative);
+                } else {
+                    game.set_mode_id(1);
+                }
 
                 // In 26.3 dousing is CampfireBlock.useItemOn, not Item.useOn:
                 // a canceled BLOCK cannot predict it or reach ITEM_AFTER_BLOCK.
@@ -689,9 +705,9 @@ fn phase_events_replace_the_behaviour_before_its_part_on_both_sides() {
                     ..Controls::default()
                 };
                 let used = if client {
-                    game.remote_use_item_on(Hand::Off)
+                    game.remote_use_item_on(Hand::Off, mod_api::InteractionAttempt::Press, None)
                 } else {
-                    game.guest_use = Some(super::super::GuestUse::OnBlock(Hand::Off));
+                    game.guest_use = Some(super::super::GuestUse::on_block(Hand::Off));
                     game.with_hand(Hand::Off, |g| g.use_hand(Some(&hit())).unwrap())
                 };
                 assert!(used);
@@ -734,7 +750,11 @@ fn canceled_item_results_keep_the_stack_wrappers_side_effects() {
         };
         for client in [false, true] {
             with_interaction_game(client, |game| {
-                game.set_mode_id(0);
+                if client {
+                    game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
+                } else {
+                    game.set_mode_id(0);
+                }
                 let stone = game
                     .pack
                     .assets
@@ -828,7 +848,7 @@ fn a_spectator_fires_right_click_block_on_the_client_and_its_cancel_answers() {
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
         with_interaction_game(true, |game| {
-            game.set_mode_id(3);
+            game.set_local_mode(sunrise_client::command::args::GameMode::Spectator);
             assert!(game.spectator());
             let stone = game
                 .pack
@@ -841,7 +861,7 @@ fn a_spectator_fires_right_click_block_on_the_client_and_its_cancel_answers() {
             // Nobody answers: the event fired, and the spectator's click ends there, no swing.
             *observer.0.lock().unwrap() = Controls::default();
             let swings = game.swings_started;
-            assert!(game.remote_use_item_on(Hand::Main));
+            assert!(game.remote_use_item_on(Hand::Main, mod_api::InteractionAttempt::Press, None));
             assert_eq!(observer.0.lock().unwrap().clicks, 1);
             assert_eq!(game.swings_started, swings);
             for (answer, ends, swings_by) in [
@@ -855,7 +875,11 @@ fn a_spectator_fires_right_click_block_on_the_client_and_its_cancel_answers() {
                     ..Controls::default()
                 };
                 let swings = game.swings_started;
-                assert_eq!(game.remote_use_item_on(Hand::Main), ends, "{answer:?}");
+                assert_eq!(
+                    game.remote_use_item_on(Hand::Main, mod_api::InteractionAttempt::Press, None),
+                    ends,
+                    "{answer:?}"
+                );
                 assert_eq!(game.swings_started - swings, swings_by, "{answer:?}");
                 assert_eq!(observer.0.lock().unwrap().clicks, 1, "{answer:?}");
             }
@@ -876,7 +900,7 @@ fn a_spectators_passing_block_click_skips_item_use_for_both_hands() {
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
         with_interaction_game(true, |game| {
-            game.set_mode_id(3);
+            game.set_local_mode(sunrise_client::command::args::GameMode::Spectator);
             assert!(game.spectator());
             game.offhand = Some(ItemStack::new("minecraft:shield", 1));
             let stone = game
@@ -895,8 +919,8 @@ fn a_spectators_passing_block_click_skips_item_use_for_both_hands() {
             };
             let swings = game.swings_started;
             // The real target turn precedes remote_use_hands' item/off-hand sequence.
-            assert!(!game.remote_use_item_on(Hand::Main));
-            game.remote_use_hands(mod_api::InteractionAttempt::Press);
+            assert!(!game.remote_use_item_on(Hand::Main, mod_api::InteractionAttempt::Press, None));
+            game.remote_use_hands(Hand::Main, mod_api::InteractionAttempt::Press, None);
             let state = observer.0.lock().unwrap();
             assert_eq!(state.clicks, 2);
             assert_eq!(state.click_hands, [Hand::Main, Hand::Off]);
@@ -1292,7 +1316,7 @@ fn an_item_used_from_the_off_hand_reaches_the_use_hooks_on_the_server() {
             game.world.set(0, 63, 0, stone).unwrap();
             game.world.set(0, 64, 0, stone).unwrap();
             game.forced_hit = Some(hit());
-            for guest in [None, Some(super::super::GuestUse::OnBlock(Hand::Off))] {
+            for guest in [None, Some(super::super::GuestUse::on_block(Hand::Off))] {
                 game.inventory[game.selected] = None;
                 *observer.0.lock().unwrap() = Controls {
                     hands: Some(Vec::new()),
@@ -1660,9 +1684,11 @@ fn item_use_overlap_matrix_on_the_server() {
                                         }
                                     }
                                     if sneak {
-                                        game.keys.insert(winit::keyboard::KeyCode::ShiftLeft);
+                                        game.insert_device_key(winit::keyboard::KeyCode::ShiftLeft);
                                     } else {
-                                        game.keys.remove(&winit::keyboard::KeyCode::ShiftLeft);
+                                        game.remove_device_key(
+                                            &winit::keyboard::KeyCode::ShiftLeft,
+                                        );
                                     }
                                     *observer.0.lock().unwrap() = Controls {
                                         expected_hand: Some(hand),
@@ -1688,7 +1714,7 @@ fn item_use_overlap_matrix_on_the_server() {
                                                 Answer::Success | Answer::Fail | Answer::Consume
                                             )
                                     };
-                                    game.guest_use = Some(super::super::GuestUse::OnBlock(hand));
+                                    game.guest_use = Some(super::super::GuestUse::on_block(hand));
                                     game.adv.progress = Default::default();
                                     let swings = game.swings_started;
                                     let used =
@@ -1809,8 +1835,7 @@ fn a_server_client_keeps_a_bundle_use_until_the_server_completes_it() {
     mod_platform::testing::with_mods(mods, || {
         with_interaction_game(true, |game| {
             game.inventory[game.selected] = Some(ItemStack::new("minecraft:bundle", 1));
-            // The use starts at tick 0, which records the item in use.
-            game.using = Some((game.selected, 0));
+            assert!(game.start_using_item());
             // 200 client ticks: the use is still on, waiting for the server.
             for _ in 0..200 {
                 game.remote_tick_using();
@@ -1842,7 +1867,11 @@ fn a_placed_powder_snow_bucket_leaves_a_bucket_in_hand_on_both_sides() {
     mod_platform::testing::with_mods(Vec::new().into(), || {
         for client in [false, true] {
             with_interaction_game(client, |game| {
-                game.set_mode_id(0);
+                if client {
+                    game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
+                } else {
+                    game.set_mode_id(0);
+                }
                 let stone = game
                     .pack
                     .assets

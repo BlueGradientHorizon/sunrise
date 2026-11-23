@@ -33,7 +33,9 @@ impl Game<'_> {
     ) {
         if self.riding == Some(id)
             || self.ridden_by_guest(id)
-            || self.mob_objects().any(|mob| mob.extra.mount == Some(id))
+            || self
+                .mob_objects()
+                .any(|mob| !mob.removed && mob.extra.mount == Some(id))
             || self.general_passengers(id).next().is_some()
         {
             vehicle.retire_attachment_registration();
@@ -46,7 +48,9 @@ impl Game<'_> {
         if self.persist.removed_vehicles.contains_key(&id)
             && self.riding != Some(id)
             && !self.ridden_by_guest(id)
-            && !self.mob_objects().any(|mob| mob.extra.mount == Some(id))
+            && !self
+                .mob_objects()
+                .any(|mob| !mob.removed && mob.extra.mount == Some(id))
             && self.general_passengers(id).next().is_none()
         {
             self.persist.removed_vehicles.remove(&id);
@@ -60,7 +64,11 @@ impl Game<'_> {
         if self.persist.off_level.is_empty() {
             return Default::default();
         }
-        let mounts: HashMap<_, _> = self.mob_objects().map(|m| (m.id, m.extra.mount)).collect();
+        let mounts: HashMap<_, _> = self
+            .mob_objects()
+            .filter(|m| !m.removed)
+            .map(|m| (m.id, m.extra.mount))
+            .collect();
         self.mobs
             .iter()
             .filter_map(|m| {
@@ -168,20 +176,22 @@ impl Game<'_> {
         let invalid: Vec<_> = self
             .mob_objects()
             .filter_map(|m| {
+                if m.removed {
+                    return None;
+                }
                 let v = m.extra.mount?;
                 // Removed vehicles are retried only in the passenger's own
                 // eligible entity tick, after its cancellable Pre event.
                 if self.persist.removed_vehicles.contains_key(&v) {
                     return None;
                 }
-                let valid = !m.removed
-                    && (self.mob_object(v).is_some_and(|m| !m.removed)
-                        || self.boat_object(v).is_some()
-                        || self.cart_object(v).is_some()
-                        || self.cushions.iter().any(|c| c.id == v)
-                        || self.tnts.iter().any(|t| t.id == v && v != 0)
-                        || self.seat(v).is_some()
-                        || self.player_vehicle(v).is_some());
+                let valid = self.mob_object(v).is_some_and(|m| !m.removed)
+                    || self.boat_object(v).is_some()
+                    || self.cart_object(v).is_some()
+                    || self.cushions.iter().any(|c| c.id == v)
+                    || self.tnts.iter().any(|t| t.id == v && v != 0)
+                    || self.seat(v).is_some()
+                    || self.player_vehicle(v).is_some();
                 (!valid).then_some((m.id, v))
             })
             .collect();
@@ -230,8 +240,6 @@ impl Game<'_> {
                 count,
                 rider_is_animal,
             )
-        } else if vehicle.species() == Species::HappyGhast {
-            riders::happy_ghast_attachment(seat)
         } else {
             riders::passenger_attachment_at(vehicle, seat)
         }
@@ -337,7 +345,7 @@ impl Game<'_> {
                     m.previous = Vec3::new(before.x, before.y - offset, before.z);
                     m.velocity = Vec3::ZERO;
                     m.fall_distance = 0.0;
-                    m.on_ground = false;
+                    m.ground.on_ground = false;
                     m.extra.passenger = true;
                     m.ai.nav.stop();
                     continue;
@@ -366,9 +374,10 @@ impl Game<'_> {
                     vehicle,
                     rider,
                     vehicle.rider.is_some() || self.riding == Some(v),
-                    self.res
-                        .mob_data()
-                        .entity_has("minecraft:non_controlling_rider", &rider.kind.id),
+                    self.items().entity_type_tags.has_bit(
+                        rider.kind.flags.entity_tag_slot,
+                        sunrise_client::items::EntityTypeTags::NON_CONTROLLING_RIDER,
+                    ),
                 );
                 let takes_body = riders::takes_vehicle_body(vehicle, rider, controlling);
                 let vehicle_width = vehicle.width();
@@ -383,7 +392,7 @@ impl Game<'_> {
                 m.previous = riders::seat(attach, offset, prev, prev_yaw);
                 m.velocity = Vec3::ZERO;
                 m.fall_distance = 0.0;
-                m.on_ground = false;
+                m.ground.on_ground = false;
                 if takes_body {
                     m.body_yaw = body;
                     m.previous_body_yaw = prev_body;
@@ -425,9 +434,11 @@ impl Game<'_> {
                         .map(|at| (v, at))
                 })
                 .collect();
-            for display in self.text_displays.values_mut() {
+            let sections = self.client_pick.sections.get_mut();
+            for (&id, display) in &mut self.text_displays {
                 if let Some(at) = display.vehicle.and_then(|v| seats.get(&v)) {
                     display.ride(*at);
+                    sections.move_id(id as u32, display.position().to_array());
                 }
             }
             for interaction in self.interactions.values_mut() {
@@ -469,6 +480,7 @@ impl Game<'_> {
             stand.previous = before;
             stand.velocity = Vec3::ZERO;
         }
+        self.sync_seated_pick_sections();
     }
 
     /// Armor stands riding the local player, on the top of its box. Vanilla
@@ -1213,6 +1225,7 @@ mod off_level_tests {
 #[cfg(test)]
 mod nested_vehicle_discard_tests {
     use super::*;
+    use crate::game::native_entity_refs::tests::{collect_all_entities, collect_entities_in};
     use std::sync::{
         Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -1691,6 +1704,16 @@ mod nested_vehicle_discard_tests {
             .unwrap();
     }
 
+    fn vehicle_attachment_count(host: &dyn mod_api::Host) -> usize {
+        let query = host
+            .attachment_query("vehicle_boundary", "value")
+            .unwrap()
+            .query(&VEHICLE_VALUE)
+            .unwrap();
+        let mut rows = query.iter();
+        std::iter::from_fn(|| rows.try_next().unwrap()).count()
+    }
+
     fn assert_vehicle_queries_hidden(host: &mut dyn mod_api::ServerHost, kind: &str) {
         assert!(host.entity(71).is_none());
         assert!(
@@ -1699,11 +1722,8 @@ mod nested_vehicle_discard_tests {
         );
         let level = host.level("minecraft:overworld").unwrap();
         for entities in [
-            level
-                .all_entities(host)
-                .expect("the level remains queryable"),
-            level
-                .entities_in(host, [-1000.0; 3], [1000.0; 3])
+            collect_all_entities(host, level).expect("the level remains queryable"),
+            collect_entities_in(host, level, [-1000.0; 3], [1000.0; 3])
                 .expect("spatial queries remain available"),
         ] {
             assert!(!entities.iter().any(|entity| entity.id() == 71));
@@ -1719,15 +1739,7 @@ mod nested_vehicle_discard_tests {
                 .commands()
                 .run_command("execute if entity 000000a0-0000-0000-0000-000000000047")
         );
-        assert_eq!(
-            host.attachment_query("vehicle_boundary", "value")
-                .unwrap()
-                .query(&VEHICLE_VALUE)
-                .unwrap()
-                .iter()
-                .count(),
-            0
-        );
+        assert_eq!(vehicle_attachment_count(host), 0);
     }
 
     struct RemovalBoundaryObserver {
@@ -1932,7 +1944,13 @@ mod nested_vehicle_discard_tests {
         }
     }
 
-    struct ObserveSpillItem(Arc<AtomicUsize>);
+    #[derive(Default)]
+    struct SpillJoins {
+        vehicle: AtomicUsize,
+        items: AtomicUsize,
+    }
+
+    struct ObserveSpillItem(Arc<SpillJoins>);
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for ObserveSpillItem {
         fn entity_join_level(
@@ -1940,16 +1958,23 @@ mod nested_vehicle_discard_tests {
             host: &mut dyn mod_api::ServerHost,
             event: &mut mod_api::EntityJoinLevelEvent<'_>,
         ) -> mod_api::Flow {
-            assert_ne!(
-                event.entity, 71,
-                "a removed vehicle must not join during its sweep"
-            );
-            if event.kind == "minecraft:item" {
-                assert!(
-                    host.entity(71).is_none(),
-                    "spill callbacks cannot resolve the removed owner"
+            if event.entity == 71 {
+                assert_eq!(
+                    self.0.vehicle.fetch_add(1, Ordering::Relaxed),
+                    0,
+                    "the vehicle must not join again during its sweep"
                 );
-                self.0.fetch_add(1, Ordering::Relaxed);
+            }
+            if event.kind == "minecraft:item" {
+                if self.0.items.fetch_add(1, Ordering::Relaxed) == 0 {
+                    let vehicle = host.entity(71).expect("contents drop before removal");
+                    assert!(!vehicle.discard(host), "the spill must not reenter removal");
+                } else {
+                    assert!(
+                        host.entity(71).is_none(),
+                        "the vehicle item drops after removal"
+                    );
+                }
             }
             mod_api::Flow::Continue
         }
@@ -1962,7 +1987,7 @@ mod nested_vehicle_discard_tests {
             for mode in 0..3 {
                 let cancel = Arc::new(AtomicBool::new(true));
                 let calls = Arc::new(AtomicUsize::new(0));
-                let item_joins = Arc::new(AtomicUsize::new(0));
+                let joins = Arc::new(SpillJoins::default());
                 let mods: mod_api::Mods = vec![
                     mod_api::ModEntry::new(
                         "cancel_spilling_vehicle",
@@ -1973,7 +1998,7 @@ mod nested_vehicle_discard_tests {
                     ),
                     mod_api::ModEntry::new(
                         "observe_spill",
-                        Box::new(ObserveSpillItem(item_joins.clone())),
+                        Box::new(ObserveSpillItem(joins.clone())),
                     ),
                 ]
                 .into();
@@ -1995,6 +2020,8 @@ mod nested_vehicle_discard_tests {
                                 vehicle.items = items;
                             });
                         }
+                        game.native_joins_flush(false, 0);
+                        assert_eq!(joins.vehicle.load(Ordering::Relaxed), 1);
                         match mode {
                             0 if cart => game.hurt_cart(
                                 0,
@@ -2024,7 +2051,7 @@ mod nested_vehicle_discard_tests {
                                 .sum()
                         };
                         assert_eq!(diamonds(game), 5);
-                        assert!(item_joins.load(Ordering::Relaxed) > 0);
+                        assert!(joins.items.load(Ordering::Relaxed) > 0);
                         assert_eq!(calls.load(Ordering::Relaxed), 1);
                         assert!(game.persist.removed_vehicles.contains_key(&71));
                         for _ in 0..2 {
@@ -2072,8 +2099,7 @@ mod nested_vehicle_discard_tests {
                     "execute if entity @e[type=minecraft:{}]",
                     self.kind
                 )));
-                let batch = host.attachment_query("vehicle_boundary", "value").unwrap();
-                assert_eq!(batch.query(&VEHICLE_VALUE).unwrap().iter().count(), 0);
+                assert_eq!(vehicle_attachment_count(host), 0);
                 return mod_api::Flow::Cancel;
             }
             mod_api::Flow::Continue
@@ -2101,15 +2127,7 @@ mod nested_vehicle_discard_tests {
                     game.build_registries();
                     game.set_allow_commands(true);
                     set_vehicle_test_attachment(game);
-                    assert_eq!(
-                        game.attachment_query("vehicle_boundary", "value")
-                            .unwrap()
-                            .query(&VEHICLE_VALUE)
-                            .unwrap()
-                            .iter()
-                            .count(),
-                        1
-                    );
+                    assert_eq!(vehicle_attachment_count(game), 1);
                     if cart {
                         game.hurt_cart(
                             0,
@@ -2152,8 +2170,7 @@ mod nested_vehicle_discard_tests {
                     let command = format!("execute if entity @e[type=minecraft:{kind}]");
                     assert!(game.run_command(&command));
                     set_vehicle_test_attachment(game);
-                    let batch = game.attachment_query("vehicle_boundary", "value").unwrap();
-                    assert_eq!(batch.query(&VEHICLE_VALUE).unwrap().iter().count(), 1);
+                    assert_eq!(vehicle_attachment_count(game), 1);
                     let vehicle = game.entity(71).unwrap();
                     if cart {
                         game.hurt_cart(
@@ -2171,8 +2188,7 @@ mod nested_vehicle_discard_tests {
                     assert!(game.native_entity_target(vehicle).is_none());
                     assert!(game.entity_passengers(vehicle).is_none());
                     assert!(!game.run_command(&command));
-                    let batch = game.attachment_query("vehicle_boundary", "value").unwrap();
-                    assert_eq!(batch.query(&VEHICLE_VALUE).unwrap().iter().count(), 0);
+                    assert_eq!(vehicle_attachment_count(game), 0);
                 });
             });
         }
@@ -2660,28 +2676,6 @@ mod nested_vehicle_discard_tests {
                 assert_eq!(game.mob_object(72).unwrap().extra.mount, None);
             })
         });
-    }
-}
-
-impl Game<'_> {
-    pub(super) fn dismount_killed_boat(&mut self, id: u32) {
-        if let Some(y) = self.boats.iter().find(|b| b.id == id).map(|b| b.position.y) {
-            self.dismount_destroyed_vehicle_mobs(id, y);
-        }
-    }
-}
-
-impl Game<'_> {
-    pub(super) fn dismount_killed_cart(&mut self, id: u32) {
-        if let Some(y) = self.carts.iter().find(|c| c.id == id).map(|c| c.position.y) {
-            self.dismount_destroyed_vehicle_mobs(id, y);
-        }
-    }
-}
-
-impl Game<'_> {
-    pub(super) fn dismount_cart_mob_at(&mut self, rider: u32, y: f64) {
-        self.dismount_mob_from_removed_vehicle(rider, y);
     }
 }
 

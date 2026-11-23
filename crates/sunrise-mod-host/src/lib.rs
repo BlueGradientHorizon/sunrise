@@ -11,4 +11,7 @@ pub use loading::main_with;
 
 mod mods_button;
 
-pub use sunrise_guest_stack::prepare_main as prepare_main_stack;
+#[cfg(test)]
+#[allow(dead_code)]
+#[path = "../build.rs"]
+mod build_script;
