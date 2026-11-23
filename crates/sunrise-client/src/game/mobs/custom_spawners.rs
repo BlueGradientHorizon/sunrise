@@ -3,7 +3,7 @@
 //! dimensions, matching `MinecraftServer#createLevels`), minus what a mod's
 //! `modify_custom_spawners` took out, plus the owned `CustomSpawner` objects it added.
 use super::{Dim, Game};
-use mod_api::{CustomSpawners, SpawnerKind};
+use mod_api::{__private::CustomSpawners, SpawnerKind};
 
 impl Game<'_> {
     /// Build `dim`'s custom spawner list once per open logical-server level, firing
@@ -22,7 +22,10 @@ impl Game<'_> {
             CustomSpawners::empty()
         };
         if mod_api::__private::listened(mod_api::HookId::ModifyCustomSpawners) {
-            self.native_modify_custom_spawners(dim.id(), &mut list);
+            let level = self.level_ref(self.lend_epoch(), dim.key());
+            let mut editor = mod_api::CustomSpawnersEditor::new(&list);
+            self.native_modify_custom_spawners(level, &mut editor);
+            editor.commit(&mut list);
         }
         self.creatures.custom_spawners.insert(dim, list);
     }
@@ -265,21 +268,22 @@ mod tests {
         impl mod_api::Hooks for PerLevelMod {
             fn modify_custom_spawners(
                 &self,
-                _: &dyn mod_api::Host,
+                host: &dyn mod_api::Host,
                 event: &mut mod_api::ModifyCustomSpawnersEvent<'_>,
             ) {
+                let dimension = event.level.dimension().id(host).unwrap();
                 let builtin_count = event.spawners.builtins().count();
                 self.log
                     .lock()
                     .unwrap()
-                    .push(format!("modify:{}={builtin_count}", event.dimension));
-                let drops = if event.dimension == Dim::Overworld.id() {
+                    .push(format!("modify:{dimension}={builtin_count}"));
+                let drops = if dimension == Dim::Overworld.id() {
                     self.overworld_drops.clone()
                 } else {
                     self.nether_drops.clone()
                 };
                 event.spawners.add(LevelOwnedSpawner {
-                    dim: event.dimension.to_owned(),
+                    dim: dimension.to_owned(),
                     ticks: 0,
                     log: self.log.clone(),
                     drops,
@@ -417,6 +421,66 @@ mod tests {
                 game.tick_spawners();
                 assert_eq!(ticks.load(Ordering::Relaxed), 1);
                 assert_eq!(game.creatures.cat.next_tick, 4);
+            });
+        });
+    }
+
+    /// A later listener that removes an earlier mod's instance and then panics leaves that
+    /// instance in the level: its edits are undone, and the instance keeps ticking.
+    #[test]
+    #[ignore = "daily"]
+    fn an_earlier_instance_survives_a_later_listener_that_removes_it_and_fails() {
+        struct Adds(Arc<AtomicUsize>);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Adds {
+            fn modify_custom_spawners(
+                &self,
+                _: &dyn mod_api::Host,
+                event: &mut mod_api::ModifyCustomSpawnersEvent<'_>,
+            ) {
+                let ticks = self.0.clone();
+                event
+                    .spawners
+                    .add(move |_: &mut dyn ServerHost, _: LevelRef, _: bool| {
+                        ticks.fetch_add(1, Ordering::Relaxed);
+                    });
+            }
+        }
+        struct Fails;
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Fails {
+            fn modify_custom_spawners(
+                &self,
+                _: &dyn mod_api::Host,
+                event: &mut mod_api::ModifyCustomSpawnersEvent<'_>,
+            ) {
+                let last = event.spawners.len() - 1;
+                assert!(event.spawners.remove_at(last));
+                assert!(
+                    event
+                        .spawners
+                        .insert(0, |_: &mut dyn ServerHost, _: LevelRef, _: bool| {})
+                );
+                panic!("listener failed after editing the list");
+            }
+        }
+
+        let ticks = Arc::new(AtomicUsize::new(0));
+        let mods = vec![
+            mod_api::ModEntry::new("adds_spawner", Box::new(Adds(ticks.clone()))),
+            mod_api::ModEntry::new("fails_after_editing", Box::new(Fails)),
+        ];
+        mod_platform::testing::with_mods(mods.into(), || {
+            with_game(|game| {
+                game.init_custom_spawners(game.dim);
+                let list = &game.creatures.custom_spawners[&game.dim];
+                assert_eq!(
+                    list.len(),
+                    6,
+                    "five built-ins and the earlier mod's instance"
+                );
+                game.tick_custom_spawners();
+                assert_eq!(ticks.load(Ordering::Relaxed), 1);
             });
         });
     }

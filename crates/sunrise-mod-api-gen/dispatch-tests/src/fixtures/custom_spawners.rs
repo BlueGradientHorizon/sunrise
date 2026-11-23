@@ -1,9 +1,9 @@
 mod api {
-    pub struct CustomSpawners {
+    pub struct CustomSpawnersEditor {
         spawners: Vec<Box<dyn Send>>,
     }
 
-    impl CustomSpawners {
+    impl CustomSpawnersEditor {
         pub fn checkpoint(&self) -> usize {
             self.spawners.len()
         }

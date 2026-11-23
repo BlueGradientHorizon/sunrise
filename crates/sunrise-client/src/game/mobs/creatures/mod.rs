@@ -306,7 +306,7 @@ pub(super) struct Creatures {
     /// The cat spawner (`CatSpawner`): its countdown.
     pub cat: super::cat_spawner::CatSpawner,
     /// Each level's custom spawners, built when the level opens and dropped on unload (game/mobs/custom_spawners.rs).
-    pub custom_spawners: std::collections::HashMap<super::Dim, mod_api::CustomSpawners>,
+    pub custom_spawners: std::collections::HashMap<super::Dim, mod_api::__private::CustomSpawners>,
     /// Native sounds waiting for the server host to be available.
     pub lan_sounds: Vec<NativeSound>,
     /// True while `ask_level_sound` is running `play_level_sound_at_*` listeners so sounds emitted
