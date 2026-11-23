@@ -409,7 +409,7 @@ impl HudAtlas {
             }
         }
         let (blur_bordered, clamp_bordered, sprite_borders) =
-            pad_sprite_borders(&mut base_images, &flags)?;
+            pad_sprite_borders(&mut base_images, &flags, u32::MAX)?;
         base_images.sort_by(|a, b| b.2.cmp(&a.2).then(b.1.cmp(&a.1)));
         let (width, placements, glyph_region) =
             Self::layout_leaving_out(&mut base_images, &mut animated, &cit_names, max_atlas_size)
@@ -641,9 +641,13 @@ fn should_clamp_pad(name: &str) -> bool {
     !path.starts_with("font/")
 }
 
+/// Each sprite gets a one-texel border by its flags, except one whose padded size would pass
+/// `limit` (the device's texture size): it is packed at its own size, as the sprite that exactly
+/// fills the device must be, and sampled at the page edge without texels beyond it.
 fn pad_sprite_borders(
     images: &mut [PackedImage],
     flags: &HashMap<String, TextureFlags>,
+    limit: u32,
 ) -> Result<(
     HashSet<String>,
     HashSet<String>,
@@ -654,6 +658,9 @@ fn pad_sprite_borders(
     let mut sprite_borders = HashMap::new();
     for image in images {
         if image.3.is_empty() || image.1 == 0 || image.2 == 0 {
+            continue;
+        }
+        if image.1.saturating_add(2) > limit || image.2.saturating_add(2) > limit {
             continue;
         }
         let f = flags.get(&image.0).copied();
@@ -873,7 +880,7 @@ fn stitch_registered(
     let mut pages = Vec::new();
     for ((atlas, mod_id), mut images) in groups {
         let build = || -> Result<_> {
-            let (_, _, sprite_borders) = pad_sprite_borders(&mut images, flags)?;
+            let (_, _, sprite_borders) = pad_sprite_borders(&mut images, flags, max)?;
             images.sort_by(|a, b| b.2.cmp(&a.2).then(b.1.cmp(&a.1)));
             let (size, placements) = registered_layout(&images, max)?;
             let Stitched {
