@@ -853,5 +853,6 @@ fn residency_images_match(device: &wgpu::Device, queue: &Queue) {
     assert!(!sourced.lists(stand_in) && sourced.draws_solid(stand_in));
     assert!(sourced.lists(key(-1, 0)) && sourced.draws_solid(key(-1, 0)));
     // The residency's own invariant, as the debug renderer walks it each 64th frame.
+    #[cfg(debug_assertions)]
     sourced.check(&tiles, at);
 }
