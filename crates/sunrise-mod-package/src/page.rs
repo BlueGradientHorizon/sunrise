@@ -10,6 +10,11 @@ use url::Url;
 
 /// The page manifest beside `sunrise-mod.toml`.
 pub const PAGE_FILE: &str = "page.toml";
+/// The release format `cargo sunrise-mod` speaks: `check --release <tag>` and the `<id>.page.tar` bundle `build`
+/// writes. The rolling `mod-tool` release's `tool.json` carries it as `release_contract`
+/// (`tools/ci/mod_tool.py`), and the registry's release workflow refuses a tool without it. Raise it when either
+/// changes in a way that workflow must know.
+pub const RELEASE_CONTRACT: u32 = 1;
 /// Modrinth's gallery upload limit (`apps/labrinth/src/routes/internal/globals.rs`).
 pub const MAX_SCREENSHOT_BYTES: u64 = 5 * 1024 * 1024;
 // Modrinth's minimums and category cap (`apps/labrinth/src/validate/project/{summary,description,tags}.rs`).
