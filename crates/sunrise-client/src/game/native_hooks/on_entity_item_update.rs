@@ -11,7 +11,7 @@ impl Game<'_> {
         // One read says whether any item part listens; with none, no stack is looked at.
         let update_hook =
             merging && mod_api::__private::has_part_hook(mod_api::HookId::OnEntityItemUpdate);
-        // Items a mod named (`entity_tick_each`) hear their Pre, and then their part, alone in
+        // Items hear their Pre, and then their part, alone in
         // their own turn (`tick_dropped_items`).
         if (round.listening() || update_hook) && !round.alone_kind(native_ticks::ITEM) {
             let ticking = self.entity_ticking_area();
@@ -305,9 +305,7 @@ mod on_entity_item_update_tests {
             told(event.entities, "post");
         }
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
-            if self.1 {
-                r.entity_tick_each("minecraft:item");
-            }
+            if self.1 {}
             for part in &self.0 {
                 let key = r.item_key(part.item);
                 r.item_part(key, part.clone());

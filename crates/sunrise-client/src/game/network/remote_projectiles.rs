@@ -846,8 +846,8 @@ impl Game<'_> {
         out
     }
 
-    /// The client's projectiles and tridents when a mod named a type of them
-    /// (`entity_tick_each`): each of a named type is told alone, right before
+    /// The client's projectiles and tridents while a mod hears entity ticks: each is told
+    /// alone, right before
     /// and right after its own tick, with both lists handed back so the hooks'
     /// handles read the live rows; the others tick between, in the same order
     /// and through the same steps as the family's loop, with the views built
@@ -1570,7 +1570,7 @@ mod entity_tick_tests {
         }
     }
 
-    /// The same listener, naming arrows to `entity_tick_each`.
+    /// The same listener, for arrows.
     struct Named(Heard);
 
     #[mod_api::__subscriptions]
@@ -1588,9 +1588,6 @@ mod entity_tick_tests {
             event: &mut mod_api::EntityTickPostEvent<'_>,
         ) {
             Listener(self.0.clone()).record(&host, "post", event.entities, event.kinds);
-        }
-        fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-            r.entity_tick_each("minecraft:arrow");
         }
     }
 
@@ -1705,10 +1702,6 @@ mod entity_tick_tests {
             ) {
                 Listener(self.0.clone()).record(&host, "pre", event.entities, event.kinds);
             }
-            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-                r.entity_tick_each("minecraft:arrow");
-                r.entity_tick_each("minecraft:trident");
-            }
         }
 
         struct PostOnly(Heard);
@@ -1720,10 +1713,6 @@ mod entity_tick_tests {
                 event: &mut mod_api::EntityTickPostEvent<'_>,
             ) {
                 Listener(self.0.clone()).record(&host, "post", event.entities, event.kinds);
-            }
-            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-                r.entity_tick_each("minecraft:arrow");
-                r.entity_tick_each("minecraft:trident");
             }
         }
 

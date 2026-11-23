@@ -77,7 +77,7 @@ impl Game<'_> {
         // where it lay, for adding to the level once its own tick is done.
         let mut destroyed: Vec<(ItemStack, Vec3)> = Vec::new();
         let item_type = sunrise_threads::work::entity_id(native_ticks::ITEM);
-        // Items a mod named (`entity_tick_each`) hear their Pre right before their own tick and
+        // Items hear their Pre right before their own tick and
         // their Post right after it, each alone, with the list given back for the call; their
         // part (`on_entity_item_update`) follows their Pre.
         let alone = round.alone_kind(native_ticks::ITEM);
@@ -1245,8 +1245,7 @@ mod expire_tests {
     use crate::game::{Dim, Game};
     use mod_api::{
         Compound, EntityLeaveLevelEvent, EntityTickPostEvent, EntityTickPreEvent, HostSide,
-        HostTransaction, ItemExpireEvent, ModEntry, Registrar, RegistrationContext, ServerHost,
-        Tag,
+        HostTransaction, ItemExpireEvent, ModEntry, ServerHost, Tag,
     };
     use std::sync::{
         Arc, Mutex,
@@ -1612,10 +1611,6 @@ mod expire_tests {
 
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for AloneDiscardListener {
-        fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
-            r.entity_tick_each("minecraft:item");
-        }
-
         fn entity_tick_pre(&self, _: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
             let mut log = self.0.lock().unwrap();
             for &id in event.entities {
@@ -1666,7 +1661,7 @@ mod expire_tests {
 
     #[test]
     #[ignore = "daily"]
-    fn expiry_listener_discards_under_entity_tick_each_still_deliver_post_once() {
+    fn expiry_listener_discards_while_told_alone_still_deliver_post_once() {
         let log = Arc::new(Mutex::new(AloneDiscardLog::default()));
         let mods: mod_api::Mods = vec![ModEntry::new(
             "alone-discard-on-expiry",

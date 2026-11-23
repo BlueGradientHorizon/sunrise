@@ -11,9 +11,8 @@ use sunrise_core::geometry::Vec3;
 type Heard = Arc<Mutex<Vec<(&'static str, Vec<u32>)>>>;
 type PostPositions = Arc<Mutex<Vec<(u32, [f64; 3])>>>;
 
-/// Hears every entity tick; its Pre cancels `cancel`'s. Names players and pigs when `named`.
+/// Hears every entity tick; its Pre cancels `cancel`'s.
 struct Players {
-    named: bool,
     cancel: Arc<Mutex<Option<u32>>>,
     heard: Heard,
     rider_immunity_at_pre: Option<i32>,
@@ -51,12 +50,6 @@ impl mod_api::Hooks for Players {
                     .iter()
                     .filter_map(|&id| Some((id, host.entity(id)?.position(host)?))),
             );
-        }
-    }
-    fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-        if self.named {
-            r.entity_tick_each("minecraft:player");
-            r.entity_tick_each("minecraft:pig");
         }
     }
 }
@@ -106,7 +99,6 @@ fn a_canceled_player_skips_its_server_player_tick_while_the_others_run_it() {
     let mods: Mods = vec![ModEntry::new(
         "player-ticks",
         Box::new(Players {
-            named: false,
             cancel: cancel.clone(),
             heard: heard.clone(),
             rider_immunity_at_pre: None,
@@ -144,7 +136,7 @@ fn a_canceled_player_skips_its_server_player_tick_while_the_others_run_it() {
     });
 }
 
-/// #1142's second test: a pig ridden by a player, both of types a mod named. The pig is told
+/// #1142's second test: a pig ridden by a player, both told alone. The pig is told
 /// alone around its own tick in the mobs' pass and the player around its own in the players';
 /// canceling the player's Pre stops its tick (its far chest stays open) and its Post.
 #[test]
@@ -155,7 +147,6 @@ fn a_player_riding_a_pig_is_told_its_own_tick_as_the_pig_is() {
     let mods: Mods = vec![ModEntry::new(
         "player-ticks",
         Box::new(Players {
-            named: true,
             cancel: cancel.clone(),
             heard: heard.clone(),
             rider_immunity_at_pre: Some(7),

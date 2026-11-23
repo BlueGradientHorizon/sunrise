@@ -10,7 +10,6 @@
 //! either hook is listened to.
 use super::Game;
 use std::sync::Arc;
-use sunrise_client::join_seq::JoinSeq;
 use sunrise_client::mobs::MobType;
 
 /// The item entities' type, as the hooks name it.
@@ -392,56 +391,6 @@ impl Game<'_> {
         }
         buffers.names.clear();
         self.creatures.tick_hooks = buffers;
-    }
-
-    /// The server's unsimulated entities (`other_ticks`) of the types no mod named, joined before
-    /// `born` and in entity-ticking chunks: once for the family, the Pre and then the Post of
-    /// those it let through.
-    pub(in crate::game) fn native_others_tick_family(&mut self, told: Told, born: JoinSeq) {
-        if !told.listening() {
-            return;
-        }
-        let ticking = self.entity_ticking_area();
-        let buffers = std::mem::take(&mut self.creatures.tick_hooks);
-        let (mut ids, mut names) = (buffers.ids, buffers.names);
-        for o in self.others.iter() {
-            if o.join < born
-                && other_ticks(&o.kind)
-                && !told.alone_kind(&o.kind)
-                && ticking(o.position.x.floor() as i32, o.position.z.floor() as i32)
-            {
-                ids.push(o.id);
-                names.push(&o.kind);
-            }
-        }
-        let mut kinds: Vec<&str> = buffers.kinds;
-        if !ids.is_empty() {
-            kinds.extend(names.names());
-            if told.pre {
-                let mut canceled = Vec::new();
-                self.native_entity_tick_pre(self.dim.id(), &ids, &kinds, &mut canceled);
-                if !canceled.is_empty() {
-                    let mut kept = 0;
-                    for at in 0..ids.len() {
-                        if !canceled.contains(&ids[at]) {
-                            ids.swap(kept, at);
-                            kinds.swap(kept, at);
-                            kept += 1;
-                        }
-                    }
-                    ids.truncate(kept);
-                    kinds.truncate(kept);
-                }
-            }
-            if told.post && !ids.is_empty() {
-                self.native_entity_tick_post(self.dim.id(), &ids, &kinds);
-            }
-        }
-        // The kinds borrow the names: give them back first.
-        let mut back = TickBuffers::emptied(ids, kinds, KindNames::default());
-        names.clear();
-        back.names = names;
-        self.creatures.tick_hooks = back;
     }
 
     /// `native_entity_tick_pre` for the players about to run `ServerPlayer.tick` (the guests the
