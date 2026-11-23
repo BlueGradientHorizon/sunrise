@@ -920,6 +920,8 @@ def compare(v, r, comparison=None):
         return "state"
     if masked(v) != masked(r):
         return 'messages'
+    if v.get('components') != r.get('components'):
+        return 'components'
     if v['results'] != r['results']:
         if v['cmd'].startswith('/debug stop'):
             return None

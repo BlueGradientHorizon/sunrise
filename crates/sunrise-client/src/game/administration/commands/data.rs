@@ -955,6 +955,7 @@ impl Game<'_> {
                     }
                 }
             }
+            entity_nbt::sanitize_custom_name(&mut tag);
             self.persist.raw.insert(id, tag);
             if let (Some(from), Some(to)) = (before, self.target_position(t)) {
                 self.entity_section_moved(id, Some(from), to);

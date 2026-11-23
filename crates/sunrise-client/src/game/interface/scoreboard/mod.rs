@@ -621,6 +621,15 @@ impl Game<'_> {
         self.remote_player_name(id)
             .map_or_else(|| uuid_text(uuid), str::to_owned)
     }
+    /// `Entity.getTeam`: the team holding this entity's scoreboard name (its UUID).
+    pub(super) fn entity_team(&self, id: u32) -> Option<&sb::Team> {
+        if self.score.board.teams.is_empty() {
+            return None;
+        }
+        let uuid = *self.persist.uuids.get(&id)?;
+        let own = self.scoreboard_name(id, uuid);
+        self.score.board.players_team(&own)
+    }
     /// `TamableAnimal.getTeam` of a mob or another player: its own team, else,
     /// when it is a tamed pet, its root owner's.
     pub(super) fn mob_team(&self, id: u32) -> Option<&sb::Team> {

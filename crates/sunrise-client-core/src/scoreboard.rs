@@ -1355,6 +1355,28 @@ pub fn canonical_component(c: &Comp) -> Comp {
     let (mut node, extra) = decompose(c);
     finish(&mut node, extra)
 }
+/// `Entity.removeAction`: clear `click_event` on the root component and
+/// recursively on every sibling (`extra`), leaving other styles intact.
+pub fn remove_click_events_comp(c: &Comp) -> Comp {
+    let mut out = canonical_component(c);
+    strip_click_events_in_place(&mut out);
+    canonical_component(&out)
+}
+fn strip_click_events_in_place(c: &mut Comp) {
+    if let Value::Object(map) = c {
+        map.remove("click_event");
+        map.remove("clickEvent");
+        if let Some(Value::Array(extra)) = map.get_mut("extra") {
+            for sibling in extra {
+                strip_click_events_in_place(sibling);
+            }
+        }
+    }
+}
+/// [`remove_click_events_comp`] on a [`Text`].
+pub fn remove_click_events(text: &Text) -> Text {
+    Text::from(remove_click_events_comp(&text.component()))
+}
 /// A component's own fields (content and style) and its siblings.
 fn decompose(c: &Comp) -> (serde_json::Map<String, Value>, Vec<Comp>) {
     match c {
@@ -1412,10 +1434,25 @@ fn decompose(c: &Comp) -> (serde_json::Map<String, Value>, Vec<Comp>) {
                     }
                     "hover_event" => {
                         let mut h = v.clone();
-                        if let Some(value) = h.get("value").cloned()
-                            && h.get("action").and_then(Value::as_str) == Some("show_text")
-                        {
-                            h["value"] = canonical_component(&value);
+                        match h.get("action").and_then(Value::as_str) {
+                            Some("show_text") => {
+                                if let Some(value) = h.get("value").cloned() {
+                                    h["value"] = canonical_component(&value);
+                                }
+                            }
+                            Some("show_entity") => {
+                                if let Some(name) = h.get("name").cloned() {
+                                    h["name"] = canonical_component(&name);
+                                }
+                                if let Some(uuid) = h
+                                    .get("uuid")
+                                    .and_then(Value::as_str)
+                                    .and_then(crate::uuid::uuid_from_text)
+                                {
+                                    h["uuid"] = serde_json::json!(uuid);
+                                }
+                            }
+                            _ => {}
                         }
                         node.insert(k.clone(), h);
                     }
