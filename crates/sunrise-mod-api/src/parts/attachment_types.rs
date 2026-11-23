@@ -596,16 +596,14 @@ mod tests {
                         .declare_block_entity_part_state("test_pkg::Part", declaration.clone()),
                     Err(declaration.refused("test_pkg::Part", crate::PartStateRefusal::StaleKey))
                 );
-                let errors = super::super::install_registrar(
-                    stale_registrar,
-                    &crate::parts::tests::rule_schema(),
-                )
-                .unwrap_err();
-                assert_eq!(errors.len(), 1, "{errors:?}");
-                assert!(
-                    errors[0].contains("test_pkg:missing")
-                        && errors[0].contains("not issued in this registration pass"),
-                    "{errors:?}"
+                let prior_refusals = stale_registrar.refused.clone();
+                assert_eq!(prior_refusals.len(), 1);
+                assert_eq!(
+                    super::super::install_registrar(
+                        stale_registrar,
+                        &crate::parts::tests::rule_schema()
+                    ),
+                    Err(prior_refusals),
                 );
                 assert!(!mod_vocab::__private::parts_installation::parts_installed());
             },

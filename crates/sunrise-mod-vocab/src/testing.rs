@@ -26,6 +26,22 @@
 //! let into = host.level.block_entity_at([1, 64, 0]).unwrap().items.as_ref().unwrap();
 //! assert_eq!(into.count("minecraft:stone"), 3);
 //! ```
+/// Build the command for one exact ignored test in a fresh copy of this test binary.
+/// The caller supplies scratch resources and verifies the fixture's completion.
+pub fn fresh_case_command(name: &str, flag: &str, case: &str) -> std::process::Command {
+    let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+    command
+        .args([
+            "--ignored",
+            "--exact",
+            name,
+            "--nocapture",
+            "--test-threads=4",
+        ])
+        .env(flag, case);
+    command
+}
+
 #[path = "testing/journal.rs"]
 mod journal;
 #[path = "testing/level.rs"]

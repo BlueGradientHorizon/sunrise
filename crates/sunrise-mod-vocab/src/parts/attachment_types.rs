@@ -117,11 +117,39 @@ type BuildAttachmentRecord = Box<
         + Send,
 >;
 
+#[derive(Debug, PartialEq, Eq)]
+enum ProjectionFailure {
+    Refused(AttachmentError),
+    Panicked,
+}
+
+/// Engine diagnostic for an attachment that could not produce a sync value.
+#[doc(hidden)]
+// no wire: diagnostic for a local codec call.
+#[derive(Debug, PartialEq, Eq)]
+pub struct AttachmentSyncProjectionError {
+    owner: &'static str,
+    failure: ProjectionFailure,
+}
+
+impl fmt::Display for AttachmentSyncProjectionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.failure {
+            ProjectionFailure::Refused(error) => {
+                write!(f, "mod {}: attachment_sync refused: {error:?}", self.owner)
+            }
+            ProjectionFailure::Panicked => {
+                write!(f, "mod {}: attachment_sync panicked", self.owner)
+            }
+        }
+    }
+}
+
 type ProjectAttachmentSync = fn(
     &(dyn Any + Send + Sync),
     AttachmentSyncInput<'_>,
     &AtomicBool,
-) -> Result<Option<Compound>, String>;
+) -> Result<Option<Compound>, AttachmentSyncProjectionError>;
 
 type MatchAttachmentKey = fn(&(dyn Any + Send + Sync), &AttachmentStoreKey<'_>) -> bool;
 
@@ -145,37 +173,38 @@ impl<T: Send + Sync + 'static> From<AttachmentDescriptor<T>> for ErasedAttachmen
             record: &(dyn Any + Send + Sync),
             input: AttachmentSyncInput<'_>,
             poisoned: &AtomicBool,
-        ) -> Result<Option<Compound>, String> {
+        ) -> Result<Option<Compound>, AttachmentSyncProjectionError> {
             let registration = record
                 .downcast_ref::<AttachmentRegistration<T>>()
                 .expect("sync projection supplied by this descriptor");
+            let owner = registration.owner;
+            let panicked = |_| AttachmentSyncProjectionError {
+                owner,
+                failure: ProjectionFailure::Panicked,
+            };
             let mut decoded_owner = None;
-            let result = crate::runtime::invoke_registered_codec(
-                registration.owner,
-                "attachment_sync",
-                poisoned,
-                || {
-                    registration
+            let result =
+                crate::runtime::invoke_registered_codec(owner, "attachment_sync", poisoned, || {
+                    Ok(registration
                         .checked
                         .as_type()
-                        .project_sync(input, &mut decoded_owner)
-                        .map_err(|error| format!("{error:?}"))
-                },
-            );
+                        .project_sync(input, &mut decoded_owner))
+                });
             // A saved value is owned outside the encoder's unwind. Release it even when
             // encoding already disabled the codec, without a second unwind crossing that fence.
             if let Some(value) = decoded_owner {
-                crate::runtime::finish_registered_codec(
-                    registration.owner,
-                    "attachment_sync",
-                    poisoned,
-                    || {
-                        drop(value);
-                        Ok(())
-                    },
-                )?;
+                crate::runtime::finish_registered_codec(owner, "attachment_sync", poisoned, || {
+                    drop(value);
+                    Ok(())
+                })
+                .map_err(panicked)?;
             }
             result
+                .map_err(panicked)?
+                .map_err(|error| AttachmentSyncProjectionError {
+                    owner,
+                    failure: ProjectionFailure::Refused(error),
+                })
         }
 
         fn match_key<T: Send + Sync + 'static>(
@@ -380,7 +409,7 @@ impl RegisteredAttachment {
     pub(crate) fn project_sync(
         &self,
         input: AttachmentSyncInput<'_>,
-    ) -> Result<Option<Compound>, String> {
+    ) -> Result<Option<Compound>, AttachmentSyncProjectionError> {
         (self.project_sync)(self.record.as_ref(), input, &self.sync_panicked)
     }
 }
@@ -737,9 +766,13 @@ impl dyn Registrar + '_ {
 /// codecs on the owning server thread before workers assemble pairing packets.
 // hidden: engine-owned client attachment sync projection; not an authoring method.
 #[doc(hidden)]
-pub fn attachment_sync_projection()
--> impl Fn(&JavaString, &JavaString, AttachmentSyncInput<'_>) -> Result<Option<Compound>, String> + Sync
-{
+pub fn attachment_sync_projection() -> impl Fn(
+    &JavaString,
+    &JavaString,
+    AttachmentSyncInput<'_>,
+)
+    -> Result<Option<Compound>, AttachmentSyncProjectionError>
++ Sync {
     let installed = installed();
     move |namespace, name, input| {
         thread_local! {
@@ -1172,11 +1205,7 @@ mod tests {
             match attachment_sync_projection()(ns, name, input) {
                 Ok(value) => value,
                 Err(error) => {
-                    failures.push(format!(
-                        "{}:{}: {error}",
-                        ns.to_string_lossy(),
-                        name.to_string_lossy()
-                    ));
+                    failures.push((ns.clone(), name.clone(), error));
                     None
                 }
             }
@@ -1193,7 +1222,14 @@ mod tests {
         assert!(level.0.take_sync_changes(&mut project).is_empty());
         assert_eq!(
             failures,
-            ["shared:bad: mod disk_owner: attachment_sync refused: Decode"; 2]
+            [(); 2].map(|()| (
+                JavaString::from("shared"),
+                JavaString::from("bad"),
+                AttachmentSyncProjectionError {
+                    owner: "disk_owner",
+                    failure: ProjectionFailure::Refused(AttachmentError::Decode)
+                },
+            ))
         );
     }
 
@@ -1240,8 +1276,13 @@ mod tests {
         }];
         assert_eq!(level.0.synced(&mut project), expected);
         assert_eq!(level.0.take_sync_changes(&mut project), expected);
-        assert_eq!(failures.len(), 1);
-        assert!(failures[0].contains("panicked"));
+        assert_eq!(
+            failures,
+            [AttachmentSyncProjectionError {
+                owner: "demo",
+                failure: ProjectionFailure::Panicked
+            }]
+        );
     }
 
     #[test]
