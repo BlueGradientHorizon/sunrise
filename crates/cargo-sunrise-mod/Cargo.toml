@@ -39,6 +39,8 @@ toml_edit = "0.25"
 url = "2"
 # The page bundle is a plain ustar archive.
 tar = { version = "0.4", default-features = false }
+# `self-update` unpacks the rolling tool's `.tar.xz`; its tests write one.
+lzma-rust2 = { version = "0.25", default-features = false, features = ["std", "encoder", "xz"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
