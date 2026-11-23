@@ -17,6 +17,10 @@ pub const PAGE_FILE: &str = "page.toml";
 pub const RELEASE_CONTRACT: u32 = 1;
 /// Modrinth's gallery upload limit (`apps/labrinth/src/routes/internal/globals.rs`).
 pub const MAX_SCREENSHOT_BYTES: u64 = 5 * 1024 * 1024;
+/// The most a screenshot may take decoded. Modrinth decodes each gallery image with the `image` crate's
+/// default limits (`apps/labrinth/src/util/img.rs:137`, `image::load_from_memory`), whose `max_alloc` is 512 MiB
+/// (`image` 0.25.10, `src/io/limits.rs:54`).
+pub const MAX_DECODED_SCREENSHOT_BYTES: u64 = 512 * 1024 * 1024;
 // Modrinth's minimums and category cap (`apps/labrinth/src/validate/project/{summary,description,tags}.rs`).
 const MIN_SUMMARY: usize = 25;
 const MIN_DESCRIPTION: usize = 125;
@@ -220,7 +224,19 @@ pub fn check_screenshot(path: &Path, bytes: &[u8]) -> Result<(), String> {
         }
         let options =
             zune_jpeg::zune_core::options::DecoderOptions::new_safe().set_strict_mode(true);
-        zune_jpeg::JpegDecoder::new_with_options(bytes, options)
+        let mut decoder = zune_jpeg::JpegDecoder::new_with_options(bytes, options);
+        decoder
+            .decode_headers()
+            .map_err(|e| format!("unreadable JPEG screenshot: {e}"))?;
+        // The decoder allocates the whole picture before it reads the scan, so refuse a picture
+        // too large to decode from its header alone, before decoding it.
+        let decoded = decoder.output_buffer_size().unwrap_or(usize::MAX) as u64;
+        if decoded > MAX_DECODED_SCREENSHOT_BYTES {
+            return Err(format!(
+                "JPEG screenshot decodes to {decoded} bytes, over {MAX_DECODED_SCREENSHOT_BYTES}"
+            ));
+        }
+        decoder
             .decode()
             .map_err(|e| format!("unreadable JPEG screenshot: {e}"))?;
         return Ok(());

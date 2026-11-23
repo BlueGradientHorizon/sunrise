@@ -143,6 +143,23 @@ fn screenshots_must_decode_and_match_their_file_extension() {
 
 #[cfg(unix)]
 #[test]
+fn a_jpeg_too_large_to_decode_is_refused_from_its_header() {
+    // The fixture with its frame header claiming 16000 x 16000 pixels: over the decoded limit,
+    // refused before the decoder allocates the picture.
+    let mut huge = JPEG.to_vec();
+    let frame = huge
+        .windows(2)
+        .position(|marker| marker[0] == 0xff && matches!(marker[1], 0xc0 | 0xc2))
+        .expect("the fixture has a frame header");
+    huge[frame + 5..frame + 9].copy_from_slice(&[0x3e, 0x80, 0x3e, 0x80]);
+    let error = check_screenshot(Path::new("image.jpg"), &huge).unwrap_err();
+    assert!(
+        error.contains(&MAX_DECODED_SCREENSHOT_BYTES.to_string()),
+        "{error}"
+    );
+}
+
+#[test]
 fn linked_screenshot_subfolders_are_refused() {
     let root = tempfile::tempdir().unwrap();
     let outside = tempfile::tempdir().unwrap();
