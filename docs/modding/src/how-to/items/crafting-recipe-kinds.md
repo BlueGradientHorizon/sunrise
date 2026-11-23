@@ -112,8 +112,9 @@ load**, naming the file and ID. Dedicated startup stops; a failed `/reload`
 retains the old recipe table. There is no raw fallback for unknown IDs.
 Content mods (`.smod`) shipping mod recipe JSON need the corresponding registered
 serializer. Optional-mod recipes must use load conditions: a false condition
-skips a file quietly **before** serializer lookup. Unknown condition types fail
-the load. A malformed recipe of a known serializer is skipped.
+skips a file quietly **before** serializer lookup. Unknown condition types and
+engine decoder refusals fail the whole recipe load; a registered mod
+serializer's decode error skips only that recipe.
 
 Reload decodes a fresh generation and preserves startup registration. Joining
 Sunrise clients receive serializer-written JSON under the existing recipe-content
