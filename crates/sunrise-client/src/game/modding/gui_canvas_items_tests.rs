@@ -193,136 +193,152 @@ fn draw_decorated_paper(bar_width: i32) -> HudBatch {
 #[test]
 #[ignore = "daily"]
 fn scoped_items_keep_the_seed_and_draw_decorations_outside_the_squeeze() {
-    crate::game::in_own_process(
-        "game::gui_canvas_items_tests::scoped_items_keep_the_seed_and_draw_decorations_outside_the_squeeze",
-        || {
-            use crate::game::{Game, native_client_session::tests::logged_client};
+    const NAME: &str = "game::gui_canvas_items_tests::scoped_items_keep_the_seed_and_draw_decorations_outside_the_squeeze";
+    if run_fresh_cases(NAME, "SUNRISE_GUI_SCOPED_ITEMS", &["run"]) {
+        return;
+    }
+    use crate::game::{Game, native_client_session::tests::logged_client};
 
-            use mod_api::__private::game::RegistrationContextNew;
-            use sunrise_client::item_render::{bind_item_model_factories, decode_item_model};
+    use mod_api::__private::game::RegistrationContextNew;
+    use sunrise_client::item_render::{bind_item_model_factories, decode_item_model};
 
-            let answers = Answers::default();
-            let resolves = Resolves::default();
-            let mods: mod_api::Mods = vec![ModEntry::new(
-                "painter",
-                Box::new(Painter {
-                    answers: answers.clone(),
-                    resolves: resolves.clone(),
-                    bar_width: 5,
-                }),
-            )]
-            .into();
-            crate::game::api_values::install_parts(&mods).unwrap();
-            with_mods(mods, || {
-                let mut types = Vec::new();
-                Game::native_register_item_models(&RegistrationContext::new(), &mut types);
-                let (factories, kept) = bind_item_model_factories(types);
-                assert_eq!(kept, [MODEL]);
-                let bound = decode_item_model(
-                    Some(&factories),
-                    MODEL,
-                    &Default::default(),
-                    &ItemModelNode::decode,
-                )
-                .unwrap()
-                .unwrap()
-                .model;
-                with_client_game(|game| {
-                    let _server = logged_client(game);
-                    let definition = Arc::get_mut(&mut game.pack.item_renderer)
-                        .expect("the game's item renderer is shared")
-                        .models
-                        .definitions
-                        .get_mut(ITEM)
-                        .unwrap();
-                    let paper = std::mem::replace(&mut definition.model, ItemModelNode::Empty);
-                    definition.model = ItemModelNode::Registered {
-                        model: bound,
-                        transformation: None,
-                        models: vec![("paper".into(), paper)],
-                    };
-                    // This count is legal to draw, but exceeds paper's resident stack limit.
-                    game.inventory[0] = Some(ItemStack::new(ITEM, 65));
-                    let hover = Text::from(serde_json::json!({
-                        "text": "x", "hover_event": { "action": "show_text", "value": "hi" }
-                    }));
-                    let style = &hover.spans[0].style;
-                    let mut canvas = HudBatch::scratch([320, 240]);
-                    game.component_hover_effect(&mut canvas, style, (40.0, 30.0));
-                    let committed = bytemuck::cast_slice::<_, u8>(&canvas.vertices).to_vec();
-                    game.component_hover_effect(&mut canvas, style, (50.0, 30.0));
-                    assert_eq!(
-                        bytemuck::cast_slice::<_, u8>(&canvas.vertices),
-                        committed.as_slice()
-                    );
-
-                    // Paper's flat GUI model covers its 16-pixel square. Its bounds identify the
-                    // model independently of face order. The bar, text and marker use the parent pose.
-                    let bar = canvas
-                        .vertices
-                        .iter()
-                        .position(|v| v.color == BAR)
-                        .expect("no bar")
-                        - 6;
-                    let mut min = [f32::INFINITY; 2];
-                    let mut max = [f32::NEG_INFINITY; 2];
-                    for v in &canvas.vertices[..bar] {
-                        for axis in 0..2 {
-                            min[axis] = min[axis].min(v.pos[axis]);
-                            max[axis] = max[axis].max(v.pos[axis]);
-                        }
-                    }
-                    assert_eq!([min, max], [[24.0, 24.0], [32.0, 48.0]], "model bounds");
-
-                    let atlas = &game.gui.atlas;
-                    let mut expected = HudBatch::scratch([320, 240]);
-                    expected.fill(atlas, 22.0, 43.0, 13.0, 2.0, 0xFF00_0000);
-                    expected.fill(atlas, 22.0, 43.0, 5.0, 1.0, BAR);
-                    let width = atlas.font.width("65") as i32;
-                    expected.text(atlas, "65", (17 - width) as f32, 9.0, u32::MAX, true);
-                    for v in &mut expected.vertices[12..] {
-                        v.pos[0] += 20.0;
-                        v.pos[1] += 30.0;
-                    }
-                    assert!(expected.vertices.len() > 12, "count has no glyphs");
-                    expected.fill(atlas, 18.0, 32.0, 1.0, 2.0, 0xFF00_00FF);
-                    assert_eq!(
-                        bytemuck::cast_slice::<_, u8>(&canvas.vertices[bar..]),
-                        bytemuck::cast_slice::<_, u8>(&expected.vertices),
-                        "bar, count and custom marker in parent coordinates",
-                    );
-
-                    game.inventory[0] = None;
-                    game.component_hover_effect(&mut canvas, style, (40.0, 30.0));
-                    assert_eq!(
-                        bytemuck::cast_slice::<_, u8>(&canvas.vertices),
-                        committed.as_slice()
-                    );
-
-                    // The ordinary hotbar resolves real sparse slots, then the off hand.
-                    game.inventory[..9].fill(None);
-                    game.inventory[2] = Some(ItemStack::new(ITEM, 2));
-                    game.inventory[7] = Some(ItemStack::new(ITEM, 7));
-                    game.offhand = Some(ItemStack::new(ITEM, 10));
-                    let mut hotbar = HudBatch::scratch([320, 240]);
-                    let (inputs, source) = game
-                        .camera_hotbar(crate::game::remote_camera::CameraPlayer::Own, None)
-                        .expect("local player hotbar inputs");
-                    game.draw_item_hotbar(&mut hotbar, [320, 240], &inputs, source);
-                });
-            });
+    let answers = Answers::default();
+    let resolves = Resolves::default();
+    let mods: mod_api::Mods = vec![ModEntry::new(
+        "painter",
+        Box::new(Painter {
+            answers: answers.clone(),
+            resolves: resolves.clone(),
+            bar_width: 5,
+        }),
+    )]
+    .into();
+    crate::game::api_values::install_parts(&mods).unwrap();
+    with_mods(mods, || {
+        let mut types = Vec::new();
+        Game::native_register_item_models(&RegistrationContext::new(), &mut types);
+        let (factories, kept) = bind_item_model_factories(types);
+        assert_eq!(kept, [MODEL]);
+        let bound = decode_item_model(
+            Some(&factories),
+            MODEL,
+            &Default::default(),
+            &ItemModelNode::decode,
+        )
+        .unwrap()
+        .unwrap()
+        .model;
+        with_client_game(|game| {
+            let _server = logged_client(game);
+            game.gui.atlas.font = crate::game::host::draw::canvas_test_font();
+            game.clock.reset();
+            game.cooldowns.add(Arc::from(ITEM), 4);
+            assert!(game.cooldowns.tick().is_empty());
+            assert!(game.cooldowns.tick().is_empty());
+            let definition = Arc::get_mut(&mut game.pack.item_renderer)
+                .expect("the game's item renderer is shared")
+                .models
+                .definitions
+                .get_mut(ITEM)
+                .unwrap();
+            let paper = std::mem::replace(&mut definition.model, ItemModelNode::Empty);
+            definition.model = ItemModelNode::Registered {
+                model: bound,
+                transformation: None,
+                models: vec![("paper".into(), paper)],
+            };
+            // This count is legal to draw, but exceeds paper's resident stack limit.
+            game.inventory[0] = Some(ItemStack::new(ITEM, 65));
+            let hover = Text::from(serde_json::json!({
+                "text": "x", "hover_event": { "action": "show_text", "value": "hi" }
+            }));
+            let style = &hover.spans[0].style;
+            let mut canvas = HudBatch::scratch([320, 240]);
+            game.component_hover_effect(&mut canvas, style, (40.0, 30.0));
+            let committed = bytemuck::cast_slice::<_, u8>(&canvas.vertices).to_vec();
+            game.component_hover_effect(&mut canvas, style, (50.0, 30.0));
             assert_eq!(
-                *answers.lock().unwrap(),
-                [Ok(()), Err(GuiDrawError::NotFinite)]
+                bytemuck::cast_slice::<_, u8>(&canvas.vertices),
+                committed.as_slice()
             );
+
+            // Paper's flat GUI model covers its 16-pixel square. Its bounds identify the
+            // model independently of face order. The bar, text and marker use the parent pose.
+            let bar = canvas
+                .vertices
+                .iter()
+                .position(|v| v.color == BAR)
+                .expect("no bar")
+                - 6;
+            let mut min = [f32::INFINITY; 2];
+            let mut max = [f32::NEG_INFINITY; 2];
+            for v in &canvas.vertices[..bar] {
+                for axis in 0..2 {
+                    min[axis] = min[axis].min(v.pos[axis]);
+                    max[axis] = max[axis].max(v.pos[axis]);
+                }
+            }
+            assert_eq!([min, max], [[24.0, 24.0], [32.0, 48.0]], "model bounds");
+
+            // Vanilla slot offsets: the bar starts at +2,+13, a half cooldown covers
+            // the bottom eight pixels, and count "65" advances 3 + 4 pixels. Text
+            // emits each glyph's +1,+1 shadow before that glyph's foreground.
+            let expected = [
+                ([22.0, 43.0, 35.0, 45.0], 0xFF00_0000, None),
+                ([22.0, 43.0, 27.0, 44.0], BAR, None),
+                ([20.0, 38.0, 36.0, 46.0], 0x7FFF_FFFF, None),
+                ([31.0, 40.0, 35.0, 48.0], 0xFF3F_3F3F, Some(16.0)),
+                ([30.0, 39.0, 34.0, 47.0], 0xFFFF_FFFF, Some(16.0)),
+                ([34.0, 40.0, 38.0, 48.0], 0xFF3F_3F3F, Some(20.0)),
+                ([33.0, 39.0, 37.0, 47.0], 0xFFFF_FFFF, Some(20.0)),
+                ([18.0, 32.0, 19.0, 34.0], 0xFF00_00FF, None),
+            ];
+            assert_eq!(canvas.vertices.len() - bar, expected.len() * 6);
+            for (quad, ([l, t, r, b], color, u)) in
+                canvas.vertices[bar..].chunks_exact(6).zip(expected)
+            {
+                let corners = [[l, t], [r, t], [r, b], [l, b]];
+                for (v, corner) in quad.iter().zip([0, 1, 2, 0, 2, 3]) {
+                    assert_eq!(
+                        (v.pos, v.color, v.text),
+                        (corners[corner], color, u32::from(u.is_some()))
+                    );
+                }
+                if let Some(u) = u {
+                    assert_eq!(quad[0].uv, [(u + 0.01) / 32.0, 0.01 / 16.0]);
+                    assert_eq!(quad[2].uv, [(u + 4.0 - 0.01) / 32.0, 7.99 / 16.0]);
+                }
+            }
+
+            game.inventory[0] = None;
+            game.component_hover_effect(&mut canvas, style, (40.0, 30.0));
             assert_eq!(
-                *resolves.lock().unwrap(),
-                [(37, 65), (37, 65), (3, 2), (8, 7), (10, 10)].map(|(seed, count)| (
-                    seed,
-                    count,
-                    ItemDisplayContext::Gui
-                ))
+                bytemuck::cast_slice::<_, u8>(&canvas.vertices),
+                committed.as_slice()
             );
-        },
+
+            // The ordinary hotbar resolves real sparse slots, then the off hand.
+            game.inventory[..9].fill(None);
+            game.inventory[2] = Some(ItemStack::new(ITEM, 2));
+            game.inventory[7] = Some(ItemStack::new(ITEM, 7));
+            game.offhand = Some(ItemStack::new(ITEM, 10));
+            let mut hotbar = HudBatch::scratch([320, 240]);
+            let (inputs, source) = game
+                .camera_hotbar(crate::game::remote_camera::CameraPlayer::Own, None)
+                .expect("local player hotbar inputs");
+            game.draw_item_hotbar(&mut hotbar, [320, 240], &inputs, source);
+        });
+    });
+    assert_eq!(
+        *answers.lock().unwrap(),
+        [Ok(()), Err(GuiDrawError::NotFinite)]
+    );
+    assert_eq!(
+        *resolves.lock().unwrap(),
+        [(37, 65), (37, 65), (3, 2), (8, 7), (10, 10)].map(|(seed, count)| (
+            seed,
+            count,
+            ItemDisplayContext::Gui
+        ))
     );
 }
