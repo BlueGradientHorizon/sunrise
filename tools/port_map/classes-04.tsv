@@ -229,5 +229,5 @@ RegionFileStorage.close	skip:java		files close on drop
 RegionFileStorage.flush	port	crates/sunrise-world/src/region.rs::RegionFile::sync
 RegionFileStorage.getRegionFile	port	crates/sunrise-client/src/save.rs::RegionStorage::open_cached
 RegionFileStorage.read	port	crates/sunrise-world/src/region.rs::RegionFile::read
-RegionFileStorage.scanChunk	port	crates/sunrise-client/src/save.rs::read_region_record
+RegionFileStorage.scanChunk	port	crates/sunrise-client/src/save/region.rs::read_region_record
 RegionFileStorage.write	port	crates/sunrise-world/src/region.rs::RegionFile::write
