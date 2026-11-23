@@ -318,11 +318,14 @@ impl GoalCx<'_, '_> {
         &self,
         living: LivingRef,
     ) -> Option<(mod_api::EntityRef, i32)> {
-        let (id, tick) = match self.resolve(living.entity())? {
-            Resolved::Player => self.w.selected_player()?.last_hurt,
-            Resolved::Own => self.m.last_hurt_mob,
-            Resolved::Live(mob) => mob.last_hurt_mob,
-            _ => None,
+        let (id, tick) = match self.resolve(living.entity()) {
+            Some(Resolved::Player) => self.w.selected_player()?.last_hurt,
+            Some(Resolved::Own) => self.m.last_hurt_mob,
+            Some(Resolved::Live(mob)) => mob.last_hurt_mob,
+            // A snapshot row carries no record, and an unavailable mob answers nothing.
+            Some(Resolved::Seen(_) | Resolved::Unavailable) => None,
+            // Holders the game keeps during the tick: its record, resolved here below.
+            Some(Resolved::Dragon(_)) | None => self.w.goal_host?.living_last_hurt_record(living),
         }?;
         let entity = self.lookup_entity(id)?;
         let alive = self

@@ -128,6 +128,7 @@ pub trait LivingBackend {
     /// the holder's `tickCount` at that moment (the same clock as `EntityRef::tick_count`).
     /// There is no age cutoff. None for a stale holder, no remembered target,
     /// or a target that is dead or gone.
+    #[goal_view]
     fn living_last_hurt_mob(&self, living: LivingRef) -> Option<(EntityRef, i32)>;
     /// Side: server.
     /// `LivingEntity.hasLineOfSight(Entity)`: whether nothing that collides

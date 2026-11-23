@@ -775,7 +775,15 @@ impl Game<'_> {
     }
 
     pub(super) fn living_last_hurt_mob(&self, living: LivingRef) -> Option<(EntityRef, i32)> {
-        let (id, timestamp) = match self.native_living_target(living)? {
+        let (id, timestamp) = self.living_last_hurt_record(living)?;
+        let target = self.entity(id)?;
+        self.last_hurt_target_alive(id)
+            .then_some((target, timestamp))
+    }
+
+    /// The holder's `lastHurtMob` id and `lastHurtMobTimestamp`, its target unresolved.
+    pub(in crate::game) fn living_last_hurt_record(&self, living: LivingRef) -> Option<(u32, i32)> {
+        match self.native_living_target(living)? {
             Target::Player => self.player.as_ref()?.health.last_hurt_mob,
             Target::Guest(conn) => {
                 let guest = self.command_guest(conn)?;
@@ -794,10 +802,7 @@ impl Game<'_> {
             }
             Target::Dragon(id) => self.dragon.as_ref().filter(|d| d.id == id)?.last_hurt_mob,
             _ => None,
-        }?;
-        let target = self.entity(id)?;
-        self.last_hurt_target_alive(id)
-            .then_some((target, timestamp))
+        }
     }
 
     /// `EntityReference.getEntity` for a kill credit, which looks through
