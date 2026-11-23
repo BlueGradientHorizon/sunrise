@@ -859,7 +859,8 @@ fn singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3() 
     run_singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3();
 }
 
-pub(in crate::game) fn run_singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3() {
+pub(in crate::game) fn run_singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3()
+ {
     in_own_process(
         "game::crosshair_pick_tests::singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3",
         || {

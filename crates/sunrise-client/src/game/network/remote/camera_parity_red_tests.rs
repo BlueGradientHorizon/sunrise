@@ -776,7 +776,8 @@ fn camera_consumers_streaming_particles_debug_and_spectator_crosshair_26_3() {
     run_camera_consumers_streaming_particles_debug_and_spectator_crosshair_26_3();
 }
 
-pub(in crate::game) fn run_camera_consumers_streaming_particles_debug_and_spectator_crosshair_26_3() {
+pub(in crate::game) fn run_camera_consumers_streaming_particles_debug_and_spectator_crosshair_26_3()
+{
     let witness = parity_witness();
     let consumers = &witness["camera_consumers"];
     let stream = &consumers["streaming_and_particles"];
@@ -1719,7 +1720,8 @@ fn camera_entity_hidden_in_first_person_for_all_kinds_and_local_player_hidden_26
     run_camera_entity_hidden_in_first_person_for_all_kinds_and_local_player_hidden_26_3();
 }
 
-pub(in crate::game) fn run_camera_entity_hidden_in_first_person_for_all_kinds_and_local_player_hidden_26_3() {
+pub(in crate::game) fn run_camera_entity_hidden_in_first_person_for_all_kinds_and_local_player_hidden_26_3()
+ {
     use sunrise_client::camera::CameraType;
     use sunrise_core::nbt::Tag;
 

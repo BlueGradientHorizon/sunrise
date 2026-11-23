@@ -1728,7 +1728,8 @@ pub(in crate::game) mod tests {
         run_item_display_end_crystal_world_submit_uses_vanilla_glint_scale_and_atlas_uv_26_3();
     }
 
-    pub(in crate::game) fn run_item_display_end_crystal_world_submit_uses_vanilla_glint_scale_and_atlas_uv_26_3() {
+    pub(in crate::game) fn run_item_display_end_crystal_world_submit_uses_vanilla_glint_scale_and_atlas_uv_26_3()
+     {
         crate::game::in_own_process(
             "game::item_draw::tests::item_display_end_crystal_world_submit_uses_vanilla_glint_scale_and_atlas_uv_26_3",
             || {
