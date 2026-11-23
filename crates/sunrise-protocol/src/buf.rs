@@ -13,13 +13,6 @@ pub const NBT_QUOTA: usize = nbt::Limits::network().max_bytes;
 /// The most tags one network NBT value can hold within [`NBT_QUOTA`], using
 /// vanilla's minimum eight-byte per-tag heap charge.
 pub const NBT_MAX_TAGS: usize = nbt::Limits::network().max_nodes;
-/// Vanilla's `NbtAccounter.unlimitedHeap()`: unlimited bytes and tag count,
-/// still bounded by the 512-level NBT depth limit.
-pub const TRUSTED_NBT_LIMITS: nbt::Limits = nbt::Limits {
-    max_bytes: usize::MAX,
-    max_nodes: usize::MAX,
-    max_depth: nbt::Limits::network().max_depth,
-};
 
 /// Whether a peer can read `tag` as network NBT: written within [`NBT_QUOTA`], then read back by
 /// [`Reader::nbt`] under the receiver's own limits (`NbtAccounter.defaultQuota` and its tag count).
@@ -513,37 +506,8 @@ impl Codec<Tag> for OptionalCompoundTag {
             matches!(v, Tag::Compound(_)),
             "OptionalCompoundTag::write requires Tag::Compound or Tag::End"
         );
-        w.try_nbt(v, TRUSTED_NBT_LIMITS)
+        w.try_nbt(v, nbt::Limits::unlimited_heap())
             .expect("OptionalCompoundTag must be validated before write");
-    }
-}
-/// ByteBufCodecs.TRUSTED_COMPOUND_TAG (`NbtAccounter.unlimitedHeap()`, non-null compound).
-pub struct TrustedCompoundTag;
-impl Codec<Tag> for TrustedCompoundTag {
-    fn read(r: &mut Reader) -> Result<Tag> {
-        let tag = r.nbt_within(TRUSTED_NBT_LIMITS)?;
-        match tag {
-            Tag::Compound(_) => Ok(tag),
-            Tag::End => Err(Error::new("NBT: expected non-null compound tag")),
-            _ => Err(Error::new("NBT: expected compound tag")),
-        }
-    }
-    fn validate(v: &Tag) -> Result<()> {
-        match v {
-            Tag::Compound(_) => nbt::write_network(v, TRUSTED_NBT_LIMITS)
-                .map(|_| ())
-                .map_err(|e| Error::new(format!("NBT: {e}"))),
-            Tag::End => Err(Error::new("NBT: expected non-null compound tag")),
-            _ => Err(Error::new("NBT: expected compound tag")),
-        }
-    }
-    fn write(v: &Tag, w: &mut Writer) {
-        assert!(
-            matches!(v, Tag::Compound(_)),
-            "TrustedCompoundTag::write requires Tag::Compound"
-        );
-        w.try_nbt(v, TRUSTED_NBT_LIMITS)
-            .expect("TrustedCompoundTag must be validated before write");
     }
 }
 /// Network NBT read with `NbtAccounter.unlimitedHeap()` limits.
@@ -553,7 +517,9 @@ impl Codec<Tag> for TrustedNbt {
         r.nbt_within(nbt::Limits::unlimited_heap())
     }
     fn write(v: &Tag, w: &mut Writer) {
-        Nbt::write(v, w)
+        if w.try_nbt(v, nbt::Limits::unlimited_heap()).is_err() {
+            w.u8(0);
+        }
     }
 }
 /// `ByteBufCodecs.TRUSTED_COMPOUND_TAG`: unlimited-heap NBT with a required compound root.
@@ -566,6 +532,15 @@ impl Codec<Tag> for TrustedCompound {
             return Err(Error::new("Expected non-null compound tag"));
         }
         Ok(tag)
+    }
+    fn validate(v: &Tag) -> Result<()> {
+        match v {
+            Tag::Compound(_) => nbt::write_network(v, nbt::Limits::unlimited_heap())
+                .map(|_| ())
+                .map_err(|e| Error::new(format!("NBT: {e}"))),
+            Tag::End => Err(Error::new("Expected non-null compound tag")),
+            _ => Err(Error::new("NBT: expected compound tag")),
+        }
     }
     fn write(v: &Tag, w: &mut Writer) {
         TrustedNbt::write(v, w)
@@ -1186,14 +1161,14 @@ mod tests {
         let error = Clientbound::decode(id, reader.rest()).unwrap_err();
         assert!(error.to_string().contains("heap quota exceeded"), "{error}");
 
-        // TrustedCompoundTag: non-null compound, unlimited heap, still bounded by depth 512.
-        assert!(TrustedCompoundTag::validate(&Tag::End).is_err());
-        assert!(TrustedCompoundTag::validate(&deep).is_err());
-        assert!(TrustedCompoundTag::validate(&named_end).is_err());
-        assert!(TrustedCompoundTag::validate(&valid).is_ok());
-        assert!(TrustedCompoundTag::validate(&large).is_ok());
-        round::<Tag, TrustedCompoundTag>(valid.clone());
-        round::<Tag, TrustedCompoundTag>(large.clone());
+        // TrustedCompound: non-null compound, unlimited heap, still bounded by depth 512.
+        assert!(TrustedCompound::validate(&Tag::End).is_err());
+        assert!(TrustedCompound::validate(&deep).is_err());
+        assert!(TrustedCompound::validate(&named_end).is_err());
+        assert!(TrustedCompound::validate(&valid).is_ok());
+        assert!(TrustedCompound::validate(&large).is_ok());
+        round::<Tag, TrustedCompound>(valid.clone());
+        round::<Tag, TrustedCompound>(large.clone());
 
         let entity_packet = |tag: Tag| {
             Clientbound::BlockEntityData(play::BlockEntityData {

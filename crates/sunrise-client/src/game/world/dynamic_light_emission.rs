@@ -9,8 +9,11 @@ use sunrise_client::fast_hash::FxHashMap;
 impl Game<'_> {
     /// `ServerChunkCache.getChunk`: drive an authoritative FULL read on the level owner.
     /// Receive columns, prepare their contextual emission, then schedule lighting.
+    /// In paused unit fixtures with hand-inserted unlit columns, treat resident columns as
+    /// readable without unpausing workers.
     pub(super) fn load_full_column(&mut self, column: (i32, i32)) -> bool {
         self.load_full_chunk(None, column)
+            || (self.streaming.paused && self.world.chunks.contains_key(&column))
     }
 
     /// The chunks the workers brought into this level, asked before a light job reads them.

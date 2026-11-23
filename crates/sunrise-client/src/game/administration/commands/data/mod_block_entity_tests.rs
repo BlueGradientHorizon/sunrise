@@ -188,7 +188,7 @@ fn actual_data_commands_preserve_same_mod_entity_runtime_state() {
                 ("added", Tag::Short(9)),
             ]))
         );
-        assert_eq!(loaded.items.len(), 2);
+        assert_eq!(loaded.items.len(), 4);
         assert!(
             loaded.items[0].is_none(),
             "saved inventory replaces the old slots"
@@ -200,6 +200,8 @@ fn actual_data_commands_preserve_same_mod_entity_runtime_state() {
             stack.data().unwrap().other("minecraft:custom_data"),
             Some(&Tag::compound([("stamp", Tag::Byte(8))]))
         );
+        assert!(loaded.items[2].is_none());
+        assert!(loaded.items[3].is_none());
 
         let before = run(&mut game, "data remove block 2 64 2 Opaque.typed");
         changed(&game, before);
@@ -213,11 +215,16 @@ fn actual_data_commands_preserve_same_mod_entity_runtime_state() {
         assert_eq!(projected.get("Items"), Some(&expected));
         let before = run(&mut game, "data remove block 2 64 2 Items");
         changed(&game, before);
+        assert_eq!(entity(&game).items.len(), 4);
         assert!(
-            entity(&game).items.is_empty(),
+            entity(&game).items.iter().all(Option::is_none),
             "removed inventory must not resurrect"
         );
         assert!(!entity(&game).nbt.contains_key(&"Items".into()));
+        assert_eq!(
+            game.data_of(&DataRef::Block(POS)).unwrap().get("Items"),
+            None
+        );
         let before = run(&mut game, "data remove block 2 64 2 Opaque");
         changed(&game, before);
         assert!(!entity(&game).nbt.contains_key(&"Opaque".into()));
@@ -225,7 +232,8 @@ fn actual_data_commands_preserve_same_mod_entity_runtime_state() {
         // Unknown, non-inventory Items belongs to the mod's opaque saved data.
         let before = run(&mut game, "data merge block 2 64 2 {Items:{opaque:5b}}");
         changed(&game, before);
-        assert!(entity(&game).items.is_empty());
+        assert_eq!(entity(&game).items.len(), 4);
+        assert!(entity(&game).items.iter().all(Option::is_none));
         assert_eq!(
             entity(&game).nbt.get(&"Items".into()),
             Some(&Tag::compound([("opaque", Tag::Byte(5))]))

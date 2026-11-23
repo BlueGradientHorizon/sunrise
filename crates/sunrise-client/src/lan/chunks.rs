@@ -18,7 +18,7 @@ use std::{
 use sunrise_core::nbt::{Compound, Tag};
 use sunrise_core::vanilla_bytes::Writer;
 use sunrise_protocol::{
-    buf::{BitSet, Codec, List, TrustedCompoundTag, set_bit},
+    buf::{BitSet, Codec, List, TrustedCompound, set_bit},
     chunk::{
         BIOMES, BLOCKS, BlockEntityInfo, ChunkData, Heightmaps, LightData, Paletted, Strategy,
     },
@@ -862,7 +862,7 @@ impl ChunkEncoder {
         };
         merged.extend(fields);
         let merged = Tag::Compound(merged);
-        match TrustedCompoundTag::validate(&merged) {
+        match TrustedCompound::validate(&merged) {
             Ok(()) => Some(merged),
             Err(e) => {
                 log::warn!(

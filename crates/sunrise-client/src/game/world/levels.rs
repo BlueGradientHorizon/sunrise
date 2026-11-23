@@ -631,6 +631,7 @@ impl Levels {
                 has_unloadable_chunks,
                 saving_enabled,
             ) == IdleAction::UnloadChunks
+                && !p.streaming.has_pending_light(&p.world)
             {
                 unload_chunks.push(dim);
             }
@@ -651,11 +652,12 @@ impl Levels {
                 continue;
             }
             let active = is_active(dim);
-            // A live `UNKNOWN` ticket keeps its column, so the level stays open (not ticking)
-            // until the ticket expires.
+            // A live `UNKNOWN` ticket or pending parked light work keeps the level open
+            // (not ticking, without resetting its idle counter) until it finishes.
             if step_parked_idle(dim, &mut p.idle, active, false, saving_enabled)
                 == IdleAction::Close
                 && !p.streaming.has_unknown_tickets()
+                && !p.streaming.has_pending_light(&p.world)
             {
                 close.push(dim);
             }
@@ -1946,11 +1948,14 @@ impl Game<'_> {
                 .into_iter()
                 .filter(|d| self.needs_view_pass(*d) || self.has_spawn_tickets(*d)),
         );
-        // A vehicle waiting for its rider, or light work still running on a parked level.
-        active.extend(self.levels.parked.iter().filter_map(|(&dim, parked)| {
-            (self.vehicle_waits_in(dim) || parked.streaming.has_pending_light(&parked.world))
-                .then_some(dim)
-        }));
+        // A vehicle waiting there for its rider's arrival in another level.
+        active.extend(
+            self.levels
+                .parked
+                .keys()
+                .copied()
+                .filter(|d| self.vehicle_waits_in(*d)),
+        );
         active
     }
 
@@ -1976,6 +1981,14 @@ impl Game<'_> {
                 }
                 continue;
             }
+            if self
+                .levels
+                .parked
+                .get(&dim)
+                .is_some_and(|p| p.streaming.has_pending_light(&p.world))
+            {
+                continue;
+            }
             self.unload_parked_level_chunks(dim)?;
         }
         // Recompute active levels and save state after built-in chunk drains:
@@ -1995,6 +2008,7 @@ impl Game<'_> {
             let eligible = self.levels.parked.get_mut(&dim).is_some_and(|p| {
                 custom_close_still_eligible(dim, &mut p.idle, now_active, saving_enabled)
                     && !p.streaming.has_unknown_tickets()
+                    && !p.streaming.has_pending_light(&p.world)
             });
             if eligible {
                 self.close_parked_level(dim)?;

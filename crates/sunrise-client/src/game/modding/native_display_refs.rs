@@ -787,10 +787,20 @@ mod tests {
                 values: metadata,
             })
             .encode();
-            let mut reader = Reader::new(&packet);
+            struct ItemNames<'a>(&'a sunrise_client::items::Items);
+            impl sunrise_protocol::item::Names for ItemNames<'_> {
+                fn name(&self, _: &str, _: i32) -> Option<String> {
+                    None
+                }
+                fn contains_entry(&self, registry: &str, name: &str) -> bool {
+                    registry == "minecraft:item" && self.0.get(name).is_some()
+                }
+            }
+            let names = ItemNames(game.res.items());
+            let mut reader = Reader::new(&packet).with_names(&names);
             let packet_id = reader.varint().unwrap();
             let Clientbound::SetEntityData(decoded) =
-                Clientbound::decode(packet_id, reader.rest()).unwrap()
+                Clientbound::decode_reader(packet_id, reader).unwrap()
             else {
                 panic!("expected display metadata packet");
             };
