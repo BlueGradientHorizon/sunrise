@@ -186,9 +186,9 @@ Which to take:
 naming one (`cargo install`); a tool older than that option answers with its usage instead. The newest tool's commit is `commit` in
 [`tool.json`](https://github.com/sunrise-org/sunrise/releases/download/mod-tool/tool.json).
 
-For [registry releases](../how-to/publish.md#how-releasing-works), use the signed `mod-tool` release. The shared workflow
-verifies the tool before running it and records its commit in the job summary. A native mod's SDK pin is
-separate from the tool version.
+Registry releases, once [`cargo sunrise-mod release`](../how-to/publish.md#how-releasing-works) ships, run the
+signed `mod-tool` release in the shared workflow, which verifies the tool before running it. A native mod's SDK pin
+is separate from the tool version.
 
 ## With `cargo install`
 
