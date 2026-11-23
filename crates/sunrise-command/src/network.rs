@@ -543,6 +543,22 @@ mod tests {
         );
         assert!(signable("spawn").is_empty());
         assert!(signable("unknown words").is_empty());
+
+        // A server that hides a signable root (`player_commands_sent`) leaves the client
+        // nothing to sign it by, as NeoForge's `ClientPacketListener.sendCommand` does with its
+        // own tree: the command is sent unsigned, and the server's secure-chat policy decides.
+        let mut hidden = packet;
+        hidden.nodes[6].children = vec![3, 5];
+        let d = from_packet(&hidden, super::super::vanilla::dispatcher());
+        assert!(
+            d.parse("msg Steve hi there", &reg)
+                .signable_arguments(&d)
+                .is_empty()
+        );
+        assert_eq!(
+            d.parse("shout hello", &reg).signable_arguments(&d),
+            vec![("text".to_owned(), "hello".to_owned())]
+        );
     }
 
     #[test]
