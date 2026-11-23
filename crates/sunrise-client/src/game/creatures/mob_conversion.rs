@@ -17,6 +17,15 @@ impl Game<'_> {
         params: conversion::Params,
         after: conversion::After,
     ) {
-        self.convert_to(from, kind, params, after.pre_checked(), |_, _| {});
+        // A tick conversion is queued from inside the mob's AI step: the new mob takes the
+        // place the mob had then, before its travel.
+        self.convert_to_moved(
+            from,
+            kind,
+            params,
+            after.pre_checked(),
+            Some(from),
+            |_, _| {},
+        );
     }
 }

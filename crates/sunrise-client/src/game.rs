@@ -1841,6 +1841,9 @@ mod pickups;
 #[cfg(test)]
 #[path = "game/mobs/piglin_admire_tests.rs"]
 mod piglin_admire_tests;
+#[cfg(test)]
+#[path = "game/mobs/piglin_conversion_tests.rs"]
+mod piglin_conversion_tests;
 #[path = "game/mobs/piglins.rs"]
 mod piglins;
 #[path = "game/blocks/piston_carry.rs"]

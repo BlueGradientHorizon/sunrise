@@ -2313,6 +2313,13 @@ pub enum MobEvent {
         count: u32,
         at: [f64; 3],
     },
+    /// `Piglin.finishConversion`'s `inventory.removeAllItems().forEach(spawnAtLocation)`:
+    /// every stack of `mob`'s inventory, as the game finds it when it handles the event, dropped
+    /// at `at` (where the piglin converted).
+    DropInventory {
+        mob: u32,
+        at: [f64; 3],
+    },
     /// `Entity.spawnAtLocation` with the complete stack and its components.
     DropStack {
         mob: u32,

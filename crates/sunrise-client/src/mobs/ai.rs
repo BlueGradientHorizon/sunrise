@@ -4150,6 +4150,76 @@ mod server_ai_brain_tests {
     /// finds a soul lantern 3 blocks away, `PiglinAi.avoidRepellent` (the idle activity's
     /// `SetWalkTargetAwayFrom.pos(NEAREST_REPELLENT, ..)`) already walks away from it, as
     /// `HoglinSpecificSensor` and the hoglin's for a warped fungus.
+    /// A stone floor wide enough to walk 16 blocks away on, and `block` at (0, 64, 0).
+    fn repellent_floor(
+        block: &'static str,
+    ) -> impl FnOnce(&mut crate::world::World, &sunrise_world::registry::BlockRegistry) {
+        move |world, registry| {
+            let stone = registry.default_state("minecraft:stone").unwrap();
+            for cx in -3..3 {
+                for cz in -3..3 {
+                    world
+                        .chunks
+                        .insert((cx, cz), Arc::new(crate::chunk::Chunk::empty(cx, cz)));
+                }
+            }
+            for x in -48..48 {
+                for z in -48..48 {
+                    world.set(x, 63, z, stone).unwrap();
+                }
+            }
+            world
+                .set(0, 64, 0, registry.default_state(block).unwrap())
+                .unwrap();
+        }
+    }
+
+    /// The same on a tick where `Mob.serverAiStep`'s goal selectors only tick the goals already
+    /// running (an odd `tickCount + id` past the first ticks): the avoid behaviour is the
+    /// brain's, which `Brain.startEachNonRunningBehavior` tries on every tick, so it still
+    /// starts on the scan's tick.
+    #[test]
+    #[ignore = "daily"]
+    fn a_repellent_scanned_on_a_running_goals_only_tick_is_avoided_that_tick() {
+        for (name, block, goal) in [
+            (
+                "minecraft:piglin",
+                "minecraft:soul_lantern",
+                "PiglinAvoidRepellent",
+            ),
+            (
+                "minecraft:hoglin",
+                "minecraft:warped_fungus",
+                "HoglinAvoidRepellent",
+            ),
+        ] {
+            let ran = with_built_test_world(&[], repellent_floor(block), |w, types| {
+                let mut world = w.clone();
+                world.player = None;
+                let mut level = crate::health::TestLevel::new(0);
+                let mut events = Vec::new();
+                let mut m = Mob::new(
+                    2,
+                    Arc::new(types.types[name].clone()),
+                    Vec3::new(3.5, 64.0, 0.5),
+                    0.0,
+                );
+                // `tickCount` 5, id 2: 7 is odd, so only the running goals tick.
+                m.age = 5;
+                m.extra.piglin.sensor_wait = 1;
+                m.ground.on_ground = true;
+                let _ = server_ai_step(&mut m, &world, &mut level.level(), &mut events, false);
+                assert_eq!(m.extra.repellent, Some([0, 64, 0]), "{name} scans");
+                assert!(
+                    m.ai.goals.is_running(goal),
+                    "{name}: {:?}",
+                    m.ai.goals.running_names()
+                );
+            });
+            assert!(ran, "vanilla data is missing");
+        }
+    }
+
     #[test]
     #[ignore = "daily"]
     fn a_repellent_scanned_this_tick_is_avoided_this_tick() {
@@ -4347,14 +4417,8 @@ mod server_ai_brain_tests {
                     .any(|e| matches!(e, MobEvent::DropItem { .. })),
                 "the ingot is not dropped: {events:?}"
             );
-            let MobEvent::Convert { from, .. } = &events[convert] else {
-                unreachable!()
-            };
-            assert_eq!(
-                from.extra.off_hand_id(),
-                None,
-                "the zombified piglin carries nothing"
-            );
+            // What the zombified piglin carries is the game's to settle, once it has handled
+            // the `FinishAdmiring` (`game::piglin_conversion_tests`).
         });
         assert!(ran, "vanilla data is missing");
     }
