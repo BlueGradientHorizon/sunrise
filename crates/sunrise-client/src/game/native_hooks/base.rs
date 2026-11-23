@@ -130,12 +130,17 @@ impl GameLevel<'_> {
 
     /// An authoritative server is about to deliver `neighborChanged`.
     /// State and block IDs are valid in this level's registries for this call.
-    /// The host is the level with its ticks, as vanilla's `neighborChanged` gets the
-    /// level: a part may read its inputs (`signal`, `has_neighbor_signal`) and
-    /// schedule its tick here, as a diode does (`DiodeBlock.checkTickOnNeighbor`).
+    /// The host is the level writer vanilla's `neighborChanged` gets: a part may read
+    /// its inputs (`signal`, `has_neighbor_signal`), schedule its tick, as a diode does
+    /// (`DiodeBlock.checkTickOnNeighbor`), and set blocks, as `RedstoneLampBlock` lights
+    /// itself at once (`level.setBlock(pos, state.cycle(LIT), 2)`). A write's own
+    /// neighbour updates run next, before the rest of the update that delivered this
+    /// call (`CollectingNeighborUpdater`), as `Level.setBlock` from inside
+    /// `neighborChanged` runs them. The block's own handling then runs with the state
+    /// it was called with.
     #[inline(always)]
     pub(in crate::game) fn native_neighbor_changed(
-        &self,
+        &mut self,
         ticks: &mut Ticks,
         dimension: LevelDimension,
         pos: BlockPos,
