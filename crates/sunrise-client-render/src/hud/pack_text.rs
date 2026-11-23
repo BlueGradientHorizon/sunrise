@@ -1127,8 +1127,8 @@ mod tests {
     }
 
     /// A pack's `core/lightmap` is loaded with vanilla's `core/screenquad` (a stage of another
-    /// name), and the reverse; none when no pack replaces either; refused when it reads a block
-    /// the lightmap pass doesn't give.
+    /// name), and the reverse; none when no pack replaces either; refused when it reads an
+    /// extra block whose layout the lightmap pass cannot bind.
     #[test]
     fn a_pack_replacing_either_lightmap_stage_is_loaded() {
         let red = "#version 330\nlayout(std140) uniform LightmapInfo {\n    float SkyFactor;\n} info;\n\
@@ -1142,7 +1142,10 @@ mod tests {
                     void main() {\n    texCoord = vec2(0.5);\n    gl_Position = vec4(0.0, 0.0, 0.0, 1.0);\n}\n";
         assert!(lightmap(&[(vsh, quad)]).is_some());
         assert!(lightmap(&[]).is_none(), "no pack replaces either stage");
-        let other = red.replace("LightmapInfo", "Elsewhere");
+        let other = red
+            .replace("LightmapInfo", "Elsewhere")
+            .replace("float SkyFactor", "vec4 SkyFactor")
+            .replace("info.SkyFactor", "info.SkyFactor.x");
         assert!(lightmap(&[(fsh, &other)]).is_none());
     }
 
