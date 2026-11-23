@@ -21,7 +21,7 @@ impl Game<'_> {
     /// invalid signature as not shown, even if its error line is visible.
     fn accept_chat(&mut self, chat: QueuedChat) -> bool {
         let signature = chat.signature;
-        let error = matches!(chat.kind, QueuedChatKind::Error);
+        let error = matches!(chat.kind, QueuedChatKind::Error { .. });
         if error && let Some(signature) = &signature {
             self.mark_message_processed(signature, false);
         }
