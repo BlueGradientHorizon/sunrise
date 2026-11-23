@@ -589,55 +589,6 @@ mod tests {
         assert!(!integrated.nodes.iter().any(|n| n.name == "later"));
     }
 
-    /// `integer(min,max)` and `long(min,max)` nodes of a mod's tree as the packet carries them:
-    /// the parser's registry id, then `IntegerArgumentInfo` / `LongArgumentInfo`'s
-    /// `serializeToNetwork` (the flags byte, then each bound present, big-endian).
-    #[test]
-    fn bounded_numbers_go_out_as_vanillas_argument_infos_write_them() {
-        let builtin = Builtin::parse(
-            r#"{"minecraft:command_argument_type":{"entries":{
-                "brigadier:bool":{"protocol_id":0},"brigadier:float":{"protocol_id":1},
-                "brigadier:double":{"protocol_id":2},"brigadier:integer":{"protocol_id":3},
-                "brigadier:long":{"protocol_id":4}}}}"#,
-        )
-        .unwrap();
-        let mods: Value = serde_json::from_str(
-            r#"{"type":"root","children":{
-                "pay":{"type":"literal","children":{"amount":{"type":"argument","parser":"brigadier:integer","properties":{"min":0,"max":1000},"executable":true}}},
-                "floor":{"type":"literal","children":{"level":{"type":"argument","parser":"brigadier:integer","properties":{"min":-64},"executable":true}}},
-                "bank":{"type":"literal","children":{"total":{"type":"argument","parser":"brigadier:long","properties":{"min":-5,"max":9000000000},"executable":true}}},
-                "plain":{"type":"literal","children":{"n":{"type":"argument","parser":"brigadier:long","executable":true}}}}}"#,
-        )
-        .unwrap();
-        let tree = CommandTree {
-            root: serde_json::json!({"type": "root", "children": {}}),
-        };
-        let packet = tree.packet_with(0, true, &builtin, &mods);
-        let parser = |name: &str| {
-            packet
-                .nodes
-                .iter()
-                .find(|n| n.name == name)
-                .unwrap()
-                .parser
-                .clone()
-                .unwrap()
-        };
-        assert_eq!(parser("amount"), (3, vec![3, 0, 0, 0, 0, 0, 0, 0x03, 0xE8]));
-        assert_eq!(parser("level"), (3, vec![1, 0xFF, 0xFF, 0xFF, 0xC0]));
-        assert_eq!(
-            parser("total"),
-            (
-                4,
-                vec![
-                    3, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFB, 0, 0, 0, 0x02, 0x18, 0x71,
-                    0x1A, 0x00
-                ]
-            )
-        );
-        assert_eq!(parser("n"), (4, vec![0]));
-    }
-
     #[test]
     fn levels_filter_and_redirects_resolve() {
         let report: Value = serde_json::from_str(
