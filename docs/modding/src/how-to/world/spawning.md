@@ -363,7 +363,7 @@ See [the `finalize_spawn` contract](https://github.com/sunrise-org/sunrise/blob/
 A natural spawn adds mobs of one type to a group until its count reaches the type's limit
 (`Mob.getMaxSpawnClusterSize`). `EntityPart::spawn_cluster_size` runs at that comparison in
 `NaturalSpawner.spawnCategoryForPosition`, like NeoForge's `SpawnClusterSizeEvent`: after the mob was
-finalized, counted by the spawn state and recorded as pending. The part gets the read-only host and the
+finalized, added to the level with its passengers and counted by the spawn state. The part gets the read-only host and the
 event: the mob (`event.mob`), the vanilla limit (`event.vanilla`, an `i32`) and one signed
 `event.size: i32` that starts at the vanilla limit. Every part of the type edits it in dispatch
 order and sees what the parts before it left, so two parts compose (one doubles, the next adds one). The
@@ -384,7 +384,7 @@ impl mod_api::EntityPart for ZombiePacks {
 }
 ```
 
-Only natural spawning's packs ask it: vanilla has no group limit anywhere else. A type with no part keeps vanilla's limit and costs nothing. The mob is the same `UnspawnedMobRef` as `finalize_spawn`'s, finalized and not yet added to the level's mob list, and the call runs on replayed ticks like `finalize_spawn`, so an answer must be a pure function of its inputs. Attach the part with `r.entity_part("minecraft:zombie", ZombiePacks)` as [entity parts](../../concepts/parts/entity-parts-and-mob-goals.md) describe.
+Only natural spawning's packs ask it: vanilla has no group limit anywhere else. A type with no part keeps vanilla's limit and costs nothing. The mob (`event.mob`) is a `MobRef` to a mob already in the level, so it reads and changes like any resident mob, and the call runs on replayed ticks like `finalize_spawn`, so an answer must be a pure function of its inputs. Attach the part with `r.entity_part("minecraft:zombie", ZombiePacks)` as [entity parts](../../concepts/parts/entity-parts-and-mob-goals.md) describe.
 
 ## Keeping or removing a mob
 

@@ -392,7 +392,7 @@ pub(super) fn emit<'a>(
                     ),
                     "& str" if opener_routed => format!("menu_for_opener({key}, block)"),
                     "& str" => format!("{table}(|| Some({key}))"),
-                    "EntityRef" | "UnspawnedMobRef" if table == "entity" => {
+                    "EntityRef" | "MobRef" | "UnspawnedMobRef" if table == "entity" => {
                         entity_kind_param = true;
                         "entity(|| Some(__entity_kind))".to_owned()
                     }
