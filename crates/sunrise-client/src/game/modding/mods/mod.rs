@@ -1653,7 +1653,12 @@ fn register_block_entity_types(
     mod_api::__private::resolve_block_entity_types(types.names(), |id| types.key(id))
         .map_err(|errors| errors.join("\n"))?;
     types.bind_tick_parts(|id| {
-        mod_api::__private::block_entity_type_listens(mod_api::HookId::BlockEntityTick, id)
+        let key = mod_api::__private::block_entity_type_key(id);
+        let bind = |hook| key.filter(|_| mod_api::__private::block_entity_type_listens(hook, id));
+        (
+            bind(mod_api::HookId::BlockEntityTick),
+            bind(mod_api::HookId::BlockEntityClientTick),
+        )
     });
     let additions: Vec<(String, String)> = if let Some(current) = block_entity_types::current() {
         current

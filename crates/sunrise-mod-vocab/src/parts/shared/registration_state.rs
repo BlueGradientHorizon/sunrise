@@ -24,6 +24,8 @@ pub(crate) struct Installed {
     pub(crate) keys: Parts,
     pub(crate) tags: TagParts,
     pub(crate) block_entity_types: Vec<(&'static str, BlockEntityTypeDecl)>,
+    pub(crate) block_entity_ticker_selectors:
+        Vec<crate::parts::block_entities::RegisteredBlockEntityTickerSelector>,
     pub(crate) block_entity_transforms:
         HashMap<String, crate::parts::block_entities::RegisteredBlockEntityTransform>,
     pub(crate) entity_attributes: Vec<EntityAttributeDeclaration>,

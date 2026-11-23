@@ -53,6 +53,26 @@ pub struct RegisteredBlockEntityTransform {
     pub step: Arc<dyn crate::BlockEntityTransform>,
 }
 
+/// The state-only selection supplied by the owning type builder.
+// no wire: native registration callback.
+#[doc(hidden)]
+pub type BlockEntityTickerSelector =
+    dyn Fn(&dyn crate::BlockMetadata, BlockState, crate::LogicalSide) -> bool + Send + Sync;
+
+/// One retained native selector, dispatched through its registering mod's callback owner.
+// no wire: process-local registration.
+#[doc(hidden)]
+pub struct RegisteredBlockEntityTickerSelector {
+    pub kind: crate::BlockEntityTypeKey,
+    pub owner: crate::callback_owner::CallbackOwner,
+    pub select: Arc<BlockEntityTickerSelector>,
+}
+
+#[doc(hidden)]
+pub fn block_entity_ticker_selectors() -> &'static [RegisteredBlockEntityTickerSelector] {
+    installed().map_or(&[], |parts| &parts.block_entity_ticker_selectors)
+}
+
 /// Snapshot the callbacks once at registry preparation for worldgen workers.
 pub fn block_entity_transforms() -> std::collections::HashMap<String, RegisteredBlockEntityTransform>
 {
@@ -234,6 +254,7 @@ impl dyn Registrar + '_ {
             id: id.to_owned(),
             registrar: self,
             transform: None,
+            ticker: None,
             blocks: Vec::new(),
         }
     }
@@ -344,6 +365,13 @@ pub trait BlockEntitiesRegistrar {
         key: crate::BlockEntityTypeKey,
         step: Arc<dyn crate::BlockEntityTransform>,
     );
+    #[doc(hidden)]
+    fn set_block_entity_ticker_selector(
+        &mut self,
+        kind: crate::BlockEntityTypeKey,
+        select: Arc<BlockEntityTickerSelector>,
+    );
+
     /// Request a type by registry ID. A missing type in the complete registry refuses load.
     fn block_entity_type_key(&mut self, id: &str) -> crate::BlockEntityTypeKey;
 

@@ -3274,12 +3274,6 @@ impl Game<'_> {
         }
         out
     }
-    /// Whether a native mod's block `name` has a ticking block entity.
-    pub(in crate::game) fn native_ticks(&self, name: &str) -> bool {
-        let mut ticks = false;
-        self.native_block_entity_ticks(name, &mut ticks);
-        ticks
-    }
     /// A mod block's container at `key` opens its menu: its slots grown to
     /// the menu's. False for any other block.
     pub(super) fn open_mod_menu(&mut self, key: Pos) -> bool {

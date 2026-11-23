@@ -282,9 +282,6 @@ pub mod tests {
     }
     #[mod_api::sunrise_part]
     impl BlockEntityPart for Press {
-        fn block_entity_ticks(&self, _: &dyn Host, event: &mut BlockEntityTicksEvent<'_>) {
-            event.ticks = true;
-        }
         fn block_entity_tick(&self, _: &mut BlockEntityTickEvent<'_>) {
             PRESS_TICKS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
@@ -905,14 +902,6 @@ pub mod tests {
     #[test]
     pub(crate) fn a_block_entity_part_answers_by_block_and_by_entity_type() {
         game_thread();
-        let ticks = |block| {
-            let mut ticks = false;
-            dispatch_block_entity_ticks(&NoHost, block, &mut ticks);
-            ticks
-        };
-        // The ticker is asked by block: the type id is not a block.
-        assert!(ticks("test:press"));
-        assert!(!ticks("doubler:press_entity"));
         mod_vocab::__private::resolve_block_entity_types(
             [
                 "doubler:press_entity",
@@ -943,6 +932,14 @@ pub mod tests {
                 unreachable!()
             }
         }
+        assert!(mod_vocab::__private::block_entity_type_listens(
+            HookId::BlockEntityTick,
+            "doubler:press_entity"
+        ));
+        assert!(!mod_vocab::__private::block_entity_type_listens(
+            HookId::BlockEntityTick,
+            "test:press"
+        ));
         let tick = |kind: &str| {
             let kind = mod_vocab::__private::block_entity_type_key(kind).unwrap();
             dispatch_block_entity_tick(kind, BlockEntityScope::new(&mut Unused));
@@ -951,7 +948,7 @@ pub mod tests {
         // The tick is asked by the entity's type, which differs from its block's id.
         assert_eq!(tick("doubler:press_entity"), 1);
         assert_eq!(tick("test:press"), 0);
-        // The view distance is asked by block, as the ticker is.
+        // The view distance is asked by block, unlike the ticker.
         let distance = |block| {
             let mut distance = 64.0;
             dispatch_block_entity_view_distance(&NoHost, block, &mut distance);
@@ -990,6 +987,31 @@ impl BlockEntitiesRegistrar for PartRegistrar {
         } else {
             self.refused
                 .push("transform requires an owned block entity declaration".into());
+        }
+    }
+
+    fn set_block_entity_ticker_selector(
+        &mut self,
+        kind: crate::BlockEntityTypeKey,
+        select: Arc<mod_vocab::__private::BlockEntityTickerSelector>,
+    ) {
+        let keys = self.registry_keys.borrow();
+        let slot = mod_vocab::__private::parts_installation::block_entity_type_key_slot(kind);
+        if keys.block_entity_types.id(slot).is_some_and(|id| {
+            self.block_entity_types
+                .iter()
+                .any(|(owner, decl)| *owner == self.mod_id && decl.id == id)
+        }) {
+            self.block_entity_ticker_selectors.push(
+                mod_vocab::__private::RegisteredBlockEntityTickerSelector {
+                    kind,
+                    owner: mod_vocab::__private::game::CallbackOwner::for_mod(self.mod_id),
+                    select,
+                },
+            );
+        } else {
+            self.refused
+                .push("ticker selector requires an owned block entity declaration".into());
         }
     }
 

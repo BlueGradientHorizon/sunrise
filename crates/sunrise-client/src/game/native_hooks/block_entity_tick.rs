@@ -25,6 +25,11 @@ impl Game<'_> {
     /// `LevelChunk.BoundTickingBlockEntity.tick` for a resident mod block entity.
     /// Returns whether the ticker was dispatched, so skipped rows have no after-slot.
     pub(in crate::game) fn tick_mod_block_entity_loaded(&mut self, pos: Pos) -> bool {
+        use sunrise_client::block_entities::Ticking;
+
+        if !self.world.block_entities.has_states() {
+            self.bind_server_ticking_states();
+        }
         let Some(BlockEntity::Mod(entity)) = self.world.block_entities.get(&pos) else {
             return false;
         };
@@ -35,16 +40,22 @@ impl Game<'_> {
             return false;
         };
         let live_state = self.world.block(pos.0, pos.1, pos.2);
-        let block = &self.res.facts().get(live_state).name;
-        if !valid_tick_subject(block, entity) {
-            if let Some(id) = self
-                .world
-                .block_entities
-                .record_invalid_mod_tick(pos, generation)
-            {
-                log::warn!("Block entity {id} at {pos:?} cannot tick on {block}");
+        // A typed ticker is only bound to a registered type with a numeric id.
+        let numeric = entity.numeric_id().expect("registered ticker type");
+        match self.world.block_entities.mod_ticking(live_state.0, numeric) {
+            Ticking::Yes => {}
+            Ticking::Idle => return false,
+            Ticking::No => {
+                if let Some(id) = self
+                    .world
+                    .block_entities
+                    .record_invalid_mod_tick(pos, generation)
+                {
+                    let block = &self.res.facts().get(live_state).name;
+                    log::warn!("Block entity {id} at {pos:?} cannot tick on {block}");
+                }
+                return false;
             }
-            return false;
         }
         let Some(level) = self.level(self.dim.id()) else {
             return false;

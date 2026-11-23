@@ -27,9 +27,6 @@ mod tests {
         fn block_entity(&self, _: LevelSide<'_>, _: &mut BlockEntityEvent<'_>) -> Option<Compound> {
             Some(Compound::from([("count".into(), Tag::Int(7))]))
         }
-        fn block_entity_ticks(&self, _: &dyn Host, event: &mut BlockEntityTicksEvent<'_>) {
-            event.ticks = true;
-        }
         fn block_entity_tick(&self, _: &mut BlockEntityTickEvent<'_>) {
             self.log.lock().unwrap().push(("tick", -1));
         }

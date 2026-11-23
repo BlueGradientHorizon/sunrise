@@ -1884,9 +1884,8 @@ impl super::Game<'_> {
         if !mod_api::__private::has_part_hook(mod_api::HookId::BlockEntityUpdateTag) {
             return;
         }
-        if let Ok(api) = entity.try_into_api() {
-            Self::native_block_entity_update_tag(pos, &api, tag);
-        }
+        let data = super::native_hooks::ResidentReadBlockEntity::stored(entity);
+        Self::native_block_entity_update_tag(pos, mod_api::BlockEntityDataView::new(&data), tag);
     }
     pub(in crate::game) fn api_block_entity_submit(
         &self,
@@ -1899,9 +1898,14 @@ impl super::Game<'_> {
         if !mod_api::__private::has_part_hook(mod_api::HookId::BlockEntitySubmit) {
             return;
         }
-        if let Ok(api) = entity.try_into_api() {
-            self.native_block_entity_submit(pos, block, state, &api, draw);
-        }
+        let data = super::native_hooks::ResidentReadBlockEntity::stored(entity);
+        self.native_block_entity_submit(
+            pos,
+            block,
+            state,
+            mod_api::BlockEntityDataView::new(&data),
+            draw,
+        );
     }
     pub(in crate::game) fn api_block_entity_render_bounding_box(
         &self,
@@ -1914,9 +1918,14 @@ impl super::Game<'_> {
         if !mod_api::__private::has_part_hook(mod_api::HookId::BlockEntityRenderBoundingBox) {
             return;
         }
-        if let Ok(api) = entity.try_into_api() {
-            self.native_block_entity_render_bounding_box(pos, block, state, &api, bounds);
-        }
+        let data = super::native_hooks::ResidentReadBlockEntity::stored(entity);
+        self.native_block_entity_render_bounding_box(
+            pos,
+            block,
+            state,
+            mod_api::BlockEntityDataView::new(&data),
+            bounds,
+        );
     }
     /// Shared click metadata borrows the already-converted API snapshot for this call.
     pub(in crate::game) fn block_click<'a>(
@@ -1953,13 +1962,11 @@ impl super::GameLevel<'_> {
         if !mod_api::__private::has_part_hook(mod_api::HookId::PreRemoveSideEffects) {
             return outputs;
         }
-        let Ok(api) = entity.try_into_api() else {
-            return outputs;
-        };
+        let data = super::native_hooks::ResidentReadBlockEntity::stored(entity);
         self.native_pre_remove_side_effects(super::native_hooks::PreRemoveSideEffectsCall {
             pos,
             state,
-            entity: &api,
+            entity: mod_api::BlockEntityDataView::new(&data),
             keep_contents: &mut outputs.keep_contents,
             drops: &mut outputs.drops,
             spawns: &mut outputs.spawns,

@@ -114,6 +114,8 @@ pub struct PartRegistrar {
     pub(crate) parts: Parts,
     pub(crate) tags: TagParts,
     pub(crate) block_entity_types: Vec<(&'static str, BlockEntityTypeDecl)>,
+    pub(crate) block_entity_ticker_selectors:
+        Vec<mod_vocab::__private::RegisteredBlockEntityTickerSelector>,
     pub(crate) block_entity_transforms:
         HashMap<String, mod_vocab::__private::RegisteredBlockEntityTransform>,
     pub(crate) entity_attributes: Vec<EntityAttributeDeclaration>,
@@ -174,6 +176,7 @@ impl PartRegistrar {
             parts: Self::capability_parts(),
             tags: TagParts::default(),
             block_entity_types: Vec::new(),
+            block_entity_ticker_selectors: Vec::new(),
             block_entity_transforms: HashMap::new(),
             entity_attributes: Vec::new(),
             world_fluids: Vec::new(),
@@ -404,6 +407,7 @@ pub(crate) fn install_registrar(
         keys: registrar.parts,
         tags: registrar.tags,
         block_entity_types: registrar.block_entity_types,
+        block_entity_ticker_selectors: registrar.block_entity_ticker_selectors,
         block_entity_transforms: registrar.block_entity_transforms,
         entity_attributes: registrar.entity_attributes,
         world_fluids: registrar.world_fluids,

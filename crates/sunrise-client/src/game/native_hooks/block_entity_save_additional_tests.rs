@@ -282,14 +282,6 @@ mod tests {
     impl mod_api::BlockPart for SaveItemsPart {}
     #[mod_api::sunrise_part]
     impl BlockEntityPart for SaveItemsPart {
-        fn block_entity_ticks(
-            &self,
-            _: &dyn mod_api::Host,
-            event: &mut mod_api::BlockEntityTicksEvent<'_>,
-        ) {
-            event.ticks = true;
-        }
-
         fn block_entity_save_additional(
             &self,
             _: &dyn LevelHost,
@@ -401,11 +393,13 @@ mod tests {
                 ];
                 let items_key = "Items".into();
                 for (x, items) in (1..=3).zip(&expected) {
-                    assert_eq!(
-                        game.world
+                    assert!(
+                        !game
+                            .world
                             .block_entities
-                            .ticking(game.world.block(x, 64, 1).0),
-                        sunrise_client::block_entities::Ticking::Yes,
+                            .ticker_slots()
+                            .iter()
+                            .any(|(pos, _)| *pos == (x, 64, 1))
                     );
                     let Some(BlockEntity::Mod(row)) = game.world.block_entities.get(&(x, 64, 1))
                     else {
@@ -416,7 +410,7 @@ mod tests {
                     if x == 3 {
                         assert_eq!(row.nbt.get(&items_key), None);
                         let [Some(stack)] = row.items.as_slice() else {
-                            panic!("expected one modeled stack in slot 0 at {x}");
+                            panic!("expected one modeled stack at {x}");
                         };
                         assert_eq!((stack.item.as_ref(), stack.count), ("minecraft:stone", 1));
                     } else {
@@ -445,7 +439,7 @@ mod tests {
                     if x == 3 {
                         assert_eq!(row.nbt.get(&items_key), None);
                         let [Some(stack)] = row.items.as_slice() else {
-                            panic!("expected one saved stack in slot 0 at {x}");
+                            panic!("expected one saved stack at {x}");
                         };
                         assert_eq!((stack.item.as_ref(), stack.count), ("minecraft:stone", 1));
                     } else {

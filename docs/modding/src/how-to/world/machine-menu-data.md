@@ -190,7 +190,7 @@ impl mod_api::BlockEntityPart for Node {
 // registrar.block_entity_part(&node_type, Node)?;
 ```
 
-`event.pos` is where it stands and `event.entity` its data at the call: on a server what the chunk was
+`event.pos` is where it stands and `event.entity` borrows its data at the call: on a server what the chunk was
 just saved with, on a client its copy as the server last sent it. On a server the chunk is saved before
 the call, so a change made in it is not kept, and the chunk may already have left the level, so its
 handle's reads find nothing there. It is not called when the world closes, nor on a client when its whole
@@ -201,14 +201,20 @@ server hook told after the chunk's block entities; a client is told of the block
 ## Client ticks: a machine's hum
 
 What a running machine does on the client alone (a looping hum, smoke from its chimney, a part eased between
-two server updates) hangs off its client tick, vanilla's client `BlockEntityTicker`. A `BlockEntityPart` opts
-its type in with `block_entity_client_ticks`, asked once for each of its blocks when the client level
-initializes its ticker table (before the first column's block entities or the first ticker pass). Each copy
-this client holds gets `block_entity_client_tick` once per client tick while the level runs (not paused or
-frozen), in vanilla's ticker order: a chunk's initial tickers join in packet order, and a state change that
-adds a ticker joins it when enabled. A loaded copy ticks whether or not it is drawn: hidden behind a wall,
-out of view or beyond `block_entity_view_distance`, where `block_entity_submit` is not called. It is never
-called on a server, and a type that doesn't opt in costs nothing.
+two server updates) hangs off its client tick, vanilla's client `BlockEntityTicker`. Attach a
+`BlockEntityPart` that implements `block_entity_client_tick`. The type binds a client ticker for its
+accepted states and receives the callback once per client tick for each copy this client holds, while the level runs (not
+paused or frozen), in vanilla's ticker order: a chunk's initial tickers join in packet order, and a state
+change that adds a ticker joins it when enabled. A loaded copy ticks whether or not it is drawn: hidden behind a
+wall, out of view or beyond `block_entity_view_distance`, where `block_entity_submit` is not called. It is
+never called on a server, and a type with no client tick method has no client ticker.
+
+Use `BlockEntityTypeBuilder::ticker_when` if one type should tick only in some states or on a
+particular side. Its callback receives immutable `BlockMetadata`, the typed `BlockState` and the
+`LogicalSide`. For example, `.ticker_when(|blocks, state, _side| state.property(blocks, "enabled") ==
+Ok(Some("true")))` binds only enabled states on sides that have a subscribed Part. The decision is
+prepared with the block-state table, not asked on every tick. Server tickers use the same registration
+and run `BlockEntityPart::block_entity_tick` through the server scope.
 
 The event carries `event.subject: BlockEntityClientScope<'_>`: call `event.subject.with_view(|view| ...)`
 to read the resident copy's handle, position, level, block state, data slots, item slots and merged NBT
@@ -234,13 +240,6 @@ struct Hum;
 impl mod_api::BlockPart for Hum {}
 #[mod_api::sunrise_part]
 impl mod_api::BlockEntityPart for Hum {
-    fn block_entity_client_ticks(
-        &self,
-        _: &dyn mod_api::ClientHost,
-        event: &mut mod_api::BlockEntityClientTicksEvent<'_>,
-    ) {
-        event.ticks = true;
-    }
     fn block_entity_client_tick(
         &self,
         event: &mut mod_api::BlockEntityClientTickEvent<'_>,

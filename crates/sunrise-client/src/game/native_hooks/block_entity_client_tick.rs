@@ -1,5 +1,5 @@
 //! Client ticks of mod block entities (`ClientLevel.tickBlockEntities`): the client's own
-//! ticker list, made from `native_block_entity_client_ticks`.
+//! ticker list, bound from its registered type and state.
 use super::*;
 use crate::game::api_values::TryIntoApi;
 use mod_api::{
@@ -14,9 +14,19 @@ use sunrise_client::{
 use sunrise_core::nbt::Compound;
 
 /// Shared read-only resident view backing for client and level-load block-entity scopes.
-pub(super) struct ResidentReadBlockEntity<'a> {
+pub(in crate::game) struct ResidentReadBlockEntity<'a> {
     pub entity: &'a ModBlockEntity,
     pub slot_count: usize,
+}
+
+impl<'a> ResidentReadBlockEntity<'a> {
+    /// Lend exactly the modeled slots in a stored row, even if it has left its level.
+    pub(in crate::game) fn stored(entity: &'a ModBlockEntity) -> Self {
+        Self {
+            entity,
+            slot_count: entity.items.len(),
+        }
+    }
 }
 
 impl ResidentBlockEntityReadOnly for ResidentReadBlockEntity<'_> {
@@ -106,17 +116,6 @@ impl BlockEntityClientAccess for ClientBlockEntityAccess<'_, '_> {
 }
 
 impl Game<'_> {
-    /// Whether block `block`'s block entity ticks on the client
-    /// (`EntityBlock.getTicker` asked with the client level): set `ticks` when
-    /// it is yours, and `native_block_entity_client_tick` runs for it once per
-    /// client tick. Asked once for each mod block, for all of its states, when the client level
-    /// initializes its ticker table (before the first column's block entities or the first ticker
-    /// pass), if a part has a client tick.
-    /// Set `ticks` to true to make it tick, and never clear a value an earlier mod or mixin set.
-    pub(in crate::game) fn native_block_entity_client_ticks(&self, block: &str, ticks: &mut bool) {
-        self.fire_block_entity_client_ticks(block, ticks);
-    }
-
     /// A client tick of this client's resident mod block entity (`ClientLevel.tickBlockEntities`):
     /// the scope lends read-only views of the resident copy sequentially with the mutable
     /// `ClientHost`. Never called on a server, and never again once removed or unloaded.
@@ -208,10 +207,11 @@ impl Game<'_> {
         else {
             return;
         };
-        if !mod_api::__private::block_entity_type_listens(
-            mod_api::HookId::BlockEntityClientTick,
-            entity.id(),
-        ) {
+        let state = self.world.block(x, y, z);
+        if !entity
+            .numeric_id()
+            .is_some_and(|kind| block_entities.mod_ticking(state.0, kind) == Ticking::Yes)
+        {
             return;
         }
         let subject = mod_api::__private::game::block_entity_ref(level, [x, y, z], generation);
@@ -225,18 +225,21 @@ impl Game<'_> {
     /// ticker is decided when its block changes (`LevelChunk.updateBlockEntityTicker`).
     pub(in crate::game) fn ensure_client_ticking_states(&mut self) {
         if !self.world.block_entities.has_states() {
+            self.world.block_entities.set_mod_ticker_states(
+                super::super::api_values::block_state::mod_ticker_states(
+                    mod_api::LogicalSide::Client,
+                ),
+            );
             let states = self.client_ticking_states();
             self.world.block_entities.set_states(states);
         }
     }
 
-    /// `BlockState.getTicker` with the client level, for every block state: spawners, trial
+    /// `BlockState.getTicker` with the client level, for every vanilla block state: spawners, trial
     /// spawners, vaults, beacons, the animated block entities, lit campfires and non-dry potent
-    /// sulfur. Mod blocks opt in once per block for all of their states.
+    /// sulfur. Mod block entities select from their separate type-and-state table.
     fn client_ticking_states(&self) -> Vec<Ticking> {
         let registry = self.pack.assets.registry;
-        let mod_ticks = mod_api::__private::has_part_hook(mod_api::HookId::BlockEntityClientTick);
-        let mut asked: std::collections::HashMap<&str, bool> = std::collections::HashMap::new();
         (0..registry.len())
             .map(|i| {
                 let name: &str = &self.res.facts().get(BlockStateId(i as u32)).name;
@@ -274,15 +277,7 @@ impl Game<'_> {
                         _ => Ticking::No,
                     };
                 }
-                if !mod_ticks {
-                    return Ticking::No;
-                }
-                let ticks = *asked.entry(name).or_insert_with(|| {
-                    let mut ticks = false;
-                    self.native_block_entity_client_ticks(name, &mut ticks);
-                    ticks
-                });
-                if ticks { Ticking::Yes } else { Ticking::No }
+                Ticking::No
             })
             .collect()
     }

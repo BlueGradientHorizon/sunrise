@@ -420,7 +420,7 @@ pub(super) fn emit<'a>(
                         )
                     }
                     // An entity's type id need not be its block's: its own table.
-                    "& ModBlockEntity" => {
+                    "& ModBlockEntity" | "BlockEntityDataView < '_ >" => {
                         format!("block_entity_kind(|| Some({key}.id()))")
                     }
                     "BlockEntityClientScope < '_ >" | "BlockEntityClientReadScope < '_ >"

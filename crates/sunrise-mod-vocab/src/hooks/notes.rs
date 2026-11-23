@@ -1715,7 +1715,8 @@ game `Host`, handle constructors or transactions. Declarations still go on each 
 - Drawing mod block entities on the client. `block_entity_submit(pos, block, state, entity, draw)` runs once a frame
   for each mod block entity in view, as vanilla's `BlockEntityRenderer.submit` does (within its view distance, 64 blocks
   unless `block_entity_view_distance` answers otherwise, asked once per mod block and kept, again after a resource reload or a world change; Diverges from upstream: new hook; in the frustum,
-  its chunk faded in), with the copy the server sent (`block_entity_update_tag`). It draws into the entity batch
+  its chunk faded in), borrowing the actual client copy populated by `block_entity_update_tag` (or the screen
+  scene's own data). It draws into the entity batch
   under `draw`'s pose stack (`push`, `pop`, `translate`, `rotate_about`, `scale`, in blocks from the block's corner, as
   vanilla's `PoseStack`): `native_draw_quad` (four corners and a sprite's UVs), `native_draw_cube` (a model element's box,
   its faces baked as a model's are, each a `CubeFace::new(sprite)`, `.with_uv(uv)` for UVs of its own), `BlockEntityDrawContext::block(state)` (a resolved `BlockState`'s model, as `submitBlockModel`: a moving part is often a block of the mod's own; resolve static states once through `host.block_states()` rather than parsing property slices each frame) and `native_draw_text`
@@ -1816,7 +1817,7 @@ game `Host`, handle constructors or transactions. Declarations still go on each 
   stack, display, owner_yaw, seed)` draws an item stack under `draw`'s pose as a campfire's or a shelf's
   (`ItemModelResolver.updateForTopItem` and `ItemStackRenderState.submit`, in the model's `display` transform; with `owner_yaw`, the block
   entity is the item's owner, as a shelf is, so a compass on it points from there). The client's copy of a block entity has
-  no item slots: send the stacks you draw in `block_entity_update_tag` and read them from `entity.nbt`.
+  no item slots: send the stacks you draw in `block_entity_update_tag` and read them from `entity.nbt()`.
   `BlockState::property(metadata, "facing")` reads an owned state's property without a world lookup.
   Host callbacks supply `host.block_states()` as metadata; tint workers receive their explicit
   immutable metadata resource and never need a game host.

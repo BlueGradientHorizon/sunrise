@@ -761,6 +761,7 @@ impl BlockEntityPart for Mod {
     fn block_entity_submit(&self, _: &dyn ClientHost, event: &mut BlockEntitySubmitEvent<'_>) {
         assert_eq!(event.pos, [1, 2, 3]);
         assert_eq!(event.block, "example:machine");
+        assert_eq!(event.entity.id(), "example:subject");
         event.draw.mark(self.id);
     }
 }

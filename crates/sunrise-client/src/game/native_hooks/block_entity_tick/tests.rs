@@ -1117,14 +1117,6 @@ struct Effects {
 }
 #[mod_api::sunrise_part]
 impl BlockEntityPart for Effects {
-    fn block_entity_ticks(
-        &self,
-        _: &dyn mod_api::Host,
-        event: &mut mod_api::BlockEntityTicksEvent<'_>,
-    ) {
-        event.ticks = true;
-    }
-
     fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>) {
         self.ticks.fetch_add(1, Ordering::Relaxed);
         if *self.retake.lock().unwrap() == Retake::Requested {

@@ -330,8 +330,7 @@ impl Game<'_> {
         this.tick_container_reach();
         this.ensure_stateful_entity_table();
         if !this.world.block_entities.has_states() {
-            let states = this.ticking_states();
-            this.world.block_entities.set_states(states);
+            this.bind_server_ticking_states();
             let containers = this.native_containers();
             this.world.block_entities.set_mod_containers(containers);
             let fluids = this.native_fluid_tables();
@@ -549,6 +548,14 @@ impl Game<'_> {
             .shulkers
             .extend(self.be_anims.shulkers.iter().map(|(p, s)| (*p, s.clone())));
     }
+    pub(in crate::game) fn bind_server_ticking_states(&mut self) {
+        self.world.block_entities.set_mod_ticker_states(
+            super::api_values::block_state::mod_ticker_states(mod_api::LogicalSide::Server),
+        );
+        let states = self.ticking_states();
+        self.world.block_entities.set_states(states);
+    }
+
     /// `BlockState.getTicker` of every state, for the block entities ticked
     /// here. A creaking heart keeps its slot while uprooted (see
     /// `tick_creaking_heart`).
@@ -591,7 +598,6 @@ impl Game<'_> {
                         if record { Ticking::Yes } else { Ticking::Idle }
                     }
                     n if FurnaceKind::from_block(n).is_some() => Ticking::Yes,
-                    _ if mod_api::__private::is_content_block(name) && self.native_ticks(name) => Ticking::Yes,
                     _ => Ticking::No,
                 }
             })
@@ -1066,7 +1072,7 @@ mod add_blocks_tests {
                 }
                 let states = game.ticking_states();
                 assert_eq!(states[state.0 as usize], Ticking::Yes);
-                game.world.block_entities.set_states(states);
+                game.bind_server_ticking_states();
                 assert!(
                     game.world
                         .block_entity_tickers()
@@ -1842,11 +1848,6 @@ mod own_block_entity_tests {
     impl BlockPart for Ticks {}
     #[mod_api::sunrise_part]
     impl BlockEntityPart for Ticks {
-        fn block_entity_ticks(&self, _: &dyn Host, event: &mut BlockEntityTicksEvent<'_>) {
-            if event.block == self.0 {
-                event.ticks = true;
-            }
-        }
         fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>) {
             event.subject.with_view(|mut entity| {
                 let mut data = entity.data_slots().to_vec();
