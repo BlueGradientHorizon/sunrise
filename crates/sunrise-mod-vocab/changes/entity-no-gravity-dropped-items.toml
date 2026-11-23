@@ -1,0 +1,3 @@
+ids = ["handle:EntityRef::no_gravity", "handle:EntityRef::set_no_gravity"]
+why = "Entity.setNoGravity and Entity.isNoGravity now reach a live dropped item, not only a mob: ItemEntity already keeps and honours the flag, so the existing handle methods answer it instead of refusing the handle."
+migrate = "No API change: the methods and their host declarations are unchanged. A mod that read None or got false for a dropped item now reads the item's flag and can set it, with the item marked for the next sync."
