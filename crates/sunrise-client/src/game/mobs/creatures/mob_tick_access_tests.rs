@@ -716,16 +716,49 @@ fn a_named_pre_cannot_clear_an_earlier_turns_cancellation() {
     );
 }
 
-/// With no type named, the mobs are told as one family: one Pre before the first tick, one
-/// Post after the last, as before.
+/// With no type named, each mob is still told at its own tick boundary, as NeoForge wraps each
+/// entity's tick separately: Pre, tick, Post, then the next mob's.
 #[test]
 #[ignore = "daily"]
-fn an_unnamed_family_hears_one_pre_and_one_post() {
+fn an_unnamed_family_hears_each_entitys_own_pre_and_post() {
     let phases: Vec<_> = pig_ticks(false, false)
         .into_iter()
         .map(|(phase, entities, _)| (phase, entities))
         .collect();
-    assert_eq!(phases, [("pre", vec![71, 72]), ("post", vec![71, 72])]);
+    assert_eq!(
+        phases,
+        [
+            ("pre", vec![71]),
+            ("post", vec![71]),
+            ("pre", vec![72]),
+            ("post", vec![72]),
+        ]
+    );
+}
+
+/// A listener of only `entity_tick_post` hears each mob's Post after that mob's own tick.
+#[test]
+#[ignore = "daily"]
+fn a_post_only_listener_hears_each_mob_after_its_own_tick() {
+    struct PostOnly(Arc<Mutex<Vec<Vec<u32>>>>);
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for PostOnly {
+        fn entity_tick_post(&self, _: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {
+            self.0.lock().unwrap().push(event.entities.to_vec());
+        }
+    }
+    let heard = Arc::new(Mutex::new(Vec::new()));
+    let mods: mod_api::Mods = vec![ModEntry::new(
+        "post-only",
+        Box::new(PostOnly(heard.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_two_pigs(|game| {
+            game.tick_creature_entities().unwrap();
+        });
+    });
+    assert_eq!(*heard.lock().unwrap(), [vec![71], vec![72]]);
 }
 
 /// Two arrows of a type a mod names, on the server: each told alone, its Post right after its own

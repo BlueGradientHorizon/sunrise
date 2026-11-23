@@ -1,11 +1,9 @@
 //! Entities ticking for native mods (`native_entity_tick_pre`, `native_entity_tick_post`:
-//! NeoForge's `EntityTickEvent.Pre` and `.Post`), on the server and on a client. An entity of a
-//! type a mod named (`entity_tick_each`) is told alone, right before and right after its own
-//! tick. The others are told by family: the loops of the mobs and the items hold their lists out
-//! of `Game`, so those families hand their ticking entities to a `TickRound` before the loop, hear
-//! one Pre for all of them before it and one Post after it; the minecarts, boats and general
-//! entity rows, whose loops can call the hooks, are told one by one. The mob and item loops tell
-//! a named entity's Pre and Post from inside, at a yield that gives their list back for the call.
+//! NeoForge's `EntityTickEvent.Pre` and `.Post`), on the server and on a client. While a mod
+//! subscribes to either hook, every entity is told alone, right before and right after its own
+//! tick. The loops of the mobs and the items hold their lists out of `Game`, so they tell each
+//! entity's Pre and Post from inside, at a yield that gives their list back for the call; the
+//! minecarts, boats and general entity rows, whose loops can call the hooks, are told one by one.
 //!
 //! Each entity's position writes are filed for `entity_entering_section`
 //! (`entity_sections.rs`) while its tick is still running: a round keeps its entities while
@@ -114,18 +112,6 @@ pub(super) fn other_ticks(kind: &str) -> bool {
         && !super::general::quarantined_kind(kind)
 }
 
-/// Which entities of a round are told alone, around their own tick.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-enum Alone {
-    /// None: no mod named a type.
-    #[default]
-    None,
-    /// Those of the types mods named (a mob type's `tick_alone`).
-    Named,
-    /// Every entity: a mod named every type.
-    All,
-}
-
 /// Whether the tick hooks are heard on this side in this tick, and which entities are told alone:
 /// checked once a tick (`native_tick_told`).
 #[derive(Clone, Copy, Debug, Default)]
@@ -134,8 +120,6 @@ pub(in crate::game) struct Told {
     pre: bool,
     /// Whether an enabled mod subscribes to `entity_tick_post`.
     post: bool,
-    /// Which entities are told alone instead of with their family.
-    alone: Alone,
 }
 
 impl Told {
@@ -143,13 +127,7 @@ impl Told {
     pub(super) fn from_subscriptions() -> Self {
         let pre = mod_api::__private::enabled_listened(mod_api::HookId::EntityTickPre);
         let post = mod_api::__private::enabled_listened(mod_api::HookId::EntityTickPost);
-        let listening = pre || post;
-        let alone = match mod_api::__private::entity_tick_each() {
-            Some(each) if listening && each.all() => Alone::All,
-            Some(each) if listening && each.any() => Alone::Named,
-            _ => Alone::None,
-        };
-        Self { pre, post, alone }
+        Self { pre, post }
     }
     /// Whether an enabled mod subscribes to `entity_tick_pre`.
     pub(super) fn pre(&self) -> bool {
@@ -163,26 +141,14 @@ impl Told {
     pub(super) fn listening(&self) -> bool {
         self.pre || self.post
     }
-    /// Whether a mob of type `kind` is told alone, around its own tick, not with its family.
-    pub(super) fn alone_mob(&self, kind: &MobType) -> bool {
+    /// Whether a mob is told alone, around its own tick: every entity is, while a mod listens
+    /// (NeoForge wraps each entity's tick in `ServerLevel.tickNonPassenger` separately).
+    pub(super) fn alone_mob(&self, _kind: &MobType) -> bool {
         self.listening()
-            && match self.alone {
-                Alone::None => false,
-                Alone::Named => kind.flags.tick_alone,
-                Alone::All => true,
-            }
     }
-    /// Whether the entities of type `kind` are told alone. For a family of one type
-    /// (`minecraft:item`) it is asked once for the family, not for each entity.
-    pub(super) fn alone_kind(&self, kind: &str) -> bool {
+    /// Whether the entities of type `kind` are told alone: all of them, while a mod listens.
+    pub(super) fn alone_kind(&self, _kind: &str) -> bool {
         self.listening()
-            && match self.alone {
-                Alone::None => false,
-                Alone::Named => {
-                    mod_api::__private::entity_tick_each().is_some_and(|each| each.names(kind))
-                }
-                Alone::All => true,
-            }
     }
 }
 
@@ -207,6 +173,13 @@ pub(in crate::game) struct TickRound {
 }
 
 impl TickRound {
+    /// A round that holds no entities, for one told alone.
+    pub(in crate::game) fn with_told(told: Told) -> Self {
+        Self {
+            told,
+            ..Self::default()
+        }
+    }
     /// Whether a mod canceled the tick of entity `id`.
     pub(super) fn canceled(&self, id: u32) -> bool {
         !self.canceled.is_empty() && self.canceled.contains(&id)
@@ -564,7 +537,6 @@ mod tests {
             told: Told {
                 pre: true,
                 post: true,
-                alone: Alone::None,
             },
             ..TickRound::default()
         }
@@ -613,13 +585,11 @@ mod tests {
         assert!(r.canceled(1) && r.canceled(3) && !r.canceled(7));
     }
 
-    /// With no type named, nothing is told alone; with every type named, everything is, and a
-    /// round nobody listens to tells nothing alone whatever was named.
+    /// While either hook is subscribed every entity is told alone, and a round nobody listens
+    /// to tells nothing alone.
     #[test]
-    fn a_round_tells_alone_only_what_was_named() {
+    fn a_listened_round_tells_every_entity_alone() {
         let mut r = round();
-        assert!(!r.alone_kind("minecraft:item"));
-        r.told.alone = Alone::All;
         assert!(r.alone_kind("minecraft:item"));
         assert!(r.alone_kind_pre("minecraft:item") && r.alone_kind_post("minecraft:item"));
         r.told.pre = false;
