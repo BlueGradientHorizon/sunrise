@@ -2823,7 +2823,14 @@ mod tests {
                     (SULFUR_CUBE, level, Some(trial))
                 );
             }
-            let (refused, heard) = with_checks(Some(SpawnCheck::Fail), Vec::new, || tick(game));
+            // A trial spawner has no position event, so only a placement refusal stops it.
+            let refuse = || {
+                vec![mod_api::ModEntry::new(
+                    "refuse-placement",
+                    Box::new(ChecksMod(SpawnCheck::Fail)),
+                )]
+            };
+            let (refused, heard) = with_checks(Some(SpawnCheck::Default), refuse, || tick(game));
             assert!(!heard.is_empty());
             assert!(heard.iter().all(|h| h.hook == "placement"));
             assert_eq!(
@@ -2932,7 +2939,9 @@ mod tests {
                 assert_eq!(game.mobs.len(), before + 1);
                 let mob = &game.mobs[before];
                 assert_eq!(mob.custom_name.as_deref(), Some("edited"));
-                assert_eq!(mob.health.to_bits(), 5.0_f32.to_bits());
+                // No `Size`: AbstractCubeMob.readAdditionalSaveData sets size 1, whose maximum
+                // health of 4 clamps the saved 5 (LivingEntity.setHealth).
+                assert_eq!(mob.health.to_bits(), 4.0_f32.to_bits());
             }
         });
     }
