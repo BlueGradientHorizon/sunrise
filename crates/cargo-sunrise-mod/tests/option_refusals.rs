@@ -34,10 +34,11 @@ fn update_lock_is_refused_for_a_content_mod() {
 #[ignore = "daily"]
 fn check_fit_refuses_project_options_before_fetching_an_sdk() {
     let root = tempfile::tempdir().unwrap();
-    for (option, extra) in [("--uses", vec![]), ("--with", vec!["library"])] {
-        let mut args = vec!["check", "--build", "nightly", option];
-        args.extend(extra);
-        let output = tool(root.path(), &args);
-        refused_before_any_work(root.path(), &output, option);
+    for args in [&["--uses"][..], &["--with", "library"][..]] {
+        let mut command = vec!["check", "--build", "nightly"];
+        command.extend_from_slice(args);
+        let output = tool(root.path(), &command);
+        assert_eq!(output.status.code(), Some(2));
+        refused_before_any_work(root.path(), &output, args[0]);
     }
 }

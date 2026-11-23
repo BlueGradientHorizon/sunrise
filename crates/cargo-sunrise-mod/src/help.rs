@@ -32,7 +32,7 @@ const COMMANDS: &[Command] = &[
         name: "check",
         everyday: true,
         usage: "check [--uses] [--with <path>]… | check <file> [--kind <kind>] [--key <public key> --signature <file.minisig>] [--json] | check [<file.smod>] --build <name> [--build <name>]…",
-        summary: "Checks a mod project, a package, or whether either fits specific builds; with --build, report fit instead of running the ordinary check. The fit report takes only a package path (optional) and build names. It exits 0 when all fit, 1 when one does not, and 2 when it cannot tell. For the ordinary project check, repeat --with for local libraries and use --uses to list what the mod uses of its pinned build.",
+        summary: "Checks a mod project or package, or reports fit for the builds named by --build; fit mode takes no other options and exits 0 if all fit, 1 if one does not, or 2 if it cannot tell. For the ordinary project check, repeat --with for local libraries and use --uses to list what the mod uses of its pinned build.",
     },
     Command {
         name: "pin",

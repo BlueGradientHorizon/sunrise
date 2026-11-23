@@ -114,9 +114,9 @@ signing and publication can read metadata without unpacking source. Neither mode
 
 ## `check --build`
 
-`check --build` exits 0 when every build fits, 1 when one does not, and 2 when it cannot tell: an input it cannot read or
-fetch, or a question that doesn't apply (a content mod, a mod made for exactly one build, a package made by an older
-tool). A mod's own scheduled CI can run it to learn of a break before players do:
+`check --build` exits 0 when every build fits, 1 when one does not, and 2 when it cannot tell: an input it
+cannot read or fetch, or a question that doesn't apply (a content mod, a mod made for exactly one build, or a
+package without a uses list). A mod's scheduled CI can run it to learn of a break before players do:
 
 ```text
 Greeter:
@@ -129,9 +129,9 @@ nightly-2026-11-20 (9a8b7c6)  does not fit: 2 items changed
 
 ## `pin`
 
-For a native mod, before it repins, `pin` lists every item the mod uses that changed between the two builds, the source line that
-uses it, for a removed item the closest one in the new build (one with the same counterpart name first, then the
-nearest id and doc text), and the change note's `migrate` line when the change has one. It then lists the game
+Before it repins a native mod, `pin` lists the items the mod uses that changed, their source lines, and any
+`migrate` lines from the change notes. For a removed item it suggests the closest one in the new build (one
+with the same counterpart name first, then the nearest id and doc text). It then lists the game
 code the mod declares (mixin targets, loops, internals) that changed. A mod made for exactly one
 build is only named; its declared internals are checked as the pin moves.
 

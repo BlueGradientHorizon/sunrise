@@ -109,7 +109,10 @@ fn main() -> ExitCode {
             Ok(Check::Fit { package, builds }) => {
                 return sdk_cmds::check_fit(entry, package, &builds);
             }
-            Err(error) => Err(error),
+            Err((code, error)) => {
+                eprintln!("error: {error}");
+                return code;
+            }
         },
         Some("hooks") => sdk_cmds::hooks(&args[1..]),
         Some("sdk") => sdk_cmds::sdk(&args[1..]),
@@ -736,20 +739,28 @@ struct CheckFile<'a> {
     json: bool,
 }
 
-/// `--build` selects a fit report. Otherwise a file selects the registry check, and no file
-/// selects the project check. Options for a different form are refused by name.
-fn check_args(args: &[String]) -> Result<Check<'_>, String> {
+/// `--build` selects a fit report. Malformed fit invocations also exit 2: no verdict was reached.
+fn check_args(args: &[String]) -> Result<Check<'_>, (ExitCode, String)> {
     let mut options = Options::new(
         "check",
         args,
         &["--build", "--kind", "--key", "--signature", "--with"],
     );
-    let builds = options.values("--build")?;
+    let fit_usage_error = |error| (ExitCode::from(2), error);
+    let builds = options.values("--build").map_err(fit_usage_error)?;
     if !builds.is_empty() {
-        let package = options.at_most_one()?.map(Path::new);
-        options.finish()?;
+        let package = options
+            .at_most_one()
+            .map_err(fit_usage_error)?
+            .map(Path::new);
+        options.finish().map_err(fit_usage_error)?;
         return Ok(Check::Fit { package, builds });
     }
+    ordinary_check_args(options).map_err(|error| (ExitCode::FAILURE, error))
+}
+
+/// A file selects the registry check; no file selects the project check.
+fn ordinary_check_args(mut options: Options<'_>) -> Result<Check<'_>, String> {
     let with = options
         .values("--with")?
         .into_iter()
@@ -1492,7 +1503,7 @@ mod tests {
                 "--sunrise",
             ),
             (
-                check_args(&argv("mod.smod --jsno")).map(drop).unwrap_err(),
+                check_args(&argv("mod.smod --jsno")).unwrap_err().1,
                 "--jsno",
             ),
         ] {
@@ -1512,12 +1523,12 @@ mod tests {
         assert_eq!(check_args(&argv("--json mod.smod")), Ok(Check::File(file)));
         // A value that reads like the other form's option is still the value.
         assert_eq!(
-            check_args(&argv("mod.smod --key KEY --signature --native")),
+            check_args(&argv("mod.smod --key KEY --signature --build")),
             Ok(Check::File(CheckFile {
                 file: "mod.smod",
                 kind: None,
                 key: Some("KEY"),
-                signature: Some("--native"),
+                signature: Some("--build"),
                 json: false,
             }))
         );
@@ -1536,8 +1547,12 @@ mod tests {
             ("a.smod b.smod", "b.smod"),
             ("--use", "--use"),
         ] {
-            let error = check_args(&argv(line)).map(drop).unwrap_err();
-            assert!(error.contains(named), "{line}: {error}");
+            let (code, error) = check_args(&argv(line)).unwrap_err();
+            assert_eq!(code, ExitCode::FAILURE);
+            assert!(
+                error.lines().next().unwrap().contains(named),
+                "{line}: {error}"
+            );
         }
     }
 
@@ -1562,8 +1577,10 @@ mod tests {
             ("mod.smod --build a --json", "--json"),
             ("mod.smod --build a --kind mod", "--kind"),
             ("mod.smod --build a --key KEY --signature sig", "--key"),
+            ("a.smod b.smod --build a", "b.smod"),
         ] {
-            let error = check_args(&argv(line)).map(drop).unwrap_err();
+            let (code, error) = check_args(&argv(line)).unwrap_err();
+            assert_eq!(code, ExitCode::from(2));
             assert!(error.lines().next().unwrap().contains(refused), "{error}");
         }
     }
