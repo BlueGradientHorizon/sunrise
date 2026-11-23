@@ -1701,7 +1701,8 @@ mod sweep_tests {
                     let saw_dirt = view.block_state(pos) == Some(dirt);
                     let destroy_first = view.destroy_block(pos, false);
                     let destroy_air = view.destroy_block(pos, false);
-                    let effect_ok = view.add_effect(speed, 60, 0);
+                    let expired_admitted = view.add_effect(speed, -2, 0);
+                    let effect_ok = view.add_effect(speed, 60, 0) && expired_admitted;
                     view.set_remaining_fire_ticks(100);
                     let on_fire = view.is_on_fire();
                     let ticks = view.fire_ticks();

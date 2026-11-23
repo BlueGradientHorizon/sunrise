@@ -5113,12 +5113,9 @@ impl Mob {
         let _ = self.try_add_effect(effect, ticks, amplifier);
     }
     /// `LivingEntity.addEffect`: returns whether the effect was accepted and
-    /// changed the mob's active effect set (`false` for negative duration,
-    /// withers, or immune species).
+    /// changed the mob's active effect set. Durations other than `-1` that
+    /// are already exhausted expire in the effect tick, not at admission.
     pub fn try_add_effect(&mut self, effect: &'static str, ticks: i32, amplifier: i32) -> bool {
-        if ticks < -1 {
-            return false;
-        }
         let effect = sunrise_client_core::potions::namespaced(effect);
         // LivingEntity.addEffect: an effect the mob refuses is never added, so it
         // never joins the list the client draws or an effect tick reads.
@@ -6448,6 +6445,20 @@ mod magic_absorb_tests {
             );
         }
         assert!(m.extra.effects.is_empty(), "{:?}", m.extra.effects);
+    }
+
+    #[test]
+    fn an_expired_effect_is_admitted_then_removed_on_the_effect_tick() {
+        let mut m = witch();
+        m.add_effect("speed", -2, 0);
+        assert_eq!(m.extra.effects[0].duration, -2);
+        ai::tick_effects(
+            &mut m,
+            crate::test_resources::server_loop_context(),
+            &mut crate::health::TestLevel::new(0).level(),
+            None,
+        );
+        assert!(m.extra.effects.is_empty());
     }
 
     #[test]

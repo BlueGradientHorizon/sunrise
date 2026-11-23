@@ -896,7 +896,7 @@ impl mod_api::InsideEntityAccess for GamePlayerInsideAccess<'_, '_> {
         else {
             return false;
         };
-        if duration < -1 || self.game.player.is_none() {
+        if self.game.player.is_none() {
             return false;
         }
         let instance =

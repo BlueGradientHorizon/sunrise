@@ -1545,9 +1545,6 @@ impl mod_api::InsideEntityAccess for GameMobInsideAccess<'_, '_> {
         else {
             return false;
         };
-        if duration < -1 {
-            return false;
-        }
         let Some(m) = self.mob() else {
             return false;
         };
