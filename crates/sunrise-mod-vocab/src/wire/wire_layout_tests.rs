@@ -281,6 +281,7 @@ fn snapshot_records_have_declared_field_bytes() {
     fields(directional_source, (1u32, Direction::East));
     let pos = BlockPos { x: 1, y: 2, z: 3 };
     let hit_pos = BlockPos { x: 4, y: 5, z: 6 };
+    let _keys = Keys::new();
     let item = ItemKey::from_slot(0).unwrap();
     let mut ctx = PlacementContext::new(pos, Direction::Up, Some(item));
     ctx.hit_pos = hit_pos;
