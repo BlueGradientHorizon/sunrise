@@ -219,6 +219,7 @@ fn stage_sprite(
             );
         }
         files.insert(path.to_owned(), Resource::file(source.clone(), file));
+        mask_displaced_metadata(source, path, files);
         return true;
     }
     let load = |texture: &str, directory: &str| {
@@ -235,7 +236,22 @@ fn stage_sprite(
         return false;
     };
     files.insert(path.to_owned(), Resource::bytes(png));
+    mask_displaced_metadata(source, path, files);
     true
+}
+
+/// The image staged at `path` replaces whatever resource stood there, and the sidecar of the
+/// resource it displaced must not describe it: a staged image with no sidecar of its own gets an
+/// empty one (no `animation` section, so a static texture) over the lower pack's.
+fn mask_displaced_metadata(
+    source: &ResourceSource,
+    path: &str,
+    files: &mut BTreeMap<String, Resource>,
+) {
+    let mcmeta = format!("{path}.mcmeta");
+    if !files.contains_key(&mcmeta) && source.contains(&mcmeta) {
+        files.insert(mcmeta, Resource::bytes(b"{}".to_vec()));
+    }
 }
 
 fn encode((width, height, pixels): atlas_sources::Image) -> Option<Vec<u8>> {
@@ -545,6 +561,53 @@ mod tests {
     }
 
     #[test]
+    fn a_sprite_exactly_as_wide_as_the_device_limit_is_registered() {
+        let wide_def = r#"{"sources":[{"type":"single","resource":"wide_mod:wide","sprite":"wide_mod:wide"}]}"#;
+        let staged = stage_texture_atlases(
+            root(&[
+                ("assets/wide_mod/atlases/wide.json", wide_def.into()),
+                (
+                    "assets/wide_mod/textures/wide.png",
+                    fixture_png(4096, 1, 33),
+                ),
+            ]),
+            &[answered("wide_mod", "wide_mod:wide", "wide_mod:wide")],
+        );
+        let atlas = sunrise_client::hud::HudAtlas::build_with_limit(staged.source(), 4096).unwrap();
+        let wide = atlas
+            .registered
+            .get("wide_mod:gui/atlases/wide/wide_mod/wide")
+            .expect("a sprite that fits the device is not refused for its padding");
+        assert_eq!(wide.texels((4096, 1)), (4096, 1));
+    }
+
+    #[test]
+    fn a_qualified_sprite_name_of_a_minecraft_atlas_draws_as_a_raw_texture() {
+        let def = r#"{"sources":[{"type":"single","resource":"icons_mod:heart","sprite":"icons_mod:heart"}]}"#;
+        let staged = stage_texture_atlases(
+            root(&[
+                ("assets/minecraft/atlases/custom_icons.json", def.into()),
+                (
+                    "assets/icons_mod/textures/heart.png",
+                    fixture_png(2, 2, 123),
+                ),
+            ]),
+            &[answered(
+                "mod_a",
+                "minecraft:custom_icons",
+                "minecraft:custom_icons",
+            )],
+        );
+        let atlas = sunrise_client::hud::HudAtlas::build_with_limit(staged.source(), 4096).unwrap();
+        let name = registration("minecraft:custom_icons", "minecraft:custom_icons")
+            .sprite_name(&Identifier::parse("icons_mod:heart").unwrap())
+            .to_string();
+        assert!(name.starts_with("minecraft:"), "{name}");
+        assert!(atlas.texture_rect(&name).is_some(), "{name}");
+        assert!(atlas.texture_atlas_page(&name).is_some(), "{name}");
+    }
+
+    #[test]
     fn more_than_32_atlases_and_more_than_4096_sprites_are_staged_without_private_caps() {
         let dot = fixture_png(1, 1, 55);
         let single_def =
@@ -626,6 +689,33 @@ mod tests {
                 .unwrap(),
             first_png
         );
+    }
+
+    #[test]
+    fn a_static_sprite_over_an_animated_one_does_not_inherit_its_metadata() {
+        let target = "assets/mod_a/textures/gui/atlases/icons/mod_a/icon.png";
+        let sidecar = format!("{target}.mcmeta");
+        let animated = br#"{"animation":{"frametime":2}}"#.to_vec();
+        let def =
+            r#"{"sources":[{"type":"single","resource":"mod_a:icon","sprite":"mod_a:icon"}]}"#;
+        let staged = stage_texture_atlases(
+            root(&[
+                ("assets/mod_a/atlases/icons.json", def.into()),
+                ("assets/mod_a/textures/icon.png", fixture_png(4, 8, 5)),
+                (target, fixture_png(4, 4, 10)),
+                (&sidecar, animated.clone()),
+            ]),
+            &[answered("mod_a", "mod_a:icons", "mod_a:icons")],
+        );
+        let source = staged.source();
+        assert_eq!(
+            sunrise_client::hud::png_bytes_size(&source.read(target).unwrap()),
+            Some((4, 8))
+        );
+        let metadata = source.read(&sidecar).unwrap();
+        assert_ne!(metadata, animated, "the displaced animation is masked");
+        let parsed: serde_json::Value = serde_json::from_slice(&metadata).unwrap();
+        assert!(parsed.get("animation").is_none());
     }
 
     #[test]
@@ -798,6 +888,13 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_mod_atlas_sprite_is_stitched_into_the_gui_atlas_until_a_reload_drops_it() {
+        if crate::game::native_entity_refs::tests::run_fresh_cases(
+            "game::client_reload::texture_atlases::tests::a_mod_atlas_sprite_is_stitched_into_the_gui_atlas_until_a_reload_drops_it",
+            "SUNRISE_ATLAS_RELOAD_CHILD",
+            &["reload"],
+        ) {
+            return;
+        }
         let dir = tempfile::tempdir().unwrap();
         let mod_dir = dir.path().join("maps_mod");
         std::fs::create_dir_all(mod_dir.join("assets/maps_mod/atlases")).unwrap();
