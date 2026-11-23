@@ -22,7 +22,7 @@ cargo sunrise-mod release patch
 
 Use `minor`, `major`, or a higher SemVer instead of `patch` to choose another version. `--check` runs the
 release checks for the proposed version without changing the checkout. Without it, `release` refreshes the
-workflow, commits the version bump, and pushes the branch and tag together to `origin`. The tag is `v<version>`
+workflow, commits the version bump signed off (`Signed-off-by`, from your Git `user.name` and `user.email`), and pushes the branch and tag together to `origin`. The tag is `v<version>`
 at the repository root or `<id>/v<version>` for a subfolder package. GitHub Actions builds and attests both the
 `.smod` and its page bundle, with no signing key for you to manage. The registry bot submits them for review.
 
