@@ -1493,8 +1493,12 @@ impl Game<'_> {
             return;
         }
         for t in std::mem::take(&mut self.level_teleports) {
-            self.apply_level_teleport(t, LevelTeleportKind::Direct);
+            self.apply_direct_level_teleport(t);
         }
+    }
+
+    pub(super) fn apply_direct_level_teleport(&mut self, teleport: LevelTeleport) {
+        self.apply_level_teleport(teleport, LevelTeleportKind::Direct);
     }
 
     fn apply_level_teleport(&mut self, t: LevelTeleport, kind: LevelTeleportKind) {

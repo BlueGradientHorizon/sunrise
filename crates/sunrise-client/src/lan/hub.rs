@@ -2098,11 +2098,12 @@ impl Hub {
         if delta[2] {
             relatives |= DELTA_Z;
         }
-        {
-            let value = 0;
-            self.guests
-                .update(i, |guest| guest.above_ground_ticks = value);
-        }
+        self.guests.update(i, |g| {
+            g.above_ground_ticks = 0;
+            // ServerPlayer.teleport calls resetPosition after the snap. Position
+            // itself is the last-good baseline; the first-good baseline follows too.
+            g.first_good = position;
+        });
         self.teleport_relative(i, Some(position), relatives, [0.0; 3]);
     }
 
@@ -4175,6 +4176,7 @@ impl Hub {
         events: &mut Vec<HostEvent>,
         begin: bool,
         held: &mut bool,
+        spectator_source: &mut Option<String>,
     ) -> bool {
         let mut credits = Vec::new();
         // ServerGamePacketListenerImpl.tickPlayer ran between the last
@@ -4585,6 +4587,13 @@ impl Hub {
                 // handleMoveVehicle tests the pending teleport before moving the vehicle.
                 // A later confirmation or player move must not run ahead of that test.
                 packet @ S::MoveVehicle(_) => {
+                    events.push(HostEvent::Packet(conn, Box::new(packet)));
+                    events.push(HostEvent::InputCredits(credits));
+                    return true;
+                }
+                // A UUID teleport can change the world the next packet runs in.
+                packet @ S::TeleportToEntity(_) if self.guests[i].spectator() => {
+                    spectator_source.get_or_insert_with(|| self.config.dimension.clone());
                     events.push(HostEvent::Packet(conn, Box::new(packet)));
                     events.push(HostEvent::InputCredits(credits));
                     return true;
@@ -5266,6 +5275,7 @@ impl Hub {
                 g.teleport_counter = (g.teleport_counter + 1) & 0x7FFF_FFFF;
             });
         } else {
+            self.guests.update(i, |g| g.first_good = at);
             self.resend_teleport(i, None);
         }
         let g = &self.guests[i];

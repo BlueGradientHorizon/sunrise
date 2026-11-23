@@ -1355,24 +1355,22 @@ impl Game<'_> {
             ) {
                 return;
             }
-            self.level_teleports
-                .push(crate::game::server_travel::LevelTeleport {
-                    conn,
-                    dim,
-                    at,
-                    rotation: Some([yaw, pitch]),
-                    vehicle: None,
-                });
+            self.apply_direct_level_teleport(crate::game::server_travel::LevelTeleport {
+                conn,
+                dim,
+                at,
+                rotation: Some([yaw, pitch]),
+                vehicle: None,
+            });
             return;
         }
-        let host = self.lan.as_mut().unwrap();
-        host.hub.guests.update(gi, |g| {
-            (g.yaw, g.pitch) = (yaw, pitch);
-            // A new body there: no fall distance or motion carried over, but the
-            // player's attributes (ServerPlayer.teleport keeps the entity).
-            g.new_body(true);
+        self.as_guest(conn, |game| {
+            game.place_player_teleport_in_level(
+                Vec3::new(at[0], at[1], at[2]),
+                Some([yaw, pitch]),
+                [false; 3],
+            )
         });
-        host.hub.teleport(gi, Some(at));
     }
 
     /// Ordinary click routing. A scoped override calls this inside its action on Continue;
