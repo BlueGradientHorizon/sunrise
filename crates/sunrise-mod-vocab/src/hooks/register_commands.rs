@@ -37,7 +37,7 @@ pub trait Hooks {
         out = "commands",
         answered_by = "mod",
         neoforge = "RegisterCommandsEvent",
-        version = 4
+        version = 5
     )]
     fn register_commands(commands: &mut Vec<mod_api::Answered<mod_api::CommandRegistration>>);
 }
