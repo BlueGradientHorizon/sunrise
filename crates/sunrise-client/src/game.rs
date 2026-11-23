@@ -6702,12 +6702,15 @@ impl Game<'_> {
         collect: Option<&mut Vec<ItemStack>>,
     ) -> Result<bool> {
         let [x, y, z] = pos;
-        let state = self.world.block(x, y, z);
-        // An absent block (also what the level reads for an unloaded chunk) has
-        // no subject for the break callback.
-        if self.res.behaviours().is_air(state) {
+        // `Level.getBlockState` at the boundary: a column the level does not hold resident is
+        // loaded to read it, and what it holds, air included, is the subject of the break
+        // callback (`ServerPlayerGameMode.destroyBlock` has no air filter).
+        if !self.world.is_loaded_at(x, y, z)
+            && !(self.native_authoritative() && self.load_full_chunk(None, (x >> 4, z >> 4)))
+        {
             return Ok(false);
         }
+        let state = self.world.block(x, y, z);
         // NeoForge CommonHooks.fireBlockBreak: pre-cancel when the held item,
         // game mode, or game-master check refuses the break, then post
         // `break_block` before applying `ServerPlayerGameMode.destroyBlock`'s
@@ -6721,7 +6724,15 @@ impl Game<'_> {
             || (!self.can_use_game_master_blocks()
                 && is_game_master_block(&self.res.facts().get(state).name));
         let mut exp_to_drop = None;
+        // A break of this same block from inside the callback still outstanding on it does not
+        // dispatch again: it would call itself without end. It still removes the block, as a nested
+        // removal, and the outer break then applies none of its own.
+        let outstanding = self
+            .active_player_breaks
+            .iter()
+            .any(|active| active.dim == self.dim && active.pos == pos);
         let removed_by_nested = if self.native_authoritative()
+            && !outstanding
             && (!canceled || mod_api::__private::listened(mod_api::HookId::BreakBlock))
         {
             let depth = self.active_player_breaks.len();
@@ -6757,7 +6768,6 @@ impl Game<'_> {
         self.input_feedback(sunrise_client::input_source::Feedback::BlockBroken);
         let broken = state;
         let facts = self.res.facts().get(state).clone();
-        let held = self.held().cloned();
         let key = (pos[0], pos[1], pos[2]);
         self.unpack_loot(container_loot::LootTarget::Block(key), None);
         let live = (!self.creative)
@@ -6805,17 +6815,14 @@ impl Game<'_> {
             .as_ref()
             .is_some_and(|(h, (honey, _))| !h.bees.is_empty() || honey.is_some_and(|l| l > 0));
         let creative = self.creative;
-        // The block's parts first, then playerWillDestroy and Level.removeBlock.
-        let (removed, state, harvest) =
-            self.player_destroy_block_removal(pos, state, &facts, held.as_ref(), filled_hive);
+        let player_destroy::PlayerRemoval {
+            removed,
+            state,
+            harvest,
+            tool: held,
+            broken_tool,
+        } = self.player_destroy_block_removal(pos, state, &facts, filled_hive);
         if !creative {
-            // The stack as the removal left it: a listener may have swapped it.
-            let held = self.held().cloned();
-            let broken_tool = if removed {
-                self.mine_block_with_held(&facts.name, facts.hardness)
-            } else {
-                None
-            };
             if removed && harvest {
                 // Block.playerDestroy: the mined statistic, the exhaustion and the drops.
                 self.award_stat("mined", &facts.name, 1);
