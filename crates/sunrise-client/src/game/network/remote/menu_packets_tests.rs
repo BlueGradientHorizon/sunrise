@@ -198,19 +198,19 @@ fn remote_mount_is_installed_before_screen_init_and_keeps_all_columns() {
                     }))
                     .unwrap();
                     game.remote.as_mut().unwrap().level_load.finish();
-                    let open = |game: &mut Game<'_>, container, entity, species| {
+                    let open = |game: &mut Game<'_>, container, entity, species, columns| {
                         let ty = game.res.mob_types().get(species).unwrap().clone();
                         game.mobs.push(Mob::new(entity as u32, ty, Vec3::ZERO, 0.0));
                         game.handle_packet(C::MountScreenOpen(MountScreenOpen {
                             container,
-                            columns: 6,
+                            columns,
                             entity,
                         }))
                         .unwrap();
                         assert_eq!(game.screen, Screen::Inventory);
                         assert_eq!(game.mount_menu.opened_mob(), Some(entity as u32));
                     };
-                    open(game, 8, 41, "minecraft:horse");
+                    open(game, 8, 41, "minecraft:horse", 6);
                     assert_eq!(
                         *observed.lock().unwrap(),
                         [Some("sunrise:mount6".to_owned())]
@@ -239,7 +239,14 @@ fn remote_mount_is_installed_before_screen_init_and_keeps_all_columns() {
                     S::ContainerClick(click) if (click.container, click.state, click.slot) == (8, 5, 19))));
 
                     game.set_screen(Screen::Playing);
-                    open(game, 9, 42, "minecraft:zombie_nautilus");
+                    // `HorseInventoryMenu` adds its chest slots only `if (inventoryColumns > 0)`:
+                    // a count whose size wraps positive (`-1431655764 * 3` is 4 as Java's `int`) lays out none.
+                    open(game, 10, 43, "minecraft:horse", -1431655764);
+                    assert_eq!(game.mount_menu_columns(), Some(0));
+                    assert_eq!(game.slot_count(), 38);
+                    assert_eq!(game.mount_slot_position(CHEST), None);
+                    game.set_screen(Screen::Playing);
+                    open(game, 9, 42, "minecraft:zombie_nautilus", 6);
                     assert_eq!(game.mount_menu_columns(), Some(0));
                     assert_eq!(game.slot_count(), 38);
                     assert_eq!(game.mount_slot_position(CHEST), None);
