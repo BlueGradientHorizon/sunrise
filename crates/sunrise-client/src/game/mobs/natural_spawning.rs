@@ -362,6 +362,9 @@ pub(super) struct GameLevel<'g, 'a> {
     /// The mob a listened position check created and lent, which the spawn
     /// that follows takes rather than creating it again ([`Checked`]).
     checked: std::cell::RefCell<Option<Checked>>,
+    /// The configured entity a spawner loaded before its position check, kept for its
+    /// finalization and admission.
+    configured: std::cell::RefCell<Option<Configured>>,
 }
 /// The mob a listened `mob_spawn_position_check` created for its lend, held
 /// until the spawn takes it, and the provisional count before it was
@@ -370,6 +373,28 @@ pub(super) struct GameLevel<'g, 'a> {
 struct Checked {
     mob: Mob,
     provisional: u32,
+}
+/// A spawner's configured entity loaded once before its position check: the tree, the
+/// provisional id of its root, the provisional count before it was loaded (a refused check gives
+/// it back), and the entity and position it was loaded for.
+struct Configured {
+    tree: super::persist::SpawnTree,
+    key: u32,
+    provisional: u32,
+    id: String,
+    position: [f64; 3],
+}
+impl GameLevel<'_, '_> {
+    /// The configured tree loaded for `entity` at `position`, when the spawner loaded one.
+    pub(super) fn take_configured(
+        &self,
+        entity: &str,
+        position: [f64; 3],
+    ) -> Option<(super::persist::SpawnTree, u32)> {
+        let configured = self.configured.take()?;
+        (configured.id == entity && configured.position == position)
+            .then_some((configured.tree, configured.key))
+    }
 }
 const SCANNED_QUERIES: u32 = 8;
 struct PendingMob {
@@ -760,6 +785,31 @@ impl NaturalLevel for GameLevel<'_, '_> {
         }
         // An earlier check's mob that no spawn took is not this one.
         self.checked.take();
+        if !pending.fresh
+            && let Some(configured) = self.configured.borrow_mut().as_mut()
+            && configured.id == entity
+            && configured.position == at
+            && let Some((mob, _)) = configured.tree.root_mob_mut()
+        {
+            // The mob the spawner loaded from its entity data, as the level will have it.
+            let level = self.level_ref();
+            self.game
+                .lend_unspawned(entity, at, Some(mob), |handle, _| {
+                    self.game.native_mob_spawn_position_check(
+                        mod_api::__private::MobSpawnPositionCheckCall {
+                            dimension: self.game.dim.id(),
+                            kind: entity,
+                            reason,
+                            pos: at,
+                            level,
+                            spawner: self.spawner,
+                            mob: handle,
+                            result: &mut result,
+                        },
+                    );
+                });
+            return result;
+        }
         let provisional = self.provisional.get();
         let mut mob = pending
             .fresh
@@ -799,6 +849,26 @@ impl NaturalLevel for GameLevel<'_, '_> {
         if let Some(refused) = self.checked.take() {
             self.provisional.set(refused.provisional);
         }
+        if let Some(refused) = self.configured.take() {
+            self.provisional.set(refused.provisional);
+        }
+    }
+    fn load_configured(&self, entity: &Compound, id: &str, at: [f64; 3], yaw: f32) -> bool {
+        // An earlier spawn's tree that nothing took is not this one.
+        self.configured.take();
+        let provisional = self.provisional.get();
+        let Some((tree, key)) = self.game.load_configured_entity(self, entity, at, yaw) else {
+            self.provisional.set(provisional);
+            return false;
+        };
+        *self.configured.borrow_mut() = Some(Configured {
+            tree,
+            key,
+            provisional,
+            id: id.to_owned(),
+            position: at,
+        });
+        true
     }
     fn potential_spawns(&self, category: Category, pos: [i32; 3], entries: &mut Vec<SpawnEntry>) {
         let mut canceled = false;
@@ -1077,6 +1147,7 @@ impl<'a> Game<'a> {
             costed: spawn_cost_types(world_biomes!(self)),
             spawner: None,
             checked: Default::default(),
+            configured: Default::default(),
         }
     }
     /// Gives a spawn pass's provisional mobs (the `u32::MAX - n` ids
@@ -2428,10 +2499,9 @@ mod tests {
             let (configured, heard) =
                 with_checks(Some(SpawnCheck::Default), Vec::new, || tick(game, helmet()));
             assert!(!configured.0.is_empty());
-            for (hook, expected) in [
-                ("position", Err(mod_api::UnspawnedMobError::Unsupported)),
-                ("finalize", Ok(false)),
-            ] {
+            // The configured entity is loaded before the position check, so the check reads the
+            // equipment its data gave, as the finalization does.
+            for (hook, expected) in [("position", Ok(false)), ("finalize", Ok(false))] {
                 let event = heard.iter().find(|h| h.hook == hook).unwrap();
                 let (kind, position, head) = event.mob.as_ref().unwrap();
                 assert_eq!(*kind, Ok(mod_api::Identifier::parse(SULFUR_CUBE).unwrap()));
@@ -2487,6 +2557,16 @@ mod tests {
                             .to_vec(),
                     ),
                 ),
+                (
+                    "equipment".into(),
+                    Tag::compound([(
+                        "head",
+                        Tag::compound([
+                            ("id", Tag::String("minecraft:iron_helmet".into())),
+                            ("count", Tag::Int(1)),
+                        ]),
+                    )]),
+                ),
             ]
             .into();
             game.carts.update(0, |cart| {
@@ -2509,6 +2589,10 @@ mod tests {
                 );
                 assert_eq!(event.cart, Some((Some(cart_kind.into()), Some(position))));
             }
+            // The configured entity's equipment is readable in the position check, on the
+            // minecart path too: the tree the spawner loaded is the one lent.
+            let event = heard.iter().find(|h| h.hook == "position").unwrap();
+            assert_eq!(event.mob.as_ref().unwrap().2, Ok(false), "a helmet is worn");
         });
     }
 

@@ -343,6 +343,19 @@ pub trait NaturalLevel: SpawnLevel {
     ) -> SpawnCheck {
         SpawnCheck::Default
     }
+    /// A spawner's configured entity data, loaded once before its position check
+    /// (`BaseSpawner.serverTick`'s `EntityType.loadEntityRecursive`): the level keeps the
+    /// loaded tree, lends its root to the check and hands the same tree on to finalization and
+    /// admission. False when the data cannot be loaded.
+    fn load_configured(
+        &self,
+        _entity: &sunrise_core::nbt::Compound,
+        _id: &str,
+        _at: [f64; 3],
+        _yaw: f32,
+    ) -> bool {
+        true
+    }
     /// The position check just asked refused the mob: what the level made
     /// for it is dropped.
     fn position_refused(&self) {}

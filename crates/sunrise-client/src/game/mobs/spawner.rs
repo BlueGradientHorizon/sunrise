@@ -198,6 +198,35 @@ impl Game<'_> {
         }
         ids
     }
+    /// `EntityType.loadEntityRecursive` of a spawner's configured entity data: the data with the
+    /// spawner's rotation, its placement callback on every passenger, decoded to one tree and
+    /// the provisional id of its root.
+    pub(super) fn load_configured_entity(
+        &self,
+        l: &super::natural_spawning::GameLevel,
+        entity: &sunrise_core::nbt::Compound,
+        position: [f64; 3],
+        yaw: f32,
+    ) -> Option<(SpawnTree, u32)> {
+        let mut tag = entity.clone();
+        // Only structure placement can request deferred vanilla finalization.
+        tag.remove(&"sunrise:finalize".into());
+        tag.insert(
+            "Rotation".into(),
+            Tag::List(vec![Tag::Float(yaw.to_bits()), Tag::Float(0f32.to_bits())]),
+        );
+        let mut tag = Tag::Compound(tag);
+        // EntityType.loadEntityRecursive applies the spawner's placement
+        // callback to every passenger as well as the root.
+        super::commands::place_summoned(&mut tag, position);
+        if !self.retain_feature_eligible_entity_tree(&mut tag) {
+            return None;
+        }
+        let mut tree = SpawnTree::decode(self, tag)?;
+        let key = l.provisional_id();
+        tree.root_mob_mut()?.0.id = key;
+        Some((tree, key))
+    }
     /// The spawner's `loadEntityRecursive` and `tryAddFreshEntityWithPassengers`:
     /// make the accepted mobs visible to the next attempt before the tick inserts them.
     pub(super) fn plan_spawner_mob(
@@ -218,24 +247,13 @@ impl Game<'_> {
             });
             Planned::Finalized(mob)
         } else {
-            let mut tag = r.entity.clone();
-            // Only structure placement can request deferred vanilla finalization.
-            tag.remove(&"sunrise:finalize".into());
-            tag.insert(
-                "Rotation".into(),
-                Tag::List(vec![
-                    Tag::Float(r.yaw.to_bits()),
-                    Tag::Float(0f32.to_bits()),
-                ]),
-            );
-            let mut tag = Tag::Compound(tag);
-            // EntityType.loadEntityRecursive applies the spawner's placement
-            // callback to every passenger as well as the root.
-            super::commands::place_summoned(&mut tag, r.position);
-            if !self.retain_feature_eligible_entity_tree(&mut tag) {
-                return None;
-            }
-            Planned::Loaded(SpawnTree::decode(self, tag)?, l.provisional_id())
+            // The tree the spawner loaded before its position check, else a trial spawner's
+            // (which has no such check) loads it now.
+            let (tree, key) = match l.take_configured(r.id, r.position) {
+                Some(loaded) => loaded,
+                None => self.load_configured_entity(l, r.entity, r.position, r.yaw)?,
+            };
+            Planned::Loaded(tree, key)
         };
         let (mob, tag) = match &mut plan {
             Planned::Finalized(mob) => (mob, None),
