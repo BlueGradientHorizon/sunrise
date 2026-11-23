@@ -3606,8 +3606,6 @@ struct Game<'a> {
     was_fall_flying: bool,
     /// Bees whose buzz is playing, and whether it is the aggressive one.
     bee_sounds: HashMap<u32, bool>,
-    /// Guardians whose attack hum is playing.
-    guardian_sounds: HashSet<u32>,
     /// Remote guardian eye targets reused between ticks.
     guardian_look_scratch: Vec<(usize, [f64; 3])>,
     dropped: sunrise_client::join_seq::JoinList<ItemEntity>,
@@ -13750,7 +13748,6 @@ impl<'a> Game<'a> {
             riding_sound: None,
             was_fall_flying: false,
             bee_sounds: HashMap::new(),
-            guardian_sounds: HashSet::new(),
             guardian_look_scratch: Vec::new(),
             dropped: Default::default(),
             next_entity: 0,
