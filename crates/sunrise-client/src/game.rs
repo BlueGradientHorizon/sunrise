@@ -1810,6 +1810,9 @@ mod owner_link;
 mod pack_clouds_frame_tests;
 #[path = "game/modding/pack_finders/mod.rs"]
 mod pack_finders;
+#[cfg(test)]
+#[path = "game/interface/pack_sources_tests.rs"]
+mod pack_sources_tests;
 #[path = "game/world/packs/mod.rs"]
 mod packs;
 #[path = "game/interface/pad/mod.rs"]
