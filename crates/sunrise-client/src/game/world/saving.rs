@@ -74,6 +74,20 @@ impl Game<'_> {
             save.quit |= quit;
             return Ok(());
         }
+        // A world still loading has no client in it yet: its server stops and is joined
+        // through the same fallible path as a running one, before the loop may end.
+        if quit && let Some(starting) = self.integrated_starting.take() {
+            starting.handle.request_stop();
+            self.integrated = Some(starting.handle);
+            self.pending_save = Some(ClosingSave {
+                quit,
+                close: true,
+                reply: None,
+                started: Instant::now(),
+                stage: Stage::Server,
+            });
+            return Ok(());
+        }
         if self.title.is_some() || self.saved_for_exit {
             // A quit from the title still needs the event loop to finish.
             self.pending_save = Some(ClosingSave {
