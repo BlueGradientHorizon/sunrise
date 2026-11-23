@@ -306,7 +306,7 @@ fn decorations(c: &Value, atlas: &HudAtlas) -> Vec<GuiDraw> {
         h,
         float("xpProgress", 0.0),
         level,
-        // Hud.extractHotbarAndDecorations draws the contextual bar only for a game mode with experience.
+        // Hud.nextContextualInfoState picks the experience bar only for a game mode with experience.
         survival && c["experienceBar"].as_bool().unwrap_or(false),
         &width,
     ));
