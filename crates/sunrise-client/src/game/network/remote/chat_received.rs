@@ -21,9 +21,11 @@ pub(super) enum QueuedChatKind {
         timestamp: i64,
         received_ms: i64,
         only_show_secure: bool,
-        /// The display, decorated at receipt as `handlePlayerChatMessage` does
-        /// (`boundChatType.decorate(displayedMessage.decoratedContent())`).
-        line: Text,
+        /// What the line shows, as `handlePlayerChatMessage` picks it at receipt
+        /// (`displayedMessage.decoratedContent()`: the signed content under Only
+        /// Show Secure Chat, else the unsigned content or the signed content). It
+        /// translates when the line is decorated to be shown.
+        displayed: serde_json::Value,
         /// `FilterMask.applyWithFormatting` and `ChatTrustLevel.isModified` use the signed text.
         signed_content: String,
         unsigned_content: Option<Tag>,

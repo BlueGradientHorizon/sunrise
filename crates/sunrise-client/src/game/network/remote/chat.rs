@@ -227,16 +227,18 @@ impl Game<'_> {
                 timestamp,
                 received_ms,
                 only_show_secure,
-                line,
+                displayed,
                 signed_content,
                 unsigned_content,
                 filter,
                 info,
             } => {
-                // The display was decorated at receipt; narration uses
-                // `message.decoratedContent()`, decorated here. Trust is evaluated
-                // with the receipt time when the queue accepts the message.
-                let mut line = line;
+                // `showMessageToPlayer`: the display, decorated with what receipt
+                // picked, and the narration, `message.decoratedContent()`, are
+                // decorated here, in the language of now; trust is evaluated with
+                // the receipt time, against the line as it reads now
+                // (`ChatTrustLevel.isModified`).
+                let mut line = self.decorate_chat(&chat_type, &displayed, Decoration::Chat);
                 let decorated = unsigned_content.as_ref().map_or_else(
                     || serde_json::Value::from(signed_content.as_str()),
                     sunrise_client::scoreboard::tag_to_json,

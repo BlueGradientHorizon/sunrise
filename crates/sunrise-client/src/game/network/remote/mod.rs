@@ -103,6 +103,7 @@ mod chat;
 mod chat_audit_tests;
 mod chat_received;
 mod commands;
+#[cfg(test)]
 pub(in crate::game) use chat::Decoration;
 use chat_received::{QueuedChat, QueuedChatKind};
 pub(in crate::game) mod client_level_tick;
