@@ -10,7 +10,7 @@ use mod_api::{
     PayloadWorkStatus, Registrar,
 };
 use std::{
-    sync::{Arc, Mutex, mpsc},
+    sync::{mpsc, Arc, Mutex},
     thread::{self, JoinHandle, ThreadId},
     time::{Duration, Instant},
 };
@@ -19,10 +19,11 @@ use sunrise_protocol::{
     connection::ConnReader,
     connection_groups::{self, Cell, Entry, Section},
     packets::{
-        Empty, configuration as cfg,
+        configuration as cfg,
         custom_payload::CustomPayload,
         handshake, login,
         play::{self, Clientbound as C, Serverbound as S},
+        Empty,
     },
 };
 
@@ -468,7 +469,7 @@ fn a_grouped_column_split_across_tcp_reads_is_adopted_as_one_bundle() {
     with_probe(|game, _| {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap().to_string();
-        game.connect_remote_session(&address, "BundleProbe", None, None, false, false)
+        game.connect_remote_session(&address, "BundleProbe", None, None, false, false, None)
             .unwrap();
         let local = raw_payloads::Local::capture(raw_payloads::Side::Server).unwrap();
         let (_reader, mut writer) =
@@ -608,11 +609,9 @@ fn a_split_frame_group_bundle_refuses_a_mismatched_companion() {
         else {
             panic!("expected the multiplayer refusal screen");
         };
-        assert!(
-            reason
-                .plain()
-                .contains("connection groups: group cell not in block update")
-        );
+        assert!(reason
+            .plain()
+            .contains("connection groups: group cell not in block update"));
     });
 }
 
