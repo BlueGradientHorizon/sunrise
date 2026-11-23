@@ -2324,6 +2324,8 @@ impl Renderer {
             cull_on: cull.is_some(),
             sides_on: true,
             gpu_culling: None,
+            sourced: Default::default(),
+            gpu_sourced_frame: false,
             gpu_culling_offer,
             gpu_frame: false,
             #[cfg(debug_assertions)]
@@ -2503,6 +2505,7 @@ impl Renderer {
             multi_draw,
             visible: Vec::new(),
             visible_lods: Vec::new(),
+            translucent_lods: Vec::new(),
             shadow_visible: Vec::new(),
             translucent_draws: Vec::new(),
             translucent_tests: Vec::new(),

@@ -81,6 +81,12 @@ pub struct Renderer {
     /// for the settings in `graphics::gpu_culling_offer`), and whether the last frame drew
     /// them so (`gpu_frame`).
     pub(crate) gpu_culling: Option<gpu_culling::GpuCulling>,
+    /// Sourced geometry's residency beside them (`sourced_geometry::gpu::Sourced`): its
+    /// record table, made with the first recorded mesh and dropped with the last, each
+    /// mesh's record in it, and the meshes a GPU frame still lists the CPU. Whether the
+    /// last frame drew them so is `gpu_sourced_frame`.
+    pub(crate) sourced: sourced_geometry::gpu::Sourced,
+    pub(crate) gpu_sourced_frame: bool,
     pub(crate) gpu_culling_offer: crate::graphics::GpuCullingOffer,
     pub(crate) gpu_frame: bool,
     /// GPU frames since GPU culling was switched on: the first and every 64th after it
@@ -344,6 +350,10 @@ pub struct Renderer {
     /// Per-frame scratch, kept to avoid allocating every frame.
     pub(crate) visible: Vec<resident::Visible>,
     pub(crate) visible_lods: Vec<lod::Visible>,
+    /// Every far tile in view, whether the GPU's solid draws own it or not: the water's
+    /// re-sort walks it (`draw_frame`), so its budget and rotation do not follow which
+    /// solid draws the sourced-geometry pass took over.
+    pub(crate) translucent_lods: Vec<lod::Visible>,
     /// The sections a shader pack's shadow camera sees (`external::ShadowView`).
     pub(crate) shadow_visible: Vec<resident::Visible>,
     /// The external shader pipeline world frames call (`external`); `None` draws vanilla's way.

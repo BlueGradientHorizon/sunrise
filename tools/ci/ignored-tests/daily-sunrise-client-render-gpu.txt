@@ -248,6 +248,8 @@ sunrise-client-render gfx::pack_post::world_target_tests::replacing_only_world_d
 sunrise-client-render gfx::pack_post::world_target_tests::resized_world_views_match_fresh_bindings lib daily gpu
 sunrise-client-render gfx::pack_post::world_target_tests::retained_world_views_read_updated_contents lib daily gpu
 sunrise-client-render gfx::pack_post::wrong_type_uniform_tests::built_ins_declared_with_another_type_read_zero lib daily gpu
+sunrise-client-render gfx::sourced_geometry::gpu::tests::the_gpu_path_draws_the_cpu_paths_image lib daily gpu
+sunrise-client-render gfx::sourced_geometry::gpu::tests::the_residency_draws_the_cpu_paths_image lib daily gpu
 sunrise-client-render gfx::sprite_arrays_tests::a_pass_samples_a_sprite_layer_sharp lib daily gpu
 sunrise-client-render gfx::submit::tests::writes_after_a_frame_on_the_thread_land_after_it lib daily gpu
 sunrise-client-render gfx::surface_setup::ray_query::ray_scene::tests::without_ray_queries_there_is_no_scene lib daily gpu
