@@ -280,6 +280,10 @@ mod camera_type_tests {
                         placed[0].abs() < 2.0 && placed[2].abs() < 2.0,
                         "streaming follows the player, not the pinned render position: {placed:?}"
                     );
+                    // The streaming centre is the player's section, not the pinned one's.
+                    game.streaming.center = (500, 500);
+                    game.update_world();
+                    assert_eq!(game.streaming.center, (0, 0));
                 });
             },
         );
