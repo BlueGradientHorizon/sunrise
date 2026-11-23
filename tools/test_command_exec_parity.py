@@ -945,36 +945,58 @@ def extract_cloud_water_witness(groups, records, lock):
         index += n
     if slice_records is None:
         sys.exit('missing area effect cloud water fall distance group')
-    reads = {}
+    fall_reads = {}
+    motion_reads = {}
     marker = ' has the following entity data: '
+    motion_re = re.compile(r'^\[([^,\]]+)d,\s*([^,\]]+)d,\s*([^,\]]+)d\]$')
     for row in slice_records:
-        match = re.fullmatch(r'/data get entity (00000937-0000-0000-0000-[0-9a-f]{12}) fall_distance', row.get('cmd', ''))
+        match = re.fullmatch(
+            r'/data get entity (00000937-0000-0000-0000-[0-9a-f]{12}) (fall_distance|Motion)',
+            row.get('cmd', ''),
+        )
         if not match:
             continue
         text = ''.join(span[0] for span in row['messages'][0])
         if marker not in text:
             sys.exit(f'unexpected vanilla /data get feedback: {row}')
         raw = text.split(marker, 1)[1]
-        if not raw.endswith('d'):
-            sys.exit(f'expected double SNBT for fall_distance, got {raw!r}')
-        reads.setdefault(match.group(1), []).append(raw)
+        uid, field = match.group(1), match.group(2)
+        if field == 'fall_distance':
+            if not raw.endswith('d'):
+                sys.exit(f'expected double SNBT for fall_distance, got {raw!r}')
+            fall_reads.setdefault(uid, []).append(raw)
+        else:
+            m = motion_re.match(raw)
+            if not m:
+                sys.exit(f'expected 3-double SNBT list for Motion, got {raw!r}')
+            motion_reads.setdefault(uid, []).append((raw, list(m.groups())))
+    ticks = list(corpus_module.CLOUD_WATER_TICKS)
     cases = []
-    for n, (case_name, dx, dy, dz, radius, fall, duration) in enumerate(corpus_module.CLOUD_WATER_CASES, 1):
+    for n, (case_name, dx, dy, dz, radius, fall, duration, extra) in enumerate(corpus_module.CLOUD_WATER_CASES, 1):
         uid = f'00000937-0000-0000-0000-{n:04x}00000001'
-        values = reads.get(uid)
-        if not values or len(values) != 2:
-            sys.exit(f'expected 2 fall_distance reads for {case_name} ({uid}), got {values!r}')
-        tick0_raw, tick1_raw = values
+        falls = fall_reads.get(uid)
+        motions = motion_reads.get(uid)
+        if not falls or len(falls) != len(ticks):
+            sys.exit(f'expected {len(ticks)} fall_distance reads for {case_name} ({uid}), got {falls!r}')
+        if not motions or len(motions) != len(ticks):
+            sys.exit(f'expected {len(ticks)} Motion reads for {case_name} ({uid}), got {motions!r}')
+        observations = []
+        for tick, fall_raw, (motion_raw, comps) in zip(ticks, falls, motions):
+            observations.append({
+                'tick': tick,
+                'fall_distance': fall_raw,
+                'fall_bits': struct.pack('>d', float(fall_raw[:-1])).hex(),
+                'motion': motion_raw,
+                'motion_bits': [struct.pack('>d', float(c)).hex() for c in comps],
+            })
         cases.append({
             'name': case_name,
             'offset': [dx, dy, dz],
             'radius': radius,
             'initial_fall_distance': fall,
             'duration': duration,
-            'tick0_fall_distance': tick0_raw,
-            'tick0_fall_bits': struct.pack('>d', float(tick0_raw[:-1])).hex(),
-            'tick1_fall_distance': tick1_raw,
-            'tick1_fall_bits': struct.pack('>d', float(tick1_raw[:-1])).hex(),
+            'extra_nbt': extra,
+            'observations': observations,
         })
     return {
         'minecraft': lock['minecraft']['version'],
@@ -983,6 +1005,7 @@ def extract_cloud_water_witness(groups, records, lock):
         'record_cmd': 'python3 tools/test_command_exec_parity.py --record-cloud-water',
         'server_jar_sha1': lock['minecraft']['server_sha1'],
         'water_offset': list(corpus_module.CLOUD_WATER_BLOCK),
+        'blocks': [list(b) for b in corpus_module.CLOUD_WATER_BLOCKS],
         'cases': cases,
     }
 

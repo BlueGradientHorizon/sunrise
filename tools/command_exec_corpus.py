@@ -8340,46 +8340,113 @@ def _cloud_water_coord(base, offset):
     return f'{base + int(whole)}.{frac}'
 
 
-# #2359: AreaEffectCloud water fall-distance cases (vanilla 26.3).
+# #2359: AreaEffectCloud water/lava fall-distance and fluid-current cases (vanilla 26.3).
 CLOUD_WATER_ORIGIN = (4928, 260, 4928)
 CLOUD_WATER_BLOCK = (1, 0, 0)
+CLOUD_WATER_TICKS = (0, 1, 2)
+CLOUD_WATER_BLOCKS = (
+    # Single still water source for the wet/dry/edge/above controls.
+    (1, 0, 0, 'minecraft:water'),
+    # Walled flowing water channel along +X at z=20.
+    (0, -1, 20, 'minecraft:stone'),
+    (1, -1, 20, 'minecraft:stone'),
+    (2, -1, 20, 'minecraft:stone'),
+    (3, -1, 20, 'minecraft:stone'),
+    (-1, 0, 20, 'minecraft:stone'),
+    (4, 0, 20, 'minecraft:stone'),
+    (0, 0, 19, 'minecraft:stone'),
+    (1, 0, 19, 'minecraft:stone'),
+    (2, 0, 19, 'minecraft:stone'),
+    (3, 0, 19, 'minecraft:stone'),
+    (0, 0, 21, 'minecraft:stone'),
+    (1, 0, 21, 'minecraft:stone'),
+    (2, 0, 21, 'minecraft:stone'),
+    (3, 0, 21, 'minecraft:stone'),
+    (0, 0, 20, 'minecraft:water[level=0]'),
+    (1, 0, 20, 'minecraft:water[level=1]'),
+    (2, 0, 20, 'minecraft:water[level=2]'),
+    (3, 0, 20, 'minecraft:water[level=3]'),
+    # Walled flowing lava channel along +X at x=10..13, z=20.
+    (10, -1, 20, 'minecraft:stone'),
+    (11, -1, 20, 'minecraft:stone'),
+    (12, -1, 20, 'minecraft:stone'),
+    (13, -1, 20, 'minecraft:stone'),
+    (9, 0, 20, 'minecraft:stone'),
+    (14, 0, 20, 'minecraft:stone'),
+    (10, 0, 19, 'minecraft:stone'),
+    (11, 0, 19, 'minecraft:stone'),
+    (12, 0, 19, 'minecraft:stone'),
+    (13, 0, 19, 'minecraft:stone'),
+    (10, 0, 21, 'minecraft:stone'),
+    (11, 0, 21, 'minecraft:stone'),
+    (12, 0, 21, 'minecraft:stone'),
+    (13, 0, 21, 'minecraft:stone'),
+    (10, 0, 20, 'minecraft:lava[level=0]'),
+    (11, 0, 20, 'minecraft:lava[level=2]'),
+    (12, 0, 20, 'minecraft:lava[level=4]'),
+    (13, 0, 20, 'minecraft:lava[level=6]'),
+    # Flowing water at the far (high.x, high.y, high.z) cell of the radius-32 box.
+    (112, 0, 112, 'minecraft:stone'),
+    (113, 0, 112, 'minecraft:stone'),
+    (111, 1, 112, 'minecraft:stone'),
+    (114, 1, 112, 'minecraft:stone'),
+    (112, 1, 111, 'minecraft:stone'),
+    (113, 1, 111, 'minecraft:stone'),
+    (112, 1, 113, 'minecraft:stone'),
+    (113, 1, 113, 'minecraft:stone'),
+    (113, 1, 112, 'minecraft:water[level=0]'),
+    (112, 1, 112, 'minecraft:water[level=1]'),
+)
 CLOUD_WATER_CASES = (
-    ('beside_water', '0.5', '0', '0.5', None, '20.0', 200),
-    ('dry', '20.5', '0', '0.5', None, '20.0', 200),
-    ('small_radius_dry', '0.5', '0', '0.5', '0.4', '20.0', 200),
-    ('edge_touching_water', '4.5', '0', '0.5', '3.0', '12.5', 200),
-    ('edge_outside_water', '5.0', '0', '0.5', '3.0', '12.5', 200),
-    ('above_water', '0.5', '1', '0.5', '3.0', '7.25', 200),
+    ('beside_water', '0.5', '0', '0.5', None, '20.0', 200, ''),
+    ('dry', '20.5', '0', '0.5', None, '20.0', 200, ''),
+    ('small_radius_dry', '0.5', '0', '0.5', '0.4', '20.0', 200, ''),
+    ('edge_touching_water', '4.5', '0', '0.5', '3.0', '12.5', 200, ''),
+    ('edge_outside_water', '5.0', '0', '0.5', '3.0', '12.5', 200, ''),
+    ('above_water', '0.5', '1', '0.5', '3.0', '7.25', 200, ''),
+    ('flowing_water_nonzero_motion', '1.5', '0', '20.5', '0.4', '20.0', 200, 'Motion:[0.05d,0.0d,-0.02d]'),
+    ('lava_nonzero_age', '11.5', '0', '20.5', '0.4', '20.0', 200, 'Age:50'),
+    ('lava_neg_min_double', '12.5', '0', '20.5', '0.4', '-4.9E-324', 200, 'Age:50'),
+    ('radius_32_far_corner', '80.5', '0.75', '80.5', '32.0', '18.0', 200, ''),
 )
 
 
 def area_effect_cloud_water_fall():
-    """#2359 (vanilla 26.3): AreaEffectCloud fall_distance when its box touches water vs stays dry."""
+    """#2359 (vanilla 26.3): AreaEffectCloud fall_distance and Motion in water, lava, and radius-32 boundary."""
     x0, y0, z0 = CLOUD_WATER_ORIGIN
-    bx, by, bz = CLOUD_WATER_BLOCK
-    chunks = [[(x0 >> 4) + dx, (z0 >> 4) + dz] for dx in range(-2, 4) for dz in range(-2, 3)]
-    ops = [cmd(f'/forceload add {x0} {z0} {x0 + 31} {z0 + 15}', False),
+    chunks = [[(x0 >> 4) + dx, (z0 >> 4) + dz] for dx in range(-2, 9) for dz in range(-2, 9)]
+    ops = [cmd(f'/forceload add {x0 - 16} {z0 - 16} {x0 + 127} {z0 + 127}', False),
            {'op': 'wait_chunks', 'chunks': chunks},
-           cmd('/tick freeze', False),
-           cmd(f'/setblock {x0 + bx} {y0 + by} {z0 + bz} minecraft:water', expect_result=1)]
-    for n, (_, dx, dy, dz, radius, fall, duration) in enumerate(CLOUD_WATER_CASES, 1):
+           cmd('/tick freeze', False)]
+    for dx, dy, dz, block in CLOUD_WATER_BLOCKS:
+        ops.append(cmd(f'/setblock {x0 + dx} {y0 + dy} {z0 + dz} {block}', expect_result=1))
+    for n, (_, dx, dy, dz, radius, fall, duration, extra) in enumerate(CLOUD_WATER_CASES, 1):
         x, y, z = _cloud_water_coord(x0, dx), _cloud_water_coord(y0, dy), _cloud_water_coord(z0, dz)
         nbt = f'UUID:[I;2359,0,{n},1],fall_distance:{fall}d,Duration:{duration}'
         if radius is not None:
             nbt += f',Radius:{radius}f'
+        if extra:
+            nbt += f',{extra}'
         ops.append(cmd(f'/summon minecraft:area_effect_cloud {x} {y} {z} {{{nbt}}}', expect_result=1))
 
     def reads():
         for n in range(1, len(CLOUD_WATER_CASES) + 1):
-            ops.append(cmd(f'/data get entity 00000937-0000-0000-0000-{n:04x}00000001 fall_distance'))
+            uid = f'00000937-0000-0000-0000-{n:04x}00000001'
+            ops.append(cmd(f'/data get entity {uid} fall_distance'))
+            ops.append(cmd(f'/data get entity {uid} Motion'))
 
     reads()
-    ops += [cmd('/tick unfreeze', False), {'op': 'tick', 'n': 1}, cmd('/tick freeze', False)]
-    reads()
-    return ops + setup('/tick unfreeze',
-                       f'/kill @e[type=minecraft:area_effect_cloud,x={x0},y={y0 - 4},z={z0},dx=32,dy=16,dz=16]',
-                       f'/setblock {x0 + bx} {y0 + by} {z0 + bz} air',
-                       f'/forceload remove {x0} {z0} {x0 + 31} {z0 + 15}')
+    for _ in CLOUD_WATER_TICKS[1:]:
+        ops += [cmd('/tick unfreeze', False), {'op': 'tick', 'n': 1}, cmd('/tick freeze', False)]
+        reads()
+    cleanup = [
+        '/tick unfreeze',
+        f'/kill @e[type=minecraft:area_effect_cloud,x={x0 - 16},y={y0 - 4},z={z0 - 16},dx=144,dy=16,dz=144]',
+    ]
+    for dx, dy, dz, _ in reversed(CLOUD_WATER_BLOCKS):
+        cleanup.append(f'/setblock {x0 + dx} {y0 + dy} {z0 + dz} air')
+    cleanup.append(f'/forceload remove {x0 - 16} {z0 - 16} {x0 + 127} {z0 + 127}')
+    return ops + setup(*cleanup)
 
 
 def groups():

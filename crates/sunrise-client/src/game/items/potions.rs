@@ -168,6 +168,7 @@ pub(super) fn potion_cloud_from_nbt(tag: &Tag) -> Option<(Vec3, Breath)> {
             at: [at.x, at.y, at.z],
             motion: [motion.x, motion.y, motion.z],
             fall_distance: sunrise_client::entity_nbt::ground_from_nbt(tag).1,
+            first_tick: true,
             radius: real("Radius", 3.0).clamp(0.0, 32.0),
             age: int("Age", 0),
             duration: int("Duration", -1),
@@ -247,7 +248,11 @@ pub(super) fn potion_cloud_to_nbt(c: &Breath, uuid: [i32; 4], raw: Option<&Tag>)
     };
     map.insert(
         "fall_distance".into(),
-        Tag::Double(c.fall_distance.to_bits()),
+        Tag::Double(if c.fall_distance == 0.0 {
+            0
+        } else {
+            c.fall_distance.to_bits()
+        }),
     );
     map.insert("Age".into(), Tag::Int(c.age));
     map.insert("Duration".into(), Tag::Int(c.duration));
@@ -1992,8 +1997,9 @@ impl Game<'_> {
     /// False once the cloud is gone.
     /// `Entity.baseTick`'s fluid steps for a cloud: `updateFluidInteraction`
     /// (the box is `radius * 2` wide and 0.5 high) resets the fall distance
-    /// in water and adds the currents to its motion, then lava halves it.
-    fn cloud_fluid_step(&self, c: &mut Breath) {
+    /// in water and adds the currents to its motion, then lava halves it once
+    /// `first_tick` has cleared (`Entity.isInLava` is false on the first tick).
+    pub(super) fn cloud_fluid_step(&self, c: &mut Breath) {
         let (r, [x, y, z]) = (f64::from(c.radius), c.at);
         let bounds = sunrise_core::geometry::Aabb::new(
             Vec3::new(x - r, y, z - r),
@@ -2015,9 +2021,10 @@ impl Game<'_> {
         if water > 0.0 {
             c.fall_distance = 0.0;
         }
-        if lava > 0.0 {
+        if !c.first_tick && lava > 0.0 {
             c.fall_distance *= 0.5;
         }
+        c.first_tick = false;
     }
     fn tick_potion_cloud(&mut self, c: &mut Breath, players: &[FightPlayer]) -> bool {
         c.age = c.age.wrapping_add(1);
@@ -2130,6 +2137,7 @@ impl Game<'_> {
             at,
             motion: [0.0; 3],
             fall_distance: 0.0,
+            first_tick: true,
             radius: 2.5,
             age: 0,
             duration: 300,
@@ -2539,6 +2547,7 @@ impl Game<'_> {
                 at: [at.x, at.y, at.z],
                 motion: [0.0; 3],
                 fall_distance: 0.0,
+                first_tick: true,
                 radius: 3.0,
                 age: 0,
                 duration: 600,
@@ -3140,6 +3149,7 @@ pub(super) mod tests {
                     at: [0.0, 80.0, 0.0],
                     motion: [0.0; 3],
                     fall_distance: 0.0,
+                    first_tick: true,
                     radius: 3.0,
                     age,
                     duration,
@@ -3719,6 +3729,7 @@ pub(super) mod tests {
             at: [1.5, 64.0, -2.5],
             motion: [0.6, 0.0, 0.0],
             fall_distance: 0.0,
+            first_tick: true,
             radius: 3.5,
             age: 12,
             duration: 400,
@@ -3928,6 +3939,7 @@ pub(super) mod tests {
             at: [1.0, 64.0, 0.0],
             motion: [0.0; 3],
             fall_distance: 0.0,
+            first_tick: true,
             radius: 5.0,
             age: 0,
             duration: 200,
@@ -3956,6 +3968,7 @@ pub(super) mod tests {
             at: [0.0, 64.0, 0.0],
             motion: [0.0; 3],
             fall_distance: 0.0,
+            first_tick: true,
             radius: 3.0,
             age: 0,
             duration: 600,
@@ -3976,6 +3989,7 @@ pub(super) mod tests {
             at: [0.0, 64.0, 0.0],
             motion: [0.0; 3],
             fall_distance: 0.0,
+            first_tick: true,
             radius: 3.0,
             age: 0,
             duration: 600,
@@ -4009,6 +4023,7 @@ pub(super) mod tests {
             at: [0.0, 64.0, 0.0],
             motion: [0.0; 3],
             fall_distance: 0.0,
+            first_tick: true,
             radius: 5.0,
             age: 219,
             duration: 200,
@@ -4029,6 +4044,7 @@ pub(super) mod tests {
             at: [0.0, 64.0, 0.0],
             motion: [0.0; 3],
             fall_distance: 0.0,
+            first_tick: true,
             radius: 5.0,
             age: 220,
             duration: 200,
@@ -4050,6 +4066,7 @@ pub(super) mod tests {
             at: [10.0, 64.0, 0.0],
             motion: [0.0; 3],
             fall_distance: 0.0,
+            first_tick: true,
             radius: 1.0,
             age: 0,
             duration: 200,
@@ -4072,6 +4089,7 @@ pub(super) mod tests {
             at: [0.0, 64.0, 0.0],
             motion: [0.0; 3],
             fall_distance: 0.0,
+            first_tick: true,
             radius: 1.0,
             age: 0,
             duration: 200,
