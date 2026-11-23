@@ -80,7 +80,7 @@ AdvancementWidget.extractRenderState	port	crates/sunrise-client/src/game/interfa
 AdvancementWidget.extractMultilineText	inline	crates/sunrise-client/src/game/interface/advancements_screen.rs::Game::adv_draw_hover	description lines in the hover card
 AdvancementWidget.isMouseOver	port	crates/sunrise-client/src/game/interface/advancements_screen.rs::Game::adv_tick_hover	26 px box hit test; hidden advancements count only when done
 AdvancementWidget.attachToParent	inline	crates/sunrise-client/src/game/interface/advancements_screen.rs::Game::adv_view	parent link set when the view is built
-AdvancementsScreen.init	port	crates/sunrise-client/src/game/interface/advancements_screen.rs::Game::open_advancements	resolves the saved root or first tab and reports the selection; gap: minor: no tab pages with < and > buttons, the view shows at most 26 tabs
+AdvancementsScreen.init	port	crates/sunrise-client/src/game/interface/advancements_screen.rs::Game::open_advancements	packet-backed opens clear the screen tab, replay roots to select the first tab, and report that selection again; non-packet opens resolve the saved root or first tab; gap: minor: no tab pages with < and > buttons, the view shows at most 26 tabs
 AdvancementsScreen.repositionElements	skip:ui		layout only: window position
 AdvancementsScreen.removed	missing		minor: the server is not sent the closed-screen packet when the advancements screen closes
 AdvancementsScreen.tick	port	crates/sunrise-client/src/game/interface/advancements_screen.rs::Game::adv_tick_hover	hover tracking and card fade; gap: minor: runs from the frame, not the 20 Hz tick

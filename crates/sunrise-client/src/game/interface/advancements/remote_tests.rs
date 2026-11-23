@@ -130,9 +130,9 @@ fn remote_tree_rejects_unresolved_nodes_and_retains_removed_progress() {
 
 #[test]
 #[ignore = "daily"]
-fn reopening_reports_the_saved_tab_after_an_offscreen_reset() {
+fn opening_reports_the_first_tab_twice_and_preserves_offscreen_selection() {
     in_own_process(
-        "game::advancements_screen::remote_tests::reopening_reports_the_saved_tab_after_an_offscreen_reset",
+        "game::advancements_screen::remote_tests::opening_reports_the_first_tab_twice_and_preserves_offscreen_selection",
         || {
             with_client_game(|game| {
                 game.init_remote_for_replay().unwrap();
@@ -155,13 +155,16 @@ fn reopening_reports_the_saved_tab_after_an_offscreen_reset() {
                 };
                 game.remote_advancements(reset.clone());
                 game.open_advancements(true);
-                assert_eq!(
-                    receive_selection(),
-                    SeenAdvancements {
-                        action: 0,
-                        tab: Some(first.id)
-                    }
-                );
+                assert_eq!(game.adv_view().tab, Some(game.adv.tree.by_id[&first.id]));
+                for _ in 0..2 {
+                    assert_eq!(
+                        receive_selection(),
+                        SeenAdvancements {
+                            action: 0,
+                            tab: Some(first.id.clone())
+                        }
+                    );
+                }
                 game.select_advancement_tab(game.adv.tree.by_id[&second.id]);
                 assert_eq!(
                     receive_selection(),
@@ -189,14 +192,16 @@ fn reopening_reports_the_saved_tab_after_an_offscreen_reset() {
                 assert_eq!(game.adv.selected_tab.as_deref(), Some(second.id.as_str()));
                 game.remote_advancements(reset);
                 game.open_advancements(true);
-                assert_eq!(game.adv_view().tab, Some(game.adv.tree.by_id[&second.id]));
-                assert_eq!(
-                    receive_selection(),
-                    SeenAdvancements {
-                        action: 0,
-                        tab: Some(second.id)
-                    }
-                );
+                assert_eq!(game.adv_view().tab, Some(game.adv.tree.by_id[&first.id]));
+                for _ in 0..2 {
+                    assert_eq!(
+                        receive_selection(),
+                        SeenAdvancements {
+                            action: 0,
+                            tab: Some(first.id.clone())
+                        }
+                    );
+                }
             });
         },
     );

@@ -214,7 +214,10 @@ impl Game<'_> {
         }
         self.capture(false);
         if self.adv.remote_tree.is_some() {
-            self.rebuild_remote_tabs();
+            // AdvancementsScreen.init attaches a fresh listener (ClientAdvancements.setListener),
+            // which replays roots to select the first tab before init reports the selection again.
+            self.adv_ui.tab = None;
+            self.remote_advancement_tabs_updated(false);
         }
         if let Some(tab) = self.adv_view().tab {
             self.select_advancement_tab(tab);
