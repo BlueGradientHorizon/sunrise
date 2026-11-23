@@ -8,9 +8,10 @@ delegated to it through `served_by` with `[native] serves_content = true`).
 Duplicate serializer IDs and duplicate
 recipe type IDs refuse startup, naming the ID.
 
-A `type` written without a namespace (`crafting_shaped`, or `:crafting_shaped`)
-means `minecraft`, as everywhere an identifier is read; it is never the recipe
-file's own namespace. The id is decoded once, when the file is read, so filters,
+In a recipe file, a `type` serializer ID written without a namespace (`crafting_shaped`,
+or `:crafting_shaped`) means `minecraft`; it is never the recipe file's own namespace
+(unqualified declarations in `Registrar` still resolve in the registering mod's namespace).
+The id is decoded once, when the file is read, so filters,
 brewing and clients all see `minecraft:crafting_shaped`. An id that is not a
 valid identifier (`Crafting_shaped`), a missing or non-string `type` and a recipe
 that is not a JSON object are each refused by name; a valid id no mod registered
@@ -111,9 +112,9 @@ load**, naming the file and ID. Dedicated startup stops; a failed `/reload`
 retains the old recipe table. There is no raw fallback for unknown IDs.
 Content mods (`.smod`) shipping mod recipe JSON need the corresponding registered
 serializer. Optional-mod recipes must use load conditions: a false condition
-skips a file quietly **before** serializer lookup. Unknown condition types retain
-the existing fatal load behavior. Malformed recipes of a known serializer retain
-the existing skip-one-file behavior; changing that is a separate task.
+skips a file quietly **before** serializer lookup. Unknown condition types and
+engine decoder refusals fail the whole recipe load; a registered mod
+serializer's decode error skips only that recipe.
 
 Reload decodes a fresh generation and preserves startup registration. Joining
 Sunrise clients receive serializer-written JSON under the existing recipe-content
@@ -130,5 +131,5 @@ This client view does not replace authoritative matching on the server. Types
 not sent keep the client's already-loaded recipes. An empty
 registered crafting serializer still participates in sync so removing its last
 recipe clears stale client data. Recipe placement and recipe-book sync keep
-their existing [transport](concepts/wire-types.md), including vanilla's display
+their existing [transport](../../concepts/wire-types.md), including vanilla's display
 packets.

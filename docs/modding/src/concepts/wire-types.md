@@ -10,7 +10,7 @@ The derive uses standard Rust types and macros even if your module shadows their
 names or has no implicit prelude. Field types and the type in `#[wire(via = Type)]`
 resolve in your own scope.
 
-[Native recipe serializers](../crafting-recipe-kinds.md) do not use Wire for their
+[Native recipe serializers](../how-to/items/crafting-recipe-kinds.md) do not use Wire for their
 values. Both `CraftingRecipeKind` and `RecipeSerializer` decode and write JSON;
 the loader retains each typed value with its owner for the resource generation.
 Recipe content still syncs as bounded JSON, and raw recipe JSON keeps its size
